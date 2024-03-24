@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 rue-lexer = { path = "../../crates/rue-lexer" }
+rue-parser = { path = "../../crates/rue-parser" }

@@ -2,17 +2,13 @@
 pub enum TokenKind {
     Ident,
     Int,
-
     OpenParen,
     CloseParen,
     OpenBrace,
     CloseBrace,
-
     Fun,
-
     Minus,
     GreaterThan,
-
     Whitespace,
     Unknown,
 }
