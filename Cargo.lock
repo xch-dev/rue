@@ -89,6 +89,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rue-compiler"
+version = "0.1.0"
+dependencies = [
+ "rue-parser",
+]
+
+[[package]]
 name = "rue-lexer"
 version = "0.1.0"
 dependencies = [
