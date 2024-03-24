@@ -1,8 +1,7 @@
-use rue_lexer::{Lexer, Token};
+use rue_parser::parse;
 
 fn main() {
     let source = include_str!("../hello.rue");
-    let lexer = Lexer::new(source);
-    let tokens: Vec<Token> = lexer.collect();
-    dbg!(tokens);
+    let cst = parse(source);
+    println!("{:#?}", cst);
 }

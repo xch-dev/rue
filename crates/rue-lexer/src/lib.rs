@@ -38,7 +38,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token<'a>;
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
         let start = self.pos;
@@ -49,8 +49,14 @@ impl<'a> Iterator for Lexer<'a> {
             ')' => TokenKind::CloseParen,
             '{' => TokenKind::OpenBrace,
             '}' => TokenKind::CloseBrace,
-            '-' => TokenKind::Minus,
-            '>' => TokenKind::GreaterThan,
+            ',' => TokenKind::Comma,
+            '-' => match self.peek() {
+                '>' => {
+                    self.bump();
+                    TokenKind::Arrow
+                }
+                _ => TokenKind::Unknown,
+            },
             c if c.is_numeric() => {
                 while self.peek().is_numeric() {
                     self.bump();
@@ -66,10 +72,15 @@ impl<'a> Iterator for Lexer<'a> {
                     _ => TokenKind::Ident,
                 }
             }
-            c if c.is_whitespace() => TokenKind::Whitespace,
+            c if c.is_whitespace() => {
+                while self.peek().is_whitespace() {
+                    self.bump();
+                }
+                TokenKind::Whitespace
+            }
             _ => TokenKind::Unknown,
         };
 
-        Some(Token::new(kind, &self.source[start..self.pos]))
+        Some(Token::new(kind, self.pos - start))
     }
 }

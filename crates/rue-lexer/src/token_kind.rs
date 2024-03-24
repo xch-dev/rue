@@ -7,8 +7,9 @@ pub enum TokenKind {
     OpenBrace,
     CloseBrace,
     Fun,
-    Minus,
-    GreaterThan,
+    Comma,
+    Colon,
+    Arrow,
     Whitespace,
     Unknown,
 }
