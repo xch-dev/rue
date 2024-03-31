@@ -401,7 +401,7 @@ impl<'a> Compiler<'a> {
                         for &symbol_id in callee_env.external_references.iter().rev() {
                             arg_values.insert(0, Value::Reference(symbol_id));
                         }
-                        self.gen_value(&callee_env, Value::Reference(*symbol_id))
+                        self.gen_value(env, Value::Reference(*symbol_id))
                     } else {
                         self.gen_value(env, *callee)
                     }
