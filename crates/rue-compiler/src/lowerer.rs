@@ -425,8 +425,8 @@ impl Lowerer {
         };
 
         match value.text() {
-            "int" => self.db.alloc_type(Type::Int),
-            "bool" => self.db.alloc_type(Type::Bool),
+            "Int" => self.db.alloc_type(Type::Int),
+            "Bool" => self.db.alloc_type(Type::Bool),
             _ => {
                 self.error(format!("unexpected type: {}", value.text()));
                 self.db.alloc_type(Type::Unknown)

@@ -1,11 +1,11 @@
 // References `return_fibonacci`, `factorial`
 // Indirect references to `fibonacci`
-fun main() -> int {
+fun main() -> Int {
     return_fibonacci()(20) + factorial(9)
 }
 
 // References `num`, `factorial`
-fun factorial(num: int) -> int {
+fun factorial(num: Int) -> Int {
     if num > 1 {
         num * factorial(num - 1)
     } else {
@@ -14,7 +14,7 @@ fun factorial(num: int) -> int {
 }
 
 // References `num`, `fibonacci`
-fun fibonacci(num: int) -> int {
+fun fibonacci(num: Int) -> Int {
     if num > 1 {
         fibonacci(num - 1) + fibonacci(num - 2)
     } else {
@@ -23,6 +23,6 @@ fun fibonacci(num: int) -> int {
 }
 
 // References `fibonacci`
-fun return_fibonacci() -> fun(int) -> int {
+fun return_fibonacci() -> fun(Int) -> Int {
     fibonacci
 }
