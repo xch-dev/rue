@@ -79,8 +79,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn line_comment(&mut self) -> TokenKind {
-        while self.peek() != '\n' {
-            self.bump();
+        loop {
+            match self.bump() {
+                '\n' | '\0' => break,
+                _ => {}
+            }
         }
         TokenKind::LineComment
     }
@@ -122,5 +125,94 @@ impl<'a> Iterator for Lexer<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.token()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check(source: &str, expected: &[TokenKind]) {
+        let actual: Vec<TokenKind> = Lexer::new(source).map(|token| token.kind()).collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_ident() {
+        check("main", &[TokenKind::Ident]);
+        check("LineageProof", &[TokenKind::Ident]);
+        check("hello_there_42", &[TokenKind::Ident]);
+        check("_hello", &[TokenKind::Ident]);
+        check("_", &[TokenKind::Ident]);
+    }
+
+    #[test]
+    fn test_int() {
+        check("0", &[TokenKind::Int]);
+        check("42", &[TokenKind::Int]);
+    }
+
+    #[test]
+    fn test_keyword() {
+        check("fun", &[TokenKind::Fun]);
+        check("if", &[TokenKind::If]);
+        check("else", &[TokenKind::Else]);
+    }
+
+    #[test]
+    fn test_brackets() {
+        check("(", &[TokenKind::OpenParen]);
+        check(")", &[TokenKind::CloseParen]);
+        check("{", &[TokenKind::OpenBrace]);
+        check("}", &[TokenKind::CloseBrace]);
+    }
+
+    #[test]
+    fn test_punctuation() {
+        check(",", &[TokenKind::Comma]);
+        check(":", &[TokenKind::Colon]);
+        check("->", &[TokenKind::Arrow]);
+    }
+
+    #[test]
+    fn test_arithmetic() {
+        check("+", &[TokenKind::Plus]);
+        check("-", &[TokenKind::Minus]);
+        check("*", &[TokenKind::Star]);
+        check("/", &[TokenKind::Slash]);
+    }
+
+    #[test]
+    fn test_comparison() {
+        check("<", &[TokenKind::LessThan]);
+        check(">", &[TokenKind::GreaterThan]);
+    }
+
+    #[test]
+    fn test_whitespace() {
+        check(" ", &[TokenKind::Whitespace]);
+        check("    ", &[TokenKind::Whitespace]);
+        check("\t", &[TokenKind::Whitespace]);
+        check("\n", &[TokenKind::Whitespace]);
+        check("\r", &[TokenKind::Whitespace]);
+        check("\r\n", &[TokenKind::Whitespace]);
+    }
+
+    #[test]
+    fn test_line_comment() {
+        check("//", &[TokenKind::LineComment]);
+        check("// hello", &[TokenKind::LineComment]);
+        check("// hello\n", &[TokenKind::LineComment]);
+    }
+
+    #[test]
+    fn test_block_comment() {
+        check("/*", &[TokenKind::BlockComment]);
+        check("/* hello */", &[TokenKind::BlockComment]);
+        check("/* hello\nworld */", &[TokenKind::BlockComment]);
+        check(
+            "/* hello *//* good bye */",
+            &[TokenKind::BlockComment, TokenKind::BlockComment],
+        );
     }
 }
