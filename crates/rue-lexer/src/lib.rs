@@ -22,25 +22,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn peek(&self) -> char {
-        self.chars.clone().next().unwrap_or('\0')
-    }
-
-    fn bump(&mut self) -> char {
-        match self.chars.next() {
-            Some(c) => {
-                self.pos += c.len_utf8();
-                c
-            }
-            None => '\0',
-        }
-    }
-}
-
-impl<'a> Iterator for Lexer<'a> {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    fn token(&mut self) -> Option<Token> {
         let start = self.pos;
 
         let kind = match self.bump() {
@@ -62,29 +44,8 @@ impl<'a> Iterator for Lexer<'a> {
             '<' => TokenKind::LessThan,
             '>' => TokenKind::GreaterThan,
             '/' => match self.peek() {
-                '/' => {
-                    self.bump();
-                    while self.peek() != '\n' {
-                        self.bump();
-                    }
-                    TokenKind::LineComment
-                }
-                '*' => {
-                    self.bump();
-                    loop {
-                        match self.bump() {
-                            '*' => {
-                                if self.peek() == '/' {
-                                    self.bump();
-                                    break;
-                                }
-                            }
-                            '\0' => break,
-                            _ => {}
-                        }
-                    }
-                    TokenKind::BlockComment
-                }
+                '/' => self.line_comment(),
+                '*' => self.block_comment(),
                 _ => TokenKind::Slash,
             },
             ':' => TokenKind::Colon,
@@ -115,5 +76,51 @@ impl<'a> Iterator for Lexer<'a> {
         };
 
         Some(Token::new(kind, self.pos - start))
+    }
+
+    fn line_comment(&mut self) -> TokenKind {
+        while self.peek() != '\n' {
+            self.bump();
+        }
+        TokenKind::LineComment
+    }
+
+    fn block_comment(&mut self) -> TokenKind {
+        self.bump();
+        loop {
+            match self.bump() {
+                '*' => {
+                    if self.peek() == '/' {
+                        self.bump();
+                        break;
+                    }
+                }
+                '\0' => break,
+                _ => {}
+            }
+        }
+        TokenKind::BlockComment
+    }
+
+    fn peek(&self) -> char {
+        self.chars.clone().next().unwrap_or('\0')
+    }
+
+    fn bump(&mut self) -> char {
+        match self.chars.next() {
+            Some(c) => {
+                self.pos += c.len_utf8();
+                c
+            }
+            None => '\0',
+        }
+    }
+}
+
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.token()
     }
 }
