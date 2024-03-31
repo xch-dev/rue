@@ -94,7 +94,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         _ => {}
     }
 
-    if p.peek() == SyntaxKind::OpenParen {
+    while p.peek() == SyntaxKind::OpenParen {
         p.start_at(checkpoint, SyntaxKind::FunctionCall);
         p.start(SyntaxKind::FunctionCallArgs);
         p.bump();

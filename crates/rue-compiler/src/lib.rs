@@ -47,6 +47,7 @@ enum Value {
     },
 }
 
+#[derive(Debug)]
 enum Symbol {
     Function { scope: Option<Scope>, value: Value },
     Parameter,
@@ -115,7 +116,7 @@ impl<'a> Compiler<'a> {
             .map(|list| list.params())
             .unwrap_or_default()
         {
-            let Some(name) = param.name().map(|name| name.to_string()) else {
+            let Some(name) = param.name() else {
                 self.error("expected parameter name".to_string());
                 continue;
             };
@@ -155,7 +156,7 @@ impl<'a> Compiler<'a> {
             };
 
             match &mut self.symbols[symbol_id.0] {
-                Symbol::Function { scope, value } => {
+                Symbol::Function { scope, value, .. } => {
                     *scope = Some(body_scope);
                     *value = environment;
                 }
@@ -278,7 +279,7 @@ impl<'a> Compiler<'a> {
 
         match &self.symbols[symbol_id.0] {
             Symbol::Function { .. } => Value::Closure(symbol_id),
-            Symbol::Parameter => Value::Reference(symbol_id),
+            Symbol::Parameter { .. } => Value::Reference(symbol_id),
         }
     }
 
@@ -293,7 +294,7 @@ impl<'a> Compiler<'a> {
             return Value::Nil;
         };
 
-        let callee = self.compile_literal_expr(callee);
+        let callee = self.compile_expr(callee);
         let args = args
             .exprs()
             .into_iter()
@@ -307,7 +308,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn gen_main(&mut self, main: SymbolId) -> NodePtr {
-        let Symbol::Function { scope, value } = &self.symbols[main.0] else {
+        let Symbol::Function { scope, value, .. } = &self.symbols[main.0] else {
             self.error("main is not a function".to_string());
             return NodePtr::NIL;
         };
@@ -334,7 +335,7 @@ impl<'a> Compiler<'a> {
     fn gen_symbol(&mut self, env: &Environment, symbol_id: SymbolId) -> NodePtr {
         match &self.symbols[symbol_id.0] {
             Symbol::Function { value, .. } => self.gen_value(env, value.clone()),
-            Symbol::Parameter => todo!(),
+            Symbol::Parameter { .. } => todo!(),
         }
     }
 
@@ -394,7 +395,10 @@ impl<'a> Compiler<'a> {
                 self.quote(body)
             }
             Value::Closure(symbol_id) => {
-                let Symbol::Function { scope, value: _ } = &self.symbols[symbol_id.0] else {
+                let Symbol::Function {
+                    scope, value: _, ..
+                } = &self.symbols[symbol_id.0]
+                else {
                     self.error("closure is not a function".to_string());
                     return NodePtr::NIL;
                 };

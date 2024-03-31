@@ -180,11 +180,8 @@ impl IfExpr {
 }
 
 impl FunctionCall {
-    pub fn callee(&self) -> Option<LiteralExpr> {
-        self.syntax()
-            .children()
-            .filter_map(LiteralExpr::cast)
-            .next()
+    pub fn callee(&self) -> Option<Expr> {
+        self.syntax().children().filter_map(Expr::cast).next()
     }
 
     pub fn args(&self) -> Option<FunctionCallArgs> {

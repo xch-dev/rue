@@ -6,14 +6,14 @@ fn main() {
     let source = include_str!("../hello.rue");
     let (ast, errors) = parse(source);
 
+    eprintln!("{:#?}", ast.syntax());
+
     if !errors.is_empty() {
         for error in errors {
             eprintln!("{}", error);
         }
         return;
     }
-
-    eprintln!("{:#?}", ast.syntax());
 
     let mut allocator = Allocator::new();
     let output = compile(&mut allocator, ast);

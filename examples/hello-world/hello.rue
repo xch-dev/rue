@@ -1,5 +1,5 @@
 fun main() -> int {
-    fibonacci(20) + factorial(9)
+    return_fibonacci()(20) + factorial(9)
 }
 
 fun factorial(num: int) -> int {
@@ -16,4 +16,8 @@ fun fibonacci(num: int) -> int {
     } else {
         num
     }
+}
+
+fun return_fibonacci() -> int {
+    fibonacci
 }
