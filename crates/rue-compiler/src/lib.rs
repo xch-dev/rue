@@ -12,6 +12,7 @@ mod database;
 mod lowerer;
 mod scope;
 mod symbol;
+mod ty;
 mod value;
 
 pub struct Output {

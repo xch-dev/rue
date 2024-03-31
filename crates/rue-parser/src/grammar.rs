@@ -22,7 +22,7 @@ fn function_item(p: &mut Parser) {
     p.eat(SyntaxKind::Ident);
     function_params(p);
     p.eat(SyntaxKind::Arrow);
-    p.eat(SyntaxKind::Ident);
+    ty(p);
     block(p);
     p.finish();
 }
@@ -44,7 +44,7 @@ fn function_param(p: &mut Parser) {
     p.start(SyntaxKind::FunctionParam);
     p.eat(SyntaxKind::Ident);
     p.eat(SyntaxKind::Colon);
-    p.eat(SyntaxKind::Ident);
+    ty(p);
     p.finish();
 }
 
@@ -141,5 +141,37 @@ fn if_expr(p: &mut Parser) {
     block(p);
     p.eat(SyntaxKind::Else);
     block(p);
+    p.finish();
+}
+
+fn ty(p: &mut Parser) {
+    match p.peek() {
+        SyntaxKind::Ident => {
+            p.start(SyntaxKind::LiteralType);
+            p.bump();
+            p.finish();
+        }
+        SyntaxKind::Fun => {
+            p.start(SyntaxKind::FunctionType);
+            p.bump();
+            function_type_params(p);
+            p.eat(SyntaxKind::Arrow);
+            ty(p);
+            p.finish();
+        }
+        _ => {}
+    }
+}
+
+fn function_type_params(p: &mut Parser) {
+    p.start(SyntaxKind::FunctionTypeParams);
+    p.eat(SyntaxKind::OpenParen);
+    while p.peek() != SyntaxKind::CloseParen {
+        ty(p);
+        if !p.eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.eat(SyntaxKind::CloseParen);
     p.finish();
 }

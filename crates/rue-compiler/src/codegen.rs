@@ -203,6 +203,7 @@ impl<'a> Codegen<'a> {
         let Symbol::Function {
             scope_id: function_scope_id,
             value,
+            ..
         } = &self.db.symbol(symbol_id)
         else {
             unreachable!();

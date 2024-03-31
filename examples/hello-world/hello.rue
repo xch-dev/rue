@@ -23,6 +23,6 @@ fun fibonacci(num: int) -> int {
 }
 
 // References `fibonacci`
-fun return_fibonacci() -> int {
+fun return_fibonacci() -> fun(int) -> int {
     fibonacci
 }

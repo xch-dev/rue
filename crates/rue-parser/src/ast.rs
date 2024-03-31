@@ -63,6 +63,11 @@ ast_node!(IfExpr);
 ast_node!(FunctionCall);
 ast_node!(FunctionCallArgs);
 
+ast_enum!(Type, LiteralType, FunctionType);
+ast_node!(LiteralType);
+ast_node!(FunctionType);
+ast_node!(FunctionTypeParams);
+
 impl Root {
     pub fn function_items(&self) -> Vec<FunctionItem> {
         self.syntax()
@@ -84,12 +89,8 @@ impl FunctionItem {
         self.syntax().children().find_map(FunctionParamList::cast)
     }
 
-    pub fn return_ty(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .filter(|token| token.kind() == SyntaxKind::Ident)
-            .nth(1)
+    pub fn return_ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
     }
 
     pub fn body(&self) -> Option<Block> {
@@ -114,12 +115,8 @@ impl FunctionParam {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn ty(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .filter(|token| token.kind() == SyntaxKind::Ident)
-            .nth(1)
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
     }
 }
 
@@ -195,5 +192,33 @@ impl FunctionCall {
 impl FunctionCallArgs {
     pub fn exprs(&self) -> Vec<Expr> {
         self.syntax().children().filter_map(Expr::cast).collect()
+    }
+}
+
+impl LiteralType {
+    pub fn value(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .next()
+    }
+}
+
+impl FunctionType {
+    pub fn params(&self) -> Option<FunctionTypeParams> {
+        self.syntax()
+            .children()
+            .filter_map(FunctionTypeParams::cast)
+            .next()
+    }
+
+    pub fn ret(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+}
+
+impl FunctionTypeParams {
+    pub fn types(&self) -> Vec<Type> {
+        self.syntax().children().filter_map(Type::cast).collect()
     }
 }

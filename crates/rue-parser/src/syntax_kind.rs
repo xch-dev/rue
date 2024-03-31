@@ -38,4 +38,7 @@ pub enum SyntaxKind {
     IfExpr,
     FunctionCall,
     FunctionCallArgs,
+    LiteralType,
+    FunctionType,
+    FunctionTypeParams,
 }
