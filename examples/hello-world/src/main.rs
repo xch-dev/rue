@@ -25,7 +25,7 @@ fn main() {
 
     if let Some(node_ptr) = output.node_ptr {
         let bytes = node_to_bytes(&allocator, node_ptr).unwrap();
-        println!("Serialize: {}", hex::encode(bytes));
+        println!("Serialized program: {}", hex::encode(bytes));
         match run_program(
             &mut allocator,
             &ChiaDialect::new(0),
@@ -34,7 +34,7 @@ fn main() {
             0,
         ) {
             Ok(output) => println!(
-                "Eval: {}",
+                "Serialized output with nil solution: {}",
                 hex::encode(node_to_bytes(&allocator, output.1).unwrap())
             ),
             Err(error) => eprintln!("Error: {:?}", error),

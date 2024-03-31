@@ -2,7 +2,7 @@
 
 use std::mem;
 
-use clvmr::{serde::node_to_bytes, Allocator, NodePtr};
+use clvmr::{Allocator, NodePtr};
 use id_arena::{Arena, Id};
 use indexmap::IndexSet;
 use num_bigint::BigInt;
@@ -305,8 +305,6 @@ impl<'a> Compiler<'a> {
             return Value::Nil;
         };
 
-        println!("{}: {:?}", name, symbol_id);
-
         self.scope_mut().reference_symbol(symbol_id);
 
         match &self.symbols[symbol_id.0] {
@@ -347,8 +345,6 @@ impl<'a> Compiler<'a> {
 
         let env = Environment::from_scope(scope.as_ref().expect("main is missing scope"));
 
-        dbg!(&env, &scope);
-
         let body = self.gen_value(&env, value.clone());
         let rest = self.allocator.one();
         let a = self
@@ -378,10 +374,7 @@ impl<'a> Compiler<'a> {
             Value::Nil => self.allocator.nil(),
             Value::Int(int) => self.gen_int(int),
             Value::Reference(symbol) => {
-                let index = env
-                    .symbols
-                    .get_index_of(dbg!(&symbol))
-                    .expect("symbol not found");
+                let index = env.symbols.get_index_of(&symbol).expect("symbol not found");
                 let mut path = 2;
                 for _ in 0..index {
                     path *= 2;
@@ -444,17 +437,10 @@ impl<'a> Compiler<'a> {
                 let quoted_one = self.quote(one);
                 let runtime_args = self.runtime_runtime_list(&args, quoted_one);
 
-                let rtl = self.runtime_list(
+                self.runtime_list(
                     &[runtime_a, runtime_quoted_body, runtime_args],
                     NodePtr::NIL,
-                );
-
-                println!(
-                    "{}",
-                    hex::encode(node_to_bytes(self.allocator, rtl).expect(""))
-                );
-
-                rtl
+                )
             }
             Value::Add(operands) => {
                 let plus = self
