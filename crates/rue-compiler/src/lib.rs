@@ -1,10 +1,10 @@
 #![forbid(clippy::unwrap_used)]
 
-use std::mem;
+use std::collections::HashMap;
 
 use clvmr::{Allocator, NodePtr};
-use environment::Environment;
 use id_arena::{Arena, Id};
+use indexmap::IndexSet;
 use num_bigint::BigInt;
 use rue_parser::{
     BinaryExpr, Block, Expr, FunctionCall, FunctionItem, IfExpr, LiteralExpr, Root, SyntaxKind,
@@ -12,7 +12,6 @@ use rue_parser::{
 };
 use scope::Scope;
 
-mod environment;
 mod scope;
 
 pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
@@ -24,11 +23,7 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
 enum Value {
     Nil,
     Int(BigInt),
-    Closure(SymbolId),
-    Environment {
-        environment: Environment,
-        value: Box<Value>,
-    },
+    Function(SymbolId),
     Reference(SymbolId),
     FunctionCall {
         callee: Box<Value>,
@@ -49,12 +44,15 @@ enum Value {
 
 #[derive(Debug)]
 enum Symbol {
-    Function { scope: Option<Scope>, value: Value },
+    Function { scope_id: ScopeId, value: Value },
     Parameter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct SymbolId(Id<Symbol>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ScopeId(Id<Scope>);
 
 pub struct Output {
     pub errors: Vec<String>,
@@ -62,8 +60,10 @@ pub struct Output {
 }
 
 struct Compiler<'a> {
-    scopes: Vec<Scope>,
+    scopes: Arena<Scope>,
     symbols: Arena<Symbol>,
+    scope_stack: Vec<ScopeId>,
+    captures: HashMap<ScopeId, IndexSet<SymbolId>>,
     errors: Vec<String>,
     allocator: &'a mut Allocator,
 }
@@ -71,15 +71,18 @@ struct Compiler<'a> {
 impl<'a> Compiler<'a> {
     fn new(allocator: &'a mut Allocator) -> Self {
         Self {
-            scopes: vec![Scope::default()],
+            scopes: Arena::new(),
             symbols: Arena::new(),
+            scope_stack: Vec::new(),
+            captures: HashMap::new(),
             errors: Vec::new(),
             allocator,
         }
     }
 
     fn compile_root(mut self, root: Root) -> Output {
-        self.scopes.push(Scope::default());
+        self.scope_stack
+            .push(ScopeId(self.scopes.alloc(Scope::default())));
 
         let symbol_ids: Vec<SymbolId> = root
             .function_items()
@@ -91,7 +94,7 @@ impl<'a> Compiler<'a> {
             self.compile_function(function, symbol_ids[i]);
         }
 
-        let Some(main) = self.scope_mut().symbol("main") else {
+        let Some(main) = self.scope_mut().get_symbol("main") else {
             self.error("no main function".to_string());
 
             return Output {
@@ -100,6 +103,7 @@ impl<'a> Compiler<'a> {
             };
         };
 
+        self.scope_mut().use_symbol(main);
         let node_ptr = self.gen_main(main);
 
         Output {
@@ -125,8 +129,10 @@ impl<'a> Compiler<'a> {
             scope.define_symbol(name.to_string(), symbol_id);
         }
 
+        let scope_id = ScopeId(self.scopes.alloc(scope));
+
         let symbol_id = SymbolId(self.symbols.alloc(Symbol::Function {
-            scope: Some(scope),
+            scope_id,
             value: Value::Nil,
         }));
 
@@ -139,26 +145,18 @@ impl<'a> Compiler<'a> {
 
     fn compile_function(&mut self, function: FunctionItem, symbol_id: SymbolId) {
         if let Some(body) = function.body() {
-            let body_scope = match &mut self.symbols[symbol_id.0] {
-                Symbol::Function { scope, .. } => {
-                    mem::take(scope).expect("function is missing scope")
-                }
+            let body_scope_id = match self.symbols[symbol_id.0] {
+                Symbol::Function { scope_id, .. } => scope_id,
                 _ => unreachable!(),
             };
-            self.scopes.push(body_scope);
 
+            self.scope_stack.push(body_scope_id);
             let body_value = self.compile_block(body);
-            let body_scope = self.scopes.pop().expect("function not in scope stack");
-
-            let environment = Value::Environment {
-                environment: Environment::from_scope(&body_scope),
-                value: Box::new(body_value),
-            };
+            self.scope_stack.pop().expect("function not in scope stack");
 
             match &mut self.symbols[symbol_id.0] {
-                Symbol::Function { scope, value, .. } => {
-                    *scope = Some(body_scope);
-                    *value = environment;
+                Symbol::Function { value, .. } => {
+                    *value = body_value;
                 }
                 _ => unreachable!(),
             };
@@ -266,21 +264,18 @@ impl<'a> Compiler<'a> {
         let name = ident.text();
 
         let Some(symbol_id) = self
-            .scopes
+            .scope_stack
             .iter()
             .rev()
-            .find_map(|scope| scope.symbol(name))
+            .find_map(|scope_id| self.scopes[scope_id.0].get_symbol(name))
         else {
             self.error(format!("undefined symbol: {}", name));
             return Value::Nil;
         };
 
-        self.scope_mut().reference_symbol(symbol_id);
+        self.scope_mut().use_symbol(symbol_id);
 
-        match &self.symbols[symbol_id.0] {
-            Symbol::Function { .. } => Value::Closure(symbol_id),
-            Symbol::Parameter { .. } => Value::Reference(symbol_id),
-        }
+        Value::Reference(symbol_id)
     }
 
     fn compile_function_call(&mut self, call: FunctionCall) -> Value {
@@ -307,15 +302,59 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn compute_captures(&mut self, scope_id: ScopeId) {
+        if self.captures.contains_key(&scope_id) {
+            return;
+        }
+
+        self.captures.insert(scope_id, IndexSet::new());
+
+        for used_id in self.scopes[scope_id.0].used_symbols().clone() {
+            if !self.scopes[scope_id.0].definitions().contains(&used_id) {
+                self.captures
+                    .get_mut(&scope_id)
+                    .expect("cannot capture from unknown scope")
+                    .insert(used_id);
+            }
+
+            let Symbol::Function {
+                scope_id: function_scope_id,
+                ..
+            } = &self.symbols[used_id.0]
+            else {
+                continue;
+            };
+
+            let function_scope_id = *function_scope_id;
+
+            self.compute_captures(function_scope_id);
+
+            if !self.scopes[scope_id.0].definitions().contains(&used_id) {
+                let new_captures = self.captures[&function_scope_id].clone();
+                self.captures
+                    .get_mut(&scope_id)
+                    .expect("cannot capture from unknown scope")
+                    .extend(new_captures);
+            }
+        }
+    }
+
     fn gen_main(&mut self, main: SymbolId) -> NodePtr {
-        let Symbol::Function { scope, value, .. } = &self.symbols[main.0] else {
-            self.error("main is not a function".to_string());
-            return NodePtr::NIL;
+        let (scope_id, value) = {
+            let Symbol::Function {
+                scope_id, value, ..
+            } = &self.symbols[main.0]
+            else {
+                self.error("main is not a function".to_string());
+                return NodePtr::NIL;
+            };
+            (*scope_id, value.clone())
         };
 
-        let env = Environment::from_scope(scope.as_ref().expect("main is missing scope"));
+        self.compute_captures(scope_id);
 
-        let body = self.gen_value(&env, value.clone());
+        let body = self.gen_value(scope_id, value.clone());
+        let quoted_body = self.quote(body);
         let rest = self.allocator.one();
         let a = self
             .allocator
@@ -323,114 +362,111 @@ impl<'a> Compiler<'a> {
             .expect("could not allocate `a`");
 
         let mut args = Vec::new();
-        for &symbol_id in env.symbols() {
-            args.push(self.gen_symbol(&env, symbol_id));
+
+        for symbol_id in self.captures[&scope_id].clone() {
+            args.push(self.gen_symbol(scope_id, symbol_id));
         }
 
         let arg_list = self.runtime_list(&args, rest);
 
-        self.list(&[a, body, arg_list])
+        self.list(&[a, quoted_body, arg_list])
     }
 
-    fn gen_symbol(&mut self, env: &Environment, symbol_id: SymbolId) -> NodePtr {
+    fn gen_symbol(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
         match &self.symbols[symbol_id.0] {
-            Symbol::Function { value, .. } => self.gen_value(env, value.clone()),
+            Symbol::Function { .. } => self.gen_value(scope_id, Value::Function(symbol_id)),
             Symbol::Parameter { .. } => todo!(),
         }
     }
 
-    fn gen_value(&mut self, env: &Environment, value: Value) -> NodePtr {
+    fn gen_value(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
         match value {
             Value::Nil => self.allocator.nil(),
             Value::Int(int) => self.gen_int(int),
-            Value::Reference(symbol) => {
-                let index = env
-                    .symbols()
-                    .get_index_of(&symbol)
-                    .expect("symbol not found");
-                let mut path = 2;
-                for _ in 0..index {
-                    path *= 2;
-                    path += 1;
+            Value::Reference(symbol_id) => {
+                if let Symbol::Function {
+                    scope_id: function_scope_id,
+                    value: _,
+                    ..
+                } = self.symbols[symbol_id.0]
+                {
+                    let q = self.allocator.one();
+                    let one = q;
+                    let a = self
+                        .allocator
+                        .new_small_number(2)
+                        .expect("could not allocate `a`");
+
+                    let body = self.gen_path(scope_id, symbol_id);
+
+                    let runtime_a = self.quote(a);
+                    let runtime_quoted_body = self.runtime_quote(body);
+
+                    let mut args = Vec::new();
+
+                    for symbol_id in self.captures[&function_scope_id].clone() {
+                        let path = self.gen_path(scope_id, symbol_id);
+                        let runtime_quoted_arg = self.runtime_quote(path);
+                        args.push(runtime_quoted_arg);
+                    }
+
+                    let quoted_one = self.quote(one);
+                    let runtime_args = self.runtime_runtime_list(&args, quoted_one);
+
+                    return self.runtime_list(
+                        &[runtime_a, runtime_quoted_body, runtime_args],
+                        NodePtr::NIL,
+                    );
                 }
-                self.allocator
-                    .new_small_number(path)
-                    .expect("could not allocate path")
+
+                self.gen_path(scope_id, symbol_id)
             }
             Value::FunctionCall {
                 callee,
-                args: mut arg_values,
+                args: arg_values,
             } => {
                 let a = self
                     .allocator
                     .new_small_number(2)
                     .expect("could not allocate `a`");
 
-                let callee = if let Value::Closure(symbol_id) = callee.as_ref() {
-                    if let Symbol::Function { scope, .. } = &self.symbols[symbol_id.0] {
-                        let callee_env = Environment::from_scope(
-                            scope.as_ref().expect("callee is missing scope"),
-                        );
-                        for &symbol_id in callee_env.external_references().iter().rev() {
-                            arg_values.insert(0, Value::Reference(symbol_id));
+                let mut args = Vec::new();
+
+                let callee = if let Value::Reference(symbol_id) = callee.as_ref() {
+                    if let Symbol::Function {
+                        scope_id: callee_scope_id,
+                        ..
+                    } = self.symbols[symbol_id.0]
+                    {
+                        for symbol_id in self.captures[&callee_scope_id].clone() {
+                            args.push(self.gen_path(scope_id, symbol_id));
                         }
-                        self.gen_value(env, Value::Reference(*symbol_id))
+                        self.gen_path(scope_id, *symbol_id)
                     } else {
-                        self.gen_value(env, *callee)
+                        self.gen_value(scope_id, *callee)
                     }
                 } else {
-                    self.gen_value(env, *callee)
+                    self.gen_value(scope_id, *callee)
                 };
 
-                let mut args = Vec::new();
                 for arg_value in arg_values {
-                    args.push(self.gen_value(env, arg_value));
+                    args.push(self.gen_value(scope_id, arg_value));
                 }
                 let arg_list = self.runtime_list(&args, NodePtr::NIL);
 
                 self.list(&[a, callee, arg_list])
             }
-            Value::Environment { environment, value } => {
-                let body = self.gen_value(&environment, *value);
-                self.quote(body)
-            }
-            Value::Closure(symbol_id) => {
+            Value::Function(symbol_id) => {
                 let Symbol::Function {
-                    scope, value: _, ..
+                    scope_id: function_scope_id,
+                    value,
                 } = &self.symbols[symbol_id.0]
                 else {
-                    self.error("closure is not a function".to_string());
+                    self.error("expected function".to_string());
                     return NodePtr::NIL;
                 };
-                let capture_env =
-                    Environment::from_scope(scope.as_ref().expect("closure is missing scope"));
-
-                let q = self.allocator.one();
-                let one = q;
-                let a = self
-                    .allocator
-                    .new_small_number(2)
-                    .expect("could not allocate `a`");
-
-                let body = self.gen_value(env, Value::Reference(symbol_id));
-
-                let runtime_a = self.quote(a);
-                let runtime_quoted_body = self.runtime_quote(body);
-
-                let mut args = Vec::new();
-                for &symbol_id in capture_env.external_references().iter() {
-                    let path = self.gen_value(env, Value::Reference(symbol_id));
-                    let runtime_quoted_arg = self.runtime_quote(path);
-                    args.push(runtime_quoted_arg);
-                }
-
-                let quoted_one = self.quote(one);
-                let runtime_args = self.runtime_runtime_list(&args, quoted_one);
-
-                self.runtime_list(
-                    &[runtime_a, runtime_quoted_body, runtime_args],
-                    NodePtr::NIL,
-                )
+                let body = self.gen_value(*function_scope_id, value.clone());
+                self.quote(body)
             }
             Value::Add(operands) => {
                 let plus = self
@@ -440,7 +476,7 @@ impl<'a> Compiler<'a> {
 
                 let mut args = vec![plus];
                 for operand in operands {
-                    args.push(self.gen_value(env, operand));
+                    args.push(self.gen_value(scope_id, operand));
                 }
                 self.list(&args)
             }
@@ -452,7 +488,7 @@ impl<'a> Compiler<'a> {
 
                 let mut args = vec![minus];
                 for operand in operands {
-                    args.push(self.gen_value(env, operand));
+                    args.push(self.gen_value(scope_id, operand));
                 }
                 self.list(&args)
             }
@@ -464,7 +500,7 @@ impl<'a> Compiler<'a> {
 
                 let mut args = vec![star];
                 for operand in operands {
-                    args.push(self.gen_value(env, operand));
+                    args.push(self.gen_value(scope_id, operand));
                 }
                 self.list(&args)
             }
@@ -476,12 +512,11 @@ impl<'a> Compiler<'a> {
 
                 let mut args = vec![slash];
                 for operand in operands {
-                    args.push(self.gen_value(env, operand));
+                    args.push(self.gen_value(scope_id, operand));
                 }
                 self.list(&args)
             }
             Value::LessThan(lhs, rhs) => {
-                // (not (any (= A B) (> A B)))
                 let not = self
                     .allocator
                     .new_small_number(32)
@@ -499,8 +534,8 @@ impl<'a> Compiler<'a> {
                     .new_small_number(9)
                     .expect("could not allocate `=`");
 
-                let lhs = self.gen_value(env, *lhs);
-                let rhs = self.gen_value(env, *rhs);
+                let lhs = self.gen_value(scope_id, *lhs);
+                let rhs = self.gen_value(scope_id, *rhs);
                 let operands = self.list(&[lhs, rhs]);
 
                 let eq_list = self
@@ -521,8 +556,8 @@ impl<'a> Compiler<'a> {
                     .expect("could not allocate `>`");
 
                 let mut args = vec![gt];
-                args.push(self.gen_value(env, *lhs));
-                args.push(self.gen_value(env, *rhs));
+                args.push(self.gen_value(scope_id, *lhs));
+                args.push(self.gen_value(scope_id, *rhs));
                 self.list(&args)
             }
             Value::If {
@@ -541,9 +576,9 @@ impl<'a> Compiler<'a> {
 
                 let all_env = self.allocator.one();
 
-                let condition = self.gen_value(env, *condition);
-                let then_block = self.gen_value(env, *then_block);
-                let else_block = self.gen_value(env, *else_block);
+                let condition = self.gen_value(scope_id, *condition);
+                let then_block = self.gen_value(scope_id, *then_block);
+                let else_block = self.gen_value(scope_id, *else_block);
 
                 let then_block = self.quote(then_block);
                 let else_block = self.quote(else_block);
@@ -552,6 +587,24 @@ impl<'a> Compiler<'a> {
                 self.list(&[a, conditional, all_env])
             }
         }
+    }
+
+    fn gen_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
+        let index = self.captures[&scope_id]
+            .iter()
+            .chain(self.scopes[scope_id.0].definitions().iter())
+            .position(|&id| id == symbol_id)
+            .expect("symbol not found");
+
+        let mut path = 2;
+        for _ in 0..index {
+            path *= 2;
+            path += 1;
+        }
+
+        self.allocator
+            .new_small_number(path)
+            .expect("could not allocate path")
     }
 
     fn gen_int(&mut self, value: BigInt) -> NodePtr {
@@ -620,7 +673,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn scope_mut(&mut self) -> &mut Scope {
-        self.scopes.last_mut().expect("no scope found")
+        &mut self.scopes[self.scope_stack.last().expect("no scope found").0]
     }
 
     fn error(&mut self, message: String) {
