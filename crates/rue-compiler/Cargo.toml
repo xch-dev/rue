@@ -4,4 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clvmr = "0.6.1"
+hex = "0.4.3"
+id-arena = "2.2.1"
+indexmap = "2.2.6"
+num-bigint = "0.4.4"
 rue-parser = { path = "../rue-parser" }

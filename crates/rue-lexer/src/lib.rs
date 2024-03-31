@@ -50,13 +50,44 @@ impl<'a> Iterator for Lexer<'a> {
             '{' => TokenKind::OpenBrace,
             '}' => TokenKind::CloseBrace,
             ',' => TokenKind::Comma,
+            '+' => TokenKind::Plus,
             '-' => match self.peek() {
                 '>' => {
                     self.bump();
                     TokenKind::Arrow
                 }
-                _ => TokenKind::Unknown,
+                _ => TokenKind::Minus,
             },
+            '*' => TokenKind::Star,
+            '<' => TokenKind::LessThan,
+            '>' => TokenKind::GreaterThan,
+            '/' => match self.peek() {
+                '/' => {
+                    self.bump();
+                    while self.peek() != '\n' {
+                        self.bump();
+                    }
+                    TokenKind::LineComment
+                }
+                '*' => {
+                    self.bump();
+                    loop {
+                        match self.bump() {
+                            '*' => {
+                                if self.peek() == '/' {
+                                    self.bump();
+                                    break;
+                                }
+                            }
+                            '\0' => break,
+                            _ => {}
+                        }
+                    }
+                    TokenKind::BlockComment
+                }
+                _ => TokenKind::Slash,
+            },
+            ':' => TokenKind::Colon,
             c if c.is_numeric() => {
                 while self.peek().is_numeric() {
                     self.bump();
@@ -69,6 +100,8 @@ impl<'a> Iterator for Lexer<'a> {
                 }
                 match &self.source[start..self.pos] {
                     "fun" => TokenKind::Fun,
+                    "if" => TokenKind::If,
+                    "else" => TokenKind::Else,
                     _ => TokenKind::Ident,
                 }
             }

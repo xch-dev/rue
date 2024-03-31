@@ -3,9 +3,17 @@ use crate::{parser::Parser, SyntaxKind};
 pub fn root(p: &mut Parser) {
     p.start(SyntaxKind::Root);
     while !p.at_end() {
-        function_item(p);
+        item(p);
     }
     p.finish();
+}
+
+fn item(p: &mut Parser) {
+    if p.peek() == SyntaxKind::Fun {
+        function_item(p);
+    } else {
+        p.error("expected function item".to_string());
+    }
 }
 
 fn function_item(p: &mut Parser) {
@@ -43,7 +51,95 @@ fn function_param(p: &mut Parser) {
 fn block(p: &mut Parser) {
     p.start(SyntaxKind::Block);
     p.eat(SyntaxKind::OpenBrace);
-    p.eat(SyntaxKind::Int);
+    expr(p);
     p.eat(SyntaxKind::CloseBrace);
+    p.finish();
+}
+
+enum Op {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Lt,
+    Gt,
+}
+
+impl Op {
+    fn binding_power(&self) -> (u8, u8) {
+        match self {
+            Self::Lt | Self::Gt => (1, 2),
+            Self::Add | Self::Sub => (3, 4),
+            Self::Mul | Self::Div => (5, 6),
+        }
+    }
+}
+
+fn expr(p: &mut Parser) {
+    expr_binding_power(p, 0);
+}
+
+fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
+    let checkpoint = p.checkpoint();
+
+    match p.peek() {
+        SyntaxKind::Int | SyntaxKind::Ident => {
+            p.start(SyntaxKind::LiteralExpr);
+            p.bump();
+            p.finish();
+        }
+        SyntaxKind::If => {
+            if_expr(p);
+        }
+        _ => {}
+    }
+
+    if p.peek() == SyntaxKind::OpenParen {
+        p.start_at(checkpoint, SyntaxKind::FunctionCall);
+        p.start(SyntaxKind::FunctionCallArgs);
+        p.bump();
+        while !p.at_end() {
+            expr(p);
+            if !p.eat(SyntaxKind::Comma) {
+                break;
+            }
+        }
+        p.eat(SyntaxKind::CloseParen);
+        p.finish();
+        p.finish();
+    }
+
+    loop {
+        let op = match p.peek() {
+            SyntaxKind::Plus => Op::Add,
+            SyntaxKind::Minus => Op::Sub,
+            SyntaxKind::Star => Op::Mul,
+            SyntaxKind::Slash => Op::Div,
+            SyntaxKind::LessThan => Op::Lt,
+            SyntaxKind::GreaterThan => Op::Gt,
+            _ => return,
+        };
+
+        let (left_binding_power, right_binding_power) = op.binding_power();
+
+        if left_binding_power < minimum_binding_power {
+            return;
+        }
+
+        p.bump();
+
+        p.start_at(checkpoint, SyntaxKind::BinaryExpr);
+        expr_binding_power(p, right_binding_power);
+        p.finish();
+    }
+}
+
+fn if_expr(p: &mut Parser) {
+    p.start(SyntaxKind::IfExpr);
+    p.eat(SyntaxKind::If);
+    expr(p);
+    block(p);
+    p.eat(SyntaxKind::Else);
+    block(p);
     p.finish();
 }

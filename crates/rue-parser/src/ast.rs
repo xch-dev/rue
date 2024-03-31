@@ -15,7 +15,7 @@ macro_rules! ast_node {
         impl AstNode for $kind {
             fn cast(node: SyntaxNode) -> Option<Self> {
                 match node.kind() {
-                    SyntaxKind::$kind => Some($kind(node)),
+                    SyntaxKind::$kind => Some(Self(node)),
                     _ => None,
                 }
             }
@@ -27,11 +27,41 @@ macro_rules! ast_node {
     };
 }
 
+macro_rules! ast_enum {
+    ($name:ident, $( $kind:ident ),+ $(,)? ) => {
+        pub enum $name {
+            $( $kind($kind), )+
+        }
+
+        impl AstNode for $name {
+            fn cast(node: SyntaxNode) -> Option<Self> {
+                match node.kind() {
+                    $( SyntaxKind::$kind => Some(Self::$kind($kind::cast(node)?)), )+
+                    _ => None,
+                }
+            }
+
+            fn syntax(&self) -> &SyntaxNode {
+                match self {
+                    $( Self::$kind(node) => node.syntax(), )+
+                }
+            }
+        }
+    };
+}
+
 ast_node!(Root);
 ast_node!(FunctionItem);
 ast_node!(FunctionParamList);
 ast_node!(FunctionParam);
 ast_node!(Block);
+
+ast_enum!(Expr, LiteralExpr, BinaryExpr, IfExpr, FunctionCall);
+ast_node!(LiteralExpr);
+ast_node!(BinaryExpr);
+ast_node!(IfExpr);
+ast_node!(FunctionCall);
+ast_node!(FunctionCallArgs);
 
 impl Root {
     pub fn function_items(&self) -> Vec<FunctionItem> {
@@ -62,10 +92,8 @@ impl FunctionItem {
             .nth(1)
     }
 
-    pub fn block(&self) -> Option<SyntaxNode> {
-        self.syntax()
-            .children()
-            .find(|node| node.kind() == SyntaxKind::Block)
+    pub fn body(&self) -> Option<Block> {
+        self.syntax().children().find_map(Block::cast)
     }
 }
 
@@ -96,10 +124,79 @@ impl FunctionParam {
 }
 
 impl Block {
-    pub fn int(&self) -> Option<SyntaxToken> {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().filter_map(Expr::cast).next()
+    }
+}
+
+impl LiteralExpr {
+    pub fn value(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Int)
+            .next()
+    }
+}
+
+impl BinaryExpr {
+    pub fn lhs(&self) -> Option<Expr> {
+        self.syntax().children().filter_map(Expr::cast).nth(0)
+    }
+
+    pub fn op(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| {
+                matches!(
+                    token.kind(),
+                    SyntaxKind::Plus
+                        | SyntaxKind::Minus
+                        | SyntaxKind::Star
+                        | SyntaxKind::Slash
+                        | SyntaxKind::LessThan
+                        | SyntaxKind::GreaterThan
+                )
+            })
+    }
+
+    pub fn rhs(&self) -> Option<Expr> {
+        self.syntax().children().filter_map(Expr::cast).nth(1)
+    }
+}
+
+impl IfExpr {
+    pub fn condition(&self) -> Option<Expr> {
+        self.syntax().children().filter_map(Expr::cast).nth(0)
+    }
+
+    pub fn then_block(&self) -> Option<Block> {
+        self.syntax().children().filter_map(Block::cast).nth(0)
+    }
+
+    pub fn else_block(&self) -> Option<Block> {
+        self.syntax().children().filter_map(Block::cast).nth(1)
+    }
+}
+
+impl FunctionCall {
+    pub fn callee(&self) -> Option<LiteralExpr> {
+        self.syntax()
+            .children()
+            .filter_map(LiteralExpr::cast)
+            .next()
+    }
+
+    pub fn args(&self) -> Option<FunctionCallArgs> {
+        self.syntax()
+            .children()
+            .filter_map(FunctionCallArgs::cast)
+            .next()
+    }
+}
+
+impl FunctionCallArgs {
+    pub fn exprs(&self) -> Vec<Expr> {
+        self.syntax().children().filter_map(Expr::cast).collect()
     }
 }

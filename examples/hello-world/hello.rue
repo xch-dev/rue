@@ -1,3 +1,11 @@
-fun hello() -> int {
-    42
+fun main() -> int {
+    factorial(5)
+}
+
+fun factorial(num: int) -> int {
+    if num > 1 {
+        num * factorial(num - 1)
+    } else {
+        1
+    }
 }

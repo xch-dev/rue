@@ -1,4 +1,4 @@
-use rowan::{GreenNodeBuilder, Language};
+use rowan::{Checkpoint, GreenNodeBuilder, Language};
 use rue_lexer::{Token, TokenKind};
 
 use crate::{RueLang, SyntaxKind, SyntaxNode};
@@ -7,6 +7,7 @@ pub struct Parser<'a> {
     items: Vec<(SyntaxKind, &'a str)>,
     cursor: usize,
     builder: GreenNodeBuilder<'static>,
+    errors: Vec<String>,
 }
 
 impl<'a> Parser<'a> {
@@ -24,9 +25,19 @@ impl<'a> Parser<'a> {
                 TokenKind::Comma => SyntaxKind::Comma,
                 TokenKind::Colon => SyntaxKind::Colon,
                 TokenKind::Arrow => SyntaxKind::Arrow,
+                TokenKind::Plus => SyntaxKind::Plus,
+                TokenKind::Minus => SyntaxKind::Minus,
+                TokenKind::Star => SyntaxKind::Star,
+                TokenKind::Slash => SyntaxKind::Slash,
+                TokenKind::LessThan => SyntaxKind::LessThan,
+                TokenKind::GreaterThan => SyntaxKind::GreaterThan,
                 TokenKind::Int => SyntaxKind::Int,
                 TokenKind::Fun => SyntaxKind::Fun,
+                TokenKind::If => SyntaxKind::If,
+                TokenKind::Else => SyntaxKind::Else,
                 TokenKind::Whitespace => SyntaxKind::Whitespace,
+                TokenKind::LineComment => SyntaxKind::LineComment,
+                TokenKind::BlockComment => SyntaxKind::BlockComment,
                 TokenKind::Unknown => SyntaxKind::Error,
             };
 
@@ -38,15 +49,25 @@ impl<'a> Parser<'a> {
             items,
             cursor: 0,
             builder: GreenNodeBuilder::new(),
+            errors: Vec::new(),
         }
     }
 
-    pub fn build(self) -> SyntaxNode {
-        SyntaxNode::new_root(self.builder.finish())
+    pub fn build(self) -> (SyntaxNode, Vec<String>) {
+        (SyntaxNode::new_root(self.builder.finish()), self.errors)
     }
 
     pub fn start(&mut self, kind: SyntaxKind) {
         self.builder.start_node(RueLang::kind_to_raw(kind));
+    }
+
+    pub fn start_at(&mut self, checkpoint: Checkpoint, kind: SyntaxKind) {
+        self.builder
+            .start_node_at(checkpoint, RueLang::kind_to_raw(kind));
+    }
+
+    pub fn checkpoint(&mut self) -> Checkpoint {
+        self.builder.checkpoint()
     }
 
     pub fn finish(&mut self) {
@@ -86,9 +107,24 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn error(&mut self, message: String) {
+        self.errors.push(message);
+
+        if self.at_end() {
+            return;
+        }
+
+        self.start(SyntaxKind::Error);
+        self.token();
+        self.finish();
+    }
+
     fn eat_whitespace(&mut self) {
         while !self.at_end() {
-            if self.items[self.cursor].0 == SyntaxKind::Whitespace {
+            if matches!(
+                self.items[self.cursor].0,
+                SyntaxKind::Whitespace | SyntaxKind::LineComment | SyntaxKind::BlockComment
+            ) {
                 self.token();
             } else {
                 break;

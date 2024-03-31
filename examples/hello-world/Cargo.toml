@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 rue-lexer = { path = "../../crates/rue-lexer" }
 rue-parser = { path = "../../crates/rue-parser" }
+rue-compiler = { path = "../../crates/rue-compiler" }
+clvmr = "0.6.1"
+hex = "0.4.3"
