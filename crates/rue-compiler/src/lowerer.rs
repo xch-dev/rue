@@ -6,8 +6,8 @@ use rue_parser::{
 use crate::{
     database::{Database, ScopeId, SymbolId},
     scope::Scope,
+    symbol::Symbol,
     value::Value,
-    Symbol,
 };
 
 pub struct LowerOutput {

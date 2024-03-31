@@ -2,7 +2,7 @@
 
 use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
-use database::{ScopeId, SymbolId};
+use database::SymbolId;
 use lowerer::Lowerer;
 use rue_parser::Root;
 use value::Value;
@@ -11,7 +11,23 @@ mod codegen;
 mod database;
 mod lowerer;
 mod scope;
+mod symbol;
 mod value;
+
+pub struct Output {
+    errors: Vec<String>,
+    node_ptr: NodePtr,
+}
+
+impl Output {
+    pub fn errors(&self) -> &[String] {
+        &self.errors
+    }
+
+    pub fn node_ptr(&self) -> NodePtr {
+        self.node_ptr
+    }
+}
 
 pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
     let compiler = Lowerer::new();
@@ -33,26 +49,5 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
     Output {
         errors: output.errors,
         node_ptr,
-    }
-}
-
-#[derive(Debug, Clone)]
-enum Symbol {
-    Function { scope_id: ScopeId, value: Value },
-    Parameter,
-}
-
-pub struct Output {
-    errors: Vec<String>,
-    node_ptr: NodePtr,
-}
-
-impl Output {
-    pub fn errors(&self) -> &[String] {
-        &self.errors
-    }
-
-    pub fn node_ptr(&self) -> NodePtr {
-        self.node_ptr
     }
 }

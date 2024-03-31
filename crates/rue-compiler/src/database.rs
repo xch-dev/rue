@@ -1,6 +1,6 @@
 use id_arena::{Arena, Id};
 
-use crate::{scope::Scope, Symbol};
+use crate::{scope::Scope, symbol::Symbol};
 
 #[derive(Default)]
 pub struct Database {

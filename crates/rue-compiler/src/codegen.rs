@@ -6,7 +6,8 @@ use num_bigint::BigInt;
 
 use crate::{
     database::{Database, ScopeId, SymbolId},
-    Symbol, Value,
+    symbol::Symbol,
+    Value,
 };
 
 pub struct Codegen<'a> {
