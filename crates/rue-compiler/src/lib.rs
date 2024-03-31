@@ -3,8 +3,8 @@
 use std::mem;
 
 use clvmr::{Allocator, NodePtr};
+use environment::Environment;
 use id_arena::{Arena, Id};
-use indexmap::IndexSet;
 use num_bigint::BigInt;
 use rue_parser::{
     BinaryExpr, Block, Expr, FunctionCall, FunctionItem, IfExpr, LiteralExpr, Root, SyntaxKind,
@@ -12,43 +12,12 @@ use rue_parser::{
 };
 use scope::Scope;
 
+mod environment;
 mod scope;
 
 pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
     let compiler = Compiler::new(allocator);
     compiler.compile_root(root)
-}
-
-#[derive(Debug, Clone)]
-struct Environment {
-    symbols: IndexSet<SymbolId>,
-    external_references: IndexSet<SymbolId>,
-}
-
-impl Environment {
-    fn from_scope(scope: &Scope) -> Self {
-        let references = scope.referenced_symbols();
-        let definitions = scope.local_definitions();
-
-        let mut external_references = IndexSet::new();
-        let mut parameters = IndexSet::new();
-
-        for &symbol_id in references {
-            if !definitions.contains(&symbol_id) {
-                external_references.insert(symbol_id);
-            } else {
-                parameters.insert(symbol_id);
-            }
-        }
-        Self {
-            symbols: external_references
-                .iter()
-                .chain(parameters.iter())
-                .copied()
-                .collect(),
-            external_references,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -353,7 +322,7 @@ impl<'a> Compiler<'a> {
             .expect("could not allocate `a`");
 
         let mut args = Vec::new();
-        for &symbol_id in env.symbols.iter() {
+        for &symbol_id in env.symbols() {
             args.push(self.gen_symbol(&env, symbol_id));
         }
 
@@ -374,7 +343,10 @@ impl<'a> Compiler<'a> {
             Value::Nil => self.allocator.nil(),
             Value::Int(int) => self.gen_int(int),
             Value::Reference(symbol) => {
-                let index = env.symbols.get_index_of(&symbol).expect("symbol not found");
+                let index = env
+                    .symbols()
+                    .get_index_of(&symbol)
+                    .expect("symbol not found");
                 let mut path = 2;
                 for _ in 0..index {
                     path *= 2;
@@ -398,7 +370,7 @@ impl<'a> Compiler<'a> {
                         let callee_env = Environment::from_scope(
                             scope.as_ref().expect("callee is missing scope"),
                         );
-                        for &symbol_id in callee_env.external_references.iter().rev() {
+                        for &symbol_id in callee_env.external_references().iter().rev() {
                             arg_values.insert(0, Value::Reference(symbol_id));
                         }
                         self.gen_value(env, Value::Reference(*symbol_id))
@@ -442,7 +414,7 @@ impl<'a> Compiler<'a> {
                 let runtime_quoted_body = self.runtime_quote(body);
 
                 let mut args = Vec::new();
-                for &symbol_id in capture_env.external_references.iter() {
+                for &symbol_id in capture_env.external_references().iter() {
                     let path = self.gen_value(env, Value::Reference(symbol_id));
                     let runtime_quoted_arg = self.runtime_quote(path);
                     args.push(runtime_quoted_arg);
