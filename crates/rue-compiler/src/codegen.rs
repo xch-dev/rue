@@ -102,211 +102,239 @@ impl<'a> Codegen<'a> {
 
     fn gen_value(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
         match value {
-            Value::Nil => self.allocator.nil(),
+            Value::Nil => NodePtr::NIL,
             Value::Int(int) => self.gen_int(int),
-            Value::Reference(symbol_id) => {
-                if let Symbol::Function {
-                    scope_id: function_scope_id,
-                    value: _,
-                    ..
-                } = self.db.symbol(symbol_id).clone()
-                {
-                    let q = self.allocator.one();
-                    let one = q;
-                    let a = self
-                        .allocator
-                        .new_small_number(2)
-                        .expect("could not allocate `a`");
-
-                    let body = self.gen_path(scope_id, symbol_id);
-
-                    let runtime_a = self.quote(a);
-                    let runtime_quoted_body = self.runtime_quote(body);
-
-                    let mut args = Vec::new();
-
-                    for symbol_id in self.captures[&function_scope_id].clone() {
-                        let path = self.gen_path(scope_id, symbol_id);
-                        let runtime_quoted_arg = self.runtime_quote(path);
-                        args.push(runtime_quoted_arg);
-                    }
-
-                    let quoted_one = self.quote(one);
-                    let runtime_args = self.runtime_runtime_list(&args, quoted_one);
-
-                    return self.runtime_list(
-                        &[runtime_a, runtime_quoted_body, runtime_args],
-                        NodePtr::NIL,
-                    );
-                }
-
-                self.gen_path(scope_id, symbol_id)
-            }
-            Value::FunctionCall {
-                callee,
-                args: arg_values,
-            } => {
-                let a = self
-                    .allocator
-                    .new_small_number(2)
-                    .expect("could not allocate `a`");
-
-                let mut args = Vec::new();
-
-                let callee = if let Value::Reference(symbol_id) = callee.as_ref() {
-                    if let Symbol::Function {
-                        scope_id: callee_scope_id,
-                        ..
-                    } = self.db.symbol(*symbol_id)
-                    {
-                        for symbol_id in self.captures[&callee_scope_id].clone() {
-                            args.push(self.gen_path(scope_id, symbol_id));
-                        }
-                        self.gen_path(scope_id, *symbol_id)
-                    } else {
-                        self.gen_value(scope_id, *callee)
-                    }
-                } else {
-                    self.gen_value(scope_id, *callee)
-                };
-
-                for arg_value in arg_values {
-                    args.push(self.gen_value(scope_id, arg_value));
-                }
-                let arg_list = self.runtime_list(&args, NodePtr::NIL);
-
-                self.list(&[a, callee, arg_list])
-            }
-            Value::Function(symbol_id) => {
-                let Symbol::Function {
-                    scope_id: function_scope_id,
-                    value,
-                } = &self.db.symbol(symbol_id)
-                else {
-                    unreachable!();
-                };
-                let body = self.gen_value(*function_scope_id, value.clone());
-                self.quote(body)
-            }
-            Value::Add(operands) => {
-                let plus = self
-                    .allocator
-                    .new_small_number(16)
-                    .expect("could not allocate `+`");
-
-                let mut args = vec![plus];
-                for operand in operands {
-                    args.push(self.gen_value(scope_id, operand));
-                }
-                self.list(&args)
-            }
-            Value::Subtract(operands) => {
-                let minus = self
-                    .allocator
-                    .new_small_number(17)
-                    .expect("could not allocate `-`");
-
-                let mut args = vec![minus];
-                for operand in operands {
-                    args.push(self.gen_value(scope_id, operand));
-                }
-                self.list(&args)
-            }
-            Value::Multiply(operands) => {
-                let star = self
-                    .allocator
-                    .new_small_number(18)
-                    .expect("could not allocate `*`");
-
-                let mut args = vec![star];
-                for operand in operands {
-                    args.push(self.gen_value(scope_id, operand));
-                }
-                self.list(&args)
-            }
-            Value::Divide(operands) => {
-                let slash = self
-                    .allocator
-                    .new_small_number(19)
-                    .expect("could not allocate `/`");
-
-                let mut args = vec![slash];
-                for operand in operands {
-                    args.push(self.gen_value(scope_id, operand));
-                }
-                self.list(&args)
-            }
-            Value::LessThan(lhs, rhs) => {
-                let not = self
-                    .allocator
-                    .new_small_number(32)
-                    .expect("could not allocate `not`");
-                let any = self
-                    .allocator
-                    .new_small_number(33)
-                    .expect("could not allocate `any`");
-                let gt = self
-                    .allocator
-                    .new_small_number(21)
-                    .expect("could not allocate `>`");
-                let eq = self
-                    .allocator
-                    .new_small_number(9)
-                    .expect("could not allocate `=`");
-
-                let lhs = self.gen_value(scope_id, *lhs);
-                let rhs = self.gen_value(scope_id, *rhs);
-                let operands = self.list(&[lhs, rhs]);
-
-                let eq_list = self
-                    .allocator
-                    .new_pair(eq, operands)
-                    .expect("could not allocate `=` list");
-                let gt_list = self
-                    .allocator
-                    .new_pair(gt, operands)
-                    .expect("could not allocate `>` list");
-                let any_list = self.list(&[any, eq_list, gt_list]);
-                self.list(&[not, any_list])
-            }
-            Value::GreaterThan(lhs, rhs) => {
-                let gt = self
-                    .allocator
-                    .new_small_number(21)
-                    .expect("could not allocate `>`");
-
-                let mut args = vec![gt];
-                args.push(self.gen_value(scope_id, *lhs));
-                args.push(self.gen_value(scope_id, *rhs));
-                self.list(&args)
-            }
+            Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
+            Value::FunctionCall { callee, args } => self.gen_function_call(scope_id, *callee, args),
+            Value::Function(symbol_id) => self.gen_function(symbol_id),
+            Value::Add(operands) => self.gen_add(scope_id, operands),
+            Value::Subtract(operands) => self.gen_subtract(scope_id, operands),
+            Value::Multiply(operands) => self.gen_multiply(scope_id, operands),
+            Value::Divide(operands) => self.gen_divide(scope_id, operands),
+            Value::LessThan(lhs, rhs) => self.gen_lt(scope_id, *lhs, *rhs),
+            Value::GreaterThan(lhs, rhs) => self.gen_gt(scope_id, *lhs, *rhs),
             Value::If {
                 condition,
                 then_block,
                 else_block,
-            } => {
-                let a = self
-                    .allocator
-                    .new_small_number(2)
-                    .expect("could not allocate `a`");
-                let i = self
-                    .allocator
-                    .new_small_number(3)
-                    .expect("could not allocate `i`");
-
-                let all_env = self.allocator.one();
-
-                let condition = self.gen_value(scope_id, *condition);
-                let then_block = self.gen_value(scope_id, *then_block);
-                let else_block = self.gen_value(scope_id, *else_block);
-
-                let then_block = self.quote(then_block);
-                let else_block = self.quote(else_block);
-
-                let conditional = self.list(&[i, condition, then_block, else_block]);
-                self.list(&[a, conditional, all_env])
-            }
+            } => self.gen_if(scope_id, *condition, *then_block, *else_block),
         }
+    }
+
+    fn gen_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
+        if let Symbol::Function {
+            scope_id: function_scope_id,
+            value: _,
+            ..
+        } = self.db.symbol(symbol_id).clone()
+        {
+            let q = self.allocator.one();
+            let one = q;
+            let a = self
+                .allocator
+                .new_small_number(2)
+                .expect("could not allocate `a`");
+
+            let body = self.gen_path(scope_id, symbol_id);
+
+            let runtime_a = self.quote(a);
+            let runtime_quoted_body = self.runtime_quote(body);
+
+            let mut args = Vec::new();
+
+            for symbol_id in self.captures[&function_scope_id].clone() {
+                let path = self.gen_path(scope_id, symbol_id);
+                let runtime_quoted_arg = self.runtime_quote(path);
+                args.push(runtime_quoted_arg);
+            }
+
+            let quoted_one = self.quote(one);
+            let runtime_args = self.runtime_runtime_list(&args, quoted_one);
+
+            return self.runtime_list(
+                &[runtime_a, runtime_quoted_body, runtime_args],
+                NodePtr::NIL,
+            );
+        }
+
+        self.gen_path(scope_id, symbol_id)
+    }
+
+    fn gen_function_call(
+        &mut self,
+        scope_id: ScopeId,
+        callee: Value,
+        arg_values: Vec<Value>,
+    ) -> NodePtr {
+        let a = self
+            .allocator
+            .new_small_number(2)
+            .expect("could not allocate `a`");
+
+        let mut args = Vec::new();
+
+        let callee = if let Value::Reference(symbol_id) = callee {
+            if let Symbol::Function {
+                scope_id: callee_scope_id,
+                ..
+            } = self.db.symbol(symbol_id)
+            {
+                for symbol_id in self.captures[&callee_scope_id].clone() {
+                    args.push(self.gen_path(scope_id, symbol_id));
+                }
+                self.gen_path(scope_id, symbol_id)
+            } else {
+                self.gen_value(scope_id, callee)
+            }
+        } else {
+            self.gen_value(scope_id, callee)
+        };
+
+        for arg_value in arg_values {
+            args.push(self.gen_value(scope_id, arg_value));
+        }
+        let arg_list = self.runtime_list(&args, NodePtr::NIL);
+
+        self.list(&[a, callee, arg_list])
+    }
+
+    fn gen_function(&mut self, symbol_id: SymbolId) -> NodePtr {
+        let Symbol::Function {
+            scope_id: function_scope_id,
+            value,
+        } = &self.db.symbol(symbol_id)
+        else {
+            unreachable!();
+        };
+        let body = self.gen_value(*function_scope_id, value.clone());
+        self.quote(body)
+    }
+
+    fn gen_add(&mut self, scope_id: ScopeId, operands: Vec<Value>) -> NodePtr {
+        let plus = self
+            .allocator
+            .new_small_number(16)
+            .expect("could not allocate `+`");
+
+        let mut args = vec![plus];
+        for operand in operands {
+            args.push(self.gen_value(scope_id, operand));
+        }
+        self.list(&args)
+    }
+
+    fn gen_subtract(&mut self, scope_id: ScopeId, operands: Vec<Value>) -> NodePtr {
+        let minus = self
+            .allocator
+            .new_small_number(17)
+            .expect("could not allocate `-`");
+
+        let mut args = vec![minus];
+        for operand in operands {
+            args.push(self.gen_value(scope_id, operand));
+        }
+        self.list(&args)
+    }
+
+    fn gen_multiply(&mut self, scope_id: ScopeId, operands: Vec<Value>) -> NodePtr {
+        let star = self
+            .allocator
+            .new_small_number(18)
+            .expect("could not allocate `*`");
+
+        let mut args = vec![star];
+        for operand in operands {
+            args.push(self.gen_value(scope_id, operand));
+        }
+        self.list(&args)
+    }
+
+    fn gen_divide(&mut self, scope_id: ScopeId, operands: Vec<Value>) -> NodePtr {
+        let slash = self
+            .allocator
+            .new_small_number(19)
+            .expect("could not allocate `/`");
+
+        let mut args = vec![slash];
+        for operand in operands {
+            args.push(self.gen_value(scope_id, operand));
+        }
+        self.list(&args)
+    }
+
+    fn gen_lt(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+        let not = self
+            .allocator
+            .new_small_number(32)
+            .expect("could not allocate `not`");
+        let any = self
+            .allocator
+            .new_small_number(33)
+            .expect("could not allocate `any`");
+        let gt = self
+            .allocator
+            .new_small_number(21)
+            .expect("could not allocate `>`");
+        let eq = self
+            .allocator
+            .new_small_number(9)
+            .expect("could not allocate `=`");
+
+        let lhs = self.gen_value(scope_id, lhs);
+        let rhs = self.gen_value(scope_id, rhs);
+        let operands = self.list(&[lhs, rhs]);
+
+        let eq_list = self
+            .allocator
+            .new_pair(eq, operands)
+            .expect("could not allocate `=` list");
+        let gt_list = self
+            .allocator
+            .new_pair(gt, operands)
+            .expect("could not allocate `>` list");
+        let any_list = self.list(&[any, eq_list, gt_list]);
+        self.list(&[not, any_list])
+    }
+
+    fn gen_gt(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+        let gt = self
+            .allocator
+            .new_small_number(21)
+            .expect("could not allocate `>`");
+
+        let mut args = vec![gt];
+        args.push(self.gen_value(scope_id, lhs));
+        args.push(self.gen_value(scope_id, rhs));
+        self.list(&args)
+    }
+
+    fn gen_if(
+        &mut self,
+        scope_id: ScopeId,
+        condition: Value,
+        then_block: Value,
+        else_block: Value,
+    ) -> NodePtr {
+        let a = self
+            .allocator
+            .new_small_number(2)
+            .expect("could not allocate `a`");
+        let i = self
+            .allocator
+            .new_small_number(3)
+            .expect("could not allocate `i`");
+
+        let all_env = self.allocator.one();
+
+        let condition = self.gen_value(scope_id, condition);
+        let then_block = self.gen_value(scope_id, then_block);
+        let else_block = self.gen_value(scope_id, else_block);
+
+        let then_block = self.quote(then_block);
+        let else_block = self.quote(else_block);
+
+        let conditional = self.list(&[i, condition, then_block, else_block]);
+        self.list(&[a, conditional, all_env])
     }
 
     fn gen_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
