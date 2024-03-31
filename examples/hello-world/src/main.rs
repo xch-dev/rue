@@ -18,26 +18,24 @@ fn main() {
     let mut allocator = Allocator::new();
     let output = compile(&mut allocator, ast);
 
-    eprintln!("{:#?}", &output.errors);
-    if !output.errors.is_empty() {
+    eprintln!("{:#?}", &output.errors());
+    if !output.errors().is_empty() {
         return;
     }
 
-    if let Some(node_ptr) = output.node_ptr {
-        let bytes = node_to_bytes(&allocator, node_ptr).unwrap();
-        println!("Serialized program: {}", hex::encode(bytes));
-        match run_program(
-            &mut allocator,
-            &ChiaDialect::new(0),
-            node_ptr,
-            NodePtr::NIL,
-            0,
-        ) {
-            Ok(output) => println!(
-                "Serialized output with nil solution: {}",
-                hex::encode(node_to_bytes(&allocator, output.1).unwrap())
-            ),
-            Err(error) => eprintln!("Error: {:?}", error),
-        }
+    let bytes = node_to_bytes(&allocator, output.node_ptr()).unwrap();
+    println!("Serialized program: {}", hex::encode(bytes));
+    match run_program(
+        &mut allocator,
+        &ChiaDialect::new(0),
+        output.node_ptr(),
+        NodePtr::NIL,
+        0,
+    ) {
+        Ok(output) => println!(
+            "Serialized output with nil solution: {}",
+            hex::encode(node_to_bytes(&allocator, output.1).unwrap())
+        ),
+        Err(error) => eprintln!("Error: {:?}", error),
     }
 }
