@@ -386,14 +386,28 @@ impl<'a> Compiler<'a> {
             }
             Value::FunctionCall {
                 callee,
-                args: arg_values,
+                args: mut arg_values,
             } => {
                 let a = self
                     .allocator
                     .new_small_number(2)
                     .expect("could not allocate `a`");
 
-                let callee = self.gen_value(env, *callee);
+                let callee = if let Value::Closure(symbol_id) = callee.as_ref() {
+                    if let Symbol::Function { scope, .. } = &self.symbols[symbol_id.0] {
+                        let callee_env = Environment::from_scope(
+                            scope.as_ref().expect("callee is missing scope"),
+                        );
+                        for &symbol_id in callee_env.external_references.iter().rev() {
+                            arg_values.insert(0, Value::Reference(symbol_id));
+                        }
+                        self.gen_value(&callee_env, Value::Reference(*symbol_id))
+                    } else {
+                        self.gen_value(env, *callee)
+                    }
+                } else {
+                    self.gen_value(env, *callee)
+                };
 
                 let mut args = Vec::new();
                 for arg_value in arg_values {
