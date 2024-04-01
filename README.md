@@ -21,3 +21,15 @@ The hand written recursive descent parser is responsible for implementing the la
 ### AST
 
 The CST is not ideal for processing by the compiler since it's untyped and contains tokens it doesn't care about, such as whitespace and keywords. So in this phase, the CST is transformed into an Abstract Syntax Tree (AST), which is a strongly typed representation of all of the parts of the syntax we care about in the compiler and adjacent tooling. However, you can still at any time take an AST node and get its underlying CST node for things such as error reporting.
+
+### HIR
+
+The AST gets transformed into the HIR (high-level intermediate representation) in a couple passes. First, the symbol table is populated with function declarations. This allows you to call functions which have been defined after the code you're evaluating. Next, the functions are actually themselves evaluated, converting AST expressions into HIR nodes. Type checking, name resolution, and error reporting are done during this phase.
+
+### Optimizer
+
+Once the HIR has been built, you can perform analysis on the program, remove dead code, and simplify expressions.
+
+### Codegen
+
+Finally, you can generate CLVM from the HIR through a series of transformations and some additional optimizations can be applied at the end.
