@@ -6,9 +6,8 @@ fn main() {
     let source = include_str!("../hello.rue");
     let (ast, errors) = parse(source);
 
-    eprintln!("{:#?}", ast.syntax());
-
     if !errors.is_empty() {
+        eprintln!("{:#?}", ast.syntax());
         for error in errors {
             eprintln!("{}", error);
         }
@@ -18,8 +17,10 @@ fn main() {
     let mut allocator = Allocator::new();
     let output = compile(&mut allocator, ast);
 
-    eprintln!("{:#?}", &output.errors());
     if !output.errors().is_empty() {
+        for error in output.errors() {
+            eprintln!("{}", error);
+        }
         return;
     }
 

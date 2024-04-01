@@ -1,4 +1,4 @@
-use crate::{parser::Parser, SyntaxKind};
+use crate::{parser::Parser, ParserError, SyntaxKind};
 
 pub fn root(p: &mut Parser) {
     p.start(SyntaxKind::Root);
@@ -12,7 +12,11 @@ fn item(p: &mut Parser) {
     if p.peek() == SyntaxKind::Fun {
         function_item(p);
     } else {
-        p.error("expected function item".to_string());
+        let peek = p.peek();
+        p.error(ParserError::UnexpectedToken {
+            expected: SyntaxKind::Fun,
+            found: peek,
+        });
     }
 }
 

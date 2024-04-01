@@ -9,19 +9,22 @@ use value::Value;
 
 mod codegen;
 mod database;
+mod error;
 mod lowerer;
 mod scope;
 mod symbol;
 mod ty;
 mod value;
 
+pub use error::*;
+
 pub struct Output {
-    errors: Vec<String>,
+    errors: Vec<CompilerError>,
     node_ptr: NodePtr,
 }
 
 impl Output {
-    pub fn errors(&self) -> &[String] {
+    pub fn errors(&self) -> &[CompilerError] {
         &self.errors
     }
 
@@ -35,7 +38,7 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
     let mut output = compiler.compile_root(root);
 
     let Some(main) = output.db.scope_mut(output.main_scope_id).get_symbol("main") else {
-        output.errors.push("no main function".to_string());
+        output.errors.push(CompilerError::MissingMain);
 
         return Output {
             errors: output.errors,

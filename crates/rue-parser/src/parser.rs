@@ -1,13 +1,13 @@
 use rowan::{Checkpoint, GreenNodeBuilder, Language};
 use rue_lexer::{Token, TokenKind};
 
-use crate::{RueLang, SyntaxKind, SyntaxNode};
+use crate::{ParserError, RueLang, SyntaxKind, SyntaxNode};
 
 pub struct Parser<'a> {
     items: Vec<(SyntaxKind, &'a str)>,
     cursor: usize,
     builder: GreenNodeBuilder<'static>,
-    errors: Vec<String>,
+    errors: Vec<ParserError>,
 }
 
 impl<'a> Parser<'a> {
@@ -53,7 +53,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn build(self) -> (SyntaxNode, Vec<String>) {
+    pub fn build(self) -> (SyntaxNode, Vec<ParserError>) {
         (SyntaxNode::new_root(self.builder.finish()), self.errors)
     }
 
@@ -107,8 +107,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn error(&mut self, message: String) {
-        self.errors.push(message);
+    pub fn error(&mut self, error: ParserError) {
+        self.errors.push(error);
 
         if self.at_end() {
             return;

@@ -601,6 +601,7 @@ dependencies = [
  "indexmap",
  "num-bigint",
  "rue-parser",
+ "thiserror",
 ]
 
 [[package]]
@@ -618,6 +619,7 @@ dependencies = [
  "num-traits",
  "rowan",
  "rue-lexer",
+ "thiserror",
 ]
 
 [[package]]
