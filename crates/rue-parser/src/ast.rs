@@ -56,15 +56,24 @@ ast_node!(FunctionParamList);
 ast_node!(FunctionParam);
 ast_node!(Block);
 
-ast_enum!(Expr, LiteralExpr, BinaryExpr, IfExpr, FunctionCall);
+ast_enum!(
+    Expr,
+    LiteralExpr,
+    ListExpr,
+    BinaryExpr,
+    IfExpr,
+    FunctionCall
+);
 ast_node!(LiteralExpr);
+ast_node!(ListExpr);
 ast_node!(BinaryExpr);
 ast_node!(IfExpr);
 ast_node!(FunctionCall);
 ast_node!(FunctionCallArgs);
 
-ast_enum!(Type, LiteralType, FunctionType);
+ast_enum!(Type, LiteralType, ListType, FunctionType);
 ast_node!(LiteralType);
+ast_node!(ListType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParams);
 
@@ -191,6 +200,12 @@ impl BinaryExpr {
     }
 }
 
+impl ListExpr {
+    pub fn items(&self) -> Vec<Expr> {
+        self.syntax().children().filter_map(Expr::cast).collect()
+    }
+}
+
 impl IfExpr {
     pub fn condition(&self) -> Option<Expr> {
         self.syntax().children().filter_map(Expr::cast).nth(0)
@@ -230,6 +245,12 @@ impl LiteralType {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .next()
+    }
+}
+
+impl ListType {
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
     }
 }
 

@@ -88,6 +88,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         p.start(SyntaxKind::LiteralExpr);
         p.bump();
         p.finish();
+    } else if p.at(SyntaxKind::OpenBracket) {
+        list_expr(p);
     } else if p.at(SyntaxKind::If) {
         if_expr(p);
     } else {
@@ -148,6 +150,19 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
     }
 }
 
+fn list_expr(p: &mut Parser) {
+    p.start(SyntaxKind::ListExpr);
+    p.expect(SyntaxKind::OpenBracket);
+    while !p.at(SyntaxKind::CloseBracket) {
+        expr(p);
+        if !p.try_eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::CloseBracket);
+    p.finish();
+}
+
 fn if_expr(p: &mut Parser) {
     p.start(SyntaxKind::IfExpr);
     p.expect(SyntaxKind::If);
@@ -161,6 +176,8 @@ fn if_expr(p: &mut Parser) {
 const TYPE_RECOVERY_SET: &[SyntaxKind] = &[SyntaxKind::OpenBrace, SyntaxKind::CloseBrace];
 
 fn ty(p: &mut Parser) {
+    let checkpoint = p.checkpoint();
+
     if p.at(SyntaxKind::Ident) {
         p.start(SyntaxKind::LiteralType);
         p.bump();
@@ -173,7 +190,14 @@ fn ty(p: &mut Parser) {
         ty(p);
         p.finish();
     } else {
-        p.error(TYPE_RECOVERY_SET);
+        return p.error(TYPE_RECOVERY_SET);
+    }
+
+    if p.at(SyntaxKind::OpenBracket) {
+        p.start_at(checkpoint, SyntaxKind::ListType);
+        p.bump();
+        p.expect(SyntaxKind::CloseBracket);
+        p.finish();
     }
 }
 

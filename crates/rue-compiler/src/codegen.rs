@@ -103,6 +103,7 @@ impl<'a> Codegen<'a> {
     fn gen_value(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
         match value {
             Value::Atom(atom) => self.gen_atom(atom),
+            Value::List(list) => self.gen_list(scope_id, list),
             Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
             Value::FunctionCall { callee, args } => self.gen_function_call(scope_id, *callee, args),
             Value::Function(symbol_id) => self.gen_function(symbol_id),
@@ -123,6 +124,14 @@ impl<'a> Codegen<'a> {
                 else_block,
             } => self.gen_if(scope_id, *condition, *then_block, *else_block),
         }
+    }
+
+    fn gen_list(&mut self, scope_id: ScopeId, items: Vec<Value>) -> NodePtr {
+        let mut args = Vec::new();
+        for item in items {
+            args.push(self.gen_value(scope_id, item));
+        }
+        self.runtime_list(&args, NodePtr::NIL)
     }
 
     fn gen_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {

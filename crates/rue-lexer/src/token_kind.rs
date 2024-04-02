@@ -5,6 +5,8 @@ pub enum TokenKind {
     String { is_terminated: bool },
     OpenParen,
     CloseParen,
+    OpenBracket,
+    CloseBracket,
     OpenBrace,
     CloseBrace,
     Fun,

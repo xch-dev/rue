@@ -161,6 +161,8 @@ fn convert_tokens<'a>(
             TokenKind::Ident => SyntaxKind::Ident,
             TokenKind::OpenParen => SyntaxKind::OpenParen,
             TokenKind::CloseParen => SyntaxKind::CloseParen,
+            TokenKind::OpenBracket => SyntaxKind::OpenBracket,
+            TokenKind::CloseBracket => SyntaxKind::CloseBracket,
             TokenKind::OpenBrace => SyntaxKind::OpenBrace,
             TokenKind::CloseBrace => SyntaxKind::CloseBrace,
             TokenKind::Comma => SyntaxKind::Comma,

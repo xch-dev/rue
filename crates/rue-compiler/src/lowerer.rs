@@ -1,7 +1,7 @@
 use clvmr::Allocator;
 use rue_parser::{
-    BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr,
-    LiteralExpr, LiteralType, Root, SyntaxKind, SyntaxToken,
+    BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr, ListExpr,
+    ListType, LiteralExpr, LiteralType, Root, SyntaxKind, SyntaxToken,
 };
 
 use crate::{
@@ -144,6 +144,7 @@ impl Lowerer {
     fn compile_expr(&mut self, expr: Expr) -> Typed {
         match expr {
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
+            Expr::ListExpr(list) => self.compile_list_expr(list),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr),
             Expr::FunctionCall(call) => self.compile_function_call(call),
@@ -257,6 +258,34 @@ impl Lowerer {
                 ty: self.db.alloc_type(Type::Nil),
             },
             _ => unreachable!(),
+        }
+    }
+
+    fn compile_list_expr(&mut self, list_expr: ListExpr) -> Typed {
+        let items: Vec<Typed> = list_expr
+            .items()
+            .into_iter()
+            .map(|item| self.compile_expr(item))
+            .collect();
+
+        let ty = match items.first() {
+            Some(first) => first.ty,
+            // todo: inference
+            None => self.db.alloc_type(Type::Unknown),
+        };
+
+        for item in items.iter().skip(1) {
+            if !self.is_assignable_to(self.db.ty(item.ty), self.db.ty(ty)) {
+                self.error(CompilerError::TypeMismatch {
+                    expected: self.type_name(ty),
+                    found: self.type_name(item.ty),
+                });
+            }
+        }
+
+        Typed {
+            value: Value::List(items.into_iter().map(|item| item.value).collect()),
+            ty: self.db.alloc_type(Type::List(ty)),
         }
     }
 
@@ -458,6 +487,7 @@ impl Lowerer {
     fn compile_ty(&mut self, ty: rue_parser::Type) -> TypeId {
         match ty {
             rue_parser::Type::LiteralType(literal) => self.compile_literal_ty(literal),
+            rue_parser::Type::ListType(list) => self.compile_list_ty(list),
             rue_parser::Type::FunctionType(function) => self.compile_function_ty(function),
         }
     }
@@ -476,6 +506,16 @@ impl Lowerer {
                 self.db.alloc_type(Type::Unknown)
             }
         }
+    }
+
+    fn compile_list_ty(&mut self, list: ListType) -> TypeId {
+        let Some(inner) = list.ty() else {
+            return self.db.alloc_type(Type::Unknown);
+        };
+
+        let inner = self.compile_ty(inner);
+
+        self.db.alloc_type(Type::List(inner))
     }
 
     fn compile_function_ty(&mut self, function: FunctionType) -> TypeId {
@@ -502,6 +542,7 @@ impl Lowerer {
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Bytes => "Bytes".to_string(),
+            Type::List(inner) => format!("{}[]", self.type_name(*inner)),
             Type::Function { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&ty| self.type_name(ty)).collect();
                 let ret = self.type_name(*ret);
@@ -517,6 +558,9 @@ impl Lowerer {
             (Type::Bool, Type::Bool) => true,
             (Type::Bytes, Type::Bytes) => true,
             (Type::Nil, Type::Nil) => true,
+            (Type::List(inner_a), Type::List(inner_b)) => {
+                self.is_assignable_to(self.db.ty(*inner_a), self.db.ty(*inner_b))
+            }
             (
                 Type::Function {
                     params: params_a,

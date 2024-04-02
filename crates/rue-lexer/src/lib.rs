@@ -29,6 +29,8 @@ impl<'a> Lexer<'a> {
             '\0' => return None,
             '(' => TokenKind::OpenParen,
             ')' => TokenKind::CloseParen,
+            '[' => TokenKind::OpenBracket,
+            ']' => TokenKind::CloseBracket,
             '{' => TokenKind::OpenBrace,
             '}' => TokenKind::CloseBrace,
             ',' => TokenKind::Comma,

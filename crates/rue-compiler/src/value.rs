@@ -3,6 +3,7 @@ use crate::database::SymbolId;
 #[derive(Debug, Clone)]
 pub enum Value {
     Atom(Vec<u8>),
+    List(Vec<Value>),
     Function(SymbolId),
     Reference(SymbolId),
     FunctionCall {
