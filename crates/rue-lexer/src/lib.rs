@@ -201,16 +201,50 @@ mod tests {
     }
 
     #[test]
+    fn test_string() {
+        check(
+            "'abc'",
+            &[TokenKind::String {
+                is_terminated: true,
+            }],
+        );
+        check(
+            "'abc",
+            &[TokenKind::String {
+                is_terminated: false,
+            }],
+        );
+        check(
+            "\"abc\"",
+            &[TokenKind::String {
+                is_terminated: true,
+            }],
+        );
+        check(
+            "\"abc",
+            &[TokenKind::String {
+                is_terminated: false,
+            }],
+        );
+    }
+
+    #[test]
     fn test_keyword() {
         check("fun", &[TokenKind::Fun]);
+        check("type", &[TokenKind::Type]);
         check("if", &[TokenKind::If]);
         check("else", &[TokenKind::Else]);
+        check("true", &[TokenKind::True]);
+        check("false", &[TokenKind::False]);
+        check("nil", &[TokenKind::Nil]);
     }
 
     #[test]
     fn test_brackets() {
         check("(", &[TokenKind::OpenParen]);
         check(")", &[TokenKind::CloseParen]);
+        check("[", &[TokenKind::OpenBracket]);
+        check("]", &[TokenKind::CloseBracket]);
         check("{", &[TokenKind::OpenBrace]);
         check("}", &[TokenKind::CloseBrace]);
     }
@@ -219,6 +253,7 @@ mod tests {
     fn test_punctuation() {
         check(",", &[TokenKind::Comma]);
         check(":", &[TokenKind::Colon]);
+        check(";", &[TokenKind::Semicolon]);
         check("->", &[TokenKind::Arrow]);
     }
 
@@ -228,13 +263,22 @@ mod tests {
         check("-", &[TokenKind::Minus]);
         check("*", &[TokenKind::Star]);
         check("/", &[TokenKind::Slash]);
+        check("%", &[TokenKind::Percent]);
     }
 
     #[test]
     fn test_comparison() {
         check("<", &[TokenKind::LessThan]);
         check(">", &[TokenKind::GreaterThan]);
+        check("<=", &[TokenKind::LessThanEquals]);
+        check(">=", &[TokenKind::GreaterThanEquals]);
         check("==", &[TokenKind::Equals]);
+        check("!=", &[TokenKind::NotEquals]);
+    }
+
+    #[test]
+    fn test_other_ops() {
+        check("!", &[TokenKind::Not]);
     }
 
     #[test]
