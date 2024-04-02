@@ -63,7 +63,7 @@ impl<'a> Lexer<'a> {
                     self.bump();
                     TokenKind::Equals
                 }
-                _ => TokenKind::Unknown,
+                _ => TokenKind::Assign,
             },
             '!' => match self.peek() {
                 '=' => {
@@ -78,6 +78,7 @@ impl<'a> Lexer<'a> {
                 _ => TokenKind::Slash,
             },
             ':' => TokenKind::Colon,
+            ';' => TokenKind::Semicolon,
             c @ ('"' | '\'') => self.string(c),
             c if c.is_ascii_digit() => self.integer(),
             c if UnicodeXID::is_xid_start(c) || c == '_' => {
@@ -86,6 +87,7 @@ impl<'a> Lexer<'a> {
                 }
                 match &self.source[start..self.pos] {
                     "fun" => TokenKind::Fun,
+                    "type" => TokenKind::Type,
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
                     "nil" => TokenKind::Nil,

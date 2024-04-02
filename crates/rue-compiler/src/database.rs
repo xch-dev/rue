@@ -43,6 +43,10 @@ impl Database {
         &self.types[id.0]
     }
 
+    pub fn ty_mut(&mut self, id: TypeId) -> &mut Type {
+        &mut self.types[id.0]
+    }
+
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
         &mut self.scopes[id.0]
     }

@@ -1,7 +1,8 @@
 use clvmr::Allocator;
 use rue_parser::{
-    BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr, ListExpr,
-    ListType, LiteralExpr, LiteralType, PrefixOp, Root, SyntaxKind, SyntaxToken,
+    BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr, Item,
+    ListExpr, ListType, LiteralExpr, LiteralType, PrefixOp, Root, SyntaxKind, SyntaxToken,
+    TypeAliasItem,
 };
 
 use crate::{
@@ -38,13 +39,39 @@ impl Lowerer {
         let scope_id = self.db.alloc_scope(Scope::default());
         self.scope_stack.push(scope_id);
 
-        let symbol_ids: Vec<SymbolId> = root
-            .function_items()
+        let function_items: Vec<FunctionItem> = root
+            .items()
             .into_iter()
-            .map(|function| self.declare_function(function))
+            .filter_map(|item| match item {
+                Item::FunctionItem(function) => Some(function),
+                _ => None,
+            })
+            .collect();
+        let type_alias_items: Vec<TypeAliasItem> = root
+            .items()
+            .into_iter()
+            .filter_map(|item| match item {
+                Item::TypeAliasItem(ty) => Some(ty),
+                _ => None,
+            })
             .collect();
 
-        for (i, function) in root.function_items().into_iter().enumerate() {
+        let type_ids: Vec<TypeId> = type_alias_items
+            .iter()
+            .cloned()
+            .map(|item| self.declare_type_alias(item))
+            .collect();
+        let symbol_ids: Vec<SymbolId> = function_items
+            .iter()
+            .cloned()
+            .map(|item| self.declare_function(item))
+            .collect();
+
+        for (i, type_alias) in type_alias_items.into_iter().enumerate() {
+            self.compile_type_alias(type_alias, type_ids[i]);
+        }
+
+        for (i, function) in function_items.into_iter().enumerate() {
             self.compile_function(function, symbol_ids[i]);
         }
 
@@ -101,6 +128,17 @@ impl Lowerer {
         symbol_id
     }
 
+    fn declare_type_alias(&mut self, type_alias: TypeAliasItem) -> TypeId {
+        let type_id = self.db.alloc_type(Type::Unknown);
+
+        if let Some(name) = type_alias.name() {
+            self.scope_mut()
+                .define_type_alias(name.to_string(), type_id);
+        }
+
+        type_id
+    }
+
     fn compile_function(&mut self, function: FunctionItem, symbol_id: SymbolId) {
         if let Some(body) = function.body() {
             let (body_scope_id, expected_ret_type) = match self.db.symbol(symbol_id) {
@@ -128,6 +166,22 @@ impl Lowerer {
                 _ => unreachable!(),
             };
         }
+    }
+
+    fn compile_type_alias(&mut self, ty: TypeAliasItem, type_id: TypeId) {
+        let ty = ty
+            .ty()
+            .map(|ty| self.compile_ty(ty))
+            .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+
+        let ty = self.db.ty(ty).clone();
+
+        // todo: fix recursive types
+        if matches!(ty, Type::Unknown) {
+            self.error(CompilerError::UnknownTypeAlias);
+        }
+
+        *self.db.ty_mut(type_id) = ty;
     }
 
     fn compile_block(&mut self, block: Block) -> Typed {
@@ -411,7 +465,7 @@ impl Lowerer {
             .scope_stack
             .iter()
             .rev()
-            .find_map(|&scope_id| self.db.scope(scope_id).get_symbol(name))
+            .find_map(|&scope_id| self.db.scope(scope_id).symbol(name))
         else {
             self.error(CompilerError::UndefinedReference(name.to_string()));
 
@@ -534,6 +588,12 @@ impl Lowerer {
             return self.db.alloc_type(Type::Unknown);
         };
 
+        for &scope_id in self.scope_stack.iter().rev() {
+            if let Some(ty) = self.db.scope(scope_id).type_alias(value.text()) {
+                return ty;
+            }
+        }
+
         match value.text() {
             "Int" => self.db.alloc_type(Type::Int),
             "Bool" => self.db.alloc_type(Type::Bool),
@@ -551,7 +611,6 @@ impl Lowerer {
         };
 
         let inner = self.compile_ty(inner);
-
         self.db.alloc_type(Type::List(inner))
     }
 
@@ -573,6 +632,12 @@ impl Lowerer {
     }
 
     fn type_name(&self, ty: TypeId) -> String {
+        for &scope_id in self.scope_stack.iter().rev() {
+            if let Some(name) = self.db.scope(scope_id).type_name(ty) {
+                return name.to_string();
+            }
+        }
+
         match self.db.ty(ty) {
             Type::Unknown => "{unknown}".to_string(),
             Type::Nil => "Nil".to_string(),

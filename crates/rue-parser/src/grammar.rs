@@ -11,6 +11,8 @@ pub fn root(p: &mut Parser) {
 fn item(p: &mut Parser) {
     if p.at(SyntaxKind::Fun) {
         function_item(p);
+    } else if p.at(SyntaxKind::Type) {
+        type_alias_item(p);
     } else {
         p.error(&[]);
     }
@@ -45,6 +47,16 @@ fn function_param(p: &mut Parser) {
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::Colon);
     ty(p);
+    p.finish();
+}
+
+fn type_alias_item(p: &mut Parser) {
+    p.start(SyntaxKind::TypeAliasItem);
+    p.expect(SyntaxKind::Type);
+    p.expect(SyntaxKind::Ident);
+    p.expect(SyntaxKind::Assign);
+    ty(p);
+    p.expect(SyntaxKind::Semicolon);
     p.finish();
 }
 
@@ -201,7 +213,7 @@ fn ty(p: &mut Parser) {
         return p.error(TYPE_RECOVERY_SET);
     }
 
-    if p.at(SyntaxKind::OpenBracket) {
+    while p.at(SyntaxKind::OpenBracket) {
         p.start_at(checkpoint, SyntaxKind::ListType);
         p.bump();
         p.expect(SyntaxKind::CloseBracket);

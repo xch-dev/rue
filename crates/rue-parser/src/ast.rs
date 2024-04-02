@@ -10,6 +10,7 @@ pub trait AstNode {
 
 macro_rules! ast_node {
     ($kind:ident) => {
+        #[derive(Debug, Clone)]
         pub struct $kind(SyntaxNode);
 
         impl AstNode for $kind {
@@ -51,6 +52,9 @@ macro_rules! ast_enum {
 }
 
 ast_node!(Root);
+
+ast_enum!(Item, FunctionItem, TypeAliasItem);
+ast_node!(TypeAliasItem);
 ast_node!(FunctionItem);
 ast_node!(FunctionParamList);
 ast_node!(FunctionParam);
@@ -80,11 +84,8 @@ ast_node!(FunctionType);
 ast_node!(FunctionTypeParams);
 
 impl Root {
-    pub fn function_items(&self) -> Vec<FunctionItem> {
-        self.syntax()
-            .children()
-            .filter_map(FunctionItem::cast)
-            .collect()
+    pub fn items(&self) -> Vec<Item> {
+        self.syntax().children().filter_map(Item::cast).collect()
     }
 }
 
@@ -119,6 +120,19 @@ impl FunctionParamList {
 }
 
 impl FunctionParam {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+}
+
+impl TypeAliasItem {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()

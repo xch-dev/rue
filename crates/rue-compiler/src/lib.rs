@@ -37,7 +37,7 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
     let compiler = Lowerer::new();
     let mut output = compiler.compile_root(root);
 
-    let Some(main) = output.db.scope_mut(output.main_scope_id).get_symbol("main") else {
+    let Some(main) = output.db.scope_mut(output.main_scope_id).symbol("main") else {
         output.errors.push(CompilerError::MissingMain);
 
         return Output {

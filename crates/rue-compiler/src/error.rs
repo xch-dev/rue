@@ -11,6 +11,9 @@ pub enum CompilerError {
     #[error("undefined type `{0}`")]
     UndefinedType(String),
 
+    #[error("type alias would point to unknown type")]
+    UnknownTypeAlias,
+
     #[error("expected {expected} arguments, found {found}")]
     ArgumentMismatch { expected: usize, found: usize },
 

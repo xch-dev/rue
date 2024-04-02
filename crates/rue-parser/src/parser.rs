@@ -167,6 +167,7 @@ fn convert_tokens<'a>(
             TokenKind::CloseBrace => SyntaxKind::CloseBrace,
             TokenKind::Comma => SyntaxKind::Comma,
             TokenKind::Colon => SyntaxKind::Colon,
+            TokenKind::Semicolon => SyntaxKind::Semicolon,
             TokenKind::Arrow => SyntaxKind::Arrow,
             TokenKind::Plus => SyntaxKind::Plus,
             TokenKind::Minus => SyntaxKind::Minus,
@@ -180,6 +181,7 @@ fn convert_tokens<'a>(
             TokenKind::GreaterThanEquals => SyntaxKind::GreaterThanEquals,
             TokenKind::Equals => SyntaxKind::Equals,
             TokenKind::NotEquals => SyntaxKind::NotEquals,
+            TokenKind::Assign => SyntaxKind::Assign,
             TokenKind::Int => SyntaxKind::Int,
             TokenKind::String { is_terminated } => {
                 if !is_terminated {
@@ -191,6 +193,7 @@ fn convert_tokens<'a>(
                 SyntaxKind::String
             }
             TokenKind::Fun => SyntaxKind::Fun,
+            TokenKind::Type => SyntaxKind::Type,
             TokenKind::If => SyntaxKind::If,
             TokenKind::Else => SyntaxKind::Else,
             TokenKind::Nil => SyntaxKind::Nil,
