@@ -61,6 +61,7 @@ enum Op {
     Sub,
     Mul,
     Div,
+    Rem,
     Lt,
     Gt,
     Eq,
@@ -71,7 +72,7 @@ impl Op {
         match self {
             Self::Lt | Self::Gt | Self::Eq => (1, 2),
             Self::Add | Self::Sub => (3, 4),
-            Self::Mul | Self::Div => (5, 6),
+            Self::Mul | Self::Div | Self::Rem => (5, 6),
         }
     }
 }
@@ -124,6 +125,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
             Op::Mul
         } else if p.at(SyntaxKind::Slash) {
             Op::Div
+        } else if p.at(SyntaxKind::Percent) {
+            Op::Rem
         } else if p.at(SyntaxKind::LessThan) {
             Op::Lt
         } else if p.at(SyntaxKind::GreaterThan) {

@@ -189,7 +189,8 @@ impl Lowerer {
             SyntaxKind::Plus => Value::Add(vec![lhs, rhs]),
             SyntaxKind::Minus => Value::Subtract(vec![lhs, rhs]),
             SyntaxKind::Star => Value::Multiply(vec![lhs, rhs]),
-            SyntaxKind::Slash => Value::Divide(vec![lhs, rhs]),
+            SyntaxKind::Slash => Value::Divide(Box::new(lhs), Box::new(rhs)),
+            SyntaxKind::Percent => Value::Remainder(Box::new(lhs), Box::new(rhs)),
             SyntaxKind::LessThan => {
                 ty = Type::Bool;
                 Value::LessThan(Box::new(lhs), Box::new(rhs))

@@ -151,6 +151,7 @@ impl BinaryExpr {
                         | SyntaxKind::Minus
                         | SyntaxKind::Star
                         | SyntaxKind::Slash
+                        | SyntaxKind::Percent
                         | SyntaxKind::LessThan
                         | SyntaxKind::GreaterThan
                         | SyntaxKind::Equals

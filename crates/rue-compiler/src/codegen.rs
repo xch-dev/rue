@@ -109,7 +109,8 @@ impl<'a> Codegen<'a> {
             Value::Add(operands) => self.gen_add(scope_id, operands),
             Value::Subtract(operands) => self.gen_subtract(scope_id, operands),
             Value::Multiply(operands) => self.gen_multiply(scope_id, operands),
-            Value::Divide(operands) => self.gen_divide(scope_id, operands),
+            Value::Divide(lhs, rhs) => self.gen_divide(scope_id, *lhs, *rhs),
+            Value::Remainder(lhs, rhs) => self.gen_remainder(scope_id, *lhs, *rhs),
             Value::LessThan(lhs, rhs) => self.gen_lt(scope_id, *lhs, *rhs),
             Value::GreaterThan(lhs, rhs) => self.gen_gt(scope_id, *lhs, *rhs),
             Value::Equals(lhs, rhs) => self.gen_eq(scope_id, *lhs, *rhs),
@@ -250,17 +251,33 @@ impl<'a> Codegen<'a> {
         self.list(&args)
     }
 
-    fn gen_divide(&mut self, scope_id: ScopeId, operands: Vec<Value>) -> NodePtr {
+    fn gen_divide(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
         let slash = self
             .allocator
             .new_small_number(19)
             .expect("could not allocate `/`");
 
-        let mut args = vec![slash];
-        for operand in operands {
-            args.push(self.gen_value(scope_id, operand));
-        }
-        self.list(&args)
+        let lhs = self.gen_value(scope_id, lhs);
+        let rhs = self.gen_value(scope_id, rhs);
+
+        self.list(&[slash, lhs, rhs])
+    }
+
+    fn gen_remainder(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+        let divmod = self
+            .allocator
+            .new_small_number(20)
+            .expect("could not allocate `divmod`");
+        let rest = self
+            .allocator
+            .new_small_number(6)
+            .expect("could not allocate `r`");
+
+        let lhs = self.gen_value(scope_id, lhs);
+        let rhs = self.gen_value(scope_id, rhs);
+
+        let divmod_list = self.list(&[divmod, lhs, rhs]);
+        self.list(&[rest, divmod_list])
     }
 
     fn gen_lt(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {

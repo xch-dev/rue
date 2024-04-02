@@ -41,6 +41,7 @@ impl<'a> Lexer<'a> {
                 _ => TokenKind::Minus,
             },
             '*' => TokenKind::Star,
+            '%' => TokenKind::Percent,
             '<' => TokenKind::LessThan,
             '>' => TokenKind::GreaterThan,
             '=' => match self.peek() {

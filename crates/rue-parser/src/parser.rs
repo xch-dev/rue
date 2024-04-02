@@ -168,6 +168,7 @@ fn convert_tokens<'a>(source: &'a str, tokens: &[Token]) -> Vec<(SyntaxKind, &'a
             TokenKind::Minus => SyntaxKind::Minus,
             TokenKind::Star => SyntaxKind::Star,
             TokenKind::Slash => SyntaxKind::Slash,
+            TokenKind::Percent => SyntaxKind::Percent,
             TokenKind::LessThan => SyntaxKind::LessThan,
             TokenKind::GreaterThan => SyntaxKind::GreaterThan,
             TokenKind::Equals => SyntaxKind::Equals,

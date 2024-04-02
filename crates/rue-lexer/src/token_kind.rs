@@ -19,6 +19,7 @@ pub enum TokenKind {
     Minus,
     Star,
     Slash,
+    Percent,
     LessThan,
     GreaterThan,
     Equals,
