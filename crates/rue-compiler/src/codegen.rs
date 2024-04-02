@@ -118,6 +118,7 @@ impl<'a> Codegen<'a> {
             Value::GreaterThanEquals(lhs, rhs) => self.gen_gteq(scope_id, *rhs, *lhs),
             Value::Equals(lhs, rhs) => self.gen_eq(scope_id, *lhs, *rhs),
             Value::NotEquals(lhs, rhs) => self.gen_neq(scope_id, *rhs, *lhs),
+            Value::Not(value) => self.gen_not(scope_id, *value),
             Value::If {
                 condition,
                 then_block,
@@ -383,6 +384,16 @@ impl<'a> Codegen<'a> {
         let eq_list = self.list(&args);
 
         self.list(&[not, eq_list])
+    }
+
+    fn gen_not(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
+        let not = self
+            .allocator
+            .new_small_number(32)
+            .expect("could not allocate `not`");
+
+        let value = self.gen_value(scope_id, value);
+        self.list(&[not, value])
     }
 
     fn gen_if(

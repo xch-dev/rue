@@ -173,6 +173,7 @@ fn convert_tokens<'a>(
             TokenKind::Star => SyntaxKind::Star,
             TokenKind::Slash => SyntaxKind::Slash,
             TokenKind::Percent => SyntaxKind::Percent,
+            TokenKind::Not => SyntaxKind::Not,
             TokenKind::LessThan => SyntaxKind::LessThan,
             TokenKind::GreaterThan => SyntaxKind::GreaterThan,
             TokenKind::LessThanEquals => SyntaxKind::LessThanEquals,

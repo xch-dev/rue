@@ -1,7 +1,7 @@
 use clvmr::Allocator;
 use rue_parser::{
     BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr, ListExpr,
-    ListType, LiteralExpr, LiteralType, Root, SyntaxKind, SyntaxToken,
+    ListType, LiteralExpr, LiteralType, PrefixOp, Root, SyntaxKind, SyntaxToken,
 };
 
 use crate::{
@@ -145,9 +145,46 @@ impl Lowerer {
         match expr {
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list),
+            Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr),
             Expr::FunctionCall(call) => self.compile_function_call(call),
+        }
+    }
+
+    fn compile_prefix_expr(&mut self, prefix: rue_parser::PrefixExpr) -> Typed {
+        let Some(op) = prefix.op() else {
+            return Typed {
+                value: Value::Atom(Vec::new()),
+                ty: self.db.alloc_type(Type::Unknown),
+            };
+        };
+
+        let Some(expr) = prefix.expr() else {
+            return Typed {
+                value: Value::Atom(Vec::new()),
+                ty: self.db.alloc_type(Type::Unknown),
+            };
+        };
+
+        let expr = self.compile_expr(expr);
+
+        if !self.is_assignable_to(self.db.ty(expr.ty), &Type::Bool) {
+            self.error(CompilerError::TypeMismatch {
+                expected: "Bool".to_string(),
+                found: self.type_name(expr.ty),
+            });
+        }
+
+        let expr = expr.value;
+
+        let value = match op {
+            PrefixOp::Not => Value::Not(Box::new(expr)),
+        };
+
+        Typed {
+            value,
+            ty: self.db.alloc_type(Type::Bool),
         }
     }
 

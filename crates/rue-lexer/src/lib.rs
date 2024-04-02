@@ -70,7 +70,7 @@ impl<'a> Lexer<'a> {
                     self.bump();
                     TokenKind::NotEquals
                 }
-                _ => TokenKind::Unknown,
+                _ => TokenKind::Not,
             },
             '/' => match self.peek() {
                 '/' => self.line_comment(),

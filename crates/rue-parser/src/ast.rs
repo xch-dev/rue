@@ -60,12 +60,14 @@ ast_enum!(
     Expr,
     LiteralExpr,
     ListExpr,
+    PrefixExpr,
     BinaryExpr,
     IfExpr,
     FunctionCall
 );
 ast_node!(LiteralExpr);
 ast_node!(ListExpr);
+ast_node!(PrefixExpr);
 ast_node!(BinaryExpr);
 ast_node!(IfExpr);
 ast_node!(FunctionCall);
@@ -141,6 +143,38 @@ impl LiteralExpr {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .next()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PrefixOp {
+    Not,
+}
+
+fn prefix_op(kind: SyntaxKind) -> Option<PrefixOp> {
+    match kind {
+        SyntaxKind::Not => Some(PrefixOp::Not),
+        _ => None,
+    }
+}
+
+impl PrefixExpr {
+    pub fn op_token(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| prefix_op(token.kind()).is_some())
+    }
+
+    pub fn op(&self) -> Option<PrefixOp> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find_map(|token| prefix_op(token.kind()))
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().filter_map(Expr::cast).next()
     }
 }
 

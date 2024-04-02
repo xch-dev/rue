@@ -21,6 +21,7 @@ pub enum Value {
     GreaterThanEquals(Box<Value>, Box<Value>),
     Equals(Box<Value>, Box<Value>),
     NotEquals(Box<Value>, Box<Value>),
+    Not(Box<Value>),
     If {
         condition: Box<Value>,
         then_block: Box<Value>,

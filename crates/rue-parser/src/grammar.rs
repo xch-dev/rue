@@ -76,6 +76,14 @@ fn expr(p: &mut Parser) {
 }
 
 fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
+    if p.at(SyntaxKind::Not) {
+        p.start(SyntaxKind::PrefixExpr);
+        p.bump();
+        expr_binding_power(p, 255);
+        p.finish();
+        return;
+    }
+
     let checkpoint = p.checkpoint();
 
     if p.at(SyntaxKind::Int)
