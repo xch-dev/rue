@@ -1,4 +1,4 @@
-use crate::{parser::Parser, SyntaxKind};
+use crate::{parser::Parser, BinaryOp, SyntaxKind};
 
 pub fn root(p: &mut Parser) {
     p.start(SyntaxKind::Root);
@@ -56,24 +56,16 @@ fn block(p: &mut Parser) {
     p.finish();
 }
 
-enum Op {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
-    Lt,
-    Gt,
-    Eq,
-}
-
-impl Op {
-    fn binding_power(&self) -> (u8, u8) {
-        match self {
-            Self::Lt | Self::Gt | Self::Eq => (1, 2),
-            Self::Add | Self::Sub => (3, 4),
-            Self::Mul | Self::Div | Self::Rem => (5, 6),
-        }
+fn binding_power(op: BinaryOp) -> (u8, u8) {
+    match op {
+        BinaryOp::Lt
+        | BinaryOp::Gt
+        | BinaryOp::LtEq
+        | BinaryOp::GtEq
+        | BinaryOp::Eq
+        | BinaryOp::NotEq => (1, 2),
+        BinaryOp::Add | BinaryOp::Sub => (3, 4),
+        BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem => (5, 6),
     }
 }
 
@@ -87,6 +79,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
     let checkpoint = p.checkpoint();
 
     if p.at(SyntaxKind::Int)
+        || p.at(SyntaxKind::String)
         || p.at(SyntaxKind::Ident)
         || p.at(SyntaxKind::True)
         || p.at(SyntaxKind::False)
@@ -118,26 +111,30 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
 
     loop {
         let op = if p.at(SyntaxKind::Plus) {
-            Op::Add
+            BinaryOp::Add
         } else if p.at(SyntaxKind::Minus) {
-            Op::Sub
+            BinaryOp::Sub
         } else if p.at(SyntaxKind::Star) {
-            Op::Mul
+            BinaryOp::Mul
         } else if p.at(SyntaxKind::Slash) {
-            Op::Div
+            BinaryOp::Div
         } else if p.at(SyntaxKind::Percent) {
-            Op::Rem
+            BinaryOp::Rem
         } else if p.at(SyntaxKind::LessThan) {
-            Op::Lt
+            BinaryOp::Lt
         } else if p.at(SyntaxKind::GreaterThan) {
-            Op::Gt
-        } else if p.at(SyntaxKind::Equals) {
-            Op::Eq
+            BinaryOp::Gt
+        } else if p.at(SyntaxKind::LessThanEquals) {
+            BinaryOp::LtEq
+        } else if p.at(SyntaxKind::GreaterThanEquals) {
+            BinaryOp::GtEq
+        } else if p.at(SyntaxKind::NotEquals) {
+            BinaryOp::NotEq
         } else {
             return;
         };
 
-        let (left_binding_power, right_binding_power) = op.binding_power();
+        let (left_binding_power, right_binding_power) = binding_power(op);
 
         if left_binding_power < minimum_binding_power {
             return;

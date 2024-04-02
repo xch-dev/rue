@@ -34,6 +34,12 @@ pub enum ParserErrorKind {
 
     #[error("unknown token {0}")]
     UnknownToken(String),
+
+    #[error("unterminated string")]
+    UnterminatedString,
+
+    #[error("unterminated block comment")]
+    UnterminatedBlockComment,
 }
 
 /// Join a list of syntax kinds into a string, wrapped in backticks.

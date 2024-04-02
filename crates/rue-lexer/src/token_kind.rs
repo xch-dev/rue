@@ -2,6 +2,7 @@
 pub enum TokenKind {
     Ident,
     Int,
+    String { is_terminated: bool },
     OpenParen,
     CloseParen,
     OpenBrace,
@@ -22,9 +23,12 @@ pub enum TokenKind {
     Percent,
     LessThan,
     GreaterThan,
+    LessThanEquals,
+    GreaterThanEquals,
     Equals,
+    NotEquals,
     Whitespace,
     LineComment,
-    BlockComment,
+    BlockComment { is_terminated: bool },
     Unknown,
 }

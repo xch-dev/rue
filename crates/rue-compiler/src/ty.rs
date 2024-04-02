@@ -6,6 +6,7 @@ pub enum Type {
     Nil,
     Int,
     Bool,
+    Bytes,
     Function { params: Vec<TypeId>, ret: TypeId },
 }
 

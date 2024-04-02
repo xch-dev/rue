@@ -1,7 +1,7 @@
 use clvmr::Allocator;
 use rue_parser::{
-    BinaryExpr, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr, LiteralExpr,
-    LiteralType, Root, SyntaxKind, SyntaxToken,
+    BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr,
+    LiteralExpr, LiteralType, Root, SyntaxKind, SyntaxToken,
 };
 
 use crate::{
@@ -103,14 +103,23 @@ impl Lowerer {
 
     fn compile_function(&mut self, function: FunctionItem, symbol_id: SymbolId) {
         if let Some(body) = function.body() {
-            let body_scope_id = match self.db.symbol(symbol_id) {
-                Symbol::Function { scope_id, .. } => *scope_id,
+            let (body_scope_id, expected_ret_type) = match self.db.symbol(symbol_id) {
+                Symbol::Function {
+                    scope_id, ret_type, ..
+                } => (*scope_id, *ret_type),
                 _ => unreachable!(),
             };
 
             self.scope_stack.push(body_scope_id);
             let ret = self.compile_block(body);
             self.scope_stack.pop().expect("function not in scope stack");
+
+            if !self.is_assignable_to(self.db.ty(ret.ty), self.db.ty(expected_ret_type)) {
+                self.error(CompilerError::TypeMismatch {
+                    expected: self.type_name(expected_ret_type),
+                    found: self.type_name(ret.ty),
+                });
+            }
 
             match &mut self.db.symbol_mut(symbol_id) {
                 Symbol::Function { value, .. } => {
@@ -185,25 +194,36 @@ impl Lowerer {
 
         let mut ty = Type::Int;
 
-        let value = match op.kind() {
-            SyntaxKind::Plus => Value::Add(vec![lhs, rhs]),
-            SyntaxKind::Minus => Value::Subtract(vec![lhs, rhs]),
-            SyntaxKind::Star => Value::Multiply(vec![lhs, rhs]),
-            SyntaxKind::Slash => Value::Divide(Box::new(lhs), Box::new(rhs)),
-            SyntaxKind::Percent => Value::Remainder(Box::new(lhs), Box::new(rhs)),
-            SyntaxKind::LessThan => {
+        let value = match op {
+            BinaryOp::Add => Value::Add(vec![lhs, rhs]),
+            BinaryOp::Sub => Value::Subtract(vec![lhs, rhs]),
+            BinaryOp::Mul => Value::Multiply(vec![lhs, rhs]),
+            BinaryOp::Div => Value::Divide(Box::new(lhs), Box::new(rhs)),
+            BinaryOp::Rem => Value::Remainder(Box::new(lhs), Box::new(rhs)),
+            BinaryOp::Lt => {
                 ty = Type::Bool;
                 Value::LessThan(Box::new(lhs), Box::new(rhs))
             }
-            SyntaxKind::GreaterThan => {
+            BinaryOp::Gt => {
                 ty = Type::Bool;
                 Value::GreaterThan(Box::new(lhs), Box::new(rhs))
             }
-            SyntaxKind::Equals => {
+            BinaryOp::LtEq => {
+                ty = Type::Bool;
+                Value::LessThanEquals(Box::new(lhs), Box::new(rhs))
+            }
+            BinaryOp::GtEq => {
+                ty = Type::Bool;
+                Value::GreaterThanEquals(Box::new(lhs), Box::new(rhs))
+            }
+            BinaryOp::Eq => {
                 ty = Type::Bool;
                 Value::Equals(Box::new(lhs), Box::new(rhs))
             }
-            _ => unreachable!(),
+            BinaryOp::NotEq => {
+                ty = Type::Bool;
+                Value::NotEquals(Box::new(lhs), Box::new(rhs))
+            }
         };
 
         Typed {
@@ -223,6 +243,7 @@ impl Lowerer {
         match value.kind() {
             SyntaxKind::Int => self.compile_int(value),
             SyntaxKind::Ident => self.compile_ident(value),
+            SyntaxKind::String => self.compile_string(value),
             SyntaxKind::True => Typed {
                 value: Value::Atom(vec![1]),
                 ty: self.db.alloc_type(Type::Bool),
@@ -292,12 +313,28 @@ impl Lowerer {
     fn compile_int(&mut self, int: SyntaxToken) -> Typed {
         let mut a = Allocator::new();
         let ptr = a
-            .new_number(int.text().parse().expect("failed to parse into BigInt"))
+            .new_number(
+                int.text()
+                    .replace('_', "")
+                    .parse()
+                    .expect("failed to parse into BigInt"),
+            )
             .expect("could not allocate number");
         let atom = a.atom(ptr).as_ref().to_vec();
         Typed {
             value: Value::Atom(atom),
             ty: self.db.alloc_type(Type::Int),
+        }
+    }
+
+    fn compile_string(&mut self, string: SyntaxToken) -> Typed {
+        let text = string.text();
+        let quote = text.chars().next().expect("no quote in string");
+        let after_prefix = &text[1..];
+        let before_suffix = after_prefix.strip_suffix(quote).unwrap_or(after_prefix);
+        Typed {
+            value: Value::Atom(before_suffix.as_bytes().to_vec()),
+            ty: self.db.alloc_type(Type::Bytes),
         }
     }
 
@@ -433,6 +470,7 @@ impl Lowerer {
         match value.text() {
             "Int" => self.db.alloc_type(Type::Int),
             "Bool" => self.db.alloc_type(Type::Bool),
+            "Bytes" => self.db.alloc_type(Type::Bytes),
             _ => {
                 self.error(CompilerError::UndefinedType(value.to_string()));
                 self.db.alloc_type(Type::Unknown)
@@ -463,6 +501,7 @@ impl Lowerer {
             Type::Nil => "Nil".to_string(),
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
+            Type::Bytes => "Bytes".to_string(),
             Type::Function { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&ty| self.type_name(ty)).collect();
                 let ret = self.type_name(*ret);
@@ -476,6 +515,7 @@ impl Lowerer {
             (Type::Unknown, _) | (_, Type::Unknown) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
+            (Type::Bytes, Type::Bytes) => true,
             (Type::Nil, Type::Nil) => true,
             (
                 Type::Function {

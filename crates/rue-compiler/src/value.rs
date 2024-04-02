@@ -16,7 +16,10 @@ pub enum Value {
     Remainder(Box<Value>, Box<Value>),
     LessThan(Box<Value>, Box<Value>),
     GreaterThan(Box<Value>, Box<Value>),
+    LessThanEquals(Box<Value>, Box<Value>),
+    GreaterThanEquals(Box<Value>, Box<Value>),
     Equals(Box<Value>, Box<Value>),
+    NotEquals(Box<Value>, Box<Value>),
     If {
         condition: Box<Value>,
         then_block: Box<Value>,

@@ -113,7 +113,10 @@ impl<'a> Codegen<'a> {
             Value::Remainder(lhs, rhs) => self.gen_remainder(scope_id, *lhs, *rhs),
             Value::LessThan(lhs, rhs) => self.gen_lt(scope_id, *lhs, *rhs),
             Value::GreaterThan(lhs, rhs) => self.gen_gt(scope_id, *lhs, *rhs),
+            Value::LessThanEquals(lhs, rhs) => self.gen_lteq(scope_id, *rhs, *lhs),
+            Value::GreaterThanEquals(lhs, rhs) => self.gen_gteq(scope_id, *rhs, *lhs),
             Value::Equals(lhs, rhs) => self.gen_eq(scope_id, *lhs, *rhs),
+            Value::NotEquals(lhs, rhs) => self.gen_neq(scope_id, *rhs, *lhs),
             Value::If {
                 condition,
                 then_block,
@@ -281,37 +284,7 @@ impl<'a> Codegen<'a> {
     }
 
     fn gen_lt(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
-        let not = self
-            .allocator
-            .new_small_number(32)
-            .expect("could not allocate `not`");
-        let any = self
-            .allocator
-            .new_small_number(33)
-            .expect("could not allocate `any`");
-        let gt = self
-            .allocator
-            .new_small_number(21)
-            .expect("could not allocate `>`");
-        let eq = self
-            .allocator
-            .new_small_number(9)
-            .expect("could not allocate `=`");
-
-        let lhs = self.gen_value(scope_id, lhs);
-        let rhs = self.gen_value(scope_id, rhs);
-        let operands = self.list(&[lhs, rhs]);
-
-        let eq_list = self
-            .allocator
-            .new_pair(eq, operands)
-            .expect("could not allocate `=` list");
-        let gt_list = self
-            .allocator
-            .new_pair(gt, operands)
-            .expect("could not allocate `>` list");
-        let any_list = self.list(&[any, eq_list, gt_list]);
-        self.list(&[not, any_list])
+        self.gen_gt(scope_id, rhs, lhs)
     }
 
     fn gen_gt(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
@@ -326,6 +299,53 @@ impl<'a> Codegen<'a> {
         self.list(&args)
     }
 
+    fn gen_lteq(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+        let not = self
+            .allocator
+            .new_small_number(32)
+            .expect("could not allocate `not`");
+        let gt = self
+            .allocator
+            .new_small_number(21)
+            .expect("could not allocate `>`");
+
+        let lhs = self.gen_value(scope_id, lhs);
+        let rhs = self.gen_value(scope_id, rhs);
+        let gt_list = self.list(&[gt, lhs, rhs]);
+
+        self.list(&[not, gt_list])
+    }
+
+    fn gen_gteq(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+        let any = self
+            .allocator
+            .new_small_number(33)
+            .expect("could not allocate `any`");
+        let eq = self
+            .allocator
+            .new_small_number(9)
+            .expect("could not allocate `=`");
+        let gt = self
+            .allocator
+            .new_small_number(21)
+            .expect("could not allocate `>`");
+
+        let lhs = self.gen_value(scope_id, lhs);
+        let rhs = self.gen_value(scope_id, rhs);
+        let operands = self.list(&[lhs, rhs]);
+
+        let eq_list = self
+            .allocator
+            .new_pair(eq, operands)
+            .expect("could not allocate eq list");
+        let gt_list = self
+            .allocator
+            .new_pair(gt, operands)
+            .expect("could not allocate gt list");
+
+        self.list(&[any, gt_list, eq_list])
+    }
+
     fn gen_eq(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
         let eq = self
             .allocator
@@ -336,6 +356,24 @@ impl<'a> Codegen<'a> {
         args.push(self.gen_value(scope_id, lhs));
         args.push(self.gen_value(scope_id, rhs));
         self.list(&args)
+    }
+
+    fn gen_neq(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+        let eq = self
+            .allocator
+            .new_small_number(9)
+            .expect("could not allocate `=`");
+        let not = self
+            .allocator
+            .new_small_number(32)
+            .expect("could not allocate `not`");
+
+        let mut args = vec![eq];
+        args.push(self.gen_value(scope_id, lhs));
+        args.push(self.gen_value(scope_id, rhs));
+        let eq_list = self.list(&args);
+
+        self.list(&[not, eq_list])
     }
 
     fn gen_if(

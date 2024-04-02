@@ -135,28 +135,55 @@ impl LiteralExpr {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Lt,
+    Gt,
+    LtEq,
+    GtEq,
+    Eq,
+    NotEq,
+}
+
+fn binary_op(kind: SyntaxKind) -> Option<BinaryOp> {
+    match kind {
+        SyntaxKind::Plus => Some(BinaryOp::Add),
+        SyntaxKind::Minus => Some(BinaryOp::Sub),
+        SyntaxKind::Star => Some(BinaryOp::Mul),
+        SyntaxKind::Slash => Some(BinaryOp::Div),
+        SyntaxKind::Percent => Some(BinaryOp::Rem),
+        SyntaxKind::LessThan => Some(BinaryOp::Lt),
+        SyntaxKind::GreaterThan => Some(BinaryOp::Gt),
+        SyntaxKind::LessThanEquals => Some(BinaryOp::LtEq),
+        SyntaxKind::GreaterThanEquals => Some(BinaryOp::GtEq),
+        SyntaxKind::Equals => Some(BinaryOp::Eq),
+        SyntaxKind::NotEquals => Some(BinaryOp::NotEq),
+        _ => None,
+    }
+}
+
 impl BinaryExpr {
     pub fn lhs(&self) -> Option<Expr> {
         self.syntax().children().filter_map(Expr::cast).nth(0)
     }
 
-    pub fn op(&self) -> Option<SyntaxToken> {
+    pub fn op_token(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| {
-                matches!(
-                    token.kind(),
-                    SyntaxKind::Plus
-                        | SyntaxKind::Minus
-                        | SyntaxKind::Star
-                        | SyntaxKind::Slash
-                        | SyntaxKind::Percent
-                        | SyntaxKind::LessThan
-                        | SyntaxKind::GreaterThan
-                        | SyntaxKind::Equals
-                )
-            })
+            .find(|token| binary_op(token.kind()).is_some())
+    }
+
+    pub fn op(&self) -> Option<BinaryOp> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find_map(|token| binary_op(token.kind()))
     }
 
     pub fn rhs(&self) -> Option<Expr> {

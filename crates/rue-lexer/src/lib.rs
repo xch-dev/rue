@@ -42,12 +42,31 @@ impl<'a> Lexer<'a> {
             },
             '*' => TokenKind::Star,
             '%' => TokenKind::Percent,
-            '<' => TokenKind::LessThan,
-            '>' => TokenKind::GreaterThan,
+            '<' => match self.peek() {
+                '=' => {
+                    self.bump();
+                    TokenKind::LessThanEquals
+                }
+                _ => TokenKind::LessThan,
+            },
+            '>' => match self.peek() {
+                '=' => {
+                    self.bump();
+                    TokenKind::GreaterThanEquals
+                }
+                _ => TokenKind::GreaterThan,
+            },
             '=' => match self.peek() {
                 '=' => {
                     self.bump();
                     TokenKind::Equals
+                }
+                _ => TokenKind::Unknown,
+            },
+            '!' => match self.peek() {
+                '=' => {
+                    self.bump();
+                    TokenKind::NotEquals
                 }
                 _ => TokenKind::Unknown,
             },
@@ -57,12 +76,8 @@ impl<'a> Lexer<'a> {
                 _ => TokenKind::Slash,
             },
             ':' => TokenKind::Colon,
-            c if c.is_numeric() => {
-                while self.peek().is_numeric() {
-                    self.bump();
-                }
-                TokenKind::Int
-            }
+            c @ ('"' | '\'') => self.string(c),
+            c if c.is_ascii_digit() => self.integer(),
             c if UnicodeXID::is_xid_start(c) || c == '_' => {
                 while UnicodeXID::is_xid_continue(self.peek()) {
                     self.bump();
@@ -89,6 +104,24 @@ impl<'a> Lexer<'a> {
         Some(Token::new(kind, self.pos - start))
     }
 
+    fn integer(&mut self) -> TokenKind {
+        while self.peek().is_ascii_digit() || self.peek() == '_' {
+            self.bump();
+        }
+        TokenKind::Int
+    }
+
+    fn string(&mut self, quote: char) -> TokenKind {
+        let is_terminated = loop {
+            match self.bump() {
+                c if c == quote => break true,
+                '\0' => break false,
+                _ => {}
+            }
+        };
+        TokenKind::String { is_terminated }
+    }
+
     fn line_comment(&mut self) -> TokenKind {
         loop {
             match self.bump() {
@@ -101,19 +134,19 @@ impl<'a> Lexer<'a> {
 
     fn block_comment(&mut self) -> TokenKind {
         self.bump();
-        loop {
+        let is_terminated = loop {
             match self.bump() {
                 '*' => {
                     if self.peek() == '/' {
                         self.bump();
-                        break;
+                        break true;
                     }
                 }
-                '\0' => break,
+                '\0' => break false,
                 _ => {}
             }
-        }
-        TokenKind::BlockComment
+        };
+        TokenKind::BlockComment { is_terminated }
     }
 
     fn peek(&self) -> char {
@@ -219,12 +252,40 @@ mod tests {
 
     #[test]
     fn test_block_comment() {
-        check("/*", &[TokenKind::BlockComment]);
-        check("/* hello */", &[TokenKind::BlockComment]);
-        check("/* hello\nworld */", &[TokenKind::BlockComment]);
+        check(
+            "/*",
+            &[TokenKind::BlockComment {
+                is_terminated: false,
+            }],
+        );
+        check(
+            "/**/",
+            &[TokenKind::BlockComment {
+                is_terminated: true,
+            }],
+        );
+        check(
+            "/* hello */",
+            &[TokenKind::BlockComment {
+                is_terminated: true,
+            }],
+        );
+        check(
+            "/* hello\nworld */",
+            &[TokenKind::BlockComment {
+                is_terminated: true,
+            }],
+        );
         check(
             "/* hello *//* good bye */",
-            &[TokenKind::BlockComment, TokenKind::BlockComment],
+            &[
+                TokenKind::BlockComment {
+                    is_terminated: true,
+                },
+                TokenKind::BlockComment {
+                    is_terminated: true,
+                },
+            ],
         );
     }
 }

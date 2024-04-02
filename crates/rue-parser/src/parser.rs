@@ -15,14 +15,15 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(source: &'a str, tokens: &[Token]) -> Self {
-        let items = convert_tokens(source, tokens);
+        let mut errors = Vec::new();
+        let items = convert_tokens(&mut errors, source, tokens);
 
         Self {
             items,
             cursor: 0,
             char_pos: 0,
             builder: GreenNodeBuilder::new(),
-            errors: Vec::new(),
+            errors,
             expected_kinds: IndexSet::new(),
         }
     }
@@ -140,21 +141,22 @@ impl<'a> Parser<'a> {
 
         let (kind, text) = self.items[self.cursor];
 
-        if kind == SyntaxKind::Unknown {
-            self.push_error(ParserErrorKind::UnknownToken(text.to_string()));
-        }
-
         self.cursor += 1;
         self.char_pos += text.len();
         self.builder.token(RueLang::kind_to_raw(kind), text);
     }
 }
 
-fn convert_tokens<'a>(source: &'a str, tokens: &[Token]) -> Vec<(SyntaxKind, &'a str)> {
+fn convert_tokens<'a>(
+    errors: &mut Vec<ParserError>,
+    source: &'a str,
+    tokens: &[Token],
+) -> Vec<(SyntaxKind, &'a str)> {
     let mut items = Vec::new();
     let mut pos = 0;
 
     for token in tokens {
+        let text = &source[pos..pos + token.len()];
         let kind = match token.kind() {
             TokenKind::Ident => SyntaxKind::Ident,
             TokenKind::OpenParen => SyntaxKind::OpenParen,
@@ -171,8 +173,20 @@ fn convert_tokens<'a>(source: &'a str, tokens: &[Token]) -> Vec<(SyntaxKind, &'a
             TokenKind::Percent => SyntaxKind::Percent,
             TokenKind::LessThan => SyntaxKind::LessThan,
             TokenKind::GreaterThan => SyntaxKind::GreaterThan,
+            TokenKind::LessThanEquals => SyntaxKind::LessThanEquals,
+            TokenKind::GreaterThanEquals => SyntaxKind::GreaterThanEquals,
             TokenKind::Equals => SyntaxKind::Equals,
+            TokenKind::NotEquals => SyntaxKind::NotEquals,
             TokenKind::Int => SyntaxKind::Int,
+            TokenKind::String { is_terminated } => {
+                if !is_terminated {
+                    errors.push(ParserError::new(
+                        ParserErrorKind::UnterminatedString,
+                        pos..pos + token.len(),
+                    ));
+                }
+                SyntaxKind::String
+            }
             TokenKind::Fun => SyntaxKind::Fun,
             TokenKind::If => SyntaxKind::If,
             TokenKind::Else => SyntaxKind::Else,
@@ -181,11 +195,25 @@ fn convert_tokens<'a>(source: &'a str, tokens: &[Token]) -> Vec<(SyntaxKind, &'a
             TokenKind::False => SyntaxKind::False,
             TokenKind::Whitespace => SyntaxKind::Whitespace,
             TokenKind::LineComment => SyntaxKind::LineComment,
-            TokenKind::BlockComment => SyntaxKind::BlockComment,
-            TokenKind::Unknown => SyntaxKind::Unknown,
+            TokenKind::BlockComment { is_terminated } => {
+                if !is_terminated {
+                    errors.push(ParserError::new(
+                        ParserErrorKind::UnterminatedBlockComment,
+                        pos..pos + token.len(),
+                    ));
+                }
+                SyntaxKind::BlockComment
+            }
+            TokenKind::Unknown => {
+                errors.push(ParserError::new(
+                    ParserErrorKind::UnknownToken(text.to_string()),
+                    pos..pos + token.len(),
+                ));
+                SyntaxKind::Unknown
+            }
         };
 
-        items.push((kind, &source[pos..pos + token.len()]));
+        items.push((kind, text));
         pos += token.len();
     }
 
