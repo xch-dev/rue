@@ -153,6 +153,7 @@ impl BinaryExpr {
                         | SyntaxKind::Slash
                         | SyntaxKind::LessThan
                         | SyntaxKind::GreaterThan
+                        | SyntaxKind::Equals
                 )
             })
     }

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use clvmr::{Allocator, NodePtr};
 use indexmap::IndexSet;
-use num_bigint::BigInt;
 
 use crate::{
     database::{Database, ScopeId, SymbolId},
@@ -103,8 +102,7 @@ impl<'a> Codegen<'a> {
 
     fn gen_value(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
         match value {
-            Value::Nil => NodePtr::NIL,
-            Value::Int(int) => self.gen_int(int),
+            Value::Atom(atom) => self.gen_atom(atom),
             Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
             Value::FunctionCall { callee, args } => self.gen_function_call(scope_id, *callee, args),
             Value::Function(symbol_id) => self.gen_function(symbol_id),
@@ -114,6 +112,7 @@ impl<'a> Codegen<'a> {
             Value::Divide(operands) => self.gen_divide(scope_id, operands),
             Value::LessThan(lhs, rhs) => self.gen_lt(scope_id, *lhs, *rhs),
             Value::GreaterThan(lhs, rhs) => self.gen_gt(scope_id, *lhs, *rhs),
+            Value::Equals(lhs, rhs) => self.gen_eq(scope_id, *lhs, *rhs),
             Value::If {
                 condition,
                 then_block,
@@ -310,6 +309,18 @@ impl<'a> Codegen<'a> {
         self.list(&args)
     }
 
+    fn gen_eq(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+        let eq = self
+            .allocator
+            .new_small_number(9)
+            .expect("could not allocate `=`");
+
+        let mut args = vec![eq];
+        args.push(self.gen_value(scope_id, lhs));
+        args.push(self.gen_value(scope_id, rhs));
+        self.list(&args)
+    }
+
     fn gen_if(
         &mut self,
         scope_id: ScopeId,
@@ -357,10 +368,10 @@ impl<'a> Codegen<'a> {
             .expect("could not allocate path")
     }
 
-    fn gen_int(&mut self, value: BigInt) -> NodePtr {
+    fn gen_atom(&mut self, value: Vec<u8>) -> NodePtr {
         let int_ptr = self
             .allocator
-            .new_number(value)
+            .new_atom(&value)
             .expect("could not allocate number");
         self.quote(int_ptr)
     }

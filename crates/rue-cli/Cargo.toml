@@ -1,9 +1,10 @@
 [package]
-name = "hello-world"
+name = "rue-cli"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap = { version = "4.5.4", features = ["derive"] }
 rue-lexer = { path = "../../crates/rue-lexer" }
 rue-parser = { path = "../../crates/rue-parser" }
 rue-compiler = { path = "../../crates/rue-compiler" }

@@ -43,6 +43,13 @@ impl<'a> Lexer<'a> {
             '*' => TokenKind::Star,
             '<' => TokenKind::LessThan,
             '>' => TokenKind::GreaterThan,
+            '=' => match self.peek() {
+                '=' => {
+                    self.bump();
+                    TokenKind::Equals
+                }
+                _ => TokenKind::Unknown,
+            },
             '/' => match self.peek() {
                 '/' => self.line_comment(),
                 '*' => self.block_comment(),
@@ -63,6 +70,9 @@ impl<'a> Lexer<'a> {
                     "fun" => TokenKind::Fun,
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
+                    "nil" => TokenKind::Nil,
+                    "true" => TokenKind::True,
+                    "false" => TokenKind::False,
                     _ => TokenKind::Ident,
                 }
             }
@@ -186,6 +196,7 @@ mod tests {
     fn test_comparison() {
         check("<", &[TokenKind::LessThan]);
         check(">", &[TokenKind::GreaterThan]);
+        check("==", &[TokenKind::Equals]);
     }
 
     #[test]

@@ -1,55 +1,29 @@
+use indexmap::IndexSet;
 use rowan::{Checkpoint, GreenNodeBuilder, Language};
 use rue_lexer::{Token, TokenKind};
 
-use crate::{ParserError, RueLang, SyntaxKind, SyntaxNode};
+use crate::{ParserError, ParserErrorKind, RueLang, SyntaxKind, SyntaxNode};
 
 pub struct Parser<'a> {
     items: Vec<(SyntaxKind, &'a str)>,
     cursor: usize,
+    char_pos: usize,
     builder: GreenNodeBuilder<'static>,
     errors: Vec<ParserError>,
+    expected_kinds: IndexSet<SyntaxKind>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(source: &'a str, tokens: &[Token]) -> Self {
-        let mut items = Vec::new();
-        let mut pos = 0;
-
-        for token in tokens {
-            let kind = match token.kind() {
-                TokenKind::Ident => SyntaxKind::Ident,
-                TokenKind::OpenParen => SyntaxKind::OpenParen,
-                TokenKind::CloseParen => SyntaxKind::CloseParen,
-                TokenKind::OpenBrace => SyntaxKind::OpenBrace,
-                TokenKind::CloseBrace => SyntaxKind::CloseBrace,
-                TokenKind::Comma => SyntaxKind::Comma,
-                TokenKind::Colon => SyntaxKind::Colon,
-                TokenKind::Arrow => SyntaxKind::Arrow,
-                TokenKind::Plus => SyntaxKind::Plus,
-                TokenKind::Minus => SyntaxKind::Minus,
-                TokenKind::Star => SyntaxKind::Star,
-                TokenKind::Slash => SyntaxKind::Slash,
-                TokenKind::LessThan => SyntaxKind::LessThan,
-                TokenKind::GreaterThan => SyntaxKind::GreaterThan,
-                TokenKind::Int => SyntaxKind::Int,
-                TokenKind::Fun => SyntaxKind::Fun,
-                TokenKind::If => SyntaxKind::If,
-                TokenKind::Else => SyntaxKind::Else,
-                TokenKind::Whitespace => SyntaxKind::Whitespace,
-                TokenKind::LineComment => SyntaxKind::LineComment,
-                TokenKind::BlockComment => SyntaxKind::BlockComment,
-                TokenKind::Unknown => SyntaxKind::Error,
-            };
-
-            items.push((kind, &source[pos..pos + token.len()]));
-            pos += token.len();
-        }
+        let items = convert_tokens(source, tokens);
 
         Self {
             items,
             cursor: 0,
+            char_pos: 0,
             builder: GreenNodeBuilder::new(),
             errors: Vec::new(),
+            expected_kinds: IndexSet::new(),
         }
     }
 
@@ -79,27 +53,8 @@ impl<'a> Parser<'a> {
         self.cursor >= self.items.len()
     }
 
-    pub fn peek(&mut self) -> SyntaxKind {
-        self.nth(0)
-    }
-
-    pub fn bump(&mut self) -> SyntaxKind {
-        self.eat_whitespace();
-        let kind = self.peek();
-        self.token();
-        kind
-    }
-
-    pub fn nth(&mut self, index: usize) -> SyntaxKind {
-        self.eat_whitespace();
-        self.items
-            .get(self.cursor + index)
-            .map(|(kind, _)| *kind)
-            .unwrap_or(SyntaxKind::Eof)
-    }
-
-    pub fn eat(&mut self, kind: SyntaxKind) -> bool {
-        if self.peek() == kind {
+    pub fn try_eat(&mut self, kind: SyntaxKind) -> bool {
+        if self.at(kind) {
             self.bump();
             true
         } else {
@@ -107,10 +62,40 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn error(&mut self, error: ParserError) {
-        self.errors.push(error);
+    pub fn expect(&mut self, kind: SyntaxKind) -> bool {
+        if self.at(kind) {
+            self.bump();
+            true
+        } else {
+            let found = self.nth(0);
+            self.push_error(ParserErrorKind::UnexpectedToken {
+                expected: vec![kind],
+                found,
+            });
+            self.expected_kinds.clear();
+            false
+        }
+    }
 
-        if self.at_end() {
+    pub fn bump(&mut self) -> SyntaxKind {
+        self.expected_kinds.clear();
+        let kind = self.nth(0);
+        self.token();
+        kind
+    }
+
+    pub fn at(&mut self, kind: SyntaxKind) -> bool {
+        self.expected_kinds.insert(kind);
+        self.nth(0) == kind
+    }
+
+    pub fn error(&mut self, set: &[SyntaxKind]) {
+        let expected: Vec<SyntaxKind> = self.expected_kinds.drain(..).collect();
+        let found = self.nth(0);
+
+        self.push_error(ParserErrorKind::UnexpectedToken { expected, found });
+
+        if self.at_end() || set.contains(&found) {
             return;
         }
 
@@ -119,11 +104,27 @@ impl<'a> Parser<'a> {
         self.finish();
     }
 
+    fn push_error(&mut self, error: ParserErrorKind) {
+        let range = self.char_pos..self.char_pos + self.items[self.cursor].1.len();
+        self.errors.push(ParserError::new(error, range));
+    }
+
+    fn nth(&mut self, index: usize) -> SyntaxKind {
+        self.eat_whitespace();
+        self.items
+            .get(self.cursor + index)
+            .map(|(kind, _)| *kind)
+            .unwrap_or(SyntaxKind::Eof)
+    }
+
     fn eat_whitespace(&mut self) {
         while !self.at_end() {
             if matches!(
                 self.items[self.cursor].0,
-                SyntaxKind::Whitespace | SyntaxKind::LineComment | SyntaxKind::BlockComment
+                SyntaxKind::Whitespace
+                    | SyntaxKind::LineComment
+                    | SyntaxKind::BlockComment
+                    | SyntaxKind::Unknown
             ) {
                 self.token();
             } else {
@@ -138,7 +139,54 @@ impl<'a> Parser<'a> {
         }
 
         let (kind, text) = self.items[self.cursor];
+
+        if kind == SyntaxKind::Unknown {
+            self.push_error(ParserErrorKind::UnknownToken(text.to_string()));
+        }
+
         self.cursor += 1;
+        self.char_pos += text.len();
         self.builder.token(RueLang::kind_to_raw(kind), text);
     }
+}
+
+fn convert_tokens<'a>(source: &'a str, tokens: &[Token]) -> Vec<(SyntaxKind, &'a str)> {
+    let mut items = Vec::new();
+    let mut pos = 0;
+
+    for token in tokens {
+        let kind = match token.kind() {
+            TokenKind::Ident => SyntaxKind::Ident,
+            TokenKind::OpenParen => SyntaxKind::OpenParen,
+            TokenKind::CloseParen => SyntaxKind::CloseParen,
+            TokenKind::OpenBrace => SyntaxKind::OpenBrace,
+            TokenKind::CloseBrace => SyntaxKind::CloseBrace,
+            TokenKind::Comma => SyntaxKind::Comma,
+            TokenKind::Colon => SyntaxKind::Colon,
+            TokenKind::Arrow => SyntaxKind::Arrow,
+            TokenKind::Plus => SyntaxKind::Plus,
+            TokenKind::Minus => SyntaxKind::Minus,
+            TokenKind::Star => SyntaxKind::Star,
+            TokenKind::Slash => SyntaxKind::Slash,
+            TokenKind::LessThan => SyntaxKind::LessThan,
+            TokenKind::GreaterThan => SyntaxKind::GreaterThan,
+            TokenKind::Equals => SyntaxKind::Equals,
+            TokenKind::Int => SyntaxKind::Int,
+            TokenKind::Fun => SyntaxKind::Fun,
+            TokenKind::If => SyntaxKind::If,
+            TokenKind::Else => SyntaxKind::Else,
+            TokenKind::Nil => SyntaxKind::Nil,
+            TokenKind::True => SyntaxKind::True,
+            TokenKind::False => SyntaxKind::False,
+            TokenKind::Whitespace => SyntaxKind::Whitespace,
+            TokenKind::LineComment => SyntaxKind::LineComment,
+            TokenKind::BlockComment => SyntaxKind::BlockComment,
+            TokenKind::Unknown => SyntaxKind::Unknown,
+        };
+
+        items.push((kind, &source[pos..pos + token.len()]));
+        pos += token.len();
+    }
+
+    items
 }

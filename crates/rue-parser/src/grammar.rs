@@ -1,4 +1,4 @@
-use crate::{parser::Parser, ParserError, SyntaxKind};
+use crate::{parser::Parser, SyntaxKind};
 
 pub fn root(p: &mut Parser) {
     p.start(SyntaxKind::Root);
@@ -9,23 +9,19 @@ pub fn root(p: &mut Parser) {
 }
 
 fn item(p: &mut Parser) {
-    if p.peek() == SyntaxKind::Fun {
+    if p.at(SyntaxKind::Fun) {
         function_item(p);
     } else {
-        let peek = p.peek();
-        p.error(ParserError::UnexpectedToken {
-            expected: SyntaxKind::Fun,
-            found: peek,
-        });
+        p.error(&[]);
     }
 }
 
 fn function_item(p: &mut Parser) {
     p.start(SyntaxKind::FunctionItem);
-    p.eat(SyntaxKind::Fun);
-    p.eat(SyntaxKind::Ident);
+    p.expect(SyntaxKind::Fun);
+    p.expect(SyntaxKind::Ident);
     function_params(p);
-    p.eat(SyntaxKind::Arrow);
+    p.expect(SyntaxKind::Arrow);
     ty(p);
     block(p);
     p.finish();
@@ -33,30 +29,30 @@ fn function_item(p: &mut Parser) {
 
 fn function_params(p: &mut Parser) {
     p.start(SyntaxKind::FunctionParamList);
-    p.eat(SyntaxKind::OpenParen);
-    while p.peek() != SyntaxKind::CloseParen {
+    p.expect(SyntaxKind::OpenParen);
+    while !p.at(SyntaxKind::CloseParen) {
         function_param(p);
-        if !p.eat(SyntaxKind::Comma) {
+        if !p.try_eat(SyntaxKind::Comma) {
             break;
         }
     }
-    p.eat(SyntaxKind::CloseParen);
+    p.expect(SyntaxKind::CloseParen);
     p.finish();
 }
 
 fn function_param(p: &mut Parser) {
     p.start(SyntaxKind::FunctionParam);
-    p.eat(SyntaxKind::Ident);
-    p.eat(SyntaxKind::Colon);
+    p.expect(SyntaxKind::Ident);
+    p.expect(SyntaxKind::Colon);
     ty(p);
     p.finish();
 }
 
 fn block(p: &mut Parser) {
     p.start(SyntaxKind::Block);
-    p.eat(SyntaxKind::OpenBrace);
+    p.expect(SyntaxKind::OpenBrace);
     expr(p);
-    p.eat(SyntaxKind::CloseBrace);
+    p.expect(SyntaxKind::CloseBrace);
     p.finish();
 }
 
@@ -67,17 +63,20 @@ enum Op {
     Div,
     Lt,
     Gt,
+    Eq,
 }
 
 impl Op {
     fn binding_power(&self) -> (u8, u8) {
         match self {
-            Self::Lt | Self::Gt => (1, 2),
+            Self::Lt | Self::Gt | Self::Eq => (1, 2),
             Self::Add | Self::Sub => (3, 4),
             Self::Mul | Self::Div => (5, 6),
         }
     }
 }
+
+const EXPR_RECOVERY_SET: &[SyntaxKind] = &[SyntaxKind::OpenBrace, SyntaxKind::CloseBrace];
 
 fn expr(p: &mut Parser) {
     expr_binding_power(p, 0);
@@ -86,42 +85,53 @@ fn expr(p: &mut Parser) {
 fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
     let checkpoint = p.checkpoint();
 
-    match p.peek() {
-        SyntaxKind::Int | SyntaxKind::Ident => {
-            p.start(SyntaxKind::LiteralExpr);
-            p.bump();
-            p.finish();
-        }
-        SyntaxKind::If => {
-            if_expr(p);
-        }
-        _ => {}
+    if p.at(SyntaxKind::Int)
+        || p.at(SyntaxKind::Ident)
+        || p.at(SyntaxKind::True)
+        || p.at(SyntaxKind::False)
+        || p.at(SyntaxKind::Nil)
+    {
+        p.start(SyntaxKind::LiteralExpr);
+        p.bump();
+        p.finish();
+    } else if p.at(SyntaxKind::If) {
+        if_expr(p);
+    } else {
+        return p.error(EXPR_RECOVERY_SET);
     }
 
-    while p.peek() == SyntaxKind::OpenParen {
+    while p.at(SyntaxKind::OpenParen) {
         p.start_at(checkpoint, SyntaxKind::FunctionCall);
         p.start(SyntaxKind::FunctionCallArgs);
         p.bump();
-        while !p.at_end() {
+        while !p.at(SyntaxKind::CloseParen) {
             expr(p);
-            if !p.eat(SyntaxKind::Comma) {
+            if !p.try_eat(SyntaxKind::Comma) {
                 break;
             }
         }
-        p.eat(SyntaxKind::CloseParen);
+        p.expect(SyntaxKind::CloseParen);
         p.finish();
         p.finish();
     }
 
     loop {
-        let op = match p.peek() {
-            SyntaxKind::Plus => Op::Add,
-            SyntaxKind::Minus => Op::Sub,
-            SyntaxKind::Star => Op::Mul,
-            SyntaxKind::Slash => Op::Div,
-            SyntaxKind::LessThan => Op::Lt,
-            SyntaxKind::GreaterThan => Op::Gt,
-            _ => return,
+        let op = if p.at(SyntaxKind::Plus) {
+            Op::Add
+        } else if p.at(SyntaxKind::Minus) {
+            Op::Sub
+        } else if p.at(SyntaxKind::Star) {
+            Op::Mul
+        } else if p.at(SyntaxKind::Slash) {
+            Op::Div
+        } else if p.at(SyntaxKind::LessThan) {
+            Op::Lt
+        } else if p.at(SyntaxKind::GreaterThan) {
+            Op::Gt
+        } else if p.at(SyntaxKind::Equals) {
+            Op::Eq
+        } else {
+            return;
         };
 
         let (left_binding_power, right_binding_power) = op.binding_power();
@@ -140,42 +150,42 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
 
 fn if_expr(p: &mut Parser) {
     p.start(SyntaxKind::IfExpr);
-    p.eat(SyntaxKind::If);
+    p.expect(SyntaxKind::If);
     expr(p);
     block(p);
-    p.eat(SyntaxKind::Else);
+    p.expect(SyntaxKind::Else);
     block(p);
     p.finish();
 }
 
+const TYPE_RECOVERY_SET: &[SyntaxKind] = &[SyntaxKind::OpenBrace, SyntaxKind::CloseBrace];
+
 fn ty(p: &mut Parser) {
-    match p.peek() {
-        SyntaxKind::Ident => {
-            p.start(SyntaxKind::LiteralType);
-            p.bump();
-            p.finish();
-        }
-        SyntaxKind::Fun => {
-            p.start(SyntaxKind::FunctionType);
-            p.bump();
-            function_type_params(p);
-            p.eat(SyntaxKind::Arrow);
-            ty(p);
-            p.finish();
-        }
-        _ => {}
+    if p.at(SyntaxKind::Ident) {
+        p.start(SyntaxKind::LiteralType);
+        p.bump();
+        p.finish();
+    } else if p.at(SyntaxKind::Fun) {
+        p.start(SyntaxKind::FunctionType);
+        p.bump();
+        function_type_params(p);
+        p.expect(SyntaxKind::Arrow);
+        ty(p);
+        p.finish();
+    } else {
+        p.error(TYPE_RECOVERY_SET);
     }
 }
 
 fn function_type_params(p: &mut Parser) {
     p.start(SyntaxKind::FunctionTypeParams);
-    p.eat(SyntaxKind::OpenParen);
-    while p.peek() != SyntaxKind::CloseParen {
+    p.expect(SyntaxKind::OpenParen);
+    while !p.at(SyntaxKind::CloseParen) {
         ty(p);
-        if !p.eat(SyntaxKind::Comma) {
+        if !p.try_eat(SyntaxKind::Comma) {
             break;
         }
     }
-    p.eat(SyntaxKind::CloseParen);
+    p.expect(SyntaxKind::CloseParen);
     p.finish();
 }

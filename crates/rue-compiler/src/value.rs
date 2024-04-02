@@ -1,11 +1,8 @@
-use num_bigint::BigInt;
-
 use crate::database::SymbolId;
 
 #[derive(Debug, Clone)]
 pub enum Value {
-    Nil,
-    Int(BigInt),
+    Atom(Vec<u8>),
     Function(SymbolId),
     Reference(SymbolId),
     FunctionCall {
@@ -18,6 +15,7 @@ pub enum Value {
     Divide(Vec<Value>),
     LessThan(Box<Value>, Box<Value>),
     GreaterThan(Box<Value>, Box<Value>),
+    Equals(Box<Value>, Box<Value>),
     If {
         condition: Box<Value>,
         then_block: Box<Value>,

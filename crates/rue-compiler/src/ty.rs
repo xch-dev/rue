@@ -3,6 +3,7 @@ use crate::{database::TypeId, value::Value};
 #[derive(Debug, Clone)]
 pub enum Type {
     Unknown,
+    Nil,
     Int,
     Bool,
     Function { params: Vec<TypeId>, ret: TypeId },

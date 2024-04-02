@@ -1,3 +1,4 @@
+use clvmr::Allocator;
 use rue_parser::{
     BinaryExpr, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr, LiteralExpr,
     LiteralType, Root, SyntaxKind, SyntaxToken,
@@ -88,7 +89,7 @@ impl Lowerer {
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
-            value: Value::Nil,
+            value: Value::Atom(Vec::new()),
             ret_type: ret_ty,
             param_types,
         });
@@ -123,7 +124,7 @@ impl Lowerer {
     fn compile_block(&mut self, block: Block) -> Typed {
         let Some(expr) = block.expr() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -143,21 +144,21 @@ impl Lowerer {
     fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Typed {
         let Some(lhs) = binary.lhs() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(rhs) = binary.rhs() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(op) = binary.op() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -197,6 +198,10 @@ impl Lowerer {
                 ty = Type::Bool;
                 Value::GreaterThan(Box::new(lhs), Box::new(rhs))
             }
+            SyntaxKind::Equals => {
+                ty = Type::Bool;
+                Value::Equals(Box::new(lhs), Box::new(rhs))
+            }
             _ => unreachable!(),
         };
 
@@ -209,7 +214,7 @@ impl Lowerer {
     fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Typed {
         let Some(value) = literal.value() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -217,6 +222,18 @@ impl Lowerer {
         match value.kind() {
             SyntaxKind::Int => self.compile_int(value),
             SyntaxKind::Ident => self.compile_ident(value),
+            SyntaxKind::True => Typed {
+                value: Value::Atom(vec![1]),
+                ty: self.db.alloc_type(Type::Bool),
+            },
+            SyntaxKind::False => Typed {
+                value: Value::Atom(Vec::new()),
+                ty: self.db.alloc_type(Type::Bool),
+            },
+            SyntaxKind::Nil => Typed {
+                value: Value::Atom(Vec::new()),
+                ty: self.db.alloc_type(Type::Nil),
+            },
             _ => unreachable!(),
         }
     }
@@ -224,21 +241,21 @@ impl Lowerer {
     fn compile_if_expr(&mut self, if_expr: IfExpr) -> Typed {
         let Some(condition) = if_expr.condition() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(then_block) = if_expr.then_block() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(else_block) = if_expr.else_block() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -272,8 +289,13 @@ impl Lowerer {
     }
 
     fn compile_int(&mut self, int: SyntaxToken) -> Typed {
+        let mut a = Allocator::new();
+        let ptr = a
+            .new_number(int.text().parse().expect("failed to parse into BigInt"))
+            .expect("could not allocate number");
+        let atom = a.atom(ptr).as_ref().to_vec();
         Typed {
-            value: Value::Int(int.text().parse().expect("failed to parse into BigInt")),
+            value: Value::Atom(atom),
             ty: self.db.alloc_type(Type::Int),
         }
     }
@@ -290,7 +312,7 @@ impl Lowerer {
             self.error(CompilerError::UndefinedReference(name.to_string()));
 
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -319,14 +341,14 @@ impl Lowerer {
     fn compile_function_call(&mut self, call: FunctionCall) -> Typed {
         let Some(callee) = call.callee() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(args) = call.args() else {
             return Typed {
-                value: Value::Nil,
+                value: Value::Atom(Vec::new()),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -350,7 +372,7 @@ impl Lowerer {
                     });
 
                     return Typed {
-                        value: Value::Nil,
+                        value: Value::Atom(Vec::new()),
                         ty: self.db.alloc_type(Type::Unknown),
                     };
                 }
@@ -388,7 +410,7 @@ impl Lowerer {
             _ => {
                 self.error(CompilerError::UncallableType(self.type_name(callee.ty)));
                 Typed {
-                    value: Value::Nil,
+                    value: Value::Atom(Vec::new()),
                     ty: self.db.alloc_type(Type::Unknown),
                 }
             }
@@ -437,6 +459,7 @@ impl Lowerer {
     fn type_name(&self, ty: TypeId) -> String {
         match self.db.ty(ty) {
             Type::Unknown => "{unknown}".to_string(),
+            Type::Nil => "Nil".to_string(),
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Function { params, ret } => {
@@ -452,6 +475,7 @@ impl Lowerer {
             (Type::Unknown, _) | (_, Type::Unknown) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
+            (Type::Nil, Type::Nil) => true,
             (
                 Type::Function {
                     params: params_a,
