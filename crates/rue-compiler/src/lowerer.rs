@@ -585,12 +585,22 @@ impl<'a> Lowerer<'a> {
 
         let callee = self.compile_expr(callee, None);
 
+        let expected = self.extract_function_type_components(callee.ty);
+
         let raw_args = args.exprs();
 
         let args: Vec<Typed> = args
             .exprs()
             .into_iter()
-            .map(|arg| self.compile_expr(arg, None))
+            .enumerate()
+            .map(|(i, arg)| {
+                self.compile_expr(
+                    arg,
+                    expected
+                        .as_ref()
+                        .and_then(|expected| expected.0.get(i).copied()),
+                )
+            })
             .collect();
 
         let arg_types: Vec<TypeId> = args.iter().map(|arg| arg.ty).collect();
