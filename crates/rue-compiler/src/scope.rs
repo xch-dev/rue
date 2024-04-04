@@ -22,10 +22,6 @@ impl Scope {
         self.symbol_table.get(name).copied()
     }
 
-    pub fn definitions(&self) -> &IndexSet<SymbolId> {
-        &self.definitions
-    }
-
     pub fn define_type_alias(&mut self, name: String, type_id: TypeId) {
         self.type_aliases.insert(name.clone(), type_id);
         self.type_names.insert(type_id, name);
@@ -37,5 +33,13 @@ impl Scope {
 
     pub fn type_name(&self, type_id: TypeId) -> Option<&str> {
         self.type_names.get(&type_id).map(|s| s.as_str())
+    }
+
+    pub fn is_defined_here(&self, symbol_id: SymbolId) -> bool {
+        self.definitions.contains(&symbol_id)
+    }
+
+    pub fn definitions(&self) -> Vec<SymbolId> {
+        self.definitions.iter().copied().collect()
     }
 }

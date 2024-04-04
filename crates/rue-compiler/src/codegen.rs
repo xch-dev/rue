@@ -41,7 +41,7 @@ impl<'a> Codegen<'a> {
         match value.clone() {
             Value::Atom(_) => {}
             Value::Reference(symbol_id) => {
-                if !self.db.scope(scope_id).definitions().contains(&symbol_id) {
+                if !self.db.scope(scope_id).is_defined_here(symbol_id) {
                     self.captures
                         .get_mut(&scope_id)
                         .expect("unknown capture scope")
@@ -56,7 +56,7 @@ impl<'a> Codegen<'a> {
                     } => {
                         self.compute_captures_scope(function_scope_id, value);
 
-                        if !self.db.scope(scope_id).definitions().contains(&symbol_id) {
+                        if !self.db.scope(scope_id).is_defined_here(symbol_id) {
                             let new_captures = self.captures[&function_scope_id].clone();
                             self.captures
                                 .get_mut(&scope_id)
