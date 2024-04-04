@@ -363,8 +363,50 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_lambda_expr(&mut self, _lambda_expr: LambdaExpr) -> Typed {
-        todo!()
+    fn compile_lambda_expr(&mut self, lambda_expr: LambdaExpr) -> Typed {
+        let mut scope = Scope::default();
+        let int_type = self.db.alloc_type(Type::Int);
+
+        for param in lambda_expr
+            .param_list()
+            .map(|list| list.params())
+            .unwrap_or_default()
+        {
+            let Some(name) = param.name() else {
+                continue;
+            };
+
+            let symbol_id = self.db.alloc_symbol(Symbol::Parameter { ty: int_type });
+            scope.define_symbol(name.to_string(), symbol_id);
+        }
+
+        let scope_id = self.db.alloc_scope(scope);
+
+        let Some(body) = lambda_expr.body() else {
+            return Typed {
+                value: Value::Atom(Vec::new()),
+                ty: self.db.alloc_type(Type::Unknown),
+            };
+        };
+
+        self.scope_stack.push(scope_id);
+        let body = self.compile_expr(body);
+        self.scope_stack.pop().expect("lambda not in scope stack");
+
+        let symbol_id = self.db.alloc_symbol(Symbol::Function {
+            scope_id,
+            value: body.value,
+            param_types: vec![int_type],
+            ret_type: int_type,
+        });
+
+        Typed {
+            value: Value::Reference(symbol_id),
+            ty: self.db.alloc_type(Type::Function {
+                params: vec![int_type],
+                ret: int_type,
+            }),
+        }
     }
 
     fn compile_if_expr(&mut self, if_expr: IfExpr) -> Typed {
