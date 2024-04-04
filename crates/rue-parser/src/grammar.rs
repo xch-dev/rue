@@ -112,6 +112,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         list_expr(p);
     } else if p.at(SyntaxKind::If) {
         if_expr(p);
+    } else if p.at(SyntaxKind::Fun) {
+        lambda_expr(p);
     } else {
         return p.error(EXPR_RECOVERY_SET);
     }
@@ -180,6 +182,40 @@ fn list_expr(p: &mut Parser) {
         }
     }
     p.expect(SyntaxKind::CloseBracket);
+    p.finish();
+}
+
+fn lambda_expr(p: &mut Parser) {
+    p.start(SyntaxKind::LambdaExpr);
+    p.expect(SyntaxKind::Fun);
+    lambda_params(p);
+    if p.try_eat(SyntaxKind::Colon) {
+        ty(p);
+    }
+    p.expect(SyntaxKind::FatArrow);
+    expr(p);
+    p.finish();
+}
+
+fn lambda_params(p: &mut Parser) {
+    p.start(SyntaxKind::LambdaParamList);
+    p.expect(SyntaxKind::OpenParen);
+    while !p.at(SyntaxKind::CloseParen) {
+        lambda_param(p);
+        if !p.try_eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::CloseParen);
+    p.finish();
+}
+
+fn lambda_param(p: &mut Parser) {
+    p.start(SyntaxKind::LambdaParam);
+    p.expect(SyntaxKind::Ident);
+    if p.try_eat(SyntaxKind::Colon) {
+        ty(p);
+    }
     p.finish();
 }
 

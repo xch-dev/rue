@@ -64,6 +64,7 @@ ast_enum!(
     Expr,
     LiteralExpr,
     ListExpr,
+    LambdaExpr,
     PrefixExpr,
     BinaryExpr,
     IfExpr,
@@ -76,6 +77,10 @@ ast_node!(BinaryExpr);
 ast_node!(IfExpr);
 ast_node!(FunctionCall);
 ast_node!(FunctionCallArgs);
+
+ast_node!(LambdaExpr);
+ast_node!(LambdaParamList);
+ast_node!(LambdaParam);
 
 ast_enum!(Type, LiteralType, ListType, FunctionType);
 ast_node!(LiteralType);
@@ -226,7 +231,7 @@ fn binary_op(kind: SyntaxKind) -> Option<BinaryOp> {
 
 impl BinaryExpr {
     pub fn lhs(&self) -> Option<Expr> {
-        self.syntax().children().filter_map(Expr::cast).nth(0)
+        self.syntax().children().find_map(Expr::cast)
     }
 
     pub fn op_token(&self) -> Option<SyntaxToken> {
@@ -254,13 +259,49 @@ impl ListExpr {
     }
 }
 
+impl LambdaExpr {
+    pub fn param_list(&self) -> Option<LambdaParamList> {
+        self.syntax().children().find_map(LambdaParamList::cast)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+
+    pub fn body(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+}
+
+impl LambdaParamList {
+    pub fn params(&self) -> Vec<LambdaParam> {
+        self.syntax()
+            .children()
+            .filter_map(LambdaParam::cast)
+            .collect()
+    }
+}
+
+impl LambdaParam {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+}
+
 impl IfExpr {
     pub fn condition(&self) -> Option<Expr> {
-        self.syntax().children().filter_map(Expr::cast).nth(0)
+        self.syntax().children().find_map(Expr::cast)
     }
 
     pub fn then_block(&self) -> Option<Block> {
-        self.syntax().children().filter_map(Block::cast).nth(0)
+        self.syntax().children().find_map(Block::cast)
     }
 
     pub fn else_block(&self) -> Option<Block> {
@@ -270,14 +311,11 @@ impl IfExpr {
 
 impl FunctionCall {
     pub fn callee(&self) -> Option<Expr> {
-        self.syntax().children().filter_map(Expr::cast).next()
+        self.syntax().children().find_map(Expr::cast)
     }
 
     pub fn args(&self) -> Option<FunctionCallArgs> {
-        self.syntax()
-            .children()
-            .filter_map(FunctionCallArgs::cast)
-            .next()
+        self.syntax().children().find_map(FunctionCallArgs::cast)
     }
 }
 
@@ -291,8 +329,7 @@ impl LiteralType {
     pub fn value(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .next()
+            .find_map(SyntaxElement::into_token)
     }
 }
 
@@ -304,10 +341,7 @@ impl ListType {
 
 impl FunctionType {
     pub fn params(&self) -> Option<FunctionTypeParams> {
-        self.syntax()
-            .children()
-            .filter_map(FunctionTypeParams::cast)
-            .next()
+        self.syntax().children().find_map(FunctionTypeParams::cast)
     }
 
     pub fn ret(&self) -> Option<Type> {

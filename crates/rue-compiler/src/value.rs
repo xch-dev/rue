@@ -1,10 +1,13 @@
-use crate::database::SymbolId;
+use crate::database::{ScopeId, SymbolId};
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Atom(Vec<u8>),
     List(Vec<Value>),
-    Function(SymbolId),
+    Function {
+        scope_id: ScopeId,
+        value: Box<Value>,
+    },
     Reference(SymbolId),
     FunctionCall {
         callee: Box<Value>,

@@ -85,7 +85,7 @@ impl<'a> Codegen<'a> {
         let mut args = Vec::new();
 
         for symbol_id in self.captures[&scope_id].clone() {
-            args.push(self.gen_symbol(scope_id, symbol_id));
+            args.push(self.gen_symbol(symbol_id));
         }
 
         let arg_list = self.runtime_list(&args, rest);
@@ -93,9 +93,17 @@ impl<'a> Codegen<'a> {
         self.list(&[a, quoted_body, arg_list])
     }
 
-    fn gen_symbol(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
+    fn gen_symbol(&mut self, symbol_id: SymbolId) -> NodePtr {
         match self.db.symbol(symbol_id) {
-            Symbol::Function { .. } => self.gen_value(scope_id, Value::Function(symbol_id)),
+            Symbol::Function {
+                scope_id, value, ..
+            } => self.gen_value(
+                *scope_id,
+                Value::Function {
+                    scope_id: *scope_id,
+                    value: Box::new(value.clone()),
+                },
+            ),
             Symbol::Parameter { .. } => todo!(),
         }
     }
@@ -106,7 +114,7 @@ impl<'a> Codegen<'a> {
             Value::List(list) => self.gen_list(scope_id, list),
             Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
             Value::FunctionCall { callee, args } => self.gen_function_call(scope_id, *callee, args),
-            Value::Function(symbol_id) => self.gen_function(symbol_id),
+            Value::Function { scope_id, value } => self.gen_function(scope_id, *value),
             Value::Add(operands) => self.gen_add(scope_id, operands),
             Value::Subtract(operands) => self.gen_subtract(scope_id, operands),
             Value::Multiply(operands) => self.gen_multiply(scope_id, operands),
@@ -142,36 +150,45 @@ impl<'a> Codegen<'a> {
             ..
         } = self.db.symbol(symbol_id).clone()
         {
-            let q = self.allocator.one();
-            let one = q;
-            let a = self
-                .allocator
-                .new_small_number(2)
-                .expect("could not allocate `a`");
-
             let body = self.gen_path(scope_id, symbol_id);
 
-            let runtime_a = self.quote(a);
-            let runtime_quoted_body = self.runtime_quote(body);
-
-            let mut args = Vec::new();
+            let mut captures = Vec::new();
 
             for symbol_id in self.captures[&function_scope_id].clone() {
-                let path = self.gen_path(scope_id, symbol_id);
-                let runtime_quoted_arg = self.runtime_quote(path);
-                args.push(runtime_quoted_arg);
+                captures.push(self.gen_path(scope_id, symbol_id));
             }
 
-            let quoted_one = self.quote(one);
-            let runtime_args = self.runtime_runtime_list(&args, quoted_one);
-
-            return self.runtime_list(
-                &[runtime_a, runtime_quoted_body, runtime_args],
-                NodePtr::NIL,
-            );
+            return self.gen_closure_wrapper(body, &captures);
         }
 
         self.gen_path(scope_id, symbol_id)
+    }
+
+    fn gen_closure_wrapper(&mut self, body: NodePtr, captures: &[NodePtr]) -> NodePtr {
+        let q = self.allocator.one();
+        let one = q;
+        let a = self
+            .allocator
+            .new_small_number(2)
+            .expect("could not allocate `a`");
+
+        let runtime_a = self.quote(a);
+        let runtime_quoted_body = self.runtime_quote(body);
+
+        let mut args = Vec::new();
+
+        for &capture in captures {
+            let runtime_quoted_arg = self.runtime_quote(capture);
+            args.push(runtime_quoted_arg);
+        }
+
+        let quoted_one = self.quote(one);
+        let runtime_args = self.runtime_runtime_list(&args, quoted_one);
+
+        self.runtime_list(
+            &[runtime_a, runtime_quoted_body, runtime_args],
+            NodePtr::NIL,
+        )
     }
 
     fn gen_function_call(
@@ -212,16 +229,8 @@ impl<'a> Codegen<'a> {
         self.list(&[a, callee, arg_list])
     }
 
-    fn gen_function(&mut self, symbol_id: SymbolId) -> NodePtr {
-        let Symbol::Function {
-            scope_id: function_scope_id,
-            value,
-            ..
-        } = &self.db.symbol(symbol_id)
-        else {
-            unreachable!();
-        };
-        let body = self.gen_value(*function_scope_id, value.clone());
+    fn gen_function(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
+        let body = self.gen_value(scope_id, value);
         self.quote(body)
     }
 

@@ -20,6 +20,7 @@ pub enum TokenKind {
     Colon,
     Semicolon,
     Arrow,
+    FatArrow,
     Plus,
     Minus,
     Star,

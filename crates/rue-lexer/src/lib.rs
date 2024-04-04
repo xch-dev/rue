@@ -63,6 +63,10 @@ impl<'a> Lexer<'a> {
                     self.bump();
                     TokenKind::Equals
                 }
+                '>' => {
+                    self.bump();
+                    TokenKind::FatArrow
+                }
                 _ => TokenKind::Assign,
             },
             '!' => match self.peek() {
@@ -255,6 +259,7 @@ mod tests {
         check(":", &[TokenKind::Colon]);
         check(";", &[TokenKind::Semicolon]);
         check("->", &[TokenKind::Arrow]);
+        check("=>", &[TokenKind::FatArrow]);
     }
 
     #[test]

@@ -1,8 +1,8 @@
 use clvmr::Allocator;
 use rue_parser::{
     BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr, Item,
-    ListExpr, ListType, LiteralExpr, LiteralType, PrefixOp, Root, SyntaxKind, SyntaxToken,
-    TypeAliasItem,
+    LambdaExpr, ListExpr, ListType, LiteralExpr, LiteralType, PrefixOp, Root, SyntaxKind,
+    SyntaxToken, TypeAliasItem,
 };
 
 use crate::{
@@ -199,6 +199,7 @@ impl Lowerer {
         match expr {
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list),
+            Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr),
@@ -378,6 +379,10 @@ impl Lowerer {
             value: Value::List(items.into_iter().map(|item| item.value).collect()),
             ty: self.db.alloc_type(Type::List(ty)),
         }
+    }
+
+    fn compile_lambda_expr(&mut self, _lambda_expr: LambdaExpr) -> Typed {
+        todo!()
     }
 
     fn compile_if_expr(&mut self, if_expr: IfExpr) -> Typed {
