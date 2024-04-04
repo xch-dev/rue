@@ -155,7 +155,7 @@ impl<'a> Lowerer<'a> {
             };
 
             self.scope_stack.push(body_scope_id);
-            let ret = self.compile_block(body);
+            let ret = self.compile_block(body, Some(expected_ret_type));
             self.scope_stack.pop().expect("function not in scope stack");
 
             if !self.is_assignable_to(self.db.ty(ret.ty), self.db.ty(expected_ret_type)) {
@@ -190,7 +190,7 @@ impl<'a> Lowerer<'a> {
         self.detect_cycle(type_id, text_range);
     }
 
-    fn compile_block(&mut self, block: Block) -> Typed {
+    fn compile_block(&mut self, block: Block, expected_type: Option<TypeId>) -> Typed {
         let Some(expr) = block.expr() else {
             return Typed {
                 value: Value::Unknown,
@@ -198,37 +198,30 @@ impl<'a> Lowerer<'a> {
             };
         };
 
-        self.compile_expr(expr)
+        self.compile_expr(expr, expected_type)
     }
 
-    fn compile_expr(&mut self, expr: Expr) -> Typed {
+    fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Typed {
         match expr {
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
-            Expr::ListExpr(list) => self.compile_list_expr(list, None),
-            Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda),
+            Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
+            Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
-            Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr),
+            Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
             Expr::FunctionCall(call) => self.compile_function_call(call),
         }
     }
 
-    fn compile_prefix_expr(&mut self, prefix: rue_parser::PrefixExpr) -> Typed {
-        let Some(op) = prefix.op() else {
+    fn compile_prefix_expr(&mut self, prefix_expr: rue_parser::PrefixExpr) -> Typed {
+        let Some(expr) = prefix_expr.expr() else {
             return Typed {
                 value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
-        let Some(expr) = prefix.expr() else {
-            return Typed {
-                value: Value::Unknown,
-                ty: self.db.alloc_type(Type::Unknown),
-            };
-        };
-
-        let expr = self.compile_expr(expr);
+        let expr = self.compile_expr(expr, None);
 
         if !self.is_assignable_to(self.db.ty(expr.ty), &Type::Bool) {
             self.error(
@@ -236,87 +229,77 @@ impl<'a> Lowerer<'a> {
                     expected: "Bool".to_string(),
                     found: self.type_name(expr.ty),
                 },
-                prefix.syntax().text_range(),
+                prefix_expr.syntax().text_range(),
             );
         }
 
-        let expr = expr.value;
-
-        let value = match op {
-            PrefixOp::Not => Value::Not(Box::new(expr)),
-        };
-
         Typed {
-            value,
+            value: match prefix_expr.op() {
+                Some(PrefixOp::Not) => Value::Not(Box::new(expr.value)),
+                _ => Value::Unknown,
+            },
             ty: self.db.alloc_type(Type::Bool),
         }
     }
 
     fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Typed {
-        let Some(lhs) = binary.lhs() else {
-            return Typed {
-                value: Value::Unknown,
-                ty: self.db.alloc_type(Type::Unknown),
-            };
-        };
+        let lhs = binary.lhs().map(|lhs| self.compile_expr(lhs, None));
+        let rhs = binary.rhs().map(|rhs| self.compile_expr(rhs, None));
 
-        let Some(rhs) = binary.rhs() else {
-            return Typed {
-                value: Value::Unknown,
-                ty: self.db.alloc_type(Type::Unknown),
-            };
-        };
-
-        let Some(op) = binary.op() else {
-            return Typed {
-                value: Value::Unknown,
-                ty: self.db.alloc_type(Type::Unknown),
-            };
-        };
-
-        let lhs = self.compile_expr(lhs);
-        let rhs = self.compile_expr(rhs);
-
-        if !self.is_assignable_to(self.db.ty(lhs.ty), &Type::Int) {
-            self.error(
-                DiagnosticInfo::TypeMismatch {
-                    expected: "Int".to_string(),
-                    found: self.type_name(lhs.ty),
-                },
-                binary.syntax().text_range(),
-            );
+        if let Some(Typed { ty, .. }) = &lhs {
+            if !self.is_assignable_to(self.db.ty(*ty), &Type::Int) {
+                self.error(
+                    DiagnosticInfo::TypeMismatch {
+                        expected: "Int".to_string(),
+                        found: self.type_name(*ty),
+                    },
+                    binary.lhs().unwrap().syntax().text_range(),
+                );
+            }
         }
 
-        if !self.is_assignable_to(self.db.ty(rhs.ty), &Type::Int) {
-            self.error(
-                DiagnosticInfo::TypeMismatch {
-                    expected: "Int".to_string(),
-                    found: self.type_name(rhs.ty),
-                },
-                binary.syntax().text_range(),
-            );
+        if let Some(Typed { ty, .. }) = &rhs {
+            if !self.is_assignable_to(self.db.ty(*ty), &Type::Int) {
+                self.error(
+                    DiagnosticInfo::TypeMismatch {
+                        expected: "Int".to_string(),
+                        found: self.type_name(*ty),
+                    },
+                    binary.rhs().unwrap().syntax().text_range(),
+                );
+            }
         }
 
-        let lhs = Box::new(lhs.value);
-        let rhs = Box::new(rhs.value);
+        let ty = binary
+            .op()
+            .map(|op| match op {
+                BinaryOp::Add => Type::Int,
+                BinaryOp::Subtract => Type::Int,
+                BinaryOp::Multiply => Type::Int,
+                BinaryOp::Divide => Type::Int,
+                BinaryOp::Remainder => Type::Int,
+                BinaryOp::LessThan => Type::Bool,
+                BinaryOp::GreaterThan => Type::Bool,
+                BinaryOp::LessThanEquals => Type::Bool,
+                BinaryOp::GreaterThanEquals => Type::Bool,
+                BinaryOp::Equals => Type::Bool,
+                BinaryOp::NotEquals => Type::Bool,
+            })
+            .unwrap_or(Type::Unknown);
 
-        let ty = match op {
-            BinaryOp::Add => Type::Int,
-            BinaryOp::Subtract => Type::Int,
-            BinaryOp::Multiply => Type::Int,
-            BinaryOp::Divide => Type::Int,
-            BinaryOp::Remainder => Type::Int,
-            BinaryOp::LessThan => Type::Bool,
-            BinaryOp::GreaterThan => Type::Bool,
-            BinaryOp::LessThanEquals => Type::Bool,
-            BinaryOp::GreaterThanEquals => Type::Bool,
-            BinaryOp::Equals => Type::Bool,
-            BinaryOp::NotEquals => Type::Bool,
-        };
-
-        Typed {
-            value: Value::BinaryOp { op, lhs, rhs },
-            ty: self.db.alloc_type(ty),
+        match (lhs, rhs, binary.op()) {
+            (Some(Typed { value: lhs, .. }), Some(Typed { value: rhs, .. }), Some(op)) => Typed {
+                value: Value::BinaryOp {
+                    op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                },
+                ty: self.db.alloc_type(ty),
+            },
+            _ => Typed {
+                value: Value::Unknown,
+                ty: self.db.alloc_type(ty),
+            },
         }
     }
 
@@ -348,54 +331,74 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_list_expr(&mut self, list_expr: ListExpr, infer: Option<TypeId>) -> Typed {
-        let items: Vec<Typed> = list_expr
-            .items()
-            .into_iter()
-            .map(|item| self.compile_expr(item))
-            .collect();
-
-        let item_type = items
-            .first()
-            .map(|item| item.ty)
-            .or(infer.and_then(|infer| self.extract_list_item_type(infer)))
-            .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
-
+    fn compile_list_expr(&mut self, list_expr: ListExpr, expected_type: Option<TypeId>) -> Typed {
         let ast_items = list_expr.items();
 
-        for (i, item) in items.iter().enumerate().skip(1) {
+        let expected_first_type = expected_type.and_then(|ty| self.extract_list_item_type(ty));
+
+        let first_item = ast_items
+            .first()
+            .map(|first| self.compile_expr(first.clone(), expected_first_type));
+
+        let expected_item_type = first_item.as_ref().map(|item| item.ty);
+        let item_type = expected_item_type.unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+
+        let mut items = first_item.map(|item| vec![item.value]).unwrap_or_default();
+
+        for ast_item in ast_items.into_iter().skip(1) {
+            let item = self.compile_expr(ast_item.clone(), expected_item_type);
+
             if !self.is_assignable_to(self.db.ty(item.ty), self.db.ty(item_type)) {
                 self.error(
                     DiagnosticInfo::TypeMismatch {
-                        expected: self.type_name(item_type),
+                        expected: self.type_name(expected_item_type.unwrap()),
                         found: self.type_name(item.ty),
                     },
-                    ast_items[i].syntax().text_range(),
+                    ast_item.syntax().text_range(),
                 );
             }
+
+            items.push(item.value);
         }
 
         Typed {
-            value: Value::List(items.into_iter().map(|item| item.value).collect()),
+            value: Value::List(items),
             ty: self.db.alloc_type(Type::List(item_type)),
         }
     }
 
-    fn compile_lambda_expr(&mut self, lambda_expr: LambdaExpr) -> Typed {
-        let mut scope = Scope::default();
-        let int_type = self.db.alloc_type(Type::Int);
+    fn compile_lambda_expr(
+        &mut self,
+        lambda_expr: LambdaExpr,
+        expected_type: Option<TypeId>,
+    ) -> Typed {
+        let expected =
+            expected_type.and_then(|expected| self.extract_function_type_components(expected));
 
-        for param in lambda_expr
+        let mut scope = Scope::default();
+        let mut param_types = Vec::new();
+
+        for (i, param) in lambda_expr
             .param_list()
             .map(|list| list.params())
             .unwrap_or_default()
+            .into_iter()
+            .enumerate()
         {
-            let Some(name) = param.name() else {
-                continue;
-            };
+            let ty = param
+                .ty()
+                .map(|ty| self.compile_ty(ty))
+                .or(expected
+                    .as_ref()
+                    .and_then(|expected| expected.0.get(i).copied()))
+                .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
-            let symbol_id = self.db.alloc_symbol(Symbol::Parameter { ty: int_type });
-            scope.define_symbol(name.to_string(), symbol_id);
+            param_types.push(ty);
+
+            if let Some(name) = param.name() {
+                let symbol_id = self.db.alloc_symbol(Symbol::Parameter { ty });
+                scope.define_symbol(name.to_string(), symbol_id);
+            };
         }
 
         let scope_id = self.db.alloc_scope(scope);
@@ -407,36 +410,53 @@ impl<'a> Lowerer<'a> {
             };
         };
 
+        let expected_ret_type = lambda_expr
+            .ty()
+            .map(|ty| self.compile_ty(ty))
+            .or(expected.map(|expected| expected.1));
+
         self.scope_stack.push(scope_id);
-        let body = self.compile_expr(body);
+        let body = self.compile_expr(body, expected_ret_type);
         self.scope_stack.pop().expect("lambda not in scope stack");
+
+        let ret_type = expected_ret_type.unwrap_or(body.ty);
+
+        if !self.is_assignable_to(self.db.ty(body.ty), self.db.ty(ret_type)) {
+            self.error(
+                DiagnosticInfo::TypeMismatch {
+                    expected: self.type_name(ret_type),
+                    found: self.type_name(body.ty),
+                },
+                lambda_expr.body().unwrap().syntax().text_range(),
+            );
+        }
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
             value: body.value,
-            param_types: vec![int_type],
-            ret_type: int_type,
+            param_types: param_types.clone(),
+            ret_type,
         });
 
         Typed {
             value: Value::Reference(symbol_id),
             ty: self.db.alloc_type(Type::Function {
-                params: vec![int_type],
-                ret: int_type,
+                params: param_types,
+                ret: ret_type,
             }),
         }
     }
 
-    fn compile_if_expr(&mut self, if_expr: IfExpr) -> Typed {
+    fn compile_if_expr(&mut self, if_expr: IfExpr, expected_type: Option<TypeId>) -> Typed {
         let condition = if_expr
             .condition()
-            .map(|condition| self.compile_expr(condition));
+            .map(|condition| self.compile_expr(condition, None));
         let then_block = if_expr
             .then_block()
-            .map(|then_block| self.compile_block(then_block));
+            .map(|then_block| self.compile_block(then_block, expected_type));
         let else_block = if_expr
             .else_block()
-            .map(|else_block| self.compile_block(else_block));
+            .map(|else_block| self.compile_block(else_block, expected_type));
 
         if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty) {
             if !self.is_assignable_to(self.db.ty(condition_type), &Type::Bool) {
@@ -563,14 +583,14 @@ impl<'a> Lowerer<'a> {
             };
         };
 
-        let callee = self.compile_expr(callee);
+        let callee = self.compile_expr(callee, None);
 
         let raw_args = args.exprs();
 
         let args: Vec<Typed> = args
             .exprs()
             .into_iter()
-            .map(|arg| self.compile_expr(arg))
+            .map(|arg| self.compile_expr(arg, None))
             .collect();
 
         let arg_types: Vec<TypeId> = args.iter().map(|arg| arg.ty).collect();
@@ -698,6 +718,13 @@ impl<'a> Lowerer<'a> {
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
         self.db.alloc_type(Type::Function { params, ret })
+    }
+
+    fn extract_function_type_components(&self, type_id: TypeId) -> Option<(Vec<TypeId>, TypeId)> {
+        match self.db.ty(type_id) {
+            Type::Function { params, ret } => Some((params.clone(), *ret)),
+            _ => None,
+        }
     }
 
     fn extract_list_item_type(&self, type_id: TypeId) -> Option<TypeId> {
