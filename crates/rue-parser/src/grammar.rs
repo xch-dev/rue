@@ -23,7 +23,7 @@ fn function_item(p: &mut Parser) {
     p.expect(SyntaxKind::Fun);
     p.expect(SyntaxKind::Ident);
     function_params(p);
-    p.expect(SyntaxKind::Colon);
+    p.expect(SyntaxKind::Arrow);
     ty(p);
     block(p);
     p.finish();
