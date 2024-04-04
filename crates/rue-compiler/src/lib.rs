@@ -48,7 +48,15 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
         };
     };
 
-    let node_ptr = codegen(allocator, &mut db, main);
+    let node_ptr = if !output
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.kind() == DiagnosticKind::Error)
+    {
+        codegen(allocator, &mut db, main)
+    } else {
+        NodePtr::NIL
+    };
 
     Output {
         diagnostics: output.diagnostics,

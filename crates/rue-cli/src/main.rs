@@ -46,7 +46,6 @@ fn main() {
 
             eprintln!("{} at {line}:{column}", error.kind());
         }
-        return;
     }
 
     let mut allocator = Allocator::new();
