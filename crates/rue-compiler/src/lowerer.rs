@@ -2,9 +2,10 @@ use std::collections::HashSet;
 
 use clvmr::Allocator;
 use indexmap::IndexSet;
+use rowan::TextRange;
 use rue_parser::{
-    BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr, Item,
-    LambdaExpr, ListExpr, ListType, LiteralExpr, LiteralType, PrefixOp, Root, SyntaxKind,
+    AstNode, BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr,
+    Item, LambdaExpr, ListExpr, ListType, LiteralExpr, LiteralType, PrefixOp, Root, SyntaxKind,
     SyntaxToken, TypeAliasItem,
 };
 
@@ -14,11 +15,11 @@ use crate::{
     symbol::Symbol,
     ty::{Type, Typed},
     value::Value,
-    CompilerError,
+    Diagnostic, DiagnosticInfo, DiagnosticKind,
 };
 
 pub struct LowerOutput {
-    pub errors: Vec<CompilerError>,
+    pub diagnostics: Vec<Diagnostic>,
     pub main_scope_id: ScopeId,
 }
 
@@ -29,7 +30,7 @@ pub fn lower(db: &mut Database, root: Root) -> LowerOutput {
 struct Lowerer<'a> {
     db: &'a mut Database,
     scope_stack: Vec<ScopeId>,
-    errors: Vec<CompilerError>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> Lowerer<'a> {
@@ -37,7 +38,7 @@ impl<'a> Lowerer<'a> {
         Self {
             db,
             scope_stack: Vec::new(),
-            errors: Vec::new(),
+            diagnostics: Vec::new(),
         }
     }
 
@@ -82,7 +83,7 @@ impl<'a> Lowerer<'a> {
         }
 
         LowerOutput {
-            errors: self.errors,
+            diagnostics: self.diagnostics,
             main_scope_id: scope_id,
         }
     }
@@ -158,10 +159,13 @@ impl<'a> Lowerer<'a> {
             self.scope_stack.pop().expect("function not in scope stack");
 
             if !self.is_assignable_to(self.db.ty(ret.ty), self.db.ty(expected_ret_type)) {
-                self.error(CompilerError::TypeMismatch {
-                    expected: self.type_name(expected_ret_type),
-                    found: self.type_name(ret.ty),
-                });
+                self.error(
+                    DiagnosticInfo::TypeMismatch {
+                        expected: self.type_name(expected_ret_type),
+                        found: self.type_name(ret.ty),
+                    },
+                    function.syntax().text_range(),
+                );
             }
 
             match &mut self.db.symbol_mut(symbol_id) {
@@ -174,6 +178,8 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_type_alias(&mut self, ty: TypeAliasItem, type_id: TypeId) {
+        let text_range = ty.syntax().text_range();
+
         let ty = ty
             .ty()
             .map(|ty| self.compile_ty(ty))
@@ -181,7 +187,7 @@ impl<'a> Lowerer<'a> {
 
         *self.db.ty_mut(type_id) = Type::Alias(ty);
 
-        self.detect_cycle(type_id);
+        self.detect_cycle(type_id, text_range);
     }
 
     fn compile_block(&mut self, block: Block) -> Typed {
@@ -225,10 +231,13 @@ impl<'a> Lowerer<'a> {
         let expr = self.compile_expr(expr);
 
         if !self.is_assignable_to(self.db.ty(expr.ty), &Type::Bool) {
-            self.error(CompilerError::TypeMismatch {
-                expected: "Bool".to_string(),
-                found: self.type_name(expr.ty),
-            });
+            self.error(
+                DiagnosticInfo::TypeMismatch {
+                    expected: "Bool".to_string(),
+                    found: self.type_name(expr.ty),
+                },
+                prefix.syntax().text_range(),
+            );
         }
 
         let expr = expr.value;
@@ -269,17 +278,23 @@ impl<'a> Lowerer<'a> {
         let rhs = self.compile_expr(rhs);
 
         if !self.is_assignable_to(self.db.ty(lhs.ty), &Type::Int) {
-            self.error(CompilerError::TypeMismatch {
-                expected: "Int".to_string(),
-                found: self.type_name(lhs.ty),
-            });
+            self.error(
+                DiagnosticInfo::TypeMismatch {
+                    expected: "Int".to_string(),
+                    found: self.type_name(lhs.ty),
+                },
+                binary.syntax().text_range(),
+            );
         }
 
         if !self.is_assignable_to(self.db.ty(rhs.ty), &Type::Int) {
-            self.error(CompilerError::TypeMismatch {
-                expected: "Int".to_string(),
-                found: self.type_name(rhs.ty),
-            });
+            self.error(
+                DiagnosticInfo::TypeMismatch {
+                    expected: "Int".to_string(),
+                    found: self.type_name(rhs.ty),
+                },
+                binary.syntax().text_range(),
+            );
         }
 
         let lhs = Box::new(lhs.value);
@@ -346,12 +361,17 @@ impl<'a> Lowerer<'a> {
             None => self.db.alloc_type(Type::Unknown),
         };
 
-        for item in items.iter().skip(1) {
+        let ast = list_expr.items();
+
+        for (i, item) in items.iter().enumerate().skip(1) {
             if !self.is_assignable_to(self.db.ty(item.ty), self.db.ty(ty)) {
-                self.error(CompilerError::TypeMismatch {
-                    expected: self.type_name(ty),
-                    found: self.type_name(item.ty),
-                });
+                self.error(
+                    DiagnosticInfo::TypeMismatch {
+                        expected: self.type_name(ty),
+                        found: self.type_name(item.ty),
+                    },
+                    ast[i].syntax().text_range(),
+                );
             }
         }
 
@@ -429,22 +449,31 @@ impl<'a> Lowerer<'a> {
             };
         };
 
+        let condition_expr = condition.clone();
+        let else_expr = else_block.clone();
+
         let condition = self.compile_expr(condition);
         let then_block = self.compile_block(then_block);
         let else_block = self.compile_block(else_block);
 
         if !self.is_assignable_to(self.db.ty(condition.ty), &Type::Bool) {
-            self.error(CompilerError::TypeMismatch {
-                expected: "Bool".to_string(),
-                found: self.type_name(condition.ty),
-            });
+            self.error(
+                DiagnosticInfo::TypeMismatch {
+                    expected: "Bool".to_string(),
+                    found: self.type_name(condition.ty),
+                },
+                condition_expr.syntax().text_range(),
+            );
         }
 
         if !self.is_assignable_to(self.db.ty(then_block.ty), self.db.ty(else_block.ty)) {
-            self.error(CompilerError::TypeMismatch {
-                expected: self.type_name(then_block.ty),
-                found: self.type_name(else_block.ty),
-            });
+            self.error(
+                DiagnosticInfo::TypeMismatch {
+                    expected: self.type_name(then_block.ty),
+                    found: self.type_name(else_block.ty),
+                },
+                else_expr.syntax().text_range(),
+            );
         }
 
         Typed {
@@ -494,7 +523,10 @@ impl<'a> Lowerer<'a> {
             .rev()
             .find_map(|&scope_id| self.db.scope(scope_id).symbol(name))
         else {
-            self.error(CompilerError::UndefinedReference(name.to_string()));
+            self.error(
+                DiagnosticInfo::UndefinedReference(name.to_string()),
+                ident.text_range(),
+            );
 
             return Typed {
                 value: Value::Atom(Vec::new()),
@@ -537,6 +569,9 @@ impl<'a> Lowerer<'a> {
         };
 
         let callee = self.compile_expr(callee);
+
+        let raw_args = args.exprs();
+
         let args: Vec<Typed> = args
             .exprs()
             .into_iter()
@@ -549,10 +584,13 @@ impl<'a> Lowerer<'a> {
         match self.db.ty(callee.ty).clone() {
             Type::Function { params, ret } => {
                 if params.len() != arg_types.len() {
-                    self.error(CompilerError::ArgumentMismatch {
-                        expected: params.len(),
-                        found: arg_types.len(),
-                    });
+                    self.error(
+                        DiagnosticInfo::ArgumentMismatch {
+                            expected: params.len(),
+                            found: arg_types.len(),
+                        },
+                        call.args().expect("no arguments").syntax().text_range(),
+                    );
 
                     return Typed {
                         value: Value::Atom(Vec::new()),
@@ -560,18 +598,23 @@ impl<'a> Lowerer<'a> {
                     };
                 }
 
-                for (param, arg) in params.clone().into_iter().zip(arg_types.iter()) {
+                for (i, (param, arg)) in
+                    params.clone().into_iter().zip(arg_types.iter()).enumerate()
+                {
                     let error = if !self.is_assignable_to(self.db.ty(param), self.db.ty(*arg)) {
-                        Some(CompilerError::TypeMismatch {
-                            expected: self.type_name(param),
-                            found: self.type_name(*arg),
-                        })
+                        Some((
+                            DiagnosticInfo::TypeMismatch {
+                                expected: self.type_name(param),
+                                found: self.type_name(*arg),
+                            },
+                            raw_args[i].syntax().text_range(),
+                        ))
                     } else {
                         None
                     };
 
-                    if let Some(error) = error {
-                        self.error(error);
+                    if let Some((error, range)) = error {
+                        self.error(error, range);
                     }
                 }
 
@@ -591,7 +634,10 @@ impl<'a> Lowerer<'a> {
                 ty: self.db.alloc_type(Type::Unknown),
             },
             _ => {
-                self.error(CompilerError::UncallableType(self.type_name(callee.ty)));
+                self.error(
+                    DiagnosticInfo::UncallableType(self.type_name(callee.ty)),
+                    call.callee().expect("no callee").syntax().text_range(),
+                );
                 Typed {
                     value: Value::Atom(Vec::new()),
                     ty: self.db.alloc_type(Type::Unknown),
@@ -624,7 +670,10 @@ impl<'a> Lowerer<'a> {
             "Bool" => self.db.alloc_type(Type::Bool),
             "Bytes" => self.db.alloc_type(Type::Bytes),
             _ => {
-                self.error(CompilerError::UndefinedType(value.to_string()));
+                self.error(
+                    DiagnosticInfo::UndefinedType(value.to_string()),
+                    literal.syntax().text_range(),
+                );
                 self.db.alloc_type(Type::Unknown)
             }
         }
@@ -656,11 +705,16 @@ impl<'a> Lowerer<'a> {
         self.db.alloc_type(Type::Function { params, ret })
     }
 
-    fn detect_cycle(&mut self, ty: TypeId) {
-        self.detect_cycle_visitor(ty, &mut HashSet::new())
+    fn detect_cycle(&mut self, ty: TypeId, text_range: TextRange) {
+        self.detect_cycle_visitor(ty, text_range, &mut HashSet::new())
     }
 
-    fn detect_cycle_visitor(&mut self, ty: TypeId, visited_aliases: &mut HashSet<TypeId>) {
+    fn detect_cycle_visitor(
+        &mut self,
+        ty: TypeId,
+        text_range: TextRange,
+        visited_aliases: &mut HashSet<TypeId>,
+    ) {
         match self.db.ty(ty).clone() {
             Type::Unknown => {}
             Type::Nil => {}
@@ -668,21 +722,21 @@ impl<'a> Lowerer<'a> {
             Type::Bool => {}
             Type::Bytes => {}
             Type::List(inner) => {
-                self.detect_cycle_visitor(inner, visited_aliases);
+                self.detect_cycle_visitor(inner, text_range, visited_aliases);
             }
             Type::Function { params, ret } => {
                 for &param in params.iter() {
-                    self.detect_cycle_visitor(param, visited_aliases);
+                    self.detect_cycle_visitor(param, text_range, visited_aliases);
                 }
 
-                self.detect_cycle_visitor(ret, visited_aliases);
+                self.detect_cycle_visitor(ret, text_range, visited_aliases);
             }
             Type::Alias(alias) => {
                 if !visited_aliases.insert(alias) {
-                    self.error(CompilerError::RecursiveTypeAlias);
+                    self.error(DiagnosticInfo::RecursiveTypeAlias, text_range);
                     return;
                 }
-                self.detect_cycle_visitor(alias, visited_aliases);
+                self.detect_cycle_visitor(alias, text_range, visited_aliases);
             }
         }
     }
@@ -795,7 +849,19 @@ impl<'a> Lowerer<'a> {
             .scope_mut(self.scope_stack.last().copied().expect("no scope found"))
     }
 
-    fn error(&mut self, error: CompilerError) {
-        self.errors.push(error);
+    fn error(&mut self, info: DiagnosticInfo, range: TextRange) {
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Error,
+            info,
+            range.start().into()..range.end().into(),
+        ));
+    }
+
+    fn _warning(&mut self, info: DiagnosticInfo, range: TextRange) {
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Warning,
+            info,
+            range.start().into()..range.end().into(),
+        ));
     }
 }

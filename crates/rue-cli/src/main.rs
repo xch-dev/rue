@@ -14,6 +14,26 @@ struct Args {
     file: String,
 }
 
+fn line_col(source: &str, index: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut column = 1;
+
+    for (i, character) in source.chars().enumerate() {
+        if i == index {
+            break;
+        }
+
+        if character == '\n' {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+
+    (line, column)
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -22,21 +42,7 @@ fn main() {
 
     if !errors.is_empty() {
         for error in errors {
-            let mut line = 1;
-            let mut column = 1;
-
-            for (index, character) in source.chars().enumerate() {
-                if index == error.range().start {
-                    break;
-                }
-
-                if character == '\n' {
-                    line += 1;
-                    column = 1;
-                } else {
-                    column += 1;
-                }
-            }
+            let (line, column) = line_col(&source, error.span().start);
 
             eprintln!("{} at {line}:{column}", error.kind());
         }
@@ -46,9 +52,10 @@ fn main() {
     let mut allocator = Allocator::new();
     let output = compile(&mut allocator, ast);
 
-    if !output.errors().is_empty() {
-        for error in output.errors() {
-            eprintln!("{}", error);
+    if !output.diagnostics().is_empty() {
+        for error in output.diagnostics() {
+            let (line, column) = line_col(&source, error.span().start);
+            eprintln!("{} at {line}:{column}", error.info());
         }
         return;
     }

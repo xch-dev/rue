@@ -7,20 +7,20 @@ use crate::SyntaxKind;
 #[derive(Debug)]
 pub struct ParserError {
     kind: ParserErrorKind,
-    range: Range<usize>,
+    span: Range<usize>,
 }
 
 impl ParserError {
-    pub fn new(kind: ParserErrorKind, range: Range<usize>) -> Self {
-        Self { kind, range }
+    pub fn new(kind: ParserErrorKind, span: Range<usize>) -> Self {
+        Self { kind, span }
     }
 
     pub fn kind(&self) -> &ParserErrorKind {
         &self.kind
     }
 
-    pub fn range(&self) -> &Range<usize> {
-        &self.range
+    pub fn span(&self) -> &Range<usize> {
+        &self.span
     }
 }
 

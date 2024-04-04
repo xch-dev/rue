@@ -30,6 +30,7 @@ macro_rules! ast_node {
 
 macro_rules! ast_enum {
     ($name:ident, $( $kind:ident ),+ $(,)? ) => {
+        #[derive(Debug, Clone)]
         pub enum $name {
             $( $kind($kind), )+
         }

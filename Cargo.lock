@@ -701,6 +701,7 @@ dependencies = [
  "id-arena",
  "indexmap",
  "num-bigint",
+ "rowan",
  "rue-parser",
  "thiserror",
 ]

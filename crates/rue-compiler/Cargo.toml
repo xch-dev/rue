@@ -8,5 +8,6 @@ clvmr = "0.6.1"
 id-arena = "2.2.1"
 indexmap = "2.2.6"
 num-bigint = "0.4.4"
+rowan = "0.15.15"
 rue-parser = { path = "../rue-parser" }
 thiserror = "1.0.58"

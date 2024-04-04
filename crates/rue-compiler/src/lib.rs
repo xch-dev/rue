@@ -19,13 +19,13 @@ mod value;
 pub use error::*;
 
 pub struct Output {
-    errors: Vec<CompilerError>,
+    diagnostics: Vec<Diagnostic>,
     node_ptr: NodePtr,
 }
 
 impl Output {
-    pub fn errors(&self) -> &[CompilerError] {
-        &self.errors
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
     }
 
     pub fn node_ptr(&self) -> NodePtr {
@@ -38,10 +38,14 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
     let mut output = lower(&mut db, root);
 
     let Some(main) = db.scope_mut(output.main_scope_id).symbol("main") else {
-        output.errors.push(CompilerError::MissingMain);
+        output.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Error,
+            DiagnosticInfo::MissingMain,
+            0..0,
+        ));
 
         return Output {
-            errors: output.errors,
+            diagnostics: output.diagnostics,
             node_ptr: NodePtr::NIL,
         };
     };
@@ -49,7 +53,7 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
     let node_ptr = codegen(allocator, &mut db, main);
 
     Output {
-        errors: output.errors,
+        diagnostics: output.diagnostics,
         node_ptr,
     }
 }
