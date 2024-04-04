@@ -1,5 +1,3 @@
-#![forbid(clippy::unwrap_used)]
-
 use clvmr::{Allocator, NodePtr};
 use codegen::codegen;
 use database::{Database, SymbolId};

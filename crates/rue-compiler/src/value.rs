@@ -4,6 +4,7 @@ use crate::database::SymbolId;
 
 #[derive(Debug, Clone)]
 pub enum Value {
+    Unknown,
     Atom(Vec<u8>),
     List(Vec<Value>),
     Reference(SymbolId),

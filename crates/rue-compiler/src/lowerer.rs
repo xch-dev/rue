@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use clvmr::Allocator;
 use indexmap::IndexSet;
+use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr,
@@ -122,7 +122,7 @@ impl<'a> Lowerer<'a> {
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
-            value: Value::Atom(Vec::new()),
+            value: Value::Unknown,
             ret_type: ret_ty,
             param_types,
         });
@@ -193,7 +193,7 @@ impl<'a> Lowerer<'a> {
     fn compile_block(&mut self, block: Block) -> Typed {
         let Some(expr) = block.expr() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -204,7 +204,7 @@ impl<'a> Lowerer<'a> {
     fn compile_expr(&mut self, expr: Expr) -> Typed {
         match expr {
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
-            Expr::ListExpr(list) => self.compile_list_expr(list),
+            Expr::ListExpr(list) => self.compile_list_expr(list, None),
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
@@ -216,14 +216,14 @@ impl<'a> Lowerer<'a> {
     fn compile_prefix_expr(&mut self, prefix: rue_parser::PrefixExpr) -> Typed {
         let Some(op) = prefix.op() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(expr) = prefix.expr() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -255,21 +255,21 @@ impl<'a> Lowerer<'a> {
     fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Typed {
         let Some(lhs) = binary.lhs() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(rhs) = binary.rhs() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(op) = binary.op() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -323,7 +323,7 @@ impl<'a> Lowerer<'a> {
     fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Typed {
         let Some(value) = literal.value() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -348,36 +348,36 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_list_expr(&mut self, list_expr: ListExpr) -> Typed {
+    fn compile_list_expr(&mut self, list_expr: ListExpr, infer: Option<TypeId>) -> Typed {
         let items: Vec<Typed> = list_expr
             .items()
             .into_iter()
             .map(|item| self.compile_expr(item))
             .collect();
 
-        let ty = match items.first() {
-            Some(first) => first.ty,
-            // todo: inference
-            None => self.db.alloc_type(Type::Unknown),
-        };
+        let item_type = items
+            .first()
+            .map(|item| item.ty)
+            .or(infer.and_then(|infer| self.extract_list_item_type(infer)))
+            .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
-        let ast = list_expr.items();
+        let ast_items = list_expr.items();
 
         for (i, item) in items.iter().enumerate().skip(1) {
-            if !self.is_assignable_to(self.db.ty(item.ty), self.db.ty(ty)) {
+            if !self.is_assignable_to(self.db.ty(item.ty), self.db.ty(item_type)) {
                 self.error(
                     DiagnosticInfo::TypeMismatch {
-                        expected: self.type_name(ty),
+                        expected: self.type_name(item_type),
                         found: self.type_name(item.ty),
                     },
-                    ast[i].syntax().text_range(),
+                    ast_items[i].syntax().text_range(),
                 );
             }
         }
 
         Typed {
             value: Value::List(items.into_iter().map(|item| item.value).collect()),
-            ty: self.db.alloc_type(Type::List(ty)),
+            ty: self.db.alloc_type(Type::List(item_type)),
         }
     }
 
@@ -402,7 +402,7 @@ impl<'a> Lowerer<'a> {
 
         let Some(body) = lambda_expr.body() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -428,86 +428,83 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_if_expr(&mut self, if_expr: IfExpr) -> Typed {
-        let Some(condition) = if_expr.condition() else {
-            return Typed {
-                value: Value::Atom(Vec::new()),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
-        };
+        let condition = if_expr
+            .condition()
+            .map(|condition| self.compile_expr(condition));
+        let then_block = if_expr
+            .then_block()
+            .map(|then_block| self.compile_block(then_block));
+        let else_block = if_expr
+            .else_block()
+            .map(|else_block| self.compile_block(else_block));
 
-        let Some(then_block) = if_expr.then_block() else {
-            return Typed {
-                value: Value::Atom(Vec::new()),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
-        };
-
-        let Some(else_block) = if_expr.else_block() else {
-            return Typed {
-                value: Value::Atom(Vec::new()),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
-        };
-
-        let condition_expr = condition.clone();
-        let else_expr = else_block.clone();
-
-        let condition = self.compile_expr(condition);
-        let then_block = self.compile_block(then_block);
-        let else_block = self.compile_block(else_block);
-
-        if !self.is_assignable_to(self.db.ty(condition.ty), &Type::Bool) {
-            self.error(
-                DiagnosticInfo::TypeMismatch {
-                    expected: "Bool".to_string(),
-                    found: self.type_name(condition.ty),
-                },
-                condition_expr.syntax().text_range(),
-            );
+        if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty) {
+            if !self.is_assignable_to(self.db.ty(condition_type), &Type::Bool) {
+                self.error(
+                    DiagnosticInfo::TypeMismatch {
+                        expected: "Bool".to_string(),
+                        found: self.type_name(condition_type),
+                    },
+                    if_expr.condition().unwrap().syntax().text_range(),
+                );
+            }
         }
 
-        if !self.is_assignable_to(self.db.ty(then_block.ty), self.db.ty(else_block.ty)) {
-            self.error(
-                DiagnosticInfo::TypeMismatch {
-                    expected: self.type_name(then_block.ty),
-                    found: self.type_name(else_block.ty),
-                },
-                else_expr.syntax().text_range(),
-            );
+        if let (Some(Typed { ty: then_ty, .. }), Some(Typed { ty: else_ty, .. })) =
+            (&then_block, &else_block)
+        {
+            if !self.is_assignable_to(self.db.ty(*then_ty), self.db.ty(*else_ty)) {
+                self.error(
+                    DiagnosticInfo::TypeMismatch {
+                        expected: self.type_name(*then_ty),
+                        found: self.type_name(*else_ty),
+                    },
+                    if_expr.else_block().unwrap().syntax().text_range(),
+                );
+            }
         }
+
+        let ty = then_block
+            .as_ref()
+            .or(else_block.as_ref())
+            .map(|block| block.ty)
+            .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+
+        let value = condition.and_then(|condition| {
+            then_block.and_then(|then_block| {
+                else_block.map(|else_block| Value::If {
+                    condition: Box::new(condition.value),
+                    then_block: Box::new(then_block.value),
+                    else_block: Box::new(else_block.value),
+                })
+            })
+        });
 
         Typed {
-            value: Value::If {
-                condition: Box::new(condition.value),
-                then_block: Box::new(then_block.value),
-                else_block: Box::new(else_block.value),
-            },
-            ty: then_block.ty,
+            value: value.unwrap_or(Value::Unknown),
+            ty,
         }
     }
 
     fn compile_int(&mut self, int: SyntaxToken) -> Typed {
-        let mut a = Allocator::new();
-        let ptr = a
-            .new_number(
-                int.text()
-                    .replace('_', "")
-                    .parse()
-                    .expect("failed to parse into BigInt"),
-            )
-            .expect("could not allocate number");
-        let atom = a.atom(ptr).as_ref().to_vec();
+        let num = int
+            .text()
+            .replace('_', "")
+            .parse()
+            .expect("failed to parse into BigInt");
+
         Typed {
-            value: Value::Atom(atom),
+            value: Value::Atom(bigint_to_bytes(num)),
             ty: self.db.alloc_type(Type::Int),
         }
     }
 
     fn compile_string(&mut self, string: SyntaxToken) -> Typed {
         let text = string.text();
-        let quote = text.chars().next().expect("no quote in string");
+        let quote = text.chars().next().unwrap();
         let after_prefix = &text[1..];
         let before_suffix = after_prefix.strip_suffix(quote).unwrap_or(after_prefix);
+
         Typed {
             value: Value::Atom(before_suffix.as_bytes().to_vec()),
             ty: self.db.alloc_type(Type::Bytes),
@@ -515,21 +512,19 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_ident(&mut self, ident: SyntaxToken) -> Typed {
-        let name = ident.text();
-
         let Some(symbol_id) = self
             .scope_stack
             .iter()
             .rev()
-            .find_map(|&scope_id| self.db.scope(scope_id).symbol(name))
+            .find_map(|&scope_id| self.db.scope(scope_id).symbol(ident.text()))
         else {
             self.error(
-                DiagnosticInfo::UndefinedReference(name.to_string()),
+                DiagnosticInfo::UndefinedReference(ident.to_string()),
                 ident.text_range(),
             );
 
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -556,14 +551,14 @@ impl<'a> Lowerer<'a> {
     fn compile_function_call(&mut self, call: FunctionCall) -> Typed {
         let Some(callee) = call.callee() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(args) = call.args() else {
             return Typed {
-                value: Value::Atom(Vec::new()),
+                value: Value::Unknown,
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -593,7 +588,7 @@ impl<'a> Lowerer<'a> {
                     );
 
                     return Typed {
-                        value: Value::Atom(Vec::new()),
+                        value: Value::Unknown,
                         ty: self.db.alloc_type(Type::Unknown),
                     };
                 }
@@ -639,7 +634,7 @@ impl<'a> Lowerer<'a> {
                     call.callee().expect("no callee").syntax().text_range(),
                 );
                 Typed {
-                    value: Value::Atom(Vec::new()),
+                    value: Value::Unknown,
                     ty: self.db.alloc_type(Type::Unknown),
                 }
             }
@@ -703,6 +698,13 @@ impl<'a> Lowerer<'a> {
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
         self.db.alloc_type(Type::Function { params, ret })
+    }
+
+    fn extract_list_item_type(&self, type_id: TypeId) -> Option<TypeId> {
+        match self.db.ty(type_id) {
+            Type::List(inner) => Some(*inner),
+            _ => None,
+        }
     }
 
     fn detect_cycle(&mut self, ty: TypeId, text_range: TextRange) {
@@ -789,7 +791,7 @@ impl<'a> Lowerer<'a> {
         visited_aliases: &mut HashSet<TypeId>,
     ) -> bool {
         match (a, b) {
-            (Type::Unknown, _) | (_, Type::Unknown) => true,
+            (Type::Unknown, _) | (_, Type::Unknown) => false,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Bytes, Type::Bytes) => true,
@@ -864,4 +866,17 @@ impl<'a> Lowerer<'a> {
             range.start().into()..range.end().into(),
         ));
     }
+}
+
+fn bigint_to_bytes(num: BigInt) -> Vec<u8> {
+    let bytes: Vec<u8> = num.to_signed_bytes_be();
+    let mut slice = bytes.as_slice();
+    // make number minimal by removing leading zeros
+    while (!slice.is_empty()) && (slice[0] == 0) {
+        if slice.len() > 1 && (slice[1] & 0x80 == 0x80) {
+            break;
+        }
+        slice = &slice[1..];
+    }
+    slice.to_vec()
 }

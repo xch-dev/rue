@@ -39,6 +39,7 @@ impl<'a> Codegen<'a> {
 
     fn compute_captures(&mut self, scope_id: ScopeId, value: Value) {
         match value.clone() {
+            Value::Unknown => unreachable!(),
             Value::Atom(_) => {}
             Value::Reference(symbol_id) => {
                 if !self.db.scope(scope_id).is_defined_here(symbol_id) {
@@ -142,6 +143,7 @@ impl<'a> Codegen<'a> {
 
     fn gen_value(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
         match value {
+            Value::Unknown => unreachable!(),
             Value::Atom(atom) => self.gen_atom(atom),
             Value::List(list) => self.gen_list(scope_id, list),
             Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
