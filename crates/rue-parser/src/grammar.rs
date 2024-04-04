@@ -70,14 +70,14 @@ fn block(p: &mut Parser) {
 
 fn binding_power(op: BinaryOp) -> (u8, u8) {
     match op {
-        BinaryOp::Lt
-        | BinaryOp::Gt
-        | BinaryOp::LtEq
-        | BinaryOp::GtEq
-        | BinaryOp::Eq
-        | BinaryOp::NotEq => (1, 2),
-        BinaryOp::Add | BinaryOp::Sub => (3, 4),
-        BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem => (5, 6),
+        BinaryOp::LessThan
+        | BinaryOp::GreaterThan
+        | BinaryOp::LessThanEquals
+        | BinaryOp::GreaterThanEquals
+        | BinaryOp::Equals
+        | BinaryOp::NotEquals => (1, 2),
+        BinaryOp::Add | BinaryOp::Subtract => (3, 4),
+        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (5, 6),
     }
 }
 
@@ -137,23 +137,23 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         let op = if p.at(SyntaxKind::Plus) {
             BinaryOp::Add
         } else if p.at(SyntaxKind::Minus) {
-            BinaryOp::Sub
+            BinaryOp::Subtract
         } else if p.at(SyntaxKind::Star) {
-            BinaryOp::Mul
+            BinaryOp::Multiply
         } else if p.at(SyntaxKind::Slash) {
-            BinaryOp::Div
+            BinaryOp::Divide
         } else if p.at(SyntaxKind::Percent) {
-            BinaryOp::Rem
+            BinaryOp::Remainder
         } else if p.at(SyntaxKind::LessThan) {
-            BinaryOp::Lt
+            BinaryOp::LessThan
         } else if p.at(SyntaxKind::GreaterThan) {
-            BinaryOp::Gt
+            BinaryOp::GreaterThan
         } else if p.at(SyntaxKind::LessThanEquals) {
-            BinaryOp::LtEq
+            BinaryOp::LessThanEquals
         } else if p.at(SyntaxKind::GreaterThanEquals) {
-            BinaryOp::GtEq
+            BinaryOp::GreaterThanEquals
         } else if p.at(SyntaxKind::NotEquals) {
-            BinaryOp::NotEq
+            BinaryOp::NotEquals
         } else {
             return;
         };

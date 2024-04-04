@@ -284,45 +284,25 @@ impl<'a> Lowerer<'a> {
             });
         }
 
-        let lhs = lhs.value;
-        let rhs = rhs.value;
+        let lhs = Box::new(lhs.value);
+        let rhs = Box::new(rhs.value);
 
-        let mut ty = Type::Int;
-
-        let value = match op {
-            BinaryOp::Add => Value::Add(vec![lhs, rhs]),
-            BinaryOp::Sub => Value::Subtract(vec![lhs, rhs]),
-            BinaryOp::Mul => Value::Multiply(vec![lhs, rhs]),
-            BinaryOp::Div => Value::Divide(Box::new(lhs), Box::new(rhs)),
-            BinaryOp::Rem => Value::Remainder(Box::new(lhs), Box::new(rhs)),
-            BinaryOp::Lt => {
-                ty = Type::Bool;
-                Value::LessThan(Box::new(lhs), Box::new(rhs))
-            }
-            BinaryOp::Gt => {
-                ty = Type::Bool;
-                Value::GreaterThan(Box::new(lhs), Box::new(rhs))
-            }
-            BinaryOp::LtEq => {
-                ty = Type::Bool;
-                Value::LessThanEquals(Box::new(lhs), Box::new(rhs))
-            }
-            BinaryOp::GtEq => {
-                ty = Type::Bool;
-                Value::GreaterThanEquals(Box::new(lhs), Box::new(rhs))
-            }
-            BinaryOp::Eq => {
-                ty = Type::Bool;
-                Value::Equals(Box::new(lhs), Box::new(rhs))
-            }
-            BinaryOp::NotEq => {
-                ty = Type::Bool;
-                Value::NotEquals(Box::new(lhs), Box::new(rhs))
-            }
+        let ty = match op {
+            BinaryOp::Add => Type::Int,
+            BinaryOp::Subtract => Type::Int,
+            BinaryOp::Multiply => Type::Int,
+            BinaryOp::Divide => Type::Int,
+            BinaryOp::Remainder => Type::Int,
+            BinaryOp::LessThan => Type::Bool,
+            BinaryOp::GreaterThan => Type::Bool,
+            BinaryOp::LessThanEquals => Type::Bool,
+            BinaryOp::GreaterThanEquals => Type::Bool,
+            BinaryOp::Equals => Type::Bool,
+            BinaryOp::NotEquals => Type::Bool,
         };
 
         Typed {
-            value,
+            value: Value::BinaryOp { op, lhs, rhs },
             ty: self.db.alloc_type(ty),
         }
     }
@@ -481,8 +461,6 @@ impl<'a> Lowerer<'a> {
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
-
-        self.scope_mut().use_symbol(symbol_id);
 
         match self.db.symbol(symbol_id) {
             Symbol::Function {

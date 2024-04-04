@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use clvmr::{Allocator, NodePtr};
 use indexmap::IndexSet;
+use rue_parser::BinaryOp;
 
 use crate::{
     database::{Database, ScopeId, SymbolId},
@@ -28,39 +29,70 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    fn compute_captures(&mut self, scope_id: ScopeId) {
+    fn compute_captures_scope(&mut self, scope_id: ScopeId, value: Value) {
         if self.captures.contains_key(&scope_id) {
             return;
         }
-
         self.captures.insert(scope_id, IndexSet::new());
+        self.compute_captures(scope_id, value);
+    }
 
-        for used_id in self.db.scope(scope_id).used_symbols().clone() {
-            if !self.db.scope(scope_id).definitions().contains(&used_id) {
-                self.captures
-                    .get_mut(&scope_id)
-                    .expect("cannot capture from unknown scope")
-                    .insert(used_id);
+    fn compute_captures(&mut self, scope_id: ScopeId, value: Value) {
+        match value.clone() {
+            Value::Atom(_) => {}
+            Value::Reference(symbol_id) => {
+                if !self.db.scope(scope_id).definitions().contains(&symbol_id) {
+                    self.captures
+                        .get_mut(&scope_id)
+                        .expect("unknown capture scope")
+                        .insert(symbol_id);
+                }
+
+                match self.db.symbol(symbol_id).clone() {
+                    Symbol::Function {
+                        scope_id: function_scope_id,
+                        value,
+                        ..
+                    } => {
+                        self.compute_captures_scope(function_scope_id, value);
+
+                        if !self.db.scope(scope_id).definitions().contains(&symbol_id) {
+                            let new_captures = self.captures[&function_scope_id].clone();
+                            self.captures
+                                .get_mut(&scope_id)
+                                .expect("cannot capture from unknown scope")
+                                .extend(new_captures);
+                        }
+                    }
+                    Symbol::Parameter { .. } => {}
+                }
             }
-
-            let Symbol::Function {
-                scope_id: function_scope_id,
-                ..
-            } = self.db.symbol(used_id)
-            else {
-                continue;
-            };
-
-            let function_scope_id = *function_scope_id;
-
-            self.compute_captures(function_scope_id);
-
-            if !self.db.scope(scope_id).definitions().contains(&used_id) {
-                let new_captures = self.captures[&function_scope_id].clone();
-                self.captures
-                    .get_mut(&scope_id)
-                    .expect("cannot capture from unknown scope")
-                    .extend(new_captures);
+            Value::FunctionCall { callee, args } => {
+                self.compute_captures(scope_id, *callee);
+                for arg in args {
+                    self.compute_captures(scope_id, arg);
+                }
+            }
+            Value::BinaryOp { lhs, rhs, .. } => {
+                self.compute_captures(scope_id, *lhs);
+                self.compute_captures(scope_id, *rhs);
+            }
+            Value::Not(value) => {
+                self.compute_captures(scope_id, *value);
+            }
+            Value::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                self.compute_captures(scope_id, *condition);
+                self.compute_captures(scope_id, *then_block);
+                self.compute_captures(scope_id, *else_block);
+            }
+            Value::List(items) => {
+                for item in items {
+                    self.compute_captures(scope_id, item);
+                }
             }
         }
     }
@@ -76,9 +108,9 @@ impl<'a> Codegen<'a> {
             (*scope_id, value.clone())
         };
 
-        self.compute_captures(scope_id);
+        self.compute_captures_scope(scope_id, value.clone());
 
-        let body = self.gen_value(scope_id, value.clone());
+        let body = self.gen_value(scope_id, value);
         let quoted_body = self.quote(body);
         let rest = self.allocator.one();
         let a = self
@@ -89,7 +121,7 @@ impl<'a> Codegen<'a> {
         let mut args = Vec::new();
 
         for symbol_id in self.captures[&scope_id].clone() {
-            args.push(self.gen_symbol(symbol_id));
+            args.push(self.gen_definition(symbol_id));
         }
 
         let arg_list = self.runtime_list(&args, rest);
@@ -97,18 +129,14 @@ impl<'a> Codegen<'a> {
         self.list(&[a, quoted_body, arg_list])
     }
 
-    fn gen_symbol(&mut self, symbol_id: SymbolId) -> NodePtr {
+    fn gen_definition(&mut self, symbol_id: SymbolId) -> NodePtr {
         match self.db.symbol(symbol_id) {
             Symbol::Function {
                 scope_id, value, ..
-            } => self.gen_value(
-                *scope_id,
-                Value::Function {
-                    scope_id: *scope_id,
-                    value: Box::new(value.clone()),
-                },
-            ),
-            Symbol::Parameter { .. } => todo!(),
+            } => self.gen_function(*scope_id, value.clone()),
+            Symbol::Parameter { .. } => {
+                unreachable!();
+            }
         }
     }
 
@@ -118,18 +146,22 @@ impl<'a> Codegen<'a> {
             Value::List(list) => self.gen_list(scope_id, list),
             Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
             Value::FunctionCall { callee, args } => self.gen_function_call(scope_id, *callee, args),
-            Value::Function { scope_id, value } => self.gen_function(scope_id, *value),
-            Value::Add(operands) => self.gen_add(scope_id, operands),
-            Value::Subtract(operands) => self.gen_subtract(scope_id, operands),
-            Value::Multiply(operands) => self.gen_multiply(scope_id, operands),
-            Value::Divide(lhs, rhs) => self.gen_divide(scope_id, *lhs, *rhs),
-            Value::Remainder(lhs, rhs) => self.gen_remainder(scope_id, *lhs, *rhs),
-            Value::LessThan(lhs, rhs) => self.gen_lt(scope_id, *lhs, *rhs),
-            Value::GreaterThan(lhs, rhs) => self.gen_gt(scope_id, *lhs, *rhs),
-            Value::LessThanEquals(lhs, rhs) => self.gen_lteq(scope_id, *rhs, *lhs),
-            Value::GreaterThanEquals(lhs, rhs) => self.gen_gteq(scope_id, *rhs, *lhs),
-            Value::Equals(lhs, rhs) => self.gen_eq(scope_id, *lhs, *rhs),
-            Value::NotEquals(lhs, rhs) => self.gen_neq(scope_id, *rhs, *lhs),
+            Value::BinaryOp { op, lhs, rhs } => {
+                let handler = match op {
+                    BinaryOp::Add => Self::gen_add,
+                    BinaryOp::Subtract => Self::gen_subtract,
+                    BinaryOp::Multiply => Self::gen_multiply,
+                    BinaryOp::Divide => Self::gen_divide,
+                    BinaryOp::Remainder => Self::gen_remainder,
+                    BinaryOp::LessThan => Self::gen_lt,
+                    BinaryOp::GreaterThan => Self::gen_gt,
+                    BinaryOp::LessThanEquals => Self::gen_lteq,
+                    BinaryOp::GreaterThanEquals => Self::gen_gteq,
+                    BinaryOp::Equals => Self::gen_eq,
+                    BinaryOp::NotEquals => Self::gen_neq,
+                };
+                handler(self, scope_id, *lhs, *rhs)
+            }
             Value::Not(value) => self.gen_not(scope_id, *value),
             Value::If {
                 condition,
@@ -238,43 +270,37 @@ impl<'a> Codegen<'a> {
         self.quote(body)
     }
 
-    fn gen_add(&mut self, scope_id: ScopeId, operands: Vec<Value>) -> NodePtr {
+    fn gen_add(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
         let plus = self
             .allocator
             .new_small_number(16)
             .expect("could not allocate `+`");
 
-        let mut args = vec![plus];
-        for operand in operands {
-            args.push(self.gen_value(scope_id, operand));
-        }
-        self.list(&args)
+        let lhs = self.gen_value(scope_id, lhs);
+        let rhs = self.gen_value(scope_id, rhs);
+        self.list(&[plus, lhs, rhs])
     }
 
-    fn gen_subtract(&mut self, scope_id: ScopeId, operands: Vec<Value>) -> NodePtr {
+    fn gen_subtract(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
         let minus = self
             .allocator
             .new_small_number(17)
             .expect("could not allocate `-`");
 
-        let mut args = vec![minus];
-        for operand in operands {
-            args.push(self.gen_value(scope_id, operand));
-        }
-        self.list(&args)
+        let lhs = self.gen_value(scope_id, lhs);
+        let rhs = self.gen_value(scope_id, rhs);
+        self.list(&[minus, lhs, rhs])
     }
 
-    fn gen_multiply(&mut self, scope_id: ScopeId, operands: Vec<Value>) -> NodePtr {
+    fn gen_multiply(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
         let star = self
             .allocator
             .new_small_number(18)
             .expect("could not allocate `*`");
 
-        let mut args = vec![star];
-        for operand in operands {
-            args.push(self.gen_value(scope_id, operand));
-        }
-        self.list(&args)
+        let lhs = self.gen_value(scope_id, lhs);
+        let rhs = self.gen_value(scope_id, rhs);
+        self.list(&[star, lhs, rhs])
     }
 
     fn gen_divide(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
@@ -285,7 +311,6 @@ impl<'a> Codegen<'a> {
 
         let lhs = self.gen_value(scope_id, lhs);
         let rhs = self.gen_value(scope_id, rhs);
-
         self.list(&[slash, lhs, rhs])
     }
 

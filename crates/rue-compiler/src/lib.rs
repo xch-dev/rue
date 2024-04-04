@@ -46,7 +46,6 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
         };
     };
 
-    db.scope_mut(output.main_scope_id).use_symbol(main);
     let node_ptr = codegen(allocator, &mut db, main);
 
     Output {

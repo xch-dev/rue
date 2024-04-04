@@ -10,7 +10,6 @@ pub struct Scope {
     type_aliases: HashMap<String, TypeId>,
     type_names: HashMap<TypeId, String>,
     definitions: IndexSet<SymbolId>,
-    used_symbols: IndexSet<SymbolId>,
 }
 
 impl Scope {
@@ -19,20 +18,12 @@ impl Scope {
         self.definitions.insert(symbol_id);
     }
 
-    pub fn use_symbol(&mut self, symbol_id: SymbolId) {
-        self.used_symbols.insert(symbol_id);
-    }
-
     pub fn symbol(&self, name: &str) -> Option<SymbolId> {
         self.symbol_table.get(name).copied()
     }
 
     pub fn definitions(&self) -> &IndexSet<SymbolId> {
         &self.definitions
-    }
-
-    pub fn used_symbols(&self) -> &IndexSet<SymbolId> {
-        &self.used_symbols
     }
 
     pub fn define_type_alias(&mut self, name: String, type_id: TypeId) {
