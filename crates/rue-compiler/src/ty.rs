@@ -9,6 +9,7 @@ pub enum Type {
     Bytes,
     List(TypeId),
     Function { params: Vec<TypeId>, ret: TypeId },
+    Alias(TypeId),
 }
 
 pub struct Typed {

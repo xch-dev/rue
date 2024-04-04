@@ -1,4 +1,7 @@
+use std::collections::HashSet;
+
 use clvmr::Allocator;
+use indexmap::IndexSet;
 use rue_parser::{
     BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr, Item,
     LambdaExpr, ListExpr, ListType, LiteralExpr, LiteralType, PrefixOp, Root, SyntaxKind,
@@ -176,14 +179,9 @@ impl<'a> Lowerer<'a> {
             .map(|ty| self.compile_ty(ty))
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
-        let ty = self.db.ty(ty).clone();
+        *self.db.ty_mut(type_id) = Type::Alias(ty);
 
-        // todo: fix recursive types
-        if matches!(ty, Type::Unknown) {
-            self.error(CompilerError::UnknownTypeAlias);
-        }
-
-        *self.db.ty_mut(type_id) = ty;
+        self.detect_cycle(type_id);
     }
 
     fn compile_block(&mut self, block: Block) -> Typed {
@@ -658,7 +656,42 @@ impl<'a> Lowerer<'a> {
         self.db.alloc_type(Type::Function { params, ret })
     }
 
+    fn detect_cycle(&mut self, ty: TypeId) {
+        self.detect_cycle_visitor(ty, &mut HashSet::new())
+    }
+
+    fn detect_cycle_visitor(&mut self, ty: TypeId, visited_aliases: &mut HashSet<TypeId>) {
+        match self.db.ty(ty).clone() {
+            Type::Unknown => {}
+            Type::Nil => {}
+            Type::Int => {}
+            Type::Bool => {}
+            Type::Bytes => {}
+            Type::List(inner) => {
+                self.detect_cycle_visitor(inner, visited_aliases);
+            }
+            Type::Function { params, ret } => {
+                for &param in params.iter() {
+                    self.detect_cycle_visitor(param, visited_aliases);
+                }
+
+                self.detect_cycle_visitor(ret, visited_aliases);
+            }
+            Type::Alias(alias) => {
+                if !visited_aliases.insert(alias) {
+                    self.error(CompilerError::RecursiveTypeAlias);
+                    return;
+                }
+                self.detect_cycle_visitor(alias, visited_aliases);
+            }
+        }
+    }
+
     fn type_name(&self, ty: TypeId) -> String {
+        self.type_name_visitor(ty, &mut IndexSet::new())
+    }
+
+    fn type_name_visitor(&self, ty: TypeId, visited_aliases: &mut IndexSet<TypeId>) -> String {
         for &scope_id in self.scope_stack.iter().rev() {
             if let Some(name) = self.db.scope(scope_id).type_name(ty) {
                 return name.to_string();
@@ -671,25 +704,61 @@ impl<'a> Lowerer<'a> {
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Bytes => "Bytes".to_string(),
-            Type::List(inner) => format!("{}[]", self.type_name(*inner)),
+            Type::List(inner) => format!("{}[]", self.type_name_visitor(*inner, visited_aliases)),
             Type::Function { params, ret } => {
-                let params: Vec<String> = params.iter().map(|&ty| self.type_name(ty)).collect();
-                let ret = self.type_name(*ret);
+                let params: Vec<String> = params
+                    .iter()
+                    .map(|&ty| self.type_name_visitor(ty, visited_aliases))
+                    .collect();
+                let ret = self.type_name_visitor(*ret, visited_aliases);
                 format!("fun({}) -> {}", params.join(", "), ret)
+            }
+            Type::Alias(type_id) => {
+                if let Some(index) = visited_aliases.get_index_of(type_id) {
+                    format!("<{index}>")
+                } else {
+                    visited_aliases.insert(*type_id);
+                    self.type_name_visitor(*type_id, visited_aliases)
+                }
             }
         }
     }
 
     fn is_assignable_to(&self, a: &Type, b: &Type) -> bool {
+        self.is_assignable_to_visitor(a, b, &mut HashSet::new())
+    }
+
+    fn is_assignable_to_visitor(
+        &self,
+        a: &Type,
+        b: &Type,
+        visited_aliases: &mut HashSet<TypeId>,
+    ) -> bool {
         match (a, b) {
             (Type::Unknown, _) | (_, Type::Unknown) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Bytes, Type::Bytes) => true,
             (Type::Nil, Type::Nil) => true,
-            (Type::List(inner_a), Type::List(inner_b)) => {
-                self.is_assignable_to(self.db.ty(*inner_a), self.db.ty(*inner_b))
+            (Type::Alias(alias), _) => {
+                if !visited_aliases.insert(*alias) {
+                    return true;
+                }
+                let ty = self.db.ty(*alias);
+                self.is_assignable_to_visitor(ty, b, visited_aliases)
             }
+            (_, Type::Alias(alias)) => {
+                if !visited_aliases.insert(*alias) {
+                    return true;
+                }
+                let ty = self.db.ty(*alias);
+                self.is_assignable_to_visitor(a, ty, visited_aliases)
+            }
+            (Type::List(inner_a), Type::List(inner_b)) => self.is_assignable_to_visitor(
+                self.db.ty(*inner_a),
+                self.db.ty(*inner_b),
+                visited_aliases,
+            ),
             (
                 Type::Function {
                     params: params_a,
@@ -705,12 +774,17 @@ impl<'a> Lowerer<'a> {
                 }
 
                 for (&a, &b) in params_a.iter().zip(params_b.iter()) {
-                    if !self.is_assignable_to(self.db.ty(a), self.db.ty(b)) {
+                    if !self.is_assignable_to_visitor(self.db.ty(a), self.db.ty(b), visited_aliases)
+                    {
                         return false;
                     }
                 }
 
-                self.is_assignable_to(self.db.ty(*ret_a), self.db.ty(*ret_b))
+                self.is_assignable_to_visitor(
+                    self.db.ty(*ret_a),
+                    self.db.ty(*ret_b),
+                    visited_aliases,
+                )
             }
             _ => false,
         }
