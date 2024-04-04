@@ -1,9 +1,9 @@
 #![forbid(clippy::unwrap_used)]
 
 use clvmr::{Allocator, NodePtr};
-use codegen::Codegen;
-use database::SymbolId;
-use lowerer::Lowerer;
+use codegen::codegen;
+use database::{Database, SymbolId};
+use lowerer::lower;
 use rue_parser::Root;
 use value::Value;
 
@@ -34,10 +34,10 @@ impl Output {
 }
 
 pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
-    let compiler = Lowerer::new();
-    let mut output = compiler.compile_root(root);
+    let mut db = Database::default();
+    let mut output = lower(&mut db, root);
 
-    let Some(main) = output.db.scope_mut(output.main_scope_id).symbol("main") else {
+    let Some(main) = db.scope_mut(output.main_scope_id).symbol("main") else {
         output.errors.push(CompilerError::MissingMain);
 
         return Output {
@@ -46,9 +46,8 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
         };
     };
 
-    output.db.scope_mut(output.main_scope_id).use_symbol(main);
-
-    let node_ptr = Codegen::new(output.db, allocator).gen_main(main);
+    db.scope_mut(output.main_scope_id).use_symbol(main);
+    let node_ptr = codegen(allocator, &mut db, main);
 
     Output {
         errors: output.errors,

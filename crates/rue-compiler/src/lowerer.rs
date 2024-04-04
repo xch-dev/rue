@@ -15,21 +15,24 @@ use crate::{
 };
 
 pub struct LowerOutput {
-    pub db: Database,
     pub errors: Vec<CompilerError>,
     pub main_scope_id: ScopeId,
 }
 
-pub struct Lowerer {
-    db: Database,
+pub fn lower(db: &mut Database, root: Root) -> LowerOutput {
+    Lowerer::new(db).compile_root(root)
+}
+
+struct Lowerer<'a> {
+    db: &'a mut Database,
     scope_stack: Vec<ScopeId>,
     errors: Vec<CompilerError>,
 }
 
-impl Lowerer {
-    pub fn new() -> Self {
+impl<'a> Lowerer<'a> {
+    pub fn new(db: &'a mut Database) -> Self {
         Self {
-            db: Database::default(),
+            db,
             scope_stack: Vec::new(),
             errors: Vec::new(),
         }
@@ -76,7 +79,6 @@ impl Lowerer {
         }
 
         LowerOutput {
-            db: self.db,
             errors: self.errors,
             main_scope_id: scope_id,
         }

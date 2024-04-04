@@ -19,10 +19,6 @@ impl Scope {
         self.definitions.insert(symbol_id);
     }
 
-    pub fn define_anonymous_symbol(&mut self, symbol_id: SymbolId) {
-        self.definitions.insert(symbol_id);
-    }
-
     pub fn use_symbol(&mut self, symbol_id: SymbolId) {
         self.used_symbols.insert(symbol_id);
     }

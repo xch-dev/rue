@@ -9,14 +9,18 @@ use crate::{
     Value,
 };
 
-pub struct Codegen<'a> {
-    db: Database,
+pub fn codegen(allocator: &mut Allocator, db: &mut Database, main: SymbolId) -> NodePtr {
+    Codegen::new(db, allocator).gen_main(main)
+}
+
+struct Codegen<'a> {
+    db: &'a mut Database,
     allocator: &'a mut Allocator,
     captures: HashMap<ScopeId, IndexSet<SymbolId>>,
 }
 
 impl<'a> Codegen<'a> {
-    pub fn new(db: Database, allocator: &'a mut Allocator) -> Self {
+    pub fn new(db: &'a mut Database, allocator: &'a mut Allocator) -> Self {
         Self {
             db,
             allocator,
