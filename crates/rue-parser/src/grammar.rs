@@ -63,8 +63,24 @@ fn type_alias_item(p: &mut Parser) {
 fn block(p: &mut Parser) {
     p.start(SyntaxKind::Block);
     p.expect(SyntaxKind::OpenBrace);
+    while p.at(SyntaxKind::Let) {
+        let_stmt(p);
+    }
     expr(p);
     p.expect(SyntaxKind::CloseBrace);
+    p.finish();
+}
+
+fn let_stmt(p: &mut Parser) {
+    p.start(SyntaxKind::LetStmt);
+    p.expect(SyntaxKind::Let);
+    p.expect(SyntaxKind::Ident);
+    if p.try_eat(SyntaxKind::Colon) {
+        ty(p);
+    }
+    p.expect(SyntaxKind::Assign);
+    expr(p);
+    p.expect(SyntaxKind::Semicolon);
     p.finish();
 }
 

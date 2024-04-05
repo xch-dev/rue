@@ -11,6 +11,7 @@ pub enum TokenKind {
     CloseBrace,
     Fun,
     Type,
+    Let,
     If,
     Else,
     Nil,

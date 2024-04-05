@@ -92,6 +92,7 @@ impl<'a> Lexer<'a> {
                 match &self.source[start..self.pos] {
                     "fun" => TokenKind::Fun,
                     "type" => TokenKind::Type,
+                    "let" => TokenKind::Let,
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
                     "nil" => TokenKind::Nil,
@@ -236,6 +237,7 @@ mod tests {
     fn test_keyword() {
         check("fun", &[TokenKind::Fun]);
         check("type", &[TokenKind::Type]);
+        check("let", &[TokenKind::Let]);
         check("if", &[TokenKind::If]);
         check("else", &[TokenKind::Else]);
         check("true", &[TokenKind::True]);

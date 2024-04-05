@@ -90,6 +90,8 @@ ast_node!(ListType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParams);
 
+ast_node!(LetStmt);
+
 impl Root {
     pub fn items(&self) -> Vec<Item> {
         self.syntax().children().filter_map(Item::cast).collect()
@@ -153,6 +155,27 @@ impl TypeAliasItem {
 }
 
 impl Block {
+    pub fn let_stmts(&self) -> Vec<LetStmt> {
+        self.syntax().children().filter_map(LetStmt::cast).collect()
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().filter_map(Expr::cast).next()
+    }
+}
+
+impl LetStmt {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+
     pub fn expr(&self) -> Option<Expr> {
         self.syntax().children().filter_map(Expr::cast).next()
     }

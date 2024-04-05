@@ -195,6 +195,7 @@ fn convert_tokens<'a>(
             }
             TokenKind::Fun => SyntaxKind::Fun,
             TokenKind::Type => SyntaxKind::Type,
+            TokenKind::Let => SyntaxKind::Let,
             TokenKind::If => SyntaxKind::If,
             TokenKind::Else => SyntaxKind::Else,
             TokenKind::Nil => SyntaxKind::Nil,
