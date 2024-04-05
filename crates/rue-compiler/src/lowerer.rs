@@ -205,6 +205,7 @@ impl<'a> Lowerer<'a> {
         match expr {
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
+            Expr::Block(block) => self.compile_block(block, expected_type),
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),

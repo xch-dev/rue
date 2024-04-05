@@ -110,6 +110,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         p.finish();
     } else if p.at(SyntaxKind::OpenBracket) {
         list_expr(p);
+    } else if p.at(SyntaxKind::OpenBrace) {
+        block(p);
     } else if p.at(SyntaxKind::If) {
         if_expr(p);
     } else if p.at(SyntaxKind::Fun) {

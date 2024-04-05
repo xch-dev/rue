@@ -65,6 +65,7 @@ ast_enum!(
     Expr,
     LiteralExpr,
     ListExpr,
+    Block,
     LambdaExpr,
     PrefixExpr,
     BinaryExpr,
