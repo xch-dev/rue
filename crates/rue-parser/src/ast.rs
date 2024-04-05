@@ -155,6 +155,10 @@ impl TypeAliasItem {
 }
 
 impl Block {
+    pub fn items(&self) -> Vec<Item> {
+        self.syntax().children().filter_map(Item::cast).collect()
+    }
+
     pub fn let_stmts(&self) -> Vec<LetStmt> {
         self.syntax().children().filter_map(LetStmt::cast).collect()
     }

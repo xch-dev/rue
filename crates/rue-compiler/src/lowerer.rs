@@ -46,16 +46,25 @@ impl<'a> Lowerer<'a> {
         let scope_id = self.db.alloc_scope(Scope::default());
         self.scope_stack.push(scope_id);
 
-        let function_items: Vec<FunctionItem> = root
-            .items()
+        self.compile_items(root.items());
+
+        LowerOutput {
+            diagnostics: self.diagnostics,
+            main_scope_id: scope_id,
+        }
+    }
+
+    fn compile_items(&mut self, items: Vec<Item>) {
+        let function_items: Vec<FunctionItem> = items
+            .clone()
             .into_iter()
             .filter_map(|item| match item {
                 Item::FunctionItem(function) => Some(function),
                 _ => None,
             })
             .collect();
-        let type_alias_items: Vec<TypeAliasItem> = root
-            .items()
+        let type_alias_items: Vec<TypeAliasItem> = items
+            .clone()
             .into_iter()
             .filter_map(|item| match item {
                 Item::TypeAliasItem(ty) => Some(ty),
@@ -80,11 +89,6 @@ impl<'a> Lowerer<'a> {
 
         for (i, function) in function_items.into_iter().enumerate() {
             self.compile_function(function, symbol_ids[i]);
-        }
-
-        LowerOutput {
-            diagnostics: self.diagnostics,
-            main_scope_id: scope_id,
         }
     }
 
@@ -206,7 +210,11 @@ impl<'a> Lowerer<'a> {
         if let Some(scope_id) = scope_id {
             self.scope_stack.push(scope_id);
         }
+
+        self.compile_items(block.items());
+
         let body = self.compile_expr(expr, expected_type);
+
         if scope_id.is_some() {
             self.scope_stack.pop().expect("block not in scope stack");
         }

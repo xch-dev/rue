@@ -63,8 +63,14 @@ fn type_alias_item(p: &mut Parser) {
 fn block(p: &mut Parser) {
     p.start(SyntaxKind::Block);
     p.expect(SyntaxKind::OpenBrace);
-    while p.at(SyntaxKind::Let) {
-        let_stmt(p);
+    loop {
+        if p.at(SyntaxKind::Let) {
+            let_stmt(p);
+        } else if p.at(SyntaxKind::Fun) || p.at(SyntaxKind::Type) {
+            item(p);
+        } else {
+            break;
+        }
     }
     expr(p);
     p.expect(SyntaxKind::CloseBrace);
@@ -170,6 +176,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
             BinaryOp::LessThanEquals
         } else if p.at(SyntaxKind::GreaterThanEquals) {
             BinaryOp::GreaterThanEquals
+        } else if p.at(SyntaxKind::Equals) {
+            BinaryOp::Equals
         } else if p.at(SyntaxKind::NotEquals) {
             BinaryOp::NotEquals
         } else {
