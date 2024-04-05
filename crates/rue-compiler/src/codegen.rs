@@ -18,6 +18,7 @@ struct Codegen<'a> {
     db: &'a mut Database,
     allocator: &'a mut Allocator,
     captures: HashMap<ScopeId, IndexSet<SymbolId>>,
+    environments: HashMap<ScopeId, IndexSet<SymbolId>>,
 }
 
 impl<'a> Codegen<'a> {
@@ -26,6 +27,7 @@ impl<'a> Codegen<'a> {
             db,
             allocator,
             captures: HashMap::new(),
+            environments: HashMap::new(),
         }
     }
 
@@ -57,16 +59,54 @@ impl<'a> Codegen<'a> {
                     } => {
                         self.compute_captures_scope(function_scope_id, value);
 
-                        if !self.db.scope(scope_id).is_defined_here(symbol_id) {
+                        if !self.db.scope(function_scope_id).is_defined_here(symbol_id) {
                             let new_captures = self.captures[&function_scope_id].clone();
                             self.captures
                                 .get_mut(&scope_id)
                                 .expect("cannot capture from unknown scope")
                                 .extend(new_captures);
                         }
+
+                        let mut env = IndexSet::new();
+
+                        for symbol_id in self.db.scope(function_scope_id).definitions() {
+                            if let Symbol::Parameter { .. } = self.db.symbol(symbol_id) {
+                                continue;
+                            }
+                            env.insert(symbol_id);
+                        }
+
+                        for symbol_id in self.captures[&function_scope_id].clone() {
+                            env.insert(symbol_id);
+                        }
+
+                        for symbol_id in self.db.scope(function_scope_id).definitions() {
+                            if let Symbol::Parameter { .. } = self.db.symbol(symbol_id) {
+                                env.insert(symbol_id);
+                            }
+                        }
+
+                        self.environments.insert(function_scope_id, env);
                     }
+
                     Symbol::Parameter { .. } => {}
+                    Symbol::Binding { value, .. } => self.compute_captures(scope_id, value),
                 }
+            }
+            Value::Scope { scope_id, value } => {
+                self.compute_captures_scope(scope_id, *value);
+
+                let mut env = IndexSet::new();
+
+                for symbol_id in self.db.scope(scope_id).definitions() {
+                    env.insert(symbol_id);
+                }
+
+                for symbol_id in self.captures[&scope_id].clone() {
+                    env.insert(symbol_id);
+                }
+
+                self.environments.insert(scope_id, env);
             }
             Value::FunctionCall { callee, args } => {
                 self.compute_captures(scope_id, *callee);
@@ -111,6 +151,27 @@ impl<'a> Codegen<'a> {
 
         self.compute_captures_scope(scope_id, value.clone());
 
+        let mut env = IndexSet::new();
+
+        for symbol_id in self.db.scope(scope_id).definitions() {
+            if let Symbol::Parameter { .. } = self.db.symbol(symbol_id) {
+                continue;
+            }
+            env.insert(symbol_id);
+        }
+
+        for symbol_id in self.captures[&scope_id].clone() {
+            env.insert(symbol_id);
+        }
+
+        for symbol_id in self.db.scope(scope_id).definitions() {
+            if let Symbol::Parameter { .. } = self.db.symbol(symbol_id) {
+                env.insert(symbol_id);
+            }
+        }
+
+        self.environments.insert(scope_id, env);
+
         let body = self.gen_value(scope_id, value);
         let quoted_body = self.quote(body);
         let rest = self.allocator.one();
@@ -121,8 +182,15 @@ impl<'a> Codegen<'a> {
 
         let mut args = Vec::new();
 
+        for symbol_id in self.db.scope(scope_id).definitions() {
+            if let Symbol::Parameter { .. } = self.db.symbol(symbol_id) {
+                continue;
+            }
+            args.push(self.gen_definition(scope_id, symbol_id));
+        }
+
         for symbol_id in self.captures[&scope_id].clone() {
-            args.push(self.gen_definition(symbol_id));
+            args.push(self.gen_definition(scope_id, symbol_id));
         }
 
         let arg_list = self.runtime_list(&args, rest);
@@ -130,14 +198,72 @@ impl<'a> Codegen<'a> {
         self.list(&[a, quoted_body, arg_list])
     }
 
-    fn gen_definition(&mut self, symbol_id: SymbolId) -> NodePtr {
+    fn gen_scope(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
+        let body = self.gen_value(scope_id, value);
+        let quoted_body = self.quote(body);
+        let rest = self.allocator.one();
+        let a = self
+            .allocator
+            .new_small_number(2)
+            .expect("could not allocate `a`");
+
+        let mut args = Vec::new();
+
+        for symbol_id in self.db.scope(scope_id).definitions() {
+            match self.db.symbol(symbol_id) {
+                Symbol::Function {
+                    scope_id: function_scope_id,
+                    value,
+                    ..
+                } => {
+                    let body = self.gen_value(*function_scope_id, value.clone());
+                    let quoted_body = self.quote(body);
+                    args.push(quoted_body);
+                }
+                Symbol::Parameter { .. } => unreachable!(),
+                Symbol::Binding { value, .. } => args.push(self.gen_value(scope_id, value.clone())),
+            }
+            args.push(self.gen_definition(scope_id, symbol_id));
+        }
+
+        args.push(rest);
+
+        let environment = self.runtime_list(&args, rest);
+
+        self.list(&[a, quoted_body, environment])
+    }
+
+    fn gen_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
+        let index = self.environments[&scope_id]
+            .iter()
+            .position(|&id| id == symbol_id)
+            .expect("symbol not found");
+
+        let mut path = 2;
+        for _ in 0..index {
+            path *= 2;
+            path += 1;
+        }
+
+        self.allocator
+            .new_small_number(path)
+            .expect("could not allocate path")
+    }
+
+    fn gen_definition(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
         match self.db.symbol(symbol_id) {
             Symbol::Function {
-                scope_id, value, ..
-            } => self.gen_function(*scope_id, value.clone()),
+                scope_id: function_scope_id,
+                value,
+                ..
+            } => {
+                let body = self.gen_value(*function_scope_id, value.clone());
+                self.quote(body)
+            }
             Symbol::Parameter { .. } => {
                 unreachable!();
             }
+            Symbol::Binding { value, .. } => self.gen_value(scope_id, value.clone()),
         }
     }
 
@@ -147,6 +273,7 @@ impl<'a> Codegen<'a> {
             Value::Atom(atom) => self.gen_atom(atom),
             Value::List(list) => self.gen_list(scope_id, list),
             Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
+            Value::Scope { scope_id, value } => self.gen_scope(scope_id, *value),
             Value::FunctionCall { callee, args } => self.gen_function_call(scope_id, *callee, args),
             Value::BinaryOp { op, lhs, rhs } => {
                 let handler = match op {
@@ -191,6 +318,13 @@ impl<'a> Codegen<'a> {
             let body = self.gen_path(scope_id, symbol_id);
 
             let mut captures = Vec::new();
+
+            for symbol_id in self.db.scope(function_scope_id).definitions() {
+                if let Symbol::Parameter { .. } = self.db.symbol(symbol_id) {
+                    continue;
+                }
+                captures.push(self.gen_path(scope_id, symbol_id));
+            }
 
             for symbol_id in self.captures[&function_scope_id].clone() {
                 captures.push(self.gen_path(scope_id, symbol_id));
@@ -265,11 +399,6 @@ impl<'a> Codegen<'a> {
         let arg_list = self.runtime_list(&args, NodePtr::NIL);
 
         self.list(&[a, callee, arg_list])
-    }
-
-    fn gen_function(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
-        let body = self.gen_value(scope_id, value);
-        self.quote(body)
     }
 
     fn gen_add(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
@@ -463,24 +592,6 @@ impl<'a> Codegen<'a> {
 
         let conditional = self.list(&[i, condition, then_block, else_block]);
         self.list(&[a, conditional, all_env])
-    }
-
-    fn gen_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
-        let index = self.captures[&scope_id]
-            .iter()
-            .chain(self.db.scope(scope_id).definitions().iter())
-            .position(|&id| id == symbol_id)
-            .expect("symbol not found");
-
-        let mut path = 2;
-        for _ in 0..index {
-            path *= 2;
-            path += 1;
-        }
-
-        self.allocator
-            .new_small_number(path)
-            .expect("could not allocate path")
     }
 
     fn gen_atom(&mut self, value: Vec<u8>) -> NodePtr {

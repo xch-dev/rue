@@ -155,7 +155,7 @@ impl<'a> Lowerer<'a> {
             };
 
             self.scope_stack.push(body_scope_id);
-            let ret = self.compile_block(body, Some(expected_ret_type));
+            let ret = self.compile_block_expr(body, None, Some(expected_ret_type));
             self.scope_stack.pop().expect("function not in scope stack");
 
             if !self.is_assignable_to(self.db.ty(ret.ty), self.db.ty(expected_ret_type)) {
@@ -190,7 +190,12 @@ impl<'a> Lowerer<'a> {
         self.detect_cycle(type_id, text_range);
     }
 
-    fn compile_block(&mut self, block: Block, expected_type: Option<TypeId>) -> Typed {
+    fn compile_block_expr(
+        &mut self,
+        block: Block,
+        scope_id: Option<ScopeId>,
+        expected_type: Option<TypeId>,
+    ) -> Typed {
         let Some(expr) = block.expr() else {
             return Typed {
                 value: Value::Unknown,
@@ -198,14 +203,34 @@ impl<'a> Lowerer<'a> {
             };
         };
 
-        self.compile_expr(expr, expected_type)
+        if let Some(scope_id) = scope_id {
+            self.scope_stack.push(scope_id);
+        }
+        let body = self.compile_expr(expr, expected_type);
+        if scope_id.is_some() {
+            self.scope_stack.pop().expect("block not in scope stack");
+        }
+
+        Typed {
+            value: match scope_id {
+                Some(scope_id) => Value::Scope {
+                    scope_id,
+                    value: Box::new(body.value),
+                },
+                None => body.value,
+            },
+            ty: body.ty,
+        }
     }
 
     fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Typed {
         match expr {
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
-            Expr::Block(block) => self.compile_block(block, expected_type),
+            Expr::Block(block) => {
+                let scope_id = self.db.alloc_scope(Scope::default());
+                self.compile_block_expr(block, Some(scope_id), expected_type)
+            }
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
@@ -452,12 +477,14 @@ impl<'a> Lowerer<'a> {
         let condition = if_expr
             .condition()
             .map(|condition| self.compile_expr(condition, None));
-        let then_block = if_expr
-            .then_block()
-            .map(|then_block| self.compile_block(then_block, expected_type));
-        let else_block = if_expr
-            .else_block()
-            .map(|else_block| self.compile_block(else_block, expected_type));
+        let then_block = if_expr.then_block().map(|then_block| {
+            let scope_id = self.db.alloc_scope(Scope::default());
+            self.compile_block_expr(then_block, Some(scope_id), expected_type)
+        });
+        let else_block = if_expr.else_block().map(|else_block| {
+            let scope_id = self.db.alloc_scope(Scope::default());
+            self.compile_block_expr(else_block, Some(scope_id), expected_type)
+        });
 
         if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty) {
             if !self.is_assignable_to(self.db.ty(condition_type), &Type::Bool) {
@@ -550,21 +577,19 @@ impl<'a> Lowerer<'a> {
             };
         };
 
-        match self.db.symbol(symbol_id) {
-            Symbol::Function {
-                param_types,
-                ret_type,
-                ..
-            } => Typed {
-                value: Value::Reference(symbol_id),
-                ty: self.db.alloc_type(Type::Function {
+        Typed {
+            value: Value::Reference(symbol_id),
+            ty: match self.db.symbol(symbol_id) {
+                Symbol::Function {
+                    param_types,
+                    ret_type,
+                    ..
+                } => self.db.alloc_type(Type::Function {
                     params: param_types.clone(),
                     ret: *ret_type,
                 }),
-            },
-            Symbol::Parameter { ty } => Typed {
-                value: Value::Reference(symbol_id),
-                ty: *ty,
+                Symbol::Parameter { ty } => *ty,
+                Symbol::Binding { ty, .. } => *ty,
             },
         }
     }

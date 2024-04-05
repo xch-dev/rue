@@ -14,4 +14,8 @@ pub enum Symbol {
     Parameter {
         ty: TypeId,
     },
+    Binding {
+        ty: TypeId,
+        value: Value,
+    },
 }
