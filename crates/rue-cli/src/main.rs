@@ -10,7 +10,6 @@ use rue_parser::parse;
 #[command(version, about, long_about = None)]
 struct Args {
     /// The source file to compile.
-    #[arg(short, long)]
     file: String,
 }
 
