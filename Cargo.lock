@@ -201,6 +201,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98cc8fbded0c607b7ba9dd60cd98df59af97e84d24e49c8557331cfc26d301ce"
 
 [[package]]
+name = "clvm-traits"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e88c9e02488dff3cb6cfe5373c58c3bf734248c854904f44215cf62d22c74f3"
+dependencies = [
+ "clvmr",
+ "num-bigint",
+ "thiserror",
+]
+
+[[package]]
+name = "clvm-utils"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98561c4a24ecfa751ff73dd4fd94411af110f5c5306c558c7fb3a96f711ce43e"
+dependencies = [
+ "clvm-traits",
+ "clvmr",
+]
+
+[[package]]
 name = "clvmr"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -697,7 +718,10 @@ dependencies = [
 name = "rue-compiler"
 version = "0.1.0"
 dependencies = [
+ "clvm-traits",
+ "clvm-utils",
  "clvmr",
+ "hex",
  "id-arena",
  "indexmap",
  "num-bigint",

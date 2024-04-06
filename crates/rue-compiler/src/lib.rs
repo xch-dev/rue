@@ -14,6 +14,9 @@ mod symbol;
 mod ty;
 mod value;
 
+#[cfg(test)]
+mod tests;
+
 pub use error::*;
 
 pub struct Output {

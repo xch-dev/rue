@@ -33,7 +33,7 @@ pub enum DiagnosticKind {
     Error,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
 pub enum DiagnosticInfo {
     #[error("missing `main` function")]
     MissingMain,

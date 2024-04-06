@@ -4,10 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+rue-parser = { path = "../rue-parser" }
 clvmr = "0.6.1"
 id-arena = "2.2.1"
 indexmap = "2.2.6"
 num-bigint = "0.4.4"
 rowan = "0.15.15"
-rue-parser = { path = "../rue-parser" }
 thiserror = "1.0.58"
+
+[dev-dependencies]
+clvm-traits = "0.6.0"
+clvm-utils = "0.6.0"
+hex = "0.4.3"

@@ -24,7 +24,7 @@ impl ParserError {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
 pub enum ParserErrorKind {
     #[error("expected {}, found {found}", join_kinds(.expected))]
     UnexpectedToken {
