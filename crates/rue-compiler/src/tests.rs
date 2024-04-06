@@ -32,6 +32,19 @@ example!(
     }
 );
 
+example!(
+    factorial,
+    Example {
+        environment: (),
+        parse: &[],
+        compile: &[],
+        hash: "894f61248f98988924f255b780e8b67a840fd41d5b911e4f292d1fa9f9c804e0",
+        size_bytes: 113,
+        output: 1307674368000u64,
+        runtime_cost: 46068
+    }
+);
+
 macro_rules! example_list {
     ( $( $name:ident ),+ $(,)? ) => {{
         let mut examples = HashSet::new();
@@ -43,7 +56,7 @@ macro_rules! example_list {
 #[allow(path_statements)]
 #[test]
 fn example_list() {
-    let examples = example_list!(hello_world);
+    let examples = example_list!(hello_world, factorial);
     let mut found_examples = HashSet::new();
 
     for example in fs::read_dir("../../examples")

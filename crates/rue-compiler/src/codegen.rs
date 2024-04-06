@@ -19,6 +19,7 @@ struct Codegen<'a> {
     allocator: &'a mut Allocator,
     captures: HashMap<ScopeId, IndexSet<SymbolId>>,
     environments: HashMap<ScopeId, IndexSet<SymbolId>>,
+    scope_inheritance: HashMap<ScopeId, ScopeId>,
 }
 
 impl<'a> Codegen<'a> {
@@ -28,6 +29,7 @@ impl<'a> Codegen<'a> {
             allocator,
             captures: HashMap::new(),
             environments: HashMap::new(),
+            scope_inheritance: HashMap::new(),
         }
     }
 
@@ -59,12 +61,16 @@ impl<'a> Codegen<'a> {
                     } => {
                         self.compute_captures_scope(function_scope_id, value);
 
-                        if !self.db.scope(function_scope_id).is_defined_here(symbol_id) {
+                        if !self.db.scope(scope_id).is_defined_here(symbol_id) {
                             let new_captures = self.captures[&function_scope_id].clone();
                             self.captures
                                 .get_mut(&scope_id)
                                 .expect("cannot capture from unknown scope")
-                                .extend(new_captures);
+                                .extend(
+                                    new_captures
+                                        .into_iter()
+                                        .filter(|&id| !self.db.scope(scope_id).is_defined_here(id)),
+                                );
                         }
 
                         let mut env = IndexSet::new();
@@ -97,22 +103,26 @@ impl<'a> Codegen<'a> {
                 scope_id: new_scope_id,
                 value,
             } => {
+                self.compute_captures_scope(new_scope_id, *value);
+
+                let new_captures = self.captures[&new_scope_id].clone();
+                self.captures
+                    .get_mut(&scope_id)
+                    .expect("cannot capture from unknown scope")
+                    .extend(
+                        new_captures
+                            .into_iter()
+                            .filter(|&id| !self.db.scope(scope_id).is_defined_here(id)),
+                    );
+
                 let mut env = IndexSet::new();
 
                 for symbol_id in self.db.scope(new_scope_id).definitions() {
                     env.insert(symbol_id);
                 }
 
-                env.extend(
-                    self.environments
-                        .get(&scope_id)
-                        .cloned()
-                        .unwrap_or_default(),
-                );
-
+                self.scope_inheritance.insert(new_scope_id, scope_id);
                 self.environments.insert(new_scope_id, env);
-
-                self.compute_captures_scope(new_scope_id, *value);
             }
             Value::FunctionCall { callee, args } => {
                 self.compute_captures(scope_id, *callee);
@@ -156,6 +166,10 @@ impl<'a> Codegen<'a> {
         };
 
         self.compute_captures_scope(scope_id, value.clone());
+
+        println!("main scope: {:?}", &scope_id);
+        println!("captures: {:?}", &self.captures);
+        println!("environments: {:?}", &self.environments);
 
         let mut env = IndexSet::new();
 
@@ -225,7 +239,21 @@ impl<'a> Codegen<'a> {
     }
 
     fn gen_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
-        let index = self.environments[&scope_id]
+        println!(
+            "gen_path: scope_id: {:?}, symbol_id: {:?}",
+            scope_id, symbol_id
+        );
+
+        let mut environment = self.environments[&scope_id].clone();
+
+        let mut current_scope_id = scope_id;
+
+        while self.scope_inheritance.contains_key(&current_scope_id) {
+            current_scope_id = self.scope_inheritance[&current_scope_id];
+            environment.extend(&self.environments[&current_scope_id]);
+        }
+
+        let index = environment
             .iter()
             .position(|&id| id == symbol_id)
             .expect("symbol not found");

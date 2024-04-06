@@ -14,6 +14,7 @@ pub struct Scope {
 
 impl Scope {
     pub fn define_symbol(&mut self, name: String, symbol_id: SymbolId) {
+        println!("Defined symbol: {} -> {:?}", &name, symbol_id);
         self.symbol_table.insert(name, symbol_id);
         self.definitions.insert(symbol_id);
     }
