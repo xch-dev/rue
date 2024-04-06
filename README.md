@@ -2,6 +2,30 @@
 
 Rue is a typed programming language which gets compiled to [CLVM](https://chialisp.com/clvm) bytecode. It's designed to be an alternative to [Chialisp](https://chialisp.com) for writing on-chain code for the [Chia blockchain](https://chia.net).
 
+This is a very experimental compiler, and should not be used in production at this time. Feel free to try the examples though!
+
+## Setup
+
+First, [install Rust](https://rustup.rs/) and clone this repository.
+Then from the repository root, run the following command to install the CLI:
+
+```bash
+cargo install --path crates/rue-cli
+```
+
+Now you can run the examples, such as:
+
+```bash
+rue hello_world.rue
+rue factorial.rue
+```
+
+You cannot currently pass arguments to the programs, however you can also run with [chia-dev-tools](https://github.com/Chia-Network/chia-dev-tools):
+
+```bash
+brun -x ff02ffff01ff018d48656c6c6f2c20776f726c6421ff0180 80
+```
+
 ## Compilation
 
 There are a series of compiler passes used to construct the final CLVM output:
@@ -29,6 +53,8 @@ The AST gets transformed into the HIR (high-level intermediate representation) i
 ### Optimizer
 
 Once the HIR has been built, you can perform analysis on the program, remove dead code, and simplify expressions.
+
+Note that the optimizer is not yet implemented.
 
 ### Codegen
 
