@@ -213,7 +213,46 @@ impl<'a> Lowerer<'a> {
 
         self.compile_items(block.items());
 
-        let body = self.compile_expr(expr, expected_type);
+        let mut let_scope_ids = Vec::new();
+
+        for let_stmt in block.let_stmts() {
+            let expected_type = let_stmt.ty().map(|ty| self.compile_ty(ty));
+
+            let Some(expr) = let_stmt.expr() else {
+                continue;
+            };
+
+            let value = self.compile_expr(expr, expected_type);
+
+            let Some(name) = let_stmt.name() else {
+                continue;
+            };
+
+            let symbol_id = self.db.alloc_symbol(Symbol::Binding {
+                ty: value.ty,
+                value: value.value,
+            });
+
+            let mut let_scope = Scope::default();
+            let_scope.define_symbol(name.to_string(), symbol_id);
+            let scope_id = self.db.alloc_scope(let_scope);
+            self.scope_stack.push(scope_id);
+
+            let_scope_ids.push(scope_id);
+        }
+
+        let mut body = self.compile_expr(expr, expected_type);
+
+        for scope_id in let_scope_ids.into_iter().rev() {
+            body = Typed {
+                value: Value::Scope {
+                    scope_id,
+                    value: Box::new(body.value),
+                },
+                ty: body.ty,
+            };
+            self.scope_stack.pop().expect("let not in scope stack");
+        }
 
         if scope_id.is_some() {
             self.scope_stack.pop().expect("block not in scope stack");

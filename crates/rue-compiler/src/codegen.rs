@@ -93,20 +93,26 @@ impl<'a> Codegen<'a> {
                     Symbol::Binding { value, .. } => self.compute_captures(scope_id, value),
                 }
             }
-            Value::Scope { scope_id, value } => {
-                self.compute_captures_scope(scope_id, *value);
-
+            Value::Scope {
+                scope_id: new_scope_id,
+                value,
+            } => {
                 let mut env = IndexSet::new();
 
-                for symbol_id in self.db.scope(scope_id).definitions() {
+                for symbol_id in self.db.scope(new_scope_id).definitions() {
                     env.insert(symbol_id);
                 }
 
-                for symbol_id in self.captures[&scope_id].clone() {
-                    env.insert(symbol_id);
-                }
+                env.extend(
+                    self.environments
+                        .get(&scope_id)
+                        .cloned()
+                        .unwrap_or_default(),
+                );
 
-                self.environments.insert(scope_id, env);
+                self.environments.insert(new_scope_id, env);
+
+                self.compute_captures_scope(new_scope_id, *value);
             }
             Value::FunctionCall { callee, args } => {
                 self.compute_captures(scope_id, *callee);
@@ -209,24 +215,9 @@ impl<'a> Codegen<'a> {
 
         let mut args = Vec::new();
 
-        for symbol_id in self.db.scope(scope_id).definitions() {
-            match self.db.symbol(symbol_id) {
-                Symbol::Function {
-                    scope_id: function_scope_id,
-                    value,
-                    ..
-                } => {
-                    let body = self.gen_value(*function_scope_id, value.clone());
-                    let quoted_body = self.quote(body);
-                    args.push(quoted_body);
-                }
-                Symbol::Parameter { .. } => unreachable!(),
-                Symbol::Binding { value, .. } => args.push(self.gen_value(scope_id, value.clone())),
-            }
+        for symbol_id in self.environments[&scope_id].clone() {
             args.push(self.gen_definition(scope_id, symbol_id));
         }
-
-        args.push(rest);
 
         let environment = self.runtime_list(&args, rest);
 
