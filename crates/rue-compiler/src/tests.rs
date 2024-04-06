@@ -45,6 +45,19 @@ example!(
     }
 );
 
+example!(
+    let_bindings,
+    Example {
+        environment: [42, 34],
+        parse: &[],
+        compile: &[],
+        hash: "aa247d144d1c5a3554c3d689c09fb2c0aced58a628e52030eac2bbd219018289",
+        size_bytes: 81,
+        output: 324,
+        runtime_cost: 5087
+    }
+);
+
 macro_rules! example_list {
     ( $( $name:ident ),+ $(,)? ) => {{
         let mut examples = HashSet::new();
@@ -56,7 +69,7 @@ macro_rules! example_list {
 #[allow(path_statements)]
 #[test]
 fn example_list() {
-    let examples = example_list!(hello_world, factorial);
+    let examples = example_list!(hello_world, factorial, let_bindings);
     let mut found_examples = HashSet::new();
 
     for example in fs::read_dir("../../examples")
@@ -120,6 +133,7 @@ fn example<T, O>(
     );
 
     let bytes = node_to_bytes(&allocator, output.node_ptr).unwrap();
+    println!("compiled program: {}", hex::encode(&bytes));
     assert_eq!(bytes.len(), size_bytes, "program size mismatch");
 
     let hash = hex::encode(tree_hash(&allocator, output.node_ptr));

@@ -214,7 +214,7 @@ impl<'a> Codegen<'a> {
         self.list(&[a, quoted_body, arg_list])
     }
 
-    fn gen_scope(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
+    fn gen_scope(&mut self, parent_scope_id: ScopeId, scope_id: ScopeId, value: Value) -> NodePtr {
         let body = self.gen_value(scope_id, value);
         let quoted_body = self.quote(body);
         let rest = self.allocator.one();
@@ -226,7 +226,7 @@ impl<'a> Codegen<'a> {
         let mut args = Vec::new();
 
         for symbol_id in self.environments[&scope_id].clone() {
-            args.push(self.gen_definition(scope_id, symbol_id));
+            args.push(self.gen_definition(parent_scope_id, symbol_id));
         }
 
         let environment = self.runtime_list(&args, rest);
@@ -283,7 +283,10 @@ impl<'a> Codegen<'a> {
             Value::Atom(atom) => self.gen_atom(atom),
             Value::List(list) => self.gen_list(scope_id, list),
             Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
-            Value::Scope { scope_id, value } => self.gen_scope(scope_id, *value),
+            Value::Scope {
+                scope_id: new_scope_id,
+                value,
+            } => self.gen_scope(scope_id, new_scope_id, *value),
             Value::FunctionCall { callee, args } => self.gen_function_call(scope_id, *callee, args),
             Value::BinaryOp { op, lhs, rhs } => {
                 let handler = match op {
