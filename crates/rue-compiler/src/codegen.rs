@@ -167,10 +167,6 @@ impl<'a> Codegen<'a> {
 
         self.compute_captures_scope(scope_id, value.clone());
 
-        println!("main scope: {:?}", &scope_id);
-        println!("captures: {:?}", &self.captures);
-        println!("environments: {:?}", &self.environments);
-
         let mut env = IndexSet::new();
 
         for symbol_id in self.db.scope(scope_id).definitions() {
@@ -239,11 +235,6 @@ impl<'a> Codegen<'a> {
     }
 
     fn gen_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
-        println!(
-            "gen_path: scope_id: {:?}, symbol_id: {:?}",
-            scope_id, symbol_id
-        );
-
         let mut environment = self.environments[&scope_id].clone();
 
         let mut current_scope_id = scope_id;
