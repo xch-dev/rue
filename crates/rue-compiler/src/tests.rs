@@ -71,6 +71,19 @@ example!(
     }
 );
 
+example!(
+    fibonacci,
+    Example {
+        environment: (),
+        parse: &[],
+        compile: &[],
+        hash: "0ee1d01c128a1d1ff6997404f800126172ec803c1b48fe79cbdcdf5eb3fa2c46",
+        size_bytes: 137,
+        output: 55,
+        runtime_cost: 441764
+    }
+);
+
 macro_rules! example_list {
     ( $( $name:ident ),+ $(,)? ) => {{
         let mut examples = HashSet::new();
@@ -82,7 +95,13 @@ macro_rules! example_list {
 #[allow(path_statements)]
 #[test]
 fn example_list() {
-    let examples = example_list!(hello_world, factorial, let_bindings, nested_scopes);
+    let examples = example_list!(
+        hello_world,
+        factorial,
+        let_bindings,
+        nested_scopes,
+        fibonacci
+    );
     let mut found_examples = HashSet::new();
 
     for example in fs::read_dir("../../examples")
