@@ -58,6 +58,19 @@ example!(
     }
 );
 
+example!(
+    nested_scopes,
+    Example {
+        environment: [42],
+        parse: &[],
+        compile: &[],
+        hash: "f62477bea5e9e0499265972002bf8205e064467c75a652d95302d0aacbbc6f25",
+        size_bytes: 421,
+        output: 1258649915136u64,
+        runtime_cost: 20043
+    }
+);
+
 macro_rules! example_list {
     ( $( $name:ident ),+ $(,)? ) => {{
         let mut examples = HashSet::new();
@@ -69,7 +82,7 @@ macro_rules! example_list {
 #[allow(path_statements)]
 #[test]
 fn example_list() {
-    let examples = example_list!(hello_world, factorial, let_bindings);
+    let examples = example_list!(hello_world, factorial, let_bindings, nested_scopes);
     let mut found_examples = HashSet::new();
 
     for example in fs::read_dir("../../examples")
