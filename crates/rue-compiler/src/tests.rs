@@ -84,6 +84,19 @@ example!(
     }
 );
 
+example!(
+    lambda_functions,
+    Example {
+        environment: (),
+        parse: &[],
+        compile: &[],
+        hash: "4487281127571db9621d134467f47ec74af9becea41a45fb942610b5df172328",
+        size_bytes: 103,
+        output: 86,
+        runtime_cost: 3247
+    }
+);
+
 macro_rules! example_list {
     ( $( $name:ident ),+ $(,)? ) => {{
         let mut examples = HashSet::new();
@@ -100,7 +113,8 @@ fn example_list() {
         factorial,
         let_bindings,
         nested_scopes,
-        fibonacci
+        fibonacci,
+        lambda_functions
     );
     let mut found_examples = HashSet::new();
 
