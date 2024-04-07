@@ -32,7 +32,6 @@ fn function_item(p: &mut Parser) {
 }
 
 fn function_params(p: &mut Parser) {
-    p.start(SyntaxKind::FunctionParamList);
     p.expect(SyntaxKind::OpenParen);
     while !p.at(SyntaxKind::CloseParen) {
         function_param(p);
@@ -41,7 +40,6 @@ fn function_params(p: &mut Parser) {
         }
     }
     p.expect(SyntaxKind::CloseParen);
-    p.finish();
 }
 
 fn function_param(p: &mut Parser) {

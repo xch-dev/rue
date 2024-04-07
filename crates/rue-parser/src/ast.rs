@@ -56,7 +56,6 @@ ast_node!(Root);
 
 ast_enum!(Item, FunctionItem, TypeAliasItem, StructItem);
 ast_node!(FunctionItem);
-ast_node!(FunctionParamList);
 ast_node!(FunctionParam);
 ast_node!(TypeAliasItem);
 ast_node!(StructItem);
@@ -114,8 +113,11 @@ impl FunctionItem {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn param_list(&self) -> Option<FunctionParamList> {
-        self.syntax().children().find_map(FunctionParamList::cast)
+    pub fn params(&self) -> Vec<FunctionParam> {
+        self.syntax()
+            .children()
+            .filter_map(FunctionParam::cast)
+            .collect()
     }
 
     pub fn return_type(&self) -> Option<Type> {
@@ -124,15 +126,6 @@ impl FunctionItem {
 
     pub fn body(&self) -> Option<Block> {
         self.syntax().children().find_map(Block::cast)
-    }
-}
-
-impl FunctionParamList {
-    pub fn params(&self) -> Vec<FunctionParam> {
-        self.syntax()
-            .children()
-            .filter_map(FunctionParam::cast)
-            .collect()
     }
 }
 

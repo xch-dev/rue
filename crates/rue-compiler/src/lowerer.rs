@@ -82,25 +82,17 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn declare_function(&mut self, function: FunctionItem) -> SymbolId {
+    fn declare_function(&mut self, function_item: FunctionItem) -> SymbolId {
         let mut scope = Scope::default();
 
-        let return_type = function
+        let return_type = function_item
             .return_type()
             .map(|ty| self.compile_type(ty))
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
         let mut parameter_types = Vec::new();
 
-        for param in function
-            .param_list()
-            .map(|list| list.params())
-            .unwrap_or_default()
-        {
-            let Some(name) = param.name() else {
-                continue;
-            };
-
+        for param in function_item.params() {
             let type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
@@ -109,7 +101,10 @@ impl<'a> Lowerer<'a> {
             parameter_types.push(type_id);
 
             let symbol_id = self.db.alloc_symbol(Symbol::Parameter { type_id });
-            scope.define_symbol(name.to_string(), symbol_id);
+
+            if let Some(name) = param.name() {
+                scope.define_symbol(name.to_string(), symbol_id);
+            }
         }
 
         let scope_id = self.db.alloc_scope(scope);
@@ -122,7 +117,7 @@ impl<'a> Lowerer<'a> {
             parameter_types,
         });
 
-        if let Some(name) = function.name() {
+        if let Some(name) = function_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
         }
 
@@ -146,71 +141,67 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_function(&mut self, function: FunctionItem, symbol_id: SymbolId) {
-        if let Some(body) = function.body() {
-            let (body_scope_id, expected_return_type) = match self.db.symbol(symbol_id) {
-                Symbol::Function {
-                    scope_id,
-                    return_type,
-                    ..
-                } => (*scope_id, *return_type),
-                _ => unreachable!(),
-            };
+        let Some(body) = function.body() else {
+            return;
+        };
 
-            self.scope_stack.push(body_scope_id);
-            let ret = self.compile_block_expr(body, None, Some(expected_return_type));
-            self.scope_stack.pop().expect("function not in scope stack");
+        let Symbol::Function {
+            scope_id,
+            return_type,
+            ..
+        } = self.db.symbol(symbol_id).clone()
+        else {
+            unreachable!();
+        };
 
-            if !self.is_assignable_to(self.db.ty(ret.ty), self.db.ty(expected_return_type)) {
-                self.error(
-                    DiagnosticInfo::TypeMismatch {
-                        expected: self.type_name(expected_return_type),
-                        found: self.type_name(ret.ty),
-                    },
-                    function.syntax().text_range(),
-                );
-            }
+        self.scope_stack.push(scope_id);
+        let output = self.compile_block_expr(body, None, Some(return_type));
+        self.scope_stack.pop().unwrap();
 
-            match &mut self.db.symbol_mut(symbol_id) {
-                Symbol::Function { hir_id, .. } => {
-                    *hir_id = ret.value;
-                }
-                _ => unreachable!(),
-            };
+        if !self.is_assignable_to(self.db.ty(output.ty), self.db.ty(return_type)) {
+            self.error(
+                DiagnosticInfo::TypeMismatch {
+                    expected: self.type_name(return_type),
+                    found: self.type_name(output.ty),
+                },
+                function.body().unwrap().syntax().text_range(),
+            );
         }
+
+        let Symbol::Function { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
+            unreachable!();
+        };
+        *hir_id = output.value;
     }
 
-    fn compile_type_alias(&mut self, ty: TypeAliasItem, type_id: TypeId) {
-        let text_range = ty.syntax().text_range();
-
-        let ty = ty
+    fn compile_type_alias(&mut self, ty: TypeAliasItem, alias_type_id: TypeId) {
+        let type_id = ty
             .ty()
             .map(|ty| self.compile_type(ty))
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
-
-        *self.db.ty_mut(type_id) = Type::Alias(ty);
-
-        self.detect_cycle(type_id, text_range);
+        *self.db.ty_mut(alias_type_id) = Type::Alias(type_id);
+        self.detect_cycle(type_id, ty.syntax().text_range());
     }
 
     fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
-        let mut field_names = IndexMap::new();
+        let mut named_fields = IndexMap::new();
         let mut fields = Vec::new();
 
         for field in struct_item.fields() {
-            let ty = field
+            let type_id = field
                 .ty()
                 .map(|ty| self.compile_type(ty))
                 .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
-            fields.push(ty);
+            fields.push(type_id);
 
             if let Some(name) = field.name() {
-                field_names.insert(name.to_string(), ty);
+                named_fields.insert(name.to_string(), type_id);
             };
         }
 
         *self.db.ty_mut(type_id) = Type::Struct {
-            named_fields: field_names,
+            named_fields,
             fields,
         };
     }
@@ -221,13 +212,6 @@ impl<'a> Lowerer<'a> {
         scope_id: Option<ScopeId>,
         expected_type: Option<TypeId>,
     ) -> Typed {
-        let Some(expr) = block.expr() else {
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
-        };
-
         if let Some(scope_id) = scope_id {
             self.scope_stack.push(scope_id);
         }
@@ -239,11 +223,13 @@ impl<'a> Lowerer<'a> {
         for let_stmt in block.let_stmts() {
             let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
 
-            let Some(expr) = let_stmt.expr() else {
-                continue;
-            };
-
-            let value = self.compile_expr(expr, expected_type);
+            let value = let_stmt
+                .expr()
+                .map(|expr| self.compile_expr(expr, expected_type))
+                .unwrap_or_else(|| Typed {
+                    value: self.db.alloc_hir(Hir::Unknown),
+                    ty: self.db.alloc_type(Type::Unknown),
+                });
 
             let Some(name) = let_stmt.name() else {
                 continue;
@@ -262,7 +248,13 @@ impl<'a> Lowerer<'a> {
             let_scope_ids.push(scope_id);
         }
 
-        let mut body = self.compile_expr(expr, expected_type);
+        let mut body = block
+            .expr()
+            .map(|expr| self.compile_expr(expr, expected_type))
+            .unwrap_or_else(|| Typed {
+                value: self.db.alloc_hir(Hir::Unknown),
+                ty: self.db.alloc_type(Type::Unknown),
+            });
 
         for scope_id in let_scope_ids.into_iter().rev() {
             body = Typed {
@@ -272,23 +264,14 @@ impl<'a> Lowerer<'a> {
                 }),
                 ty: body.ty,
             };
-            self.scope_stack.pop().expect("let not in scope stack");
+            self.scope_stack.pop().unwrap();
         }
 
         if scope_id.is_some() {
-            self.scope_stack.pop().expect("block not in scope stack");
+            self.scope_stack.pop().unwrap();
         }
 
-        Typed {
-            value: match scope_id {
-                Some(scope_id) => self.db.alloc_hir(Hir::Scope {
-                    scope_id,
-                    value: body.value,
-                }),
-                None => body.value,
-            },
-            ty: body.ty,
-        }
+        body
     }
 
     fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Typed {

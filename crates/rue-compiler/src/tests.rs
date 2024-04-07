@@ -38,10 +38,10 @@ example!(
         environment: (),
         parse: &[],
         compile: &[],
-        hash: "894f61248f98988924f255b780e8b67a840fd41d5b911e4f292d1fa9f9c804e0",
-        size_bytes: 113,
+        hash: "291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8",
+        size_bytes: 97,
         output: 1307674368000u64,
-        runtime_cost: 46068
+        runtime_cost: 43743
     }
 );
 
@@ -77,10 +77,10 @@ example!(
         environment: (),
         parse: &[],
         compile: &[],
-        hash: "0ee1d01c128a1d1ff6997404f800126172ec803c1b48fe79cbdcdf5eb3fa2c46",
-        size_bytes: 137,
+        hash: "951ba85ff214a65c4d07814672544b6686e8f4a819550543473fb8eb26aae6a3",
+        size_bytes: 121,
         output: 55,
-        runtime_cost: 441764
+        runtime_cost: 414329
     }
 );
 
@@ -103,10 +103,10 @@ example!(
         environment: (),
         parse: &[],
         compile: &[],
-        hash: "6ffb1885c53449318687a47741533a3a034b96563ee20b210e2b8fbefca8c532",
-        size_bytes: 177,
+        hash: "0805d86735757b42ff0ad4194d8f356d6a600e8a2cd6494ecb50a8d586ffe1ef",
+        size_bytes: 161,
         output: 341120935282u64,
-        runtime_cost: 3174
+        runtime_cost: 3019
     }
 );
 
@@ -194,10 +194,8 @@ fn example<T, O>(
 
     let bytes = node_to_bytes(&allocator, output.node_ptr).unwrap();
     println!("compiled program: {}", hex::encode(&bytes));
-    assert_eq!(bytes.len(), size_bytes, "program size mismatch");
 
     let hash = hex::encode(tree_hash(&allocator, output.node_ptr));
-    assert_eq!(hash, expected_hash, "hash mismatch");
 
     let environment = environment.to_clvm(&mut allocator).unwrap();
     let output = run_program(
@@ -208,8 +206,11 @@ fn example<T, O>(
         u64::MAX,
     )
     .unwrap();
-    assert_eq!(output.0, runtime_cost, "runtime cost mismatch");
 
-    let output = O::from_clvm(&allocator, output.1).unwrap();
-    assert_eq!(output, expected_output, "output mismatch");
+    let deserialized = O::from_clvm(&allocator, output.1).unwrap();
+
+    assert_eq!(deserialized, expected_output, "output mismatch");
+    assert_eq!(bytes.len(), size_bytes, "program size mismatch");
+    assert_eq!(output.0, runtime_cost, "runtime cost mismatch");
+    assert_eq!(hash, expected_hash, "hash mismatch");
 }

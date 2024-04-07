@@ -58,7 +58,6 @@ pub enum SyntaxKind {
 
     Root,
     FunctionItem,
-    FunctionParamList,
     FunctionParam,
     TypeAliasItem,
     StructItem,
@@ -144,7 +143,6 @@ impl fmt::Display for SyntaxKind {
 
                 SyntaxKind::Root => "root",
                 SyntaxKind::FunctionItem => "function item",
-                SyntaxKind::FunctionParamList => "function param list",
                 SyntaxKind::FunctionParam => "function param",
                 SyntaxKind::TypeAliasItem => "type alias item",
                 SyntaxKind::StructItem => "struct item",
