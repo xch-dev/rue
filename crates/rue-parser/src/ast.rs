@@ -118,7 +118,7 @@ impl FunctionItem {
         self.syntax().children().find_map(FunctionParamList::cast)
     }
 
-    pub fn return_ty(&self) -> Option<Type> {
+    pub fn return_type(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }
 

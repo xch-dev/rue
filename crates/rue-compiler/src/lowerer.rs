@@ -113,8 +113,8 @@ impl<'a> Lowerer<'a> {
         let mut scope = Scope::default();
 
         let return_type = function
-            .return_ty()
-            .map(|ty| self.compile_ty(ty))
+            .return_type()
+            .map(|ty| self.compile_type(ty))
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
         let mut parameter_types = Vec::new();
@@ -130,7 +130,7 @@ impl<'a> Lowerer<'a> {
 
             let type_id = param
                 .ty()
-                .map(|ty| self.compile_ty(ty))
+                .map(|ty| self.compile_type(ty))
                 .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
             parameter_types.push(type_id);
@@ -211,7 +211,7 @@ impl<'a> Lowerer<'a> {
 
         let ty = ty
             .ty()
-            .map(|ty| self.compile_ty(ty))
+            .map(|ty| self.compile_type(ty))
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
         *self.db.ty_mut(type_id) = Type::Alias(ty);
@@ -226,7 +226,7 @@ impl<'a> Lowerer<'a> {
         for field in struct_item.fields() {
             let ty = field
                 .ty()
-                .map(|ty| self.compile_ty(ty))
+                .map(|ty| self.compile_type(ty))
                 .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
             fields.push(ty);
@@ -264,7 +264,7 @@ impl<'a> Lowerer<'a> {
         let mut let_scope_ids = Vec::new();
 
         for let_stmt in block.let_stmts() {
-            let expected_type = let_stmt.ty().map(|ty| self.compile_ty(ty));
+            let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
 
             let Some(expr) = let_stmt.expr() else {
                 continue;
@@ -659,7 +659,7 @@ impl<'a> Lowerer<'a> {
         {
             let type_id = param
                 .ty()
-                .map(|ty| self.compile_ty(ty))
+                .map(|ty| self.compile_type(ty))
                 .or(expected
                     .as_ref()
                     .and_then(|expected| expected.0.get(i).copied()))
@@ -684,7 +684,7 @@ impl<'a> Lowerer<'a> {
 
         let expected_return_type = lambda_expr
             .ty()
-            .map(|ty| self.compile_ty(ty))
+            .map(|ty| self.compile_type(ty))
             .or(expected.map(|expected| expected.1));
 
         self.scope_stack.push(scope_id);
@@ -960,7 +960,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_ty(&mut self, ty: rue_parser::Type) -> TypeId {
+    fn compile_type(&mut self, ty: rue_parser::Type) -> TypeId {
         match ty {
             rue_parser::Type::Path(literal) => self.compile_path_type(literal),
             rue_parser::Type::ListType(list) => self.compile_list_type(list),
@@ -998,7 +998,7 @@ impl<'a> Lowerer<'a> {
             return self.db.alloc_type(Type::Unknown);
         };
 
-        let inner = self.compile_ty(inner);
+        let inner = self.compile_type(inner);
         self.db.alloc_type(Type::List(inner))
     }
 
@@ -1008,12 +1008,12 @@ impl<'a> Lowerer<'a> {
             .map(|params| params.types())
             .unwrap_or_default()
             .into_iter()
-            .map(|ty| self.compile_ty(ty))
+            .map(|ty| self.compile_type(ty))
             .collect();
 
         let return_type = function
             .ret()
-            .map(|ty| self.compile_ty(ty))
+            .map(|ty| self.compile_type(ty))
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
         self.db.alloc_type(Type::Function {
