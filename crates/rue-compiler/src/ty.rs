@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 use crate::{database::TypeId, value::Value};
 
@@ -11,7 +11,7 @@ pub enum Type {
     Bytes,
     List(TypeId),
     Struct {
-        named_fields: HashMap<String, TypeId>,
+        named_fields: IndexMap<String, TypeId>,
         fields: Vec<TypeId>,
     },
     Function {

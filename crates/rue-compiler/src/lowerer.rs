@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
@@ -217,7 +217,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
-        let mut field_names = HashMap::new();
+        let mut field_names = IndexMap::new();
         let mut fields = Vec::new();
 
         for field in struct_item.fields() {
