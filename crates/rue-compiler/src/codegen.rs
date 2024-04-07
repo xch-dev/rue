@@ -5,9 +5,9 @@ use indexmap::IndexSet;
 use rue_parser::BinaryOp;
 
 use crate::{
-    database::{Database, ScopeId, SymbolId},
+    database::{Database, HirId, ScopeId, SymbolId},
+    hir::Hir,
     symbol::Symbol,
-    Value,
 };
 
 pub fn codegen(allocator: &mut Allocator, db: &mut Database, main: SymbolId) -> NodePtr {
@@ -33,19 +33,19 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    fn compute_captures_scope(&mut self, scope_id: ScopeId, value: Value) {
+    fn compute_captures_scope(&mut self, scope_id: ScopeId, hir_id: HirId) {
         if self.captures.contains_key(&scope_id) {
             return;
         }
         self.captures.insert(scope_id, IndexSet::new());
-        self.compute_captures(scope_id, value);
+        self.compute_captures(scope_id, hir_id);
     }
 
-    fn compute_captures(&mut self, scope_id: ScopeId, value: Value) {
-        match value.clone() {
-            Value::Unknown => unreachable!(),
-            Value::Atom(_) => {}
-            Value::Reference(symbol_id) => {
+    fn compute_captures(&mut self, scope_id: ScopeId, hir_id: HirId) {
+        match self.db.hir(hir_id).clone() {
+            Hir::Unknown => unreachable!(),
+            Hir::Atom(_) => {}
+            Hir::Reference(symbol_id) => {
                 if !self.db.scope(scope_id).is_defined_here(symbol_id) {
                     self.captures
                         .get_mut(&scope_id)
@@ -56,10 +56,10 @@ impl<'a> Codegen<'a> {
                 match self.db.symbol(symbol_id).clone() {
                     Symbol::Function {
                         scope_id: function_scope_id,
-                        value,
+                        hir_id,
                         ..
                     } => {
-                        self.compute_captures_scope(function_scope_id, value);
+                        self.compute_captures_scope(function_scope_id, hir_id);
 
                         if !self.db.scope(scope_id).is_defined_here(symbol_id) {
                             let new_captures = self.captures[&function_scope_id].clone();
@@ -96,14 +96,14 @@ impl<'a> Codegen<'a> {
                     }
 
                     Symbol::Parameter { .. } => {}
-                    Symbol::Binding { value, .. } => self.compute_captures(scope_id, value),
+                    Symbol::Binding { hir_id, .. } => self.compute_captures(scope_id, hir_id),
                 }
             }
-            Value::Scope {
+            Hir::Scope {
                 scope_id: new_scope_id,
                 value,
             } => {
-                self.compute_captures_scope(new_scope_id, *value);
+                self.compute_captures_scope(new_scope_id, value);
 
                 let new_captures = self.captures[&new_scope_id].clone();
                 self.captures
@@ -124,51 +124,51 @@ impl<'a> Codegen<'a> {
                 self.scope_inheritance.insert(new_scope_id, scope_id);
                 self.environments.insert(new_scope_id, env);
             }
-            Value::FunctionCall { callee, args } => {
-                self.compute_captures(scope_id, *callee);
+            Hir::FunctionCall { callee, args } => {
+                self.compute_captures(scope_id, callee);
                 for arg in args {
                     self.compute_captures(scope_id, arg);
                 }
             }
-            Value::BinaryOp { lhs, rhs, .. } => {
-                self.compute_captures(scope_id, *lhs);
-                self.compute_captures(scope_id, *rhs);
+            Hir::BinaryOp { lhs, rhs, .. } => {
+                self.compute_captures(scope_id, lhs);
+                self.compute_captures(scope_id, rhs);
             }
-            Value::Not(value) => {
-                self.compute_captures(scope_id, *value);
+            Hir::Not(value) => {
+                self.compute_captures(scope_id, value);
             }
-            Value::If {
+            Hir::If {
                 condition,
                 then_block,
                 else_block,
             } => {
-                self.compute_captures(scope_id, *condition);
-                self.compute_captures(scope_id, *then_block);
-                self.compute_captures(scope_id, *else_block);
+                self.compute_captures(scope_id, condition);
+                self.compute_captures(scope_id, then_block);
+                self.compute_captures(scope_id, else_block);
             }
-            Value::List(items) => {
+            Hir::List(items) => {
                 for item in items {
                     self.compute_captures(scope_id, item);
                 }
             }
-            Value::ListIndex { value, .. } => {
-                self.compute_captures(scope_id, *value);
+            Hir::ListIndex { value, .. } => {
+                self.compute_captures(scope_id, value);
             }
         }
     }
 
     pub fn gen_main(&mut self, main: SymbolId) -> NodePtr {
-        let (scope_id, value) = {
+        let (scope_id, hir_id) = {
             let Symbol::Function {
-                scope_id, value, ..
+                scope_id, hir_id, ..
             } = self.db.symbol(main)
             else {
                 unreachable!();
             };
-            (*scope_id, value.clone())
+            (*scope_id, *hir_id)
         };
 
-        self.compute_captures_scope(scope_id, value.clone());
+        self.compute_captures_scope(scope_id, hir_id);
 
         let mut env = IndexSet::new();
 
@@ -191,7 +191,7 @@ impl<'a> Codegen<'a> {
 
         self.environments.insert(scope_id, env);
 
-        let body = self.gen_value(scope_id, value);
+        let body = self.gen_hir(scope_id, hir_id);
         let quoted_body = self.quote(body);
         let rest = self.allocator.one();
         let a = self
@@ -217,8 +217,8 @@ impl<'a> Codegen<'a> {
         self.list(&[a, quoted_body, arg_list])
     }
 
-    fn gen_scope(&mut self, parent_scope_id: ScopeId, scope_id: ScopeId, value: Value) -> NodePtr {
-        let body = self.gen_value(scope_id, value);
+    fn gen_scope(&mut self, parent_scope_id: ScopeId, scope_id: ScopeId, hir_id: HirId) -> NodePtr {
+        let body = self.gen_hir(scope_id, hir_id);
         let quoted_body = self.quote(body);
         let rest = self.allocator.one();
         let a = self
@@ -267,32 +267,34 @@ impl<'a> Codegen<'a> {
         match self.db.symbol(symbol_id) {
             Symbol::Function {
                 scope_id: function_scope_id,
-                value,
+                hir_id,
                 ..
             } => {
-                let body = self.gen_value(*function_scope_id, value.clone());
+                let body = self.gen_hir(*function_scope_id, *hir_id);
                 self.quote(body)
             }
             Symbol::Parameter { .. } => {
                 unreachable!();
             }
-            Symbol::Binding { value, .. } => self.gen_value(scope_id, value.clone()),
+            Symbol::Binding { hir_id, .. } => self.gen_hir(scope_id, *hir_id),
         }
     }
 
-    fn gen_value(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
-        match value {
-            Value::Unknown => unreachable!(),
-            Value::Atom(atom) => self.gen_atom(atom),
-            Value::List(list) => self.gen_list(scope_id, list),
-            Value::ListIndex { value, index } => self.gen_list_index(scope_id, *value, index),
-            Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
-            Value::Scope {
+    fn gen_hir(&mut self, scope_id: ScopeId, hir_id: HirId) -> NodePtr {
+        match self.db.hir(hir_id) {
+            Hir::Unknown => unreachable!(),
+            Hir::Atom(atom) => self.gen_atom(atom.clone()),
+            Hir::List(list) => self.gen_list(scope_id, list.clone()),
+            Hir::ListIndex { value, index } => self.gen_list_index(scope_id, *value, *index),
+            Hir::Reference(symbol_id) => self.gen_reference(scope_id, *symbol_id),
+            Hir::Scope {
                 scope_id: new_scope_id,
                 value,
-            } => self.gen_scope(scope_id, new_scope_id, *value),
-            Value::FunctionCall { callee, args } => self.gen_function_call(scope_id, *callee, args),
-            Value::BinaryOp { op, lhs, rhs } => {
+            } => self.gen_scope(scope_id, *new_scope_id, *value),
+            Hir::FunctionCall { callee, args } => {
+                self.gen_function_call(scope_id, *callee, args.clone())
+            }
+            Hir::BinaryOp { op, lhs, rhs } => {
                 let handler = match op {
                     BinaryOp::Add => Self::gen_add,
                     BinaryOp::Subtract => Self::gen_subtract,
@@ -308,8 +310,8 @@ impl<'a> Codegen<'a> {
                 };
                 handler(self, scope_id, *lhs, *rhs)
             }
-            Value::Not(value) => self.gen_not(scope_id, *value),
-            Value::If {
+            Hir::Not(value) => self.gen_not(scope_id, *value),
+            Hir::If {
                 condition,
                 then_block,
                 else_block,
@@ -317,16 +319,16 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    fn gen_list(&mut self, scope_id: ScopeId, items: Vec<Value>) -> NodePtr {
+    fn gen_list(&mut self, scope_id: ScopeId, items: Vec<HirId>) -> NodePtr {
         let mut args = Vec::new();
         for item in items {
-            args.push(self.gen_value(scope_id, item));
+            args.push(self.gen_hir(scope_id, item));
         }
         self.runtime_list(&args, NodePtr::NIL)
     }
 
-    fn gen_list_index(&mut self, scope_id: ScopeId, value: Value, index: usize) -> NodePtr {
-        let mut value = self.gen_value(scope_id, value);
+    fn gen_list_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: usize) -> NodePtr {
+        let mut value = self.gen_hir(scope_id, hir_id);
         let f = self
             .allocator
             .new_small_number(5)
@@ -346,7 +348,6 @@ impl<'a> Codegen<'a> {
     fn gen_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
         if let Symbol::Function {
             scope_id: function_scope_id,
-            value: _,
             ..
         } = self.db.symbol(symbol_id).clone()
         {
@@ -401,8 +402,8 @@ impl<'a> Codegen<'a> {
     fn gen_function_call(
         &mut self,
         scope_id: ScopeId,
-        callee: Value,
-        arg_values: Vec<Value>,
+        callee: HirId,
+        arg_values: Vec<HirId>,
     ) -> NodePtr {
         let a = self
             .allocator
@@ -411,7 +412,7 @@ impl<'a> Codegen<'a> {
 
         let mut args = Vec::new();
 
-        let callee = if let Value::Reference(symbol_id) = callee {
+        let callee = if let Hir::Reference(symbol_id) = self.db.hir(callee).clone() {
             if let Symbol::Function {
                 scope_id: callee_scope_id,
                 ..
@@ -422,65 +423,65 @@ impl<'a> Codegen<'a> {
                 }
                 self.gen_path(scope_id, symbol_id)
             } else {
-                self.gen_value(scope_id, callee)
+                self.gen_hir(scope_id, callee)
             }
         } else {
-            self.gen_value(scope_id, callee)
+            self.gen_hir(scope_id, callee)
         };
 
         for arg_value in arg_values {
-            args.push(self.gen_value(scope_id, arg_value));
+            args.push(self.gen_hir(scope_id, arg_value));
         }
         let arg_list = self.runtime_list(&args, NodePtr::NIL);
 
         self.list(&[a, callee, arg_list])
     }
 
-    fn gen_add(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_add(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let plus = self
             .allocator
             .new_small_number(16)
             .expect("could not allocate `+`");
 
-        let lhs = self.gen_value(scope_id, lhs);
-        let rhs = self.gen_value(scope_id, rhs);
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
         self.list(&[plus, lhs, rhs])
     }
 
-    fn gen_subtract(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_subtract(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let minus = self
             .allocator
             .new_small_number(17)
             .expect("could not allocate `-`");
 
-        let lhs = self.gen_value(scope_id, lhs);
-        let rhs = self.gen_value(scope_id, rhs);
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
         self.list(&[minus, lhs, rhs])
     }
 
-    fn gen_multiply(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_multiply(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let star = self
             .allocator
             .new_small_number(18)
             .expect("could not allocate `*`");
 
-        let lhs = self.gen_value(scope_id, lhs);
-        let rhs = self.gen_value(scope_id, rhs);
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
         self.list(&[star, lhs, rhs])
     }
 
-    fn gen_divide(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_divide(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let slash = self
             .allocator
             .new_small_number(19)
             .expect("could not allocate `/`");
 
-        let lhs = self.gen_value(scope_id, lhs);
-        let rhs = self.gen_value(scope_id, rhs);
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
         self.list(&[slash, lhs, rhs])
     }
 
-    fn gen_remainder(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_remainder(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let divmod = self
             .allocator
             .new_small_number(20)
@@ -490,30 +491,30 @@ impl<'a> Codegen<'a> {
             .new_small_number(6)
             .expect("could not allocate `r`");
 
-        let lhs = self.gen_value(scope_id, lhs);
-        let rhs = self.gen_value(scope_id, rhs);
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
 
         let divmod_list = self.list(&[divmod, lhs, rhs]);
         self.list(&[rest, divmod_list])
     }
 
-    fn gen_lt(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_lt(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         self.gen_gt(scope_id, rhs, lhs)
     }
 
-    fn gen_gt(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_gt(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let gt = self
             .allocator
             .new_small_number(21)
             .expect("could not allocate `>`");
 
         let mut args = vec![gt];
-        args.push(self.gen_value(scope_id, lhs));
-        args.push(self.gen_value(scope_id, rhs));
+        args.push(self.gen_hir(scope_id, lhs));
+        args.push(self.gen_hir(scope_id, rhs));
         self.list(&args)
     }
 
-    fn gen_lteq(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_lteq(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let not = self
             .allocator
             .new_small_number(32)
@@ -523,14 +524,14 @@ impl<'a> Codegen<'a> {
             .new_small_number(21)
             .expect("could not allocate `>`");
 
-        let lhs = self.gen_value(scope_id, lhs);
-        let rhs = self.gen_value(scope_id, rhs);
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
         let gt_list = self.list(&[gt, lhs, rhs]);
 
         self.list(&[not, gt_list])
     }
 
-    fn gen_gteq(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_gteq(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let any = self
             .allocator
             .new_small_number(33)
@@ -544,8 +545,8 @@ impl<'a> Codegen<'a> {
             .new_small_number(21)
             .expect("could not allocate `>`");
 
-        let lhs = self.gen_value(scope_id, lhs);
-        let rhs = self.gen_value(scope_id, rhs);
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
         let operands = self.list(&[lhs, rhs]);
 
         let eq_list = self
@@ -560,19 +561,19 @@ impl<'a> Codegen<'a> {
         self.list(&[any, gt_list, eq_list])
     }
 
-    fn gen_eq(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_eq(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let eq = self
             .allocator
             .new_small_number(9)
             .expect("could not allocate `=`");
 
         let mut args = vec![eq];
-        args.push(self.gen_value(scope_id, lhs));
-        args.push(self.gen_value(scope_id, rhs));
+        args.push(self.gen_hir(scope_id, lhs));
+        args.push(self.gen_hir(scope_id, rhs));
         self.list(&args)
     }
 
-    fn gen_neq(&mut self, scope_id: ScopeId, lhs: Value, rhs: Value) -> NodePtr {
+    fn gen_neq(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
         let eq = self
             .allocator
             .new_small_number(9)
@@ -583,29 +584,29 @@ impl<'a> Codegen<'a> {
             .expect("could not allocate `not`");
 
         let mut args = vec![eq];
-        args.push(self.gen_value(scope_id, lhs));
-        args.push(self.gen_value(scope_id, rhs));
+        args.push(self.gen_hir(scope_id, lhs));
+        args.push(self.gen_hir(scope_id, rhs));
         let eq_list = self.list(&args);
 
         self.list(&[not, eq_list])
     }
 
-    fn gen_not(&mut self, scope_id: ScopeId, value: Value) -> NodePtr {
+    fn gen_not(&mut self, scope_id: ScopeId, value: HirId) -> NodePtr {
         let not = self
             .allocator
             .new_small_number(32)
             .expect("could not allocate `not`");
 
-        let value = self.gen_value(scope_id, value);
+        let value = self.gen_hir(scope_id, value);
         self.list(&[not, value])
     }
 
     fn gen_if(
         &mut self,
         scope_id: ScopeId,
-        condition: Value,
-        then_block: Value,
-        else_block: Value,
+        condition: HirId,
+        then_block: HirId,
+        else_block: HirId,
     ) -> NodePtr {
         let a = self
             .allocator
@@ -618,9 +619,9 @@ impl<'a> Codegen<'a> {
 
         let all_env = self.allocator.one();
 
-        let condition = self.gen_value(scope_id, condition);
-        let then_block = self.gen_value(scope_id, then_block);
-        let else_block = self.gen_value(scope_id, else_block);
+        let condition = self.gen_hir(scope_id, condition);
+        let then_block = self.gen_hir(scope_id, then_block);
+        let else_block = self.gen_hir(scope_id, else_block);
 
         let then_block = self.quote(then_block);
         let else_block = self.quote(else_block);

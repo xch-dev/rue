@@ -3,16 +3,15 @@ use codegen::codegen;
 use database::{Database, SymbolId};
 use lowerer::lower;
 use rue_parser::Root;
-use value::Value;
 
 mod codegen;
 mod database;
 mod error;
+mod hir;
 mod lowerer;
 mod scope;
 mod symbol;
 mod ty;
-mod value;
 
 #[cfg(test)]
 mod tests;

@@ -10,11 +10,11 @@ use rue_parser::{
 };
 
 use crate::{
-    database::{Database, ScopeId, SymbolId, TypeId},
+    database::{Database, HirId, ScopeId, SymbolId, TypeId},
+    hir::Hir,
     scope::Scope,
     symbol::Symbol,
     ty::{Type, Typed},
-    value::Value,
     Diagnostic, DiagnosticInfo, DiagnosticKind,
 };
 
@@ -112,12 +112,12 @@ impl<'a> Lowerer<'a> {
     fn declare_function(&mut self, function: FunctionItem) -> SymbolId {
         let mut scope = Scope::default();
 
-        let ret_ty = function
+        let return_type = function
             .return_ty()
             .map(|ty| self.compile_ty(ty))
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
-        let mut param_types = Vec::new();
+        let mut parameter_types = Vec::new();
 
         for param in function
             .param_list()
@@ -128,24 +128,25 @@ impl<'a> Lowerer<'a> {
                 continue;
             };
 
-            let ty = param
+            let type_id = param
                 .ty()
                 .map(|ty| self.compile_ty(ty))
                 .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
-            param_types.push(ty);
+            parameter_types.push(type_id);
 
-            let symbol_id = self.db.alloc_symbol(Symbol::Parameter { ty });
+            let symbol_id = self.db.alloc_symbol(Symbol::Parameter { type_id });
             scope.define_symbol(name.to_string(), symbol_id);
         }
 
         let scope_id = self.db.alloc_scope(scope);
+        let hir_id = self.db.alloc_hir(Hir::Unknown);
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
-            value: Value::Unknown,
-            ret_type: ret_ty,
-            param_types,
+            hir_id,
+            return_type,
+            parameter_types,
         });
 
         if let Some(name) = function.name() {
@@ -173,21 +174,23 @@ impl<'a> Lowerer<'a> {
 
     fn compile_function(&mut self, function: FunctionItem, symbol_id: SymbolId) {
         if let Some(body) = function.body() {
-            let (body_scope_id, expected_ret_type) = match self.db.symbol(symbol_id) {
+            let (body_scope_id, expected_return_type) = match self.db.symbol(symbol_id) {
                 Symbol::Function {
-                    scope_id, ret_type, ..
-                } => (*scope_id, *ret_type),
+                    scope_id,
+                    return_type,
+                    ..
+                } => (*scope_id, *return_type),
                 _ => unreachable!(),
             };
 
             self.scope_stack.push(body_scope_id);
-            let ret = self.compile_block_expr(body, None, Some(expected_ret_type));
+            let ret = self.compile_block_expr(body, None, Some(expected_return_type));
             self.scope_stack.pop().expect("function not in scope stack");
 
-            if !self.is_assignable_to(self.db.ty(ret.ty), self.db.ty(expected_ret_type)) {
+            if !self.is_assignable_to(self.db.ty(ret.ty), self.db.ty(expected_return_type)) {
                 self.error(
                     DiagnosticInfo::TypeMismatch {
-                        expected: self.type_name(expected_ret_type),
+                        expected: self.type_name(expected_return_type),
                         found: self.type_name(ret.ty),
                     },
                     function.syntax().text_range(),
@@ -195,8 +198,8 @@ impl<'a> Lowerer<'a> {
             }
 
             match &mut self.db.symbol_mut(symbol_id) {
-                Symbol::Function { value, .. } => {
-                    *value = ret.value;
+                Symbol::Function { hir_id, .. } => {
+                    *hir_id = ret.value;
                 }
                 _ => unreachable!(),
             };
@@ -247,7 +250,7 @@ impl<'a> Lowerer<'a> {
     ) -> Typed {
         let Some(expr) = block.expr() else {
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -274,8 +277,8 @@ impl<'a> Lowerer<'a> {
             };
 
             let symbol_id = self.db.alloc_symbol(Symbol::Binding {
-                ty: value.ty,
-                value: value.value,
+                type_id: value.ty,
+                hir_id: value.value,
             });
 
             let mut let_scope = Scope::default();
@@ -290,10 +293,10 @@ impl<'a> Lowerer<'a> {
 
         for scope_id in let_scope_ids.into_iter().rev() {
             body = Typed {
-                value: Value::Scope {
+                value: self.db.alloc_hir(Hir::Scope {
                     scope_id,
-                    value: Box::new(body.value),
-                },
+                    value: body.value,
+                }),
                 ty: body.ty,
             };
             self.scope_stack.pop().expect("let not in scope stack");
@@ -305,10 +308,10 @@ impl<'a> Lowerer<'a> {
 
         Typed {
             value: match scope_id {
-                Some(scope_id) => Value::Scope {
+                Some(scope_id) => self.db.alloc_hir(Hir::Scope {
                     scope_id,
-                    value: Box::new(body.value),
-                },
+                    value: body.value,
+                }),
                 None => body.value,
             },
             ty: body.ty,
@@ -361,7 +364,7 @@ impl<'a> Lowerer<'a> {
                 .expr()
                 .map(|expr| self.compile_expr(expr, expected_type))
                 .unwrap_or_else(|| Typed {
-                    value: Value::Unknown,
+                    value: self.db.alloc_hir(Hir::Unknown),
                     ty: self.db.alloc_type(Type::Unknown),
                 });
 
@@ -414,17 +417,17 @@ impl<'a> Lowerer<'a> {
                 specified_fields
                     .get(field)
                     .cloned()
-                    .unwrap_or(Value::Unknown),
+                    .unwrap_or_else(|| self.db.alloc_hir(Hir::Unknown)),
             );
         }
 
         match ty {
             Some(struct_type) => Typed {
-                value: Value::List(args),
+                value: self.db.alloc_hir(Hir::List(args)),
                 ty: struct_type,
             },
             None => Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             },
         }
@@ -436,14 +439,14 @@ impl<'a> Lowerer<'a> {
             .map(|expr| self.compile_expr(expr, None))
         else {
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(field_name) = field_access.field() else {
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -455,10 +458,10 @@ impl<'a> Lowerer<'a> {
             } => {
                 if let Some(&field_ty) = named_fields.get(field_name.text()) {
                     Typed {
-                        value: Value::ListIndex {
-                            value: Box::new(value.value),
+                        value: self.db.alloc_hir(Hir::ListIndex {
+                            value: value.value,
                             index: fields.iter().position(|&field| field == field_ty).unwrap(),
-                        },
+                        }),
                         ty: field_ty,
                     }
                 } else {
@@ -468,7 +471,7 @@ impl<'a> Lowerer<'a> {
                     );
 
                     Typed {
-                        value: Value::Unknown,
+                        value: self.db.alloc_hir(Hir::Unknown),
                         ty: self.db.alloc_type(Type::Unknown),
                     }
                 }
@@ -480,7 +483,7 @@ impl<'a> Lowerer<'a> {
                 );
 
                 Typed {
-                    value: Value::Unknown,
+                    value: self.db.alloc_hir(Hir::Unknown),
                     ty: self.db.alloc_type(Type::Unknown),
                 }
             }
@@ -490,7 +493,7 @@ impl<'a> Lowerer<'a> {
     fn compile_prefix_expr(&mut self, prefix_expr: PrefixExpr) -> Typed {
         let Some(expr) = prefix_expr.expr() else {
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -509,8 +512,8 @@ impl<'a> Lowerer<'a> {
 
         Typed {
             value: match prefix_expr.op() {
-                Some(PrefixOp::Not) => Value::Not(Box::new(expr.value)),
-                _ => Value::Unknown,
+                Some(PrefixOp::Not) => self.db.alloc_hir(Hir::Not(expr.value)),
+                _ => self.db.alloc_hir(Hir::Unknown),
             },
             ty: self.db.alloc_type(Type::Bool),
         }
@@ -563,15 +566,11 @@ impl<'a> Lowerer<'a> {
 
         match (lhs, rhs, binary.op()) {
             (Some(Typed { value: lhs, .. }), Some(Typed { value: rhs, .. }), Some(op)) => Typed {
-                value: Value::BinaryOp {
-                    op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                },
+                value: self.db.alloc_hir(Hir::BinaryOp { op, lhs, rhs }),
                 ty: self.db.alloc_type(ty),
             },
             _ => Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(ty),
             },
         }
@@ -580,7 +579,7 @@ impl<'a> Lowerer<'a> {
     fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Typed {
         let Some(value) = literal.value() else {
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -589,15 +588,15 @@ impl<'a> Lowerer<'a> {
             SyntaxKind::Int => self.compile_int(value),
             SyntaxKind::String => self.compile_string(value),
             SyntaxKind::True => Typed {
-                value: Value::Atom(vec![1]),
+                value: self.db.alloc_hir(Hir::Atom(vec![1])),
                 ty: self.db.alloc_type(Type::Bool),
             },
             SyntaxKind::False => Typed {
-                value: Value::Atom(Vec::new()),
+                value: self.db.alloc_hir(Hir::Atom(Vec::new())),
                 ty: self.db.alloc_type(Type::Bool),
             },
             SyntaxKind::Nil => Typed {
-                value: Value::Atom(Vec::new()),
+                value: self.db.alloc_hir(Hir::Atom(Vec::new())),
                 ty: self.db.alloc_type(Type::Nil),
             },
             _ => unreachable!(),
@@ -635,7 +634,7 @@ impl<'a> Lowerer<'a> {
         }
 
         Typed {
-            value: Value::List(items),
+            value: self.db.alloc_hir(Hir::List(items)),
             ty: self.db.alloc_type(Type::List(item_type)),
         }
     }
@@ -649,7 +648,7 @@ impl<'a> Lowerer<'a> {
             expected_type.and_then(|expected| self.extract_function_type_components(expected));
 
         let mut scope = Scope::default();
-        let mut param_types = Vec::new();
+        let mut parameter_types = Vec::new();
 
         for (i, param) in lambda_expr
             .param_list()
@@ -658,7 +657,7 @@ impl<'a> Lowerer<'a> {
             .into_iter()
             .enumerate()
         {
-            let ty = param
+            let type_id = param
                 .ty()
                 .map(|ty| self.compile_ty(ty))
                 .or(expected
@@ -666,10 +665,10 @@ impl<'a> Lowerer<'a> {
                     .and_then(|expected| expected.0.get(i).copied()))
                 .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
-            param_types.push(ty);
+            parameter_types.push(type_id);
 
             if let Some(name) = param.name() {
-                let symbol_id = self.db.alloc_symbol(Symbol::Parameter { ty });
+                let symbol_id = self.db.alloc_symbol(Symbol::Parameter { type_id });
                 scope.define_symbol(name.to_string(), symbol_id);
             };
         }
@@ -678,26 +677,26 @@ impl<'a> Lowerer<'a> {
 
         let Some(body) = lambda_expr.body() else {
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
-        let expected_ret_type = lambda_expr
+        let expected_return_type = lambda_expr
             .ty()
             .map(|ty| self.compile_ty(ty))
             .or(expected.map(|expected| expected.1));
 
         self.scope_stack.push(scope_id);
-        let body = self.compile_expr(body, expected_ret_type);
+        let body = self.compile_expr(body, expected_return_type);
         self.scope_stack.pop().expect("lambda not in scope stack");
 
-        let ret_type = expected_ret_type.unwrap_or(body.ty);
+        let return_type = expected_return_type.unwrap_or(body.ty);
 
-        if !self.is_assignable_to(self.db.ty(body.ty), self.db.ty(ret_type)) {
+        if !self.is_assignable_to(self.db.ty(body.ty), self.db.ty(return_type)) {
             self.error(
                 DiagnosticInfo::TypeMismatch {
-                    expected: self.type_name(ret_type),
+                    expected: self.type_name(return_type),
                     found: self.type_name(body.ty),
                 },
                 lambda_expr.body().unwrap().syntax().text_range(),
@@ -706,16 +705,16 @@ impl<'a> Lowerer<'a> {
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
-            value: body.value,
-            param_types: param_types.clone(),
-            ret_type,
+            hir_id: body.value,
+            parameter_types: parameter_types.clone(),
+            return_type,
         });
 
         Typed {
-            value: Value::Reference(symbol_id),
+            value: self.db.alloc_hir(Hir::Reference(symbol_id)),
             ty: self.db.alloc_type(Type::Function {
-                params: param_types,
-                ret: ret_type,
+                parameter_types,
+                return_type,
             }),
         }
     }
@@ -767,16 +766,18 @@ impl<'a> Lowerer<'a> {
 
         let value = condition.and_then(|condition| {
             then_block.and_then(|then_block| {
-                else_block.map(|else_block| Value::If {
-                    condition: Box::new(condition.value),
-                    then_block: Box::new(then_block.value),
-                    else_block: Box::new(else_block.value),
+                else_block.map(|else_block| {
+                    self.db.alloc_hir(Hir::If {
+                        condition: condition.value,
+                        then_block: then_block.value,
+                        else_block: else_block.value,
+                    })
                 })
             })
         });
 
         Typed {
-            value: value.unwrap_or(Value::Unknown),
+            value: value.unwrap_or(self.db.alloc_hir(Hir::Unknown)),
             ty,
         }
     }
@@ -789,7 +790,7 @@ impl<'a> Lowerer<'a> {
             .expect("failed to parse into BigInt");
 
         Typed {
-            value: Value::Atom(bigint_to_bytes(num)),
+            value: self.db.alloc_hir(Hir::Atom(bigint_to_bytes(num))),
             ty: self.db.alloc_type(Type::Int),
         }
     }
@@ -801,7 +802,9 @@ impl<'a> Lowerer<'a> {
         let before_suffix = after_prefix.strip_suffix(quote).unwrap_or(after_prefix);
 
         Typed {
-            value: Value::Atom(before_suffix.as_bytes().to_vec()),
+            value: self
+                .db
+                .alloc_hir(Hir::Atom(before_suffix.as_bytes().to_vec())),
             ty: self.db.alloc_type(Type::Bytes),
         }
     }
@@ -809,7 +812,7 @@ impl<'a> Lowerer<'a> {
     fn compile_path_expr(&mut self, path: Path) -> Typed {
         let Some(name) = path.name() else {
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -826,24 +829,24 @@ impl<'a> Lowerer<'a> {
             );
 
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         Typed {
-            value: Value::Reference(symbol_id),
+            value: self.db.alloc_hir(Hir::Reference(symbol_id)),
             ty: match self.db.symbol(symbol_id) {
                 Symbol::Function {
-                    param_types,
-                    ret_type,
+                    parameter_types,
+                    return_type,
                     ..
                 } => self.db.alloc_type(Type::Function {
-                    params: param_types.clone(),
-                    ret: *ret_type,
+                    parameter_types: parameter_types.clone(),
+                    return_type: *return_type,
                 }),
-                Symbol::Parameter { ty } => *ty,
-                Symbol::Binding { ty, .. } => *ty,
+                Symbol::Parameter { type_id } => *type_id,
+                Symbol::Binding { type_id, .. } => *type_id,
             },
         }
     }
@@ -851,14 +854,14 @@ impl<'a> Lowerer<'a> {
     fn compile_function_call(&mut self, call: FunctionCall) -> Typed {
         let Some(callee) = call.callee() else {
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
 
         let Some(args) = call.args() else {
             return Typed {
-                value: Value::Unknown,
+                value: self.db.alloc_hir(Hir::Unknown),
                 ty: self.db.alloc_type(Type::Unknown),
             };
         };
@@ -884,27 +887,33 @@ impl<'a> Lowerer<'a> {
             .collect();
 
         let arg_types: Vec<TypeId> = args.iter().map(|arg| arg.ty).collect();
-        let arg_values: Vec<Value> = args.iter().map(|arg| arg.value.clone()).collect();
+        let arg_values: Vec<HirId> = args.iter().map(|arg| arg.value).collect();
 
         match self.db.ty(callee.ty).clone() {
-            Type::Function { params, ret } => {
-                if params.len() != arg_types.len() {
+            Type::Function {
+                parameter_types,
+                return_type,
+            } => {
+                if parameter_types.len() != arg_types.len() {
                     self.error(
                         DiagnosticInfo::ArgumentMismatch {
-                            expected: params.len(),
+                            expected: parameter_types.len(),
                             found: arg_types.len(),
                         },
                         call.args().expect("no arguments").syntax().text_range(),
                     );
 
                     return Typed {
-                        value: Value::Unknown,
+                        value: self.db.alloc_hir(Hir::Unknown),
                         ty: self.db.alloc_type(Type::Unknown),
                     };
                 }
 
-                for (i, (param, arg)) in
-                    params.clone().into_iter().zip(arg_types.iter()).enumerate()
+                for (i, (param, arg)) in parameter_types
+                    .clone()
+                    .into_iter()
+                    .zip(arg_types.iter())
+                    .enumerate()
                 {
                     let error = if !self.is_assignable_to(self.db.ty(param), self.db.ty(*arg)) {
                         Some((
@@ -924,18 +933,18 @@ impl<'a> Lowerer<'a> {
                 }
 
                 Typed {
-                    value: Value::FunctionCall {
-                        callee: Box::new(callee.value),
+                    value: self.db.alloc_hir(Hir::FunctionCall {
+                        callee: callee.value,
                         args: arg_values,
-                    },
-                    ty: ret,
+                    }),
+                    ty: return_type,
                 }
             }
             Type::Unknown => Typed {
-                value: Value::FunctionCall {
-                    callee: Box::new(callee.value),
+                value: self.db.alloc_hir(Hir::FunctionCall {
+                    callee: callee.value,
                     args: arg_values,
-                },
+                }),
                 ty: self.db.alloc_type(Type::Unknown),
             },
             _ => {
@@ -944,7 +953,7 @@ impl<'a> Lowerer<'a> {
                     call.callee().expect("no callee").syntax().text_range(),
                 );
                 Typed {
-                    value: Value::Unknown,
+                    value: self.db.alloc_hir(Hir::Unknown),
                     ty: self.db.alloc_type(Type::Unknown),
                 }
             }
@@ -994,7 +1003,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_function_type(&mut self, function: FunctionType) -> TypeId {
-        let params = function
+        let parameter_types = function
             .params()
             .map(|params| params.types())
             .unwrap_or_default()
@@ -1002,17 +1011,23 @@ impl<'a> Lowerer<'a> {
             .map(|ty| self.compile_ty(ty))
             .collect();
 
-        let ret = function
+        let return_type = function
             .ret()
             .map(|ty| self.compile_ty(ty))
             .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
 
-        self.db.alloc_type(Type::Function { params, ret })
+        self.db.alloc_type(Type::Function {
+            parameter_types,
+            return_type,
+        })
     }
 
     fn extract_function_type_components(&self, type_id: TypeId) -> Option<(Vec<TypeId>, TypeId)> {
         match self.db.ty(type_id) {
-            Type::Function { params, ret } => Some((params.clone(), *ret)),
+            Type::Function {
+                parameter_types,
+                return_type,
+            } => Some((parameter_types.clone(), *return_type)),
             _ => None,
         }
     }
@@ -1048,12 +1063,15 @@ impl<'a> Lowerer<'a> {
                     self.detect_cycle_visitor(field, text_range, visited_aliases);
                 }
             }
-            Type::Function { params, ret } => {
-                for &param in params.iter() {
+            Type::Function {
+                parameter_types,
+                return_type,
+            } => {
+                for &param in parameter_types.iter() {
                     self.detect_cycle_visitor(param, text_range, visited_aliases);
                 }
 
-                self.detect_cycle_visitor(ret, text_range, visited_aliases);
+                self.detect_cycle_visitor(return_type, text_range, visited_aliases);
             }
             Type::Alias(alias) => {
                 if !visited_aliases.insert(alias) {
@@ -1092,12 +1110,15 @@ impl<'a> Lowerer<'a> {
                     .collect();
                 format!("{{ {} }}", fields.join(", "))
             }
-            Type::Function { params, ret } => {
-                let params: Vec<String> = params
+            Type::Function {
+                parameter_types,
+                return_type,
+            } => {
+                let params: Vec<String> = parameter_types
                     .iter()
                     .map(|&ty| self.type_name_visitor(ty, visited_aliases))
                     .collect();
-                let ret = self.type_name_visitor(*ret, visited_aliases);
+                let ret = self.type_name_visitor(*return_type, visited_aliases);
                 format!("fun({}) -> {}", params.join(", "), ret)
             }
             Type::Alias(type_id) => {
@@ -1152,12 +1173,12 @@ impl<'a> Lowerer<'a> {
             }
             (
                 Type::Function {
-                    params: params_a,
-                    ret: ret_a,
+                    parameter_types: params_a,
+                    return_type: ret_a,
                 },
                 Type::Function {
-                    params: params_b,
-                    ret: ret_b,
+                    parameter_types: params_b,
+                    return_type: ret_b,
                 },
             ) => {
                 if params_a.len() != params_b.len() {

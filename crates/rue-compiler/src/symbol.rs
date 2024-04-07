@@ -1,21 +1,18 @@
-use crate::{
-    database::{ScopeId, TypeId},
-    value::Value,
-};
+use crate::database::{HirId, ScopeId, TypeId};
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
     Function {
         scope_id: ScopeId,
-        value: Value,
-        param_types: Vec<TypeId>,
-        ret_type: TypeId,
+        hir_id: HirId,
+        parameter_types: Vec<TypeId>,
+        return_type: TypeId,
     },
     Parameter {
-        ty: TypeId,
+        type_id: TypeId,
     },
     Binding {
-        ty: TypeId,
-        value: Value,
+        type_id: TypeId,
+        hir_id: HirId,
     },
 }

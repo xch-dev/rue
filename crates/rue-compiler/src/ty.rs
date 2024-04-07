@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::{database::TypeId, value::Value};
+use crate::database::{HirId, TypeId};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -15,13 +15,14 @@ pub enum Type {
         fields: Vec<TypeId>,
     },
     Function {
-        params: Vec<TypeId>,
-        ret: TypeId,
+        parameter_types: Vec<TypeId>,
+        return_type: TypeId,
     },
     Alias(TypeId),
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Typed {
-    pub value: Value,
+    pub value: HirId,
     pub ty: TypeId,
 }
