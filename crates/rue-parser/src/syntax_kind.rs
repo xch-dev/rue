@@ -63,7 +63,9 @@ pub enum SyntaxKind {
     TypeAliasItem,
     StructItem,
     StructField,
+
     LetStmt,
+
     Block,
     Path,
     InitializerExpr,
@@ -79,6 +81,7 @@ pub enum SyntaxKind {
     FunctionCall,
     FunctionCallArgs,
     FieldAccess,
+
     ListType,
     FunctionType,
     FunctionTypeParams,
@@ -146,7 +149,9 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::TypeAliasItem => "type alias item",
                 SyntaxKind::StructItem => "struct item",
                 SyntaxKind::StructField => "struct field",
+
                 SyntaxKind::LetStmt => "let statement",
+
                 SyntaxKind::Block => "block",
                 SyntaxKind::Path => "identifier path",
                 SyntaxKind::InitializerExpr => "initializer expression",
@@ -162,6 +167,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::FunctionCall => "function call",
                 SyntaxKind::FunctionCallArgs => "function call arguments",
                 SyntaxKind::FieldAccess => "field access",
+
                 SyntaxKind::ListType => "list type",
                 SyntaxKind::FunctionType => "function type",
                 SyntaxKind::FunctionTypeParams => "function type parameters",
