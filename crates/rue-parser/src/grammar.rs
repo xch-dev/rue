@@ -13,6 +13,8 @@ fn item(p: &mut Parser) {
         function_item(p);
     } else if p.at(SyntaxKind::Type) {
         type_alias_item(p);
+    } else if p.at(SyntaxKind::Struct) {
+        struct_item(p);
     } else {
         p.error(&[]);
     }
@@ -57,6 +59,29 @@ fn type_alias_item(p: &mut Parser) {
     p.expect(SyntaxKind::Assign);
     ty(p);
     p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn struct_item(p: &mut Parser) {
+    p.start(SyntaxKind::StructItem);
+    p.expect(SyntaxKind::Struct);
+    p.expect(SyntaxKind::Ident);
+    p.expect(SyntaxKind::OpenBrace);
+    while !p.at(SyntaxKind::CloseBrace) {
+        struct_field(p);
+        if !p.try_eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::CloseBrace);
+    p.finish();
+}
+
+fn struct_field(p: &mut Parser) {
+    p.start(SyntaxKind::StructField);
+    p.expect(SyntaxKind::Ident);
+    p.expect(SyntaxKind::Colon);
+    ty(p);
     p.finish();
 }
 
@@ -122,7 +147,6 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
 
     if p.at(SyntaxKind::Int)
         || p.at(SyntaxKind::String)
-        || p.at(SyntaxKind::Ident)
         || p.at(SyntaxKind::True)
         || p.at(SyntaxKind::False)
         || p.at(SyntaxKind::Nil)
@@ -130,6 +154,28 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         p.start(SyntaxKind::LiteralExpr);
         p.bump();
         p.finish();
+    } else if p.at(SyntaxKind::Ident) {
+        p.start(SyntaxKind::Path);
+        p.bump();
+        p.finish();
+
+        if p.at(SyntaxKind::OpenBrace) {
+            p.start_at(checkpoint, SyntaxKind::InitializerExpr);
+            p.bump();
+            while !p.at(SyntaxKind::CloseBrace) {
+                p.start(SyntaxKind::InitializerField);
+                p.expect(SyntaxKind::Ident);
+                if p.try_eat(SyntaxKind::Colon) {
+                    expr(p);
+                }
+                p.finish();
+                if !p.try_eat(SyntaxKind::Comma) {
+                    break;
+                }
+            }
+            p.expect(SyntaxKind::CloseBrace);
+            p.finish();
+        }
     } else if p.at(SyntaxKind::OpenBracket) {
         list_expr(p);
     } else if p.at(SyntaxKind::OpenBrace) {
@@ -142,19 +188,28 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         return p.error(EXPR_RECOVERY_SET);
     }
 
-    while p.at(SyntaxKind::OpenParen) {
-        p.start_at(checkpoint, SyntaxKind::FunctionCall);
-        p.start(SyntaxKind::FunctionCallArgs);
-        p.bump();
-        while !p.at(SyntaxKind::CloseParen) {
-            expr(p);
-            if !p.try_eat(SyntaxKind::Comma) {
-                break;
+    loop {
+        if p.at(SyntaxKind::OpenParen) {
+            p.start_at(checkpoint, SyntaxKind::FunctionCall);
+            p.start(SyntaxKind::FunctionCallArgs);
+            p.bump();
+            while !p.at(SyntaxKind::CloseParen) {
+                expr(p);
+                if !p.try_eat(SyntaxKind::Comma) {
+                    break;
+                }
             }
+            p.expect(SyntaxKind::CloseParen);
+            p.finish();
+            p.finish();
+        } else if p.at(SyntaxKind::Dot) {
+            p.start_at(checkpoint, SyntaxKind::FieldAccess);
+            p.bump();
+            p.expect(SyntaxKind::Ident);
+            p.finish();
+        } else {
+            break;
         }
-        p.expect(SyntaxKind::CloseParen);
-        p.finish();
-        p.finish();
     }
 
     loop {
@@ -261,7 +316,7 @@ fn ty(p: &mut Parser) {
     let checkpoint = p.checkpoint();
 
     if p.at(SyntaxKind::Ident) {
-        p.start(SyntaxKind::LiteralType);
+        p.start(SyntaxKind::Path);
         p.bump();
         p.finish();
     } else if p.at(SyntaxKind::Fun) {

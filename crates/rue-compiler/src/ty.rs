@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{database::TypeId, value::Value};
 
 #[derive(Debug, Clone)]
@@ -8,7 +10,14 @@ pub enum Type {
     Bool,
     Bytes,
     List(TypeId),
-    Function { params: Vec<TypeId>, ret: TypeId },
+    Struct {
+        named_fields: HashMap<String, TypeId>,
+        fields: Vec<TypeId>,
+    },
+    Function {
+        params: Vec<TypeId>,
+        ret: TypeId,
+    },
     Alias(TypeId),
 }
 

@@ -55,4 +55,25 @@ pub enum DiagnosticInfo {
 
     #[error("cannot call expression with type `{0}`")]
     UncallableType(String),
+
+    #[error("uninitializable type `{0}`")]
+    UninitializableType(String),
+
+    #[error("duplicate field `{0}`")]
+    DuplicateField(String),
+
+    #[error("undefined field `{0}`")]
+    UndefinedField(String),
+
+    #[error("missing fields: {}", join_names(.0))]
+    MissingFields(Vec<String>),
+
+    #[error("cannot access property of type `{0}`")]
+    PropertyAccess(String),
+}
+
+/// Join a list of names into a string, wrapped in backticks.
+fn join_names(kinds: &[String]) -> String {
+    let names: Vec<String> = kinds.iter().map(|kind| format!("`{kind}`")).collect();
+    names.join(", ")
 }

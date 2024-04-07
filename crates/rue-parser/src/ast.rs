@@ -54,15 +54,19 @@ macro_rules! ast_enum {
 
 ast_node!(Root);
 
-ast_enum!(Item, FunctionItem, TypeAliasItem);
-ast_node!(TypeAliasItem);
+ast_enum!(Item, FunctionItem, TypeAliasItem, StructItem);
 ast_node!(FunctionItem);
 ast_node!(FunctionParamList);
 ast_node!(FunctionParam);
+ast_node!(TypeAliasItem);
+ast_node!(StructItem);
+ast_node!(StructField);
 ast_node!(Block);
 
 ast_enum!(
     Expr,
+    Path,
+    InitializerExpr,
     LiteralExpr,
     ListExpr,
     Block,
@@ -70,8 +74,12 @@ ast_enum!(
     PrefixExpr,
     BinaryExpr,
     IfExpr,
-    FunctionCall
+    FunctionCall,
+    FieldAccess
 );
+ast_node!(Path);
+ast_node!(InitializerExpr);
+ast_node!(InitializerField);
 ast_node!(LiteralExpr);
 ast_node!(ListExpr);
 ast_node!(PrefixExpr);
@@ -79,13 +87,13 @@ ast_node!(BinaryExpr);
 ast_node!(IfExpr);
 ast_node!(FunctionCall);
 ast_node!(FunctionCallArgs);
+ast_node!(FieldAccess);
 
 ast_node!(LambdaExpr);
 ast_node!(LambdaParamList);
 ast_node!(LambdaParam);
 
-ast_enum!(Type, LiteralType, ListType, FunctionType);
-ast_node!(LiteralType);
+ast_enum!(Type, Path, ListType, FunctionType);
 ast_node!(ListType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParams);
@@ -154,6 +162,35 @@ impl TypeAliasItem {
     }
 }
 
+impl StructItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn fields(&self) -> Vec<StructField> {
+        self.syntax()
+            .children()
+            .filter_map(StructField::cast)
+            .collect()
+    }
+}
+
+impl StructField {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+}
+
 impl Block {
     pub fn items(&self) -> Vec<Item> {
         self.syntax().children().filter_map(Item::cast).collect()
@@ -178,6 +215,40 @@ impl LetStmt {
 
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().filter_map(Expr::cast).next()
+    }
+}
+
+impl Path {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .find_map(SyntaxElement::into_token)
+    }
+}
+
+impl InitializerExpr {
+    pub fn path(&self) -> Option<Path> {
+        self.syntax().children().find_map(Path::cast)
+    }
+
+    pub fn fields(&self) -> Vec<InitializerField> {
+        self.syntax()
+            .children()
+            .filter_map(InitializerField::cast)
+            .collect()
+    }
+}
+
+impl InitializerField {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
     pub fn expr(&self) -> Option<Expr> {
@@ -354,11 +425,16 @@ impl FunctionCallArgs {
     }
 }
 
-impl LiteralType {
-    pub fn value(&self) -> Option<SyntaxToken> {
+impl FieldAccess {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+
+    pub fn field(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
-            .find_map(SyntaxElement::into_token)
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
     }
 }
 

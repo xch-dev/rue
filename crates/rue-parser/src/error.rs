@@ -32,7 +32,7 @@ pub enum ParserErrorKind {
         found: SyntaxKind,
     },
 
-    #[error("unknown token {0}")]
+    #[error("unknown token `{0}`")]
     UnknownToken(String),
 
     #[error("unterminated string")]

@@ -7,6 +7,10 @@ pub enum Value {
     Unknown,
     Atom(Vec<u8>),
     List(Vec<Value>),
+    ListIndex {
+        value: Box<Value>,
+        index: usize,
+    },
     Reference(SymbolId),
     Scope {
         scope_id: ScopeId,

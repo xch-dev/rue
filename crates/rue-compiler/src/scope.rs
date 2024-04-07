@@ -22,7 +22,7 @@ impl Scope {
         self.symbol_table.get(name).copied()
     }
 
-    pub fn define_type_alias(&mut self, name: String, type_id: TypeId) {
+    pub fn define_type(&mut self, name: String, type_id: TypeId) {
         self.type_aliases.insert(name.clone(), type_id);
         self.type_names.insert(type_id, name);
     }

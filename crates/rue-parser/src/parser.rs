@@ -125,7 +125,7 @@ impl<'a> Parser<'a> {
                 SyntaxKind::Whitespace
                     | SyntaxKind::LineComment
                     | SyntaxKind::BlockComment
-                    | SyntaxKind::Unknown
+                    | SyntaxKind::Error
             ) {
                 self.token();
             } else {
@@ -159,17 +159,41 @@ fn convert_tokens<'a>(
         let text = &source[pos..pos + token.len()];
         let kind = match token.kind() {
             TokenKind::Ident => SyntaxKind::Ident,
+            TokenKind::Int => SyntaxKind::Int,
+            TokenKind::String { is_terminated } => {
+                if !is_terminated {
+                    errors.push(ParserError::new(
+                        ParserErrorKind::UnterminatedString,
+                        pos..pos + token.len(),
+                    ));
+                }
+                SyntaxKind::String
+            }
+
             TokenKind::OpenParen => SyntaxKind::OpenParen,
             TokenKind::CloseParen => SyntaxKind::CloseParen,
             TokenKind::OpenBracket => SyntaxKind::OpenBracket,
             TokenKind::CloseBracket => SyntaxKind::CloseBracket,
             TokenKind::OpenBrace => SyntaxKind::OpenBrace,
             TokenKind::CloseBrace => SyntaxKind::CloseBrace,
+
+            TokenKind::Fun => SyntaxKind::Fun,
+            TokenKind::Type => SyntaxKind::Type,
+            TokenKind::Struct => SyntaxKind::Struct,
+            TokenKind::Let => SyntaxKind::Let,
+            TokenKind::If => SyntaxKind::If,
+            TokenKind::Else => SyntaxKind::Else,
+            TokenKind::Nil => SyntaxKind::Nil,
+            TokenKind::True => SyntaxKind::True,
+            TokenKind::False => SyntaxKind::False,
+
+            TokenKind::Dot => SyntaxKind::Dot,
             TokenKind::Comma => SyntaxKind::Comma,
             TokenKind::Colon => SyntaxKind::Colon,
             TokenKind::Semicolon => SyntaxKind::Semicolon,
             TokenKind::Arrow => SyntaxKind::Arrow,
             TokenKind::FatArrow => SyntaxKind::FatArrow,
+
             TokenKind::Plus => SyntaxKind::Plus,
             TokenKind::Minus => SyntaxKind::Minus,
             TokenKind::Star => SyntaxKind::Star,
@@ -183,24 +207,7 @@ fn convert_tokens<'a>(
             TokenKind::Equals => SyntaxKind::Equals,
             TokenKind::NotEquals => SyntaxKind::NotEquals,
             TokenKind::Assign => SyntaxKind::Assign,
-            TokenKind::Int => SyntaxKind::Int,
-            TokenKind::String { is_terminated } => {
-                if !is_terminated {
-                    errors.push(ParserError::new(
-                        ParserErrorKind::UnterminatedString,
-                        pos..pos + token.len(),
-                    ));
-                }
-                SyntaxKind::String
-            }
-            TokenKind::Fun => SyntaxKind::Fun,
-            TokenKind::Type => SyntaxKind::Type,
-            TokenKind::Let => SyntaxKind::Let,
-            TokenKind::If => SyntaxKind::If,
-            TokenKind::Else => SyntaxKind::Else,
-            TokenKind::Nil => SyntaxKind::Nil,
-            TokenKind::True => SyntaxKind::True,
-            TokenKind::False => SyntaxKind::False,
+
             TokenKind::Whitespace => SyntaxKind::Whitespace,
             TokenKind::LineComment => SyntaxKind::LineComment,
             TokenKind::BlockComment { is_terminated } => {
@@ -217,7 +224,7 @@ fn convert_tokens<'a>(
                     ParserErrorKind::UnknownToken(text.to_string()),
                     pos..pos + token.len(),
                 ));
-                SyntaxKind::Unknown
+                SyntaxKind::Error
             }
         };
 

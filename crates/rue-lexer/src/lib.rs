@@ -81,6 +81,7 @@ impl<'a> Lexer<'a> {
                 '*' => self.block_comment(),
                 _ => TokenKind::Slash,
             },
+            '.' => TokenKind::Dot,
             ':' => TokenKind::Colon,
             ';' => TokenKind::Semicolon,
             c @ ('"' | '\'') => self.string(c),
@@ -92,6 +93,7 @@ impl<'a> Lexer<'a> {
                 match &self.source[start..self.pos] {
                     "fun" => TokenKind::Fun,
                     "type" => TokenKind::Type,
+                    "struct" => TokenKind::Struct,
                     "let" => TokenKind::Let,
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
@@ -237,6 +239,7 @@ mod tests {
     fn test_keyword() {
         check("fun", &[TokenKind::Fun]);
         check("type", &[TokenKind::Type]);
+        check("struct", &[TokenKind::Struct]);
         check("let", &[TokenKind::Let]);
         check("if", &[TokenKind::If]);
         check("else", &[TokenKind::Else]);
@@ -257,6 +260,7 @@ mod tests {
 
     #[test]
     fn test_punctuation() {
+        check(".", &[TokenKind::Dot]);
         check(",", &[TokenKind::Comma]);
         check(":", &[TokenKind::Colon]);
         check(";", &[TokenKind::Semicolon]);

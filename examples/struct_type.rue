@@ -1,0 +1,24 @@
+struct Person {
+    name: Bytes,
+    age: Int,
+}
+
+fun main() -> Bytes {
+    let person_1 = Person {
+        name: "Bob",
+        age: 24,
+    };
+
+    let age = person_1.age + 2;
+
+    let person_2 = Person {
+        name: "Alice",
+        age: age,
+    };
+
+    if person_2.age > person_1.age {
+        "Older"
+    } else {
+        "Younger"
+    }
+}

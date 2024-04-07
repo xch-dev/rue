@@ -151,6 +151,9 @@ impl<'a> Codegen<'a> {
                     self.compute_captures(scope_id, item);
                 }
             }
+            Value::ListIndex { value, .. } => {
+                self.compute_captures(scope_id, *value);
+            }
         }
     }
 
@@ -282,6 +285,7 @@ impl<'a> Codegen<'a> {
             Value::Unknown => unreachable!(),
             Value::Atom(atom) => self.gen_atom(atom),
             Value::List(list) => self.gen_list(scope_id, list),
+            Value::ListIndex { value, index } => self.gen_list_index(scope_id, *value, index),
             Value::Reference(symbol_id) => self.gen_reference(scope_id, symbol_id),
             Value::Scope {
                 scope_id: new_scope_id,
@@ -319,6 +323,24 @@ impl<'a> Codegen<'a> {
             args.push(self.gen_value(scope_id, item));
         }
         self.runtime_list(&args, NodePtr::NIL)
+    }
+
+    fn gen_list_index(&mut self, scope_id: ScopeId, value: Value, index: usize) -> NodePtr {
+        let mut value = self.gen_value(scope_id, value);
+        let f = self
+            .allocator
+            .new_small_number(5)
+            .expect("could not allocate `f`");
+        let r = self
+            .allocator
+            .new_small_number(6)
+            .expect("could not allocate `r`");
+
+        for _ in 0..index {
+            value = self.list(&[r, value]);
+        }
+
+        self.list(&[f, value])
     }
 
     fn gen_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {

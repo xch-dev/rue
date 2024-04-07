@@ -1,12 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexSet;
 use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, BinaryExpr, BinaryOp, Block, Expr, FunctionCall, FunctionItem, FunctionType, IfExpr,
-    Item, LambdaExpr, ListExpr, ListType, LiteralExpr, LiteralType, PrefixOp, Root, SyntaxKind,
-    SyntaxToken, TypeAliasItem,
+    AstNode, BinaryExpr, BinaryOp, Block, Expr, FieldAccess, FunctionCall, FunctionItem,
+    FunctionType, IfExpr, InitializerExpr, Item, LambdaExpr, ListExpr, ListType, LiteralExpr, Path,
+    PrefixExpr, PrefixOp, Root, StructItem, SyntaxKind, SyntaxToken, TypeAliasItem,
 };
 
 use crate::{
@@ -71,11 +71,24 @@ impl<'a> Lowerer<'a> {
                 _ => None,
             })
             .collect();
+        let struct_items: Vec<StructItem> = items
+            .clone()
+            .into_iter()
+            .filter_map(|item| match item {
+                Item::StructItem(ty) => Some(ty),
+                _ => None,
+            })
+            .collect();
 
-        let type_ids: Vec<TypeId> = type_alias_items
+        let type_alias_ids: Vec<TypeId> = type_alias_items
             .iter()
             .cloned()
             .map(|item| self.declare_type_alias(item))
+            .collect();
+        let struct_type_ids: Vec<TypeId> = struct_items
+            .iter()
+            .cloned()
+            .map(|item| self.declare_struct(item))
             .collect();
         let symbol_ids: Vec<SymbolId> = function_items
             .iter()
@@ -84,7 +97,11 @@ impl<'a> Lowerer<'a> {
             .collect();
 
         for (i, type_alias) in type_alias_items.into_iter().enumerate() {
-            self.compile_type_alias(type_alias, type_ids[i]);
+            self.compile_type_alias(type_alias, type_alias_ids[i]);
+        }
+
+        for (i, struct_item) in struct_items.into_iter().enumerate() {
+            self.compile_struct(struct_item, struct_type_ids[i]);
         }
 
         for (i, function) in function_items.into_iter().enumerate() {
@@ -140,12 +157,17 @@ impl<'a> Lowerer<'a> {
 
     fn declare_type_alias(&mut self, type_alias: TypeAliasItem) -> TypeId {
         let type_id = self.db.alloc_type(Type::Unknown);
-
         if let Some(name) = type_alias.name() {
-            self.scope_mut()
-                .define_type_alias(name.to_string(), type_id);
+            self.scope_mut().define_type(name.to_string(), type_id);
         }
+        type_id
+    }
 
+    fn declare_struct(&mut self, struct_item: StructItem) -> TypeId {
+        let type_id = self.db.alloc_type(Type::Unknown);
+        if let Some(name) = struct_item.name() {
+            self.scope_mut().define_type(name.to_string(), type_id);
+        }
         type_id
     }
 
@@ -192,6 +214,29 @@ impl<'a> Lowerer<'a> {
         *self.db.ty_mut(type_id) = Type::Alias(ty);
 
         self.detect_cycle(type_id, text_range);
+    }
+
+    fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
+        let mut field_names = HashMap::new();
+        let mut fields = Vec::new();
+
+        for field in struct_item.fields() {
+            let ty = field
+                .ty()
+                .map(|ty| self.compile_ty(ty))
+                .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+
+            fields.push(ty);
+
+            if let Some(name) = field.name() {
+                field_names.insert(name.to_string(), ty);
+            };
+        }
+
+        *self.db.ty_mut(type_id) = Type::Struct {
+            named_fields: field_names,
+            fields,
+        };
     }
 
     fn compile_block_expr(
@@ -272,6 +317,8 @@ impl<'a> Lowerer<'a> {
 
     fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Typed {
         match expr {
+            Expr::Path(path) => self.compile_path_expr(path),
+            Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
             Expr::Block(block) => {
@@ -283,10 +330,164 @@ impl<'a> Lowerer<'a> {
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
             Expr::FunctionCall(call) => self.compile_function_call(call),
+            Expr::FieldAccess(field_access) => self.compile_field_access(field_access),
         }
     }
 
-    fn compile_prefix_expr(&mut self, prefix_expr: rue_parser::PrefixExpr) -> Typed {
+    fn compile_initializer_expr(&mut self, initializer: InitializerExpr) -> Typed {
+        let ty = initializer.path().map(|path| self.compile_path_type(path));
+
+        let struct_fields = ty
+            .and_then(|ty| match self.db.ty(ty) {
+                Type::Struct { named_fields, .. } => Some(named_fields.clone()),
+                _ => {
+                    self.error(
+                        DiagnosticInfo::UninitializableType(self.type_name(ty)),
+                        initializer.path().unwrap().syntax().text_range(),
+                    );
+                    None
+                }
+            })
+            .unwrap_or_default();
+
+        let mut specified_fields = HashMap::new();
+
+        for field in initializer.fields() {
+            let expected_type = field
+                .name()
+                .and_then(|name| struct_fields.get(name.text()).copied());
+
+            let value = field
+                .expr()
+                .map(|expr| self.compile_expr(expr, expected_type))
+                .unwrap_or_else(|| Typed {
+                    value: Value::Unknown,
+                    ty: self.db.alloc_type(Type::Unknown),
+                });
+
+            if let Some(expected_type) = expected_type {
+                if !self.is_assignable_to(self.db.ty(value.ty), self.db.ty(expected_type)) {
+                    self.error(
+                        DiagnosticInfo::TypeMismatch {
+                            expected: self.type_name(expected_type),
+                            found: self.type_name(value.ty),
+                        },
+                        field.syntax().text_range(),
+                    );
+                }
+            }
+
+            if let Some(name) = field.name() {
+                if specified_fields.contains_key(name.text()) {
+                    self.error(
+                        DiagnosticInfo::DuplicateField(name.to_string()),
+                        name.text_range(),
+                    );
+                } else if !struct_fields.contains_key(name.text()) {
+                    self.error(
+                        DiagnosticInfo::UndefinedField(name.to_string()),
+                        name.text_range(),
+                    );
+                } else {
+                    specified_fields.insert(name.to_string(), value.value);
+                }
+            }
+        }
+
+        let missing_fields = struct_fields
+            .keys()
+            .filter(|name| !specified_fields.contains_key(*name))
+            .cloned()
+            .collect::<Vec<String>>();
+
+        if !missing_fields.is_empty() {
+            self.error(
+                DiagnosticInfo::MissingFields(missing_fields),
+                initializer.syntax().text_range(),
+            );
+        }
+
+        let mut args = Vec::new();
+
+        for field in struct_fields.keys() {
+            args.push(
+                specified_fields
+                    .get(field)
+                    .cloned()
+                    .unwrap_or(Value::Unknown),
+            );
+        }
+
+        match ty {
+            Some(struct_type) => Typed {
+                value: Value::List(args),
+                ty: struct_type,
+            },
+            None => Typed {
+                value: Value::Unknown,
+                ty: self.db.alloc_type(Type::Unknown),
+            },
+        }
+    }
+
+    fn compile_field_access(&mut self, field_access: FieldAccess) -> Typed {
+        let Some(value) = field_access
+            .expr()
+            .map(|expr| self.compile_expr(expr, None))
+        else {
+            return Typed {
+                value: Value::Unknown,
+                ty: self.db.alloc_type(Type::Unknown),
+            };
+        };
+
+        let Some(field_name) = field_access.field() else {
+            return Typed {
+                value: Value::Unknown,
+                ty: self.db.alloc_type(Type::Unknown),
+            };
+        };
+
+        match self.db.ty(value.ty) {
+            Type::Struct {
+                named_fields,
+                fields,
+            } => {
+                if let Some(&field_ty) = named_fields.get(field_name.text()) {
+                    Typed {
+                        value: Value::ListIndex {
+                            value: Box::new(value.value),
+                            index: fields.iter().position(|&field| field == field_ty).unwrap(),
+                        },
+                        ty: field_ty,
+                    }
+                } else {
+                    self.error(
+                        DiagnosticInfo::UndefinedField(field_name.to_string()),
+                        field_name.text_range(),
+                    );
+
+                    Typed {
+                        value: Value::Unknown,
+                        ty: self.db.alloc_type(Type::Unknown),
+                    }
+                }
+            }
+            _ => {
+                self.error(
+                    DiagnosticInfo::PropertyAccess(self.type_name(value.ty)),
+                    field_access.expr().unwrap().syntax().text_range(),
+                );
+
+                Typed {
+                    value: Value::Unknown,
+                    ty: self.db.alloc_type(Type::Unknown),
+                }
+            }
+        }
+    }
+
+    fn compile_prefix_expr(&mut self, prefix_expr: PrefixExpr) -> Typed {
         let Some(expr) = prefix_expr.expr() else {
             return Typed {
                 value: Value::Unknown,
@@ -386,7 +587,6 @@ impl<'a> Lowerer<'a> {
 
         match value.kind() {
             SyntaxKind::Int => self.compile_int(value),
-            SyntaxKind::Ident => self.compile_ident(value),
             SyntaxKind::String => self.compile_string(value),
             SyntaxKind::True => Typed {
                 value: Value::Atom(vec![1]),
@@ -606,16 +806,23 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_ident(&mut self, ident: SyntaxToken) -> Typed {
+    fn compile_path_expr(&mut self, path: Path) -> Typed {
+        let Some(name) = path.name() else {
+            return Typed {
+                value: Value::Unknown,
+                ty: self.db.alloc_type(Type::Unknown),
+            };
+        };
+
         let Some(symbol_id) = self
             .scope_stack
             .iter()
             .rev()
-            .find_map(|&scope_id| self.db.scope(scope_id).symbol(ident.text()))
+            .find_map(|&scope_id| self.db.scope(scope_id).symbol(name.text()))
         else {
             self.error(
-                DiagnosticInfo::UndefinedReference(ident.to_string()),
-                ident.text_range(),
+                DiagnosticInfo::UndefinedReference(name.to_string()),
+                name.text_range(),
             );
 
             return Typed {
@@ -746,14 +953,14 @@ impl<'a> Lowerer<'a> {
 
     fn compile_ty(&mut self, ty: rue_parser::Type) -> TypeId {
         match ty {
-            rue_parser::Type::LiteralType(literal) => self.compile_literal_ty(literal),
-            rue_parser::Type::ListType(list) => self.compile_list_ty(list),
-            rue_parser::Type::FunctionType(function) => self.compile_function_ty(function),
+            rue_parser::Type::Path(literal) => self.compile_path_type(literal),
+            rue_parser::Type::ListType(list) => self.compile_list_type(list),
+            rue_parser::Type::FunctionType(function) => self.compile_function_type(function),
         }
     }
 
-    fn compile_literal_ty(&mut self, literal: LiteralType) -> TypeId {
-        let Some(value) = literal.value() else {
+    fn compile_path_type(&mut self, path: Path) -> TypeId {
+        let Some(value) = path.name() else {
             return self.db.alloc_type(Type::Unknown);
         };
 
@@ -770,14 +977,14 @@ impl<'a> Lowerer<'a> {
             _ => {
                 self.error(
                     DiagnosticInfo::UndefinedType(value.to_string()),
-                    literal.syntax().text_range(),
+                    path.syntax().text_range(),
                 );
                 self.db.alloc_type(Type::Unknown)
             }
         }
     }
 
-    fn compile_list_ty(&mut self, list: ListType) -> TypeId {
+    fn compile_list_type(&mut self, list: ListType) -> TypeId {
         let Some(inner) = list.ty() else {
             return self.db.alloc_type(Type::Unknown);
         };
@@ -786,7 +993,7 @@ impl<'a> Lowerer<'a> {
         self.db.alloc_type(Type::List(inner))
     }
 
-    fn compile_function_ty(&mut self, function: FunctionType) -> TypeId {
+    fn compile_function_type(&mut self, function: FunctionType) -> TypeId {
         let params = function
             .params()
             .map(|params| params.types())
@@ -836,6 +1043,11 @@ impl<'a> Lowerer<'a> {
             Type::List(inner) => {
                 self.detect_cycle_visitor(inner, text_range, visited_aliases);
             }
+            Type::Struct { fields, .. } => {
+                for &field in fields.iter() {
+                    self.detect_cycle_visitor(field, text_range, visited_aliases);
+                }
+            }
             Type::Function { params, ret } => {
                 for &param in params.iter() {
                     self.detect_cycle_visitor(param, text_range, visited_aliases);
@@ -871,6 +1083,15 @@ impl<'a> Lowerer<'a> {
             Type::Bool => "Bool".to_string(),
             Type::Bytes => "Bytes".to_string(),
             Type::List(inner) => format!("{}[]", self.type_name_visitor(*inner, visited_aliases)),
+            Type::Struct { named_fields, .. } => {
+                let fields: Vec<String> = named_fields
+                    .iter()
+                    .map(|(name, ty)| {
+                        format!("{}: {}", name, self.type_name_visitor(*ty, visited_aliases))
+                    })
+                    .collect();
+                format!("{{ {} }}", fields.join(", "))
+            }
             Type::Function { params, ret } => {
                 let params: Vec<String> = params
                     .iter()
@@ -925,6 +1146,10 @@ impl<'a> Lowerer<'a> {
                 self.db.ty(*inner_b),
                 visited_aliases,
             ),
+            (Type::Struct { .. }, Type::Struct { .. }) => {
+                //todo
+                false
+            }
             (
                 Type::Function {
                     params: params_a,
