@@ -62,19 +62,23 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        for (i, item) in items.iter().cloned().enumerate() {
+        let mut i = 0;
+        for item in items.clone() {
             match item {
                 Item::TypeAliasItem(ty) => self.compile_type_alias(ty, type_ids[i]),
                 Item::StructItem(struct_item) => self.compile_struct(struct_item, type_ids[i]),
-                _ => {}
+                _ => continue,
             }
+            i += 1;
         }
 
-        for (i, item) in items.iter().cloned().enumerate() {
+        let mut i = 0;
+        for item in items.clone() {
             match item {
                 Item::FunctionItem(function) => self.compile_function(function, symbol_ids[i]),
-                _ => {}
+                _ => continue,
             }
+            i += 1;
         }
     }
 
