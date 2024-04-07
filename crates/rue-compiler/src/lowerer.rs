@@ -18,16 +18,7 @@ use crate::{
     Diagnostic, DiagnosticInfo, DiagnosticKind,
 };
 
-pub struct LowerOutput {
-    pub diagnostics: Vec<Diagnostic>,
-    pub main_scope_id: ScopeId,
-}
-
-pub fn lower(db: &mut Database, root: Root) -> LowerOutput {
-    Lowerer::new(db).compile_root(root)
-}
-
-struct Lowerer<'a> {
+pub struct Lowerer<'a> {
     db: &'a mut Database,
     scope_stack: Vec<ScopeId>,
     diagnostics: Vec<Diagnostic>,
@@ -42,16 +33,14 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub fn compile_root(mut self, root: Root) -> LowerOutput {
-        let scope_id = self.db.alloc_scope(Scope::default());
+    pub fn finish(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+
+    pub fn compile_root(&mut self, root: Root, scope_id: ScopeId) {
         self.scope_stack.push(scope_id);
-
         self.compile_items(root.items());
-
-        LowerOutput {
-            diagnostics: self.diagnostics,
-            main_scope_id: scope_id,
-        }
+        self.scope_stack.pop();
     }
 
     fn compile_items(&mut self, items: Vec<Item>) {

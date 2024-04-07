@@ -10,11 +10,7 @@ use crate::{
     symbol::Symbol,
 };
 
-pub fn codegen(allocator: &mut Allocator, db: &mut Database, main: SymbolId) -> NodePtr {
-    Codegen::new(db, allocator).gen_main(main)
-}
-
-struct Codegen<'a> {
+pub struct Codegen<'a> {
     db: &'a mut Database,
     allocator: &'a mut Allocator,
     captures: HashMap<ScopeId, IndexSet<SymbolId>>,
