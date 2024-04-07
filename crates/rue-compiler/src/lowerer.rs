@@ -158,15 +158,11 @@ impl<'a> Lowerer<'a> {
         let output = self.compile_block_expr(body, None, Some(return_type));
         self.scope_stack.pop().unwrap();
 
-        if !self.is_assignable_to(self.db.ty(output.ty), self.db.ty(return_type)) {
-            self.error(
-                DiagnosticInfo::TypeMismatch {
-                    expected: self.type_name(return_type),
-                    found: self.type_name(output.ty),
-                },
-                function.body().unwrap().syntax().text_range(),
-            );
-        }
+        self.type_check(
+            output.ty,
+            return_type,
+            function.body().unwrap().syntax().text_range(),
+        );
 
         let Symbol::Function { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
             unreachable!();
@@ -325,15 +321,7 @@ impl<'a> Lowerer<'a> {
                 });
 
             if let Some(expected_type) = expected_type {
-                if !self.is_assignable_to(self.db.ty(value.ty), self.db.ty(expected_type)) {
-                    self.error(
-                        DiagnosticInfo::TypeMismatch {
-                            expected: self.type_name(expected_type),
-                            found: self.type_name(value.ty),
-                        },
-                        field.syntax().text_range(),
-                    );
-                }
+                self.type_check(value.ty, expected_type, field.syntax().text_range());
             }
 
             if let Some(name) = field.name() {
@@ -456,15 +444,8 @@ impl<'a> Lowerer<'a> {
 
         let expr = self.compile_expr(expr, None);
 
-        if !self.is_assignable_to(self.db.ty(expr.ty), &Type::Bool) {
-            self.error(
-                DiagnosticInfo::TypeMismatch {
-                    expected: "Bool".to_string(),
-                    found: self.type_name(expr.ty),
-                },
-                prefix_expr.syntax().text_range(),
-            );
-        }
+        let bool_type = self.db.alloc_type(Type::Bool);
+        self.type_check(expr.ty, bool_type, prefix_expr.syntax().text_range());
 
         Typed {
             value: match prefix_expr.op() {
@@ -479,28 +460,14 @@ impl<'a> Lowerer<'a> {
         let lhs = binary.lhs().map(|lhs| self.compile_expr(lhs, None));
         let rhs = binary.rhs().map(|rhs| self.compile_expr(rhs, None));
 
+        let int_type = self.db.alloc_type(Type::Int);
+
         if let Some(Typed { ty, .. }) = &lhs {
-            if !self.is_assignable_to(self.db.ty(*ty), &Type::Int) {
-                self.error(
-                    DiagnosticInfo::TypeMismatch {
-                        expected: "Int".to_string(),
-                        found: self.type_name(*ty),
-                    },
-                    binary.lhs().unwrap().syntax().text_range(),
-                );
-            }
+            self.type_check(*ty, int_type, binary.lhs().unwrap().syntax().text_range());
         }
 
         if let Some(Typed { ty, .. }) = &rhs {
-            if !self.is_assignable_to(self.db.ty(*ty), &Type::Int) {
-                self.error(
-                    DiagnosticInfo::TypeMismatch {
-                        expected: "Int".to_string(),
-                        found: self.type_name(*ty),
-                    },
-                    binary.rhs().unwrap().syntax().text_range(),
-                );
-            }
+            self.type_check(*ty, int_type, binary.rhs().unwrap().syntax().text_range());
         }
 
         let ty = binary
@@ -576,15 +543,7 @@ impl<'a> Lowerer<'a> {
         for ast_item in ast_items.into_iter().skip(1) {
             let item = self.compile_expr(ast_item.clone(), expected_item_type);
 
-            if !self.is_assignable_to(self.db.ty(item.ty), self.db.ty(item_type)) {
-                self.error(
-                    DiagnosticInfo::TypeMismatch {
-                        expected: self.type_name(expected_item_type.unwrap()),
-                        found: self.type_name(item.ty),
-                    },
-                    ast_item.syntax().text_range(),
-                );
-            }
+            self.type_check(item.ty, item_type, ast_item.syntax().text_range());
 
             items.push(item.value);
         }
@@ -649,15 +608,11 @@ impl<'a> Lowerer<'a> {
 
         let return_type = expected_return_type.unwrap_or(body.ty);
 
-        if !self.is_assignable_to(self.db.ty(body.ty), self.db.ty(return_type)) {
-            self.error(
-                DiagnosticInfo::TypeMismatch {
-                    expected: self.type_name(return_type),
-                    found: self.type_name(body.ty),
-                },
-                lambda_expr.body().unwrap().syntax().text_range(),
-            );
-        }
+        self.type_check(
+            body.ty,
+            return_type,
+            lambda_expr.body().unwrap().syntax().text_range(),
+        );
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
@@ -689,29 +644,22 @@ impl<'a> Lowerer<'a> {
         });
 
         if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty) {
-            if !self.is_assignable_to(self.db.ty(condition_type), &Type::Bool) {
-                self.error(
-                    DiagnosticInfo::TypeMismatch {
-                        expected: "Bool".to_string(),
-                        found: self.type_name(condition_type),
-                    },
-                    if_expr.condition().unwrap().syntax().text_range(),
-                );
-            }
+            let bool_type = self.db.alloc_type(Type::Bool);
+            self.type_check(
+                condition_type,
+                bool_type,
+                if_expr.condition().unwrap().syntax().text_range(),
+            );
         }
 
-        if let (Some(Typed { ty: then_ty, .. }), Some(Typed { ty: else_ty, .. })) =
+        if let (Some(Typed { ty: then_type, .. }), Some(Typed { ty: else_type, .. })) =
             (&then_block, &else_block)
         {
-            if !self.is_assignable_to(self.db.ty(*then_ty), self.db.ty(*else_ty)) {
-                self.error(
-                    DiagnosticInfo::TypeMismatch {
-                        expected: self.type_name(*then_ty),
-                        found: self.type_name(*else_ty),
-                    },
-                    if_expr.else_block().unwrap().syntax().text_range(),
-                );
-            }
+            self.type_check(
+                *else_type,
+                *then_type,
+                if_expr.else_block().unwrap().syntax().text_range(),
+            );
         }
 
         let ty = then_block
@@ -865,27 +813,13 @@ impl<'a> Lowerer<'a> {
                     };
                 }
 
-                for (i, (param, arg)) in parameter_types
+                for (i, (param, &arg)) in parameter_types
                     .clone()
                     .into_iter()
                     .zip(arg_types.iter())
                     .enumerate()
                 {
-                    let error = if !self.is_assignable_to(self.db.ty(param), self.db.ty(*arg)) {
-                        Some((
-                            DiagnosticInfo::TypeMismatch {
-                                expected: self.type_name(param),
-                                found: self.type_name(*arg),
-                            },
-                            raw_args[i].syntax().text_range(),
-                        ))
-                    } else {
-                        None
-                    };
-
-                    if let Some((error, range)) = error {
-                        self.error(error, range);
-                    }
+                    self.type_check(arg, param, raw_args[i].syntax().text_range());
                 }
 
                 Typed {
@@ -1088,16 +1022,25 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn is_assignable_to(&self, a: &Type, b: &Type) -> bool {
-        self.is_assignable_to_visitor(a, b, &mut HashSet::new())
+    fn type_check(&self, value_type_id: TypeId, assign_to_type_id: TypeId, range: TextRange) {
+        if !self.is_assignable_to(
+            self.db.ty(value_type_id),
+            self.db.ty(assign_to_type_id),
+            &mut HashSet::new(),
+        ) {
+            Some((
+                DiagnosticInfo::TypeMismatch {
+                    expected: self.type_name(assign_to_type_id),
+                    found: self.type_name(value_type_id),
+                },
+                range,
+            ))
+        } else {
+            None
+        };
     }
 
-    fn is_assignable_to_visitor(
-        &self,
-        a: &Type,
-        b: &Type,
-        visited_aliases: &mut HashSet<TypeId>,
-    ) -> bool {
+    fn is_assignable_to(&self, a: &Type, b: &Type, visited_aliases: &mut HashSet<TypeId>) -> bool {
         match (a, b) {
             (Type::Unknown, _) | (_, Type::Unknown) => false,
             (Type::Int, Type::Int) => true,
@@ -1109,20 +1052,18 @@ impl<'a> Lowerer<'a> {
                     return true;
                 }
                 let ty = self.db.ty(*alias);
-                self.is_assignable_to_visitor(ty, b, visited_aliases)
+                self.is_assignable_to(ty, b, visited_aliases)
             }
             (_, Type::Alias(alias)) => {
                 if !visited_aliases.insert(*alias) {
                     return true;
                 }
                 let ty = self.db.ty(*alias);
-                self.is_assignable_to_visitor(a, ty, visited_aliases)
+                self.is_assignable_to(a, ty, visited_aliases)
             }
-            (Type::List(inner_a), Type::List(inner_b)) => self.is_assignable_to_visitor(
-                self.db.ty(*inner_a),
-                self.db.ty(*inner_b),
-                visited_aliases,
-            ),
+            (Type::List(inner_a), Type::List(inner_b)) => {
+                self.is_assignable_to(self.db.ty(*inner_a), self.db.ty(*inner_b), visited_aliases)
+            }
             (Type::Struct { .. }, Type::Struct { .. }) => {
                 //todo
                 false
@@ -1142,17 +1083,12 @@ impl<'a> Lowerer<'a> {
                 }
 
                 for (&a, &b) in params_a.iter().zip(params_b.iter()) {
-                    if !self.is_assignable_to_visitor(self.db.ty(a), self.db.ty(b), visited_aliases)
-                    {
+                    if !self.is_assignable_to(self.db.ty(a), self.db.ty(b), visited_aliases) {
                         return false;
                     }
                 }
 
-                self.is_assignable_to_visitor(
-                    self.db.ty(*ret_a),
-                    self.db.ty(*ret_b),
-                    visited_aliases,
-                )
+                self.is_assignable_to(self.db.ty(*ret_a), self.db.ty(*ret_b), visited_aliases)
             }
             _ => false,
         }
