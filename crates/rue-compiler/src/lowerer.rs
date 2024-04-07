@@ -43,58 +43,38 @@ impl<'a> Lowerer<'a> {
         self.scope_stack.pop();
     }
 
+    #[allow(clippy::single_match)]
     fn compile_items(&mut self, items: Vec<Item>) {
-        let function_items: Vec<FunctionItem> = items
-            .clone()
-            .into_iter()
-            .filter_map(|item| match item {
-                Item::FunctionItem(function) => Some(function),
-                _ => None,
-            })
-            .collect();
-        let type_alias_items: Vec<TypeAliasItem> = items
-            .clone()
-            .into_iter()
-            .filter_map(|item| match item {
-                Item::TypeAliasItem(ty) => Some(ty),
-                _ => None,
-            })
-            .collect();
-        let struct_items: Vec<StructItem> = items
-            .clone()
-            .into_iter()
-            .filter_map(|item| match item {
-                Item::StructItem(ty) => Some(ty),
-                _ => None,
-            })
-            .collect();
-
-        let type_alias_ids: Vec<TypeId> = type_alias_items
-            .iter()
-            .cloned()
-            .map(|item| self.declare_type_alias(item))
-            .collect();
-        let struct_type_ids: Vec<TypeId> = struct_items
-            .iter()
-            .cloned()
-            .map(|item| self.declare_struct(item))
-            .collect();
-        let symbol_ids: Vec<SymbolId> = function_items
-            .iter()
-            .cloned()
-            .map(|item| self.declare_function(item))
-            .collect();
-
-        for (i, type_alias) in type_alias_items.into_iter().enumerate() {
-            self.compile_type_alias(type_alias, type_alias_ids[i]);
+        let mut type_ids = Vec::new();
+        for item in items.clone() {
+            match item {
+                Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias(ty)),
+                Item::StructItem(struct_item) => type_ids.push(self.declare_struct(struct_item)),
+                _ => {}
+            }
         }
 
-        for (i, struct_item) in struct_items.into_iter().enumerate() {
-            self.compile_struct(struct_item, struct_type_ids[i]);
+        let mut symbol_ids = Vec::new();
+        for item in items.clone() {
+            match item {
+                Item::FunctionItem(function) => symbol_ids.push(self.declare_function(function)),
+                _ => {}
+            }
         }
 
-        for (i, function) in function_items.into_iter().enumerate() {
-            self.compile_function(function, symbol_ids[i]);
+        for (i, item) in items.iter().cloned().enumerate() {
+            match item {
+                Item::TypeAliasItem(ty) => self.compile_type_alias(ty, type_ids[i]),
+                Item::StructItem(struct_item) => self.compile_struct(struct_item, type_ids[i]),
+                _ => {}
+            }
+        }
+
+        for (i, item) in items.iter().cloned().enumerate() {
+            match item {
+                Item::FunctionItem(function) => self.compile_function(function, symbol_ids[i]),
+                _ => {}
+            }
         }
     }
 
