@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use clvmr::{Allocator, NodePtr};
 use indexmap::IndexSet;
+use num_bigint::BigInt;
+use num_traits::Zero;
 use rue_parser::BinaryOp;
 
 use crate::{
@@ -281,7 +283,7 @@ impl<'a> Codegen<'a> {
             Hir::Unknown => unreachable!(),
             Hir::Atom(atom) => self.gen_atom(atom.clone()),
             Hir::List(list) => self.gen_list(scope_id, list.clone()),
-            Hir::ListIndex { value, index } => self.gen_list_index(scope_id, *value, *index),
+            Hir::ListIndex { value, index } => self.gen_list_index(scope_id, *value, index.clone()),
             Hir::Reference(symbol_id) => self.gen_reference(scope_id, *symbol_id),
             Hir::Scope {
                 scope_id: new_scope_id,
@@ -323,7 +325,7 @@ impl<'a> Codegen<'a> {
         self.runtime_list(&args, NodePtr::NIL)
     }
 
-    fn gen_list_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: usize) -> NodePtr {
+    fn gen_list_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: BigInt) -> NodePtr {
         let mut value = self.gen_hir(scope_id, hir_id);
         let f = self
             .allocator
@@ -334,7 +336,7 @@ impl<'a> Codegen<'a> {
             .new_small_number(6)
             .expect("could not allocate `r`");
 
-        for _ in 0..index {
+        for _ in num_iter::range(BigInt::zero(), index) {
             value = self.list(&[r, value]);
         }
 

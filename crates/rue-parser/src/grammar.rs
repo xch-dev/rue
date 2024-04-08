@@ -205,6 +205,12 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
             p.bump();
             p.expect(SyntaxKind::Ident);
             p.finish();
+        } else if p.at(SyntaxKind::OpenBracket) {
+            p.start_at(checkpoint, SyntaxKind::IndexAccess);
+            p.bump();
+            p.expect(SyntaxKind::Int);
+            p.expect(SyntaxKind::CloseBracket);
+            p.finish();
         } else {
             break;
         }

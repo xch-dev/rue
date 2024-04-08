@@ -5,8 +5,9 @@ use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, Expr, FieldAccess, FunctionCall, FunctionItem,
-    FunctionType, IfExpr, InitializerExpr, Item, LambdaExpr, ListExpr, ListType, LiteralExpr, Path,
-    PrefixExpr, PrefixOp, Root, StructItem, SyntaxKind, SyntaxToken, TypeAliasItem,
+    FunctionType, IfExpr, IndexAccess, InitializerExpr, Item, LambdaExpr, ListExpr, ListType,
+    LiteralExpr, Path, PrefixExpr, PrefixOp, Root, StructItem, SyntaxKind, SyntaxToken,
+    TypeAliasItem,
 };
 
 use crate::{
@@ -304,6 +305,7 @@ impl<'a> Lowerer<'a> {
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
             Expr::FunctionCall(call) => self.compile_function_call(call),
             Expr::FieldAccess(field_access) => self.compile_field_access(field_access),
+            Expr::IndexAccess(index_access) => self.compile_index_access(index_access),
         }
     }
 
@@ -410,7 +412,11 @@ impl<'a> Lowerer<'a> {
                     Typed {
                         value: self.db.alloc_hir(Hir::ListIndex {
                             value: value.value,
-                            index: fields.iter().position(|&field| field == field_ty).unwrap(),
+                            index: fields
+                                .iter()
+                                .position(|&field| field == field_ty)
+                                .unwrap()
+                                .into(),
                         }),
                         ty: field_ty,
                     }
@@ -424,8 +430,39 @@ impl<'a> Lowerer<'a> {
             }
             _ => {
                 self.error(
-                    DiagnosticInfo::PropertyAccess(self.type_name(value.ty)),
+                    DiagnosticInfo::FieldAccess(self.type_name(value.ty)),
                     field_access.expr().unwrap().syntax().text_range(),
+                );
+                self.unknown
+            }
+        }
+    }
+
+    fn compile_index_access(&mut self, index_access: IndexAccess) -> Typed {
+        let Some(value) = index_access
+            .expr()
+            .map(|expr| self.compile_expr(expr, None))
+        else {
+            return self.unknown;
+        };
+
+        let Some(index_token) = index_access.index() else {
+            return self.unknown;
+        };
+        let index = self.compile_int_raw(index_token);
+
+        match self.db.ty(value.ty).clone() {
+            Type::List(inner_type) => Typed {
+                value: self.db.alloc_hir(Hir::ListIndex {
+                    value: value.value,
+                    index,
+                }),
+                ty: inner_type,
+            },
+            _ => {
+                self.error(
+                    DiagnosticInfo::IndexAccess(self.type_name(value.ty)),
+                    index_access.expr().unwrap().syntax().text_range(),
                 );
                 self.unknown
             }
@@ -679,13 +716,15 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_int(&mut self, int: SyntaxToken) -> Typed {
-        let num = int
-            .text()
+    fn compile_int_raw(&mut self, int: SyntaxToken) -> BigInt {
+        int.text()
             .replace('_', "")
             .parse()
-            .expect("failed to parse into BigInt");
+            .expect("failed to parse into BigInt")
+    }
 
+    fn compile_int(&mut self, int: SyntaxToken) -> Typed {
+        let num = self.compile_int_raw(int);
         Typed {
             value: self.db.alloc_hir(Hir::Atom(bigint_to_bytes(num))),
             ty: self.int_type,
@@ -914,11 +953,6 @@ impl<'a> Lowerer<'a> {
         visited_aliases: &mut HashSet<TypeId>,
     ) {
         match self.db.ty(ty).clone() {
-            Type::Unknown => {}
-            Type::Nil => {}
-            Type::Int => {}
-            Type::Bool => {}
-            Type::Bytes => {}
             Type::List(inner) => {
                 self.detect_cycle_visitor(inner, text_range, visited_aliases);
             }
@@ -944,6 +978,7 @@ impl<'a> Lowerer<'a> {
                 }
                 self.detect_cycle_visitor(alias, text_range, visited_aliases);
             }
+            Type::Unknown | Type::Nil | Type::Int | Type::Bool | Type::Bytes => {}
         }
     }
 

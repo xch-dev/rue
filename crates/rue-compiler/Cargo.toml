@@ -8,9 +8,11 @@ rue-parser = { path = "../rue-parser" }
 clvmr = "0.6.1"
 id-arena = "2.2.1"
 indexmap = "2.2.6"
-num-bigint = "0.4.4"
 rowan = "0.15.15"
 thiserror = "1.0.58"
+num-traits = "0.2.18"
+num-iter = "0.1.44"
+num-bigint = "0.4.4"
 
 [dev-dependencies]
 clvm-traits = "0.6.0"

@@ -80,6 +80,7 @@ pub enum SyntaxKind {
     FunctionCall,
     FunctionCallArgs,
     FieldAccess,
+    IndexAccess,
 
     ListType,
     FunctionType,
@@ -165,6 +166,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::FunctionCall => "function call",
                 SyntaxKind::FunctionCallArgs => "function call arguments",
                 SyntaxKind::FieldAccess => "field access",
+                SyntaxKind::IndexAccess => "index access",
 
                 SyntaxKind::ListType => "list type",
                 SyntaxKind::FunctionType => "function type",

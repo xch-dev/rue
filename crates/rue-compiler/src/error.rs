@@ -68,8 +68,11 @@ pub enum DiagnosticInfo {
     #[error("missing fields: {}", join_names(.0))]
     MissingFields(Vec<String>),
 
-    #[error("cannot access property of type `{0}`")]
-    PropertyAccess(String),
+    #[error("cannot access field of type `{0}`")]
+    FieldAccess(String),
+
+    #[error("cannot index type `{0}`")]
+    IndexAccess(String),
 }
 
 /// Join a list of names into a string, wrapped in backticks.

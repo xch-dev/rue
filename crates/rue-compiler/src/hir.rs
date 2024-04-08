@@ -1,3 +1,4 @@
+use num_bigint::BigInt;
 use rue_parser::BinaryOp;
 
 use crate::database::{HirId, ScopeId, SymbolId};
@@ -9,7 +10,7 @@ pub enum Hir {
     List(Vec<HirId>),
     ListIndex {
         value: HirId,
-        index: usize,
+        index: BigInt,
     },
     Reference(SymbolId),
     Scope {

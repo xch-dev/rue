@@ -74,7 +74,8 @@ ast_enum!(
     BinaryExpr,
     IfExpr,
     FunctionCall,
-    FieldAccess
+    FieldAccess,
+    IndexAccess
 );
 ast_node!(Path);
 ast_node!(InitializerExpr);
@@ -87,6 +88,7 @@ ast_node!(IfExpr);
 ast_node!(FunctionCall);
 ast_node!(FunctionCallArgs);
 ast_node!(FieldAccess);
+ast_node!(IndexAccess);
 
 ast_node!(LambdaExpr);
 ast_node!(LambdaParamList);
@@ -428,6 +430,19 @@ impl FieldAccess {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+}
+
+impl IndexAccess {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+
+    pub fn index(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Int)
     }
 }
 
