@@ -997,11 +997,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn type_check(&self, value_type_id: TypeId, assign_to_type_id: TypeId, range: TextRange) {
-        if !self.is_assignable_to(
-            self.db.ty(value_type_id),
-            self.db.ty(assign_to_type_id),
-            &mut HashSet::new(),
-        ) {
+        if !self.is_assignable_to(value_type_id, assign_to_type_id, &mut HashSet::new()) {
             Some((
                 DiagnosticInfo::TypeMismatch {
                     expected: self.type_name(assign_to_type_id),
@@ -1014,33 +1010,36 @@ impl<'a> Lowerer<'a> {
         };
     }
 
-    fn is_assignable_to(&self, a: &Type, b: &Type, visited_aliases: &mut HashSet<TypeId>) -> bool {
-        match (a, b) {
-            (Type::Unknown, _) | (_, Type::Unknown) => false,
+    fn is_assignable_to(
+        &self,
+        a: TypeId,
+        b: TypeId,
+        visited_aliases: &mut HashSet<TypeId>,
+    ) -> bool {
+        if a == b {
+            return true;
+        }
+
+        match (self.db.ty(a).clone(), self.db.ty(b).clone()) {
+            (Type::Unknown, Type::Unknown) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Bytes, Type::Bytes) => true,
             (Type::Nil, Type::Nil) => true,
             (Type::Alias(alias), _) => {
-                if !visited_aliases.insert(*alias) {
+                if !visited_aliases.insert(alias) {
                     return true;
                 }
-                let ty = self.db.ty(*alias);
-                self.is_assignable_to(ty, b, visited_aliases)
+                self.is_assignable_to(alias, b, visited_aliases)
             }
             (_, Type::Alias(alias)) => {
-                if !visited_aliases.insert(*alias) {
+                if !visited_aliases.insert(alias) {
                     return true;
                 }
-                let ty = self.db.ty(*alias);
-                self.is_assignable_to(a, ty, visited_aliases)
+                self.is_assignable_to(a, alias, visited_aliases)
             }
             (Type::List(inner_a), Type::List(inner_b)) => {
-                self.is_assignable_to(self.db.ty(*inner_a), self.db.ty(*inner_b), visited_aliases)
-            }
-            (Type::Struct { .. }, Type::Struct { .. }) => {
-                //todo
-                false
+                self.is_assignable_to(inner_a, inner_b, visited_aliases)
             }
             (
                 Type::Function {
@@ -1056,13 +1055,13 @@ impl<'a> Lowerer<'a> {
                     return false;
                 }
 
-                for (&a, &b) in params_a.iter().zip(params_b.iter()) {
-                    if !self.is_assignable_to(self.db.ty(a), self.db.ty(b), visited_aliases) {
+                for (a, b) in params_a.into_iter().zip(params_b.into_iter()) {
+                    if !self.is_assignable_to(a, b, visited_aliases) {
                         return false;
                     }
                 }
 
-                self.is_assignable_to(self.db.ty(*ret_a), self.db.ty(*ret_b), visited_aliases)
+                self.is_assignable_to(ret_a, ret_b, visited_aliases)
             }
             _ => false,
         }
