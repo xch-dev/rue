@@ -22,14 +22,38 @@ pub struct Lowerer<'a> {
     db: &'a mut Database,
     scope_stack: Vec<ScopeId>,
     diagnostics: Vec<Diagnostic>,
+    int_type: TypeId,
+    bool_type: TypeId,
+    bytes_type: TypeId,
+    nil_type: TypeId,
+    unknown_type: TypeId,
+    unknown_hir: HirId,
+    unknown: Typed,
 }
 
 impl<'a> Lowerer<'a> {
     pub fn new(db: &'a mut Database) -> Self {
+        let int_type = db.alloc_type(Type::Int);
+        let bool_type = db.alloc_type(Type::Bool);
+        let bytes_type = db.alloc_type(Type::Bytes);
+        let nil_type = db.alloc_type(Type::Nil);
+        let unknown_type = db.alloc_type(Type::Unknown);
+        let unknown_hir = db.alloc_hir(Hir::Unknown);
+
         Self {
             db,
             scope_stack: Vec::new(),
             diagnostics: Vec::new(),
+            int_type,
+            bool_type,
+            bytes_type,
+            nil_type,
+            unknown_type,
+            unknown_hir,
+            unknown: Typed {
+                ty: unknown_type,
+                value: unknown_hir,
+            },
         }
     }
 
@@ -88,7 +112,7 @@ impl<'a> Lowerer<'a> {
         let return_type = function_item
             .return_type()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+            .unwrap_or(self.unknown_type);
 
         let mut parameter_types = Vec::new();
 
@@ -96,7 +120,7 @@ impl<'a> Lowerer<'a> {
             let type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
-                .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+                .unwrap_or(self.unknown_type);
 
             parameter_types.push(type_id);
 
@@ -174,7 +198,7 @@ impl<'a> Lowerer<'a> {
         let type_id = ty
             .ty()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+            .unwrap_or(self.unknown_type);
         *self.db.ty_mut(alias_type_id) = Type::Alias(type_id);
         self.detect_cycle(type_id, ty.syntax().text_range());
     }
@@ -187,7 +211,7 @@ impl<'a> Lowerer<'a> {
             let type_id = field
                 .ty()
                 .map(|ty| self.compile_type(ty))
-                .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+                .unwrap_or(self.unknown_type);
 
             fields.push(type_id);
 
@@ -222,10 +246,7 @@ impl<'a> Lowerer<'a> {
             let value = let_stmt
                 .expr()
                 .map(|expr| self.compile_expr(expr, expected_type))
-                .unwrap_or_else(|| Typed {
-                    value: self.db.alloc_hir(Hir::Unknown),
-                    ty: self.db.alloc_type(Type::Unknown),
-                });
+                .unwrap_or(self.unknown);
 
             let Some(name) = let_stmt.name() else {
                 continue;
@@ -247,10 +268,7 @@ impl<'a> Lowerer<'a> {
         let mut body = block
             .expr()
             .map(|expr| self.compile_expr(expr, expected_type))
-            .unwrap_or_else(|| Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            });
+            .unwrap_or(self.unknown);
 
         for scope_id in let_scope_ids.into_iter().rev() {
             body = Typed {
@@ -315,10 +333,7 @@ impl<'a> Lowerer<'a> {
             let value = field
                 .expr()
                 .map(|expr| self.compile_expr(expr, expected_type))
-                .unwrap_or_else(|| Typed {
-                    value: self.db.alloc_hir(Hir::Unknown),
-                    ty: self.db.alloc_type(Type::Unknown),
-                });
+                .unwrap_or(self.unknown);
 
             if let Some(expected_type) = expected_type {
                 self.type_check(value.ty, expected_type, field.syntax().text_range());
@@ -361,7 +376,7 @@ impl<'a> Lowerer<'a> {
                 specified_fields
                     .get(field)
                     .cloned()
-                    .unwrap_or_else(|| self.db.alloc_hir(Hir::Unknown)),
+                    .unwrap_or(self.unknown_hir),
             );
         }
 
@@ -370,10 +385,7 @@ impl<'a> Lowerer<'a> {
                 value: self.db.alloc_hir(Hir::List(args)),
                 ty: struct_type,
             },
-            None => Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            },
+            None => self.unknown,
         }
     }
 
@@ -382,17 +394,11 @@ impl<'a> Lowerer<'a> {
             .expr()
             .map(|expr| self.compile_expr(expr, None))
         else {
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
+            return self.unknown;
         };
 
         let Some(field_name) = field_access.field() else {
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
+            return self.unknown;
         };
 
         match self.db.ty(value.ty) {
@@ -413,11 +419,7 @@ impl<'a> Lowerer<'a> {
                         DiagnosticInfo::UndefinedField(field_name.to_string()),
                         field_name.text_range(),
                     );
-
-                    Typed {
-                        value: self.db.alloc_hir(Hir::Unknown),
-                        ty: self.db.alloc_type(Type::Unknown),
-                    }
+                    self.unknown
                 }
             }
             _ => {
@@ -425,34 +427,26 @@ impl<'a> Lowerer<'a> {
                     DiagnosticInfo::PropertyAccess(self.type_name(value.ty)),
                     field_access.expr().unwrap().syntax().text_range(),
                 );
-
-                Typed {
-                    value: self.db.alloc_hir(Hir::Unknown),
-                    ty: self.db.alloc_type(Type::Unknown),
-                }
+                self.unknown
             }
         }
     }
 
     fn compile_prefix_expr(&mut self, prefix_expr: PrefixExpr) -> Typed {
         let Some(expr) = prefix_expr.expr() else {
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
+            return self.unknown;
         };
 
         let expr = self.compile_expr(expr, None);
 
-        let bool_type = self.db.alloc_type(Type::Bool);
-        self.type_check(expr.ty, bool_type, prefix_expr.syntax().text_range());
+        self.type_check(expr.ty, self.bool_type, prefix_expr.syntax().text_range());
 
         Typed {
             value: match prefix_expr.op() {
                 Some(PrefixOp::Not) => self.db.alloc_hir(Hir::Not(expr.value)),
-                _ => self.db.alloc_hir(Hir::Unknown),
+                _ => self.unknown_hir,
             },
-            ty: self.db.alloc_type(Type::Bool),
+            ty: self.bool_type,
         }
     }
 
@@ -460,51 +454,54 @@ impl<'a> Lowerer<'a> {
         let lhs = binary.lhs().map(|lhs| self.compile_expr(lhs, None));
         let rhs = binary.rhs().map(|rhs| self.compile_expr(rhs, None));
 
-        let int_type = self.db.alloc_type(Type::Int);
-
         if let Some(Typed { ty, .. }) = &lhs {
-            self.type_check(*ty, int_type, binary.lhs().unwrap().syntax().text_range());
+            self.type_check(
+                *ty,
+                self.int_type,
+                binary.lhs().unwrap().syntax().text_range(),
+            );
         }
 
         if let Some(Typed { ty, .. }) = &rhs {
-            self.type_check(*ty, int_type, binary.rhs().unwrap().syntax().text_range());
+            self.type_check(
+                *ty,
+                self.int_type,
+                binary.rhs().unwrap().syntax().text_range(),
+            );
         }
 
         let ty = binary
             .op()
             .map(|op| match op {
-                BinaryOp::Add => Type::Int,
-                BinaryOp::Subtract => Type::Int,
-                BinaryOp::Multiply => Type::Int,
-                BinaryOp::Divide => Type::Int,
-                BinaryOp::Remainder => Type::Int,
-                BinaryOp::LessThan => Type::Bool,
-                BinaryOp::GreaterThan => Type::Bool,
-                BinaryOp::LessThanEquals => Type::Bool,
-                BinaryOp::GreaterThanEquals => Type::Bool,
-                BinaryOp::Equals => Type::Bool,
-                BinaryOp::NotEquals => Type::Bool,
+                BinaryOp::Add => self.int_type,
+                BinaryOp::Subtract => self.int_type,
+                BinaryOp::Multiply => self.int_type,
+                BinaryOp::Divide => self.int_type,
+                BinaryOp::Remainder => self.int_type,
+                BinaryOp::LessThan => self.bool_type,
+                BinaryOp::GreaterThan => self.bool_type,
+                BinaryOp::LessThanEquals => self.bool_type,
+                BinaryOp::GreaterThanEquals => self.bool_type,
+                BinaryOp::Equals => self.bool_type,
+                BinaryOp::NotEquals => self.bool_type,
             })
-            .unwrap_or(Type::Unknown);
+            .unwrap_or(self.unknown_type);
 
         match (lhs, rhs, binary.op()) {
             (Some(Typed { value: lhs, .. }), Some(Typed { value: rhs, .. }), Some(op)) => Typed {
                 value: self.db.alloc_hir(Hir::BinaryOp { op, lhs, rhs }),
-                ty: self.db.alloc_type(ty),
+                ty,
             },
             _ => Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(ty),
+                value: self.unknown_hir,
+                ty,
             },
         }
     }
 
     fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Typed {
         let Some(value) = literal.value() else {
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
+            return self.unknown;
         };
 
         match value.kind() {
@@ -512,15 +509,15 @@ impl<'a> Lowerer<'a> {
             SyntaxKind::String => self.compile_string(value),
             SyntaxKind::True => Typed {
                 value: self.db.alloc_hir(Hir::Atom(vec![1])),
-                ty: self.db.alloc_type(Type::Bool),
+                ty: self.bool_type,
             },
             SyntaxKind::False => Typed {
                 value: self.db.alloc_hir(Hir::Atom(Vec::new())),
-                ty: self.db.alloc_type(Type::Bool),
+                ty: self.bool_type,
             },
             SyntaxKind::Nil => Typed {
                 value: self.db.alloc_hir(Hir::Atom(Vec::new())),
-                ty: self.db.alloc_type(Type::Nil),
+                ty: self.nil_type,
             },
             _ => unreachable!(),
         }
@@ -536,7 +533,7 @@ impl<'a> Lowerer<'a> {
             .map(|first| self.compile_expr(first.clone(), expected_first_type));
 
         let expected_item_type = first_item.as_ref().map(|item| item.ty);
-        let item_type = expected_item_type.unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+        let item_type = expected_item_type.unwrap_or(self.unknown_type);
 
         let mut items = first_item.map(|item| vec![item.value]).unwrap_or_default();
 
@@ -578,7 +575,7 @@ impl<'a> Lowerer<'a> {
                 .or(expected
                     .as_ref()
                     .and_then(|expected| expected.0.get(i).copied()))
-                .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+                .unwrap_or(self.unknown_type);
 
             parameter_types.push(type_id);
 
@@ -591,10 +588,7 @@ impl<'a> Lowerer<'a> {
         let scope_id = self.db.alloc_scope(scope);
 
         let Some(body) = lambda_expr.body() else {
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
+            return self.unknown;
         };
 
         let expected_return_type = lambda_expr
@@ -644,10 +638,9 @@ impl<'a> Lowerer<'a> {
         });
 
         if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty) {
-            let bool_type = self.db.alloc_type(Type::Bool);
             self.type_check(
                 condition_type,
-                bool_type,
+                self.bool_type,
                 if_expr.condition().unwrap().syntax().text_range(),
             );
         }
@@ -666,7 +659,7 @@ impl<'a> Lowerer<'a> {
             .as_ref()
             .or(else_block.as_ref())
             .map(|block| block.ty)
-            .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+            .unwrap_or(self.unknown_type);
 
         let value = condition.and_then(|condition| {
             then_block.and_then(|then_block| {
@@ -681,7 +674,7 @@ impl<'a> Lowerer<'a> {
         });
 
         Typed {
-            value: value.unwrap_or(self.db.alloc_hir(Hir::Unknown)),
+            value: value.unwrap_or(self.unknown_hir),
             ty,
         }
     }
@@ -695,7 +688,7 @@ impl<'a> Lowerer<'a> {
 
         Typed {
             value: self.db.alloc_hir(Hir::Atom(bigint_to_bytes(num))),
-            ty: self.db.alloc_type(Type::Int),
+            ty: self.int_type,
         }
     }
 
@@ -715,10 +708,7 @@ impl<'a> Lowerer<'a> {
 
     fn compile_path_expr(&mut self, path: Path) -> Typed {
         let Some(name) = path.name() else {
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
+            return self.unknown;
         };
 
         let Some(symbol_id) = self
@@ -731,11 +721,7 @@ impl<'a> Lowerer<'a> {
                 DiagnosticInfo::UndefinedReference(name.to_string()),
                 name.text_range(),
             );
-
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
+            return self.unknown;
         };
 
         Typed {
@@ -757,17 +743,11 @@ impl<'a> Lowerer<'a> {
 
     fn compile_function_call(&mut self, call: FunctionCall) -> Typed {
         let Some(callee) = call.callee() else {
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
+            return self.unknown;
         };
 
         let Some(args) = call.args() else {
-            return Typed {
-                value: self.db.alloc_hir(Hir::Unknown),
-                ty: self.db.alloc_type(Type::Unknown),
-            };
+            return self.unknown;
         };
 
         let callee = self.compile_expr(callee, None);
@@ -807,10 +787,7 @@ impl<'a> Lowerer<'a> {
                         call.args().expect("no arguments").syntax().text_range(),
                     );
 
-                    return Typed {
-                        value: self.db.alloc_hir(Hir::Unknown),
-                        ty: self.db.alloc_type(Type::Unknown),
-                    };
+                    return self.unknown;
                 }
 
                 for (i, (param, &arg)) in parameter_types
@@ -835,17 +812,14 @@ impl<'a> Lowerer<'a> {
                     callee: callee.value,
                     args: arg_values,
                 }),
-                ty: self.db.alloc_type(Type::Unknown),
+                ty: self.unknown_type,
             },
             _ => {
                 self.error(
                     DiagnosticInfo::UncallableType(self.type_name(callee.ty)),
                     call.callee().expect("no callee").syntax().text_range(),
                 );
-                Typed {
-                    value: self.db.alloc_hir(Hir::Unknown),
-                    ty: self.db.alloc_type(Type::Unknown),
-                }
+                self.unknown
             }
         }
     }
@@ -860,7 +834,7 @@ impl<'a> Lowerer<'a> {
 
     fn compile_path_type(&mut self, path: Path) -> TypeId {
         let Some(value) = path.name() else {
-            return self.db.alloc_type(Type::Unknown);
+            return self.unknown_type;
         };
 
         for &scope_id in self.scope_stack.iter().rev() {
@@ -870,22 +844,22 @@ impl<'a> Lowerer<'a> {
         }
 
         match value.text() {
-            "Int" => self.db.alloc_type(Type::Int),
-            "Bool" => self.db.alloc_type(Type::Bool),
-            "Bytes" => self.db.alloc_type(Type::Bytes),
+            "Int" => self.int_type,
+            "Bool" => self.bool_type,
+            "Bytes" => self.bytes_type,
             _ => {
                 self.error(
                     DiagnosticInfo::UndefinedType(value.to_string()),
                     path.syntax().text_range(),
                 );
-                self.db.alloc_type(Type::Unknown)
+                self.unknown_type
             }
         }
     }
 
     fn compile_list_type(&mut self, list: ListType) -> TypeId {
         let Some(inner) = list.ty() else {
-            return self.db.alloc_type(Type::Unknown);
+            return self.unknown_type;
         };
 
         let inner = self.compile_type(inner);
@@ -904,7 +878,7 @@ impl<'a> Lowerer<'a> {
         let return_type = function
             .ret()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or_else(|| self.db.alloc_type(Type::Unknown));
+            .unwrap_or(self.unknown_type);
 
         self.db.alloc_type(Type::Function {
             parameter_types,
