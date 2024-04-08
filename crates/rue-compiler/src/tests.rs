@@ -123,6 +123,19 @@ example!(
     }
 );
 
+example!(
+    closures,
+    Example {
+        environment: [10],
+        parse: &[],
+        compile: &[],
+        hash: "95e0d0d8c8853d0cca7172f9c9cbe75b32d90055935431132b7adf66eb3e6cc2",
+        size_bytes: 207,
+        output: 3628800,
+        runtime_cost: 40815
+    }
+);
+
 macro_rules! example_list {
     ( $( $name:ident ),+ $(,)? ) => {{
         let mut examples = HashSet::new();
@@ -142,7 +155,8 @@ fn example_list() {
         fibonacci,
         lambda_functions,
         struct_type,
-        lists
+        lists,
+        closures
     );
     let mut found_examples = HashSet::new();
 

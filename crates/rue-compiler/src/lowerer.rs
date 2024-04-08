@@ -6,7 +6,7 @@ use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, Expr, FieldAccess, FunctionCall, FunctionItem,
     FunctionType, IfExpr, IndexAccess, InitializerExpr, Item, LambdaExpr, ListExpr, ListType,
-    LiteralExpr, Path, PrefixExpr, PrefixOp, Root, StructItem, SyntaxKind, SyntaxToken,
+    LiteralExpr, PathExpr, PrefixExpr, PrefixOp, Root, StructItem, SyntaxKind, SyntaxToken,
     TypeAliasItem,
 };
 
@@ -291,7 +291,7 @@ impl<'a> Lowerer<'a> {
 
     fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Typed {
         match expr {
-            Expr::Path(path) => self.compile_path_expr(path),
+            Expr::PathExpr(path) => self.compile_path_expr(path),
             Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
@@ -310,7 +310,12 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_initializer_expr(&mut self, initializer: InitializerExpr) -> Typed {
-        let ty = initializer.path().map(|path| self.compile_path_type(path));
+        let ty = initializer.path().map(|path| {
+            let Some(value) = path.name() else {
+                return self.unknown_type;
+            };
+            self.compile_path_type(value)
+        });
 
         let struct_fields = ty
             .and_then(|ty| match self.db.ty(ty) {
@@ -745,7 +750,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_path_expr(&mut self, path: Path) -> Typed {
+    fn compile_path_expr(&mut self, path: PathExpr) -> Typed {
         let Some(name) = path.name() else {
             return self.unknown;
         };
@@ -865,31 +870,32 @@ impl<'a> Lowerer<'a> {
 
     fn compile_type(&mut self, ty: rue_parser::Type) -> TypeId {
         match ty {
-            rue_parser::Type::Path(literal) => self.compile_path_type(literal),
+            rue_parser::Type::PathType(literal) => {
+                let Some(value) = literal.name() else {
+                    return self.unknown_type;
+                };
+                self.compile_path_type(value)
+            }
             rue_parser::Type::ListType(list) => self.compile_list_type(list),
             rue_parser::Type::FunctionType(function) => self.compile_function_type(function),
         }
     }
 
-    fn compile_path_type(&mut self, path: Path) -> TypeId {
-        let Some(value) = path.name() else {
-            return self.unknown_type;
-        };
-
+    fn compile_path_type(&mut self, token: SyntaxToken) -> TypeId {
         for &scope_id in self.scope_stack.iter().rev() {
-            if let Some(ty) = self.db.scope(scope_id).type_alias(value.text()) {
+            if let Some(ty) = self.db.scope(scope_id).type_alias(token.text()) {
                 return ty;
             }
         }
 
-        match value.text() {
+        match token.text() {
             "Int" => self.int_type,
             "Bool" => self.bool_type,
             "Bytes" => self.bytes_type,
             _ => {
                 self.error(
-                    DiagnosticInfo::UndefinedType(value.to_string()),
-                    path.syntax().text_range(),
+                    DiagnosticInfo::UndefinedType(token.to_string()),
+                    token.text_range(),
                 );
                 self.unknown_type
             }

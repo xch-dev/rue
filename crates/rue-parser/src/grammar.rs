@@ -153,7 +153,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         p.bump();
         p.finish();
     } else if p.at(SyntaxKind::Ident) {
-        p.start(SyntaxKind::Path);
+        p.start(SyntaxKind::PathExpr);
         p.bump();
         p.finish();
 
@@ -320,7 +320,7 @@ fn ty(p: &mut Parser) {
     let checkpoint = p.checkpoint();
 
     if p.at(SyntaxKind::Ident) {
-        p.start(SyntaxKind::Path);
+        p.start(SyntaxKind::PathType);
         p.bump();
         p.finish();
     } else if p.at(SyntaxKind::Fun) {

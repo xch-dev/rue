@@ -59,17 +59,15 @@ impl<'a> Codegen<'a> {
                     } => {
                         self.compute_captures_scope(function_scope_id, hir_id);
 
-                        if !self.db.scope(scope_id).is_defined_here(symbol_id) {
-                            let new_captures = self.captures[&function_scope_id].clone();
-                            self.captures
-                                .get_mut(&scope_id)
-                                .expect("cannot capture from unknown scope")
-                                .extend(
-                                    new_captures
-                                        .into_iter()
-                                        .filter(|&id| !self.db.scope(scope_id).is_defined_here(id)),
-                                );
-                        }
+                        let new_captures = self.captures[&function_scope_id].clone();
+                        self.captures
+                            .get_mut(&scope_id)
+                            .expect("cannot capture from unknown scope")
+                            .extend(
+                                new_captures
+                                    .into_iter()
+                                    .filter(|&id| !self.db.scope(scope_id).is_defined_here(id)),
+                            );
 
                         let mut env = IndexSet::new();
 
@@ -262,19 +260,44 @@ impl<'a> Codegen<'a> {
     }
 
     fn gen_definition(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
-        match self.db.symbol(symbol_id) {
+        match self.db.symbol(symbol_id).clone() {
             Symbol::Function {
                 scope_id: function_scope_id,
                 hir_id,
                 ..
             } => {
-                let body = self.gen_hir(*function_scope_id, *hir_id);
-                self.quote(body)
+                let body = self.gen_hir(function_scope_id, hir_id);
+
+                let mut definitions = Vec::new();
+
+                for symbol_id in self.db.scope(function_scope_id).definitions() {
+                    if let Symbol::Parameter { .. } = self.db.symbol(symbol_id) {
+                        continue;
+                    }
+                    definitions.push(self.gen_definition(function_scope_id, symbol_id));
+                }
+
+                let mut definition = self.quote(body);
+
+                if !definitions.is_empty() {
+                    let rest = self.allocator.one();
+                    let a = self
+                        .allocator
+                        .new_small_number(2)
+                        .expect("could not allocate `a`");
+
+                    let arg_list = self.runtime_list(&definitions, rest);
+
+                    definition = self.list(&[a, definition, arg_list]);
+                    definition = self.quote(definition);
+                }
+
+                definition
             }
             Symbol::Parameter { .. } => {
                 unreachable!();
             }
-            Symbol::Binding { hir_id, .. } => self.gen_hir(scope_id, *hir_id),
+            Symbol::Binding { hir_id, .. } => self.gen_hir(scope_id, hir_id),
         }
     }
 

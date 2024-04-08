@@ -66,7 +66,7 @@ pub enum SyntaxKind {
     LetStmt,
 
     Block,
-    Path,
+    PathExpr,
     InitializerExpr,
     InitializerField,
     LiteralExpr,
@@ -82,6 +82,7 @@ pub enum SyntaxKind {
     FieldAccess,
     IndexAccess,
 
+    PathType,
     ListType,
     FunctionType,
     FunctionTypeParams,
@@ -152,7 +153,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::LetStmt => "let statement",
 
                 SyntaxKind::Block => "block",
-                SyntaxKind::Path => "identifier path",
+                SyntaxKind::PathExpr => "path expression",
                 SyntaxKind::InitializerExpr => "initializer expression",
                 SyntaxKind::InitializerField => "initializer field",
                 SyntaxKind::LiteralExpr => "literal expression",
@@ -168,6 +169,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::FieldAccess => "field access",
                 SyntaxKind::IndexAccess => "index access",
 
+                SyntaxKind::PathType => "path type",
                 SyntaxKind::ListType => "list type",
                 SyntaxKind::FunctionType => "function type",
                 SyntaxKind::FunctionTypeParams => "function type parameters",
