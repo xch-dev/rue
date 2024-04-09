@@ -15,16 +15,53 @@ use crate::{
 pub struct Codegen<'a> {
     db: &'a mut Database,
     allocator: &'a mut Allocator,
+    ops: Ops,
     captures: HashMap<ScopeId, IndexSet<SymbolId>>,
     environments: HashMap<ScopeId, IndexSet<SymbolId>>,
     scope_inheritance: HashMap<ScopeId, ScopeId>,
 }
 
+struct Ops {
+    q: NodePtr,
+    a: NodePtr,
+    i: NodePtr,
+    c: NodePtr,
+    f: NodePtr,
+    r: NodePtr,
+    eq: NodePtr,
+    add: NodePtr,
+    sub: NodePtr,
+    mul: NodePtr,
+    div: NodePtr,
+    divmod: NodePtr,
+    gt: NodePtr,
+    not: NodePtr,
+    any: NodePtr,
+}
+
 impl<'a> Codegen<'a> {
     pub fn new(db: &'a mut Database, allocator: &'a mut Allocator) -> Self {
+        let ops = Ops {
+            q: allocator.one(),
+            a: allocator.new_small_number(2).unwrap(),
+            i: allocator.new_small_number(3).unwrap(),
+            c: allocator.new_small_number(4).unwrap(),
+            f: allocator.new_small_number(5).unwrap(),
+            r: allocator.new_small_number(6).unwrap(),
+            eq: allocator.new_small_number(9).unwrap(),
+            add: allocator.new_small_number(16).unwrap(),
+            sub: allocator.new_small_number(17).unwrap(),
+            mul: allocator.new_small_number(18).unwrap(),
+            div: allocator.new_small_number(19).unwrap(),
+            divmod: allocator.new_small_number(20).unwrap(),
+            gt: allocator.new_small_number(21).unwrap(),
+            not: allocator.new_small_number(32).unwrap(),
+            any: allocator.new_small_number(33).unwrap(),
+        };
         Self {
             db,
             allocator,
+            ops,
             captures: HashMap::new(),
             environments: HashMap::new(),
             scope_inheritance: HashMap::new(),
@@ -200,10 +237,6 @@ impl<'a> Codegen<'a> {
         let body = self.gen_hir(scope_id, hir_id);
         let quoted_body = self.quote(body);
         let rest = self.allocator.one();
-        let a = self
-            .allocator
-            .new_small_number(2)
-            .expect("could not allocate `a`");
 
         let mut args = Vec::new();
 
@@ -222,17 +255,13 @@ impl<'a> Codegen<'a> {
 
         let arg_list = self.runtime_list(&args, rest);
 
-        self.list(&[a, quoted_body, arg_list])
+        self.list(&[self.ops.a, quoted_body, arg_list])
     }
 
     fn gen_scope(&mut self, parent_scope_id: ScopeId, scope_id: ScopeId, hir_id: HirId) -> NodePtr {
         let body = self.gen_hir(scope_id, hir_id);
         let quoted_body = self.quote(body);
         let rest = self.allocator.one();
-        let a = self
-            .allocator
-            .new_small_number(2)
-            .expect("could not allocate `a`");
 
         let mut args = Vec::new();
 
@@ -242,7 +271,7 @@ impl<'a> Codegen<'a> {
 
         let environment = self.runtime_list(&args, rest);
 
-        self.list(&[a, quoted_body, environment])
+        self.list(&[self.ops.a, quoted_body, environment])
     }
 
     fn gen_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
@@ -295,14 +324,10 @@ impl<'a> Codegen<'a> {
 
                 if !definitions.is_empty() {
                     let rest = self.allocator.one();
-                    let a = self
-                        .allocator
-                        .new_small_number(2)
-                        .expect("could not allocate `a`");
 
                     let arg_list = self.runtime_list(&definitions, rest);
 
-                    definition = self.list(&[a, definition, arg_list]);
+                    definition = self.list(&[self.ops.a, definition, arg_list]);
                     definition = self.quote(definition);
                 }
 
@@ -365,20 +390,10 @@ impl<'a> Codegen<'a> {
 
     fn gen_list_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: BigInt) -> NodePtr {
         let mut value = self.gen_hir(scope_id, hir_id);
-        let f = self
-            .allocator
-            .new_small_number(5)
-            .expect("could not allocate `f`");
-        let r = self
-            .allocator
-            .new_small_number(6)
-            .expect("could not allocate `r`");
-
         for _ in num_iter::range(BigInt::zero(), index) {
-            value = self.list(&[r, value]);
+            value = self.list(&[self.ops.r, value]);
         }
-
-        self.list(&[f, value])
+        self.list(&[self.ops.f, value])
     }
 
     fn gen_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> NodePtr {
@@ -412,14 +427,7 @@ impl<'a> Codegen<'a> {
     }
 
     fn gen_closure_wrapper(&mut self, body: NodePtr, captures: &[NodePtr]) -> NodePtr {
-        let q = self.allocator.one();
-        let one = q;
-        let a = self
-            .allocator
-            .new_small_number(2)
-            .expect("could not allocate `a`");
-
-        let runtime_a = self.quote(a);
+        let runtime_a = self.quote(self.ops.a);
         let runtime_quoted_body = self.runtime_quote(body);
 
         let mut args = Vec::new();
@@ -429,7 +437,7 @@ impl<'a> Codegen<'a> {
             args.push(runtime_quoted_arg);
         }
 
-        let quoted_one = self.quote(one);
+        let quoted_one = self.quote(self.ops.q);
         let runtime_args = self.runtime_runtime_list(&args, quoted_one);
 
         self.runtime_list(
@@ -444,11 +452,6 @@ impl<'a> Codegen<'a> {
         callee: HirId,
         arg_values: Vec<HirId>,
     ) -> NodePtr {
-        let a = self
-            .allocator
-            .new_small_number(2)
-            .expect("could not allocate `a`");
-
         let mut args = Vec::new();
 
         let callee = if let Hir::Reference(symbol_id) = self.db.hir(callee).clone() {
@@ -473,68 +476,38 @@ impl<'a> Codegen<'a> {
         }
         let arg_list = self.runtime_list(&args, NodePtr::NIL);
 
-        self.list(&[a, callee, arg_list])
+        self.list(&[self.ops.a, callee, arg_list])
     }
 
     fn gen_add(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let plus = self
-            .allocator
-            .new_small_number(16)
-            .expect("could not allocate `+`");
-
         let lhs = self.gen_hir(scope_id, lhs);
         let rhs = self.gen_hir(scope_id, rhs);
-        self.list(&[plus, lhs, rhs])
+        self.list(&[self.ops.add, lhs, rhs])
     }
 
     fn gen_subtract(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let minus = self
-            .allocator
-            .new_small_number(17)
-            .expect("could not allocate `-`");
-
         let lhs = self.gen_hir(scope_id, lhs);
         let rhs = self.gen_hir(scope_id, rhs);
-        self.list(&[minus, lhs, rhs])
+        self.list(&[self.ops.sub, lhs, rhs])
     }
 
     fn gen_multiply(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let star = self
-            .allocator
-            .new_small_number(18)
-            .expect("could not allocate `*`");
-
         let lhs = self.gen_hir(scope_id, lhs);
         let rhs = self.gen_hir(scope_id, rhs);
-        self.list(&[star, lhs, rhs])
+        self.list(&[self.ops.mul, lhs, rhs])
     }
 
     fn gen_divide(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let slash = self
-            .allocator
-            .new_small_number(19)
-            .expect("could not allocate `/`");
-
         let lhs = self.gen_hir(scope_id, lhs);
         let rhs = self.gen_hir(scope_id, rhs);
-        self.list(&[slash, lhs, rhs])
+        self.list(&[self.ops.div, lhs, rhs])
     }
 
     fn gen_remainder(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let divmod = self
-            .allocator
-            .new_small_number(20)
-            .expect("could not allocate `divmod`");
-        let rest = self
-            .allocator
-            .new_small_number(6)
-            .expect("could not allocate `r`");
-
         let lhs = self.gen_hir(scope_id, lhs);
         let rhs = self.gen_hir(scope_id, rhs);
-
-        let divmod_list = self.list(&[divmod, lhs, rhs]);
-        self.list(&[rest, divmod_list])
+        let divmod_list = self.list(&[self.ops.divmod, lhs, rhs]);
+        self.list(&[self.ops.r, divmod_list])
     }
 
     fn gen_lt(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
@@ -542,102 +515,43 @@ impl<'a> Codegen<'a> {
     }
 
     fn gen_gt(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let gt = self
-            .allocator
-            .new_small_number(21)
-            .expect("could not allocate `>`");
-
-        let mut args = vec![gt];
-        args.push(self.gen_hir(scope_id, lhs));
-        args.push(self.gen_hir(scope_id, rhs));
-        self.list(&args)
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
+        self.list(&[self.ops.gt, lhs, rhs])
     }
 
     fn gen_lteq(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let not = self
-            .allocator
-            .new_small_number(32)
-            .expect("could not allocate `not`");
-        let gt = self
-            .allocator
-            .new_small_number(21)
-            .expect("could not allocate `>`");
-
         let lhs = self.gen_hir(scope_id, lhs);
         let rhs = self.gen_hir(scope_id, rhs);
-        let gt_list = self.list(&[gt, lhs, rhs]);
-
-        self.list(&[not, gt_list])
+        let gt_list = self.list(&[self.ops.gt, lhs, rhs]);
+        self.list(&[self.ops.not, gt_list])
     }
 
     fn gen_gteq(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let any = self
-            .allocator
-            .new_small_number(33)
-            .expect("could not allocate `any`");
-        let eq = self
-            .allocator
-            .new_small_number(9)
-            .expect("could not allocate `=`");
-        let gt = self
-            .allocator
-            .new_small_number(21)
-            .expect("could not allocate `>`");
-
         let lhs = self.gen_hir(scope_id, lhs);
         let rhs = self.gen_hir(scope_id, rhs);
         let operands = self.list(&[lhs, rhs]);
-
-        let eq_list = self
-            .allocator
-            .new_pair(eq, operands)
-            .expect("could not allocate eq list");
-        let gt_list = self
-            .allocator
-            .new_pair(gt, operands)
-            .expect("could not allocate gt list");
-
-        self.list(&[any, gt_list, eq_list])
+        let eq_list = self.allocator.new_pair(self.ops.eq, operands).unwrap();
+        let gt_list = self.allocator.new_pair(self.ops.gt, operands).unwrap();
+        self.list(&[self.ops.any, gt_list, eq_list])
     }
 
     fn gen_eq(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let eq = self
-            .allocator
-            .new_small_number(9)
-            .expect("could not allocate `=`");
-
-        let mut args = vec![eq];
-        args.push(self.gen_hir(scope_id, lhs));
-        args.push(self.gen_hir(scope_id, rhs));
-        self.list(&args)
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
+        self.list(&[self.ops.eq, lhs, rhs])
     }
 
     fn gen_neq(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> NodePtr {
-        let eq = self
-            .allocator
-            .new_small_number(9)
-            .expect("could not allocate `=`");
-        let not = self
-            .allocator
-            .new_small_number(32)
-            .expect("could not allocate `not`");
-
-        let mut args = vec![eq];
-        args.push(self.gen_hir(scope_id, lhs));
-        args.push(self.gen_hir(scope_id, rhs));
-        let eq_list = self.list(&args);
-
-        self.list(&[not, eq_list])
+        let lhs = self.gen_hir(scope_id, lhs);
+        let rhs = self.gen_hir(scope_id, rhs);
+        let eq_list = self.list(&[self.ops.eq, lhs, rhs]);
+        self.list(&[self.ops.not, eq_list])
     }
 
     fn gen_not(&mut self, scope_id: ScopeId, value: HirId) -> NodePtr {
-        let not = self
-            .allocator
-            .new_small_number(32)
-            .expect("could not allocate `not`");
-
         let value = self.gen_hir(scope_id, value);
-        self.list(&[not, value])
+        self.list(&[self.ops.not, value])
     }
 
     fn gen_if(
@@ -647,15 +561,6 @@ impl<'a> Codegen<'a> {
         then_block: HirId,
         else_block: HirId,
     ) -> NodePtr {
-        let a = self
-            .allocator
-            .new_small_number(2)
-            .expect("could not allocate `a`");
-        let i = self
-            .allocator
-            .new_small_number(3)
-            .expect("could not allocate `i`");
-
         let all_env = self.allocator.one();
 
         let condition = self.gen_hir(scope_id, condition);
@@ -665,15 +570,12 @@ impl<'a> Codegen<'a> {
         let then_block = self.quote(then_block);
         let else_block = self.quote(else_block);
 
-        let conditional = self.list(&[i, condition, then_block, else_block]);
-        self.list(&[a, conditional, all_env])
+        let conditional = self.list(&[self.ops.i, condition, then_block, else_block]);
+        self.list(&[self.ops.a, conditional, all_env])
     }
 
     fn gen_atom(&mut self, value: Vec<u8>) -> NodePtr {
-        let int_ptr = self
-            .allocator
-            .new_atom(&value)
-            .expect("could not allocate number");
+        let int_ptr = self.allocator.new_atom(&value).unwrap();
         self.quote(int_ptr)
     }
 
@@ -681,43 +583,30 @@ impl<'a> Codegen<'a> {
         if ptr.is_atom() && self.allocator.atom(ptr).as_ref().is_empty() {
             return ptr;
         }
-
-        let q = self.allocator.one();
-        self.allocator
-            .new_pair(q, ptr)
-            .expect("could not allocate quote")
+        self.allocator.new_pair(self.ops.q, ptr).unwrap()
     }
 
     fn list(&mut self, items: &[NodePtr]) -> NodePtr {
         let mut ptr = self.allocator.nil();
         for &item in items.iter().rev() {
-            ptr = self
-                .allocator
-                .new_pair(item, ptr)
-                .expect("could not allocate pair");
+            ptr = self.allocator.new_pair(item, ptr).unwrap();
         }
         ptr
     }
 
     fn runtime_list(&mut self, items: &[NodePtr], end: NodePtr) -> NodePtr {
         let mut ptr = end;
-        let c = self
-            .allocator
-            .new_small_number(4)
-            .expect("could not allocate `c`");
+
         for &item in items.iter().rev() {
-            ptr = self.list(&[c, item, ptr]);
+            ptr = self.list(&[self.ops.c, item, ptr]);
         }
         ptr
     }
 
     fn runtime_runtime_list(&mut self, items: &[NodePtr], end: NodePtr) -> NodePtr {
         let mut ptr = end;
-        let c = self
-            .allocator
-            .new_small_number(4)
-            .expect("could not allocate `c`");
-        let quoted_c = self.quote(c);
+
+        let quoted_c = self.quote(self.ops.c);
         for &item in items.iter().rev() {
             ptr = self.runtime_list(&[quoted_c, item, ptr], NodePtr::NIL);
         }
@@ -725,12 +614,7 @@ impl<'a> Codegen<'a> {
     }
 
     fn runtime_quote(&mut self, ptr: NodePtr) -> NodePtr {
-        let q = self.allocator.one();
-        let c = self
-            .allocator
-            .new_small_number(4)
-            .expect("could not allocate `c`");
-        let quoted_q = self.quote(q);
-        self.list(&[c, quoted_q, ptr])
+        let quoted_q = self.quote(self.ops.q);
+        self.list(&[self.ops.c, quoted_q, ptr])
     }
 }
