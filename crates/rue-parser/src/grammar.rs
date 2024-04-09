@@ -15,6 +15,8 @@ fn item(p: &mut Parser) {
         type_alias_item(p);
     } else if p.at(SyntaxKind::Struct) {
         struct_item(p);
+    } else if p.at(SyntaxKind::Const) {
+        const_item(p);
     } else {
         p.error(&[]);
     }
@@ -83,13 +85,25 @@ fn struct_field(p: &mut Parser) {
     p.finish();
 }
 
+fn const_item(p: &mut Parser) {
+    p.start(SyntaxKind::ConstItem);
+    p.expect(SyntaxKind::Const);
+    p.expect(SyntaxKind::Ident);
+    p.expect(SyntaxKind::Colon);
+    ty(p);
+    p.expect(SyntaxKind::Assign);
+    expr(p);
+    p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
 fn block(p: &mut Parser) {
     p.start(SyntaxKind::Block);
     p.expect(SyntaxKind::OpenBrace);
     loop {
         if p.at(SyntaxKind::Let) {
             let_stmt(p);
-        } else if p.at(SyntaxKind::Fun) || p.at(SyntaxKind::Type) {
+        } else if p.at(SyntaxKind::Fun) || p.at(SyntaxKind::Type) || p.at(SyntaxKind::Const) {
             item(p);
         } else {
             break;

@@ -25,6 +25,7 @@ pub enum SyntaxKind {
     Type,
     Struct,
     Let,
+    Const,
     If,
     Else,
     Nil,
@@ -62,6 +63,7 @@ pub enum SyntaxKind {
     TypeAliasItem,
     StructItem,
     StructField,
+    ConstItem,
 
     LetStmt,
 
@@ -112,6 +114,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::Type => "'type'",
                 SyntaxKind::Struct => "'struct'",
                 SyntaxKind::Let => "'let'",
+                SyntaxKind::Const => "'const'",
                 SyntaxKind::If => "'if'",
                 SyntaxKind::Else => "'else'",
                 SyntaxKind::Nil => "'nil'",
@@ -149,6 +152,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::TypeAliasItem => "type alias item",
                 SyntaxKind::StructItem => "struct item",
                 SyntaxKind::StructField => "struct field",
+                SyntaxKind::ConstItem => "const item",
 
                 SyntaxKind::LetStmt => "let statement",
 

@@ -4,9 +4,9 @@ use indexmap::{IndexMap, IndexSet};
 use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, BinaryExpr, BinaryOp, Block, Expr, FieldAccess, FunctionCall, FunctionItem,
+    AstNode, BinaryExpr, BinaryOp, Block, ConstItem, Expr, FieldAccess, FunctionCall, FunctionItem,
     FunctionType, IfExpr, IndexAccess, InitializerExpr, Item, LambdaExpr, ListExpr, ListType,
-    LiteralExpr, PathExpr, PrefixExpr, PrefixOp, Root, StructItem, SyntaxKind, SyntaxToken,
+    LiteralExpr, PathExpr, PrefixExpr, PrefixOp, Root, Stmt, StructItem, SyntaxKind, SyntaxToken,
     TypeAliasItem,
 };
 
@@ -83,6 +83,7 @@ impl<'a> Lowerer<'a> {
         for item in items.clone() {
             match item {
                 Item::FunctionItem(function) => symbol_ids.push(self.declare_function(function)),
+                Item::ConstItem(const_item) => symbol_ids.push(self.declare_const(const_item)),
                 _ => {}
             }
         }
@@ -101,6 +102,7 @@ impl<'a> Lowerer<'a> {
         for item in items.clone() {
             match item {
                 Item::FunctionItem(function) => self.compile_function(function, symbol_ids[i]),
+                Item::ConstItem(const_item) => self.compile_const(const_item, symbol_ids[i]),
                 _ => continue,
             }
             i += 1;
@@ -143,6 +145,24 @@ impl<'a> Lowerer<'a> {
         });
 
         if let Some(name) = function_item.name() {
+            self.scope_mut().define_symbol(name.to_string(), symbol_id);
+        }
+
+        symbol_id
+    }
+
+    fn declare_const(&mut self, const_item: ConstItem) -> SymbolId {
+        let type_id = const_item
+            .ty()
+            .map(|ty| self.compile_type(ty))
+            .unwrap_or(self.unknown_type);
+        let hir_id = self.db.alloc_hir(Hir::Unknown);
+
+        let symbol_id = self
+            .db
+            .alloc_symbol(Symbol::ConstBinding { type_id, hir_id });
+
+        if let Some(name) = const_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
         }
 
@@ -195,6 +215,25 @@ impl<'a> Lowerer<'a> {
         *hir_id = output.value;
     }
 
+    fn compile_const(&mut self, const_item: ConstItem, symbol_id: SymbolId) {
+        let Some(expr) = const_item.expr() else {
+            return;
+        };
+
+        let Symbol::ConstBinding { type_id, .. } = self.db.symbol(symbol_id).clone() else {
+            unreachable!();
+        };
+
+        let output = self.compile_expr(expr, Some(type_id));
+
+        self.type_check(output.ty, type_id, const_item.syntax().text_range());
+
+        let Symbol::ConstBinding { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
+            unreachable!();
+        };
+        *hir_id = output.value;
+    }
+
     fn compile_type_alias(&mut self, ty: TypeAliasItem, alias_type_id: TypeId) {
         let type_id = ty
             .ty()
@@ -241,29 +280,33 @@ impl<'a> Lowerer<'a> {
 
         let mut let_scope_ids = Vec::new();
 
-        for let_stmt in block.let_stmts() {
-            let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
+        for stmt in block.stmts() {
+            match stmt {
+                Stmt::LetStmt(let_stmt) => {
+                    let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
 
-            let value = let_stmt
-                .expr()
-                .map(|expr| self.compile_expr(expr, expected_type))
-                .unwrap_or(self.unknown);
+                    let value = let_stmt
+                        .expr()
+                        .map(|expr| self.compile_expr(expr, expected_type))
+                        .unwrap_or(self.unknown);
 
-            let Some(name) = let_stmt.name() else {
-                continue;
-            };
+                    let Some(name) = let_stmt.name() else {
+                        continue;
+                    };
 
-            let symbol_id = self.db.alloc_symbol(Symbol::Binding {
-                type_id: value.ty,
-                hir_id: value.value,
-            });
+                    let symbol_id = self.db.alloc_symbol(Symbol::LetBinding {
+                        type_id: value.ty,
+                        hir_id: value.value,
+                    });
 
-            let mut let_scope = Scope::default();
-            let_scope.define_symbol(name.to_string(), symbol_id);
-            let scope_id = self.db.alloc_scope(let_scope);
-            self.scope_stack.push(scope_id);
+                    let mut let_scope = Scope::default();
+                    let_scope.define_symbol(name.to_string(), symbol_id);
+                    let scope_id = self.db.alloc_scope(let_scope);
+                    self.scope_stack.push(scope_id);
 
-            let_scope_ids.push(scope_id);
+                    let_scope_ids.push(scope_id);
+                }
+            }
         }
 
         let mut body = block
@@ -780,7 +823,8 @@ impl<'a> Lowerer<'a> {
                     return_type: *return_type,
                 }),
                 Symbol::Parameter { type_id } => *type_id,
-                Symbol::Binding { type_id, .. } => *type_id,
+                Symbol::LetBinding { type_id, .. } => *type_id,
+                Symbol::ConstBinding { type_id, .. } => *type_id, //todo
             },
         }
     }

@@ -11,7 +11,11 @@ pub enum Symbol {
     Parameter {
         type_id: TypeId,
     },
-    Binding {
+    LetBinding {
+        type_id: TypeId,
+        hir_id: HirId,
+    },
+    ConstBinding {
         type_id: TypeId,
         hir_id: HirId,
     },

@@ -54,11 +54,12 @@ macro_rules! ast_enum {
 
 ast_node!(Root);
 
-ast_enum!(Item, FunctionItem, TypeAliasItem, StructItem);
+ast_enum!(Item, FunctionItem, TypeAliasItem, ConstItem, StructItem);
 ast_node!(FunctionItem);
 ast_node!(FunctionParam);
 ast_node!(TypeAliasItem);
 ast_node!(StructItem);
+ast_node!(ConstItem);
 ast_node!(StructField);
 ast_node!(Block);
 
@@ -100,6 +101,7 @@ ast_node!(ListType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParams);
 
+ast_enum!(Stmt, LetStmt);
 ast_node!(LetStmt);
 
 impl Root {
@@ -187,13 +189,30 @@ impl StructField {
     }
 }
 
+impl ConstItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+}
+
 impl Block {
     pub fn items(&self) -> Vec<Item> {
         self.syntax().children().filter_map(Item::cast).collect()
     }
 
-    pub fn let_stmts(&self) -> Vec<LetStmt> {
-        self.syntax().children().filter_map(LetStmt::cast).collect()
+    pub fn stmts(&self) -> Vec<Stmt> {
+        self.syntax().children().filter_map(Stmt::cast).collect()
     }
 
     pub fn expr(&self) -> Option<Expr> {

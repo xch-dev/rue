@@ -136,6 +136,19 @@ example!(
     }
 );
 
+example!(
+    constants,
+    Example {
+        environment: (),
+        parse: &[],
+        compile: &[],
+        hash: "25f386f3f2852cc89a4e21002fd1c6dcf7e0000b069f18d4c80d42224e15fd41",
+        size_bytes: 47,
+        output: 350,
+        runtime_cost: 2347
+    }
+);
+
 macro_rules! example_list {
     ( $( $name:ident ),+ $(,)? ) => {{
         let mut examples = HashSet::new();
@@ -156,7 +169,8 @@ fn example_list() {
         lambda_functions,
         struct_type,
         lists,
-        closures
+        closures,
+        constants
     );
     let mut found_examples = HashSet::new();
 

@@ -15,6 +15,7 @@ pub enum TokenKind {
     Type,
     Struct,
     Let,
+    Const,
     If,
     Else,
     Nil,

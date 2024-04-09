@@ -1,0 +1,10 @@
+const TEN: Int = 10;
+
+fun main() -> Int {
+    TEN + times_ten(34)
+}
+
+fun times_ten(num: Int) -> Int {
+    const TIMES_TEN: Int = num * TEN;
+    TIMES_TEN
+}

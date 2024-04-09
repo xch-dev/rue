@@ -95,6 +95,7 @@ impl<'a> Lexer<'a> {
                     "type" => TokenKind::Type,
                     "struct" => TokenKind::Struct,
                     "let" => TokenKind::Let,
+                    "const" => TokenKind::Const,
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
                     "nil" => TokenKind::Nil,
