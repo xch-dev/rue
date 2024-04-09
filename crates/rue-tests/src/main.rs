@@ -13,7 +13,7 @@ use rue_compiler::compile;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct TestCase {
     bytes: usize,
     cost: u64,
@@ -22,6 +22,7 @@ struct TestCase {
     hash: String,
 }
 
+#[derive(Clone)]
 struct TestOutput {
     bytes: usize,
     cost: u64,
@@ -29,7 +30,7 @@ struct TestOutput {
     hash: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct TestErrors {
     parser_errors: Vec<String>,
     compiler_errors: Vec<String>,
@@ -49,6 +50,7 @@ fn iter_tests() -> impl Iterator<Item = PathBuf> {
 
     WalkDir::new(manifest_dir.join("../../tests"))
         .into_iter()
+        .chain(WalkDir::new(manifest_dir.join("../../examples")))
         .map(Result::unwrap)
         .filter(|file| file.path().to_str().unwrap().ends_with(".rue"))
         .map(|file| file.into_path())
@@ -142,13 +144,15 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
 fn main() {
     let args = Args::parse();
 
-    if !run_tests(args.update) {
+    let failed = run_tests(args.update);
+    if failed > 0 {
+        eprintln!("{} tests failed", failed);
         std::process::exit(1);
     }
 }
 
-fn run_tests(update: bool) -> bool {
-    let mut any_failed = false;
+fn run_tests(update: bool) -> usize {
+    let mut failed_count = 0;
 
     for test in iter_tests() {
         println!(
@@ -160,110 +164,127 @@ fn run_tests(update: bool) -> bool {
         let source = fs::read_to_string(&test).unwrap();
         let toml_path = test.with_extension("toml");
 
-        let toml_text = fs::read_to_string(toml_path.as_path()).unwrap();
+        let toml_text = match fs::read_to_string(toml_path.as_path()) {
+            Ok(text) => text,
+            Err(_) => {
+                eprintln!("missing toml file: {}", toml_path.display());
+                failed = true;
+                String::new()
+            }
+        };
 
-        let parsed: Result<TestCase, TestErrors> =
-            toml::from_str::<TestCase>(&toml_text).map_err(|error| {
-                toml::from_str::<TestErrors>(&toml_text).unwrap_or_else(|_| panic!("{error}"))
-            });
+        let parsed: Option<Result<TestCase, TestErrors>> =
+            match toml::from_str::<TestCase>(&toml_text) {
+                Ok(parsed) => Some(Ok(parsed)),
+                Err(..) => match toml::from_str::<TestErrors>(&toml_text) {
+                    Ok(parsed) => Some(Err(parsed)),
+                    Err(error) => {
+                        eprintln!("failed to parse toml: {error}");
+                        None
+                    }
+                },
+            };
 
         let output = run_test(
             &source,
             &parsed
                 .as_ref()
+                .and_then(|parsed| parsed.as_ref().ok())
                 .map(|parsed| parsed.input.clone())
                 .unwrap_or("()".to_string()),
         );
 
-        match (parsed, &output) {
-            (Err(expected_test_errors), Err(test_errors)) => {
-                if expected_test_errors.parser_errors != test_errors.parser_errors {
+        if let Some(parsed) = parsed.clone() {
+            match (parsed, &output) {
+                (Err(expected_test_errors), Err(test_errors)) => {
+                    if expected_test_errors.parser_errors != test_errors.parser_errors {
+                        println!("expected parser errors:");
+                        for error in expected_test_errors.parser_errors {
+                            println!("  {}", error);
+                        }
+                        println!("actual parser errors:");
+                        for error in test_errors.parser_errors.iter() {
+                            println!("  {}", error);
+                        }
+                        failed = true;
+                    }
+
+                    if expected_test_errors.compiler_errors != test_errors.compiler_errors {
+                        println!("expected compiler errors:");
+                        for error in expected_test_errors.compiler_errors {
+                            println!("  {}", error);
+                        }
+                        println!("actual compiler errors:");
+                        for error in test_errors.compiler_errors.iter() {
+                            println!("  {}", error);
+                        }
+                        failed = true;
+                    }
+                }
+                (Err(expected_test_errors), Ok(..)) => {
                     println!("expected parser errors:");
                     for error in expected_test_errors.parser_errors {
                         println!("  {}", error);
                     }
-                    println!("actual parser errors:");
-                    for error in test_errors.parser_errors.iter() {
-                        println!("  {}", error);
-                    }
-                    failed = true;
-                }
-
-                if expected_test_errors.compiler_errors != test_errors.compiler_errors {
                     println!("expected compiler errors:");
                     for error in expected_test_errors.compiler_errors {
                         println!("  {}", error);
                     }
-                    println!("actual compiler errors:");
+                    failed = true;
+                }
+                (Ok(_expected), Err(test_errors)) => {
+                    println!("unexpected parser errors:");
+                    for error in test_errors.parser_errors.iter() {
+                        println!("  {}", error);
+                    }
+                    println!("unexpected compiler errors:");
                     for error in test_errors.compiler_errors.iter() {
                         println!("  {}", error);
                     }
                     failed = true;
                 }
-            }
-            (Err(expected_test_errors), Ok(..)) => {
-                println!("expected parser errors:");
-                for error in expected_test_errors.parser_errors {
-                    println!("  {}", error);
-                }
-                println!("expected compiler errors:");
-                for error in expected_test_errors.compiler_errors {
-                    println!("  {}", error);
-                }
-                failed = true;
-            }
-            (Ok(_expected), Err(test_errors)) => {
-                println!("unexpected parser errors:");
-                for error in test_errors.parser_errors.iter() {
-                    println!("  {}", error);
-                }
-                println!("unexpected compiler errors:");
-                for error in test_errors.compiler_errors.iter() {
-                    println!("  {}", error);
-                }
-                failed = true;
-            }
-            (Ok(expected), Ok(actual)) => {
-                if expected.bytes != actual.bytes {
-                    println!(
-                        "expected bytes: {}, actual bytes: {}",
-                        expected.bytes, actual.bytes
-                    );
-                    failed = true;
-                }
+                (Ok(expected), Ok(actual)) => {
+                    if expected.bytes != actual.bytes {
+                        println!(
+                            "expected bytes: {}, actual bytes: {}",
+                            expected.bytes, actual.bytes
+                        );
+                        failed = true;
+                    }
 
-                if expected.cost != actual.cost {
-                    println!(
-                        "expected cost: {}, actual cost: {}",
-                        expected.cost, actual.cost
-                    );
-                    failed = true;
-                }
+                    if expected.cost != actual.cost {
+                        println!(
+                            "expected cost: {}, actual cost: {}",
+                            expected.cost, actual.cost
+                        );
+                        failed = true;
+                    }
 
-                if expected.hash != actual.hash {
-                    println!("expected hash: {}", expected.hash);
-                    println!("actual hash: {}", actual.hash);
-                    failed = true;
-                }
+                    if expected.hash != actual.hash {
+                        println!("expected hash: {}", expected.hash);
+                        println!("actual hash: {}", actual.hash);
+                        failed = true;
+                    }
 
-                match &actual.output {
-                    Ok(output) => {
-                        if &expected.output != output {
-                            println!("expected output: {}", expected.output);
-                            println!("actual output: {}", output);
+                    match &actual.output {
+                        Ok(output) => {
+                            if &expected.output != output {
+                                println!("expected output: {}", expected.output);
+                                println!("actual output: {}", output);
+                                failed = true;
+                            }
+                        }
+                        Err(error) => {
+                            println!("unexpected clvm error: {}", error);
                             failed = true;
                         }
-                    }
-                    Err(error) => {
-                        println!("unexpected clvm error: {}", error);
-                        failed = true;
                     }
                 }
             }
         }
 
         if failed {
-            any_failed = true;
+            failed_count += 1;
             eprintln!("test failed");
 
             if update {
@@ -271,7 +292,10 @@ fn run_tests(update: bool) -> bool {
                     Ok(output) => toml::to_string_pretty(&TestCase {
                         bytes: output.bytes,
                         cost: output.cost,
-                        input: "()".to_string(),
+                        input: parsed
+                            .and_then(|parsed| parsed.ok())
+                            .map(|parsed| parsed.input)
+                            .unwrap_or("()".to_string()),
                         output: output.output.unwrap_or("()".to_string()),
                         hash: output.hash,
                     })
@@ -285,7 +309,7 @@ fn run_tests(update: bool) -> bool {
         }
     }
 
-    !any_failed
+    failed_count
 }
 
 #[cfg(test)]
@@ -294,6 +318,6 @@ mod tests {
 
     #[test]
     fn test_regressions() {
-        assert!(run_tests(false), "one or more tests failed");
+        assert_eq!(run_tests(false), 0, "one or more tests failed");
     }
 }
