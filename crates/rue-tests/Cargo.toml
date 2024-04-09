@@ -1,0 +1,17 @@
+[package]
+name = "rue-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rue-parser = { path = "../rue-parser" }
+rue-compiler = { path = "../rue-compiler" }
+clvm-utils = "0.6.0"
+clvmr = "0.6.1"
+clvmr_old = { version = "0.3.2", package = "clvmr" }
+clvm_tools_rs = "0.1.41"
+hex = "0.4.3"
+toml = "0.8.12"
+serde = { version = "1.0.197", features = ["derive"] }
+clap = { version = "4.5.4", features = ["derive"] }
+walkdir = "2.5.0"

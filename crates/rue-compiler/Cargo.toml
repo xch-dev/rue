@@ -13,8 +13,3 @@ thiserror = "1.0.58"
 num-traits = "0.2.18"
 num-iter = "0.1.44"
 num-bigint = "0.4.4"
-
-[dev-dependencies]
-clvm-traits = "0.6.0"
-clvm-utils = "0.6.0"
-hex = "0.4.3"

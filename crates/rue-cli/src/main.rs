@@ -39,12 +39,10 @@ fn main() {
     let source = fs::read_to_string(args.file).expect("could not read source file");
     let (ast, errors) = parse(&source);
 
-    if !errors.is_empty() {
-        for error in errors {
-            let (line, column) = line_col(&source, error.span().start);
+    for error in errors {
+        let (line, column) = line_col(&source, error.span().start);
 
-            eprintln!("{} at {line}:{column}", error.kind());
-        }
+        eprintln!("{} at {line}:{column}", error.kind());
     }
 
     let mut allocator = Allocator::new();

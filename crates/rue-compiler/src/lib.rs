@@ -13,9 +13,6 @@ mod scope;
 mod symbol;
 mod ty;
 
-#[cfg(test)]
-mod tests;
-
 pub use error::*;
 use scope::Scope;
 
