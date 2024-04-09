@@ -50,12 +50,10 @@ The CST is not ideal for processing by the compiler since it's untyped and conta
 
 The AST gets transformed into the HIR (high-level intermediate representation) in a couple passes. First, the symbol table is populated with function declarations. This allows you to call functions which have been defined after the code you're evaluating. Next, the functions are actually themselves evaluated, converting AST expressions into HIR nodes. Type checking, name resolution, and error reporting are done during this phase.
 
-### Optimizer
+### LIR
 
-Once the HIR has been built, you can perform analysis on the program, remove dead code, and simplify expressions.
-
-Note that the optimizer is not yet implemented.
+Once the typed HIR has been built, it is then translated to a much simpler form with all language constructs boiled down to their CLVM counterparts. This is the low-level intermediate representation. Optimizations are applied during this phase, including tree shaking (removing dead code) and expression simplification.
 
 ### Codegen
 
-Finally, you can generate CLVM from the HIR through a series of transformations and some additional optimizations can be applied at the end.
+Finally, you can generate CLVM from the LIR through a series of transformations and some additional optimizations can be applied at the end.

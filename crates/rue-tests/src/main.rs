@@ -25,7 +25,7 @@ struct TestCase {
 
 #[derive(Clone)]
 struct TestOutput {
-    bytes: usize,
+    bytes: Vec<u8>,
     cost: u64,
     output: Result<String, String>,
     hash: String,
@@ -106,7 +106,7 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
         });
     }
 
-    let bytes = node_to_bytes(&allocator, output.node_ptr()).unwrap().len();
+    let bytes = node_to_bytes(&allocator, output.node_ptr()).unwrap();
     let hash = hex::encode(tree_hash(&allocator, output.node_ptr()));
 
     let mut old_allocator = clvmr_old::Allocator::new();
@@ -248,10 +248,11 @@ fn run_tests(update: bool) -> usize {
                     failed = true;
                 }
                 (Ok(expected), Ok(actual)) => {
-                    if expected.bytes != actual.bytes {
+                    if expected.bytes != actual.bytes.len() {
                         lines.push(format!(
                             "expected bytes: {}, actual bytes: {}",
-                            expected.bytes, actual.bytes
+                            expected.bytes,
+                            actual.bytes.len()
                         ));
                         failed = true;
                     }
@@ -270,18 +271,26 @@ fn run_tests(update: bool) -> usize {
                         failed = true;
                     }
 
+                    let mut output_failed = false;
+
                     match &actual.output {
                         Ok(output) => {
                             if &expected.output != output {
                                 lines.push(format!("expected output: {}", expected.output));
                                 lines.push(format!("actual output: {}", output));
                                 failed = true;
+                                output_failed = true;
                             }
                         }
                         Err(error) => {
                             lines.push(format!("unexpected clvm error: {}", error));
                             failed = true;
+                            output_failed = true;
                         }
+                    }
+
+                    if output_failed {
+                        lines.push(format!("compiled program: {}", hex::encode(&actual.bytes)));
                     }
                 }
             }
@@ -293,7 +302,7 @@ fn run_tests(update: bool) -> usize {
             if update {
                 let toml_text = match output {
                     Ok(output) => toml::to_string_pretty(&TestCase {
-                        bytes: output.bytes,
+                        bytes: output.bytes.len(),
                         cost: output.cost,
                         input: parsed
                             .and_then(|parsed| parsed.ok())

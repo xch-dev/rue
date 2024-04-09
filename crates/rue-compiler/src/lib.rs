@@ -2,13 +2,16 @@ use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
 use database::{Database, SymbolId};
 use lowerer::Lowerer;
+use optimizer::Optimizer;
 use rue_parser::Root;
 
 mod codegen;
 mod database;
 mod error;
 mod hir;
+mod lir;
 mod lowerer;
+mod optimizer;
 mod scope;
 mod symbol;
 mod ty;
@@ -56,8 +59,11 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
         .iter()
         .any(|diagnostic| diagnostic.kind() == DiagnosticKind::Error)
     {
+        let mut optimizer = Optimizer::new(&mut db);
+        let lir_id = optimizer.opt_main(main_id);
+
         let mut codegen = Codegen::new(&mut db, allocator);
-        codegen.gen_main(main_id)
+        codegen.gen_lir(lir_id)
     } else {
         NodePtr::NIL
     };
