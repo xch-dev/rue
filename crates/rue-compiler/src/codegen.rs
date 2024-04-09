@@ -68,70 +68,73 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    fn compute_captures_scope(&mut self, scope_id: ScopeId, hir_id: HirId) {
+    fn compute_captures_entrypoint(&mut self, scope_id: ScopeId, hir_id: HirId) {
         if self.captures.contains_key(&scope_id) {
             return;
         }
         self.captures.insert(scope_id, IndexSet::new());
-        self.compute_captures(scope_id, hir_id);
+        self.compute_captures_hir(scope_id, hir_id);
     }
 
-    fn compute_captures(&mut self, scope_id: ScopeId, hir_id: HirId) {
+    fn compute_captures_hir(&mut self, scope_id: ScopeId, hir_id: HirId) {
         match self.db.hir(hir_id).clone() {
             Hir::Unknown => unreachable!(),
             Hir::Atom(_) => {}
-            Hir::Reference(symbol_id) => {
-                if self.db.symbol(symbol_id).is_capturable()
-                    && !self.db.scope(scope_id).is_local(symbol_id)
-                {
-                    self.captures.get_mut(&scope_id).unwrap().insert(symbol_id);
-                }
-
-                match self.db.symbol(symbol_id).clone() {
-                    Symbol::Function {
-                        scope_id: function_scope_id,
-                        hir_id,
-                        ..
-                    } => self.compute_function_captures(scope_id, function_scope_id, hir_id),
-                    Symbol::Parameter { .. } => {}
-                    Symbol::LetBinding { hir_id, .. } => self.compute_captures(scope_id, hir_id),
-                    Symbol::ConstBinding { hir_id, .. } => self.compute_captures(scope_id, hir_id),
-                }
-            }
+            Hir::Reference(symbol_id) => self.compute_reference_captures(scope_id, symbol_id),
             Hir::Scope {
                 scope_id: new_scope_id,
                 value,
             } => self.compute_scope_captures(scope_id, new_scope_id, value),
             Hir::FunctionCall { callee, args } => {
-                self.compute_captures(scope_id, callee);
+                self.compute_captures_hir(scope_id, callee);
                 for arg in args {
-                    self.compute_captures(scope_id, arg);
+                    self.compute_captures_hir(scope_id, arg);
                 }
             }
             Hir::BinaryOp { lhs, rhs, .. } => {
-                self.compute_captures(scope_id, lhs);
-                self.compute_captures(scope_id, rhs);
+                self.compute_captures_hir(scope_id, lhs);
+                self.compute_captures_hir(scope_id, rhs);
             }
             Hir::Not(value) => {
-                self.compute_captures(scope_id, value);
+                self.compute_captures_hir(scope_id, value);
             }
             Hir::If {
                 condition,
                 then_block,
                 else_block,
             } => {
-                self.compute_captures(scope_id, condition);
-                self.compute_captures(scope_id, then_block);
-                self.compute_captures(scope_id, else_block);
+                self.compute_captures_hir(scope_id, condition);
+                self.compute_captures_hir(scope_id, then_block);
+                self.compute_captures_hir(scope_id, else_block);
             }
             Hir::List(items) => {
                 for item in items {
-                    self.compute_captures(scope_id, item);
+                    self.compute_captures_hir(scope_id, item);
                 }
             }
             Hir::ListIndex { value, .. } => {
-                self.compute_captures(scope_id, value);
+                self.compute_captures_hir(scope_id, value);
             }
+        }
+    }
+
+    fn compute_reference_captures(&mut self, scope_id: ScopeId, symbol_id: SymbolId) {
+        let is_capturable = self.db.symbol(symbol_id).is_capturable();
+        let is_local = self.db.scope(scope_id).is_local(symbol_id);
+
+        if is_capturable && !is_local {
+            self.captures.get_mut(&scope_id).unwrap().insert(symbol_id);
+        }
+
+        match self.db.symbol(symbol_id).clone() {
+            Symbol::Function {
+                scope_id: function_scope_id,
+                hir_id,
+                ..
+            } => self.compute_function_captures(scope_id, function_scope_id, hir_id),
+            Symbol::Parameter { .. } => {}
+            Symbol::LetBinding { hir_id, .. } => self.compute_captures_hir(scope_id, hir_id),
+            Symbol::ConstBinding { hir_id, .. } => self.compute_captures_hir(scope_id, hir_id),
         }
     }
 
@@ -141,7 +144,7 @@ impl<'a> Codegen<'a> {
         function_scope_id: ScopeId,
         hir_id: HirId,
     ) {
-        self.compute_captures_scope(function_scope_id, hir_id);
+        self.compute_captures_entrypoint(function_scope_id, hir_id);
 
         let new_captures: Vec<SymbolId> = self.captures[&function_scope_id]
             .iter()
@@ -176,7 +179,7 @@ impl<'a> Codegen<'a> {
     }
 
     fn compute_scope_captures(&mut self, scope_id: ScopeId, new_scope_id: ScopeId, value: HirId) {
-        self.compute_captures_scope(new_scope_id, value);
+        self.compute_captures_entrypoint(new_scope_id, value);
 
         let new_captures: Vec<SymbolId> = self.captures[&new_scope_id]
             .iter()
@@ -208,7 +211,7 @@ impl<'a> Codegen<'a> {
             unreachable!();
         };
 
-        self.compute_captures_scope(scope_id, hir_id);
+        self.compute_captures_entrypoint(scope_id, hir_id);
 
         let mut env = IndexSet::new();
 
