@@ -9,6 +9,7 @@ use clvmr::{
     serde::{node_from_bytes, node_to_bytes},
     Allocator, ChiaDialect,
 };
+use indexmap::IndexMap;
 use rue_compiler::compile;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
@@ -146,7 +147,7 @@ fn main() {
 
     let failed = run_tests(args.update);
     if failed > 0 {
-        eprintln!("{} tests failed", failed);
+        println!("\n{} tests failed", failed);
         std::process::exit(1);
     }
 }
@@ -154,12 +155,15 @@ fn main() {
 fn run_tests(update: bool) -> usize {
     let mut failed_count = 0;
 
+    let mut failed_tests = IndexMap::new();
+
     for test in iter_tests() {
         println!(
             "running test: {}",
             test.canonicalize().unwrap().to_str().unwrap()
         );
         let mut failed = false;
+        let mut lines = Vec::new();
 
         let source = fs::read_to_string(&test).unwrap();
         let toml_path = test.with_extension("toml");
@@ -167,7 +171,7 @@ fn run_tests(update: bool) -> usize {
         let toml_text = match fs::read_to_string(toml_path.as_path()) {
             Ok(text) => text,
             Err(_) => {
-                eprintln!("missing toml file: {}", toml_path.display());
+                lines.push(format!("missing toml file: {}", toml_path.display()));
                 failed = true;
                 String::new()
             }
@@ -179,7 +183,7 @@ fn run_tests(update: bool) -> usize {
                 Err(..) => match toml::from_str::<TestErrors>(&toml_text) {
                     Ok(parsed) => Some(Err(parsed)),
                     Err(error) => {
-                        eprintln!("failed to parse toml: {error}");
+                        lines.push(format!("failed to parse toml: {error}"));
                         None
                     }
                 },
@@ -198,84 +202,84 @@ fn run_tests(update: bool) -> usize {
             match (parsed, &output) {
                 (Err(expected_test_errors), Err(test_errors)) => {
                     if expected_test_errors.parser_errors != test_errors.parser_errors {
-                        println!("expected parser errors:");
+                        lines.push("expected parser errors:".to_string());
                         for error in expected_test_errors.parser_errors {
-                            println!("  {}", error);
+                            lines.push(format!("  {}", error));
                         }
-                        println!("actual parser errors:");
+                        lines.push("actual parser errors:".to_string());
                         for error in test_errors.parser_errors.iter() {
-                            println!("  {}", error);
+                            lines.push(format!("  {}", error));
                         }
                         failed = true;
                     }
 
                     if expected_test_errors.compiler_errors != test_errors.compiler_errors {
-                        println!("expected compiler errors:");
+                        lines.push("expected compiler errors:".to_string());
                         for error in expected_test_errors.compiler_errors {
-                            println!("  {}", error);
+                            lines.push(format!("  {}", error));
                         }
-                        println!("actual compiler errors:");
+                        lines.push("actual compiler errors:".to_string());
                         for error in test_errors.compiler_errors.iter() {
-                            println!("  {}", error);
+                            lines.push(format!("  {}", error));
                         }
                         failed = true;
                     }
                 }
                 (Err(expected_test_errors), Ok(..)) => {
-                    println!("expected parser errors:");
+                    lines.push("expected parser errors:".to_string());
                     for error in expected_test_errors.parser_errors {
-                        println!("  {}", error);
+                        lines.push(format!("  {}", error));
                     }
-                    println!("expected compiler errors:");
+                    lines.push("expected compiler errors:".to_string());
                     for error in expected_test_errors.compiler_errors {
-                        println!("  {}", error);
+                        lines.push(format!("  {}", error));
                     }
                     failed = true;
                 }
                 (Ok(_expected), Err(test_errors)) => {
-                    println!("unexpected parser errors:");
+                    lines.push("unexpected parser errors:".to_string());
                     for error in test_errors.parser_errors.iter() {
-                        println!("  {}", error);
+                        lines.push(format!("  {}", error));
                     }
-                    println!("unexpected compiler errors:");
+                    lines.push("unexpected compiler errors:".to_string());
                     for error in test_errors.compiler_errors.iter() {
-                        println!("  {}", error);
+                        lines.push(format!("  {}", error));
                     }
                     failed = true;
                 }
                 (Ok(expected), Ok(actual)) => {
                     if expected.bytes != actual.bytes {
-                        println!(
+                        lines.push(format!(
                             "expected bytes: {}, actual bytes: {}",
                             expected.bytes, actual.bytes
-                        );
+                        ));
                         failed = true;
                     }
 
                     if expected.cost != actual.cost {
-                        println!(
+                        lines.push(format!(
                             "expected cost: {}, actual cost: {}",
                             expected.cost, actual.cost
-                        );
+                        ));
                         failed = true;
                     }
 
                     if expected.hash != actual.hash {
-                        println!("expected hash: {}", expected.hash);
-                        println!("actual hash: {}", actual.hash);
+                        lines.push(format!("expected hash: {}", expected.hash));
+                        lines.push(format!("actual hash: {}", actual.hash));
                         failed = true;
                     }
 
                     match &actual.output {
                         Ok(output) => {
                             if &expected.output != output {
-                                println!("expected output: {}", expected.output);
-                                println!("actual output: {}", output);
+                                lines.push(format!("expected output: {}", expected.output));
+                                lines.push(format!("actual output: {}", output));
                                 failed = true;
                             }
                         }
                         Err(error) => {
-                            println!("unexpected clvm error: {}", error);
+                            lines.push(format!("unexpected clvm error: {}", error));
                             failed = true;
                         }
                     }
@@ -285,7 +289,6 @@ fn run_tests(update: bool) -> usize {
 
         if failed {
             failed_count += 1;
-            eprintln!("test failed");
 
             if update {
                 let toml_text = match output {
@@ -304,8 +307,18 @@ fn run_tests(update: bool) -> usize {
                 };
                 fs::write(toml_path, toml_text).unwrap();
             }
-        } else {
-            println!("test passed");
+
+            failed_tests.insert(
+                test.canonicalize().unwrap().to_str().unwrap().to_string(),
+                lines,
+            );
+        }
+    }
+
+    for (test, lines) in failed_tests {
+        println!("\ntest failed: {}", test);
+        for line in lines {
+            println!("  {}", line);
         }
     }
 
