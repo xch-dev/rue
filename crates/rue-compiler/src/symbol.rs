@@ -20,3 +20,17 @@ pub enum Symbol {
         hir_id: HirId,
     },
 }
+
+impl Symbol {
+    pub fn is_parameter(&self) -> bool {
+        matches!(self, Symbol::Parameter { .. })
+    }
+
+    pub fn is_capturable(&self) -> bool {
+        !matches!(self, Symbol::ConstBinding { .. })
+    }
+
+    pub fn is_definition(&self) -> bool {
+        matches!(self, Symbol::Function { .. } | Symbol::LetBinding { .. })
+    }
+}

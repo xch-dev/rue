@@ -81,16 +81,10 @@ impl<'a> Codegen<'a> {
             Hir::Unknown => unreachable!(),
             Hir::Atom(_) => {}
             Hir::Reference(symbol_id) => {
-                match self.db.symbol(symbol_id) {
-                    Symbol::ConstBinding { .. } => {}
-                    _ => {
-                        if !self.db.scope(scope_id).is_defined_here(symbol_id) {
-                            self.captures
-                                .get_mut(&scope_id)
-                                .expect("unknown capture scope")
-                                .insert(symbol_id);
-                        }
-                    }
+                if self.db.symbol(symbol_id).is_capturable()
+                    && !self.db.scope(scope_id).is_local(symbol_id)
+                {
+                    self.captures.get_mut(&scope_id).unwrap().insert(symbol_id);
                 }
 
                 match self.db.symbol(symbol_id).clone() {
@@ -98,43 +92,7 @@ impl<'a> Codegen<'a> {
                         scope_id: function_scope_id,
                         hir_id,
                         ..
-                    } => {
-                        self.compute_captures_scope(function_scope_id, hir_id);
-
-                        let new_captures = self.captures[&function_scope_id].clone();
-                        self.captures
-                            .get_mut(&scope_id)
-                            .expect("cannot capture from unknown scope")
-                            .extend(
-                                new_captures
-                                    .into_iter()
-                                    .filter(|&id| !self.db.scope(scope_id).is_defined_here(id)),
-                            );
-
-                        let mut env = IndexSet::new();
-
-                        for symbol_id in self.db.scope(function_scope_id).definitions() {
-                            if let Symbol::Parameter { .. } | Symbol::ConstBinding { .. } =
-                                self.db.symbol(symbol_id)
-                            {
-                                continue;
-                            }
-                            env.insert(symbol_id);
-                        }
-
-                        for symbol_id in self.captures[&function_scope_id].clone() {
-                            env.insert(symbol_id);
-                        }
-
-                        for symbol_id in self.db.scope(function_scope_id).definitions() {
-                            if let Symbol::Parameter { .. } = self.db.symbol(symbol_id) {
-                                env.insert(symbol_id);
-                            }
-                        }
-
-                        self.environments.insert(function_scope_id, env);
-                    }
-
+                    } => self.compute_function_captures(scope_id, function_scope_id, hir_id),
                     Symbol::Parameter { .. } => {}
                     Symbol::LetBinding { hir_id, .. } => self.compute_captures(scope_id, hir_id),
                     Symbol::ConstBinding { hir_id, .. } => self.compute_captures(scope_id, hir_id),
@@ -143,28 +101,7 @@ impl<'a> Codegen<'a> {
             Hir::Scope {
                 scope_id: new_scope_id,
                 value,
-            } => {
-                self.compute_captures_scope(new_scope_id, value);
-
-                let new_captures = self.captures[&new_scope_id].clone();
-                self.captures
-                    .get_mut(&scope_id)
-                    .expect("cannot capture from unknown scope")
-                    .extend(
-                        new_captures
-                            .into_iter()
-                            .filter(|&id| !self.db.scope(scope_id).is_defined_here(id)),
-                    );
-
-                let mut env = IndexSet::new();
-
-                for symbol_id in self.db.scope(new_scope_id).definitions() {
-                    env.insert(symbol_id);
-                }
-
-                self.scope_inheritance.insert(new_scope_id, scope_id);
-                self.environments.insert(new_scope_id, env);
-            }
+            } => self.compute_scope_captures(scope_id, new_scope_id, value),
             Hir::FunctionCall { callee, args } => {
                 self.compute_captures(scope_id, callee);
                 for arg in args {
@@ -198,36 +135,95 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    fn compute_function_captures(
+        &mut self,
+        scope_id: ScopeId,
+        function_scope_id: ScopeId,
+        hir_id: HirId,
+    ) {
+        self.compute_captures_scope(function_scope_id, hir_id);
+
+        let new_captures: Vec<SymbolId> = self.captures[&function_scope_id]
+            .iter()
+            .copied()
+            .filter(|&id| !self.db.scope(scope_id).is_local(id))
+            .collect();
+
+        self.captures
+            .get_mut(&scope_id)
+            .unwrap()
+            .extend(new_captures);
+
+        let mut env = IndexSet::new();
+
+        for symbol_id in self.db.scope(function_scope_id).local_symbols() {
+            if self.db.symbol(symbol_id).is_definition() {
+                env.insert(symbol_id);
+            }
+        }
+
+        for symbol_id in self.captures[&function_scope_id].clone() {
+            env.insert(symbol_id);
+        }
+
+        for symbol_id in self.db.scope(function_scope_id).local_symbols() {
+            if self.db.symbol(symbol_id).is_parameter() {
+                env.insert(symbol_id);
+            }
+        }
+
+        self.environments.insert(function_scope_id, env);
+    }
+
+    fn compute_scope_captures(&mut self, scope_id: ScopeId, new_scope_id: ScopeId, value: HirId) {
+        self.compute_captures_scope(new_scope_id, value);
+
+        let new_captures: Vec<SymbolId> = self.captures[&new_scope_id]
+            .iter()
+            .copied()
+            .filter(|&id| !self.db.scope(scope_id).is_local(id))
+            .collect();
+
+        self.captures
+            .get_mut(&scope_id)
+            .unwrap()
+            .extend(new_captures);
+
+        let mut env = IndexSet::new();
+
+        for symbol_id in self.db.scope(new_scope_id).local_symbols() {
+            assert!(self.db.symbol(symbol_id).is_definition());
+            env.insert(symbol_id);
+        }
+
+        self.scope_inheritance.insert(new_scope_id, scope_id);
+        self.environments.insert(new_scope_id, env);
+    }
+
     pub fn gen_main(&mut self, main: SymbolId) -> NodePtr {
-        let (scope_id, hir_id) = {
-            let Symbol::Function {
-                scope_id, hir_id, ..
-            } = self.db.symbol(main)
-            else {
-                unreachable!();
-            };
-            (*scope_id, *hir_id)
+        let Symbol::Function {
+            scope_id, hir_id, ..
+        } = self.db.symbol(main).clone()
+        else {
+            unreachable!();
         };
 
         self.compute_captures_scope(scope_id, hir_id);
 
         let mut env = IndexSet::new();
 
-        for symbol_id in self.db.scope(scope_id).definitions() {
-            if let Symbol::Parameter { .. } | Symbol::ConstBinding { .. } =
-                self.db.symbol(symbol_id)
-            {
-                continue;
+        for symbol_id in self.db.scope(scope_id).local_symbols() {
+            if self.db.symbol(symbol_id).is_definition() {
+                env.insert(symbol_id);
             }
-            env.insert(symbol_id);
         }
 
         for symbol_id in self.captures[&scope_id].clone() {
             env.insert(symbol_id);
         }
 
-        for symbol_id in self.db.scope(scope_id).definitions() {
-            if let Symbol::Parameter { .. } = self.db.symbol(symbol_id) {
+        for symbol_id in self.db.scope(scope_id).local_symbols() {
+            if self.db.symbol(symbol_id).is_parameter() {
                 env.insert(symbol_id);
             }
         }
@@ -236,24 +232,20 @@ impl<'a> Codegen<'a> {
 
         let body = self.gen_hir(scope_id, hir_id);
         let quoted_body = self.quote(body);
-        let rest = self.allocator.one();
 
         let mut args = Vec::new();
 
-        for symbol_id in self.db.scope(scope_id).definitions() {
-            if let Symbol::Parameter { .. } | Symbol::ConstBinding { .. } =
-                self.db.symbol(symbol_id)
-            {
-                continue;
+        for symbol_id in self.db.scope(scope_id).local_symbols() {
+            if self.db.symbol(symbol_id).is_definition() {
+                args.push(self.gen_definition(scope_id, symbol_id));
             }
-            args.push(self.gen_definition(scope_id, symbol_id));
         }
 
         for symbol_id in self.captures[&scope_id].clone() {
             args.push(self.gen_definition(scope_id, symbol_id));
         }
 
-        let arg_list = self.runtime_list(&args, rest);
+        let arg_list = self.runtime_list(&args, self.ops.q);
 
         self.list(&[self.ops.a, quoted_body, arg_list])
     }
@@ -266,6 +258,7 @@ impl<'a> Codegen<'a> {
         let mut args = Vec::new();
 
         for symbol_id in self.environments[&scope_id].clone() {
+            assert!(self.db.symbol(symbol_id).is_definition());
             args.push(self.gen_definition(parent_scope_id, symbol_id));
         }
 
@@ -311,13 +304,10 @@ impl<'a> Codegen<'a> {
 
                 let mut definitions = Vec::new();
 
-                for symbol_id in self.db.scope(function_scope_id).definitions() {
-                    if let Symbol::Parameter { .. } | Symbol::ConstBinding { .. } =
-                        self.db.symbol(symbol_id)
-                    {
-                        continue;
+                for symbol_id in self.db.scope(function_scope_id).local_symbols() {
+                    if self.db.symbol(symbol_id).is_definition() {
+                        definitions.push(self.gen_definition(function_scope_id, symbol_id));
                     }
-                    definitions.push(self.gen_definition(function_scope_id, symbol_id));
                 }
 
                 let mut definition = self.quote(body);
@@ -406,13 +396,10 @@ impl<'a> Codegen<'a> {
 
                 let mut captures = Vec::new();
 
-                for symbol_id in self.db.scope(function_scope_id).definitions() {
-                    if let Symbol::Parameter { .. } | Symbol::ConstBinding { .. } =
-                        self.db.symbol(symbol_id)
-                    {
-                        continue;
+                for symbol_id in self.db.scope(function_scope_id).local_symbols() {
+                    if self.db.symbol(symbol_id).is_definition() {
+                        captures.push(self.gen_path(scope_id, symbol_id));
                     }
-                    captures.push(self.gen_path(scope_id, symbol_id));
                 }
 
                 for symbol_id in self.captures[&function_scope_id].clone() {

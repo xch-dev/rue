@@ -9,13 +9,13 @@ pub struct Scope {
     symbol_table: HashMap<String, SymbolId>,
     type_aliases: HashMap<String, TypeId>,
     type_names: HashMap<TypeId, String>,
-    definitions: IndexSet<SymbolId>,
+    local_symbols: IndexSet<SymbolId>,
 }
 
 impl Scope {
     pub fn define_symbol(&mut self, name: String, symbol_id: SymbolId) {
         self.symbol_table.insert(name, symbol_id);
-        self.definitions.insert(symbol_id);
+        self.local_symbols.insert(symbol_id);
     }
 
     pub fn symbol(&self, name: &str) -> Option<SymbolId> {
@@ -35,11 +35,11 @@ impl Scope {
         self.type_names.get(&type_id).map(|s| s.as_str())
     }
 
-    pub fn is_defined_here(&self, symbol_id: SymbolId) -> bool {
-        self.definitions.contains(&symbol_id)
+    pub fn is_local(&self, symbol_id: SymbolId) -> bool {
+        self.local_symbols.contains(&symbol_id)
     }
 
-    pub fn definitions(&self) -> Vec<SymbolId> {
-        self.definitions.iter().copied().collect()
+    pub fn local_symbols(&self) -> Vec<SymbolId> {
+        self.local_symbols.iter().copied().collect()
     }
 }
