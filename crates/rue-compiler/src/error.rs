@@ -73,6 +73,9 @@ pub enum DiagnosticInfo {
 
     #[error("cannot index type `{0}`")]
     IndexAccess(String),
+
+    #[error("index `{0}` out of bounds, length is `{1}`")]
+    IndexOutOfBounds(u32, u32),
 }
 
 /// Join a list of names into a string, wrapped in backticks.

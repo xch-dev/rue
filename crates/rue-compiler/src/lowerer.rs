@@ -1,4 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    str::FromStr,
+};
 
 use indexmap::{IndexMap, IndexSet};
 use num_bigint::BigInt;
@@ -299,7 +303,7 @@ impl<'a> Lowerer<'a> {
                     };
 
                     let symbol_id = self.db.alloc_symbol(Symbol::LetBinding {
-                        type_id: value.ty,
+                        type_id: expected_type.unwrap_or(value.ty),
                         hir_id: value.value,
                     });
 
@@ -468,11 +472,8 @@ impl<'a> Lowerer<'a> {
                     Typed {
                         value: self.db.alloc_hir(Hir::ListIndex {
                             value: value.value,
-                            index: fields
-                                .iter()
-                                .position(|&field| field == field_ty)
-                                .unwrap()
-                                .into(),
+                            index: fields.iter().position(|&field| field == field_ty).unwrap()
+                                as u32,
                         }),
                         ty: field_ty,
                     }
@@ -505,7 +506,7 @@ impl<'a> Lowerer<'a> {
         let Some(index_token) = index_access.index() else {
             return self.unknown;
         };
-        let index = self.compile_int_raw(index_token);
+        let index = self.compile_int_raw(index_token.clone());
 
         match self.db.ty(value.ty).clone() {
             Type::List(inner_type) => Typed {
@@ -514,6 +515,30 @@ impl<'a> Lowerer<'a> {
                     index,
                 }),
                 ty: inner_type,
+            },
+            Type::Tuple {
+                items,
+                nil_terminated,
+            } => Typed {
+                value: self.db.alloc_hir(if nil_terminated {
+                    Hir::ListIndex {
+                        value: value.value,
+                        index,
+                    }
+                } else {
+                    Hir::TupleIndex {
+                        value: value.value,
+                        index,
+                        len: items.len() as u32,
+                    }
+                }),
+                ty: items.get(index as usize).copied().unwrap_or_else(|| {
+                    self.error(
+                        DiagnosticInfo::IndexOutOfBounds(index, items.len() as u32),
+                        index_token.text_range(),
+                    );
+                    self.unknown_type
+                }),
             },
             _ => {
                 self.error(
@@ -807,7 +832,11 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_int_raw(&mut self, int: SyntaxToken) -> BigInt {
+    fn compile_int_raw<T, E>(&mut self, int: SyntaxToken) -> T
+    where
+        T: FromStr<Err = E>,
+        E: fmt::Debug,
+    {
         int.text()
             .replace('_', "")
             .parse()

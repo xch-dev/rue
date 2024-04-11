@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
-use num_bigint::BigInt;
-use num_traits::Zero;
 use rue_parser::BinaryOp;
 
 use crate::{
@@ -73,7 +71,7 @@ impl<'a> Optimizer<'a> {
                     self.compute_captures_hir(scope_id, item);
                 }
             }
-            Hir::ListIndex { value, .. } => {
+            Hir::ListIndex { value, .. } | Hir::TupleIndex { value, .. } => {
                 self.compute_captures_hir(scope_id, value);
             }
         }
@@ -283,7 +281,10 @@ impl<'a> Optimizer<'a> {
                 items,
                 nil_terminated,
             } => self.opt_list(scope_id, items.clone(), *nil_terminated),
-            Hir::ListIndex { value, index } => self.opt_list_index(scope_id, *value, index.clone()),
+            Hir::ListIndex { value, index } => self.opt_list_index(scope_id, *value, *index),
+            Hir::TupleIndex { value, index, len } => {
+                self.opt_tuple_index(scope_id, *value, *index, *len)
+            }
             Hir::Reference(symbol_id) => self.opt_reference(scope_id, *symbol_id),
             Hir::Scope {
                 scope_id: new_scope_id,
@@ -325,12 +326,26 @@ impl<'a> Optimizer<'a> {
         self.db.alloc_lir(Lir::List(result, nil_terminated))
     }
 
-    fn opt_list_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: BigInt) -> LirId {
+    fn opt_list_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: u32) -> LirId {
         let mut value = self.opt_hir(scope_id, hir_id);
-        for _ in num_iter::range(BigInt::zero(), index) {
+        for _ in 0..index {
             value = self.db.alloc_lir(Lir::Rest(value));
         }
         self.db.alloc_lir(Lir::First(value))
+    }
+
+    fn opt_tuple_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: u32, len: u32) -> LirId {
+        let mut value = self.opt_hir(scope_id, hir_id);
+
+        for _ in 0..index {
+            value = self.db.alloc_lir(Lir::Rest(value));
+        }
+
+        if index + 1 != len {
+            value = self.db.alloc_lir(Lir::First(value));
+        }
+
+        value
     }
 
     fn opt_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {
