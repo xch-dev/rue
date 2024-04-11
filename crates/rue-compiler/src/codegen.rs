@@ -54,7 +54,7 @@ impl<'a> Codegen<'a> {
     pub fn gen_lir(&mut self, lir_id: LirId) -> NodePtr {
         match self.db.lir(lir_id).clone() {
             Lir::Atom(atom) => self.gen_atom(atom.clone()),
-            Lir::List(items) => self.gen_list(items),
+            Lir::List(items, nil) => self.gen_list(items, nil),
             Lir::Path(path) => self.allocator.new_small_number(path).unwrap(),
             Lir::Run(program, args) => self.gen_run(program, args),
             Lir::Curry(body, args) => self.gen_apply(body, args),
@@ -82,9 +82,17 @@ impl<'a> Codegen<'a> {
         self.quote(int_ptr)
     }
 
-    fn gen_list(&mut self, items: Vec<LirId>) -> NodePtr {
-        let items: Vec<NodePtr> = items.into_iter().map(|item| self.gen_lir(item)).collect();
-        self.runtime_list(&items, NodePtr::NIL)
+    fn gen_list(&mut self, items: Vec<LirId>, nil: bool) -> NodePtr {
+        let mut items: Vec<NodePtr> = items.into_iter().map(|item| self.gen_lir(item)).collect();
+
+        if nil {
+            self.runtime_list(&items, NodePtr::NIL)
+        } else {
+            let Some(last) = items.pop() else {
+                return NodePtr::NIL;
+            };
+            self.runtime_list(&items, last)
+        }
     }
 
     fn gen_run(&mut self, program: LirId, args: Vec<LirId>) -> NodePtr {

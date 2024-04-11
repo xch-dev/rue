@@ -68,7 +68,7 @@ impl<'a> Optimizer<'a> {
                 self.compute_captures_hir(scope_id, then_block);
                 self.compute_captures_hir(scope_id, else_block);
             }
-            Hir::List(items) => {
+            Hir::List { items, .. } => {
                 for item in items {
                     self.compute_captures_hir(scope_id, item);
                 }
@@ -279,7 +279,10 @@ impl<'a> Optimizer<'a> {
         match self.db.hir(hir_id) {
             Hir::Unknown => unreachable!(),
             Hir::Atom(atom) => self.db.alloc_lir(Lir::Atom(atom.clone())),
-            Hir::List(list) => self.opt_list(scope_id, list.clone()),
+            Hir::List {
+                items,
+                nil_terminated,
+            } => self.opt_list(scope_id, items.clone(), *nil_terminated),
             Hir::ListIndex { value, index } => self.opt_list_index(scope_id, *value, index.clone()),
             Hir::Reference(symbol_id) => self.opt_reference(scope_id, *symbol_id),
             Hir::Scope {
@@ -314,12 +317,12 @@ impl<'a> Optimizer<'a> {
         }
     }
 
-    fn opt_list(&mut self, scope_id: ScopeId, items: Vec<HirId>) -> LirId {
+    fn opt_list(&mut self, scope_id: ScopeId, items: Vec<HirId>, nil_terminated: bool) -> LirId {
         let mut result = Vec::new();
         for item in items {
             result.push(self.opt_hir(scope_id, item));
         }
-        self.db.alloc_lir(Lir::List(result))
+        self.db.alloc_lir(Lir::List(result, nil_terminated))
     }
 
     fn opt_list_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: BigInt) -> LirId {

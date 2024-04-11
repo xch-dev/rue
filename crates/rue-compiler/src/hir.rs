@@ -7,7 +7,10 @@ use crate::database::{HirId, ScopeId, SymbolId};
 pub enum Hir {
     Unknown,
     Atom(Vec<u8>),
-    List(Vec<HirId>),
+    List {
+        items: Vec<HirId>,
+        nil_terminated: bool,
+    },
     ListIndex {
         value: HirId,
         index: BigInt,

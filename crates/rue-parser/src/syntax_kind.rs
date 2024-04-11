@@ -73,6 +73,7 @@ pub enum SyntaxKind {
     InitializerField,
     LiteralExpr,
     ListExpr,
+    TupleExpr,
     LambdaExpr,
     LambdaParamList,
     LambdaParam,
@@ -86,6 +87,8 @@ pub enum SyntaxKind {
 
     PathType,
     ListType,
+    TupleType,
+    NilTerminatedTupleType,
     FunctionType,
     FunctionTypeParams,
 }
@@ -162,6 +165,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::InitializerField => "initializer field",
                 SyntaxKind::LiteralExpr => "literal expression",
                 SyntaxKind::ListExpr => "list expression",
+                SyntaxKind::TupleExpr => "tuple expression",
                 SyntaxKind::LambdaExpr => "lambda expression",
                 SyntaxKind::LambdaParamList => "lambda param list",
                 SyntaxKind::LambdaParam => "lambda param",
@@ -175,6 +179,8 @@ impl fmt::Display for SyntaxKind {
 
                 SyntaxKind::PathType => "path type",
                 SyntaxKind::ListType => "list type",
+                SyntaxKind::TupleType => "tuple type",
+                SyntaxKind::NilTerminatedTupleType => "nil-terminated tuple type",
                 SyntaxKind::FunctionType => "function type",
                 SyntaxKind::FunctionTypeParams => "function type parameters",
             }

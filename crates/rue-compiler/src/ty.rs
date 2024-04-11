@@ -10,6 +10,10 @@ pub enum Type {
     Bool,
     Bytes,
     List(TypeId),
+    Tuple {
+        items: Vec<TypeId>,
+        nil_terminated: bool,
+    },
     Struct {
         named_fields: IndexMap<String, TypeId>,
         fields: Vec<TypeId>,

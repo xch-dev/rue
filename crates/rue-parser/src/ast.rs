@@ -69,6 +69,7 @@ ast_enum!(
     InitializerExpr,
     LiteralExpr,
     ListExpr,
+    TupleExpr,
     Block,
     LambdaExpr,
     PrefixExpr,
@@ -83,6 +84,7 @@ ast_node!(InitializerExpr);
 ast_node!(InitializerField);
 ast_node!(LiteralExpr);
 ast_node!(ListExpr);
+ast_node!(TupleExpr);
 ast_node!(PrefixExpr);
 ast_node!(BinaryExpr);
 ast_node!(IfExpr);
@@ -95,9 +97,18 @@ ast_node!(LambdaExpr);
 ast_node!(LambdaParamList);
 ast_node!(LambdaParam);
 
-ast_enum!(Type, PathType, ListType, FunctionType);
+ast_enum!(
+    Type,
+    PathType,
+    ListType,
+    TupleType,
+    NilTerminatedTupleType,
+    FunctionType
+);
 ast_node!(PathType);
 ast_node!(ListType);
+ast_node!(TupleType);
+ast_node!(NilTerminatedTupleType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParams);
 
@@ -374,6 +385,12 @@ impl ListExpr {
     }
 }
 
+impl TupleExpr {
+    pub fn items(&self) -> Vec<Expr> {
+        self.syntax().children().filter_map(Expr::cast).collect()
+    }
+}
+
 impl LambdaExpr {
     pub fn param_list(&self) -> Option<LambdaParamList> {
         self.syntax().children().find_map(LambdaParamList::cast)
@@ -477,6 +494,18 @@ impl PathType {
 impl ListType {
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
+    }
+}
+
+impl TupleType {
+    pub fn items(&self) -> Vec<Type> {
+        self.syntax().children().filter_map(Type::cast).collect()
+    }
+}
+
+impl NilTerminatedTupleType {
+    pub fn items(&self) -> Vec<Type> {
+        self.syntax().children().filter_map(Type::cast).collect()
     }
 }
 
