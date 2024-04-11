@@ -1,6 +1,5 @@
 use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
-use database::{Database, SymbolId};
 use lowerer::Lowerer;
 use optimizer::Optimizer;
 use rue_parser::Root;
@@ -16,7 +15,9 @@ mod scope;
 mod symbol;
 mod ty;
 
+pub use database::*;
 pub use error::*;
+
 use scope::Scope;
 
 pub struct Output {
@@ -32,6 +33,14 @@ impl Output {
     pub fn node_ptr(&self) -> NodePtr {
         self.node_ptr
     }
+}
+
+pub fn analyze(root: Root) -> Vec<Diagnostic> {
+    let mut db = Database::default();
+    let scope_id = db.alloc_scope(Scope::default());
+    let mut lowerer = Lowerer::new(&mut db);
+    lowerer.compile_root(root, scope_id);
+    lowerer.finish()
 }
 
 pub fn compile(allocator: &mut Allocator, root: Root) -> Output {

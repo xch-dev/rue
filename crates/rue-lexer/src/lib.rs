@@ -5,7 +5,6 @@ use std::str::Chars;
 
 pub use token::*;
 pub use token_kind::*;
-use unicode_xid::UnicodeXID;
 
 pub struct Lexer<'a> {
     source: &'a str,
@@ -86,8 +85,8 @@ impl<'a> Lexer<'a> {
             ';' => TokenKind::Semicolon,
             c @ ('"' | '\'') => self.string(c),
             c if c.is_ascii_digit() => self.integer(),
-            c if UnicodeXID::is_xid_start(c) || c == '_' => {
-                while UnicodeXID::is_xid_continue(self.peek()) {
+            'a'..='z' | 'A'..='Z' | '_' => {
+                while matches!(self.peek(), 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') {
                     self.bump();
                 }
                 match &self.source[start..self.pos] {
@@ -146,12 +145,22 @@ impl<'a> Lexer<'a> {
 
     fn block_comment(&mut self) -> TokenKind {
         self.bump();
+        let mut depth = 1;
         let is_terminated = loop {
             match self.bump() {
                 '*' => {
                     if self.peek() == '/' {
                         self.bump();
-                        break true;
+                        depth -= 1;
+                        if depth == 0 {
+                            break true;
+                        }
+                    }
+                }
+                '/' => {
+                    if self.peek() == '*' {
+                        self.bump();
+                        depth += 1;
                     }
                 }
                 '\0' => break false,
@@ -346,6 +355,12 @@ mod tests {
                     is_terminated: true,
                 },
             ],
+        );
+        check(
+            "/*/**/*/",
+            &[TokenKind::BlockComment {
+                is_terminated: true,
+            }],
         );
     }
 }

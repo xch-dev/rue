@@ -290,6 +290,10 @@ impl<'a> Lowerer<'a> {
                         .map(|expr| self.compile_expr(expr, expected_type))
                         .unwrap_or(self.unknown);
 
+                    if let Some(expected_type) = expected_type {
+                        self.type_check(value.ty, expected_type, let_stmt.syntax().text_range());
+                    }
+
                     let Some(name) = let_stmt.name() else {
                         continue;
                     };
@@ -1081,18 +1085,16 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn type_check(&self, value_type_id: TypeId, assign_to_type_id: TypeId, range: TextRange) {
+    fn type_check(&mut self, value_type_id: TypeId, assign_to_type_id: TypeId, range: TextRange) {
         if !self.is_assignable_to(value_type_id, assign_to_type_id, &mut HashSet::new()) {
-            Some((
+            self.error(
                 DiagnosticInfo::TypeMismatch {
                     expected: self.type_name(assign_to_type_id),
                     found: self.type_name(value_type_id),
                 },
                 range,
-            ))
-        } else {
-            None
-        };
+            );
+        }
     }
 
     fn is_assignable_to(

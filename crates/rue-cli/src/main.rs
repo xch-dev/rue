@@ -3,7 +3,7 @@ use std::fs;
 use clap::Parser;
 use clvmr::{run_program, serde::node_to_bytes, Allocator, ChiaDialect, NodePtr};
 use rue_compiler::compile;
-use rue_parser::parse;
+use rue_parser::{line_col, parse, LineCol};
 
 /// The Rue language compiler and toolchain.
 #[derive(Parser, Debug)]
@@ -13,26 +13,6 @@ struct Args {
     file: String,
 }
 
-fn line_col(source: &str, index: usize) -> (usize, usize) {
-    let mut line = 1;
-    let mut column = 1;
-
-    for (i, character) in source.chars().enumerate() {
-        if i == index {
-            break;
-        }
-
-        if character == '\n' {
-            line += 1;
-            column = 1;
-        } else {
-            column += 1;
-        }
-    }
-
-    (line, column)
-}
-
 fn main() {
     let args = Args::parse();
 
@@ -40,9 +20,11 @@ fn main() {
     let (ast, errors) = parse(&source);
 
     for error in errors {
-        let (line, column) = line_col(&source, error.span().start);
+        let LineCol { line, col } = line_col(&source, error.span().start);
+        let line = line + 1;
+        let col = col + 1;
 
-        eprintln!("{} at {line}:{column}", error.kind());
+        eprintln!("{} at {line}:{col}", error.kind());
     }
 
     let mut allocator = Allocator::new();
@@ -50,8 +32,10 @@ fn main() {
 
     if !output.diagnostics().is_empty() {
         for error in output.diagnostics() {
-            let (line, column) = line_col(&source, error.span().start);
-            eprintln!("{} at {line}:{column}", error.info());
+            let LineCol { line, col } = line_col(&source, error.span().start);
+            let line = line + 1;
+            let col = col + 1;
+            eprintln!("{} at {line}:{col}", error.info());
         }
         return;
     }

@@ -11,6 +11,7 @@ use clvmr::{
 };
 use indexmap::IndexMap;
 use rue_compiler::compile;
+use rue_parser::{line_col, LineCol};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
@@ -57,26 +58,6 @@ fn iter_tests() -> impl Iterator<Item = PathBuf> {
         .map(|file| file.into_path())
 }
 
-fn line_col(source: &str, index: usize) -> (usize, usize) {
-    let mut line = 1;
-    let mut column = 1;
-
-    for (i, character) in source.chars().enumerate() {
-        if i == index {
-            break;
-        }
-
-        if character == '\n' {
-            line += 1;
-            column = 1;
-        } else {
-            column += 1;
-        }
-    }
-
-    (line, column)
-}
-
 fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
     let (root, parser_errors) = rue_parser::parse(source);
     let mut allocator = Allocator::new();
@@ -85,8 +66,10 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
     let parser_errors: Vec<String> = parser_errors
         .into_iter()
         .map(|error| {
-            let (line, column) = line_col(source, error.span().start);
-            format!("{} at {line}:{column}", error.kind())
+            let LineCol { line, col } = line_col(source, error.span().start);
+            let line = line + 1;
+            let col = col + 1;
+            format!("{} at {line}:{col}", error.kind())
         })
         .collect();
 
@@ -94,8 +77,10 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
         .diagnostics()
         .iter()
         .map(|error| {
-            let (line, column) = line_col(source, error.span().start);
-            format!("{} at {line}:{column}", error.info())
+            let LineCol { line, col } = line_col(source, error.span().start);
+            let line = line + 1;
+            let col = col + 1;
+            format!("{} at {line}:{col}", error.info())
         })
         .collect();
 

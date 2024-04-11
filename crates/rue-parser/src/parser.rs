@@ -106,6 +106,11 @@ impl<'a> Parser<'a> {
     }
 
     fn push_error(&mut self, error: ParserErrorKind) {
+        if self.cursor == self.items.len() {
+            self.errors
+                .push(ParserError::new(error, self.char_pos..self.char_pos));
+            return;
+        }
         let range = self.char_pos..self.char_pos + self.items[self.cursor].1.len();
         self.errors.push(ParserError::new(error, range));
     }
