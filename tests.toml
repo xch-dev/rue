@@ -1,0 +1,83 @@
+[list_types]
+bytes = 235
+cost = 7122
+input = "()"
+output = "10"
+hash = "ab24ceb9925eb136dc0d19cedbdf0c5f1fca4fa20dc9fffa47f6159603f098c6"
+
+[tuple_types]
+bytes = 115
+cost = 3104
+input = "()"
+output = "6"
+hash = "36df573860ae6cd218c0fdaab224b0f7087d2fc42ffdb71a28a470ad059af026"
+
+[struct_type]
+bytes = 161
+cost = 3057
+input = "()"
+output = "\"Older\""
+hash = "3656efbf4b8ada82cc062893a128b8a6327e34d3675d06c437eba4e8e84ec2f4"
+
+[nested_scopes]
+bytes = 421
+cost = 20043
+input = "(42)"
+output = "0x01250d618f00"
+hash = "f62477bea5e9e0499265972002bf8205e064467c75a652d95302d0aacbbc6f25"
+
+[lambda_functions]
+bytes = 103
+cost = 3247
+input = "()"
+output = "86"
+hash = "4487281127571db9621d134467f47ec74af9becea41a45fb942610b5df172328"
+
+[hello_world]
+bytes = 24
+cost = 175
+input = "()"
+output = "\"Hello, world!\""
+hash = "7cacd67079cbf0a1cd915e9456ebb09fca6d375a63744e4e0e442b8f00759d24"
+
+[lists]
+bytes = 219
+cost = 6266
+input = "()"
+output = "21"
+hash = "0f8516625bd122a47b5ad2bb871034ff13dd175cca88c4a0641f8a4d7ee95d7d"
+
+[fibonacci]
+bytes = 121
+cost = 414329
+input = "()"
+output = "55"
+hash = "951ba85ff214a65c4d07814672544b6686e8f4a819550543473fb8eb26aae6a3"
+
+[let_bindings]
+bytes = 81
+cost = 5063
+input = "(5 10)"
+output = "9"
+hash = "aa247d144d1c5a3554c3d689c09fb2c0aced58a628e52030eac2bbd219018289"
+
+[constants]
+bytes = 47
+cost = 2347
+input = "()"
+output = "350"
+hash = "25f386f3f2852cc89a4e21002fd1c6dcf7e0000b069f18d4c80d42224e15fd41"
+
+[closures]
+bytes = 207
+cost = 40815
+input = "(10)"
+output = "0x375f00"
+hash = "95e0d0d8c8853d0cca7172f9c9cbe75b32d90055935431132b7adf66eb3e6cc2"
+
+[factorial]
+bytes = 97
+cost = 43743
+input = "()"
+output = "0x013077775800"
+hash = "291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8"

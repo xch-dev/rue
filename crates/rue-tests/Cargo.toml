@@ -15,4 +15,4 @@ toml = "0.8.12"
 serde = { version = "1.0.197", features = ["derive"] }
 clap = { version = "4.5.4", features = ["derive"] }
 walkdir = "2.5.0"
-indexmap = "2.2.6"
+indexmap = { version = "2.2.6", features = ["serde"] }

@@ -9,11 +9,20 @@ use clvmr::{
     serde::{node_from_bytes, node_to_bytes},
     Allocator, ChiaDialect,
 };
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use rue_compiler::compile;
 use rue_parser::{line_col, LineCol};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum ExpectedTestData {
+    Case(TestCase),
+    Errs(TestErrors),
+}
+
+use ExpectedTestData::*;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct TestCase {
@@ -138,54 +147,64 @@ fn main() {
 }
 
 fn run_tests(update: bool) -> usize {
-    let mut failed_count = 0;
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let test_case_path = manifest_dir.join("../../tests.toml");
+    let text = fs::read_to_string(test_case_path.as_path())
+        .ok()
+        .unwrap_or_default();
 
+    let mut test_cases: IndexMap<String, ExpectedTestData> = toml::from_str(&text).unwrap();
+    let mut visited_names = IndexSet::new();
+
+    let mut failed_count = 0;
     let mut failed_tests = IndexMap::new();
 
     for test in iter_tests() {
+        let name = test
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .strip_suffix(".rue")
+            .unwrap();
+
+        if !visited_names.insert(name.to_string()) {
+            println!("duplicate test name: {}", name);
+            failed_count += 1;
+            continue;
+        }
+
         println!(
-            "running test: {}",
+            "running test {}: {}",
+            name,
             test.canonicalize().unwrap().to_str().unwrap()
         );
         let mut failed = false;
         let mut lines = Vec::new();
 
         let source = fs::read_to_string(&test).unwrap();
-        let toml_path = test.with_extension("toml");
 
-        let toml_text = match fs::read_to_string(toml_path.as_path()) {
-            Ok(text) => text,
-            Err(_) => {
-                lines.push(format!("missing toml file: {}", toml_path.display()));
-                failed = true;
-                String::new()
-            }
-        };
+        let expected = test_cases.get(name).cloned();
 
-        let parsed: Option<Result<TestCase, TestErrors>> =
-            match toml::from_str::<TestCase>(&toml_text) {
-                Ok(parsed) => Some(Ok(parsed)),
-                Err(..) => match toml::from_str::<TestErrors>(&toml_text) {
-                    Ok(parsed) => Some(Err(parsed)),
-                    Err(error) => {
-                        lines.push(format!("failed to parse toml: {error}"));
-                        None
-                    }
-                },
-            };
+        if expected.is_none() {
+            lines.push("missing toml entry".to_string());
+            failed = true;
+        }
 
         let output = run_test(
             &source,
-            &parsed
+            &expected
                 .as_ref()
-                .and_then(|parsed| parsed.as_ref().ok())
-                .map(|parsed| parsed.input.clone())
+                .and_then(|expected| match expected {
+                    Case(test_case) => Some(test_case.input.clone()),
+                    _ => None,
+                })
                 .unwrap_or("()".to_string()),
         );
 
-        if let Some(parsed) = parsed.clone() {
-            match (parsed, &output) {
-                (Err(expected_test_errors), Err(test_errors)) => {
+        if let Some(expected) = expected.clone() {
+            match (expected, &output) {
+                (Errs(expected_test_errors), Err(test_errors)) => {
                     if expected_test_errors.parser_errors != test_errors.parser_errors {
                         lines.push("expected parser errors:".to_string());
                         for error in expected_test_errors.parser_errors {
@@ -210,7 +229,7 @@ fn run_tests(update: bool) -> usize {
                         failed = true;
                     }
                 }
-                (Err(expected_test_errors), Ok(..)) => {
+                (Errs(expected_test_errors), Ok(..)) => {
                     lines.push("expected parser errors:".to_string());
                     for error in expected_test_errors.parser_errors {
                         lines.push(format!("  {}", error));
@@ -221,7 +240,7 @@ fn run_tests(update: bool) -> usize {
                     }
                     failed = true;
                 }
-                (Ok(_expected), Err(test_errors)) => {
+                (Case(_expected), Err(test_errors)) => {
                     lines.push("unexpected parser errors:".to_string());
                     for error in test_errors.parser_errors.iter() {
                         lines.push(format!("  {}", error));
@@ -232,7 +251,7 @@ fn run_tests(update: bool) -> usize {
                     }
                     failed = true;
                 }
-                (Ok(expected), Ok(actual)) => {
+                (Case(expected), Ok(actual)) => {
                     if expected.bytes != actual.bytes.len() {
                         lines.push(format!(
                             "expected bytes: {}, actual bytes: {}",
@@ -284,23 +303,22 @@ fn run_tests(update: bool) -> usize {
         if failed {
             failed_count += 1;
 
-            if update {
-                let toml_text = match output {
-                    Ok(output) => toml::to_string_pretty(&TestCase {
-                        bytes: output.bytes.len(),
-                        cost: output.cost,
-                        input: parsed
-                            .and_then(|parsed| parsed.ok())
-                            .map(|parsed| parsed.input)
-                            .unwrap_or("()".to_string()),
-                        output: output.output.unwrap_or("()".to_string()),
-                        hash: output.hash,
-                    })
-                    .unwrap(),
-                    Err(errors) => toml::to_string_pretty(&errors).unwrap(),
-                };
-                fs::write(toml_path, toml_text).unwrap();
-            }
+            let new_expected = match output {
+                Ok(output) => Case(TestCase {
+                    bytes: output.bytes.len(),
+                    cost: output.cost,
+                    input: expected
+                        .and_then(|expected| match expected {
+                            Case(case) => Some(case.input.clone()),
+                            _ => None,
+                        })
+                        .unwrap_or("()".to_string()),
+                    output: output.output.unwrap_or("()".to_string()),
+                    hash: output.hash,
+                }),
+                Err(errors) => Errs(errors),
+            };
+            test_cases.insert(name.to_string(), new_expected);
 
             failed_tests.insert(
                 test.canonicalize().unwrap().to_str().unwrap().to_string(),
@@ -314,6 +332,11 @@ fn run_tests(update: bool) -> usize {
         for line in lines {
             println!("  {}", line);
         }
+    }
+
+    if update {
+        let text = toml::to_string_pretty(&test_cases).unwrap();
+        fs::write(test_case_path.as_path(), text).unwrap();
     }
 
     failed_count
