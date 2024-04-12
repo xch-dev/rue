@@ -6,18 +6,11 @@ use crate::database::{HirId, ScopeId, SymbolId};
 pub enum Hir {
     Unknown,
     Atom(Vec<u8>),
-    List {
-        items: Vec<HirId>,
-        nil_terminated: bool,
-    },
-    ListIndex {
+    Pair(HirId, HirId),
+    Index {
         value: HirId,
         index: u32,
-    },
-    TupleIndex {
-        value: HirId,
-        index: u32,
-        len: u32,
+        rest: bool,
     },
     Reference(SymbolId),
     Scope {

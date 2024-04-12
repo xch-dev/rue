@@ -5,15 +5,12 @@ use crate::database::{HirId, TypeId};
 #[derive(Debug, Clone)]
 pub enum Type {
     Unknown,
-    Nil,
     Int,
     Bool,
     Bytes,
+    Union(Vec<TypeId>),
+    Tuple(Vec<TypeId>),
     List(TypeId),
-    Tuple {
-        items: Vec<TypeId>,
-        nil_terminated: bool,
-    },
     Struct {
         named_fields: IndexMap<String, TypeId>,
         fields: Vec<TypeId>,

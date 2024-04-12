@@ -28,6 +28,7 @@ pub enum TokenKind {
     Semicolon,
     Arrow,
     FatArrow,
+    Spread,
 
     Plus,
     Minus,

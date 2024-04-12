@@ -11,7 +11,7 @@ use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, ConstItem, Expr, FieldAccess, FunctionCall, FunctionItem,
     FunctionType, IfExpr, IndexAccess, InitializerExpr, Item, LambdaExpr, ListExpr, ListType,
     LiteralExpr, PathExpr, PrefixExpr, PrefixOp, Root, Stmt, StructItem, SyntaxKind, SyntaxToken,
-    TupleExpr, Type as AstType, TypeAliasItem,
+    TupleExpr, TupleType, Type as AstType, TypeAliasItem,
 };
 
 use crate::{
@@ -31,6 +31,7 @@ pub struct Lowerer<'a> {
     bool_type: TypeId,
     bytes_type: TypeId,
     nil_type: TypeId,
+    nil_hir: HirId,
     unknown_type: TypeId,
     unknown_hir: HirId,
     unknown: Typed,
@@ -41,7 +42,8 @@ impl<'a> Lowerer<'a> {
         let int_type = db.alloc_type(Type::Int);
         let bool_type = db.alloc_type(Type::Bool);
         let bytes_type = db.alloc_type(Type::Bytes);
-        let nil_type = db.alloc_type(Type::Nil);
+        let nil_type = db.alloc_type(Type::Tuple(Vec::new()));
+        let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
         let unknown_type = db.alloc_type(Type::Unknown);
         let unknown_hir = db.alloc_hir(Hir::Unknown);
 
@@ -53,6 +55,7 @@ impl<'a> Lowerer<'a> {
             bool_type,
             bytes_type,
             nil_type,
+            nil_hir,
             unknown_type,
             unknown_hir,
             unknown: Typed {
@@ -72,7 +75,6 @@ impl<'a> Lowerer<'a> {
         self.scope_stack.pop();
     }
 
-    #[allow(clippy::single_match)]
     fn compile_items(&mut self, items: Vec<Item>) {
         let mut type_ids = Vec::new();
         for item in items.clone() {
@@ -243,8 +245,13 @@ impl<'a> Lowerer<'a> {
             .ty()
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
+
         *self.db.ty_mut(alias_type_id) = Type::Alias(type_id);
-        self.detect_cycle(type_id, ty.syntax().text_range());
+
+        // A cycle has been detected, so prevent this type from causing issues later.
+        if self.detect_cycle(alias_type_id, ty.syntax().text_range(), &mut HashSet::new()) {
+            *self.db.ty_mut(alias_type_id) = Type::Unknown;
+        }
     }
 
     fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
@@ -428,23 +435,20 @@ impl<'a> Lowerer<'a> {
             );
         }
 
-        let mut args = Vec::new();
+        let mut hir_id = self.nil_hir;
 
         for field in struct_fields.keys() {
-            args.push(
-                specified_fields
-                    .get(field)
-                    .cloned()
-                    .unwrap_or(self.unknown_hir),
-            );
+            let field = specified_fields
+                .get(field)
+                .cloned()
+                .unwrap_or(self.unknown_hir);
+
+            hir_id = self.db.alloc_hir(Hir::Pair(field, hir_id));
         }
 
         match ty {
             Some(struct_type) => Typed {
-                value: self.db.alloc_hir(Hir::List {
-                    items: args,
-                    nil_terminated: true,
-                }),
+                value: hir_id,
                 ty: struct_type,
             },
             None => self.unknown,
@@ -459,10 +463,18 @@ impl<'a> Lowerer<'a> {
             return self.unknown;
         };
 
-        let Some(field_name) = field_access.field() else {
+        let Some(token) = field_access.field() else {
             return self.unknown;
         };
 
+        match token.kind() {
+            SyntaxKind::Ident => self.compile_struct_field_access(value, token),
+            SyntaxKind::Int => self.compile_tuple_field_access(value, token),
+            _ => unreachable!(),
+        }
+    }
+
+    fn compile_struct_field_access(&mut self, value: Typed, field_name: SyntaxToken) -> Typed {
         match self.db.ty(value.ty) {
             Type::Struct {
                 named_fields,
@@ -470,10 +482,11 @@ impl<'a> Lowerer<'a> {
             } => {
                 if let Some(&field_ty) = named_fields.get(field_name.text()) {
                     Typed {
-                        value: self.db.alloc_hir(Hir::ListIndex {
+                        value: self.db.alloc_hir(Hir::Index {
                             value: value.value,
                             index: fields.iter().position(|&field| field == field_ty).unwrap()
                                 as u32,
+                            rest: false,
                         }),
                         ty: field_ty,
                     }
@@ -487,11 +500,40 @@ impl<'a> Lowerer<'a> {
             }
             _ => {
                 self.error(
-                    DiagnosticInfo::FieldAccess(self.type_name(value.ty)),
-                    field_access.expr().unwrap().syntax().text_range(),
+                    DiagnosticInfo::StructFieldAccess(self.type_name(value.ty)),
+                    field_name.text_range(),
                 );
                 self.unknown
             }
+        }
+    }
+
+    fn compile_tuple_field_access(&mut self, value: Typed, index_token: SyntaxToken) -> Typed {
+        let index = self.compile_int_raw(index_token.clone());
+
+        let Some(items) = self.extract_tuple_types(value.ty) else {
+            self.error(
+                DiagnosticInfo::TupleFieldAccess(self.type_name(value.ty)),
+                index_token.text_range(),
+            );
+            return self.unknown;
+        };
+
+        if index >= items.len() as u32 {
+            self.error(
+                DiagnosticInfo::IndexOutOfBounds(index, items.len() as u32),
+                index_token.text_range(),
+            );
+            return self.unknown;
+        }
+
+        Typed {
+            value: self.db.alloc_hir(Hir::Index {
+                value: value.value,
+                index,
+                rest: index + 1 == items.len() as u32,
+            }),
+            ty: items[index as usize],
         }
     }
 
@@ -508,45 +550,21 @@ impl<'a> Lowerer<'a> {
         };
         let index = self.compile_int_raw(index_token.clone());
 
-        match self.db.ty(value.ty).clone() {
-            Type::List(inner_type) => Typed {
-                value: self.db.alloc_hir(Hir::ListIndex {
-                    value: value.value,
-                    index,
-                }),
-                ty: inner_type,
-            },
-            Type::Tuple {
-                items,
-                nil_terminated,
-            } => Typed {
-                value: self.db.alloc_hir(if nil_terminated {
-                    Hir::ListIndex {
-                        value: value.value,
-                        index,
-                    }
-                } else {
-                    Hir::TupleIndex {
-                        value: value.value,
-                        index,
-                        len: items.len() as u32,
-                    }
-                }),
-                ty: items.get(index as usize).copied().unwrap_or_else(|| {
-                    self.error(
-                        DiagnosticInfo::IndexOutOfBounds(index, items.len() as u32),
-                        index_token.text_range(),
-                    );
-                    self.unknown_type
-                }),
-            },
-            _ => {
-                self.error(
-                    DiagnosticInfo::IndexAccess(self.type_name(value.ty)),
-                    index_access.expr().unwrap().syntax().text_range(),
-                );
-                self.unknown
-            }
+        let Some(ty) = self.extract_list_type(value.ty) else {
+            self.error(
+                DiagnosticInfo::IndexAccess(self.type_name(value.ty)),
+                index_access.expr().unwrap().syntax().text_range(),
+            );
+            return self.unknown;
+        };
+
+        Typed {
+            value: self.db.alloc_hir(Hir::Index {
+                value: value.value,
+                index,
+                rest: false,
+            }),
+            ty,
         }
     }
 
@@ -641,33 +659,52 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_list_expr(&mut self, list_expr: ListExpr, expected_type: Option<TypeId>) -> Typed {
-        let mut item_types = Vec::with_capacity(list_expr.items().len());
+    fn compile_list_expr(
+        &mut self,
+        list_expr: ListExpr,
+        expected_expr_type: Option<TypeId>,
+    ) -> Typed {
+        let mut hir_id = self.nil_hir;
 
-        let items: Vec<HirId> = list_expr
-            .items()
-            .into_iter()
-            .enumerate()
-            .map(|(i, item)| {
-                let expected_type = expected_type.and_then(|ty| self.extract_item_type(ty, i));
-                let output = self.compile_expr(item.clone(), expected_type);
-                if let Some(expected_type) = expected_type {
-                    self.type_check(output.ty, expected_type, item.syntax().text_range());
+        let mut list_type = expected_expr_type;
+        let mut item_type = expected_expr_type.and_then(|ty| self.extract_list_type(ty));
+
+        for (i, item) in list_expr.items().into_iter().rev().enumerate() {
+            let expected_item_type = if item.op().is_some() {
+                list_type
+            } else {
+                item_type
+            };
+
+            let output = item
+                .expr()
+                .map(|expr| self.compile_expr(expr, expected_item_type))
+                .unwrap_or(self.unknown);
+
+            if let Some(expected_item_type) = expected_item_type {
+                self.type_check(output.ty, expected_item_type, item.syntax().text_range());
+            }
+
+            if i == 0 && list_type.is_none() {
+                list_type = Some(self.db.alloc_type(Type::List(output.ty)));
+                item_type = Some(output.ty);
+            }
+
+            if let Some(spread) = item.op() {
+                if i == 0 {
+                    hir_id = output.value;
+                    continue;
+                } else {
+                    self.error(DiagnosticInfo::NonFinalSpread, spread.text_range());
                 }
-                item_types.push(output.ty);
-                output.value
-            })
-            .collect();
+            }
+
+            hir_id = self.db.alloc_hir(Hir::Pair(output.value, hir_id));
+        }
 
         Typed {
-            value: self.db.alloc_hir(Hir::List {
-                items,
-                nil_terminated: true,
-            }),
-            ty: self.db.alloc_type(Type::Tuple {
-                items: item_types,
-                nil_terminated: true,
-            }),
+            value: hir_id,
+            ty: list_type.unwrap_or(self.unknown_type),
         }
     }
 
@@ -676,32 +713,36 @@ impl<'a> Lowerer<'a> {
         tuple_expr: TupleExpr,
         expected_type: Option<TypeId>,
     ) -> Typed {
-        let mut item_types = Vec::with_capacity(tuple_expr.items().len());
+        let mut hir_id = self.nil_hir;
+        let mut types = Vec::new();
 
-        let items: Vec<HirId> = tuple_expr
-            .items()
-            .into_iter()
-            .enumerate()
-            .map(|(i, item)| {
-                let expected_type = expected_type.and_then(|ty| self.extract_item_type(ty, i));
-                let output = self.compile_expr(item.clone(), expected_type);
-                if let Some(expected_type) = expected_type {
-                    self.type_check(output.ty, expected_type, item.syntax().text_range());
-                }
-                item_types.push(output.ty);
-                output.value
-            })
-            .collect();
+        let tuple = expected_type
+            .and_then(|ty| self.extract_tuple_types(ty))
+            .unwrap_or_default();
+
+        let len = tuple_expr.items().len();
+
+        for (i, item) in tuple_expr.items().into_iter().enumerate().rev() {
+            let expected_type = tuple.get(i).copied();
+            let output = self.compile_expr(item.clone(), expected_type);
+
+            if let Some(expected_type) = expected_type {
+                self.type_check(output.ty, expected_type, item.syntax().text_range());
+            }
+
+            types.push(output.ty);
+
+            if i + 1 == len {
+                hir_id = output.value;
+                continue;
+            }
+
+            hir_id = self.db.alloc_hir(Hir::Pair(output.value, hir_id));
+        }
 
         Typed {
-            value: self.db.alloc_hir(Hir::List {
-                items,
-                nil_terminated: false,
-            }),
-            ty: self.db.alloc_type(Type::Tuple {
-                items: item_types,
-                nil_terminated: false,
-            }),
+            value: hir_id,
+            ty: self.db.alloc_type(Type::Tuple(types)),
         }
     }
 
@@ -994,8 +1035,7 @@ impl<'a> Lowerer<'a> {
             }
             AstType::ListType(list) => self.compile_list_type(list),
             AstType::FunctionType(function) => self.compile_function_type(function),
-            AstType::TupleType(tuple) => self.compile_tuple_type(tuple.items(), false),
-            AstType::NilTerminatedTupleType(tuple) => self.compile_tuple_type(tuple.items(), true),
+            AstType::TupleType(tuple) => self.compile_tuple_type(tuple),
         }
     }
 
@@ -1025,17 +1065,18 @@ impl<'a> Lowerer<'a> {
             return self.unknown_type;
         };
 
-        let inner = self.compile_type(inner);
-        self.db.alloc_type(Type::List(inner))
+        let item_type = self.compile_type(inner);
+        self.db.alloc_type(Type::List(item_type))
     }
 
-    fn compile_tuple_type(&mut self, items: Vec<AstType>, nil_terminated: bool) -> TypeId {
-        let items: Vec<TypeId> = items.into_iter().map(|ty| self.compile_type(ty)).collect();
+    fn compile_tuple_type(&mut self, tuple_type: TupleType) -> TypeId {
+        let items = tuple_type
+            .items()
+            .into_iter()
+            .map(|ty| self.compile_type(ty))
+            .collect();
 
-        self.db.alloc_type(Type::Tuple {
-            items,
-            nil_terminated,
-        })
+        self.db.alloc_type(Type::Tuple(items))
     }
 
     fn compile_function_type(&mut self, function: FunctionType) -> TypeId {
@@ -1064,60 +1105,59 @@ impl<'a> Lowerer<'a> {
                 parameter_types,
                 return_type,
             } => Some((parameter_types.clone(), *return_type)),
+            Type::Alias(alias_type_id) => self.extract_function_type(*alias_type_id),
             _ => None,
         }
     }
 
-    fn extract_item_type(&self, type_id: TypeId, index: usize) -> Option<TypeId> {
+    fn extract_tuple_types(&self, type_id: TypeId) -> Option<Vec<TypeId>> {
+        match self.db.ty(type_id) {
+            Type::Tuple(items) => Some(items.clone()),
+            Type::Alias(alias_type_id) => self.extract_tuple_types(*alias_type_id),
+            _ => None,
+        }
+    }
+
+    fn extract_list_type(&self, type_id: TypeId) -> Option<TypeId> {
         match self.db.ty(type_id) {
             Type::List(inner) => Some(*inner),
-            Type::Tuple { items, .. } => items.get(index).copied(),
+            Type::Alias(alias_type_id) => self.extract_list_type(*alias_type_id),
             _ => None,
         }
     }
 
-    fn detect_cycle(&mut self, ty: TypeId, text_range: TextRange) {
-        self.detect_cycle_visitor(ty, text_range, &mut HashSet::new())
-    }
-
-    fn detect_cycle_visitor(
+    fn detect_cycle(
         &mut self,
         ty: TypeId,
         text_range: TextRange,
         visited_aliases: &mut HashSet<TypeId>,
-    ) {
+    ) -> bool {
         match self.db.ty(ty).clone() {
-            Type::List(inner) => {
-                self.detect_cycle_visitor(inner, text_range, visited_aliases);
-            }
-            Type::Tuple { items, .. } => {
+            Type::Union(items) => {
                 for &item in items.iter() {
-                    self.detect_cycle_visitor(item, text_range, visited_aliases);
+                    if self.detect_cycle(item, text_range, visited_aliases) {
+                        return true;
+                    }
                 }
+                false
             }
-            Type::Struct { fields, .. } => {
-                for &field in fields.iter() {
-                    self.detect_cycle_visitor(field, text_range, visited_aliases);
+            Type::List(..) => false,
+            Type::Tuple(items) => {
+                if items.len() != 1 {
+                    return false;
                 }
+                self.detect_cycle(items[0], text_range, visited_aliases)
             }
-            Type::Function {
-                parameter_types,
-                return_type,
-            } => {
-                for &param in parameter_types.iter() {
-                    self.detect_cycle_visitor(param, text_range, visited_aliases);
-                }
-
-                self.detect_cycle_visitor(return_type, text_range, visited_aliases);
-            }
+            Type::Struct { .. } => false,
+            Type::Function { .. } => false,
             Type::Alias(alias) => {
                 if !visited_aliases.insert(alias) {
                     self.error(DiagnosticInfo::RecursiveTypeAlias, text_range);
-                    return;
+                    return true;
                 }
-                self.detect_cycle_visitor(alias, text_range, visited_aliases);
+                self.detect_cycle(alias, text_range, visited_aliases)
             }
-            Type::Unknown | Type::Nil | Type::Int | Type::Bool | Type::Bytes => {}
+            Type::Unknown | Type::Int | Type::Bool | Type::Bytes => false,
         }
     }
 
@@ -1125,44 +1165,50 @@ impl<'a> Lowerer<'a> {
         self.type_name_visitor(ty, &mut IndexSet::new())
     }
 
-    fn type_name_visitor(&self, ty: TypeId, visited_aliases: &mut IndexSet<TypeId>) -> String {
+    fn type_name_visitor(&self, ty: TypeId, stack: &mut IndexSet<TypeId>) -> String {
         for &scope_id in self.scope_stack.iter().rev() {
             if let Some(name) = self.db.scope(scope_id).type_name(ty) {
                 return name.to_string();
             }
         }
 
-        match self.db.ty(ty) {
+        if stack.contains(&ty) {
+            return "<recursive>".to_string();
+        }
+
+        stack.insert(ty);
+
+        let name = match self.db.ty(ty) {
             Type::Unknown => "{unknown}".to_string(),
-            Type::Nil => "Nil".to_string(),
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Bytes => "Bytes".to_string(),
-            Type::List(inner) => format!("{}[]", self.type_name_visitor(*inner, visited_aliases)),
-            Type::Tuple {
-                items,
-                nil_terminated,
-            } => {
-                let items: Vec<String> = items
+            Type::Union(items) => {
+                let item_names: Vec<String> = items
                     .iter()
-                    .map(|&ty| self.type_name_visitor(ty, visited_aliases))
+                    .map(|&ty| self.type_name_visitor(ty, stack))
                     .collect();
 
-                let items = items.join(", ");
+                item_names.join(" | ")
+            }
+            Type::List(items) => {
+                let inner = self.type_name_visitor(*items, stack);
+                format!("{}[]", inner)
+            }
+            Type::Tuple(items) => {
+                let item_names: Vec<String> = items
+                    .iter()
+                    .map(|&ty| self.type_name_visitor(ty, stack))
+                    .collect();
 
-                if *nil_terminated {
-                    format!("[{items}]")
-                } else {
-                    format!("({items})")
-                }
+                format!("({})", item_names.join(", "))
             }
             Type::Struct { named_fields, .. } => {
                 let fields: Vec<String> = named_fields
                     .iter()
-                    .map(|(name, ty)| {
-                        format!("{}: {}", name, self.type_name_visitor(*ty, visited_aliases))
-                    })
+                    .map(|(name, ty)| format!("{}: {}", name, self.type_name_visitor(*ty, stack)))
                     .collect();
+
                 format!("{{ {} }}", fields.join(", "))
             }
             Type::Function {
@@ -1171,20 +1217,19 @@ impl<'a> Lowerer<'a> {
             } => {
                 let params: Vec<String> = parameter_types
                     .iter()
-                    .map(|&ty| self.type_name_visitor(ty, visited_aliases))
+                    .map(|&ty| self.type_name_visitor(ty, stack))
                     .collect();
-                let ret = self.type_name_visitor(*return_type, visited_aliases);
+
+                let ret = self.type_name_visitor(*return_type, stack);
+
                 format!("fun({}) -> {}", params.join(", "), ret)
             }
-            Type::Alias(type_id) => {
-                if let Some(index) = visited_aliases.get_index_of(type_id) {
-                    format!("<{index}>")
-                } else {
-                    visited_aliases.insert(*type_id);
-                    self.type_name_visitor(*type_id, visited_aliases)
-                }
-            }
-        }
+            Type::Alias(type_id) => self.type_name_visitor(*type_id, stack),
+        };
+
+        stack.pop().unwrap();
+
+        name
     }
 
     fn type_check(&mut self, value_type_id: TypeId, assign_to_type_id: TypeId, range: TextRange) {
@@ -1203,83 +1248,53 @@ impl<'a> Lowerer<'a> {
         &self,
         a: TypeId,
         b: TypeId,
-        visited_aliases: &mut HashSet<TypeId>,
+        visited: &mut HashSet<(TypeId, TypeId)>,
     ) -> bool {
-        if a == b {
+        let key = (a, b);
+
+        if a == b || visited.contains(&key) {
             return true;
         }
+        visited.insert(key);
 
         match (self.db.ty(a).clone(), self.db.ty(b).clone()) {
             // Primitive types.
-            (Type::Unknown, Type::Unknown) => true,
+            (Type::Unknown, _) | (_, Type::Unknown) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Bytes, Type::Bytes) => true,
-            (Type::Nil, Type::Nil) => true,
 
             // Reduce the type alias on left hand side.
-            (Type::Alias(alias), _) => {
-                if !visited_aliases.insert(alias) {
-                    return true;
-                }
-                self.is_assignable_to(alias, b, visited_aliases)
-            }
+            (Type::Alias(alias), _) => self.is_assignable_to(alias, b, visited),
 
             // Reduce the type alias on right hand side.
-            (_, Type::Alias(alias)) => {
-                if !visited_aliases.insert(alias) {
-                    return true;
-                }
-                self.is_assignable_to(a, alias, visited_aliases)
-            }
+            (_, Type::Alias(alias)) => self.is_assignable_to(a, alias, visited),
 
-            // Homogeneous lists with compatible items.
-            (Type::List(a_items), Type::List(b_items)) => {
-                self.is_assignable_to(a_items, b_items, visited_aliases)
-            }
-
-            // Tuple types with compatible items are also assignable.
-            (
-                Type::Tuple {
-                    items: a_items,
-                    nil_terminated: a_nil,
-                },
-                Type::Tuple {
-                    items: b_items,
-                    nil_terminated: b_nil,
-                },
-            ) => {
-                if a_nil != b_nil {
-                    return false;
-                }
-
-                if a_items.len() != b_items.len() {
-                    return false;
-                }
-
-                for (a, b) in a_items.into_iter().zip(b_items.into_iter()) {
-                    if !self.is_assignable_to(a, b, visited_aliases) {
-                        return false;
+            // Anything can be assigned to a union if it can be assigned to any of its items.
+            (_, Type::Union(items)) => {
+                for &item in items.iter() {
+                    if self.is_assignable_to(a, item, visited) {
+                        return true;
                     }
                 }
-
-                true
+                false
             }
 
-            // Assigning a null terminated tuple with only items assignable to a list item should work.
-            (
-                Type::Tuple {
-                    items,
-                    nil_terminated,
-                },
-                Type::List(list_items),
-            ) => {
-                if !nil_terminated {
+            // Unions can be assigned to anything if all of its items can be assigned to it.
+            (Type::Union(items), _) => items
+                .iter()
+                .all(|&item| self.is_assignable_to(item, b, visited)),
+
+            // List types with compatible items are also assignable.
+            (Type::List(a), Type::List(b)) => self.is_assignable_to(a, b, visited),
+
+            (Type::Tuple(a), Type::Tuple(b)) => {
+                if a.len() != b.len() {
                     return false;
                 }
 
-                for item in items {
-                    if !self.is_assignable_to(item, list_items, visited_aliases) {
+                for (a, b) in a.iter().zip(b.iter()) {
+                    if !self.is_assignable_to(*a, *b, visited) {
                         return false;
                     }
                 }
@@ -1303,12 +1318,12 @@ impl<'a> Lowerer<'a> {
                 }
 
                 for (a, b) in params_a.into_iter().zip(params_b.into_iter()) {
-                    if !self.is_assignable_to(a, b, visited_aliases) {
+                    if !self.is_assignable_to(a, b, visited) {
                         return false;
                     }
                 }
 
-                self.is_assignable_to(ret_a, ret_b, visited_aliases)
+                self.is_assignable_to(ret_a, ret_b, visited)
             }
 
             _ => false,

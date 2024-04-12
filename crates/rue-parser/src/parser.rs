@@ -199,6 +199,7 @@ fn convert_tokens<'a>(
             TokenKind::Semicolon => SyntaxKind::Semicolon,
             TokenKind::Arrow => SyntaxKind::Arrow,
             TokenKind::FatArrow => SyntaxKind::FatArrow,
+            TokenKind::Spread => SyntaxKind::Spread,
 
             TokenKind::Plus => SyntaxKind::Plus,
             TokenKind::Minus => SyntaxKind::Minus,

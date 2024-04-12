@@ -66,12 +66,11 @@ impl<'a> Optimizer<'a> {
                 self.compute_captures_hir(scope_id, then_block);
                 self.compute_captures_hir(scope_id, else_block);
             }
-            Hir::List { items, .. } => {
-                for item in items {
-                    self.compute_captures_hir(scope_id, item);
-                }
+            Hir::Pair(first, rest) => {
+                self.compute_captures_hir(scope_id, first);
+                self.compute_captures_hir(scope_id, rest);
             }
-            Hir::ListIndex { value, .. } | Hir::TupleIndex { value, .. } => {
+            Hir::Index { value, .. } => {
                 self.compute_captures_hir(scope_id, value);
             }
         }
@@ -277,14 +276,8 @@ impl<'a> Optimizer<'a> {
         match self.db.hir(hir_id) {
             Hir::Unknown => unreachable!(),
             Hir::Atom(atom) => self.db.alloc_lir(Lir::Atom(atom.clone())),
-            Hir::List {
-                items,
-                nil_terminated,
-            } => self.opt_list(scope_id, items.clone(), *nil_terminated),
-            Hir::ListIndex { value, index } => self.opt_list_index(scope_id, *value, *index),
-            Hir::TupleIndex { value, index, len } => {
-                self.opt_tuple_index(scope_id, *value, *index, *len)
-            }
+            Hir::Pair(first, rest) => self.opt_pair(scope_id, *first, *rest),
+            Hir::Index { value, index, rest } => self.opt_index(scope_id, *value, *index, *rest),
             Hir::Reference(symbol_id) => self.opt_reference(scope_id, *symbol_id),
             Hir::Scope {
                 scope_id: new_scope_id,
@@ -318,34 +311,24 @@ impl<'a> Optimizer<'a> {
         }
     }
 
-    fn opt_list(&mut self, scope_id: ScopeId, items: Vec<HirId>, nil_terminated: bool) -> LirId {
-        let mut result = Vec::new();
-        for item in items {
-            result.push(self.opt_hir(scope_id, item));
-        }
-        self.db.alloc_lir(Lir::List(result, nil_terminated))
+    fn opt_pair(&mut self, scope_id: ScopeId, first: HirId, rest: HirId) -> LirId {
+        let first = self.opt_hir(scope_id, first);
+        let rest = self.opt_hir(scope_id, rest);
+        self.db.alloc_lir(Lir::Pair(first, rest))
     }
 
-    fn opt_list_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: u32) -> LirId {
-        let mut value = self.opt_hir(scope_id, hir_id);
-        for _ in 0..index {
-            value = self.db.alloc_lir(Lir::Rest(value));
-        }
-        self.db.alloc_lir(Lir::First(value))
-    }
-
-    fn opt_tuple_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: u32, len: u32) -> LirId {
+    fn opt_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: u32, rest: bool) -> LirId {
         let mut value = self.opt_hir(scope_id, hir_id);
 
         for _ in 0..index {
             value = self.db.alloc_lir(Lir::Rest(value));
         }
 
-        if index + 1 != len {
-            value = self.db.alloc_lir(Lir::First(value));
+        if rest {
+            value
+        } else {
+            self.db.alloc_lir(Lir::First(value))
         }
-
-        value
     }
 
     fn opt_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {

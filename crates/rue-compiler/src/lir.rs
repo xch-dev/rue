@@ -3,7 +3,7 @@ use crate::database::LirId;
 #[derive(Debug, Clone)]
 pub enum Lir {
     Atom(Vec<u8>),
-    List(Vec<LirId>, bool),
+    Pair(LirId, LirId),
     Path(u32),
     Run(LirId, Vec<LirId>),
     Curry(LirId, Vec<LirId>),

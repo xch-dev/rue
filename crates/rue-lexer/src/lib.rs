@@ -80,7 +80,14 @@ impl<'a> Lexer<'a> {
                 '*' => self.block_comment(),
                 _ => TokenKind::Slash,
             },
-            '.' => TokenKind::Dot,
+            '.' => match self.peek() {
+                '.' if self.peek_nth(1) == '.' => {
+                    self.bump();
+                    self.bump();
+                    TokenKind::Spread
+                }
+                _ => TokenKind::Dot,
+            },
             ':' => TokenKind::Colon,
             ';' => TokenKind::Semicolon,
             c @ ('"' | '\'') => self.string(c),
@@ -174,6 +181,10 @@ impl<'a> Lexer<'a> {
         self.chars.clone().next().unwrap_or('\0')
     }
 
+    fn peek_nth(&self, index: usize) -> char {
+        self.chars.clone().nth(index).unwrap_or('\0')
+    }
+
     fn bump(&mut self) -> char {
         match self.chars.next() {
             Some(c) => {
@@ -251,6 +262,7 @@ mod tests {
         check("type", &[TokenKind::Type]);
         check("struct", &[TokenKind::Struct]);
         check("let", &[TokenKind::Let]);
+        check("const", &[TokenKind::Const]);
         check("if", &[TokenKind::If]);
         check("else", &[TokenKind::Else]);
         check("true", &[TokenKind::True]);
@@ -276,6 +288,7 @@ mod tests {
         check(";", &[TokenKind::Semicolon]);
         check("->", &[TokenKind::Arrow]);
         check("=>", &[TokenKind::FatArrow]);
+        check("...", &[TokenKind::Spread]);
     }
 
     #[test]

@@ -84,6 +84,7 @@ ast_node!(InitializerExpr);
 ast_node!(InitializerField);
 ast_node!(LiteralExpr);
 ast_node!(ListExpr);
+ast_node!(ListItem);
 ast_node!(TupleExpr);
 ast_node!(PrefixExpr);
 ast_node!(BinaryExpr);
@@ -97,18 +98,11 @@ ast_node!(LambdaExpr);
 ast_node!(LambdaParamList);
 ast_node!(LambdaParam);
 
-ast_enum!(
-    Type,
-    PathType,
-    ListType,
-    TupleType,
-    NilTerminatedTupleType,
-    FunctionType
-);
+ast_enum!(Type, PathType, ListType, TupleType, FunctionType);
 ast_node!(PathType);
 ast_node!(ListType);
+ast_node!(ListTypeItem);
 ast_node!(TupleType);
-ast_node!(NilTerminatedTupleType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParams);
 
@@ -380,8 +374,24 @@ impl BinaryExpr {
 }
 
 impl ListExpr {
-    pub fn items(&self) -> Vec<Expr> {
-        self.syntax().children().filter_map(Expr::cast).collect()
+    pub fn items(&self) -> Vec<ListItem> {
+        self.syntax()
+            .children()
+            .filter_map(ListItem::cast)
+            .collect()
+    }
+}
+
+impl ListItem {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+
+    pub fn op(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Spread)
     }
 }
 
@@ -466,7 +476,7 @@ impl FieldAccess {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Ident)
+            .find(|token| matches!(token.kind(), SyntaxKind::Ident | SyntaxKind::Int))
     }
 }
 
@@ -497,13 +507,20 @@ impl ListType {
     }
 }
 
-impl TupleType {
-    pub fn items(&self) -> Vec<Type> {
-        self.syntax().children().filter_map(Type::cast).collect()
+impl ListTypeItem {
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+
+    pub fn op(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Spread)
     }
 }
 
-impl NilTerminatedTupleType {
+impl TupleType {
     pub fn items(&self) -> Vec<Type> {
         self.syntax().children().filter_map(Type::cast).collect()
     }

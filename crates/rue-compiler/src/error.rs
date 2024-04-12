@@ -68,14 +68,20 @@ pub enum DiagnosticInfo {
     #[error("missing fields: {}", join_names(.0))]
     MissingFields(Vec<String>),
 
-    #[error("cannot access field of type `{0}`")]
-    FieldAccess(String),
+    #[error("cannot access named field of non-struct type `{0}`")]
+    StructFieldAccess(String),
 
-    #[error("cannot index type `{0}`")]
+    #[error("cannot access numeric field of non-tuple type `{0}`")]
+    TupleFieldAccess(String),
+
+    #[error("cannot index non-list type `{0}`")]
     IndexAccess(String),
 
     #[error("index `{0}` out of bounds, length is `{1}`")]
     IndexOutOfBounds(u32, u32),
+
+    #[error("cannot spread non-final item in list")]
+    NonFinalSpread,
 }
 
 /// Join a list of names into a string, wrapped in backticks.

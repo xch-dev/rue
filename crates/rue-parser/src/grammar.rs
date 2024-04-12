@@ -228,7 +228,9 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         } else if p.at(SyntaxKind::Dot) {
             p.start_at(checkpoint, SyntaxKind::FieldAccess);
             p.bump();
-            p.expect(SyntaxKind::Ident);
+            if !p.try_eat(SyntaxKind::Ident) {
+                p.expect(SyntaxKind::Int);
+            }
             p.finish();
         } else if p.at(SyntaxKind::OpenBracket) {
             p.start_at(checkpoint, SyntaxKind::IndexAccess);
@@ -286,7 +288,10 @@ fn list_expr(p: &mut Parser) {
     p.start(SyntaxKind::ListExpr);
     p.expect(SyntaxKind::OpenBracket);
     while !p.at(SyntaxKind::CloseBracket) {
+        p.start(SyntaxKind::ListItem);
+        p.try_eat(SyntaxKind::Spread);
         expr(p);
+        p.finish();
         if !p.try_eat(SyntaxKind::Comma) {
             break;
         }
@@ -365,17 +370,6 @@ fn ty(p: &mut Parser) {
             }
         }
         p.expect(SyntaxKind::CloseParen);
-        p.finish();
-    } else if p.at(SyntaxKind::OpenBracket) {
-        p.start(SyntaxKind::NilTerminatedTupleType);
-        p.bump();
-        while !p.at(SyntaxKind::CloseBracket) {
-            ty(p);
-            if !p.try_eat(SyntaxKind::Comma) {
-                break;
-            }
-        }
-        p.expect(SyntaxKind::CloseBracket);
         p.finish();
     } else {
         return p.error(TYPE_RECOVERY_SET);
