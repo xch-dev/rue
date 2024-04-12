@@ -664,12 +664,15 @@ impl<'a> Lowerer<'a> {
         list_expr: ListExpr,
         expected_expr_type: Option<TypeId>,
     ) -> Typed {
-        let mut hir_id = self.nil_hir;
+        let mut items = Vec::new();
+        let mut nil_terminated = true;
 
         let mut list_type = expected_expr_type;
         let mut item_type = expected_expr_type.and_then(|ty| self.extract_list_type(ty));
 
-        for (i, item) in list_expr.items().into_iter().rev().enumerate() {
+        let len = list_expr.items().len();
+
+        for (i, item) in list_expr.items().into_iter().enumerate() {
             let expected_item_type = if item.op().is_some() {
                 list_type
             } else {
@@ -685,26 +688,40 @@ impl<'a> Lowerer<'a> {
                 self.type_check(output.ty, expected_item_type, item.syntax().text_range());
             }
 
-            if i == 0 && list_type.is_none() {
-                list_type = Some(self.db.alloc_type(Type::List(output.ty)));
-                item_type = Some(output.ty);
+            if i + 1 == len && list_type.is_none() {
+                if item.op().is_some() {
+                    list_type = Some(output.ty);
+                    item_type = self.extract_list_type(output.ty);
+                } else {
+                    list_type = Some(self.db.alloc_type(Type::List(output.ty)));
+                    item_type = Some(output.ty);
+                }
             }
 
             if let Some(spread) = item.op() {
-                if i == 0 {
-                    hir_id = output.value;
-                    continue;
+                if i + 1 == len {
+                    nil_terminated = false;
                 } else {
                     self.error(DiagnosticInfo::NonFinalSpread, spread.text_range());
                 }
             }
 
-            hir_id = self.db.alloc_hir(Hir::Pair(output.value, hir_id));
+            items.push(output.value);
+        }
+
+        let mut hir_id = self.nil_hir;
+
+        for (i, item) in items.into_iter().rev().enumerate() {
+            if i == 0 && !nil_terminated {
+                hir_id = item;
+            } else {
+                hir_id = self.db.alloc_hir(Hir::Pair(item, hir_id));
+            }
         }
 
         Typed {
             value: hir_id,
-            ty: list_type.unwrap_or(self.unknown_type),
+            ty: list_type.unwrap_or_else(|| self.db.alloc_type(Type::List(self.unknown_type))),
         }
     }
 
@@ -739,6 +756,9 @@ impl<'a> Lowerer<'a> {
 
             hir_id = self.db.alloc_hir(Hir::Pair(output.value, hir_id));
         }
+
+        // We added these in inverse order.
+        types.reverse();
 
         Typed {
             value: hir_id,
