@@ -14,10 +14,10 @@ hash = "36df573860ae6cd218c0fdaab224b0f7087d2fc42ffdb71a28a470ad059af026"
 
 [struct_type]
 bytes = 161
-cost = 3057
+cost = 3019
 input = "()"
 output = "\"Older\""
-hash = "3656efbf4b8ada82cc062893a128b8a6327e34d3675d06c437eba4e8e84ec2f4"
+hash = "0805d86735757b42ff0ad4194d8f356d6a600e8a2cd6494ecb50a8d586ffe1ef"
 
 [nested_scopes]
 bytes = 421
@@ -81,3 +81,10 @@ cost = 43743
 input = "()"
 output = "0x013077775800"
 hash = "291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8"
+
+[enums]
+bytes = 135
+cost = 1327
+input = "()"
+output = "((g1_multiply \"Hello, world!\" \"Message thingy\") (g1_negate \"Some puzzle\" 100))"
+hash = "e49ff16e836bdc3860d919f4d9dd8e562e544f569230229ba86409cab2d3e5e2"

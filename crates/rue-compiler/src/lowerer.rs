@@ -8,10 +8,11 @@ use indexmap::{IndexMap, IndexSet};
 use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, BinaryExpr, BinaryOp, Block, ConstItem, Expr, FieldAccess, FunctionCall, FunctionItem,
-    FunctionType, IfExpr, IndexAccess, InitializerExpr, Item, LambdaExpr, ListExpr, ListType,
-    LiteralExpr, PathExpr, PrefixExpr, PrefixOp, Root, Stmt, StructItem, SyntaxKind, SyntaxToken,
-    TupleExpr, TupleType, Type as AstType, TypeAliasItem,
+    AstNode, BinaryExpr, BinaryOp, Block, ConstItem, EnumItem, Expr, FieldAccess, FunctionCall,
+    FunctionItem, FunctionType, IfExpr, IndexAccess, InitializerExpr, InitializerField, Item,
+    LambdaExpr, ListExpr, ListType, LiteralExpr, Path, PrefixExpr, PrefixOp, Root, Stmt,
+    StructField, StructItem, SyntaxKind, SyntaxToken, TupleExpr, TupleType, Type as AstType,
+    TypeAliasItem,
 };
 
 use crate::{
@@ -76,6 +77,7 @@ impl<'a> Lowerer<'a> {
             match item {
                 Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias(ty)),
                 Item::StructItem(struct_item) => type_ids.push(self.declare_struct(struct_item)),
+                Item::EnumItem(enum_item) => type_ids.push(self.declare_enum(enum_item)),
                 _ => {}
             }
         }
@@ -94,6 +96,7 @@ impl<'a> Lowerer<'a> {
             match item {
                 Item::TypeAliasItem(ty) => self.compile_type_alias(ty, type_ids[i]),
                 Item::StructItem(struct_item) => self.compile_struct(struct_item, type_ids[i]),
+                Item::EnumItem(enum_item) => self.compile_enum(enum_item, type_ids[i]),
                 _ => continue,
             }
             i += 1;
@@ -186,6 +189,30 @@ impl<'a> Lowerer<'a> {
         type_id
     }
 
+    fn declare_enum(&mut self, enum_item: EnumItem) -> TypeId {
+        let mut variants = IndexMap::new();
+
+        for variant in enum_item.variants() {
+            let Some(name) = variant.name() else {
+                continue;
+            };
+
+            if variants.contains_key(name.text()) {
+                continue;
+            }
+
+            variants.insert(name.to_string(), self.db.alloc_type(Type::Unknown));
+        }
+
+        let type_id = self.db.alloc_type(Type::Enum { variants });
+
+        if let Some(name) = enum_item.name() {
+            self.scope_mut().define_type(name.to_string(), type_id);
+        }
+
+        type_id
+    }
+
     fn compile_function(&mut self, function: FunctionItem, symbol_id: SymbolId) {
         let Some(body) = function.body() else {
             return;
@@ -250,26 +277,63 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
-        let mut named_fields = IndexMap::new();
-        let mut fields = Vec::new();
+        let fields = self.compile_struct_fields(struct_item.fields());
+        *self.db.ty_mut(type_id) = Type::Struct { fields };
+    }
 
-        for field in struct_item.fields() {
+    fn compile_struct_fields(&mut self, fields: Vec<StructField>) -> IndexMap<String, TypeId> {
+        let mut named_fields = IndexMap::new();
+
+        for field in fields {
             let type_id = field
                 .ty()
                 .map(|ty| self.compile_type(ty))
                 .unwrap_or(self.unknown_type);
-
-            fields.push(type_id);
 
             if let Some(name) = field.name() {
                 named_fields.insert(name.to_string(), type_id);
             };
         }
 
-        *self.db.ty_mut(type_id) = Type::Struct {
-            named_fields,
-            fields,
+        named_fields
+    }
+
+    fn compile_enum(&mut self, enum_item: EnumItem, type_id: TypeId) {
+        let Type::Enum { variants } = self.db.ty(type_id).clone() else {
+            unreachable!();
         };
+
+        let mut visited_variants = IndexSet::new();
+
+        for variant in enum_item.variants() {
+            let Some(name) = variant.name() else {
+                continue;
+            };
+
+            if !visited_variants.insert(name.to_string()) {
+                self.error(
+                    DiagnosticInfo::DuplicateEnumVariant(name.to_string()),
+                    name.text_range(),
+                );
+                continue;
+            }
+
+            let variant_type = variants[name.text()];
+
+            let fields = self.compile_struct_fields(variant.fields());
+
+            let discriminant = variant
+                .discriminant()
+                .map(|discriminant| self.compile_int(discriminant).hir())
+                .unwrap_or(self.unknown_hir);
+
+            *self.db.ty_mut(variant_type) = Type::EnumVariant {
+                name: name.to_string(),
+                enum_type: type_id,
+                fields,
+                discriminant,
+            };
+        }
     }
 
     fn compile_block_expr(
@@ -344,7 +408,7 @@ impl<'a> Lowerer<'a> {
 
     fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Value {
         match expr {
-            Expr::PathExpr(path) => self.compile_path_expr(path),
+            Expr::Path(path) => self.compile_path_expr(path),
             Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
@@ -364,29 +428,59 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_initializer_expr(&mut self, initializer: InitializerExpr) -> Value {
-        let ty = initializer.path().map(|path| {
-            let Some(value) = path.name() else {
-                return self.unknown_type;
-            };
-            self.compile_path_type(value)
-        });
+        let ty = initializer.path().map(|path| self.compile_path_type(path));
 
-        let struct_fields = ty
-            .and_then(|ty| match self.db.ty(ty) {
-                Type::Struct { named_fields, .. } => Some(named_fields.clone()),
-                _ => {
-                    self.error(
-                        DiagnosticInfo::UninitializableType(self.type_name(ty)),
-                        initializer.path().unwrap().syntax().text_range(),
-                    );
-                    None
+        match ty.map(|ty| self.db.ty(ty)).cloned() {
+            Some(Type::Struct { fields }) => {
+                let hir_id = self.compile_initializer_fields(
+                    fields,
+                    initializer.fields(),
+                    initializer.syntax().text_range(),
+                );
+
+                match ty {
+                    Some(struct_type) => Value::typed(hir_id, struct_type),
+                    None => self.unknown(),
                 }
-            })
-            .unwrap_or_default();
+            }
+            Some(Type::EnumVariant {
+                fields,
+                discriminant,
+                ..
+            }) => {
+                let fields_hir_id = self.compile_initializer_fields(
+                    fields,
+                    initializer.fields(),
+                    initializer.syntax().text_range(),
+                );
 
+                let hir_id = self.db.alloc_hir(Hir::Pair(discriminant, fields_hir_id));
+
+                match ty {
+                    Some(struct_type) => Value::typed(hir_id, struct_type),
+                    None => self.unknown(),
+                }
+            }
+            Some(_) => {
+                self.error(
+                    DiagnosticInfo::UninitializableType(self.type_name(ty.unwrap())),
+                    initializer.path().unwrap().syntax().text_range(),
+                );
+                self.unknown()
+            }
+            _ => self.unknown(),
+        }
+    }
+
+    fn compile_initializer_fields(
+        &mut self,
+        struct_fields: IndexMap<String, TypeId>,
+        initializer_fields: Vec<InitializerField>,
+        text_range: TextRange,
+    ) -> HirId {
         let mut specified_fields = HashMap::new();
 
-        for field in initializer.fields() {
+        for field in initializer_fields {
             let expected_type = field
                 .name()
                 .and_then(|name| struct_fields.get(name.text()).copied());
@@ -424,15 +518,12 @@ impl<'a> Lowerer<'a> {
             .collect::<Vec<String>>();
 
         if !missing_fields.is_empty() {
-            self.error(
-                DiagnosticInfo::MissingFields(missing_fields),
-                initializer.syntax().text_range(),
-            );
+            self.error(DiagnosticInfo::MissingFields(missing_fields), text_range);
         }
 
         let mut hir_id = self.nil_hir;
 
-        for field in struct_fields.keys() {
+        for field in struct_fields.keys().rev() {
             let field = specified_fields
                 .get(field)
                 .cloned()
@@ -441,10 +532,7 @@ impl<'a> Lowerer<'a> {
             hir_id = self.db.alloc_hir(Hir::Pair(field, hir_id));
         }
 
-        match ty {
-            Some(struct_type) => Value::typed(hir_id, struct_type),
-            None => self.unknown(),
-        }
+        hir_id
     }
 
     fn compile_field_access(&mut self, field_access: FieldAccess) -> Value {
@@ -468,19 +556,15 @@ impl<'a> Lowerer<'a> {
 
     fn compile_struct_field_access(&mut self, value: Value, field_name: SyntaxToken) -> Value {
         match self.db.ty(value.ty()) {
-            Type::Struct {
-                named_fields,
-                fields,
-            } => {
-                if let Some(&field_ty) = named_fields.get(field_name.text()) {
+            Type::Struct { fields } => {
+                if let Some((index, _name, &field_type)) = fields.get_full(field_name.text()) {
                     Value::typed(
                         self.db.alloc_hir(Hir::Index {
                             value: value.hir(),
-                            index: fields.iter().position(|&field| field == field_ty).unwrap()
-                                as u32,
+                            index: index as u32,
                             rest: false,
                         }),
-                        field_ty,
+                        field_type,
                     )
                 } else {
                     self.error(
@@ -906,10 +990,15 @@ impl<'a> Lowerer<'a> {
         )
     }
 
-    fn compile_path_expr(&mut self, path: PathExpr) -> Value {
-        let Some(name) = path.name() else {
+    fn compile_path_expr(&mut self, path: Path) -> Value {
+        let mut idents = path.idents();
+
+        if idents.len() > 1 {
+            self.error(DiagnosticInfo::PathNotAllowed, path.syntax().text_range());
             return self.unknown();
-        };
+        }
+
+        let name = idents.remove(0);
 
         let Some(symbol_id) = self
             .scope_stack
@@ -1027,34 +1116,58 @@ impl<'a> Lowerer<'a> {
 
     fn compile_type(&mut self, ty: AstType) -> TypeId {
         match ty {
-            AstType::PathType(literal) => {
-                let Some(value) = literal.name() else {
-                    return self.unknown_type;
-                };
-                self.compile_path_type(value)
-            }
+            AstType::Path(path) => self.compile_path_type(path),
             AstType::ListType(list) => self.compile_list_type(list),
             AstType::FunctionType(function) => self.compile_function_type(function),
             AstType::TupleType(tuple) => self.compile_tuple_type(tuple),
         }
     }
 
-    fn compile_path_type(&mut self, token: SyntaxToken) -> TypeId {
-        for &scope_id in self.scope_stack.iter().rev() {
-            if let Some(ty) = self.db.scope(scope_id).type_alias(token.text()) {
-                return ty;
+    fn compile_path_type(&mut self, path: Path) -> TypeId {
+        let mut idents = path.idents();
+
+        let name = idents.remove(0);
+
+        let mut ty = 'initial_type: {
+            for &scope_id in self.scope_stack.iter().rev() {
+                if let Some(ty) = self.db.scope(scope_id).type_alias(name.text()) {
+                    break 'initial_type ty;
+                }
             }
+
+            match name.text() {
+                "Int" => self.int_type,
+                "Bool" => self.bool_type,
+                "Bytes" => self.bytes_type,
+                _ => {
+                    self.error(
+                        DiagnosticInfo::UndefinedType(name.to_string()),
+                        name.text_range(),
+                    );
+                    self.unknown_type
+                }
+            }
+        };
+
+        for name in idents {
+            ty = self.path_into_type(ty, name.text(), name.text_range());
         }
 
-        match token.text() {
-            "Int" => self.int_type,
-            "Bool" => self.bool_type,
-            "Bytes" => self.bytes_type,
+        ty
+    }
+
+    fn path_into_type(&mut self, ty: TypeId, name: &str, range: TextRange) -> TypeId {
+        match self.db.ty(ty) {
+            Type::Enum { variants } => {
+                if let Some(&variant_type) = variants.get(name) {
+                    return variant_type;
+                }
+                self.error(DiagnosticInfo::UnknownEnumVariant(name.to_string()), range);
+                self.unknown_type
+            }
+            Type::Alias(alias) => self.path_into_type(*alias, name, range),
             _ => {
-                self.error(
-                    DiagnosticInfo::UndefinedType(token.to_string()),
-                    token.text_range(),
-                );
+                self.error(DiagnosticInfo::PathIntoNonEnum(self.type_name(ty)), range);
                 self.unknown_type
             }
         }
@@ -1149,6 +1262,8 @@ impl<'a> Lowerer<'a> {
                 self.detect_cycle(items[0], text_range, visited_aliases)
             }
             Type::Struct { .. } => false,
+            Type::Enum { .. } => false,
+            Type::EnumVariant { .. } => false,
             Type::Function { .. } => false,
             Type::Alias(alias) => {
                 if !visited_aliases.insert(alias) {
@@ -1203,13 +1318,29 @@ impl<'a> Lowerer<'a> {
 
                 format!("({})", item_names.join(", "))
             }
-            Type::Struct { named_fields, .. } => {
-                let fields: Vec<String> = named_fields
+            Type::Struct { fields } => {
+                let fields: Vec<String> = fields
                     .iter()
                     .map(|(name, ty)| format!("{}: {}", name, self.type_name_visitor(*ty, stack)))
                     .collect();
 
                 format!("{{ {} }}", fields.join(", "))
+            }
+            Type::Enum { .. } => "<unnamed enum>".to_string(),
+            Type::EnumVariant {
+                name,
+                enum_type,
+                fields,
+                ..
+            } => {
+                let enum_name = self.type_name_visitor(*enum_type, stack);
+
+                let fields: Vec<String> = fields
+                    .iter()
+                    .map(|(name, ty)| format!("{}: {}", name, self.type_name_visitor(*ty, stack)))
+                    .collect();
+
+                format!("{}::{} {{ {} }}", enum_name, name, fields.join(", "))
             }
             Type::Function {
                 parameter_types,
@@ -1301,6 +1432,9 @@ impl<'a> Lowerer<'a> {
 
                 true
             }
+
+            // Enum variants are assignable to their enum type.
+            (Type::EnumVariant { enum_type, .. }, _) if b == enum_type => true,
 
             // Functions with compatible parameters and return type.
             (

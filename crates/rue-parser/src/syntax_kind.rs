@@ -24,6 +24,7 @@ pub enum SyntaxKind {
     Fun,
     Type,
     Struct,
+    Enum,
     Let,
     Const,
     If,
@@ -35,6 +36,7 @@ pub enum SyntaxKind {
     Dot,
     Comma,
     Colon,
+    PathSeparator,
     Semicolon,
     Arrow,
     FatArrow,
@@ -64,12 +66,15 @@ pub enum SyntaxKind {
     TypeAliasItem,
     StructItem,
     StructField,
+    EnumItem,
+    EnumVariant,
     ConstItem,
 
     LetStmt,
 
     Block,
-    PathExpr,
+    Path,
+
     InitializerExpr,
     InitializerField,
     LiteralExpr,
@@ -87,7 +92,6 @@ pub enum SyntaxKind {
     FieldAccess,
     IndexAccess,
 
-    PathType,
     ListType,
     ListTypeItem,
     TupleType,
@@ -118,6 +122,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::Fun => "'fun'",
                 SyntaxKind::Type => "'type'",
                 SyntaxKind::Struct => "'struct'",
+                SyntaxKind::Enum => "'enum'",
                 SyntaxKind::Let => "'let'",
                 SyntaxKind::Const => "'const'",
                 SyntaxKind::If => "'if'",
@@ -129,6 +134,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::Dot => "'.'",
                 SyntaxKind::Comma => "','",
                 SyntaxKind::Colon => "':'",
+                SyntaxKind::PathSeparator => "'::'",
                 SyntaxKind::Semicolon => "';'",
                 SyntaxKind::Arrow => "'->'",
                 SyntaxKind::FatArrow => "'=>'",
@@ -158,12 +164,15 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::TypeAliasItem => "type alias item",
                 SyntaxKind::StructItem => "struct item",
                 SyntaxKind::StructField => "struct field",
+                SyntaxKind::EnumItem => "enum item",
+                SyntaxKind::EnumVariant => "enum variant",
                 SyntaxKind::ConstItem => "const item",
 
                 SyntaxKind::LetStmt => "let statement",
 
                 SyntaxKind::Block => "block",
-                SyntaxKind::PathExpr => "path expression",
+                SyntaxKind::Path => "identifier path",
+
                 SyntaxKind::InitializerExpr => "initializer expression",
                 SyntaxKind::InitializerField => "initializer field",
                 SyntaxKind::LiteralExpr => "literal expression",
@@ -181,7 +190,6 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::FieldAccess => "field access",
                 SyntaxKind::IndexAccess => "index access",
 
-                SyntaxKind::PathType => "path type",
                 SyntaxKind::ListType => "list type",
                 SyntaxKind::ListTypeItem => "list type item",
                 SyntaxKind::TupleType => "tuple type",

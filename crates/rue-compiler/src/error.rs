@@ -82,6 +82,18 @@ pub enum DiagnosticInfo {
 
     #[error("cannot spread non-final item in list")]
     NonFinalSpread,
+
+    #[error("duplicate enum variant `{0}`")]
+    DuplicateEnumVariant(String),
+
+    #[error("paths are not allowed in this context")]
+    PathNotAllowed,
+
+    #[error("cannot path into non-enum type `{0}`")]
+    PathIntoNonEnum(String),
+
+    #[error("unknown enum variant `{0}`")]
+    UnknownEnumVariant(String),
 }
 
 /// Join a list of names into a string, wrapped in backticks.

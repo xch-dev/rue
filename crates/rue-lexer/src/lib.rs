@@ -88,7 +88,13 @@ impl<'a> Lexer<'a> {
                 }
                 _ => TokenKind::Dot,
             },
-            ':' => TokenKind::Colon,
+            ':' => match self.peek() {
+                ':' => {
+                    self.bump();
+                    TokenKind::PathSeparator
+                }
+                _ => TokenKind::Colon,
+            },
             ';' => TokenKind::Semicolon,
             c @ ('"' | '\'') => self.string(c),
             c if c.is_ascii_digit() => self.integer(),
@@ -100,6 +106,7 @@ impl<'a> Lexer<'a> {
                     "fun" => TokenKind::Fun,
                     "type" => TokenKind::Type,
                     "struct" => TokenKind::Struct,
+                    "enum" => TokenKind::Enum,
                     "let" => TokenKind::Let,
                     "const" => TokenKind::Const,
                     "if" => TokenKind::If,
@@ -261,6 +268,7 @@ mod tests {
         check("fun", &[TokenKind::Fun]);
         check("type", &[TokenKind::Type]);
         check("struct", &[TokenKind::Struct]);
+        check("enum", &[TokenKind::Enum]);
         check("let", &[TokenKind::Let]);
         check("const", &[TokenKind::Const]);
         check("if", &[TokenKind::If]);
@@ -285,6 +293,7 @@ mod tests {
         check(".", &[TokenKind::Dot]);
         check(",", &[TokenKind::Comma]);
         check(":", &[TokenKind::Colon]);
+        check("::", &[TokenKind::PathSeparator]);
         check(";", &[TokenKind::Semicolon]);
         check("->", &[TokenKind::Arrow]);
         check("=>", &[TokenKind::FatArrow]);

@@ -54,18 +54,29 @@ macro_rules! ast_enum {
 
 ast_node!(Root);
 
-ast_enum!(Item, FunctionItem, TypeAliasItem, ConstItem, StructItem);
+ast_enum!(
+    Item,
+    FunctionItem,
+    TypeAliasItem,
+    ConstItem,
+    StructItem,
+    EnumItem
+);
 ast_node!(FunctionItem);
 ast_node!(FunctionParam);
 ast_node!(TypeAliasItem);
 ast_node!(StructItem);
+ast_node!(EnumItem);
+ast_node!(EnumVariant);
 ast_node!(ConstItem);
 ast_node!(StructField);
+
 ast_node!(Block);
+ast_node!(Path);
 
 ast_enum!(
     Expr,
-    PathExpr,
+    Path,
     InitializerExpr,
     LiteralExpr,
     ListExpr,
@@ -79,7 +90,6 @@ ast_enum!(
     FieldAccess,
     IndexAccess
 );
-ast_node!(PathExpr);
 ast_node!(InitializerExpr);
 ast_node!(InitializerField);
 ast_node!(LiteralExpr);
@@ -98,8 +108,7 @@ ast_node!(LambdaExpr);
 ast_node!(LambdaParamList);
 ast_node!(LambdaParam);
 
-ast_enum!(Type, PathType, ListType, TupleType, FunctionType);
-ast_node!(PathType);
+ast_enum!(Type, Path, ListType, TupleType, FunctionType);
 ast_node!(ListType);
 ast_node!(ListTypeItem);
 ast_node!(TupleType);
@@ -194,6 +203,45 @@ impl StructField {
     }
 }
 
+impl EnumItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn variants(&self) -> Vec<EnumVariant> {
+        self.syntax()
+            .children()
+            .filter_map(EnumVariant::cast)
+            .collect()
+    }
+}
+
+impl EnumVariant {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn fields(&self) -> Vec<StructField> {
+        self.syntax()
+            .children()
+            .filter_map(StructField::cast)
+            .collect()
+    }
+
+    pub fn discriminant(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Int)
+    }
+}
+
 impl ConstItem {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
@@ -207,7 +255,7 @@ impl ConstItem {
     }
 
     pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
+        self.syntax().children().filter_map(Expr::cast).last()
     }
 }
 
@@ -225,6 +273,16 @@ impl Block {
     }
 }
 
+impl Path {
+    pub fn idents(&self) -> Vec<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .collect()
+    }
+}
+
 impl LetStmt {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
@@ -238,21 +296,13 @@ impl LetStmt {
     }
 
     pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
-    }
-}
-
-impl PathExpr {
-    pub fn name(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .find_map(SyntaxElement::into_token)
+        self.syntax().children().filter_map(Expr::cast).last()
     }
 }
 
 impl InitializerExpr {
-    pub fn path(&self) -> Option<PathExpr> {
-        self.syntax().children().find_map(PathExpr::cast)
+    pub fn path(&self) -> Option<Path> {
+        self.syntax().children().find_map(Path::cast)
     }
 
     pub fn fields(&self) -> Vec<InitializerField> {
@@ -490,14 +540,6 @@ impl IndexAccess {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Int)
-    }
-}
-
-impl PathType {
-    pub fn name(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .find_map(SyntaxElement::into_token)
     }
 }
 

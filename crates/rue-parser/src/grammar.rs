@@ -15,6 +15,8 @@ fn item(p: &mut Parser) {
         type_alias_item(p);
     } else if p.at(SyntaxKind::Struct) {
         struct_item(p);
+    } else if p.at(SyntaxKind::Enum) {
+        enum_item(p);
     } else if p.at(SyntaxKind::Const) {
         const_item(p);
     } else {
@@ -85,6 +87,38 @@ fn struct_field(p: &mut Parser) {
     p.finish();
 }
 
+fn enum_item(p: &mut Parser) {
+    p.start(SyntaxKind::EnumItem);
+    p.expect(SyntaxKind::Enum);
+    p.expect(SyntaxKind::Ident);
+    p.expect(SyntaxKind::OpenBrace);
+    while !p.at(SyntaxKind::CloseBrace) {
+        enum_variant(p);
+        if !p.try_eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::CloseBrace);
+    p.finish();
+}
+
+fn enum_variant(p: &mut Parser) {
+    p.start(SyntaxKind::EnumVariant);
+    p.expect(SyntaxKind::Ident);
+    p.expect(SyntaxKind::Assign);
+    p.expect(SyntaxKind::Int);
+    if p.try_eat(SyntaxKind::OpenBrace) {
+        while !p.at(SyntaxKind::CloseBrace) {
+            struct_field(p);
+            if !p.try_eat(SyntaxKind::Comma) {
+                break;
+            }
+        }
+        p.expect(SyntaxKind::CloseBrace);
+    }
+    p.finish();
+}
+
 fn const_item(p: &mut Parser) {
     p.start(SyntaxKind::ConstItem);
     p.expect(SyntaxKind::Const);
@@ -124,6 +158,15 @@ fn let_stmt(p: &mut Parser) {
     p.expect(SyntaxKind::Assign);
     expr(p);
     p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn path(p: &mut Parser) {
+    p.start(SyntaxKind::Path);
+    p.expect(SyntaxKind::Ident);
+    while p.try_eat(SyntaxKind::PathSeparator) {
+        p.expect(SyntaxKind::Ident);
+    }
     p.finish();
 }
 
@@ -167,9 +210,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         p.bump();
         p.finish();
     } else if p.at(SyntaxKind::Ident) {
-        p.start(SyntaxKind::PathExpr);
-        p.bump();
-        p.finish();
+        path(p);
 
         if p.at(SyntaxKind::OpenBrace) {
             p.start_at(checkpoint, SyntaxKind::InitializerExpr);
@@ -350,9 +391,7 @@ fn ty(p: &mut Parser) {
     let checkpoint = p.checkpoint();
 
     if p.at(SyntaxKind::Ident) {
-        p.start(SyntaxKind::PathType);
-        p.bump();
-        p.finish();
+        path(p);
     } else if p.at(SyntaxKind::Fun) {
         p.start(SyntaxKind::FunctionType);
         p.bump();

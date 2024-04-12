@@ -12,8 +12,16 @@ pub enum Type {
     Tuple(Vec<TypeId>),
     List(TypeId),
     Struct {
-        named_fields: IndexMap<String, TypeId>,
-        fields: Vec<TypeId>,
+        fields: IndexMap<String, TypeId>,
+    },
+    Enum {
+        variants: IndexMap<String, TypeId>,
+    },
+    EnumVariant {
+        name: String,
+        enum_type: TypeId,
+        fields: IndexMap<String, TypeId>,
+        discriminant: HirId,
     },
     Function {
         parameter_types: Vec<TypeId>,

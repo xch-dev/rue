@@ -1,0 +1,24 @@
+enum Condition {
+    AggSigMe = 50 {
+        public_key: Bytes,
+        message: Bytes,
+    },
+    CreateCoin = 51 {
+        puzzle_hash: Bytes,
+        amount: Int,
+    },
+}
+
+fun main() -> Condition[] {
+    let agg_sig = Condition::AggSigMe {
+        public_key: "Hello, world!",
+        message: "Message thingy",
+    };
+
+    let create_coin = Condition::CreateCoin {
+        puzzle_hash: "Some puzzle",
+        amount: 100,
+    };
+
+    [agg_sig, create_coin]
+}
