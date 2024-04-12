@@ -1,0 +1,9 @@
+fun main() -> Int {
+    let nil_tuple = ();
+    let nil_tuple_hinted: () = nil_tuple;
+
+    let items = (1, 2, 3);
+    let items_hinted: (Int, Int, Int) = items;
+
+    items.0 + items.1 + items.2
+}

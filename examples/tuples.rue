@@ -1,6 +1,0 @@
-fun main() -> Int {
-    let items = (1, 2, 3);
-    let more_items = [1, 2, 3];
-    let list: Int[] = more_items;
-    items.0 + items.1 + items.2 + list[0] + more_items[1] + more_items[2]
-}
