@@ -22,8 +22,22 @@ pub enum Type {
     Alias(TypeId),
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Typed {
-    pub value: HirId,
-    pub ty: TypeId,
+#[derive(Debug, Clone)]
+pub struct Value {
+    hir: HirId,
+    ty: TypeId,
+}
+
+impl Value {
+    pub fn typed(hir: HirId, ty: TypeId) -> Self {
+        Self { hir, ty }
+    }
+
+    pub fn hir(&self) -> HirId {
+        self.hir
+    }
+
+    pub fn ty(&self) -> TypeId {
+        self.ty
+    }
 }

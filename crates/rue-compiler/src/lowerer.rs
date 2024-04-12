@@ -19,7 +19,7 @@ use crate::{
     hir::Hir,
     scope::Scope,
     symbol::Symbol,
-    ty::{Type, Typed},
+    ty::{Type, Value},
     Diagnostic, DiagnosticInfo, DiagnosticKind,
 };
 
@@ -34,7 +34,6 @@ pub struct Lowerer<'a> {
     nil_hir: HirId,
     unknown_type: TypeId,
     unknown_hir: HirId,
-    unknown: Typed,
 }
 
 impl<'a> Lowerer<'a> {
@@ -58,10 +57,6 @@ impl<'a> Lowerer<'a> {
             nil_hir,
             unknown_type,
             unknown_hir,
-            unknown: Typed {
-                ty: unknown_type,
-                value: unknown_hir,
-            },
         }
     }
 
@@ -210,7 +205,7 @@ impl<'a> Lowerer<'a> {
         self.scope_stack.pop().unwrap();
 
         self.type_check(
-            output.ty,
+            output.ty(),
             return_type,
             function.body().unwrap().syntax().text_range(),
         );
@@ -218,7 +213,7 @@ impl<'a> Lowerer<'a> {
         let Symbol::Function { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
             unreachable!();
         };
-        *hir_id = output.value;
+        *hir_id = output.hir();
     }
 
     fn compile_const(&mut self, const_item: ConstItem, symbol_id: SymbolId) {
@@ -232,12 +227,12 @@ impl<'a> Lowerer<'a> {
 
         let output = self.compile_expr(expr, Some(type_id));
 
-        self.type_check(output.ty, type_id, const_item.syntax().text_range());
+        self.type_check(output.ty(), type_id, const_item.syntax().text_range());
 
         let Symbol::ConstBinding { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
             unreachable!();
         };
-        *hir_id = output.value;
+        *hir_id = output.hir();
     }
 
     fn compile_type_alias(&mut self, ty: TypeAliasItem, alias_type_id: TypeId) {
@@ -282,7 +277,7 @@ impl<'a> Lowerer<'a> {
         block: Block,
         scope_id: Option<ScopeId>,
         expected_type: Option<TypeId>,
-    ) -> Typed {
+    ) -> Value {
         if let Some(scope_id) = scope_id {
             self.scope_stack.push(scope_id);
         }
@@ -299,10 +294,10 @@ impl<'a> Lowerer<'a> {
                     let value = let_stmt
                         .expr()
                         .map(|expr| self.compile_expr(expr, expected_type))
-                        .unwrap_or(self.unknown);
+                        .unwrap_or(self.unknown());
 
                     if let Some(expected_type) = expected_type {
-                        self.type_check(value.ty, expected_type, let_stmt.syntax().text_range());
+                        self.type_check(value.ty(), expected_type, let_stmt.syntax().text_range());
                     }
 
                     let Some(name) = let_stmt.name() else {
@@ -310,8 +305,8 @@ impl<'a> Lowerer<'a> {
                     };
 
                     let symbol_id = self.db.alloc_symbol(Symbol::LetBinding {
-                        type_id: expected_type.unwrap_or(value.ty),
-                        hir_id: value.value,
+                        type_id: expected_type.unwrap_or(value.ty()),
+                        hir_id: value.hir(),
                     });
 
                     let mut let_scope = Scope::default();
@@ -327,16 +322,16 @@ impl<'a> Lowerer<'a> {
         let mut body = block
             .expr()
             .map(|expr| self.compile_expr(expr, expected_type))
-            .unwrap_or(self.unknown);
+            .unwrap_or(self.unknown());
 
         for scope_id in let_scope_ids.into_iter().rev() {
-            body = Typed {
-                value: self.db.alloc_hir(Hir::Scope {
+            body = Value::typed(
+                self.db.alloc_hir(Hir::Scope {
                     scope_id,
-                    value: body.value,
+                    value: body.hir(),
                 }),
-                ty: body.ty,
-            };
+                body.ty(),
+            );
             self.scope_stack.pop().unwrap();
         }
 
@@ -347,7 +342,7 @@ impl<'a> Lowerer<'a> {
         body
     }
 
-    fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Typed {
+    fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Value {
         match expr {
             Expr::PathExpr(path) => self.compile_path_expr(path),
             Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
@@ -368,7 +363,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_initializer_expr(&mut self, initializer: InitializerExpr) -> Typed {
+    fn compile_initializer_expr(&mut self, initializer: InitializerExpr) -> Value {
         let ty = initializer.path().map(|path| {
             let Some(value) = path.name() else {
                 return self.unknown_type;
@@ -399,10 +394,10 @@ impl<'a> Lowerer<'a> {
             let value = field
                 .expr()
                 .map(|expr| self.compile_expr(expr, expected_type))
-                .unwrap_or(self.unknown);
+                .unwrap_or(self.unknown());
 
             if let Some(expected_type) = expected_type {
-                self.type_check(value.ty, expected_type, field.syntax().text_range());
+                self.type_check(value.ty(), expected_type, field.syntax().text_range());
             }
 
             if let Some(name) = field.name() {
@@ -417,7 +412,7 @@ impl<'a> Lowerer<'a> {
                         name.text_range(),
                     );
                 } else {
-                    specified_fields.insert(name.to_string(), value.value);
+                    specified_fields.insert(name.to_string(), value.hir());
                 }
             }
         }
@@ -447,24 +442,21 @@ impl<'a> Lowerer<'a> {
         }
 
         match ty {
-            Some(struct_type) => Typed {
-                value: hir_id,
-                ty: struct_type,
-            },
-            None => self.unknown,
+            Some(struct_type) => Value::typed(hir_id, struct_type),
+            None => self.unknown(),
         }
     }
 
-    fn compile_field_access(&mut self, field_access: FieldAccess) -> Typed {
+    fn compile_field_access(&mut self, field_access: FieldAccess) -> Value {
         let Some(value) = field_access
             .expr()
             .map(|expr| self.compile_expr(expr, None))
         else {
-            return self.unknown;
+            return self.unknown();
         };
 
         let Some(token) = field_access.field() else {
-            return self.unknown;
+            return self.unknown();
         };
 
         match token.kind() {
@@ -474,49 +466,49 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn compile_struct_field_access(&mut self, value: Typed, field_name: SyntaxToken) -> Typed {
-        match self.db.ty(value.ty) {
+    fn compile_struct_field_access(&mut self, value: Value, field_name: SyntaxToken) -> Value {
+        match self.db.ty(value.ty()) {
             Type::Struct {
                 named_fields,
                 fields,
             } => {
                 if let Some(&field_ty) = named_fields.get(field_name.text()) {
-                    Typed {
-                        value: self.db.alloc_hir(Hir::Index {
-                            value: value.value,
+                    Value::typed(
+                        self.db.alloc_hir(Hir::Index {
+                            value: value.hir(),
                             index: fields.iter().position(|&field| field == field_ty).unwrap()
                                 as u32,
                             rest: false,
                         }),
-                        ty: field_ty,
-                    }
+                        field_ty,
+                    )
                 } else {
                     self.error(
                         DiagnosticInfo::UndefinedField(field_name.to_string()),
                         field_name.text_range(),
                     );
-                    self.unknown
+                    self.unknown()
                 }
             }
             _ => {
                 self.error(
-                    DiagnosticInfo::StructFieldAccess(self.type_name(value.ty)),
+                    DiagnosticInfo::StructFieldAccess(self.type_name(value.ty())),
                     field_name.text_range(),
                 );
-                self.unknown
+                self.unknown()
             }
         }
     }
 
-    fn compile_tuple_field_access(&mut self, value: Typed, index_token: SyntaxToken) -> Typed {
+    fn compile_tuple_field_access(&mut self, value: Value, index_token: SyntaxToken) -> Value {
         let index = self.compile_int_raw(index_token.clone());
 
-        let Some(items) = self.extract_tuple_types(value.ty) else {
+        let Some(items) = self.extract_tuple_types(value.ty()) else {
             self.error(
-                DiagnosticInfo::TupleFieldAccess(self.type_name(value.ty)),
+                DiagnosticInfo::TupleFieldAccess(self.type_name(value.ty())),
                 index_token.text_range(),
             );
-            return self.unknown;
+            return self.unknown();
         };
 
         if index >= items.len() as u32 {
@@ -524,83 +516,83 @@ impl<'a> Lowerer<'a> {
                 DiagnosticInfo::IndexOutOfBounds(index, items.len() as u32),
                 index_token.text_range(),
             );
-            return self.unknown;
+            return self.unknown();
         }
 
-        Typed {
-            value: self.db.alloc_hir(Hir::Index {
-                value: value.value,
+        Value::typed(
+            self.db.alloc_hir(Hir::Index {
+                value: value.hir(),
                 index,
                 rest: index + 1 == items.len() as u32,
             }),
-            ty: items[index as usize],
-        }
+            items[index as usize],
+        )
     }
 
-    fn compile_index_access(&mut self, index_access: IndexAccess) -> Typed {
+    fn compile_index_access(&mut self, index_access: IndexAccess) -> Value {
         let Some(value) = index_access
             .expr()
             .map(|expr| self.compile_expr(expr, None))
         else {
-            return self.unknown;
+            return self.unknown();
         };
 
         let Some(index_token) = index_access.index() else {
-            return self.unknown;
+            return self.unknown();
         };
         let index = self.compile_int_raw(index_token.clone());
 
-        let Some(ty) = self.extract_list_type(value.ty) else {
+        let Some(ty) = self.extract_list_type(value.ty()) else {
             self.error(
-                DiagnosticInfo::IndexAccess(self.type_name(value.ty)),
+                DiagnosticInfo::IndexAccess(self.type_name(value.ty())),
                 index_access.expr().unwrap().syntax().text_range(),
             );
-            return self.unknown;
+            return self.unknown();
         };
 
-        Typed {
-            value: self.db.alloc_hir(Hir::Index {
-                value: value.value,
+        Value::typed(
+            self.db.alloc_hir(Hir::Index {
+                value: value.hir(),
                 index,
                 rest: false,
             }),
             ty,
-        }
+        )
     }
 
-    fn compile_prefix_expr(&mut self, prefix_expr: PrefixExpr) -> Typed {
+    fn compile_prefix_expr(&mut self, prefix_expr: PrefixExpr) -> Value {
         let Some(expr) = prefix_expr.expr() else {
-            return self.unknown;
+            return self.unknown();
         };
 
         let expr = self.compile_expr(expr, None);
 
-        self.type_check(expr.ty, self.bool_type, prefix_expr.syntax().text_range());
+        self.type_check(expr.ty(), self.bool_type, prefix_expr.syntax().text_range());
 
-        Typed {
-            value: match prefix_expr.op() {
-                Some(PrefixOp::Not) => self.db.alloc_hir(Hir::Not(expr.value)),
+        Value::typed(
+            match prefix_expr.op() {
+                Some(PrefixOp::Not) => self.db.alloc_hir(Hir::Not(expr.hir())),
                 _ => self.unknown_hir,
             },
-            ty: self.bool_type,
-        }
+            self.bool_type,
+        )
     }
 
-    fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Typed {
+    fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Value {
         let lhs = binary.lhs().map(|lhs| self.compile_expr(lhs, None));
         let rhs = binary.rhs().map(|rhs| self.compile_expr(rhs, None));
 
-        if let Some(Typed { ty, .. }) = &lhs {
+        if let Some(lhs) = &lhs {
             self.type_check(
-                *ty,
+                lhs.ty(),
                 self.int_type,
                 binary.lhs().unwrap().syntax().text_range(),
             );
         }
 
-        if let Some(Typed { ty, .. }) = &rhs {
+        if let Some(rhs) = &rhs {
             self.type_check(
-                *ty,
+                rhs.ty(),
                 self.int_type,
                 binary.rhs().unwrap().syntax().text_range(),
             );
@@ -624,37 +616,33 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(self.unknown_type);
 
         match (lhs, rhs, binary.op()) {
-            (Some(Typed { value: lhs, .. }), Some(Typed { value: rhs, .. }), Some(op)) => Typed {
-                value: self.db.alloc_hir(Hir::BinaryOp { op, lhs, rhs }),
+            (Some(lhs), Some(rhs), Some(op)) => Value::typed(
+                self.db.alloc_hir(Hir::BinaryOp {
+                    op,
+                    lhs: lhs.hir(),
+                    rhs: rhs.hir(),
+                }),
                 ty,
-            },
-            _ => Typed {
-                value: self.unknown_hir,
-                ty,
-            },
+            ),
+            _ => Value::typed(self.unknown_hir, ty),
         }
     }
 
-    fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Typed {
+    fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Value {
         let Some(value) = literal.value() else {
-            return self.unknown;
+            return self.unknown();
         };
 
         match value.kind() {
             SyntaxKind::Int => self.compile_int(value),
             SyntaxKind::String => self.compile_string(value),
-            SyntaxKind::True => Typed {
-                value: self.db.alloc_hir(Hir::Atom(vec![1])),
-                ty: self.bool_type,
-            },
-            SyntaxKind::False => Typed {
-                value: self.db.alloc_hir(Hir::Atom(Vec::new())),
-                ty: self.bool_type,
-            },
-            SyntaxKind::Nil => Typed {
-                value: self.db.alloc_hir(Hir::Atom(Vec::new())),
-                ty: self.nil_type,
-            },
+            SyntaxKind::True => Value::typed(self.db.alloc_hir(Hir::Atom(vec![1])), self.bool_type),
+            SyntaxKind::False => {
+                Value::typed(self.db.alloc_hir(Hir::Atom(Vec::new())), self.bool_type)
+            }
+            SyntaxKind::Nil => {
+                Value::typed(self.db.alloc_hir(Hir::Atom(Vec::new())), self.nil_type)
+            }
             _ => unreachable!(),
         }
     }
@@ -663,7 +651,7 @@ impl<'a> Lowerer<'a> {
         &mut self,
         list_expr: ListExpr,
         expected_expr_type: Option<TypeId>,
-    ) -> Typed {
+    ) -> Value {
         let mut items = Vec::new();
         let mut nil_terminated = true;
 
@@ -682,19 +670,19 @@ impl<'a> Lowerer<'a> {
             let output = item
                 .expr()
                 .map(|expr| self.compile_expr(expr, expected_item_type))
-                .unwrap_or(self.unknown);
+                .unwrap_or(self.unknown());
 
             if let Some(expected_item_type) = expected_item_type {
-                self.type_check(output.ty, expected_item_type, item.syntax().text_range());
+                self.type_check(output.ty(), expected_item_type, item.syntax().text_range());
             }
 
             if i + 1 == len && list_type.is_none() {
                 if item.op().is_some() {
-                    list_type = Some(output.ty);
-                    item_type = self.extract_list_type(output.ty);
+                    list_type = Some(output.ty());
+                    item_type = self.extract_list_type(output.ty());
                 } else {
-                    list_type = Some(self.db.alloc_type(Type::List(output.ty)));
-                    item_type = Some(output.ty);
+                    list_type = Some(self.db.alloc_type(Type::List(output.ty())));
+                    item_type = Some(output.ty());
                 }
             }
 
@@ -706,7 +694,7 @@ impl<'a> Lowerer<'a> {
                 }
             }
 
-            items.push(output.value);
+            items.push(output.hir());
         }
 
         let mut hir_id = self.nil_hir;
@@ -719,17 +707,17 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        Typed {
-            value: hir_id,
-            ty: list_type.unwrap_or_else(|| self.db.alloc_type(Type::List(self.unknown_type))),
-        }
+        Value::typed(
+            hir_id,
+            list_type.unwrap_or_else(|| self.db.alloc_type(Type::List(self.unknown_type))),
+        )
     }
 
     fn compile_tuple_expr(
         &mut self,
         tuple_expr: TupleExpr,
         expected_type: Option<TypeId>,
-    ) -> Typed {
+    ) -> Value {
         let mut hir_id = self.nil_hir;
         let mut types = Vec::new();
 
@@ -744,33 +732,30 @@ impl<'a> Lowerer<'a> {
             let output = self.compile_expr(item.clone(), expected_type);
 
             if let Some(expected_type) = expected_type {
-                self.type_check(output.ty, expected_type, item.syntax().text_range());
+                self.type_check(output.ty(), expected_type, item.syntax().text_range());
             }
 
-            types.push(output.ty);
+            types.push(output.ty());
 
             if i + 1 == len {
-                hir_id = output.value;
+                hir_id = output.hir();
                 continue;
             }
 
-            hir_id = self.db.alloc_hir(Hir::Pair(output.value, hir_id));
+            hir_id = self.db.alloc_hir(Hir::Pair(output.hir(), hir_id));
         }
 
         // We added these in inverse order.
         types.reverse();
 
-        Typed {
-            value: hir_id,
-            ty: self.db.alloc_type(Type::Tuple(types)),
-        }
+        Value::typed(hir_id, self.db.alloc_type(Type::Tuple(types)))
     }
 
     fn compile_lambda_expr(
         &mut self,
         lambda_expr: LambdaExpr,
         expected_type: Option<TypeId>,
-    ) -> Typed {
+    ) -> Value {
         let expected = expected_type.and_then(|expected| self.extract_function_type(expected));
 
         let mut scope = Scope::default();
@@ -802,7 +787,7 @@ impl<'a> Lowerer<'a> {
         let scope_id = self.db.alloc_scope(scope);
 
         let Some(body) = lambda_expr.body() else {
-            return self.unknown;
+            return self.unknown();
         };
 
         let expected_return_type = lambda_expr
@@ -814,31 +799,31 @@ impl<'a> Lowerer<'a> {
         let body = self.compile_expr(body, expected_return_type);
         self.scope_stack.pop().expect("lambda not in scope stack");
 
-        let return_type = expected_return_type.unwrap_or(body.ty);
+        let return_type = expected_return_type.unwrap_or(body.ty());
 
         self.type_check(
-            body.ty,
+            body.ty(),
             return_type,
             lambda_expr.body().unwrap().syntax().text_range(),
         );
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
-            hir_id: body.value,
+            hir_id: body.hir(),
             parameter_types: parameter_types.clone(),
             return_type,
         });
 
-        Typed {
-            value: self.db.alloc_hir(Hir::Reference(symbol_id)),
-            ty: self.db.alloc_type(Type::Function {
+        Value::typed(
+            self.db.alloc_hir(Hir::Reference(symbol_id)),
+            self.db.alloc_type(Type::Function {
                 parameter_types,
                 return_type,
             }),
-        }
+        )
     }
 
-    fn compile_if_expr(&mut self, if_expr: IfExpr, expected_type: Option<TypeId>) -> Typed {
+    fn compile_if_expr(&mut self, if_expr: IfExpr, expected_type: Option<TypeId>) -> Value {
         let condition = if_expr
             .condition()
             .map(|condition| self.compile_expr(condition, None));
@@ -851,7 +836,7 @@ impl<'a> Lowerer<'a> {
             self.compile_block_expr(else_block, Some(scope_id), expected_type)
         });
 
-        if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty) {
+        if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty()) {
             self.type_check(
                 condition_type,
                 self.bool_type,
@@ -859,12 +844,10 @@ impl<'a> Lowerer<'a> {
             );
         }
 
-        if let (Some(Typed { ty: then_type, .. }), Some(Typed { ty: else_type, .. })) =
-            (&then_block, &else_block)
-        {
+        if let (Some(then_block), Some(else_block)) = (&then_block, &else_block) {
             self.type_check(
-                *else_type,
-                *then_type,
+                else_block.ty(),
+                then_block.ty(),
                 if_expr.else_block().unwrap().syntax().text_range(),
             );
         }
@@ -872,25 +855,22 @@ impl<'a> Lowerer<'a> {
         let ty = then_block
             .as_ref()
             .or(else_block.as_ref())
-            .map(|block| block.ty)
+            .map(|block| block.ty())
             .unwrap_or(self.unknown_type);
 
         let value = condition.and_then(|condition| {
             then_block.and_then(|then_block| {
                 else_block.map(|else_block| {
                     self.db.alloc_hir(Hir::If {
-                        condition: condition.value,
-                        then_block: then_block.value,
-                        else_block: else_block.value,
+                        condition: condition.hir(),
+                        then_block: then_block.hir(),
+                        else_block: else_block.hir(),
                     })
                 })
             })
         });
 
-        Typed {
-            value: value.unwrap_or(self.unknown_hir),
-            ty,
-        }
+        Value::typed(value.unwrap_or(self.unknown_hir), ty)
     }
 
     fn compile_int_raw<T, E>(&mut self, int: SyntaxToken) -> T
@@ -904,31 +884,31 @@ impl<'a> Lowerer<'a> {
             .expect("failed to parse into BigInt")
     }
 
-    fn compile_int(&mut self, int: SyntaxToken) -> Typed {
+    fn compile_int(&mut self, int: SyntaxToken) -> Value {
         let num = self.compile_int_raw(int);
-        Typed {
-            value: self.db.alloc_hir(Hir::Atom(bigint_to_bytes(num))),
-            ty: self.int_type,
-        }
+
+        Value::typed(
+            self.db.alloc_hir(Hir::Atom(bigint_to_bytes(num))),
+            self.int_type,
+        )
     }
 
-    fn compile_string(&mut self, string: SyntaxToken) -> Typed {
+    fn compile_string(&mut self, string: SyntaxToken) -> Value {
         let text = string.text();
         let quote = text.chars().next().unwrap();
         let after_prefix = &text[1..];
         let before_suffix = after_prefix.strip_suffix(quote).unwrap_or(after_prefix);
 
-        Typed {
-            value: self
-                .db
+        Value::typed(
+            self.db
                 .alloc_hir(Hir::Atom(before_suffix.as_bytes().to_vec())),
-            ty: self.db.alloc_type(Type::Bytes),
-        }
+            self.db.alloc_type(Type::Bytes),
+        )
     }
 
-    fn compile_path_expr(&mut self, path: PathExpr) -> Typed {
+    fn compile_path_expr(&mut self, path: PathExpr) -> Value {
         let Some(name) = path.name() else {
-            return self.unknown;
+            return self.unknown();
         };
 
         let Some(symbol_id) = self
@@ -941,12 +921,12 @@ impl<'a> Lowerer<'a> {
                 DiagnosticInfo::UndefinedReference(name.to_string()),
                 name.text_range(),
             );
-            return self.unknown;
+            return self.unknown();
         };
 
-        Typed {
-            value: self.db.alloc_hir(Hir::Reference(symbol_id)),
-            ty: match self.db.symbol(symbol_id) {
+        Value::typed(
+            self.db.alloc_hir(Hir::Reference(symbol_id)),
+            match self.db.symbol(symbol_id) {
                 Symbol::Function {
                     parameter_types,
                     return_type,
@@ -959,25 +939,25 @@ impl<'a> Lowerer<'a> {
                 Symbol::LetBinding { type_id, .. } => *type_id,
                 Symbol::ConstBinding { type_id, .. } => *type_id, //todo
             },
-        }
+        )
     }
 
-    fn compile_function_call(&mut self, call: FunctionCall) -> Typed {
+    fn compile_function_call(&mut self, call: FunctionCall) -> Value {
         let Some(callee) = call.callee() else {
-            return self.unknown;
+            return self.unknown();
         };
 
         let Some(args) = call.args() else {
-            return self.unknown;
+            return self.unknown();
         };
 
         let callee = self.compile_expr(callee, None);
 
-        let expected = self.extract_function_type(callee.ty);
+        let expected = self.extract_function_type(callee.ty());
 
         let raw_args = args.exprs();
 
-        let args: Vec<Typed> = args
+        let args: Vec<Value> = args
             .exprs()
             .into_iter()
             .enumerate()
@@ -991,10 +971,10 @@ impl<'a> Lowerer<'a> {
             })
             .collect();
 
-        let arg_types: Vec<TypeId> = args.iter().map(|arg| arg.ty).collect();
-        let arg_values: Vec<HirId> = args.iter().map(|arg| arg.value).collect();
+        let arg_types: Vec<TypeId> = args.iter().map(|arg| arg.ty()).collect();
+        let arg_values: Vec<HirId> = args.iter().map(|arg| arg.hir()).collect();
 
-        match self.db.ty(callee.ty).clone() {
+        match self.db.ty(callee.ty()).clone() {
             Type::Function {
                 parameter_types,
                 return_type,
@@ -1008,7 +988,7 @@ impl<'a> Lowerer<'a> {
                         call.args().expect("no arguments").syntax().text_range(),
                     );
 
-                    return self.unknown;
+                    return self.unknown();
                 }
 
                 for (i, (param, &arg)) in parameter_types
@@ -1020,27 +1000,27 @@ impl<'a> Lowerer<'a> {
                     self.type_check(arg, param, raw_args[i].syntax().text_range());
                 }
 
-                Typed {
-                    value: self.db.alloc_hir(Hir::FunctionCall {
-                        callee: callee.value,
+                Value::typed(
+                    self.db.alloc_hir(Hir::FunctionCall {
+                        callee: callee.hir(),
                         args: arg_values,
                     }),
-                    ty: return_type,
-                }
+                    return_type,
+                )
             }
-            Type::Unknown => Typed {
-                value: self.db.alloc_hir(Hir::FunctionCall {
-                    callee: callee.value,
+            Type::Unknown => Value::typed(
+                self.db.alloc_hir(Hir::FunctionCall {
+                    callee: callee.hir(),
                     args: arg_values,
                 }),
-                ty: self.unknown_type,
-            },
+                self.unknown_type,
+            ),
             _ => {
                 self.error(
-                    DiagnosticInfo::UncallableType(self.type_name(callee.ty)),
+                    DiagnosticInfo::UncallableType(self.type_name(callee.ty())),
                     call.callee().expect("no callee").syntax().text_range(),
                 );
-                self.unknown
+                self.unknown()
             }
         }
     }
@@ -1252,12 +1232,12 @@ impl<'a> Lowerer<'a> {
         name
     }
 
-    fn type_check(&mut self, value_type_id: TypeId, assign_to_type_id: TypeId, range: TextRange) {
-        if !self.is_assignable_to(value_type_id, assign_to_type_id, &mut HashSet::new()) {
+    fn type_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
+        if !self.is_assignable_to(from, to, &mut HashSet::new()) {
             self.error(
                 DiagnosticInfo::TypeMismatch {
-                    expected: self.type_name(assign_to_type_id),
-                    found: self.type_name(value_type_id),
+                    expected: self.type_name(to),
+                    found: self.type_name(from),
                 },
                 range,
             );
@@ -1348,6 +1328,10 @@ impl<'a> Lowerer<'a> {
 
             _ => false,
         }
+    }
+
+    fn unknown(&self) -> Value {
+        Value::typed(self.unknown_hir, self.unknown_type)
     }
 
     fn scope_mut(&mut self) -> &mut Scope {
