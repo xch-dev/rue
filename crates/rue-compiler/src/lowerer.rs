@@ -8,11 +8,11 @@ use indexmap::{IndexMap, IndexSet};
 use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, BinaryExpr, BinaryOp, Block, ConstItem, EnumItem, Expr, FieldAccess, FunctionCall,
-    FunctionItem, FunctionType, IfExpr, IndexAccess, InitializerExpr, InitializerField, Item,
-    LambdaExpr, ListExpr, ListType, LiteralExpr, Path, PrefixExpr, PrefixOp, Root, Stmt,
-    StructField, StructItem, SyntaxKind, SyntaxToken, TupleExpr, TupleType, Type as AstType,
-    TypeAliasItem,
+    AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
+    FunctionCall, FunctionItem, FunctionType, IfExpr, IndexAccess, InitializerExpr,
+    InitializerField, Item, LambdaExpr, ListExpr, ListType, LiteralExpr, Path, PrefixExpr,
+    PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, TupleExpr, TupleType,
+    Type as AstType, TypeAliasItem,
 };
 
 use crate::{
@@ -31,6 +31,7 @@ pub struct Lowerer<'a> {
     int_type: TypeId,
     bool_type: TypeId,
     bytes_type: TypeId,
+    any_type: TypeId,
     nil_type: TypeId,
     nil_hir: HirId,
     unknown_type: TypeId,
@@ -42,6 +43,7 @@ impl<'a> Lowerer<'a> {
         let int_type = db.alloc_type(Type::Int);
         let bool_type = db.alloc_type(Type::Bool);
         let bytes_type = db.alloc_type(Type::Bytes);
+        let any_type = db.alloc_type(Type::Any);
         let nil_type = db.alloc_type(Type::Tuple(Vec::new()));
         let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
         let unknown_type = db.alloc_type(Type::Unknown);
@@ -54,6 +56,7 @@ impl<'a> Lowerer<'a> {
             int_type,
             bool_type,
             bytes_type,
+            any_type,
             nil_type,
             nil_hir,
             unknown_type,
@@ -420,6 +423,7 @@ impl<'a> Lowerer<'a> {
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
+            Expr::CastExpr(cast) => self.compile_cast_expr(cast, expected_type),
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
             Expr::FunctionCall(call) => self.compile_function_call(call),
             Expr::FieldAccess(field_access) => self.compile_field_access(field_access),
@@ -703,6 +707,24 @@ impl<'a> Lowerer<'a> {
             ),
             _ => Value::typed(self.unknown_hir, ty),
         }
+    }
+
+    fn compile_cast_expr(&mut self, cast: CastExpr, expected_type: Option<TypeId>) -> Value {
+        let Some(expr) = cast
+            .expr()
+            .map(|expr| self.compile_expr(expr, expected_type))
+        else {
+            return self.unknown();
+        };
+
+        let ty = cast
+            .ty()
+            .map(|ty| self.compile_type(ty))
+            .unwrap_or(self.unknown_type);
+
+        self.cast_check(expr.ty(), ty, cast.expr().unwrap().syntax().text_range());
+
+        Value::typed(expr.hir(), ty)
     }
 
     fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Value {
@@ -1132,6 +1154,7 @@ impl<'a> Lowerer<'a> {
                 "Int" => self.int_type,
                 "Bool" => self.bool_type,
                 "Bytes" => self.bytes_type,
+                "Any" => self.any_type,
                 _ => {
                     self.error(
                         DiagnosticInfo::UndefinedType(name.to_string()),
@@ -1265,7 +1288,7 @@ impl<'a> Lowerer<'a> {
                 }
                 self.detect_cycle(alias, text_range, visited_aliases)
             }
-            Type::Unknown | Type::Int | Type::Bool | Type::Bytes => false,
+            Type::Unknown | Type::Any | Type::Int | Type::Bool | Type::Bytes => false,
         }
     }
 
@@ -1288,6 +1311,7 @@ impl<'a> Lowerer<'a> {
 
         let name = match self.db.ty(ty) {
             Type::Unknown => "{unknown}".to_string(),
+            Type::Any => "Any".to_string(),
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Bytes => "Bytes".to_string(),
@@ -1357,9 +1381,21 @@ impl<'a> Lowerer<'a> {
     }
 
     fn type_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
-        if !self.is_assignable_to(from, to, &mut HashSet::new()) {
+        if !self.is_assignable_to(from, to, false, &mut HashSet::new()) {
             self.error(
                 DiagnosticInfo::TypeMismatch {
+                    expected: self.type_name(to),
+                    found: self.type_name(from),
+                },
+                range,
+            );
+        }
+    }
+
+    fn cast_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
+        if !self.is_assignable_to(from, to, true, &mut HashSet::new()) {
+            self.error(
+                DiagnosticInfo::CastMismatch {
                     expected: self.type_name(to),
                     found: self.type_name(from),
                 },
@@ -1372,6 +1408,7 @@ impl<'a> Lowerer<'a> {
         &self,
         a: TypeId,
         b: TypeId,
+        cast: bool,
         visited: &mut HashSet<(TypeId, TypeId)>,
     ) -> bool {
         let key = (a, b);
@@ -1384,20 +1421,28 @@ impl<'a> Lowerer<'a> {
         match (self.db.ty(a).clone(), self.db.ty(b).clone()) {
             // Primitive types.
             (Type::Unknown, _) | (_, Type::Unknown) => true,
+            (Type::Any, Type::Any) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Bytes, Type::Bytes) => true,
+            (_, Type::Any) => true,
+
+            // Primitive casts.
+            (Type::Int, Type::Bytes) if cast => true,
+            (Type::Bytes, Type::Int) if cast => true,
+            (Type::Bool, Type::Int | Type::Bytes) if cast => true,
+            (Type::Any, _) if cast => true,
 
             // Reduce the type alias on left hand side.
-            (Type::Alias(alias), _) => self.is_assignable_to(alias, b, visited),
+            (Type::Alias(alias), _) => self.is_assignable_to(alias, b, cast, visited),
 
             // Reduce the type alias on right hand side.
-            (_, Type::Alias(alias)) => self.is_assignable_to(a, alias, visited),
+            (_, Type::Alias(alias)) => self.is_assignable_to(a, alias, cast, visited),
 
             // Anything can be assigned to a union if it can be assigned to any of its items.
             (_, Type::Union(items)) => {
                 for &item in items.iter() {
-                    if self.is_assignable_to(a, item, visited) {
+                    if self.is_assignable_to(a, item, cast, visited) {
                         return true;
                     }
                 }
@@ -1407,10 +1452,10 @@ impl<'a> Lowerer<'a> {
             // Unions can be assigned to anything if all of its items can be assigned to it.
             (Type::Union(items), _) => items
                 .iter()
-                .all(|&item| self.is_assignable_to(item, b, visited)),
+                .all(|&item| self.is_assignable_to(item, b, cast, visited)),
 
             // List types with compatible items are also assignable.
-            (Type::List(a), Type::List(b)) => self.is_assignable_to(a, b, visited),
+            (Type::List(a), Type::List(b)) => self.is_assignable_to(a, b, cast, visited),
 
             (Type::Tuple(a), Type::Tuple(b)) => {
                 if a.len() != b.len() {
@@ -1418,7 +1463,7 @@ impl<'a> Lowerer<'a> {
                 }
 
                 for (a, b) in a.iter().zip(b.iter()) {
-                    if !self.is_assignable_to(*a, *b, visited) {
+                    if !self.is_assignable_to(*a, *b, cast, visited) {
                         return false;
                     }
                 }
@@ -1445,12 +1490,12 @@ impl<'a> Lowerer<'a> {
                 }
 
                 for (a, b) in params_a.into_iter().zip(params_b.into_iter()) {
-                    if !self.is_assignable_to(a, b, visited) {
+                    if !self.is_assignable_to(a, b, cast, visited) {
                         return false;
                     }
                 }
 
-                self.is_assignable_to(ret_a, ret_b, visited)
+                self.is_assignable_to(ret_a, ret_b, cast, visited)
             }
 
             _ => false,

@@ -279,6 +279,11 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
             p.expect(SyntaxKind::Int);
             p.expect(SyntaxKind::CloseBracket);
             p.finish();
+        } else if p.at(SyntaxKind::As) {
+            p.start_at(checkpoint, SyntaxKind::CastExpr);
+            p.bump();
+            ty(p);
+            p.finish();
         } else {
             break;
         }

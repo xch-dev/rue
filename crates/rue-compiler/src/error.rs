@@ -53,6 +53,9 @@ pub enum DiagnosticInfo {
     #[error("expected type `{expected}`, found `{found}`")]
     TypeMismatch { expected: String, found: String },
 
+    #[error("cannot cast type `{found}` to `{expected}`")]
+    CastMismatch { expected: String, found: String },
+
     #[error("cannot call expression with type `{0}`")]
     UncallableType(String),
 

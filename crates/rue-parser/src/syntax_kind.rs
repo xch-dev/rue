@@ -32,6 +32,7 @@ pub enum SyntaxKind {
     Nil,
     True,
     False,
+    As,
 
     Dot,
     Comma,
@@ -86,6 +87,7 @@ pub enum SyntaxKind {
     LambdaParam,
     PrefixExpr,
     BinaryExpr,
+    CastExpr,
     IfExpr,
     FunctionCall,
     FunctionCallArgs,
@@ -130,6 +132,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::Nil => "'nil'",
                 SyntaxKind::True => "'true'",
                 SyntaxKind::False => "'false'",
+                SyntaxKind::As => "'as'",
 
                 SyntaxKind::Dot => "'.'",
                 SyntaxKind::Comma => "','",
@@ -184,6 +187,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::LambdaParam => "lambda param",
                 SyntaxKind::PrefixExpr => "prefix expression",
                 SyntaxKind::BinaryExpr => "binary expression",
+                SyntaxKind::CastExpr => "cast expression",
                 SyntaxKind::IfExpr => "if expression",
                 SyntaxKind::FunctionCall => "function call",
                 SyntaxKind::FunctionCallArgs => "function call arguments",

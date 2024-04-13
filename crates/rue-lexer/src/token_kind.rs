@@ -22,6 +22,7 @@ pub enum TokenKind {
     Nil,
     True,
     False,
+    As,
 
     Dot,
     Comma,

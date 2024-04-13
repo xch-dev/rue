@@ -114,6 +114,7 @@ impl<'a> Lexer<'a> {
                     "nil" => TokenKind::Nil,
                     "true" => TokenKind::True,
                     "false" => TokenKind::False,
+                    "as" => TokenKind::As,
                     _ => TokenKind::Ident,
                 }
             }
@@ -276,6 +277,7 @@ mod tests {
         check("true", &[TokenKind::True]);
         check("false", &[TokenKind::False]);
         check("nil", &[TokenKind::Nil]);
+        check("as", &[TokenKind::As]);
     }
 
     #[test]

@@ -5,6 +5,7 @@ use crate::database::{HirId, TypeId};
 #[derive(Debug, Clone)]
 pub enum Type {
     Unknown,
+    Any,
     Int,
     Bool,
     Bytes,

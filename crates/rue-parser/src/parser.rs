@@ -193,6 +193,7 @@ fn convert_tokens<'a>(
             TokenKind::Nil => SyntaxKind::Nil,
             TokenKind::True => SyntaxKind::True,
             TokenKind::False => SyntaxKind::False,
+            TokenKind::As => SyntaxKind::As,
 
             TokenKind::Dot => SyntaxKind::Dot,
             TokenKind::Comma => SyntaxKind::Comma,
