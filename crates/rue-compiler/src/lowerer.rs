@@ -558,14 +558,7 @@ impl<'a> Lowerer<'a> {
         match self.db.ty(value.ty()) {
             Type::Struct { fields } => {
                 if let Some((index, _name, &field_type)) = fields.get_full(field_name.text()) {
-                    Value::typed(
-                        self.db.alloc_hir(Hir::Index {
-                            value: value.hir(),
-                            index: index as u32,
-                            rest: false,
-                        }),
-                        field_type,
-                    )
+                    Value::typed(self.compile_index(value.hir(), index, false), field_type)
                 } else {
                     self.error(
                         DiagnosticInfo::UndefinedField(field_name.to_string()),
@@ -595,21 +588,17 @@ impl<'a> Lowerer<'a> {
             return self.unknown();
         };
 
-        if index >= items.len() as u32 {
+        if index >= items.len() {
             self.error(
-                DiagnosticInfo::IndexOutOfBounds(index, items.len() as u32),
+                DiagnosticInfo::IndexOutOfBounds(index as u32, items.len() as u32),
                 index_token.text_range(),
             );
             return self.unknown();
         }
 
         Value::typed(
-            self.db.alloc_hir(Hir::Index {
-                value: value.hir(),
-                index,
-                rest: index + 1 == items.len() as u32,
-            }),
-            items[index as usize],
+            self.compile_index(value.hir(), index, index + 1 == items.len()),
+            items[index],
         )
     }
 
@@ -634,14 +623,18 @@ impl<'a> Lowerer<'a> {
             return self.unknown();
         };
 
-        Value::typed(
-            self.db.alloc_hir(Hir::Index {
-                value: value.hir(),
-                index,
-                rest: false,
-            }),
-            ty,
-        )
+        Value::typed(self.compile_index(value.hir(), index, false), ty)
+    }
+
+    fn compile_index(&mut self, value: HirId, index: usize, rest: bool) -> HirId {
+        let mut result = value;
+        for _ in 0..index {
+            result = self.db.alloc_hir(Hir::Rest(result));
+        }
+        if !rest {
+            result = self.db.alloc_hir(Hir::First(result));
+        }
+        result
     }
 
     fn compile_prefix_expr(&mut self, prefix_expr: PrefixExpr) -> Value {

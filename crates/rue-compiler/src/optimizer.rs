@@ -54,6 +54,8 @@ impl<'a> Optimizer<'a> {
                 self.compute_captures_hir(scope_id, lhs);
                 self.compute_captures_hir(scope_id, rhs);
             }
+            Hir::First(value) => self.compute_captures_hir(scope_id, value),
+            Hir::Rest(value) => self.compute_captures_hir(scope_id, value),
             Hir::Not(value) => {
                 self.compute_captures_hir(scope_id, value);
             }
@@ -69,9 +71,6 @@ impl<'a> Optimizer<'a> {
             Hir::Pair(first, rest) => {
                 self.compute_captures_hir(scope_id, first);
                 self.compute_captures_hir(scope_id, rest);
-            }
-            Hir::Index { value, .. } => {
-                self.compute_captures_hir(scope_id, value);
             }
         }
     }
@@ -277,7 +276,6 @@ impl<'a> Optimizer<'a> {
             Hir::Unknown => unreachable!(),
             Hir::Atom(atom) => self.db.alloc_lir(Lir::Atom(atom.clone())),
             Hir::Pair(first, rest) => self.opt_pair(scope_id, *first, *rest),
-            Hir::Index { value, index, rest } => self.opt_index(scope_id, *value, *index, *rest),
             Hir::Reference(symbol_id) => self.opt_reference(scope_id, *symbol_id),
             Hir::Scope {
                 scope_id: new_scope_id,
@@ -302,6 +300,8 @@ impl<'a> Optimizer<'a> {
                 };
                 handler(self, scope_id, *lhs, *rhs)
             }
+            Hir::First(value) => self.opt_first(scope_id, *value),
+            Hir::Rest(value) => self.opt_rest(scope_id, *value),
             Hir::Not(value) => self.opt_not(scope_id, *value),
             Hir::If {
                 condition,
@@ -317,18 +317,14 @@ impl<'a> Optimizer<'a> {
         self.db.alloc_lir(Lir::Pair(first, rest))
     }
 
-    fn opt_index(&mut self, scope_id: ScopeId, hir_id: HirId, index: u32, rest: bool) -> LirId {
-        let mut value = self.opt_hir(scope_id, hir_id);
+    fn opt_first(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
+        let lir_id = self.opt_hir(scope_id, hir_id);
+        self.db.alloc_lir(Lir::First(lir_id))
+    }
 
-        for _ in 0..index {
-            value = self.db.alloc_lir(Lir::Rest(value));
-        }
-
-        if rest {
-            value
-        } else {
-            self.db.alloc_lir(Lir::First(value))
-        }
+    fn opt_rest(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
+        let lir_id = self.opt_hir(scope_id, hir_id);
+        self.db.alloc_lir(Lir::Rest(lir_id))
     }
 
     fn opt_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {

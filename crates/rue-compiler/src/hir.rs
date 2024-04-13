@@ -7,11 +7,6 @@ pub enum Hir {
     Unknown,
     Atom(Vec<u8>),
     Pair(HirId, HirId),
-    Index {
-        value: HirId,
-        index: u32,
-        rest: bool,
-    },
     Reference(SymbolId),
     Scope {
         scope_id: ScopeId,
@@ -26,6 +21,8 @@ pub enum Hir {
         lhs: HirId,
         rhs: HirId,
     },
+    First(HirId),
+    Rest(HirId),
     Not(HirId),
     If {
         condition: HirId,
