@@ -30,8 +30,6 @@ pub struct Lowerer<'a> {
     diagnostics: Vec<Diagnostic>,
     int_type: TypeId,
     bool_type: TypeId,
-    bytes_type: TypeId,
-    any_type: TypeId,
     nil_type: TypeId,
     nil_hir: HirId,
     unknown_type: TypeId,
@@ -49,14 +47,20 @@ impl<'a> Lowerer<'a> {
         let unknown_type = db.alloc_type(Type::Unknown);
         let unknown_hir = db.alloc_hir(Hir::Unknown);
 
+        let mut builtins = Scope::default();
+        builtins.define_type("Int".to_string(), int_type);
+        builtins.define_type("Bool".to_string(), bool_type);
+        builtins.define_type("Bytes".to_string(), bytes_type);
+        builtins.define_type("Any".to_string(), any_type);
+
+        let builtins_id = db.alloc_scope(builtins);
+
         Self {
             db,
-            scope_stack: Vec::new(),
+            scope_stack: vec![builtins_id],
             diagnostics: Vec::new(),
             int_type,
             bool_type,
-            bytes_type,
-            any_type,
             nil_type,
             nil_hir,
             unknown_type,
@@ -1142,27 +1146,21 @@ impl<'a> Lowerer<'a> {
         let mut idents = path.idents();
 
         let name = idents.remove(0);
+        let mut ty = None;
 
-        let mut ty = 'initial_type: {
-            for &scope_id in self.scope_stack.iter().rev() {
-                if let Some(ty) = self.db.scope(scope_id).type_alias(name.text()) {
-                    break 'initial_type ty;
-                }
+        for &scope_id in self.scope_stack.iter().rev() {
+            if let Some(found_type_id) = self.db.scope(scope_id).type_alias(name.text()) {
+                ty = Some(found_type_id);
+                break;
             }
+        }
 
-            match name.text() {
-                "Int" => self.int_type,
-                "Bool" => self.bool_type,
-                "Bytes" => self.bytes_type,
-                "Any" => self.any_type,
-                _ => {
-                    self.error(
-                        DiagnosticInfo::UndefinedType(name.to_string()),
-                        name.text_range(),
-                    );
-                    self.unknown_type
-                }
-            }
+        let Some(mut ty) = ty else {
+            self.error(
+                DiagnosticInfo::UndefinedType(name.to_string()),
+                name.text_range(),
+            );
+            return self.unknown_type;
         };
 
         for name in idents {
