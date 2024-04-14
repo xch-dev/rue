@@ -48,6 +48,7 @@ impl<'a> Lowerer<'a> {
         let unknown_hir = db.alloc_hir(Hir::Unknown);
 
         let mut builtins = Scope::default();
+        builtins.define_type("Nil".to_string(), nil_type);
         builtins.define_type("Int".to_string(), int_type);
         builtins.define_type("Bool".to_string(), bool_type);
         builtins.define_type("Bytes".to_string(), bytes_type);
@@ -98,6 +99,8 @@ impl<'a> Lowerer<'a> {
 
     fn compile_items(&mut self, items: Vec<Item>) {
         let mut type_ids = Vec::new();
+        let mut symbol_ids = Vec::new();
+
         for item in items.clone() {
             match item {
                 Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias(ty)),
@@ -107,7 +110,6 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        let mut symbol_ids = Vec::new();
         for item in items.clone() {
             match item {
                 Item::FunctionItem(function) => symbol_ids.push(self.declare_function(function)),
@@ -116,25 +118,31 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        let mut i = 0;
         for item in items.clone() {
             match item {
-                Item::TypeAliasItem(ty) => self.compile_type_alias(ty, type_ids[i]),
-                Item::StructItem(struct_item) => self.compile_struct(struct_item, type_ids[i]),
-                Item::EnumItem(enum_item) => self.compile_enum(enum_item, type_ids[i]),
-                _ => continue,
+                Item::TypeAliasItem(ty) => {
+                    self.compile_type_alias(ty, type_ids.remove(0));
+                }
+                Item::StructItem(struct_item) => {
+                    self.compile_struct(struct_item, type_ids.remove(0));
+                }
+                Item::EnumItem(enum_item) => {
+                    self.compile_enum(enum_item, type_ids.remove(0));
+                }
+                _ => {}
             }
-            i += 1;
         }
 
-        let mut i = 0;
-        for item in items.clone() {
+        for item in items {
             match item {
-                Item::FunctionItem(function) => self.compile_function(function, symbol_ids[i]),
-                Item::ConstItem(const_item) => self.compile_const(const_item, symbol_ids[i]),
-                _ => continue,
+                Item::FunctionItem(function) => {
+                    self.compile_function(function, symbol_ids.remove(0));
+                }
+                Item::ConstItem(const_item) => {
+                    self.compile_const(const_item, symbol_ids.remove(0));
+                }
+                _ => {}
             }
-            i += 1;
         }
     }
 
