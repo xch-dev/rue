@@ -102,12 +102,11 @@ ast_node!(BinaryExpr);
 ast_node!(CastExpr);
 ast_node!(IfExpr);
 ast_node!(FunctionCall);
-ast_node!(FunctionCallArgs);
+ast_node!(FunctionCallArg);
 ast_node!(FieldAccess);
 ast_node!(IndexAccess);
 
 ast_node!(LambdaExpr);
-ast_node!(LambdaParamList);
 ast_node!(LambdaParam);
 
 ast_enum!(Type, Path, ListType, TupleType, FunctionType);
@@ -115,7 +114,7 @@ ast_node!(ListType);
 ast_node!(ListTypeItem);
 ast_node!(TupleType);
 ast_node!(FunctionType);
-ast_node!(FunctionTypeParams);
+ast_node!(FunctionTypeParam);
 
 ast_enum!(Stmt, LetStmt);
 ast_node!(LetStmt);
@@ -151,6 +150,13 @@ impl FunctionItem {
 }
 
 impl FunctionParam {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Spread)
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -449,7 +455,7 @@ impl ListItem {
         self.syntax().children().find_map(Expr::cast)
     }
 
-    pub fn op(&self) -> Option<SyntaxToken> {
+    pub fn spread(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
@@ -464,8 +470,11 @@ impl TupleExpr {
 }
 
 impl LambdaExpr {
-    pub fn param_list(&self) -> Option<LambdaParamList> {
-        self.syntax().children().find_map(LambdaParamList::cast)
+    pub fn params(&self) -> Vec<LambdaParam> {
+        self.syntax()
+            .children()
+            .filter_map(LambdaParam::cast)
+            .collect()
     }
 
     pub fn ty(&self) -> Option<Type> {
@@ -474,15 +483,6 @@ impl LambdaExpr {
 
     pub fn body(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
-    }
-}
-
-impl LambdaParamList {
-    pub fn params(&self) -> Vec<LambdaParam> {
-        self.syntax()
-            .children()
-            .filter_map(LambdaParam::cast)
-            .collect()
     }
 }
 
@@ -518,14 +518,24 @@ impl FunctionCall {
         self.syntax().children().find_map(Expr::cast)
     }
 
-    pub fn args(&self) -> Option<FunctionCallArgs> {
-        self.syntax().children().find_map(FunctionCallArgs::cast)
+    pub fn args(&self) -> Vec<FunctionCallArg> {
+        self.syntax()
+            .children()
+            .filter_map(FunctionCallArg::cast)
+            .collect()
     }
 }
 
-impl FunctionCallArgs {
-    pub fn exprs(&self) -> Vec<Expr> {
-        self.syntax().children().filter_map(Expr::cast).collect()
+impl FunctionCallArg {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Spread)
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
     }
 }
 
@@ -562,15 +572,15 @@ impl ListType {
 }
 
 impl ListTypeItem {
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
-    }
-
-    pub fn op(&self) -> Option<SyntaxToken> {
+    pub fn spread(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Spread)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
     }
 }
 
@@ -581,8 +591,11 @@ impl TupleType {
 }
 
 impl FunctionType {
-    pub fn params(&self) -> Option<FunctionTypeParams> {
-        self.syntax().children().find_map(FunctionTypeParams::cast)
+    pub fn params(&self) -> Vec<FunctionTypeParam> {
+        self.syntax()
+            .children()
+            .filter_map(FunctionTypeParam::cast)
+            .collect()
     }
 
     pub fn ret(&self) -> Option<Type> {
@@ -590,8 +603,15 @@ impl FunctionType {
     }
 }
 
-impl FunctionTypeParams {
-    pub fn types(&self) -> Vec<Type> {
-        self.syntax().children().filter_map(Type::cast).collect()
+impl FunctionTypeParam {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Spread)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
     }
 }

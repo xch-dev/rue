@@ -19,6 +19,7 @@ struct Ops {
     f: NodePtr,
     r: NodePtr,
     eq: NodePtr,
+    sha256: NodePtr,
     add: NodePtr,
     sub: NodePtr,
     mul: NodePtr,
@@ -39,6 +40,7 @@ impl<'a> Codegen<'a> {
             f: allocator.new_small_number(5).unwrap(),
             r: allocator.new_small_number(6).unwrap(),
             eq: allocator.new_small_number(9).unwrap(),
+            sha256: allocator.new_small_number(11).unwrap(),
             add: allocator.new_small_number(16).unwrap(),
             sub: allocator.new_small_number(17).unwrap(),
             mul: allocator.new_small_number(18).unwrap(),
@@ -62,6 +64,7 @@ impl<'a> Codegen<'a> {
             Lir::FunctionBody(body) => self.gen_quote(body),
             Lir::First(value) => self.gen_first(value),
             Lir::Rest(value) => self.gen_rest(value),
+            Lir::Sha256(value) => self.gen_sha256(value),
             Lir::If(condition, then_branch, else_branch) => {
                 self.gen_if(condition, then_branch, else_branch)
             }
@@ -88,10 +91,9 @@ impl<'a> Codegen<'a> {
         self.list(&[self.ops.c, first, rest])
     }
 
-    fn gen_run(&mut self, program: LirId, args: Vec<LirId>) -> NodePtr {
+    fn gen_run(&mut self, program: LirId, args: LirId) -> NodePtr {
         let program = self.gen_lir(program);
-        let args: Vec<NodePtr> = args.into_iter().map(|arg| self.gen_lir(arg)).collect();
-        let args = self.runtime_list(&args, NodePtr::NIL);
+        let args = self.gen_lir(args);
         self.list(&[self.ops.a, program, args])
     }
 
@@ -121,6 +123,11 @@ impl<'a> Codegen<'a> {
     fn gen_rest(&mut self, value: LirId) -> NodePtr {
         let value = self.gen_lir(value);
         self.list(&[self.ops.r, value])
+    }
+
+    fn gen_sha256(&mut self, value: LirId) -> NodePtr {
+        let value = self.gen_lir(value);
+        self.list(&[self.ops.sha256, value])
     }
 
     fn gen_if(&mut self, condition: LirId, then_branch: LirId, else_branch: LirId) -> NodePtr {

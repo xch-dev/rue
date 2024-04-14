@@ -48,6 +48,7 @@ fn function_params(p: &mut Parser) {
 
 fn function_param(p: &mut Parser) {
     p.start(SyntaxKind::FunctionParam);
+    p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::Colon);
     ty(p);
@@ -255,16 +256,14 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
     loop {
         if p.at(SyntaxKind::OpenParen) {
             p.start_at(checkpoint, SyntaxKind::FunctionCall);
-            p.start(SyntaxKind::FunctionCallArgs);
             p.bump();
             while !p.at(SyntaxKind::CloseParen) {
-                expr(p);
+                function_call_arg(p);
                 if !p.try_eat(SyntaxKind::Comma) {
                     break;
                 }
             }
             p.expect(SyntaxKind::CloseParen);
-            p.finish();
             p.finish();
         } else if p.at(SyntaxKind::Dot) {
             p.start_at(checkpoint, SyntaxKind::FieldAccess);
@@ -330,6 +329,13 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
     }
 }
 
+fn function_call_arg(p: &mut Parser) {
+    p.start(SyntaxKind::FunctionCallArg);
+    p.try_eat(SyntaxKind::Spread);
+    expr(p);
+    p.finish();
+}
+
 fn list_expr(p: &mut Parser) {
     p.start(SyntaxKind::ListExpr);
     p.expect(SyntaxKind::OpenBracket);
@@ -349,17 +355,6 @@ fn list_expr(p: &mut Parser) {
 fn lambda_expr(p: &mut Parser) {
     p.start(SyntaxKind::LambdaExpr);
     p.expect(SyntaxKind::Fun);
-    lambda_params(p);
-    if p.try_eat(SyntaxKind::Colon) {
-        ty(p);
-    }
-    p.expect(SyntaxKind::FatArrow);
-    expr(p);
-    p.finish();
-}
-
-fn lambda_params(p: &mut Parser) {
-    p.start(SyntaxKind::LambdaParamList);
     p.expect(SyntaxKind::OpenParen);
     while !p.at(SyntaxKind::CloseParen) {
         lambda_param(p);
@@ -368,11 +363,17 @@ fn lambda_params(p: &mut Parser) {
         }
     }
     p.expect(SyntaxKind::CloseParen);
+    if p.try_eat(SyntaxKind::Colon) {
+        ty(p);
+    }
+    p.expect(SyntaxKind::FatArrow);
+    expr(p);
     p.finish();
 }
 
 fn lambda_param(p: &mut Parser) {
     p.start(SyntaxKind::LambdaParam);
+    p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
     if p.try_eat(SyntaxKind::Colon) {
         ty(p);
@@ -400,7 +401,14 @@ fn ty(p: &mut Parser) {
     } else if p.at(SyntaxKind::Fun) {
         p.start(SyntaxKind::FunctionType);
         p.bump();
-        function_type_params(p);
+        p.expect(SyntaxKind::OpenParen);
+        while !p.at(SyntaxKind::CloseParen) {
+            function_type_param(p);
+            if !p.try_eat(SyntaxKind::Comma) {
+                break;
+            }
+        }
+        p.expect(SyntaxKind::CloseParen);
         p.expect(SyntaxKind::Arrow);
         ty(p);
         p.finish();
@@ -427,15 +435,9 @@ fn ty(p: &mut Parser) {
     }
 }
 
-fn function_type_params(p: &mut Parser) {
-    p.start(SyntaxKind::FunctionTypeParams);
-    p.expect(SyntaxKind::OpenParen);
-    while !p.at(SyntaxKind::CloseParen) {
-        ty(p);
-        if !p.try_eat(SyntaxKind::Comma) {
-            break;
-        }
-    }
-    p.expect(SyntaxKind::CloseParen);
+fn function_type_param(p: &mut Parser) {
+    p.start(SyntaxKind::FunctionTypeParam);
+    p.try_eat(SyntaxKind::Spread);
+    ty(p);
     p.finish();
 }

@@ -83,7 +83,7 @@ pub enum DiagnosticInfo {
     #[error("index `{0}` out of bounds, length is `{1}`")]
     IndexOutOfBounds(u32, u32),
 
-    #[error("cannot spread non-final item in list")]
+    #[error("the spread operator can only be used on the last element")]
     NonFinalSpread,
 
     #[error("duplicate enum variant `{0}`")]

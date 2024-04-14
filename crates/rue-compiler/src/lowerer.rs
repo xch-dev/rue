@@ -53,6 +53,25 @@ impl<'a> Lowerer<'a> {
         builtins.define_type("Bytes".to_string(), bytes_type);
         builtins.define_type("Any".to_string(), any_type);
 
+        let mut sha256_scope = Scope::default();
+        let sha256_param = db.alloc_symbol(Symbol::Parameter {
+            type_id: bytes_type,
+        });
+        sha256_scope.define_symbol("bytes".to_string(), sha256_param);
+        let sha256_param_ref = db.alloc_hir(Hir::Reference(sha256_param));
+        let sha256_hir = db.alloc_hir(Hir::Sha256(sha256_param_ref));
+        let sha256_scope_id = db.alloc_scope(sha256_scope);
+
+        builtins.define_symbol(
+            "sha256".to_string(),
+            db.alloc_symbol(Symbol::Function {
+                scope_id: sha256_scope_id,
+                hir_id: sha256_hir,
+                return_type: bytes_type,
+                parameter_types: vec![bytes_type],
+            }),
+        );
+
         let builtins_id = db.alloc_scope(builtins);
 
         Self {
@@ -764,7 +783,7 @@ impl<'a> Lowerer<'a> {
         let len = list_expr.items().len();
 
         for (i, item) in list_expr.items().into_iter().enumerate() {
-            let expected_item_type = if item.op().is_some() {
+            let expected_item_type = if item.spread().is_some() {
                 list_type
             } else {
                 item_type
@@ -780,7 +799,7 @@ impl<'a> Lowerer<'a> {
             }
 
             if i + 1 == len && list_type.is_none() {
-                if item.op().is_some() {
+                if item.spread().is_some() {
                     list_type = Some(output.ty());
                     item_type = self.extract_list_type(output.ty());
                 } else {
@@ -789,7 +808,7 @@ impl<'a> Lowerer<'a> {
                 }
             }
 
-            if let Some(spread) = item.op() {
+            if let Some(spread) = item.spread() {
                 if i + 1 == len {
                     nil_terminated = false;
                 } else {
@@ -864,13 +883,7 @@ impl<'a> Lowerer<'a> {
         let mut scope = Scope::default();
         let mut parameter_types = Vec::new();
 
-        for (i, param) in lambda_expr
-            .param_list()
-            .map(|list| list.params())
-            .unwrap_or_default()
-            .into_iter()
-            .enumerate()
-        {
+        for (i, param) in lambda_expr.params().into_iter().enumerate() {
             let type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
@@ -1055,32 +1068,34 @@ impl<'a> Lowerer<'a> {
             return self.unknown();
         };
 
-        let Some(args) = call.args() else {
-            return self.unknown();
-        };
-
         let callee = self.compile_expr(callee, None);
-
         let expected = self.extract_function_type(callee.ty());
 
-        let raw_args = args.exprs();
-
-        let args: Vec<Value> = args
-            .exprs()
+        let args: Vec<Value> = call
+            .args()
             .into_iter()
             .enumerate()
             .map(|(i, arg)| {
-                self.compile_expr(
-                    arg,
-                    expected
-                        .as_ref()
-                        .and_then(|expected| expected.0.get(i).copied()),
-                )
+                arg.expr()
+                    .map(|arg| {
+                        self.compile_expr(
+                            arg,
+                            expected
+                                .as_ref()
+                                .and_then(|expected| expected.0.get(i).copied()),
+                        )
+                    })
+                    .unwrap_or_else(|| self.unknown())
             })
             .collect();
 
         let arg_types: Vec<TypeId> = args.iter().map(|arg| arg.ty()).collect();
-        let arg_values: Vec<HirId> = args.iter().map(|arg| arg.hir()).collect();
+
+        let mut args_hir = self.nil_hir;
+
+        for arg in args.iter().rev() {
+            args_hir = self.db.alloc_hir(Hir::Pair(arg.hir(), args_hir));
+        }
 
         match self.db.ty(callee.ty()).clone() {
             Type::Function {
@@ -1093,7 +1108,7 @@ impl<'a> Lowerer<'a> {
                             expected: parameter_types.len(),
                             found: arg_types.len(),
                         },
-                        call.args().expect("no arguments").syntax().text_range(),
+                        call.syntax().text_range(),
                     );
 
                     return self.unknown();
@@ -1105,13 +1120,13 @@ impl<'a> Lowerer<'a> {
                     .zip(arg_types.iter())
                     .enumerate()
                 {
-                    self.type_check(arg, param, raw_args[i].syntax().text_range());
+                    self.type_check(arg, param, call.args()[i].syntax().text_range());
                 }
 
                 Value::typed(
                     self.db.alloc_hir(Hir::FunctionCall {
                         callee: callee.hir(),
-                        args: arg_values,
+                        args: args_hir,
                     }),
                     return_type,
                 )
@@ -1119,7 +1134,7 @@ impl<'a> Lowerer<'a> {
             Type::Unknown => Value::typed(
                 self.db.alloc_hir(Hir::FunctionCall {
                     callee: callee.hir(),
-                    args: arg_values,
+                    args: args_hir,
                 }),
                 self.unknown_type,
             ),
@@ -1209,10 +1224,12 @@ impl<'a> Lowerer<'a> {
     fn compile_function_type(&mut self, function: FunctionType) -> TypeId {
         let parameter_types = function
             .params()
-            .map(|params| params.types())
-            .unwrap_or_default()
             .into_iter()
-            .map(|ty| self.compile_type(ty))
+            .map(|ty| {
+                ty.ty()
+                    .map(|ty| self.compile_type(ty))
+                    .unwrap_or(self.unknown_type)
+            })
             .collect();
 
         let return_type = function

@@ -46,9 +46,7 @@ impl<'a> Optimizer<'a> {
             } => self.compute_scope_captures(scope_id, new_scope_id, value),
             Hir::FunctionCall { callee, args } => {
                 self.compute_captures_hir(scope_id, callee);
-                for arg in args {
-                    self.compute_captures_hir(scope_id, arg);
-                }
+                self.compute_captures_hir(scope_id, args);
             }
             Hir::BinaryOp { lhs, rhs, .. } => {
                 self.compute_captures_hir(scope_id, lhs);
@@ -56,9 +54,8 @@ impl<'a> Optimizer<'a> {
             }
             Hir::First(value) => self.compute_captures_hir(scope_id, value),
             Hir::Rest(value) => self.compute_captures_hir(scope_id, value),
-            Hir::Not(value) => {
-                self.compute_captures_hir(scope_id, value);
-            }
+            Hir::Not(value) => self.compute_captures_hir(scope_id, value),
+            Hir::Sha256(value) => self.compute_captures_hir(scope_id, value),
             Hir::If {
                 condition,
                 then_block,
@@ -281,9 +278,7 @@ impl<'a> Optimizer<'a> {
                 scope_id: new_scope_id,
                 value,
             } => self.opt_scope(scope_id, *new_scope_id, *value),
-            Hir::FunctionCall { callee, args } => {
-                self.opt_function_call(scope_id, *callee, args.clone())
-            }
+            Hir::FunctionCall { callee, args } => self.opt_function_call(scope_id, *callee, *args),
             Hir::BinaryOp { op, lhs, rhs } => {
                 let handler = match op {
                     BinaryOp::Add => Self::opt_add,
@@ -303,6 +298,7 @@ impl<'a> Optimizer<'a> {
             Hir::First(value) => self.opt_first(scope_id, *value),
             Hir::Rest(value) => self.opt_rest(scope_id, *value),
             Hir::Not(value) => self.opt_not(scope_id, *value),
+            Hir::Sha256(value) => self.opt_sha256(scope_id, *value),
             Hir::If {
                 condition,
                 then_block,
@@ -325,6 +321,11 @@ impl<'a> Optimizer<'a> {
     fn opt_rest(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
         let lir_id = self.opt_hir(scope_id, hir_id);
         self.db.alloc_lir(Lir::Rest(lir_id))
+    }
+
+    fn opt_sha256(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
+        let lir_id = self.opt_hir(scope_id, hir_id);
+        self.db.alloc_lir(Lir::Sha256(lir_id))
     }
 
     fn opt_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {
@@ -354,13 +355,8 @@ impl<'a> Optimizer<'a> {
         }
     }
 
-    fn opt_function_call(
-        &mut self,
-        scope_id: ScopeId,
-        callee: HirId,
-        arg_values: Vec<HirId>,
-    ) -> LirId {
-        let mut args = Vec::new();
+    fn opt_function_call(&mut self, scope_id: ScopeId, callee: HirId, args: HirId) -> LirId {
+        let mut args = self.opt_hir(scope_id, args);
 
         let callee = if let Hir::Reference(symbol_id) = self.db.hir(callee).clone() {
             if let Symbol::Function {
@@ -368,8 +364,9 @@ impl<'a> Optimizer<'a> {
                 ..
             } = self.db.symbol(symbol_id)
             {
-                for symbol_id in self.captures[&callee_scope_id].clone() {
-                    args.push(self.opt_path(scope_id, symbol_id));
+                for symbol_id in self.captures[&callee_scope_id].clone().into_iter().rev() {
+                    let capture = self.opt_path(scope_id, symbol_id);
+                    args = self.db.alloc_lir(Lir::Pair(capture, args));
                 }
                 self.opt_path(scope_id, symbol_id)
             } else {
@@ -378,10 +375,6 @@ impl<'a> Optimizer<'a> {
         } else {
             self.opt_hir(scope_id, callee)
         };
-
-        for arg_value in arg_values {
-            args.push(self.opt_hir(scope_id, arg_value));
-        }
 
         self.db.alloc_lir(Lir::Run(callee, args))
     }

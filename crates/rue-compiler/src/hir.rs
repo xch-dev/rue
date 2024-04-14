@@ -14,7 +14,7 @@ pub enum Hir {
     },
     FunctionCall {
         callee: HirId,
-        args: Vec<HirId>,
+        args: HirId,
     },
     BinaryOp {
         op: BinaryOp,
@@ -24,6 +24,7 @@ pub enum Hir {
     First(HirId),
     Rest(HirId),
     Not(HirId),
+    Sha256(HirId),
     If {
         condition: HirId,
         then_block: HirId,

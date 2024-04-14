@@ -83,14 +83,13 @@ pub enum SyntaxKind {
     ListItem,
     TupleExpr,
     LambdaExpr,
-    LambdaParamList,
     LambdaParam,
     PrefixExpr,
     BinaryExpr,
     CastExpr,
     IfExpr,
     FunctionCall,
-    FunctionCallArgs,
+    FunctionCallArg,
     FieldAccess,
     IndexAccess,
 
@@ -98,7 +97,7 @@ pub enum SyntaxKind {
     ListTypeItem,
     TupleType,
     FunctionType,
-    FunctionTypeParams,
+    FunctionTypeParam,
 }
 
 impl fmt::Display for SyntaxKind {
@@ -183,14 +182,13 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::ListItem => "list item",
                 SyntaxKind::TupleExpr => "tuple expression",
                 SyntaxKind::LambdaExpr => "lambda expression",
-                SyntaxKind::LambdaParamList => "lambda param list",
                 SyntaxKind::LambdaParam => "lambda param",
                 SyntaxKind::PrefixExpr => "prefix expression",
                 SyntaxKind::BinaryExpr => "binary expression",
                 SyntaxKind::CastExpr => "cast expression",
                 SyntaxKind::IfExpr => "if expression",
                 SyntaxKind::FunctionCall => "function call",
-                SyntaxKind::FunctionCallArgs => "function call arguments",
+                SyntaxKind::FunctionCallArg => "function call argument",
                 SyntaxKind::FieldAccess => "field access",
                 SyntaxKind::IndexAccess => "index access",
 
@@ -198,7 +196,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::ListTypeItem => "list type item",
                 SyntaxKind::TupleType => "tuple type",
                 SyntaxKind::FunctionType => "function type",
-                SyntaxKind::FunctionTypeParams => "function type parameters",
+                SyntaxKind::FunctionTypeParam => "function type parameter",
             }
         )
     }
