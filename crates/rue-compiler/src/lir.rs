@@ -15,6 +15,7 @@ pub enum Lir {
     If(LirId, LirId, LirId),
     Not(LirId),
     Any(Vec<LirId>),
+    Concat(Vec<LirId>),
     Add(Vec<LirId>),
     Sub(Vec<LirId>),
     Mul(Vec<LirId>),

@@ -86,6 +86,7 @@ ast_enum!(
     PrefixExpr,
     BinaryExpr,
     CastExpr,
+    GuardExpr,
     IfExpr,
     FunctionCall,
     FieldAccess,
@@ -100,6 +101,7 @@ ast_node!(PairExpr);
 ast_node!(PrefixExpr);
 ast_node!(BinaryExpr);
 ast_node!(CastExpr);
+ast_node!(GuardExpr);
 ast_node!(IfExpr);
 ast_node!(FunctionCall);
 ast_node!(FunctionCallArg);
@@ -432,6 +434,16 @@ impl BinaryExpr {
 }
 
 impl CastExpr {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().filter_map(Type::cast).last()
+    }
+}
+
+impl GuardExpr {
     pub fn expr(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
     }

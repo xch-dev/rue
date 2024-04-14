@@ -33,6 +33,7 @@ pub enum SyntaxKind {
     True,
     False,
     As,
+    Is,
 
     Dot,
     Comma,
@@ -87,6 +88,7 @@ pub enum SyntaxKind {
     PrefixExpr,
     BinaryExpr,
     CastExpr,
+    GuardExpr,
     IfExpr,
     FunctionCall,
     FunctionCallArg,
@@ -132,6 +134,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::True => "'true'",
                 SyntaxKind::False => "'false'",
                 SyntaxKind::As => "'as'",
+                SyntaxKind::Is => "'is'",
 
                 SyntaxKind::Dot => "'.'",
                 SyntaxKind::Comma => "','",
@@ -186,6 +189,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::PrefixExpr => "prefix expression",
                 SyntaxKind::BinaryExpr => "binary expression",
                 SyntaxKind::CastExpr => "cast expression",
+                SyntaxKind::GuardExpr => "guard expression",
                 SyntaxKind::IfExpr => "if expression",
                 SyntaxKind::FunctionCall => "function call",
                 SyntaxKind::FunctionCallArg => "function call argument",

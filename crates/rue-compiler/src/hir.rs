@@ -17,7 +17,7 @@ pub enum Hir {
         args: HirId,
     },
     BinaryOp {
-        op: BinaryOp,
+        op: HirBinaryOp,
         lhs: HirId,
         rhs: HirId,
     },
@@ -30,4 +30,38 @@ pub enum Hir {
         then_block: HirId,
         else_block: HirId,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HirBinaryOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+    LessThan,
+    GreaterThan,
+    LessThanEquals,
+    GreaterThanEquals,
+    Equals,
+    NotEquals,
+    Concat,
+}
+
+impl From<BinaryOp> for HirBinaryOp {
+    fn from(op: BinaryOp) -> Self {
+        match op {
+            BinaryOp::Add => HirBinaryOp::Add,
+            BinaryOp::Subtract => HirBinaryOp::Subtract,
+            BinaryOp::Multiply => HirBinaryOp::Multiply,
+            BinaryOp::Divide => HirBinaryOp::Divide,
+            BinaryOp::Remainder => HirBinaryOp::Remainder,
+            BinaryOp::LessThan => HirBinaryOp::LessThan,
+            BinaryOp::GreaterThan => HirBinaryOp::GreaterThan,
+            BinaryOp::LessThanEquals => HirBinaryOp::LessThanEquals,
+            BinaryOp::GreaterThanEquals => HirBinaryOp::GreaterThanEquals,
+            BinaryOp::Equals => HirBinaryOp::Equals,
+            BinaryOp::NotEquals => HirBinaryOp::NotEquals,
+        }
+    }
 }

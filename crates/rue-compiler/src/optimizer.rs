@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
-use rue_parser::BinaryOp;
 
 use crate::{
     database::{Database, HirId, LirId, ScopeId, SymbolId},
-    hir::Hir,
+    hir::{Hir, HirBinaryOp},
     lir::Lir,
     symbol::Symbol,
 };
@@ -298,17 +297,18 @@ impl<'a> Optimizer<'a> {
             Hir::FunctionCall { callee, args } => self.opt_function_call(scope_id, *callee, *args),
             Hir::BinaryOp { op, lhs, rhs } => {
                 let handler = match op {
-                    BinaryOp::Add => Self::opt_add,
-                    BinaryOp::Subtract => Self::opt_subtract,
-                    BinaryOp::Multiply => Self::opt_multiply,
-                    BinaryOp::Divide => Self::opt_divide,
-                    BinaryOp::Remainder => Self::opt_remainder,
-                    BinaryOp::LessThan => Self::opt_lt,
-                    BinaryOp::GreaterThan => Self::opt_gt,
-                    BinaryOp::LessThanEquals => Self::opt_lteq,
-                    BinaryOp::GreaterThanEquals => Self::opt_gteq,
-                    BinaryOp::Equals => Self::opt_eq,
-                    BinaryOp::NotEquals => Self::opt_neq,
+                    HirBinaryOp::Add => Self::opt_add,
+                    HirBinaryOp::Subtract => Self::opt_subtract,
+                    HirBinaryOp::Multiply => Self::opt_multiply,
+                    HirBinaryOp::Divide => Self::opt_divide,
+                    HirBinaryOp::Remainder => Self::opt_remainder,
+                    HirBinaryOp::LessThan => Self::opt_lt,
+                    HirBinaryOp::GreaterThan => Self::opt_gt,
+                    HirBinaryOp::LessThanEquals => Self::opt_lteq,
+                    HirBinaryOp::GreaterThanEquals => Self::opt_gteq,
+                    HirBinaryOp::Equals => Self::opt_eq,
+                    HirBinaryOp::NotEquals => Self::opt_neq,
+                    HirBinaryOp::Concat => Self::opt_concat,
                 };
                 handler(self, scope_id, *lhs, *rhs)
             }
@@ -459,6 +459,12 @@ impl<'a> Optimizer<'a> {
     fn opt_neq(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> LirId {
         let eq = self.opt_eq(scope_id, lhs, rhs);
         self.db.alloc_lir(Lir::Not(eq))
+    }
+
+    fn opt_concat(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> LirId {
+        let lhs = self.opt_hir(scope_id, lhs);
+        let rhs = self.opt_hir(scope_id, rhs);
+        self.db.alloc_lir(Lir::Concat(vec![lhs, rhs]))
     }
 
     fn opt_not(&mut self, scope_id: ScopeId, value: HirId) -> LirId {

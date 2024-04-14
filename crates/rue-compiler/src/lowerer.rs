@@ -9,7 +9,7 @@ use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
-    FunctionCall, FunctionItem, FunctionType as AstFunctionType, IfExpr, IndexAccess,
+    FunctionCall, FunctionItem, FunctionType as AstFunctionType, GuardExpr, IfExpr, IndexAccess,
     InitializerExpr, InitializerField, Item, LambdaExpr, ListExpr, ListType, LiteralExpr, PairExpr,
     PairType, Path, PrefixExpr, PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind,
     SyntaxToken, Type as AstType, TypeAliasItem,
@@ -17,7 +17,7 @@ use rue_parser::{
 
 use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
-    hir::Hir,
+    hir::{Hir, HirBinaryOp},
     scope::Scope,
     symbol::Symbol,
     ty::{EnumType, EnumVariant, FunctionType, StructType, Type, Value},
@@ -30,6 +30,7 @@ pub struct Lowerer<'a> {
     diagnostics: Vec<Diagnostic>,
     int_type: TypeId,
     bool_type: TypeId,
+    bytes_type: TypeId,
     nil_type: TypeId,
     nil_hir: HirId,
     unknown_type: TypeId,
@@ -54,23 +55,25 @@ impl<'a> Lowerer<'a> {
         builtins.define_type("Bytes".to_string(), bytes_type);
         builtins.define_type("Any".to_string(), any_type);
 
-        let mut sha256_scope = Scope::default();
-        let sha256_param = db.alloc_symbol(Symbol::Parameter {
-            type_id: bytes_type,
-        });
-        sha256_scope.define_symbol("bytes".to_string(), sha256_param);
-        let sha256_param_ref = db.alloc_hir(Hir::Reference(sha256_param));
-        let sha256_hir = db.alloc_hir(Hir::Sha256(sha256_param_ref));
-        let sha256_scope_id = db.alloc_scope(sha256_scope);
+        {
+            let mut scope = Scope::default();
+            let param = db.alloc_symbol(Symbol::Parameter {
+                type_id: bytes_type,
+            });
+            scope.define_symbol("bytes".to_string(), param);
+            let param_ref = db.alloc_hir(Hir::Reference(param));
+            let hir_id = db.alloc_hir(Hir::Sha256(param_ref));
+            let scope_id = db.alloc_scope(scope);
 
-        builtins.define_symbol(
-            "sha256".to_string(),
-            db.alloc_symbol(Symbol::Function {
-                scope_id: sha256_scope_id,
-                hir_id: sha256_hir,
-                ty: FunctionType::new(vec![bytes_type], bytes_type, false),
-            }),
-        );
+            builtins.define_symbol(
+                "sha256".to_string(),
+                db.alloc_symbol(Symbol::Function {
+                    scope_id,
+                    hir_id,
+                    ty: FunctionType::new(vec![bytes_type], bytes_type, false),
+                }),
+            );
+        }
 
         let builtins_id = db.alloc_scope(builtins);
 
@@ -80,6 +83,7 @@ impl<'a> Lowerer<'a> {
             diagnostics: Vec::new(),
             int_type,
             bool_type,
+            bytes_type,
             nil_type,
             nil_hir,
             unknown_type,
@@ -460,6 +464,7 @@ impl<'a> Lowerer<'a> {
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
             Expr::CastExpr(cast) => self.compile_cast_expr(cast, expected_type),
+            Expr::GuardExpr(guard) => self.compile_guard_expr(guard, expected_type),
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
             Expr::FunctionCall(call) => self.compile_function_call(call),
             Expr::FieldAccess(field_access) => self.compile_field_access(field_access),
@@ -677,40 +682,66 @@ impl<'a> Lowerer<'a> {
         let lhs = binary.lhs().map(|lhs| self.compile_expr(lhs, None));
         let rhs = binary.rhs().map(|rhs| self.compile_expr(rhs, None));
 
-        if let Some(lhs) = &lhs {
+        let lhs_ty = lhs
+            .as_ref()
+            .map(|lhs| lhs.ty())
+            .unwrap_or(self.unknown_type);
+
+        let rhs_ty = rhs
+            .as_ref()
+            .map(|rhs| rhs.ty())
+            .unwrap_or(self.unknown_type);
+
+        let mut op = binary.op().map(HirBinaryOp::from);
+
+        let ty = if binary.op() == Some(BinaryOp::Add)
+            && self.is_assignable_to(lhs_ty, self.bytes_type, false, &mut HashSet::new())
+        {
             self.type_check(
-                lhs.ty(),
+                rhs_ty,
+                self.bytes_type,
+                binary.rhs().unwrap().syntax().text_range(),
+            );
+
+            op = Some(HirBinaryOp::Concat);
+
+            Some(self.bytes_type)
+        } else {
+            self.type_check(
+                lhs_ty,
                 self.int_type,
                 binary.lhs().unwrap().syntax().text_range(),
             );
-        }
 
-        if let Some(rhs) = &rhs {
             self.type_check(
-                rhs.ty(),
+                rhs_ty,
                 self.int_type,
                 binary.rhs().unwrap().syntax().text_range(),
             );
-        }
 
-        let ty = binary
-            .op()
-            .map(|op| match op {
-                BinaryOp::Add => self.int_type,
-                BinaryOp::Subtract => self.int_type,
-                BinaryOp::Multiply => self.int_type,
-                BinaryOp::Divide => self.int_type,
-                BinaryOp::Remainder => self.int_type,
-                BinaryOp::LessThan => self.bool_type,
-                BinaryOp::GreaterThan => self.bool_type,
-                BinaryOp::LessThanEquals => self.bool_type,
-                BinaryOp::GreaterThanEquals => self.bool_type,
-                BinaryOp::Equals => self.bool_type,
-                BinaryOp::NotEquals => self.bool_type,
-            })
-            .unwrap_or(self.unknown_type);
+            None
+        };
 
-        match (lhs, rhs, binary.op()) {
+        let ty = ty.unwrap_or_else(|| {
+            binary
+                .op()
+                .map(|op| match op {
+                    BinaryOp::Add => self.int_type,
+                    BinaryOp::Subtract => self.int_type,
+                    BinaryOp::Multiply => self.int_type,
+                    BinaryOp::Divide => self.int_type,
+                    BinaryOp::Remainder => self.int_type,
+                    BinaryOp::LessThan => self.bool_type,
+                    BinaryOp::GreaterThan => self.bool_type,
+                    BinaryOp::LessThanEquals => self.bool_type,
+                    BinaryOp::GreaterThanEquals => self.bool_type,
+                    BinaryOp::Equals => self.bool_type,
+                    BinaryOp::NotEquals => self.bool_type,
+                })
+                .unwrap_or(self.unknown_type)
+        });
+
+        match (lhs, rhs, op) {
             (Some(lhs), Some(rhs), Some(op)) => Value::typed(
                 self.db.alloc_hir(Hir::BinaryOp {
                     op,
@@ -739,6 +770,24 @@ impl<'a> Lowerer<'a> {
         self.cast_check(expr.ty(), ty, cast.expr().unwrap().syntax().text_range());
 
         Value::typed(expr.hir(), ty)
+    }
+
+    fn compile_guard_expr(&mut self, guard: GuardExpr, expected_type: Option<TypeId>) -> Value {
+        let Some(expr) = guard
+            .expr()
+            .map(|expr| self.compile_expr(expr, expected_type))
+        else {
+            return self.unknown();
+        };
+
+        // let ty = cast
+        //     .ty()
+        //     .map(|ty| self.compile_type(ty))
+        //     .unwrap_or(self.unknown_type);
+
+        // self.cast_check(expr.ty(), ty, cast.expr().unwrap().syntax().text_range());
+
+        Value::typed(expr.hir(), self.unknown_type)
     }
 
     fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Value {
