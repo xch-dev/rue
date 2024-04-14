@@ -602,7 +602,7 @@ impl<'a> Lowerer<'a> {
     fn compile_tuple_field_access(&mut self, value: Value, index_token: SyntaxToken) -> Value {
         let index = self.compile_int_raw(index_token.clone());
 
-        let Some(items) = self.extract_tuple_types(value.ty()) else {
+        let Type::Tuple(items) = self.db.ty(value.ty()).clone() else {
             self.error(
                 DiagnosticInfo::TupleFieldAccess(self.type_name(value.ty())),
                 index_token.text_range(),
@@ -637,7 +637,7 @@ impl<'a> Lowerer<'a> {
         };
         let index = self.compile_int_raw(index_token.clone());
 
-        let Some(ty) = self.extract_list_type(value.ty()) else {
+        let Type::List(item_type) = self.db.ty(value.ty()).clone() else {
             self.error(
                 DiagnosticInfo::IndexAccess(self.type_name(value.ty())),
                 index_access.expr().unwrap().syntax().text_range(),
@@ -645,7 +645,7 @@ impl<'a> Lowerer<'a> {
             return self.unknown();
         };
 
-        Value::typed(self.compile_index(value.hir(), index, false), ty)
+        Value::typed(self.compile_index(value.hir(), index, false), item_type)
     }
 
     fn compile_index(&mut self, value: HirId, index: usize, rest: bool) -> HirId {
@@ -773,7 +773,10 @@ impl<'a> Lowerer<'a> {
         let mut nil_terminated = true;
 
         let mut list_type = expected_expr_type;
-        let mut item_type = expected_expr_type.and_then(|ty| self.extract_list_type(ty));
+        let mut item_type = expected_expr_type.and_then(|ty| match self.db.ty(ty) {
+            Type::List(ty) => Some(*ty),
+            _ => None,
+        });
 
         let len = list_expr.items().len();
 
@@ -796,7 +799,10 @@ impl<'a> Lowerer<'a> {
             if i + 1 == len && list_type.is_none() {
                 if item.spread().is_some() {
                     list_type = Some(output.ty());
-                    item_type = self.extract_list_type(output.ty());
+                    item_type = match self.db.ty(output.ty()) {
+                        Type::List(ty) => Some(*ty),
+                        _ => None,
+                    };
                 } else {
                     list_type = Some(self.db.alloc_type(Type::List(output.ty())));
                     item_type = Some(output.ty());
@@ -839,7 +845,10 @@ impl<'a> Lowerer<'a> {
         let mut types = Vec::new();
 
         let tuple = expected_type
-            .and_then(|ty| self.extract_tuple_types(ty))
+            .and_then(|ty| match self.db.ty(ty) {
+                Type::Tuple(tuple) => Some(tuple.clone()),
+                _ => None,
+            })
             .unwrap_or_default();
 
         let len = tuple_expr.items().len();
@@ -873,7 +882,10 @@ impl<'a> Lowerer<'a> {
         lambda_expr: LambdaExpr,
         expected_type: Option<TypeId>,
     ) -> Value {
-        let expected = expected_type.and_then(|expected| self.extract_function_type(expected));
+        let expected = expected_type.and_then(|ty| match self.db.ty(ty) {
+            Type::Function(function) => Some(function.clone()),
+            _ => None,
+        });
 
         let mut scope = Scope::default();
         let mut parameter_types = Vec::new();
@@ -1055,7 +1067,10 @@ impl<'a> Lowerer<'a> {
         };
 
         let callee = self.compile_expr(callee, None);
-        let expected = self.extract_function_type(callee.ty());
+        let expected = match self.db.ty(callee.ty()) {
+            Type::Function(function) => Some(function.clone()),
+            _ => None,
+        };
 
         let args: Vec<Value> = call
             .args()
@@ -1223,27 +1238,6 @@ impl<'a> Lowerer<'a> {
             parameter_types,
             return_type,
         )))
-    }
-
-    fn extract_function_type(&self, type_id: TypeId) -> Option<FunctionType> {
-        match self.db.ty(type_id) {
-            Type::Function(function_type) => Some(function_type.clone()),
-            _ => None,
-        }
-    }
-
-    fn extract_tuple_types(&self, type_id: TypeId) -> Option<Vec<TypeId>> {
-        match self.db.ty(type_id) {
-            Type::Tuple(items) => Some(items.clone()),
-            _ => None,
-        }
-    }
-
-    fn extract_list_type(&self, type_id: TypeId) -> Option<TypeId> {
-        match self.db.ty(type_id) {
-            Type::List(inner) => Some(*inner),
-            _ => None,
-        }
     }
 
     fn detect_cycle(
