@@ -94,13 +94,15 @@ impl EnumVariant {
 pub struct FunctionType {
     parameter_types: Vec<TypeId>,
     return_type: TypeId,
+    varargs: bool,
 }
 
 impl FunctionType {
-    pub fn new(parameter_types: Vec<TypeId>, return_type: TypeId) -> Self {
+    pub fn new(parameter_types: Vec<TypeId>, return_type: TypeId, varargs: bool) -> Self {
         Self {
             parameter_types,
             return_type,
+            varargs,
         }
     }
 
@@ -110,6 +112,10 @@ impl FunctionType {
 
     pub fn return_type(&self) -> TypeId {
         self.return_type
+    }
+
+    pub fn varargs(&self) -> bool {
+        self.varargs
     }
 }
 

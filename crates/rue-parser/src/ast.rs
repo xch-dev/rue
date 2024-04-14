@@ -491,6 +491,13 @@ impl LambdaExpr {
 }
 
 impl LambdaParam {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Spread)
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()

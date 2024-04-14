@@ -2,7 +2,7 @@ use crate::{parser::Parser, BinaryOp, SyntaxKind};
 
 pub fn root(p: &mut Parser) {
     p.start(SyntaxKind::Root);
-    while !p.at_end() {
+    while !p.at(SyntaxKind::Eof) {
         item(p);
     }
     p.finish();

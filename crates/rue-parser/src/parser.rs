@@ -50,10 +50,6 @@ impl<'a> Parser<'a> {
         self.builder.finish_node();
     }
 
-    pub fn at_end(&self) -> bool {
-        self.cursor >= self.items.len()
-    }
-
     pub fn try_eat(&mut self, kind: SyntaxKind) -> bool {
         if self.at(kind) {
             self.bump();
@@ -149,6 +145,10 @@ impl<'a> Parser<'a> {
         self.cursor += 1;
         self.char_pos += text.len();
         self.builder.token(RueLang::kind_to_raw(kind), text);
+    }
+
+    fn at_end(&mut self) -> bool {
+        self.cursor >= self.items.len()
     }
 }
 

@@ -68,7 +68,7 @@ impl<'a> Lowerer<'a> {
             db.alloc_symbol(Symbol::Function {
                 scope_id: sha256_scope_id,
                 hir_id: sha256_hir,
-                ty: FunctionType::new(vec![bytes_type], bytes_type),
+                ty: FunctionType::new(vec![bytes_type], bytes_type, false),
             }),
         );
 
@@ -155,8 +155,10 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(self.unknown_type);
 
         let mut parameter_types = Vec::new();
+        let mut varargs = false;
+        let len = function_item.params().len();
 
-        for param in function_item.params() {
+        for (i, param) in function_item.params().into_iter().enumerate() {
             let type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
@@ -169,12 +171,20 @@ impl<'a> Lowerer<'a> {
             if let Some(name) = param.name() {
                 scope.define_symbol(name.to_string(), symbol_id);
             }
+
+            if param.spread().is_some() {
+                if i + 1 == len {
+                    varargs = true;
+                } else {
+                    self.error(DiagnosticInfo::NonFinalSpread, param.syntax().text_range());
+                }
+            }
         }
 
         let scope_id = self.db.alloc_scope(scope);
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
-        let ty = FunctionType::new(parameter_types, return_type);
+        let ty = FunctionType::new(parameter_types, return_type, varargs);
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
@@ -875,6 +885,9 @@ impl<'a> Lowerer<'a> {
 
         let mut scope = Scope::default();
         let mut parameter_types = Vec::new();
+        let mut varargs = false;
+
+        let len = lambda_expr.params().len();
 
         for (i, param) in lambda_expr.params().into_iter().enumerate() {
             let type_id = param
@@ -891,6 +904,14 @@ impl<'a> Lowerer<'a> {
                 let symbol_id = self.db.alloc_symbol(Symbol::Parameter { type_id });
                 scope.define_symbol(name.to_string(), symbol_id);
             };
+
+            if param.spread().is_some() {
+                if i + 1 == len {
+                    varargs = true;
+                } else {
+                    self.error(DiagnosticInfo::NonFinalSpread, param.syntax().text_range());
+                }
+            }
         }
 
         let scope_id = self.db.alloc_scope(scope);
@@ -916,7 +937,7 @@ impl<'a> Lowerer<'a> {
             lambda_expr.body().unwrap().syntax().text_range(),
         );
 
-        let ty = FunctionType::new(parameter_types.clone(), return_type);
+        let ty = FunctionType::new(parameter_types.clone(), return_type, varargs);
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
@@ -1047,6 +1068,37 @@ impl<'a> Lowerer<'a> {
         )
     }
 
+    fn expected_param_type(
+        &self,
+        function_type: FunctionType,
+        index: usize,
+        spread: bool,
+    ) -> Option<TypeId> {
+        let params = function_type.parameter_types();
+        let len = params.len();
+
+        if index + 1 < len {
+            return Some(params[index]);
+        }
+
+        if !function_type.varargs() {
+            if index + 1 == len {
+                return Some(params[index]);
+            } else {
+                return None;
+            }
+        }
+
+        if spread {
+            return Some(params[len - 1]);
+        }
+
+        match self.db.ty(params[len - 1]) {
+            Type::List(list_type) => Some(*list_type),
+            _ => None,
+        }
+    }
+
     fn compile_function_call(&mut self, call: FunctionCall) -> Value {
         let Some(callee) = call.callee() else {
             return self.unknown();
@@ -1055,81 +1107,126 @@ impl<'a> Lowerer<'a> {
         let callee = self.compile_expr(callee, None);
         let expected = match self.db.ty(callee.ty()) {
             Type::Function(function) => Some(function.clone()),
-            _ => None,
-        };
-
-        let args: Vec<Value> = call
-            .args()
-            .into_iter()
-            .enumerate()
-            .map(|(i, arg)| {
-                arg.expr()
-                    .map(|arg| {
-                        self.compile_expr(
-                            arg,
-                            expected
-                                .as_ref()
-                                .and_then(|expected| expected.parameter_types().get(i).copied()),
-                        )
-                    })
-                    .unwrap_or_else(|| self.unknown())
-            })
-            .collect();
-
-        let arg_types: Vec<TypeId> = args.iter().map(|arg| arg.ty()).collect();
-
-        let mut args_hir = self.nil_hir;
-
-        for arg in args.iter().rev() {
-            args_hir = self.db.alloc_hir(Hir::Pair(arg.hir(), args_hir));
-        }
-
-        match self.db.ty(callee.ty()).clone() {
-            Type::Function(function_type) => {
-                if function_type.parameter_types().len() != arg_types.len() {
-                    self.error(
-                        DiagnosticInfo::ArgumentMismatch {
-                            expected: function_type.parameter_types().len(),
-                            found: arg_types.len(),
-                        },
-                        call.syntax().text_range(),
-                    );
-
-                    return self.unknown();
-                }
-
-                for (i, (&param, &arg)) in function_type
-                    .parameter_types()
-                    .iter()
-                    .zip(arg_types.iter())
-                    .enumerate()
-                {
-                    self.type_check(arg, param, call.args()[i].syntax().text_range());
-                }
-
-                Value::typed(
-                    self.db.alloc_hir(Hir::FunctionCall {
-                        callee: callee.hir(),
-                        args: args_hir,
-                    }),
-                    function_type.return_type(),
-                )
-            }
-            Type::Unknown => Value::typed(
-                self.db.alloc_hir(Hir::FunctionCall {
-                    callee: callee.hir(),
-                    args: args_hir,
-                }),
-                self.unknown_type,
-            ),
             _ => {
                 self.error(
                     DiagnosticInfo::UncallableType(self.type_name(callee.ty())),
-                    call.callee().expect("no callee").syntax().text_range(),
+                    call.callee().unwrap().syntax().text_range(),
                 );
-                self.unknown()
+                None
+            }
+        };
+
+        let mut args = self.nil_hir;
+        let mut arg_types = Vec::new();
+        let mut spread = false;
+
+        let arg_len = call.args().len();
+
+        for (i, arg) in call.args().into_iter().enumerate().rev() {
+            let expected_type = expected.as_ref().and_then(|expected| {
+                self.expected_param_type(
+                    expected.clone(),
+                    i,
+                    i + 1 == arg_len && arg.spread().is_some(),
+                )
+            });
+
+            let value = arg
+                .expr()
+                .map(|expr| self.compile_expr(expr, expected_type))
+                .unwrap_or_else(|| self.unknown());
+
+            arg_types.push(value.ty());
+
+            if arg.spread().is_some() {
+                if i + 1 == arg_len {
+                    args = value.hir();
+                    spread = true;
+                    continue;
+                } else {
+                    self.error(DiagnosticInfo::NonFinalSpread, arg.syntax().text_range());
+                }
+            }
+
+            args = self.db.alloc_hir(Hir::Pair(value.hir(), args));
+        }
+
+        arg_types.reverse();
+
+        if let Some(expected) = expected.as_ref() {
+            let param_len = expected.parameter_types().len();
+
+            let too_few_args = arg_types.len() < param_len;
+            let too_many_args = arg_types.len() > param_len && !expected.varargs();
+
+            if too_few_args || too_many_args {
+                self.error(
+                    DiagnosticInfo::ArgumentMismatch {
+                        expected: param_len,
+                        found: arg_types.len(),
+                    },
+                    call.syntax().text_range(),
+                );
+            }
+
+            for (i, arg) in arg_types.into_iter().enumerate() {
+                if i + 1 == arg_len && spread && !expected.varargs() {
+                    self.error(
+                        DiagnosticInfo::NonVarargSpread,
+                        call.args()[i].syntax().text_range(),
+                    );
+                    continue;
+                }
+
+                if i + 1 >= param_len && i + 1 < arg_len && expected.varargs() {
+                    match self
+                        .db
+                        .ty(expected.parameter_types().last().copied().unwrap())
+                    {
+                        Type::List(list_type) => {
+                            self.type_check(arg, *list_type, call.args()[i].syntax().text_range());
+                        }
+                        _ => {
+                            self.error(
+                                DiagnosticInfo::NonListVararg,
+                                call.args()[i].syntax().text_range(),
+                            );
+                        }
+                    }
+                    continue;
+                }
+
+                if i + 1 == arg_len && spread && expected.varargs() {
+                    self.type_check(
+                        arg,
+                        expected.parameter_types()[param_len - 1],
+                        call.args()[i].syntax().text_range(),
+                    );
+                    continue;
+                }
+
+                self.type_check(
+                    arg,
+                    expected
+                        .parameter_types()
+                        .get(i)
+                        .copied()
+                        .unwrap_or(self.unknown_type),
+                    call.args()[i].syntax().text_range(),
+                );
             }
         }
+
+        let hir_id = self.db.alloc_hir(Hir::FunctionCall {
+            callee: callee.hir(),
+            args,
+        });
+
+        let type_id = expected
+            .map(|expected| expected.return_type())
+            .unwrap_or(self.unknown_type);
+
+        Value::typed(hir_id, type_id)
     }
 
     fn compile_type(&mut self, ty: AstType) -> TypeId {
@@ -1209,15 +1306,27 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_function_type(&mut self, function: AstFunctionType) -> TypeId {
-        let parameter_types = function
-            .params()
-            .into_iter()
-            .map(|ty| {
-                ty.ty()
-                    .map(|ty| self.compile_type(ty))
-                    .unwrap_or(self.unknown_type)
-            })
-            .collect();
+        let mut parameter_types = Vec::new();
+        let mut vararg = false;
+
+        let len = function.params().len();
+
+        for (i, param) in function.params().into_iter().enumerate() {
+            let type_id = param
+                .ty()
+                .map(|ty| self.compile_type(ty))
+                .unwrap_or(self.unknown_type);
+
+            parameter_types.push(type_id);
+
+            if param.spread().is_some() {
+                if i + 1 == len {
+                    vararg = true;
+                } else {
+                    self.error(DiagnosticInfo::NonFinalSpread, param.syntax().text_range());
+                }
+            }
+        }
 
         let return_type = function
             .ret()
@@ -1227,6 +1336,7 @@ impl<'a> Lowerer<'a> {
         self.db.alloc_type(Type::Function(FunctionType::new(
             parameter_types,
             return_type,
+            vararg,
         )))
     }
 

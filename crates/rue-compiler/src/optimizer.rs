@@ -14,6 +14,7 @@ pub struct Optimizer<'a> {
     db: &'a mut Database,
     captures: HashMap<ScopeId, IndexSet<SymbolId>>,
     environments: HashMap<ScopeId, IndexSet<SymbolId>>,
+    varargs: HashMap<ScopeId, bool>,
     scope_inheritance: HashMap<ScopeId, ScopeId>,
 }
 
@@ -23,6 +24,7 @@ impl<'a> Optimizer<'a> {
             db,
             captures: HashMap::new(),
             environments: HashMap::new(),
+            varargs: HashMap::new(),
             scope_inheritance: HashMap::new(),
         }
     }
@@ -84,8 +86,9 @@ impl<'a> Optimizer<'a> {
             Symbol::Function {
                 scope_id: function_scope_id,
                 hir_id,
+                ty,
                 ..
-            } => self.compute_function_captures(scope_id, function_scope_id, hir_id),
+            } => self.compute_function_captures(scope_id, function_scope_id, hir_id, ty.varargs()),
             Symbol::Parameter { .. } => {}
             Symbol::LetBinding { hir_id, .. } => self.compute_captures_hir(scope_id, hir_id),
             Symbol::ConstBinding { hir_id, .. } => self.compute_captures_hir(scope_id, hir_id),
@@ -97,6 +100,7 @@ impl<'a> Optimizer<'a> {
         scope_id: ScopeId,
         function_scope_id: ScopeId,
         hir_id: HirId,
+        varargs: bool,
     ) {
         self.compute_captures_entrypoint(function_scope_id, hir_id);
 
@@ -130,6 +134,10 @@ impl<'a> Optimizer<'a> {
         }
 
         self.environments.insert(function_scope_id, env);
+
+        if varargs {
+            self.varargs.insert(function_scope_id, true);
+        }
     }
 
     fn compute_scope_captures(&mut self, scope_id: ScopeId, new_scope_id: ScopeId, value: HirId) {
@@ -232,6 +240,15 @@ impl<'a> Optimizer<'a> {
         let mut path = 2;
         for _ in 0..index {
             path *= 2;
+            path += 1;
+        }
+
+        if index + 1 == environment.len() && self.varargs.get(&scope_id).copied().unwrap_or(false) {
+            // Undo last index
+            path -= 1;
+            path /= 2;
+
+            // Make it the rest
             path += 1;
         }
 

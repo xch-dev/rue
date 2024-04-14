@@ -86,6 +86,12 @@ pub enum DiagnosticInfo {
     #[error("the spread operator can only be used on the last element")]
     NonFinalSpread,
 
+    #[error("cannot spread expression in non-vararg function call")]
+    NonVarargSpread,
+
+    #[error("cannot pass arguments directly (without spreading) to non-list vararg function call")]
+    NonListVararg,
+
     #[error("duplicate enum variant `{0}`")]
     DuplicateEnumVariant(String),
 
