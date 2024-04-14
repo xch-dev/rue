@@ -9,10 +9,10 @@ use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
-    FunctionCall, FunctionItem, FunctionType, IfExpr, IndexAccess, InitializerExpr,
-    InitializerField, Item, LambdaExpr, ListExpr, ListType, LiteralExpr, Path, PrefixExpr,
-    PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, TupleExpr, TupleType,
-    Type as AstType, TypeAliasItem,
+    FunctionCall, FunctionItem, FunctionType as AstFunctionType, IfExpr, IndexAccess,
+    InitializerExpr, InitializerField, Item, LambdaExpr, ListExpr, ListType, LiteralExpr, Path,
+    PrefixExpr, PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, TupleExpr,
+    TupleType, Type as AstType, TypeAliasItem,
 };
 
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
     hir::Hir,
     scope::Scope,
     symbol::Symbol,
-    ty::{Type, Value},
+    ty::{EnumType, EnumVariant, FunctionType, StructType, Type, Value},
     Diagnostic, DiagnosticInfo, DiagnosticKind,
 };
 
@@ -67,8 +67,7 @@ impl<'a> Lowerer<'a> {
             db.alloc_symbol(Symbol::Function {
                 scope_id: sha256_scope_id,
                 hir_id: sha256_hir,
-                return_type: bytes_type,
-                parameter_types: vec![bytes_type],
+                ty: FunctionType::new(vec![bytes_type], bytes_type),
             }),
         );
 
@@ -167,11 +166,12 @@ impl<'a> Lowerer<'a> {
         let scope_id = self.db.alloc_scope(scope);
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
+        let ty = FunctionType::new(parameter_types, return_type);
+
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
             hir_id,
-            return_type,
-            parameter_types,
+            ty,
         });
 
         if let Some(name) = function_item.name() {
@@ -230,7 +230,7 @@ impl<'a> Lowerer<'a> {
             variants.insert(name.to_string(), self.db.alloc_type(Type::Unknown));
         }
 
-        let type_id = self.db.alloc_type(Type::Enum { variants });
+        let type_id = self.db.alloc_type(Type::Enum(EnumType::new(variants)));
 
         if let Some(name) = enum_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
@@ -244,22 +244,17 @@ impl<'a> Lowerer<'a> {
             return;
         };
 
-        let Symbol::Function {
-            scope_id,
-            return_type,
-            ..
-        } = self.db.symbol(symbol_id).clone()
-        else {
+        let Symbol::Function { scope_id, ty, .. } = self.db.symbol(symbol_id).clone() else {
             unreachable!();
         };
 
         self.scope_stack.push(scope_id);
-        let output = self.compile_block_expr(body, None, Some(return_type));
+        let output = self.compile_block_expr(body, None, Some(ty.return_type()));
         self.scope_stack.pop().unwrap();
 
         self.type_check(
             output.ty(),
-            return_type,
+            ty.return_type(),
             function.body().unwrap().syntax().text_range(),
         );
 
@@ -304,7 +299,7 @@ impl<'a> Lowerer<'a> {
 
     fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
         let fields = self.compile_struct_fields(struct_item.fields());
-        *self.db.ty_mut(type_id) = Type::Struct { fields };
+        *self.db.ty_mut(type_id) = Type::Struct(StructType::new(fields));
     }
 
     fn compile_struct_fields(&mut self, fields: Vec<StructField>) -> IndexMap<String, TypeId> {
@@ -325,7 +320,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_enum(&mut self, enum_item: EnumItem, type_id: TypeId) {
-        let Type::Enum { variants } = self.db.ty(type_id).clone() else {
+        let Type::Enum(enum_type) = self.db.ty(type_id).clone() else {
             unreachable!();
         };
 
@@ -344,7 +339,7 @@ impl<'a> Lowerer<'a> {
                 continue;
             }
 
-            let variant_type = variants[name.text()];
+            let variant_type = enum_type.variants()[name.text()];
 
             let fields = self.compile_struct_fields(variant.fields());
 
@@ -353,12 +348,12 @@ impl<'a> Lowerer<'a> {
                 .map(|discriminant| self.compile_int(discriminant).hir())
                 .unwrap_or(self.unknown_hir);
 
-            *self.db.ty_mut(variant_type) = Type::EnumVariant {
-                name: name.to_string(),
-                enum_type: type_id,
+            *self.db.ty_mut(variant_type) = Type::EnumVariant(EnumVariant::new(
+                name.to_string(),
+                type_id,
                 fields,
                 discriminant,
-            };
+            ));
         }
     }
 
@@ -458,9 +453,9 @@ impl<'a> Lowerer<'a> {
         let ty = initializer.path().map(|path| self.compile_path_type(path));
 
         match ty.map(|ty| self.db.ty(ty)).cloned() {
-            Some(Type::Struct { fields }) => {
+            Some(Type::Struct(struct_type)) => {
                 let hir_id = self.compile_initializer_fields(
-                    fields,
+                    struct_type.fields(),
                     initializer.fields(),
                     initializer.syntax().text_range(),
                 );
@@ -470,18 +465,16 @@ impl<'a> Lowerer<'a> {
                     None => self.unknown(),
                 }
             }
-            Some(Type::EnumVariant {
-                fields,
-                discriminant,
-                ..
-            }) => {
+            Some(Type::EnumVariant(enum_variant)) => {
                 let fields_hir_id = self.compile_initializer_fields(
-                    fields,
+                    enum_variant.fields(),
                     initializer.fields(),
                     initializer.syntax().text_range(),
                 );
 
-                let hir_id = self.db.alloc_hir(Hir::Pair(discriminant, fields_hir_id));
+                let hir_id = self
+                    .db
+                    .alloc_hir(Hir::Pair(enum_variant.discriminant(), fields_hir_id));
 
                 match ty {
                     Some(struct_type) => Value::typed(hir_id, struct_type),
@@ -501,7 +494,7 @@ impl<'a> Lowerer<'a> {
 
     fn compile_initializer_fields(
         &mut self,
-        struct_fields: IndexMap<String, TypeId>,
+        struct_fields: &IndexMap<String, TypeId>,
         initializer_fields: Vec<InitializerField>,
         text_range: TextRange,
     ) -> HirId {
@@ -583,8 +576,10 @@ impl<'a> Lowerer<'a> {
 
     fn compile_struct_field_access(&mut self, value: Value, field_name: SyntaxToken) -> Value {
         match self.db.ty(value.ty()) {
-            Type::Struct { fields } => {
-                if let Some((index, _name, &field_type)) = fields.get_full(field_name.text()) {
+            Type::Struct(struct_type) => {
+                if let Some((index, _name, &field_type)) =
+                    struct_type.fields().get_full(field_name.text())
+                {
                     Value::typed(self.compile_index(value.hir(), index, false), field_type)
                 } else {
                     self.error(
@@ -923,19 +918,17 @@ impl<'a> Lowerer<'a> {
             lambda_expr.body().unwrap().syntax().text_range(),
         );
 
+        let ty = FunctionType::new(parameter_types.clone(), return_type);
+
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
             hir_id: body.hir(),
-            parameter_types: parameter_types.clone(),
-            return_type,
+            ty: ty.clone(),
         });
 
         Value::typed(
             self.db.alloc_hir(Hir::Reference(symbol_id)),
-            self.db.alloc_type(Type::Function {
-                parameter_types,
-                return_type,
-            }),
+            self.db.alloc_type(Type::Function(ty)),
         )
     }
 
@@ -1048,14 +1041,7 @@ impl<'a> Lowerer<'a> {
         Value::typed(
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             match self.db.symbol(symbol_id) {
-                Symbol::Function {
-                    parameter_types,
-                    return_type,
-                    ..
-                } => self.db.alloc_type(Type::Function {
-                    parameter_types: parameter_types.clone(),
-                    return_type: *return_type,
-                }),
+                Symbol::Function { ty, .. } => self.db.alloc_type(Type::Function(ty.clone())),
                 Symbol::Parameter { type_id } => *type_id,
                 Symbol::LetBinding { type_id, .. } => *type_id,
                 Symbol::ConstBinding { type_id, .. } => *type_id, //todo
@@ -1098,14 +1084,11 @@ impl<'a> Lowerer<'a> {
         }
 
         match self.db.ty(callee.ty()).clone() {
-            Type::Function {
-                parameter_types,
-                return_type,
-            } => {
-                if parameter_types.len() != arg_types.len() {
+            Type::Function(function_type) => {
+                if function_type.parameter_types().len() != arg_types.len() {
                     self.error(
                         DiagnosticInfo::ArgumentMismatch {
-                            expected: parameter_types.len(),
+                            expected: function_type.parameter_types().len(),
                             found: arg_types.len(),
                         },
                         call.syntax().text_range(),
@@ -1114,9 +1097,9 @@ impl<'a> Lowerer<'a> {
                     return self.unknown();
                 }
 
-                for (i, (param, &arg)) in parameter_types
-                    .clone()
-                    .into_iter()
+                for (i, (&param, &arg)) in function_type
+                    .parameter_types()
+                    .iter()
                     .zip(arg_types.iter())
                     .enumerate()
                 {
@@ -1128,7 +1111,7 @@ impl<'a> Lowerer<'a> {
                         callee: callee.hir(),
                         args: args_hir,
                     }),
-                    return_type,
+                    function_type.return_type(),
                 )
             }
             Type::Unknown => Value::typed(
@@ -1187,8 +1170,8 @@ impl<'a> Lowerer<'a> {
 
     fn path_into_type(&mut self, ty: TypeId, name: &str, range: TextRange) -> TypeId {
         match self.db.ty(ty) {
-            Type::Enum { variants } => {
-                if let Some(&variant_type) = variants.get(name) {
+            Type::Enum(enum_type) => {
+                if let Some(&variant_type) = enum_type.variants().get(name) {
                     return variant_type;
                 }
                 self.error(DiagnosticInfo::UnknownEnumVariant(name.to_string()), range);
@@ -1221,7 +1204,7 @@ impl<'a> Lowerer<'a> {
         self.db.alloc_type(Type::Tuple(items))
     }
 
-    fn compile_function_type(&mut self, function: FunctionType) -> TypeId {
+    fn compile_function_type(&mut self, function: AstFunctionType) -> TypeId {
         let parameter_types = function
             .params()
             .into_iter()
@@ -1237,18 +1220,18 @@ impl<'a> Lowerer<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
 
-        self.db.alloc_type(Type::Function {
+        self.db.alloc_type(Type::Function(FunctionType::new(
             parameter_types,
             return_type,
-        })
+        )))
     }
 
     fn extract_function_type(&self, type_id: TypeId) -> Option<(Vec<TypeId>, TypeId)> {
         match self.db.ty(type_id) {
-            Type::Function {
-                parameter_types,
-                return_type,
-            } => Some((parameter_types.clone(), *return_type)),
+            Type::Function(function_type) => Some((
+                function_type.parameter_types().to_vec(),
+                function_type.return_type(),
+            )),
             Type::Alias(alias_type_id) => self.extract_function_type(*alias_type_id),
             _ => None,
         }
@@ -1350,8 +1333,9 @@ impl<'a> Lowerer<'a> {
 
                 format!("({})", item_names.join(", "))
             }
-            Type::Struct { fields } => {
-                let fields: Vec<String> = fields
+            Type::Struct(struct_type) => {
+                let fields: Vec<String> = struct_type
+                    .fields()
                     .iter()
                     .map(|(name, ty)| format!("{}: {}", name, self.type_name_visitor(*ty, stack)))
                     .collect();
@@ -1359,31 +1343,30 @@ impl<'a> Lowerer<'a> {
                 format!("{{ {} }}", fields.join(", "))
             }
             Type::Enum { .. } => "<unnamed enum>".to_string(),
-            Type::EnumVariant {
-                name,
-                enum_type,
-                fields,
-                ..
-            } => {
-                let enum_name = self.type_name_visitor(*enum_type, stack);
+            Type::EnumVariant(enum_variant) => {
+                let enum_name = self.type_name_visitor(enum_variant.enum_type(), stack);
 
-                let fields: Vec<String> = fields
+                let fields: Vec<String> = enum_variant
+                    .fields()
                     .iter()
                     .map(|(name, ty)| format!("{}: {}", name, self.type_name_visitor(*ty, stack)))
                     .collect();
 
-                format!("{}::{} {{ {} }}", enum_name, name, fields.join(", "))
+                format!(
+                    "{}::{} {{ {} }}",
+                    enum_name,
+                    enum_variant.name(),
+                    fields.join(", ")
+                )
             }
-            Type::Function {
-                parameter_types,
-                return_type,
-            } => {
-                let params: Vec<String> = parameter_types
+            Type::Function(function_type) => {
+                let params: Vec<String> = function_type
+                    .parameter_types()
                     .iter()
                     .map(|&ty| self.type_name_visitor(ty, stack))
                     .collect();
 
-                let ret = self.type_name_visitor(*return_type, stack);
+                let ret = self.type_name_visitor(function_type.return_type(), stack);
 
                 format!("fun({}) -> {}", params.join(", "), ret)
             }
@@ -1487,30 +1470,25 @@ impl<'a> Lowerer<'a> {
             }
 
             // Enum variants are assignable to their enum type.
-            (Type::EnumVariant { enum_type, .. }, _) if b == enum_type => true,
+            (Type::EnumVariant(enum_variant), _) if b == enum_variant.enum_type() => true,
 
             // Functions with compatible parameters and return type.
-            (
-                Type::Function {
-                    parameter_types: params_a,
-                    return_type: ret_a,
-                },
-                Type::Function {
-                    parameter_types: params_b,
-                    return_type: ret_b,
-                },
-            ) => {
-                if params_a.len() != params_b.len() {
+            (Type::Function(fun_a), Type::Function(fun_b)) => {
+                if fun_a.parameter_types().len() != fun_b.parameter_types().len() {
                     return false;
                 }
 
-                for (a, b) in params_a.into_iter().zip(params_b.into_iter()) {
-                    if !self.is_assignable_to(a, b, cast, visited) {
+                for (a, b) in fun_a
+                    .parameter_types()
+                    .iter()
+                    .zip(fun_b.parameter_types().iter())
+                {
+                    if !self.is_assignable_to(*a, *b, cast, visited) {
                         return false;
                     }
                 }
 
-                self.is_assignable_to(ret_a, ret_b, cast, visited)
+                self.is_assignable_to(fun_a.return_type(), fun_b.return_type(), cast, visited)
             }
 
             _ => false,

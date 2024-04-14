@@ -2,15 +2,6 @@ use id_arena::{Arena, Id};
 
 use crate::{hir::Hir, lir::Lir, scope::Scope, symbol::Symbol, ty::Type};
 
-#[derive(Default)]
-pub struct Database {
-    scopes: Arena<Scope>,
-    symbols: Arena<Symbol>,
-    types: Arena<Type>,
-    hir: Arena<Hir>,
-    lir: Arena<Lir>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolId(Id<Symbol>);
 
@@ -25,6 +16,15 @@ pub struct HirId(Id<Hir>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LirId(Id<Lir>);
+
+#[derive(Default)]
+pub struct Database {
+    scopes: Arena<Scope>,
+    symbols: Arena<Symbol>,
+    types: Arena<Type>,
+    hir: Arena<Hir>,
+    lir: Arena<Lir>,
+}
 
 impl Database {
     pub(crate) fn alloc_scope(&mut self, scope: Scope) -> ScopeId {
