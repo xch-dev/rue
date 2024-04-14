@@ -884,7 +884,7 @@ impl<'a> Lowerer<'a> {
                 .map(|ty| self.compile_type(ty))
                 .or(expected
                     .as_ref()
-                    .and_then(|expected| expected.0.get(i).copied()))
+                    .and_then(|expected| expected.parameter_types().get(i).copied()))
                 .unwrap_or(self.unknown_type);
 
             parameter_types.push(type_id);
@@ -904,7 +904,7 @@ impl<'a> Lowerer<'a> {
         let expected_return_type = lambda_expr
             .ty()
             .map(|ty| self.compile_type(ty))
-            .or(expected.map(|expected| expected.1));
+            .or(expected.map(|expected| expected.return_type()));
 
         self.scope_stack.push(scope_id);
         let body = self.compile_expr(body, expected_return_type);
@@ -1068,7 +1068,7 @@ impl<'a> Lowerer<'a> {
                             arg,
                             expected
                                 .as_ref()
-                                .and_then(|expected| expected.0.get(i).copied()),
+                                .and_then(|expected| expected.parameter_types().get(i).copied()),
                         )
                     })
                     .unwrap_or_else(|| self.unknown())
@@ -1177,7 +1177,6 @@ impl<'a> Lowerer<'a> {
                 self.error(DiagnosticInfo::UnknownEnumVariant(name.to_string()), range);
                 self.unknown_type
             }
-            Type::Alias(alias) => self.path_into_type(*alias, name, range),
             _ => {
                 self.error(DiagnosticInfo::PathIntoNonEnum(self.type_name(ty)), range);
                 self.unknown_type
@@ -1226,13 +1225,9 @@ impl<'a> Lowerer<'a> {
         )))
     }
 
-    fn extract_function_type(&self, type_id: TypeId) -> Option<(Vec<TypeId>, TypeId)> {
+    fn extract_function_type(&self, type_id: TypeId) -> Option<FunctionType> {
         match self.db.ty(type_id) {
-            Type::Function(function_type) => Some((
-                function_type.parameter_types().to_vec(),
-                function_type.return_type(),
-            )),
-            Type::Alias(alias_type_id) => self.extract_function_type(*alias_type_id),
+            Type::Function(function_type) => Some(function_type.clone()),
             _ => None,
         }
     }
@@ -1240,7 +1235,6 @@ impl<'a> Lowerer<'a> {
     fn extract_tuple_types(&self, type_id: TypeId) -> Option<Vec<TypeId>> {
         match self.db.ty(type_id) {
             Type::Tuple(items) => Some(items.clone()),
-            Type::Alias(alias_type_id) => self.extract_tuple_types(*alias_type_id),
             _ => None,
         }
     }
@@ -1248,7 +1242,6 @@ impl<'a> Lowerer<'a> {
     fn extract_list_type(&self, type_id: TypeId) -> Option<TypeId> {
         match self.db.ty(type_id) {
             Type::List(inner) => Some(*inner),
-            Type::Alias(alias_type_id) => self.extract_list_type(*alias_type_id),
             _ => None,
         }
     }
@@ -1259,7 +1252,7 @@ impl<'a> Lowerer<'a> {
         text_range: TextRange,
         visited_aliases: &mut HashSet<TypeId>,
     ) -> bool {
-        match self.db.ty(ty).clone() {
+        match self.db.ty_raw(ty).clone() {
             Type::Union(items) => {
                 for &item in items.iter() {
                     if self.detect_cycle(item, text_range, visited_aliases) {
@@ -1370,7 +1363,7 @@ impl<'a> Lowerer<'a> {
 
                 format!("fun({}) -> {}", params.join(", "), ret)
             }
-            Type::Alias(type_id) => self.type_name_visitor(*type_id, stack),
+            Type::Alias(..) => unreachable!(),
         };
 
         stack.pop().unwrap();
@@ -1430,12 +1423,6 @@ impl<'a> Lowerer<'a> {
             (Type::Bytes, Type::Int) if cast => true,
             (Type::Bool, Type::Int | Type::Bytes) if cast => true,
             (Type::Any, _) if cast => true,
-
-            // Reduce the type alias on left hand side.
-            (Type::Alias(alias), _) => self.is_assignable_to(alias, b, cast, visited),
-
-            // Reduce the type alias on right hand side.
-            (_, Type::Alias(alias)) => self.is_assignable_to(a, alias, cast, visited),
 
             // Anything can be assigned to a union if it can be assigned to any of its items.
             (_, Type::Union(items)) => {

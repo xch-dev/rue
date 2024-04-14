@@ -55,8 +55,15 @@ impl Database {
         &self.symbols[id.0]
     }
 
-    pub fn ty(&self, id: TypeId) -> &Type {
+    pub fn ty_raw(&self, id: TypeId) -> &Type {
         &self.types[id.0]
+    }
+
+    pub fn ty(&self, mut id: TypeId) -> &Type {
+        while let Type::Alias(alias) = self.ty_raw(id) {
+            id = *alias;
+        }
+        self.ty_raw(id)
     }
 
     pub(crate) fn ty_mut(&mut self, id: TypeId) -> &mut Type {
