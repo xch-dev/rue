@@ -5,12 +5,13 @@ use crate::database::{HirId, TypeId};
 #[derive(Debug, Clone)]
 pub enum Type {
     Unknown,
+    Nil,
     Any,
     Int,
     Bool,
     Bytes,
+    Pair(TypeId, TypeId),
     Union(Vec<TypeId>),
-    Tuple(Vec<TypeId>),
     List(TypeId),
     Struct(StructType),
     Enum(EnumType),

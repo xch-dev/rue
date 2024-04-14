@@ -80,7 +80,7 @@ ast_enum!(
     InitializerExpr,
     LiteralExpr,
     ListExpr,
-    TupleExpr,
+    PairExpr,
     Block,
     LambdaExpr,
     PrefixExpr,
@@ -96,7 +96,7 @@ ast_node!(InitializerField);
 ast_node!(LiteralExpr);
 ast_node!(ListExpr);
 ast_node!(ListItem);
-ast_node!(TupleExpr);
+ast_node!(PairExpr);
 ast_node!(PrefixExpr);
 ast_node!(BinaryExpr);
 ast_node!(CastExpr);
@@ -109,10 +109,10 @@ ast_node!(IndexAccess);
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
 
-ast_enum!(Type, Path, ListType, TupleType, FunctionType);
+ast_enum!(Type, Path, ListType, PairType, FunctionType);
 ast_node!(ListType);
 ast_node!(ListTypeItem);
-ast_node!(TupleType);
+ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
 
@@ -463,9 +463,13 @@ impl ListItem {
     }
 }
 
-impl TupleExpr {
-    pub fn items(&self) -> Vec<Expr> {
-        self.syntax().children().filter_map(Expr::cast).collect()
+impl PairExpr {
+    pub fn first(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+
+    pub fn rest(&self) -> Option<Expr> {
+        self.syntax().children().filter_map(Expr::cast).last()
     }
 }
 
@@ -548,7 +552,7 @@ impl FieldAccess {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| matches!(token.kind(), SyntaxKind::Ident | SyntaxKind::Int))
+            .find(|token| matches!(token.kind(), SyntaxKind::Ident))
     }
 }
 
@@ -584,9 +588,13 @@ impl ListTypeItem {
     }
 }
 
-impl TupleType {
-    pub fn items(&self) -> Vec<Type> {
-        self.syntax().children().filter_map(Type::cast).collect()
+impl PairType {
+    pub fn first(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+
+    pub fn rest(&self) -> Option<Type> {
+        self.syntax().children().filter_map(Type::cast).last()
     }
 }
 

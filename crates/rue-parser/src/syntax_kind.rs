@@ -81,7 +81,7 @@ pub enum SyntaxKind {
     LiteralExpr,
     ListExpr,
     ListItem,
-    TupleExpr,
+    PairExpr,
     LambdaExpr,
     LambdaParam,
     PrefixExpr,
@@ -95,7 +95,7 @@ pub enum SyntaxKind {
 
     ListType,
     ListTypeItem,
-    TupleType,
+    PairType,
     FunctionType,
     FunctionTypeParam,
 }
@@ -180,7 +180,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::LiteralExpr => "literal expression",
                 SyntaxKind::ListExpr => "list expression",
                 SyntaxKind::ListItem => "list item",
-                SyntaxKind::TupleExpr => "tuple expression",
+                SyntaxKind::PairExpr => "pair expression",
                 SyntaxKind::LambdaExpr => "lambda expression",
                 SyntaxKind::LambdaParam => "lambda param",
                 SyntaxKind::PrefixExpr => "prefix expression",
@@ -194,7 +194,7 @@ impl fmt::Display for SyntaxKind {
 
                 SyntaxKind::ListType => "list type",
                 SyntaxKind::ListTypeItem => "list type item",
-                SyntaxKind::TupleType => "tuple type",
+                SyntaxKind::PairType => "pair type",
                 SyntaxKind::FunctionType => "function type",
                 SyntaxKind::FunctionTypeParam => "function type parameter",
             }

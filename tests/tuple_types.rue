@@ -1,9 +1,6 @@
 fun main() -> Int {
-    let nil_tuple = ();
-    let nil_tuple_hinted: () = nil_tuple;
+    let pair = (20, 24);
+    let pair_hinted: (Int, Int) = pair;
 
-    let items = (1, 2, 3);
-    let items_hinted: (Int, Int, Int) = items;
-
-    items.0 + items.1 + items.2
+    pair.first + pair.rest + pair_hinted.first + pair_hinted.rest
 }

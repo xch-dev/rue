@@ -74,8 +74,8 @@ pub enum DiagnosticInfo {
     #[error("cannot access named field of non-struct type `{0}`")]
     StructFieldAccess(String),
 
-    #[error("cannot access numeric field of non-tuple type `{0}`")]
-    TupleFieldAccess(String),
+    #[error("unknown field of pair type `{0}`, expected `first` or `rest`")]
+    PairFieldAccess(String),
 
     #[error("cannot index non-list type `{0}`")]
     IndexAccess(String),

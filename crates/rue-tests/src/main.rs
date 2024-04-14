@@ -70,7 +70,7 @@ fn iter_tests() -> impl Iterator<Item = PathBuf> {
 fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
     let (root, parser_errors) = rue_parser::parse(source);
     let mut allocator = Allocator::new();
-    let output = compile(&mut allocator, root);
+    let output = compile(&mut allocator, root, parser_errors.is_empty());
 
     let parser_errors: Vec<String> = parser_errors
         .into_iter()

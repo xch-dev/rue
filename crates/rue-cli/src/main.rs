@@ -19,7 +19,7 @@ fn main() {
     let source = fs::read_to_string(args.file).expect("could not read source file");
     let (ast, errors) = parse(&source);
 
-    for error in errors {
+    for error in &errors {
         let LineCol { line, col } = line_col(&source, error.span().start);
         let line = line + 1;
         let col = col + 1;
@@ -28,7 +28,7 @@ fn main() {
     }
 
     let mut allocator = Allocator::new();
-    let output = compile(&mut allocator, ast);
+    let output = compile(&mut allocator, ast, errors.is_empty());
 
     if !output.diagnostics().is_empty() {
         for error in output.diagnostics() {

@@ -43,7 +43,7 @@ pub fn analyze(root: Root) -> Vec<Diagnostic> {
     lowerer.finish()
 }
 
-pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
+pub fn compile(allocator: &mut Allocator, root: Root, parsing_succeeded: bool) -> Output {
     let mut db = Database::default();
     let scope_id = db.alloc_scope(Scope::default());
 
@@ -67,6 +67,7 @@ pub fn compile(allocator: &mut Allocator, root: Root) -> Output {
     let node_ptr = if !diagnostics
         .iter()
         .any(|diagnostic| diagnostic.kind() == DiagnosticKind::Error)
+        && parsing_succeeded
     {
         let mut optimizer = Optimizer::new(&mut db);
         let lir_id = optimizer.opt_main(main_id);

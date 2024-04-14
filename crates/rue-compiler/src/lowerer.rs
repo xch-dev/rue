@@ -10,9 +10,9 @@ use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
     FunctionCall, FunctionItem, FunctionType as AstFunctionType, IfExpr, IndexAccess,
-    InitializerExpr, InitializerField, Item, LambdaExpr, ListExpr, ListType, LiteralExpr, Path,
-    PrefixExpr, PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, TupleExpr,
-    TupleType, Type as AstType, TypeAliasItem,
+    InitializerExpr, InitializerField, Item, LambdaExpr, ListExpr, ListType, LiteralExpr, PairExpr,
+    PairType, Path, PrefixExpr, PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind,
+    SyntaxToken, Type as AstType, TypeAliasItem,
 };
 
 use crate::{
@@ -42,7 +42,7 @@ impl<'a> Lowerer<'a> {
         let bool_type = db.alloc_type(Type::Bool);
         let bytes_type = db.alloc_type(Type::Bytes);
         let any_type = db.alloc_type(Type::Any);
-        let nil_type = db.alloc_type(Type::Tuple(Vec::new()));
+        let nil_type = db.alloc_type(Type::Nil);
         let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
         let unknown_type = db.alloc_type(Type::Unknown);
         let unknown_hir = db.alloc_hir(Hir::Unknown);
@@ -441,7 +441,7 @@ impl<'a> Lowerer<'a> {
             Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
-            Expr::TupleExpr(list) => self.compile_tuple_expr(list, expected_type),
+            Expr::PairExpr(pair) => self.compile_pair_expr(pair, expected_type),
             Expr::Block(block) => {
                 let scope_id = self.db.alloc_scope(Scope::default());
                 self.compile_block_expr(block, Some(scope_id), expected_type)
@@ -571,19 +571,11 @@ impl<'a> Lowerer<'a> {
             return self.unknown();
         };
 
-        let Some(token) = field_access.field() else {
+        let Some(field_name) = field_access.field() else {
             return self.unknown();
         };
 
-        match token.kind() {
-            SyntaxKind::Ident => self.compile_struct_field_access(value, token),
-            SyntaxKind::Int => self.compile_tuple_field_access(value, token),
-            _ => unreachable!(),
-        }
-    }
-
-    fn compile_struct_field_access(&mut self, value: Value, field_name: SyntaxToken) -> Value {
-        match self.db.ty(value.ty()) {
+        match self.db.ty(value.ty()).clone() {
             Type::Struct(struct_type) => {
                 if let Some((index, _name, &field_type)) =
                     struct_type.fields().get_full(field_name.text())
@@ -597,6 +589,17 @@ impl<'a> Lowerer<'a> {
                     self.unknown()
                 }
             }
+            Type::Pair(left, right) => match field_name.text() {
+                "first" => Value::typed(self.db.alloc_hir(Hir::First(value.hir())), left),
+                "rest" => Value::typed(self.db.alloc_hir(Hir::Rest(value.hir())), right),
+                _ => {
+                    self.error(
+                        DiagnosticInfo::PairFieldAccess(field_name.to_string()),
+                        field_name.text_range(),
+                    );
+                    self.unknown()
+                }
+            },
             _ => {
                 self.error(
                     DiagnosticInfo::StructFieldAccess(self.type_name(value.ty())),
@@ -605,31 +608,6 @@ impl<'a> Lowerer<'a> {
                 self.unknown()
             }
         }
-    }
-
-    fn compile_tuple_field_access(&mut self, value: Value, index_token: SyntaxToken) -> Value {
-        let index = self.compile_int_raw(index_token.clone());
-
-        let Type::Tuple(items) = self.db.ty(value.ty()).clone() else {
-            self.error(
-                DiagnosticInfo::TupleFieldAccess(self.type_name(value.ty())),
-                index_token.text_range(),
-            );
-            return self.unknown();
-        };
-
-        if index >= items.len() {
-            self.error(
-                DiagnosticInfo::IndexOutOfBounds(index as u32, items.len() as u32),
-                index_token.text_range(),
-            );
-            return self.unknown();
-        }
-
-        Value::typed(
-            self.compile_index(value.hir(), index, index + 1 == items.len()),
-            items[index],
-        )
     }
 
     fn compile_index_access(&mut self, index_access: IndexAccess) -> Value {
@@ -844,45 +822,45 @@ impl<'a> Lowerer<'a> {
         )
     }
 
-    fn compile_tuple_expr(
-        &mut self,
-        tuple_expr: TupleExpr,
-        expected_type: Option<TypeId>,
-    ) -> Value {
-        let mut hir_id = self.nil_hir;
-        let mut types = Vec::new();
+    fn compile_pair_expr(&mut self, pair_expr: PairExpr, expected_type: Option<TypeId>) -> Value {
+        let expected_first = expected_type.and_then(|ty| match self.db.ty(ty) {
+            Type::Pair(first, _) => Some(*first),
+            _ => None,
+        });
 
-        let tuple = expected_type
-            .and_then(|ty| match self.db.ty(ty) {
-                Type::Tuple(tuple) => Some(tuple.clone()),
-                _ => None,
-            })
-            .unwrap_or_default();
+        let expected_rest = expected_type.and_then(|ty| match self.db.ty(ty) {
+            Type::Pair(_, rest) => Some(*rest),
+            _ => None,
+        });
 
-        let len = tuple_expr.items().len();
+        let first = if let Some(first) = pair_expr.first() {
+            let value = self.compile_expr(first.clone(), expected_first);
+            self.type_check(
+                value.ty(),
+                expected_first.unwrap_or(self.unknown_type),
+                first.syntax().text_range(),
+            );
+            value
+        } else {
+            self.unknown()
+        };
 
-        for (i, item) in tuple_expr.items().into_iter().enumerate().rev() {
-            let expected_type = tuple.get(i).copied();
-            let output = self.compile_expr(item.clone(), expected_type);
+        let rest = if let Some(rest) = pair_expr.rest() {
+            let value = self.compile_expr(rest.clone(), expected_rest);
+            self.type_check(
+                value.ty(),
+                expected_rest.unwrap_or(self.unknown_type),
+                rest.syntax().text_range(),
+            );
+            value
+        } else {
+            self.unknown()
+        };
 
-            if let Some(expected_type) = expected_type {
-                self.type_check(output.ty(), expected_type, item.syntax().text_range());
-            }
+        let hir_id = self.db.alloc_hir(Hir::Pair(first.hir(), rest.hir()));
+        let type_id = self.db.alloc_type(Type::Pair(first.ty(), rest.ty()));
 
-            types.push(output.ty());
-
-            if i + 1 == len {
-                hir_id = output.hir();
-                continue;
-            }
-
-            hir_id = self.db.alloc_hir(Hir::Pair(output.hir(), hir_id));
-        }
-
-        // We added these in inverse order.
-        types.reverse();
-
-        Value::typed(hir_id, self.db.alloc_type(Type::Tuple(types)))
+        Value::typed(hir_id, type_id)
     }
 
     fn compile_lambda_expr(
@@ -1159,7 +1137,7 @@ impl<'a> Lowerer<'a> {
             AstType::Path(path) => self.compile_path_type(path),
             AstType::ListType(list) => self.compile_list_type(list),
             AstType::FunctionType(function) => self.compile_function_type(function),
-            AstType::TupleType(tuple) => self.compile_tuple_type(tuple),
+            AstType::PairType(tuple) => self.compile_pair_type(tuple),
         }
     }
 
@@ -1216,14 +1194,18 @@ impl<'a> Lowerer<'a> {
         self.db.alloc_type(Type::List(item_type))
     }
 
-    fn compile_tuple_type(&mut self, tuple_type: TupleType) -> TypeId {
-        let items = tuple_type
-            .items()
-            .into_iter()
+    fn compile_pair_type(&mut self, pair_type: PairType) -> TypeId {
+        let first = pair_type
+            .first()
             .map(|ty| self.compile_type(ty))
-            .collect();
+            .unwrap_or(self.unknown_type);
 
-        self.db.alloc_type(Type::Tuple(items))
+        let rest = pair_type
+            .rest()
+            .map(|ty| self.compile_type(ty))
+            .unwrap_or(self.unknown_type);
+
+        self.db.alloc_type(Type::Pair(first, rest))
     }
 
     fn compile_function_type(&mut self, function: AstFunctionType) -> TypeId {
@@ -1264,11 +1246,9 @@ impl<'a> Lowerer<'a> {
                 false
             }
             Type::List(..) => false,
-            Type::Tuple(items) => {
-                if items.len() != 1 {
-                    return false;
-                }
-                self.detect_cycle(items[0], text_range, visited_aliases)
+            Type::Pair(left, right) => {
+                self.detect_cycle(left, text_range, visited_aliases)
+                    || self.detect_cycle(right, text_range, visited_aliases)
             }
             Type::Struct { .. } => false,
             Type::Enum { .. } => false,
@@ -1281,7 +1261,7 @@ impl<'a> Lowerer<'a> {
                 }
                 self.detect_cycle(alias, text_range, visited_aliases)
             }
-            Type::Unknown | Type::Any | Type::Int | Type::Bool | Type::Bytes => false,
+            Type::Unknown | Type::Nil | Type::Any | Type::Int | Type::Bool | Type::Bytes => false,
         }
     }
 
@@ -1304,6 +1284,7 @@ impl<'a> Lowerer<'a> {
 
         let name = match self.db.ty(ty) {
             Type::Unknown => "{unknown}".to_string(),
+            Type::Nil => "Nil".to_string(),
             Type::Any => "Any".to_string(),
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
@@ -1320,13 +1301,10 @@ impl<'a> Lowerer<'a> {
                 let inner = self.type_name_visitor(*items, stack);
                 format!("{}[]", inner)
             }
-            Type::Tuple(items) => {
-                let item_names: Vec<String> = items
-                    .iter()
-                    .map(|&ty| self.type_name_visitor(ty, stack))
-                    .collect();
-
-                format!("({})", item_names.join(", "))
+            Type::Pair(left, right) => {
+                let left = self.type_name_visitor(*left, stack);
+                let right = self.type_name_visitor(*right, stack);
+                format!("({left}, {right})")
             }
             Type::Struct(struct_type) => {
                 let fields: Vec<String> = struct_type
@@ -1414,6 +1392,7 @@ impl<'a> Lowerer<'a> {
         match (self.db.ty(a).clone(), self.db.ty(b).clone()) {
             // Primitive types.
             (Type::Unknown, _) | (_, Type::Unknown) => true,
+            (Type::Nil, Type::Nil) => true,
             (Type::Any, Type::Any) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
@@ -1421,6 +1400,7 @@ impl<'a> Lowerer<'a> {
             (_, Type::Any) => true,
 
             // Primitive casts.
+            (Type::Nil, Type::Bytes | Type::Bool | Type::Int) if cast => true,
             (Type::Int, Type::Bytes) if cast => true,
             (Type::Bytes, Type::Int) if cast => true,
             (Type::Bool, Type::Int | Type::Bytes) if cast => true,
@@ -1444,18 +1424,9 @@ impl<'a> Lowerer<'a> {
             // List types with compatible items are also assignable.
             (Type::List(a), Type::List(b)) => self.is_assignable_to(a, b, cast, visited),
 
-            (Type::Tuple(a), Type::Tuple(b)) => {
-                if a.len() != b.len() {
-                    return false;
-                }
-
-                for (a, b) in a.iter().zip(b.iter()) {
-                    if !self.is_assignable_to(*a, *b, cast, visited) {
-                        return false;
-                    }
-                }
-
-                true
+            (Type::Pair(a_left, a_right), Type::Pair(b_left, b_right)) => {
+                self.is_assignable_to(a_left, b_left, cast, visited)
+                    && self.is_assignable_to(a_right, b_right, cast, visited)
             }
 
             // Enum variants are assignable to their enum type.

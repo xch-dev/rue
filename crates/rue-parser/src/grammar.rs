@@ -235,14 +235,12 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
     } else if p.at(SyntaxKind::OpenBrace) {
         block(p);
     } else if p.at(SyntaxKind::OpenParen) {
-        p.start(SyntaxKind::TupleExpr);
+        p.start(SyntaxKind::PairExpr);
         p.bump();
-        while !p.at(SyntaxKind::CloseParen) {
-            expr(p);
-            if !p.try_eat(SyntaxKind::Comma) {
-                break;
-            }
-        }
+        expr(p);
+        p.expect(SyntaxKind::Comma);
+        expr(p);
+        p.try_eat(SyntaxKind::Comma);
         p.expect(SyntaxKind::CloseParen);
         p.finish();
     } else if p.at(SyntaxKind::If) {
@@ -268,9 +266,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         } else if p.at(SyntaxKind::Dot) {
             p.start_at(checkpoint, SyntaxKind::FieldAccess);
             p.bump();
-            if !p.try_eat(SyntaxKind::Ident) {
-                p.expect(SyntaxKind::Int);
-            }
+            p.expect(SyntaxKind::Ident);
             p.finish();
         } else if p.at(SyntaxKind::OpenBracket) {
             p.start_at(checkpoint, SyntaxKind::IndexAccess);
@@ -413,14 +409,12 @@ fn ty(p: &mut Parser) {
         ty(p);
         p.finish();
     } else if p.at(SyntaxKind::OpenParen) {
-        p.start(SyntaxKind::TupleType);
+        p.start(SyntaxKind::PairType);
         p.bump();
-        while !p.at(SyntaxKind::CloseParen) {
-            ty(p);
-            if !p.try_eat(SyntaxKind::Comma) {
-                break;
-            }
-        }
+        ty(p);
+        p.expect(SyntaxKind::Comma);
+        ty(p);
+        p.try_eat(SyntaxKind::Comma);
         p.expect(SyntaxKind::CloseParen);
         p.finish();
     } else {
