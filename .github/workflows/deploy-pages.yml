@@ -46,7 +46,7 @@ jobs:
         run: cargo fmt  -p rue-web -- --files-with-diff --check
 
       - name: Install Trunk binary
-        run: cargo binstall trunk
+        run: cargo binstall trunk --no-confirm
 
       - name: Build with Trunk
         run: |
