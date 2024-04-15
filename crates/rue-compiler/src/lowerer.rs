@@ -872,7 +872,7 @@ impl<'a> Lowerer<'a> {
                     lhs: strlen,
                     rhs: length,
                 });
-                Some((Guard::new(to, self.bytes32_type), hir_id))
+                Some((Guard::new(to, from), hir_id))
             }
             _ => {
                 self.error(
