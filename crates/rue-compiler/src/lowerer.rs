@@ -9,10 +9,10 @@ use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
-    FunctionCall, FunctionItem, FunctionType as AstFunctionType, GuardExpr, IfExpr, IndexAccess,
-    InitializerExpr, InitializerField, Item, LambdaExpr, ListExpr, ListType, LiteralExpr, PairExpr,
-    PairType, Path, PrefixExpr, PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind,
-    SyntaxToken, Type as AstType, TypeAliasItem,
+    FunctionCall, FunctionItem, FunctionType as AstFunctionType, GroupExpr, GuardExpr, IfExpr,
+    IndexAccess, InitializerExpr, InitializerField, Item, LambdaExpr, ListExpr, ListType,
+    LiteralExpr, PairExpr, PairType, Path, PrefixExpr, PrefixOp, Root, Stmt, StructField,
+    StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
 };
 
 use crate::{
@@ -33,6 +33,7 @@ pub struct Lowerer<'a> {
     int_type: TypeId,
     bool_type: TypeId,
     bytes_type: TypeId,
+    bytes32_type: TypeId,
     nil_type: TypeId,
     nil_hir: HirId,
     unknown_type: TypeId,
@@ -44,6 +45,7 @@ impl<'a> Lowerer<'a> {
         let int_type = db.alloc_type(Type::Int);
         let bool_type = db.alloc_type(Type::Bool);
         let bytes_type = db.alloc_type(Type::Bytes);
+        let bytes32_type = db.alloc_type(Type::Bytes32);
         let any_type = db.alloc_type(Type::Any);
         let nil_type = db.alloc_type(Type::Nil);
         let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
@@ -55,6 +57,7 @@ impl<'a> Lowerer<'a> {
         builtins.define_type("Int".to_string(), int_type);
         builtins.define_type("Bool".to_string(), bool_type);
         builtins.define_type("Bytes".to_string(), bytes_type);
+        builtins.define_type("Bytes32".to_string(), bytes32_type);
         builtins.define_type("Any".to_string(), any_type);
 
         {
@@ -72,7 +75,7 @@ impl<'a> Lowerer<'a> {
                 db.alloc_symbol(Symbol::Function {
                     scope_id,
                     hir_id,
-                    ty: FunctionType::new(vec![bytes_type], bytes_type, false),
+                    ty: FunctionType::new(vec![bytes_type], bytes32_type, false),
                 }),
             );
         }
@@ -88,6 +91,7 @@ impl<'a> Lowerer<'a> {
             int_type,
             bool_type,
             bytes_type,
+            bytes32_type,
             nil_type,
             nil_hir,
             unknown_type,
@@ -467,6 +471,7 @@ impl<'a> Lowerer<'a> {
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
+            Expr::GroupExpr(expr) => self.compile_group_expr(expr, expected_type),
             Expr::CastExpr(cast) => self.compile_cast_expr(cast, expected_type),
             Expr::GuardExpr(guard) => self.compile_guard_expr(guard, expected_type),
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
@@ -701,27 +706,15 @@ impl<'a> Lowerer<'a> {
         let ty = if binary.op() == Some(BinaryOp::Add)
             && self.is_assignable_to(lhs_ty, self.bytes_type, false, &mut HashSet::new())
         {
-            self.type_check(
-                rhs_ty,
-                self.bytes_type,
-                binary.rhs().unwrap().syntax().text_range(),
-            );
+            self.type_check(rhs_ty, self.bytes_type, binary.syntax().text_range());
 
             op = Some(HirBinaryOp::Concat);
 
             Some(self.bytes_type)
         } else {
-            self.type_check(
-                lhs_ty,
-                self.int_type,
-                binary.lhs().unwrap().syntax().text_range(),
-            );
+            self.type_check(lhs_ty, self.int_type, binary.syntax().text_range());
 
-            self.type_check(
-                rhs_ty,
-                self.int_type,
-                binary.rhs().unwrap().syntax().text_range(),
-            );
+            self.type_check(rhs_ty, self.int_type, binary.syntax().text_range());
 
             None
         };
@@ -758,6 +751,21 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    fn compile_group_expr(
+        &mut self,
+        group_expr: GroupExpr,
+        expected_type: Option<TypeId>,
+    ) -> Value {
+        let Some(expr) = group_expr
+            .expr()
+            .map(|expr| self.compile_expr(expr, expected_type))
+        else {
+            return self.unknown();
+        };
+
+        expr
+    }
+
     fn compile_cast_expr(&mut self, cast: CastExpr, expected_type: Option<TypeId>) -> Value {
         let Some(expr) = cast
             .expr()
@@ -789,57 +797,94 @@ impl<'a> Lowerer<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
 
-        if !matches!(self.db.ty(expr.ty()), Type::Any) {
-            self.error(
-                DiagnosticInfo::UnsupportedTypeGuard,
-                guard.syntax().text_range(),
-            );
+        let Some((guard, hir_id)) =
+            self.guard_into(expr.ty(), ty, expr.hir(), guard.syntax().text_range())
+        else {
             return Value::typed(self.unknown_hir, ty);
-        }
-
-        let (guard, hir_id) = match self.db.ty(ty) {
-            Type::Pair(first, rest) => {
-                if !matches!(self.db.ty(*first), Type::Any) {
-                    self.error(
-                        DiagnosticInfo::UnsupportedTypeGuard,
-                        guard.syntax().text_range(),
-                    );
-                    return Value::typed(self.unknown_hir, ty);
-                }
-
-                if !matches!(self.db.ty(*rest), Type::Any) {
-                    self.error(
-                        DiagnosticInfo::UnsupportedTypeGuard,
-                        guard.syntax().text_range(),
-                    );
-                    return Value::typed(self.unknown_hir, ty);
-                }
-
-                let hir_id = self.db.alloc_hir(Hir::IsCons(expr.hir()));
-                (Guard::new(ty, self.bytes_type), hir_id)
-            }
-            Type::Bytes => {
-                let pair_type = self.db.alloc_type(Type::Pair(self.any_type, self.any_type));
-                let is_cons = self.db.alloc_hir(Hir::IsCons(expr.hir()));
-                let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
-                (Guard::new(ty, pair_type), hir_id)
-            }
-            _ => {
-                self.error(
-                    DiagnosticInfo::UnsupportedTypeGuard,
-                    guard.syntax().text_range(),
-                );
-                return Value::typed(self.unknown_hir, ty);
-            }
         };
 
-        let mut value = Value::typed(hir_id, self.unknown_type);
+        let mut value = Value::typed(hir_id, self.bool_type);
 
         if let Hir::Reference(symbol_id) = self.db.hir(expr.hir()) {
             value.guard(*symbol_id, guard);
         }
 
         value
+    }
+
+    fn guard_into(
+        &mut self,
+        from: TypeId,
+        to: TypeId,
+        hir_id: HirId,
+        text_range: TextRange,
+    ) -> Option<(Guard, HirId)> {
+        if self.types_equal(from, to) {
+            self.warning(
+                DiagnosticInfo::RedundantTypeGuard(self.type_name(from)),
+                text_range,
+            );
+            return Some((Guard::new(to, self.bool_type), hir_id));
+        }
+
+        match (self.db.ty(from).clone(), self.db.ty(to).clone()) {
+            (Type::Any, Type::Pair(first, rest)) => {
+                if !self.types_equal(first, self.any_type) {
+                    self.error(DiagnosticInfo::NonAnyPairTypeGuard, text_range);
+                }
+
+                if !self.types_equal(rest, self.any_type) {
+                    self.error(DiagnosticInfo::NonAnyPairTypeGuard, text_range);
+                }
+
+                let hir_id = self.db.alloc_hir(Hir::IsCons(hir_id));
+                Some((Guard::new(to, self.bytes_type), hir_id))
+            }
+            (Type::Any, Type::Bytes) => {
+                let pair_type = self.db.alloc_type(Type::Pair(self.any_type, self.any_type));
+                let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
+                let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
+                Some((Guard::new(to, pair_type), hir_id))
+            }
+            (Type::List(inner), Type::Pair(first, rest)) => {
+                if !self.types_equal(first, inner) {
+                    self.error(DiagnosticInfo::NonListPairTypeGuard, text_range);
+                }
+
+                if !self.types_equal(rest, from) {
+                    self.error(DiagnosticInfo::NonListPairTypeGuard, text_range);
+                }
+
+                let hir_id = self.db.alloc_hir(Hir::IsCons(hir_id));
+                Some((Guard::new(to, self.nil_type), hir_id))
+            }
+            (Type::List(inner), Type::Nil) => {
+                let pair_type = self.db.alloc_type(Type::Pair(inner, from));
+                let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
+                let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
+                Some((Guard::new(to, pair_type), hir_id))
+            }
+            (Type::Bytes, Type::Bytes32) => {
+                let strlen = self.db.alloc_hir(Hir::Strlen(hir_id));
+                let length = self.db.alloc_hir(Hir::Atom(vec![32]));
+                let hir_id = self.db.alloc_hir(Hir::BinaryOp {
+                    op: HirBinaryOp::Equals,
+                    lhs: strlen,
+                    rhs: length,
+                });
+                Some((Guard::new(to, self.bytes32_type), hir_id))
+            }
+            _ => {
+                self.error(
+                    DiagnosticInfo::UnsupportedTypeGuard {
+                        from: self.type_name(from),
+                        to: self.type_name(to),
+                    },
+                    text_range,
+                );
+                None
+            }
+        }
     }
 
     fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Value {
@@ -1146,10 +1191,15 @@ impl<'a> Lowerer<'a> {
         let after_prefix = &text[1..];
         let before_suffix = after_prefix.strip_suffix(quote).unwrap_or(after_prefix);
 
+        let bytes = before_suffix.as_bytes();
+
         Value::typed(
-            self.db
-                .alloc_hir(Hir::Atom(before_suffix.as_bytes().to_vec())),
-            self.db.alloc_type(Type::Bytes),
+            self.db.alloc_hir(Hir::Atom(bytes.to_vec())),
+            if bytes.len() == 32 {
+                self.bytes32_type
+            } else {
+                self.bytes_type
+            },
         )
     }
 
@@ -1467,14 +1517,6 @@ impl<'a> Lowerer<'a> {
         visited_aliases: &mut HashSet<TypeId>,
     ) -> bool {
         match self.db.ty_raw(ty).clone() {
-            Type::Union(items) => {
-                for &item in items.iter() {
-                    if self.detect_cycle(item, text_range, visited_aliases) {
-                        return true;
-                    }
-                }
-                false
-            }
             Type::List(..) => false,
             Type::Pair(left, right) => {
                 self.detect_cycle(left, text_range, visited_aliases)
@@ -1491,7 +1533,13 @@ impl<'a> Lowerer<'a> {
                 }
                 self.detect_cycle(alias, text_range, visited_aliases)
             }
-            Type::Unknown | Type::Nil | Type::Any | Type::Int | Type::Bool | Type::Bytes => false,
+            Type::Unknown
+            | Type::Nil
+            | Type::Any
+            | Type::Int
+            | Type::Bool
+            | Type::Bytes
+            | Type::Bytes32 => false,
         }
     }
 
@@ -1519,14 +1567,7 @@ impl<'a> Lowerer<'a> {
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Bytes => "Bytes".to_string(),
-            Type::Union(items) => {
-                let item_names: Vec<String> = items
-                    .iter()
-                    .map(|&ty| self.type_name_visitor(ty, stack))
-                    .collect();
-
-                item_names.join(" | ")
-            }
+            Type::Bytes32 => "Bytes32".to_string(),
             Type::List(items) => {
                 let inner = self.type_name_visitor(*items, stack);
                 format!("{}[]", inner)
@@ -1627,29 +1668,15 @@ impl<'a> Lowerer<'a> {
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Bytes, Type::Bytes) => true,
+            (Type::Bytes32, Type::Bytes32 | Type::Bytes) => true,
             (_, Type::Any) => true,
 
             // Primitive casts.
             (Type::Nil, Type::Bytes | Type::Bool | Type::Int) if cast => true,
             (Type::Int, Type::Bytes) if cast => true,
-            (Type::Bytes, Type::Int) if cast => true,
+            (Type::Bytes | Type::Bytes32, Type::Int) if cast => true,
             (Type::Bool, Type::Int | Type::Bytes) if cast => true,
             (Type::Any, _) if cast => true,
-
-            // Anything can be assigned to a union if it can be assigned to any of its items.
-            (_, Type::Union(items)) => {
-                for &item in items.iter() {
-                    if self.is_assignable_to(a, item, cast, visited) {
-                        return true;
-                    }
-                }
-                false
-            }
-
-            // Unions can be assigned to anything if all of its items can be assigned to it.
-            (Type::Union(items), _) => items
-                .iter()
-                .all(|&item| self.is_assignable_to(item, b, cast, visited)),
 
             // List types with compatible items are also assignable.
             (Type::List(a), Type::List(b)) => self.is_assignable_to(a, b, cast, visited),
@@ -1685,6 +1712,82 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    fn types_equal(&self, a: TypeId, b: TypeId) -> bool {
+        self.types_equal_visitor(a, b, &mut HashSet::new())
+    }
+
+    fn types_equal_visitor(
+        &self,
+        a_id: TypeId,
+        b_id: TypeId,
+        visited: &mut HashSet<(TypeId, TypeId)>,
+    ) -> bool {
+        let key = (a_id, b_id);
+
+        if a_id == b_id || visited.contains(&key) {
+            return true;
+        }
+        visited.insert(key);
+
+        let b = self.db.ty(b_id).clone();
+
+        let equal = match self.db.ty(a_id).clone() {
+            Type::Unknown => matches!(b, Type::Unknown),
+            Type::Any => matches!(b, Type::Any),
+            Type::Nil => matches!(b, Type::Nil),
+            Type::Int => matches!(b, Type::Int),
+            Type::Bool => matches!(b, Type::Bool),
+            Type::Bytes => matches!(b, Type::Bytes),
+            Type::Bytes32 => matches!(b, Type::Bytes32),
+            Type::Enum(..) | Type::EnumVariant(..) | Type::Struct(..) => a_id == b_id,
+            Type::List(inner) => {
+                if let Type::List(other_inner) = b {
+                    self.types_equal_visitor(inner, other_inner, visited)
+                } else {
+                    false
+                }
+            }
+            Type::Pair(left, right) => {
+                if let Type::Pair(other_left, other_right) = b {
+                    self.types_equal_visitor(left, other_left, visited)
+                        && self.types_equal_visitor(right, other_right, visited)
+                } else {
+                    false
+                }
+            }
+            Type::Function(fun) => {
+                if let Type::Function(other_fun) = b {
+                    if fun.parameter_types().len() != other_fun.parameter_types().len() {
+                        return false;
+                    }
+
+                    if fun.varargs() != other_fun.varargs() {
+                        return false;
+                    }
+
+                    for (a, b) in fun
+                        .parameter_types()
+                        .iter()
+                        .zip(other_fun.parameter_types().iter())
+                    {
+                        if !self.types_equal_visitor(*a, *b, visited) {
+                            return false;
+                        }
+                    }
+
+                    self.types_equal_visitor(fun.return_type(), other_fun.return_type(), visited)
+                } else {
+                    false
+                }
+            }
+            Type::Alias(..) => unreachable!(),
+        };
+
+        visited.remove(&key);
+
+        equal
+    }
+
     fn unknown(&self) -> Value {
         Value::typed(self.unknown_hir, self.unknown_type)
     }
@@ -1711,7 +1814,7 @@ impl<'a> Lowerer<'a> {
         ));
     }
 
-    fn _warning(&mut self, info: DiagnosticInfo, range: TextRange) {
+    fn warning(&mut self, info: DiagnosticInfo, range: TextRange) {
         self.diagnostics.push(Diagnostic::new(
             DiagnosticKind::Warning,
             info,

@@ -109,3 +109,10 @@ cost = 19078
 input = "()"
 output = "550"
 hash = "af78d09d3fa66ec50827f2dd1877bc249a526bf96d42f72686e3120826b6a883"
+
+[type_guards]
+bytes = 160
+cost = 7060
+input = "()"
+output = "6"
+hash = "c65b731dc627a8ad1357dee68e27e3de33a582bebdb0bc2b503310e20ad360cc"

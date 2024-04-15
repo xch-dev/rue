@@ -235,12 +235,14 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
     } else if p.at(SyntaxKind::OpenBrace) {
         block(p);
     } else if p.at(SyntaxKind::OpenParen) {
-        p.start(SyntaxKind::PairExpr);
         p.bump();
         expr(p);
-        p.expect(SyntaxKind::Comma);
-        expr(p);
-        p.try_eat(SyntaxKind::Comma);
+        if p.try_eat(SyntaxKind::Comma) {
+            p.start_at(checkpoint, SyntaxKind::PairExpr);
+            expr(p);
+        } else {
+            p.start_at(checkpoint, SyntaxKind::GroupExpr);
+        }
         p.expect(SyntaxKind::CloseParen);
         p.finish();
     } else if p.at(SyntaxKind::If) {

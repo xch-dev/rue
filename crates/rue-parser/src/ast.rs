@@ -85,6 +85,7 @@ ast_enum!(
     LambdaExpr,
     PrefixExpr,
     BinaryExpr,
+    GroupExpr,
     CastExpr,
     GuardExpr,
     IfExpr,
@@ -100,6 +101,7 @@ ast_node!(ListItem);
 ast_node!(PairExpr);
 ast_node!(PrefixExpr);
 ast_node!(BinaryExpr);
+ast_node!(GroupExpr);
 ast_node!(CastExpr);
 ast_node!(GuardExpr);
 ast_node!(IfExpr);
@@ -435,6 +437,12 @@ impl BinaryExpr {
 
     pub fn rhs(&self) -> Option<Expr> {
         self.syntax().children().filter_map(Expr::cast).nth(1)
+    }
+}
+
+impl GroupExpr {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
     }
 }
 

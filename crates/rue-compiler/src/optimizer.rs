@@ -53,11 +53,12 @@ impl<'a> Optimizer<'a> {
                 self.compute_captures_hir(scope_id, lhs);
                 self.compute_captures_hir(scope_id, rhs);
             }
-            Hir::First(value) => self.compute_captures_hir(scope_id, value),
-            Hir::Rest(value) => self.compute_captures_hir(scope_id, value),
-            Hir::Not(value) => self.compute_captures_hir(scope_id, value),
-            Hir::Sha256(value) => self.compute_captures_hir(scope_id, value),
-            Hir::IsCons(value) => self.compute_captures_hir(scope_id, value),
+            Hir::First(value)
+            | Hir::Rest(value)
+            | Hir::Not(value)
+            | Hir::Sha256(value)
+            | Hir::IsCons(value)
+            | Hir::Strlen(value) => self.compute_captures_hir(scope_id, value),
             Hir::If {
                 condition,
                 then_block,
@@ -318,6 +319,7 @@ impl<'a> Optimizer<'a> {
             Hir::Not(value) => self.opt_not(scope_id, *value),
             Hir::Sha256(value) => self.opt_sha256(scope_id, *value),
             Hir::IsCons(value) => self.opt_is_cons(scope_id, *value),
+            Hir::Strlen(value) => self.opt_strlen(scope_id, *value),
             Hir::If {
                 condition,
                 then_block,
@@ -350,6 +352,11 @@ impl<'a> Optimizer<'a> {
     fn opt_is_cons(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
         let lir_id = self.opt_hir(scope_id, hir_id);
         self.db.alloc_lir(Lir::IsCons(lir_id))
+    }
+
+    fn opt_strlen(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
+        let lir_id = self.opt_hir(scope_id, hir_id);
+        self.db.alloc_lir(Lir::Strlen(lir_id))
     }
 
     fn opt_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {

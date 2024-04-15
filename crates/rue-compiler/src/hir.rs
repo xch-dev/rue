@@ -26,6 +26,7 @@ pub enum Hir {
     Not(HirId),
     Sha256(HirId),
     IsCons(HirId),
+    Strlen(HirId),
     If {
         condition: HirId,
         then_block: HirId,

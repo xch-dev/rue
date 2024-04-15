@@ -1,0 +1,13 @@
+fun main() -> Int {
+    let items = [1, 2, 3];
+    let bytes = "Hello, world!";
+    sum(...items) + (bytes is Bytes32) as Int
+}
+
+fun sum(...nums: Int[]) -> Int {
+    if nums is (Int, Int[]) {
+        nums.first + sum(...nums.rest)
+    } else {
+        0
+    }
+}

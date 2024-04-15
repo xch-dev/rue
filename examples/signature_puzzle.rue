@@ -1,7 +1,7 @@
 enum Condition {
     AggSigMe = 50 {
         public_key: Bytes,
-        message: Bytes,
+        message: Bytes32,
     }
 }
 
@@ -13,7 +13,7 @@ fun main(public_key: Bytes, conditions: Condition[]) -> Condition[] {
     [agg_sig, ...conditions]
 }
 
-fun tree_hash(value: Any) -> Bytes {
+fun tree_hash(value: Any) -> Bytes32 {
     if value is Bytes {
         sha256(1 as Bytes + value)
     } else {

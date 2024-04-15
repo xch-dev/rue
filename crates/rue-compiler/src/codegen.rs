@@ -21,6 +21,7 @@ struct Ops {
     l: NodePtr,
     eq: NodePtr,
     sha256: NodePtr,
+    strlen: NodePtr,
     concat: NodePtr,
     add: NodePtr,
     sub: NodePtr,
@@ -44,6 +45,7 @@ impl<'a> Codegen<'a> {
             l: allocator.new_small_number(7).unwrap(),
             eq: allocator.new_small_number(9).unwrap(),
             sha256: allocator.new_small_number(11).unwrap(),
+            strlen: allocator.new_small_number(13).unwrap(),
             concat: allocator.new_small_number(14).unwrap(),
             add: allocator.new_small_number(16).unwrap(),
             sub: allocator.new_small_number(17).unwrap(),
@@ -70,6 +72,7 @@ impl<'a> Codegen<'a> {
             Lir::Rest(value) => self.gen_rest(value),
             Lir::Sha256(value) => self.gen_sha256(value),
             Lir::IsCons(value) => self.gen_is_cons(value),
+            Lir::Strlen(value) => self.gen_strlen(value),
             Lir::Concat(values) => self.gen_concat(values),
             Lir::If(condition, then_branch, else_branch) => {
                 self.gen_if(condition, then_branch, else_branch)
@@ -139,6 +142,11 @@ impl<'a> Codegen<'a> {
     fn gen_is_cons(&mut self, value: LirId) -> NodePtr {
         let value = self.gen_lir(value);
         self.list(&[self.ops.l, value])
+    }
+
+    fn gen_strlen(&mut self, value: LirId) -> NodePtr {
+        let value = self.gen_lir(value);
+        self.list(&[self.ops.strlen, value])
     }
 
     fn gen_concat(&mut self, values: Vec<LirId>) -> NodePtr {
