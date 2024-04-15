@@ -88,3 +88,10 @@ cost = 1327
 input = "()"
 output = "((g1_multiply \"Hello, world!\" \"Message thingy\") (g1_negate \"Some puzzle\" 100))"
 hash = "e49ff16e836bdc3860d919f4d9dd8e562e544f569230229ba86409cab2d3e5e2"
+
+[signature_puzzle]
+bytes = 221
+cost = 0
+input = "()"
+output = "()"
+hash = "6e94aaf18c8348b6e01f4c01973a415a691be93f51e81666ed34760a9ee953bb"

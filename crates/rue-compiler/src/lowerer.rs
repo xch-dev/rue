@@ -20,14 +20,16 @@ use crate::{
     hir::{Hir, HirBinaryOp},
     scope::Scope,
     symbol::Symbol,
-    ty::{EnumType, EnumVariant, FunctionType, StructType, Type, Value},
+    ty::{EnumType, EnumVariant, FunctionType, Guard, StructType, Type, Value},
     Diagnostic, DiagnosticInfo, DiagnosticKind,
 };
 
 pub struct Lowerer<'a> {
     db: &'a mut Database,
     scope_stack: Vec<ScopeId>,
+    type_guards: Vec<HashMap<SymbolId, TypeId>>,
     diagnostics: Vec<Diagnostic>,
+    any_type: TypeId,
     int_type: TypeId,
     bool_type: TypeId,
     bytes_type: TypeId,
@@ -80,7 +82,9 @@ impl<'a> Lowerer<'a> {
         Self {
             db,
             scope_stack: vec![builtins_id],
+            type_guards: Vec::new(),
             diagnostics: Vec::new(),
+            any_type,
             int_type,
             bool_type,
             bytes_type,
@@ -780,14 +784,62 @@ impl<'a> Lowerer<'a> {
             return self.unknown();
         };
 
-        // let ty = cast
-        //     .ty()
-        //     .map(|ty| self.compile_type(ty))
-        //     .unwrap_or(self.unknown_type);
+        let ty = guard
+            .ty()
+            .map(|ty| self.compile_type(ty))
+            .unwrap_or(self.unknown_type);
 
-        // self.cast_check(expr.ty(), ty, cast.expr().unwrap().syntax().text_range());
+        if !matches!(self.db.ty(expr.ty()), Type::Any) {
+            self.error(
+                DiagnosticInfo::UnsupportedTypeGuard,
+                guard.syntax().text_range(),
+            );
+            return Value::typed(self.unknown_hir, ty);
+        }
 
-        Value::typed(expr.hir(), self.unknown_type)
+        let guard = match self.db.ty(ty) {
+            Type::Pair(first, rest) => {
+                if !matches!(self.db.ty(*first), Type::Any) {
+                    self.error(
+                        DiagnosticInfo::UnsupportedTypeGuard,
+                        guard.syntax().text_range(),
+                    );
+                    return Value::typed(self.unknown_hir, ty);
+                }
+
+                if !matches!(self.db.ty(*rest), Type::Any) {
+                    self.error(
+                        DiagnosticInfo::UnsupportedTypeGuard,
+                        guard.syntax().text_range(),
+                    );
+                    return Value::typed(self.unknown_hir, ty);
+                }
+
+                Guard::new(ty, self.bytes_type)
+            }
+            Type::Bytes => {
+                let pair_type = self.db.alloc_type(Type::Pair(self.any_type, self.any_type));
+                Guard::new(ty, pair_type)
+            }
+            _ => {
+                self.error(
+                    DiagnosticInfo::UnsupportedTypeGuard,
+                    guard.syntax().text_range(),
+                );
+                return Value::typed(self.unknown_hir, ty);
+            }
+        };
+
+        let is_cons = self.db.alloc_hir(Hir::IsCons(expr.hir()));
+        let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
+
+        let mut value = Value::typed(hir_id, self.unknown_type);
+
+        if let Hir::Reference(symbol_id) = self.db.hir(expr.hir()) {
+            value.guard(*symbol_id, guard);
+        }
+
+        value
     }
 
     fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Value {
@@ -1004,14 +1056,32 @@ impl<'a> Lowerer<'a> {
         let condition = if_expr
             .condition()
             .map(|condition| self.compile_expr(condition, None));
+
+        if let Some(condition) = condition.as_ref() {
+            self.type_guards.push(condition.then_guards());
+        }
+
         let then_block = if_expr.then_block().map(|then_block| {
             let scope_id = self.db.alloc_scope(Scope::default());
             self.compile_block_expr(then_block, Some(scope_id), expected_type)
         });
+
+        if condition.is_some() {
+            self.type_guards.pop().unwrap();
+        }
+
+        if let Some(condition) = condition.as_ref() {
+            self.type_guards.push(condition.else_guards());
+        }
+
         let else_block = if_expr.else_block().map(|else_block| {
             let scope_id = self.db.alloc_scope(Scope::default());
             self.compile_block_expr(else_block, Some(scope_id), expected_type)
         });
+
+        if condition.is_some() {
+            self.type_guards.pop().unwrap();
+        }
 
         if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty()) {
             self.type_check(
@@ -1108,12 +1178,13 @@ impl<'a> Lowerer<'a> {
 
         Value::typed(
             self.db.alloc_hir(Hir::Reference(symbol_id)),
-            match self.db.symbol(symbol_id) {
-                Symbol::Function { ty, .. } => self.db.alloc_type(Type::Function(ty.clone())),
-                Symbol::Parameter { type_id } => *type_id,
-                Symbol::LetBinding { type_id, .. } => *type_id,
-                Symbol::ConstBinding { type_id, .. } => *type_id, //todo
-            },
+            self.symbol_type(symbol_id)
+                .unwrap_or_else(|| match self.db.symbol(symbol_id) {
+                    Symbol::Function { ty, .. } => self.db.alloc_type(Type::Function(ty.clone())),
+                    Symbol::Parameter { type_id } => *type_id,
+                    Symbol::LetBinding { type_id, .. } => *type_id,
+                    Symbol::ConstBinding { type_id, .. } => *type_id, //todo
+                }),
         )
     }
 
@@ -1616,6 +1687,15 @@ impl<'a> Lowerer<'a> {
 
     fn unknown(&self) -> Value {
         Value::typed(self.unknown_hir, self.unknown_type)
+    }
+
+    fn symbol_type(&self, symbol_id: SymbolId) -> Option<TypeId> {
+        for guards in self.type_guards.iter() {
+            if let Some(guard) = guards.get(&symbol_id) {
+                return Some(*guard);
+            }
+        }
+        None
     }
 
     fn scope_mut(&mut self) -> &mut Scope {

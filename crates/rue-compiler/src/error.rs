@@ -103,6 +103,9 @@ pub enum DiagnosticInfo {
 
     #[error("unknown enum variant `{0}`")]
     UnknownEnumVariant(String),
+
+    #[error("only `Any` to `Bytes` or `(Any, Any)` type guards are implemented")]
+    UnsupportedTypeGuard,
 }
 
 /// Join a list of names into a string, wrapped in backticks.
