@@ -40,7 +40,7 @@ jobs:
         run: cargo clippy -p rue-web
 
       - name: Fmt
-        run: cargo fmt -- --files-with-diff --check -p rue-web
+        run: cargo fmt  -p rue-web -- --files-with-diff --check
 
       - name: Install Trunk binary
         run: cargo binstall trunk
