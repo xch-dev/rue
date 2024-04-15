@@ -797,7 +797,7 @@ impl<'a> Lowerer<'a> {
             return Value::typed(self.unknown_hir, ty);
         }
 
-        let guard = match self.db.ty(ty) {
+        let (guard, hir_id) = match self.db.ty(ty) {
             Type::Pair(first, rest) => {
                 if !matches!(self.db.ty(*first), Type::Any) {
                     self.error(
@@ -815,11 +815,14 @@ impl<'a> Lowerer<'a> {
                     return Value::typed(self.unknown_hir, ty);
                 }
 
-                Guard::new(ty, self.bytes_type)
+                let hir_id = self.db.alloc_hir(Hir::IsCons(expr.hir()));
+                (Guard::new(ty, self.bytes_type), hir_id)
             }
             Type::Bytes => {
                 let pair_type = self.db.alloc_type(Type::Pair(self.any_type, self.any_type));
-                Guard::new(ty, pair_type)
+                let is_cons = self.db.alloc_hir(Hir::IsCons(expr.hir()));
+                let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
+                (Guard::new(ty, pair_type), hir_id)
             }
             _ => {
                 self.error(
@@ -829,9 +832,6 @@ impl<'a> Lowerer<'a> {
                 return Value::typed(self.unknown_hir, ty);
             }
         };
-
-        let is_cons = self.db.alloc_hir(Hir::IsCons(expr.hir()));
-        let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
 
         let mut value = Value::typed(hir_id, self.unknown_type);
 

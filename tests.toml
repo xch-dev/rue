@@ -5,7 +5,7 @@ input = "()"
 output = "10"
 hash = "ab24ceb9925eb136dc0d19cedbdf0c5f1fca4fa20dc9fffa47f6159603f098c6"
 
-[tuple_types]
+[pair_types]
 bytes = 81
 cost = 3298
 input = "()"
@@ -95,3 +95,17 @@ cost = 29486
 input = "(0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b8554bf5122f344554c53bde2ebb8cd2b7e3 ((51 0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 1000)))"
 output = "((g1_multiply 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b8554bf5122f344554c53bde2ebb8cd2b7e3 0x7fb7b7ef9333621162729d06e60efbb19eed37c736b2b467db2f9571586c3b6a) (g1_negate 0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 1000))"
 hash = "6e94aaf18c8348b6e01f4c01973a415a691be93f51e81666ed34760a9ee953bb"
+
+[many_lets]
+bytes = 251
+cost = 14490
+input = "()"
+output = "7260"
+hash = "dc340fbeed3c3753160d9683c4c97a5b3297c1169e83eb1ff8e1544163528b8d"
+
+[complex_spreads]
+bytes = 169
+cost = 19078
+input = "()"
+output = "550"
+hash = "af78d09d3fa66ec50827f2dd1877bc249a526bf96d42f72686e3120826b6a883"
