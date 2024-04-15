@@ -1,0 +1,11 @@
+[package]
+name = "rue-web"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+leptos = { version = "0.6.11", features = ["csr"] }
+leptos_icons = "0.3.0"
+icondata = "0.3.0"
+thaw = { version = "0.3.0", features = ["csr"] }
+leptos_router = { version = "0.6.11", features = ["csr"] }
