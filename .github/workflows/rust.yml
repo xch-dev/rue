@@ -29,4 +29,4 @@ jobs:
         run: cargo clippy --workspace
 
       - name: Fmt
-        run: cargo fmt --workspace -- --files-with-diff --check
+        run: cargo fmt --all -- --files-with-diff --check
