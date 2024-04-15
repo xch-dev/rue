@@ -51,7 +51,7 @@ jobs:
       - name: Build with Trunk
         run: |
           cd crates/rue-web
-          trunk build --release --public-url "${GITHUB_REPOSITORY#*/}"
+          trunk build --release --public-url "/${GITHUB_REPOSITORY#*/}"
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v4
