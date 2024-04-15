@@ -33,6 +33,9 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
 
