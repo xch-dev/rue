@@ -11,17 +11,17 @@ pub fn App() -> impl IntoView {
     let theme = create_rw_signal(Theme::dark());
 
     view! {
-        <ThemeProvider theme>
-            <GlobalStyle/>
-            <Router>
+        <Router>
+            <ThemeProvider theme>
+                <GlobalStyle/>
                 <Layout>
                     <Header/>
                     <Layout style="padding: 24px;">
                         <AppRoutes/>
                     </Layout>
                 </Layout>
-            </Router>
-        </ThemeProvider>
+            </ThemeProvider>
+        </Router>
     }
 }
 
@@ -71,9 +71,11 @@ fn Home() -> impl IntoView {
                 "A language crafted from the ground up to make developing "
                 "smart coin logic on the Chia blockchain easy for everyone."
             </p>
-            <Button class="text-lg mt-5" size=ButtonSize::Large>
-                "Get Started"
-            </Button>
+            <a href="/docs">
+                <Button class="text-lg mt-5" size=ButtonSize::Large>
+                    "Get Started"
+                </Button>
+            </a>
         </div>
     }
 }
