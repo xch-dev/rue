@@ -46,6 +46,7 @@ pub enum SyntaxKind {
     Arrow,
     FatArrow,
     Spread,
+    Question,
 
     Plus,
     Minus,
@@ -108,6 +109,7 @@ pub enum SyntaxKind {
     PairType,
     FunctionType,
     FunctionTypeParam,
+    OptionalType,
 }
 
 impl fmt::Display for SyntaxKind {
@@ -155,6 +157,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::Arrow => "'->'",
                 SyntaxKind::FatArrow => "'=>'",
                 SyntaxKind::Spread => "'...'",
+                SyntaxKind::Question => "'?'",
 
                 SyntaxKind::Plus => "'+'",
                 SyntaxKind::Minus => "'-'",
@@ -217,6 +220,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::PairType => "pair type",
                 SyntaxKind::FunctionType => "function type",
                 SyntaxKind::FunctionTypeParam => "function type parameter",
+                SyntaxKind::OptionalType => "optional type",
             }
         )
     }

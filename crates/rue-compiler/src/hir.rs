@@ -1,5 +1,3 @@
-use rue_parser::BinaryOp;
-
 use crate::database::{HirId, ScopeId, SymbolId};
 
 #[derive(Debug, Clone)]
@@ -17,7 +15,7 @@ pub enum Hir {
         args: HirId,
     },
     BinaryOp {
-        op: HirBinaryOp,
+        op: BinOp,
         lhs: HirId,
         rhs: HirId,
     },
@@ -28,6 +26,7 @@ pub enum Hir {
     Sha256(HirId),
     IsCons(HirId),
     Strlen(HirId),
+    PubkeyForExp(HirId),
     If {
         condition: HirId,
         then_block: HirId,
@@ -36,7 +35,7 @@ pub enum Hir {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum HirBinaryOp {
+pub enum BinOp {
     Add,
     Subtract,
     Multiply,
@@ -49,22 +48,5 @@ pub enum HirBinaryOp {
     Equals,
     NotEquals,
     Concat,
-}
-
-impl From<BinaryOp> for HirBinaryOp {
-    fn from(op: BinaryOp) -> Self {
-        match op {
-            BinaryOp::Add => HirBinaryOp::Add,
-            BinaryOp::Subtract => HirBinaryOp::Subtract,
-            BinaryOp::Multiply => HirBinaryOp::Multiply,
-            BinaryOp::Divide => HirBinaryOp::Divide,
-            BinaryOp::Remainder => HirBinaryOp::Remainder,
-            BinaryOp::LessThan => HirBinaryOp::LessThan,
-            BinaryOp::GreaterThan => HirBinaryOp::GreaterThan,
-            BinaryOp::LessThanEquals => HirBinaryOp::LessThanEquals,
-            BinaryOp::GreaterThanEquals => HirBinaryOp::GreaterThanEquals,
-            BinaryOp::Equals => HirBinaryOp::Equals,
-            BinaryOp::NotEquals => HirBinaryOp::NotEquals,
-        }
-    }
+    PointAdd,
 }

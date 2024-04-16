@@ -80,6 +80,7 @@ impl<'a> Lexer<'a> {
                 '*' => self.block_comment(),
                 _ => TokenKind::Slash,
             },
+            '?' => TokenKind::Question,
             '.' => match self.peek() {
                 '.' if self.peek_nth(1) == '.' => {
                     self.bump();
@@ -308,6 +309,7 @@ mod tests {
         check("->", &[TokenKind::Arrow]);
         check("=>", &[TokenKind::FatArrow]);
         check("...", &[TokenKind::Spread]);
+        check("?", &[TokenKind::Question]);
     }
 
     #[test]

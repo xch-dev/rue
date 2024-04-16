@@ -4,7 +4,7 @@ use indexmap::IndexSet;
 
 use crate::{
     database::{Database, HirId, LirId, ScopeId, SymbolId},
-    hir::{Hir, HirBinaryOp},
+    hir::{BinOp, Hir},
     lir::Lir,
     symbol::Symbol,
 };
@@ -63,7 +63,8 @@ impl<'a> Optimizer<'a> {
             | Hir::Not(value)
             | Hir::Sha256(value)
             | Hir::IsCons(value)
-            | Hir::Strlen(value) => self.compute_captures_hir(scope_id, value),
+            | Hir::Strlen(value)
+            | Hir::PubkeyForExp(value) => self.compute_captures_hir(scope_id, value),
             Hir::If {
                 condition,
                 then_block,
@@ -304,18 +305,19 @@ impl<'a> Optimizer<'a> {
             Hir::FunctionCall { callee, args } => self.opt_function_call(scope_id, *callee, *args),
             Hir::BinaryOp { op, lhs, rhs } => {
                 let handler = match op {
-                    HirBinaryOp::Add => Self::opt_add,
-                    HirBinaryOp::Subtract => Self::opt_subtract,
-                    HirBinaryOp::Multiply => Self::opt_multiply,
-                    HirBinaryOp::Divide => Self::opt_divide,
-                    HirBinaryOp::Remainder => Self::opt_remainder,
-                    HirBinaryOp::LessThan => Self::opt_lt,
-                    HirBinaryOp::GreaterThan => Self::opt_gt,
-                    HirBinaryOp::LessThanEquals => Self::opt_lteq,
-                    HirBinaryOp::GreaterThanEquals => Self::opt_gteq,
-                    HirBinaryOp::Equals => Self::opt_eq,
-                    HirBinaryOp::NotEquals => Self::opt_neq,
-                    HirBinaryOp::Concat => Self::opt_concat,
+                    BinOp::Add => Self::opt_add,
+                    BinOp::Subtract => Self::opt_subtract,
+                    BinOp::Multiply => Self::opt_multiply,
+                    BinOp::Divide => Self::opt_divide,
+                    BinOp::Remainder => Self::opt_remainder,
+                    BinOp::LessThan => Self::opt_lt,
+                    BinOp::GreaterThan => Self::opt_gt,
+                    BinOp::LessThanEquals => Self::opt_lteq,
+                    BinOp::GreaterThanEquals => Self::opt_gteq,
+                    BinOp::Equals => Self::opt_eq,
+                    BinOp::NotEquals => Self::opt_neq,
+                    BinOp::Concat => Self::opt_concat,
+                    BinOp::PointAdd => Self::opt_point_add,
                 };
                 handler(self, scope_id, *lhs, *rhs)
             }
@@ -326,6 +328,7 @@ impl<'a> Optimizer<'a> {
             Hir::Sha256(value) => self.opt_sha256(scope_id, *value),
             Hir::IsCons(value) => self.opt_is_cons(scope_id, *value),
             Hir::Strlen(value) => self.opt_strlen(scope_id, *value),
+            Hir::PubkeyForExp(value) => self.opt_pubkey_for_exp(scope_id, *value),
             Hir::If {
                 condition,
                 then_block,
@@ -363,6 +366,11 @@ impl<'a> Optimizer<'a> {
     fn opt_strlen(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
         let lir_id = self.opt_hir(scope_id, hir_id);
         self.db.alloc_lir(Lir::Strlen(lir_id))
+    }
+
+    fn opt_pubkey_for_exp(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
+        let lir_id = self.opt_hir(scope_id, hir_id);
+        self.db.alloc_lir(Lir::PubkeyForExp(lir_id))
     }
 
     fn opt_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {
@@ -485,6 +493,12 @@ impl<'a> Optimizer<'a> {
         let lhs = self.opt_hir(scope_id, lhs);
         let rhs = self.opt_hir(scope_id, rhs);
         self.db.alloc_lir(Lir::Concat(vec![lhs, rhs]))
+    }
+
+    fn opt_point_add(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> LirId {
+        let lhs = self.opt_hir(scope_id, lhs);
+        let rhs = self.opt_hir(scope_id, rhs);
+        self.db.alloc_lir(Lir::PointAdd(vec![lhs, rhs]))
     }
 
     fn opt_not(&mut self, scope_id: ScopeId, value: HirId) -> LirId {

@@ -127,6 +127,9 @@ pub enum DiagnosticInfo {
 
     #[error("blocks must either have a an expression value, return statement, or raise an error")]
     EmptyBlock,
+
+    #[error("cannot check equality on non-atom type `{0}`")]
+    NonAtomEquality(String),
 }
 
 /// Join a list of names into a string, wrapped in backticks.

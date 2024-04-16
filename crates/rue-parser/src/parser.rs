@@ -222,6 +222,8 @@ fn convert_tokens<'a>(
             TokenKind::NotEquals => SyntaxKind::NotEquals,
             TokenKind::Assign => SyntaxKind::Assign,
 
+            TokenKind::Question => SyntaxKind::Question,
+
             TokenKind::Whitespace => SyntaxKind::Whitespace,
             TokenKind::LineComment => SyntaxKind::LineComment,
             TokenKind::BlockComment { is_terminated } => {

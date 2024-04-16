@@ -36,6 +36,7 @@ pub enum TokenKind {
     Arrow,
     FatArrow,
     Spread,
+    Question,
 
     Plus,
     Minus,

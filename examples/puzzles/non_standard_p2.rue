@@ -1,0 +1,38 @@
+enum Condition {
+    AggSigMe = 50 {
+        public_key: PublicKey,
+        message: Bytes,
+    }
+}
+
+fun tree_hash(value: Any) -> Bytes32 {
+    if value is Bytes {
+        sha256(1 as Bytes + value)
+    } else {
+        sha256(2 as Bytes + tree_hash(value.first) + tree_hash(value.rest))
+    }
+}
+
+fun main(
+    synthetic_pk: PublicKey,
+    original_pk: PublicKey?,
+    delegated_puzzle: fun(...Any) -> Condition[],
+    solution: Any
+) -> Condition[] {
+    let conditions = delegated_puzzle(...solution);
+    let delegated_puzzle_hash = tree_hash(delegated_puzzle);
+
+    if original_pk != nil {
+        let exponent = sha256(original_pk as Bytes + delegated_puzzle_hash);
+        let offset_pk = pubkey_for_exp(exponent);
+        assert synthetic_pk == original_pk + offset_pk;
+        return conditions;
+    }
+
+    let agg_sig_me = Condition::AggSigMe {
+        public_key: synthetic_pk,
+        message: delegated_puzzle_hash,
+    };
+
+    [agg_sig_me, ...conditions]
+}

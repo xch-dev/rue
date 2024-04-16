@@ -16,6 +16,7 @@ pub enum Type {
     Bool,
     Bytes,
     Bytes32,
+    PublicKey,
     Pair(TypeId, TypeId),
     List(TypeId),
     Struct(StructType),
@@ -23,6 +24,7 @@ pub enum Type {
     EnumVariant(EnumVariant),
     Function(FunctionType),
     Alias(TypeId),
+    Optional(TypeId),
 }
 
 #[derive(Debug, Clone)]

@@ -30,6 +30,8 @@ struct Ops {
     div: NodePtr,
     divmod: NodePtr,
     gt: NodePtr,
+    point_add: NodePtr,
+    pubkey_for_exp: NodePtr,
     not: NodePtr,
     any: NodePtr,
 }
@@ -55,6 +57,8 @@ impl<'a> Codegen<'a> {
             div: allocator.new_small_number(19).unwrap(),
             divmod: allocator.new_small_number(20).unwrap(),
             gt: allocator.new_small_number(21).unwrap(),
+            point_add: allocator.new_small_number(29).unwrap(),
+            pubkey_for_exp: allocator.new_small_number(30).unwrap(),
             not: allocator.new_small_number(32).unwrap(),
             any: allocator.new_small_number(33).unwrap(),
         };
@@ -76,7 +80,9 @@ impl<'a> Codegen<'a> {
             Lir::Sha256(value) => self.gen_sha256(value),
             Lir::IsCons(value) => self.gen_is_cons(value),
             Lir::Strlen(value) => self.gen_strlen(value),
+            Lir::PubkeyForExp(value) => self.gen_pubkey_for_exp(value),
             Lir::Concat(values) => self.gen_concat(values),
+            Lir::PointAdd(values) => self.gen_point_add(values),
             Lir::If(condition, then_branch, else_branch) => {
                 self.gen_if(condition, then_branch, else_branch)
             }
@@ -161,8 +167,21 @@ impl<'a> Codegen<'a> {
         self.list(&[self.ops.strlen, value])
     }
 
+    fn gen_pubkey_for_exp(&mut self, value: LirId) -> NodePtr {
+        let value = self.gen_lir(value);
+        self.list(&[self.ops.pubkey_for_exp, value])
+    }
+
     fn gen_concat(&mut self, values: Vec<LirId>) -> NodePtr {
         let mut args = vec![self.ops.concat];
+        for value in values {
+            args.push(self.gen_lir(value));
+        }
+        self.list(&args)
+    }
+
+    fn gen_point_add(&mut self, values: Vec<LirId>) -> NodePtr {
+        let mut args = vec![self.ops.point_add];
         for value in values {
             args.push(self.gen_lir(value));
         }

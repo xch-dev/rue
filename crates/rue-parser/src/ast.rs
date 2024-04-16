@@ -113,12 +113,13 @@ ast_node!(IndexAccess);
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
 
-ast_enum!(Type, Path, ListType, PairType, FunctionType);
+ast_enum!(Type, Path, ListType, PairType, FunctionType, OptionalType);
 ast_node!(ListType);
 ast_node!(ListTypeItem);
 ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
+ast_node!(OptionalType);
 
 ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt);
 ast_node!(LetStmt);
@@ -683,6 +684,12 @@ impl FunctionTypeParam {
             .find(|token| token.kind() == SyntaxKind::Spread)
     }
 
+    pub fn ty(&self) -> Option<Type> {
+        self.syntax().children().find_map(Type::cast)
+    }
+}
+
+impl OptionalType {
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }

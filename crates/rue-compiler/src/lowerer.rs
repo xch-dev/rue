@@ -11,13 +11,13 @@ use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
     FunctionCall, FunctionItem, FunctionType as AstFunctionType, GroupExpr, GuardExpr, IfExpr,
     IfStmt, IndexAccess, InitializerExpr, InitializerField, Item, LambdaExpr, LetStmt, ListExpr,
-    ListType, LiteralExpr, PairExpr, PairType, Path, PrefixExpr, PrefixOp, Root, Stmt, StructField,
-    StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
+    ListType, LiteralExpr, OptionalType, PairExpr, PairType, Path, PrefixExpr, PrefixOp, Root,
+    Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
 };
 
 use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
-    hir::{Hir, HirBinaryOp},
+    hir::{BinOp, Hir},
     scope::Scope,
     symbol::Symbol,
     ty::{EnumType, EnumVariant, FunctionType, Guard, StructType, Type, Value},
@@ -36,6 +36,7 @@ pub struct Lowerer<'a> {
     bool_type: TypeId,
     bytes_type: TypeId,
     bytes32_type: TypeId,
+    pk_type: TypeId,
     nil_type: TypeId,
     nil_hir: HirId,
     unknown_type: TypeId,
@@ -48,6 +49,7 @@ impl<'a> Lowerer<'a> {
         let bool_type = db.alloc_type(Type::Bool);
         let bytes_type = db.alloc_type(Type::Bytes);
         let bytes32_type = db.alloc_type(Type::Bytes32);
+        let pk_type = db.alloc_type(Type::PublicKey);
         let any_type = db.alloc_type(Type::Any);
         let nil_type = db.alloc_type(Type::Nil);
         let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
@@ -61,6 +63,7 @@ impl<'a> Lowerer<'a> {
         builtins.define_type("Bool".to_string(), bool_type);
         builtins.define_type("Bytes".to_string(), bytes_type);
         builtins.define_type("Bytes32".to_string(), bytes32_type);
+        builtins.define_type("PublicKey".to_string(), pk_type);
         builtins.define_type("Any".to_string(), any_type);
 
         // Define the `sha256` function, since it's not an operator or keyword.
@@ -84,6 +87,27 @@ impl<'a> Lowerer<'a> {
             );
         }
 
+        // Define the `pubkey_for_exp` function, since it's not an operator or keyword.
+        {
+            let mut scope = Scope::default();
+            let param = db.alloc_symbol(Symbol::Parameter {
+                type_id: bytes32_type,
+            });
+            scope.define_symbol("exponent".to_string(), param);
+            let param_ref = db.alloc_hir(Hir::Reference(param));
+            let hir_id = db.alloc_hir(Hir::PubkeyForExp(param_ref));
+            let scope_id = db.alloc_scope(scope);
+
+            builtins.define_symbol(
+                "pubkey_for_exp".to_string(),
+                db.alloc_symbol(Symbol::Function {
+                    scope_id,
+                    hir_id,
+                    ty: FunctionType::new(vec![bytes32_type], pk_type, false),
+                }),
+            );
+        }
+
         let builtins_id = db.alloc_scope(builtins);
 
         Self {
@@ -96,6 +120,7 @@ impl<'a> Lowerer<'a> {
             bool_type,
             bytes_type,
             bytes32_type,
+            pk_type,
             nil_type,
             nil_hir,
             unknown_type,
@@ -931,67 +956,161 @@ impl<'a> Lowerer<'a> {
     }
 
     fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Value {
-        let lhs = binary.lhs().map(|lhs| self.compile_expr(lhs, None));
-        let rhs = binary.rhs().map(|rhs| self.compile_expr(rhs, None));
+        let lhs = binary
+            .lhs()
+            .map(|lhs| self.compile_expr(lhs, None))
+            .unwrap_or_else(|| self.unknown());
 
-        let lhs_ty = lhs
-            .as_ref()
-            .map(|lhs| lhs.ty())
-            .unwrap_or(self.unknown_type);
+        let rhs = binary
+            .rhs()
+            .map(|rhs| self.compile_expr(rhs, None))
+            .unwrap_or_else(|| self.unknown());
 
-        let rhs_ty = rhs
-            .as_ref()
-            .map(|rhs| rhs.ty())
-            .unwrap_or(self.unknown_type);
-
-        let mut op = binary.op().map(HirBinaryOp::from);
-
-        let ty = if binary.op() == Some(BinaryOp::Add)
-            && self.is_assignable_to(lhs_ty, self.bytes_type, false, &mut HashSet::new())
-        {
-            self.type_check(rhs_ty, self.bytes_type, binary.syntax().text_range());
-
-            op = Some(HirBinaryOp::Concat);
-
-            Some(self.bytes_type)
-        } else {
-            self.type_check(lhs_ty, self.int_type, binary.syntax().text_range());
-
-            self.type_check(rhs_ty, self.int_type, binary.syntax().text_range());
-
-            None
+        let Some(op) = binary.op() else {
+            return self.unknown();
         };
 
-        let ty = ty.unwrap_or_else(|| {
-            binary
-                .op()
-                .map(|op| match op {
-                    BinaryOp::Add => self.int_type,
-                    BinaryOp::Subtract => self.int_type,
-                    BinaryOp::Multiply => self.int_type,
-                    BinaryOp::Divide => self.int_type,
-                    BinaryOp::Remainder => self.int_type,
-                    BinaryOp::LessThan => self.bool_type,
-                    BinaryOp::GreaterThan => self.bool_type,
-                    BinaryOp::LessThanEquals => self.bool_type,
-                    BinaryOp::GreaterThanEquals => self.bool_type,
-                    BinaryOp::Equals => self.bool_type,
-                    BinaryOp::NotEquals => self.bool_type,
-                })
-                .unwrap_or(self.unknown_type)
-        });
+        let text_range = binary.syntax().text_range();
 
-        match (lhs, rhs, op) {
-            (Some(lhs), Some(rhs), Some(op)) => Value::typed(
-                self.db.alloc_hir(Hir::BinaryOp {
-                    op,
-                    lhs: lhs.hir(),
-                    rhs: rhs.hir(),
-                }),
-                ty,
-            ),
-            _ => Value::typed(self.unknown_hir, ty),
+        let mut guards = HashMap::new();
+
+        let (op, ty) = match op {
+            BinaryOp::Add => {
+                if self.is_assignable_to(lhs.ty(), self.pk_type, false, &mut HashSet::new()) {
+                    self.type_check(rhs.ty(), self.pk_type, text_range);
+                    (BinOp::PointAdd, self.pk_type)
+                } else if self.is_assignable_to(
+                    lhs.ty(),
+                    self.bytes_type,
+                    false,
+                    &mut HashSet::new(),
+                ) {
+                    self.type_check(rhs.ty(), self.bytes_type, text_range);
+                    (BinOp::Concat, self.bytes_type)
+                } else {
+                    self.type_check(lhs.ty(), self.int_type, text_range);
+                    self.type_check(rhs.ty(), self.int_type, text_range);
+                    (BinOp::Add, self.int_type)
+                }
+            }
+            BinaryOp::Subtract => {
+                self.type_check(lhs.ty(), self.int_type, text_range);
+                self.type_check(rhs.ty(), self.int_type, text_range);
+                (BinOp::Subtract, self.int_type)
+            }
+            BinaryOp::Multiply => {
+                self.type_check(lhs.ty(), self.int_type, text_range);
+                self.type_check(rhs.ty(), self.int_type, text_range);
+                (BinOp::Multiply, self.int_type)
+            }
+            BinaryOp::Divide => {
+                self.type_check(lhs.ty(), self.int_type, text_range);
+                self.type_check(rhs.ty(), self.int_type, text_range);
+                (BinOp::Divide, self.int_type)
+            }
+            BinaryOp::Remainder => {
+                self.type_check(lhs.ty(), self.int_type, text_range);
+                self.type_check(rhs.ty(), self.int_type, text_range);
+                (BinOp::Remainder, self.int_type)
+            }
+            BinaryOp::Equals => {
+                if !self.is_atomic(lhs.ty(), &mut IndexSet::new())
+                    || !self.is_atomic(rhs.ty(), &mut IndexSet::new())
+                {
+                    self.error(
+                        DiagnosticInfo::NonAtomEquality(self.type_name(lhs.ty())),
+                        text_range,
+                    );
+                } else {
+                    self.type_check(rhs.ty(), lhs.ty(), text_range);
+                }
+
+                if self.is_assignable_to(lhs.ty(), self.nil_type, false, &mut HashSet::new()) {
+                    if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
+                        guards.insert(
+                            *symbol_id,
+                            Guard::new(self.nil_type, self.try_unwrap_optional(rhs.ty())),
+                        );
+                    }
+                } else if self.is_assignable_to(rhs.ty(), self.nil_type, false, &mut HashSet::new())
+                {
+                    if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir()) {
+                        guards.insert(
+                            *symbol_id,
+                            Guard::new(self.nil_type, self.try_unwrap_optional(lhs.ty())),
+                        );
+                    }
+                }
+
+                (BinOp::Equals, self.bool_type)
+            }
+            BinaryOp::NotEquals => {
+                if !self.is_atomic(lhs.ty(), &mut IndexSet::new())
+                    || !self.is_atomic(rhs.ty(), &mut IndexSet::new())
+                {
+                    self.error(
+                        DiagnosticInfo::NonAtomEquality(self.type_name(lhs.ty())),
+                        text_range,
+                    );
+                } else {
+                    self.type_check(rhs.ty(), lhs.ty(), text_range);
+                }
+
+                if self.is_assignable_to(lhs.ty(), self.nil_type, false, &mut HashSet::new()) {
+                    if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
+                        guards.insert(
+                            *symbol_id,
+                            Guard::new(self.try_unwrap_optional(rhs.ty()), self.nil_type),
+                        );
+                    }
+                } else if self.is_assignable_to(rhs.ty(), self.nil_type, false, &mut HashSet::new())
+                {
+                    if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir()) {
+                        guards.insert(
+                            *symbol_id,
+                            Guard::new(self.try_unwrap_optional(lhs.ty()), self.nil_type),
+                        );
+                    }
+                }
+
+                (BinOp::NotEquals, self.bool_type)
+            }
+            BinaryOp::GreaterThan => {
+                self.type_check(lhs.ty(), self.int_type, text_range);
+                self.type_check(rhs.ty(), self.int_type, text_range);
+                (BinOp::GreaterThan, self.bool_type)
+            }
+            BinaryOp::LessThan => {
+                self.type_check(lhs.ty(), self.int_type, text_range);
+                self.type_check(rhs.ty(), self.int_type, text_range);
+                (BinOp::LessThan, self.bool_type)
+            }
+            BinaryOp::GreaterThanEquals => {
+                self.type_check(lhs.ty(), self.int_type, text_range);
+                self.type_check(rhs.ty(), self.int_type, text_range);
+                (BinOp::GreaterThanEquals, self.bool_type)
+            }
+            BinaryOp::LessThanEquals => {
+                self.type_check(lhs.ty(), self.int_type, text_range);
+                self.type_check(rhs.ty(), self.int_type, text_range);
+                (BinOp::LessThanEquals, self.bool_type)
+            }
+        };
+
+        let mut value = Value::typed(
+            self.db.alloc_hir(Hir::BinaryOp {
+                op,
+                lhs: lhs.hir(),
+                rhs: rhs.hir(),
+            }),
+            ty,
+        );
+
+        for (symbol_id, guard) in guards {
+            value.guard(symbol_id, guard);
         }
+
+        value
     }
 
     fn compile_group_expr(
@@ -1111,7 +1230,17 @@ impl<'a> Lowerer<'a> {
                 let strlen = self.db.alloc_hir(Hir::Strlen(hir_id));
                 let length = self.db.alloc_hir(Hir::Atom(vec![32]));
                 let hir_id = self.db.alloc_hir(Hir::BinaryOp {
-                    op: HirBinaryOp::Equals,
+                    op: BinOp::Equals,
+                    lhs: strlen,
+                    rhs: length,
+                });
+                Some((Guard::new(to, from), hir_id))
+            }
+            (Type::Bytes, Type::PublicKey) => {
+                let strlen = self.db.alloc_hir(Hir::Strlen(hir_id));
+                let length = self.db.alloc_hir(Hir::Atom(vec![48]));
+                let hir_id = self.db.alloc_hir(Hir::BinaryOp {
+                    op: BinOp::Equals,
                     lhs: strlen,
                     rhs: length,
                 });
@@ -1477,7 +1606,7 @@ impl<'a> Lowerer<'a> {
                     Symbol::Function { ty, .. } => self.db.alloc_type(Type::Function(ty.clone())),
                     Symbol::Parameter { type_id } => *type_id,
                     Symbol::LetBinding { type_id, .. } => *type_id,
-                    Symbol::ConstBinding { type_id, .. } => *type_id, //todo
+                    Symbol::ConstBinding { type_id, .. } => *type_id,
                 }),
         )
     }
@@ -1649,6 +1778,7 @@ impl<'a> Lowerer<'a> {
             AstType::ListType(list) => self.compile_list_type(list),
             AstType::FunctionType(function) => self.compile_function_type(function),
             AstType::PairType(tuple) => self.compile_pair_type(tuple),
+            AstType::OptionalType(optional) => self.compile_optional_type(optional),
         }
     }
 
@@ -1754,6 +1884,22 @@ impl<'a> Lowerer<'a> {
         )))
     }
 
+    fn compile_optional_type(&mut self, optional: OptionalType) -> TypeId {
+        let ty = optional
+            .ty()
+            .map(|ty| self.compile_type(ty))
+            .unwrap_or(self.unknown_type);
+
+        self.db.alloc_type(Type::Optional(ty))
+    }
+
+    fn try_unwrap_optional(&mut self, ty: TypeId) -> TypeId {
+        match self.db.ty(ty) {
+            Type::Optional(inner) => self.try_unwrap_optional(*inner),
+            _ => ty,
+        }
+    }
+
     fn detect_cycle(
         &mut self,
         ty: TypeId,
@@ -1783,7 +1929,9 @@ impl<'a> Lowerer<'a> {
             | Type::Int
             | Type::Bool
             | Type::Bytes
-            | Type::Bytes32 => false,
+            | Type::Bytes32
+            | Type::PublicKey => false,
+            Type::Optional(ty) => self.detect_cycle(ty, text_range, visited_aliases),
         }
     }
 
@@ -1812,6 +1960,7 @@ impl<'a> Lowerer<'a> {
             Type::Bool => "Bool".to_string(),
             Type::Bytes => "Bytes".to_string(),
             Type::Bytes32 => "Bytes32".to_string(),
+            Type::PublicKey => "PublicKey".to_string(),
             Type::List(items) => {
                 let inner = self.type_name_visitor(*items, stack);
                 format!("{}[]", inner)
@@ -1859,6 +2008,10 @@ impl<'a> Lowerer<'a> {
                 format!("fun({}) -> {}", params.join(", "), ret)
             }
             Type::Alias(..) => unreachable!(),
+            Type::Optional(ty) => {
+                let inner = self.type_name_visitor(*ty, stack);
+                format!("{}?", inner)
+            }
         };
 
         stack.pop().unwrap();
@@ -1911,14 +2064,16 @@ impl<'a> Lowerer<'a> {
             (Type::Any, Type::Any) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
-            (Type::Bytes, Type::Bytes) => true,
+            (Type::Bytes | Type::Nil, Type::Bytes) => true,
             (Type::Bytes32, Type::Bytes32 | Type::Bytes) => true,
+            (Type::PublicKey, Type::PublicKey) => true,
             (_, Type::Any) => true,
 
             // Primitive casts.
-            (Type::Nil, Type::Bytes | Type::Bool | Type::Int) if cast => true,
+            (Type::Nil, Type::Bool | Type::Int) if cast => true,
             (Type::Int, Type::Bytes) if cast => true,
-            (Type::Bytes | Type::Bytes32, Type::Int) if cast => true,
+            (Type::Bytes | Type::Bytes32 | Type::PublicKey, Type::Int) if cast => true,
+            (Type::PublicKey, Type::Bytes) if cast => true,
             (Type::Bool, Type::Int | Type::Bytes) if cast => true,
             (Type::Any, _) if cast => true,
 
@@ -1952,6 +2107,17 @@ impl<'a> Lowerer<'a> {
                 self.is_assignable_to(fun_a.return_type(), fun_b.return_type(), cast, visited)
             }
 
+            // Optional types are assignable to themselves.
+            (Type::Optional(inner_a), Type::Optional(inner_b)) => {
+                self.is_assignable_to(inner_a, inner_b, cast, visited)
+            }
+
+            // Either nil or inner type is assignable to optionals.
+            (_, Type::Optional(inner_b)) => {
+                self.types_equal(a, self.nil_type)
+                    || self.is_assignable_to(a, inner_b, cast, visited)
+            }
+
             _ => false,
         }
     }
@@ -1983,6 +2149,7 @@ impl<'a> Lowerer<'a> {
             Type::Bool => matches!(b, Type::Bool),
             Type::Bytes => matches!(b, Type::Bytes),
             Type::Bytes32 => matches!(b, Type::Bytes32),
+            Type::PublicKey => matches!(b, Type::PublicKey),
             Type::Enum(..) | Type::EnumVariant(..) | Type::Struct(..) => a_id == b_id,
             Type::List(inner) => {
                 if let Type::List(other_inner) = b {
@@ -2025,11 +2192,36 @@ impl<'a> Lowerer<'a> {
                 }
             }
             Type::Alias(..) => unreachable!(),
+            Type::Optional(ty) => {
+                if let Type::Optional(other_ty) = b {
+                    self.types_equal_visitor(ty, other_ty, visited)
+                } else {
+                    false
+                }
+            }
         };
 
         visited.remove(&key);
 
         equal
+    }
+
+    fn is_atomic(&self, ty: TypeId, stack: &mut IndexSet<TypeId>) -> bool {
+        if !stack.insert(ty) {
+            return false;
+        }
+
+        let is_atomic = match self.db.ty(ty) {
+            Type::Nil | Type::Int | Type::Bool | Type::Bytes | Type::Bytes32 | Type::PublicKey => {
+                true
+            }
+            Type::Optional(ty) => self.is_atomic(*ty, stack),
+            _ => false,
+        };
+
+        stack.pop().unwrap();
+
+        is_atomic
     }
 
     fn unknown(&self) -> Value {

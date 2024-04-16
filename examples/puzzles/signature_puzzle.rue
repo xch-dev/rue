@@ -20,3 +20,4 @@ fun tree_hash(value: Any) -> Bytes32 {
         sha256(2 as Bytes + tree_hash(value.first) + tree_hash(value.rest))
     }
 }
+

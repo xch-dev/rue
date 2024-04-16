@@ -472,11 +472,19 @@ fn ty(p: &mut Parser) {
         return p.error(TYPE_RECOVERY_SET);
     }
 
-    while p.at(SyntaxKind::OpenBracket) {
-        p.start_at(checkpoint, SyntaxKind::ListType);
-        p.bump();
-        p.expect(SyntaxKind::CloseBracket);
-        p.finish();
+    loop {
+        if p.at(SyntaxKind::OpenBracket) {
+            p.start_at(checkpoint, SyntaxKind::ListType);
+            p.bump();
+            p.expect(SyntaxKind::CloseBracket);
+            p.finish();
+        } else if p.at(SyntaxKind::Question) {
+            p.start_at(checkpoint, SyntaxKind::OptionalType);
+            p.bump();
+            p.finish();
+        } else {
+            break;
+        }
     }
 }
 
