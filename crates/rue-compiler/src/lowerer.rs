@@ -680,6 +680,7 @@ impl<'a> Lowerer<'a> {
         value
     }
 
+    /// Compiles any expression.
     fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Value {
         match expr {
             Expr::Path(path) => self.compile_path_expr(path),
@@ -701,6 +702,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Compiles an initializer expression.
     fn compile_initializer_expr(&mut self, initializer: InitializerExpr) -> Value {
         let ty = initializer.path().map(|path| self.compile_path_type(path));
 
@@ -744,6 +746,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Compiles the fields of an initializer into a list.
     fn compile_initializer_fields(
         &mut self,
         struct_fields: &IndexMap<String, TypeId>,
@@ -762,32 +765,39 @@ impl<'a> Lowerer<'a> {
                 .map(|expr| self.compile_expr(expr, expected_type))
                 .unwrap_or(self.unknown());
 
-            if let Some(expected_type) = expected_type {
-                self.type_check(value.ty(), expected_type, field.syntax().text_range());
-            }
+            // Check the type of the field initializer.
+            self.type_check(
+                value.ty(),
+                expected_type.unwrap_or(self.unknown_type),
+                field.syntax().text_range(),
+            );
 
-            if let Some(name) = field.name() {
-                if specified_fields.contains_key(name.text()) {
-                    self.error(
-                        DiagnosticInfo::DuplicateField(name.to_string()),
-                        name.text_range(),
-                    );
-                } else if !struct_fields.contains_key(name.text()) {
-                    self.error(
-                        DiagnosticInfo::UndefinedField(name.to_string()),
-                        name.text_range(),
-                    );
-                } else {
-                    specified_fields.insert(name.to_string(), value.hir());
-                }
+            let Some(name) = field.name() else {
+                continue;
+            };
+
+            // Insert the field if it exists and hasn't already been assigned.
+            if specified_fields.contains_key(name.text()) {
+                self.error(
+                    DiagnosticInfo::DuplicateField(name.to_string()),
+                    name.text_range(),
+                );
+            } else if !struct_fields.contains_key(name.text()) {
+                self.error(
+                    DiagnosticInfo::UndefinedField(name.to_string()),
+                    name.text_range(),
+                );
+            } else {
+                specified_fields.insert(name.to_string(), value.hir());
             }
         }
 
-        let missing_fields = struct_fields
+        // Check for any missing fields and report them.
+        let missing_fields: Vec<String> = struct_fields
             .keys()
             .filter(|name| !specified_fields.contains_key(*name))
             .cloned()
-            .collect::<Vec<String>>();
+            .collect();
 
         if !missing_fields.is_empty() {
             self.error(DiagnosticInfo::MissingFields(missing_fields), text_range);
@@ -795,6 +805,7 @@ impl<'a> Lowerer<'a> {
 
         let mut hir_id = self.nil_hir;
 
+        // Construct a nil-terminated list from the arguments.
         for field in struct_fields.keys().rev() {
             let field = specified_fields
                 .get(field)
@@ -807,6 +818,7 @@ impl<'a> Lowerer<'a> {
         hir_id
     }
 
+    /// Compiles a field access expression, or special properties for certain types.
     fn compile_field_access(&mut self, field_access: FieldAccess) -> Value {
         let Some(value) = field_access
             .expr()
@@ -821,10 +833,9 @@ impl<'a> Lowerer<'a> {
 
         match self.db.ty(value.ty()).clone() {
             Type::Struct(struct_type) => {
-                if let Some((index, _name, &field_type)) =
-                    struct_type.fields().get_full(field_name.text())
-                {
-                    Value::typed(self.compile_index(value.hir(), index, false), field_type)
+                if let Some(field) = struct_type.fields().get_full(field_name.text()) {
+                    let (index, _, field_type) = field;
+                    Value::typed(self.compile_index(value.hir(), index, false), *field_type)
                 } else {
                     self.error(
                         DiagnosticInfo::UndefinedField(field_name.to_string()),
@@ -844,9 +855,21 @@ impl<'a> Lowerer<'a> {
                     self.unknown()
                 }
             },
+            Type::Bytes | Type::Bytes32 => match field_name.text() {
+                "length" => {
+                    Value::typed(self.db.alloc_hir(Hir::Strlen(value.hir())), self.int_type)
+                }
+                _ => {
+                    self.error(
+                        DiagnosticInfo::BytesFieldAccess(field_name.to_string()),
+                        field_name.text_range(),
+                    );
+                    self.unknown()
+                }
+            },
             _ => {
                 self.error(
-                    DiagnosticInfo::StructFieldAccess(self.type_name(value.ty())),
+                    DiagnosticInfo::NonStructFieldAccess(self.type_name(value.ty())),
                     field_name.text_range(),
                 );
                 self.unknown()

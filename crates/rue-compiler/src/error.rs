@@ -72,10 +72,13 @@ pub enum DiagnosticInfo {
     MissingFields(Vec<String>),
 
     #[error("cannot access named field of non-struct type `{0}`")]
-    StructFieldAccess(String),
+    NonStructFieldAccess(String),
 
     #[error("unknown field of pair type `{0}`, expected `first` or `rest`")]
     PairFieldAccess(String),
+
+    #[error("unknown field of bytes type `{0}`, expected `length`")]
+    BytesFieldAccess(String),
 
     #[error("cannot index non-list type `{0}`")]
     IndexAccess(String),
