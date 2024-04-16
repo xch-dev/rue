@@ -1721,7 +1721,7 @@ impl<'a> Lowerer<'a> {
                     continue;
                 }
 
-                if i + 1 >= param_len && i + 1 < arg_len && expected.varargs() {
+                if i + 1 >= param_len && (i + 1 < arg_len || !spread) && expected.varargs() {
                     match self
                         .db
                         .ty(expected.parameter_types().last().copied().unwrap())
