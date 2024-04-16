@@ -1888,6 +1888,14 @@ impl<'a> Lowerer<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
 
+        if let Type::Optional(inner) = self.db.ty_raw(ty).clone() {
+            self.warning(
+                DiagnosticInfo::RedundantOptional,
+                optional.syntax().text_range(),
+            );
+            return inner;
+        }
+
         self.db.alloc_type(Type::Optional(ty))
     }
 

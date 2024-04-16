@@ -130,6 +130,9 @@ pub enum DiagnosticInfo {
 
     #[error("cannot check equality on non-atom type `{0}`")]
     NonAtomEquality(String),
+
+    #[error("redundant optional type")]
+    RedundantOptional,
 }
 
 /// Join a list of names into a string, wrapped in backticks.
