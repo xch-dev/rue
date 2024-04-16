@@ -1326,15 +1326,9 @@ impl<'a> Lowerer<'a> {
             self.type_guards.push(condition.then_guards());
         }
 
-        let then_block = if_expr.then_block().map(|then_block| {
-            let scope_id = self.db.alloc_scope(Scope::default());
-
-            self.scope_stack.push(scope_id);
-            let value = self.compile_block(then_block, expected_type).0;
-            self.scope_stack.pop().unwrap();
-
-            value
-        });
+        let then_block = if_expr
+            .then_block()
+            .map(|then_block| self.compile_block_expr(then_block, expected_type));
 
         if condition.is_some() {
             self.type_guards.pop().unwrap();
@@ -1347,15 +1341,9 @@ impl<'a> Lowerer<'a> {
         let expected_type =
             expected_type.or_else(|| then_block.as_ref().map(|then_block| then_block.ty()));
 
-        let else_block = if_expr.else_block().map(|else_block| {
-            let scope_id = self.db.alloc_scope(Scope::default());
-
-            self.scope_stack.push(scope_id);
-            let value = self.compile_block(else_block, expected_type).0;
-            self.scope_stack.pop().unwrap();
-
-            value
-        });
+        let else_block = if_expr
+            .else_block()
+            .map(|else_block| self.compile_block_expr(else_block, expected_type));
 
         if condition.is_some() {
             self.type_guards.pop().unwrap();
