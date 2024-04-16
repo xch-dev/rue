@@ -121,6 +121,9 @@ pub enum DiagnosticInfo {
 
     #[error("explicit return is not allowed in expressions")]
     ExplicitReturnInExpr,
+
+    #[error("blocks must either have a an expression value, return statement, or raise an error")]
+    EmptyBlock,
 }
 
 /// Join a list of names into a string, wrapped in backticks.

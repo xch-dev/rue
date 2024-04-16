@@ -10,8 +10,8 @@ use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
     FunctionCall, FunctionItem, FunctionType as AstFunctionType, GroupExpr, GuardExpr, IfExpr,
-    IndexAccess, InitializerExpr, InitializerField, Item, LambdaExpr, LetStmt, ListExpr, ListType,
-    LiteralExpr, PairExpr, PairType, Path, PrefixExpr, PrefixOp, Root, Stmt, StructField,
+    IfStmt, IndexAccess, InitializerExpr, InitializerField, Item, LambdaExpr, LetStmt, ListExpr,
+    ListType, LiteralExpr, PairExpr, PairType, Path, PrefixExpr, PrefixOp, Root, Stmt, StructField,
     StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
 };
 
@@ -24,6 +24,8 @@ use crate::{
     Diagnostic, DiagnosticInfo, DiagnosticKind,
 };
 
+/// Responsible for lowering the AST into the HIR.
+/// Performs name resolution and type checking.
 pub struct Lowerer<'a> {
     db: &'a mut Database,
     scope_stack: Vec<ScopeId>,
@@ -52,6 +54,7 @@ impl<'a> Lowerer<'a> {
         let unknown_type = db.alloc_type(Type::Unknown);
         let unknown_hir = db.alloc_hir(Hir::Unknown);
 
+        // This is the root scope, with builtins for various types and functions.
         let mut builtins = Scope::default();
         builtins.define_type("Nil".to_string(), nil_type);
         builtins.define_type("Int".to_string(), int_type);
@@ -60,6 +63,7 @@ impl<'a> Lowerer<'a> {
         builtins.define_type("Bytes32".to_string(), bytes32_type);
         builtins.define_type("Any".to_string(), any_type);
 
+        // Define the `sha256` function, since it's not an operator or keyword.
         {
             let mut scope = Scope::default();
             let param = db.alloc_symbol(Symbol::Parameter {
@@ -99,16 +103,20 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Lowering is completed, extract the diagnostics.
     pub fn finish(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
 
+    /// Compile the root by lowering all items into the file's scope.
     pub fn compile_root(&mut self, root: Root, scope_id: ScopeId) {
         self.scope_stack.push(scope_id);
         self.compile_items(root.items());
         self.scope_stack.pop();
     }
 
+    /// Lower all of the items in the list in the proper order.
+    /// This is done in two passes to handle forward references.
     fn compile_items(&mut self, items: Vec<Item>) {
         let mut type_ids = Vec::new();
         let mut symbol_ids = Vec::new();
@@ -158,6 +166,10 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Define a function in the current scope.
+    /// This does not compile the function body, but it creates a new scope for it.
+    /// Parameter symbols are defined now in the inner function scope.
+    /// The function body is compiled later to allow for forward references.
     fn declare_function(&mut self, function_item: FunctionItem) -> SymbolId {
         let mut scope = Scope::default();
 
@@ -168,6 +180,7 @@ impl<'a> Lowerer<'a> {
 
         let mut parameter_types = Vec::new();
         let mut varargs = false;
+
         let len = function_item.params().len();
 
         for (i, param) in function_item.params().into_iter().enumerate() {
@@ -211,11 +224,13 @@ impl<'a> Lowerer<'a> {
         symbol_id
     }
 
+    /// Define a constant in the current scope, but don't lower its body.
     fn declare_const(&mut self, const_item: ConstItem) -> SymbolId {
         let type_id = const_item
             .ty()
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
+
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
         let symbol_id = self
@@ -229,6 +244,7 @@ impl<'a> Lowerer<'a> {
         symbol_id
     }
 
+    /// Define a type for an alias in the current scope, but leave it as unknown for now.
     fn declare_type_alias(&mut self, type_alias: TypeAliasItem) -> TypeId {
         let type_id = self.db.alloc_type(Type::Unknown);
         if let Some(name) = type_alias.name() {
@@ -237,6 +253,7 @@ impl<'a> Lowerer<'a> {
         type_id
     }
 
+    /// Define a type for a struct in the current scope, but leave it as unknown for now.
     fn declare_struct(&mut self, struct_item: StructItem) -> TypeId {
         let type_id = self.db.alloc_type(Type::Unknown);
         if let Some(name) = struct_item.name() {
@@ -245,6 +262,8 @@ impl<'a> Lowerer<'a> {
         type_id
     }
 
+    /// Define a type for an enum in the current scope.
+    /// This creates the enum variants as well, but they are left as unknown types.
     fn declare_enum(&mut self, enum_item: EnumItem) -> TypeId {
         let mut variants = IndexMap::new();
 
@@ -253,6 +272,7 @@ impl<'a> Lowerer<'a> {
                 continue;
             };
 
+            // Silently ignore duplicate variants, since they will be caught later.
             if variants.contains_key(name.text()) {
                 continue;
             }
@@ -269,6 +289,7 @@ impl<'a> Lowerer<'a> {
         type_id
     }
 
+    /// Compiles the body of a function within the function's scope.
     fn compile_function(&mut self, function: FunctionItem, symbol_id: SymbolId) {
         let Some(body) = function.body() else {
             return;
@@ -278,23 +299,27 @@ impl<'a> Lowerer<'a> {
             unreachable!();
         };
 
+        // We don't care about explicit returns in this context.
         self.scope_stack.push(scope_id);
-        let (output, _explicit_return) =
-            self.compile_block_expr(body, None, Some(ty.return_type()));
+        let value = self.compile_block(body, Some(ty.return_type())).0;
         self.scope_stack.pop().unwrap();
 
+        // Ensure that the body is assignable to the return type.
         self.type_check(
-            output.ty(),
+            value.ty(),
             ty.return_type(),
             function.body().unwrap().syntax().text_range(),
         );
 
+        // We ignore type guards here for now.
+        // Just set the function body HIR.
         let Symbol::Function { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
             unreachable!();
         };
-        *hir_id = output.hir();
+        *hir_id = value.hir();
     }
 
+    /// Compiles a constant's value.
     fn compile_const(&mut self, const_item: ConstItem, symbol_id: SymbolId) {
         let Some(expr) = const_item.expr() else {
             return;
@@ -306,33 +331,41 @@ impl<'a> Lowerer<'a> {
 
         let output = self.compile_expr(expr, Some(type_id));
 
+        // Ensure that the expression is assignable to the constant's type.
         self.type_check(output.ty(), type_id, const_item.syntax().text_range());
 
+        // We ignore type guards here for now.
+        // Just set the constant HIR.
         let Symbol::ConstBinding { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
             unreachable!();
         };
         *hir_id = output.hir();
     }
 
+    /// Compile and resolve the type that the alias points to.
     fn compile_type_alias(&mut self, ty: TypeAliasItem, alias_type_id: TypeId) {
         let type_id = ty
             .ty()
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
 
+        // Set the alias type to the resolved type.
         *self.db.ty_mut(alias_type_id) = Type::Alias(type_id);
 
-        // A cycle has been detected, so prevent this type from causing issues later.
+        // A cycle between type aliases has been detected.
+        // We set it to unknown to prevent stack overflow issues later.
         if self.detect_cycle(alias_type_id, ty.syntax().text_range(), &mut HashSet::new()) {
             *self.db.ty_mut(alias_type_id) = Type::Unknown;
         }
     }
 
+    /// Compile and resolve a struct type.
     fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
         let fields = self.compile_struct_fields(struct_item.fields());
         *self.db.ty_mut(type_id) = Type::Struct(StructType::new(fields));
     }
 
+    /// Compile and resolve the fields of a struct.
     fn compile_struct_fields(&mut self, fields: Vec<StructField>) -> IndexMap<String, TypeId> {
         let mut named_fields = IndexMap::new();
 
@@ -350,6 +383,7 @@ impl<'a> Lowerer<'a> {
         named_fields
     }
 
+    /// Compile and resolve an enum type, and each of its variants' struct fields.
     fn compile_enum(&mut self, enum_item: EnumItem, type_id: TypeId) {
         let Type::Enum(enum_type) = self.db.ty(type_id).clone() else {
             unreachable!();
@@ -362,6 +396,7 @@ impl<'a> Lowerer<'a> {
                 continue;
             };
 
+            // If the variant is a duplicate, we don't want to overwrite the existing variant.
             if !visited_variants.insert(name.to_string()) {
                 self.error(
                     DiagnosticInfo::DuplicateEnumVariant(name.to_string()),
@@ -388,18 +423,24 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Compiles a let statement and returns its new scope id.
     fn compile_let_stmt(&mut self, let_stmt: LetStmt) -> Option<ScopeId> {
+        // This doesn't default to unknown, since we want to infer the type if possible.
         let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
 
+        // Compile the expression.
         let value = let_stmt
             .expr()
             .map(|expr| self.compile_expr(expr, expected_type))
             .unwrap_or(self.unknown());
 
+        // Check that the expression's type matches the type annotation, if present.
         if let Some(expected_type) = expected_type {
             self.type_check(value.ty(), expected_type, let_stmt.syntax().text_range());
         }
 
+        // If the name can't be resolved, there's no reason to continue compiling it.
+        // We only do the above steps first to catch any other errors that may occur.
         let Some(name) = let_stmt.name() else {
             return None;
         };
@@ -409,24 +450,79 @@ impl<'a> Lowerer<'a> {
             hir_id: value.hir(),
         });
 
+        // Every let binding is a new scope for now, to simplify the code generation process later.
+        // This is not the most efficient way to do it, but it's the easiest with the current codebase.
+        // TODO: Optimize this.
         let mut let_scope = Scope::default();
         let_scope.define_symbol(name.to_string(), symbol_id);
         let scope_id = self.db.alloc_scope(let_scope);
-        self.scope_stack.push(scope_id);
 
         Some(scope_id)
     }
 
-    fn compile_block_expr(
+    /// Compiles an if statement, returning the condition HIR, then block HIR, and else block guards.
+    fn compile_if_stmt(
         &mut self,
-        block: Block,
-        scope_id: Option<ScopeId>,
+        if_stmt: IfStmt,
         expected_type: Option<TypeId>,
-    ) -> (Value, bool) {
-        if let Some(scope_id) = scope_id {
-            self.scope_stack.push(scope_id);
-        }
+    ) -> (HirId, HirId, HashMap<SymbolId, TypeId>) {
+        // Compile the condition expression.
+        let condition = if_stmt
+            .condition()
+            .map(|condition| self.compile_expr(condition, Some(self.bool_type)))
+            .unwrap_or_else(|| self.unknown());
 
+        // Check that the condition is a boolean.
+        self.type_check(
+            condition.ty(),
+            self.bool_type,
+            if_stmt.syntax().text_range(),
+        );
+
+        let then_block = if let Some(then_block) = if_stmt.then_block() {
+            // We create a new scope for the then block.
+            let scope_id = self.db.alloc_scope(Scope::default());
+
+            // We can apply any type guards from the condition.
+            self.type_guards.push(condition.then_guards());
+
+            // Compile the then block.
+            self.scope_stack.push(scope_id);
+            let (value, explicit_return) = self.compile_block(then_block.clone(), expected_type);
+            self.scope_stack.pop().unwrap();
+
+            // Pop the type guards, since we've left the scope.
+            self.type_guards.pop().unwrap();
+
+            // If there's an implicit return, we want to raise an error.
+            // This could technically work but makes the intent of the code unclear.
+            if !explicit_return {
+                self.error(
+                    DiagnosticInfo::ImplicitReturnInIf,
+                    then_block.syntax().text_range(),
+                );
+            }
+
+            value
+        } else {
+            self.unknown()
+        };
+
+        // Check that the output matches the expected type.
+        self.type_check(
+            then_block.ty(),
+            expected_type.unwrap_or(self.unknown_type),
+            if_stmt.syntax().text_range(),
+        );
+
+        (condition.hir(), then_block.hir(), condition.else_guards())
+    }
+
+    /// Compile a block expression into the current scope, returning the HIR and whether there was an explicit return.
+    fn compile_block(&mut self, block: Block, expected_type: Option<TypeId>) -> (Value, bool) {
+        // Compile all of the items in the block first.
+        // This means that statements can use item symbols in any order,
+        // but items cannot use statement symbols.
         self.compile_items(block.items());
 
         enum Statement {
@@ -437,6 +533,7 @@ impl<'a> Lowerer<'a> {
 
         let mut statements = Vec::new();
         let mut explicit_return = false;
+        let mut is_terminated = block.expr().is_some();
 
         for stmt in block.stmts() {
             match stmt {
@@ -444,59 +541,22 @@ impl<'a> Lowerer<'a> {
                     let Some(scope_id) = self.compile_let_stmt(let_stmt) else {
                         continue;
                     };
+
+                    // Push the let statement scope onto the stack.
+                    // This will be popped in reverse order later after all statements have been lowered.
+                    self.scope_stack.push(scope_id);
+
                     statements.push(Statement::Let(scope_id));
                 }
                 Stmt::IfStmt(if_stmt) => {
-                    let condition = if_stmt
-                        .condition()
-                        .map(|condition| self.compile_expr(condition, Some(self.bool_type)));
+                    let (condition_hir, then_hir, else_guards) =
+                        self.compile_if_stmt(if_stmt, expected_type);
 
-                    if let Some(condition) = condition.as_ref() {
-                        self.type_guards.push(condition.then_guards());
-                    }
-
-                    let then_block = if_stmt
-                        .then_block()
-                        .map(|then_block| {
-                            let scope_id = self.db.alloc_scope(Scope::default());
-                            let (value, explicit_return) = self.compile_block_expr(
-                                then_block.clone(),
-                                Some(scope_id),
-                                expected_type,
-                            );
-                            if !explicit_return {
-                                self.error(
-                                    DiagnosticInfo::ImplicitReturnInIf,
-                                    then_block.syntax().text_range(),
-                                );
-                            }
-                            value
-                        })
-                        .unwrap_or_else(|| self.unknown());
-
-                    if condition.is_some() {
-                        self.type_guards.pop().unwrap();
-                    }
-
-                    self.type_check(
-                        then_block.ty(),
-                        expected_type.unwrap_or(self.unknown_type),
-                        block.syntax().text_range(),
-                    );
-
-                    let else_guards = condition
-                        .as_ref()
-                        .map(|condition| condition.else_guards())
-                        .unwrap_or_default();
-
+                    // Push the type guards onto the stack.
+                    // This will be popped in reverse order later after all statements have been lowered.
                     self.type_guards.push(else_guards);
 
-                    statements.push(Statement::If(
-                        condition
-                            .map(|condition| condition.hir())
-                            .unwrap_or(self.unknown_hir),
-                        then_block.hir(),
-                    ));
+                    statements.push(Statement::If(condition_hir, then_hir));
                 }
                 Stmt::ReturnStmt(return_stmt) => {
                     let value = return_stmt
@@ -504,46 +564,71 @@ impl<'a> Lowerer<'a> {
                         .map(|expr| self.compile_expr(expr, expected_type))
                         .unwrap_or_else(|| self.unknown());
 
+                    // Make sure that the return value matches the expected type.
+                    self.type_check(
+                        value.ty(),
+                        expected_type.unwrap_or(self.unknown_type),
+                        return_stmt.syntax().text_range(),
+                    );
+
                     explicit_return = true;
+                    is_terminated = true;
 
                     statements.push(Statement::Return(value));
                 }
                 Stmt::RaiseStmt(raise_stmt) => {
+                    // You can raise any value as an error, so we don't need to check the type.
+                    // The value is also optional.
                     let value = raise_stmt
                         .expr()
-                        .map(|expr| self.compile_expr(expr, Some(self.bytes_type)).hir());
+                        .map(|expr| self.compile_expr(expr, None).hir());
 
-                    let value = self.db.alloc_hir(Hir::Raise(value));
+                    let hir_id = self.db.alloc_hir(Hir::Raise(value));
 
-                    statements.push(Statement::Return(Value::typed(value, self.unknown_type)));
+                    is_terminated = true;
+
+                    statements.push(Statement::Return(Value::typed(hir_id, self.unknown_type)));
                 }
                 Stmt::AssertStmt(assert_stmt) => {
+                    // Compile the condition expression.
                     let condition = assert_stmt
                         .expr()
                         .map(|condition| self.compile_expr(condition, Some(self.bool_type)))
                         .unwrap_or_else(|| self.unknown());
 
-                    self.type_guards.push(condition.then_guards());
-
+                    // Make sure that the condition is a boolean.
                     self.type_check(
                         condition.ty(),
                         self.bool_type,
                         assert_stmt.syntax().text_range(),
                     );
 
+                    // If the condition is false, we raise an error.
+                    // So we can assume that the condition is true from this point on.
+                    // This will be popped in reverse order later after all statements have been lowered.
+                    self.type_guards.push(condition.then_guards());
+
                     let not_condition = self.db.alloc_hir(Hir::Not(condition.hir()));
                     let raise = self.db.alloc_hir(Hir::Raise(None));
 
+                    // We lower this down to an inverted if statement.
                     statements.push(Statement::If(not_condition, raise))
                 }
             }
         }
 
+        // Compile the expression of the block, if present.
         let mut body = block
             .expr()
             .map(|expr| self.compile_expr(expr, expected_type))
             .unwrap_or(self.unknown());
 
+        // Ensure that the block terminates.
+        if !is_terminated {
+            self.error(DiagnosticInfo::EmptyBlock, block.syntax().text_range());
+        }
+
+        // Pop each statement in reverse order and mutate the body.
         for statement in statements.into_iter().rev() {
             match statement {
                 Statement::Let(scope_id) => {
@@ -574,11 +659,25 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        if scope_id.is_some() {
-            self.scope_stack.pop().unwrap();
+        (body, explicit_return)
+    }
+
+    /// Compile a block in the context of an expression.
+    fn compile_block_expr(&mut self, block: Block, expected_type: Option<TypeId>) -> Value {
+        let scope_id = self.db.alloc_scope(Scope::default());
+
+        self.scope_stack.push(scope_id);
+        let (value, explicit_return) = self.compile_block(block.clone(), expected_type);
+        self.scope_stack.pop().unwrap();
+
+        if explicit_return {
+            self.error(
+                DiagnosticInfo::ExplicitReturnInExpr,
+                block.syntax().text_range(),
+            );
         }
 
-        (body, explicit_return)
+        value
     }
 
     fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Value {
@@ -588,18 +687,7 @@ impl<'a> Lowerer<'a> {
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
             Expr::PairExpr(pair) => self.compile_pair_expr(pair, expected_type),
-            Expr::Block(block) => {
-                let scope_id = self.db.alloc_scope(Scope::default());
-                let (value, explicit_return) =
-                    self.compile_block_expr(block.clone(), Some(scope_id), expected_type);
-                if explicit_return {
-                    self.error(
-                        DiagnosticInfo::ExplicitReturnInExpr,
-                        block.syntax().text_range(),
-                    );
-                }
-                value
-            }
+            Expr::Block(block) => self.compile_block_expr(block.clone(), expected_type),
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
@@ -1240,8 +1328,12 @@ impl<'a> Lowerer<'a> {
 
         let then_block = if_expr.then_block().map(|then_block| {
             let scope_id = self.db.alloc_scope(Scope::default());
-            self.compile_block_expr(then_block, Some(scope_id), expected_type)
-                .0
+
+            self.scope_stack.push(scope_id);
+            let value = self.compile_block(then_block, expected_type).0;
+            self.scope_stack.pop().unwrap();
+
+            value
         });
 
         if condition.is_some() {
@@ -1257,8 +1349,12 @@ impl<'a> Lowerer<'a> {
 
         let else_block = if_expr.else_block().map(|else_block| {
             let scope_id = self.db.alloc_scope(Scope::default());
-            self.compile_block_expr(else_block, Some(scope_id), expected_type)
-                .0
+
+            self.scope_stack.push(scope_id);
+            let value = self.compile_block(else_block, expected_type).0;
+            self.scope_stack.pop().unwrap();
+
+            value
         });
 
         if condition.is_some() {
