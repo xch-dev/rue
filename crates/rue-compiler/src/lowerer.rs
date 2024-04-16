@@ -436,6 +436,7 @@ impl<'a> Lowerer<'a> {
         }
 
         let mut statements = Vec::new();
+        let mut explicit_return = false;
 
         for stmt in block.stmts() {
             match stmt {
@@ -502,6 +503,9 @@ impl<'a> Lowerer<'a> {
                         .expr()
                         .map(|expr| self.compile_expr(expr, expected_type))
                         .unwrap_or_else(|| self.unknown());
+
+                    explicit_return = true;
+
                     statements.push(Statement::Return(value));
                 }
                 Stmt::RaiseStmt(raise_stmt) => {
@@ -540,8 +544,6 @@ impl<'a> Lowerer<'a> {
             .map(|expr| self.compile_expr(expr, expected_type))
             .unwrap_or(self.unknown());
 
-        let mut explicit_return = false;
-
         for statement in statements.into_iter().rev() {
             match statement {
                 Statement::Let(scope_id) => {
@@ -556,7 +558,6 @@ impl<'a> Lowerer<'a> {
                 }
                 Statement::Return(value) => {
                     body = value;
-                    explicit_return = true;
                 }
                 Statement::If(condition, then_block) => {
                     self.type_guards.pop().unwrap();
