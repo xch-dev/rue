@@ -30,6 +30,7 @@ pub enum SyntaxKind {
     If,
     Else,
     Return,
+    Raise,
     Assert,
     Nil,
     True,
@@ -77,6 +78,7 @@ pub enum SyntaxKind {
     LetStmt,
     IfStmt,
     ReturnStmt,
+    RaiseStmt,
     AssertStmt,
 
     Block,
@@ -137,6 +139,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::If => "'if'",
                 SyntaxKind::Else => "'else'",
                 SyntaxKind::Return => "'return'",
+                SyntaxKind::Raise => "'raise'",
                 SyntaxKind::Assert => "'assert'",
                 SyntaxKind::Nil => "'nil'",
                 SyntaxKind::True => "'true'",
@@ -184,6 +187,7 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::LetStmt => "let statement",
                 SyntaxKind::IfStmt => "if statement",
                 SyntaxKind::ReturnStmt => "return statement",
+                SyntaxKind::RaiseStmt => "raise statement",
                 SyntaxKind::AssertStmt => "assert statement",
 
                 SyntaxKind::Block => "block",

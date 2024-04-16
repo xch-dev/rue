@@ -140,6 +140,8 @@ fn block(p: &mut Parser) {
             let_stmt(p);
         } else if p.at(SyntaxKind::Return) {
             return_stmt(p);
+        } else if p.at(SyntaxKind::Raise) {
+            raise_stmt(p);
         } else if p.at(SyntaxKind::If) {
             if if_stmt_maybe_else(p, false) {
                 break;
@@ -193,6 +195,16 @@ fn return_stmt(p: &mut Parser) {
     p.expect(SyntaxKind::Return);
     expr(p);
     p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn raise_stmt(p: &mut Parser) {
+    p.start(SyntaxKind::RaiseStmt);
+    p.expect(SyntaxKind::Raise);
+    if !p.try_eat(SyntaxKind::Semicolon) {
+        expr(p);
+        p.expect(SyntaxKind::Semicolon);
+    }
     p.finish();
 }
 

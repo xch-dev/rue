@@ -504,6 +504,15 @@ impl<'a> Lowerer<'a> {
                         .unwrap_or_else(|| self.unknown());
                     statements.push(Statement::Return(value));
                 }
+                Stmt::RaiseStmt(raise_stmt) => {
+                    let value = raise_stmt
+                        .expr()
+                        .map(|expr| self.compile_expr(expr, Some(self.bytes_type)).hir());
+
+                    let value = self.db.alloc_hir(Hir::Raise(value));
+
+                    statements.push(Statement::Return(Value::typed(value, self.unknown_type)));
+                }
                 Stmt::AssertStmt(assert_stmt) => {
                     let condition = assert_stmt
                         .expr()
@@ -519,7 +528,7 @@ impl<'a> Lowerer<'a> {
                     );
 
                     let not_condition = self.db.alloc_hir(Hir::Not(condition.hir()));
-                    let raise = self.db.alloc_hir(Hir::Raise);
+                    let raise = self.db.alloc_hir(Hir::Raise(None));
 
                     statements.push(Statement::If(not_condition, raise))
                 }

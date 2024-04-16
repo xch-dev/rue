@@ -39,7 +39,7 @@ impl<'a> Optimizer<'a> {
     fn compute_captures_hir(&mut self, scope_id: ScopeId, hir_id: HirId) {
         match self.db.hir(hir_id).clone() {
             Hir::Unknown => unreachable!(),
-            Hir::Atom(_) | Hir::Raise => {}
+            Hir::Atom(_) => {}
             Hir::Reference(symbol_id) => self.compute_reference_captures(scope_id, symbol_id),
             Hir::Scope {
                 scope_id: new_scope_id,
@@ -52,6 +52,11 @@ impl<'a> Optimizer<'a> {
             Hir::BinaryOp { lhs, rhs, .. } => {
                 self.compute_captures_hir(scope_id, lhs);
                 self.compute_captures_hir(scope_id, rhs);
+            }
+            Hir::Raise(value) => {
+                if let Some(value) = value {
+                    self.compute_captures_hir(scope_id, value);
+                }
             }
             Hir::First(value)
             | Hir::Rest(value)
@@ -317,7 +322,7 @@ impl<'a> Optimizer<'a> {
             Hir::First(value) => self.opt_first(scope_id, *value),
             Hir::Rest(value) => self.opt_rest(scope_id, *value),
             Hir::Not(value) => self.opt_not(scope_id, *value),
-            Hir::Raise => self.db.alloc_lir(Lir::Raise),
+            Hir::Raise(value) => self.opt_raise(scope_id, *value),
             Hir::Sha256(value) => self.opt_sha256(scope_id, *value),
             Hir::IsCons(value) => self.opt_is_cons(scope_id, *value),
             Hir::Strlen(value) => self.opt_strlen(scope_id, *value),
@@ -485,6 +490,11 @@ impl<'a> Optimizer<'a> {
     fn opt_not(&mut self, scope_id: ScopeId, value: HirId) -> LirId {
         let value = self.opt_hir(scope_id, value);
         self.db.alloc_lir(Lir::Not(value))
+    }
+
+    fn opt_raise(&mut self, scope_id: ScopeId, value: Option<HirId>) -> LirId {
+        let value = value.map(|value| self.opt_hir(scope_id, value));
+        self.db.alloc_lir(Lir::Raise(value))
     }
 
     fn opt_if(

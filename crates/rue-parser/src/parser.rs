@@ -191,6 +191,7 @@ fn convert_tokens<'a>(
             TokenKind::If => SyntaxKind::If,
             TokenKind::Else => SyntaxKind::Else,
             TokenKind::Return => SyntaxKind::Return,
+            TokenKind::Raise => SyntaxKind::Raise,
             TokenKind::Assert => SyntaxKind::Assert,
             TokenKind::Nil => SyntaxKind::Nil,
             TokenKind::True => SyntaxKind::True,

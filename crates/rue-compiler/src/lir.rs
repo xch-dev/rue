@@ -11,7 +11,7 @@ pub enum Lir {
     FunctionBody(LirId),
     First(LirId),
     Rest(LirId),
-    Raise,
+    Raise(Option<LirId>),
     Sha256(LirId),
     IsCons(LirId),
     Strlen(LirId),

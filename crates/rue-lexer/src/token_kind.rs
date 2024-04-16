@@ -20,6 +20,7 @@ pub enum TokenKind {
     If,
     Else,
     Return,
+    Raise,
     Assert,
     Nil,
     True,

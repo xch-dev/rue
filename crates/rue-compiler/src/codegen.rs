@@ -72,7 +72,7 @@ impl<'a> Codegen<'a> {
             Lir::FunctionBody(body) => self.gen_quote(body),
             Lir::First(value) => self.gen_first(value),
             Lir::Rest(value) => self.gen_rest(value),
-            Lir::Raise => self.list(&[self.ops.x]),
+            Lir::Raise(value) => self.gen_raise(value),
             Lir::Sha256(value) => self.gen_sha256(value),
             Lir::IsCons(value) => self.gen_is_cons(value),
             Lir::Strlen(value) => self.gen_strlen(value),
@@ -135,6 +135,15 @@ impl<'a> Codegen<'a> {
     fn gen_rest(&mut self, value: LirId) -> NodePtr {
         let value = self.gen_lir(value);
         self.list(&[self.ops.r, value])
+    }
+
+    fn gen_raise(&mut self, value: Option<LirId>) -> NodePtr {
+        if let Some(value) = value {
+            let value = self.gen_lir(value);
+            self.list(&[self.ops.x, value])
+        } else {
+            self.list(&[self.ops.x])
+        }
     }
 
     fn gen_sha256(&mut self, value: LirId) -> NodePtr {

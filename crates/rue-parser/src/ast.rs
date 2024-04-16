@@ -120,10 +120,11 @@ ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
 
-ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, AssertStmt);
+ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt);
 ast_node!(LetStmt);
 ast_node!(IfStmt);
 ast_node!(ReturnStmt);
+ast_node!(RaiseStmt);
 ast_node!(AssertStmt);
 
 impl Root {
@@ -331,6 +332,12 @@ impl IfStmt {
 }
 
 impl ReturnStmt {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+}
+
+impl RaiseStmt {
     pub fn expr(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
     }
