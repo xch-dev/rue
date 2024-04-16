@@ -175,7 +175,7 @@ fn let_stmt(p: &mut Parser) {
 fn if_stmt_maybe_else(p: &mut Parser, expr_only: bool) -> bool {
     let cp = p.checkpoint();
     p.expect(SyntaxKind::If);
-    expr(p);
+    expr_binding_power(p, 0, false);
     block(p);
     let mut has_else = false;
     if expr_only || p.at(SyntaxKind::Else) {
@@ -241,14 +241,14 @@ fn binding_power(op: BinaryOp) -> (u8, u8) {
 const EXPR_RECOVERY_SET: &[SyntaxKind] = &[SyntaxKind::OpenBrace, SyntaxKind::CloseBrace];
 
 fn expr(p: &mut Parser) {
-    expr_binding_power(p, 0);
+    expr_binding_power(p, 0, true);
 }
 
-fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
+fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializer: bool) {
     if p.at(SyntaxKind::Not) {
         p.start(SyntaxKind::PrefixExpr);
         p.bump();
-        expr_binding_power(p, 255);
+        expr_binding_power(p, 255, allow_initializer);
         p.finish();
         return;
     }
@@ -267,7 +267,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
     } else if p.at(SyntaxKind::Ident) {
         path(p);
 
-        if p.at(SyntaxKind::OpenBrace) {
+        if p.at(SyntaxKind::OpenBrace) && allow_initializer {
             p.start_at(checkpoint, SyntaxKind::InitializerExpr);
             p.bump();
             while !p.at(SyntaxKind::CloseBrace) {
@@ -381,7 +381,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         p.bump();
 
         p.start_at(checkpoint, SyntaxKind::BinaryExpr);
-        expr_binding_power(p, right_binding_power);
+        expr_binding_power(p, right_binding_power, allow_initializer);
         p.finish();
     }
 }

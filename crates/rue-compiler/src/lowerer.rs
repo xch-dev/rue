@@ -1021,11 +1021,8 @@ impl<'a> Lowerer<'a> {
                         DiagnosticInfo::NonAtomEquality(self.type_name(lhs.ty())),
                         text_range,
                     );
-                } else {
-                    self.type_check(rhs.ty(), lhs.ty(), text_range);
-                }
-
-                if self.is_assignable_to(lhs.ty(), self.nil_type, false, &mut HashSet::new()) {
+                } else if self.is_assignable_to(lhs.ty(), self.nil_type, false, &mut HashSet::new())
+                {
                     if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
                         guards.insert(
                             *symbol_id,
@@ -1040,6 +1037,8 @@ impl<'a> Lowerer<'a> {
                             Guard::new(self.nil_type, self.try_unwrap_optional(lhs.ty())),
                         );
                     }
+                } else {
+                    self.type_check(rhs.ty(), lhs.ty(), text_range);
                 }
 
                 (BinOp::Equals, self.bool_type)
@@ -1052,11 +1051,8 @@ impl<'a> Lowerer<'a> {
                         DiagnosticInfo::NonAtomEquality(self.type_name(lhs.ty())),
                         text_range,
                     );
-                } else {
-                    self.type_check(rhs.ty(), lhs.ty(), text_range);
-                }
-
-                if self.is_assignable_to(lhs.ty(), self.nil_type, false, &mut HashSet::new()) {
+                } else if self.is_assignable_to(lhs.ty(), self.nil_type, false, &mut HashSet::new())
+                {
                     if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
                         guards.insert(
                             *symbol_id,
@@ -1071,6 +1067,8 @@ impl<'a> Lowerer<'a> {
                             Guard::new(self.try_unwrap_optional(lhs.ty()), self.nil_type),
                         );
                     }
+                } else {
+                    self.type_check(rhs.ty(), lhs.ty(), text_range);
                 }
 
                 (BinOp::NotEquals, self.bool_type)
