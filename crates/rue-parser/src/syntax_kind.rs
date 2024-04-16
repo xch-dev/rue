@@ -29,6 +29,8 @@ pub enum SyntaxKind {
     Const,
     If,
     Else,
+    Return,
+    Assert,
     Nil,
     True,
     False,
@@ -73,6 +75,9 @@ pub enum SyntaxKind {
     ConstItem,
 
     LetStmt,
+    IfStmt,
+    ReturnStmt,
+    AssertStmt,
 
     Block,
     Path,
@@ -131,6 +136,8 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::Const => "'const'",
                 SyntaxKind::If => "'if'",
                 SyntaxKind::Else => "'else'",
+                SyntaxKind::Return => "'return'",
+                SyntaxKind::Assert => "'assert'",
                 SyntaxKind::Nil => "'nil'",
                 SyntaxKind::True => "'true'",
                 SyntaxKind::False => "'false'",
@@ -175,6 +182,9 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::ConstItem => "const item",
 
                 SyntaxKind::LetStmt => "let statement",
+                SyntaxKind::IfStmt => "if statement",
+                SyntaxKind::ReturnStmt => "return statement",
+                SyntaxKind::AssertStmt => "assert statement",
 
                 SyntaxKind::Block => "block",
                 SyntaxKind::Path => "identifier path",

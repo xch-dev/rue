@@ -115,6 +115,12 @@ pub enum DiagnosticInfo {
 
     #[error("redundant check against same type `{0}`")]
     RedundantTypeGuard(String),
+
+    #[error("implicit return is not allowed in if statements, use an explicit return statement")]
+    ImplicitReturnInIf,
+
+    #[error("explicit return is not allowed in expressions")]
+    ExplicitReturnInExpr,
 }
 
 /// Join a list of names into a string, wrapped in backticks.

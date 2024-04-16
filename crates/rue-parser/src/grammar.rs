@@ -135,16 +135,24 @@ fn const_item(p: &mut Parser) {
 fn block(p: &mut Parser) {
     p.start(SyntaxKind::Block);
     p.expect(SyntaxKind::OpenBrace);
-    loop {
+    while !p.at(SyntaxKind::CloseBrace) && !p.at(SyntaxKind::Eof) {
         if p.at(SyntaxKind::Let) {
             let_stmt(p);
+        } else if p.at(SyntaxKind::Return) {
+            return_stmt(p);
+        } else if p.at(SyntaxKind::If) {
+            if if_stmt_maybe_else(p, false) {
+                break;
+            }
+        } else if p.at(SyntaxKind::Assert) {
+            assert_stmt(p);
         } else if p.at(SyntaxKind::Fun) || p.at(SyntaxKind::Type) || p.at(SyntaxKind::Const) {
             item(p);
         } else {
+            expr(p);
             break;
         }
     }
-    expr(p);
     p.expect(SyntaxKind::CloseBrace);
     p.finish();
 }
@@ -157,6 +165,40 @@ fn let_stmt(p: &mut Parser) {
         ty(p);
     }
     p.expect(SyntaxKind::Assign);
+    expr(p);
+    p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn if_stmt_maybe_else(p: &mut Parser, expr_only: bool) -> bool {
+    let cp = p.checkpoint();
+    p.expect(SyntaxKind::If);
+    expr(p);
+    block(p);
+    let mut has_else = false;
+    if expr_only || p.at(SyntaxKind::Else) {
+        p.start_at(cp, SyntaxKind::IfExpr);
+        p.expect(SyntaxKind::Else);
+        block(p);
+        has_else = true;
+    } else {
+        p.start_at(cp, SyntaxKind::IfStmt);
+    }
+    p.finish();
+    has_else
+}
+
+fn return_stmt(p: &mut Parser) {
+    p.start(SyntaxKind::ReturnStmt);
+    p.expect(SyntaxKind::Return);
+    expr(p);
+    p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn assert_stmt(p: &mut Parser) {
+    p.start(SyntaxKind::AssertStmt);
+    p.expect(SyntaxKind::Assert);
     expr(p);
     p.expect(SyntaxKind::Semicolon);
     p.finish();
@@ -246,7 +288,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) {
         p.expect(SyntaxKind::CloseParen);
         p.finish();
     } else if p.at(SyntaxKind::If) {
-        if_expr(p);
+        if_stmt_maybe_else(p, true);
     } else if p.at(SyntaxKind::Fun) {
         lambda_expr(p);
     } else {
@@ -381,16 +423,6 @@ fn lambda_param(p: &mut Parser) {
     if p.try_eat(SyntaxKind::Colon) {
         ty(p);
     }
-    p.finish();
-}
-
-fn if_expr(p: &mut Parser) {
-    p.start(SyntaxKind::IfExpr);
-    p.expect(SyntaxKind::If);
-    expr(p);
-    block(p);
-    p.expect(SyntaxKind::Else);
-    block(p);
     p.finish();
 }
 

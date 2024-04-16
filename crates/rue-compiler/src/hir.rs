@@ -24,6 +24,7 @@ pub enum Hir {
     First(HirId),
     Rest(HirId),
     Not(HirId),
+    Raise,
     Sha256(HirId),
     IsCons(HirId),
     Strlen(HirId),

@@ -19,6 +19,8 @@ pub enum TokenKind {
     Const,
     If,
     Else,
+    Return,
+    Assert,
     Nil,
     True,
     False,

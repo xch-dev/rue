@@ -1,0 +1,14 @@
+fun main(num: Int) -> Bytes {
+    if num > 100 {
+        return "Large";
+    }
+    
+    if num > 50 {
+        return "Medium";
+    }
+    
+    assert num > 20;
+
+    "Small"
+}
+

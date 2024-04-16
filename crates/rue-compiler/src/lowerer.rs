@@ -10,7 +10,7 @@ use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
     FunctionCall, FunctionItem, FunctionType as AstFunctionType, GroupExpr, GuardExpr, IfExpr,
-    IndexAccess, InitializerExpr, InitializerField, Item, LambdaExpr, ListExpr, ListType,
+    IndexAccess, InitializerExpr, InitializerField, Item, LambdaExpr, LetStmt, ListExpr, ListType,
     LiteralExpr, PairExpr, PairType, Path, PrefixExpr, PrefixOp, Root, Stmt, StructField,
     StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
 };
@@ -279,7 +279,8 @@ impl<'a> Lowerer<'a> {
         };
 
         self.scope_stack.push(scope_id);
-        let output = self.compile_block_expr(body, None, Some(ty.return_type()));
+        let (output, _explicit_return) =
+            self.compile_block_expr(body, None, Some(ty.return_type()));
         self.scope_stack.pop().unwrap();
 
         self.type_check(
@@ -387,49 +388,140 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    fn compile_let_stmt(&mut self, let_stmt: LetStmt) -> Option<ScopeId> {
+        let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
+
+        let value = let_stmt
+            .expr()
+            .map(|expr| self.compile_expr(expr, expected_type))
+            .unwrap_or(self.unknown());
+
+        if let Some(expected_type) = expected_type {
+            self.type_check(value.ty(), expected_type, let_stmt.syntax().text_range());
+        }
+
+        let Some(name) = let_stmt.name() else {
+            return None;
+        };
+
+        let symbol_id = self.db.alloc_symbol(Symbol::LetBinding {
+            type_id: expected_type.unwrap_or(value.ty()),
+            hir_id: value.hir(),
+        });
+
+        let mut let_scope = Scope::default();
+        let_scope.define_symbol(name.to_string(), symbol_id);
+        let scope_id = self.db.alloc_scope(let_scope);
+        self.scope_stack.push(scope_id);
+
+        Some(scope_id)
+    }
+
     fn compile_block_expr(
         &mut self,
         block: Block,
         scope_id: Option<ScopeId>,
         expected_type: Option<TypeId>,
-    ) -> Value {
+    ) -> (Value, bool) {
         if let Some(scope_id) = scope_id {
             self.scope_stack.push(scope_id);
         }
 
         self.compile_items(block.items());
 
-        let mut let_scope_ids = Vec::new();
+        enum Statement {
+            Let(ScopeId),
+            If(HirId, HirId),
+            Return(Value),
+        }
+
+        let mut statements = Vec::new();
 
         for stmt in block.stmts() {
             match stmt {
                 Stmt::LetStmt(let_stmt) => {
-                    let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
-
-                    let value = let_stmt
-                        .expr()
-                        .map(|expr| self.compile_expr(expr, expected_type))
-                        .unwrap_or(self.unknown());
-
-                    if let Some(expected_type) = expected_type {
-                        self.type_check(value.ty(), expected_type, let_stmt.syntax().text_range());
-                    }
-
-                    let Some(name) = let_stmt.name() else {
+                    let Some(scope_id) = self.compile_let_stmt(let_stmt) else {
                         continue;
                     };
+                    statements.push(Statement::Let(scope_id));
+                }
+                Stmt::IfStmt(if_stmt) => {
+                    let condition = if_stmt
+                        .condition()
+                        .map(|condition| self.compile_expr(condition, Some(self.bool_type)));
 
-                    let symbol_id = self.db.alloc_symbol(Symbol::LetBinding {
-                        type_id: expected_type.unwrap_or(value.ty()),
-                        hir_id: value.hir(),
-                    });
+                    if let Some(condition) = condition.as_ref() {
+                        self.type_guards.push(condition.then_guards());
+                    }
 
-                    let mut let_scope = Scope::default();
-                    let_scope.define_symbol(name.to_string(), symbol_id);
-                    let scope_id = self.db.alloc_scope(let_scope);
-                    self.scope_stack.push(scope_id);
+                    let then_block = if_stmt
+                        .then_block()
+                        .map(|then_block| {
+                            let scope_id = self.db.alloc_scope(Scope::default());
+                            let (value, explicit_return) = self.compile_block_expr(
+                                then_block.clone(),
+                                Some(scope_id),
+                                expected_type,
+                            );
+                            if !explicit_return {
+                                self.error(
+                                    DiagnosticInfo::ImplicitReturnInIf,
+                                    then_block.syntax().text_range(),
+                                );
+                            }
+                            value
+                        })
+                        .unwrap_or_else(|| self.unknown());
 
-                    let_scope_ids.push(scope_id);
+                    if condition.is_some() {
+                        self.type_guards.pop().unwrap();
+                    }
+
+                    self.type_check(
+                        then_block.ty(),
+                        expected_type.unwrap_or(self.unknown_type),
+                        block.syntax().text_range(),
+                    );
+
+                    let else_guards = condition
+                        .as_ref()
+                        .map(|condition| condition.else_guards())
+                        .unwrap_or_default();
+
+                    self.type_guards.push(else_guards);
+
+                    statements.push(Statement::If(
+                        condition
+                            .map(|condition| condition.hir())
+                            .unwrap_or(self.unknown_hir),
+                        then_block.hir(),
+                    ));
+                }
+                Stmt::ReturnStmt(return_stmt) => {
+                    let value = return_stmt
+                        .expr()
+                        .map(|expr| self.compile_expr(expr, expected_type))
+                        .unwrap_or_else(|| self.unknown());
+                    statements.push(Statement::Return(value));
+                }
+                Stmt::AssertStmt(assert_stmt) => {
+                    let condition = assert_stmt
+                        .expr()
+                        .map(|condition| self.compile_expr(condition, Some(self.bool_type)))
+                        .unwrap_or_else(|| self.unknown());
+
+                    self.type_guards.push(condition.then_guards());
+
+                    self.type_check(
+                        condition.ty(),
+                        self.bool_type,
+                        assert_stmt.syntax().text_range(),
+                    );
+
+                    let not_condition = self.db.alloc_hir(Hir::Not(condition.hir()));
+                    let raise = self.db.alloc_hir(Hir::Raise);
+
+                    statements.push(Statement::If(not_condition, raise))
                 }
             }
         }
@@ -439,22 +531,44 @@ impl<'a> Lowerer<'a> {
             .map(|expr| self.compile_expr(expr, expected_type))
             .unwrap_or(self.unknown());
 
-        for scope_id in let_scope_ids.into_iter().rev() {
-            body = Value::typed(
-                self.db.alloc_hir(Hir::Scope {
-                    scope_id,
-                    value: body.hir(),
-                }),
-                body.ty(),
-            );
-            self.scope_stack.pop().unwrap();
+        let mut explicit_return = false;
+
+        for statement in statements.into_iter().rev() {
+            match statement {
+                Statement::Let(scope_id) => {
+                    body = Value::typed(
+                        self.db.alloc_hir(Hir::Scope {
+                            scope_id,
+                            value: body.hir(),
+                        }),
+                        body.ty(),
+                    );
+                    self.scope_stack.pop().unwrap();
+                }
+                Statement::Return(value) => {
+                    body = value;
+                    explicit_return = true;
+                }
+                Statement::If(condition, then_block) => {
+                    self.type_guards.pop().unwrap();
+
+                    body = Value::typed(
+                        self.db.alloc_hir(Hir::If {
+                            condition,
+                            then_block,
+                            else_block: body.hir(),
+                        }),
+                        body.ty(),
+                    );
+                }
+            }
         }
 
         if scope_id.is_some() {
             self.scope_stack.pop().unwrap();
         }
 
-        body
+        (body, explicit_return)
     }
 
     fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Value {
@@ -466,7 +580,15 @@ impl<'a> Lowerer<'a> {
             Expr::PairExpr(pair) => self.compile_pair_expr(pair, expected_type),
             Expr::Block(block) => {
                 let scope_id = self.db.alloc_scope(Scope::default());
-                self.compile_block_expr(block, Some(scope_id), expected_type)
+                let (value, explicit_return) =
+                    self.compile_block_expr(block.clone(), Some(scope_id), expected_type);
+                if explicit_return {
+                    self.error(
+                        DiagnosticInfo::ExplicitReturnInExpr,
+                        block.syntax().text_range(),
+                    );
+                }
+                value
             }
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
@@ -1100,7 +1222,7 @@ impl<'a> Lowerer<'a> {
     fn compile_if_expr(&mut self, if_expr: IfExpr, expected_type: Option<TypeId>) -> Value {
         let condition = if_expr
             .condition()
-            .map(|condition| self.compile_expr(condition, None));
+            .map(|condition| self.compile_expr(condition, Some(self.bool_type)));
 
         if let Some(condition) = condition.as_ref() {
             self.type_guards.push(condition.then_guards());
@@ -1109,6 +1231,7 @@ impl<'a> Lowerer<'a> {
         let then_block = if_expr.then_block().map(|then_block| {
             let scope_id = self.db.alloc_scope(Scope::default());
             self.compile_block_expr(then_block, Some(scope_id), expected_type)
+                .0
         });
 
         if condition.is_some() {
@@ -1119,9 +1242,13 @@ impl<'a> Lowerer<'a> {
             self.type_guards.push(condition.else_guards());
         }
 
+        let expected_type =
+            expected_type.or_else(|| then_block.as_ref().map(|then_block| then_block.ty()));
+
         let else_block = if_expr.else_block().map(|else_block| {
             let scope_id = self.db.alloc_scope(Scope::default());
             self.compile_block_expr(else_block, Some(scope_id), expected_type)
+                .0
         });
 
         if condition.is_some() {

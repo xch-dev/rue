@@ -116,3 +116,10 @@ cost = 7060
 input = "()"
 output = "6"
 hash = "c65b731dc627a8ad1357dee68e27e3de33a582bebdb0bc2b503310e20ad360cc"
+
+[early_return]
+bytes = 115
+cost = 2716
+input = "(50)"
+output = "\"Small\""
+hash = "cf32bd32ff878903a6962acd218c451474e0ef3ae3c649f79aa5abca1bff730b"

@@ -111,6 +111,8 @@ impl<'a> Lexer<'a> {
                     "const" => TokenKind::Const,
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
+                    "return" => TokenKind::Return,
+                    "assert" => TokenKind::Assert,
                     "nil" => TokenKind::Nil,
                     "true" => TokenKind::True,
                     "false" => TokenKind::False,
@@ -275,6 +277,7 @@ mod tests {
         check("const", &[TokenKind::Const]);
         check("if", &[TokenKind::If]);
         check("else", &[TokenKind::Else]);
+        check("return", &[TokenKind::Return]);
         check("true", &[TokenKind::True]);
         check("false", &[TokenKind::False]);
         check("nil", &[TokenKind::Nil]);
