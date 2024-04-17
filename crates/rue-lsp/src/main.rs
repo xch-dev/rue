@@ -76,15 +76,12 @@ impl Backend {
             let start = line_col(&text, error.span().start);
             let end = line_col(&text, error.span().end);
 
-            diagnostics.push(diagnostic(
-                start,
-                end,
-                format!("{}", error.info()),
-                match error.kind() {
-                    DiagnosticKind::Error => DiagnosticSeverity::ERROR,
-                    DiagnosticKind::Warning => DiagnosticSeverity::WARNING,
-                },
-            ));
+            let (message, severity) = match error.kind() {
+                DiagnosticKind::Error(kind) => (format!("{}", kind), DiagnosticSeverity::ERROR),
+                DiagnosticKind::Warning(kind) => (format!("{}", kind), DiagnosticSeverity::WARNING),
+            };
+
+            diagnostics.push(diagnostic(start, end, message, severity));
         }
 
         self.client

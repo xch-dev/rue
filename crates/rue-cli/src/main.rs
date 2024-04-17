@@ -2,7 +2,7 @@ use std::fs;
 
 use clap::Parser;
 use clvmr::{run_program, serde::node_to_bytes, Allocator, ChiaDialect, NodePtr};
-use rue_compiler::compile;
+use rue_compiler::{compile, DiagnosticKind};
 use rue_parser::{line_col, parse, LineCol};
 
 /// The Rue language compiler and toolchain.
@@ -35,7 +35,15 @@ fn main() {
             let LineCol { line, col } = line_col(&source, error.span().start);
             let line = line + 1;
             let col = col + 1;
-            eprintln!("{} at {line}:{col}", error.info());
+
+            match error.kind() {
+                DiagnosticKind::Error(kind) => {
+                    eprintln!("Error: {} at {line}:{col}", kind)
+                }
+                DiagnosticKind::Warning(kind) => {
+                    eprintln!("Warning: {} at {line}:{col}", kind)
+                }
+            }
         }
         return;
     }

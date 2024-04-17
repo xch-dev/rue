@@ -10,7 +10,7 @@ use clvmr::{
     Allocator, ChiaDialect,
 };
 use indexmap::{IndexMap, IndexSet};
-use rue_compiler::compile;
+use rue_compiler::{compile, DiagnosticKind};
 use rue_parser::{line_col, LineCol};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
@@ -89,7 +89,10 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
             let LineCol { line, col } = line_col(source, error.span().start);
             let line = line + 1;
             let col = col + 1;
-            format!("{} at {line}:{col}", error.info())
+            match error.kind() {
+                DiagnosticKind::Error(kind) => format!("{} at {line}:{col}", kind),
+                DiagnosticKind::Warning(kind) => format!("{} at {line}:{col}", kind),
+            }
         })
         .collect();
 

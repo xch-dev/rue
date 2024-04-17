@@ -53,8 +53,7 @@ pub fn compile(allocator: &mut Allocator, root: Root, parsing_succeeded: bool) -
 
     let Some(main_id) = db.scope_mut(scope_id).symbol("main") else {
         diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Error,
-            DiagnosticInfo::MissingMain,
+            DiagnosticKind::Error(ErrorKind::MissingMain),
             0..0,
         ));
 
@@ -64,11 +63,7 @@ pub fn compile(allocator: &mut Allocator, root: Root, parsing_succeeded: bool) -
         };
     };
 
-    let node_ptr = if !diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.kind() == DiagnosticKind::Error)
-        && parsing_succeeded
-    {
+    let node_ptr = if !diagnostics.iter().any(Diagnostic::is_error) && parsing_succeeded {
         let mut optimizer = Optimizer::new(&mut db);
         let lir_id = optimizer.opt_main(main_id);
 

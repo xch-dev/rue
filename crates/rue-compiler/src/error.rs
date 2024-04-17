@@ -5,36 +5,48 @@ use thiserror::Error;
 #[derive(Debug)]
 pub struct Diagnostic {
     kind: DiagnosticKind,
-    info: DiagnosticInfo,
     span: Range<usize>,
 }
 
 impl Diagnostic {
-    pub fn new(kind: DiagnosticKind, info: DiagnosticInfo, span: Range<usize>) -> Self {
-        Self { kind, info, span }
+    pub fn new(kind: DiagnosticKind, span: Range<usize>) -> Self {
+        Self { kind, span }
     }
 
-    pub fn kind(&self) -> DiagnosticKind {
-        self.kind
-    }
-
-    pub fn info(&self) -> &DiagnosticInfo {
-        &self.info
+    pub fn kind(&self) -> &DiagnosticKind {
+        &self.kind
     }
 
     pub fn span(&self) -> &Range<usize> {
         &self.span
     }
+
+    pub fn is_error(&self) -> bool {
+        matches!(self.kind, DiagnosticKind::Error(_))
+    }
+
+    pub fn is_warning(&self) -> bool {
+        matches!(self.kind, DiagnosticKind::Warning(_))
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DiagnosticKind {
-    Warning,
-    Error,
+    Warning(WarningKind),
+    Error(ErrorKind),
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
-pub enum DiagnosticInfo {
+pub enum WarningKind {
+    #[error("redundant optional type")]
+    RedundantOptional,
+
+    #[error("redundant check against same type `{0}`")]
+    RedundantTypeGuard(String),
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
+pub enum ErrorKind {
     #[error("missing `main` function")]
     MissingMain,
 
@@ -116,9 +128,6 @@ pub enum DiagnosticInfo {
     #[error("cannot check list against pair with types other than the list item type and the list itself")]
     NonListPairTypeGuard,
 
-    #[error("redundant check against same type `{0}`")]
-    RedundantTypeGuard(String),
-
     #[error("implicit return is not allowed in if statements, use an explicit return statement")]
     ImplicitReturnInIf,
 
@@ -130,9 +139,6 @@ pub enum DiagnosticInfo {
 
     #[error("cannot check equality on non-atom type `{0}`")]
     NonAtomEquality(String),
-
-    #[error("redundant optional type")]
-    RedundantOptional,
 }
 
 /// Join a list of names into a string, wrapped in backticks.
