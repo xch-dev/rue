@@ -9,30 +9,40 @@ use crate::{
     symbol::Symbol,
 };
 
+#[derive(Default)]
+struct Environment {
+    captures: IndexSet<SymbolId>,
+    environment: IndexSet<SymbolId>,
+    varargs: bool,
+    inherits_from: Option<ScopeId>,
+}
+
 pub struct Optimizer<'a> {
     db: &'a mut Database,
-    captures: HashMap<ScopeId, IndexSet<SymbolId>>,
-    environments: HashMap<ScopeId, IndexSet<SymbolId>>,
-    varargs: HashMap<ScopeId, bool>,
-    scope_inheritance: HashMap<ScopeId, ScopeId>,
+    environments: HashMap<ScopeId, Environment>,
 }
 
 impl<'a> Optimizer<'a> {
     pub fn new(db: &'a mut Database) -> Self {
         Self {
             db,
-            captures: HashMap::new(),
             environments: HashMap::new(),
-            varargs: HashMap::new(),
-            scope_inheritance: HashMap::new(),
         }
     }
 
+    fn env(&self, scope_id: ScopeId) -> &Environment {
+        self.environments.get(&scope_id).unwrap()
+    }
+
+    fn env_mut(&mut self, scope_id: ScopeId) -> &mut Environment {
+        self.environments.get_mut(&scope_id).unwrap()
+    }
+
     fn compute_captures_entrypoint(&mut self, scope_id: ScopeId, hir_id: HirId) {
-        if self.captures.contains_key(&scope_id) {
+        if self.environments.contains_key(&scope_id) {
             return;
         }
-        self.captures.insert(scope_id, IndexSet::new());
+        self.environments.insert(scope_id, Environment::default());
         self.compute_captures_hir(scope_id, hir_id);
     }
 
@@ -86,7 +96,11 @@ impl<'a> Optimizer<'a> {
         let is_local = self.db.scope(scope_id).is_local(symbol_id);
 
         if is_capturable && !is_local {
-            self.captures.get_mut(&scope_id).unwrap().insert(symbol_id);
+            self.environments
+                .get_mut(&scope_id)
+                .unwrap()
+                .captures
+                .insert(symbol_id);
         }
 
         match self.db.symbol(symbol_id).clone() {
@@ -111,16 +125,15 @@ impl<'a> Optimizer<'a> {
     ) {
         self.compute_captures_entrypoint(function_scope_id, hir_id);
 
-        let new_captures: Vec<SymbolId> = self.captures[&function_scope_id]
+        let new_captures: Vec<SymbolId> = self
+            .env(function_scope_id)
+            .captures
             .iter()
             .copied()
             .filter(|&id| !self.db.scope(scope_id).is_local(id))
             .collect();
 
-        self.captures
-            .get_mut(&scope_id)
-            .unwrap()
-            .extend(new_captures);
+        self.env_mut(scope_id).captures.extend(new_captures);
 
         let mut env = IndexSet::new();
 
@@ -130,7 +143,7 @@ impl<'a> Optimizer<'a> {
             }
         }
 
-        for symbol_id in self.captures[&function_scope_id].clone() {
+        for symbol_id in self.environments[&function_scope_id].captures.clone() {
             env.insert(symbol_id);
         }
 
@@ -140,26 +153,25 @@ impl<'a> Optimizer<'a> {
             }
         }
 
-        self.environments.insert(function_scope_id, env);
+        self.env_mut(function_scope_id).environment = env;
 
         if varargs {
-            self.varargs.insert(function_scope_id, true);
+            self.env_mut(function_scope_id).varargs = true;
         }
     }
 
     fn compute_scope_captures(&mut self, scope_id: ScopeId, new_scope_id: ScopeId, value: HirId) {
         self.compute_captures_entrypoint(new_scope_id, value);
 
-        let new_captures: Vec<SymbolId> = self.captures[&new_scope_id]
+        let new_captures: Vec<SymbolId> = self
+            .env(new_scope_id)
+            .captures
             .iter()
             .copied()
             .filter(|&id| !self.db.scope(scope_id).is_local(id))
             .collect();
 
-        self.captures
-            .get_mut(&scope_id)
-            .unwrap()
-            .extend(new_captures);
+        self.env_mut(scope_id).captures.extend(new_captures);
 
         let mut env = IndexSet::new();
 
@@ -168,8 +180,8 @@ impl<'a> Optimizer<'a> {
             env.insert(symbol_id);
         }
 
-        self.scope_inheritance.insert(new_scope_id, scope_id);
-        self.environments.insert(new_scope_id, env);
+        self.env_mut(new_scope_id).inherits_from = Some(scope_id);
+        self.env_mut(new_scope_id).environment = env;
     }
 
     pub fn opt_main(&mut self, main: SymbolId) -> LirId {
@@ -190,7 +202,7 @@ impl<'a> Optimizer<'a> {
             }
         }
 
-        for symbol_id in self.captures[&scope_id].clone() {
+        for symbol_id in self.env(scope_id).captures.clone() {
             env.insert(symbol_id);
         }
 
@@ -200,7 +212,7 @@ impl<'a> Optimizer<'a> {
             }
         }
 
-        self.environments.insert(scope_id, env);
+        self.env_mut(scope_id).environment = env;
 
         let body = self.opt_hir(scope_id, hir_id);
 
@@ -212,7 +224,7 @@ impl<'a> Optimizer<'a> {
             }
         }
 
-        for symbol_id in self.captures[&scope_id].clone() {
+        for symbol_id in self.env(scope_id).captures.clone() {
             args.push(self.opt_definition(scope_id, symbol_id));
         }
 
@@ -222,7 +234,7 @@ impl<'a> Optimizer<'a> {
     fn opt_scope(&mut self, parent_scope_id: ScopeId, scope_id: ScopeId, hir_id: HirId) -> LirId {
         let body = self.opt_hir(scope_id, hir_id);
         let mut args = Vec::new();
-        for symbol_id in self.environments[&scope_id].clone() {
+        for symbol_id in self.env(scope_id).environment.clone() {
             assert!(self.db.symbol(symbol_id).is_definition());
             args.push(self.opt_definition(parent_scope_id, symbol_id));
         }
@@ -230,13 +242,12 @@ impl<'a> Optimizer<'a> {
     }
 
     fn opt_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {
-        let mut environment = self.environments[&scope_id].clone();
-
+        let mut environment = self.env(scope_id).environment.clone();
         let mut current_scope_id = scope_id;
 
-        while self.scope_inheritance.contains_key(&current_scope_id) {
-            current_scope_id = self.scope_inheritance[&current_scope_id];
-            environment.extend(&self.environments[&current_scope_id]);
+        while let Some(inherits) = self.env(current_scope_id).inherits_from {
+            current_scope_id = inherits;
+            environment.extend(&self.env(current_scope_id).environment);
         }
 
         let index = environment
@@ -250,7 +261,7 @@ impl<'a> Optimizer<'a> {
             path += 1;
         }
 
-        if index + 1 == environment.len() && self.varargs.get(&scope_id).copied().unwrap_or(false) {
+        if index + 1 == environment.len() && self.env(scope_id).varargs {
             // Undo last index
             path -= 1;
             path /= 2;
@@ -389,7 +400,7 @@ impl<'a> Optimizer<'a> {
                     }
                 }
 
-                for symbol_id in self.captures[&function_scope_id].clone() {
+                for symbol_id in self.env(function_scope_id).captures.clone() {
                     captures.push(self.opt_path(scope_id, symbol_id));
                 }
 
@@ -409,7 +420,13 @@ impl<'a> Optimizer<'a> {
                 ..
             } = self.db.symbol(symbol_id)
             {
-                for symbol_id in self.captures[&callee_scope_id].clone().into_iter().rev() {
+                for symbol_id in self
+                    .env(*callee_scope_id)
+                    .captures
+                    .clone()
+                    .into_iter()
+                    .rev()
+                {
                     let capture = self.opt_path(scope_id, symbol_id);
                     args = self.db.alloc_lir(Lir::Pair(capture, args));
                 }
