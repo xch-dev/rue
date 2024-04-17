@@ -11,10 +11,21 @@ use crate::{
 
 #[derive(Default)]
 struct Environment {
+    definitions: IndexSet<SymbolId>,
     captures: IndexSet<SymbolId>,
-    environment: IndexSet<SymbolId>,
+    parameters: IndexSet<SymbolId>,
     varargs: bool,
     inherits_from: Option<ScopeId>,
+}
+
+impl Environment {
+    fn build(&self) -> Vec<SymbolId> {
+        let mut environment = Vec::new();
+        environment.extend(self.definitions.iter().copied());
+        environment.extend(self.captures.iter().copied());
+        environment.extend(self.parameters.iter().copied());
+        environment
+    }
 }
 
 pub struct Optimizer<'a> {
@@ -38,11 +49,33 @@ impl<'a> Optimizer<'a> {
         self.environments.get_mut(&scope_id).unwrap()
     }
 
-    fn compute_captures_entrypoint(&mut self, scope_id: ScopeId, hir_id: HirId) {
+    fn reference_symbol(&mut self, scope_id: ScopeId, symbol_id: SymbolId) {
+        let capturable = self.db.symbol(symbol_id).is_capturable();
+        let definable = self.db.symbol(symbol_id).is_definition();
+        let local = self.db.scope(scope_id).is_local(symbol_id);
+
+        if local && definable {
+            self.env_mut(scope_id).definitions.insert(symbol_id);
+        } else if !local && capturable {
+            if let Some(inherits_from) = self.env(scope_id).inherits_from {
+                self.reference_symbol(inherits_from, symbol_id);
+            } else {
+                self.env_mut(scope_id).captures.insert(symbol_id);
+            }
+        }
+    }
+
+    fn compute_captures_entrypoint(
+        &mut self,
+        scope_id: ScopeId,
+        inherits_from: Option<ScopeId>,
+        hir_id: HirId,
+    ) {
         if self.environments.contains_key(&scope_id) {
             return;
         }
         self.environments.insert(scope_id, Environment::default());
+        self.env_mut(scope_id).inherits_from = inherits_from;
         self.compute_captures_hir(scope_id, hir_id);
     }
 
@@ -92,16 +125,7 @@ impl<'a> Optimizer<'a> {
     }
 
     fn compute_reference_captures(&mut self, scope_id: ScopeId, symbol_id: SymbolId) {
-        let is_capturable = self.db.symbol(symbol_id).is_capturable();
-        let is_local = self.db.scope(scope_id).is_local(symbol_id);
-
-        if is_capturable && !is_local {
-            self.environments
-                .get_mut(&scope_id)
-                .unwrap()
-                .captures
-                .insert(symbol_id);
-        }
+        self.reference_symbol(scope_id, symbol_id);
 
         match self.db.symbol(symbol_id).clone() {
             Symbol::Function {
@@ -123,37 +147,17 @@ impl<'a> Optimizer<'a> {
         hir_id: HirId,
         varargs: bool,
     ) {
-        self.compute_captures_entrypoint(function_scope_id, hir_id);
+        self.compute_captures_entrypoint(function_scope_id, None, hir_id);
 
-        let new_captures: Vec<SymbolId> = self
-            .env(function_scope_id)
-            .captures
-            .iter()
-            .copied()
-            .filter(|&id| !self.db.scope(scope_id).is_local(id))
-            .collect();
-
-        self.env_mut(scope_id).captures.extend(new_captures);
-
-        let mut env = IndexSet::new();
-
-        for symbol_id in self.db.scope(function_scope_id).local_symbols() {
-            if self.db.symbol(symbol_id).is_definition() {
-                env.insert(symbol_id);
-            }
-        }
-
-        for symbol_id in self.environments[&function_scope_id].captures.clone() {
-            env.insert(symbol_id);
+        for symbol_id in self.env(function_scope_id).captures.clone() {
+            self.reference_symbol(scope_id, symbol_id);
         }
 
         for symbol_id in self.db.scope(function_scope_id).local_symbols() {
             if self.db.symbol(symbol_id).is_parameter() {
-                env.insert(symbol_id);
+                self.env_mut(function_scope_id).parameters.insert(symbol_id);
             }
         }
-
-        self.env_mut(function_scope_id).environment = env;
 
         if varargs {
             self.env_mut(function_scope_id).varargs = true;
@@ -161,27 +165,11 @@ impl<'a> Optimizer<'a> {
     }
 
     fn compute_scope_captures(&mut self, scope_id: ScopeId, new_scope_id: ScopeId, value: HirId) {
-        self.compute_captures_entrypoint(new_scope_id, value);
+        self.compute_captures_entrypoint(new_scope_id, Some(scope_id), value);
 
-        let new_captures: Vec<SymbolId> = self
-            .env(new_scope_id)
-            .captures
-            .iter()
-            .copied()
-            .filter(|&id| !self.db.scope(scope_id).is_local(id))
-            .collect();
-
-        self.env_mut(scope_id).captures.extend(new_captures);
-
-        let mut env = IndexSet::new();
-
-        for symbol_id in self.db.scope(new_scope_id).local_symbols() {
-            assert!(self.db.symbol(symbol_id).is_definition());
-            env.insert(symbol_id);
+        for symbol_id in self.env(new_scope_id).captures.clone() {
+            self.reference_symbol(scope_id, symbol_id);
         }
-
-        self.env_mut(new_scope_id).inherits_from = Some(scope_id);
-        self.env_mut(new_scope_id).environment = env;
     }
 
     pub fn opt_main(&mut self, main: SymbolId) -> LirId {
@@ -192,27 +180,13 @@ impl<'a> Optimizer<'a> {
             unreachable!();
         };
 
-        self.compute_captures_entrypoint(scope_id, hir_id);
-
-        let mut env = IndexSet::new();
-
-        for symbol_id in self.db.scope(scope_id).local_symbols() {
-            if self.db.symbol(symbol_id).is_definition() {
-                env.insert(symbol_id);
-            }
-        }
-
-        for symbol_id in self.env(scope_id).captures.clone() {
-            env.insert(symbol_id);
-        }
+        self.compute_captures_entrypoint(scope_id, None, hir_id);
 
         for symbol_id in self.db.scope(scope_id).local_symbols() {
             if self.db.symbol(symbol_id).is_parameter() {
-                env.insert(symbol_id);
+                self.env_mut(scope_id).parameters.insert(symbol_id);
             }
         }
-
-        self.env_mut(scope_id).environment = env;
 
         let body = self.opt_hir(scope_id, hir_id);
 
@@ -233,21 +207,23 @@ impl<'a> Optimizer<'a> {
 
     fn opt_scope(&mut self, parent_scope_id: ScopeId, scope_id: ScopeId, hir_id: HirId) -> LirId {
         let body = self.opt_hir(scope_id, hir_id);
+
         let mut args = Vec::new();
-        for symbol_id in self.env(scope_id).environment.clone() {
-            assert!(self.db.symbol(symbol_id).is_definition());
+
+        for symbol_id in self.env(scope_id).definitions.clone() {
             args.push(self.opt_definition(parent_scope_id, symbol_id));
         }
+
         self.db.alloc_lir(Lir::Curry(body, args))
     }
 
     fn opt_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {
-        let mut environment = self.env(scope_id).environment.clone();
+        let mut environment = self.env(scope_id).build();
         let mut current_scope_id = scope_id;
 
         while let Some(inherits) = self.env(current_scope_id).inherits_from {
             current_scope_id = inherits;
-            environment.extend(&self.env(current_scope_id).environment);
+            environment.extend(&self.env(current_scope_id).build());
         }
 
         let index = environment

@@ -1,9 +1,9 @@
 [list_types]
-bytes = 235
-cost = 7122
+bytes = 223
+cost = 6928
 input = "()"
 output = "10"
-hash = "ab24ceb9925eb136dc0d19cedbdf0c5f1fca4fa20dc9fffa47f6159603f098c6"
+hash = "1339f4d6ed99c7f8765648852e222cd30426e3a15e4dd97eff44a3e25822c67b"
 
 [pair_types]
 bytes = 81
