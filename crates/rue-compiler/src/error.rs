@@ -46,6 +46,9 @@ pub enum WarningKind {
 
     #[error("unused symbol `{0}`")]
     UnusedSymbol(String),
+
+    #[error("unused type `{0}`")]
+    UnusedType(String),
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]

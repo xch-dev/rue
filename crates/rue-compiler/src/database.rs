@@ -28,6 +28,7 @@ pub struct Database {
     hir: Arena<Hir>,
     lir: Arena<Lir>,
     symbol_tokens: HashMap<SymbolId, SyntaxToken>,
+    type_tokens: HashMap<TypeId, SyntaxToken>,
 }
 
 impl Database {
@@ -45,8 +46,14 @@ impl Database {
         id
     }
 
-    pub(crate) fn alloc_type(&mut self, ty: Type) -> TypeId {
-        TypeId(self.types.alloc(ty))
+    pub(crate) fn alloc_type(&mut self, ty: Type, token: Option<SyntaxToken>) -> TypeId {
+        let id = TypeId(self.types.alloc(ty));
+
+        if let Some(token) = token {
+            self.type_tokens.insert(id, token);
+        }
+
+        id
     }
 
     pub(crate) fn alloc_hir(&mut self, hir: Hir) -> HirId {
@@ -78,6 +85,10 @@ impl Database {
             id = *alias;
         }
         self.ty_raw(id)
+    }
+
+    pub fn type_token(&self, id: TypeId) -> Option<SyntaxToken> {
+        self.type_tokens.get(&id).cloned()
     }
 
     pub(crate) fn ty_mut(&mut self, id: TypeId) -> &mut Type {

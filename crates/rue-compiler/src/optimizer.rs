@@ -8,7 +8,7 @@ use crate::{
     hir::{BinOp, Hir},
     lir::Lir,
     symbol::Symbol,
-    Diagnostic, DiagnosticKind, WarningKind,
+    Diagnostic, DiagnosticKind, TypeId, WarningKind,
 };
 
 #[derive(Default)]
@@ -17,6 +17,7 @@ struct Environment {
     captures: IndexSet<SymbolId>,
     parameters: IndexSet<SymbolId>,
     used_symbols: HashSet<SymbolId>,
+    used_types: HashSet<TypeId>,
     varargs: bool,
     inherits_from: Option<ScopeId>,
 }
@@ -84,6 +85,10 @@ impl<'a> Optimizer<'a> {
         for symbol_id in self.env(scope_id).used_symbols.clone() {
             self.env_mut(parent_scope_id).used_symbols.insert(symbol_id);
         }
+
+        for type_id in self.env(scope_id).used_types.clone() {
+            self.env_mut(parent_scope_id).used_types.insert(type_id);
+        }
     }
 
     fn compute_captures_entrypoint(
@@ -97,6 +102,8 @@ impl<'a> Optimizer<'a> {
         }
 
         self.environments.insert(scope_id, Environment::default());
+        let used_types = self.db.scope(scope_id).used_types().clone();
+        self.env_mut(scope_id).used_types.extend(used_types);
         self.env_mut(scope_id).inherits_from = inherits_from;
         self.compute_captures_hir(scope_id, hir_id);
 
@@ -113,6 +120,24 @@ impl<'a> Optimizer<'a> {
             if let Some(token) = self.db.symbol_token(symbol_id) {
                 self.warning(
                     WarningKind::UnusedSymbol(token.to_string()),
+                    token.text_range(),
+                );
+            }
+        }
+
+        let unused_types: Vec<TypeId> = self
+            .db
+            .scope(scope_id)
+            .local_types()
+            .iter()
+            .filter(|&type_id| !self.env(scope_id).used_types.contains(type_id))
+            .copied()
+            .collect();
+
+        for type_id in unused_types {
+            if let Some(token) = self.db.type_token(type_id) {
+                self.warning(
+                    WarningKind::UnusedType(token.to_string()),
                     token.text_range(),
                 );
             }
@@ -230,6 +255,27 @@ impl<'a> Optimizer<'a> {
             if let Some(token) = self.db.symbol_token(symbol_id) {
                 self.warning(
                     WarningKind::UnusedSymbol(token.to_string()),
+                    token.text_range(),
+                );
+            }
+        }
+
+        let unused_types: Vec<TypeId> = self
+            .db
+            .scope(root_scope_id)
+            .local_types()
+            .iter()
+            .filter(|&type_id| {
+                !self.env(scope_id).used_types.contains(type_id)
+                    && !self.db.scope(root_scope_id).used_types().contains(type_id)
+            })
+            .copied()
+            .collect();
+
+        for type_id in unused_types {
+            if let Some(token) = self.db.type_token(type_id) {
+                self.warning(
+                    WarningKind::UnusedType(token.to_string()),
                     token.text_range(),
                 );
             }

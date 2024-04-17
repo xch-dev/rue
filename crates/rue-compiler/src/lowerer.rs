@@ -45,15 +45,15 @@ pub struct Lowerer<'a> {
 
 impl<'a> Lowerer<'a> {
     pub fn new(db: &'a mut Database) -> Self {
-        let int_type = db.alloc_type(Type::Int);
-        let bool_type = db.alloc_type(Type::Bool);
-        let bytes_type = db.alloc_type(Type::Bytes);
-        let bytes32_type = db.alloc_type(Type::Bytes32);
-        let pk_type = db.alloc_type(Type::PublicKey);
-        let any_type = db.alloc_type(Type::Any);
-        let nil_type = db.alloc_type(Type::Nil);
+        let int_type = db.alloc_type(Type::Int, None);
+        let bool_type = db.alloc_type(Type::Bool, None);
+        let bytes_type = db.alloc_type(Type::Bytes, None);
+        let bytes32_type = db.alloc_type(Type::Bytes32, None);
+        let pk_type = db.alloc_type(Type::PublicKey, None);
+        let any_type = db.alloc_type(Type::Any, None);
+        let nil_type = db.alloc_type(Type::Nil, None);
         let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
-        let unknown_type = db.alloc_type(Type::Unknown);
+        let unknown_type = db.alloc_type(Type::Unknown, None);
         let unknown_hir = db.alloc_hir(Hir::Unknown);
 
         // This is the root scope, with builtins for various types and functions.
@@ -288,7 +288,7 @@ impl<'a> Lowerer<'a> {
 
     /// Define a type for an alias in the current scope, but leave it as unknown for now.
     fn declare_type_alias(&mut self, type_alias: TypeAliasItem) -> TypeId {
-        let type_id = self.db.alloc_type(Type::Unknown);
+        let type_id = self.db.alloc_type(Type::Unknown, type_alias.name());
         if let Some(name) = type_alias.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
         }
@@ -297,7 +297,7 @@ impl<'a> Lowerer<'a> {
 
     /// Define a type for a struct in the current scope, but leave it as unknown for now.
     fn declare_struct(&mut self, struct_item: StructItem) -> TypeId {
-        let type_id = self.db.alloc_type(Type::Unknown);
+        let type_id = self.db.alloc_type(Type::Unknown, struct_item.name());
         if let Some(name) = struct_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
         }
@@ -319,10 +319,15 @@ impl<'a> Lowerer<'a> {
                 continue;
             }
 
-            variants.insert(name.to_string(), self.db.alloc_type(Type::Unknown));
+            variants.insert(
+                name.to_string(),
+                self.db.alloc_type(Type::Unknown, variant.name()),
+            );
         }
 
-        let type_id = self.db.alloc_type(Type::Enum(EnumType::new(variants)));
+        let type_id = self
+            .db
+            .alloc_type(Type::Enum(EnumType::new(variants)), enum_item.name());
 
         if let Some(name) = enum_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
@@ -1218,7 +1223,9 @@ impl<'a> Lowerer<'a> {
                 Some((Guard::new(to, self.bytes_type), hir_id))
             }
             (Type::Any, Type::Bytes) => {
-                let pair_type = self.db.alloc_type(Type::Pair(self.any_type, self.any_type));
+                let pair_type = self
+                    .db
+                    .alloc_type(Type::Pair(self.any_type, self.any_type), None);
                 let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
                 Some((Guard::new(to, pair_type), hir_id))
@@ -1236,7 +1243,7 @@ impl<'a> Lowerer<'a> {
                 Some((Guard::new(to, self.nil_type), hir_id))
             }
             (Type::List(inner), Type::Nil) => {
-                let pair_type = self.db.alloc_type(Type::Pair(inner, from));
+                let pair_type = self.db.alloc_type(Type::Pair(inner, from), None);
                 let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
                 Some((Guard::new(to, pair_type), hir_id))
@@ -1333,7 +1340,7 @@ impl<'a> Lowerer<'a> {
                         _ => None,
                     };
                 } else {
-                    list_type = Some(self.db.alloc_type(Type::List(output.ty())));
+                    list_type = Some(self.db.alloc_type(Type::List(output.ty()), None));
                     item_type = Some(output.ty());
                 }
             }
@@ -1361,7 +1368,7 @@ impl<'a> Lowerer<'a> {
 
         Value::typed(
             hir_id,
-            list_type.unwrap_or_else(|| self.db.alloc_type(Type::List(self.unknown_type))),
+            list_type.unwrap_or_else(|| self.db.alloc_type(Type::List(self.unknown_type), None)),
         )
     }
 
@@ -1401,7 +1408,7 @@ impl<'a> Lowerer<'a> {
         };
 
         let hir_id = self.db.alloc_hir(Hir::Pair(first.hir(), rest.hir()));
-        let type_id = self.db.alloc_type(Type::Pair(first.ty(), rest.ty()));
+        let type_id = self.db.alloc_type(Type::Pair(first.ty(), rest.ty()), None);
 
         Value::typed(hir_id, type_id)
     }
@@ -1485,7 +1492,7 @@ impl<'a> Lowerer<'a> {
 
         Value::typed(
             self.db.alloc_hir(Hir::Reference(symbol_id)),
-            self.db.alloc_type(Type::Function(ty)),
+            self.db.alloc_type(Type::Function(ty), None),
         )
     }
 
@@ -1623,7 +1630,9 @@ impl<'a> Lowerer<'a> {
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             self.symbol_type(symbol_id)
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
-                    Symbol::Function { ty, .. } => self.db.alloc_type(Type::Function(ty.clone())),
+                    Symbol::Function { ty, .. } => {
+                        self.db.alloc_type(Type::Function(ty.clone()), None)
+                    }
                     Symbol::Parameter { type_id } => *type_id,
                     Symbol::LetBinding { type_id, .. } => *type_id,
                     Symbol::ConstBinding { type_id, .. } => *type_id,
@@ -1823,8 +1832,11 @@ impl<'a> Lowerer<'a> {
             return self.unknown_type;
         };
 
+        self.scope_mut().use_type(ty);
+
         for name in idents {
             ty = self.path_into_type(ty, name.text(), name.text_range());
+            self.scope_mut().use_type(ty);
         }
 
         ty
@@ -1852,7 +1864,7 @@ impl<'a> Lowerer<'a> {
         };
 
         let item_type = self.compile_type(inner);
-        self.db.alloc_type(Type::List(item_type))
+        self.db.alloc_type(Type::List(item_type), None)
     }
 
     fn compile_pair_type(&mut self, pair_type: PairType) -> TypeId {
@@ -1866,7 +1878,7 @@ impl<'a> Lowerer<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
 
-        self.db.alloc_type(Type::Pair(first, rest))
+        self.db.alloc_type(Type::Pair(first, rest), None)
     }
 
     fn compile_function_type(&mut self, function: AstFunctionType) -> TypeId {
@@ -1897,11 +1909,10 @@ impl<'a> Lowerer<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
 
-        self.db.alloc_type(Type::Function(FunctionType::new(
-            parameter_types,
-            return_type,
-            vararg,
-        )))
+        self.db.alloc_type(
+            Type::Function(FunctionType::new(parameter_types, return_type, vararg)),
+            None,
+        )
     }
 
     fn compile_optional_type(&mut self, optional: OptionalType) -> TypeId {
@@ -1918,7 +1929,7 @@ impl<'a> Lowerer<'a> {
             return inner;
         }
 
-        self.db.alloc_type(Type::Optional(ty))
+        self.db.alloc_type(Type::Optional(ty), None)
     }
 
     fn try_unwrap_optional(&mut self, ty: TypeId) -> TypeId {
