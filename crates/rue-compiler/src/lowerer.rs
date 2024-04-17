@@ -69,9 +69,12 @@ impl<'a> Lowerer<'a> {
         // Define the `sha256` function, since it's not an operator or keyword.
         {
             let mut scope = Scope::default();
-            let param = db.alloc_symbol(Symbol::Parameter {
-                type_id: bytes_type,
-            });
+            let param = db.alloc_symbol(
+                Symbol::Parameter {
+                    type_id: bytes_type,
+                },
+                None,
+            );
             scope.define_symbol("bytes".to_string(), param);
             let param_ref = db.alloc_hir(Hir::Reference(param));
             let hir_id = db.alloc_hir(Hir::Sha256(param_ref));
@@ -79,20 +82,26 @@ impl<'a> Lowerer<'a> {
 
             builtins.define_symbol(
                 "sha256".to_string(),
-                db.alloc_symbol(Symbol::Function {
-                    scope_id,
-                    hir_id,
-                    ty: FunctionType::new(vec![bytes_type], bytes32_type, false),
-                }),
+                db.alloc_symbol(
+                    Symbol::Function {
+                        scope_id,
+                        hir_id,
+                        ty: FunctionType::new(vec![bytes_type], bytes32_type, false),
+                    },
+                    None,
+                ),
             );
         }
 
         // Define the `pubkey_for_exp` function, since it's not an operator or keyword.
         {
             let mut scope = Scope::default();
-            let param = db.alloc_symbol(Symbol::Parameter {
-                type_id: bytes32_type,
-            });
+            let param = db.alloc_symbol(
+                Symbol::Parameter {
+                    type_id: bytes32_type,
+                },
+                None,
+            );
             scope.define_symbol("exponent".to_string(), param);
             let param_ref = db.alloc_hir(Hir::Reference(param));
             let hir_id = db.alloc_hir(Hir::PubkeyForExp(param_ref));
@@ -100,11 +109,14 @@ impl<'a> Lowerer<'a> {
 
             builtins.define_symbol(
                 "pubkey_for_exp".to_string(),
-                db.alloc_symbol(Symbol::Function {
-                    scope_id,
-                    hir_id,
-                    ty: FunctionType::new(vec![bytes32_type], pk_type, false),
-                }),
+                db.alloc_symbol(
+                    Symbol::Function {
+                        scope_id,
+                        hir_id,
+                        ty: FunctionType::new(vec![bytes32_type], pk_type, false),
+                    },
+                    None,
+                ),
             );
         }
 
@@ -216,7 +228,9 @@ impl<'a> Lowerer<'a> {
 
             parameter_types.push(type_id);
 
-            let symbol_id = self.db.alloc_symbol(Symbol::Parameter { type_id });
+            let symbol_id = self
+                .db
+                .alloc_symbol(Symbol::Parameter { type_id }, param.name());
 
             if let Some(name) = param.name() {
                 scope.define_symbol(name.to_string(), symbol_id);
@@ -236,11 +250,14 @@ impl<'a> Lowerer<'a> {
 
         let ty = FunctionType::new(parameter_types, return_type, varargs);
 
-        let symbol_id = self.db.alloc_symbol(Symbol::Function {
-            scope_id,
-            hir_id,
-            ty,
-        });
+        let symbol_id = self.db.alloc_symbol(
+            Symbol::Function {
+                scope_id,
+                hir_id,
+                ty,
+            },
+            function_item.name(),
+        );
 
         if let Some(name) = function_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
@@ -260,7 +277,7 @@ impl<'a> Lowerer<'a> {
 
         let symbol_id = self
             .db
-            .alloc_symbol(Symbol::ConstBinding { type_id, hir_id });
+            .alloc_symbol(Symbol::ConstBinding { type_id, hir_id }, const_item.name());
 
         if let Some(name) = const_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
@@ -470,10 +487,13 @@ impl<'a> Lowerer<'a> {
             return None;
         };
 
-        let symbol_id = self.db.alloc_symbol(Symbol::LetBinding {
-            type_id: expected_type.unwrap_or(value.ty()),
-            hir_id: value.hir(),
-        });
+        let symbol_id = self.db.alloc_symbol(
+            Symbol::LetBinding {
+                type_id: expected_type.unwrap_or(value.ty()),
+                hir_id: value.hir(),
+            },
+            Some(name.clone()),
+        );
 
         // Every let binding is a new scope for now, to simplify the code generation process later.
         // This is not the most efficient way to do it, but it's the easiest with the current codebase.
@@ -1414,7 +1434,9 @@ impl<'a> Lowerer<'a> {
             parameter_types.push(type_id);
 
             if let Some(name) = param.name() {
-                let symbol_id = self.db.alloc_symbol(Symbol::Parameter { type_id });
+                let symbol_id = self
+                    .db
+                    .alloc_symbol(Symbol::Parameter { type_id }, Some(name.clone()));
                 scope.define_symbol(name.to_string(), symbol_id);
             };
 
@@ -1452,11 +1474,14 @@ impl<'a> Lowerer<'a> {
 
         let ty = FunctionType::new(parameter_types.clone(), return_type, varargs);
 
-        let symbol_id = self.db.alloc_symbol(Symbol::Function {
-            scope_id,
-            hir_id: body.hir(),
-            ty: ty.clone(),
-        });
+        let symbol_id = self.db.alloc_symbol(
+            Symbol::Function {
+                scope_id,
+                hir_id: body.hir(),
+                ty: ty.clone(),
+            },
+            None,
+        );
 
         Value::typed(
             self.db.alloc_hir(Hir::Reference(symbol_id)),

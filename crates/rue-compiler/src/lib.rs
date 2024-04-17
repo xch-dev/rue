@@ -36,55 +36,40 @@ impl Output {
 }
 
 pub fn analyze(root: Root) -> Vec<Diagnostic> {
-    let mut db = Database::default();
-    let scope_id = db.alloc_scope(Scope::default());
-    let mut lowerer = Lowerer::new(&mut db);
+    let mut database = Database::default();
+    precompile(&mut database, root).0
+}
+
+fn precompile(database: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>) {
+    let scope_id = database.alloc_scope(Scope::default());
+
+    let mut lowerer = Lowerer::new(database);
     lowerer.compile_root(root, scope_id);
     let mut diagnostics = lowerer.finish();
 
-    let Some(main_id) = db.scope_mut(scope_id).symbol("main") else {
+    let Some(main_id) = database.scope_mut(scope_id).symbol("main") else {
         diagnostics.push(Diagnostic::new(
             DiagnosticKind::Error(ErrorKind::MissingMain),
             0..0,
         ));
 
-        return diagnostics;
+        return (diagnostics, None);
     };
 
-    let mut optimizer = Optimizer::new(&mut db);
-    optimizer.opt_main(main_id);
+    let mut optimizer = Optimizer::new(database);
+    let lir_id = optimizer.opt_main(scope_id, main_id);
     diagnostics.extend(optimizer.finish());
 
-    diagnostics
+    (diagnostics, Some(lir_id))
 }
 
 pub fn compile(allocator: &mut Allocator, root: Root, parsing_succeeded: bool) -> Output {
-    let mut db = Database::default();
-    let scope_id = db.alloc_scope(Scope::default());
-
-    let mut lowerer = Lowerer::new(&mut db);
-    lowerer.compile_root(root, scope_id);
-    let mut diagnostics = lowerer.finish();
-
-    let Some(main_id) = db.scope_mut(scope_id).symbol("main") else {
-        diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Error(ErrorKind::MissingMain),
-            0..0,
-        ));
-
-        return Output {
-            diagnostics,
-            node_ptr: NodePtr::NIL,
-        };
-    };
-
-    let mut optimizer = Optimizer::new(&mut db);
-    let lir_id = optimizer.opt_main(main_id);
-    diagnostics.extend(optimizer.finish());
+    let mut database = Database::default();
+    let (diagnostics, lir_id) = precompile(&mut database, root);
 
     let node_ptr = if !diagnostics.iter().any(Diagnostic::is_error) && parsing_succeeded {
-        let mut codegen = Codegen::new(&mut db, allocator);
-        codegen.gen_lir(lir_id)
+        let mut codegen = Codegen::new(&mut database, allocator);
+        codegen.gen_lir(lir_id.unwrap())
     } else {
         NodePtr::NIL
     };

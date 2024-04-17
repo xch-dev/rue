@@ -1,13 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexSet;
+use rowan::TextRange;
 
 use crate::{
     database::{Database, HirId, LirId, ScopeId, SymbolId},
     hir::{BinOp, Hir},
     lir::Lir,
     symbol::Symbol,
-    Diagnostic,
+    Diagnostic, DiagnosticKind, WarningKind,
 };
 
 #[derive(Default)]
@@ -15,6 +16,7 @@ struct Environment {
     definitions: IndexSet<SymbolId>,
     captures: IndexSet<SymbolId>,
     parameters: IndexSet<SymbolId>,
+    used_symbols: HashSet<SymbolId>,
     varargs: bool,
     inherits_from: Option<ScopeId>,
 }
@@ -70,6 +72,18 @@ impl<'a> Optimizer<'a> {
                 self.env_mut(scope_id).captures.insert(symbol_id);
             }
         }
+
+        self.env_mut(scope_id).used_symbols.insert(symbol_id);
+    }
+
+    fn propogate_symbols(&mut self, parent_scope_id: ScopeId, scope_id: ScopeId) {
+        for symbol_id in self.env(scope_id).captures.clone() {
+            self.reference_symbol(parent_scope_id, symbol_id);
+        }
+
+        for symbol_id in self.env(scope_id).used_symbols.clone() {
+            self.env_mut(parent_scope_id).used_symbols.insert(symbol_id);
+        }
     }
 
     fn compute_captures_entrypoint(
@@ -81,15 +95,33 @@ impl<'a> Optimizer<'a> {
         if self.environments.contains_key(&scope_id) {
             return;
         }
+
         self.environments.insert(scope_id, Environment::default());
         self.env_mut(scope_id).inherits_from = inherits_from;
         self.compute_captures_hir(scope_id, hir_id);
+
+        let unused_symbols: Vec<SymbolId> = self
+            .db
+            .scope(scope_id)
+            .local_symbols()
+            .iter()
+            .filter(|&symbol_id| !self.env(scope_id).used_symbols.contains(symbol_id))
+            .copied()
+            .collect();
+
+        for symbol_id in unused_symbols {
+            if let Some(token) = self.db.symbol_token(symbol_id) {
+                self.warning(
+                    WarningKind::UnusedSymbol(token.to_string()),
+                    token.text_range(),
+                );
+            }
+        }
     }
 
     fn compute_captures_hir(&mut self, scope_id: ScopeId, hir_id: HirId) {
         match self.db.hir(hir_id).clone() {
-            Hir::Unknown => unreachable!(),
-            Hir::Atom(_) => {}
+            Hir::Unknown | Hir::Atom(_) => {}
             Hir::Reference(symbol_id) => self.compute_reference_captures(scope_id, symbol_id),
             Hir::Scope {
                 scope_id: new_scope_id,
@@ -155,10 +187,7 @@ impl<'a> Optimizer<'a> {
         varargs: bool,
     ) {
         self.compute_captures_entrypoint(function_scope_id, None, hir_id);
-
-        for symbol_id in self.env(function_scope_id).captures.clone() {
-            self.reference_symbol(scope_id, symbol_id);
-        }
+        self.propogate_symbols(scope_id, function_scope_id);
 
         for symbol_id in self.db.scope(function_scope_id).local_symbols() {
             if self.db.symbol(symbol_id).is_parameter() {
@@ -173,13 +202,10 @@ impl<'a> Optimizer<'a> {
 
     fn compute_scope_captures(&mut self, scope_id: ScopeId, new_scope_id: ScopeId, value: HirId) {
         self.compute_captures_entrypoint(new_scope_id, Some(scope_id), value);
-
-        for symbol_id in self.env(new_scope_id).captures.clone() {
-            self.reference_symbol(scope_id, symbol_id);
-        }
+        self.propogate_symbols(scope_id, new_scope_id);
     }
 
-    pub fn opt_main(&mut self, main: SymbolId) -> LirId {
+    pub fn opt_main(&mut self, root_scope_id: ScopeId, main: SymbolId) -> LirId {
         let Symbol::Function {
             scope_id, hir_id, ..
         } = self.db.symbol(main).clone()
@@ -188,6 +214,26 @@ impl<'a> Optimizer<'a> {
         };
 
         self.compute_captures_entrypoint(scope_id, None, hir_id);
+
+        let unused_symbols: Vec<SymbolId> = self
+            .db
+            .scope(root_scope_id)
+            .local_symbols()
+            .iter()
+            .filter(|&symbol_id| {
+                !self.env(scope_id).used_symbols.contains(symbol_id) && *symbol_id != main
+            })
+            .copied()
+            .collect();
+
+        for symbol_id in unused_symbols {
+            if let Some(token) = self.db.symbol_token(symbol_id) {
+                self.warning(
+                    WarningKind::UnusedSymbol(token.to_string()),
+                    token.text_range(),
+                );
+            }
+        }
 
         for symbol_id in self.db.scope(scope_id).local_symbols() {
             if self.db.symbol(symbol_id).is_parameter() {
@@ -288,7 +334,7 @@ impl<'a> Optimizer<'a> {
 
     fn opt_hir(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
         match self.db.hir(hir_id) {
-            Hir::Unknown => unreachable!(),
+            Hir::Unknown => self.db.alloc_lir(Lir::Atom(Vec::new())),
             Hir::Atom(atom) => self.db.alloc_lir(Lir::Atom(atom.clone())),
             Hir::Pair(first, rest) => self.opt_pair(scope_id, *first, *rest),
             Hir::Reference(symbol_id) => self.opt_reference(scope_id, *symbol_id),
@@ -523,5 +569,12 @@ impl<'a> Optimizer<'a> {
         let else_branch = self.opt_hir(scope_id, else_block);
         self.db
             .alloc_lir(Lir::If(condition, then_branch, else_branch))
+    }
+
+    fn warning(&mut self, info: WarningKind, range: TextRange) {
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Warning(info),
+            range.start().into()..range.end().into(),
+        ));
     }
 }

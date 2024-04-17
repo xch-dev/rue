@@ -1,9 +1,9 @@
 [list_types]
-bytes = 223
-cost = 6928
-input = "()"
-output = "10"
-hash = "1339f4d6ed99c7f8765648852e222cd30426e3a15e4dd97eff44a3e25822c67b"
+parser_errors = []
+compiler_errors = [
+    "unused symbol `empty_hinted` at 3:9",
+    "unused symbol `empty` at 2:9",
+]
 
 [pair_types]
 bytes = 81

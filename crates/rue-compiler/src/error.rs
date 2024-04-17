@@ -43,6 +43,9 @@ pub enum WarningKind {
 
     #[error("redundant check against same type `{0}`")]
     RedundantTypeGuard(String),
+
+    #[error("unused symbol `{0}`")]
+    UnusedSymbol(String),
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]

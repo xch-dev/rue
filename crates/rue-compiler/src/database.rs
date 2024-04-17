@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use id_arena::{Arena, Id};
+use rue_parser::SyntaxToken;
 
 use crate::{hir::Hir, lir::Lir, scope::Scope, symbol::Symbol, ty::Type};
 
@@ -24,6 +27,7 @@ pub struct Database {
     types: Arena<Type>,
     hir: Arena<Hir>,
     lir: Arena<Lir>,
+    symbol_tokens: HashMap<SymbolId, SyntaxToken>,
 }
 
 impl Database {
@@ -31,8 +35,14 @@ impl Database {
         ScopeId(self.scopes.alloc(scope))
     }
 
-    pub(crate) fn alloc_symbol(&mut self, symbol: Symbol) -> SymbolId {
-        SymbolId(self.symbols.alloc(symbol))
+    pub(crate) fn alloc_symbol(&mut self, symbol: Symbol, token: Option<SyntaxToken>) -> SymbolId {
+        let id = SymbolId(self.symbols.alloc(symbol));
+
+        if let Some(token) = token {
+            self.symbol_tokens.insert(id, token);
+        }
+
+        id
     }
 
     pub(crate) fn alloc_type(&mut self, ty: Type) -> TypeId {
@@ -53,6 +63,10 @@ impl Database {
 
     pub fn symbol(&self, id: SymbolId) -> &Symbol {
         &self.symbols[id.0]
+    }
+
+    pub fn symbol_token(&self, id: SymbolId) -> Option<SyntaxToken> {
+        self.symbol_tokens.get(&id).cloned()
     }
 
     pub fn ty_raw(&self, id: TypeId) -> &Type {
