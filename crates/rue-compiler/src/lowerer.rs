@@ -1332,7 +1332,7 @@ impl<'a> Lowerer<'a> {
                 self.type_check(output.ty(), expected_item_type, item.syntax().text_range());
             }
 
-            if i + 1 == len && list_type.is_none() {
+            if i == 0 && item_type.is_none() {
                 if item.spread().is_some() {
                     list_type = Some(output.ty());
                     item_type = match self.db.ty(output.ty()) {
@@ -1368,7 +1368,8 @@ impl<'a> Lowerer<'a> {
 
         Value::typed(
             hir_id,
-            list_type.unwrap_or_else(|| self.db.alloc_type(Type::List(self.unknown_type), None)),
+            self.db
+                .alloc_type(Type::List(item_type.unwrap_or(self.unknown_type)), None),
         )
     }
 
