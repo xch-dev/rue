@@ -38,14 +38,23 @@ pub enum DiagnosticKind {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
 pub enum WarningKind {
-    #[error("redundant optional type")]
-    RedundantOptional,
+    #[error("marking optional types as optional again has no effect")]
+    UselessOptional,
 
-    #[error("redundant check against same type `{0}`")]
+    #[error("redundant type check against `{0}`, value is already that type")]
     RedundantTypeGuard(String),
 
-    #[error("unused symbol `{0}`")]
-    UnusedSymbol(String),
+    #[error("unused function `{0}`")]
+    UnusedFunction(String),
+
+    #[error("unused parameter `{0}`")]
+    UnusedParameter(String),
+
+    #[error("unused constant `{0}`")]
+    UnusedConst(String),
+
+    #[error("unused let binding `{0}`")]
+    UnusedLet(String),
 
     #[error("unused type `{0}`")]
     UnusedType(String),

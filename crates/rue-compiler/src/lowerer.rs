@@ -1922,10 +1922,7 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(self.unknown_type);
 
         if let Type::Optional(inner) = self.db.ty_raw(ty).clone() {
-            self.warning(
-                WarningKind::RedundantOptional,
-                optional.syntax().text_range(),
-            );
+            self.warning(WarningKind::UselessOptional, optional.syntax().text_range());
             return inner;
         }
 

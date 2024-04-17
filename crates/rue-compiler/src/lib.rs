@@ -1,3 +1,5 @@
+#![warn(clippy::needless_pass_by_ref_mut)]
+
 use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
 use lowerer::Lowerer;

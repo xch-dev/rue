@@ -91,6 +91,71 @@ impl<'a> Optimizer<'a> {
         }
     }
 
+    fn check_unused(
+        &mut self,
+        scope_id: ScopeId,
+        used_symbols: HashSet<SymbolId>,
+        used_types: HashSet<TypeId>,
+    ) {
+        let unused_symbols: Vec<SymbolId> = self
+            .db
+            .scope(scope_id)
+            .local_symbols()
+            .iter()
+            .filter(|&symbol_id| !used_symbols.contains(symbol_id))
+            .copied()
+            .collect();
+
+        for symbol_id in unused_symbols {
+            if let Some(token) = self.db.symbol_token(symbol_id) {
+                match self.db.symbol(symbol_id).clone() {
+                    Symbol::Function { .. } => {
+                        self.warning(
+                            WarningKind::UnusedFunction(token.to_string()),
+                            token.text_range(),
+                        );
+                    }
+                    Symbol::Parameter { .. } => {
+                        self.warning(
+                            WarningKind::UnusedParameter(token.to_string()),
+                            token.text_range(),
+                        );
+                    }
+                    Symbol::LetBinding { .. } => {
+                        self.warning(
+                            WarningKind::UnusedLet(token.to_string()),
+                            token.text_range(),
+                        );
+                    }
+                    Symbol::ConstBinding { .. } => {
+                        self.warning(
+                            WarningKind::UnusedConst(token.to_string()),
+                            token.text_range(),
+                        );
+                    }
+                }
+            }
+        }
+
+        let unused_types: Vec<TypeId> = self
+            .db
+            .scope(scope_id)
+            .local_types()
+            .iter()
+            .filter(|&type_id| !used_types.contains(type_id))
+            .copied()
+            .collect();
+
+        for type_id in unused_types {
+            if let Some(token) = self.db.type_token(type_id) {
+                self.warning(
+                    WarningKind::UnusedType(token.to_string()),
+                    token.text_range(),
+                );
+            }
+        }
+    }
+
     fn compute_captures_entrypoint(
         &mut self,
         scope_id: ScopeId,
@@ -107,41 +172,11 @@ impl<'a> Optimizer<'a> {
         self.env_mut(scope_id).inherits_from = inherits_from;
         self.compute_captures_hir(scope_id, hir_id);
 
-        let unused_symbols: Vec<SymbolId> = self
-            .db
-            .scope(scope_id)
-            .local_symbols()
-            .iter()
-            .filter(|&symbol_id| !self.env(scope_id).used_symbols.contains(symbol_id))
-            .copied()
-            .collect();
-
-        for symbol_id in unused_symbols {
-            if let Some(token) = self.db.symbol_token(symbol_id) {
-                self.warning(
-                    WarningKind::UnusedSymbol(token.to_string()),
-                    token.text_range(),
-                );
-            }
-        }
-
-        let unused_types: Vec<TypeId> = self
-            .db
-            .scope(scope_id)
-            .local_types()
-            .iter()
-            .filter(|&type_id| !self.env(scope_id).used_types.contains(type_id))
-            .copied()
-            .collect();
-
-        for type_id in unused_types {
-            if let Some(token) = self.db.type_token(type_id) {
-                self.warning(
-                    WarningKind::UnusedType(token.to_string()),
-                    token.text_range(),
-                );
-            }
-        }
+        self.check_unused(
+            scope_id,
+            self.env(scope_id).used_symbols.clone(),
+            self.env(scope_id).used_types.clone(),
+        );
     }
 
     fn compute_captures_hir(&mut self, scope_id: ScopeId, hir_id: HirId) {
@@ -240,46 +275,13 @@ impl<'a> Optimizer<'a> {
 
         self.compute_captures_entrypoint(scope_id, None, hir_id);
 
-        let unused_symbols: Vec<SymbolId> = self
-            .db
-            .scope(root_scope_id)
-            .local_symbols()
-            .iter()
-            .filter(|&symbol_id| {
-                !self.env(scope_id).used_symbols.contains(symbol_id) && *symbol_id != main
-            })
-            .copied()
-            .collect();
+        let mut used_symbols = self.env(scope_id).used_symbols.clone();
+        used_symbols.insert(main);
 
-        for symbol_id in unused_symbols {
-            if let Some(token) = self.db.symbol_token(symbol_id) {
-                self.warning(
-                    WarningKind::UnusedSymbol(token.to_string()),
-                    token.text_range(),
-                );
-            }
-        }
+        let mut used_types = self.env(scope_id).used_types.clone();
+        used_types.extend(self.db.scope(root_scope_id).used_types().clone());
 
-        let unused_types: Vec<TypeId> = self
-            .db
-            .scope(root_scope_id)
-            .local_types()
-            .iter()
-            .filter(|&type_id| {
-                !self.env(scope_id).used_types.contains(type_id)
-                    && !self.db.scope(root_scope_id).used_types().contains(type_id)
-            })
-            .copied()
-            .collect();
-
-        for type_id in unused_types {
-            if let Some(token) = self.db.type_token(type_id) {
-                self.warning(
-                    WarningKind::UnusedType(token.to_string()),
-                    token.text_range(),
-                );
-            }
-        }
+        self.check_unused(root_scope_id, used_symbols, used_types);
 
         for symbol_id in self.db.scope(scope_id).local_symbols() {
             if self.db.symbol(symbol_id).is_parameter() {

@@ -1,8 +1,8 @@
 [list_types]
 parser_errors = []
 compiler_errors = [
-    "unused symbol `empty_hinted` at 3:9",
-    "unused symbol `empty` at 2:9",
+    "unused let binding `empty_hinted` at 3:9",
+    "unused let binding `empty` at 2:9",
 ]
 
 [pair_types]
