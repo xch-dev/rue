@@ -40,7 +40,22 @@ pub fn analyze(root: Root) -> Vec<Diagnostic> {
     let scope_id = db.alloc_scope(Scope::default());
     let mut lowerer = Lowerer::new(&mut db);
     lowerer.compile_root(root, scope_id);
-    lowerer.finish()
+    let mut diagnostics = lowerer.finish();
+
+    let Some(main_id) = db.scope_mut(scope_id).symbol("main") else {
+        diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Error(ErrorKind::MissingMain),
+            0..0,
+        ));
+
+        return diagnostics;
+    };
+
+    let mut optimizer = Optimizer::new(&mut db);
+    optimizer.opt_main(main_id);
+    diagnostics.extend(optimizer.finish());
+
+    diagnostics
 }
 
 pub fn compile(allocator: &mut Allocator, root: Root, parsing_succeeded: bool) -> Output {
@@ -63,10 +78,11 @@ pub fn compile(allocator: &mut Allocator, root: Root, parsing_succeeded: bool) -
         };
     };
 
-    let node_ptr = if !diagnostics.iter().any(Diagnostic::is_error) && parsing_succeeded {
-        let mut optimizer = Optimizer::new(&mut db);
-        let lir_id = optimizer.opt_main(main_id);
+    let mut optimizer = Optimizer::new(&mut db);
+    let lir_id = optimizer.opt_main(main_id);
+    diagnostics.extend(optimizer.finish());
 
+    let node_ptr = if !diagnostics.iter().any(Diagnostic::is_error) && parsing_succeeded {
         let mut codegen = Codegen::new(&mut db, allocator);
         codegen.gen_lir(lir_id)
     } else {

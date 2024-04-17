@@ -7,6 +7,7 @@ use crate::{
     hir::{BinOp, Hir},
     lir::Lir,
     symbol::Symbol,
+    Diagnostic,
 };
 
 #[derive(Default)]
@@ -31,6 +32,7 @@ impl Environment {
 pub struct Optimizer<'a> {
     db: &'a mut Database,
     environments: HashMap<ScopeId, Environment>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> Optimizer<'a> {
@@ -38,7 +40,12 @@ impl<'a> Optimizer<'a> {
         Self {
             db,
             environments: HashMap::new(),
+            diagnostics: Vec::new(),
         }
+    }
+
+    pub fn finish(self) -> Vec<Diagnostic> {
+        self.diagnostics
     }
 
     fn env(&self, scope_id: ScopeId) -> &Environment {
