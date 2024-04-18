@@ -111,11 +111,14 @@ output = "550"
 hash = "af78d09d3fa66ec50827f2dd1877bc249a526bf96d42f72686e3120826b6a883"
 
 [type_guards]
-bytes = 160
-cost = 7060
-input = "()"
-output = "6"
-hash = "c65b731dc627a8ad1357dee68e27e3de33a582bebdb0bc2b503310e20ad360cc"
+parser_errors = []
+compiler_errors = [
+    "unused function `bytes_guard` at 15:5",
+    "unused function `bytes32_guard` at 23:5",
+    "unused function `public_key_guard` at 33:5",
+    "unused function `inverted_guard` at 43:5",
+    "unused function `pair_guard` at 51:5",
+]
 
 [early_return]
 bytes = 115
@@ -163,3 +166,17 @@ compiler_errors = [
 [missing_main]
 parser_errors = []
 compiler_errors = ["missing `main` function at 1:1"]
+
+[implicit_return_if_stmt]
+parser_errors = []
+compiler_errors = [
+    "implicit return is not allowed in if statements, use an explicit return statement at 2:19",
+    "blocks must either have a an expression value, return statement, or raise an error at 10:19",
+    "implicit return is not allowed in if statements, use an explicit return statement at 10:19",
+    "blocks must either have a an expression value, return statement, or raise an error at 9:22",
+    "blocks must either have a an expression value, return statement, or raise an error at 16:19",
+    "implicit return is not allowed in if statements, use an explicit return statement at 16:19",
+    "unused function `another` at 9:5",
+    "unused function `yet_another` at 15:5",
+    "unused function `raise_ok` at 24:5",
+]

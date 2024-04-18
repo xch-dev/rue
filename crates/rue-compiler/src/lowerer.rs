@@ -976,15 +976,24 @@ impl<'a> Lowerer<'a> {
 
         let expr = self.compile_expr(expr, None);
 
-        self.type_check(expr.ty(), self.bool_type, prefix_expr.syntax().text_range());
+        let Some(op) = prefix_expr.op() else {
+            return self.unknown();
+        };
 
-        Value::typed(
-            match prefix_expr.op() {
-                Some(PrefixOp::Not) => self.db.alloc_hir(Hir::Not(expr.hir())),
-                _ => self.unknown_hir,
-            },
-            self.bool_type,
-        )
+        match op {
+            PrefixOp::Not => {
+                self.type_check(expr.ty(), self.bool_type, prefix_expr.syntax().text_range());
+
+                let mut value =
+                    Value::typed(self.db.alloc_hir(Hir::Not(expr.hir())), self.bool_type);
+
+                for (symbol_id, guard) in expr.guards() {
+                    value.guard(*symbol_id, guard.to_reversed());
+                }
+
+                value
+            }
+        }
     }
 
     fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Value {
