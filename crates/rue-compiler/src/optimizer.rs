@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 
 use crate::{
@@ -21,6 +19,7 @@ struct Environment {
     used_types: IndexSet<TypeId>,
     varargs: bool,
     inherits_from: Option<ScopeId>,
+    should_propagate: bool,
 }
 
 impl Environment {
@@ -35,7 +34,8 @@ impl Environment {
 
 pub struct Optimizer<'a> {
     db: &'a mut Database,
-    environments: HashMap<ScopeId, Environment>,
+    environments: IndexMap<ScopeId, Environment>,
+    visiting: IndexSet<(ScopeId, ScopeId)>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -43,7 +43,8 @@ impl<'a> Optimizer<'a> {
     pub fn new(db: &'a mut Database) -> Self {
         Self {
             db,
-            environments: HashMap::new(),
+            environments: IndexMap::new(),
+            visiting: IndexSet::new(),
             diagnostics: Vec::new(),
         }
     }
@@ -78,20 +79,6 @@ impl<'a> Optimizer<'a> {
         self.env_mut(scope_id).used_symbols.insert(symbol_id);
     }
 
-    fn propogate_symbols(&mut self, parent_scope_id: ScopeId, scope_id: ScopeId) {
-        for symbol_id in self.env(scope_id).captures.clone() {
-            self.reference_symbol(parent_scope_id, symbol_id);
-        }
-
-        for symbol_id in self.env(scope_id).used_symbols.clone() {
-            self.env_mut(parent_scope_id).used_symbols.insert(symbol_id);
-        }
-
-        for type_id in self.env(scope_id).used_types.clone() {
-            self.env_mut(parent_scope_id).used_types.insert(type_id);
-        }
-    }
-
     fn check_unused(
         &mut self,
         scope_id: ScopeId,
@@ -122,7 +109,13 @@ impl<'a> Optimizer<'a> {
 
                         // Even though it's unused, we should check for captures.
                         // This is so we can warn about unused captures within the function scope.
-                        self.compute_captures_entrypoint(function_scope_id, None, hir_id);
+                        self.compute_captures_entrypoint(
+                            scope_id,
+                            function_scope_id,
+                            None,
+                            hir_id,
+                            false,
+                        );
                     }
                     Symbol::Parameter { .. } => {
                         self.warning(
@@ -182,25 +175,26 @@ impl<'a> Optimizer<'a> {
 
     fn compute_captures_entrypoint(
         &mut self,
+        parent_scope_id: ScopeId,
         scope_id: ScopeId,
         inherits_from: Option<ScopeId>,
         hir_id: HirId,
+        should_propagate: bool,
     ) {
-        if self.environments.contains_key(&scope_id) {
+        if !self.visiting.insert((parent_scope_id, scope_id)) {
             return;
         }
 
-        self.environments.insert(scope_id, Environment::default());
-        let used_types = self.db.scope(scope_id).used_types().clone();
-        self.env_mut(scope_id).used_types.extend(used_types);
-        self.env_mut(scope_id).inherits_from = inherits_from;
-        self.compute_captures_hir(scope_id, hir_id);
+        #[allow(clippy::map_entry)]
+        if !self.environments.contains_key(&scope_id) {
+            self.environments.insert(scope_id, Environment::default());
+            let used_types = self.db.scope(scope_id).used_types().clone();
+            self.env_mut(scope_id).used_types.extend(used_types);
+            self.env_mut(scope_id).inherits_from = inherits_from;
+        }
 
-        self.check_unused(
-            scope_id,
-            self.env(scope_id).used_symbols.clone(),
-            self.env(scope_id).used_types.clone(),
-        );
+        self.env_mut(scope_id).should_propagate |= should_propagate;
+        self.compute_captures_hir(scope_id, hir_id);
     }
 
     fn compute_captures_hir(&mut self, scope_id: ScopeId, hir_id: HirId) {
@@ -256,7 +250,9 @@ impl<'a> Optimizer<'a> {
                 hir_id,
                 ty,
                 ..
-            } => self.compute_function_captures(scope_id, function_scope_id, hir_id, ty.varargs()),
+            } => {
+                self.compute_function_captures(scope_id, function_scope_id, hir_id, ty.varargs());
+            }
             Symbol::Parameter { .. } => {}
             Symbol::LetBinding { hir_id, .. } => self.compute_captures_hir(scope_id, hir_id),
             Symbol::ConstBinding { hir_id, .. } => self.compute_captures_hir(scope_id, hir_id),
@@ -270,8 +266,7 @@ impl<'a> Optimizer<'a> {
         hir_id: HirId,
         varargs: bool,
     ) {
-        self.compute_captures_entrypoint(function_scope_id, None, hir_id);
-        self.propogate_symbols(scope_id, function_scope_id);
+        self.compute_captures_entrypoint(scope_id, function_scope_id, None, hir_id, true);
 
         for symbol_id in self.db.scope(function_scope_id).local_symbols() {
             if self.db.symbol(symbol_id).is_parameter() {
@@ -285,8 +280,7 @@ impl<'a> Optimizer<'a> {
     }
 
     fn compute_scope_captures(&mut self, scope_id: ScopeId, new_scope_id: ScopeId, value: HirId) {
-        self.compute_captures_entrypoint(new_scope_id, Some(scope_id), value);
-        self.propogate_symbols(scope_id, new_scope_id);
+        self.compute_captures_entrypoint(scope_id, new_scope_id, Some(scope_id), value, true);
     }
 
     pub fn opt_main(&mut self, root_scope_id: ScopeId, main: SymbolId) -> LirId {
@@ -297,20 +291,42 @@ impl<'a> Optimizer<'a> {
             unreachable!();
         };
 
-        self.compute_captures_entrypoint(scope_id, None, hir_id);
+        self.environments
+            .insert(root_scope_id, Environment::default());
+        self.compute_captures_entrypoint(root_scope_id, scope_id, None, hir_id, true);
 
-        let mut used_symbols = self.env(scope_id).used_symbols.clone();
-        used_symbols.insert(main);
-
-        let mut used_types = self.env(scope_id).used_types.clone();
-        used_types.extend(self.db.scope(root_scope_id).used_types().clone());
-
-        self.check_unused(root_scope_id, used_symbols, used_types);
+        self.env_mut(scope_id).used_symbols.insert(main);
+        let used_types = self.db.scope(root_scope_id).used_types().clone();
+        self.env_mut(scope_id).used_types.extend(used_types);
 
         for symbol_id in self.db.scope(scope_id).local_symbols() {
             if self.db.symbol(symbol_id).is_parameter() {
                 self.env_mut(scope_id).parameters.insert(symbol_id);
             }
+        }
+
+        for (parent, child) in self.visiting.clone().into_iter().rev() {
+            if !self.env(child).should_propagate {
+                continue;
+            }
+
+            for symbol_id in self.env(child).captures.clone() {
+                self.reference_symbol(parent, symbol_id);
+            }
+
+            for symbol_id in self.env(child).used_symbols.clone() {
+                self.env_mut(parent).used_symbols.insert(symbol_id);
+            }
+
+            for type_id in self.env(child).used_types.clone() {
+                self.env_mut(parent).used_types.insert(type_id);
+            }
+        }
+
+        for scope_id in self.environments.keys().copied().collect::<Vec<_>>() {
+            let used_symbols = self.env(scope_id).used_symbols.clone();
+            let used_types = self.env(scope_id).used_types.clone();
+            self.check_unused(scope_id, used_symbols, used_types);
         }
 
         let body = self.opt_hir(scope_id, hir_id);
