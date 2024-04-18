@@ -130,3 +130,36 @@ cost = 4755
 input = "(0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 () () ())"
 output = "((g1_multiply 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a))"
 hash = "41ad4e730b68dcbd7cb2440343bc11c1b31eb5951273dac3ab93a00d99019ac6"
+
+[unused_symbols]
+parser_errors = []
+compiler_errors = [
+    "unused let binding `unused_let` at 5:9",
+    "unused constant `UNUSED_INNER_CONSTANT` at 6:11",
+    "unused function `unused_inner_function` at 8:9",
+    "unused function `unused_inner_inner_function` at 9:13",
+    "unused function `unused_deeper_function` at 10:17",
+    "unused constant `UNUSED_INDIRECT_CONSTANT` at 1:7",
+    "unused constant `UNUSED_CONSTANT` at 2:7",
+    "unused function `unused_indirect_function` at 21:5",
+    "unused function `unused_function` at 25:5",
+]
+
+[unused_types]
+parser_errors = []
+compiler_errors = [
+    "unused type alias `A` at 2:6",
+    "unused enum `Some` at 6:6",
+    "unused struct `Thing` at 17:8",
+]
+
+[recursive_type_alias]
+parser_errors = []
+compiler_errors = [
+    "type aliases cannot reference themselves recursively at 4:1",
+    "type aliases cannot reference themselves recursively at 7:1",
+]
+
+[missing_main]
+parser_errors = []
+compiler_errors = ["missing `main` function at 1:1"]

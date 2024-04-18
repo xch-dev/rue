@@ -38,12 +38,6 @@ pub enum DiagnosticKind {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
 pub enum WarningKind {
-    #[error("marking optional types as optional again has no effect")]
-    UselessOptional,
-
-    #[error("redundant type check against `{0}`, value is already that type")]
-    RedundantTypeGuard(String),
-
     #[error("unused function `{0}`")]
     UnusedFunction(String),
 
@@ -56,8 +50,23 @@ pub enum WarningKind {
     #[error("unused let binding `{0}`")]
     UnusedLet(String),
 
-    #[error("unused type `{0}`")]
-    UnusedType(String),
+    #[error("unused enum `{0}`")]
+    UnusedEnum(String),
+
+    #[error("unused enum variant `{0}`")]
+    UnusedEnumVariant(String),
+
+    #[error("unused struct `{0}`")]
+    UnusedStruct(String),
+
+    #[error("unused type alias `{0}`")]
+    UnusedTypeAlias(String),
+
+    #[error("marking optional types as optional again has no effect")]
+    UselessOptionalType,
+
+    #[error("redundant type check against `{0}`, value is already that type")]
+    RedundantTypeCheck(String),
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
@@ -65,19 +74,16 @@ pub enum ErrorKind {
     #[error("missing `main` function")]
     MissingMain,
 
-    #[error("undefined reference `{0}`")]
+    #[error("cannot reference undefined symbol `{0}`")]
     UndefinedReference(String),
 
-    #[error("undefined type `{0}`")]
+    #[error("cannot reference undefined type `{0}`")]
     UndefinedType(String),
 
-    #[error("recursive type alias")]
+    #[error("type aliases cannot reference themselves recursively")]
     RecursiveTypeAlias,
 
-    #[error("expected {expected} arguments, found {found}")]
-    ArgumentMismatch { expected: usize, found: usize },
-
-    #[error("expected type `{expected}`, found `{found}`")]
+    #[error("expected type `{expected}`, but found `{found}`")]
     TypeMismatch { expected: String, found: String },
 
     #[error("cannot cast type `{found}` to `{expected}`")]
@@ -86,32 +92,26 @@ pub enum ErrorKind {
     #[error("cannot call expression with type `{0}`")]
     UncallableType(String),
 
+    #[error("expected {expected} arguments, but found {found}")]
+    ArgumentMismatch { expected: usize, found: usize },
+
     #[error("uninitializable type `{0}`")]
     UninitializableType(String),
 
     #[error("duplicate field `{0}`")]
     DuplicateField(String),
 
-    #[error("undefined field `{0}`")]
-    UndefinedField(String),
+    #[error("undefined field `{field}` on type `{ty}`")]
+    UndefinedField { field: String, ty: String },
 
-    #[error("missing fields: {}", join_names(.0))]
-    MissingFields(Vec<String>),
+    #[error("missing fields on type `{ty}`: {}", join_names(.fields))]
+    MissingFields { fields: Vec<String>, ty: String },
 
-    #[error("cannot access named field of non-struct type `{0}`")]
-    NonStructFieldAccess(String),
+    #[error("cannot access field `{field}` of non-struct type `{ty}`")]
+    InvalidFieldAccess { field: String, ty: String },
 
-    #[error("unknown field of pair type `{0}`, expected `first` or `rest`")]
-    PairFieldAccess(String),
-
-    #[error("unknown field of bytes type `{0}`, expected `length`")]
-    BytesFieldAccess(String),
-
-    #[error("cannot index non-list type `{0}`")]
+    #[error("cannot index into non-list type `{0}`")]
     IndexAccess(String),
-
-    #[error("index `{0}` out of bounds, length is `{1}`")]
-    IndexOutOfBounds(u32, u32),
 
     #[error("the spread operator can only be used on the last element")]
     NonFinalSpread,
@@ -125,14 +125,14 @@ pub enum ErrorKind {
     #[error("duplicate enum variant `{0}`")]
     DuplicateEnumVariant(String),
 
+    #[error("unknown enum variant `{0}`")]
+    UnknownEnumVariant(String),
+
     #[error("paths are not allowed in this context")]
     PathNotAllowed,
 
     #[error("cannot path into non-enum type `{0}`")]
     PathIntoNonEnum(String),
-
-    #[error("unknown enum variant `{0}`")]
-    UnknownEnumVariant(String),
 
     #[error("cannot check type `{from}` against `{to}`")]
     UnsupportedTypeGuard { from: String, to: String },

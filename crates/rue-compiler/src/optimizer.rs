@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use indexmap::IndexSet;
 use rowan::TextRange;
@@ -8,6 +8,7 @@ use crate::{
     hir::{BinOp, Hir},
     lir::Lir,
     symbol::Symbol,
+    ty::Type,
     Diagnostic, DiagnosticKind, TypeId, WarningKind,
 };
 
@@ -16,8 +17,8 @@ struct Environment {
     definitions: IndexSet<SymbolId>,
     captures: IndexSet<SymbolId>,
     parameters: IndexSet<SymbolId>,
-    used_symbols: HashSet<SymbolId>,
-    used_types: HashSet<TypeId>,
+    used_symbols: IndexSet<SymbolId>,
+    used_types: IndexSet<TypeId>,
     varargs: bool,
     inherits_from: Option<ScopeId>,
 }
@@ -94,8 +95,8 @@ impl<'a> Optimizer<'a> {
     fn check_unused(
         &mut self,
         scope_id: ScopeId,
-        used_symbols: HashSet<SymbolId>,
-        used_types: HashSet<TypeId>,
+        used_symbols: IndexSet<SymbolId>,
+        used_types: IndexSet<TypeId>,
     ) {
         let unused_symbols: Vec<SymbolId> = self
             .db
@@ -109,11 +110,19 @@ impl<'a> Optimizer<'a> {
         for symbol_id in unused_symbols {
             if let Some(token) = self.db.symbol_token(symbol_id) {
                 match self.db.symbol(symbol_id).clone() {
-                    Symbol::Function { .. } => {
+                    Symbol::Function {
+                        scope_id: function_scope_id,
+                        hir_id,
+                        ..
+                    } => {
                         self.warning(
                             WarningKind::UnusedFunction(token.to_string()),
                             token.text_range(),
                         );
+
+                        // Even though it's unused, we should check for captures.
+                        // This is so we can warn about unused captures within the function scope.
+                        self.compute_captures_entrypoint(function_scope_id, None, hir_id);
                     }
                     Symbol::Parameter { .. } => {
                         self.warning(
@@ -148,10 +157,25 @@ impl<'a> Optimizer<'a> {
 
         for type_id in unused_types {
             if let Some(token) = self.db.type_token(type_id) {
-                self.warning(
-                    WarningKind::UnusedType(token.to_string()),
-                    token.text_range(),
-                );
+                match self.db.ty_raw(type_id) {
+                    Type::Alias(..) => self.warning(
+                        WarningKind::UnusedTypeAlias(token.to_string()),
+                        token.text_range(),
+                    ),
+                    Type::Enum(..) => self.warning(
+                        WarningKind::UnusedEnum(token.to_string()),
+                        token.text_range(),
+                    ),
+                    Type::EnumVariant(..) => self.warning(
+                        WarningKind::UnusedEnumVariant(token.to_string()),
+                        token.text_range(),
+                    ),
+                    Type::Struct(..) => self.warning(
+                        WarningKind::UnusedStruct(token.to_string()),
+                        token.text_range(),
+                    ),
+                    _ => {}
+                }
             }
         }
     }
@@ -293,10 +317,8 @@ impl<'a> Optimizer<'a> {
 
         let mut args = Vec::new();
 
-        for symbol_id in self.db.scope(scope_id).local_symbols() {
-            if self.db.symbol(symbol_id).is_definition() {
-                args.push(self.opt_definition(scope_id, symbol_id));
-            }
+        for symbol_id in self.env(scope_id).definitions.clone() {
+            args.push(self.opt_definition(scope_id, symbol_id));
         }
 
         for symbol_id in self.env(scope_id).captures.clone() {

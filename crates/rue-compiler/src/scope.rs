@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::{database::TypeId, SymbolId};
 
@@ -8,9 +8,9 @@ use crate::{database::TypeId, SymbolId};
 pub struct Scope {
     symbol_table: HashMap<String, SymbolId>,
     type_aliases: HashMap<String, TypeId>,
-    type_names: HashMap<TypeId, String>,
+    type_names: IndexMap<TypeId, String>,
     local_symbols: IndexSet<SymbolId>,
-    used_types: HashSet<TypeId>,
+    used_types: IndexSet<TypeId>,
 }
 
 impl Scope {
@@ -52,7 +52,7 @@ impl Scope {
         self.used_types.insert(type_id);
     }
 
-    pub fn used_types(&self) -> &HashSet<TypeId> {
+    pub fn used_types(&self) -> &IndexSet<TypeId> {
         &self.used_types
     }
 }

@@ -1,0 +1,27 @@
+const UNUSED_INDIRECT_CONSTANT: Int = 42;
+const UNUSED_CONSTANT: Int = UNUSED_INDIRECT_CONSTANT;
+
+fun main() -> Nil {
+    let unused_let = UNUSED_CONSTANT + UNUSED_INDIRECT_CONSTANT;
+    const UNUSED_INNER_CONSTANT: Int = UNUSED_CONSTANT + UNUSED_INDIRECT_CONSTANT;
+
+    fun unused_inner_function() -> Nil {
+        fun unused_inner_inner_function() -> Nil {
+            fun unused_deeper_function() -> Nil {
+                nil
+            }
+            unused_function()
+        }
+        unused_function()
+    }
+
+    nil
+}
+
+fun unused_indirect_function() -> Nil {
+    nil
+}
+
+fun unused_function() -> Nil {
+    unused_indirect_function()
+}

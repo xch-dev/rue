@@ -756,6 +756,7 @@ impl<'a> Lowerer<'a> {
         match ty.map(|ty| self.db.ty(ty)).cloned() {
             Some(Type::Struct(struct_type)) => {
                 let hir_id = self.compile_initializer_fields(
+                    ty.unwrap(),
                     struct_type.fields(),
                     initializer.fields(),
                     initializer.syntax().text_range(),
@@ -768,6 +769,7 @@ impl<'a> Lowerer<'a> {
             }
             Some(Type::EnumVariant(enum_variant)) => {
                 let fields_hir_id = self.compile_initializer_fields(
+                    ty.unwrap(),
                     enum_variant.fields(),
                     initializer.fields(),
                     initializer.syntax().text_range(),
@@ -796,6 +798,7 @@ impl<'a> Lowerer<'a> {
     /// Compiles the fields of an initializer into a list.
     fn compile_initializer_fields(
         &mut self,
+        struct_type: TypeId,
         struct_fields: &IndexMap<String, TypeId>,
         initializer_fields: Vec<InitializerField>,
         text_range: TextRange,
@@ -831,7 +834,10 @@ impl<'a> Lowerer<'a> {
                 );
             } else if !struct_fields.contains_key(name.text()) {
                 self.error(
-                    ErrorKind::UndefinedField(name.to_string()),
+                    ErrorKind::UndefinedField {
+                        field: name.to_string(),
+                        ty: self.type_name(struct_type),
+                    },
                     name.text_range(),
                 );
             } else {
@@ -847,7 +853,13 @@ impl<'a> Lowerer<'a> {
             .collect();
 
         if !missing_fields.is_empty() {
-            self.error(ErrorKind::MissingFields(missing_fields), text_range);
+            self.error(
+                ErrorKind::MissingFields {
+                    fields: missing_fields,
+                    ty: self.type_name(struct_type),
+                },
+                text_range,
+            );
         }
 
         let mut hir_id = self.nil_hir;
@@ -882,46 +894,44 @@ impl<'a> Lowerer<'a> {
             Type::Struct(struct_type) => {
                 if let Some(field) = struct_type.fields().get_full(field_name.text()) {
                     let (index, _, field_type) = field;
-                    Value::typed(self.compile_index(value.hir(), index, false), *field_type)
+                    return Value::typed(
+                        self.compile_index(value.hir(), index, false),
+                        *field_type,
+                    );
                 } else {
                     self.error(
-                        ErrorKind::UndefinedField(field_name.to_string()),
+                        ErrorKind::UndefinedField {
+                            field: field_name.to_string(),
+                            ty: self.type_name(value.ty()),
+                        },
                         field_name.text_range(),
                     );
-                    self.unknown()
+                    return self.unknown();
                 }
             }
             Type::Pair(left, right) => match field_name.text() {
-                "first" => Value::typed(self.db.alloc_hir(Hir::First(value.hir())), left),
-                "rest" => Value::typed(self.db.alloc_hir(Hir::Rest(value.hir())), right),
-                _ => {
-                    self.error(
-                        ErrorKind::PairFieldAccess(field_name.to_string()),
-                        field_name.text_range(),
-                    );
-                    self.unknown()
+                "first" => {
+                    return Value::typed(self.db.alloc_hir(Hir::First(value.hir())), left);
                 }
+                "rest" => {
+                    return Value::typed(self.db.alloc_hir(Hir::Rest(value.hir())), right);
+                }
+                _ => {}
             },
-            Type::Bytes | Type::Bytes32 => match field_name.text() {
-                "length" => {
-                    Value::typed(self.db.alloc_hir(Hir::Strlen(value.hir())), self.int_type)
-                }
-                _ => {
-                    self.error(
-                        ErrorKind::BytesFieldAccess(field_name.to_string()),
-                        field_name.text_range(),
-                    );
-                    self.unknown()
-                }
-            },
-            _ => {
-                self.error(
-                    ErrorKind::NonStructFieldAccess(self.type_name(value.ty())),
-                    field_name.text_range(),
-                );
-                self.unknown()
+            Type::Bytes | Type::Bytes32 if field_name.text() == "length" => {
+                return Value::typed(self.db.alloc_hir(Hir::Strlen(value.hir())), self.int_type);
             }
+            _ => {}
         }
+
+        self.error(
+            ErrorKind::InvalidFieldAccess {
+                field: field_name.to_string(),
+                ty: self.type_name(value.ty()),
+            },
+            field_name.text_range(),
+        );
+        self.unknown()
     }
 
     fn compile_index_access(&mut self, index_access: IndexAccess) -> Value {
@@ -1203,7 +1213,7 @@ impl<'a> Lowerer<'a> {
     ) -> Option<(Guard, HirId)> {
         if self.types_equal(from, to) {
             self.warning(
-                WarningKind::RedundantTypeGuard(self.type_name(from)),
+                WarningKind::RedundantTypeCheck(self.type_name(from)),
                 text_range,
             );
             return Some((Guard::new(to, self.bool_type), hir_id));
@@ -1923,7 +1933,10 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(self.unknown_type);
 
         if let Type::Optional(inner) = self.db.ty_raw(ty).clone() {
-            self.warning(WarningKind::UselessOptional, optional.syntax().text_range());
+            self.warning(
+                WarningKind::UselessOptionalType,
+                optional.syntax().text_range(),
+            );
             return inner;
         }
 
