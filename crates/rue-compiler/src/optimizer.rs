@@ -1,51 +1,26 @@
-use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 
 use crate::{
     database::{Database, HirId, LirId, ScopeId, SymbolId},
+    dependency_graph::{DependencyGraph, Environment},
     hir::{BinOp, Hir},
     lir::Lir,
     symbol::Symbol,
-    ty::Type,
-    Diagnostic, DiagnosticKind, TypeId, WarningKind,
+    Diagnostic, DiagnosticKind, WarningKind,
 };
-
-#[derive(Default)]
-struct Environment {
-    definitions: IndexSet<SymbolId>,
-    captures: IndexSet<SymbolId>,
-    parameters: IndexSet<SymbolId>,
-    used_symbols: IndexSet<SymbolId>,
-    used_types: IndexSet<TypeId>,
-    varargs: bool,
-    inherits_from: Option<ScopeId>,
-    should_propagate: bool,
-}
-
-impl Environment {
-    fn build(&self) -> Vec<SymbolId> {
-        let mut environment = Vec::new();
-        environment.extend(self.definitions.iter().copied());
-        environment.extend(self.captures.iter().copied());
-        environment.extend(self.parameters.iter().copied());
-        environment
-    }
-}
 
 pub struct Optimizer<'a> {
     db: &'a mut Database,
-    environments: IndexMap<ScopeId, Environment>,
-    visiting: IndexSet<(ScopeId, ScopeId)>,
     diagnostics: Vec<Diagnostic>,
+    graph: DependencyGraph,
 }
 
 impl<'a> Optimizer<'a> {
-    pub fn new(db: &'a mut Database) -> Self {
+    pub fn new(db: &'a mut Database, graph: DependencyGraph) -> Self {
         Self {
             db,
-            environments: IndexMap::new(),
-            visiting: IndexSet::new(),
             diagnostics: Vec::new(),
+            graph,
         }
     }
 
@@ -54,236 +29,10 @@ impl<'a> Optimizer<'a> {
     }
 
     fn env(&self, scope_id: ScopeId) -> &Environment {
-        self.environments.get(&scope_id).unwrap()
+        self.graph.env(scope_id)
     }
 
-    fn env_mut(&mut self, scope_id: ScopeId) -> &mut Environment {
-        self.environments.get_mut(&scope_id).unwrap()
-    }
-
-    fn reference_symbol(&mut self, scope_id: ScopeId, symbol_id: SymbolId) {
-        let capturable = self.db.symbol(symbol_id).is_capturable();
-        let definable = self.db.symbol(symbol_id).is_definition();
-        let local = self.db.scope(scope_id).is_local(symbol_id);
-
-        if local && definable {
-            self.env_mut(scope_id).definitions.insert(symbol_id);
-        } else if !local && capturable {
-            if let Some(inherits_from) = self.env(scope_id).inherits_from {
-                self.reference_symbol(inherits_from, symbol_id);
-            } else {
-                self.env_mut(scope_id).captures.insert(symbol_id);
-            }
-        }
-
-        self.env_mut(scope_id).used_symbols.insert(symbol_id);
-    }
-
-    fn check_unused(
-        &mut self,
-        scope_id: ScopeId,
-        used_symbols: IndexSet<SymbolId>,
-        used_types: IndexSet<TypeId>,
-    ) {
-        let unused_symbols: Vec<SymbolId> = self
-            .db
-            .scope(scope_id)
-            .local_symbols()
-            .iter()
-            .filter(|&symbol_id| !used_symbols.contains(symbol_id))
-            .copied()
-            .collect();
-
-        for symbol_id in unused_symbols {
-            if let Some(token) = self.db.symbol_token(symbol_id) {
-                match self.db.symbol(symbol_id).clone() {
-                    Symbol::Function {
-                        scope_id: function_scope_id,
-                        hir_id,
-                        ..
-                    } => {
-                        self.warning(
-                            WarningKind::UnusedFunction(token.to_string()),
-                            token.text_range(),
-                        );
-
-                        // Even though it's unused, we should check for captures.
-                        // This is so we can warn about unused captures within the function scope.
-                        self.compute_captures_entrypoint(
-                            scope_id,
-                            function_scope_id,
-                            None,
-                            hir_id,
-                            false,
-                        );
-                    }
-                    Symbol::Parameter { .. } => {
-                        self.warning(
-                            WarningKind::UnusedParameter(token.to_string()),
-                            token.text_range(),
-                        );
-                    }
-                    Symbol::LetBinding { .. } => {
-                        self.warning(
-                            WarningKind::UnusedLet(token.to_string()),
-                            token.text_range(),
-                        );
-                    }
-                    Symbol::ConstBinding { .. } => {
-                        self.warning(
-                            WarningKind::UnusedConst(token.to_string()),
-                            token.text_range(),
-                        );
-                    }
-                }
-            }
-        }
-
-        let unused_types: Vec<TypeId> = self
-            .db
-            .scope(scope_id)
-            .local_types()
-            .iter()
-            .filter(|&type_id| !used_types.contains(type_id))
-            .copied()
-            .collect();
-
-        for type_id in unused_types {
-            if let Some(token) = self.db.type_token(type_id) {
-                match self.db.ty_raw(type_id) {
-                    Type::Alias(..) => self.warning(
-                        WarningKind::UnusedTypeAlias(token.to_string()),
-                        token.text_range(),
-                    ),
-                    Type::Enum(..) => self.warning(
-                        WarningKind::UnusedEnum(token.to_string()),
-                        token.text_range(),
-                    ),
-                    Type::EnumVariant(..) => self.warning(
-                        WarningKind::UnusedEnumVariant(token.to_string()),
-                        token.text_range(),
-                    ),
-                    Type::Struct(..) => self.warning(
-                        WarningKind::UnusedStruct(token.to_string()),
-                        token.text_range(),
-                    ),
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    fn compute_captures_entrypoint(
-        &mut self,
-        parent_scope_id: ScopeId,
-        scope_id: ScopeId,
-        inherits_from: Option<ScopeId>,
-        hir_id: HirId,
-        should_propagate: bool,
-    ) {
-        if !self.visiting.insert((parent_scope_id, scope_id)) {
-            return;
-        }
-
-        #[allow(clippy::map_entry)]
-        if !self.environments.contains_key(&scope_id) {
-            self.environments.insert(scope_id, Environment::default());
-            let used_types = self.db.scope(scope_id).used_types().clone();
-            self.env_mut(scope_id).used_types.extend(used_types);
-            self.env_mut(scope_id).inherits_from = inherits_from;
-        }
-
-        self.env_mut(scope_id).should_propagate |= should_propagate;
-        self.compute_captures_hir(scope_id, hir_id);
-    }
-
-    fn compute_captures_hir(&mut self, scope_id: ScopeId, hir_id: HirId) {
-        match self.db.hir(hir_id).clone() {
-            Hir::Unknown | Hir::Atom(_) => {}
-            Hir::Reference(symbol_id) => self.compute_reference_captures(scope_id, symbol_id),
-            Hir::Scope {
-                scope_id: new_scope_id,
-                value,
-            } => self.compute_scope_captures(scope_id, new_scope_id, value),
-            Hir::FunctionCall { callee, args } => {
-                self.compute_captures_hir(scope_id, callee);
-                self.compute_captures_hir(scope_id, args);
-            }
-            Hir::BinaryOp { lhs, rhs, .. } => {
-                self.compute_captures_hir(scope_id, lhs);
-                self.compute_captures_hir(scope_id, rhs);
-            }
-            Hir::Raise(value) => {
-                if let Some(value) = value {
-                    self.compute_captures_hir(scope_id, value);
-                }
-            }
-            Hir::First(value)
-            | Hir::Rest(value)
-            | Hir::Not(value)
-            | Hir::Sha256(value)
-            | Hir::IsCons(value)
-            | Hir::Strlen(value)
-            | Hir::PubkeyForExp(value) => self.compute_captures_hir(scope_id, value),
-            Hir::If {
-                condition,
-                then_block,
-                else_block,
-            } => {
-                self.compute_captures_hir(scope_id, condition);
-                self.compute_captures_hir(scope_id, then_block);
-                self.compute_captures_hir(scope_id, else_block);
-            }
-            Hir::Pair(first, rest) => {
-                self.compute_captures_hir(scope_id, first);
-                self.compute_captures_hir(scope_id, rest);
-            }
-        }
-    }
-
-    fn compute_reference_captures(&mut self, scope_id: ScopeId, symbol_id: SymbolId) {
-        self.reference_symbol(scope_id, symbol_id);
-
-        match self.db.symbol(symbol_id).clone() {
-            Symbol::Function {
-                scope_id: function_scope_id,
-                hir_id,
-                ty,
-                ..
-            } => {
-                self.compute_function_captures(scope_id, function_scope_id, hir_id, ty.varargs());
-            }
-            Symbol::Parameter { .. } => {}
-            Symbol::LetBinding { hir_id, .. } => self.compute_captures_hir(scope_id, hir_id),
-            Symbol::ConstBinding { hir_id, .. } => self.compute_captures_hir(scope_id, hir_id),
-        }
-    }
-
-    fn compute_function_captures(
-        &mut self,
-        scope_id: ScopeId,
-        function_scope_id: ScopeId,
-        hir_id: HirId,
-        varargs: bool,
-    ) {
-        self.compute_captures_entrypoint(scope_id, function_scope_id, None, hir_id, true);
-
-        for symbol_id in self.db.scope(function_scope_id).local_symbols() {
-            if self.db.symbol(symbol_id).is_parameter() {
-                self.env_mut(function_scope_id).parameters.insert(symbol_id);
-            }
-        }
-
-        if varargs {
-            self.env_mut(function_scope_id).varargs = true;
-        }
-    }
-
-    fn compute_scope_captures(&mut self, scope_id: ScopeId, new_scope_id: ScopeId, value: HirId) {
-        self.compute_captures_entrypoint(scope_id, new_scope_id, Some(scope_id), value, true);
-    }
-
-    pub fn opt_main(&mut self, root_scope_id: ScopeId, main: SymbolId) -> LirId {
+    pub fn opt_main(&mut self, main: SymbolId) -> LirId {
         let Symbol::Function {
             scope_id, hir_id, ..
         } = self.db.symbol(main).clone()
@@ -291,53 +40,15 @@ impl<'a> Optimizer<'a> {
             unreachable!();
         };
 
-        self.environments
-            .insert(root_scope_id, Environment::default());
-        self.compute_captures_entrypoint(root_scope_id, scope_id, None, hir_id, true);
-
-        self.env_mut(scope_id).used_symbols.insert(main);
-        let used_types = self.db.scope(root_scope_id).used_types().clone();
-        self.env_mut(scope_id).used_types.extend(used_types);
-
-        for symbol_id in self.db.scope(scope_id).local_symbols() {
-            if self.db.symbol(symbol_id).is_parameter() {
-                self.env_mut(scope_id).parameters.insert(symbol_id);
-            }
-        }
-
-        for (parent, child) in self.visiting.clone().into_iter().rev() {
-            if !self.env(child).should_propagate {
-                continue;
-            }
-
-            for symbol_id in self.env(child).captures.clone() {
-                self.reference_symbol(parent, symbol_id);
-            }
-
-            for symbol_id in self.env(child).used_symbols.clone() {
-                self.env_mut(parent).used_symbols.insert(symbol_id);
-            }
-
-            for type_id in self.env(child).used_types.clone() {
-                self.env_mut(parent).used_types.insert(type_id);
-            }
-        }
-
-        for scope_id in self.environments.keys().copied().collect::<Vec<_>>() {
-            let used_symbols = self.env(scope_id).used_symbols.clone();
-            let used_types = self.env(scope_id).used_types.clone();
-            self.check_unused(scope_id, used_symbols, used_types);
-        }
-
         let body = self.opt_hir(scope_id, hir_id);
 
         let mut args = Vec::new();
 
-        for symbol_id in self.env(scope_id).definitions.clone() {
+        for symbol_id in self.env(scope_id).definitions() {
             args.push(self.opt_definition(scope_id, symbol_id));
         }
 
-        for symbol_id in self.env(scope_id).captures.clone() {
+        for symbol_id in self.env(scope_id).captures() {
             args.push(self.opt_definition(scope_id, symbol_id));
         }
 
@@ -349,7 +60,7 @@ impl<'a> Optimizer<'a> {
 
         let mut args = Vec::new();
 
-        for symbol_id in self.env(scope_id).definitions.clone() {
+        for symbol_id in self.env(scope_id).definitions() {
             args.push(self.opt_definition(parent_scope_id, symbol_id));
         }
 
@@ -357,12 +68,12 @@ impl<'a> Optimizer<'a> {
     }
 
     fn opt_path(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {
-        let mut environment = self.env(scope_id).build();
-        let mut current_scope_id = scope_id;
+        let mut current_scope = scope_id;
+        let mut environment = self.env(scope_id).build().to_vec();
 
-        while let Some(inherits) = self.env(current_scope_id).inherits_from {
-            current_scope_id = inherits;
-            environment.extend(&self.env(current_scope_id).build());
+        while let Some(parent_scope) = self.env(current_scope).parent_scope() {
+            current_scope = parent_scope;
+            environment.extend(self.env(current_scope).build());
         }
 
         let index = environment
@@ -376,7 +87,7 @@ impl<'a> Optimizer<'a> {
             path += 1;
         }
 
-        if index + 1 == environment.len() && self.env(scope_id).varargs {
+        if index + 1 == environment.len() && self.env(scope_id).varargs() {
             // Undo last index
             path -= 1;
             path /= 2;
@@ -398,10 +109,8 @@ impl<'a> Optimizer<'a> {
                 let mut body = self.opt_hir(function_scope_id, hir_id);
                 let mut definitions = Vec::new();
 
-                for symbol_id in self.db.scope(function_scope_id).local_symbols() {
-                    if self.db.symbol(symbol_id).is_definition() {
-                        definitions.push(self.opt_definition(function_scope_id, symbol_id));
-                    }
+                for symbol_id in self.env(function_scope_id).definitions() {
+                    definitions.push(self.opt_definition(function_scope_id, symbol_id));
                 }
 
                 if !definitions.is_empty() {
@@ -426,8 +135,8 @@ impl<'a> Optimizer<'a> {
             Hir::Reference(symbol_id) => self.opt_reference(scope_id, *symbol_id),
             Hir::Scope {
                 scope_id: new_scope_id,
-                value,
-            } => self.opt_scope(scope_id, *new_scope_id, *value),
+                hir_id,
+            } => self.opt_scope(scope_id, *new_scope_id, *hir_id),
             Hir::FunctionCall { callee, args } => self.opt_function_call(scope_id, *callee, *args),
             Hir::BinaryOp { op, lhs, rhs } => {
                 let handler = match op {
@@ -515,7 +224,7 @@ impl<'a> Optimizer<'a> {
                     }
                 }
 
-                for symbol_id in self.env(function_scope_id).captures.clone() {
+                for symbol_id in self.env(function_scope_id).captures() {
                     captures.push(self.opt_path(scope_id, symbol_id));
                 }
 
@@ -535,13 +244,7 @@ impl<'a> Optimizer<'a> {
                 ..
             } = self.db.symbol(symbol_id)
             {
-                for symbol_id in self
-                    .env(*callee_scope_id)
-                    .captures
-                    .clone()
-                    .into_iter()
-                    .rev()
-                {
+                for symbol_id in self.env(*callee_scope_id).captures().into_iter().rev() {
                     let capture = self.opt_path(scope_id, symbol_id);
                     args = self.db.alloc_lir(Lir::Pair(capture, args));
                 }
@@ -657,7 +360,7 @@ impl<'a> Optimizer<'a> {
             .alloc_lir(Lir::If(condition, then_branch, else_branch))
     }
 
-    fn warning(&mut self, info: WarningKind, range: TextRange) {
+    fn _warning(&mut self, info: WarningKind, range: TextRange) {
         self.diagnostics.push(Diagnostic::new(
             DiagnosticKind::Warning(info),
             range.start().into()..range.end().into(),

@@ -685,7 +685,7 @@ impl<'a> Lowerer<'a> {
                     body = Value::typed(
                         self.db.alloc_hir(Hir::Scope {
                             scope_id,
-                            value: body.hir(),
+                            hir_id: body.hir(),
                         }),
                         body.ty(),
                     );

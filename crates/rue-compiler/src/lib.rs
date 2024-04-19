@@ -2,12 +2,14 @@
 
 use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
+use dependency_graph::GraphTraversal;
 use lowerer::Lowerer;
 use optimizer::Optimizer;
 use rue_parser::Root;
 
 mod codegen;
 mod database;
+mod dependency_graph;
 mod error;
 mod hir;
 mod lir;
@@ -58,8 +60,10 @@ fn precompile(database: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<L
         return (diagnostics, None);
     };
 
-    let mut optimizer = Optimizer::new(database);
-    let lir_id = optimizer.opt_main(scope_id, main_id);
+    let traversal = GraphTraversal::new(database);
+    let graph = traversal.build_graph(main_id);
+    let mut optimizer = Optimizer::new(database, graph);
+    let lir_id = optimizer.opt_main(main_id);
     diagnostics.extend(optimizer.finish());
 
     (diagnostics, Some(lir_id))

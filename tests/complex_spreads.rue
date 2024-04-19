@@ -3,10 +3,10 @@ fun main() -> Int {
 }
 
 fun sum(...nums: Int[]) -> Int {
-    let nums: Any = nums;
+    let nums_as_any: Any = nums;
 
-    if nums is (Any, Any) {
-        nums.first as Int + sum(...nums.rest as Int[])
+    if nums_as_any is (Any, Any) {
+        nums_as_any.first as Int + sum(...nums_as_any.rest as Int[])
     } else {
         0
     }
