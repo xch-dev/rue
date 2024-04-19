@@ -56,6 +56,10 @@ impl<'a> Optimizer<'a> {
 
             let token = self.sym.symbol_token(symbol_id).unwrap();
 
+            if token.text().starts_with('_') {
+                continue;
+            }
+
             match self.db.symbol(symbol_id).clone() {
                 Symbol::Unknown => unreachable!(),
                 Symbol::Function { .. } => self.warning(
@@ -86,6 +90,10 @@ impl<'a> Optimizer<'a> {
             }
 
             let token = self.sym.type_token(type_id).unwrap();
+
+            if token.text().starts_with('_') {
+                continue;
+            }
 
             match self.db.ty_raw(type_id) {
                 Type::Alias(..) => {
