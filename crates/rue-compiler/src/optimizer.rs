@@ -10,7 +10,7 @@ use crate::{
     symbol::Symbol,
     symbol_table::GlobalSymbolTable,
     ty::Type,
-    Diagnostic, DiagnosticKind, WarningKind,
+    Diagnostic, DiagnosticKind, TypeId, WarningKind,
 };
 
 pub struct Optimizer<'a> {
@@ -36,6 +36,16 @@ impl<'a> Optimizer<'a> {
 
     fn env(&self, scope_id: ScopeId) -> &Environment {
         self.graph.env(scope_id)
+    }
+
+    fn calculate_used_types(&mut self, type_id: TypeId, used_types: &mut HashSet<TypeId>) {
+        if !used_types.insert(type_id) {
+            return;
+        }
+
+        for referenced_type_id in self.sym.referenced_types_for_type(type_id) {
+            self.calculate_used_types(referenced_type_id, used_types);
+        }
     }
 
     pub fn opt_main(&mut self, root_scope_id: ScopeId, main: SymbolId) -> LirId {
@@ -81,11 +91,19 @@ impl<'a> Optimizer<'a> {
             }
         }
 
-        for type_id in self.sym.named_types() {
-            if used_symbols
+        let directly_used_types = self.sym.named_types().into_iter().filter(|type_id| {
+            used_symbols
                 .iter()
-                .any(|symbol_id| self.sym.type_referenced_by_symbol(type_id, *symbol_id))
-            {
+                .any(|symbol_id| self.sym.type_referenced_by_symbol(*type_id, *symbol_id))
+        });
+
+        let mut used_types = HashSet::new();
+        for type_id in directly_used_types {
+            self.calculate_used_types(type_id, &mut used_types);
+        }
+
+        for type_id in self.sym.named_types() {
+            if used_types.contains(&type_id) {
                 continue;
             }
 
@@ -278,7 +296,10 @@ impl<'a> Optimizer<'a> {
 
     fn opt_sha256(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {
         let lir_id = self.opt_hir(scope_id, hir_id);
-        self.db.alloc_lir(Lir::Sha256(lir_id))
+        if let Lir::Concat(args) = self.db.lir(lir_id).clone() {
+            return self.db.alloc_lir(Lir::Sha256(args));
+        }
+        self.db.alloc_lir(Lir::Sha256(vec![lir_id]))
     }
 
     fn opt_is_cons(&mut self, scope_id: ScopeId, hir_id: HirId) -> LirId {

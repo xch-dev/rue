@@ -20,6 +20,6 @@ struct Thing {
     last: Bool,
 }
 
-fun main() -> D {
+fun main() -> B {
     42
 }

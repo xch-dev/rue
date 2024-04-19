@@ -77,7 +77,7 @@ impl<'a> Codegen<'a> {
             Lir::First(value) => self.gen_first(value),
             Lir::Rest(value) => self.gen_rest(value),
             Lir::Raise(value) => self.gen_raise(value),
-            Lir::Sha256(value) => self.gen_sha256(value),
+            Lir::Sha256(values) => self.gen_sha256(values),
             Lir::IsCons(value) => self.gen_is_cons(value),
             Lir::Strlen(value) => self.gen_strlen(value),
             Lir::PubkeyForExp(value) => self.gen_pubkey_for_exp(value),
@@ -152,9 +152,12 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    fn gen_sha256(&mut self, value: LirId) -> NodePtr {
-        let value = self.gen_lir(value);
-        self.list(&[self.ops.sha256, value])
+    fn gen_sha256(&mut self, values: Vec<LirId>) -> NodePtr {
+        let mut args = vec![self.ops.sha256];
+        for value in values {
+            args.push(self.gen_lir(value));
+        }
+        self.list(&args)
     }
 
     fn gen_is_cons(&mut self, value: LirId) -> NodePtr {

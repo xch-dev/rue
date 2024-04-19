@@ -37,6 +37,9 @@ pub struct Lowerer<'a> {
     // The symbol stack is used for calculating types referenced in symbols.
     symbol_stack: Vec<SymbolId>,
 
+    // The type definition stack is used for calculating types referenced in types.
+    type_definition_stack: Vec<TypeId>,
+
     // The type guard stack is used for overriding types in certain contexts.
     type_guard_stack: Vec<HashMap<SymbolId, TypeId>>,
 
@@ -132,6 +135,7 @@ impl<'a> Lowerer<'a> {
             db,
             scope_stack: vec![builtins_id],
             symbol_stack: Vec::new(),
+            type_definition_stack: Vec::new(),
             type_guard_stack: Vec::new(),
             diagnostics: Vec::new(),
             sym: GlobalSymbolTable::default(),
@@ -186,13 +190,22 @@ impl<'a> Lowerer<'a> {
         for item in items.clone() {
             match item {
                 Item::TypeAliasItem(ty) => {
-                    self.compile_type_alias(ty, type_ids.remove(0));
+                    let type_id = type_ids.remove(0);
+                    self.type_definition_stack.push(type_id);
+                    self.compile_type_alias(ty, type_id);
+                    self.type_definition_stack.pop().unwrap();
                 }
                 Item::StructItem(struct_item) => {
-                    self.compile_struct(struct_item, type_ids.remove(0));
+                    let type_id = type_ids.remove(0);
+                    self.type_definition_stack.push(type_id);
+                    self.compile_struct(struct_item, type_id);
+                    self.type_definition_stack.pop().unwrap();
                 }
                 Item::EnumItem(enum_item) => {
-                    self.compile_enum(enum_item, type_ids.remove(0));
+                    let type_id = type_ids.remove(0);
+                    self.type_definition_stack.push(type_id);
+                    self.compile_enum(enum_item, type_id);
+                    self.type_definition_stack.pop().unwrap();
                 }
                 _ => {}
             }
@@ -415,6 +428,8 @@ impl<'a> Lowerer<'a> {
 
     /// Compile and resolve the type that the alias points to.
     fn compile_type_alias(&mut self, ty: TypeAliasItem, alias_type_id: TypeId) {
+        self.type_definition_stack.push(alias_type_id);
+
         let type_id = ty
             .ty()
             .map(|ty| self.compile_type(ty))
@@ -428,12 +443,16 @@ impl<'a> Lowerer<'a> {
         if self.detect_cycle(alias_type_id, ty.syntax().text_range(), &mut HashSet::new()) {
             *self.db.ty_mut(alias_type_id) = Type::Unknown;
         }
+
+        self.type_definition_stack.pop().unwrap();
     }
 
     /// Compile and resolve a struct type.
     fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
+        self.type_definition_stack.push(type_id);
         let fields = self.compile_struct_fields(struct_item.fields());
         *self.db.ty_mut(type_id) = Type::Struct(StructType::new(fields));
+        self.type_definition_stack.pop().unwrap();
     }
 
     /// Compile and resolve the fields of a struct.
@@ -456,6 +475,8 @@ impl<'a> Lowerer<'a> {
 
     /// Compile and resolve an enum type, and each of its variants' struct fields.
     fn compile_enum(&mut self, enum_item: EnumItem, type_id: TypeId) {
+        self.type_definition_stack.push(type_id);
+
         let Type::Enum(enum_type) = self.db.ty(type_id).clone() else {
             unreachable!();
         };
@@ -478,6 +499,8 @@ impl<'a> Lowerer<'a> {
 
             let variant_type = enum_type.variants()[name.text()];
 
+            self.type_definition_stack.push(variant_type);
+
             let fields = self.compile_struct_fields(variant.fields());
 
             let discriminant = variant
@@ -491,7 +514,11 @@ impl<'a> Lowerer<'a> {
                 fields,
                 discriminant,
             ));
+
+            self.type_definition_stack.pop().unwrap();
         }
+
+        self.type_definition_stack.pop().unwrap();
     }
 
     /// Compiles a let statement and returns its new scope id.
@@ -1883,19 +1910,26 @@ impl<'a> Lowerer<'a> {
             return self.unknown_type;
         };
 
-        if let Some(symbol_id) = self.symbol_stack.last() {
-            self.sym.insert_symbol_type_reference(*symbol_id, ty);
-        }
+        self.type_reference(ty);
 
         for name in idents {
             ty = self.path_into_type(ty, name.text(), name.text_range());
-
-            if let Some(symbol_id) = self.symbol_stack.last() {
-                self.sym.insert_symbol_type_reference(*symbol_id, ty);
-            }
+            self.type_reference(ty);
         }
 
         ty
+    }
+
+    fn type_reference(&mut self, referenced_type_id: TypeId) {
+        if let Some(symbol_id) = self.symbol_stack.last() {
+            self.sym
+                .insert_symbol_type_reference(*symbol_id, referenced_type_id);
+        }
+
+        if let Some(type_id) = self.type_definition_stack.last() {
+            self.sym
+                .insert_type_type_reference(*type_id, referenced_type_id);
+        }
     }
 
     fn path_into_type(&mut self, ty: TypeId, name: &str, range: TextRange) -> TypeId {
