@@ -10,7 +10,6 @@ pub struct Scope {
     type_aliases: HashMap<String, TypeId>,
     type_names: IndexMap<TypeId, String>,
     local_symbols: IndexSet<SymbolId>,
-    used_types: IndexSet<TypeId>,
 }
 
 impl Scope {
@@ -46,13 +45,5 @@ impl Scope {
 
     pub fn local_types(&self) -> Vec<TypeId> {
         self.type_names.keys().copied().collect()
-    }
-
-    pub fn use_type(&mut self, type_id: TypeId) {
-        self.used_types.insert(type_id);
-    }
-
-    pub fn used_types(&self) -> &IndexSet<TypeId> {
-        &self.used_types
     }
 }

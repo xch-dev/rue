@@ -20,6 +20,7 @@ use crate::{
     hir::{BinOp, Hir},
     scope::Scope,
     symbol::Symbol,
+    symbol_table::GlobalSymbolTable,
     ty::{EnumType, EnumVariant, FunctionType, Guard, StructType, Type, Value},
     Diagnostic, DiagnosticKind, ErrorKind, WarningKind,
 };
@@ -27,10 +28,26 @@ use crate::{
 /// Responsible for lowering the AST into the HIR.
 /// Performs name resolution and type checking.
 pub struct Lowerer<'a> {
+    // The database is mutable because we need to allocate new symbols and types.
     db: &'a mut Database,
+
+    // The scope stack is used to keep track of the current scope.
     scope_stack: Vec<ScopeId>,
-    type_guards: Vec<HashMap<SymbolId, TypeId>>,
+
+    // The symbol stack is used for calculating types referenced in symbols.
+    symbol_stack: Vec<SymbolId>,
+
+    // The type guard stack is used for overriding types in certain contexts.
+    type_guard_stack: Vec<HashMap<SymbolId, TypeId>>,
+
+    // Diagnostics keep track of errors and warnings throughout the code.
     diagnostics: Vec<Diagnostic>,
+
+    // The global symbol table is used for storing all named symbols and types.
+    // It also stored types referenced by symbols.
+    sym: GlobalSymbolTable,
+
+    // These are the built-in types and most commonly used HIR nodes.
     any_type: TypeId,
     int_type: TypeId,
     bool_type: TypeId,
@@ -45,15 +62,16 @@ pub struct Lowerer<'a> {
 
 impl<'a> Lowerer<'a> {
     pub fn new(db: &'a mut Database) -> Self {
-        let int_type = db.alloc_type(Type::Int, None);
-        let bool_type = db.alloc_type(Type::Bool, None);
-        let bytes_type = db.alloc_type(Type::Bytes, None);
-        let bytes32_type = db.alloc_type(Type::Bytes32, None);
-        let pk_type = db.alloc_type(Type::PublicKey, None);
-        let any_type = db.alloc_type(Type::Any, None);
-        let nil_type = db.alloc_type(Type::Nil, None);
+        // Define the built-in types and HIR nodes.
+        let int_type = db.alloc_type(Type::Int);
+        let bool_type = db.alloc_type(Type::Bool);
+        let bytes_type = db.alloc_type(Type::Bytes);
+        let bytes32_type = db.alloc_type(Type::Bytes32);
+        let pk_type = db.alloc_type(Type::PublicKey);
+        let any_type = db.alloc_type(Type::Any);
+        let nil_type = db.alloc_type(Type::Nil);
         let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
-        let unknown_type = db.alloc_type(Type::Unknown, None);
+        let unknown_type = db.alloc_type(Type::Unknown);
         let unknown_hir = db.alloc_hir(Hir::Unknown);
 
         // This is the root scope, with builtins for various types and functions.
@@ -69,12 +87,9 @@ impl<'a> Lowerer<'a> {
         // Define the `sha256` function, since it's not an operator or keyword.
         {
             let mut scope = Scope::default();
-            let param = db.alloc_symbol(
-                Symbol::Parameter {
-                    type_id: bytes_type,
-                },
-                None,
-            );
+            let param = db.alloc_symbol(Symbol::Parameter {
+                type_id: bytes_type,
+            });
             scope.define_symbol("bytes".to_string(), param);
             let param_ref = db.alloc_hir(Hir::Reference(param));
             let hir_id = db.alloc_hir(Hir::Sha256(param_ref));
@@ -82,26 +97,20 @@ impl<'a> Lowerer<'a> {
 
             builtins.define_symbol(
                 "sha256".to_string(),
-                db.alloc_symbol(
-                    Symbol::Function {
-                        scope_id,
-                        hir_id,
-                        ty: FunctionType::new(vec![bytes_type], bytes32_type, false),
-                    },
-                    None,
-                ),
+                db.alloc_symbol(Symbol::Function {
+                    scope_id,
+                    hir_id,
+                    ty: FunctionType::new(vec![bytes_type], bytes32_type, false),
+                }),
             );
         }
 
         // Define the `pubkey_for_exp` function, since it's not an operator or keyword.
         {
             let mut scope = Scope::default();
-            let param = db.alloc_symbol(
-                Symbol::Parameter {
-                    type_id: bytes32_type,
-                },
-                None,
-            );
+            let param = db.alloc_symbol(Symbol::Parameter {
+                type_id: bytes32_type,
+            });
             scope.define_symbol("exponent".to_string(), param);
             let param_ref = db.alloc_hir(Hir::Reference(param));
             let hir_id = db.alloc_hir(Hir::PubkeyForExp(param_ref));
@@ -109,14 +118,11 @@ impl<'a> Lowerer<'a> {
 
             builtins.define_symbol(
                 "pubkey_for_exp".to_string(),
-                db.alloc_symbol(
-                    Symbol::Function {
-                        scope_id,
-                        hir_id,
-                        ty: FunctionType::new(vec![bytes32_type], pk_type, false),
-                    },
-                    None,
-                ),
+                db.alloc_symbol(Symbol::Function {
+                    scope_id,
+                    hir_id,
+                    ty: FunctionType::new(vec![bytes32_type], pk_type, false),
+                }),
             );
         }
 
@@ -125,8 +131,10 @@ impl<'a> Lowerer<'a> {
         Self {
             db,
             scope_stack: vec![builtins_id],
-            type_guards: Vec::new(),
+            symbol_stack: Vec::new(),
+            type_guard_stack: Vec::new(),
             diagnostics: Vec::new(),
+            sym: GlobalSymbolTable::default(),
             any_type,
             int_type,
             bool_type,
@@ -141,8 +149,8 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Lowering is completed, extract the diagnostics.
-    pub fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    pub fn finish(self) -> (GlobalSymbolTable, Vec<Diagnostic>) {
+        (self.sym, self.diagnostics)
     }
 
     /// Compile the root by lowering all items into the file's scope.
@@ -193,10 +201,16 @@ impl<'a> Lowerer<'a> {
         for item in items {
             match item {
                 Item::FunctionItem(function) => {
-                    self.compile_function(function, symbol_ids.remove(0));
+                    let symbol_id = symbol_ids.remove(0);
+                    self.symbol_stack.push(symbol_id);
+                    self.compile_function(function, symbol_id);
+                    self.symbol_stack.pop().unwrap();
                 }
                 Item::ConstItem(const_item) => {
-                    self.compile_const(const_item, symbol_ids.remove(0));
+                    let symbol_id = symbol_ids.remove(0);
+                    self.symbol_stack.push(symbol_id);
+                    self.compile_const(const_item, symbol_id);
+                    self.symbol_stack.pop().unwrap();
                 }
                 _ => {}
             }
@@ -208,6 +222,10 @@ impl<'a> Lowerer<'a> {
     /// Parameter symbols are defined now in the inner function scope.
     /// The function body is compiled later to allow for forward references.
     fn declare_function(&mut self, function_item: FunctionItem) -> SymbolId {
+        // Add the symbol to the stack early so you can track type references.
+        let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
+        self.symbol_stack.push(symbol_id);
+
         let mut scope = Scope::default();
 
         let return_type = function_item
@@ -221,6 +239,10 @@ impl<'a> Lowerer<'a> {
         let len = function_item.params().len();
 
         for (i, param) in function_item.params().into_iter().enumerate() {
+            // Add the symbol to the stack early so you can track type references.
+            let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
+            self.symbol_stack.push(symbol_id);
+
             let type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
@@ -228,12 +250,11 @@ impl<'a> Lowerer<'a> {
 
             parameter_types.push(type_id);
 
-            let symbol_id = self
-                .db
-                .alloc_symbol(Symbol::Parameter { type_id }, param.name());
+            *self.db.symbol_mut(symbol_id) = Symbol::Parameter { type_id };
 
             if let Some(name) = param.name() {
                 scope.define_symbol(name.to_string(), symbol_id);
+                self.sym.insert_symbol(symbol_id, name);
             }
 
             if param.spread().is_some() {
@@ -243,6 +264,8 @@ impl<'a> Lowerer<'a> {
                     self.error(ErrorKind::NonFinalSpread, param.syntax().text_range());
                 }
             }
+
+            self.symbol_stack.pop().unwrap();
         }
 
         let scope_id = self.db.alloc_scope(scope);
@@ -250,24 +273,26 @@ impl<'a> Lowerer<'a> {
 
         let ty = FunctionType::new(parameter_types, return_type, varargs);
 
-        let symbol_id = self.db.alloc_symbol(
-            Symbol::Function {
-                scope_id,
-                hir_id,
-                ty,
-            },
-            function_item.name(),
-        );
+        *self.db.symbol_mut(symbol_id) = Symbol::Function {
+            scope_id,
+            hir_id,
+            ty,
+        };
 
         if let Some(name) = function_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
+            self.sym.insert_symbol(symbol_id, name);
         }
 
-        symbol_id
+        self.symbol_stack.pop().unwrap()
     }
 
     /// Define a constant in the current scope, but don't lower its body.
     fn declare_const(&mut self, const_item: ConstItem) -> SymbolId {
+        // Add the symbol to the stack early so you can track type references.
+        let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
+        self.symbol_stack.push(symbol_id);
+
         let type_id = const_item
             .ty()
             .map(|ty| self.compile_type(ty))
@@ -275,31 +300,32 @@ impl<'a> Lowerer<'a> {
 
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
-        let symbol_id = self
-            .db
-            .alloc_symbol(Symbol::ConstBinding { type_id, hir_id }, const_item.name());
+        *self.db.symbol_mut(symbol_id) = Symbol::ConstBinding { type_id, hir_id };
 
         if let Some(name) = const_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
+            self.sym.insert_symbol(symbol_id, name);
         }
 
-        symbol_id
+        self.symbol_stack.pop().unwrap()
     }
 
     /// Define a type for an alias in the current scope, but leave it as unknown for now.
     fn declare_type_alias(&mut self, type_alias: TypeAliasItem) -> TypeId {
-        let type_id = self.db.alloc_type(Type::Unknown, type_alias.name());
+        let type_id = self.db.alloc_type(Type::Unknown);
         if let Some(name) = type_alias.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
+            self.sym.insert_type(type_id, name);
         }
         type_id
     }
 
     /// Define a type for a struct in the current scope, but leave it as unknown for now.
     fn declare_struct(&mut self, struct_item: StructItem) -> TypeId {
-        let type_id = self.db.alloc_type(Type::Unknown, struct_item.name());
+        let type_id = self.db.alloc_type(Type::Unknown);
         if let Some(name) = struct_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
+            self.sym.insert_type(type_id, name);
         }
         type_id
     }
@@ -319,18 +345,16 @@ impl<'a> Lowerer<'a> {
                 continue;
             }
 
-            variants.insert(
-                name.to_string(),
-                self.db.alloc_type(Type::Unknown, variant.name()),
-            );
+            let type_id = self.db.alloc_type(Type::Unknown);
+            variants.insert(name.to_string(), type_id);
+            self.sym.insert_type(type_id, name);
         }
 
-        let type_id = self
-            .db
-            .alloc_type(Type::Enum(EnumType::new(variants)), enum_item.name());
+        let type_id = self.db.alloc_type(Type::Enum(EnumType::new(variants)));
 
         if let Some(name) = enum_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
+            self.sym.insert_type(type_id, name);
         }
 
         type_id
@@ -472,6 +496,10 @@ impl<'a> Lowerer<'a> {
 
     /// Compiles a let statement and returns its new scope id.
     fn compile_let_stmt(&mut self, let_stmt: LetStmt) -> Option<ScopeId> {
+        // Add the symbol to the stack early so you can track type references.
+        let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
+        self.symbol_stack.push(symbol_id);
+
         // This doesn't default to unknown, since we want to infer the type if possible.
         let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
 
@@ -489,23 +517,24 @@ impl<'a> Lowerer<'a> {
         // If the name can't be resolved, there's no reason to continue compiling it.
         // We only do the above steps first to catch any other errors that may occur.
         let Some(name) = let_stmt.name() else {
+            self.symbol_stack.pop().unwrap();
             return None;
         };
 
-        let symbol_id = self.db.alloc_symbol(
-            Symbol::LetBinding {
-                type_id: expected_type.unwrap_or(value.ty()),
-                hir_id: value.hir(),
-            },
-            Some(name.clone()),
-        );
+        *self.db.symbol_mut(symbol_id) = Symbol::LetBinding {
+            type_id: expected_type.unwrap_or(value.ty()),
+            hir_id: value.hir(),
+        };
 
         // Every let binding is a new scope for now, to simplify the code generation process later.
         // This is not the most efficient way to do it, but it's the easiest with the current codebase.
         // TODO: Optimize this.
         let mut let_scope = Scope::default();
         let_scope.define_symbol(name.to_string(), symbol_id);
+        self.sym.insert_symbol(symbol_id, name);
         let scope_id = self.db.alloc_scope(let_scope);
+
+        self.symbol_stack.pop().unwrap();
 
         Some(scope_id)
     }
@@ -534,7 +563,7 @@ impl<'a> Lowerer<'a> {
             let scope_id = self.db.alloc_scope(Scope::default());
 
             // We can apply any type guards from the condition.
-            self.type_guards.push(condition.then_guards());
+            self.type_guard_stack.push(condition.then_guards());
 
             // Compile the then block.
             self.scope_stack.push(scope_id);
@@ -542,7 +571,7 @@ impl<'a> Lowerer<'a> {
             self.scope_stack.pop().unwrap();
 
             // Pop the type guards, since we've left the scope.
-            self.type_guards.pop().unwrap();
+            self.type_guard_stack.pop().unwrap();
 
             // If there's an implicit return, we want to raise an error.
             // This could technically work but makes the intent of the code unclear.
@@ -604,7 +633,7 @@ impl<'a> Lowerer<'a> {
 
                     // Push the type guards onto the stack.
                     // This will be popped in reverse order later after all statements have been lowered.
-                    self.type_guards.push(else_guards);
+                    self.type_guard_stack.push(else_guards);
 
                     statements.push(Statement::If(condition_hir, then_hir));
                 }
@@ -656,7 +685,7 @@ impl<'a> Lowerer<'a> {
                     // If the condition is false, we raise an error.
                     // So we can assume that the condition is true from this point on.
                     // This will be popped in reverse order later after all statements have been lowered.
-                    self.type_guards.push(condition.then_guards());
+                    self.type_guard_stack.push(condition.then_guards());
 
                     let not_condition = self.db.alloc_hir(Hir::Not(condition.hir()));
                     let raise = self.db.alloc_hir(Hir::Raise(None));
@@ -685,7 +714,7 @@ impl<'a> Lowerer<'a> {
                     body = Value::typed(
                         self.db.alloc_hir(Hir::Scope {
                             scope_id,
-                            value: body.hir(),
+                            hir_id: body.hir(),
                         }),
                         body.ty(),
                     );
@@ -695,7 +724,7 @@ impl<'a> Lowerer<'a> {
                     body = value;
                 }
                 Statement::If(condition, then_block) => {
-                    self.type_guards.pop().unwrap();
+                    self.type_guard_stack.pop().unwrap();
 
                     body = Value::typed(
                         self.db.alloc_hir(Hir::If {
@@ -976,15 +1005,24 @@ impl<'a> Lowerer<'a> {
 
         let expr = self.compile_expr(expr, None);
 
-        self.type_check(expr.ty(), self.bool_type, prefix_expr.syntax().text_range());
+        let Some(op) = prefix_expr.op() else {
+            return self.unknown();
+        };
 
-        Value::typed(
-            match prefix_expr.op() {
-                Some(PrefixOp::Not) => self.db.alloc_hir(Hir::Not(expr.hir())),
-                _ => self.unknown_hir,
-            },
-            self.bool_type,
-        )
+        match op {
+            PrefixOp::Not => {
+                self.type_check(expr.ty(), self.bool_type, prefix_expr.syntax().text_range());
+
+                let mut value =
+                    Value::typed(self.db.alloc_hir(Hir::Not(expr.hir())), self.bool_type);
+
+                for (symbol_id, guard) in expr.guards() {
+                    value.guard(*symbol_id, guard.to_reversed());
+                }
+
+                value
+            }
+        }
     }
 
     fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Value {
@@ -1233,9 +1271,7 @@ impl<'a> Lowerer<'a> {
                 Some((Guard::new(to, self.bytes_type), hir_id))
             }
             (Type::Any, Type::Bytes) => {
-                let pair_type = self
-                    .db
-                    .alloc_type(Type::Pair(self.any_type, self.any_type), None);
+                let pair_type = self.db.alloc_type(Type::Pair(self.any_type, self.any_type));
                 let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
                 Some((Guard::new(to, pair_type), hir_id))
@@ -1253,7 +1289,7 @@ impl<'a> Lowerer<'a> {
                 Some((Guard::new(to, self.nil_type), hir_id))
             }
             (Type::List(inner), Type::Nil) => {
-                let pair_type = self.db.alloc_type(Type::Pair(inner, from), None);
+                let pair_type = self.db.alloc_type(Type::Pair(inner, from));
                 let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
                 Some((Guard::new(to, pair_type), hir_id))
@@ -1350,7 +1386,7 @@ impl<'a> Lowerer<'a> {
                         _ => None,
                     };
                 } else {
-                    list_type = Some(self.db.alloc_type(Type::List(output.ty()), None));
+                    list_type = Some(self.db.alloc_type(Type::List(output.ty())));
                     item_type = Some(output.ty());
                 }
             }
@@ -1379,7 +1415,7 @@ impl<'a> Lowerer<'a> {
         Value::typed(
             hir_id,
             self.db
-                .alloc_type(Type::List(item_type.unwrap_or(self.unknown_type)), None),
+                .alloc_type(Type::List(item_type.unwrap_or(self.unknown_type))),
         )
     }
 
@@ -1419,7 +1455,7 @@ impl<'a> Lowerer<'a> {
         };
 
         let hir_id = self.db.alloc_hir(Hir::Pair(first.hir(), rest.hir()));
-        let type_id = self.db.alloc_type(Type::Pair(first.ty(), rest.ty()), None);
+        let type_id = self.db.alloc_type(Type::Pair(first.ty(), rest.ty()));
 
         Value::typed(hir_id, type_id)
     }
@@ -1452,10 +1488,9 @@ impl<'a> Lowerer<'a> {
             parameter_types.push(type_id);
 
             if let Some(name) = param.name() {
-                let symbol_id = self
-                    .db
-                    .alloc_symbol(Symbol::Parameter { type_id }, Some(name.clone()));
+                let symbol_id = self.db.alloc_symbol(Symbol::Parameter { type_id });
                 scope.define_symbol(name.to_string(), symbol_id);
+                self.sym.insert_symbol(symbol_id, name);
             };
 
             if param.spread().is_some() {
@@ -1492,18 +1527,15 @@ impl<'a> Lowerer<'a> {
 
         let ty = FunctionType::new(parameter_types.clone(), return_type, varargs);
 
-        let symbol_id = self.db.alloc_symbol(
-            Symbol::Function {
-                scope_id,
-                hir_id: body.hir(),
-                ty: ty.clone(),
-            },
-            None,
-        );
+        let symbol_id = self.db.alloc_symbol(Symbol::Function {
+            scope_id,
+            hir_id: body.hir(),
+            ty: ty.clone(),
+        });
 
         Value::typed(
             self.db.alloc_hir(Hir::Reference(symbol_id)),
-            self.db.alloc_type(Type::Function(ty), None),
+            self.db.alloc_type(Type::Function(ty)),
         )
     }
 
@@ -1513,7 +1545,7 @@ impl<'a> Lowerer<'a> {
             .map(|condition| self.compile_expr(condition, Some(self.bool_type)));
 
         if let Some(condition) = condition.as_ref() {
-            self.type_guards.push(condition.then_guards());
+            self.type_guard_stack.push(condition.then_guards());
         }
 
         let then_block = if_expr
@@ -1521,11 +1553,11 @@ impl<'a> Lowerer<'a> {
             .map(|then_block| self.compile_block_expr(then_block, expected_type));
 
         if condition.is_some() {
-            self.type_guards.pop().unwrap();
+            self.type_guard_stack.pop().unwrap();
         }
 
         if let Some(condition) = condition.as_ref() {
-            self.type_guards.push(condition.else_guards());
+            self.type_guard_stack.push(condition.else_guards());
         }
 
         let expected_type =
@@ -1536,7 +1568,7 @@ impl<'a> Lowerer<'a> {
             .map(|else_block| self.compile_block_expr(else_block, expected_type));
 
         if condition.is_some() {
-            self.type_guards.pop().unwrap();
+            self.type_guard_stack.pop().unwrap();
         }
 
         if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty()) {
@@ -1641,9 +1673,8 @@ impl<'a> Lowerer<'a> {
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             self.symbol_type(symbol_id)
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
-                    Symbol::Function { ty, .. } => {
-                        self.db.alloc_type(Type::Function(ty.clone()), None)
-                    }
+                    Symbol::Unknown => unreachable!(),
+                    Symbol::Function { ty, .. } => self.db.alloc_type(Type::Function(ty.clone())),
                     Symbol::Parameter { type_id } => *type_id,
                     Symbol::LetBinding { type_id, .. } => *type_id,
                     Symbol::ConstBinding { type_id, .. } => *type_id,
@@ -1739,10 +1770,19 @@ impl<'a> Lowerer<'a> {
         if let Some(expected) = expected.as_ref() {
             let param_len = expected.parameter_types().len();
 
-            let too_few_args = arg_types.len() < param_len;
+            let too_few_args = arg_types.len() < param_len
+                && !(expected.varargs() && arg_types.len() == param_len - 1);
             let too_many_args = arg_types.len() > param_len && !expected.varargs();
 
-            if too_few_args || too_many_args {
+            if too_few_args && expected.varargs() {
+                self.error(
+                    ErrorKind::TooFewArgumentsWithVarargs {
+                        expected: param_len - 1,
+                        found: arg_types.len(),
+                    },
+                    call.syntax().text_range(),
+                );
+            } else if too_few_args || too_many_args {
                 self.error(
                     ErrorKind::ArgumentMismatch {
                         expected: param_len,
@@ -1843,11 +1883,16 @@ impl<'a> Lowerer<'a> {
             return self.unknown_type;
         };
 
-        self.scope_mut().use_type(ty);
+        if let Some(symbol_id) = self.symbol_stack.last() {
+            self.sym.insert_symbol_type_reference(*symbol_id, ty);
+        }
 
         for name in idents {
             ty = self.path_into_type(ty, name.text(), name.text_range());
-            self.scope_mut().use_type(ty);
+
+            if let Some(symbol_id) = self.symbol_stack.last() {
+                self.sym.insert_symbol_type_reference(*symbol_id, ty);
+            }
         }
 
         ty
@@ -1875,7 +1920,7 @@ impl<'a> Lowerer<'a> {
         };
 
         let item_type = self.compile_type(inner);
-        self.db.alloc_type(Type::List(item_type), None)
+        self.db.alloc_type(Type::List(item_type))
     }
 
     fn compile_pair_type(&mut self, pair_type: PairType) -> TypeId {
@@ -1889,7 +1934,7 @@ impl<'a> Lowerer<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
 
-        self.db.alloc_type(Type::Pair(first, rest), None)
+        self.db.alloc_type(Type::Pair(first, rest))
     }
 
     fn compile_function_type(&mut self, function: AstFunctionType) -> TypeId {
@@ -1920,10 +1965,11 @@ impl<'a> Lowerer<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.unknown_type);
 
-        self.db.alloc_type(
-            Type::Function(FunctionType::new(parameter_types, return_type, vararg)),
-            None,
-        )
+        self.db.alloc_type(Type::Function(FunctionType::new(
+            parameter_types,
+            return_type,
+            vararg,
+        )))
     }
 
     fn compile_optional_type(&mut self, optional: OptionalType) -> TypeId {
@@ -1940,7 +1986,7 @@ impl<'a> Lowerer<'a> {
             return inner;
         }
 
-        self.db.alloc_type(Type::Optional(ty), None)
+        self.db.alloc_type(Type::Optional(ty))
     }
 
     fn try_unwrap_optional(&mut self, ty: TypeId) -> TypeId {
@@ -2279,7 +2325,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn symbol_type(&self, symbol_id: SymbolId) -> Option<TypeId> {
-        for guards in self.type_guards.iter() {
+        for guards in self.type_guard_stack.iter() {
             if let Some(guard) = guards.get(&symbol_id) {
                 return Some(*guard);
             }

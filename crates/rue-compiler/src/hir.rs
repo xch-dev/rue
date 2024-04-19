@@ -8,7 +8,7 @@ pub enum Hir {
     Reference(SymbolId),
     Scope {
         scope_id: ScopeId,
-        value: HirId,
+        hir_id: HirId,
     },
     FunctionCall {
         callee: HirId,

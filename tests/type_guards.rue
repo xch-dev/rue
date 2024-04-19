@@ -11,3 +11,47 @@ fun sum(...nums: Int[]) -> Int {
         0
     }
 }
+
+fun bytes_guard(value: Any) -> Bool {
+    if value is Bytes {
+        value.length > 1
+    } else {
+        false
+    }
+}
+
+fun bytes32_guard(value: Any) -> Bool {
+    assert value is Bytes;
+    
+    if value is Bytes32 {
+        value.length > 1
+    } else {
+        false
+    }
+}
+
+fun public_key_guard(value: Any) -> Bool {
+    assert value is Bytes;
+    
+    if value is PublicKey {
+        value.length > 1
+    } else {
+        false
+    }
+}
+
+fun inverted_guard(value: Any) -> Bool {
+    if !(value is (Any, Any)) {
+        value.length > 1
+    } else {
+        false
+    }
+}
+
+fun pair_guard(value: Any) -> Int {
+    if value is (Any, Any) {
+        pair_guard(value.first) + pair_guard(value.rest)
+    } else {
+        value as Int
+    }
+}

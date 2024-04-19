@@ -1,0 +1,26 @@
+fun main() -> Int {
+    if 1000 > 100 {
+        42
+    }
+
+    100
+}
+
+fun another() -> Int {
+    if 100 > 1000 {
+        assert true;
+    }
+}
+
+fun yet_another() -> Int {
+    if 100 > 1000 {
+        assert true;
+        assert false;
+        assert false;
+    }
+    100
+}
+
+fun raise_ok() -> Int {
+    raise;
+}

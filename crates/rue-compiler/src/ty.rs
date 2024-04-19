@@ -154,6 +154,10 @@ impl Value {
         self.guards.insert(symbol, guard);
     }
 
+    pub fn guards(&self) -> &HashMap<SymbolId, Guard> {
+        &self.guards
+    }
+
     pub fn then_guards(&self) -> HashMap<SymbolId, TypeId> {
         self.guards
             .iter()
@@ -189,5 +193,12 @@ impl Guard {
 
     pub fn else_type(&self) -> TypeId {
         self.else_type
+    }
+
+    pub fn to_reversed(&self) -> Self {
+        Self {
+            then_type: self.else_type,
+            else_type: self.then_type,
+        }
     }
 }

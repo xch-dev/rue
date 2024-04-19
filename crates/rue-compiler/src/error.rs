@@ -95,6 +95,9 @@ pub enum ErrorKind {
     #[error("expected {expected} arguments, but found {found}")]
     ArgumentMismatch { expected: usize, found: usize },
 
+    #[error("expected at least {expected} arguments, but found {found}")]
+    TooFewArgumentsWithVarargs { expected: usize, found: usize },
+
     #[error("uninitializable type `{0}`")]
     UninitializableType(String),
 
