@@ -149,9 +149,7 @@ compiler_errors = [
 [unused_types]
 parser_errors = []
 compiler_errors = [
-    "unused type alias `C` at 1:6",
     "unused type alias `A` at 2:6",
-    "unused type alias `B` at 3:6",
     "unused enum variant `A` at 7:5",
     "unused enum variant `B` at 10:5",
     "unused enum variant `C` at 14:5",
@@ -164,8 +162,6 @@ parser_errors = []
 compiler_errors = [
     "type aliases cannot reference themselves recursively at 4:1",
     "type aliases cannot reference themselves recursively at 7:1",
-    "unused type alias `B` at 2:6",
-    "unused type alias `C` at 3:6",
     "unused type alias `E` at 6:6",
 ]
 
