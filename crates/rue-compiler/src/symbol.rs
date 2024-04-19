@@ -5,6 +5,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
+    Unknown,
     Function {
         scope_id: ScopeId,
         hir_id: HirId,
@@ -29,7 +30,10 @@ impl Symbol {
     }
 
     pub fn is_capturable(&self) -> bool {
-        !matches!(self, Symbol::ConstBinding { .. })
+        matches!(
+            self,
+            Symbol::Function { .. } | Symbol::LetBinding { .. } | Symbol::Parameter { .. }
+        )
     }
 
     pub fn is_definition(&self) -> bool {

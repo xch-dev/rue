@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rowan::TextRange;
 
 use crate::{
@@ -6,19 +8,23 @@ use crate::{
     hir::{BinOp, Hir},
     lir::Lir,
     symbol::Symbol,
+    symbol_table::GlobalSymbolTable,
+    ty::Type,
     Diagnostic, DiagnosticKind, WarningKind,
 };
 
 pub struct Optimizer<'a> {
     db: &'a mut Database,
+    sym: &'a GlobalSymbolTable,
     diagnostics: Vec<Diagnostic>,
     graph: DependencyGraph,
 }
 
 impl<'a> Optimizer<'a> {
-    pub fn new(db: &'a mut Database, graph: DependencyGraph) -> Self {
+    pub fn new(db: &'a mut Database, sym: &'a GlobalSymbolTable, graph: DependencyGraph) -> Self {
         Self {
             db,
+            sym,
             diagnostics: Vec::new(),
             graph,
         }
@@ -32,7 +38,84 @@ impl<'a> Optimizer<'a> {
         self.graph.env(scope_id)
     }
 
-    pub fn opt_main(&mut self, main: SymbolId) -> LirId {
+    pub fn opt_main(&mut self, root_scope_id: ScopeId, main: SymbolId) -> LirId {
+        let mut used_symbols = HashSet::new();
+
+        for symbol_id in self
+            .graph
+            .visited_scopes()
+            .into_iter()
+            .chain([root_scope_id])
+            .flat_map(|scope_id| self.db.scope(scope_id).local_symbols())
+            .collect::<Vec<SymbolId>>()
+        {
+            if self.graph.symbol_usages(symbol_id) > 0 || symbol_id == main {
+                used_symbols.insert(symbol_id);
+                continue;
+            }
+
+            let token = self.sym.symbol_token(symbol_id).unwrap();
+
+            match self.db.symbol(symbol_id).clone() {
+                Symbol::Unknown => unreachable!(),
+                Symbol::Function { .. } => self.warning(
+                    WarningKind::UnusedFunction(token.to_string()),
+                    token.text_range(),
+                ),
+                Symbol::Parameter { .. } => self.warning(
+                    WarningKind::UnusedParameter(token.to_string()),
+                    token.text_range(),
+                ),
+                Symbol::LetBinding { .. } => self.warning(
+                    WarningKind::UnusedLet(token.to_string()),
+                    token.text_range(),
+                ),
+                Symbol::ConstBinding { .. } => self.warning(
+                    WarningKind::UnusedConst(token.to_string()),
+                    token.text_range(),
+                ),
+            }
+        }
+
+        for type_id in self.sym.named_types() {
+            if used_symbols
+                .iter()
+                .any(|symbol_id| self.sym.type_referenced_by_symbol(type_id, *symbol_id))
+            {
+                continue;
+            }
+
+            let token = self.sym.type_token(type_id).unwrap();
+
+            match self.db.ty_raw(type_id) {
+                Type::Alias(..) => {
+                    self.warning(
+                        WarningKind::UnusedTypeAlias(token.to_string()),
+                        token.text_range(),
+                    );
+                }
+                Type::Struct { .. } => {
+                    self.warning(
+                        WarningKind::UnusedStruct(token.to_string()),
+                        token.text_range(),
+                    );
+                }
+                Type::Enum { .. } => {
+                    self.warning(
+                        WarningKind::UnusedEnum(token.to_string()),
+                        token.text_range(),
+                    );
+                }
+                Type::EnumVariant { .. } => {
+                    self.warning(
+                        WarningKind::UnusedEnumVariant(token.to_string()),
+                        token.text_range(),
+                    );
+                }
+                _ => {}
+            }
+        }
+
         let Symbol::Function {
             scope_id, hir_id, ..
         } = self.db.symbol(main).clone()
@@ -81,18 +164,14 @@ impl<'a> Optimizer<'a> {
             .position(|&id| id == symbol_id)
             .expect("symbol not found");
 
-        let mut path = 2;
-        for _ in 0..index {
+        let mut path = 1;
+
+        if !(index + 1 == environment.len() && self.env(scope_id).varargs()) {
             path *= 2;
-            path += 1;
         }
 
-        if index + 1 == environment.len() && self.env(scope_id).varargs() {
-            // Undo last index
-            path -= 1;
-            path /= 2;
-
-            // Make it the rest
+        for _ in 0..index {
+            path *= 2;
             path += 1;
         }
 
@@ -101,6 +180,7 @@ impl<'a> Optimizer<'a> {
 
     fn opt_definition(&mut self, scope_id: ScopeId, symbol_id: SymbolId) -> LirId {
         match self.db.symbol(symbol_id).clone() {
+            Symbol::Unknown => unreachable!(),
             Symbol::Function {
                 scope_id: function_scope_id,
                 hir_id,
@@ -360,7 +440,7 @@ impl<'a> Optimizer<'a> {
             .alloc_lir(Lir::If(condition, then_branch, else_branch))
     }
 
-    fn _warning(&mut self, info: WarningKind, range: TextRange) {
+    fn warning(&mut self, info: WarningKind, range: TextRange) {
         self.diagnostics.push(Diagnostic::new(
             DiagnosticKind::Warning(info),
             range.start().into()..range.end().into(),

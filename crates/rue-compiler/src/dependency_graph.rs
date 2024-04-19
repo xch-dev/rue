@@ -48,11 +48,20 @@ impl Environment {
 #[derive(Default)]
 pub struct DependencyGraph {
     env: IndexMap<ScopeId, Environment>,
+    symbol_usages: HashMap<SymbolId, usize>,
 }
 
 impl DependencyGraph {
     pub fn env(&self, scope_id: ScopeId) -> &Environment {
         &self.env[&scope_id]
+    }
+
+    pub fn visited_scopes(&self) -> Vec<ScopeId> {
+        self.env.keys().copied().collect()
+    }
+
+    pub fn symbol_usages(&self, symbol_id: SymbolId) -> usize {
+        *self.symbol_usages.get(&symbol_id).unwrap_or(&0)
     }
 }
 
@@ -175,9 +184,16 @@ impl<'a> GraphTraversal<'a> {
                 self.visit_hir(new_scope_id, hir_id, visited);
             }
             Hir::Reference(symbol_id) => {
+                self.graph
+                    .symbol_usages
+                    .entry(symbol_id)
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
+
                 self.propagate_capture(scope_id, symbol_id, &mut HashSet::new());
 
                 match self.db.symbol(symbol_id).clone() {
+                    Symbol::Unknown => unreachable!(),
                     Symbol::Function {
                         scope_id: new_scope_id,
                         hir_id,
@@ -275,6 +291,7 @@ impl<'a> GraphTraversal<'a> {
                 self.compute_hir_edges(new_scope_id, hir_id, visited);
             }
             Hir::Reference(symbol_id) => match self.db.symbol(symbol_id).clone() {
+                Symbol::Unknown => unreachable!(),
                 Symbol::Function {
                     scope_id: new_scope_id,
                     hir_id,

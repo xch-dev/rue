@@ -1,8 +1,8 @@
 [list_types]
 parser_errors = []
 compiler_errors = [
-    "unused let binding `empty_hinted` at 3:9",
     "unused let binding `empty` at 2:9",
+    "unused let binding `empty_hinted` at 3:9",
 ]
 
 [pair_types]
@@ -24,7 +24,7 @@ bytes = 421
 cost = 20043
 input = "(42)"
 output = "0x01250d618f00"
-hash = "f62477bea5e9e0499265972002bf8205e064467c75a652d95302d0aacbbc6f25"
+hash = "8d496dc7cdbc417db2132eda6894b29a91511f176e93a1ea943d210cd27822b2"
 
 [lambda_functions]
 bytes = 103
@@ -137,11 +137,9 @@ hash = "41ad4e730b68dcbd7cb2440343bc11c1b31eb5951273dac3ab93a00d99019ac6"
 [unused_symbols]
 parser_errors = []
 compiler_errors = [
-    "unused let binding `unused_let` at 5:9",
     "unused constant `UNUSED_INNER_CONSTANT` at 6:11",
     "unused function `unused_inner_function` at 8:9",
-    "unused function `unused_inner_inner_function` at 9:13",
-    "unused function `unused_deeper_function` at 10:17",
+    "unused let binding `unused_let` at 5:9",
     "unused constant `UNUSED_INDIRECT_CONSTANT` at 1:7",
     "unused constant `UNUSED_CONSTANT` at 2:7",
     "unused function `unused_indirect_function` at 21:5",
@@ -151,7 +149,12 @@ compiler_errors = [
 [unused_types]
 parser_errors = []
 compiler_errors = [
+    "unused type alias `C` at 1:6",
     "unused type alias `A` at 2:6",
+    "unused type alias `B` at 3:6",
+    "unused enum variant `A` at 7:5",
+    "unused enum variant `B` at 10:5",
+    "unused enum variant `C` at 14:5",
     "unused enum `Some` at 6:6",
     "unused struct `Thing` at 17:8",
 ]
@@ -161,6 +164,9 @@ parser_errors = []
 compiler_errors = [
     "type aliases cannot reference themselves recursively at 4:1",
     "type aliases cannot reference themselves recursively at 7:1",
+    "unused type alias `B` at 2:6",
+    "unused type alias `C` at 3:6",
+    "unused type alias `E` at 6:6",
 ]
 
 [missing_main]
@@ -180,3 +186,24 @@ compiler_errors = [
     "unused function `yet_another` at 15:5",
     "unused function `raise_ok` at 24:5",
 ]
+
+[birecursive_functions]
+bytes = 195
+cost = 12822
+input = "()"
+output = "()"
+hash = "770bb2c0b2582924adf403e62374f8424a2ed510eef70b5f450eccab238a4911"
+
+[royalty_split]
+bytes = 569
+cost = 23475
+input = "(((0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a 1) (0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 2)) 100000 3)"
+output = "((60 ()) (73 0x0186a0) (g1_negate 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a 0x008235 (0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a)) (g1_negate 0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 0x01046a (0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986)))"
+hash = "eac8ea1dc15d9726ceb1f6970cb930f1d16201fa5a8a75a20f18a82b349aaea3"
+
+[curry_treehash]
+bytes = 701
+cost = 59707
+input = "(0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a (0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 0x084fed08b978af4d7d196a7446a86b58009e636b611db16211b65a9aadff29c5))"
+output = "0xdf22ae2d7801c83f8fd25a9dc29055a9b053d712bf3e27f73a06b4aed4378629"
+hash = "5110de9e87056782275ff77b7d7bef83c2cd4b13007c1bbc7e9ed0b4bd125b81"
