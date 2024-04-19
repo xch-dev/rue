@@ -290,26 +290,34 @@ impl<'a> GraphTraversal<'a> {
                 // Compute the new scope's edges.
                 self.compute_hir_edges(new_scope_id, hir_id, visited);
             }
-            Hir::Reference(symbol_id) => match self.db.symbol(symbol_id).clone() {
-                Symbol::Unknown => unreachable!(),
-                Symbol::Function {
-                    scope_id: new_scope_id,
-                    hir_id,
-                    ty,
-                    ..
-                } => {
-                    // Add the new scope to the graph.
-                    // The parent scope depends on the new scope's captures.
-                    self.edges.entry(new_scope_id).or_default().push(scope_id);
+            Hir::Reference(symbol_id) => {
+                self.graph
+                    .symbol_usages
+                    .entry(symbol_id)
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
 
-                    // Compute the function's edges.
-                    self.compute_function_edges(new_scope_id, hir_id, ty, visited);
+                match self.db.symbol(symbol_id).clone() {
+                    Symbol::Unknown => unreachable!(),
+                    Symbol::Function {
+                        scope_id: new_scope_id,
+                        hir_id,
+                        ty,
+                        ..
+                    } => {
+                        // Add the new scope to the graph.
+                        // The parent scope depends on the new scope's captures.
+                        self.edges.entry(new_scope_id).or_default().push(scope_id);
+
+                        // Compute the function's edges.
+                        self.compute_function_edges(new_scope_id, hir_id, ty, visited);
+                    }
+                    Symbol::Parameter { .. } => {}
+                    Symbol::LetBinding { hir_id, .. } | Symbol::ConstBinding { hir_id, .. } => {
+                        self.compute_hir_edges(scope_id, hir_id, visited);
+                    }
                 }
-                Symbol::Parameter { .. } => {}
-                Symbol::LetBinding { hir_id, .. } | Symbol::ConstBinding { hir_id, .. } => {
-                    self.compute_hir_edges(scope_id, hir_id, visited);
-                }
-            },
+            }
         }
     }
 
