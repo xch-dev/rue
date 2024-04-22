@@ -43,6 +43,9 @@ pub struct Lowerer<'a> {
     // The type guard stack is used for overriding types in certain contexts.
     type_guard_stack: Vec<HashMap<SymbolId, TypeId>>,
 
+    // Whether the current expression is directly the callee of a function call.
+    is_callee: bool,
+
     // Diagnostics keep track of errors and warnings throughout the code.
     diagnostics: Vec<Diagnostic>,
 
@@ -137,6 +140,7 @@ impl<'a> Lowerer<'a> {
             symbol_stack: Vec::new(),
             type_definition_stack: Vec::new(),
             type_guard_stack: Vec::new(),
+            is_callee: false,
             diagnostics: Vec::new(),
             sym: GlobalSymbolTable::default(),
             any_type,
@@ -286,10 +290,18 @@ impl<'a> Lowerer<'a> {
 
         let ty = FunctionType::new(parameter_types, return_type, varargs);
 
-        *self.db.symbol_mut(symbol_id) = Symbol::Function {
-            scope_id,
-            hir_id,
-            ty,
+        *self.db.symbol_mut(symbol_id) = if function_item.inline().is_some() {
+            Symbol::InlineFunction {
+                scope_id,
+                hir_id,
+                ty,
+            }
+        } else {
+            Symbol::Function {
+                scope_id,
+                hir_id,
+                ty,
+            }
         };
 
         if let Some(name) = function_item.name() {
@@ -379,7 +391,9 @@ impl<'a> Lowerer<'a> {
             return;
         };
 
-        let Symbol::Function { scope_id, ty, .. } = self.db.symbol(symbol_id).clone() else {
+        let (Symbol::Function { scope_id, ty, .. } | Symbol::InlineFunction { scope_id, ty, .. }) =
+            self.db.symbol(symbol_id).clone()
+        else {
             unreachable!();
         };
 
@@ -397,7 +411,9 @@ impl<'a> Lowerer<'a> {
 
         // We ignore type guards here for now.
         // Just set the function body HIR.
-        let Symbol::Function { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
+        let (Symbol::Function { hir_id, .. } | Symbol::InlineFunction { hir_id, .. }) =
+            self.db.symbol_mut(symbol_id)
+        else {
             unreachable!();
         };
         *hir_id = value.hir();
@@ -785,7 +801,12 @@ impl<'a> Lowerer<'a> {
 
     /// Compiles any expression.
     fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Value {
-        match expr {
+        match &expr {
+            Expr::Path(..) => {}
+            _ => self.is_callee = false,
+        }
+
+        let value = match expr {
             Expr::Path(path) => self.compile_path_expr(path),
             Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
@@ -802,7 +823,11 @@ impl<'a> Lowerer<'a> {
             Expr::FunctionCall(call) => self.compile_function_call(call),
             Expr::FieldAccess(field_access) => self.compile_field_access(field_access),
             Expr::IndexAccess(index_access) => self.compile_index_access(index_access),
-        }
+        };
+
+        self.is_callee = false;
+
+        value
     }
 
     /// Compiles an initializer expression.
@@ -1696,12 +1721,23 @@ impl<'a> Lowerer<'a> {
             return self.unknown();
         };
 
+        if !self.is_callee && self.db.symbol(symbol_id).is_inline_function() {
+            self.error(
+                ErrorKind::InlineFunctionOutsideCall,
+                path.syntax().text_range(),
+            );
+            return self.unknown();
+        }
+
         Value::typed(
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             self.symbol_type(symbol_id)
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
                     Symbol::Unknown => unreachable!(),
                     Symbol::Function { ty, .. } => self.db.alloc_type(Type::Function(ty.clone())),
+                    Symbol::InlineFunction { ty, .. } => {
+                        self.db.alloc_type(Type::Function(ty.clone()))
+                    }
                     Symbol::Parameter { type_id } => *type_id,
                     Symbol::LetBinding { type_id, .. } => *type_id,
                     Symbol::ConstBinding { type_id, .. } => *type_id,
@@ -1745,7 +1781,9 @@ impl<'a> Lowerer<'a> {
             return self.unknown();
         };
 
+        self.is_callee = true;
         let callee = self.compile_expr(callee, None);
+
         let expected = match self.db.ty(callee.ty()) {
             Type::Function(function) => Some(function.clone()),
             _ => {
@@ -1757,7 +1795,7 @@ impl<'a> Lowerer<'a> {
             }
         };
 
-        let mut args = self.nil_hir;
+        let mut args = Vec::new();
         let mut arg_types = Vec::new();
         let mut spread = false;
 
@@ -1781,17 +1819,16 @@ impl<'a> Lowerer<'a> {
 
             if arg.spread().is_some() {
                 if i + 1 == arg_len {
-                    args = value.hir();
                     spread = true;
-                    continue;
                 } else {
                     self.error(ErrorKind::NonFinalSpread, arg.syntax().text_range());
                 }
             }
 
-            args = self.db.alloc_hir(Hir::Pair(value.hir(), args));
+            args.push(value.hir());
         }
 
+        args.reverse();
         arg_types.reverse();
 
         if let Some(expected) = expected.as_ref() {
@@ -1870,6 +1907,7 @@ impl<'a> Lowerer<'a> {
         let hir_id = self.db.alloc_hir(Hir::FunctionCall {
             callee: callee.hir(),
             args,
+            varargs: spread,
         });
 
         let type_id = expected

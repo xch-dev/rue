@@ -12,11 +12,13 @@ pub enum TokenKind {
     CloseBrace,
 
     Fun,
+    Inline,
     Type,
     Struct,
     Enum,
     Let,
     Const,
+
     If,
     Else,
     Return,

@@ -105,6 +105,7 @@ impl<'a> Lexer<'a> {
                 }
                 match &self.source[start..self.pos] {
                     "fun" => TokenKind::Fun,
+                    "inline" => TokenKind::Inline,
                     "type" => TokenKind::Type,
                     "struct" => TokenKind::Struct,
                     "enum" => TokenKind::Enum,
@@ -272,11 +273,13 @@ mod tests {
     #[test]
     fn test_keyword() {
         check("fun", &[TokenKind::Fun]);
+        check("inline", &[TokenKind::Inline]);
         check("type", &[TokenKind::Type]);
         check("struct", &[TokenKind::Struct]);
         check("enum", &[TokenKind::Enum]);
         check("let", &[TokenKind::Let]);
         check("const", &[TokenKind::Const]);
+
         check("if", &[TokenKind::If]);
         check("else", &[TokenKind::Else]);
         check("return", &[TokenKind::Return]);

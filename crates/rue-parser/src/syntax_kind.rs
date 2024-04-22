@@ -22,11 +22,13 @@ pub enum SyntaxKind {
     CloseBrace,
 
     Fun,
+    Inline,
     Type,
     Struct,
     Enum,
     Let,
     Const,
+
     If,
     Else,
     Return,
@@ -133,11 +135,13 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::CloseBrace => "'}'",
 
                 SyntaxKind::Fun => "'fun'",
+                SyntaxKind::Inline => "'inline'",
                 SyntaxKind::Type => "'type'",
                 SyntaxKind::Struct => "'struct'",
                 SyntaxKind::Enum => "'enum'",
                 SyntaxKind::Let => "'let'",
                 SyntaxKind::Const => "'const'",
+
                 SyntaxKind::If => "'if'",
                 SyntaxKind::Else => "'else'",
                 SyntaxKind::Return => "'return'",

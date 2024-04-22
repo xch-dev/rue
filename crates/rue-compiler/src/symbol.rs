@@ -11,6 +11,11 @@ pub enum Symbol {
         hir_id: HirId,
         ty: FunctionType,
     },
+    InlineFunction {
+        scope_id: ScopeId,
+        hir_id: HirId,
+        ty: FunctionType,
+    },
     Parameter {
         type_id: TypeId,
     },
@@ -38,5 +43,9 @@ impl Symbol {
 
     pub fn is_definition(&self) -> bool {
         matches!(self, Symbol::Function { .. } | Symbol::LetBinding { .. })
+    }
+
+    pub fn is_inline_function(&self) -> bool {
+        matches!(self, Symbol::InlineFunction { .. })
     }
 }

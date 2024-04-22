@@ -12,7 +12,8 @@ pub enum Hir {
     },
     FunctionCall {
         callee: HirId,
-        args: HirId,
+        args: Vec<HirId>,
+        varargs: bool,
     },
     BinaryOp {
         op: BinOp,

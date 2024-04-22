@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
+use indexmap::IndexSet;
 use rowan::TextRange;
 
 use crate::{
@@ -9,8 +10,8 @@ use crate::{
     lir::Lir,
     symbol::Symbol,
     symbol_table::GlobalSymbolTable,
-    ty::Type,
-    Diagnostic, DiagnosticKind, TypeId, WarningKind,
+    ty::{FunctionType, Type},
+    Diagnostic, DiagnosticKind, ErrorKind, TypeId, WarningKind,
 };
 
 pub struct Optimizer<'a> {
@@ -18,6 +19,8 @@ pub struct Optimizer<'a> {
     sym: &'a GlobalSymbolTable,
     diagnostics: Vec<Diagnostic>,
     graph: DependencyGraph,
+    inline_fun_stack: IndexSet<SymbolId>,
+    inline_parameter_stack: Vec<HashMap<SymbolId, HirId>>,
 }
 
 impl<'a> Optimizer<'a> {
@@ -27,6 +30,8 @@ impl<'a> Optimizer<'a> {
             sym,
             diagnostics: Vec::new(),
             graph,
+            inline_fun_stack: IndexSet::new(),
+            inline_parameter_stack: Vec::new(),
         }
     }
 
@@ -74,6 +79,10 @@ impl<'a> Optimizer<'a> {
                 Symbol::Unknown => unreachable!(),
                 Symbol::Function { .. } => self.warning(
                     WarningKind::UnusedFunction(token.to_string()),
+                    token.text_range(),
+                ),
+                Symbol::InlineFunction { .. } => self.warning(
+                    WarningKind::UnusedInlineFunction(token.to_string()),
                     token.text_range(),
                 ),
                 Symbol::Parameter { .. } => self.warning(
@@ -225,11 +234,12 @@ impl<'a> Optimizer<'a> {
 
                 self.db.alloc_lir(Lir::FunctionBody(body))
             }
-            Symbol::Parameter { .. } => {
+            Symbol::Parameter { .. }
+            | Symbol::InlineFunction { .. }
+            | Symbol::ConstBinding { .. } => {
                 unreachable!();
             }
             Symbol::LetBinding { hir_id, .. } => self.opt_hir(scope_id, hir_id),
-            Symbol::ConstBinding { .. } => unreachable!(),
         }
     }
 
@@ -243,7 +253,32 @@ impl<'a> Optimizer<'a> {
                 scope_id: new_scope_id,
                 hir_id,
             } => self.opt_scope(scope_id, *new_scope_id, *hir_id),
-            Hir::FunctionCall { callee, args } => self.opt_function_call(scope_id, *callee, *args),
+            Hir::FunctionCall {
+                callee,
+                args,
+                varargs,
+            } => {
+                if let Hir::Reference(symbol_id) = self.db.hir(*callee) {
+                    if let Symbol::InlineFunction {
+                        scope_id: function_scope_id,
+                        ty,
+                        hir_id,
+                        ..
+                    } = self.db.symbol(*symbol_id)
+                    {
+                        return self.opt_inline_function_call(
+                            *symbol_id,
+                            scope_id,
+                            *function_scope_id,
+                            ty.clone(),
+                            *hir_id,
+                            args.clone(),
+                            *varargs,
+                        );
+                    }
+                }
+                self.opt_function_call(scope_id, *callee, args.clone(), *varargs)
+            }
             Hir::BinaryOp { op, lhs, rhs } => {
                 let handler = match op {
                     BinOp::Add => Self::opt_add,
@@ -339,13 +374,40 @@ impl<'a> Optimizer<'a> {
 
                 self.db.alloc_lir(Lir::Closure(body, captures))
             }
+            Symbol::InlineFunction { .. } => self.db.alloc_lir(Lir::Atom(vec![])),
             Symbol::ConstBinding { hir_id, .. } => self.opt_hir(scope_id, hir_id),
-            _ => self.opt_path(scope_id, symbol_id),
+            Symbol::LetBinding { .. } => self.opt_path(scope_id, symbol_id),
+            Symbol::Parameter { .. } => {
+                for inline_parameter_map in self.inline_parameter_stack.iter().rev() {
+                    if let Some(hir_id) = inline_parameter_map.get(&symbol_id) {
+                        return self.opt_hir(scope_id, *hir_id);
+                    }
+                }
+                self.opt_path(scope_id, symbol_id)
+            }
+            Symbol::Unknown => unreachable!(),
         }
     }
 
-    fn opt_function_call(&mut self, scope_id: ScopeId, callee: HirId, args: HirId) -> LirId {
-        let mut args = self.opt_hir(scope_id, args);
+    fn opt_function_call(
+        &mut self,
+        scope_id: ScopeId,
+        callee: HirId,
+        args: Vec<HirId>,
+        varargs: bool,
+    ) -> LirId {
+        let mut lir_id = self.db.alloc_lir(Lir::Atom(Vec::new()));
+
+        for (i, arg) in args.into_iter().rev().enumerate() {
+            let arg = self.opt_hir(scope_id, arg);
+
+            if i == 0 && varargs {
+                lir_id = arg;
+                continue;
+            }
+
+            lir_id = self.db.alloc_lir(Lir::Pair(arg, lir_id));
+        }
 
         let callee = if let Hir::Reference(symbol_id) = self.db.hir(callee).clone() {
             if let Symbol::Function {
@@ -355,7 +417,7 @@ impl<'a> Optimizer<'a> {
             {
                 for symbol_id in self.env(*callee_scope_id).captures().into_iter().rev() {
                     let capture = self.opt_path(scope_id, symbol_id);
-                    args = self.db.alloc_lir(Lir::Pair(capture, args));
+                    lir_id = self.db.alloc_lir(Lir::Pair(capture, lir_id));
                 }
                 self.opt_path(scope_id, symbol_id)
             } else {
@@ -365,7 +427,55 @@ impl<'a> Optimizer<'a> {
             self.opt_hir(scope_id, callee)
         };
 
-        self.db.alloc_lir(Lir::Run(callee, args))
+        self.db.alloc_lir(Lir::Run(callee, lir_id))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn opt_inline_function_call(
+        &mut self,
+        symbol_id: SymbolId,
+        scope_id: ScopeId,
+        function_scope_id: ScopeId,
+        ty: FunctionType,
+        hir_id: HirId,
+        args: Vec<HirId>,
+        varargs: bool,
+    ) -> LirId {
+        if !self.inline_fun_stack.insert(symbol_id) {
+            self.error(ErrorKind::RecursiveInlineFunctionCall, TextRange::default());
+            return self.db.alloc_lir(Lir::Atom(Vec::new()));
+        }
+        let mut inline_parameter_map = HashMap::new();
+        let mut args = args;
+
+        let param_len = self.env(function_scope_id).parameters().len();
+
+        for (i, symbol_id) in self
+            .env(function_scope_id)
+            .parameters()
+            .into_iter()
+            .enumerate()
+        {
+            if i + 1 == param_len && ty.varargs() {
+                let mut rest = self.db.alloc_hir(Hir::Atom(Vec::new()));
+                for (i, arg) in args.clone().into_iter().rev().enumerate() {
+                    if i == 0 && varargs {
+                        rest = arg;
+                        continue;
+                    }
+                    rest = self.db.alloc_hir(Hir::Pair(arg, rest));
+                }
+                inline_parameter_map.insert(symbol_id, rest);
+                continue;
+            }
+            inline_parameter_map.insert(symbol_id, args.remove(0));
+        }
+
+        self.inline_parameter_stack.push(inline_parameter_map);
+        let result = self.opt_hir(scope_id, hir_id);
+        self.inline_parameter_stack.pop().unwrap();
+
+        result
     }
 
     fn opt_add(&mut self, scope_id: ScopeId, lhs: HirId, rhs: HirId) -> LirId {
@@ -467,6 +577,13 @@ impl<'a> Optimizer<'a> {
         let else_branch = self.opt_hir(scope_id, else_block);
         self.db
             .alloc_lir(Lir::If(condition, then_branch, else_branch))
+    }
+
+    fn error(&mut self, info: ErrorKind, range: TextRange) {
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Error(info),
+            range.start().into()..range.end().into(),
+        ));
     }
 
     fn warning(&mut self, info: WarningKind, range: TextRange) {

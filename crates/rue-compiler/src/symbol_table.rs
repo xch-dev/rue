@@ -41,13 +41,6 @@ impl GlobalSymbolTable {
             .unwrap_or(false)
     }
 
-    pub fn type_referenced_by_type(&self, type_id: TypeId, referenced_type_id: TypeId) -> bool {
-        self.type_type_references
-            .get(&type_id)
-            .map(|type_ids| type_ids.contains(&referenced_type_id))
-            .unwrap_or(false)
-    }
-
     pub fn referenced_types_for_type(&self, type_id: TypeId) -> Vec<TypeId> {
         self.type_type_references
             .get(&type_id)

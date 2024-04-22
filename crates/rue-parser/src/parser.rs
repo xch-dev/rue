@@ -183,11 +183,13 @@ fn convert_tokens<'a>(
             TokenKind::CloseBrace => SyntaxKind::CloseBrace,
 
             TokenKind::Fun => SyntaxKind::Fun,
+            TokenKind::Inline => SyntaxKind::Inline,
             TokenKind::Type => SyntaxKind::Type,
             TokenKind::Struct => SyntaxKind::Struct,
             TokenKind::Enum => SyntaxKind::Enum,
             TokenKind::Let => SyntaxKind::Let,
             TokenKind::Const => SyntaxKind::Const,
+
             TokenKind::If => SyntaxKind::If,
             TokenKind::Else => SyntaxKind::Else,
             TokenKind::Return => SyntaxKind::Return,

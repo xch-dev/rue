@@ -41,6 +41,9 @@ pub enum WarningKind {
     #[error("unused function `{0}`")]
     UnusedFunction(String),
 
+    #[error("unused inline function `{0}`")]
+    UnusedInlineFunction(String),
+
     #[error("unused parameter `{0}`")]
     UnusedParameter(String),
 
@@ -79,6 +82,12 @@ pub enum ErrorKind {
 
     #[error("cannot reference undefined type `{0}`")]
     UndefinedType(String),
+
+    #[error("cannot refer to inline function outside of function call")]
+    InlineFunctionOutsideCall,
+
+    #[error("cannot resolve recursive inline function call")]
+    RecursiveInlineFunctionCall,
 
     #[error("type aliases cannot reference themselves recursively")]
     RecursiveTypeAlias,

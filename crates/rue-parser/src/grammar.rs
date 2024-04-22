@@ -1,31 +1,47 @@
+use rowan::Checkpoint;
+
 use crate::{parser::Parser, BinaryOp, SyntaxKind};
 
 pub fn root(p: &mut Parser) {
     p.start(SyntaxKind::Root);
     while !p.at(SyntaxKind::Eof) {
-        item(p);
+        let cp = p.checkpoint();
+        let inline = p.try_eat(SyntaxKind::Inline);
+        item(p, cp, inline);
     }
     p.finish();
 }
 
-fn item(p: &mut Parser) {
+fn at_item(p: &mut Parser) -> bool {
+    p.at(SyntaxKind::Fun)
+        || p.at(SyntaxKind::Type)
+        || p.at(SyntaxKind::Struct)
+        || p.at(SyntaxKind::Enum)
+        || p.at(SyntaxKind::Const)
+}
+
+fn item(p: &mut Parser, cp: Checkpoint, inline: bool) {
     if p.at(SyntaxKind::Fun) {
-        function_item(p);
-    } else if p.at(SyntaxKind::Type) {
-        type_alias_item(p);
-    } else if p.at(SyntaxKind::Struct) {
-        struct_item(p);
-    } else if p.at(SyntaxKind::Enum) {
-        enum_item(p);
-    } else if p.at(SyntaxKind::Const) {
-        const_item(p);
+        function_item(p, cp);
+    } else if !inline {
+        if p.at(SyntaxKind::Type) {
+            type_alias_item(p, cp);
+        } else if p.at(SyntaxKind::Struct) {
+            struct_item(p, cp);
+        } else if p.at(SyntaxKind::Enum) {
+            enum_item(p, cp);
+        } else if p.at(SyntaxKind::Const) {
+            const_item(p, cp);
+        } else {
+            p.error(&[]);
+        }
     } else {
         p.error(&[]);
     }
 }
 
-fn function_item(p: &mut Parser) {
-    p.start(SyntaxKind::FunctionItem);
+fn function_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::FunctionItem);
     p.expect(SyntaxKind::Fun);
     p.expect(SyntaxKind::Ident);
     function_params(p);
@@ -55,8 +71,8 @@ fn function_param(p: &mut Parser) {
     p.finish();
 }
 
-fn type_alias_item(p: &mut Parser) {
-    p.start(SyntaxKind::TypeAliasItem);
+fn type_alias_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::TypeAliasItem);
     p.expect(SyntaxKind::Type);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::Assign);
@@ -65,8 +81,8 @@ fn type_alias_item(p: &mut Parser) {
     p.finish();
 }
 
-fn struct_item(p: &mut Parser) {
-    p.start(SyntaxKind::StructItem);
+fn struct_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::StructItem);
     p.expect(SyntaxKind::Struct);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::OpenBrace);
@@ -88,8 +104,8 @@ fn struct_field(p: &mut Parser) {
     p.finish();
 }
 
-fn enum_item(p: &mut Parser) {
-    p.start(SyntaxKind::EnumItem);
+fn enum_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::EnumItem);
     p.expect(SyntaxKind::Enum);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::OpenBrace);
@@ -120,8 +136,8 @@ fn enum_variant(p: &mut Parser) {
     p.finish();
 }
 
-fn const_item(p: &mut Parser) {
-    p.start(SyntaxKind::ConstItem);
+fn const_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::ConstItem);
     p.expect(SyntaxKind::Const);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::Colon);
@@ -136,23 +152,28 @@ fn block(p: &mut Parser) {
     p.start(SyntaxKind::Block);
     p.expect(SyntaxKind::OpenBrace);
     while !p.at(SyntaxKind::CloseBrace) && !p.at(SyntaxKind::Eof) {
-        if p.at(SyntaxKind::Let) {
+        let cp = p.checkpoint();
+        let inline = p.try_eat(SyntaxKind::Inline);
+
+        if p.at(SyntaxKind::Let) && !inline {
             let_stmt(p);
-        } else if p.at(SyntaxKind::Return) {
+        } else if p.at(SyntaxKind::Return) && !inline {
             return_stmt(p);
-        } else if p.at(SyntaxKind::Raise) {
+        } else if p.at(SyntaxKind::Raise) && !inline {
             raise_stmt(p);
-        } else if p.at(SyntaxKind::If) {
+        } else if p.at(SyntaxKind::If) && !inline {
             if if_stmt_maybe_else(p, false) {
                 break;
             }
-        } else if p.at(SyntaxKind::Assert) {
+        } else if p.at(SyntaxKind::Assert) && !inline {
             assert_stmt(p);
-        } else if p.at(SyntaxKind::Fun) || p.at(SyntaxKind::Type) || p.at(SyntaxKind::Const) {
-            item(p);
-        } else {
+        } else if at_item(p) {
+            item(p, cp, inline);
+        } else if !inline {
             expr(p);
             break;
+        } else {
+            p.error(&[]);
         }
     }
     p.expect(SyntaxKind::CloseBrace);

@@ -156,6 +156,13 @@ impl FunctionItem {
     pub fn body(&self) -> Option<Block> {
         self.syntax().children().find_map(Block::cast)
     }
+
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Inline)
+    }
 }
 
 impl FunctionParam {
