@@ -9,3 +9,5 @@ leptos_icons = "0.3.0"
 icondata = "0.3.0"
 thaw = { version = "0.3.0", features = ["csr"] }
 leptos_router = { version = "0.6.11", features = ["csr"] }
+leptos_meta = { version = "0.6.11", features = ["csr"] }
+leptos-use = "0.10.8"
