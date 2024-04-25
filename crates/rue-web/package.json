@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "tailwind": "npx tailwindcss -i input.css -o style/output.css"
+    "tailwind": "npx tailwindcss -i input.css -o public/output.css"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.3"
