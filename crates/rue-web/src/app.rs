@@ -15,21 +15,21 @@ pub fn App() -> impl IntoView {
     let (dark, set_dark, _) = use_local_storage::<bool, FromToStringCodec>("dark-mode");
 
     view! {
+        <Title text="Rue Lang"/>
+        <Stylesheet id="leptos" href="/pkg/rue-web.css"/>
+        <Link rel="shortcut icon" type_="image/ico" href="/favicon.ico"/>
+        <Meta charset="UTF-8"/>
+        <Meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <Script blocking="render">{include_str!("../prerender.js")}</Script>
+
+        <Html class=move || if dark.get() { "dark" } else { "" } lang="en"/>
+        <Body class="bg-neutral-100 dark:bg-neutral-900 text-gray-800 dark:text-gray-200"/>
+
         <Router>
             <div
-                class="fixed bg-neutral-200 dark:bg-neutral-800 w-full p-3 pl-4 pr-4"
+                class="fixed bg-neutral-200 dark:bg-neutral-800 w-full p-3 pl-4 pr-4 z-10"
                 style="height: 68px;"
             >
-                <Title text="Rue Lang"/>
-                <Stylesheet id="leptos" href="/output.css"/>
-                <Link rel="shortcut icon" type_="image/ico" href="/favicon.ico"/>
-                <Meta charset="UTF-8"/>
-                <Meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-                <Script blocking="render">{include_str!("../prerender.js")}</Script>
-
-                <Html class=move || if dark.get() { "dark" } else { "" } lang="en"/>
-                <Body class="bg-neutral-100 dark:bg-neutral-900 text-gray-800 dark:text-gray-200"/>
-
                 <Space align=SpaceAlign::Center justify=SpaceJustify::SpaceBetween>
                     <a href="/" class="text-inherit">
                         <Space align=SpaceAlign::Center>
