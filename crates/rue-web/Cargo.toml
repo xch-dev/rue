@@ -44,15 +44,3 @@ http = "1.1.0"
 thiserror = "1.0.59"
 wasm-bindgen = "0.2.92"
 markdown = "0.3.0"
-
-[package.metadata.leptos]
-site-root = "target/site"
-assets-dir = "public"
-site-addr = "127.0.0.1:3000"
-reload-port = 3001
-browserquery = "defaults"
-env = "DEV"
-bin-features = ["ssr"]
-lib-features = ["hydrate"]
-lib-profile-release = "wasm-release"
-style-file = "style/output.css"
