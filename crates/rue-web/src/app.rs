@@ -1,7 +1,9 @@
+use itertools::Itertools;
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
 use leptos_use::{storage::use_local_storage, utils::FromToStringCodec};
+use rue_lexer::{Lexer, Token, TokenKind};
 use rue_web_derive::docs;
 use thaw::*;
 
@@ -81,7 +83,7 @@ pub fn Docs() -> impl IntoView {
             >
                 <DocsSidebar/>
             </div>
-            <div class="ml-80 p-5">
+            <div class="ml-80 p-5" style="width: calc(100% - 320px)">
                 <Outlet/>
             </div>
         </div>
@@ -174,4 +176,137 @@ fn Home() -> impl IntoView {
             </a>
         </div>
     }
+}
+
+#[component]
+fn Rue(source: &'static str) -> impl IntoView {
+    let tokens = Lexer::new(source).collect_vec();
+    let mut output = Vec::new();
+    let mut pos = 0;
+    let mut brackets = Vec::new();
+
+    for (i, token) in tokens.iter().enumerate() {
+        // Make Tailwind completions happy.
+        #[allow(clippy::needless_late_init)]
+        let mut class;
+        let text = source[pos..pos + token.len()].to_string();
+
+        match token.kind() {
+            TokenKind::Ident
+                if tokens
+                    .iter()
+                    .skip(i + 1)
+                    .find(|token| !token.kind().is_trivia())
+                    .map(Token::kind)
+                    == Some(TokenKind::OpenParen) =>
+            {
+                class = "text-blue-600 dark:text-blue-300"
+            }
+            TokenKind::Ident if text.chars().next().unwrap_or('\0').is_uppercase() => {
+                class = "text-green-700 dark:text-yellow-200"
+            }
+            TokenKind::Ident => class = "text-gray-700 dark:text-red-400",
+            TokenKind::Int => class = "text-fuchsia-600 dark:text-green-300",
+            TokenKind::String { .. } => class = "text-cyan-600 dark:text-lime-300",
+            TokenKind::OpenParen
+            | TokenKind::CloseParen
+            | TokenKind::OpenBracket
+            | TokenKind::CloseBracket
+            | TokenKind::OpenBrace
+            | TokenKind::CloseBrace => {
+                if matches!(
+                    token.kind(),
+                    TokenKind::OpenParen | TokenKind::OpenBracket | TokenKind::OpenBrace
+                ) {
+                    brackets.push(token.kind());
+                }
+
+                match brackets.len() % 3 {
+                    0 => class = "text-pink-700 dark:text-orange-300",
+                    1 => class = "text-teal-600 dark:text-green-400",
+                    2 => class = "text-sky-600 dark:text-indigo-300",
+                    _ => unreachable!(),
+                }
+
+                let mut invalid_bracket = false;
+
+                if matches!(
+                    token.kind(),
+                    TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace
+                ) {
+                    let previous = brackets.last().copied();
+
+                    match token.kind() {
+                        TokenKind::CloseParen if previous != Some(TokenKind::OpenParen) => {
+                            invalid_bracket = true;
+                        }
+                        TokenKind::CloseBracket if previous != Some(TokenKind::OpenBracket) => {
+                            invalid_bracket = true;
+                        }
+                        TokenKind::CloseBrace if previous != Some(TokenKind::OpenBrace) => {
+                            invalid_bracket = true;
+                        }
+                        _ if brackets.pop().is_none() => {
+                            invalid_bracket = true;
+                        }
+                        _ => {}
+                    }
+                }
+
+                if invalid_bracket {
+                    class = "text-red-600 dark:text-red-500";
+                }
+            }
+            TokenKind::Fun
+            | TokenKind::Inline
+            | TokenKind::Type
+            | TokenKind::Struct
+            | TokenKind::Enum
+            | TokenKind::Let
+            | TokenKind::Const
+            | TokenKind::If
+            | TokenKind::Else
+            | TokenKind::Return
+            | TokenKind::Raise
+            | TokenKind::Assert
+            | TokenKind::As
+            | TokenKind::Is => class = "text-purple-700 dark:text-purple-400",
+            TokenKind::Nil | TokenKind::True | TokenKind::False => {
+                class = "text-orange-700 dark:text-orange-300"
+            }
+            TokenKind::Dot
+            | TokenKind::Comma
+            | TokenKind::Colon
+            | TokenKind::PathSeparator
+            | TokenKind::Semicolon
+            | TokenKind::Arrow
+            | TokenKind::FatArrow
+            | TokenKind::Spread
+            | TokenKind::Question
+            | TokenKind::Assign => class = "text-gray-700 dark:text-gray-300",
+            TokenKind::Plus
+            | TokenKind::Minus
+            | TokenKind::Star
+            | TokenKind::Slash
+            | TokenKind::Percent
+            | TokenKind::Not
+            | TokenKind::LessThan
+            | TokenKind::GreaterThan
+            | TokenKind::LessThanEquals
+            | TokenKind::GreaterThanEquals
+            | TokenKind::Equals
+            | TokenKind::NotEquals => class = "text-blue-700 dark:text-blue-300",
+            TokenKind::Whitespace => class = "",
+            TokenKind::LineComment | TokenKind::BlockComment { .. } => {
+                class = "text-gray-500 dark:text-gray-400"
+            }
+            TokenKind::Unknown => class = "text-red-600 dark:text-red-500",
+        };
+
+        pos += token.len();
+
+        output.push(view! { <span class=class>{text}</span> });
+    }
+
+    output
 }

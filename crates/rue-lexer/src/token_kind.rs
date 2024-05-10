@@ -59,3 +59,12 @@ pub enum TokenKind {
     BlockComment { is_terminated: bool },
     Unknown,
 }
+
+impl TokenKind {
+    pub fn is_trivia(self) -> bool {
+        matches!(
+            self,
+            TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment { .. }
+        )
+    }
+}

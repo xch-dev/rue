@@ -143,7 +143,10 @@ fn block_tokens(blocks: &[markdown::Block]) -> TokenStream {
             markdown::Block::Header(spans, level) => header_tokens(spans, *level),
             markdown::Block::Paragraph(spans) => paragraph_tokens(spans),
             markdown::Block::Blockquote(_blocks) => todo!("block quote"),
-            markdown::Block::CodeBlock(_lang, text) => code_block_tokens(text),
+            markdown::Block::CodeBlock(lang, text) => code_block_tokens(
+                &lang.clone().expect("code block language must be specified"),
+                text,
+            ),
             markdown::Block::OrderedList(_items, _ty) => todo!("ordered list"),
             markdown::Block::UnorderedList(items) => unordered_list_tokens(items),
             markdown::Block::Raw(_text) => todo!("raw block"),
@@ -216,11 +219,21 @@ fn paragraph_tokens(spans: &[markdown::Span]) -> TokenStream {
     }
 }
 
-fn code_block_tokens(text: &str) -> TokenStream {
+fn code_block_tokens(lang: &str, text: &str) -> TokenStream {
+    let content = match lang {
+        "rue" => {
+            quote! {
+                <Rue source=#text />
+            }
+        }
+        "bash" => LitStr::new(text, Span::call_site()).into_token_stream(),
+        _ => unimplemented!("unsupported code block language: {}", lang),
+    };
+
     quote! {
-        <code class="block mt-2 text-sm bg-gray-200 dark:bg-gray-800 p-2 rounded">
-            #text
-        </code>
+        <span class="block whitespace-pre overflow-x-scroll font-mono mt-2 text-sm bg-gray-200 dark:bg-gray-800 p-2 rounded">
+            #content
+        </span>
     }
 }
 

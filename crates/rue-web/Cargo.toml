@@ -45,3 +45,4 @@ thiserror = "1.0.59"
 wasm-bindgen = "0.2.92"
 itertools = "0.12.1"
 rue-web-derive = { path = "../rue-web-derive" }
+rue-lexer = { path = "../rue-lexer" }

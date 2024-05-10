@@ -2889,6 +2889,7 @@ dependencies = [
  "leptos_icons",
  "leptos_meta",
  "leptos_router",
+ "rue-lexer",
  "rue-web-derive",
  "thaw",
  "thiserror",
