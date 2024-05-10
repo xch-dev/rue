@@ -1,12 +1,11 @@
+use derive_docs::docs;
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
 use leptos_use::{storage::use_local_storage, utils::FromToStringCodec};
 use thaw::*;
 
-mod docs;
-
-use docs::*;
+docs!("docs.json");
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -39,10 +38,8 @@ pub fn App() -> impl IntoView {
                             </h1>
                         </Space>
                     </a>
-                    <Space gap=SpaceGap::Size(
-                        30,
-                    )>
-                        {move || { dark_switcher(dark, set_dark) }}
+                    <Space gap=SpaceGap::Size(30)>
+                        <DarkSwitcher dark=dark set_dark=set_dark/>
                         <a href="/docs" class="text-inherit">
                             <Icon icon=icondata::FaBookSolid width="32px" height="32px"/>
                         </a>
@@ -69,35 +66,95 @@ fn AppRoutes() -> impl IntoView {
     view! {
         <Routes>
             <Route path="/" view=Home/>
-            <Route path="/docs" view=Docs>
-                <Route path="" view=GettingStarted/>
-                <Route path="compiler-design" view=CompilerDesign/>
-            </Route>
+            <DocsRoutes/>
         </Routes>
     }
 }
 
-fn dark_switcher(dark: Signal<bool>, set_dark: WriteSignal<bool>) -> impl IntoView {
-    if dark.get() {
-        view! {
-            <Icon
-                icon=icondata::BsSunFill
-                width="32px"
-                height="32px"
-                class="cursor-pointer"
-                on:click=move |_| set_dark.set(false)
-            />
-        }
-    } else {
-        view! {
-            <Icon
-                icon=icondata::BsMoonStarsFill
-                width="32px"
-                height="32px"
-                class="cursor-pointer"
-                on:click=move |_| set_dark.set(true)
-            />
-        }
+#[component]
+pub fn Docs() -> impl IntoView {
+    view! {
+        <div class="flex h-full">
+            <div
+                class="fixed w-80 p-5 bottom-0 overflow-y-auto text-lg border-r border-r-neutral-300 dark:border-r-neutral-700"
+                style="top: 68px;"
+            >
+                <DocsSidebar/>
+            </div>
+            <div class="ml-80 p-5">
+                <Outlet/>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn Category(label: &'static str, children: Children) -> impl IntoView {
+    let (get_expanded, set_expended) = create_signal(false);
+
+    view! {
+        <div>
+            <div
+                class="flex justify-between items-center cursor-pointer select-none"
+                on:click=move |_| set_expended.set(!get_expanded.get())
+            >
+                <p class="text-xl">{label}</p>
+                {move || {
+                    if get_expanded.get() {
+                        view! {
+                            <Icon icon=icondata::FaChevronDownSolid width="20px" height="20px"/>
+                        }
+                    } else {
+                        view! {
+                            <Icon icon=icondata::FaChevronRightSolid width="20px" height="20px"/>
+                        }
+                    }
+                }}
+
+            </div>
+            <div class=format!(
+                "ml-7 mt-2 flex flex-col gap-2{}",
+                if get_expanded.get() { " hidden" } else { "" },
+            )>{children()}</div>
+        </div>
+    }
+}
+
+#[component]
+fn PageLink(uri: &'static str, label: &'static str) -> impl IntoView {
+    view! {
+        <A href=uri class="block text-xl">
+            {label}
+        </A>
+    }
+}
+
+#[component]
+fn DarkSwitcher(dark: Signal<bool>, set_dark: WriteSignal<bool>) -> impl IntoView {
+    view! {
+        {move || {
+            if dark.get() {
+                view! {
+                    <Icon
+                        icon=icondata::BsSunFill
+                        width="32px"
+                        height="32px"
+                        class="cursor-pointer"
+                        on:click=move |_| set_dark.set(false)
+                    />
+                }
+            } else {
+                view! {
+                    <Icon
+                        icon=icondata::BsMoonStarsFill
+                        width="32px"
+                        height="32px"
+                        class="cursor-pointer"
+                        on:click=move |_| set_dark.set(true)
+                    />
+                }
+            }
+        }}
     }
 }
 

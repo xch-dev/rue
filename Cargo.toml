@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["crates/*", "crates/rue-web/derive-docs"]
 
 [profile.wasm-release]
 inherits = "release"
@@ -23,4 +23,4 @@ bin-features = ["ssr"]
 lib-features = ["hydrate"]
 lib-profile-release = "wasm-release"
 style-file = "crates/rue-web/style/output.css"
-watch-additional-files = ["crates/rue-web/docs"]
+watch-additional-files = ["crates/rue-web/docs", "crates/rue-web/docs.json"]

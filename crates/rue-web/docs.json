@@ -1,0 +1,14 @@
+{
+  "sidebar_items": [
+    {
+      "label": "Getting Started",
+      "uri": "",
+      "content": "getting-started.md"
+    },
+    {
+      "label": "Compiler Design",
+      "uri": "compiler-design",
+      "content": "compiler-design.md"
+    }
+  ]
+}

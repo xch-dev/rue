@@ -1,0 +1,15 @@
+[package]
+name = "derive-docs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+markdown = "0.3.0"
+proc-macro2 = "1.0.82"
+quote = "1.0.36"
+serde = { version = "1.0.201", features = ["derive"] }
+serde_json = "1.0.117"
+syn = "2.0.61"

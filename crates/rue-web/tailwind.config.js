@@ -2,7 +2,7 @@
 module.exports = {
   darkMode: "selector",
   content: {
-    files: ["*.html", "./src/**/*.rs"],
+    files: ["*.html", "./src/**/*.rs", "./derive-docs/src/**/*.rs"],
   },
   plugins: [],
 };

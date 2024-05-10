@@ -43,4 +43,5 @@ leptos-use = "0.10.8"
 http = "1.1.0"
 thiserror = "1.0.59"
 wasm-bindgen = "0.2.92"
-markdown = "0.3.0"
+itertools = "0.12.1"
+derive-docs = { path = "./derive-docs" }
