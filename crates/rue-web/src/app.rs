@@ -1,8 +1,8 @@
-use derive_docs::docs;
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
 use leptos_use::{storage::use_local_storage, utils::FromToStringCodec};
+use rue_web_derive::docs;
 use thaw::*;
 
 docs!("docs.json");

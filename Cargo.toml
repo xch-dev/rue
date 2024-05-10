@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "crates/rue-web/derive-docs"]
+members = ["crates/*"]
 
 [profile.wasm-release]
 inherits = "release"

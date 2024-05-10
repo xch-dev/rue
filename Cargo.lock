@@ -934,18 +934,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derive-docs"
-version = "0.1.0"
-dependencies = [
- "markdown",
- "proc-macro2",
- "quote",
- "serde",
- "serde_json",
- "syn 2.0.61",
-]
-
-[[package]]
 name = "derive-where"
 version = "1.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2892,7 +2880,6 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "console_error_panic_hook",
- "derive-docs",
  "http 1.1.0",
  "icondata",
  "itertools",
@@ -2902,12 +2889,25 @@ dependencies = [
  "leptos_icons",
  "leptos_meta",
  "leptos_router",
+ "rue-web-derive",
  "thaw",
  "thiserror",
  "tokio",
  "tower",
  "tower-http",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "rue-web-derive"
+version = "0.1.0"
+dependencies = [
+ "markdown",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.61",
 ]
 
 [[package]]

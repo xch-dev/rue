@@ -44,4 +44,4 @@ http = "1.1.0"
 thiserror = "1.0.59"
 wasm-bindgen = "0.2.92"
 itertools = "0.12.1"
-derive-docs = { path = "./derive-docs" }
+rue-web-derive = { path = "../rue-web-derive" }
