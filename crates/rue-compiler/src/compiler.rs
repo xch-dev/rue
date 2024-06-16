@@ -5,6 +5,7 @@ use std::{
 };
 
 use builtins::{builtins, Builtins};
+use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};
 use num_bigint::BigInt;
 use rowan::TextRange;
@@ -15,18 +16,21 @@ use rue_parser::{
     ListType, LiteralExpr, OptionalType, PairExpr, PairType, Path, PrefixExpr, PrefixOp, Root,
     Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
 };
+use symbol_table::SymbolTable;
 
 use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::{BinOp, Hir},
     scope::Scope,
     symbol::Symbol,
-    symbol_table::GlobalSymbolTable,
     ty::{EnumType, EnumVariant, FunctionType, Guard, StructType, Type, Value},
     Diagnostic, DiagnosticKind, ErrorKind, WarningKind,
 };
 
 mod builtins;
+mod declarations;
+mod symbol_table;
+mod unused;
 
 /// Responsible for lowering the AST into the HIR.
 /// Performs name resolution and type checking.
@@ -52,9 +56,9 @@ pub struct Compiler<'a> {
     // Diagnostics keep track of errors and warnings throughout the code.
     diagnostics: Vec<Diagnostic>,
 
-    // The global symbol table is used for storing all named symbols and types.
+    // The symbol table is used for storing all named symbols and types.
     // It also stored types referenced by symbols.
-    sym: GlobalSymbolTable,
+    sym: SymbolTable,
 
     // Common types and other values that are built-in to the compiler.
     builtins: Builtins,
@@ -74,26 +78,27 @@ impl<'a> Compiler<'a> {
             type_guard_stack: Vec::new(),
             is_callee: false,
             diagnostics: Vec::new(),
-            sym: GlobalSymbolTable::default(),
+            sym: SymbolTable::default(),
             builtins,
         }
     }
 
     /// Lowering is completed, extract the diagnostics.
-    pub fn finish(self) -> (GlobalSymbolTable, Vec<Diagnostic>) {
+    pub fn finish(self) -> (SymbolTable, Vec<Diagnostic>) {
         (self.sym, self.diagnostics)
     }
 
-    /// Compile the root by lowering all items into the file's scope.
-    pub fn compile_root(&mut self, root: Root, scope_id: ScopeId) {
+    /// Declares all of the items in a root.
+    pub fn declare_root(&mut self, root: Root, scope_id: ScopeId) -> Declarations {
         self.scope_stack.push(scope_id);
-        self.compile_items(root.items());
-        self.scope_stack.pop();
+        let declarations = self.declare_items(root.items());
+        self.scope_stack.pop().unwrap();
+        declarations
     }
 
-    /// Lower all of the items in the list in the proper order.
-    /// This is done in two passes to handle forward references.
-    fn compile_items(&mut self, items: Vec<Item>) {
+    /// Declare all items into scope without compiling their body.
+    /// This ensures no circular references are resolved at this time.
+    pub fn declare_items(&mut self, items: Vec<Item>) -> Declarations {
         let mut type_ids = Vec::new();
         let mut symbol_ids = Vec::new();
 
@@ -114,22 +119,38 @@ impl<'a> Compiler<'a> {
             }
         }
 
+        Declarations {
+            type_ids,
+            symbol_ids,
+        }
+    }
+
+    /// Compile the root by lowering all items into scope.
+    pub fn compile_root(&mut self, root: Root, scope_id: ScopeId, declarations: Declarations) {
+        self.scope_stack.push(scope_id);
+        self.compile_items(root.items(), declarations);
+        self.scope_stack.pop().unwrap();
+    }
+
+    /// Lower all of the items in the list in the proper order.
+    /// This is done in two passes to handle forward references.
+    fn compile_items(&mut self, items: Vec<Item>, mut declarations: Declarations) {
         for item in items.clone() {
             match item {
                 Item::TypeAliasItem(ty) => {
-                    let type_id = type_ids.remove(0);
+                    let type_id = declarations.type_ids.remove(0);
                     self.type_definition_stack.push(type_id);
                     self.compile_type_alias(ty, type_id);
                     self.type_definition_stack.pop().unwrap();
                 }
                 Item::StructItem(struct_item) => {
-                    let type_id = type_ids.remove(0);
+                    let type_id = declarations.type_ids.remove(0);
                     self.type_definition_stack.push(type_id);
                     self.compile_struct(struct_item, type_id);
                     self.type_definition_stack.pop().unwrap();
                 }
                 Item::EnumItem(enum_item) => {
-                    let type_id = type_ids.remove(0);
+                    let type_id = declarations.type_ids.remove(0);
                     self.type_definition_stack.push(type_id);
                     self.compile_enum(enum_item, type_id);
                     self.type_definition_stack.pop().unwrap();
@@ -141,13 +162,13 @@ impl<'a> Compiler<'a> {
         for item in items {
             match item {
                 Item::FunctionItem(function) => {
-                    let symbol_id = symbol_ids.remove(0);
+                    let symbol_id = declarations.symbol_ids.remove(0);
                     self.symbol_stack.push(symbol_id);
                     self.compile_function(function, symbol_id);
                     self.symbol_stack.pop().unwrap();
                 }
                 Item::ConstItem(const_item) => {
-                    let symbol_id = symbol_ids.remove(0);
+                    let symbol_id = declarations.symbol_ids.remove(0);
                     self.symbol_stack.push(symbol_id);
                     self.compile_const(const_item, symbol_id);
                     self.symbol_stack.pop().unwrap();
@@ -568,7 +589,8 @@ impl<'a> Compiler<'a> {
         // Compile all of the items in the block first.
         // This means that statements can use item symbols in any order,
         // but items cannot use statement symbols.
-        self.compile_items(block.items());
+        let declarations = self.declare_items(block.items());
+        self.compile_items(block.items(), declarations);
 
         enum Statement {
             Let(ScopeId),

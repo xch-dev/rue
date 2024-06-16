@@ -1,7 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use indexmap::IndexSet;
-use rowan::TextRange;
 
 use crate::{
     database::{Database, HirId, LirId, ScopeId, SymbolId},
@@ -9,148 +8,31 @@ use crate::{
     hir::{BinOp, Hir},
     lir::Lir,
     symbol::Symbol,
-    symbol_table::GlobalSymbolTable,
-    ty::{FunctionType, Type},
-    Diagnostic, DiagnosticKind, ErrorKind, TypeId, WarningKind,
+    ty::FunctionType,
 };
 
 pub struct Optimizer<'a> {
     db: &'a mut Database,
-    sym: &'a GlobalSymbolTable,
-    diagnostics: Vec<Diagnostic>,
     graph: DependencyGraph,
     inline_fun_stack: IndexSet<SymbolId>,
     inline_parameter_stack: Vec<HashMap<SymbolId, HirId>>,
 }
 
 impl<'a> Optimizer<'a> {
-    pub fn new(db: &'a mut Database, sym: &'a GlobalSymbolTable, graph: DependencyGraph) -> Self {
+    pub fn new(db: &'a mut Database, graph: DependencyGraph) -> Self {
         Self {
             db,
-            sym,
-            diagnostics: Vec::new(),
             graph,
             inline_fun_stack: IndexSet::new(),
             inline_parameter_stack: Vec::new(),
         }
     }
 
-    pub fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
-    }
-
     fn env(&self, scope_id: ScopeId) -> &Environment {
         self.graph.env(scope_id)
     }
 
-    fn calculate_used_types(&mut self, type_id: TypeId, used_types: &mut HashSet<TypeId>) {
-        if !used_types.insert(type_id) {
-            return;
-        }
-
-        for referenced_type_id in self.sym.referenced_types_for_type(type_id) {
-            self.calculate_used_types(referenced_type_id, used_types);
-        }
-    }
-
-    pub fn opt_main(&mut self, root_scope_id: ScopeId, main: SymbolId) -> LirId {
-        let mut used_symbols = HashSet::new();
-
-        for symbol_id in self
-            .graph
-            .visited_scopes()
-            .into_iter()
-            .chain([root_scope_id])
-            .flat_map(|scope_id| self.db.scope(scope_id).local_symbols())
-            .collect::<Vec<SymbolId>>()
-        {
-            if self.graph.symbol_usages(symbol_id) > 0 || symbol_id == main {
-                used_symbols.insert(symbol_id);
-                continue;
-            }
-
-            let token = self.sym.symbol_token(symbol_id).unwrap();
-
-            if token.text().starts_with('_') {
-                continue;
-            }
-
-            match self.db.symbol(symbol_id).clone() {
-                Symbol::Unknown => unreachable!(),
-                Symbol::Function { .. } => self.warning(
-                    WarningKind::UnusedFunction(token.to_string()),
-                    token.text_range(),
-                ),
-                Symbol::InlineFunction { .. } => self.warning(
-                    WarningKind::UnusedInlineFunction(token.to_string()),
-                    token.text_range(),
-                ),
-                Symbol::Parameter { .. } => self.warning(
-                    WarningKind::UnusedParameter(token.to_string()),
-                    token.text_range(),
-                ),
-                Symbol::LetBinding { .. } => self.warning(
-                    WarningKind::UnusedLet(token.to_string()),
-                    token.text_range(),
-                ),
-                Symbol::ConstBinding { .. } => self.warning(
-                    WarningKind::UnusedConst(token.to_string()),
-                    token.text_range(),
-                ),
-            }
-        }
-
-        let directly_used_types = self.sym.named_types().into_iter().filter(|type_id| {
-            used_symbols
-                .iter()
-                .any(|symbol_id| self.sym.type_referenced_by_symbol(*type_id, *symbol_id))
-        });
-
-        let mut used_types = HashSet::new();
-        for type_id in directly_used_types {
-            self.calculate_used_types(type_id, &mut used_types);
-        }
-
-        for type_id in self.sym.named_types() {
-            if used_types.contains(&type_id) {
-                continue;
-            }
-
-            let token = self.sym.type_token(type_id).unwrap();
-
-            if token.text().starts_with('_') {
-                continue;
-            }
-
-            match self.db.ty_raw(type_id) {
-                Type::Alias(..) => {
-                    self.warning(
-                        WarningKind::UnusedTypeAlias(token.to_string()),
-                        token.text_range(),
-                    );
-                }
-                Type::Struct { .. } => {
-                    self.warning(
-                        WarningKind::UnusedStruct(token.to_string()),
-                        token.text_range(),
-                    );
-                }
-                Type::Enum { .. } => {
-                    self.warning(
-                        WarningKind::UnusedEnum(token.to_string()),
-                        token.text_range(),
-                    );
-                }
-                Type::EnumVariant { .. } => {
-                    self.warning(
-                        WarningKind::UnusedEnumVariant(token.to_string()),
-                        token.text_range(),
-                    );
-                }
-                _ => {}
-            }
-        }
-
+    pub fn opt_main(&mut self, main: SymbolId) -> LirId {
         let Symbol::Function {
             scope_id, hir_id, ..
         } = self.db.symbol(main).clone()
@@ -442,7 +324,7 @@ impl<'a> Optimizer<'a> {
         varargs: bool,
     ) -> LirId {
         if !self.inline_fun_stack.insert(symbol_id) {
-            self.error(ErrorKind::RecursiveInlineFunctionCall, TextRange::default());
+            // TODO: self.error(ErrorKind::RecursiveInlineFunctionCall, TextRange::default());
             return self.db.alloc_lir(Lir::Atom(Vec::new()));
         }
         let mut inline_parameter_map = HashMap::new();
@@ -577,19 +459,5 @@ impl<'a> Optimizer<'a> {
         let else_branch = self.opt_hir(scope_id, else_block);
         self.db
             .alloc_lir(Lir::If(condition, then_branch, else_branch))
-    }
-
-    fn error(&mut self, info: ErrorKind, range: TextRange) {
-        self.diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Error(info),
-            range.start().into()..range.end().into(),
-        ));
-    }
-
-    fn warning(&mut self, info: WarningKind, range: TextRange) {
-        self.diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Warning(info),
-            range.start().into()..range.end().into(),
-        ));
     }
 }
