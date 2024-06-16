@@ -84,9 +84,13 @@ impl<'a> GraphTraversal<'a> {
         }
     }
 
-    pub fn build_graph(mut self, main_function: SymbolId) -> DependencyGraph {
-        self.compute_edges(main_function);
-        self.visit_main(main_function);
+    pub fn build_graph(mut self, exported_symbols: &[SymbolId]) -> DependencyGraph {
+        for &symbol_id in exported_symbols {
+            self.compute_edges(symbol_id);
+        }
+        for &symbol_id in exported_symbols {
+            self.visit_main(symbol_id);
+        }
         self.graph
     }
 

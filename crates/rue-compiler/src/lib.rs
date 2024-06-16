@@ -64,7 +64,7 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
     };
 
     let traversal = GraphTraversal::new(db);
-    let dependency_graph = traversal.build_graph(main_symbol_id);
+    let dependency_graph = traversal.build_graph(&[main_symbol_id]);
 
     let unused =
         symbol_table.calculate_unused(db, &dependency_graph, root_scope_id, main_symbol_id);
