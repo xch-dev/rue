@@ -13,6 +13,8 @@ pub enum TokenKind {
 
     Fun,
     Inline,
+    Import,
+    Export,
     Type,
     Struct,
     Enum,

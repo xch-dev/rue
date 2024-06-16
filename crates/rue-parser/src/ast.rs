@@ -157,6 +157,13 @@ impl FunctionItem {
         self.syntax().children().find_map(Block::cast)
     }
 
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
+    }
+
     pub fn inline(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -196,6 +203,13 @@ impl TypeAliasItem {
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
+    }
 }
 
 impl StructItem {
@@ -212,6 +226,13 @@ impl StructItem {
             .filter_map(StructField::cast)
             .collect()
     }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
+    }
 }
 
 impl StructField {
@@ -224,6 +245,13 @@ impl StructField {
 
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
+    }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
     }
 }
 
@@ -240,6 +268,13 @@ impl EnumItem {
             .children()
             .filter_map(EnumVariant::cast)
             .collect()
+    }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
     }
 }
 
@@ -280,6 +315,13 @@ impl ConstItem {
 
     pub fn expr(&self) -> Option<Expr> {
         self.syntax().children().filter_map(Expr::cast).last()
+    }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
     }
 }
 

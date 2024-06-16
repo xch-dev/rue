@@ -23,6 +23,8 @@ pub enum SyntaxKind {
 
     Fun,
     Inline,
+    Import,
+    Export,
     Type,
     Struct,
     Enum,
@@ -136,6 +138,8 @@ impl fmt::Display for SyntaxKind {
 
                 SyntaxKind::Fun => "'fun'",
                 SyntaxKind::Inline => "'inline'",
+                SyntaxKind::Import => "'import'",
+                SyntaxKind::Export => "'export'",
                 SyntaxKind::Type => "'type'",
                 SyntaxKind::Struct => "'struct'",
                 SyntaxKind::Enum => "'enum'",

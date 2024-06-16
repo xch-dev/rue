@@ -5,9 +5,7 @@ use crate::{parser::Parser, BinaryOp, SyntaxKind};
 pub fn root(p: &mut Parser) {
     p.start(SyntaxKind::Root);
     while !p.at(SyntaxKind::Eof) {
-        let cp = p.checkpoint();
-        let inline = p.try_eat(SyntaxKind::Inline);
-        item(p, cp, inline);
+        item(p);
     }
     p.finish();
 }
@@ -18,9 +16,15 @@ fn at_item(p: &mut Parser) -> bool {
         || p.at(SyntaxKind::Struct)
         || p.at(SyntaxKind::Enum)
         || p.at(SyntaxKind::Const)
+        || p.at(SyntaxKind::Export)
+        || p.at(SyntaxKind::Inline)
 }
 
-fn item(p: &mut Parser, cp: Checkpoint, inline: bool) {
+fn item(p: &mut Parser) {
+    let cp = p.checkpoint();
+    p.try_eat(SyntaxKind::Export);
+    let inline = p.try_eat(SyntaxKind::Inline);
+
     if p.at(SyntaxKind::Fun) {
         function_item(p, cp);
     } else if !inline {
@@ -152,28 +156,23 @@ fn block(p: &mut Parser) {
     p.start(SyntaxKind::Block);
     p.expect(SyntaxKind::OpenBrace);
     while !p.at(SyntaxKind::CloseBrace) && !p.at(SyntaxKind::Eof) {
-        let cp = p.checkpoint();
-        let inline = p.try_eat(SyntaxKind::Inline);
-
-        if p.at(SyntaxKind::Let) && !inline {
+        if p.at(SyntaxKind::Let) {
             let_stmt(p);
-        } else if p.at(SyntaxKind::Return) && !inline {
+        } else if p.at(SyntaxKind::Return) {
             return_stmt(p);
-        } else if p.at(SyntaxKind::Raise) && !inline {
+        } else if p.at(SyntaxKind::Raise) {
             raise_stmt(p);
-        } else if p.at(SyntaxKind::If) && !inline {
+        } else if p.at(SyntaxKind::If) {
             if if_stmt_maybe_else(p, false) {
                 break;
             }
-        } else if p.at(SyntaxKind::Assert) && !inline {
+        } else if p.at(SyntaxKind::Assert) {
             assert_stmt(p);
         } else if at_item(p) {
-            item(p, cp, inline);
-        } else if !inline {
+            item(p);
+        } else {
             expr(p);
             break;
-        } else {
-            p.error(&[]);
         }
     }
     p.expect(SyntaxKind::CloseBrace);

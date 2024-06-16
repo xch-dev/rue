@@ -106,6 +106,8 @@ impl<'a> Lexer<'a> {
                 match &self.source[start..self.pos] {
                     "fun" => TokenKind::Fun,
                     "inline" => TokenKind::Inline,
+                    "import" => TokenKind::Import,
+                    "export" => TokenKind::Export,
                     "type" => TokenKind::Type,
                     "struct" => TokenKind::Struct,
                     "enum" => TokenKind::Enum,

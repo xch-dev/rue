@@ -295,6 +295,8 @@ fn Rue(source: &'static str) -> impl IntoView {
             }
             TokenKind::Fun
             | TokenKind::Inline
+            | TokenKind::Import
+            | TokenKind::Export
             | TokenKind::Type
             | TokenKind::Struct
             | TokenKind::Enum

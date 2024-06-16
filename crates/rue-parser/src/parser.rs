@@ -184,6 +184,8 @@ fn convert_tokens<'a>(
 
             TokenKind::Fun => SyntaxKind::Fun,
             TokenKind::Inline => SyntaxKind::Inline,
+            TokenKind::Import => SyntaxKind::Import,
+            TokenKind::Export => SyntaxKind::Export,
             TokenKind::Type => SyntaxKind::Type,
             TokenKind::Struct => SyntaxKind::Struct,
             TokenKind::Enum => SyntaxKind::Enum,
