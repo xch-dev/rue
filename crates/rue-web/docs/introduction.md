@@ -1,4 +1,4 @@
-# Getting Started
+# Introduction
 
 Rue is a pure functional programming language that compiles to [CLVM](https://chialisp.com/clvm). It's strictly typed to prevent common mistakes.
 
@@ -18,13 +18,3 @@ cargo install --path crates/rue-cli
 ```
 
 You should now have the `rue` CLI command available.
-
-## Hello World
-
-This is the classic hello world example in Rue:
-
-```rue
-fun main() -> Bytes {
-    "Hello, world!"
-}
-```

@@ -1,3 +1,5 @@
+#![allow(clippy::empty_docs)]
+
 pub mod app;
 pub mod error_template;
 #[cfg(feature = "ssr")]

@@ -4,6 +4,7 @@ use std::{
     str::FromStr,
 };
 
+use builtins::{builtins, Builtins};
 use indexmap::{IndexMap, IndexSet};
 use num_bigint::BigInt;
 use rowan::TextRange;
@@ -25,9 +26,11 @@ use crate::{
     Diagnostic, DiagnosticKind, ErrorKind, WarningKind,
 };
 
+mod builtins;
+
 /// Responsible for lowering the AST into the HIR.
 /// Performs name resolution and type checking.
-pub struct Lowerer<'a> {
+pub struct Compiler<'a> {
     // The database is mutable because we need to allocate new symbols and types.
     db: &'a mut Database,
 
@@ -53,86 +56,15 @@ pub struct Lowerer<'a> {
     // It also stored types referenced by symbols.
     sym: GlobalSymbolTable,
 
-    // These are the built-in types and most commonly used HIR nodes.
-    any_type: TypeId,
-    int_type: TypeId,
-    bool_type: TypeId,
-    bytes_type: TypeId,
-    bytes32_type: TypeId,
-    pk_type: TypeId,
-    nil_type: TypeId,
-    nil_hir: HirId,
-    unknown_type: TypeId,
-    unknown_hir: HirId,
+    // Common types and other values that are built-in to the compiler.
+    builtins: Builtins,
 }
 
-impl<'a> Lowerer<'a> {
+impl<'a> Compiler<'a> {
     pub fn new(db: &'a mut Database) -> Self {
-        // Define the built-in types and HIR nodes.
-        let int_type = db.alloc_type(Type::Int);
-        let bool_type = db.alloc_type(Type::Bool);
-        let bytes_type = db.alloc_type(Type::Bytes);
-        let bytes32_type = db.alloc_type(Type::Bytes32);
-        let pk_type = db.alloc_type(Type::PublicKey);
-        let any_type = db.alloc_type(Type::Any);
-        let nil_type = db.alloc_type(Type::Nil);
-        let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
-        let unknown_type = db.alloc_type(Type::Unknown);
-        let unknown_hir = db.alloc_hir(Hir::Unknown);
-
-        // This is the root scope, with builtins for various types and functions.
-        let mut builtins = Scope::default();
-        builtins.define_type("Nil".to_string(), nil_type);
-        builtins.define_type("Int".to_string(), int_type);
-        builtins.define_type("Bool".to_string(), bool_type);
-        builtins.define_type("Bytes".to_string(), bytes_type);
-        builtins.define_type("Bytes32".to_string(), bytes32_type);
-        builtins.define_type("PublicKey".to_string(), pk_type);
-        builtins.define_type("Any".to_string(), any_type);
-
-        // Define the `sha256` function, since it's not an operator or keyword.
-        {
-            let mut scope = Scope::default();
-            let param = db.alloc_symbol(Symbol::Parameter {
-                type_id: bytes_type,
-            });
-            scope.define_symbol("bytes".to_string(), param);
-            let param_ref = db.alloc_hir(Hir::Reference(param));
-            let hir_id = db.alloc_hir(Hir::Sha256(param_ref));
-            let scope_id = db.alloc_scope(scope);
-
-            builtins.define_symbol(
-                "sha256".to_string(),
-                db.alloc_symbol(Symbol::Function {
-                    scope_id,
-                    hir_id,
-                    ty: FunctionType::new(vec![bytes_type], bytes32_type, false),
-                }),
-            );
-        }
-
-        // Define the `pubkey_for_exp` function, since it's not an operator or keyword.
-        {
-            let mut scope = Scope::default();
-            let param = db.alloc_symbol(Symbol::Parameter {
-                type_id: bytes32_type,
-            });
-            scope.define_symbol("exponent".to_string(), param);
-            let param_ref = db.alloc_hir(Hir::Reference(param));
-            let hir_id = db.alloc_hir(Hir::PubkeyForExp(param_ref));
-            let scope_id = db.alloc_scope(scope);
-
-            builtins.define_symbol(
-                "pubkey_for_exp".to_string(),
-                db.alloc_symbol(Symbol::Function {
-                    scope_id,
-                    hir_id,
-                    ty: FunctionType::new(vec![bytes32_type], pk_type, false),
-                }),
-            );
-        }
-
-        let builtins_id = db.alloc_scope(builtins);
+        let mut builtin_scope = Scope::default();
+        let builtins = builtins(db, &mut builtin_scope);
+        let builtins_id = db.alloc_scope(builtin_scope);
 
         Self {
             db,
@@ -143,16 +75,7 @@ impl<'a> Lowerer<'a> {
             is_callee: false,
             diagnostics: Vec::new(),
             sym: GlobalSymbolTable::default(),
-            any_type,
-            int_type,
-            bool_type,
-            bytes_type,
-            bytes32_type,
-            pk_type,
-            nil_type,
-            nil_hir,
-            unknown_type,
-            unknown_hir,
+            builtins,
         }
     }
 
@@ -248,7 +171,7 @@ impl<'a> Lowerer<'a> {
         let return_type = function_item
             .return_type()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         let mut parameter_types = Vec::new();
         let mut varargs = false;
@@ -263,7 +186,7 @@ impl<'a> Lowerer<'a> {
             let type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
-                .unwrap_or(self.unknown_type);
+                .unwrap_or(self.builtins.unknown);
 
             parameter_types.push(type_id);
 
@@ -321,7 +244,7 @@ impl<'a> Lowerer<'a> {
         let type_id = const_item
             .ty()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
@@ -449,7 +372,7 @@ impl<'a> Lowerer<'a> {
         let type_id = ty
             .ty()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         // Set the alias type to the resolved type.
         *self.db.ty_mut(alias_type_id) = Type::Alias(type_id);
@@ -479,7 +402,7 @@ impl<'a> Lowerer<'a> {
             let type_id = field
                 .ty()
                 .map(|ty| self.compile_type(ty))
-                .unwrap_or(self.unknown_type);
+                .unwrap_or(self.builtins.unknown);
 
             if let Some(name) = field.name() {
                 named_fields.insert(name.to_string(), type_id);
@@ -522,7 +445,7 @@ impl<'a> Lowerer<'a> {
             let discriminant = variant
                 .discriminant()
                 .map(|discriminant| self.compile_int(discriminant).hir())
-                .unwrap_or(self.unknown_hir);
+                .unwrap_or(self.builtins.unknown_hir);
 
             *self.db.ty_mut(variant_type) = Type::EnumVariant(EnumVariant::new(
                 name.to_string(),
@@ -591,13 +514,13 @@ impl<'a> Lowerer<'a> {
         // Compile the condition expression.
         let condition = if_stmt
             .condition()
-            .map(|condition| self.compile_expr(condition, Some(self.bool_type)))
+            .map(|condition| self.compile_expr(condition, Some(self.builtins.bool)))
             .unwrap_or_else(|| self.unknown());
 
         // Check that the condition is a boolean.
         self.type_check(
             condition.ty(),
-            self.bool_type,
+            self.builtins.bool,
             if_stmt.syntax().text_range(),
         );
 
@@ -633,7 +556,7 @@ impl<'a> Lowerer<'a> {
         // Check that the output matches the expected type.
         self.type_check(
             then_block.ty(),
-            expected_type.unwrap_or(self.unknown_type),
+            expected_type.unwrap_or(self.builtins.unknown),
             if_stmt.syntax().text_range(),
         );
 
@@ -689,7 +612,7 @@ impl<'a> Lowerer<'a> {
                     // Make sure that the return value matches the expected type.
                     self.type_check(
                         value.ty(),
-                        expected_type.unwrap_or(self.unknown_type),
+                        expected_type.unwrap_or(self.builtins.unknown),
                         return_stmt.syntax().text_range(),
                     );
 
@@ -709,19 +632,22 @@ impl<'a> Lowerer<'a> {
 
                     is_terminated = true;
 
-                    statements.push(Statement::Return(Value::typed(hir_id, self.unknown_type)));
+                    statements.push(Statement::Return(Value::typed(
+                        hir_id,
+                        self.builtins.unknown,
+                    )));
                 }
                 Stmt::AssertStmt(assert_stmt) => {
                     // Compile the condition expression.
                     let condition = assert_stmt
                         .expr()
-                        .map(|condition| self.compile_expr(condition, Some(self.bool_type)))
+                        .map(|condition| self.compile_expr(condition, Some(self.builtins.bool)))
                         .unwrap_or_else(|| self.unknown());
 
                     // Make sure that the condition is a boolean.
                     self.type_check(
                         condition.ty(),
-                        self.bool_type,
+                        self.builtins.bool,
                         assert_stmt.syntax().text_range(),
                     );
 
@@ -899,7 +825,7 @@ impl<'a> Lowerer<'a> {
             // Check the type of the field initializer.
             self.type_check(
                 value.ty(),
-                expected_type.unwrap_or(self.unknown_type),
+                expected_type.unwrap_or(self.builtins.unknown),
                 field.syntax().text_range(),
             );
 
@@ -943,14 +869,14 @@ impl<'a> Lowerer<'a> {
             );
         }
 
-        let mut hir_id = self.nil_hir;
+        let mut hir_id = self.builtins.nil_hir;
 
         // Construct a nil-terminated list from the arguments.
         for field in struct_fields.keys().rev() {
             let field = specified_fields
                 .get(field)
                 .cloned()
-                .unwrap_or(self.unknown_hir);
+                .unwrap_or(self.builtins.unknown_hir);
 
             hir_id = self.db.alloc_hir(Hir::Pair(field, hir_id));
         }
@@ -1000,7 +926,10 @@ impl<'a> Lowerer<'a> {
                 _ => {}
             },
             Type::Bytes | Type::Bytes32 if field_name.text() == "length" => {
-                return Value::typed(self.db.alloc_hir(Hir::Strlen(value.hir())), self.int_type);
+                return Value::typed(
+                    self.db.alloc_hir(Hir::Strlen(value.hir())),
+                    self.builtins.int,
+                );
             }
             _ => {}
         }
@@ -1063,10 +992,14 @@ impl<'a> Lowerer<'a> {
 
         match op {
             PrefixOp::Not => {
-                self.type_check(expr.ty(), self.bool_type, prefix_expr.syntax().text_range());
+                self.type_check(
+                    expr.ty(),
+                    self.builtins.bool,
+                    prefix_expr.syntax().text_range(),
+                );
 
                 let mut value =
-                    Value::typed(self.db.alloc_hir(Hir::Not(expr.hir())), self.bool_type);
+                    Value::typed(self.db.alloc_hir(Hir::Not(expr.hir())), self.builtins.bool);
 
                 for (symbol_id, guard) in expr.guards() {
                     value.guard(*symbol_id, guard.to_reversed());
@@ -1098,42 +1031,47 @@ impl<'a> Lowerer<'a> {
 
         let (op, ty) = match op {
             BinaryOp::Add => {
-                if self.is_assignable_to(lhs.ty(), self.pk_type, false, &mut HashSet::new()) {
-                    self.type_check(rhs.ty(), self.pk_type, text_range);
-                    (BinOp::PointAdd, self.pk_type)
-                } else if self.is_assignable_to(
+                if self.is_assignable_to(
                     lhs.ty(),
-                    self.bytes_type,
+                    self.builtins.public_key,
                     false,
                     &mut HashSet::new(),
                 ) {
-                    self.type_check(rhs.ty(), self.bytes_type, text_range);
-                    (BinOp::Concat, self.bytes_type)
+                    self.type_check(rhs.ty(), self.builtins.public_key, text_range);
+                    (BinOp::PointAdd, self.builtins.public_key)
+                } else if self.is_assignable_to(
+                    lhs.ty(),
+                    self.builtins.bytes,
+                    false,
+                    &mut HashSet::new(),
+                ) {
+                    self.type_check(rhs.ty(), self.builtins.bytes, text_range);
+                    (BinOp::Concat, self.builtins.bytes)
                 } else {
-                    self.type_check(lhs.ty(), self.int_type, text_range);
-                    self.type_check(rhs.ty(), self.int_type, text_range);
-                    (BinOp::Add, self.int_type)
+                    self.type_check(lhs.ty(), self.builtins.int, text_range);
+                    self.type_check(rhs.ty(), self.builtins.int, text_range);
+                    (BinOp::Add, self.builtins.int)
                 }
             }
             BinaryOp::Subtract => {
-                self.type_check(lhs.ty(), self.int_type, text_range);
-                self.type_check(rhs.ty(), self.int_type, text_range);
-                (BinOp::Subtract, self.int_type)
+                self.type_check(lhs.ty(), self.builtins.int, text_range);
+                self.type_check(rhs.ty(), self.builtins.int, text_range);
+                (BinOp::Subtract, self.builtins.int)
             }
             BinaryOp::Multiply => {
-                self.type_check(lhs.ty(), self.int_type, text_range);
-                self.type_check(rhs.ty(), self.int_type, text_range);
-                (BinOp::Multiply, self.int_type)
+                self.type_check(lhs.ty(), self.builtins.int, text_range);
+                self.type_check(rhs.ty(), self.builtins.int, text_range);
+                (BinOp::Multiply, self.builtins.int)
             }
             BinaryOp::Divide => {
-                self.type_check(lhs.ty(), self.int_type, text_range);
-                self.type_check(rhs.ty(), self.int_type, text_range);
-                (BinOp::Divide, self.int_type)
+                self.type_check(lhs.ty(), self.builtins.int, text_range);
+                self.type_check(rhs.ty(), self.builtins.int, text_range);
+                (BinOp::Divide, self.builtins.int)
             }
             BinaryOp::Remainder => {
-                self.type_check(lhs.ty(), self.int_type, text_range);
-                self.type_check(rhs.ty(), self.int_type, text_range);
-                (BinOp::Remainder, self.int_type)
+                self.type_check(lhs.ty(), self.builtins.int, text_range);
+                self.type_check(rhs.ty(), self.builtins.int, text_range);
+                (BinOp::Remainder, self.builtins.int)
             }
             BinaryOp::Equals => {
                 if !self.is_atomic(lhs.ty(), &mut IndexSet::new())
@@ -1143,27 +1081,35 @@ impl<'a> Lowerer<'a> {
                         ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
                         text_range,
                     );
-                } else if self.is_assignable_to(lhs.ty(), self.nil_type, false, &mut HashSet::new())
-                {
+                } else if self.is_assignable_to(
+                    lhs.ty(),
+                    self.builtins.nil,
+                    false,
+                    &mut HashSet::new(),
+                ) {
                     if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
                         guards.insert(
                             *symbol_id,
-                            Guard::new(self.nil_type, self.try_unwrap_optional(rhs.ty())),
+                            Guard::new(self.builtins.nil, self.try_unwrap_optional(rhs.ty())),
                         );
                     }
-                } else if self.is_assignable_to(rhs.ty(), self.nil_type, false, &mut HashSet::new())
-                {
+                } else if self.is_assignable_to(
+                    rhs.ty(),
+                    self.builtins.nil,
+                    false,
+                    &mut HashSet::new(),
+                ) {
                     if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir()) {
                         guards.insert(
                             *symbol_id,
-                            Guard::new(self.nil_type, self.try_unwrap_optional(lhs.ty())),
+                            Guard::new(self.builtins.nil, self.try_unwrap_optional(lhs.ty())),
                         );
                     }
                 } else {
                     self.type_check(rhs.ty(), lhs.ty(), text_range);
                 }
 
-                (BinOp::Equals, self.bool_type)
+                (BinOp::Equals, self.builtins.bool)
             }
             BinaryOp::NotEquals => {
                 if !self.is_atomic(lhs.ty(), &mut IndexSet::new())
@@ -1173,47 +1119,55 @@ impl<'a> Lowerer<'a> {
                         ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
                         text_range,
                     );
-                } else if self.is_assignable_to(lhs.ty(), self.nil_type, false, &mut HashSet::new())
-                {
+                } else if self.is_assignable_to(
+                    lhs.ty(),
+                    self.builtins.nil,
+                    false,
+                    &mut HashSet::new(),
+                ) {
                     if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
                         guards.insert(
                             *symbol_id,
-                            Guard::new(self.try_unwrap_optional(rhs.ty()), self.nil_type),
+                            Guard::new(self.try_unwrap_optional(rhs.ty()), self.builtins.nil),
                         );
                     }
-                } else if self.is_assignable_to(rhs.ty(), self.nil_type, false, &mut HashSet::new())
-                {
+                } else if self.is_assignable_to(
+                    rhs.ty(),
+                    self.builtins.nil,
+                    false,
+                    &mut HashSet::new(),
+                ) {
                     if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir()) {
                         guards.insert(
                             *symbol_id,
-                            Guard::new(self.try_unwrap_optional(lhs.ty()), self.nil_type),
+                            Guard::new(self.try_unwrap_optional(lhs.ty()), self.builtins.nil),
                         );
                     }
                 } else {
                     self.type_check(rhs.ty(), lhs.ty(), text_range);
                 }
 
-                (BinOp::NotEquals, self.bool_type)
+                (BinOp::NotEquals, self.builtins.bool)
             }
             BinaryOp::GreaterThan => {
-                self.type_check(lhs.ty(), self.int_type, text_range);
-                self.type_check(rhs.ty(), self.int_type, text_range);
-                (BinOp::GreaterThan, self.bool_type)
+                self.type_check(lhs.ty(), self.builtins.int, text_range);
+                self.type_check(rhs.ty(), self.builtins.int, text_range);
+                (BinOp::GreaterThan, self.builtins.bool)
             }
             BinaryOp::LessThan => {
-                self.type_check(lhs.ty(), self.int_type, text_range);
-                self.type_check(rhs.ty(), self.int_type, text_range);
-                (BinOp::LessThan, self.bool_type)
+                self.type_check(lhs.ty(), self.builtins.int, text_range);
+                self.type_check(rhs.ty(), self.builtins.int, text_range);
+                (BinOp::LessThan, self.builtins.bool)
             }
             BinaryOp::GreaterThanEquals => {
-                self.type_check(lhs.ty(), self.int_type, text_range);
-                self.type_check(rhs.ty(), self.int_type, text_range);
-                (BinOp::GreaterThanEquals, self.bool_type)
+                self.type_check(lhs.ty(), self.builtins.int, text_range);
+                self.type_check(rhs.ty(), self.builtins.int, text_range);
+                (BinOp::GreaterThanEquals, self.builtins.bool)
             }
             BinaryOp::LessThanEquals => {
-                self.type_check(lhs.ty(), self.int_type, text_range);
-                self.type_check(rhs.ty(), self.int_type, text_range);
-                (BinOp::LessThanEquals, self.bool_type)
+                self.type_check(lhs.ty(), self.builtins.int, text_range);
+                self.type_check(rhs.ty(), self.builtins.int, text_range);
+                (BinOp::LessThanEquals, self.builtins.bool)
             }
         };
 
@@ -1259,7 +1213,7 @@ impl<'a> Lowerer<'a> {
         let ty = cast
             .ty()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         self.cast_check(expr.ty(), ty, cast.expr().unwrap().syntax().text_range());
 
@@ -1277,15 +1231,15 @@ impl<'a> Lowerer<'a> {
         let ty = guard
             .ty()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         let Some((guard, hir_id)) =
             self.guard_into(expr.ty(), ty, expr.hir(), guard.syntax().text_range())
         else {
-            return Value::typed(self.unknown_hir, ty);
+            return Value::typed(self.builtins.unknown_hir, ty);
         };
 
-        let mut value = Value::typed(hir_id, self.bool_type);
+        let mut value = Value::typed(hir_id, self.builtins.bool);
 
         if let Hir::Reference(symbol_id) = self.db.hir(expr.hir()) {
             value.guard(*symbol_id, guard);
@@ -1306,24 +1260,26 @@ impl<'a> Lowerer<'a> {
                 WarningKind::RedundantTypeCheck(self.type_name(from)),
                 text_range,
             );
-            return Some((Guard::new(to, self.bool_type), hir_id));
+            return Some((Guard::new(to, self.builtins.bool), hir_id));
         }
 
         match (self.db.ty(from).clone(), self.db.ty(to).clone()) {
             (Type::Any, Type::Pair(first, rest)) => {
-                if !self.types_equal(first, self.any_type) {
+                if !self.types_equal(first, self.builtins.any) {
                     self.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
-                if !self.types_equal(rest, self.any_type) {
+                if !self.types_equal(rest, self.builtins.any) {
                     self.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
                 let hir_id = self.db.alloc_hir(Hir::IsCons(hir_id));
-                Some((Guard::new(to, self.bytes_type), hir_id))
+                Some((Guard::new(to, self.builtins.bytes), hir_id))
             }
             (Type::Any, Type::Bytes) => {
-                let pair_type = self.db.alloc_type(Type::Pair(self.any_type, self.any_type));
+                let pair_type = self
+                    .db
+                    .alloc_type(Type::Pair(self.builtins.any, self.builtins.any));
                 let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
                 Some((Guard::new(to, pair_type), hir_id))
@@ -1338,7 +1294,7 @@ impl<'a> Lowerer<'a> {
                 }
 
                 let hir_id = self.db.alloc_hir(Hir::IsCons(hir_id));
-                Some((Guard::new(to, self.nil_type), hir_id))
+                Some((Guard::new(to, self.builtins.nil), hir_id))
             }
             (Type::List(inner), Type::Nil) => {
                 let pair_type = self.db.alloc_type(Type::Pair(inner, from));
@@ -1387,12 +1343,14 @@ impl<'a> Lowerer<'a> {
         match value.kind() {
             SyntaxKind::Int => self.compile_int(value),
             SyntaxKind::String => self.compile_string(value),
-            SyntaxKind::True => Value::typed(self.db.alloc_hir(Hir::Atom(vec![1])), self.bool_type),
+            SyntaxKind::True => {
+                Value::typed(self.db.alloc_hir(Hir::Atom(vec![1])), self.builtins.bool)
+            }
             SyntaxKind::False => {
-                Value::typed(self.db.alloc_hir(Hir::Atom(Vec::new())), self.bool_type)
+                Value::typed(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.bool)
             }
             SyntaxKind::Nil => {
-                Value::typed(self.db.alloc_hir(Hir::Atom(Vec::new())), self.nil_type)
+                Value::typed(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.nil)
             }
             _ => unreachable!(),
         }
@@ -1454,7 +1412,7 @@ impl<'a> Lowerer<'a> {
             items.push(output.hir());
         }
 
-        let mut hir_id = self.nil_hir;
+        let mut hir_id = self.builtins.nil_hir;
 
         for (i, item) in items.into_iter().rev().enumerate() {
             if i == 0 && !nil_terminated {
@@ -1467,7 +1425,7 @@ impl<'a> Lowerer<'a> {
         Value::typed(
             hir_id,
             self.db
-                .alloc_type(Type::List(item_type.unwrap_or(self.unknown_type))),
+                .alloc_type(Type::List(item_type.unwrap_or(self.builtins.unknown))),
         )
     }
 
@@ -1486,7 +1444,7 @@ impl<'a> Lowerer<'a> {
             let value = self.compile_expr(first.clone(), expected_first);
             self.type_check(
                 value.ty(),
-                expected_first.unwrap_or(self.unknown_type),
+                expected_first.unwrap_or(self.builtins.unknown),
                 first.syntax().text_range(),
             );
             value
@@ -1498,7 +1456,7 @@ impl<'a> Lowerer<'a> {
             let value = self.compile_expr(rest.clone(), expected_rest);
             self.type_check(
                 value.ty(),
-                expected_rest.unwrap_or(self.unknown_type),
+                expected_rest.unwrap_or(self.builtins.unknown),
                 rest.syntax().text_range(),
             );
             value
@@ -1535,7 +1493,7 @@ impl<'a> Lowerer<'a> {
                 .or(expected
                     .as_ref()
                     .and_then(|expected| expected.parameter_types().get(i).copied()))
-                .unwrap_or(self.unknown_type);
+                .unwrap_or(self.builtins.unknown);
 
             parameter_types.push(type_id);
 
@@ -1594,7 +1552,7 @@ impl<'a> Lowerer<'a> {
     fn compile_if_expr(&mut self, if_expr: IfExpr, expected_type: Option<TypeId>) -> Value {
         let condition = if_expr
             .condition()
-            .map(|condition| self.compile_expr(condition, Some(self.bool_type)));
+            .map(|condition| self.compile_expr(condition, Some(self.builtins.bool)));
 
         if let Some(condition) = condition.as_ref() {
             self.type_guard_stack.push(condition.then_guards());
@@ -1626,7 +1584,7 @@ impl<'a> Lowerer<'a> {
         if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty()) {
             self.type_check(
                 condition_type,
-                self.bool_type,
+                self.builtins.bool,
                 if_expr.condition().unwrap().syntax().text_range(),
             );
         }
@@ -1643,7 +1601,7 @@ impl<'a> Lowerer<'a> {
             .as_ref()
             .or(else_block.as_ref())
             .map(|block| block.ty())
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         let value = condition.and_then(|condition| {
             then_block.and_then(|then_block| {
@@ -1657,7 +1615,7 @@ impl<'a> Lowerer<'a> {
             })
         });
 
-        Value::typed(value.unwrap_or(self.unknown_hir), ty)
+        Value::typed(value.unwrap_or(self.builtins.unknown_hir), ty)
     }
 
     fn compile_int_raw<T, E>(&mut self, int: SyntaxToken) -> T
@@ -1676,7 +1634,7 @@ impl<'a> Lowerer<'a> {
 
         Value::typed(
             self.db.alloc_hir(Hir::Atom(bigint_to_bytes(num))),
-            self.int_type,
+            self.builtins.int,
         )
     }
 
@@ -1691,9 +1649,9 @@ impl<'a> Lowerer<'a> {
         Value::typed(
             self.db.alloc_hir(Hir::Atom(bytes.to_vec())),
             if bytes.len() == 32 {
-                self.bytes32_type
+                self.builtins.bytes32
             } else {
-                self.bytes_type
+                self.builtins.bytes
             },
         )
     }
@@ -1898,7 +1856,7 @@ impl<'a> Lowerer<'a> {
                         .parameter_types()
                         .get(i)
                         .copied()
-                        .unwrap_or(self.unknown_type),
+                        .unwrap_or(self.builtins.unknown),
                     call.args()[i].syntax().text_range(),
                 );
             }
@@ -1912,7 +1870,7 @@ impl<'a> Lowerer<'a> {
 
         let type_id = expected
             .map(|expected| expected.return_type())
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         Value::typed(hir_id, type_id)
     }
@@ -1945,7 +1903,7 @@ impl<'a> Lowerer<'a> {
                 ErrorKind::UndefinedType(name.to_string()),
                 name.text_range(),
             );
-            return self.unknown_type;
+            return self.builtins.unknown;
         };
 
         self.type_reference(ty);
@@ -1977,18 +1935,18 @@ impl<'a> Lowerer<'a> {
                     return variant_type;
                 }
                 self.error(ErrorKind::UnknownEnumVariant(name.to_string()), range);
-                self.unknown_type
+                self.builtins.unknown
             }
             _ => {
                 self.error(ErrorKind::PathIntoNonEnum(self.type_name(ty)), range);
-                self.unknown_type
+                self.builtins.unknown
             }
         }
     }
 
     fn compile_list_type(&mut self, list: ListType) -> TypeId {
         let Some(inner) = list.ty() else {
-            return self.unknown_type;
+            return self.builtins.unknown;
         };
 
         let item_type = self.compile_type(inner);
@@ -1999,12 +1957,12 @@ impl<'a> Lowerer<'a> {
         let first = pair_type
             .first()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         let rest = pair_type
             .rest()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         self.db.alloc_type(Type::Pair(first, rest))
     }
@@ -2019,7 +1977,7 @@ impl<'a> Lowerer<'a> {
             let type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
-                .unwrap_or(self.unknown_type);
+                .unwrap_or(self.builtins.unknown);
 
             parameter_types.push(type_id);
 
@@ -2035,7 +1993,7 @@ impl<'a> Lowerer<'a> {
         let return_type = function
             .ret()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         self.db.alloc_type(Type::Function(FunctionType::new(
             parameter_types,
@@ -2048,7 +2006,7 @@ impl<'a> Lowerer<'a> {
         let ty = optional
             .ty()
             .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.unknown_type);
+            .unwrap_or(self.builtins.unknown);
 
         if let Type::Optional(inner) = self.db.ty_raw(ty).clone() {
             self.warning(
@@ -2282,7 +2240,7 @@ impl<'a> Lowerer<'a> {
 
             // Either nil or inner type is assignable to optionals.
             (_, Type::Optional(inner_b)) => {
-                self.types_equal(a, self.nil_type)
+                self.types_equal(a, self.builtins.nil)
                     || self.is_assignable_to(a, inner_b, cast, visited)
             }
 
@@ -2393,7 +2351,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn unknown(&self) -> Value {
-        Value::typed(self.unknown_hir, self.unknown_type)
+        Value::typed(self.builtins.unknown_hir, self.builtins.unknown)
     }
 
     fn symbol_type(&self, symbol_id: SymbolId) -> Option<TypeId> {

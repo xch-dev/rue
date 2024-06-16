@@ -90,17 +90,43 @@ pub fn Docs() -> impl IntoView {
     }
 }
 
+fn in_pages(page_uris: Vec<&'static str>) -> Memo<bool> {
+    let pathname = use_location().pathname;
+
+    create_memo(move |_| {
+        let pathname = pathname.get();
+        page_uris.iter().any(|uri| {
+            if uri.is_empty() {
+                pathname == "/docs"
+            } else {
+                format!("/docs/{uri}") == pathname
+            }
+        })
+    })
+}
+
 #[component]
-fn Category(label: &'static str, children: Children) -> impl IntoView {
-    let (get_expanded, set_expended) = create_signal(false);
+fn Category(
+    label: &'static str,
+    page_uris: &'static [&'static str],
+    children: ChildrenFn,
+) -> impl IntoView {
+    let in_pages = in_pages(page_uris.to_vec());
+
+    let (get_expanded, set_expanded) = create_signal::<bool>(in_pages.get_untracked());
 
     view! {
         <div>
             <div
                 class="flex justify-between items-center cursor-pointer select-none"
-                on:click=move |_| set_expended.set(!get_expanded.get())
+                on:click=move |_| set_expanded.set(!get_expanded.get())
             >
-                <p class="text-xl">{label}</p>
+                <p class=move || {
+                    format!(
+                        "text-xl{}",
+                        if in_pages.get() { " text-purple-700 dark:text-purple-400" } else { "" },
+                    )
+                }>{label}</p>
                 {move || {
                     if get_expanded.get() {
                         view! {
@@ -114,18 +140,28 @@ fn Category(label: &'static str, children: Children) -> impl IntoView {
                 }}
 
             </div>
-            <div class=format!(
-                "ml-7 mt-2 flex flex-col gap-2{}",
-                if get_expanded.get() { " hidden" } else { "" },
-            )>{children()}</div>
+            <Show when=move || get_expanded.get()>
+                <div class="ml-7 mt-2 flex flex-col gap-2">{children()}</div>
+            </Show>
         </div>
     }
 }
 
 #[component]
 fn PageLink(uri: &'static str, label: &'static str) -> impl IntoView {
+    let in_page = in_pages(vec![uri]);
+
     view! {
-        <A href=uri class="block text-xl">
+        <A
+            href=uri
+            class=move || {
+                format!(
+                    "block text-xl{}",
+                    if in_page.get() { " text-purple-700 dark:text-purple-400" } else { "" },
+                )
+            }
+        >
+
             {label}
         </A>
     }

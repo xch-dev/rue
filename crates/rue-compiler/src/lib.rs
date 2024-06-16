@@ -1,19 +1,17 @@
-#![warn(clippy::needless_pass_by_ref_mut)]
-
 use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
+use compiler::Compiler;
 use dependency_graph::GraphTraversal;
-use lowerer::Lowerer;
 use optimizer::Optimizer;
 use rue_parser::Root;
 
 mod codegen;
+mod compiler;
 mod database;
 mod dependency_graph;
 mod error;
 mod hir;
 mod lir;
-mod lowerer;
 mod optimizer;
 mod scope;
 mod symbol;
@@ -48,7 +46,7 @@ pub fn analyze(root: Root) -> Vec<Diagnostic> {
 fn precompile(database: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>) {
     let scope_id = database.alloc_scope(Scope::default());
 
-    let mut lowerer = Lowerer::new(database);
+    let mut lowerer = Compiler::new(database);
     lowerer.compile_root(root, scope_id);
     let (sym, mut diagnostics) = lowerer.finish();
 

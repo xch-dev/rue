@@ -39,6 +39,7 @@ pub fn docs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 fn docs_impl(input: TokenStream) -> TokenStream {
     let relative_path: LitStr = parse2(input).unwrap();
     let path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join(relative_path.value());
+    let path_str = LitStr::new(path.to_str().unwrap(), Span::call_site());
     let text = fs::read_to_string(path.as_path()).unwrap();
     let docs: Docs = serde_json::from_str(&text).unwrap();
     let dir = path.parent().unwrap().join("docs");
@@ -90,8 +91,12 @@ fn docs_impl(input: TokenStream) -> TokenStream {
 
         #[component]
         fn DocsSidebar() -> impl IntoView {
+            include_str!(#path_str);
+
             view! {
-                #sidebar_tokens
+                <div class="flex flex-col gap-2">
+                    #sidebar_tokens
+                </div>
             }
         }
     }
@@ -109,6 +114,11 @@ fn sidebar_tokens(items: &[Item]) -> TokenStream {
 }
 
 fn category_tokens(category: &CategoryItem) -> TokenStream {
+    let mut pages = Vec::new();
+    flatten_pages(&mut pages, &category.items);
+
+    let page_names: Vec<String> = pages.iter().map(|page| page.uri.clone()).collect();
+
     let label = LitStr::new(category.label.as_str(), Span::call_site());
     let tokens: Vec<TokenStream> = category
         .items
@@ -120,7 +130,7 @@ fn category_tokens(category: &CategoryItem) -> TokenStream {
         .collect();
 
     quote! {
-        <Category label=#label>
+        <Category label=#label page_uris={&[ #( #page_names ),* ]}>
             #( #tokens )*
         </Category>
 
@@ -160,8 +170,8 @@ fn header_tokens(spans: &[markdown::Span], level: usize) -> TokenStream {
     let element = Ident::new(&format!("h{}", level), Span::call_site());
     let class = LitStr::new(
         match level {
-            1 => "text-5xl mb-8",
-            2 => "text-4xl",
+            1 => "text-5xl mb-6",
+            2 => "text-4xl mt-8",
             3 => "text-3xl mt-8",
             4 => "text-2xl",
             5 => "text-xl",
@@ -190,20 +200,17 @@ fn header_tokens(spans: &[markdown::Span], level: usize) -> TokenStream {
             .to_lowercase()
             .replace(' ', "-");
 
+        let anchor = format!("#{}", &id);
+
         span_tokens = quote! {
-            <a href=#id>
+            <a href=#anchor id=#id>
                 #span_tokens
             </a>
         };
     }
 
-    let style = match level {
-        2 => "margin-top: 45px",
-        _ => "",
-    };
-
     quote! {
-        <#element class=#class style=#style>
+        <#element class=#class>
             #span_tokens
         </#element>
     }
