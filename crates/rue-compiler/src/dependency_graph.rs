@@ -89,7 +89,7 @@ impl<'a> GraphTraversal<'a> {
             self.compute_edges(symbol_id);
         }
         for &symbol_id in exported_symbols {
-            self.visit_main(symbol_id);
+            self.visit_entrypoint(symbol_id);
         }
         self.graph
     }
@@ -129,10 +129,10 @@ impl<'a> GraphTraversal<'a> {
         }
     }
 
-    fn visit_main(&mut self, main_function: SymbolId) {
+    fn visit_entrypoint(&mut self, symbol_id: SymbolId) {
         let Symbol::Function {
             scope_id, hir_id, ..
-        } = self.db.symbol(main_function).clone()
+        } = self.db.symbol(symbol_id).clone()
         else {
             unreachable!();
         };
@@ -223,21 +223,21 @@ impl<'a> GraphTraversal<'a> {
         }
     }
 
-    fn compute_edges(&mut self, main_function: SymbolId) {
+    fn compute_edges(&mut self, symbol_id: SymbolId) {
         let Symbol::Function {
             scope_id,
             hir_id,
             ty,
             ..
-        } = self.db.symbol(main_function).clone()
+        } = self.db.symbol(symbol_id).clone()
         else {
             unreachable!();
         };
 
-        // Add the main function scope to the graph.
+        // Add the function scope to the graph.
         self.edges.insert(scope_id, Vec::new());
 
-        // Compute the main function's edges.
+        // Compute the function's edges.
         self.compute_function_edges(scope_id, hir_id, ty, &mut HashSet::new());
     }
 
