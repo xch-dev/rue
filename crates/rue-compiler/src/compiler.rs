@@ -262,7 +262,11 @@ impl<'a> Compiler<'a> {
 
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
-        *self.db.symbol_mut(symbol_id) = Symbol::ConstBinding { type_id, hir_id };
+        *self.db.symbol_mut(symbol_id) = Symbol::ConstBinding {
+            type_id,
+            hir_id,
+            inline: const_item.inline().is_some(),
+        };
 
         if let Some(name) = const_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);

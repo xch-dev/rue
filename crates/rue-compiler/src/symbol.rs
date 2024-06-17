@@ -22,6 +22,7 @@ pub enum Symbol {
     ConstBinding {
         type_id: TypeId,
         hir_id: HirId,
+        inline: bool,
     },
 }
 

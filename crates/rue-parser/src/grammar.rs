@@ -28,6 +28,8 @@ fn item(p: &mut Parser) {
 
     if p.at(SyntaxKind::Fun) {
         function_item(p, cp);
+    } else if p.at(SyntaxKind::Const) {
+        const_item(p, cp);
     } else if !inline {
         if p.at(SyntaxKind::Type) {
             type_alias_item(p, cp);
@@ -35,8 +37,6 @@ fn item(p: &mut Parser) {
             struct_item(p, cp);
         } else if p.at(SyntaxKind::Enum) {
             enum_item(p, cp);
-        } else if p.at(SyntaxKind::Const) {
-            const_item(p, cp);
         } else if p.at(SyntaxKind::Import) {
             import_item(p, cp);
         } else {

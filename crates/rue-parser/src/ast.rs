@@ -327,6 +327,13 @@ impl ConstItem {
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Export)
     }
+
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Inline)
+    }
 }
 
 impl ImportItem {
