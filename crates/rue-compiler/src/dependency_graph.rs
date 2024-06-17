@@ -209,11 +209,6 @@ impl<'a> GraphTraversal<'a> {
                         hir_id,
                         ..
                     } => self.visit_hir(new_scope_id, hir_id, visited),
-                    Symbol::InlineFunction {
-                        scope_id: new_scope_id,
-                        hir_id,
-                        ..
-                    } => self.visit_hir(new_scope_id, hir_id, visited),
                     Symbol::Parameter { .. } => {}
                     Symbol::LetBinding { hir_id, .. } | Symbol::ConstBinding { hir_id, .. } => {
                         self.visit_hir(scope_id, hir_id, visited);
@@ -317,19 +312,6 @@ impl<'a> GraphTraversal<'a> {
                 match self.db.symbol(symbol_id).clone() {
                     Symbol::Unknown => unreachable!(),
                     Symbol::Function {
-                        scope_id: new_scope_id,
-                        hir_id,
-                        ty,
-                        ..
-                    } => {
-                        // Add the new scope to the graph.
-                        // The parent scope depends on the new scope's captures.
-                        self.edges.entry(new_scope_id).or_default().push(scope_id);
-
-                        // Compute the function's edges.
-                        self.compute_function_edges(new_scope_id, hir_id, ty, visited);
-                    }
-                    Symbol::InlineFunction {
                         scope_id: new_scope_id,
                         hir_id,
                         ty,

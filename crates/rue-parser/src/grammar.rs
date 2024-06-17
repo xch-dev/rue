@@ -16,6 +16,7 @@ fn at_item(p: &mut Parser) -> bool {
         || p.at(SyntaxKind::Struct)
         || p.at(SyntaxKind::Enum)
         || p.at(SyntaxKind::Const)
+        || p.at(SyntaxKind::Import)
         || p.at(SyntaxKind::Export)
         || p.at(SyntaxKind::Inline)
 }
@@ -36,6 +37,8 @@ fn item(p: &mut Parser) {
             enum_item(p, cp);
         } else if p.at(SyntaxKind::Const) {
             const_item(p, cp);
+        } else if p.at(SyntaxKind::Import) {
+            import_item(p, cp);
         } else {
             p.error(&[]);
         }
@@ -149,6 +152,44 @@ fn const_item(p: &mut Parser, cp: Checkpoint) {
     p.expect(SyntaxKind::Assign);
     expr(p);
     p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn import_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::ImportItem);
+    p.expect(SyntaxKind::Import);
+    import_path(p);
+    p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn import_path(p: &mut Parser) {
+    p.start(SyntaxKind::ImportPath);
+    p.expect(SyntaxKind::Ident);
+    while p.try_eat(SyntaxKind::PathSeparator) {
+        if p.at(SyntaxKind::Ident) {
+            p.expect(SyntaxKind::Ident);
+        } else if p.at(SyntaxKind::OpenBrace) {
+            import_group(p);
+            break;
+        } else {
+            p.error(&[]);
+            break;
+        }
+    }
+    p.finish();
+}
+
+fn import_group(p: &mut Parser) {
+    p.start(SyntaxKind::ImportGroup);
+    p.expect(SyntaxKind::OpenBrace);
+    while !p.at(SyntaxKind::CloseBrace) {
+        import_path(p);
+        if !p.try_eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::CloseBrace);
     p.finish();
 }
 

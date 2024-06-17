@@ -234,18 +234,11 @@ impl<'a> Compiler<'a> {
 
         let ty = FunctionType::new(parameter_types, return_type, varargs);
 
-        *self.db.symbol_mut(symbol_id) = if function_item.inline().is_some() {
-            Symbol::InlineFunction {
-                scope_id,
-                hir_id,
-                ty,
-            }
-        } else {
-            Symbol::Function {
-                scope_id,
-                hir_id,
-                ty,
-            }
+        *self.db.symbol_mut(symbol_id) = Symbol::Function {
+            scope_id,
+            hir_id,
+            ty,
+            inline: function_item.inline().is_some(),
         };
 
         if let Some(name) = function_item.name() {
@@ -335,9 +328,7 @@ impl<'a> Compiler<'a> {
             return;
         };
 
-        let (Symbol::Function { scope_id, ty, .. } | Symbol::InlineFunction { scope_id, ty, .. }) =
-            self.db.symbol(symbol_id).clone()
-        else {
+        let Symbol::Function { scope_id, ty, .. } = self.db.symbol(symbol_id).clone() else {
             unreachable!();
         };
 
@@ -355,9 +346,7 @@ impl<'a> Compiler<'a> {
 
         // We ignore type guards here for now.
         // Just set the function body HIR.
-        let (Symbol::Function { hir_id, .. } | Symbol::InlineFunction { hir_id, .. }) =
-            self.db.symbol_mut(symbol_id)
-        else {
+        let Symbol::Function { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
             unreachable!();
         };
         *hir_id = value.hir();
@@ -1563,6 +1552,7 @@ impl<'a> Compiler<'a> {
             scope_id,
             hir_id: body.hir(),
             ty: ty.clone(),
+            inline: false,
         });
 
         Value::typed(
@@ -1715,9 +1705,6 @@ impl<'a> Compiler<'a> {
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
                     Symbol::Unknown => unreachable!(),
                     Symbol::Function { ty, .. } => self.db.alloc_type(Type::Function(ty.clone())),
-                    Symbol::InlineFunction { ty, .. } => {
-                        self.db.alloc_type(Type::Function(ty.clone()))
-                    }
                     Symbol::Parameter { type_id } => *type_id,
                     Symbol::LetBinding { type_id, .. } => *type_id,
                     Symbol::ConstBinding { type_id, .. } => *type_id,

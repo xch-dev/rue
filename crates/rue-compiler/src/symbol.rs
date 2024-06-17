@@ -10,11 +10,7 @@ pub enum Symbol {
         scope_id: ScopeId,
         hir_id: HirId,
         ty: FunctionType,
-    },
-    InlineFunction {
-        scope_id: ScopeId,
-        hir_id: HirId,
-        ty: FunctionType,
+        inline: bool,
     },
     Parameter {
         type_id: TypeId,
@@ -46,6 +42,6 @@ impl Symbol {
     }
 
     pub fn is_inline_function(&self) -> bool {
-        matches!(self, Symbol::InlineFunction { .. })
+        matches!(self, Symbol::Function { inline: true, .. })
     }
 }

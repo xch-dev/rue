@@ -79,6 +79,9 @@ pub enum SyntaxKind {
     EnumItem,
     EnumVariant,
     ConstItem,
+    ImportItem,
+    ImportPath,
+    ImportGroup,
 
     LetStmt,
     IfStmt,
@@ -194,6 +197,9 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::EnumItem => "enum item",
                 SyntaxKind::EnumVariant => "enum variant",
                 SyntaxKind::ConstItem => "const item",
+                SyntaxKind::ImportItem => "import item",
+                SyntaxKind::ImportPath => "import path",
+                SyntaxKind::ImportGroup => "import group",
 
                 SyntaxKind::LetStmt => "let statement",
                 SyntaxKind::IfStmt => "if statement",

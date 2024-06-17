@@ -75,6 +75,7 @@ fn sha256(db: &mut Database, builtins: &Builtins) -> SymbolId {
         scope_id,
         hir_id,
         ty: FunctionType::new(vec![builtins.bytes], builtins.bytes32, false),
+        inline: false,
     })
 }
 
@@ -92,5 +93,6 @@ fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
         scope_id,
         hir_id,
         ty: FunctionType::new(vec![builtins.bytes32], builtins.public_key, false),
+        inline: false,
     })
 }

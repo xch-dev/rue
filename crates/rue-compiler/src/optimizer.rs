@@ -101,6 +101,7 @@ impl<'a> Optimizer<'a> {
             Symbol::Function {
                 scope_id: function_scope_id,
                 hir_id,
+                inline: false,
                 ..
             } => {
                 let mut body = self.opt_hir(function_scope_id, hir_id);
@@ -117,7 +118,7 @@ impl<'a> Optimizer<'a> {
                 self.db.alloc_lir(Lir::FunctionBody(body))
             }
             Symbol::Parameter { .. }
-            | Symbol::InlineFunction { .. }
+            | Symbol::Function { inline: true, .. }
             | Symbol::ConstBinding { .. } => {
                 unreachable!();
             }
@@ -141,10 +142,11 @@ impl<'a> Optimizer<'a> {
                 varargs,
             } => {
                 if let Hir::Reference(symbol_id) = self.db.hir(*callee) {
-                    if let Symbol::InlineFunction {
+                    if let Symbol::Function {
                         scope_id: function_scope_id,
                         ty,
                         hir_id,
+                        inline: true,
                         ..
                     } = self.db.symbol(*symbol_id)
                     {
@@ -238,6 +240,7 @@ impl<'a> Optimizer<'a> {
         match self.db.symbol(symbol_id).clone() {
             Symbol::Function {
                 scope_id: function_scope_id,
+                inline: false,
                 ..
             } => {
                 let body = self.opt_path(scope_id, symbol_id);
@@ -256,7 +259,7 @@ impl<'a> Optimizer<'a> {
 
                 self.db.alloc_lir(Lir::Closure(body, captures))
             }
-            Symbol::InlineFunction { .. } => self.db.alloc_lir(Lir::Atom(vec![])),
+            Symbol::Function { inline: true, .. } => self.db.alloc_lir(Lir::Atom(vec![])),
             Symbol::ConstBinding { hir_id, .. } => self.opt_hir(scope_id, hir_id),
             Symbol::LetBinding { .. } => self.opt_path(scope_id, symbol_id),
             Symbol::Parameter { .. } => {

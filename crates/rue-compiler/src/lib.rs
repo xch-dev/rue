@@ -74,7 +74,6 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
         let kind = match db.symbol(symbol_id).clone() {
             Symbol::Unknown => unreachable!(),
             Symbol::Function { .. } => WarningKind::UnusedFunction(token.to_string()),
-            Symbol::InlineFunction { .. } => WarningKind::UnusedInlineFunction(token.to_string()),
             Symbol::Parameter { .. } => WarningKind::UnusedParameter(token.to_string()),
             Symbol::LetBinding { .. } => WarningKind::UnusedLet(token.to_string()),
             Symbol::ConstBinding { .. } => WarningKind::UnusedConst(token.to_string()),

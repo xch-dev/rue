@@ -60,7 +60,8 @@ ast_enum!(
     TypeAliasItem,
     ConstItem,
     StructItem,
-    EnumItem
+    EnumItem,
+    ImportItem,
 );
 ast_node!(FunctionItem);
 ast_node!(FunctionParam);
@@ -70,6 +71,9 @@ ast_node!(EnumItem);
 ast_node!(EnumVariant);
 ast_node!(ConstItem);
 ast_node!(StructField);
+ast_node!(ImportItem);
+ast_node!(ImportPath);
+ast_node!(ImportGroup);
 
 ast_node!(Block);
 ast_node!(Path);
@@ -322,6 +326,35 @@ impl ConstItem {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Export)
+    }
+}
+
+impl ImportItem {
+    pub fn path(&self) -> Option<ImportPath> {
+        self.syntax().children().find_map(ImportPath::cast)
+    }
+}
+
+impl ImportPath {
+    pub fn idents(&self) -> Vec<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .collect()
+    }
+
+    pub fn group(&self) -> Option<ImportGroup> {
+        self.syntax().children().find_map(ImportGroup::cast)
+    }
+}
+
+impl ImportGroup {
+    pub fn paths(&self) -> Vec<ImportPath> {
+        self.syntax()
+            .children()
+            .filter_map(ImportPath::cast)
+            .collect()
     }
 }
 
