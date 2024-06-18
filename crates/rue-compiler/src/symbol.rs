@@ -34,12 +34,20 @@ impl Symbol {
     pub fn is_capturable(&self) -> bool {
         matches!(
             self,
-            Symbol::Function { .. } | Symbol::LetBinding { .. } | Symbol::Parameter { .. }
+            Symbol::Function { inline: false, .. }
+                | Symbol::Parameter { .. }
+                | Symbol::LetBinding { .. }
+                | Symbol::ConstBinding { inline: false, .. }
         )
     }
 
     pub fn is_definition(&self) -> bool {
-        matches!(self, Symbol::Function { .. } | Symbol::LetBinding { .. })
+        matches!(
+            self,
+            Symbol::Function { inline: false, .. }
+                | Symbol::LetBinding { .. }
+                | Symbol::ConstBinding { inline: false, .. }
+        )
     }
 
     pub fn is_inline_function(&self) -> bool {

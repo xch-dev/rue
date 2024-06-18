@@ -1,9 +1,9 @@
-const OP_Q: Bytes = 1 as Bytes;
-const OP_A: Bytes = 2 as Bytes;
-const OP_C: Bytes = 4 as Bytes;
+inline const OP_Q: Bytes = 1 as Bytes;
+inline const OP_A: Bytes = 2 as Bytes;
+inline const OP_C: Bytes = 4 as Bytes;
 
-const ONE: Bytes = 1 as Bytes;
-const TWO: Bytes = 2 as Bytes;
+inline const ONE: Bytes = 1 as Bytes;
+inline const TWO: Bytes = 2 as Bytes;
 
 fun update_hash_for_parameter_hash(parameter_hash: Bytes32, environment_hash: Bytes32) -> Bytes32 {
     let rest = sha256(TWO + environment_hash + sha256(ONE + nil));

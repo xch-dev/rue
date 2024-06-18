@@ -117,9 +117,14 @@ impl<'a> Optimizer<'a> {
 
                 self.db.alloc_lir(Lir::FunctionBody(body))
             }
+            Symbol::ConstBinding {
+                hir_id,
+                inline: false,
+                ..
+            } => self.opt_hir(scope_id, hir_id),
             Symbol::Parameter { .. }
             | Symbol::Function { inline: true, .. }
-            | Symbol::ConstBinding { .. } => {
+            | Symbol::ConstBinding { inline: true, .. } => {
                 unreachable!();
             }
             Symbol::LetBinding { hir_id, .. } => self.opt_hir(scope_id, hir_id),
@@ -260,8 +265,14 @@ impl<'a> Optimizer<'a> {
                 self.db.alloc_lir(Lir::Closure(body, captures))
             }
             Symbol::Function { inline: true, .. } => self.db.alloc_lir(Lir::Atom(vec![])),
-            Symbol::ConstBinding { hir_id, .. } => self.opt_hir(scope_id, hir_id),
-            Symbol::LetBinding { .. } => self.opt_path(scope_id, symbol_id),
+            Symbol::ConstBinding {
+                hir_id,
+                inline: true,
+                ..
+            } => self.opt_hir(scope_id, hir_id),
+            Symbol::LetBinding { .. } | Symbol::ConstBinding { inline: false, .. } => {
+                self.opt_path(scope_id, symbol_id)
+            }
             Symbol::Parameter { .. } => {
                 for inline_parameter_map in self.inline_parameter_stack.iter().rev() {
                     if let Some(hir_id) = inline_parameter_map.get(&symbol_id) {
