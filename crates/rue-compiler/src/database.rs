@@ -1,5 +1,6 @@
 use id_arena::Arena;
 use indexmap::IndexMap;
+use rowan::TextRange;
 use rue_parser::SyntaxToken;
 
 mod ids;
@@ -8,10 +9,14 @@ mod type_system;
 pub use ids::*;
 pub use type_system::*;
 
-use crate::{hir::Hir, lir::Lir, optimizer::Environment, scope::Scope, symbol::Symbol, ty::Type};
+use crate::{
+    hir::Hir, lir::Lir, optimizer::Environment, scope::Scope, symbol::Symbol, ty::Type, Diagnostic,
+    DiagnosticKind, ErrorKind, WarningKind,
+};
 
 #[derive(Default)]
 pub struct Database {
+    diagnostics: Vec<Diagnostic>,
     scopes: Arena<Scope>,
     symbols: Arena<Symbol>,
     types: Arena<Type>,
@@ -24,6 +29,28 @@ pub struct Database {
 }
 
 impl Database {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    pub fn error(&mut self, info: ErrorKind, range: TextRange) {
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Error(info),
+            range.start().into()..range.end().into(),
+        ));
+    }
+
+    pub fn warning(&mut self, info: WarningKind, range: TextRange) {
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Warning(info),
+            range.start().into()..range.end().into(),
+        ));
+    }
+
     pub(crate) fn alloc_scope(&mut self, scope: Scope) -> ScopeId {
         ScopeId(self.scopes.alloc(scope))
     }

@@ -24,7 +24,7 @@ use crate::{
     scope::Scope,
     symbol::Symbol,
     ty::{EnumType, EnumVariant, FunctionType, Guard, StructType, Type, Value},
-    Diagnostic, DiagnosticKind, ErrorKind, TypeSystem, WarningKind,
+    ErrorKind, TypeSystem, WarningKind,
 };
 
 mod builtins;
@@ -53,9 +53,6 @@ pub struct Compiler<'a> {
     // Whether the current expression is directly the callee of a function call.
     is_callee: bool,
 
-    // Diagnostics keep track of errors and warnings throughout the code.
-    diagnostics: Vec<Diagnostic>,
-
     // The symbol table is used for storing all named symbols and types.
     // It also stored types referenced by symbols.
     sym: SymbolTable,
@@ -77,15 +74,14 @@ impl<'a> Compiler<'a> {
             type_definition_stack: Vec::new(),
             type_guard_stack: Vec::new(),
             is_callee: false,
-            diagnostics: Vec::new(),
             sym: SymbolTable::default(),
             builtins,
         }
     }
 
     /// Lowering is completed, extract the diagnostics.
-    pub fn finish(self) -> (SymbolTable, Vec<Diagnostic>) {
-        (self.sym, self.diagnostics)
+    pub fn finish(self) -> SymbolTable {
+        self.sym
     }
 
     /// Declares all of the items in a root.
@@ -222,7 +218,8 @@ impl<'a> Compiler<'a> {
                 if i + 1 == len {
                     varargs = true;
                 } else {
-                    self.error(ErrorKind::NonFinalSpread, param.syntax().text_range());
+                    self.db
+                        .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
                 }
             }
 
@@ -444,7 +441,7 @@ impl<'a> Compiler<'a> {
 
             // If the variant is a duplicate, we don't want to overwrite the existing variant.
             if !visited_variants.insert(name.to_string()) {
-                self.error(
+                self.db.error(
                     ErrorKind::DuplicateEnumVariant(name.to_string()),
                     name.text_range(),
                 );
@@ -557,7 +554,7 @@ impl<'a> Compiler<'a> {
             // If there's an implicit return, we want to raise an error.
             // This could technically work but makes the intent of the code unclear.
             if !explicit_return {
-                self.error(
+                self.db.error(
                     ErrorKind::ImplicitReturnInIf,
                     then_block.syntax().text_range(),
                 );
@@ -684,7 +681,8 @@ impl<'a> Compiler<'a> {
 
         // Ensure that the block terminates.
         if !is_terminated {
-            self.error(ErrorKind::EmptyBlock, block.syntax().text_range());
+            self.db
+                .error(ErrorKind::EmptyBlock, block.syntax().text_range());
         }
 
         // Pop each statement in reverse order and mutate the body.
@@ -730,7 +728,8 @@ impl<'a> Compiler<'a> {
         self.scope_stack.pop().unwrap();
 
         if explicit_return {
-            self.error(ErrorKind::ExplicitReturnInExpr, block.syntax().text_range());
+            self.db
+                .error(ErrorKind::ExplicitReturnInExpr, block.syntax().text_range());
         }
 
         value
@@ -803,7 +802,7 @@ impl<'a> Compiler<'a> {
                 }
             }
             Some(_) => {
-                self.error(
+                self.db.error(
                     ErrorKind::UninitializableType(self.type_name(ty.unwrap())),
                     initializer.path().unwrap().syntax().text_range(),
                 );
@@ -846,12 +845,12 @@ impl<'a> Compiler<'a> {
 
             // Insert the field if it exists and hasn't already been assigned.
             if specified_fields.contains_key(name.text()) {
-                self.error(
+                self.db.error(
                     ErrorKind::DuplicateField(name.to_string()),
                     name.text_range(),
                 );
             } else if !struct_fields.contains_key(name.text()) {
-                self.error(
+                self.db.error(
                     ErrorKind::UndefinedField {
                         field: name.to_string(),
                         ty: self.type_name(struct_type),
@@ -871,7 +870,7 @@ impl<'a> Compiler<'a> {
             .collect();
 
         if !missing_fields.is_empty() {
-            self.error(
+            self.db.error(
                 ErrorKind::MissingFields {
                     fields: missing_fields,
                     ty: self.type_name(struct_type),
@@ -917,7 +916,7 @@ impl<'a> Compiler<'a> {
                         *field_type,
                     );
                 } else {
-                    self.error(
+                    self.db.error(
                         ErrorKind::UndefinedField {
                             field: field_name.to_string(),
                             ty: self.type_name(value.ty()),
@@ -945,7 +944,7 @@ impl<'a> Compiler<'a> {
             _ => {}
         }
 
-        self.error(
+        self.db.error(
             ErrorKind::InvalidFieldAccess {
                 field: field_name.to_string(),
                 ty: self.type_name(value.ty()),
@@ -969,7 +968,7 @@ impl<'a> Compiler<'a> {
         let index = self.compile_int_raw(index_token.clone());
 
         let Type::List(item_type) = self.db.ty(value.ty()).clone() else {
-            self.error(
+            self.db.error(
                 ErrorKind::IndexAccess(self.type_name(value.ty())),
                 index_access.expr().unwrap().syntax().text_range(),
             );
@@ -1078,7 +1077,7 @@ impl<'a> Compiler<'a> {
                 if !self.is_atomic(lhs.ty(), &mut IndexSet::new())
                     || !self.is_atomic(rhs.ty(), &mut IndexSet::new())
                 {
-                    self.error(
+                    self.db.error(
                         ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
                         text_range,
                     );
@@ -1106,7 +1105,7 @@ impl<'a> Compiler<'a> {
                 if !self.is_atomic(lhs.ty(), &mut IndexSet::new())
                     || !self.is_atomic(rhs.ty(), &mut IndexSet::new())
                 {
-                    self.error(
+                    self.db.error(
                         ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
                         text_range,
                     );
@@ -1237,7 +1236,7 @@ impl<'a> Compiler<'a> {
         text_range: TextRange,
     ) -> Option<(Guard, HirId)> {
         if self.db.compare_type(from, to) {
-            self.warning(
+            self.db.warning(
                 WarningKind::RedundantTypeCheck(self.type_name(from)),
                 text_range,
             );
@@ -1247,11 +1246,11 @@ impl<'a> Compiler<'a> {
         match (self.db.ty(from).clone(), self.db.ty(to).clone()) {
             (Type::Any, Type::Pair(first, rest)) => {
                 if !self.db.compare_type(first, self.builtins.any) {
-                    self.error(ErrorKind::NonAnyPairTypeGuard, text_range);
+                    self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
                 if !self.db.compare_type(rest, self.builtins.any) {
-                    self.error(ErrorKind::NonAnyPairTypeGuard, text_range);
+                    self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
                 let hir_id = self.db.alloc_hir(Hir::IsCons(hir_id));
@@ -1267,11 +1266,11 @@ impl<'a> Compiler<'a> {
             }
             (Type::List(inner), Type::Pair(first, rest)) => {
                 if !self.db.compare_type(first, inner) {
-                    self.error(ErrorKind::NonListPairTypeGuard, text_range);
+                    self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
                 }
 
                 if !self.db.compare_type(rest, from) {
-                    self.error(ErrorKind::NonListPairTypeGuard, text_range);
+                    self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
                 }
 
                 let hir_id = self.db.alloc_hir(Hir::IsCons(hir_id));
@@ -1304,7 +1303,7 @@ impl<'a> Compiler<'a> {
                 Some((Guard::new(to, from), hir_id))
             }
             _ => {
-                self.error(
+                self.db.error(
                     ErrorKind::UnsupportedTypeGuard {
                         from: self.type_name(from),
                         to: self.type_name(to),
@@ -1387,7 +1386,8 @@ impl<'a> Compiler<'a> {
                 if i + 1 == len {
                     nil_terminated = false;
                 } else {
-                    self.error(ErrorKind::NonFinalSpread, spread.text_range());
+                    self.db
+                        .error(ErrorKind::NonFinalSpread, spread.text_range());
                 }
             }
 
@@ -1489,7 +1489,8 @@ impl<'a> Compiler<'a> {
                 if i + 1 == len {
                     varargs = true;
                 } else {
-                    self.error(ErrorKind::NonFinalSpread, param.syntax().text_range());
+                    self.db
+                        .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
                 }
             }
         }
@@ -1667,7 +1668,8 @@ impl<'a> Compiler<'a> {
         let mut idents = path.idents();
 
         if idents.len() > 1 {
-            self.error(ErrorKind::PathNotAllowed, path.syntax().text_range());
+            self.db
+                .error(ErrorKind::PathNotAllowed, path.syntax().text_range());
             return self.unknown();
         }
 
@@ -1679,7 +1681,7 @@ impl<'a> Compiler<'a> {
             .rev()
             .find_map(|&scope_id| self.db.scope(scope_id).symbol(name.text()))
         else {
-            self.error(
+            self.db.error(
                 ErrorKind::UndefinedReference(name.to_string()),
                 name.text_range(),
             );
@@ -1687,7 +1689,7 @@ impl<'a> Compiler<'a> {
         };
 
         if !self.is_callee && self.db.symbol(symbol_id).is_inline_function() {
-            self.error(
+            self.db.error(
                 ErrorKind::InlineFunctionOutsideCall,
                 path.syntax().text_range(),
             );
@@ -1749,7 +1751,7 @@ impl<'a> Compiler<'a> {
         let expected = match self.db.ty(callee.ty()) {
             Type::Function(function) => Some(function.clone()),
             _ => {
-                self.error(
+                self.db.error(
                     ErrorKind::UncallableType(self.type_name(callee.ty())),
                     call.callee().unwrap().syntax().text_range(),
                 );
@@ -1783,7 +1785,8 @@ impl<'a> Compiler<'a> {
                 if i + 1 == arg_len {
                     spread = true;
                 } else {
-                    self.error(ErrorKind::NonFinalSpread, arg.syntax().text_range());
+                    self.db
+                        .error(ErrorKind::NonFinalSpread, arg.syntax().text_range());
                 }
             }
 
@@ -1801,7 +1804,7 @@ impl<'a> Compiler<'a> {
             let too_many_args = arg_types.len() > param_len && !expected.varargs();
 
             if too_few_args && expected.varargs() {
-                self.error(
+                self.db.error(
                     ErrorKind::TooFewArgumentsWithVarargs {
                         expected: param_len - 1,
                         found: arg_types.len(),
@@ -1809,7 +1812,7 @@ impl<'a> Compiler<'a> {
                     call.syntax().text_range(),
                 );
             } else if too_few_args || too_many_args {
-                self.error(
+                self.db.error(
                     ErrorKind::ArgumentMismatch {
                         expected: param_len,
                         found: arg_types.len(),
@@ -1820,7 +1823,7 @@ impl<'a> Compiler<'a> {
 
             for (i, arg) in arg_types.into_iter().enumerate() {
                 if i + 1 == arg_len && spread && !expected.varargs() {
-                    self.error(
+                    self.db.error(
                         ErrorKind::NonVarargSpread,
                         call.args()[i].syntax().text_range(),
                     );
@@ -1836,7 +1839,7 @@ impl<'a> Compiler<'a> {
                             self.type_check(arg, *list_type, call.args()[i].syntax().text_range());
                         }
                         _ => {
-                            self.error(
+                            self.db.error(
                                 ErrorKind::NonListVararg,
                                 call.args()[i].syntax().text_range(),
                             );
@@ -1903,7 +1906,7 @@ impl<'a> Compiler<'a> {
         }
 
         let Some(mut ty) = ty else {
-            self.error(
+            self.db.error(
                 ErrorKind::UndefinedType(name.to_string()),
                 name.text_range(),
             );
@@ -1938,11 +1941,13 @@ impl<'a> Compiler<'a> {
                 if let Some(&variant_type) = enum_type.variants().get(name) {
                     return variant_type;
                 }
-                self.error(ErrorKind::UnknownEnumVariant(name.to_string()), range);
+                self.db
+                    .error(ErrorKind::UnknownEnumVariant(name.to_string()), range);
                 self.builtins.unknown
             }
             _ => {
-                self.error(ErrorKind::PathIntoNonEnum(self.type_name(ty)), range);
+                self.db
+                    .error(ErrorKind::PathIntoNonEnum(self.type_name(ty)), range);
                 self.builtins.unknown
             }
         }
@@ -1989,7 +1994,8 @@ impl<'a> Compiler<'a> {
                 if i + 1 == len {
                     vararg = true;
                 } else {
-                    self.error(ErrorKind::NonFinalSpread, param.syntax().text_range());
+                    self.db
+                        .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
                 }
             }
         }
@@ -2013,7 +2019,7 @@ impl<'a> Compiler<'a> {
             .unwrap_or(self.builtins.unknown);
 
         if let Type::Optional(inner) = self.db.ty_raw(ty).clone() {
-            self.warning(
+            self.db.warning(
                 WarningKind::UselessOptionalType,
                 optional.syntax().text_range(),
             );
@@ -2048,7 +2054,7 @@ impl<'a> Compiler<'a> {
             Type::Function { .. } => false,
             Type::Alias(alias) => {
                 if !visited_aliases.insert(alias) {
-                    self.error(ErrorKind::RecursiveTypeAlias, text_range);
+                    self.db.error(ErrorKind::RecursiveTypeAlias, text_range);
                     return true;
                 }
                 self.detect_cycle(alias, text_range, visited_aliases)
@@ -2151,7 +2157,7 @@ impl<'a> Compiler<'a> {
 
     fn type_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
         if !self.db.check_type(from, to) {
-            self.error(
+            self.db.error(
                 ErrorKind::TypeMismatch {
                     expected: self.type_name(to),
                     found: self.type_name(from),
@@ -2163,7 +2169,7 @@ impl<'a> Compiler<'a> {
 
     fn cast_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
         if !self.db.can_cast(from, to) {
-            self.error(
+            self.db.error(
                 ErrorKind::CastMismatch {
                     expected: self.type_name(to),
                     found: self.type_name(from),
@@ -2207,20 +2213,6 @@ impl<'a> Compiler<'a> {
     fn scope_mut(&mut self) -> &mut Scope {
         self.db
             .scope_mut(self.scope_stack.last().copied().expect("no scope found"))
-    }
-
-    fn error(&mut self, info: ErrorKind, range: TextRange) {
-        self.diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Error(info),
-            range.start().into()..range.end().into(),
-        ));
-    }
-
-    fn warning(&mut self, info: WarningKind, range: TextRange) {
-        self.diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Warning(info),
-            range.start().into()..range.end().into(),
-        ));
     }
 }
 

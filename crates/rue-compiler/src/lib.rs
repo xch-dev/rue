@@ -13,6 +13,7 @@ use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
 use compiler::Compiler;
 use optimizer::{GraphTraversal, Optimizer};
+use rowan::TextRange;
 use rue_parser::Root;
 use scope::Scope;
 use symbol::Symbol;
@@ -37,11 +38,12 @@ impl Output {
 }
 
 pub fn analyze(root: Root) -> Vec<Diagnostic> {
-    let mut database = Database::default();
-    precompile(&mut database, root).0
+    let mut db = Database::default();
+    precompile(&mut db, root);
+    db.diagnostics().to_vec()
 }
 
-fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>) {
+fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
     let root_scope_id = db.alloc_scope(Scope::default());
 
     let mut compiler = Compiler::new(db);
@@ -49,17 +51,13 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
     let declarations = compiler.declare_root(root.clone(), root_scope_id);
     compiler.compile_root(root, root_scope_id, declarations);
 
-    let (symbol_table, mut diagnostics) = compiler.finish();
+    let symbol_table = compiler.finish();
 
     log::debug!("Symbol table: {:?}", &symbol_table);
 
     let Some(main_symbol_id) = db.scope_mut(root_scope_id).symbol("main") else {
-        diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Error(ErrorKind::MissingMain),
-            0..0,
-        ));
-
-        return (diagnostics, None);
+        db.error(ErrorKind::MissingMain, TextRange::new(0.into(), 0.into()));
+        return None;
     };
 
     let traversal = GraphTraversal::new(db);
@@ -82,11 +80,7 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
             Symbol::LetBinding { .. } => WarningKind::UnusedLet(token.to_string()),
             Symbol::ConstBinding { .. } => WarningKind::UnusedConst(token.to_string()),
         };
-        let range = token.text_range();
-        diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Warning(kind),
-            range.start().into()..range.end().into(),
-        ));
+        db.warning(kind, token.text_range());
     }
 
     for type_id in &unused.type_ids {
@@ -101,25 +95,20 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
             Type::EnumVariant { .. } => WarningKind::UnusedEnumVariant(token.to_string()),
             _ => continue,
         };
-        let range = token.text_range();
-        diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Warning(kind),
-            range.start().into()..range.end().into(),
-        ));
+        db.warning(kind, token.text_range());
     }
 
     let mut optimizer = Optimizer::new(db, dependency_graph);
-    let lir_id = optimizer.opt_main(main_symbol_id);
-
-    (diagnostics, Some(lir_id))
+    Some(optimizer.opt_main(main_symbol_id))
 }
 
 pub fn compile(allocator: &mut Allocator, root: Root, parsing_succeeded: bool) -> Output {
-    let mut database = Database::default();
-    let (diagnostics, lir_id) = precompile(&mut database, root);
+    let mut db = Database::default();
+    let lir_id = precompile(&mut db, root);
+    let diagnostics = db.diagnostics().to_vec();
 
     let node_ptr = if !diagnostics.iter().any(Diagnostic::is_error) && parsing_succeeded {
-        let mut codegen = Codegen::new(&mut database, allocator);
+        let mut codegen = Codegen::new(&mut db, allocator);
         codegen.gen_lir(lir_id.unwrap())
     } else {
         NodePtr::NIL

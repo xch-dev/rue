@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Diagnostic {
     kind: DiagnosticKind,
     span: Range<usize>,
