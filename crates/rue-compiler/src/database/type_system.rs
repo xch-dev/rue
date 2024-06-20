@@ -6,6 +6,7 @@ pub trait TypeSystem {
     fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> bool;
     fn check_type(&self, value_type: TypeId, assign_to: TypeId) -> bool;
     fn can_cast(&self, value_type: TypeId, cast_to: TypeId) -> bool;
+    fn is_cyclic(&self, type_id: TypeId) -> bool;
 }
 
 impl TypeSystem for Database {
@@ -19,6 +20,10 @@ impl TypeSystem for Database {
 
     fn can_cast(&self, from: TypeId, to: TypeId) -> bool {
         self.is_assignable_to(from, to, true, &mut HashSet::new())
+    }
+
+    fn is_cyclic(&self, type_id: TypeId) -> bool {
+        self.detect_cycle(type_id, &mut HashSet::new())
     }
 }
 
@@ -179,5 +184,34 @@ impl Database {
         visited.remove(&key);
 
         equal
+    }
+
+    fn detect_cycle(&self, ty: TypeId, visited_aliases: &mut HashSet<TypeId>) -> bool {
+        match self.ty_raw(ty).clone() {
+            Type::List(..) => false,
+            Type::Pair(left, right) => {
+                self.detect_cycle(left, visited_aliases)
+                    || self.detect_cycle(right, visited_aliases)
+            }
+            Type::Struct { .. } => false,
+            Type::Enum { .. } => false,
+            Type::EnumVariant { .. } => false,
+            Type::Function { .. } => false,
+            Type::Alias(alias) => {
+                if !visited_aliases.insert(alias) {
+                    return true;
+                }
+                self.detect_cycle(alias, visited_aliases)
+            }
+            Type::Unknown
+            | Type::Nil
+            | Type::Any
+            | Type::Int
+            | Type::Bool
+            | Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey => false,
+            Type::Optional(ty) => self.detect_cycle(ty, visited_aliases),
+        }
     }
 }

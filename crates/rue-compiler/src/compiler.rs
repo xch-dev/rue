@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt,
-    str::FromStr,
-};
+use std::{collections::HashMap, fmt, str::FromStr};
 
 use builtins::{builtins, Builtins};
 use clvmr::Allocator;
@@ -391,7 +387,7 @@ impl<'a> Compiler<'a> {
 
         // A cycle between type aliases has been detected.
         // We set it to unknown to prevent stack overflow issues later.
-        if self.detect_cycle(alias_type_id, ty.syntax().text_range(), &mut HashSet::new()) {
+        if self.detect_cycle(alias_type_id, ty.syntax().text_range()) {
             *self.db.ty_mut(alias_type_id) = Type::Unknown;
         }
 
@@ -1074,8 +1070,8 @@ impl<'a> Compiler<'a> {
                 (BinOp::Remainder, self.builtins.int)
             }
             BinaryOp::Equals => {
-                if !self.is_atomic(lhs.ty(), &mut IndexSet::new())
-                    || !self.is_atomic(rhs.ty(), &mut IndexSet::new())
+                if !self.db.can_cast(lhs.ty(), self.builtins.bytes)
+                    || !self.db.can_cast(rhs.ty(), self.builtins.bytes)
                 {
                     self.db.error(
                         ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
@@ -1102,8 +1098,8 @@ impl<'a> Compiler<'a> {
                 (BinOp::Equals, self.builtins.bool)
             }
             BinaryOp::NotEquals => {
-                if !self.is_atomic(lhs.ty(), &mut IndexSet::new())
-                    || !self.is_atomic(rhs.ty(), &mut IndexSet::new())
+                if !self.db.can_cast(lhs.ty(), self.builtins.bytes)
+                    || !self.db.can_cast(rhs.ty(), self.builtins.bytes)
                 {
                     self.db.error(
                         ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
@@ -2042,38 +2038,12 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn detect_cycle(
-        &mut self,
-        ty: TypeId,
-        text_range: TextRange,
-        visited_aliases: &mut HashSet<TypeId>,
-    ) -> bool {
-        match self.db.ty_raw(ty).clone() {
-            Type::List(..) => false,
-            Type::Pair(left, right) => {
-                self.detect_cycle(left, text_range, visited_aliases)
-                    || self.detect_cycle(right, text_range, visited_aliases)
-            }
-            Type::Struct { .. } => false,
-            Type::Enum { .. } => false,
-            Type::EnumVariant { .. } => false,
-            Type::Function { .. } => false,
-            Type::Alias(alias) => {
-                if !visited_aliases.insert(alias) {
-                    self.db.error(ErrorKind::RecursiveTypeAlias, text_range);
-                    return true;
-                }
-                self.detect_cycle(alias, text_range, visited_aliases)
-            }
-            Type::Unknown
-            | Type::Nil
-            | Type::Any
-            | Type::Int
-            | Type::Bool
-            | Type::Bytes
-            | Type::Bytes32
-            | Type::PublicKey => false,
-            Type::Optional(ty) => self.detect_cycle(ty, text_range, visited_aliases),
+    fn detect_cycle(&mut self, type_id: TypeId, text_range: TextRange) -> bool {
+        if self.db.is_cyclic(type_id) {
+            self.db.error(ErrorKind::RecursiveTypeAlias, text_range);
+            true
+        } else {
+            false
         }
     }
 
@@ -2183,24 +2153,6 @@ impl<'a> Compiler<'a> {
                 range,
             );
         }
-    }
-
-    fn is_atomic(&self, ty: TypeId, stack: &mut IndexSet<TypeId>) -> bool {
-        if !stack.insert(ty) {
-            return false;
-        }
-
-        let is_atomic = match self.db.ty(ty) {
-            Type::Nil | Type::Int | Type::Bool | Type::Bytes | Type::Bytes32 | Type::PublicKey => {
-                true
-            }
-            Type::Optional(ty) => self.is_atomic(*ty, stack),
-            _ => false,
-        };
-
-        stack.pop().unwrap();
-
-        is_atomic
     }
 
     fn unknown(&self) -> Value {
