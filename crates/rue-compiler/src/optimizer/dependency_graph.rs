@@ -219,6 +219,7 @@ impl<'a> GraphTraversal<'a> {
             }
             Hir::FunctionCall { callee, args, .. } => {
                 self.compute_hir_edges(scope_id, callee, visited);
+
                 for arg in args {
                     self.compute_hir_edges(scope_id, arg, visited);
                 }

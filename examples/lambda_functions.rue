@@ -1,7 +1,0 @@
-fun main() -> Int {
-    map_number_and_double(42, fun(num) => num + 1)
-}
-
-fun map_number_and_double(num: Int, mapper: fun(Int) -> Int) -> Int {
-    mapper(num) * 2
-}

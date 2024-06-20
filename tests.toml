@@ -1,205 +1,69 @@
-[list_types]
-parser_errors = []
-compiler_errors = [
-    "unused let binding `empty` at 2:9",
-    "unused let binding `empty_hinted` at 3:9",
-]
-
-[pair_types]
-bytes = 81
-cost = 3298
+[op_add]
+bytes = 43
+cost = 3313
 input = "()"
-output = "88"
-hash = "a838ad16af65415481785017fd17260052edf77f40a14bafbbc0ea012c4f199c"
+output = "1083"
+hash = "c19110971a0cea01368f0c7599b8984f74e301b7cda20bd7f86eb2296bbf16c5"
 
-[struct_type]
-bytes = 161
-cost = 3019
+[op_mul]
+bytes = 63
+cost = 6375
 input = "()"
-output = "\"Older\""
-hash = "0805d86735757b42ff0ad4194d8f356d6a600e8a2cd6494ecb50a8d586ffe1ef"
+output = "0x66c880"
+hash = "c187a064a54146a65af3688605d174cb3f9d67bc1ffbf9911b64b5fd9a528465"
 
-[nested_scopes]
-bytes = 421
-cost = 20043
-input = "(42)"
-output = "0x01250d618f00"
-hash = "8d496dc7cdbc417db2132eda6894b29a91511f176e93a1ea943d210cd27822b2"
-
-[lambda_functions]
-bytes = 103
-cost = 3247
+[op_sub]
+bytes = 49
+cost = 4123
 input = "()"
-output = "86"
-hash = "4487281127571db9621d134467f47ec74af9becea41a45fb942610b5df172328"
+output = "-961"
+hash = "97097299ee1a46f8164a293d89e964777bf6dc7c4cb5b2d5a57da9606c3f629f"
 
-[hello_world]
-bytes = 24
-cost = 175
+[op_div]
+bytes = 46
+cost = 3374
 input = "()"
-output = "\"Hello, world!\""
-hash = "7cacd67079cbf0a1cd915e9456ebb09fca6d375a63744e4e0e442b8f00759d24"
+output = "0x0e89a7e7"
+hash = "a958cf4cf1dc19926a38350be58e68716f3db6790a005d9e9f8b081f05db20d2"
 
-[lists]
-bytes = 219
-cost = 6266
+[op_rem]
+bytes = 25
+cost = 1391
 input = "()"
-output = "21"
-hash = "0f8516625bd122a47b5ad2bb871034ff13dd175cca88c4a0641f8a4d7ee95d7d"
+output = "4"
+hash = "8b1651043cbbeb0e94d3db3ac81462a1b9c38706c165ac61c66fb54b4d448fc9"
 
-[fibonacci]
-bytes = 121
-cost = 414329
+[bool]
+bytes = 29
+cost = 428
 input = "()"
-output = "55"
-hash = "951ba85ff214a65c4d07814672544b6686e8f4a819550543473fb8eb26aae6a3"
+output = "1"
+hash = "aad68d2b7db04d5d523655b6a5c77968fdc9964dca09cf669adf3e164ca49946"
 
-[let_bindings]
-bytes = 81
-cost = 5063
-input = "(5 10)"
-output = "9"
-hash = "aa247d144d1c5a3554c3d689c09fb2c0aced58a628e52030eac2bbd219018289"
-
-[constants]
-bytes = 47
-cost = 2347
-input = "()"
-output = "350"
-hash = "25f386f3f2852cc89a4e21002fd1c6dcf7e0000b069f18d4c80d42224e15fd41"
-
-[closures]
-bytes = 207
-cost = 40815
-input = "(10)"
-output = "0x375f00"
-hash = "95e0d0d8c8853d0cca7172f9c9cbe75b32d90055935431132b7adf66eb3e6cc2"
-
-[factorial]
-bytes = 97
-cost = 43743
-input = "()"
-output = "0x013077775800"
-hash = "291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8"
-
-[enums]
-bytes = 135
-cost = 1327
-input = "()"
-output = "((g1_multiply \"Hello, world!\" \"Message thingy\") (g1_negate \"Some puzzle\" 100))"
-hash = "e49ff16e836bdc3860d919f4d9dd8e562e544f569230229ba86409cab2d3e5e2"
-
-[signature_puzzle]
+[hex]
 bytes = 167
-cost = 19407
-input = "(0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b8554bf5122f344554c53bde2ebb8cd2b7e3 ((51 0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 1000)))"
-output = "((g1_multiply 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b8554bf5122f344554c53bde2ebb8cd2b7e3 0x7fb7b7ef9333621162729d06e60efbb19eed37c736b2b467db2f9571586c3b6a) (g1_negate 0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 1000))"
-hash = "abc43bf1142122da14e73971da004668ce7b8785ca2b6ac41427b8ef3193f957"
-
-[many_lets]
-bytes = 251
-cost = 14490
+cost = 3841
 input = "()"
-output = "7260"
-hash = "dc340fbeed3c3753160d9683c4c97a5b3297c1169e83eb1ff8e1544163528b8d"
+output = "0x8b1651043cbbeb0e94d3db3ac81462a1b9c38706c165ac61c66fb54b4d448fc9c7f1b5ae1edc940f18cd1581597a50f48f44a5e5226a23570fea78cdc135707dff02ffff01ff06ffff14ffff01827d94ffff01298080ff0180ff02ffff01ff06ffff14ffff01827d94ffff0000000000"
+hash = "5da7ebc63772dc4ed857d0fdf6dea1435d012ae530b4af1418c3fa80708f59da"
 
-[complex_spreads]
-bytes = 169
-cost = 19078
-input = "()"
-output = "550"
-hash = "af78d09d3fa66ec50827f2dd1877bc249a526bf96d42f72686e3120826b6a883"
-
-[type_guards]
-parser_errors = []
-compiler_errors = [
-    "unused function `bytes_guard` at 15:5",
-    "unused function `bytes32_guard` at 23:5",
-    "unused function `public_key_guard` at 33:5",
-    "unused function `inverted_guard` at 43:5",
-    "unused function `pair_guard` at 51:5",
-]
-
-[early_return]
-bytes = 115
-cost = 2716
-input = "(50)"
-output = "\"Small\""
-hash = "cf32bd32ff878903a6962acd218c451474e0ef3ae3c649f79aa5abca1bff730b"
-
-[p2_puzzle]
-bytes = 305
-cost = 3856
-input = "(0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 () () ())"
-output = "((g1_multiply 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a))"
-hash = "670f06e052dedc68788dd17acb7d100203a1533d11f9c679d0f23bd3d555f122"
-
-[unused_symbols]
-parser_errors = []
-compiler_errors = [
-    "unused constant `UNUSED_INNER_CONSTANT` at 6:18",
-    "unused function `unused_inner_function` at 8:9",
-    "unused let binding `unused_let` at 5:9",
-    "unused constant `UNUSED_INDIRECT_CONSTANT` at 1:14",
-    "unused constant `UNUSED_CONSTANT` at 2:14",
-    "unused function `unused_indirect_function` at 21:5",
-    "unused function `unused_function` at 25:5",
-]
-
-[unused_types]
-parser_errors = []
-compiler_errors = [
-    "unused type alias `A` at 2:6",
-    "unused enum variant `A` at 7:5",
-    "unused enum variant `B` at 10:5",
-    "unused enum variant `C` at 14:5",
-    "unused enum `Some` at 6:6",
-    "unused struct `Thing` at 17:8",
-]
-
-[recursive_type_alias]
-parser_errors = []
-compiler_errors = [
-    "type aliases cannot reference themselves recursively at 4:1",
-    "type aliases cannot reference themselves recursively at 7:1",
-    "unused type alias `E` at 6:6",
-]
-
-[missing_main]
-parser_errors = []
-compiler_errors = ["missing `main` function at 1:1"]
-
-[implicit_return_if_stmt]
-parser_errors = []
-compiler_errors = [
-    "implicit return is not allowed in if statements, use an explicit return statement at 2:19",
-    "blocks must either have a an expression value, return statement, or raise an error at 10:19",
-    "implicit return is not allowed in if statements, use an explicit return statement at 10:19",
-    "blocks must either have a an expression value, return statement, or raise an error at 9:22",
-    "blocks must either have a an expression value, return statement, or raise an error at 16:19",
-    "implicit return is not allowed in if statements, use an explicit return statement at 16:19",
-    "unused function `another` at 9:5",
-    "unused function `yet_another` at 15:5",
-    "unused function `raise_ok` at 24:5",
-]
-
-[birecursive_functions]
-bytes = 195
-cost = 12822
+[nil]
+bytes = 7
+cost = 223
 input = "()"
 output = "()"
-hash = "770bb2c0b2582924adf403e62374f8424a2ed510eef70b5f450eccab238a4911"
+hash = "10aaa79b0d1fca88d400c84e276ad425df57a34cc61161983954bae49c54aef4"
 
-[royalty_split]
-bytes = 569
-cost = 23475
-input = "(((0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a 1) (0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 2)) 100000 3)"
-output = "((60 ()) (73 0x0186a0) (g1_negate 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a 0x008235 (0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a)) (g1_negate 0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 0x01046a (0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986)))"
-hash = "eac8ea1dc15d9726ceb1f6970cb930f1d16201fa5a8a75a20f18a82b349aaea3"
+[string]
+bytes = 32
+cost = 777
+input = "()"
+output = "\"Hello, world!\""
+hash = "0fbc5fc778acb27bd511d90d2a6c5870fe44c1fd766b0efcbd842260603984d1"
 
-[curry_treehash]
-bytes = 477
-cost = 35956
-input = "(0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a (0xdbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986 0x084fed08b978af4d7d196a7446a86b58009e636b611db16211b65a9aadff29c5))"
-output = "0xdf22ae2d7801c83f8fd25a9dc29055a9b053d712bf3e27f73a06b4aed4378629"
-hash = "dfeb1931f105a6bd582cccd27bd00d6ffc74e231b64227cd7a962e2674488fbb"
+[int]
+bytes = 15
+cost = 175
+input = "()"
+output = "0x0280de80"
+hash = "e9dcd1f988eeeea8b8f01787e1a85c8e29b826fa7f757480cd3ad8261e37100f"
