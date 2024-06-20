@@ -243,6 +243,7 @@ impl<'a> Compiler<'a> {
 
         if let Some(name) = function_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
+            self.sym.insert_scope(scope_id, name.clone());
             self.sym.insert_symbol(symbol_id, name);
         }
 
@@ -506,14 +507,14 @@ impl<'a> Compiler<'a> {
             hir_id: value.hir(),
         };
 
-        // Every let binding is a new scope for now, to simplify the code generation process later.
-        // This is not the most efficient way to do it, but it's the easiest with the current codebase.
-        // TODO: Optimize this.
+        // Every let binding is a new scope for now, to ensure references are resolved in the proper order.
         let mut let_scope = Scope::default();
         let_scope.define_symbol(name.to_string(), symbol_id);
-        self.sym.insert_symbol(symbol_id, name);
-        let scope_id = self.db.alloc_scope(let_scope);
+        self.sym.insert_symbol(symbol_id, name.clone());
 
+        let scope_id = self.db.alloc_scope(let_scope);
+        self.sym.insert_scope(scope_id, name);
+        self.scope_stack.push(scope_id);
         self.symbol_stack.pop().unwrap();
 
         Some(scope_id)
@@ -601,11 +602,6 @@ impl<'a> Compiler<'a> {
                     let Some(scope_id) = self.compile_let_stmt(let_stmt) else {
                         continue;
                     };
-
-                    // Push the let statement scope onto the stack.
-                    // This will be popped in reverse order later after all statements have been lowered.
-                    self.scope_stack.push(scope_id);
-
                     statements.push(Statement::Let(scope_id));
                 }
                 Stmt::IfStmt(if_stmt) => {
@@ -696,7 +692,7 @@ impl<'a> Compiler<'a> {
             match statement {
                 Statement::Let(scope_id) => {
                     body = Value::typed(
-                        self.db.alloc_hir(Hir::Scope {
+                        self.db.alloc_hir(Hir::Definition {
                             scope_id,
                             hir_id: body.hir(),
                         }),

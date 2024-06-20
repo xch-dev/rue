@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 use rue_parser::SyntaxToken;
 
-use crate::{dependency_graph::DependencyGraph, Database, ScopeId, SymbolId, TypeId};
+use crate::{optimizer::DependencyGraph, Database, ScopeId, SymbolId, TypeId};
 
 use super::unused::Unused;
 
@@ -11,6 +11,7 @@ use super::unused::Unused;
 pub struct SymbolTable {
     symbol_tokens: IndexMap<SymbolId, SyntaxToken>,
     type_tokens: IndexMap<TypeId, SyntaxToken>,
+    scope_tokens: IndexMap<ScopeId, SyntaxToken>,
     symbol_type_references: IndexMap<SymbolId, IndexSet<TypeId>>,
     type_type_references: IndexMap<TypeId, IndexSet<TypeId>>,
 }
@@ -22,6 +23,10 @@ impl SymbolTable {
 
     pub fn insert_type(&mut self, type_id: TypeId, token: SyntaxToken) {
         self.type_tokens.insert(type_id, token);
+    }
+
+    pub fn insert_scope(&mut self, scope_id: ScopeId, token: SyntaxToken) {
+        self.scope_tokens.insert(scope_id, token);
     }
 
     pub fn insert_symbol_type_reference(&mut self, symbol_id: SymbolId, type_id: TypeId) {

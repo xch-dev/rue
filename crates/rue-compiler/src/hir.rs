@@ -1,4 +1,7 @@
-use crate::database::{HirId, ScopeId, SymbolId};
+use crate::{
+    database::{HirId, SymbolId},
+    ScopeId,
+};
 
 #[derive(Debug, Clone)]
 pub enum Hir {
@@ -6,7 +9,7 @@ pub enum Hir {
     Atom(Vec<u8>),
     Pair(HirId, HirId),
     Reference(SymbolId),
-    Scope {
+    Definition {
         scope_id: ScopeId,
         hir_id: HirId,
     },

@@ -1,14 +1,6 @@
-use clvmr::{Allocator, NodePtr};
-use codegen::Codegen;
-use compiler::Compiler;
-use dependency_graph::GraphTraversal;
-use optimizer::Optimizer;
-use rue_parser::Root;
-
 mod codegen;
 mod compiler;
 mod database;
-mod dependency_graph;
 mod error;
 mod hir;
 mod lir;
@@ -17,12 +9,17 @@ mod scope;
 mod symbol;
 mod ty;
 
-pub use database::*;
-pub use error::*;
-
+use clvmr::{Allocator, NodePtr};
+use codegen::Codegen;
+use compiler::Compiler;
+use optimizer::{GraphTraversal, Optimizer};
+use rue_parser::Root;
 use scope::Scope;
 use symbol::Symbol;
 use ty::Type;
+
+pub use database::*;
+pub use error::*;
 
 pub struct Output {
     diagnostics: Vec<Diagnostic>,
@@ -54,6 +51,8 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
 
     let (symbol_table, mut diagnostics) = compiler.finish();
 
+    log::debug!("Symbol table: {:?}", &symbol_table);
+
     let Some(main_symbol_id) = db.scope_mut(root_scope_id).symbol("main") else {
         diagnostics.push(Diagnostic::new(
             DiagnosticKind::Error(ErrorKind::MissingMain),
@@ -66,12 +65,17 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
     let traversal = GraphTraversal::new(db);
     let dependency_graph = traversal.build_graph(&[main_symbol_id]);
 
+    log::info!("Dependency graph: {:?}", &dependency_graph);
+
     let unused =
         symbol_table.calculate_unused(db, &dependency_graph, root_scope_id, main_symbol_id);
 
-    for &symbol_id in &unused.symbol_ids {
-        let token = symbol_table.symbol_token(symbol_id).unwrap();
-        let kind = match db.symbol(symbol_id).clone() {
+    for symbol_id in &unused.symbol_ids {
+        if unused.exempt_symbols.contains(symbol_id) {
+            continue;
+        }
+        let token = symbol_table.symbol_token(*symbol_id).unwrap();
+        let kind = match db.symbol(*symbol_id).clone() {
             Symbol::Unknown => unreachable!(),
             Symbol::Function { .. } => WarningKind::UnusedFunction(token.to_string()),
             Symbol::Parameter { .. } => WarningKind::UnusedParameter(token.to_string()),
@@ -85,9 +89,12 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
         ));
     }
 
-    for &type_id in &unused.type_ids {
-        let token = symbol_table.type_token(type_id).unwrap();
-        let kind = match db.ty_raw(type_id) {
+    for type_id in &unused.type_ids {
+        if unused.exempt_types.contains(type_id) {
+            continue;
+        }
+        let token = symbol_table.type_token(*type_id).unwrap();
+        let kind = match db.ty_raw(*type_id) {
             Type::Alias(..) => WarningKind::UnusedTypeAlias(token.to_string()),
             Type::Struct { .. } => WarningKind::UnusedStruct(token.to_string()),
             Type::Enum { .. } => WarningKind::UnusedEnum(token.to_string()),

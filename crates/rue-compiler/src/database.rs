@@ -1,6 +1,6 @@
 use id_arena::{Arena, Id};
 
-use crate::{hir::Hir, lir::Lir, scope::Scope, symbol::Symbol, ty::Type};
+use crate::{hir::Hir, lir::Lir, optimizer::Environment, scope::Scope, symbol::Symbol, ty::Type};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolId(Id<Symbol>);
@@ -17,6 +17,9 @@ pub struct HirId(Id<Hir>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LirId(Id<Lir>);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EnvironmentId(Id<Environment>);
+
 #[derive(Default)]
 pub struct Database {
     scopes: Arena<Scope>,
@@ -24,6 +27,7 @@ pub struct Database {
     types: Arena<Type>,
     hir: Arena<Hir>,
     lir: Arena<Lir>,
+    environments: Arena<Environment>,
 }
 
 impl Database {
@@ -45,6 +49,10 @@ impl Database {
 
     pub(crate) fn alloc_lir(&mut self, lir: Lir) -> LirId {
         LirId(self.lir.alloc(lir))
+    }
+
+    pub(crate) fn alloc_env(&mut self, environment: Environment) -> EnvironmentId {
+        EnvironmentId(self.environments.alloc(environment))
     }
 
     pub fn scope(&self, id: ScopeId) -> &Scope {
@@ -76,6 +84,14 @@ impl Database {
 
     pub fn lir(&self, id: LirId) -> &Lir {
         &self.lir[id.0]
+    }
+
+    pub fn env(&self, id: EnvironmentId) -> &Environment {
+        &self.environments[id.0]
+    }
+
+    pub fn env_mut(&mut self, id: EnvironmentId) -> &mut Environment {
+        &mut self.environments[id.0]
     }
 
     pub(crate) fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {

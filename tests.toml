@@ -137,11 +137,11 @@ hash = "41ad4e730b68dcbd7cb2440343bc11c1b31eb5951273dac3ab93a00d99019ac6"
 [unused_symbols]
 parser_errors = []
 compiler_errors = [
-    "unused constant `UNUSED_INNER_CONSTANT` at 6:11",
+    "unused constant `UNUSED_INNER_CONSTANT` at 6:18",
     "unused function `unused_inner_function` at 8:9",
     "unused let binding `unused_let` at 5:9",
-    "unused constant `UNUSED_INDIRECT_CONSTANT` at 1:7",
-    "unused constant `UNUSED_CONSTANT` at 2:7",
+    "unused constant `UNUSED_INDIRECT_CONSTANT` at 1:14",
+    "unused constant `UNUSED_CONSTANT` at 2:14",
     "unused function `unused_indirect_function` at 21:5",
     "unused function `unused_function` at 25:5",
 ]
