@@ -5,9 +5,9 @@ use std::{
 };
 
 use builtins::{builtins, Builtins};
+use clvmr::Allocator;
 use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};
-use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
@@ -1616,8 +1616,14 @@ impl<'a> Compiler<'a> {
     fn compile_int(&mut self, int: SyntaxToken) -> Value {
         let num = self.compile_int_raw(int);
 
+        let mut allocator = Allocator::new();
+        let ptr = allocator
+            .new_number(num)
+            .expect("number is too large to be represented in memory in an Allocator instance");
+
         Value::typed(
-            self.db.alloc_hir(Hir::Atom(bigint_to_bytes(num))),
+            self.db
+                .alloc_hir(Hir::Atom(allocator.atom(ptr).as_ref().to_vec())),
             self.builtins.int,
         )
     }
@@ -2214,17 +2220,4 @@ impl<'a> Compiler<'a> {
         self.db
             .scope_mut(self.scope_stack.last().copied().expect("no scope found"))
     }
-}
-
-fn bigint_to_bytes(num: BigInt) -> Vec<u8> {
-    let bytes: Vec<u8> = num.to_signed_bytes_be();
-    let mut slice = bytes.as_slice();
-    // make number minimal by removing leading zeros
-    while (!slice.is_empty()) && (slice[0] == 0) {
-        if slice.len() > 1 && (slice[1] & 0x80 == 0x80) {
-            break;
-        }
-        slice = &slice[1..];
-    }
-    slice.to_vec()
 }
