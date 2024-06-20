@@ -1,26 +1,14 @@
-use id_arena::{Arena, Id};
+use id_arena::Arena;
 use indexmap::IndexMap;
 use rue_parser::SyntaxToken;
 
+mod ids;
+mod type_system;
+
+pub use ids::*;
+pub use type_system::*;
+
 use crate::{hir::Hir, lir::Lir, optimizer::Environment, scope::Scope, symbol::Symbol, ty::Type};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SymbolId(Id<Symbol>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ScopeId(Id<Scope>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeId(Id<Type>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct HirId(Id<Hir>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct LirId(Id<Lir>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EnvironmentId(Id<Environment>);
 
 #[derive(Default)]
 pub struct Database {
