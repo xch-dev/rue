@@ -20,7 +20,7 @@ use crate::{
     scope::Scope,
     symbol::Symbol,
     ty::{EnumType, EnumVariant, FunctionType, Guard, StructType, Type, Value},
-    ErrorKind, TypeSystem, WarningKind,
+    Comparison, ErrorKind, TypeSystem, WarningKind,
 };
 
 mod builtins;
@@ -1037,10 +1037,10 @@ impl<'a> Compiler<'a> {
 
         let (op, ty) = match op {
             BinaryOp::Add => {
-                if self.db.check_type(lhs.ty(), self.builtins.public_key) {
+                if self.db.compare_type(lhs.ty(), self.builtins.public_key) == Comparison::Equal {
                     self.type_check(rhs.ty(), self.builtins.public_key, text_range);
                     (BinOp::PointAdd, self.builtins.public_key)
-                } else if self.db.check_type(lhs.ty(), self.builtins.bytes) {
+                } else if self.db.compare_type(lhs.ty(), self.builtins.bytes) == Comparison::Equal {
                     self.type_check(rhs.ty(), self.builtins.bytes, text_range);
                     (BinOp::Concat, self.builtins.bytes)
                 } else {
@@ -1070,21 +1070,21 @@ impl<'a> Compiler<'a> {
                 (BinOp::Remainder, self.builtins.int)
             }
             BinaryOp::Equals => {
-                if !self.db.can_cast(lhs.ty(), self.builtins.bytes)
-                    || !self.db.can_cast(rhs.ty(), self.builtins.bytes)
+                if self.db.compare_type(lhs.ty(), self.builtins.bytes) != Comparison::Castable
+                    || self.db.compare_type(rhs.ty(), self.builtins.bytes) != Comparison::Castable
                 {
                     self.db.error(
                         ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
                         text_range,
                     );
-                } else if self.db.check_type(lhs.ty(), self.builtins.nil) {
+                } else if self.db.compare_type(lhs.ty(), self.builtins.nil) == Comparison::Equal {
                     if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
                         guards.insert(
                             *symbol_id,
                             Guard::new(self.builtins.nil, self.try_unwrap_optional(rhs.ty())),
                         );
                     }
-                } else if self.db.check_type(rhs.ty(), self.builtins.nil) {
+                } else if self.db.compare_type(rhs.ty(), self.builtins.nil) == Comparison::Equal {
                     if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir()) {
                         guards.insert(
                             *symbol_id,
@@ -1098,21 +1098,21 @@ impl<'a> Compiler<'a> {
                 (BinOp::Equals, self.builtins.bool)
             }
             BinaryOp::NotEquals => {
-                if !self.db.can_cast(lhs.ty(), self.builtins.bytes)
-                    || !self.db.can_cast(rhs.ty(), self.builtins.bytes)
+                if self.db.compare_type(lhs.ty(), self.builtins.bytes) != Comparison::Castable
+                    || self.db.compare_type(rhs.ty(), self.builtins.bytes) != Comparison::Castable
                 {
                     self.db.error(
                         ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
                         text_range,
                     );
-                } else if self.db.check_type(lhs.ty(), self.builtins.nil) {
+                } else if self.db.compare_type(lhs.ty(), self.builtins.nil) == Comparison::Equal {
                     if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
                         guards.insert(
                             *symbol_id,
                             Guard::new(self.try_unwrap_optional(rhs.ty()), self.builtins.nil),
                         );
                     }
-                } else if self.db.check_type(rhs.ty(), self.builtins.nil) {
+                } else if self.db.compare_type(rhs.ty(), self.builtins.nil) == Comparison::Equal {
                     if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir()) {
                         guards.insert(
                             *symbol_id,
@@ -1231,7 +1231,7 @@ impl<'a> Compiler<'a> {
         hir_id: HirId,
         text_range: TextRange,
     ) -> Option<(Guard, HirId)> {
-        if self.db.compare_type(from, to) {
+        if self.db.compare_type(from, to) == Comparison::Equal {
             self.db.warning(
                 WarningKind::RedundantTypeCheck(self.type_name(from)),
                 text_range,
@@ -1241,11 +1241,11 @@ impl<'a> Compiler<'a> {
 
         match (self.db.ty(from).clone(), self.db.ty(to).clone()) {
             (Type::Any, Type::Pair(first, rest)) => {
-                if !self.db.compare_type(first, self.builtins.any) {
+                if self.db.compare_type(first, self.builtins.any) != Comparison::Equal {
                     self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
-                if !self.db.compare_type(rest, self.builtins.any) {
+                if self.db.compare_type(rest, self.builtins.any) != Comparison::Equal {
                     self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
@@ -1261,11 +1261,11 @@ impl<'a> Compiler<'a> {
                 Some((Guard::new(to, pair_type), hir_id))
             }
             (Type::List(inner), Type::Pair(first, rest)) => {
-                if !self.db.compare_type(first, inner) {
+                if self.db.compare_type(first, inner) != Comparison::Equal {
                     self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
                 }
 
-                if !self.db.compare_type(rest, from) {
+                if self.db.compare_type(rest, from) != Comparison::Equal {
                     self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
                 }
 
@@ -2132,7 +2132,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn type_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
-        if !self.db.check_type(from, to) {
+        if self.db.compare_type(from, to) != Comparison::Equal {
             self.db.error(
                 ErrorKind::TypeMismatch {
                     expected: self.type_name(to),
@@ -2144,7 +2144,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn cast_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
-        if !self.db.can_cast(from, to) {
+        if self.db.compare_type(from, to) != Comparison::Castable {
             self.db.error(
                 ErrorKind::CastMismatch {
                     expected: self.type_name(to),

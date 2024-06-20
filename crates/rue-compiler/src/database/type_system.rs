@@ -1,197 +1,88 @@
 use std::collections::HashSet;
 
-use crate::{ty::Type, Database, TypeId};
+use crate::{ty::Type, Comparison, Database, TypeId};
+use Comparison::*;
 
 pub trait TypeSystem {
-    fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> bool;
-    fn check_type(&self, value_type: TypeId, assign_to: TypeId) -> bool;
-    fn can_cast(&self, value_type: TypeId, cast_to: TypeId) -> bool;
+    fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> Comparison;
     fn is_cyclic(&self, type_id: TypeId) -> bool;
 }
 
 impl TypeSystem for Database {
-    fn compare_type(&self, a: TypeId, b: TypeId) -> bool {
-        self.types_equal_visitor(a, b, &mut HashSet::new())
-    }
-
-    fn check_type(&self, from: TypeId, to: TypeId) -> bool {
-        self.is_assignable_to(from, to, false, &mut HashSet::new())
-    }
-
-    fn can_cast(&self, from: TypeId, to: TypeId) -> bool {
-        self.is_assignable_to(from, to, true, &mut HashSet::new())
+    fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> Comparison {
+        self.compare_type_visitor(lhs, rhs, &mut HashSet::new())
     }
 
     fn is_cyclic(&self, type_id: TypeId) -> bool {
-        self.detect_cycle(type_id, &mut HashSet::new())
+        self.is_cyclic_visitor(type_id, &mut HashSet::new())
     }
 }
 
 impl Database {
-    fn is_assignable_to(
+    fn compare_type_visitor(
         &self,
-        a: TypeId,
-        b: TypeId,
-        cast: bool,
+        lhs: TypeId,
+        rhs: TypeId,
         visited: &mut HashSet<(TypeId, TypeId)>,
-    ) -> bool {
-        let key = (a, b);
-
-        if a == b || visited.contains(&key) {
-            return true;
+    ) -> Comparison {
+        let key = (lhs, rhs);
+        if lhs == rhs || !visited.insert(key) {
+            return Equal;
         }
-        visited.insert(key);
 
-        match (self.ty(a).clone(), self.ty(b).clone()) {
-            // Primitive types.
-            (Type::Unknown, _) | (_, Type::Unknown) => true,
-            (Type::Nil, Type::Nil) => true,
-            (Type::Any, Type::Any) => true,
-            (Type::Int, Type::Int) => true,
-            (Type::Bool, Type::Bool) => true,
-            (Type::Bytes | Type::Nil, Type::Bytes) => true,
-            (Type::Bytes32, Type::Bytes32 | Type::Bytes) => true,
-            (Type::PublicKey, Type::PublicKey) => true,
-            (_, Type::Any) => true,
+        let comparison = match (self.ty(lhs), self.ty(rhs)) {
+            // Aliases are already resolved at this point.
+            (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
 
-            // Primitive casts.
-            (Type::Nil, Type::Bool | Type::Int) if cast => true,
-            (Type::Int, Type::Bytes) if cast => true,
-            (Type::Bytes | Type::Bytes32 | Type::PublicKey, Type::Int) if cast => true,
-            (Type::PublicKey, Type::Bytes) if cast => true,
-            (Type::Bool, Type::Int | Type::Bytes) if cast => true,
-            (Type::Any, _) if cast => true,
+            // We should have already given a diagnostic for `Unknown`.
+            // So we will go ahead and pretend they are equal to everything.
+            (Type::Unknown, _) | (_, Type::Unknown) => Equal,
 
-            // List types with compatible items are also assignable.
-            (Type::List(a), Type::List(b)) => self.is_assignable_to(a, b, cast, visited),
+            // These are of course equal atomic types.
+            (Type::Any, Type::Any) => Equal,
+            (Type::Int, Type::Int) => Equal,
+            (Type::Bool, Type::Bool) => Equal,
+            (Type::Bytes, Type::Bytes) => Equal,
+            (Type::Bytes32, Type::Bytes32) => Equal,
+            (Type::PublicKey, Type::PublicKey) => Equal,
+            (Type::Nil, Type::Nil) => Equal,
 
-            (Type::Pair(a_left, a_right), Type::Pair(b_left, b_right)) => {
-                self.is_assignable_to(a_left, b_left, cast, visited)
-                    && self.is_assignable_to(a_right, b_right, cast, visited)
-            }
+            // You can cast `Any` to anything, but it's not implicit.
+            // So many languages make `Any` implicit and it makes it hard to debug.
+            (Type::Any, _) => Castable,
 
-            // Enum variants are assignable to their enum type.
-            (Type::EnumVariant(enum_variant), _) if b == enum_variant.enum_type() => true,
+            // You have to explicitly convert between other atom types.
+            // This is because the compiled output can change depending on the type.
+            (Type::Int, Type::Bytes) => Castable,
+            (Type::Bool, Type::Bytes | Type::Int) => Castable,
+            (Type::Nil, Type::Bytes | Type::Int) => Castable,
+            (Type::PublicKey, Type::Bytes | Type::Int) => Castable,
+            (Type::Bytes, Type::Int) => Castable,
+            (Type::Bytes32, Type::Int) => Castable,
 
-            // Functions with compatible parameters and return type.
-            (Type::Function(fun_a), Type::Function(fun_b)) => {
-                if fun_a.parameter_types().len() != fun_b.parameter_types().len() {
-                    return false;
-                }
+            // We'll special case `Bytes32` converting to the unsized `Bytes` type.
+            (Type::Bytes32, Type::Bytes) => Assignable,
 
-                for (a, b) in fun_a
-                    .parameter_types()
-                    .iter()
-                    .zip(fun_b.parameter_types().iter())
-                {
-                    if !self.is_assignable_to(*a, *b, cast, visited) {
-                        return false;
-                    }
-                }
+            // Size changing conversions are not possible without a type guard.
+            (Type::Bytes | Type::Int, Type::Bytes32) => Superset,
+            (Type::Bool | Type::Nil | Type::PublicKey, Type::Bytes32) => Unrelated,
+            (Type::Bytes | Type::Int, Type::Bool) => Superset,
+            (Type::Bytes32 | Type::Nil | Type::PublicKey, Type::Bool) => Unrelated,
 
-                self.is_assignable_to(fun_a.return_type(), fun_b.return_type(), cast, visited)
-            }
-
-            // Optional types are assignable to themselves.
-            (Type::Optional(inner_a), Type::Optional(inner_b)) => {
-                self.is_assignable_to(inner_a, inner_b, cast, visited)
-            }
-
-            // Either nil or inner type is assignable to optionals.
-            (a_type, Type::Optional(inner_b)) => {
-                matches!(a_type, Type::Nil) || self.is_assignable_to(a, inner_b, cast, visited)
-            }
-
-            _ => false,
-        }
-    }
-
-    fn types_equal_visitor(
-        &self,
-        a_id: TypeId,
-        b_id: TypeId,
-        visited: &mut HashSet<(TypeId, TypeId)>,
-    ) -> bool {
-        let key = (a_id, b_id);
-
-        if a_id == b_id || visited.contains(&key) {
-            return true;
-        }
-        visited.insert(key);
-
-        let b = self.ty(b_id).clone();
-
-        let equal = match self.ty(a_id).clone() {
-            Type::Unknown => matches!(b, Type::Unknown),
-            Type::Any => matches!(b, Type::Any),
-            Type::Nil => matches!(b, Type::Nil),
-            Type::Int => matches!(b, Type::Int),
-            Type::Bool => matches!(b, Type::Bool),
-            Type::Bytes => matches!(b, Type::Bytes),
-            Type::Bytes32 => matches!(b, Type::Bytes32),
-            Type::PublicKey => matches!(b, Type::PublicKey),
-            Type::Enum(..) | Type::EnumVariant(..) | Type::Struct(..) => a_id == b_id,
-            Type::List(inner) => {
-                if let Type::List(other_inner) = b {
-                    self.types_equal_visitor(inner, other_inner, visited)
-                } else {
-                    false
-                }
-            }
-            Type::Pair(left, right) => {
-                if let Type::Pair(other_left, other_right) = b {
-                    self.types_equal_visitor(left, other_left, visited)
-                        && self.types_equal_visitor(right, other_right, visited)
-                } else {
-                    false
-                }
-            }
-            Type::Function(fun) => {
-                if let Type::Function(other_fun) = b {
-                    if fun.parameter_types().len() != other_fun.parameter_types().len() {
-                        return false;
-                    }
-
-                    if fun.varargs() != other_fun.varargs() {
-                        return false;
-                    }
-
-                    for (a, b) in fun
-                        .parameter_types()
-                        .iter()
-                        .zip(other_fun.parameter_types().iter())
-                    {
-                        if !self.types_equal_visitor(*a, *b, visited) {
-                            return false;
-                        }
-                    }
-
-                    self.types_equal_visitor(fun.return_type(), other_fun.return_type(), visited)
-                } else {
-                    false
-                }
-            }
-            Type::Alias(..) => unreachable!(),
-            Type::Optional(ty) => {
-                if let Type::Optional(other_ty) = b {
-                    self.types_equal_visitor(ty, other_ty, visited)
-                } else {
-                    false
-                }
-            }
+            // These are the variants of the `Optional` type.
+            (Type::Nil, Type::Optional(..)) => Assignable,
         };
 
         visited.remove(&key);
-
-        equal
+        comparison
     }
 
-    fn detect_cycle(&self, ty: TypeId, visited_aliases: &mut HashSet<TypeId>) -> bool {
+    fn is_cyclic_visitor(&self, ty: TypeId, visited_aliases: &mut HashSet<TypeId>) -> bool {
         match self.ty_raw(ty).clone() {
             Type::List(..) => false,
             Type::Pair(left, right) => {
-                self.detect_cycle(left, visited_aliases)
-                    || self.detect_cycle(right, visited_aliases)
+                self.is_cyclic_visitor(left, visited_aliases)
+                    || self.is_cyclic_visitor(right, visited_aliases)
             }
             Type::Struct { .. } => false,
             Type::Enum { .. } => false,
@@ -201,7 +92,7 @@ impl Database {
                 if !visited_aliases.insert(alias) {
                     return true;
                 }
-                self.detect_cycle(alias, visited_aliases)
+                self.is_cyclic_visitor(alias, visited_aliases)
             }
             Type::Unknown
             | Type::Nil
@@ -211,7 +102,7 @@ impl Database {
             | Type::Bytes
             | Type::Bytes32
             | Type::PublicKey => false,
-            Type::Optional(ty) => self.detect_cycle(ty, visited_aliases),
+            Type::Optional(ty) => self.is_cyclic_visitor(ty, visited_aliases),
         }
     }
 }

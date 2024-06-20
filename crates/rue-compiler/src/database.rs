@@ -3,9 +3,11 @@ use indexmap::IndexMap;
 use rowan::TextRange;
 use rue_parser::SyntaxToken;
 
+mod comparison;
 mod ids;
 mod type_system;
 
+pub use comparison::*;
 pub use ids::*;
 pub use type_system::*;
 
