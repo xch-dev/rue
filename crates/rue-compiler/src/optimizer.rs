@@ -365,7 +365,7 @@ impl<'a> Optimizer<'a> {
             .into_iter()
             .enumerate()
         {
-            if i + 1 == param_len && ty.varargs() {
+            if i + 1 == param_len && ty.varargs {
                 let mut rest = self.db.alloc_hir(Hir::Atom(Vec::new()));
                 for (i, arg) in args.clone().into_iter().rev().enumerate() {
                     if i == 0 && varargs {

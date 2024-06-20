@@ -74,7 +74,11 @@ fn sha256(db: &mut Database, builtins: &Builtins) -> SymbolId {
     db.alloc_symbol(Symbol::Function {
         scope_id,
         hir_id,
-        ty: FunctionType::new(vec![builtins.bytes], builtins.bytes32, false),
+        ty: FunctionType {
+            parameter_types: vec![builtins.bytes],
+            return_type: builtins.bytes32,
+            varargs: false,
+        },
         inline: true,
     })
 }
@@ -92,7 +96,11 @@ fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
     db.alloc_symbol(Symbol::Function {
         scope_id,
         hir_id,
-        ty: FunctionType::new(vec![builtins.bytes32], builtins.public_key, false),
+        ty: FunctionType {
+            parameter_types: vec![builtins.bytes32],
+            return_type: builtins.public_key,
+            varargs: false,
+        },
         inline: true,
     })
 }

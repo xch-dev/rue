@@ -325,7 +325,7 @@ impl<'a> GraphTraversal<'a> {
         if !self.graph.env.contains_key(&scope_id) {
             let environment_id = self
                 .db
-                .alloc_env(Environment::function(parameters, ty.varargs()));
+                .alloc_env(Environment::function(parameters, ty.varargs));
 
             self.graph.env.insert(scope_id, environment_id);
         }

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{ty::Type, Comparison, Database, TypeId};
+
 use Comparison::*;
 
 pub trait TypeSystem {
@@ -51,6 +52,9 @@ impl Database {
             // So many languages make `Any` implicit and it makes it hard to debug.
             (Type::Any, _) => Castable,
 
+            // However, anything can be assigned to `Any` implicitly.
+            (_, Type::Any) => Assignable,
+
             // You have to explicitly convert between other atom types.
             // This is because the compiled output can change depending on the type.
             (Type::Int, Type::Bytes) => Castable,
@@ -71,6 +75,54 @@ impl Database {
 
             // These are the variants of the `Optional` type.
             (Type::Nil, Type::Optional(..)) => Assignable,
+
+            // Compare both sides of a `Pair`.
+            (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
+                let first = self.compare_type_visitor(*lhs_first, *rhs_first, visited);
+                let rest = self.compare_type_visitor(*lhs_rest, *rhs_rest, visited);
+                first & rest
+            }
+
+            // A `Pair` is a valid `List` if its first type is the same as the list's inner type
+            // and the rest is also a valid `List` of the same type.
+            (Type::Pair(first, rest), Type::List(inner)) => {
+                let inner = self.compare_type_visitor(*first, *inner, visited);
+                let rest = self.compare_type_visitor(*rest, rhs, visited);
+                inner & rest
+            }
+
+            // Nothing else can be assigned to or from a `Pair`.
+            (Type::Pair(..), _) | (_, Type::Pair(..)) => Unrelated,
+
+            // A `List` just compares with the inner type of another `List`.
+            (Type::List(lhs), Type::List(rhs)) => self.compare_type_visitor(*lhs, *rhs, visited),
+
+            // A `Struct` is castable to others only if the fields are identical.
+            (Type::Struct(lhs), Type::Struct(rhs)) => {
+                if lhs.fields.len() == rhs.fields.len() {
+                    let mut result = Castable;
+                    for i in 0..lhs.fields.len() {
+                        result &= self.compare_type_visitor(lhs.fields[i], rhs.fields[i], visited);
+                    }
+                    result
+                } else {
+                    Unrelated
+                }
+            }
+            (Type::Struct(..), _) | (_, Type::Struct(..)) => Unrelated,
+
+            // Enum variants are assignable only to their respective enum.
+            (Type::EnumVariant(variant_type), Type::Enum(..)) => {
+                if variant_type.enum_type == rhs {
+                    Assignable
+                } else {
+                    Unrelated
+                }
+            }
+
+            // Enums and their variants are not assignable to anything except themselves.
+            (Type::Enum(..), _) | (_, Type::Enum(..)) => Unrelated,
+            (Type::EnumVariant(..), _) | (_, Type::EnumVariant(..)) => Unrelated,
         };
 
         visited.remove(&key);

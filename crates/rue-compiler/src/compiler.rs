@@ -225,7 +225,11 @@ impl<'a> Compiler<'a> {
         let scope_id = self.db.alloc_scope(scope);
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
-        let ty = FunctionType::new(parameter_types, return_type, varargs);
+        let ty = FunctionType {
+            parameter_types,
+            return_type,
+            varargs,
+        };
 
         *self.db.symbol_mut(symbol_id) = Symbol::Function {
             scope_id,
@@ -310,7 +314,7 @@ impl<'a> Compiler<'a> {
             self.db.insert_type_token(type_id, name);
         }
 
-        let type_id = self.db.alloc_type(Type::Enum(EnumType::new(variants)));
+        let type_id = self.db.alloc_type(Type::Enum(EnumType { variants }));
 
         if let Some(name) = enum_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
@@ -332,13 +336,13 @@ impl<'a> Compiler<'a> {
 
         // We don't care about explicit returns in this context.
         self.scope_stack.push(scope_id);
-        let value = self.compile_block(body, Some(ty.return_type())).0;
+        let value = self.compile_block(body, Some(ty.return_type)).0;
         self.scope_stack.pop().unwrap();
 
         // Ensure that the body is assignable to the return type.
         self.type_check(
             value.ty(),
-            ty.return_type(),
+            ty.return_type,
             function.body().unwrap().syntax().text_range(),
         );
 
@@ -398,7 +402,7 @@ impl<'a> Compiler<'a> {
     fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
         self.type_definition_stack.push(type_id);
         let fields = self.compile_struct_fields(struct_item.fields());
-        *self.db.ty_mut(type_id) = Type::Struct(StructType::new(fields));
+        *self.db.ty_mut(type_id) = Type::Struct(StructType { fields });
         self.type_definition_stack.pop().unwrap();
     }
 
@@ -444,7 +448,7 @@ impl<'a> Compiler<'a> {
                 continue;
             }
 
-            let variant_type = enum_type.variants()[name.text()];
+            let variant_type = enum_type.variants[name.text()];
 
             self.type_definition_stack.push(variant_type);
 
@@ -455,12 +459,12 @@ impl<'a> Compiler<'a> {
                 .map(|discriminant| self.compile_int(discriminant).hir())
                 .unwrap_or(self.builtins.unknown_hir);
 
-            *self.db.ty_mut(variant_type) = Type::EnumVariant(EnumVariant::new(
-                name.to_string(),
-                type_id,
+            *self.db.ty_mut(variant_type) = Type::EnumVariant(EnumVariant {
+                name: name.to_string(),
+                enum_type: type_id,
                 fields,
                 discriminant,
-            ));
+            });
 
             self.type_definition_stack.pop().unwrap();
         }
@@ -770,7 +774,7 @@ impl<'a> Compiler<'a> {
             Some(Type::Struct(struct_type)) => {
                 let hir_id = self.compile_initializer_fields(
                     ty.unwrap(),
-                    struct_type.fields(),
+                    &struct_type.fields,
                     initializer.fields(),
                     initializer.syntax().text_range(),
                 );
@@ -783,14 +787,14 @@ impl<'a> Compiler<'a> {
             Some(Type::EnumVariant(enum_variant)) => {
                 let fields_hir_id = self.compile_initializer_fields(
                     ty.unwrap(),
-                    enum_variant.fields(),
+                    &enum_variant.fields,
                     initializer.fields(),
                     initializer.syntax().text_range(),
                 );
 
                 let hir_id = self
                     .db
-                    .alloc_hir(Hir::Pair(enum_variant.discriminant(), fields_hir_id));
+                    .alloc_hir(Hir::Pair(enum_variant.discriminant, fields_hir_id));
 
                 match ty {
                     Some(struct_type) => Value::typed(hir_id, struct_type),
@@ -905,7 +909,7 @@ impl<'a> Compiler<'a> {
 
         match self.db.ty(value.ty()).clone() {
             Type::Struct(struct_type) => {
-                if let Some(field) = struct_type.fields().get_full(field_name.text()) {
+                if let Some(field) = struct_type.fields.get_full(field_name.text()) {
                     let (index, _, field_type) = field;
                     return Value::typed(
                         self.compile_index(value.hir(), index, false),
@@ -1470,7 +1474,7 @@ impl<'a> Compiler<'a> {
                 .map(|ty| self.compile_type(ty))
                 .or(expected
                     .as_ref()
-                    .and_then(|expected| expected.parameter_types().get(i).copied()))
+                    .and_then(|expected| expected.parameter_types.get(i).copied()))
                 .unwrap_or(self.builtins.unknown);
 
             parameter_types.push(type_id);
@@ -1500,7 +1504,7 @@ impl<'a> Compiler<'a> {
         let expected_return_type = lambda_expr
             .ty()
             .map(|ty| self.compile_type(ty))
-            .or(expected.map(|expected| expected.return_type()));
+            .or(expected.map(|expected| expected.return_type));
 
         self.scope_stack.push(scope_id);
         let body = self.compile_expr(body, expected_return_type);
@@ -1514,7 +1518,11 @@ impl<'a> Compiler<'a> {
             lambda_expr.body().unwrap().syntax().text_range(),
         );
 
-        let ty = FunctionType::new(parameter_types.clone(), return_type, varargs);
+        let ty = FunctionType {
+            parameter_types: parameter_types.clone(),
+            return_type,
+            varargs,
+        };
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function {
             scope_id,
@@ -1717,14 +1725,14 @@ impl<'a> Compiler<'a> {
         index: usize,
         spread: bool,
     ) -> Option<TypeId> {
-        let params = function_type.parameter_types();
+        let params = function_type.parameter_types;
         let len = params.len();
 
         if index + 1 < len {
             return Some(params[index]);
         }
 
-        if !function_type.varargs() {
+        if !function_type.varargs {
             if index + 1 == len {
                 return Some(params[index]);
             } else {
@@ -1799,13 +1807,13 @@ impl<'a> Compiler<'a> {
         arg_types.reverse();
 
         if let Some(expected) = expected.as_ref() {
-            let param_len = expected.parameter_types().len();
+            let param_len = expected.parameter_types.len();
 
             let too_few_args = arg_types.len() < param_len
-                && !(expected.varargs() && arg_types.len() == param_len - 1);
-            let too_many_args = arg_types.len() > param_len && !expected.varargs();
+                && !(expected.varargs && arg_types.len() == param_len - 1);
+            let too_many_args = arg_types.len() > param_len && !expected.varargs;
 
-            if too_few_args && expected.varargs() {
+            if too_few_args && expected.varargs {
                 self.db.error(
                     ErrorKind::TooFewArgumentsWithVarargs {
                         expected: param_len - 1,
@@ -1824,7 +1832,7 @@ impl<'a> Compiler<'a> {
             }
 
             for (i, arg) in arg_types.into_iter().enumerate() {
-                if i + 1 == arg_len && spread && !expected.varargs() {
+                if i + 1 == arg_len && spread && !expected.varargs {
                     self.db.error(
                         ErrorKind::NonVarargSpread,
                         call.args()[i].syntax().text_range(),
@@ -1832,10 +1840,10 @@ impl<'a> Compiler<'a> {
                     continue;
                 }
 
-                if i + 1 >= param_len && (i + 1 < arg_len || !spread) && expected.varargs() {
+                if i + 1 >= param_len && (i + 1 < arg_len || !spread) && expected.varargs {
                     match self
                         .db
-                        .ty(expected.parameter_types().last().copied().unwrap())
+                        .ty(expected.parameter_types.last().copied().unwrap())
                     {
                         Type::List(list_type) => {
                             self.type_check(arg, *list_type, call.args()[i].syntax().text_range());
@@ -1850,10 +1858,10 @@ impl<'a> Compiler<'a> {
                     continue;
                 }
 
-                if i + 1 == arg_len && spread && expected.varargs() {
+                if i + 1 == arg_len && spread && expected.varargs {
                     self.type_check(
                         arg,
-                        expected.parameter_types()[param_len - 1],
+                        expected.parameter_types[param_len - 1],
                         call.args()[i].syntax().text_range(),
                     );
                     continue;
@@ -1862,7 +1870,7 @@ impl<'a> Compiler<'a> {
                 self.type_check(
                     arg,
                     expected
-                        .parameter_types()
+                        .parameter_types
                         .get(i)
                         .copied()
                         .unwrap_or(self.builtins.unknown),
@@ -1878,7 +1886,7 @@ impl<'a> Compiler<'a> {
         });
 
         let type_id = expected
-            .map(|expected| expected.return_type())
+            .map(|expected| expected.return_type)
             .unwrap_or(self.builtins.unknown);
 
         Value::typed(hir_id, type_id)
@@ -1940,7 +1948,7 @@ impl<'a> Compiler<'a> {
     fn path_into_type(&mut self, ty: TypeId, name: &str, range: TextRange) -> TypeId {
         match self.db.ty(ty) {
             Type::Enum(enum_type) => {
-                if let Some(&variant_type) = enum_type.variants().get(name) {
+                if let Some(&variant_type) = enum_type.variants.get(name) {
                     return variant_type;
                 }
                 self.db
@@ -1980,7 +1988,7 @@ impl<'a> Compiler<'a> {
 
     fn compile_function_type(&mut self, function: AstFunctionType) -> TypeId {
         let mut parameter_types = Vec::new();
-        let mut vararg = false;
+        let mut varargs = false;
 
         let len = function.params().len();
 
@@ -1994,7 +2002,7 @@ impl<'a> Compiler<'a> {
 
             if param.spread().is_some() {
                 if i + 1 == len {
-                    vararg = true;
+                    varargs = true;
                 } else {
                     self.db
                         .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
@@ -2007,11 +2015,11 @@ impl<'a> Compiler<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.builtins.unknown);
 
-        self.db.alloc_type(Type::Function(FunctionType::new(
+        self.db.alloc_type(Type::Function(FunctionType {
             parameter_types,
             return_type,
-            vararg,
-        )))
+            varargs,
+        }))
     }
 
     fn compile_optional_type(&mut self, optional: OptionalType) -> TypeId {
@@ -2084,7 +2092,7 @@ impl<'a> Compiler<'a> {
             }
             Type::Struct(struct_type) => {
                 let fields: Vec<String> = struct_type
-                    .fields()
+                    .fields
                     .iter()
                     .map(|(name, ty)| format!("{}: {}", name, self.type_name_visitor(*ty, stack)))
                     .collect();
@@ -2093,10 +2101,10 @@ impl<'a> Compiler<'a> {
             }
             Type::Enum { .. } => "<unnamed enum>".to_string(),
             Type::EnumVariant(enum_variant) => {
-                let enum_name = self.type_name_visitor(enum_variant.enum_type(), stack);
+                let enum_name = self.type_name_visitor(enum_variant.enum_type, stack);
 
                 let fields: Vec<String> = enum_variant
-                    .fields()
+                    .fields
                     .iter()
                     .map(|(name, ty)| format!("{}: {}", name, self.type_name_visitor(*ty, stack)))
                     .collect();
@@ -2104,18 +2112,18 @@ impl<'a> Compiler<'a> {
                 format!(
                     "{}::{} {{ {} }}",
                     enum_name,
-                    enum_variant.name(),
+                    enum_variant.name,
                     fields.join(", ")
                 )
             }
             Type::Function(function_type) => {
                 let params: Vec<String> = function_type
-                    .parameter_types()
+                    .parameter_types
                     .iter()
                     .map(|&ty| self.type_name_visitor(ty, stack))
                     .collect();
 
-                let ret = self.type_name_visitor(function_type.return_type(), stack);
+                let ret = self.type_name_visitor(function_type.return_type, stack);
 
                 format!("fun({}) -> {}", params.join(", "), ret)
             }
