@@ -67,3 +67,38 @@ cost = 175
 input = "()"
 output = "0x0280de80"
 hash = "e9dcd1f988eeeea8b8f01787e1a85c8e29b826fa7f757480cd3ad8261e37100f"
+
+[rem]
+bytes = 25
+cost = 1391
+input = "()"
+output = "4"
+hash = "8b1651043cbbeb0e94d3db3ac81462a1b9c38706c165ac61c66fb54b4d448fc9"
+
+[sub]
+bytes = 49
+cost = 4123
+input = "()"
+output = "-961"
+hash = "97097299ee1a46f8164a293d89e964777bf6dc7c4cb5b2d5a57da9606c3f629f"
+
+[add]
+bytes = 43
+cost = 3313
+input = "()"
+output = "1083"
+hash = "c19110971a0cea01368f0c7599b8984f74e301b7cda20bd7f86eb2296bbf16c5"
+
+[div]
+bytes = 46
+cost = 3374
+input = "()"
+output = "0x0e89a7e7"
+hash = "a958cf4cf1dc19926a38350be58e68716f3db6790a005d9e9f8b081f05db20d2"
+
+[mul]
+bytes = 63
+cost = 6375
+input = "()"
+output = "0x66c880"
+hash = "c187a064a54146a65af3688605d174cb3f9d67bc1ffbf9911b64b5fd9a528465"
