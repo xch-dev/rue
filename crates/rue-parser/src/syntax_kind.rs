@@ -12,6 +12,7 @@ pub enum SyntaxKind {
 
     Ident,
     Int,
+    Hex,
     String,
 
     OpenParen,
@@ -129,7 +130,8 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::Error => "error",
 
                 SyntaxKind::Ident => "identifier",
-                SyntaxKind::Int => "integer",
+                SyntaxKind::Int => "integer literal",
+                SyntaxKind::Hex => "hex literal",
                 SyntaxKind::String => "string",
 
                 SyntaxKind::OpenParen => "'('",

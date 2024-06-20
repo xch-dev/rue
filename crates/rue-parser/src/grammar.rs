@@ -317,6 +317,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializ
     let checkpoint = p.checkpoint();
 
     if p.at(SyntaxKind::Int)
+        || p.at(SyntaxKind::Hex)
         || p.at(SyntaxKind::String)
         || p.at(SyntaxKind::True)
         || p.at(SyntaxKind::False)

@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use indexmap::IndexSet;
-
 use crate::{
     database::{Database, HirId, LirId, SymbolId},
     hir::{BinOp, Hir},
@@ -20,8 +18,7 @@ pub use environment::*;
 pub struct Optimizer<'a> {
     db: &'a mut Database,
     graph: DependencyGraph,
-    inline_fun_stack: IndexSet<SymbolId>,
-    inline_parameter_stack: Vec<HashMap<SymbolId, HirId>>,
+    inline_parameter_stack: Vec<HashMap<SymbolId, LirId>>,
 }
 
 impl<'a> Optimizer<'a> {
@@ -29,7 +26,6 @@ impl<'a> Optimizer<'a> {
         Self {
             db,
             graph,
-            inline_fun_stack: IndexSet::new(),
             inline_parameter_stack: Vec::new(),
         }
     }
@@ -163,7 +159,6 @@ impl<'a> Optimizer<'a> {
                     {
                         let function_env_id = self.graph.env(*scope_id);
                         return self.opt_inline_function_call(
-                            *symbol_id,
                             env_id,
                             function_env_id,
                             ty.clone(),
@@ -301,8 +296,8 @@ impl<'a> Optimizer<'a> {
             }
             Symbol::Parameter { .. } => {
                 for inline_parameter_map in self.inline_parameter_stack.iter().rev() {
-                    if let Some(hir_id) = inline_parameter_map.get(&symbol_id) {
-                        return self.opt_hir(env_id, *hir_id);
+                    if let Some(lir_id) = inline_parameter_map.get(&symbol_id) {
+                        return *lir_id;
                     }
                 }
                 self.opt_path(env_id, symbol_id)
@@ -349,10 +344,8 @@ impl<'a> Optimizer<'a> {
         self.db.alloc_lir(Lir::Run(callee, lir_id))
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn opt_inline_function_call(
         &mut self,
-        symbol_id: SymbolId,
         env_id: EnvironmentId,
         function_env_id: EnvironmentId,
         ty: FunctionType,
@@ -360,10 +353,6 @@ impl<'a> Optimizer<'a> {
         args: Vec<HirId>,
         varargs: bool,
     ) -> LirId {
-        if !self.inline_fun_stack.insert(symbol_id) {
-            // TODO: self.error(ErrorKind::RecursiveInlineFunctionCall, TextRange::default());
-            return self.db.alloc_lir(Lir::Atom(Vec::new()));
-        }
         let mut inline_parameter_map = HashMap::new();
         let mut args = args;
 
@@ -385,10 +374,12 @@ impl<'a> Optimizer<'a> {
                     }
                     rest = self.db.alloc_hir(Hir::Pair(arg, rest));
                 }
-                inline_parameter_map.insert(symbol_id, rest);
+                inline_parameter_map.insert(symbol_id, self.opt_hir(env_id, rest));
                 continue;
             }
-            inline_parameter_map.insert(symbol_id, args.remove(0));
+
+            let hir_id = args.remove(0);
+            inline_parameter_map.insert(symbol_id, self.opt_hir(env_id, hir_id));
         }
 
         self.inline_parameter_stack.push(inline_parameter_map);

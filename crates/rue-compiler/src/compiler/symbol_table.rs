@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
-use rue_parser::SyntaxToken;
 
 use crate::{optimizer::DependencyGraph, Database, ScopeId, SymbolId, TypeId};
 
@@ -9,26 +8,11 @@ use super::unused::Unused;
 
 #[derive(Debug, Default)]
 pub struct SymbolTable {
-    symbol_tokens: IndexMap<SymbolId, SyntaxToken>,
-    type_tokens: IndexMap<TypeId, SyntaxToken>,
-    scope_tokens: IndexMap<ScopeId, SyntaxToken>,
     symbol_type_references: IndexMap<SymbolId, IndexSet<TypeId>>,
     type_type_references: IndexMap<TypeId, IndexSet<TypeId>>,
 }
 
 impl SymbolTable {
-    pub fn insert_symbol(&mut self, symbol_id: SymbolId, token: SyntaxToken) {
-        self.symbol_tokens.insert(symbol_id, token);
-    }
-
-    pub fn insert_type(&mut self, type_id: TypeId, token: SyntaxToken) {
-        self.type_tokens.insert(type_id, token);
-    }
-
-    pub fn insert_scope(&mut self, scope_id: ScopeId, token: SyntaxToken) {
-        self.scope_tokens.insert(scope_id, token);
-    }
-
     pub fn insert_symbol_type_reference(&mut self, symbol_id: SymbolId, type_id: TypeId) {
         self.symbol_type_references
             .entry(symbol_id)
@@ -57,18 +41,6 @@ impl SymbolTable {
             .unwrap_or_default()
     }
 
-    pub fn symbol_token(&self, symbol_id: SymbolId) -> Option<&SyntaxToken> {
-        self.symbol_tokens.get(&symbol_id)
-    }
-
-    pub fn named_types(&self) -> Vec<TypeId> {
-        self.type_tokens.keys().copied().collect()
-    }
-
-    pub fn type_token(&self, type_id: TypeId) -> Option<&SyntaxToken> {
-        self.type_tokens.get(&type_id)
-    }
-
     pub fn calculate_unused(
         &self,
         db: &Database,
@@ -93,14 +65,14 @@ impl SymbolTable {
 
             unused.symbol_ids.insert(symbol_id);
 
-            let token = self.symbol_token(symbol_id).unwrap();
+            let token = db.symbol_token(symbol_id).unwrap();
 
             if token.text().starts_with('_') {
                 unused.exempt_symbols.insert(symbol_id);
             }
         }
 
-        let directly_used_types = self.named_types().into_iter().filter(|type_id| {
+        let directly_used_types = db.named_types().into_iter().filter(|type_id| {
             used_symbols
                 .iter()
                 .any(|symbol_id| self.type_referenced_by_symbol(*type_id, *symbol_id))
@@ -111,14 +83,14 @@ impl SymbolTable {
             self.calculate_used_types(type_id, &mut used_types);
         }
 
-        for type_id in self.named_types() {
+        for type_id in db.named_types() {
             if used_types.contains(&type_id) {
                 continue;
             }
 
             unused.type_ids.insert(type_id);
 
-            let token = self.type_token(type_id).unwrap();
+            let token = db.type_token(type_id).unwrap();
 
             if token.text().starts_with('_') {
                 unused.exempt_types.insert(type_id);

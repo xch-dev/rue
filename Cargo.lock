@@ -2820,6 +2820,7 @@ name = "rue-compiler"
 version = "0.1.0"
 dependencies = [
  "clvmr 0.6.1",
+ "hex",
  "id-arena",
  "indexmap",
  "log",

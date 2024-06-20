@@ -165,6 +165,15 @@ fn convert_tokens<'a>(
         let kind = match token.kind() {
             TokenKind::Ident => SyntaxKind::Ident,
             TokenKind::Int => SyntaxKind::Int,
+            TokenKind::Hex { is_valid } => {
+                if !is_valid {
+                    errors.push(ParserError::new(
+                        ParserErrorKind::MissingHexDigits,
+                        pos..pos + token.len(),
+                    ));
+                }
+                SyntaxKind::Hex
+            }
             TokenKind::String { is_terminated } => {
                 if !is_terminated {
                     errors.push(ParserError::new(

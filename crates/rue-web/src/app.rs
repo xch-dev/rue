@@ -243,6 +243,7 @@ fn Rue(source: &'static str) -> impl IntoView {
             }
             TokenKind::Ident => class = "text-gray-700 dark:text-red-400",
             TokenKind::Int => class = "text-fuchsia-600 dark:text-green-300",
+            TokenKind::Hex { .. } => class = "text-fuchsia-600 dark:text-green-300",
             TokenKind::String { .. } => class = "text-cyan-600 dark:text-lime-300",
             TokenKind::OpenParen
             | TokenKind::CloseParen

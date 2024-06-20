@@ -74,7 +74,7 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
         if unused.exempt_symbols.contains(symbol_id) {
             continue;
         }
-        let token = symbol_table.symbol_token(*symbol_id).unwrap();
+        let token = db.symbol_token(*symbol_id).unwrap();
         let kind = match db.symbol(*symbol_id).clone() {
             Symbol::Unknown => unreachable!(),
             Symbol::Function { .. } => WarningKind::UnusedFunction(token.to_string()),
@@ -93,7 +93,7 @@ fn precompile(db: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>)
         if unused.exempt_types.contains(type_id) {
             continue;
         }
-        let token = symbol_table.type_token(*type_id).unwrap();
+        let token = db.type_token(*type_id).unwrap();
         let kind = match db.ty_raw(*type_id) {
             Type::Alias(..) => WarningKind::UnusedTypeAlias(token.to_string()),
             Type::Struct { .. } => WarningKind::UnusedStruct(token.to_string()),

@@ -215,7 +215,7 @@ impl<'a> Compiler<'a> {
 
             if let Some(name) = param.name() {
                 scope.define_symbol(name.to_string(), symbol_id);
-                self.sym.insert_symbol(symbol_id, name);
+                self.db.insert_symbol_token(symbol_id, name);
             }
 
             if param.spread().is_some() {
@@ -243,8 +243,8 @@ impl<'a> Compiler<'a> {
 
         if let Some(name) = function_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
-            self.sym.insert_scope(scope_id, name.clone());
-            self.sym.insert_symbol(symbol_id, name);
+            self.db.insert_scope_token(scope_id, name.clone());
+            self.db.insert_symbol_token(symbol_id, name);
         }
 
         self.symbol_stack.pop().unwrap()
@@ -271,7 +271,7 @@ impl<'a> Compiler<'a> {
 
         if let Some(name) = const_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
-            self.sym.insert_symbol(symbol_id, name);
+            self.db.insert_symbol_token(symbol_id, name);
         }
 
         self.symbol_stack.pop().unwrap()
@@ -282,7 +282,7 @@ impl<'a> Compiler<'a> {
         let type_id = self.db.alloc_type(Type::Unknown);
         if let Some(name) = type_alias.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
-            self.sym.insert_type(type_id, name);
+            self.db.insert_type_token(type_id, name);
         }
         type_id
     }
@@ -292,7 +292,7 @@ impl<'a> Compiler<'a> {
         let type_id = self.db.alloc_type(Type::Unknown);
         if let Some(name) = struct_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
-            self.sym.insert_type(type_id, name);
+            self.db.insert_type_token(type_id, name);
         }
         type_id
     }
@@ -314,14 +314,14 @@ impl<'a> Compiler<'a> {
 
             let type_id = self.db.alloc_type(Type::Unknown);
             variants.insert(name.to_string(), type_id);
-            self.sym.insert_type(type_id, name);
+            self.db.insert_type_token(type_id, name);
         }
 
         let type_id = self.db.alloc_type(Type::Enum(EnumType::new(variants)));
 
         if let Some(name) = enum_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
-            self.sym.insert_type(type_id, name);
+            self.db.insert_type_token(type_id, name);
         }
 
         type_id
@@ -510,10 +510,10 @@ impl<'a> Compiler<'a> {
         // Every let binding is a new scope for now, to ensure references are resolved in the proper order.
         let mut let_scope = Scope::default();
         let_scope.define_symbol(name.to_string(), symbol_id);
-        self.sym.insert_symbol(symbol_id, name.clone());
+        self.db.insert_symbol_token(symbol_id, name.clone());
 
         let scope_id = self.db.alloc_scope(let_scope);
-        self.sym.insert_scope(scope_id, name);
+        self.db.insert_scope_token(scope_id, name);
         self.scope_stack.push(scope_id);
         self.symbol_stack.pop().unwrap();
 
@@ -1353,6 +1353,7 @@ impl<'a> Compiler<'a> {
 
         match value.kind() {
             SyntaxKind::Int => self.compile_int(value),
+            SyntaxKind::Hex => self.compile_hex(value),
             SyntaxKind::String => self.compile_string(value),
             SyntaxKind::True => {
                 Value::typed(self.db.alloc_hir(Hir::Atom(vec![1])), self.builtins.bool)
@@ -1511,7 +1512,7 @@ impl<'a> Compiler<'a> {
             if let Some(name) = param.name() {
                 let symbol_id = self.db.alloc_symbol(Symbol::Parameter { type_id });
                 scope.define_symbol(name.to_string(), symbol_id);
-                self.sym.insert_symbol(symbol_id, name);
+                self.db.insert_symbol_token(symbol_id, name);
             };
 
             if param.spread().is_some() {
@@ -1647,6 +1648,30 @@ impl<'a> Compiler<'a> {
         Value::typed(
             self.db.alloc_hir(Hir::Atom(bigint_to_bytes(num))),
             self.builtins.int,
+        )
+    }
+
+    fn compile_hex(&mut self, hex: SyntaxToken) -> Value {
+        let Ok(bytes) = hex::decode(
+            hex.text()
+                .replace("0x", "")
+                .replace("0X", "")
+                .replace('_', ""),
+        ) else {
+            return Value::typed(self.builtins.unknown_hir, self.builtins.bytes);
+        };
+
+        let bytes_len = bytes.len();
+
+        Value::typed(
+            self.db.alloc_hir(Hir::Atom(bytes)),
+            if bytes_len == 32 {
+                self.builtins.bytes32
+            } else if bytes_len == 48 {
+                self.builtins.public_key
+            } else {
+                self.builtins.bytes
+            },
         )
     }
 

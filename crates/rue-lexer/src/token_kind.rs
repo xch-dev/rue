@@ -2,6 +2,7 @@
 pub enum TokenKind {
     Ident,
     Int,
+    Hex { is_valid: bool },
     String { is_terminated: bool },
 
     OpenParen,
