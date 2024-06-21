@@ -254,7 +254,7 @@ mod tests {
     use crate::{
         compiler::{builtins, Builtins},
         scope::Scope,
-        ty::{EnumType, EnumVariant, PairType, StructType},
+        ty::{EnumType, EnumVariant, FunctionType, PairType, Rest, StructType},
     };
 
     use super::*;
@@ -279,19 +279,16 @@ mod tests {
         let (mut db, ty) = setup();
 
         let int_alias = db.alloc_type(Type::Alias(ty.int));
-        assert_eq!(db.compare_type(int_alias, ty.int), Comparison::Equal);
-        assert_eq!(db.compare_type(ty.int, int_alias), Comparison::Equal);
-        assert_eq!(db.compare_type(int_alias, int_alias), Comparison::Equal);
+        assert_eq!(db.compare_type(int_alias, ty.int), Equal);
+        assert_eq!(db.compare_type(ty.int, int_alias), Equal);
+        assert_eq!(db.compare_type(int_alias, int_alias), Equal);
 
         let double_alias = db.alloc_type(Type::Alias(int_alias));
-        assert_eq!(db.compare_type(double_alias, ty.int), Comparison::Equal);
-        assert_eq!(db.compare_type(ty.int, double_alias), Comparison::Equal);
-        assert_eq!(
-            db.compare_type(double_alias, double_alias),
-            Comparison::Equal
-        );
-        assert_eq!(db.compare_type(double_alias, int_alias), Comparison::Equal);
-        assert_eq!(db.compare_type(int_alias, double_alias), Comparison::Equal);
+        assert_eq!(db.compare_type(double_alias, ty.int), Equal);
+        assert_eq!(db.compare_type(ty.int, double_alias), Equal);
+        assert_eq!(db.compare_type(double_alias, double_alias), Equal);
+        assert_eq!(db.compare_type(double_alias, int_alias), Equal);
+        assert_eq!(db.compare_type(int_alias, double_alias), Equal);
     }
 
     #[test]
@@ -408,20 +405,17 @@ mod tests {
         let two_ints = db.alloc_type(Type::Struct(StructType {
             fields: fields(&[ty.int, ty.int]),
         }));
-        assert_eq!(db.compare_type(two_ints, two_ints), Comparison::Equal);
+        assert_eq!(db.compare_type(two_ints, two_ints), Equal);
 
         let one_int = db.alloc_type(Type::Struct(StructType {
             fields: fields(&[ty.int]),
         }));
-        assert_eq!(db.compare_type(one_int, two_ints), Comparison::Unrelated);
+        assert_eq!(db.compare_type(one_int, two_ints), Unrelated);
 
         let empty_struct = db.alloc_type(Type::Struct(StructType {
             fields: fields(&[]),
         }));
-        assert_eq!(
-            db.compare_type(empty_struct, empty_struct),
-            Comparison::Equal
-        );
+        assert_eq!(db.compare_type(empty_struct, empty_struct), Equal);
     }
 
     #[test]
@@ -441,7 +435,36 @@ mod tests {
             variants: fields(&[variant]),
         });
 
-        assert_eq!(db.compare_type(enum_type, variant), Comparison::Superset);
-        assert_eq!(db.compare_type(variant, enum_type), Comparison::Assignable);
+        assert_eq!(db.compare_type(enum_type, variant), Superset);
+        assert_eq!(db.compare_type(variant, enum_type), Assignable);
+    }
+
+    #[test]
+    fn test_function_types() {
+        let (mut db, ty) = setup();
+
+        let int_to_bool = db.alloc_type(Type::Function(FunctionType {
+            param_types: vec![ty.int],
+            rest: Rest::Nil,
+            return_type: ty.bool,
+        }));
+        assert_eq!(db.compare_type(int_to_bool, int_to_bool), Equal);
+
+        let int_to_int = db.alloc_type(Type::Function(FunctionType {
+            param_types: vec![ty.int],
+            rest: Rest::Nil,
+            return_type: ty.int,
+        }));
+        assert_eq!(db.compare_type(int_to_bool, int_to_int), Castable);
+        assert_eq!(db.compare_type(int_to_int, int_to_bool), Superset);
+
+        let int_list = db.alloc_type(Type::List(ty.int));
+        let ints_to_bool = db.alloc_type(Type::Function(FunctionType {
+            param_types: vec![int_list],
+            rest: Rest::Nil,
+            return_type: ty.bool,
+        }));
+        assert_eq!(db.compare_type(int_to_bool, ints_to_bool), Unrelated);
+        assert_eq!(db.compare_type(ints_to_bool, int_to_bool), Unrelated);
     }
 }
