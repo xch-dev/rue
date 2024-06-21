@@ -175,6 +175,15 @@ impl Database {
                 }
             }
 
+            // But not the other way around.
+            (Type::Enum(..), Type::EnumVariant(variant_type)) => {
+                if variant_type.enum_type == lhs {
+                    Superset
+                } else {
+                    Unrelated
+                }
+            }
+
             // Enums and their variants are not assignable to anything except themselves.
             (Type::Enum(..), _) | (_, Type::Enum(..)) => Unrelated,
             (Type::EnumVariant(..), _) | (_, Type::EnumVariant(..)) => Unrelated,
@@ -245,7 +254,7 @@ mod tests {
     use crate::{
         compiler::{builtins, Builtins},
         scope::Scope,
-        ty::{PairType, StructType},
+        ty::{EnumType, EnumVariant, PairType, StructType},
     };
 
     use super::*;
@@ -413,5 +422,26 @@ mod tests {
             db.compare_type(empty_struct, empty_struct),
             Comparison::Equal
         );
+    }
+
+    #[test]
+    fn test_enum_types() {
+        let (mut db, ty) = setup();
+
+        let enum_type = db.alloc_type(Type::Unknown);
+
+        let variant = db.alloc_type(Type::EnumVariant(EnumVariant {
+            name: "Variant".to_string(),
+            enum_type,
+            fields: fields(&[ty.int]),
+            discriminant: ty.unknown_hir,
+        }));
+
+        *db.ty_mut(enum_type) = Type::Enum(EnumType {
+            variants: fields(&[variant]),
+        });
+
+        assert_eq!(db.compare_type(enum_type, variant), Comparison::Superset);
+        assert_eq!(db.compare_type(variant, enum_type), Comparison::Assignable);
     }
 }
