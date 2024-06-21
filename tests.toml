@@ -102,3 +102,17 @@ cost = 6375
 input = "()"
 output = "0x66c880"
 hash = "c187a064a54146a65af3688605d174cb3f9d67bc1ffbf9911b64b5fd9a528465"
+
+[arithmetic]
+bytes = 136
+cost = 13250
+input = "()"
+output = "-2"
+hash = "212300010fcd3671f1b2ed787cc361189d397de2f893ac54856b40b7fb3673ae"
+
+[neg]
+bytes = 94
+cost = 10827
+input = "()"
+output = "0xfe7956"
+hash = "9b9e76d741c2d699d61ec30f7710cf4c537adc1e4c298e20512435662373f77b"

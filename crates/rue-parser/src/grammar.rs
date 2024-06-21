@@ -306,10 +306,10 @@ fn expr(p: &mut Parser) {
 }
 
 fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializer: bool) {
-    if p.at(SyntaxKind::Not) {
+    if p.at(SyntaxKind::Not) || p.at(SyntaxKind::Minus) {
         p.start(SyntaxKind::PrefixExpr);
         p.bump();
-        expr_binding_power(p, 255, allow_initializer);
+        expr_binding_power(p, 0, allow_initializer);
         p.finish();
         return;
     }

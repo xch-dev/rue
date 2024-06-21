@@ -1019,6 +1019,22 @@ impl<'a> Compiler<'a> {
 
                 value
             }
+            PrefixOp::Neg => {
+                self.type_check(
+                    expr.ty(),
+                    self.builtins.int,
+                    prefix_expr.syntax().text_range(),
+                );
+
+                Value::typed(
+                    self.db.alloc_hir(Hir::BinaryOp {
+                        op: BinOp::Subtract,
+                        lhs: self.builtins.nil_hir,
+                        rhs: expr.hir(),
+                    }),
+                    self.builtins.int,
+                )
+            }
         }
     }
 

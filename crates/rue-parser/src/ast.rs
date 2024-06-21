@@ -477,11 +477,13 @@ impl LiteralExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrefixOp {
     Not,
+    Neg,
 }
 
 fn prefix_op(kind: SyntaxKind) -> Option<PrefixOp> {
     match kind {
         SyntaxKind::Not => Some(PrefixOp::Not),
+        SyntaxKind::Minus => Some(PrefixOp::Neg),
         _ => None,
     }
 }
