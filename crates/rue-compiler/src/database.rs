@@ -35,24 +35,6 @@ impl Database {
         Self::default()
     }
 
-    pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.diagnostics
-    }
-
-    pub fn error(&mut self, info: ErrorKind, range: TextRange) {
-        self.diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Error(info),
-            range.start().into()..range.end().into(),
-        ));
-    }
-
-    pub fn warning(&mut self, info: WarningKind, range: TextRange) {
-        self.diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Warning(info),
-            range.start().into()..range.end().into(),
-        ));
-    }
-
     pub(crate) fn alloc_scope(&mut self, scope: Scope) -> ScopeId {
         ScopeId(self.scopes.alloc(scope))
     }
@@ -96,10 +78,6 @@ impl Database {
         self.ty_raw(id)
     }
 
-    pub(crate) fn ty_mut(&mut self, id: TypeId) -> &mut Type {
-        &mut self.types[id.0]
-    }
-
     pub fn hir(&self, id: HirId) -> &Hir {
         &self.hir[id.0]
     }
@@ -112,7 +90,11 @@ impl Database {
         &self.environments[id.0]
     }
 
-    pub fn env_mut(&mut self, id: EnvironmentId) -> &mut Environment {
+    pub(crate) fn ty_mut(&mut self, id: TypeId) -> &mut Type {
+        &mut self.types[id.0]
+    }
+
+    pub(crate) fn env_mut(&mut self, id: EnvironmentId) -> &mut Environment {
         &mut self.environments[id.0]
     }
 
@@ -124,15 +106,15 @@ impl Database {
         &mut self.symbols[id.0]
     }
 
-    pub fn insert_symbol_token(&mut self, symbol_id: SymbolId, token: SyntaxToken) {
+    pub(crate) fn insert_symbol_token(&mut self, symbol_id: SymbolId, token: SyntaxToken) {
         self.symbol_tokens.insert(symbol_id, token);
     }
 
-    pub fn insert_type_token(&mut self, type_id: TypeId, token: SyntaxToken) {
+    pub(crate) fn insert_type_token(&mut self, type_id: TypeId, token: SyntaxToken) {
         self.type_tokens.insert(type_id, token);
     }
 
-    pub fn insert_scope_token(&mut self, scope_id: ScopeId, token: SyntaxToken) {
+    pub(crate) fn insert_scope_token(&mut self, scope_id: ScopeId, token: SyntaxToken) {
         self.scope_tokens.insert(scope_id, token);
     }
 
@@ -235,5 +217,23 @@ impl Database {
             self.scope_token(scope_id).map(|token| token.to_string()),
             defined_symbols
         )
+    }
+
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    pub fn error(&mut self, info: ErrorKind, range: TextRange) {
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Error(info),
+            range.start().into()..range.end().into(),
+        ));
+    }
+
+    pub fn warning(&mut self, info: WarningKind, range: TextRange) {
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Warning(info),
+            range.start().into()..range.end().into(),
+        ));
     }
 }

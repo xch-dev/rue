@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, str::FromStr};
 
-use builtins::{builtins, Builtins};
+pub(crate) use builtins::{builtins, Builtins};
 use clvmr::Allocator;
 use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};

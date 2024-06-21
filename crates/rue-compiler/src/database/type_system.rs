@@ -65,13 +65,16 @@ impl Database {
             (Type::Int, Type::Bytes) => Castable,
             (Type::Bool, Type::Bytes) => Castable,
             (Type::Bool, Type::Int) => Castable,
-            (Type::Nil, Type::Bytes) => Castable,
             (Type::Nil, Type::Int) => Castable,
             (Type::Nil, Type::Bool) => Castable,
             (Type::PublicKey, Type::Bytes) => Castable,
             (Type::PublicKey, Type::Int) => Castable,
             (Type::Bytes, Type::Int) => Castable,
             (Type::Bytes32, Type::Int) => Castable,
+
+            // Let's allow assigning `Nil` to `Bytes` for ease of use.
+            // The only alternative without needing a cast is empty strings.
+            (Type::Nil, Type::Bytes) => Assignable,
 
             // Size changing conversions are not possible without a type guard.
             (Type::Bytes, Type::Bytes32) => Superset,
@@ -114,10 +117,17 @@ impl Database {
 
             // A `Pair` is a valid `List` if its first type is the same as the list's inner type
             // and the rest is also a valid `List` of the same type.
+            // However, it's not considered equal but rather assignable.
             (Type::Pair(pair), Type::List(inner)) => {
                 let inner = self.compare_type_visitor(pair.first, *inner, visited);
                 let rest = self.compare_type_visitor(pair.rest, rhs, visited);
-                inner & rest
+                Assignable & inner & rest
+            }
+
+            // A `List` is not a valid pair since `Nil` is also a valid list.
+            // It's a `Superset` only if the opposite comparison is not `Unrelated`.
+            (Type::List(..), Type::Pair(..)) => {
+                Superset & self.compare_type_visitor(rhs, lhs, visited)
             }
 
             // Nothing else can be assigned to or from a `Pair`.
@@ -127,7 +137,7 @@ impl Database {
             (Type::List(lhs), Type::List(rhs)) => self.compare_type_visitor(*lhs, *rhs, visited),
 
             // `Nil` is a valid list.
-            (Type::Nil, Type::List(..)) => Castable,
+            (Type::Nil, Type::List(..)) => Assignable,
             (Type::List(..), Type::Nil) => Superset,
 
             // `List` is not compatible with atoms.
@@ -225,5 +235,183 @@ impl Database {
             | Type::PublicKey => false,
             Type::Optional(ty) => self.is_cyclic_visitor(ty, visited_aliases),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+
+    use crate::{
+        compiler::{builtins, Builtins},
+        scope::Scope,
+        ty::{PairType, StructType},
+    };
+
+    use super::*;
+
+    fn setup() -> (Database, Builtins) {
+        let mut db = Database::new();
+        let mut scope = Scope::default();
+        let ty = builtins(&mut db, &mut scope);
+        (db, ty)
+    }
+
+    fn fields(items: &[TypeId]) -> IndexMap<String, TypeId> {
+        let mut fields = IndexMap::new();
+        for (i, item) in items.iter().enumerate() {
+            fields.insert(format!("field_{i}"), *item);
+        }
+        fields
+    }
+
+    #[test]
+    fn test_alias_resolution() {
+        let (mut db, ty) = setup();
+
+        let int_alias = db.alloc_type(Type::Alias(ty.int));
+        assert_eq!(db.compare_type(int_alias, ty.int), Comparison::Equal);
+        assert_eq!(db.compare_type(ty.int, int_alias), Comparison::Equal);
+        assert_eq!(db.compare_type(int_alias, int_alias), Comparison::Equal);
+
+        let double_alias = db.alloc_type(Type::Alias(int_alias));
+        assert_eq!(db.compare_type(double_alias, ty.int), Comparison::Equal);
+        assert_eq!(db.compare_type(ty.int, double_alias), Comparison::Equal);
+        assert_eq!(
+            db.compare_type(double_alias, double_alias),
+            Comparison::Equal
+        );
+        assert_eq!(db.compare_type(double_alias, int_alias), Comparison::Equal);
+        assert_eq!(db.compare_type(int_alias, double_alias), Comparison::Equal);
+    }
+
+    #[test]
+    fn test_any_type() {
+        let (db, ty) = setup();
+        assert_eq!(db.compare_type(ty.any, ty.int), Castable);
+        assert_eq!(db.compare_type(ty.any, ty.any), Equal);
+        assert_eq!(db.compare_type(ty.int, ty.any), Assignable);
+    }
+
+    #[test]
+    fn test_unknown_type() {
+        let (db, ty) = setup();
+        assert_eq!(db.compare_type(ty.any, ty.unknown), Equal);
+        assert_eq!(db.compare_type(ty.int, ty.unknown), Equal);
+        assert_eq!(db.compare_type(ty.unknown, ty.int), Equal);
+        assert_eq!(db.compare_type(ty.unknown, ty.any), Equal);
+    }
+
+    #[test]
+    fn test_atom_types() {
+        let (db, ty) = setup();
+        assert_eq!(db.compare_type(ty.bytes, ty.bytes32), Superset);
+        assert_eq!(db.compare_type(ty.bytes32, ty.bytes), Equal);
+        assert_eq!(db.compare_type(ty.bytes, ty.public_key), Superset);
+        assert_eq!(db.compare_type(ty.public_key, ty.bytes), Castable);
+        assert_eq!(db.compare_type(ty.bytes, ty.int), Castable);
+        assert_eq!(db.compare_type(ty.int, ty.bytes), Castable);
+        assert_eq!(db.compare_type(ty.int, ty.int), Equal);
+    }
+
+    #[test]
+    fn test_nil_type() {
+        let (mut db, ty) = setup();
+
+        let list = db.alloc_type(Type::List(ty.int));
+        assert_eq!(db.compare_type(ty.nil, ty.int), Castable);
+        assert_eq!(db.compare_type(ty.nil, ty.bool), Castable);
+        assert_eq!(db.compare_type(ty.nil, ty.bytes), Assignable);
+        assert_eq!(db.compare_type(ty.nil, ty.bytes32), Unrelated);
+        assert_eq!(db.compare_type(ty.nil, ty.public_key), Unrelated);
+        assert_eq!(db.compare_type(ty.nil, list), Assignable);
+    }
+
+    #[test]
+    fn test_pair_type() {
+        let (mut db, ty) = setup();
+
+        let int_pair = db.alloc_type(Type::Pair(PairType {
+            first: ty.int,
+            rest: ty.int,
+        }));
+        assert_eq!(db.compare_type(int_pair, int_pair), Equal);
+
+        let bytes_pair = db.alloc_type(Type::Pair(PairType {
+            first: ty.bytes,
+            rest: ty.bytes,
+        }));
+        assert_eq!(db.compare_type(int_pair, bytes_pair), Castable);
+        assert_eq!(db.compare_type(bytes_pair, int_pair), Castable);
+
+        let bytes32_pair = db.alloc_type(Type::Pair(PairType {
+            first: ty.bytes32,
+            rest: ty.bytes32,
+        }));
+        assert_eq!(db.compare_type(bytes_pair, bytes32_pair), Superset);
+        assert_eq!(db.compare_type(bytes32_pair, bytes_pair), Equal);
+
+        let bytes32_bytes = db.alloc_type(Type::Pair(PairType {
+            first: ty.bytes32,
+            rest: ty.bytes,
+        }));
+        assert_eq!(db.compare_type(bytes_pair, bytes32_bytes), Superset);
+        assert_eq!(db.compare_type(bytes32_bytes, bytes_pair), Equal);
+    }
+
+    #[test]
+    fn test_list_types() {
+        let (mut db, ty) = setup();
+
+        let int_list = db.alloc_type(Type::List(ty.int));
+        assert_eq!(db.compare_type(int_list, int_list), Equal);
+
+        let pair_list = db.alloc_type(Type::Pair(PairType {
+            first: ty.int,
+            rest: int_list,
+        }));
+        assert_eq!(db.compare_type(pair_list, int_list), Assignable);
+        assert_eq!(db.compare_type(int_list, pair_list), Superset);
+
+        let pair_nil = db.alloc_type(Type::Pair(PairType {
+            first: ty.int,
+            rest: ty.nil,
+        }));
+        assert_eq!(db.compare_type(pair_nil, int_list), Assignable);
+
+        let pair_unrelated_first = db.alloc_type(Type::Pair(PairType {
+            first: pair_list,
+            rest: ty.nil,
+        }));
+        assert_eq!(db.compare_type(pair_unrelated_first, int_list), Unrelated);
+
+        let pair_unrelated_rest = db.alloc_type(Type::Pair(PairType {
+            first: ty.int,
+            rest: ty.int,
+        }));
+        assert_eq!(db.compare_type(pair_unrelated_rest, int_list), Unrelated);
+    }
+
+    #[test]
+    fn test_struct_types() {
+        let (mut db, ty) = setup();
+
+        let two_ints = db.alloc_type(Type::Struct(StructType {
+            fields: fields(&[ty.int, ty.int]),
+        }));
+        assert_eq!(db.compare_type(two_ints, two_ints), Comparison::Equal);
+
+        let one_int = db.alloc_type(Type::Struct(StructType {
+            fields: fields(&[ty.int]),
+        }));
+        assert_eq!(db.compare_type(one_int, two_ints), Comparison::Unrelated);
+
+        let empty_struct = db.alloc_type(Type::Struct(StructType {
+            fields: fields(&[]),
+        }));
+        assert_eq!(
+            db.compare_type(empty_struct, empty_struct),
+            Comparison::Equal
+        );
     }
 }
