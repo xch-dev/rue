@@ -80,6 +80,20 @@ impl<'a> Lexer<'a> {
                 '*' => self.block_comment(),
                 _ => TokenKind::Slash,
             },
+            '&' => match self.peek() {
+                '&' => {
+                    self.bump();
+                    TokenKind::And
+                }
+                _ => TokenKind::Unknown,
+            },
+            '|' => match self.peek() {
+                '|' => {
+                    self.bump();
+                    TokenKind::Or
+                }
+                _ => TokenKind::Unknown,
+            },
             '?' => TokenKind::Question,
             '.' => match self.peek() {
                 '.' if self.peek_nth(1) == '.' => {

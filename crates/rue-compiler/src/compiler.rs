@@ -343,7 +343,7 @@ impl<'a> Compiler<'a> {
 
         // Ensure that the body is assignable to the return type.
         self.type_check(
-            value.ty(),
+            value.type_id,
             ty.return_type,
             function.body().unwrap().syntax().text_range(),
         );
@@ -353,7 +353,7 @@ impl<'a> Compiler<'a> {
         let Symbol::Function(Function { hir_id, .. }) = self.db.symbol_mut(symbol_id) else {
             unreachable!();
         };
-        *hir_id = value.hir();
+        *hir_id = value.hir_id;
     }
 
     /// Compiles a constant's value.
@@ -369,14 +369,14 @@ impl<'a> Compiler<'a> {
         let output = self.compile_expr(expr, Some(type_id));
 
         // Ensure that the expression is assignable to the constant's type.
-        self.type_check(output.ty(), type_id, const_item.syntax().text_range());
+        self.type_check(output.type_id, type_id, const_item.syntax().text_range());
 
         // We ignore type guards here for now.
         // Just set the constant HIR.
         let Symbol::Const(Const { hir_id, .. }) = self.db.symbol_mut(symbol_id) else {
             unreachable!();
         };
-        *hir_id = output.hir();
+        *hir_id = output.hir_id;
     }
 
     /// Compile and resolve the type that the alias points to.
@@ -458,7 +458,7 @@ impl<'a> Compiler<'a> {
 
             let discriminant = variant
                 .discriminant()
-                .map(|discriminant| self.compile_int(discriminant).hir())
+                .map(|discriminant| self.compile_int(discriminant).hir_id)
                 .unwrap_or(self.builtins.unknown_hir);
 
             *self.db.ty_mut(variant_type) = Type::EnumVariant(EnumVariant {
@@ -491,7 +491,7 @@ impl<'a> Compiler<'a> {
 
         // Check that the expression's type matches the type annotation, if present.
         if let Some(expected_type) = expected_type {
-            self.type_check(value.ty(), expected_type, let_stmt.syntax().text_range());
+            self.type_check(value.type_id, expected_type, let_stmt.syntax().text_range());
         }
 
         // If the name can't be resolved, there's no reason to continue compiling it.
@@ -502,8 +502,8 @@ impl<'a> Compiler<'a> {
         };
 
         *self.db.symbol_mut(symbol_id) = Symbol::Let(Let {
-            type_id: expected_type.unwrap_or(value.ty()),
-            hir_id: value.hir(),
+            type_id: expected_type.unwrap_or(value.type_id),
+            hir_id: value.hir_id,
         });
 
         // Every let binding is a new scope for now, to ensure references are resolved in the proper order.
@@ -533,7 +533,7 @@ impl<'a> Compiler<'a> {
 
         // Check that the condition is a boolean.
         self.type_check(
-            condition.ty(),
+            condition.type_id,
             self.builtins.bool,
             if_stmt.syntax().text_range(),
         );
@@ -569,12 +569,12 @@ impl<'a> Compiler<'a> {
 
         // Check that the output matches the expected type.
         self.type_check(
-            then_block.ty(),
+            then_block.type_id,
             expected_type.unwrap_or(self.builtins.unknown),
             if_stmt.syntax().text_range(),
         );
 
-        (condition.hir(), then_block.hir(), condition.else_guards())
+        (condition.hir_id, then_block.hir_id, condition.else_guards())
     }
 
     /// Compile a block expression into the current scope, returning the HIR and whether there was an explicit return.
@@ -621,7 +621,7 @@ impl<'a> Compiler<'a> {
 
                     // Make sure that the return value matches the expected type.
                     self.type_check(
-                        value.ty(),
+                        value.type_id,
                         expected_type.unwrap_or(self.builtins.unknown),
                         return_stmt.syntax().text_range(),
                     );
@@ -636,16 +636,13 @@ impl<'a> Compiler<'a> {
                     // The value is also optional.
                     let value = raise_stmt
                         .expr()
-                        .map(|expr| self.compile_expr(expr, None).hir());
+                        .map(|expr| self.compile_expr(expr, None).hir_id);
 
                     let hir_id = self.db.alloc_hir(Hir::Raise(value));
 
                     is_terminated = true;
 
-                    statements.push(Statement::Return(Value::typed(
-                        hir_id,
-                        self.builtins.unknown,
-                    )));
+                    statements.push(Statement::Return(Value::new(hir_id, self.builtins.unknown)));
                 }
                 Stmt::AssertStmt(assert_stmt) => {
                     // Compile the condition expression.
@@ -656,7 +653,7 @@ impl<'a> Compiler<'a> {
 
                     // Make sure that the condition is a boolean.
                     self.type_check(
-                        condition.ty(),
+                        condition.type_id,
                         self.builtins.bool,
                         assert_stmt.syntax().text_range(),
                     );
@@ -666,7 +663,7 @@ impl<'a> Compiler<'a> {
                     // This will be popped in reverse order later after all statements have been lowered.
                     self.type_guard_stack.push(condition.then_guards());
 
-                    let not_condition = self.db.alloc_hir(Hir::Not(condition.hir()));
+                    let not_condition = self.db.alloc_hir(Hir::Not(condition.hir_id));
                     let raise = self.db.alloc_hir(Hir::Raise(None));
 
                     // We lower this down to an inverted if statement.
@@ -691,12 +688,12 @@ impl<'a> Compiler<'a> {
         for statement in statements.into_iter().rev() {
             match statement {
                 Statement::Let(scope_id) => {
-                    body = Value::typed(
+                    body = Value::new(
                         self.db.alloc_hir(Hir::Definition {
                             scope_id,
-                            hir_id: body.hir(),
+                            hir_id: body.hir_id,
                         }),
-                        body.ty(),
+                        body.type_id,
                     );
                     self.scope_stack.pop().unwrap();
                 }
@@ -706,13 +703,13 @@ impl<'a> Compiler<'a> {
                 Statement::If(condition, then_block) => {
                     self.type_guard_stack.pop().unwrap();
 
-                    body = Value::typed(
+                    body = Value::new(
                         self.db.alloc_hir(Hir::If {
                             condition,
                             then_block,
-                            else_block: body.hir(),
+                            else_block: body.hir_id,
                         }),
-                        body.ty(),
+                        body.type_id,
                     );
                 }
             }
@@ -782,7 +779,7 @@ impl<'a> Compiler<'a> {
                 );
 
                 match ty {
-                    Some(struct_type) => Value::typed(hir_id, struct_type),
+                    Some(struct_type) => Value::new(hir_id, struct_type),
                     None => self.unknown(),
                 }
             }
@@ -799,7 +796,7 @@ impl<'a> Compiler<'a> {
                     .alloc_hir(Hir::Pair(enum_variant.discriminant, fields_hir_id));
 
                 match ty {
-                    Some(struct_type) => Value::typed(hir_id, struct_type),
+                    Some(struct_type) => Value::new(hir_id, struct_type),
                     None => self.unknown(),
                 }
             }
@@ -836,7 +833,7 @@ impl<'a> Compiler<'a> {
 
             // Check the type of the field initializer.
             self.type_check(
-                value.ty(),
+                value.type_id,
                 expected_type.unwrap_or(self.builtins.unknown),
                 field.syntax().text_range(),
             );
@@ -860,7 +857,7 @@ impl<'a> Compiler<'a> {
                     name.text_range(),
                 );
             } else {
-                specified_fields.insert(name.to_string(), value.hir());
+                specified_fields.insert(name.to_string(), value.hir_id);
             }
         }
 
@@ -909,19 +906,16 @@ impl<'a> Compiler<'a> {
             return self.unknown();
         };
 
-        match self.db.ty(value.ty()).clone() {
+        match self.db.ty(value.type_id).clone() {
             Type::Struct(struct_type) => {
                 if let Some(field) = struct_type.fields.get_full(field_name.text()) {
                     let (index, _, field_type) = field;
-                    return Value::typed(
-                        self.compile_index(value.hir(), index, false),
-                        *field_type,
-                    );
+                    return Value::new(self.compile_index(value.hir_id, index, false), *field_type);
                 } else {
                     self.db.error(
                         ErrorKind::UndefinedField {
                             field: field_name.to_string(),
-                            ty: self.type_name(value.ty()),
+                            ty: self.type_name(value.type_id),
                         },
                         field_name.text_range(),
                     );
@@ -930,16 +924,16 @@ impl<'a> Compiler<'a> {
             }
             Type::Pair(PairType { first, rest }) => match field_name.text() {
                 "first" => {
-                    return Value::typed(self.db.alloc_hir(Hir::First(value.hir())), first);
+                    return Value::new(self.db.alloc_hir(Hir::First(value.hir_id)), first);
                 }
                 "rest" => {
-                    return Value::typed(self.db.alloc_hir(Hir::Rest(value.hir())), rest);
+                    return Value::new(self.db.alloc_hir(Hir::Rest(value.hir_id)), rest);
                 }
                 _ => {}
             },
             Type::Bytes | Type::Bytes32 if field_name.text() == "length" => {
-                return Value::typed(
-                    self.db.alloc_hir(Hir::Strlen(value.hir())),
+                return Value::new(
+                    self.db.alloc_hir(Hir::Strlen(value.hir_id)),
                     self.builtins.int,
                 );
             }
@@ -949,7 +943,7 @@ impl<'a> Compiler<'a> {
         self.db.error(
             ErrorKind::InvalidFieldAccess {
                 field: field_name.to_string(),
-                ty: self.type_name(value.ty()),
+                ty: self.type_name(value.type_id),
             },
             field_name.text_range(),
         );
@@ -969,15 +963,15 @@ impl<'a> Compiler<'a> {
         };
         let index = self.compile_int_raw(index_token.clone());
 
-        let Type::List(item_type) = self.db.ty(value.ty()).clone() else {
+        let Type::List(item_type) = self.db.ty(value.type_id).clone() else {
             self.db.error(
-                ErrorKind::IndexAccess(self.type_name(value.ty())),
+                ErrorKind::IndexAccess(self.type_name(value.type_id)),
                 index_access.expr().unwrap().syntax().text_range(),
             );
             return self.unknown();
         };
 
-        Value::typed(self.compile_index(value.hir(), index, false), item_type)
+        Value::new(self.compile_index(value.hir_id, index, false), item_type)
     }
 
     fn compile_index(&mut self, value: HirId, index: usize, rest: bool) -> HirId {
@@ -1005,32 +999,32 @@ impl<'a> Compiler<'a> {
         match op {
             PrefixOp::Not => {
                 self.type_check(
-                    expr.ty(),
+                    expr.type_id,
                     self.builtins.bool,
                     prefix_expr.syntax().text_range(),
                 );
 
                 let mut value =
-                    Value::typed(self.db.alloc_hir(Hir::Not(expr.hir())), self.builtins.bool);
+                    Value::new(self.db.alloc_hir(Hir::Not(expr.hir_id)), self.builtins.bool);
 
-                for (symbol_id, guard) in expr.guards() {
-                    value.guard(*symbol_id, guard.to_reversed());
+                for (symbol_id, guard) in expr.guards {
+                    value.guards.insert(symbol_id, !guard);
                 }
 
                 value
             }
             PrefixOp::Neg => {
                 self.type_check(
-                    expr.ty(),
+                    expr.type_id,
                     self.builtins.int,
                     prefix_expr.syntax().text_range(),
                 );
 
-                Value::typed(
+                Value::new(
                     self.db.alloc_hir(Hir::BinaryOp {
                         op: BinOp::Subtract,
                         lhs: self.builtins.nil_hir,
-                        rhs: expr.hir(),
+                        rhs: expr.hir_id,
                     }),
                     self.builtins.int,
                 )
@@ -1039,149 +1033,232 @@ impl<'a> Compiler<'a> {
     }
 
     fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Value {
-        let lhs = binary
-            .lhs()
-            .map(|lhs| self.compile_expr(lhs, None))
-            .unwrap_or_else(|| self.unknown());
-
-        let rhs = binary
-            .rhs()
-            .map(|rhs| self.compile_expr(rhs, None))
-            .unwrap_or_else(|| self.unknown());
-
         let Some(op) = binary.op() else {
             return self.unknown();
         };
 
         let text_range = binary.syntax().text_range();
+        let mut value = self.unknown();
 
-        let mut guards = HashMap::new();
+        macro_rules! lhs {
+            () => {
+                binary
+                    .lhs()
+                    .map(|lhs| self.compile_expr(lhs, None))
+                    .unwrap_or_else(|| self.unknown())
+            };
+        }
 
-        let (op, ty) = match op {
+        macro_rules! rhs {
+            () => {
+                binary
+                    .rhs()
+                    .map(|rhs| self.compile_expr(rhs, None))
+                    .unwrap_or_else(|| self.unknown())
+            };
+        }
+
+        let (op, lhs, rhs, type_id) = match op {
             BinaryOp::Add => {
-                if self.db.compare_type(lhs.ty(), self.builtins.public_key) == Comparison::Equal {
-                    self.type_check(rhs.ty(), self.builtins.public_key, text_range);
-                    (BinOp::PointAdd, self.builtins.public_key)
-                } else if self.db.compare_type(lhs.ty(), self.builtins.bytes) == Comparison::Equal {
-                    self.type_check(rhs.ty(), self.builtins.bytes, text_range);
-                    (BinOp::Concat, self.builtins.bytes)
+                let lhs = lhs!();
+                let rhs = rhs!();
+
+                if self.db.compare_type(lhs.type_id, self.builtins.public_key) == Comparison::Equal
+                {
+                    self.type_check(rhs.type_id, self.builtins.public_key, text_range);
+                    (
+                        BinOp::PointAdd,
+                        lhs.hir_id,
+                        rhs.hir_id,
+                        self.builtins.public_key,
+                    )
+                } else if self.db.compare_type(lhs.type_id, self.builtins.bytes)
+                    == Comparison::Equal
+                {
+                    self.type_check(rhs.type_id, self.builtins.bytes, text_range);
+                    (BinOp::Concat, lhs.hir_id, rhs.hir_id, self.builtins.bytes)
                 } else {
-                    self.type_check(lhs.ty(), self.builtins.int, text_range);
-                    self.type_check(rhs.ty(), self.builtins.int, text_range);
-                    (BinOp::Add, self.builtins.int)
+                    self.type_check(lhs.type_id, self.builtins.int, text_range);
+                    self.type_check(rhs.type_id, self.builtins.int, text_range);
+                    (BinOp::Add, lhs.hir_id, rhs.hir_id, self.builtins.int)
                 }
             }
             BinaryOp::Subtract => {
-                self.type_check(lhs.ty(), self.builtins.int, text_range);
-                self.type_check(rhs.ty(), self.builtins.int, text_range);
-                (BinOp::Subtract, self.builtins.int)
+                let lhs = lhs!();
+                let rhs = rhs!();
+                self.type_check(lhs.type_id, self.builtins.int, text_range);
+                self.type_check(rhs.type_id, self.builtins.int, text_range);
+                (BinOp::Subtract, lhs.hir_id, rhs.hir_id, self.builtins.int)
             }
             BinaryOp::Multiply => {
-                self.type_check(lhs.ty(), self.builtins.int, text_range);
-                self.type_check(rhs.ty(), self.builtins.int, text_range);
-                (BinOp::Multiply, self.builtins.int)
+                let lhs = lhs!();
+                let rhs = rhs!();
+                self.type_check(lhs.type_id, self.builtins.int, text_range);
+                self.type_check(rhs.type_id, self.builtins.int, text_range);
+                (BinOp::Multiply, lhs.hir_id, rhs.hir_id, self.builtins.int)
             }
             BinaryOp::Divide => {
-                self.type_check(lhs.ty(), self.builtins.int, text_range);
-                self.type_check(rhs.ty(), self.builtins.int, text_range);
-                (BinOp::Divide, self.builtins.int)
+                let lhs = lhs!();
+                let rhs = rhs!();
+                self.type_check(lhs.type_id, self.builtins.int, text_range);
+                self.type_check(rhs.type_id, self.builtins.int, text_range);
+                (BinOp::Divide, lhs.hir_id, rhs.hir_id, self.builtins.int)
             }
             BinaryOp::Remainder => {
-                self.type_check(lhs.ty(), self.builtins.int, text_range);
-                self.type_check(rhs.ty(), self.builtins.int, text_range);
-                (BinOp::Remainder, self.builtins.int)
+                let lhs = lhs!();
+                let rhs = rhs!();
+                self.type_check(lhs.type_id, self.builtins.int, text_range);
+                self.type_check(rhs.type_id, self.builtins.int, text_range);
+                (BinOp::Remainder, lhs.hir_id, rhs.hir_id, self.builtins.int)
             }
             BinaryOp::Equals => {
-                if self.db.compare_type(lhs.ty(), self.builtins.bytes) != Comparison::Castable
-                    || self.db.compare_type(rhs.ty(), self.builtins.bytes) != Comparison::Castable
+                let lhs = lhs!();
+                let rhs = rhs!();
+
+                if self.db.compare_type(lhs.type_id, self.builtins.bytes) > Comparison::Castable
+                    || self.db.compare_type(rhs.type_id, self.builtins.bytes) > Comparison::Castable
                 {
                     self.db.error(
-                        ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
+                        ErrorKind::NonAtomEquality(self.type_name(lhs.type_id)),
                         text_range,
                     );
-                } else if self.db.compare_type(lhs.ty(), self.builtins.nil) == Comparison::Equal {
-                    if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
-                        guards.insert(
+                } else if self.db.compare_type(lhs.type_id, self.builtins.nil) == Comparison::Equal
+                {
+                    if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir_id) {
+                        value.guards.insert(
                             *symbol_id,
-                            Guard::new(self.builtins.nil, self.try_unwrap_optional(rhs.ty())),
+                            Guard::new(self.builtins.nil, self.try_unwrap_optional(rhs.type_id)),
                         );
                     }
-                } else if self.db.compare_type(rhs.ty(), self.builtins.nil) == Comparison::Equal {
-                    if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir()) {
-                        guards.insert(
+                } else if self.db.compare_type(rhs.type_id, self.builtins.nil) == Comparison::Equal
+                {
+                    if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir_id) {
+                        value.guards.insert(
                             *symbol_id,
-                            Guard::new(self.builtins.nil, self.try_unwrap_optional(lhs.ty())),
+                            Guard::new(self.builtins.nil, self.try_unwrap_optional(lhs.type_id)),
                         );
                     }
                 } else {
-                    self.type_check(rhs.ty(), lhs.ty(), text_range);
+                    self.type_check(rhs.type_id, lhs.type_id, text_range);
                 }
 
-                (BinOp::Equals, self.builtins.bool)
+                (BinOp::Equals, lhs.hir_id, rhs.hir_id, self.builtins.bool)
             }
             BinaryOp::NotEquals => {
-                if self.db.compare_type(lhs.ty(), self.builtins.bytes) != Comparison::Castable
-                    || self.db.compare_type(rhs.ty(), self.builtins.bytes) != Comparison::Castable
+                let lhs = lhs!();
+                let rhs = rhs!();
+
+                if self.db.compare_type(lhs.type_id, self.builtins.bytes) > Comparison::Castable
+                    || self.db.compare_type(rhs.type_id, self.builtins.bytes) > Comparison::Castable
                 {
                     self.db.error(
-                        ErrorKind::NonAtomEquality(self.type_name(lhs.ty())),
+                        ErrorKind::NonAtomEquality(self.type_name(lhs.type_id)),
                         text_range,
                     );
-                } else if self.db.compare_type(lhs.ty(), self.builtins.nil) == Comparison::Equal {
-                    if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir()) {
-                        guards.insert(
+                } else if self.db.compare_type(lhs.type_id, self.builtins.nil) == Comparison::Equal
+                {
+                    if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir_id) {
+                        value.guards.insert(
                             *symbol_id,
-                            Guard::new(self.try_unwrap_optional(rhs.ty()), self.builtins.nil),
+                            Guard::new(self.try_unwrap_optional(rhs.type_id), self.builtins.nil),
                         );
                     }
-                } else if self.db.compare_type(rhs.ty(), self.builtins.nil) == Comparison::Equal {
-                    if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir()) {
-                        guards.insert(
+                } else if self.db.compare_type(rhs.type_id, self.builtins.nil) == Comparison::Equal
+                {
+                    if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir_id) {
+                        value.guards.insert(
                             *symbol_id,
-                            Guard::new(self.try_unwrap_optional(lhs.ty()), self.builtins.nil),
+                            Guard::new(self.try_unwrap_optional(lhs.type_id), self.builtins.nil),
                         );
                     }
                 } else {
-                    self.type_check(rhs.ty(), lhs.ty(), text_range);
+                    self.type_check(rhs.type_id, lhs.type_id, text_range);
                 }
 
-                (BinOp::NotEquals, self.builtins.bool)
+                (BinOp::NotEquals, lhs.hir_id, rhs.hir_id, self.builtins.bool)
             }
             BinaryOp::GreaterThan => {
-                self.type_check(lhs.ty(), self.builtins.int, text_range);
-                self.type_check(rhs.ty(), self.builtins.int, text_range);
-                (BinOp::GreaterThan, self.builtins.bool)
+                let lhs = lhs!();
+                let rhs = rhs!();
+                self.type_check(lhs.type_id, self.builtins.int, text_range);
+                self.type_check(rhs.type_id, self.builtins.int, text_range);
+                (
+                    BinOp::GreaterThan,
+                    lhs.hir_id,
+                    rhs.hir_id,
+                    self.builtins.bool,
+                )
             }
             BinaryOp::LessThan => {
-                self.type_check(lhs.ty(), self.builtins.int, text_range);
-                self.type_check(rhs.ty(), self.builtins.int, text_range);
-                (BinOp::LessThan, self.builtins.bool)
+                let lhs = lhs!();
+                let rhs = rhs!();
+                self.type_check(lhs.type_id, self.builtins.int, text_range);
+                self.type_check(rhs.type_id, self.builtins.int, text_range);
+                (BinOp::LessThan, lhs.hir_id, rhs.hir_id, self.builtins.bool)
             }
             BinaryOp::GreaterThanEquals => {
-                self.type_check(lhs.ty(), self.builtins.int, text_range);
-                self.type_check(rhs.ty(), self.builtins.int, text_range);
-                (BinOp::GreaterThanEquals, self.builtins.bool)
+                let lhs = lhs!();
+                let rhs = rhs!();
+                self.type_check(lhs.type_id, self.builtins.int, text_range);
+                self.type_check(rhs.type_id, self.builtins.int, text_range);
+                (
+                    BinOp::GreaterThanEquals,
+                    lhs.hir_id,
+                    rhs.hir_id,
+                    self.builtins.bool,
+                )
             }
             BinaryOp::LessThanEquals => {
-                self.type_check(lhs.ty(), self.builtins.int, text_range);
-                self.type_check(rhs.ty(), self.builtins.int, text_range);
-                (BinOp::LessThanEquals, self.builtins.bool)
+                let lhs = lhs!();
+                let rhs = rhs!();
+                self.type_check(lhs.type_id, self.builtins.int, text_range);
+                self.type_check(rhs.type_id, self.builtins.int, text_range);
+                (
+                    BinOp::LessThanEquals,
+                    lhs.hir_id,
+                    rhs.hir_id,
+                    self.builtins.bool,
+                )
+            }
+            BinaryOp::And => {
+                let lhs = lhs!();
+                self.type_guard_stack.push(lhs.then_guards());
+                let rhs = rhs!();
+                self.type_guard_stack.pop().unwrap();
+
+                self.type_check(lhs.type_id, self.builtins.bool, text_range);
+                self.type_check(rhs.type_id, self.builtins.bool, text_range);
+
+                value.type_id = self.builtins.bool;
+                value.guards.extend(lhs.guards);
+                value.guards.extend(rhs.guards);
+
+                (
+                    BinOp::LogicalAnd,
+                    lhs.hir_id,
+                    rhs.hir_id,
+                    self.builtins.bool,
+                )
+            }
+            BinaryOp::Or => {
+                let lhs = lhs!();
+                self.type_guard_stack.push(lhs.else_guards());
+                let rhs = rhs!();
+                self.type_guard_stack.pop().unwrap();
+
+                self.type_check(lhs.type_id, self.builtins.bool, text_range);
+                self.type_check(rhs.type_id, self.builtins.bool, text_range);
+
+                value.type_id = self.builtins.bool;
+                value.guards.extend(lhs.guards);
+                value.guards.extend(rhs.guards);
+
+                (BinOp::LogicalOr, lhs.hir_id, rhs.hir_id, self.builtins.bool)
             }
         };
 
-        let mut value = Value::typed(
-            self.db.alloc_hir(Hir::BinaryOp {
-                op,
-                lhs: lhs.hir(),
-                rhs: rhs.hir(),
-            }),
-            ty,
-        );
-
-        for (symbol_id, guard) in guards {
-            value.guard(symbol_id, guard);
-        }
-
+        value.type_id = type_id;
+        value.hir_id = self.db.alloc_hir(Hir::BinaryOp { op, lhs, rhs });
         value
     }
 
@@ -1213,9 +1290,9 @@ impl<'a> Compiler<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.builtins.unknown);
 
-        self.cast_check(expr.ty(), ty, cast.expr().unwrap().syntax().text_range());
+        self.cast_check(expr.type_id, ty, cast.expr().unwrap().syntax().text_range());
 
-        Value::typed(expr.hir(), ty)
+        Value::new(expr.hir_id, ty)
     }
 
     fn compile_guard_expr(&mut self, guard: GuardExpr, expected_type: Option<TypeId>) -> Value {
@@ -1232,15 +1309,15 @@ impl<'a> Compiler<'a> {
             .unwrap_or(self.builtins.unknown);
 
         let Some((guard, hir_id)) =
-            self.guard_into(expr.ty(), ty, expr.hir(), guard.syntax().text_range())
+            self.guard_into(expr.type_id, ty, expr.hir_id, guard.syntax().text_range())
         else {
-            return Value::typed(self.builtins.unknown_hir, ty);
+            return Value::new(self.builtins.unknown_hir, ty);
         };
 
-        let mut value = Value::typed(hir_id, self.builtins.bool);
+        let mut value = Value::new(hir_id, self.builtins.bool);
 
-        if let Hir::Reference(symbol_id) = self.db.hir(expr.hir()) {
-            value.guard(*symbol_id, guard);
+        if let Hir::Reference(symbol_id) = self.db.hir(expr.hir_id) {
+            value.guards.insert(*symbol_id, guard);
         }
 
         value
@@ -1347,13 +1424,13 @@ impl<'a> Compiler<'a> {
             SyntaxKind::Hex => self.compile_hex(value),
             SyntaxKind::String => self.compile_string(value),
             SyntaxKind::True => {
-                Value::typed(self.db.alloc_hir(Hir::Atom(vec![1])), self.builtins.bool)
+                Value::new(self.db.alloc_hir(Hir::Atom(vec![1])), self.builtins.bool)
             }
             SyntaxKind::False => {
-                Value::typed(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.bool)
+                Value::new(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.bool)
             }
             SyntaxKind::Nil => {
-                Value::typed(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.nil)
+                Value::new(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.nil)
             }
             _ => unreachable!(),
         }
@@ -1388,19 +1465,23 @@ impl<'a> Compiler<'a> {
                 .unwrap_or(self.unknown());
 
             if let Some(expected_item_type) = expected_item_type {
-                self.type_check(output.ty(), expected_item_type, item.syntax().text_range());
+                self.type_check(
+                    output.type_id,
+                    expected_item_type,
+                    item.syntax().text_range(),
+                );
             }
 
             if i == 0 && item_type.is_none() {
                 if item.spread().is_some() {
-                    list_type = Some(output.ty());
-                    item_type = match self.db.ty(output.ty()) {
+                    list_type = Some(output.type_id);
+                    item_type = match self.db.ty(output.type_id) {
                         Type::List(ty) => Some(*ty),
                         _ => None,
                     };
                 } else {
-                    list_type = Some(self.db.alloc_type(Type::List(output.ty())));
-                    item_type = Some(output.ty());
+                    list_type = Some(self.db.alloc_type(Type::List(output.type_id)));
+                    item_type = Some(output.type_id);
                 }
             }
 
@@ -1413,7 +1494,7 @@ impl<'a> Compiler<'a> {
                 }
             }
 
-            items.push(output.hir());
+            items.push(output.hir_id);
         }
 
         let mut hir_id = self.builtins.nil_hir;
@@ -1426,7 +1507,7 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        Value::typed(
+        Value::new(
             hir_id,
             self.db
                 .alloc_type(Type::List(item_type.unwrap_or(self.builtins.unknown))),
@@ -1447,7 +1528,7 @@ impl<'a> Compiler<'a> {
         let first = if let Some(first) = pair_expr.first() {
             let value = self.compile_expr(first.clone(), expected_first);
             self.type_check(
-                value.ty(),
+                value.type_id,
                 expected_first.unwrap_or(self.builtins.unknown),
                 first.syntax().text_range(),
             );
@@ -1459,7 +1540,7 @@ impl<'a> Compiler<'a> {
         let rest = if let Some(rest) = pair_expr.rest() {
             let value = self.compile_expr(rest.clone(), expected_rest);
             self.type_check(
-                value.ty(),
+                value.type_id,
                 expected_rest.unwrap_or(self.builtins.unknown),
                 rest.syntax().text_range(),
             );
@@ -1468,13 +1549,13 @@ impl<'a> Compiler<'a> {
             self.unknown()
         };
 
-        let hir_id = self.db.alloc_hir(Hir::Pair(first.hir(), rest.hir()));
+        let hir_id = self.db.alloc_hir(Hir::Pair(first.hir_id, rest.hir_id));
         let type_id = self.db.alloc_type(Type::Pair(PairType {
-            first: first.ty(),
-            rest: rest.ty(),
+            first: first.type_id,
+            rest: rest.type_id,
         }));
 
-        Value::typed(hir_id, type_id)
+        Value::new(hir_id, type_id)
     }
 
     fn compile_lambda_expr(
@@ -1535,10 +1616,10 @@ impl<'a> Compiler<'a> {
         let body = self.compile_expr(body, expected_return_type);
         self.scope_stack.pop().expect("lambda not in scope stack");
 
-        let return_type = expected_return_type.unwrap_or(body.ty());
+        let return_type = expected_return_type.unwrap_or(body.type_id);
 
         self.type_check(
-            body.ty(),
+            body.type_id,
             return_type,
             lambda_expr.body().unwrap().syntax().text_range(),
         );
@@ -1551,12 +1632,12 @@ impl<'a> Compiler<'a> {
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function(Function {
             scope_id,
-            hir_id: body.hir(),
+            hir_id: body.hir_id,
             ty: ty.clone(),
             inline: false,
         }));
 
-        Value::typed(
+        Value::new(
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             self.db.alloc_type(Type::Function(ty)),
         )
@@ -1584,7 +1665,7 @@ impl<'a> Compiler<'a> {
         }
 
         let expected_type =
-            expected_type.or_else(|| then_block.as_ref().map(|then_block| then_block.ty()));
+            expected_type.or_else(|| then_block.as_ref().map(|then_block| then_block.type_id));
 
         let else_block = if_expr
             .else_block()
@@ -1594,7 +1675,7 @@ impl<'a> Compiler<'a> {
             self.type_guard_stack.pop().unwrap();
         }
 
-        if let Some(condition_type) = condition.as_ref().map(|condition| condition.ty()) {
+        if let Some(condition_type) = condition.as_ref().map(|condition| condition.type_id) {
             self.type_check(
                 condition_type,
                 self.builtins.bool,
@@ -1604,8 +1685,8 @@ impl<'a> Compiler<'a> {
 
         if let (Some(then_block), Some(else_block)) = (&then_block, &else_block) {
             self.type_check(
-                else_block.ty(),
-                then_block.ty(),
+                else_block.type_id,
+                then_block.type_id,
                 if_expr.else_block().unwrap().syntax().text_range(),
             );
         }
@@ -1613,22 +1694,22 @@ impl<'a> Compiler<'a> {
         let ty = then_block
             .as_ref()
             .or(else_block.as_ref())
-            .map(|block| block.ty())
+            .map(|block| block.type_id)
             .unwrap_or(self.builtins.unknown);
 
         let value = condition.and_then(|condition| {
             then_block.and_then(|then_block| {
                 else_block.map(|else_block| {
                     self.db.alloc_hir(Hir::If {
-                        condition: condition.hir(),
-                        then_block: then_block.hir(),
-                        else_block: else_block.hir(),
+                        condition: condition.hir_id,
+                        then_block: then_block.hir_id,
+                        else_block: else_block.hir_id,
                     })
                 })
             })
         });
 
-        Value::typed(value.unwrap_or(self.builtins.unknown_hir), ty)
+        Value::new(value.unwrap_or(self.builtins.unknown_hir), ty)
     }
 
     fn compile_int_raw<T, E>(&mut self, int: SyntaxToken) -> T
@@ -1650,7 +1731,7 @@ impl<'a> Compiler<'a> {
             .new_number(num)
             .expect("number is too large to be represented in memory in an Allocator instance");
 
-        Value::typed(
+        Value::new(
             self.db
                 .alloc_hir(Hir::Atom(allocator.atom(ptr).as_ref().to_vec())),
             self.builtins.int,
@@ -1664,12 +1745,12 @@ impl<'a> Compiler<'a> {
                 .replace("0X", "")
                 .replace('_', ""),
         ) else {
-            return Value::typed(self.builtins.unknown_hir, self.builtins.bytes);
+            return Value::new(self.builtins.unknown_hir, self.builtins.bytes);
         };
 
         let bytes_len = bytes.len();
 
-        Value::typed(
+        Value::new(
             self.db.alloc_hir(Hir::Atom(bytes)),
             if bytes_len == 32 {
                 self.builtins.bytes32
@@ -1689,7 +1770,7 @@ impl<'a> Compiler<'a> {
 
         let bytes = before_suffix.as_bytes();
 
-        Value::typed(
+        Value::new(
             self.db.alloc_hir(Hir::Atom(bytes.to_vec())),
             if bytes.len() == 32 {
                 self.builtins.bytes32
@@ -1736,7 +1817,7 @@ impl<'a> Compiler<'a> {
             return self.unknown();
         }
 
-        Value::typed(
+        Value::new(
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             self.symbol_type(symbol_id)
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
@@ -1790,11 +1871,11 @@ impl<'a> Compiler<'a> {
         self.is_callee = true;
         let callee = self.compile_expr(callee, None);
 
-        let expected = match self.db.ty(callee.ty()) {
+        let expected = match self.db.ty(callee.type_id) {
             Type::Function(function) => Some(function.clone()),
             _ => {
                 self.db.error(
-                    ErrorKind::UncallableType(self.type_name(callee.ty())),
+                    ErrorKind::UncallableType(self.type_name(callee.type_id)),
                     call.callee().unwrap().syntax().text_range(),
                 );
                 None
@@ -1821,7 +1902,7 @@ impl<'a> Compiler<'a> {
                 .map(|expr| self.compile_expr(expr, expected_type))
                 .unwrap_or_else(|| self.unknown());
 
-            arg_types.push(value.ty());
+            arg_types.push(value.type_id);
 
             if arg.spread().is_some() {
                 if i + 1 == arg_len {
@@ -1832,7 +1913,7 @@ impl<'a> Compiler<'a> {
                 }
             }
 
-            args.push(value.hir());
+            args.push(value.hir_id);
         }
 
         args.reverse();
@@ -1912,7 +1993,7 @@ impl<'a> Compiler<'a> {
         }
 
         let hir_id = self.db.alloc_hir(Hir::FunctionCall {
-            callee: callee.hir(),
+            callee: callee.hir_id,
             args,
             varargs: spread,
         });
@@ -1921,7 +2002,7 @@ impl<'a> Compiler<'a> {
             .map(|expected| expected.return_type)
             .unwrap_or(self.builtins.unknown);
 
-        Value::typed(hir_id, type_id)
+        Value::new(hir_id, type_id)
     }
 
     fn compile_type(&mut self, ty: AstType) -> TypeId {
@@ -2172,7 +2253,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn type_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
-        if self.db.compare_type(from, to) != Comparison::Equal {
+        if self.db.compare_type(from, to) > Comparison::Assignable {
             self.db.error(
                 ErrorKind::TypeMismatch {
                     expected: self.type_name(to),
@@ -2184,7 +2265,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn cast_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
-        if self.db.compare_type(from, to) != Comparison::Castable {
+        if self.db.compare_type(from, to) > Comparison::Castable {
             self.db.error(
                 ErrorKind::CastMismatch {
                     expected: self.type_name(to),
@@ -2196,7 +2277,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn unknown(&self) -> Value {
-        Value::typed(self.builtins.unknown_hir, self.builtins.unknown)
+        Value::new(self.builtins.unknown_hir, self.builtins.unknown)
     }
 
     fn symbol_type(&self, symbol_id: SymbolId) -> Option<TypeId> {

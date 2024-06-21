@@ -34,6 +34,7 @@ struct Ops {
     pubkey_for_exp: NodePtr,
     not: NodePtr,
     any: NodePtr,
+    all: NodePtr,
 }
 
 impl<'a> Codegen<'a> {
@@ -61,6 +62,7 @@ impl<'a> Codegen<'a> {
             pubkey_for_exp: allocator.new_small_number(30).unwrap(),
             not: allocator.new_small_number(32).unwrap(),
             any: allocator.new_small_number(33).unwrap(),
+            all: allocator.new_small_number(34).unwrap(),
         };
         Self { db, allocator, ops }
     }
@@ -69,6 +71,7 @@ impl<'a> Codegen<'a> {
         match self.db.lir(lir_id).clone() {
             Lir::Atom(atom) => self.gen_atom(atom.clone()),
             Lir::Pair(first, rest) => self.gen_pair(first, rest),
+            Lir::Quote(value) => self.gen_quote(value),
             Lir::Path(path) => self.allocator.new_small_number(path).unwrap(),
             Lir::Run(program, args) => self.gen_run(program, args),
             Lir::Curry(body, args) => self.gen_apply(body, args),
@@ -88,6 +91,7 @@ impl<'a> Codegen<'a> {
             }
             Lir::Not(value) => self.gen_not(value),
             Lir::Any(values) => self.gen_any(values),
+            Lir::All(values) => self.gen_all(values),
             Lir::Add(values) => self.gen_add(values),
             Lir::Sub(values) => self.gen_sub(values),
             Lir::Mul(values) => self.gen_mul(values),
@@ -109,9 +113,11 @@ impl<'a> Codegen<'a> {
         self.list(&[self.ops.c, first, rest])
     }
 
-    fn gen_run(&mut self, program: LirId, args: LirId) -> NodePtr {
+    fn gen_run(&mut self, program: LirId, args: Option<LirId>) -> NodePtr {
         let program = self.gen_lir(program);
-        let args = self.gen_lir(args);
+        let args = args
+            .map(|args| self.gen_lir(args))
+            .unwrap_or(self.allocator.one());
         self.list(&[self.ops.a, program, args])
     }
 
@@ -195,12 +201,7 @@ impl<'a> Codegen<'a> {
         let condition = self.gen_lir(condition);
         let then_branch = self.gen_lir(then_branch);
         let else_branch = self.gen_lir(else_branch);
-
-        let then_branch = self.quote(then_branch);
-        let else_branch = self.quote(else_branch);
-
-        let conditional = self.list(&[self.ops.i, condition, then_branch, else_branch]);
-        self.list(&[self.ops.a, conditional, self.ops.q])
+        self.list(&[self.ops.i, condition, then_branch, else_branch])
     }
 
     fn gen_not(&mut self, value: LirId) -> NodePtr {
@@ -210,6 +211,14 @@ impl<'a> Codegen<'a> {
 
     fn gen_any(&mut self, values: Vec<LirId>) -> NodePtr {
         let mut args = vec![self.ops.any];
+        for value in values {
+            args.push(self.gen_lir(value));
+        }
+        self.list(&args)
+    }
+
+    fn gen_all(&mut self, values: Vec<LirId>) -> NodePtr {
+        let mut args = vec![self.ops.all];
         for value in values {
             args.push(self.gen_lir(value));
         }

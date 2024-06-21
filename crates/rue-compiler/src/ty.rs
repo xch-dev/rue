@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Not};
 
 use indexmap::IndexMap;
 
@@ -66,55 +66,35 @@ pub enum Rest {
 
 #[derive(Debug, Clone)]
 pub struct Value {
-    hir: HirId,
-    ty: TypeId,
-    guards: HashMap<SymbolId, Guard>,
+    pub hir_id: HirId,
+    pub type_id: TypeId,
+    pub guards: Guards,
 }
 
 impl Value {
-    pub fn typed(hir: HirId, ty: TypeId) -> Self {
+    pub fn new(hir_id: HirId, type_id: TypeId) -> Self {
         Self {
-            hir,
-            ty,
+            hir_id,
+            type_id,
             guards: HashMap::new(),
         }
     }
 
-    pub fn hir(&self) -> HirId {
-        self.hir
-    }
-
-    pub fn ty(&self) -> TypeId {
-        self.ty
-    }
-
-    pub fn guard(&mut self, symbol: SymbolId, guard: Guard) {
-        self.guards.insert(symbol, guard);
-    }
-
-    pub fn guards(&self) -> &HashMap<SymbolId, Guard> {
-        &self.guards
-    }
-
     pub fn then_guards(&self) -> HashMap<SymbolId, TypeId> {
-        self.guards
-            .iter()
-            .map(|(k, v)| (*k, v.then_type()))
-            .collect()
+        self.guards.iter().map(|(k, v)| (*k, v.then_type)).collect()
     }
 
     pub fn else_guards(&self) -> HashMap<SymbolId, TypeId> {
-        self.guards
-            .iter()
-            .map(|(k, v)| (*k, v.else_type()))
-            .collect()
+        self.guards.iter().map(|(k, v)| (*k, v.else_type)).collect()
     }
 }
 
+pub type Guards = HashMap<SymbolId, Guard>;
+
 #[derive(Debug, Clone)]
 pub struct Guard {
-    then_type: TypeId,
-    else_type: TypeId,
+    pub then_type: TypeId,
+    pub else_type: TypeId,
 }
 
 impl Guard {
@@ -124,16 +104,12 @@ impl Guard {
             else_type,
         }
     }
+}
 
-    pub fn then_type(&self) -> TypeId {
-        self.then_type
-    }
+impl Not for Guard {
+    type Output = Self;
 
-    pub fn else_type(&self) -> TypeId {
-        self.else_type
-    }
-
-    pub fn to_reversed(&self) -> Self {
+    fn not(self) -> Self::Output {
         Self {
             then_type: self.else_type,
             else_type: self.then_type,

@@ -67,6 +67,9 @@ pub enum SyntaxKind {
     NotEquals,
     Assign,
 
+    And,
+    Or,
+
     Whitespace,
     LineComment,
     BlockComment,
@@ -185,6 +188,9 @@ impl fmt::Display for SyntaxKind {
                 SyntaxKind::Equals => "'=='",
                 SyntaxKind::NotEquals => "'!='",
                 SyntaxKind::Assign => "'='",
+
+                SyntaxKind::And => "'&&'",
+                SyntaxKind::Or => "'||'",
 
                 SyntaxKind::Whitespace => "whitespace",
                 SyntaxKind::LineComment => "line comment",

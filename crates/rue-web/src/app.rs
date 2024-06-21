@@ -334,7 +334,9 @@ fn Rue(source: &'static str) -> impl IntoView {
             | TokenKind::LessThanEquals
             | TokenKind::GreaterThanEquals
             | TokenKind::Equals
-            | TokenKind::NotEquals => class = "text-blue-700 dark:text-blue-300",
+            | TokenKind::NotEquals
+            | TokenKind::And
+            | TokenKind::Or => class = "text-blue-700 dark:text-blue-300",
             TokenKind::Whitespace => class = "",
             TokenKind::LineComment | TokenKind::BlockComment { .. } => {
                 class = "text-gray-500 dark:text-gray-400"

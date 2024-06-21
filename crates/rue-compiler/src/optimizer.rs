@@ -172,6 +172,8 @@ impl<'a> Optimizer<'a> {
                     BinOp::NotEquals => Self::opt_neq,
                     BinOp::Concat => Self::opt_concat,
                     BinOp::PointAdd => Self::opt_point_add,
+                    BinOp::LogicalAnd => Self::opt_logical_and,
+                    BinOp::LogicalOr => Self::opt_logical_or,
                 };
                 handler(self, env_id, *lhs, *rhs)
             }
@@ -328,7 +330,7 @@ impl<'a> Optimizer<'a> {
             self.opt_hir(env_id, callee)
         };
 
-        self.db.alloc_lir(Lir::Run(callee, lir_id))
+        self.db.alloc_lir(Lir::Run(callee, Some(lir_id)))
     }
 
     fn opt_inline_function_call(
@@ -453,6 +455,16 @@ impl<'a> Optimizer<'a> {
         self.db.alloc_lir(Lir::PointAdd(vec![lhs, rhs]))
     }
 
+    fn opt_logical_and(&mut self, env_id: EnvironmentId, lhs: HirId, rhs: HirId) -> LirId {
+        let nil = self.db.alloc_hir(Hir::Atom(Vec::new()));
+        self.opt_if(env_id, lhs, rhs, nil)
+    }
+
+    fn opt_logical_or(&mut self, env_id: EnvironmentId, lhs: HirId, rhs: HirId) -> LirId {
+        let one = self.db.alloc_hir(Hir::Atom(vec![1]));
+        self.opt_if(env_id, lhs, one, rhs)
+    }
+
     fn opt_not(&mut self, env_id: EnvironmentId, value: HirId) -> LirId {
         let value = self.opt_hir(env_id, value);
         self.db.alloc_lir(Lir::Not(value))
@@ -473,7 +485,13 @@ impl<'a> Optimizer<'a> {
         let condition = self.opt_hir(env_id, condition);
         let then_branch = self.opt_hir(env_id, then_block);
         let else_branch = self.opt_hir(env_id, else_block);
-        self.db
-            .alloc_lir(Lir::If(condition, then_branch, else_branch))
+
+        let then_branch = self.db.alloc_lir(Lir::Quote(then_branch));
+        let else_branch = self.db.alloc_lir(Lir::Quote(else_branch));
+        let if_expr = self
+            .db
+            .alloc_lir(Lir::If(condition, then_branch, else_branch));
+
+        self.db.alloc_lir(Lir::Run(if_expr, None))
     }
 }

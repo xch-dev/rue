@@ -57,6 +57,9 @@ pub enum TokenKind {
     NotEquals,
     Assign,
 
+    And,
+    Or,
+
     Whitespace,
     LineComment,
     BlockComment { is_terminated: bool },

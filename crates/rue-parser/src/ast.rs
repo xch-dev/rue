@@ -521,6 +521,8 @@ pub enum BinaryOp {
     GreaterThanEquals,
     Equals,
     NotEquals,
+    And,
+    Or,
 }
 
 fn binary_op(kind: SyntaxKind) -> Option<BinaryOp> {
@@ -536,6 +538,8 @@ fn binary_op(kind: SyntaxKind) -> Option<BinaryOp> {
         SyntaxKind::GreaterThanEquals => Some(BinaryOp::GreaterThanEquals),
         SyntaxKind::Equals => Some(BinaryOp::Equals),
         SyntaxKind::NotEquals => Some(BinaryOp::NotEquals),
+        SyntaxKind::And => Some(BinaryOp::And),
+        SyntaxKind::Or => Some(BinaryOp::Or),
         _ => None,
     }
 }

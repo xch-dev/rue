@@ -288,14 +288,15 @@ fn path(p: &mut Parser) {
 
 fn binding_power(op: BinaryOp) -> (u8, u8) {
     match op {
+        BinaryOp::Or => (1, 2),
+        BinaryOp::And => (3, 4),
+        BinaryOp::Equals | BinaryOp::NotEquals => (5, 6),
         BinaryOp::LessThan
         | BinaryOp::GreaterThan
         | BinaryOp::LessThanEquals
-        | BinaryOp::GreaterThanEquals
-        | BinaryOp::Equals
-        | BinaryOp::NotEquals => (1, 2),
-        BinaryOp::Add | BinaryOp::Subtract => (3, 4),
-        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (5, 6),
+        | BinaryOp::GreaterThanEquals => (7, 8),
+        BinaryOp::Add | BinaryOp::Subtract => (9, 10),
+        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (11, 12),
     }
 }
 
@@ -430,6 +431,10 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializ
             BinaryOp::Equals
         } else if p.at(SyntaxKind::NotEquals) {
             BinaryOp::NotEquals
+        } else if p.at(SyntaxKind::And) {
+            BinaryOp::And
+        } else if p.at(SyntaxKind::Or) {
+            BinaryOp::Or
         } else {
             return;
         };

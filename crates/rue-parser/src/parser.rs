@@ -235,6 +235,9 @@ fn convert_tokens<'a>(
             TokenKind::NotEquals => SyntaxKind::NotEquals,
             TokenKind::Assign => SyntaxKind::Assign,
 
+            TokenKind::And => SyntaxKind::And,
+            TokenKind::Or => SyntaxKind::Or,
+
             TokenKind::Question => SyntaxKind::Question,
 
             TokenKind::Whitespace => SyntaxKind::Whitespace,

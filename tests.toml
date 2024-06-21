@@ -116,3 +116,20 @@ cost = 10827
 input = "()"
 output = "0xfe7956"
 hash = "9b9e76d741c2d699d61ec30f7710cf4c537adc1e4c298e20512435662373f77b"
+
+[logic]
+bytes = 53
+cost = 868
+input = "()"
+output = "()"
+hash = "45c4ab1ab44dae90a8eccd06c9cc03bdc329ec18550c4cd4030bb212f8184575"
+
+[multisig]
+parser_errors = []
+compiler_errors = [
+    "cannot reference undefined type `AggSigMe` at 46:6",
+    "cannot reference undefined symbol `tree_hash` at 35:19",
+    "cannot call expression with type `{unknown}` at 35:19",
+    "unknown enum variant `AggSigMe` at 59:30",
+    "uninitializable type `{unknown}` at 59:19",
+]

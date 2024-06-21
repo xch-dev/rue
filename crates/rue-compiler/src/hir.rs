@@ -53,4 +53,6 @@ pub enum BinOp {
     NotEquals,
     Concat,
     PointAdd,
+    LogicalAnd,
+    LogicalOr,
 }
