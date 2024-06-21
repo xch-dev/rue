@@ -48,6 +48,11 @@ impl Database {
             (Type::PublicKey, Type::PublicKey) => Equal,
             (Type::Nil, Type::Nil) => Equal,
 
+            // We should treat `Bytes32` as a subtype of `Bytes` and therefore equal.
+            // `PublicKey` however, can have different meaning, so is not equal.
+            // `Bytes` is also not equal to `Bytes32` since it's unsized.
+            (Type::Bytes32, Type::Bytes) => Equal,
+
             // You can cast `Any` to anything, but it's not implicit.
             // So many languages make `Any` implicit and it makes it hard to debug.
             (Type::Any, _) => Castable,
@@ -58,36 +63,60 @@ impl Database {
             // You have to explicitly convert between other atom types.
             // This is because the compiled output can change depending on the type.
             (Type::Int, Type::Bytes) => Castable,
-            (Type::Bool, Type::Bytes | Type::Int) => Castable,
-            (Type::Nil, Type::Bytes | Type::Int) => Castable,
-            (Type::PublicKey, Type::Bytes | Type::Int) => Castable,
+            (Type::Bool, Type::Bytes) => Castable,
+            (Type::Bool, Type::Int) => Castable,
+            (Type::Nil, Type::Bytes) => Castable,
+            (Type::Nil, Type::Int) => Castable,
+            (Type::Nil, Type::Bool) => Castable,
+            (Type::PublicKey, Type::Bytes) => Castable,
+            (Type::PublicKey, Type::Int) => Castable,
             (Type::Bytes, Type::Int) => Castable,
             (Type::Bytes32, Type::Int) => Castable,
 
-            // We'll special case `Bytes32` converting to the unsized `Bytes` type.
-            (Type::Bytes32, Type::Bytes) => Assignable,
-
             // Size changing conversions are not possible without a type guard.
-            (Type::Bytes | Type::Int, Type::Bytes32) => Superset,
-            (Type::Bool | Type::Nil | Type::PublicKey, Type::Bytes32) => Unrelated,
-            (Type::Bytes | Type::Int, Type::Bool) => Superset,
-            (Type::Bytes32 | Type::Nil | Type::PublicKey, Type::Bool) => Unrelated,
+            (Type::Bytes, Type::Bytes32) => Superset,
+            (Type::Bytes, Type::PublicKey) => Superset,
+            (Type::Bytes, Type::Nil) => Superset,
+            (Type::Bytes, Type::Bool) => Superset,
+            (Type::Int, Type::Bytes32) => Superset,
+            (Type::Int, Type::PublicKey) => Superset,
+            (Type::Int, Type::Nil) => Superset,
+            (Type::Int, Type::Bool) => Superset,
+            (Type::Bool, Type::PublicKey) => Unrelated,
+            (Type::Bool, Type::Bytes32) => Unrelated,
+            (Type::Bool, Type::Nil) => Unrelated,
+            (Type::Nil, Type::Bytes32) => Unrelated,
+            (Type::Nil, Type::PublicKey) => Unrelated,
+            (Type::PublicKey, Type::Bytes32) => Unrelated,
+            (Type::PublicKey, Type::Bool) => Unrelated,
+            (Type::PublicKey, Type::Nil) => Unrelated,
+            (Type::Bytes32, Type::PublicKey) => Unrelated,
+            (Type::Bytes32, Type::Bool) => Unrelated,
+            (Type::Bytes32, Type::Nil) => Unrelated,
 
             // These are the variants of the `Optional` type.
             (Type::Nil, Type::Optional(..)) => Assignable,
+            (Type::Optional(lhs), Type::Optional(rhs)) => {
+                self.compare_type_visitor(*lhs, *rhs, visited)
+            }
+            (_, Type::Optional(inner)) => self.compare_type_visitor(lhs, *inner, visited),
+
+            // TODO: Unions would make this more generalized and useful.
+            // I should add unions back.
+            (Type::Optional(_inner), _) => Unrelated,
 
             // Compare both sides of a `Pair`.
-            (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
-                let first = self.compare_type_visitor(*lhs_first, *rhs_first, visited);
-                let rest = self.compare_type_visitor(*lhs_rest, *rhs_rest, visited);
+            (Type::Pair(lhs), Type::Pair(rhs)) => {
+                let first = self.compare_type_visitor(lhs.first, rhs.first, visited);
+                let rest = self.compare_type_visitor(lhs.rest, rhs.rest, visited);
                 first & rest
             }
 
             // A `Pair` is a valid `List` if its first type is the same as the list's inner type
             // and the rest is also a valid `List` of the same type.
-            (Type::Pair(first, rest), Type::List(inner)) => {
-                let inner = self.compare_type_visitor(*first, *inner, visited);
-                let rest = self.compare_type_visitor(*rest, rhs, visited);
+            (Type::Pair(pair), Type::List(inner)) => {
+                let inner = self.compare_type_visitor(pair.first, *inner, visited);
+                let rest = self.compare_type_visitor(pair.rest, rhs, visited);
                 inner & rest
             }
 
@@ -96,6 +125,22 @@ impl Database {
 
             // A `List` just compares with the inner type of another `List`.
             (Type::List(lhs), Type::List(rhs)) => self.compare_type_visitor(*lhs, *rhs, visited),
+
+            // `Nil` is a valid list.
+            (Type::Nil, Type::List(..)) => Castable,
+            (Type::List(..), Type::Nil) => Superset,
+
+            // `List` is not compatible with atoms.
+            (Type::Bytes, Type::List(..)) => Unrelated,
+            (Type::Bytes32, Type::List(..)) => Unrelated,
+            (Type::PublicKey, Type::List(..)) => Unrelated,
+            (Type::Int, Type::List(..)) => Unrelated,
+            (Type::Bool, Type::List(..)) => Unrelated,
+            (Type::List(..), Type::Bytes) => Unrelated,
+            (Type::List(..), Type::Bytes32) => Unrelated,
+            (Type::List(..), Type::PublicKey) => Unrelated,
+            (Type::List(..), Type::Int) => Unrelated,
+            (Type::List(..), Type::Bool) => Unrelated,
 
             // A `Struct` is castable to others only if the fields are identical.
             (Type::Struct(lhs), Type::Struct(rhs)) => {
@@ -123,6 +168,30 @@ impl Database {
             // Enums and their variants are not assignable to anything except themselves.
             (Type::Enum(..), _) | (_, Type::Enum(..)) => Unrelated,
             (Type::EnumVariant(..), _) | (_, Type::EnumVariant(..)) => Unrelated,
+
+            // The parameters and return types of functions are checked.
+            // This can be made more flexible later.
+            (Type::Function(lhs), Type::Function(rhs)) => {
+                if lhs.param_types.len() != rhs.param_types.len() || lhs.rest != rhs.rest {
+                    Unrelated
+                } else {
+                    let mut result =
+                        self.compare_type_visitor(lhs.return_type, rhs.return_type, visited);
+
+                    for i in 0..lhs.param_types.len() {
+                        result &= self.compare_type_visitor(
+                            lhs.param_types[i],
+                            rhs.param_types[i],
+                            visited,
+                        );
+                    }
+
+                    result
+                }
+            }
+
+            // There is likely nothing that should relate to a function.
+            (Type::Function(..), _) | (_, Type::Function(..)) => Unrelated,
         };
 
         visited.remove(&key);
@@ -132,9 +201,9 @@ impl Database {
     fn is_cyclic_visitor(&self, ty: TypeId, visited_aliases: &mut HashSet<TypeId>) -> bool {
         match self.ty_raw(ty).clone() {
             Type::List(..) => false,
-            Type::Pair(left, right) => {
-                self.is_cyclic_visitor(left, visited_aliases)
-                    || self.is_cyclic_visitor(right, visited_aliases)
+            Type::Pair(pair) => {
+                self.is_cyclic_visitor(pair.first, visited_aliases)
+                    || self.is_cyclic_visitor(pair.rest, visited_aliases)
             }
             Type::Struct { .. } => false,
             Type::Enum { .. } => false,

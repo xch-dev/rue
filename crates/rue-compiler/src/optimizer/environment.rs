@@ -7,15 +7,15 @@ pub struct Environment {
     defined_symbols: IndexSet<SymbolId>,
     captured_symbols: IndexSet<SymbolId>,
     parameters: IndexSet<SymbolId>,
+    rest_parameter: bool,
     parent: Option<EnvironmentId>,
-    varargs: bool,
 }
 
 impl Environment {
-    pub fn function(parameters: IndexSet<SymbolId>, varargs: bool) -> Self {
+    pub fn function(parameters: IndexSet<SymbolId>, rest_parameter: bool) -> Self {
         Self {
             parameters,
-            varargs,
+            rest_parameter,
             ..Default::default()
         }
     }
@@ -51,8 +51,8 @@ impl Environment {
         self.parameters.iter().copied().collect()
     }
 
-    pub fn varargs(&self) -> bool {
-        self.varargs
+    pub fn rest_parameter(&self) -> bool {
+        self.rest_parameter
     }
 
     pub fn parent(&self) -> Option<EnvironmentId> {
@@ -76,7 +76,7 @@ impl Environment {
     pub fn extend_from_child(&mut self, other: Self) {
         assert!(other.parameters.is_empty());
         assert!(other.parent.is_none());
-        assert!(!other.varargs);
+        assert!(!other.rest_parameter);
 
         self.defined_symbols.extend(other.defined_symbols);
 

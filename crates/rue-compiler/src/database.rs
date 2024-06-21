@@ -214,10 +214,10 @@ impl Database {
 
         match self.symbol(symbol_id) {
             Symbol::Unknown => format!("<unknown symbol {}>", symbol_id.0.index()),
-            Symbol::Parameter { .. } => format!("<parameter {}>", symbol_id.0.index()),
-            Symbol::Function { .. } => format!("<function {}>", symbol_id.0.index()),
-            Symbol::LetBinding { .. } => format!("<let {}>", symbol_id.0.index()),
-            Symbol::ConstBinding { .. } => format!("<const {}>", symbol_id.0.index()),
+            Symbol::Parameter(..) => format!("<parameter {}>", symbol_id.0.index()),
+            Symbol::Function(..) => format!("<function {}>", symbol_id.0.index()),
+            Symbol::Let(..) => format!("<let {}>", symbol_id.0.index()),
+            Symbol::Const(..) => format!("<const {}>", symbol_id.0.index()),
         }
     }
 

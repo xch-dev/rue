@@ -9,8 +9,9 @@ use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
     FunctionCall, FunctionItem, FunctionType as AstFunctionType, GroupExpr, GuardExpr, IfExpr,
     IfStmt, IndexAccess, InitializerExpr, InitializerField, Item, LambdaExpr, LetStmt, ListExpr,
-    ListType, LiteralExpr, OptionalType, PairExpr, PairType, Path, PrefixExpr, PrefixOp, Root,
-    Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
+    ListType, LiteralExpr, OptionalType, PairExpr, PairType as AstPairType, Path, PrefixExpr,
+    PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, Type as AstType,
+    TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -18,8 +19,8 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::{BinOp, Hir},
     scope::Scope,
-    symbol::Symbol,
-    ty::{EnumType, EnumVariant, FunctionType, Guard, StructType, Type, Value},
+    symbol::{Const, Function, Let, Symbol},
+    ty::{EnumType, EnumVariant, FunctionType, Guard, PairType, Rest, StructType, Type, Value},
     Comparison, ErrorKind, TypeSystem, WarningKind,
 };
 
@@ -186,8 +187,8 @@ impl<'a> Compiler<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.builtins.unknown);
 
-        let mut parameter_types = Vec::new();
-        let mut varargs = false;
+        let mut param_types = Vec::new();
+        let mut rest = Rest::Nil;
 
         let len = function_item.params().len();
 
@@ -201,9 +202,9 @@ impl<'a> Compiler<'a> {
                 .map(|ty| self.compile_type(ty))
                 .unwrap_or(self.builtins.unknown);
 
-            parameter_types.push(type_id);
+            param_types.push(type_id);
 
-            *self.db.symbol_mut(symbol_id) = Symbol::Parameter { type_id };
+            *self.db.symbol_mut(symbol_id) = Symbol::Parameter(type_id);
 
             if let Some(name) = param.name() {
                 scope.define_symbol(name.to_string(), symbol_id);
@@ -212,7 +213,7 @@ impl<'a> Compiler<'a> {
 
             if param.spread().is_some() {
                 if i + 1 == len {
-                    varargs = true;
+                    rest = Rest::Parameter;
                 } else {
                     self.db
                         .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
@@ -226,17 +227,17 @@ impl<'a> Compiler<'a> {
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
         let ty = FunctionType {
-            parameter_types,
+            param_types,
+            rest,
             return_type,
-            varargs,
         };
 
-        *self.db.symbol_mut(symbol_id) = Symbol::Function {
+        *self.db.symbol_mut(symbol_id) = Symbol::Function(Function {
             scope_id,
             hir_id,
             ty,
             inline: function_item.inline().is_some(),
-        };
+        });
 
         if let Some(name) = function_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
@@ -260,11 +261,11 @@ impl<'a> Compiler<'a> {
 
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
-        *self.db.symbol_mut(symbol_id) = Symbol::ConstBinding {
+        *self.db.symbol_mut(symbol_id) = Symbol::Const(Const {
             type_id,
             hir_id,
             inline: const_item.inline().is_some(),
-        };
+        });
 
         if let Some(name) = const_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
@@ -330,7 +331,8 @@ impl<'a> Compiler<'a> {
             return;
         };
 
-        let Symbol::Function { scope_id, ty, .. } = self.db.symbol(symbol_id).clone() else {
+        let Symbol::Function(Function { scope_id, ty, .. }) = self.db.symbol(symbol_id).clone()
+        else {
             unreachable!();
         };
 
@@ -348,7 +350,7 @@ impl<'a> Compiler<'a> {
 
         // We ignore type guards here for now.
         // Just set the function body HIR.
-        let Symbol::Function { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
+        let Symbol::Function(Function { hir_id, .. }) = self.db.symbol_mut(symbol_id) else {
             unreachable!();
         };
         *hir_id = value.hir();
@@ -360,7 +362,7 @@ impl<'a> Compiler<'a> {
             return;
         };
 
-        let Symbol::ConstBinding { type_id, .. } = self.db.symbol(symbol_id).clone() else {
+        let Symbol::Const(Const { type_id, .. }) = self.db.symbol(symbol_id).clone() else {
             unreachable!();
         };
 
@@ -371,7 +373,7 @@ impl<'a> Compiler<'a> {
 
         // We ignore type guards here for now.
         // Just set the constant HIR.
-        let Symbol::ConstBinding { hir_id, .. } = self.db.symbol_mut(symbol_id) else {
+        let Symbol::Const(Const { hir_id, .. }) = self.db.symbol_mut(symbol_id) else {
             unreachable!();
         };
         *hir_id = output.hir();
@@ -499,10 +501,10 @@ impl<'a> Compiler<'a> {
             return None;
         };
 
-        *self.db.symbol_mut(symbol_id) = Symbol::LetBinding {
+        *self.db.symbol_mut(symbol_id) = Symbol::Let(Let {
             type_id: expected_type.unwrap_or(value.ty()),
             hir_id: value.hir(),
-        };
+        });
 
         // Every let binding is a new scope for now, to ensure references are resolved in the proper order.
         let mut let_scope = Scope::default();
@@ -926,12 +928,12 @@ impl<'a> Compiler<'a> {
                     return self.unknown();
                 }
             }
-            Type::Pair(left, right) => match field_name.text() {
+            Type::Pair(PairType { first, rest }) => match field_name.text() {
                 "first" => {
-                    return Value::typed(self.db.alloc_hir(Hir::First(value.hir())), left);
+                    return Value::typed(self.db.alloc_hir(Hir::First(value.hir())), first);
                 }
                 "rest" => {
-                    return Value::typed(self.db.alloc_hir(Hir::Rest(value.hir())), right);
+                    return Value::typed(self.db.alloc_hir(Hir::Rest(value.hir())), rest);
                 }
                 _ => {}
             },
@@ -1244,7 +1246,7 @@ impl<'a> Compiler<'a> {
         }
 
         match (self.db.ty(from).clone(), self.db.ty(to).clone()) {
-            (Type::Any, Type::Pair(first, rest)) => {
+            (Type::Any, Type::Pair(PairType { first, rest })) => {
                 if self.db.compare_type(first, self.builtins.any) != Comparison::Equal {
                     self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
@@ -1257,14 +1259,15 @@ impl<'a> Compiler<'a> {
                 Some((Guard::new(to, self.builtins.bytes), hir_id))
             }
             (Type::Any, Type::Bytes) => {
-                let pair_type = self
-                    .db
-                    .alloc_type(Type::Pair(self.builtins.any, self.builtins.any));
+                let pair_type = self.db.alloc_type(Type::Pair(PairType {
+                    first: self.builtins.any,
+                    rest: self.builtins.any,
+                }));
                 let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
                 Some((Guard::new(to, pair_type), hir_id))
             }
-            (Type::List(inner), Type::Pair(first, rest)) => {
+            (Type::List(inner), Type::Pair(PairType { first, rest })) => {
                 if self.db.compare_type(first, inner) != Comparison::Equal {
                     self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
                 }
@@ -1277,7 +1280,10 @@ impl<'a> Compiler<'a> {
                 Some((Guard::new(to, self.builtins.nil), hir_id))
             }
             (Type::List(inner), Type::Nil) => {
-                let pair_type = self.db.alloc_type(Type::Pair(inner, from));
+                let pair_type = self.db.alloc_type(Type::Pair(PairType {
+                    first: inner,
+                    rest: from,
+                }));
                 let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
                 Some((Guard::new(to, pair_type), hir_id))
@@ -1413,12 +1419,12 @@ impl<'a> Compiler<'a> {
 
     fn compile_pair_expr(&mut self, pair_expr: PairExpr, expected_type: Option<TypeId>) -> Value {
         let expected_first = expected_type.and_then(|ty| match self.db.ty(ty) {
-            Type::Pair(first, _) => Some(*first),
+            Type::Pair(pair) => Some(pair.first),
             _ => None,
         });
 
         let expected_rest = expected_type.and_then(|ty| match self.db.ty(ty) {
-            Type::Pair(_, rest) => Some(*rest),
+            Type::Pair(pair) => Some(pair.rest),
             _ => None,
         });
 
@@ -1447,7 +1453,10 @@ impl<'a> Compiler<'a> {
         };
 
         let hir_id = self.db.alloc_hir(Hir::Pair(first.hir(), rest.hir()));
-        let type_id = self.db.alloc_type(Type::Pair(first.ty(), rest.ty()));
+        let type_id = self.db.alloc_type(Type::Pair(PairType {
+            first: first.ty(),
+            rest: rest.ty(),
+        }));
 
         Value::typed(hir_id, type_id)
     }
@@ -1463,8 +1472,8 @@ impl<'a> Compiler<'a> {
         });
 
         let mut scope = Scope::default();
-        let mut parameter_types = Vec::new();
-        let mut varargs = false;
+        let mut param_types = Vec::new();
+        let mut rest = Rest::Nil;
 
         let len = lambda_expr.params().len();
 
@@ -1474,20 +1483,20 @@ impl<'a> Compiler<'a> {
                 .map(|ty| self.compile_type(ty))
                 .or(expected
                     .as_ref()
-                    .and_then(|expected| expected.parameter_types.get(i).copied()))
+                    .and_then(|expected| expected.param_types.get(i).copied()))
                 .unwrap_or(self.builtins.unknown);
 
-            parameter_types.push(type_id);
+            param_types.push(type_id);
 
             if let Some(name) = param.name() {
-                let symbol_id = self.db.alloc_symbol(Symbol::Parameter { type_id });
+                let symbol_id = self.db.alloc_symbol(Symbol::Parameter(type_id));
                 scope.define_symbol(name.to_string(), symbol_id);
                 self.db.insert_symbol_token(symbol_id, name);
             };
 
             if param.spread().is_some() {
                 if i + 1 == len {
-                    varargs = true;
+                    rest = Rest::Parameter;
                 } else {
                     self.db
                         .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
@@ -1519,17 +1528,17 @@ impl<'a> Compiler<'a> {
         );
 
         let ty = FunctionType {
-            parameter_types: parameter_types.clone(),
+            param_types: param_types.clone(),
+            rest,
             return_type,
-            varargs,
         };
 
-        let symbol_id = self.db.alloc_symbol(Symbol::Function {
+        let symbol_id = self.db.alloc_symbol(Symbol::Function(Function {
             scope_id,
             hir_id: body.hir(),
             ty: ty.clone(),
             inline: false,
-        });
+        }));
 
         Value::typed(
             self.db.alloc_hir(Hir::Reference(symbol_id)),
@@ -1698,7 +1707,12 @@ impl<'a> Compiler<'a> {
             return self.unknown();
         };
 
-        if !self.is_callee && self.db.symbol(symbol_id).is_inline_function() {
+        if !self.is_callee
+            && matches!(
+                self.db.symbol(symbol_id),
+                Symbol::Function(Function { inline: true, .. })
+            )
+        {
             self.db.error(
                 ErrorKind::InlineFunctionOutsideCall,
                 path.syntax().text_range(),
@@ -1711,10 +1725,12 @@ impl<'a> Compiler<'a> {
             self.symbol_type(symbol_id)
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
                     Symbol::Unknown => unreachable!(),
-                    Symbol::Function { ty, .. } => self.db.alloc_type(Type::Function(ty.clone())),
-                    Symbol::Parameter { type_id } => *type_id,
-                    Symbol::LetBinding { type_id, .. } => *type_id,
-                    Symbol::ConstBinding { type_id, .. } => *type_id,
+                    Symbol::Function(Function { ty, .. }) => {
+                        self.db.alloc_type(Type::Function(ty.clone()))
+                    }
+                    Symbol::Parameter(type_id) => *type_id,
+                    Symbol::Let(Let { type_id, .. }) => *type_id,
+                    Symbol::Const(Const { type_id, .. }) => *type_id,
                 }),
         )
     }
@@ -1725,26 +1741,26 @@ impl<'a> Compiler<'a> {
         index: usize,
         spread: bool,
     ) -> Option<TypeId> {
-        let params = function_type.parameter_types;
-        let len = params.len();
+        let param_types = function_type.param_types;
+        let len = param_types.len();
 
         if index + 1 < len {
-            return Some(params[index]);
+            return Some(param_types[index]);
         }
 
-        if !function_type.varargs {
+        if function_type.rest == Rest::Nil {
             if index + 1 == len {
-                return Some(params[index]);
+                return Some(param_types[index]);
             } else {
                 return None;
             }
         }
 
         if spread {
-            return Some(params[len - 1]);
+            return Some(param_types[len - 1]);
         }
 
-        match self.db.ty(params[len - 1]) {
+        match self.db.ty(param_types[len - 1]) {
             Type::List(list_type) => Some(*list_type),
             _ => None,
         }
@@ -1807,13 +1823,13 @@ impl<'a> Compiler<'a> {
         arg_types.reverse();
 
         if let Some(expected) = expected.as_ref() {
-            let param_len = expected.parameter_types.len();
+            let param_len = expected.param_types.len();
 
             let too_few_args = arg_types.len() < param_len
-                && !(expected.varargs && arg_types.len() == param_len - 1);
-            let too_many_args = arg_types.len() > param_len && !expected.varargs;
+                && !(expected.rest == Rest::Parameter && arg_types.len() == param_len - 1);
+            let too_many_args = arg_types.len() > param_len && expected.rest == Rest::Nil;
 
-            if too_few_args && expected.varargs {
+            if too_few_args && expected.rest == Rest::Parameter {
                 self.db.error(
                     ErrorKind::TooFewArgumentsWithVarargs {
                         expected: param_len - 1,
@@ -1832,7 +1848,7 @@ impl<'a> Compiler<'a> {
             }
 
             for (i, arg) in arg_types.into_iter().enumerate() {
-                if i + 1 == arg_len && spread && !expected.varargs {
+                if i + 1 == arg_len && spread && expected.rest == Rest::Nil {
                     self.db.error(
                         ErrorKind::NonVarargSpread,
                         call.args()[i].syntax().text_range(),
@@ -1840,11 +1856,11 @@ impl<'a> Compiler<'a> {
                     continue;
                 }
 
-                if i + 1 >= param_len && (i + 1 < arg_len || !spread) && expected.varargs {
-                    match self
-                        .db
-                        .ty(expected.parameter_types.last().copied().unwrap())
-                    {
+                if i + 1 >= param_len
+                    && (i + 1 < arg_len || !spread)
+                    && expected.rest == Rest::Parameter
+                {
+                    match self.db.ty(expected.param_types.last().copied().unwrap()) {
                         Type::List(list_type) => {
                             self.type_check(arg, *list_type, call.args()[i].syntax().text_range());
                         }
@@ -1858,10 +1874,10 @@ impl<'a> Compiler<'a> {
                     continue;
                 }
 
-                if i + 1 == arg_len && spread && expected.varargs {
+                if i + 1 == arg_len && spread && expected.rest == Rest::Parameter {
                     self.type_check(
                         arg,
-                        expected.parameter_types[param_len - 1],
+                        expected.param_types[param_len - 1],
                         call.args()[i].syntax().text_range(),
                     );
                     continue;
@@ -1870,7 +1886,7 @@ impl<'a> Compiler<'a> {
                 self.type_check(
                     arg,
                     expected
-                        .parameter_types
+                        .param_types
                         .get(i)
                         .copied()
                         .unwrap_or(self.builtins.unknown),
@@ -1972,7 +1988,7 @@ impl<'a> Compiler<'a> {
         self.db.alloc_type(Type::List(item_type))
     }
 
-    fn compile_pair_type(&mut self, pair_type: PairType) -> TypeId {
+    fn compile_pair_type(&mut self, pair_type: AstPairType) -> TypeId {
         let first = pair_type
             .first()
             .map(|ty| self.compile_type(ty))
@@ -1983,12 +1999,12 @@ impl<'a> Compiler<'a> {
             .map(|ty| self.compile_type(ty))
             .unwrap_or(self.builtins.unknown);
 
-        self.db.alloc_type(Type::Pair(first, rest))
+        self.db.alloc_type(Type::Pair(PairType { first, rest }))
     }
 
     fn compile_function_type(&mut self, function: AstFunctionType) -> TypeId {
-        let mut parameter_types = Vec::new();
-        let mut varargs = false;
+        let mut param_types = Vec::new();
+        let mut rest = Rest::Nil;
 
         let len = function.params().len();
 
@@ -1998,11 +2014,11 @@ impl<'a> Compiler<'a> {
                 .map(|ty| self.compile_type(ty))
                 .unwrap_or(self.builtins.unknown);
 
-            parameter_types.push(type_id);
+            param_types.push(type_id);
 
             if param.spread().is_some() {
                 if i + 1 == len {
-                    varargs = true;
+                    rest = Rest::Parameter;
                 } else {
                     self.db
                         .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
@@ -2016,9 +2032,9 @@ impl<'a> Compiler<'a> {
             .unwrap_or(self.builtins.unknown);
 
         self.db.alloc_type(Type::Function(FunctionType {
-            parameter_types,
+            param_types,
+            rest,
             return_type,
-            varargs,
         }))
     }
 
@@ -2085,10 +2101,10 @@ impl<'a> Compiler<'a> {
                 let inner = self.type_name_visitor(*items, stack);
                 format!("{}[]", inner)
             }
-            Type::Pair(left, right) => {
-                let left = self.type_name_visitor(*left, stack);
-                let right = self.type_name_visitor(*right, stack);
-                format!("({left}, {right})")
+            Type::Pair(PairType { first, rest }) => {
+                let first = self.type_name_visitor(*first, stack);
+                let rest = self.type_name_visitor(*rest, stack);
+                format!("({first}, {rest})")
             }
             Type::Struct(struct_type) => {
                 let fields: Vec<String> = struct_type
@@ -2118,7 +2134,7 @@ impl<'a> Compiler<'a> {
             }
             Type::Function(function_type) => {
                 let params: Vec<String> = function_type
-                    .parameter_types
+                    .param_types
                     .iter()
                     .map(|&ty| self.type_name_visitor(ty, stack))
                     .collect();

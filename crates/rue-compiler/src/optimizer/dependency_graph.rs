@@ -3,7 +3,10 @@ use std::collections::{HashMap, HashSet};
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    hir::Hir, symbol::Symbol, ty::FunctionType, Database, EnvironmentId, HirId, ScopeId, SymbolId,
+    hir::Hir,
+    symbol::{Const, Function, Let, Symbol},
+    ty::{FunctionType, Rest},
+    Database, EnvironmentId, HirId, ScopeId, SymbolId,
 };
 
 use super::environment::Environment;
@@ -81,9 +84,9 @@ impl<'a> GraphTraversal<'a> {
     }
 
     fn visit_entrypoint(&mut self, symbol_id: SymbolId) {
-        let Symbol::Function {
+        let Symbol::Function(Function {
             scope_id, hir_id, ..
-        } = self.db.symbol(symbol_id).clone()
+        }) = self.db.symbol(symbol_id).clone()
         else {
             unreachable!();
         };
@@ -154,13 +157,9 @@ impl<'a> GraphTraversal<'a> {
 
                 match self.db.symbol(symbol_id).clone() {
                     Symbol::Unknown => unreachable!(),
-                    Symbol::Function {
-                        scope_id: new_scope_id,
-                        hir_id,
-                        ..
-                    } => self.visit_hir(new_scope_id, hir_id, visited),
+                    Symbol::Function(fun) => self.visit_hir(fun.scope_id, fun.hir_id, visited),
                     Symbol::Parameter { .. } => {}
-                    Symbol::LetBinding { hir_id, .. } | Symbol::ConstBinding { hir_id, .. } => {
+                    Symbol::Let(Let { hir_id, .. }) | Symbol::Const(Const { hir_id, .. }) => {
                         self.visit_hir(scope_id, hir_id, visited);
                     }
                 }
@@ -170,20 +169,15 @@ impl<'a> GraphTraversal<'a> {
 
     fn compute_edges(&mut self, symbol_id: SymbolId) {
         match self.db.symbol(symbol_id).clone() {
-            Symbol::Function {
-                scope_id,
-                hir_id,
-                ty,
-                ..
-            } => {
+            Symbol::Function(fun) => {
                 // Add the function scope to the graph.
-                self.edges.entry(scope_id).or_default();
+                self.edges.entry(fun.scope_id).or_default();
 
                 // Compute the function's edges.
-                self.compute_function_edges(scope_id, hir_id, ty, &mut HashSet::new());
+                self.compute_function_edges(fun.scope_id, fun.hir_id, fun.ty, &mut HashSet::new());
             }
-            Symbol::ConstBinding { .. } => {}
-            Symbol::LetBinding { .. } | Symbol::Parameter { .. } | Symbol::Unknown => {
+            Symbol::Const(..) => {}
+            Symbol::Let(..) | Symbol::Parameter(..) | Symbol::Unknown => {
                 unreachable!()
             }
         }
@@ -283,21 +277,16 @@ impl<'a> GraphTraversal<'a> {
 
                 match self.db.symbol(symbol_id).clone() {
                     Symbol::Unknown => unreachable!(),
-                    Symbol::Function {
-                        scope_id: new_scope_id,
-                        hir_id,
-                        ty,
-                        ..
-                    } => {
+                    Symbol::Function(fun) => {
                         // Add the new scope to the graph.
                         // The parent scope depends on the new scope's captures.
-                        self.edges.entry(new_scope_id).or_default().insert(scope_id);
+                        self.edges.entry(fun.scope_id).or_default().insert(scope_id);
 
                         // Compute the function's edges.
-                        self.compute_function_edges(new_scope_id, hir_id, ty, visited);
+                        self.compute_function_edges(fun.scope_id, fun.hir_id, fun.ty, visited);
                     }
                     Symbol::Parameter { .. } => {}
-                    Symbol::LetBinding { hir_id, .. } | Symbol::ConstBinding { hir_id, .. } => {
+                    Symbol::Let(Let { hir_id, .. }) | Symbol::Const(Const { hir_id, .. }) => {
                         self.compute_hir_edges(scope_id, hir_id, visited);
                     }
                 }
@@ -323,9 +312,10 @@ impl<'a> GraphTraversal<'a> {
             .collect();
 
         if !self.graph.env.contains_key(&scope_id) {
-            let environment_id = self
-                .db
-                .alloc_env(Environment::function(parameters, ty.varargs));
+            let environment_id = self.db.alloc_env(Environment::function(
+                parameters,
+                ty.rest == Rest::Parameter,
+            ));
 
             self.graph.env.insert(scope_id, environment_id);
         }

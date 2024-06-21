@@ -4,8 +4,8 @@ use crate::{
     database::{Database, HirId, LirId, SymbolId},
     hir::{BinOp, Hir},
     lir::Lir,
-    symbol::Symbol,
-    ty::FunctionType,
+    symbol::{Const, Function, Symbol},
+    ty::{FunctionType, Rest},
     EnvironmentId, ScopeId,
 };
 
@@ -31,16 +31,13 @@ impl<'a> Optimizer<'a> {
     }
 
     pub fn opt_main(&mut self, main: SymbolId) -> LirId {
-        let Symbol::Function {
-            scope_id, hir_id, ..
-        } = self.db.symbol(main).clone()
-        else {
+        let Symbol::Function(fun) = self.db.symbol(main).clone() else {
             unreachable!();
         };
 
-        let env_id = self.graph.env(scope_id);
+        let env_id = self.graph.env(fun.scope_id);
 
-        let body = self.opt_hir(env_id, hir_id);
+        let body = self.opt_hir(env_id, fun.hir_id);
 
         let mut args = Vec::new();
 
@@ -59,20 +56,10 @@ impl<'a> Optimizer<'a> {
         let mut current_env_id = env_id;
         let mut environment = self.db.env(env_id).build().to_vec();
 
-        log::debug!("Calculating path for {symbol_id:?}");
-
-        log::debug!(
-            "Current env: {:?} = {:?}",
-            current_env_id,
-            self.db.env(current_env_id).build()
-        );
-
         while let Some(parent_env_id) = self.db.env(current_env_id).parent() {
-            log::debug!(
-                "Parent env: {:?} = {:?}",
-                parent_env_id,
-                self.db.env(parent_env_id).build()
-            );
+            assert!(self.db.env(current_env_id).parameters().is_empty());
+            assert!(!self.db.env(current_env_id).rest_parameter());
+
             current_env_id = parent_env_id;
             environment.extend(self.db.env(current_env_id).build());
         }
@@ -84,7 +71,7 @@ impl<'a> Optimizer<'a> {
 
         let mut path = 1;
 
-        if !(index + 1 == environment.len() && self.db.env(env_id).varargs()) {
+        if !(index + 1 == environment.len() && self.db.env(env_id).rest_parameter()) {
             path *= 2;
         }
 
@@ -99,12 +86,12 @@ impl<'a> Optimizer<'a> {
     fn opt_definition(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
         match self.db.symbol(symbol_id).clone() {
             Symbol::Unknown => unreachable!(),
-            Symbol::Function {
-                scope_id,
-                hir_id,
+            Symbol::Function(Function {
                 inline: false,
+                hir_id,
+                scope_id,
                 ..
-            } => {
+            }) => {
                 let function_env_id = self.graph.env(scope_id);
 
                 let mut body = self.opt_hir(function_env_id, hir_id);
@@ -120,17 +107,17 @@ impl<'a> Optimizer<'a> {
 
                 self.db.alloc_lir(Lir::FunctionBody(body))
             }
-            Symbol::ConstBinding {
-                hir_id,
+            Symbol::Const(Const {
                 inline: false,
+                hir_id,
                 ..
-            } => self.opt_hir(env_id, hir_id),
-            Symbol::Parameter { .. }
-            | Symbol::Function { inline: true, .. }
-            | Symbol::ConstBinding { inline: true, .. } => {
+            }) => self.opt_hir(env_id, hir_id),
+            Symbol::Parameter(..)
+            | Symbol::Function(Function { inline: true, .. })
+            | Symbol::Const(Const { inline: true, .. }) => {
                 unreachable!();
             }
-            Symbol::LetBinding { hir_id, .. } => self.opt_hir(env_id, hir_id),
+            Symbol::Let(symbol) => self.opt_hir(env_id, symbol.hir_id),
         }
     }
 
@@ -149,13 +136,13 @@ impl<'a> Optimizer<'a> {
                 varargs,
             } => {
                 if let Hir::Reference(symbol_id) = self.db.hir(*callee) {
-                    if let Symbol::Function {
+                    if let Symbol::Function(Function {
                         scope_id,
                         ty,
                         hir_id,
                         inline: true,
                         ..
-                    } = self.db.symbol(*symbol_id)
+                    }) = self.db.symbol(*symbol_id)
                     {
                         let function_env_id = self.graph.env(*scope_id);
                         return self.opt_inline_function_call(
@@ -263,11 +250,11 @@ impl<'a> Optimizer<'a> {
 
     fn opt_reference(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
         match self.db.symbol(symbol_id).clone() {
-            Symbol::Function {
+            Symbol::Function(Function {
                 scope_id,
                 inline: false,
                 ..
-            } => {
+            }) => {
                 let function_env_id = self.graph.env(scope_id);
                 let body = self.opt_path(env_id, symbol_id);
 
@@ -285,13 +272,13 @@ impl<'a> Optimizer<'a> {
 
                 self.db.alloc_lir(Lir::Closure(body, captures))
             }
-            Symbol::Function { inline: true, .. } => self.db.alloc_lir(Lir::Atom(vec![])),
-            Symbol::ConstBinding {
+            Symbol::Function(Function { inline: true, .. }) => self.db.alloc_lir(Lir::Atom(vec![])),
+            Symbol::Const(Const {
                 hir_id,
                 inline: true,
                 ..
-            } => self.opt_hir(env_id, hir_id),
-            Symbol::LetBinding { .. } | Symbol::ConstBinding { inline: false, .. } => {
+            }) => self.opt_hir(env_id, hir_id),
+            Symbol::Let(..) | Symbol::Const(Const { inline: false, .. }) => {
                 self.opt_path(env_id, symbol_id)
             }
             Symbol::Parameter { .. } => {
@@ -327,7 +314,7 @@ impl<'a> Optimizer<'a> {
         }
 
         let callee = if let Hir::Reference(symbol_id) = self.db.hir(callee).clone() {
-            if let Symbol::Function { scope_id, .. } = self.db.symbol(symbol_id) {
+            if let Symbol::Function(Function { scope_id, .. }) = self.db.symbol(symbol_id) {
                 let callee_env_id = self.graph.env(*scope_id);
                 for symbol_id in self.db.env(callee_env_id).captures().into_iter().rev() {
                     let capture = self.opt_path(env_id, symbol_id);
@@ -365,7 +352,7 @@ impl<'a> Optimizer<'a> {
             .into_iter()
             .enumerate()
         {
-            if i + 1 == param_len && ty.varargs {
+            if i + 1 == param_len && ty.rest == Rest::Parameter {
                 let mut rest = self.db.alloc_hir(Hir::Atom(Vec::new()));
                 for (i, arg) in args.clone().into_iter().rev().enumerate() {
                     if i == 0 && varargs {

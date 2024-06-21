@@ -17,7 +17,7 @@ pub enum Type {
     Bytes,
     Bytes32,
     PublicKey,
-    Pair(TypeId, TypeId),
+    Pair(PairType),
     List(TypeId),
     Struct(StructType),
     Enum(EnumType),
@@ -25,6 +25,12 @@ pub enum Type {
     Function(FunctionType),
     Alias(TypeId),
     Optional(TypeId),
+}
+
+#[derive(Debug, Clone)]
+pub struct PairType {
+    pub first: TypeId,
+    pub rest: TypeId,
 }
 
 #[derive(Debug, Clone)]
@@ -47,9 +53,15 @@ pub struct EnumVariant {
 
 #[derive(Debug, Clone)]
 pub struct FunctionType {
-    pub parameter_types: Vec<TypeId>,
+    pub param_types: Vec<TypeId>,
+    pub rest: Rest,
     pub return_type: TypeId,
-    pub varargs: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rest {
+    Nil,
+    Parameter,
 }
 
 #[derive(Debug, Clone)]

@@ -1,8 +1,8 @@
 use crate::{
     hir::Hir,
     scope::Scope,
-    symbol::Symbol,
-    ty::{FunctionType, Type},
+    symbol::{Function, Symbol},
+    ty::{FunctionType, Rest, Type},
     Database, HirId, SymbolId, TypeId,
 };
 
@@ -63,44 +63,40 @@ pub fn builtins(db: &mut Database, scope: &mut Scope) -> Builtins {
 fn sha256(db: &mut Database, builtins: &Builtins) -> SymbolId {
     let mut scope = Scope::default();
 
-    let param = db.alloc_symbol(Symbol::Parameter {
-        type_id: builtins.bytes,
-    });
+    let param = db.alloc_symbol(Symbol::Parameter(builtins.bytes));
     scope.define_symbol("bytes".to_string(), param);
     let param_ref = db.alloc_hir(Hir::Reference(param));
     let hir_id = db.alloc_hir(Hir::Sha256(param_ref));
     let scope_id = db.alloc_scope(scope);
 
-    db.alloc_symbol(Symbol::Function {
+    db.alloc_symbol(Symbol::Function(Function {
         scope_id,
         hir_id,
         ty: FunctionType {
-            parameter_types: vec![builtins.bytes],
+            param_types: vec![builtins.bytes],
+            rest: Rest::Nil,
             return_type: builtins.bytes32,
-            varargs: false,
         },
         inline: true,
-    })
+    }))
 }
 
 fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
     let mut scope = Scope::default();
-    let param = db.alloc_symbol(Symbol::Parameter {
-        type_id: builtins.bytes32,
-    });
+    let param = db.alloc_symbol(Symbol::Parameter(builtins.bytes32));
     scope.define_symbol("exponent".to_string(), param);
     let param_ref = db.alloc_hir(Hir::Reference(param));
     let hir_id = db.alloc_hir(Hir::PubkeyForExp(param_ref));
     let scope_id = db.alloc_scope(scope);
 
-    db.alloc_symbol(Symbol::Function {
+    db.alloc_symbol(Symbol::Function(Function {
         scope_id,
         hir_id,
         ty: FunctionType {
-            parameter_types: vec![builtins.bytes32],
+            param_types: vec![builtins.bytes32],
+            rest: Rest::Nil,
             return_type: builtins.public_key,
-            varargs: false,
         },
         inline: true,
-    })
+    }))
 }

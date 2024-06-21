@@ -75,10 +75,10 @@ fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
         let token = db.symbol_token(*symbol_id).unwrap();
         let kind = match db.symbol(*symbol_id).clone() {
             Symbol::Unknown => unreachable!(),
-            Symbol::Function { .. } => WarningKind::UnusedFunction(token.to_string()),
-            Symbol::Parameter { .. } => WarningKind::UnusedParameter(token.to_string()),
-            Symbol::LetBinding { .. } => WarningKind::UnusedLet(token.to_string()),
-            Symbol::ConstBinding { .. } => WarningKind::UnusedConst(token.to_string()),
+            Symbol::Function(..) => WarningKind::UnusedFunction(token.to_string()),
+            Symbol::Parameter(..) => WarningKind::UnusedParameter(token.to_string()),
+            Symbol::Let(..) => WarningKind::UnusedLet(token.to_string()),
+            Symbol::Const(..) => WarningKind::UnusedConst(token.to_string()),
         };
         db.warning(kind, token.text_range());
     }
@@ -90,9 +90,9 @@ fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
         let token = db.type_token(*type_id).unwrap();
         let kind = match db.ty_raw(*type_id) {
             Type::Alias(..) => WarningKind::UnusedTypeAlias(token.to_string()),
-            Type::Struct { .. } => WarningKind::UnusedStruct(token.to_string()),
-            Type::Enum { .. } => WarningKind::UnusedEnum(token.to_string()),
-            Type::EnumVariant { .. } => WarningKind::UnusedEnumVariant(token.to_string()),
+            Type::Struct(..) => WarningKind::UnusedStruct(token.to_string()),
+            Type::Enum(..) => WarningKind::UnusedEnum(token.to_string()),
+            Type::EnumVariant(..) => WarningKind::UnusedEnumVariant(token.to_string()),
             _ => continue,
         };
         db.warning(kind, token.text_range());

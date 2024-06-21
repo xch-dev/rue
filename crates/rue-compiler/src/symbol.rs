@@ -6,24 +6,10 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum Symbol {
     Unknown,
-    Function {
-        scope_id: ScopeId,
-        hir_id: HirId,
-        ty: FunctionType,
-        inline: bool,
-    },
-    Parameter {
-        type_id: TypeId,
-    },
-    LetBinding {
-        type_id: TypeId,
-        hir_id: HirId,
-    },
-    ConstBinding {
-        type_id: TypeId,
-        hir_id: HirId,
-        inline: bool,
-    },
+    Function(Function),
+    Parameter(TypeId),
+    Let(Let),
+    Const(Const),
 }
 
 impl Symbol {
@@ -34,23 +20,40 @@ impl Symbol {
     pub fn is_capturable(&self) -> bool {
         matches!(
             self,
-            Symbol::Function { inline: false, .. }
+            Symbol::Function(Function { inline: false, .. })
                 | Symbol::Parameter { .. }
-                | Symbol::LetBinding { .. }
-                | Symbol::ConstBinding { inline: false, .. }
+                | Symbol::Let { .. }
+                | Symbol::Const(Const { inline: false, .. })
         )
     }
 
     pub fn is_definition(&self) -> bool {
         matches!(
             self,
-            Symbol::Function { inline: false, .. }
-                | Symbol::LetBinding { .. }
-                | Symbol::ConstBinding { inline: false, .. }
+            Symbol::Function(Function { inline: false, .. })
+                | Symbol::Let { .. }
+                | Symbol::Const(Const { inline: false, .. })
         )
     }
+}
 
-    pub fn is_inline_function(&self) -> bool {
-        matches!(self, Symbol::Function { inline: true, .. })
-    }
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub scope_id: ScopeId,
+    pub hir_id: HirId,
+    pub ty: FunctionType,
+    pub inline: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Let {
+    pub type_id: TypeId,
+    pub hir_id: HirId,
+}
+
+#[derive(Debug, Clone)]
+pub struct Const {
+    pub type_id: TypeId,
+    pub hir_id: HirId,
+    pub inline: bool,
 }
