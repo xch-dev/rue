@@ -1271,8 +1271,8 @@ impl<'a> Compiler<'a> {
                 self.type_check(rhs.type_id, self.builtins.bool, text_range);
 
                 value.type_id = self.builtins.bool;
-                value.guards.extend(lhs.guards);
-                value.guards.extend(rhs.guards);
+
+                // TODO: Support type guards for `||`.
 
                 (BinOp::LogicalOr, lhs.hir_id, rhs.hir_id, self.builtins.bool)
             }
@@ -1351,7 +1351,7 @@ impl<'a> Compiler<'a> {
         hir_id: HirId,
         text_range: TextRange,
     ) -> Option<(Guard, HirId)> {
-        if self.db.compare_type(from, to) == Comparison::Equal {
+        if self.db.compare_type(from, to) <= Comparison::Assignable {
             self.db.warning(
                 WarningKind::RedundantTypeCheck(self.type_name(from)),
                 text_range,
