@@ -1,20 +1,25 @@
-enum Condition {}
+enum Condition {
+    AggSigMe = 50 {
+        public_key: PublicKey,
+        message: Bytes32,
+    }
+}
 
-// fun tree_hash(value: Any) -> Bytes32 {
-//     if value is Bytes {
-//         tree_hash_atom(value)
-//     } else {
-//         tree_hash_pair(tree_hash(value.first), tree_hash(value.rest))
-//     }
-// }
+fun tree_hash(value: Any) -> Bytes32 {
+    if value is Bytes {
+        tree_hash_atom(value)
+    } else {
+        tree_hash_pair(tree_hash(value.first), tree_hash(value.rest))
+    }
+}
 
-// inline fun tree_hash_atom(value: Bytes) -> Bytes32 {
-//     sha256(1 as Bytes + value)
-// }
+inline fun tree_hash_atom(value: Bytes) -> Bytes32 {
+    sha256(1 as Bytes + value)
+}
 
-// inline fun tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
-//     sha256(2 as Bytes + first + rest)
-// }
+inline fun tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
+    sha256(2 as Bytes + first + rest)
+}
 
 fun concat_lists(a: Condition[], b: Condition[]) -> Condition[] {
     if a is (Condition, Condition[]) {
@@ -43,9 +48,9 @@ fun check_signatures(
     indices: Int[],
     pos: Int,
     message: Bytes,
-) -> AggSigMe[] {
-    if pos == 0 || required == 0 {
-        return [];
+) -> Condition::AggSigMe[] {
+    if required == 0 {
+        return nil;
     }
 
     // TODO: Assume
@@ -61,6 +66,5 @@ fun check_signatures(
         message,
     };
 
-    let rest = check_signatures(public_keys.rest, required - 1, indices.rest, pos + 1, message);
-    [agg_sig, ...rest]
+    [agg_sig, ...check_signatures(public_keys.rest, required - 1, indices.rest, pos + 1, message)]
 }
