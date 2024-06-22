@@ -40,6 +40,9 @@ pub enum ParserErrorKind {
 
     #[error("unterminated block comment")]
     UnterminatedBlockComment,
+
+    #[error("missing digits in hex literal")]
+    MissingHexDigits,
 }
 
 /// Join a list of syntax kinds into a string, wrapped in backticks.

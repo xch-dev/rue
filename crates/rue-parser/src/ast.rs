@@ -60,7 +60,8 @@ ast_enum!(
     TypeAliasItem,
     ConstItem,
     StructItem,
-    EnumItem
+    EnumItem,
+    ImportItem,
 );
 ast_node!(FunctionItem);
 ast_node!(FunctionParam);
@@ -70,6 +71,9 @@ ast_node!(EnumItem);
 ast_node!(EnumVariant);
 ast_node!(ConstItem);
 ast_node!(StructField);
+ast_node!(ImportItem);
+ast_node!(ImportPath);
+ast_node!(ImportGroup);
 
 ast_node!(Block);
 ast_node!(Path);
@@ -121,12 +125,13 @@ ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
 ast_node!(OptionalType);
 
-ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt);
+ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt, AssumeStmt);
 ast_node!(LetStmt);
 ast_node!(IfStmt);
 ast_node!(ReturnStmt);
 ast_node!(RaiseStmt);
 ast_node!(AssertStmt);
+ast_node!(AssumeStmt);
 
 impl Root {
     pub fn items(&self) -> Vec<Item> {
@@ -155,6 +160,20 @@ impl FunctionItem {
 
     pub fn body(&self) -> Option<Block> {
         self.syntax().children().find_map(Block::cast)
+    }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
+    }
+
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Inline)
     }
 }
 
@@ -189,6 +208,13 @@ impl TypeAliasItem {
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
+    }
 }
 
 impl StructItem {
@@ -205,6 +231,13 @@ impl StructItem {
             .filter_map(StructField::cast)
             .collect()
     }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
+    }
 }
 
 impl StructField {
@@ -217,6 +250,13 @@ impl StructField {
 
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
+    }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
     }
 }
 
@@ -233,6 +273,13 @@ impl EnumItem {
             .children()
             .filter_map(EnumVariant::cast)
             .collect()
+    }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
     }
 }
 
@@ -273,6 +320,49 @@ impl ConstItem {
 
     pub fn expr(&self) -> Option<Expr> {
         self.syntax().children().filter_map(Expr::cast).last()
+    }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
+    }
+
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Inline)
+    }
+}
+
+impl ImportItem {
+    pub fn path(&self) -> Option<ImportPath> {
+        self.syntax().children().find_map(ImportPath::cast)
+    }
+}
+
+impl ImportPath {
+    pub fn idents(&self) -> Vec<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .collect()
+    }
+
+    pub fn group(&self) -> Option<ImportGroup> {
+        self.syntax().children().find_map(ImportGroup::cast)
+    }
+}
+
+impl ImportGroup {
+    pub fn paths(&self) -> Vec<ImportPath> {
+        self.syntax()
+            .children()
+            .filter_map(ImportPath::cast)
+            .collect()
     }
 }
 
@@ -350,6 +440,12 @@ impl AssertStmt {
     }
 }
 
+impl AssumeStmt {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+}
+
 impl InitializerExpr {
     pub fn path(&self) -> Option<Path> {
         self.syntax().children().find_map(Path::cast)
@@ -388,11 +484,13 @@ impl LiteralExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrefixOp {
     Not,
+    Neg,
 }
 
 fn prefix_op(kind: SyntaxKind) -> Option<PrefixOp> {
     match kind {
         SyntaxKind::Not => Some(PrefixOp::Not),
+        SyntaxKind::Minus => Some(PrefixOp::Neg),
         _ => None,
     }
 }
@@ -430,6 +528,8 @@ pub enum BinaryOp {
     GreaterThanEquals,
     Equals,
     NotEquals,
+    And,
+    Or,
 }
 
 fn binary_op(kind: SyntaxKind) -> Option<BinaryOp> {
@@ -445,6 +545,8 @@ fn binary_op(kind: SyntaxKind) -> Option<BinaryOp> {
         SyntaxKind::GreaterThanEquals => Some(BinaryOp::GreaterThanEquals),
         SyntaxKind::Equals => Some(BinaryOp::Equals),
         SyntaxKind::NotEquals => Some(BinaryOp::NotEquals),
+        SyntaxKind::And => Some(BinaryOp::And),
+        SyntaxKind::Or => Some(BinaryOp::Or),
         _ => None,
     }
 }

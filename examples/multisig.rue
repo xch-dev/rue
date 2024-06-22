@@ -1,0 +1,69 @@
+enum Condition {
+    AggSigMe = 50 {
+        public_key: PublicKey,
+        message: Bytes32,
+    }
+}
+
+fun tree_hash(value: Any) -> Bytes32 {
+    if value is Bytes {
+        tree_hash_atom(value)
+    } else {
+        tree_hash_pair(tree_hash(value.first), tree_hash(value.rest))
+    }
+}
+
+inline fun tree_hash_atom(value: Bytes) -> Bytes32 {
+    sha256(1 as Bytes + value)
+}
+
+inline fun tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
+    sha256(2 as Bytes + first + rest)
+}
+
+fun concat_lists(a: Condition[], b: Condition[]) -> Condition[] {
+    if a is (Condition, Condition[]) {
+        return [a.first, ...concat_lists(a.rest, b)];
+    }
+    if b is (Condition, Condition[]) {
+        return [b.first, ...concat_lists(a, b.rest)];
+    }
+    nil
+}
+
+fun main(
+    public_keys: PublicKey[],
+    required: Int,
+    indices: Int[],
+    conditions: Condition[],
+) -> Condition[] {
+    let message = tree_hash(conditions);
+    let agg_sigs = check_signatures(public_keys, required, indices, 0, message);
+    concat_lists(agg_sigs, conditions)
+}
+
+fun check_signatures(
+    public_keys: PublicKey[],
+    required: Int,
+    indices: Int[],
+    pos: Int,
+    message: Bytes,
+) -> Condition::AggSigMe[] {
+    if required == 0 {
+        return nil;
+    }
+
+    // TODO: Assume
+    assume !(public_keys is Nil) && !(indices is Nil);
+
+    if indices.first != pos {
+        return check_signatures(public_keys.rest, required, indices, pos + 1, message);
+    }
+
+    let agg_sig = Condition::AggSigMe {
+        public_key: public_keys.first,
+        message,
+    };
+
+    [agg_sig, ...check_signatures(public_keys.rest, required - 1, indices.rest, pos + 1, message)]
+}

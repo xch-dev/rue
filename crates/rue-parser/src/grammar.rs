@@ -1,3 +1,5 @@
+use rowan::Checkpoint;
+
 use crate::{parser::Parser, BinaryOp, SyntaxKind};
 
 pub fn root(p: &mut Parser) {
@@ -8,24 +10,45 @@ pub fn root(p: &mut Parser) {
     p.finish();
 }
 
+fn at_item(p: &mut Parser) -> bool {
+    p.at(SyntaxKind::Fun)
+        || p.at(SyntaxKind::Type)
+        || p.at(SyntaxKind::Struct)
+        || p.at(SyntaxKind::Enum)
+        || p.at(SyntaxKind::Const)
+        || p.at(SyntaxKind::Import)
+        || p.at(SyntaxKind::Export)
+        || p.at(SyntaxKind::Inline)
+}
+
 fn item(p: &mut Parser) {
+    let cp = p.checkpoint();
+    p.try_eat(SyntaxKind::Export);
+    let inline = p.try_eat(SyntaxKind::Inline);
+
     if p.at(SyntaxKind::Fun) {
-        function_item(p);
-    } else if p.at(SyntaxKind::Type) {
-        type_alias_item(p);
-    } else if p.at(SyntaxKind::Struct) {
-        struct_item(p);
-    } else if p.at(SyntaxKind::Enum) {
-        enum_item(p);
+        function_item(p, cp);
     } else if p.at(SyntaxKind::Const) {
-        const_item(p);
+        const_item(p, cp);
+    } else if !inline {
+        if p.at(SyntaxKind::Type) {
+            type_alias_item(p, cp);
+        } else if p.at(SyntaxKind::Struct) {
+            struct_item(p, cp);
+        } else if p.at(SyntaxKind::Enum) {
+            enum_item(p, cp);
+        } else if p.at(SyntaxKind::Import) {
+            import_item(p, cp);
+        } else {
+            p.error(&[]);
+        }
     } else {
         p.error(&[]);
     }
 }
 
-fn function_item(p: &mut Parser) {
-    p.start(SyntaxKind::FunctionItem);
+fn function_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::FunctionItem);
     p.expect(SyntaxKind::Fun);
     p.expect(SyntaxKind::Ident);
     function_params(p);
@@ -55,8 +78,8 @@ fn function_param(p: &mut Parser) {
     p.finish();
 }
 
-fn type_alias_item(p: &mut Parser) {
-    p.start(SyntaxKind::TypeAliasItem);
+fn type_alias_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::TypeAliasItem);
     p.expect(SyntaxKind::Type);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::Assign);
@@ -65,8 +88,8 @@ fn type_alias_item(p: &mut Parser) {
     p.finish();
 }
 
-fn struct_item(p: &mut Parser) {
-    p.start(SyntaxKind::StructItem);
+fn struct_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::StructItem);
     p.expect(SyntaxKind::Struct);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::OpenBrace);
@@ -88,8 +111,8 @@ fn struct_field(p: &mut Parser) {
     p.finish();
 }
 
-fn enum_item(p: &mut Parser) {
-    p.start(SyntaxKind::EnumItem);
+fn enum_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::EnumItem);
     p.expect(SyntaxKind::Enum);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::OpenBrace);
@@ -120,8 +143,8 @@ fn enum_variant(p: &mut Parser) {
     p.finish();
 }
 
-fn const_item(p: &mut Parser) {
-    p.start(SyntaxKind::ConstItem);
+fn const_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::ConstItem);
     p.expect(SyntaxKind::Const);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::Colon);
@@ -129,6 +152,44 @@ fn const_item(p: &mut Parser) {
     p.expect(SyntaxKind::Assign);
     expr(p);
     p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn import_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::ImportItem);
+    p.expect(SyntaxKind::Import);
+    import_path(p);
+    p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn import_path(p: &mut Parser) {
+    p.start(SyntaxKind::ImportPath);
+    p.expect(SyntaxKind::Ident);
+    while p.try_eat(SyntaxKind::PathSeparator) {
+        if p.at(SyntaxKind::Ident) {
+            p.expect(SyntaxKind::Ident);
+        } else if p.at(SyntaxKind::OpenBrace) {
+            import_group(p);
+            break;
+        } else {
+            p.error(&[]);
+            break;
+        }
+    }
+    p.finish();
+}
+
+fn import_group(p: &mut Parser) {
+    p.start(SyntaxKind::ImportGroup);
+    p.expect(SyntaxKind::OpenBrace);
+    while !p.at(SyntaxKind::CloseBrace) {
+        import_path(p);
+        if !p.try_eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::CloseBrace);
     p.finish();
 }
 
@@ -148,7 +209,9 @@ fn block(p: &mut Parser) {
             }
         } else if p.at(SyntaxKind::Assert) {
             assert_stmt(p);
-        } else if p.at(SyntaxKind::Fun) || p.at(SyntaxKind::Type) || p.at(SyntaxKind::Const) {
+        } else if p.at(SyntaxKind::Assume) {
+            assume_stmt(p);
+        } else if at_item(p) {
             item(p);
         } else {
             expr(p);
@@ -216,6 +279,14 @@ fn assert_stmt(p: &mut Parser) {
     p.finish();
 }
 
+fn assume_stmt(p: &mut Parser) {
+    p.start(SyntaxKind::AssumeStmt);
+    p.expect(SyntaxKind::Assume);
+    expr(p);
+    p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
 fn path(p: &mut Parser) {
     p.start(SyntaxKind::Path);
     p.expect(SyntaxKind::Ident);
@@ -227,14 +298,15 @@ fn path(p: &mut Parser) {
 
 fn binding_power(op: BinaryOp) -> (u8, u8) {
     match op {
+        BinaryOp::Or => (1, 2),
+        BinaryOp::And => (3, 4),
+        BinaryOp::Equals | BinaryOp::NotEquals => (5, 6),
         BinaryOp::LessThan
         | BinaryOp::GreaterThan
         | BinaryOp::LessThanEquals
-        | BinaryOp::GreaterThanEquals
-        | BinaryOp::Equals
-        | BinaryOp::NotEquals => (1, 2),
-        BinaryOp::Add | BinaryOp::Subtract => (3, 4),
-        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (5, 6),
+        | BinaryOp::GreaterThanEquals => (7, 8),
+        BinaryOp::Add | BinaryOp::Subtract => (9, 10),
+        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (11, 12),
     }
 }
 
@@ -245,17 +317,15 @@ fn expr(p: &mut Parser) {
 }
 
 fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializer: bool) {
-    if p.at(SyntaxKind::Not) {
-        p.start(SyntaxKind::PrefixExpr);
+    let checkpoint = p.checkpoint();
+
+    if p.at(SyntaxKind::Not) || p.at(SyntaxKind::Minus) {
+        p.start_at(checkpoint, SyntaxKind::PrefixExpr);
         p.bump();
         expr_binding_power(p, 255, allow_initializer);
         p.finish();
-        return;
-    }
-
-    let checkpoint = p.checkpoint();
-
-    if p.at(SyntaxKind::Int)
+    } else if p.at(SyntaxKind::Int)
+        || p.at(SyntaxKind::Hex)
         || p.at(SyntaxKind::String)
         || p.at(SyntaxKind::True)
         || p.at(SyntaxKind::False)
@@ -368,6 +438,10 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializ
             BinaryOp::Equals
         } else if p.at(SyntaxKind::NotEquals) {
             BinaryOp::NotEquals
+        } else if p.at(SyntaxKind::And) {
+            BinaryOp::And
+        } else if p.at(SyntaxKind::Or) {
+            BinaryOp::Or
         } else {
             return;
         };

@@ -80,6 +80,20 @@ impl<'a> Lexer<'a> {
                 '*' => self.block_comment(),
                 _ => TokenKind::Slash,
             },
+            '&' => match self.peek() {
+                '&' => {
+                    self.bump();
+                    TokenKind::And
+                }
+                _ => TokenKind::Unknown,
+            },
+            '|' => match self.peek() {
+                '|' => {
+                    self.bump();
+                    TokenKind::Or
+                }
+                _ => TokenKind::Unknown,
+            },
             '?' => TokenKind::Question,
             '.' => match self.peek() {
                 '.' if self.peek_nth(1) == '.' => {
@@ -98,13 +112,16 @@ impl<'a> Lexer<'a> {
             },
             ';' => TokenKind::Semicolon,
             c @ ('"' | '\'') => self.string(c),
-            c if c.is_ascii_digit() => self.integer(),
+            c @ '0'..='9' => self.numeric(c == '0'),
             'a'..='z' | 'A'..='Z' | '_' => {
                 while matches!(self.peek(), 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') {
                     self.bump();
                 }
                 match &self.source[start..self.pos] {
                     "fun" => TokenKind::Fun,
+                    "inline" => TokenKind::Inline,
+                    "import" => TokenKind::Import,
+                    "export" => TokenKind::Export,
                     "type" => TokenKind::Type,
                     "struct" => TokenKind::Struct,
                     "enum" => TokenKind::Enum,
@@ -115,6 +132,7 @@ impl<'a> Lexer<'a> {
                     "return" => TokenKind::Return,
                     "raise" => TokenKind::Raise,
                     "assert" => TokenKind::Assert,
+                    "assume" => TokenKind::Assume,
                     "nil" => TokenKind::Nil,
                     "true" => TokenKind::True,
                     "false" => TokenKind::False,
@@ -135,8 +153,27 @@ impl<'a> Lexer<'a> {
         Some(Token::new(kind, self.pos - start))
     }
 
-    fn integer(&mut self) -> TokenKind {
-        while self.peek().is_ascii_digit() || self.peek() == '_' {
+    fn numeric(&mut self, zero: bool) -> TokenKind {
+        if zero && matches!(self.peek(), 'x' | 'X') {
+            self.hex_literal()
+        } else {
+            self.int_literal()
+        }
+    }
+
+    fn hex_literal(&mut self) -> TokenKind {
+        self.bump();
+        let mut is_valid = false;
+        while self.peek().is_ascii_hexdigit() || self.peek() == '_' {
+            if self.bump().is_ascii_hexdigit() {
+                is_valid = true;
+            }
+        }
+        TokenKind::Hex { is_valid }
+    }
+
+    fn int_literal(&mut self) -> TokenKind {
+        while matches!(self.peek(), '0'..='9' | '_') {
             self.bump();
         }
         TokenKind::Int
@@ -236,9 +273,23 @@ mod tests {
     }
 
     #[test]
-    fn test_int() {
+    fn test_numeric() {
         check("0", &[TokenKind::Int]);
         check("42", &[TokenKind::Int]);
+        check("0xFACE", &[TokenKind::Hex { is_valid: true }]);
+        check("0xface", &[TokenKind::Hex { is_valid: true }]);
+        check("0xFaCe", &[TokenKind::Hex { is_valid: true }]);
+        check("0xF4c3", &[TokenKind::Hex { is_valid: true }]);
+        check("0xf", &[TokenKind::Hex { is_valid: true }]);
+        check("0x9", &[TokenKind::Hex { is_valid: true }]);
+        check("0x0", &[TokenKind::Hex { is_valid: true }]);
+        check(
+            "0x9249104738faceecabcdef0123456789",
+            &[TokenKind::Hex { is_valid: true }],
+        );
+        check("0x", &[TokenKind::Hex { is_valid: false }]);
+        check("0x_", &[TokenKind::Hex { is_valid: false }]);
+        check("0x_F_A_C_E", &[TokenKind::Hex { is_valid: true }]);
     }
 
     #[test]
@@ -272,16 +323,21 @@ mod tests {
     #[test]
     fn test_keyword() {
         check("fun", &[TokenKind::Fun]);
+        check("inline", &[TokenKind::Inline]);
+        check("import", &[TokenKind::Import]);
+        check("export", &[TokenKind::Export]);
         check("type", &[TokenKind::Type]);
         check("struct", &[TokenKind::Struct]);
         check("enum", &[TokenKind::Enum]);
         check("let", &[TokenKind::Let]);
         check("const", &[TokenKind::Const]);
+
         check("if", &[TokenKind::If]);
         check("else", &[TokenKind::Else]);
         check("return", &[TokenKind::Return]);
         check("raise", &[TokenKind::Raise]);
         check("assert", &[TokenKind::Assert]);
+        check("assume", &[TokenKind::Assume]);
         check("true", &[TokenKind::True]);
         check("false", &[TokenKind::False]);
         check("nil", &[TokenKind::Nil]);
@@ -332,8 +388,10 @@ mod tests {
     }
 
     #[test]
-    fn test_other_ops() {
+    fn test_logical_ops() {
         check("!", &[TokenKind::Not]);
+        check("&&", &[TokenKind::And]);
+        check("||", &[TokenKind::Or]);
     }
 
     #[test]

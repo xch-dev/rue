@@ -1,0 +1,7 @@
+fun tree_hash(value: Any) -> Bytes32 {
+    if value is Bytes {
+        sha256(1 as Bytes + value)
+    } else {
+        sha256(2 as Bytes + tree_hash(value.first) + tree_hash(value.rest))
+    }
+}

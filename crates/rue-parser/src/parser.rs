@@ -165,6 +165,15 @@ fn convert_tokens<'a>(
         let kind = match token.kind() {
             TokenKind::Ident => SyntaxKind::Ident,
             TokenKind::Int => SyntaxKind::Int,
+            TokenKind::Hex { is_valid } => {
+                if !is_valid {
+                    errors.push(ParserError::new(
+                        ParserErrorKind::MissingHexDigits,
+                        pos..pos + token.len(),
+                    ));
+                }
+                SyntaxKind::Hex
+            }
             TokenKind::String { is_terminated } => {
                 if !is_terminated {
                     errors.push(ParserError::new(
@@ -183,16 +192,21 @@ fn convert_tokens<'a>(
             TokenKind::CloseBrace => SyntaxKind::CloseBrace,
 
             TokenKind::Fun => SyntaxKind::Fun,
+            TokenKind::Inline => SyntaxKind::Inline,
+            TokenKind::Import => SyntaxKind::Import,
+            TokenKind::Export => SyntaxKind::Export,
             TokenKind::Type => SyntaxKind::Type,
             TokenKind::Struct => SyntaxKind::Struct,
             TokenKind::Enum => SyntaxKind::Enum,
             TokenKind::Let => SyntaxKind::Let,
             TokenKind::Const => SyntaxKind::Const,
+
             TokenKind::If => SyntaxKind::If,
             TokenKind::Else => SyntaxKind::Else,
             TokenKind::Return => SyntaxKind::Return,
             TokenKind::Raise => SyntaxKind::Raise,
             TokenKind::Assert => SyntaxKind::Assert,
+            TokenKind::Assume => SyntaxKind::Assume,
             TokenKind::Nil => SyntaxKind::Nil,
             TokenKind::True => SyntaxKind::True,
             TokenKind::False => SyntaxKind::False,
@@ -221,6 +235,9 @@ fn convert_tokens<'a>(
             TokenKind::Equals => SyntaxKind::Equals,
             TokenKind::NotEquals => SyntaxKind::NotEquals,
             TokenKind::Assign => SyntaxKind::Assign,
+
+            TokenKind::And => SyntaxKind::And,
+            TokenKind::Or => SyntaxKind::Or,
 
             TokenKind::Question => SyntaxKind::Question,
 

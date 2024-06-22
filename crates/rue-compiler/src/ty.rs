@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Not};
 
 use indexmap::IndexMap;
 
@@ -17,7 +17,7 @@ pub enum Type {
     Bytes,
     Bytes32,
     PublicKey,
-    Pair(TypeId, TypeId),
+    Pair(PairType),
     List(TypeId),
     Struct(StructType),
     Enum(EnumType),
@@ -28,155 +28,73 @@ pub enum Type {
 }
 
 #[derive(Debug, Clone)]
-pub struct StructType {
-    fields: IndexMap<String, TypeId>,
+pub struct PairType {
+    pub first: TypeId,
+    pub rest: TypeId,
 }
 
-impl StructType {
-    pub fn new(fields: IndexMap<String, TypeId>) -> Self {
-        Self { fields }
-    }
-
-    pub fn fields(&self) -> &IndexMap<String, TypeId> {
-        &self.fields
-    }
+#[derive(Debug, Clone)]
+pub struct StructType {
+    pub fields: IndexMap<String, TypeId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct EnumType {
-    variants: IndexMap<String, TypeId>,
-}
-
-impl EnumType {
-    pub fn new(variants: IndexMap<String, TypeId>) -> Self {
-        Self { variants }
-    }
-
-    pub fn variants(&self) -> &IndexMap<String, TypeId> {
-        &self.variants
-    }
+    pub variants: IndexMap<String, TypeId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
-    name: String,
-    enum_type: TypeId,
-    fields: IndexMap<String, TypeId>,
-    discriminant: HirId,
-}
-
-impl EnumVariant {
-    pub fn new(
-        name: String,
-        enum_type: TypeId,
-        fields: IndexMap<String, TypeId>,
-        discriminant: HirId,
-    ) -> Self {
-        Self {
-            name,
-            enum_type,
-            fields,
-            discriminant,
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn enum_type(&self) -> TypeId {
-        self.enum_type
-    }
-
-    pub fn fields(&self) -> &IndexMap<String, TypeId> {
-        &self.fields
-    }
-
-    pub fn discriminant(&self) -> HirId {
-        self.discriminant
-    }
+    pub name: String,
+    pub enum_type: TypeId,
+    pub fields: IndexMap<String, TypeId>,
+    pub discriminant: HirId,
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionType {
-    parameter_types: Vec<TypeId>,
-    return_type: TypeId,
-    varargs: bool,
+    pub param_types: Vec<TypeId>,
+    pub rest: Rest,
+    pub return_type: TypeId,
 }
 
-impl FunctionType {
-    pub fn new(parameter_types: Vec<TypeId>, return_type: TypeId, varargs: bool) -> Self {
-        Self {
-            parameter_types,
-            return_type,
-            varargs,
-        }
-    }
-
-    pub fn parameter_types(&self) -> &[TypeId] {
-        &self.parameter_types
-    }
-
-    pub fn return_type(&self) -> TypeId {
-        self.return_type
-    }
-
-    pub fn varargs(&self) -> bool {
-        self.varargs
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rest {
+    Nil,
+    Parameter,
 }
 
 #[derive(Debug, Clone)]
 pub struct Value {
-    hir: HirId,
-    ty: TypeId,
-    guards: HashMap<SymbolId, Guard>,
+    pub hir_id: HirId,
+    pub type_id: TypeId,
+    pub guards: Guards,
 }
 
 impl Value {
-    pub fn typed(hir: HirId, ty: TypeId) -> Self {
+    pub fn new(hir_id: HirId, type_id: TypeId) -> Self {
         Self {
-            hir,
-            ty,
+            hir_id,
+            type_id,
             guards: HashMap::new(),
         }
     }
 
-    pub fn hir(&self) -> HirId {
-        self.hir
-    }
-
-    pub fn ty(&self) -> TypeId {
-        self.ty
-    }
-
-    pub fn guard(&mut self, symbol: SymbolId, guard: Guard) {
-        self.guards.insert(symbol, guard);
-    }
-
-    pub fn guards(&self) -> &HashMap<SymbolId, Guard> {
-        &self.guards
-    }
-
     pub fn then_guards(&self) -> HashMap<SymbolId, TypeId> {
-        self.guards
-            .iter()
-            .map(|(k, v)| (*k, v.then_type()))
-            .collect()
+        self.guards.iter().map(|(k, v)| (*k, v.then_type)).collect()
     }
 
     pub fn else_guards(&self) -> HashMap<SymbolId, TypeId> {
-        self.guards
-            .iter()
-            .map(|(k, v)| (*k, v.else_type()))
-            .collect()
+        self.guards.iter().map(|(k, v)| (*k, v.else_type)).collect()
     }
 }
 
+pub type Guards = HashMap<SymbolId, Guard>;
+
 #[derive(Debug, Clone)]
 pub struct Guard {
-    then_type: TypeId,
-    else_type: TypeId,
+    pub then_type: TypeId,
+    pub else_type: TypeId,
 }
 
 impl Guard {
@@ -186,16 +104,12 @@ impl Guard {
             else_type,
         }
     }
+}
 
-    pub fn then_type(&self) -> TypeId {
-        self.then_type
-    }
+impl Not for Guard {
+    type Output = Self;
 
-    pub fn else_type(&self) -> TypeId {
-        self.else_type
-    }
-
-    pub fn to_reversed(&self) -> Self {
+    fn not(self) -> Self::Output {
         Self {
             then_type: self.else_type,
             else_type: self.then_type,

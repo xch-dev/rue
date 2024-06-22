@@ -1,0 +1,13 @@
+fun main() -> Bytes {
+    0x8b1651043cbbeb0e94d3db3ac81462a1b9c38706c165ac61c66fb54b4d448fc9
+        + bytes32_literal()
+        + public_key_literal() as Bytes
+}
+
+fun bytes32_literal() -> Bytes32 {
+    0xc7f1b5ae1edc940f18cd1581597a50f48f44a5e5226a23570fea78cdc135707d
+}
+
+fun public_key_literal() -> PublicKey {
+    0xff02ffff01ff06ffff14ffff01827d94ffff01298080ff0180ff02ffff01ff06ffff14ffff01827d94ffff0000000000
+}

@@ -1,29 +1,26 @@
-#![warn(clippy::needless_pass_by_ref_mut)]
-
-use clvmr::{Allocator, NodePtr};
-use codegen::Codegen;
-use dependency_graph::GraphTraversal;
-use lowerer::Lowerer;
-use optimizer::Optimizer;
-use rue_parser::Root;
-
 mod codegen;
+mod compiler;
 mod database;
-mod dependency_graph;
 mod error;
 mod hir;
 mod lir;
-mod lowerer;
 mod optimizer;
 mod scope;
 mod symbol;
-mod symbol_table;
 mod ty;
+
+use clvmr::{Allocator, NodePtr};
+use codegen::Codegen;
+use compiler::Compiler;
+use optimizer::{GraphTraversal, Optimizer};
+use rowan::TextRange;
+use rue_parser::Root;
+use scope::Scope;
+use symbol::Symbol;
+use ty::Type;
 
 pub use database::*;
 pub use error::*;
-
-use scope::Scope;
 
 pub struct Output {
     diagnostics: Vec<Diagnostic>,
@@ -41,41 +38,77 @@ impl Output {
 }
 
 pub fn analyze(root: Root) -> Vec<Diagnostic> {
-    let mut database = Database::default();
-    precompile(&mut database, root).0
+    let mut db = Database::default();
+    precompile(&mut db, root);
+    db.diagnostics().to_vec()
 }
 
-fn precompile(database: &mut Database, root: Root) -> (Vec<Diagnostic>, Option<LirId>) {
-    let scope_id = database.alloc_scope(Scope::default());
+fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
+    let root_scope_id = db.alloc_scope(Scope::default());
 
-    let mut lowerer = Lowerer::new(database);
-    lowerer.compile_root(root, scope_id);
-    let (sym, mut diagnostics) = lowerer.finish();
+    let mut compiler = Compiler::new(db);
 
-    let Some(main_id) = database.scope_mut(scope_id).symbol("main") else {
-        diagnostics.push(Diagnostic::new(
-            DiagnosticKind::Error(ErrorKind::MissingMain),
-            0..0,
-        ));
+    let declarations = compiler.declare_root(root.clone(), root_scope_id);
+    compiler.compile_root(root, root_scope_id, declarations);
 
-        return (diagnostics, None);
+    let symbol_table = compiler.finish();
+
+    log::debug!("Symbol table: {:?}", &symbol_table);
+
+    let Some(main_symbol_id) = db.scope_mut(root_scope_id).symbol("main") else {
+        db.error(ErrorKind::MissingMain, TextRange::new(0.into(), 0.into()));
+        return None;
     };
 
-    let traversal = GraphTraversal::new(database);
-    let graph = traversal.build_graph(main_id);
-    let mut optimizer = Optimizer::new(database, &sym, graph);
-    let lir_id = optimizer.opt_main(scope_id, main_id);
-    diagnostics.extend(optimizer.finish());
+    let traversal = GraphTraversal::new(db);
+    let dependency_graph = traversal.build_graph(&[main_symbol_id]);
 
-    (diagnostics, Some(lir_id))
+    log::info!("Dependency graph: {:?}", &dependency_graph);
+
+    let unused =
+        symbol_table.calculate_unused(db, &dependency_graph, root_scope_id, main_symbol_id);
+
+    for symbol_id in &unused.symbol_ids {
+        if unused.exempt_symbols.contains(symbol_id) {
+            continue;
+        }
+        let token = db.symbol_token(*symbol_id).unwrap();
+        let kind = match db.symbol(*symbol_id).clone() {
+            Symbol::Unknown => unreachable!(),
+            Symbol::Function(..) => WarningKind::UnusedFunction(token.to_string()),
+            Symbol::Parameter(..) => WarningKind::UnusedParameter(token.to_string()),
+            Symbol::Let(..) => WarningKind::UnusedLet(token.to_string()),
+            Symbol::Const(..) => WarningKind::UnusedConst(token.to_string()),
+        };
+        db.warning(kind, token.text_range());
+    }
+
+    for type_id in &unused.type_ids {
+        if unused.exempt_types.contains(type_id) {
+            continue;
+        }
+        let token = db.type_token(*type_id).unwrap();
+        let kind = match db.ty_raw(*type_id) {
+            Type::Alias(..) => WarningKind::UnusedTypeAlias(token.to_string()),
+            Type::Struct(..) => WarningKind::UnusedStruct(token.to_string()),
+            Type::Enum(..) => WarningKind::UnusedEnum(token.to_string()),
+            Type::EnumVariant(..) => WarningKind::UnusedEnumVariant(token.to_string()),
+            _ => continue,
+        };
+        db.warning(kind, token.text_range());
+    }
+
+    let mut optimizer = Optimizer::new(db, dependency_graph);
+    Some(optimizer.opt_main(main_symbol_id))
 }
 
 pub fn compile(allocator: &mut Allocator, root: Root, parsing_succeeded: bool) -> Output {
-    let mut database = Database::default();
-    let (diagnostics, lir_id) = precompile(&mut database, root);
+    let mut db = Database::default();
+    let lir_id = precompile(&mut db, root);
+    let diagnostics = db.diagnostics().to_vec();
 
     let node_ptr = if !diagnostics.iter().any(Diagnostic::is_error) && parsing_succeeded {
-        let mut codegen = Codegen::new(&mut database, allocator);
+        let mut codegen = Codegen::new(&mut db, allocator);
         codegen.gen_lir(lir_id.unwrap())
     } else {
         NodePtr::NIL

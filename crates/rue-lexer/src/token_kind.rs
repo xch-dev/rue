@@ -2,6 +2,7 @@
 pub enum TokenKind {
     Ident,
     Int,
+    Hex { is_valid: bool },
     String { is_terminated: bool },
 
     OpenParen,
@@ -12,16 +13,21 @@ pub enum TokenKind {
     CloseBrace,
 
     Fun,
+    Inline,
+    Import,
+    Export,
     Type,
     Struct,
     Enum,
     Let,
     Const,
+
     If,
     Else,
     Return,
     Raise,
     Assert,
+    Assume,
     Nil,
     True,
     False,
@@ -52,8 +58,20 @@ pub enum TokenKind {
     NotEquals,
     Assign,
 
+    And,
+    Or,
+
     Whitespace,
     LineComment,
     BlockComment { is_terminated: bool },
     Unknown,
+}
+
+impl TokenKind {
+    pub fn is_trivia(self) -> bool {
+        matches!(
+            self,
+            TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment { .. }
+        )
+    }
 }

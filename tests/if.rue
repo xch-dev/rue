@@ -1,0 +1,7 @@
+fun main() -> Int {
+    if true {
+        42
+    } else {
+        69
+    }
+}

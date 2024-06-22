@@ -1,0 +1,44 @@
+{
+  "sidebar_items": [
+    {
+      "label": "Getting Started",
+      "items": [
+        {
+          "label": "Introduction",
+          "uri": "",
+          "content": "introduction.md"
+        },
+        {
+          "label": "Getting Started",
+          "uri": "getting-started",
+          "content": "getting_started.md"
+        }
+      ]
+    },
+    {
+      "label": "Operators",
+      "uri": "operators",
+      "content": "operators.md"
+    },
+    {
+      "label": "Types",
+      "uri": "types",
+      "content": "types.md"
+    },
+    {
+      "label": "Structs",
+      "uri": "structs",
+      "content": "structs.md"
+    },
+    {
+      "label": "Enums",
+      "uri": "enums",
+      "content": "enums.md"
+    },
+    {
+      "label": "Compiler Design",
+      "uri": "compiler-design",
+      "content": "compiler_design.md"
+    }
+  ]
+}

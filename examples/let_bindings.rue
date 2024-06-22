@@ -1,9 +1,0 @@
-fun main(x: Int, y: Int) -> Int {
-    let added = x + y;
-    let multiplied = x * y;
-    square(multiplied / added)
-}
-
-fun square(num: Int) -> Int {
-    num * num
-}

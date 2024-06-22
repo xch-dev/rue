@@ -1,3 +1,26 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[[workspace.metadata.leptos]]
+name = "rue-web"
+bin-package = "rue-web"
+lib-package = "rue-web"
+site-root = "target/site"
+assets-dir = "crates/rue-web/public"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+browserquery = "defaults"
+env = "DEV"
+bin-features = ["ssr"]
+lib-features = ["hydrate"]
+lib-profile-release = "wasm-release"
+style-file = "crates/rue-web/style/output.css"
+watch-additional-files = ["crates/rue-web/docs", "crates/rue-web/docs.json"]
