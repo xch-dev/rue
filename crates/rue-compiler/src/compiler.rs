@@ -1846,8 +1846,9 @@ impl<'a> Compiler<'a> {
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             self.symbol_type(symbol_id)
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
-                    Symbol::Unknown | Symbol::InlineFunction(..) => unreachable!(),
-                    Symbol::Function(Function { ty, .. }) => {
+                    Symbol::Unknown => unreachable!(),
+                    Symbol::Function(Function { ty, .. })
+                    | Symbol::InlineFunction(Function { ty, .. }) => {
                         self.db.alloc_type(Type::Function(ty.clone()))
                     }
                     Symbol::Parameter(type_id)

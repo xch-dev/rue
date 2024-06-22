@@ -194,3 +194,11 @@ cost = 43743
 input = "()"
 output = "0x013077775800"
 hash = "291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8"
+
+[invalid_references]
+parser_errors = []
+compiler_errors = [
+    "inline functions cannot be referenced without being called at 2:22",
+    "unused let binding `inline_fun` at 2:9",
+    "unused inline function `some` at 6:12",
+]

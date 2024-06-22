@@ -1,5 +1,5 @@
 fun main() -> Nil {
-    let value = some;
+    let inline_fun = some;
     nil
 }
 
