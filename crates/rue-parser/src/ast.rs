@@ -125,12 +125,13 @@ ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
 ast_node!(OptionalType);
 
-ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt);
+ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt, AssumeStmt);
 ast_node!(LetStmt);
 ast_node!(IfStmt);
 ast_node!(ReturnStmt);
 ast_node!(RaiseStmt);
 ast_node!(AssertStmt);
+ast_node!(AssumeStmt);
 
 impl Root {
     pub fn items(&self) -> Vec<Item> {
@@ -434,6 +435,12 @@ impl RaiseStmt {
 }
 
 impl AssertStmt {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+}
+
+impl AssumeStmt {
     pub fn expr(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
     }

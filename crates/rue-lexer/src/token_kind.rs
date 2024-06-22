@@ -27,6 +27,7 @@ pub enum TokenKind {
     Return,
     Raise,
     Assert,
+    Assume,
     Nil,
     True,
     False,

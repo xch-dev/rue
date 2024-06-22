@@ -308,6 +308,7 @@ fn Rue(source: &'static str) -> impl IntoView {
             | TokenKind::Return
             | TokenKind::Raise
             | TokenKind::Assert
+            | TokenKind::Assume
             | TokenKind::As
             | TokenKind::Is => class = "text-purple-700 dark:text-purple-400",
             TokenKind::Nil | TokenKind::True | TokenKind::False => {

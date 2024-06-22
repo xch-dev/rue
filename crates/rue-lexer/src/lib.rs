@@ -132,6 +132,7 @@ impl<'a> Lexer<'a> {
                     "return" => TokenKind::Return,
                     "raise" => TokenKind::Raise,
                     "assert" => TokenKind::Assert,
+                    "assume" => TokenKind::Assume,
                     "nil" => TokenKind::Nil,
                     "true" => TokenKind::True,
                     "false" => TokenKind::False,
@@ -336,6 +337,7 @@ mod tests {
         check("return", &[TokenKind::Return]);
         check("raise", &[TokenKind::Raise]);
         check("assert", &[TokenKind::Assert]);
+        check("assume", &[TokenKind::Assume]);
         check("true", &[TokenKind::True]);
         check("false", &[TokenKind::False]);
         check("nil", &[TokenKind::Nil]);
@@ -386,8 +388,10 @@ mod tests {
     }
 
     #[test]
-    fn test_other_ops() {
+    fn test_logical_ops() {
         check("!", &[TokenKind::Not]);
+        check("&&", &[TokenKind::And]);
+        check("||", &[TokenKind::Or]);
     }
 
     #[test]

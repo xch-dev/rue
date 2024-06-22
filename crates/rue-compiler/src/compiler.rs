@@ -589,6 +589,7 @@ impl<'a> Compiler<'a> {
             Let(ScopeId),
             If(HirId, HirId),
             Return(Value),
+            Assume,
         }
 
         let mut statements = Vec::new();
@@ -669,6 +670,23 @@ impl<'a> Compiler<'a> {
                     // We lower this down to an inverted if statement.
                     statements.push(Statement::If(not_condition, raise))
                 }
+                Stmt::AssumeStmt(assume_stmt) => {
+                    // Compile the expression.
+                    let expr = assume_stmt
+                        .expr()
+                        .map(|expr| self.compile_expr(expr, Some(self.builtins.bool)))
+                        .unwrap_or_else(|| self.unknown());
+
+                    // Make sure that the condition is a boolean.
+                    self.type_check(
+                        expr.type_id,
+                        self.builtins.bool,
+                        assume_stmt.syntax().text_range(),
+                    );
+
+                    self.type_guard_stack.push(expr.then_guards());
+                    statements.push(Statement::Assume)
+                }
             }
         }
 
@@ -711,6 +729,9 @@ impl<'a> Compiler<'a> {
                         }),
                         body.type_id,
                     );
+                }
+                Statement::Assume => {
+                    self.type_guard_stack.pop().unwrap();
                 }
             }
         }

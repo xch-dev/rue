@@ -209,6 +209,8 @@ fn block(p: &mut Parser) {
             }
         } else if p.at(SyntaxKind::Assert) {
             assert_stmt(p);
+        } else if p.at(SyntaxKind::Assume) {
+            assume_stmt(p);
         } else if at_item(p) {
             item(p);
         } else {
@@ -272,6 +274,14 @@ fn raise_stmt(p: &mut Parser) {
 fn assert_stmt(p: &mut Parser) {
     p.start(SyntaxKind::AssertStmt);
     p.expect(SyntaxKind::Assert);
+    expr(p);
+    p.expect(SyntaxKind::Semicolon);
+    p.finish();
+}
+
+fn assume_stmt(p: &mut Parser) {
+    p.start(SyntaxKind::AssumeStmt);
+    p.expect(SyntaxKind::Assume);
     expr(p);
     p.expect(SyntaxKind::Semicolon);
     p.finish();

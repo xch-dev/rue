@@ -54,8 +54,8 @@ fun check_signatures(
     }
 
     // TODO: Assume
-    assert !(public_keys is Nil);
-    assert !(indices is Nil);
+    assume !(public_keys is Nil);
+    assume !(indices is Nil);
 
     if indices.first != pos {
         return check_signatures(public_keys.rest, required, indices, pos + 1, message);
