@@ -9,7 +9,7 @@ use crate::{
     Database, EnvironmentId, HirId, ScopeId, SymbolId,
 };
 
-use super::environment::Environment;
+use super::Environment;
 
 /// Responsible for converting the compiler's `Scope` objects to the lower level `Environment`.
 /// It does this by determining which scopes depend on each other,
@@ -63,13 +63,19 @@ impl<'a> GraphTraversal<'a> {
         self.graph
     }
 
+    /// Resolves a reference by capturing the symbol if it's not defined in the current scope.
+    /// If it's not capturable (for example, an inline constant), it does not get captured.
+    /// When captured, it will be propogated to each of the scopes for which this scope depends on.
+    /// This is done to make sure that somewhere in the environment chain, the symbol is actually defined.
+    /// For inline functions, for example, it's possible that multiple scopes will need to capture the same symbol.
     fn propagate_capture(
         &mut self,
         scope_id: ScopeId,
         symbol_id: SymbolId,
         visited: &mut HashSet<ScopeId>,
     ) {
-        // Prevent infinite recursion.
+        // This is done to prevent stack overflow errors.
+        // If a scope has already been visited, we don't need to visit it again.
         if !visited.insert(scope_id) {
             return;
         }
@@ -78,19 +84,30 @@ impl<'a> GraphTraversal<'a> {
         let is_local = self.db.scope(scope_id).is_local(symbol_id);
 
         if is_local && symbol.is_definition() {
+            // If the symbol was originally defined in the current scope,
+            // we can mark it as defined in the current environment too.
+            // Now we don't need to capture it any further, since we're at the origin.
             self.db.env_mut(self.graph.env[&scope_id]).define(symbol_id);
         } else if !is_local && symbol.is_capturable() {
+            // Otherwise, the symbol must be captured if possible.
             self.db
                 .env_mut(self.graph.env[&scope_id])
                 .capture(symbol_id);
 
+            // Propogate the capture to each of the scopes we depend on.
             for dependent in self.edges[&scope_id].clone() {
                 self.propagate_capture(dependent, symbol_id, visited);
             }
         }
     }
 
+    /// TODO: This function will eventually be phased out in favor of a more general solution.
+    /// Everything that gets exported (or `main`) is considered an entrypoint.
+    /// Entrypoints are the starting point for the traversal of the dependency graph.
+    /// Everything else is considered unused if it isn't reached by an entrypoint.
     fn visit_entrypoint(&mut self, symbol_id: SymbolId) {
+        // Currently this only supports functions and inline functions.
+        // This is not ideal.
         let Symbol::Function(Function {
             scope_id, hir_id, ..
         }) = self.db.symbol(symbol_id).clone()
@@ -101,12 +118,18 @@ impl<'a> GraphTraversal<'a> {
         self.visit_hir(scope_id, hir_id, &mut HashSet::new());
     }
 
+    /// Visits a HIR node and all of its children.
+    /// We assume that all references are appropriately included within the HIR.
+    /// Otherwise, symbols will be considered unused.
+    /// Perhaps this can be improved later, but this is sufficient for most cases.
     fn visit_hir(
         &mut self,
         scope_id: ScopeId,
         hir_id: HirId,
         visited: &mut HashSet<(ScopeId, HirId)>,
     ) {
+        // Don't revisit this specific combination of scope and HIR.
+        // This prevents stack overflow errors for some edge cases.
         if !visited.insert((scope_id, hir_id)) {
             return;
         }
@@ -114,7 +137,11 @@ impl<'a> GraphTraversal<'a> {
         match self.db.hir(hir_id).clone() {
             // We can't rely on files being valid, so we ignore unknown HIR.
             Hir::Unknown => {}
+
+            // An atom doesn't depend on any other HIR nodes.
             Hir::Atom(_bytes) => {}
+
+            // These operators each depend on a single child HIR node.
             Hir::PubkeyForExp(hir_id) => self.visit_hir(scope_id, hir_id, visited),
             Hir::Sha256(hir_id) => self.visit_hir(scope_id, hir_id, visited),
             Hir::Strlen(hir_id) => self.visit_hir(scope_id, hir_id, visited),
@@ -122,6 +149,9 @@ impl<'a> GraphTraversal<'a> {
             Hir::Rest(hir_id) => self.visit_hir(scope_id, hir_id, visited),
             Hir::Not(hir_id) => self.visit_hir(scope_id, hir_id, visited),
             Hir::IsCons(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+
+            // These depend on multiple HIR nodes, in order.
+            // This ensures that every part of the HIR is visited.
             Hir::Raise(hir_id) => {
                 if let Some(hir_id) = hir_id {
                     self.visit_hir(scope_id, hir_id, visited);
@@ -150,15 +180,21 @@ impl<'a> GraphTraversal<'a> {
                 self.visit_hir(scope_id, lhs, visited);
                 self.visit_hir(scope_id, rhs, visited);
             }
+
+            // A definition consists of a new scope and an HIR node for the rest of the body.
+            // TODO: Should this add the scope id to the graph?
             Hir::Definition {
                 hir_id, scope_id, ..
-            } => {
-                self.visit_hir(scope_id, hir_id, visited);
-            }
+            } => self.visit_hir(scope_id, hir_id, visited),
+
+            // Resolves a reference to a symbol. This doesn't have any direct child HIR nodes.
             Hir::Reference(symbol_id) => self.visit_reference(scope_id, symbol_id, visited),
         }
     }
 
+    /// Resolves a reference to a symbol and increments a counter tracking usages.
+    /// Because we don't want to define or capture symbols which are never used,
+    /// this has been deferred until now.
     fn visit_reference(
         &mut self,
         scope_id: ScopeId,
@@ -184,15 +220,17 @@ impl<'a> GraphTraversal<'a> {
                 )
             }
 
+            // TODO: Should these be visited in a different scope if they aren't inline?
             Symbol::Let(Let { hir_id, .. }) => self.visit_hir(scope_id, hir_id, visited),
             Symbol::Const(Const { hir_id, .. }) => self.visit_hir(scope_id, hir_id, visited),
 
             // Functions are visited in the scope in which they are defined.
+            // TODO: For inline functions, should this be visited in the current scope?
             Symbol::Function(fun) => self.visit_hir(fun.scope_id, fun.hir_id, visited),
 
             // Parameters don't need to be visited, since currently
             // they are just a reference to the environment.
-            Symbol::Parameter { .. } => {}
+            Symbol::Parameter(..) => {}
         }
     }
 
