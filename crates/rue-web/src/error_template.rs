@@ -2,7 +2,7 @@ use http::status::StatusCode;
 use leptos::*;
 use thiserror::Error;
 
-#[derive(Clone, Debug, Error)]
+#[derive(Debug, Clone, Copy, Error)]
 pub enum AppError {
     #[error("Not Found")]
     NotFound,

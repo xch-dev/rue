@@ -14,7 +14,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a str, tokens: &[Token]) -> Self {
+    pub(crate) fn new(source: &'a str, tokens: &[Token]) -> Self {
         let mut errors = Vec::new();
         let items = convert_tokens(&mut errors, source, tokens);
 

@@ -16,7 +16,7 @@ use crate::{
     DiagnosticKind, ErrorKind, WarningKind,
 };
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Database {
     diagnostics: Vec<Diagnostic>,
     scopes: Arena<Scope>,

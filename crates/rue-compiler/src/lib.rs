@@ -22,6 +22,7 @@ use ty::Type;
 pub use database::*;
 pub use error::*;
 
+#[derive(Debug)]
 pub struct Output {
     diagnostics: Vec<Diagnostic>,
     node_ptr: NodePtr,

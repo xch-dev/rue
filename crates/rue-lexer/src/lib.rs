@@ -6,6 +6,7 @@ use std::str::Chars;
 pub use token::*;
 pub use token_kind::*;
 
+#[derive(Debug, Clone)]
 pub struct Lexer<'a> {
     source: &'a str,
     chars: Chars<'a>,

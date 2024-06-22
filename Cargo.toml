@@ -2,6 +2,24 @@
 resolver = "2"
 members = ["crates/*"]
 
+[workspace.lints.rust]
+unsafe_code = "deny"
+rust_2018_idioms = "deny"
+rust_2021_compatibility = "deny"
+future_incompatible = "deny"
+non_ascii_idents = "deny"
+nonstandard_style = "deny"
+unused_extern_crates = "deny"
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+unreachable_code = "warn"
+unreachable_patterns = "deny"
+dead_code = "deny"
+deprecated = "deny"
+deprecated_in_future = "deny"
+missing_debug_implementations = "warn"
+missing_copy_implementations = "warn"
+
 [profile.wasm-release]
 inherits = "release"
 opt-level = 'z'

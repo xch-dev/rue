@@ -3,6 +3,9 @@ name = "rue-compiler"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 rue-parser = { path = "../rue-parser" }
 clvmr = "0.6.1"

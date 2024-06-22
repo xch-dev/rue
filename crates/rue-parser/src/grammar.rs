@@ -2,7 +2,7 @@ use rowan::Checkpoint;
 
 use crate::{parser::Parser, BinaryOp, SyntaxKind};
 
-pub fn root(p: &mut Parser) {
+pub fn root(p: &mut Parser<'_>) {
     p.start(SyntaxKind::Root);
     while !p.at(SyntaxKind::Eof) {
         item(p);
@@ -10,7 +10,7 @@ pub fn root(p: &mut Parser) {
     p.finish();
 }
 
-fn at_item(p: &mut Parser) -> bool {
+fn at_item(p: &mut Parser<'_>) -> bool {
     p.at(SyntaxKind::Fun)
         || p.at(SyntaxKind::Type)
         || p.at(SyntaxKind::Struct)
@@ -21,7 +21,7 @@ fn at_item(p: &mut Parser) -> bool {
         || p.at(SyntaxKind::Inline)
 }
 
-fn item(p: &mut Parser) {
+fn item(p: &mut Parser<'_>) {
     let cp = p.checkpoint();
     p.try_eat(SyntaxKind::Export);
     let inline = p.try_eat(SyntaxKind::Inline);
@@ -47,7 +47,7 @@ fn item(p: &mut Parser) {
     }
 }
 
-fn function_item(p: &mut Parser, cp: Checkpoint) {
+fn function_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::FunctionItem);
     p.expect(SyntaxKind::Fun);
     p.expect(SyntaxKind::Ident);
@@ -58,7 +58,7 @@ fn function_item(p: &mut Parser, cp: Checkpoint) {
     p.finish();
 }
 
-fn function_params(p: &mut Parser) {
+fn function_params(p: &mut Parser<'_>) {
     p.expect(SyntaxKind::OpenParen);
     while !p.at(SyntaxKind::CloseParen) {
         function_param(p);
@@ -69,7 +69,7 @@ fn function_params(p: &mut Parser) {
     p.expect(SyntaxKind::CloseParen);
 }
 
-fn function_param(p: &mut Parser) {
+fn function_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionParam);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
@@ -78,7 +78,7 @@ fn function_param(p: &mut Parser) {
     p.finish();
 }
 
-fn type_alias_item(p: &mut Parser, cp: Checkpoint) {
+fn type_alias_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::TypeAliasItem);
     p.expect(SyntaxKind::Type);
     p.expect(SyntaxKind::Ident);
@@ -88,7 +88,7 @@ fn type_alias_item(p: &mut Parser, cp: Checkpoint) {
     p.finish();
 }
 
-fn struct_item(p: &mut Parser, cp: Checkpoint) {
+fn struct_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::StructItem);
     p.expect(SyntaxKind::Struct);
     p.expect(SyntaxKind::Ident);
@@ -103,7 +103,7 @@ fn struct_item(p: &mut Parser, cp: Checkpoint) {
     p.finish();
 }
 
-fn struct_field(p: &mut Parser) {
+fn struct_field(p: &mut Parser<'_>) {
     p.start(SyntaxKind::StructField);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::Colon);
@@ -111,7 +111,7 @@ fn struct_field(p: &mut Parser) {
     p.finish();
 }
 
-fn enum_item(p: &mut Parser, cp: Checkpoint) {
+fn enum_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::EnumItem);
     p.expect(SyntaxKind::Enum);
     p.expect(SyntaxKind::Ident);
@@ -126,7 +126,7 @@ fn enum_item(p: &mut Parser, cp: Checkpoint) {
     p.finish();
 }
 
-fn enum_variant(p: &mut Parser) {
+fn enum_variant(p: &mut Parser<'_>) {
     p.start(SyntaxKind::EnumVariant);
     p.expect(SyntaxKind::Ident);
     p.expect(SyntaxKind::Assign);
@@ -143,7 +143,7 @@ fn enum_variant(p: &mut Parser) {
     p.finish();
 }
 
-fn const_item(p: &mut Parser, cp: Checkpoint) {
+fn const_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::ConstItem);
     p.expect(SyntaxKind::Const);
     p.expect(SyntaxKind::Ident);
@@ -155,7 +155,7 @@ fn const_item(p: &mut Parser, cp: Checkpoint) {
     p.finish();
 }
 
-fn import_item(p: &mut Parser, cp: Checkpoint) {
+fn import_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::ImportItem);
     p.expect(SyntaxKind::Import);
     import_path(p);
@@ -163,7 +163,7 @@ fn import_item(p: &mut Parser, cp: Checkpoint) {
     p.finish();
 }
 
-fn import_path(p: &mut Parser) {
+fn import_path(p: &mut Parser<'_>) {
     p.start(SyntaxKind::ImportPath);
     p.expect(SyntaxKind::Ident);
     while p.try_eat(SyntaxKind::PathSeparator) {
@@ -180,7 +180,7 @@ fn import_path(p: &mut Parser) {
     p.finish();
 }
 
-fn import_group(p: &mut Parser) {
+fn import_group(p: &mut Parser<'_>) {
     p.start(SyntaxKind::ImportGroup);
     p.expect(SyntaxKind::OpenBrace);
     while !p.at(SyntaxKind::CloseBrace) {
@@ -193,7 +193,7 @@ fn import_group(p: &mut Parser) {
     p.finish();
 }
 
-fn block(p: &mut Parser) {
+fn block(p: &mut Parser<'_>) {
     p.start(SyntaxKind::Block);
     p.expect(SyntaxKind::OpenBrace);
     while !p.at(SyntaxKind::CloseBrace) && !p.at(SyntaxKind::Eof) {
@@ -222,7 +222,7 @@ fn block(p: &mut Parser) {
     p.finish();
 }
 
-fn let_stmt(p: &mut Parser) {
+fn let_stmt(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LetStmt);
     p.expect(SyntaxKind::Let);
     p.expect(SyntaxKind::Ident);
@@ -235,7 +235,7 @@ fn let_stmt(p: &mut Parser) {
     p.finish();
 }
 
-fn if_stmt_maybe_else(p: &mut Parser, expr_only: bool) -> bool {
+fn if_stmt_maybe_else(p: &mut Parser<'_>, expr_only: bool) -> bool {
     let cp = p.checkpoint();
     p.expect(SyntaxKind::If);
     expr_binding_power(p, 0, false);
@@ -253,7 +253,7 @@ fn if_stmt_maybe_else(p: &mut Parser, expr_only: bool) -> bool {
     has_else
 }
 
-fn return_stmt(p: &mut Parser) {
+fn return_stmt(p: &mut Parser<'_>) {
     p.start(SyntaxKind::ReturnStmt);
     p.expect(SyntaxKind::Return);
     expr(p);
@@ -261,7 +261,7 @@ fn return_stmt(p: &mut Parser) {
     p.finish();
 }
 
-fn raise_stmt(p: &mut Parser) {
+fn raise_stmt(p: &mut Parser<'_>) {
     p.start(SyntaxKind::RaiseStmt);
     p.expect(SyntaxKind::Raise);
     if !p.try_eat(SyntaxKind::Semicolon) {
@@ -271,7 +271,7 @@ fn raise_stmt(p: &mut Parser) {
     p.finish();
 }
 
-fn assert_stmt(p: &mut Parser) {
+fn assert_stmt(p: &mut Parser<'_>) {
     p.start(SyntaxKind::AssertStmt);
     p.expect(SyntaxKind::Assert);
     expr(p);
@@ -279,7 +279,7 @@ fn assert_stmt(p: &mut Parser) {
     p.finish();
 }
 
-fn assume_stmt(p: &mut Parser) {
+fn assume_stmt(p: &mut Parser<'_>) {
     p.start(SyntaxKind::AssumeStmt);
     p.expect(SyntaxKind::Assume);
     expr(p);
@@ -287,7 +287,7 @@ fn assume_stmt(p: &mut Parser) {
     p.finish();
 }
 
-fn path(p: &mut Parser) {
+fn path(p: &mut Parser<'_>) {
     p.start(SyntaxKind::Path);
     p.expect(SyntaxKind::Ident);
     while p.try_eat(SyntaxKind::PathSeparator) {
@@ -312,11 +312,11 @@ fn binding_power(op: BinaryOp) -> (u8, u8) {
 
 const EXPR_RECOVERY_SET: &[SyntaxKind] = &[SyntaxKind::OpenBrace, SyntaxKind::CloseBrace];
 
-fn expr(p: &mut Parser) {
+fn expr(p: &mut Parser<'_>) {
     expr_binding_power(p, 0, true);
 }
 
-fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializer: bool) {
+fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initializer: bool) {
     let checkpoint = p.checkpoint();
 
     if p.at(SyntaxKind::Not) || p.at(SyntaxKind::Minus) {
@@ -459,14 +459,14 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializ
     }
 }
 
-fn function_call_arg(p: &mut Parser) {
+fn function_call_arg(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionCallArg);
     p.try_eat(SyntaxKind::Spread);
     expr(p);
     p.finish();
 }
 
-fn list_expr(p: &mut Parser) {
+fn list_expr(p: &mut Parser<'_>) {
     p.start(SyntaxKind::ListExpr);
     p.expect(SyntaxKind::OpenBracket);
     while !p.at(SyntaxKind::CloseBracket) {
@@ -482,7 +482,7 @@ fn list_expr(p: &mut Parser) {
     p.finish();
 }
 
-fn lambda_expr(p: &mut Parser) {
+fn lambda_expr(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LambdaExpr);
     p.expect(SyntaxKind::Fun);
     p.expect(SyntaxKind::OpenParen);
@@ -501,7 +501,7 @@ fn lambda_expr(p: &mut Parser) {
     p.finish();
 }
 
-fn lambda_param(p: &mut Parser) {
+fn lambda_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LambdaParam);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
@@ -513,7 +513,7 @@ fn lambda_param(p: &mut Parser) {
 
 const TYPE_RECOVERY_SET: &[SyntaxKind] = &[SyntaxKind::OpenBrace, SyntaxKind::CloseBrace];
 
-fn ty(p: &mut Parser) {
+fn ty(p: &mut Parser<'_>) {
     let checkpoint = p.checkpoint();
 
     if p.at(SyntaxKind::Ident) {
@@ -561,7 +561,7 @@ fn ty(p: &mut Parser) {
     }
 }
 
-fn function_type_param(p: &mut Parser) {
+fn function_type_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionTypeParam);
     p.try_eat(SyntaxKind::Spread);
     ty(p);

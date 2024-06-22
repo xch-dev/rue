@@ -45,13 +45,13 @@ pub struct Function {
     pub inline: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Let {
     pub type_id: TypeId,
     pub hir_id: HirId,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Const {
     pub type_id: TypeId,
     pub hir_id: HirId,
