@@ -53,8 +53,6 @@ fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
 
     let symbol_table = compiler.finish();
 
-    log::debug!("Symbol table: {:?}", &symbol_table);
-
     let Some(main_symbol_id) = db.scope_mut(root_scope_id).symbol("main") else {
         db.error(ErrorKind::MissingMain, TextRange::new(0.into(), 0.into()));
         return None;
@@ -62,8 +60,6 @@ fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
 
     let traversal = GraphTraversal::new(db);
     let dependency_graph = traversal.build_graph(&[main_symbol_id]);
-
-    log::info!("Dependency graph: {:?}", &dependency_graph);
 
     let unused =
         symbol_table.calculate_unused(db, &dependency_graph, root_scope_id, main_symbol_id);

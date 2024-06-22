@@ -36,7 +36,6 @@ impl<'a> Optimizer<'a> {
         };
 
         let env_id = self.graph.env(fun.scope_id);
-
         let body = self.opt_hir(env_id, fun.hir_id);
 
         let mut args = Vec::new();
@@ -262,10 +261,8 @@ impl<'a> Optimizer<'a> {
 
                 let mut captures = Vec::new();
 
-                for symbol_id in self.db.scope(scope_id).local_symbols() {
-                    if self.db.symbol(symbol_id).is_definition() {
-                        captures.push(self.opt_path(env_id, symbol_id));
-                    }
+                for symbol_id in self.db.env(function_env_id).definitions() {
+                    captures.push(self.opt_path(env_id, symbol_id));
                 }
 
                 for symbol_id in self.db.env(function_env_id).captures() {

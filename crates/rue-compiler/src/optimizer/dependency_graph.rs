@@ -258,15 +258,7 @@ impl<'a> GraphTraversal<'a> {
                 let child_env_id = self.db.alloc_env(environment);
                 self.graph.env.insert(child_scope_id, child_env_id);
 
-                log::debug!("Scope id {:?} => {:?}", child_scope_id, child_env_id);
-
                 self.compute_hir_edges(child_scope_id, hir_id, visited);
-
-                log::debug!(
-                    "Adding parent {:?} as edge to child {:?}",
-                    self.graph.env[&scope_id],
-                    self.graph.env[&child_scope_id]
-                );
             }
             Hir::Reference(symbol_id) => {
                 self.graph
