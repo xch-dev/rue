@@ -144,3 +144,32 @@ cost = 1999
 input = "()"
 output = "5"
 hash = "0f28fabe3ecbc598acb16f939f3a49c150f44fbe5b6661e4a705d38766c49bbb"
+
+[if_stmt]
+bytes = 115
+cost = 2515
+input = "(42)"
+output = "\"small\""
+hash = "7d5732997957fce224a07bd258e1e92cd08524b62ecdd3458b9a31f65e984f5d"
+
+[let]
+bytes = 87
+cost = 3845
+input = "()"
+output = "128"
+hash = "c35936efa106472019f9db51794fe8645fc0e7759cd41aaf036598ea81c32ebc"
+
+[assert]
+bytes = 105
+cost = 4190
+input = "(1738)"
+output = "3476"
+hash = "dbc5d6cbe86307cb8709378c6066650bdf8dac9c708a6fbcb01dfb9b7ca12fbe"
+
+[raise]
+bytes = 30
+cost = 0
+input = "()"
+output = "()"
+hash = "29be039561a49972bb13a1efb4c81511a904faefc0117562f8f108e4addd0572"
+error = "\"why hello there\""

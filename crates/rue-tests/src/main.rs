@@ -31,6 +31,8 @@ struct TestCase {
     input: String,
     output: String,
     hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
 }
 
 #[derive(Clone)]
@@ -128,7 +130,13 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
             let output = binutils::disassemble(&old_allocator, output_ptr, None);
             (cost, Ok(output))
         }
-        Err(error) => (0, Err(error.to_string())),
+        Err(error) => {
+            let output_bytes = node_to_bytes(&allocator, error.0).unwrap();
+            let output_ptr =
+                clvmr_old::serde::node_from_bytes(&mut old_allocator, &output_bytes).unwrap();
+            let output = binutils::disassemble(&old_allocator, output_ptr, None);
+            (0, Err(output))
+        }
     };
 
     Ok(TestOutput {
@@ -280,20 +288,20 @@ fn run_tests(update: bool) -> usize {
 
                     let mut output_failed = false;
 
-                    match &actual.output {
-                        Ok(output) => {
-                            if &expected.output != output {
-                                lines.push(format!("expected output: {}", expected.output));
-                                lines.push(format!("actual output: {}", output));
-                                failed = true;
-                                output_failed = true;
-                            }
-                        }
-                        Err(error) => {
-                            lines.push(format!("unexpected clvm error: {}", error));
+                    if let Ok(actual_output) = actual.output.as_ref() {
+                        if &expected.output != actual_output {
+                            lines.push(format!("expected output: {}", expected.output));
+                            lines.push(format!("actual output: {}", actual_output));
                             failed = true;
                             output_failed = true;
                         }
+                    }
+
+                    if expected.error.as_ref() != actual.output.as_ref().err() {
+                        lines.push(format!("expected error: {:?}", expected.error.as_ref()));
+                        lines.push(format!("actual error: {:?}", actual.output.as_ref().err()));
+                        failed = true;
+                        output_failed = true;
                     }
 
                     if output_failed {
@@ -316,8 +324,9 @@ fn run_tests(update: bool) -> usize {
                             _ => None,
                         })
                         .unwrap_or("()".to_string()),
-                    output: output.output.unwrap_or("()".to_string()),
+                    output: output.output.clone().unwrap_or("()".to_string()),
                     hash: output.hash,
+                    error: output.output.err().map(|error| error.to_string()),
                 }),
                 Err(errors) => Errs(errors),
             };
