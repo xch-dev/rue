@@ -53,7 +53,6 @@ fun check_signatures(
         return nil;
     }
 
-    // TODO: Assume
     assume !(public_keys is Nil) && !(indices is Nil);
 
     if indices.first != pos {
