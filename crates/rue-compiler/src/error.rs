@@ -38,6 +38,9 @@ pub enum DiagnosticKind {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
 pub enum WarningKind {
+    #[error("unused module `{0}`")]
+    UnusedModule(String),
+
     #[error("unused function `{0}`")]
     UnusedFunction(String),
 
@@ -88,6 +91,9 @@ pub enum ErrorKind {
 
     #[error("inline functions cannot be referenced without being called")]
     InlineFunctionReference,
+
+    #[error("modules cannot be referenced, since they are not values")]
+    ModuleReference,
 
     #[error("type aliases cannot reference themselves")]
     RecursiveTypeAlias,

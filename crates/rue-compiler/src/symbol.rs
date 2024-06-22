@@ -1,6 +1,9 @@
+use indexmap::IndexSet;
+
 use crate::{
     database::{HirId, ScopeId, TypeId},
     ty::FunctionType,
+    SymbolId,
 };
 
 #[derive(Debug, Clone)]
@@ -12,6 +15,7 @@ pub enum Symbol {
     Let(Let),
     Const(Const),
     InlineConst(Const),
+    Module(Module),
 }
 
 impl Symbol {
@@ -51,4 +55,10 @@ pub struct Let {
 pub struct Const {
     pub type_id: TypeId,
     pub hir_id: HirId,
+}
+
+#[derive(Debug, Clone)]
+pub struct Module {
+    pub scope_id: ScopeId,
+    pub exported_symbols: IndexSet<SymbolId>,
 }

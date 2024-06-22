@@ -109,7 +109,7 @@ impl<'a> Compiler<'a> {
                 Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias(ty)),
                 Item::StructItem(struct_item) => type_ids.push(self.declare_struct(struct_item)),
                 Item::EnumItem(enum_item) => type_ids.push(self.declare_enum(enum_item)),
-                _ => {}
+                Item::FunctionItem(..) | Item::ConstItem(..) | Item::ImportItem(..) => {}
             }
         }
 
@@ -117,7 +117,10 @@ impl<'a> Compiler<'a> {
             match item {
                 Item::FunctionItem(function) => symbol_ids.push(self.declare_function(function)),
                 Item::ConstItem(const_item) => symbol_ids.push(self.declare_const(const_item)),
-                _ => {}
+                Item::TypeAliasItem(..)
+                | Item::StructItem(..)
+                | Item::EnumItem(..)
+                | Item::ImportItem(..) => {}
             }
         }
 
@@ -157,7 +160,7 @@ impl<'a> Compiler<'a> {
                     self.compile_enum(enum_item, type_id);
                     self.type_definition_stack.pop().unwrap();
                 }
-                _ => {}
+                Item::FunctionItem(..) | Item::ConstItem(..) | Item::ImportItem(..) => {}
             }
         }
 
@@ -175,7 +178,10 @@ impl<'a> Compiler<'a> {
                     self.compile_const(const_item, symbol_id);
                     self.symbol_stack.pop().unwrap();
                 }
-                _ => {}
+                Item::TypeAliasItem(..)
+                | Item::StructItem(..)
+                | Item::EnumItem(..)
+                | Item::ImportItem(..) => {}
             }
         }
     }
@@ -1834,6 +1840,12 @@ impl<'a> Compiler<'a> {
             return self.unknown();
         };
 
+        if matches!(self.db.symbol(symbol_id), Symbol::Module(..)) {
+            self.db
+                .error(ErrorKind::ModuleReference, path.syntax().text_range());
+            return self.unknown();
+        }
+
         if !self.is_callee && matches!(self.db.symbol(symbol_id), Symbol::InlineFunction(..)) {
             self.db.error(
                 ErrorKind::InlineFunctionReference,
@@ -1846,7 +1858,7 @@ impl<'a> Compiler<'a> {
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             self.symbol_type(symbol_id)
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
-                    Symbol::Unknown => unreachable!(),
+                    Symbol::Unknown | Symbol::Module(..) => unreachable!(),
                     Symbol::Function(Function { ty, .. })
                     | Symbol::InlineFunction(Function { ty, .. }) => {
                         self.db.alloc_type(Type::Function(ty.clone()))

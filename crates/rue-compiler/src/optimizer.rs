@@ -84,7 +84,7 @@ impl<'a> Optimizer<'a> {
 
     fn opt_definition(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
         match self.db.symbol(symbol_id).clone() {
-            Symbol::Unknown => unreachable!(),
+            Symbol::Unknown | Symbol::Module(..) => unreachable!(),
             Symbol::Function(Function {
                 hir_id, scope_id, ..
             }) => {
@@ -268,7 +268,7 @@ impl<'a> Optimizer<'a> {
                 }
                 self.opt_path(env_id, symbol_id)
             }
-            Symbol::Unknown => unreachable!(),
+            Symbol::Unknown | Symbol::Module(..) => unreachable!(),
         }
     }
 

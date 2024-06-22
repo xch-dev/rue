@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     hir::Hir,
-    symbol::{Const, Function, Let, Symbol},
+    symbol::{Const, Let, Module, Symbol},
     ty::{FunctionType, Rest},
     Database, EnvironmentId, HirId, ScopeId, SymbolId,
 };
@@ -21,8 +21,8 @@ pub struct DependencyGraph {
 }
 
 impl DependencyGraph {
-    pub fn build(db: &mut Database, exported_symbols: &[SymbolId]) -> Self {
-        GraphTraversal::new(db).build(exported_symbols)
+    pub fn build(db: &mut Database, entrypoint: &Module) -> Self {
+        GraphTraversal::new(db).build(entrypoint)
     }
 
     pub fn env(&self, scope_id: ScopeId) -> EnvironmentId {
@@ -53,13 +53,16 @@ impl<'a> GraphTraversal<'a> {
         }
     }
 
-    fn build(mut self, exported_symbols: &[SymbolId]) -> DependencyGraph {
-        for &symbol_id in exported_symbols {
+    fn build(mut self, entrypoint: &Module) -> DependencyGraph {
+        for &symbol_id in &entrypoint.exported_symbols {
             self.compute_edges(symbol_id);
         }
-        for &symbol_id in exported_symbols {
-            self.visit_entrypoint(symbol_id);
+
+        let mut visited = HashSet::new();
+        for &symbol_id in &entrypoint.exported_symbols {
+            self.visit_symbol(entrypoint.scope_id, symbol_id, &mut visited);
         }
+
         self.graph
     }
 
@@ -101,21 +104,29 @@ impl<'a> GraphTraversal<'a> {
         }
     }
 
-    /// TODO: This function will eventually be phased out in favor of a more general solution.
-    /// Everything that gets exported (or `main`) is considered an entrypoint.
-    /// Entrypoints are the starting point for the traversal of the dependency graph.
-    /// Everything else is considered unused if it isn't reached by an entrypoint.
-    fn visit_entrypoint(&mut self, symbol_id: SymbolId) {
-        // Currently this only supports functions and inline functions.
-        // This is not ideal.
-        let Symbol::Function(Function {
-            scope_id, hir_id, ..
-        }) = self.db.symbol(symbol_id).clone()
-        else {
-            unreachable!();
-        };
-
-        self.visit_hir(scope_id, hir_id, &mut HashSet::new());
+    fn visit_symbol(
+        &mut self,
+        scope_id: ScopeId,
+        symbol_id: SymbolId,
+        visited: &mut HashSet<(ScopeId, HirId)>,
+    ) {
+        match self.db.symbol(symbol_id).clone() {
+            Symbol::Unknown => unreachable!(),
+            Symbol::Module(module) => {
+                for &symbol_id in &module.exported_symbols {
+                    self.visit_symbol(module.scope_id, symbol_id, visited);
+                }
+            }
+            Symbol::Parameter(..) => {}
+            Symbol::Function(fun) | Symbol::InlineFunction(fun) => {
+                self.visit_hir(fun.scope_id, fun.hir_id, visited);
+            }
+            Symbol::Let(Let { hir_id, .. })
+            | Symbol::Const(Const { hir_id, .. })
+            | Symbol::InlineConst(Const { hir_id, .. }) => {
+                self.visit_hir(scope_id, hir_id, visited);
+            }
+        }
     }
 
     /// Visits a HIR node and all of its children.
@@ -220,6 +231,15 @@ impl<'a> GraphTraversal<'a> {
                 )
             }
 
+            // It's not possible to reference a module directly.
+            Symbol::Module(..) => {
+                unreachable!(
+                    "Module {} erroneously referenced in scope {}",
+                    self.db.dbg_symbol(symbol_id),
+                    self.db.dbg_scope(scope_id)
+                )
+            }
+
             // TODO: Should these be visited in a different scope if they aren't inline?
             Symbol::Let(Let { hir_id, .. })
             | Symbol::Const(Const { hir_id, .. })
@@ -241,6 +261,12 @@ impl<'a> GraphTraversal<'a> {
 
     fn compute_edges(&mut self, symbol_id: SymbolId) {
         match self.db.symbol(symbol_id).clone() {
+            Symbol::Module(module) => {
+                // Walk through each of the module's exported symbols.
+                for &symbol_id in &module.exported_symbols {
+                    self.compute_edges(symbol_id);
+                }
+            }
             Symbol::Function(fun) | Symbol::InlineFunction(fun) => {
                 // Add the function scope to the graph.
                 self.edges.entry(fun.scope_id).or_default();
@@ -331,7 +357,7 @@ impl<'a> GraphTraversal<'a> {
                     .or_insert(1);
 
                 match self.db.symbol(symbol_id).clone() {
-                    Symbol::Unknown => unreachable!(),
+                    Symbol::Unknown | Symbol::Module(..) => unreachable!(),
                     Symbol::Function(fun) | Symbol::InlineFunction(fun) => {
                         // Add the new scope to the graph.
                         // The parent scope depends on the new scope's captures.
