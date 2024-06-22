@@ -34,11 +34,11 @@ output = "4"
 hash = "8b1651043cbbeb0e94d3db3ac81462a1b9c38706c165ac61c66fb54b4d448fc9"
 
 [bool]
-bytes = 29
-cost = 428
+bytes = 21
+cost = 273
 input = "()"
 output = "1"
-hash = "aad68d2b7db04d5d523655b6a5c77968fdc9964dca09cf669adf3e164ca49946"
+hash = "41c686371ebb31d9e697cad70b910b68a367ebb452b6a4c48da832d7215f3d38"
 
 [hex]
 bytes = 167
@@ -48,81 +48,81 @@ output = "0x8b1651043cbbeb0e94d3db3ac81462a1b9c38706c165ac61c66fb54b4d448fc9c7f1
 hash = "5da7ebc63772dc4ed857d0fdf6dea1435d012ae530b4af1418c3fa80708f59da"
 
 [nil]
-bytes = 7
-cost = 223
+bytes = 1
+cost = 44
 input = "()"
 output = "()"
-hash = "10aaa79b0d1fca88d400c84e276ad425df57a34cc61161983954bae49c54aef4"
+hash = "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
 
 [string]
-bytes = 32
-cost = 777
+bytes = 24
+cost = 622
 input = "()"
 output = "\"Hello, world!\""
-hash = "0fbc5fc778acb27bd511d90d2a6c5870fe44c1fd766b0efcbd842260603984d1"
+hash = "525311fef11bd196b5e7e3e8ce86803ce7b571a41badfe6392ece715951c3f94"
 
 [int]
-bytes = 15
-cost = 175
+bytes = 7
+cost = 20
 input = "()"
 output = "0x0280de80"
-hash = "e9dcd1f988eeeea8b8f01787e1a85c8e29b826fa7f757480cd3ad8261e37100f"
+hash = "47028b7389e6a525d34973dfe912e9625c04cba84df987c126c52a112ce102d6"
 
 [rem]
-bytes = 25
-cost = 1391
+bytes = 17
+cost = 1236
 input = "()"
 output = "4"
-hash = "8b1651043cbbeb0e94d3db3ac81462a1b9c38706c165ac61c66fb54b4d448fc9"
+hash = "80a7de2acfd8806d37e3623a089a91ed6285bcc55f7227a849065e420e422508"
 
 [sub]
-bytes = 49
-cost = 4123
+bytes = 41
+cost = 3968
 input = "()"
 output = "-961"
-hash = "97097299ee1a46f8164a293d89e964777bf6dc7c4cb5b2d5a57da9606c3f629f"
+hash = "494c23d570620c93c4b8bc24fa6187f688513161ba4b3bdc7c1dc35f4327c2ae"
 
 [add]
-bytes = 43
-cost = 3313
+bytes = 35
+cost = 3158
 input = "()"
 output = "1083"
-hash = "c19110971a0cea01368f0c7599b8984f74e301b7cda20bd7f86eb2296bbf16c5"
+hash = "8fa0860e7330cc6e5995150603a690e6543d2094a74c482b305d275e693aac10"
 
 [div]
-bytes = 46
-cost = 3374
+bytes = 38
+cost = 3219
 input = "()"
 output = "0x0e89a7e7"
-hash = "a958cf4cf1dc19926a38350be58e68716f3db6790a005d9e9f8b081f05db20d2"
+hash = "a77bf075ec226d01ba7569cc93f6c915025d64821bca3be52baca6d3b223c129"
 
 [mul]
-bytes = 63
-cost = 6375
+bytes = 55
+cost = 6220
 input = "()"
 output = "0x66c880"
-hash = "c187a064a54146a65af3688605d174cb3f9d67bc1ffbf9911b64b5fd9a528465"
+hash = "3a6ab7b74328786d5ee39d4adb9bd7571c06f1fae41f6db133b79a49f54a6369"
 
 [arithmetic]
-bytes = 136
-cost = 13263
+bytes = 128
+cost = 13108
 input = "()"
 output = "6"
-hash = "ce2fb0036ea2518022ad031f47a5d12133a755282976018b747670a4472991d8"
+hash = "2433e3217cfdcede4c34181cde09ece49286df30423fad24c04c814b36ffce81"
 
 [neg]
-bytes = 94
-cost = 10827
+bytes = 86
+cost = 10672
 input = "()"
 output = "0xfe796a"
-hash = "4d105548cdada1ab6894698dd0098cd42657e47e418d45039f654210fc252a6d"
+hash = "bc30fb3d3ec7aa686007ddf9269021804811f14c9046327ad534134c980db55c"
 
 [logic]
-bytes = 53
-cost = 868
+bytes = 45
+cost = 713
 input = "()"
 output = "()"
-hash = "45c4ab1ab44dae90a8eccd06c9cc03bdc329ec18550c4cd4030bb212f8184575"
+hash = "effeb1746e184bef22476b4c4d1d78c6abadcc50baf77340a31093e232a33e2f"
 
 [multisig]
 bytes = 581
@@ -132,54 +132,54 @@ output = "((g1_multiply 0xc00000000000000000000000000000000000000000000000000000
 hash = "de54be8cbc8fcd942fac31cafe4269dc416060892c6a5fb9c74926123c33b3c5"
 
 [if]
-bytes = 33
-cost = 404
+bytes = 25
+cost = 249
 input = "()"
 output = "42"
-hash = "7c4502081fc18d1970e33456acd80321450e4c21f9dbed1712670f69df6d03dc"
+hash = "837525fb91b88dbf02d9ef5a0b322f6943f93424b6e8fe6d26dd1be6d3311871"
 
 [type_guards]
-bytes = 99
-cost = 1999
+bytes = 91
+cost = 1844
 input = "()"
 output = "5"
-hash = "0f28fabe3ecbc598acb16f939f3a49c150f44fbe5b6661e4a705d38766c49bbb"
+hash = "02b98083cb7ae70daea35a867c0de9fc5a0b198bb0b5427efcef7056e7beaa68"
 
 [if_stmt]
-bytes = 115
-cost = 2515
+bytes = 107
+cost = 2360
 input = "(42)"
 output = "\"small\""
-hash = "7d5732997957fce224a07bd258e1e92cd08524b62ecdd3458b9a31f65e984f5d"
+hash = "beaad80d005a15cffa2be04ba60e8dab6462381745fc0599619f0a50e82eda79"
 
 [let]
-bytes = 87
-cost = 3845
+bytes = 79
+cost = 3690
 input = "()"
 output = "128"
-hash = "c35936efa106472019f9db51794fe8645fc0e7759cd41aaf036598ea81c32ebc"
+hash = "0a357412c1f0d72ec5b275e0b41096e37f205a1f51c94c7a995691508139fa7f"
 
 [assert]
-bytes = 105
-cost = 4190
+bytes = 97
+cost = 4035
 input = "(1738)"
 output = "3476"
-hash = "dbc5d6cbe86307cb8709378c6066650bdf8dac9c708a6fbcb01dfb9b7ca12fbe"
+hash = "569706ab163cc88d478648113c2bac85f729cdb15f6594135299f9ba8d6a5867"
 
 [raise]
-bytes = 30
+bytes = 22
 cost = 0
 input = "()"
 output = "()"
-hash = "29be039561a49972bb13a1efb4c81511a904faefc0117562f8f108e4addd0572"
+hash = "d472ed41a316eaa06a68dbeb45540962125d4152c50008e640dac5948ad3185f"
 error = "\"why hello there\""
 
 [hello_world]
-bytes = 24
-cost = 175
+bytes = 16
+cost = 20
 input = "()"
 output = "\"Hello, world!\""
-hash = "7cacd67079cbf0a1cd915e9456ebb09fca6d375a63744e4e0e442b8f00759d24"
+hash = "4d5ba80f14b464a42a862990c434225f0f297bec1fe146117cb5c8b96d01166b"
 
 [fibonacci]
 bytes = 121

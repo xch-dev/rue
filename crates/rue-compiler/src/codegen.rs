@@ -120,6 +120,10 @@ impl<'a> Codegen<'a> {
     }
 
     fn gen_apply(&mut self, body: LirId, args: Vec<LirId>) -> NodePtr {
+        if args.is_empty() {
+            return self.gen_lir(body);
+        }
+
         let body = self.gen_quote(body);
         let args: Vec<NodePtr> = args.into_iter().map(|arg| self.gen_lir(arg)).collect();
         let args = self.runtime_list(&args, self.ops.q);
@@ -129,6 +133,11 @@ impl<'a> Codegen<'a> {
     fn gen_closure(&mut self, body: LirId, args: Vec<LirId>) -> NodePtr {
         let body = self.gen_lir(body);
         let args: Vec<NodePtr> = args.into_iter().map(|arg| self.gen_lir(arg)).collect();
+
+        if args.is_empty() {
+            return body;
+        }
+
         self.gen_closure_wrapper(body, &args)
     }
 

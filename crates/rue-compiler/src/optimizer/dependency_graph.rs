@@ -317,7 +317,6 @@ impl<'a> GraphTraversal<'a> {
                 let env_id = self.graph.env[&scope_id];
                 let child_env_id = self.db.alloc_env(Environment::binding(env_id));
                 self.graph.env.insert(child_scope_id, child_env_id);
-
                 self.compute_hir_edges(child_scope_id, hir_id, visited);
             }
             Hir::Reference(symbol_id) => {
