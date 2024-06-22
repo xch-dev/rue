@@ -1,0 +1,8 @@
+fun main() -> Nil {
+    let value = some;
+    nil
+}
+
+inline fun some() -> Int {
+    42
+}

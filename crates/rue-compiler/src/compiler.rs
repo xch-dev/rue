@@ -239,12 +239,19 @@ impl<'a> Compiler<'a> {
             return_type,
         };
 
-        *self.db.symbol_mut(symbol_id) = Symbol::Function(Function {
-            scope_id,
-            hir_id,
-            ty,
-            inline: function_item.inline().is_some(),
-        });
+        if function_item.inline().is_some() {
+            *self.db.symbol_mut(symbol_id) = Symbol::InlineFunction(Function {
+                scope_id,
+                hir_id,
+                ty,
+            });
+        } else {
+            *self.db.symbol_mut(symbol_id) = Symbol::Function(Function {
+                scope_id,
+                hir_id,
+                ty,
+            });
+        }
 
         if let Some(name) = function_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
@@ -267,11 +274,11 @@ impl<'a> Compiler<'a> {
 
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
-        *self.db.symbol_mut(symbol_id) = Symbol::Const(Const {
-            type_id,
-            hir_id,
-            inline: const_item.inline().is_some(),
-        });
+        if const_item.inline().is_some() {
+            *self.db.symbol_mut(symbol_id) = Symbol::InlineConst(Const { type_id, hir_id });
+        } else {
+            *self.db.symbol_mut(symbol_id) = Symbol::Const(Const { type_id, hir_id });
+        }
 
         if let Some(name) = const_item.name() {
             self.scope_mut().define_symbol(name.to_string(), symbol_id);
@@ -337,7 +344,9 @@ impl<'a> Compiler<'a> {
             return;
         };
 
-        let Symbol::Function(Function { scope_id, ty, .. }) = self.db.symbol(symbol_id).clone()
+        let (Symbol::Function(Function { scope_id, ty, .. })
+        | Symbol::InlineFunction(Function { scope_id, ty, .. })) =
+            self.db.symbol(symbol_id).clone()
         else {
             unreachable!();
         };
@@ -356,7 +365,9 @@ impl<'a> Compiler<'a> {
 
         // We ignore type guards here for now.
         // Just set the function body HIR.
-        let Symbol::Function(Function { hir_id, .. }) = self.db.symbol_mut(symbol_id) else {
+        let (Symbol::Function(Function { hir_id, .. })
+        | Symbol::InlineFunction(Function { hir_id, .. })) = self.db.symbol_mut(symbol_id)
+        else {
             unreachable!();
         };
         *hir_id = value.hir_id;
@@ -368,7 +379,9 @@ impl<'a> Compiler<'a> {
             return;
         };
 
-        let Symbol::Const(Const { type_id, .. }) = self.db.symbol(symbol_id).clone() else {
+        let (Symbol::Const(Const { type_id, .. }) | Symbol::InlineConst(Const { type_id, .. })) =
+            self.db.symbol(symbol_id).clone()
+        else {
             unreachable!();
         };
 
@@ -379,7 +392,9 @@ impl<'a> Compiler<'a> {
 
         // We ignore type guards here for now.
         // Just set the constant HIR.
-        let Symbol::Const(Const { hir_id, .. }) = self.db.symbol_mut(symbol_id) else {
+        let (Symbol::Const(Const { hir_id, .. }) | Symbol::InlineConst(Const { hir_id, .. })) =
+            self.db.symbol_mut(symbol_id)
+        else {
             unreachable!();
         };
         *hir_id = output.hir_id;
@@ -1651,7 +1666,6 @@ impl<'a> Compiler<'a> {
             scope_id,
             hir_id: body.hir_id,
             ty: ty.clone(),
-            inline: false,
         }));
 
         Value::new(
@@ -1820,14 +1834,9 @@ impl<'a> Compiler<'a> {
             return self.unknown();
         };
 
-        if !self.is_callee
-            && matches!(
-                self.db.symbol(symbol_id),
-                Symbol::Function(Function { inline: true, .. })
-            )
-        {
+        if !self.is_callee && matches!(self.db.symbol(symbol_id), Symbol::InlineFunction(..)) {
             self.db.error(
-                ErrorKind::InlineFunctionOutsideCall,
+                ErrorKind::InlineFunctionReference,
                 path.syntax().text_range(),
             );
             return self.unknown();
@@ -1837,13 +1846,14 @@ impl<'a> Compiler<'a> {
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             self.symbol_type(symbol_id)
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
-                    Symbol::Unknown => unreachable!(),
+                    Symbol::Unknown | Symbol::InlineFunction(..) => unreachable!(),
                     Symbol::Function(Function { ty, .. }) => {
                         self.db.alloc_type(Type::Function(ty.clone()))
                     }
                     Symbol::Parameter(type_id)
                     | Symbol::Let(Let { type_id, .. })
-                    | Symbol::Const(Const { type_id, .. }) => *type_id,
+                    | Symbol::Const(Const { type_id, .. })
+                    | Symbol::InlineConst(Const { type_id, .. }) => *type_id,
                 }),
         )
     }

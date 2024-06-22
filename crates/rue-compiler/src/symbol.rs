@@ -7,9 +7,11 @@ use crate::{
 pub enum Symbol {
     Unknown,
     Function(Function),
+    InlineFunction(Function),
     Parameter(TypeId),
     Let(Let),
     Const(Const),
+    InlineConst(Const),
 }
 
 impl Symbol {
@@ -20,19 +22,14 @@ impl Symbol {
     pub fn is_capturable(&self) -> bool {
         matches!(
             self,
-            Symbol::Function(Function { inline: false, .. })
-                | Symbol::Parameter { .. }
-                | Symbol::Let { .. }
-                | Symbol::Const(Const { inline: false, .. })
+            Symbol::Function(..) | Symbol::Parameter(..) | Symbol::Let(..) | Symbol::Const(..)
         )
     }
 
     pub fn is_definition(&self) -> bool {
         matches!(
             self,
-            Symbol::Function(Function { inline: false, .. })
-                | Symbol::Let { .. }
-                | Symbol::Const(Const { inline: false, .. })
+            Symbol::Function(..) | Symbol::Let(..) | Symbol::Const(..)
         )
     }
 }
@@ -42,7 +39,6 @@ pub struct Function {
     pub scope_id: ScopeId,
     pub hir_id: HirId,
     pub ty: FunctionType,
-    pub inline: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -55,5 +51,4 @@ pub struct Let {
 pub struct Const {
     pub type_id: TypeId,
     pub hir_id: HirId,
-    pub inline: bool,
 }

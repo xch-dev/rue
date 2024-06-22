@@ -50,6 +50,9 @@ pub enum WarningKind {
     #[error("unused constant `{0}`")]
     UnusedConst(String),
 
+    #[error("unused inline constant `{0}`")]
+    UnusedInlineConst(String),
+
     #[error("unused let binding `{0}`")]
     UnusedLet(String),
 
@@ -65,10 +68,10 @@ pub enum WarningKind {
     #[error("unused type alias `{0}`")]
     UnusedTypeAlias(String),
 
-    #[error("marking optional types as optional again has no effect")]
+    #[error("type is already optional")]
     UselessOptionalType,
 
-    #[error("redundant type check against `{0}`, value is already that type")]
+    #[error("value already has type `{0}`")]
     RedundantTypeCheck(String),
 }
 
@@ -77,19 +80,16 @@ pub enum ErrorKind {
     #[error("missing `main` function")]
     MissingMain,
 
-    #[error("cannot reference undefined symbol `{0}`")]
+    #[error("unknown symbol `{0}`")]
     UndefinedReference(String),
 
-    #[error("cannot reference undefined type `{0}`")]
+    #[error("unknown type `{0}`")]
     UndefinedType(String),
 
-    #[error("cannot refer to inline function outside of function call")]
-    InlineFunctionOutsideCall,
+    #[error("inline functions cannot be referenced without being called")]
+    InlineFunctionReference,
 
-    #[error("cannot resolve recursive inline function call")]
-    RecursiveInlineFunctionCall,
-
-    #[error("type aliases cannot reference themselves recursively")]
+    #[error("type aliases cannot reference themselves")]
     RecursiveTypeAlias,
 
     #[error("expected type `{expected}`, but found `{found}`")]

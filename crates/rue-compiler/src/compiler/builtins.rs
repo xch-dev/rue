@@ -69,7 +69,7 @@ fn sha256(db: &mut Database, builtins: &Builtins) -> SymbolId {
     let hir_id = db.alloc_hir(Hir::Sha256(param_ref));
     let scope_id = db.alloc_scope(scope);
 
-    db.alloc_symbol(Symbol::Function(Function {
+    db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
         ty: FunctionType {
@@ -77,7 +77,6 @@ fn sha256(db: &mut Database, builtins: &Builtins) -> SymbolId {
             rest: Rest::Nil,
             return_type: builtins.bytes32,
         },
-        inline: true,
     }))
 }
 
@@ -89,7 +88,7 @@ fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
     let hir_id = db.alloc_hir(Hir::PubkeyForExp(param_ref));
     let scope_id = db.alloc_scope(scope);
 
-    db.alloc_symbol(Symbol::Function(Function {
+    db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
         ty: FunctionType {
@@ -97,6 +96,5 @@ fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
             rest: Rest::Nil,
             return_type: builtins.public_key,
         },
-        inline: true,
     }))
 }

@@ -221,13 +221,17 @@ impl<'a> GraphTraversal<'a> {
             }
 
             // TODO: Should these be visited in a different scope if they aren't inline?
-            Symbol::Let(Let { hir_id, .. }) | Symbol::Const(Const { hir_id, .. }) => {
+            Symbol::Let(Let { hir_id, .. })
+            | Symbol::Const(Const { hir_id, .. })
+            | Symbol::InlineConst(Const { hir_id, .. }) => {
                 self.visit_hir(scope_id, hir_id, visited);
             }
 
             // Functions are visited in the scope in which they are defined.
             // TODO: For inline functions, should this be visited in the current scope?
-            Symbol::Function(fun) => self.visit_hir(fun.scope_id, fun.hir_id, visited),
+            Symbol::Function(fun) | Symbol::InlineFunction(fun) => {
+                self.visit_hir(fun.scope_id, fun.hir_id, visited);
+            }
 
             // Parameters don't need to be visited, since currently
             // they are just a reference to the environment.
@@ -237,14 +241,14 @@ impl<'a> GraphTraversal<'a> {
 
     fn compute_edges(&mut self, symbol_id: SymbolId) {
         match self.db.symbol(symbol_id).clone() {
-            Symbol::Function(fun) => {
+            Symbol::Function(fun) | Symbol::InlineFunction(fun) => {
                 // Add the function scope to the graph.
                 self.edges.entry(fun.scope_id).or_default();
 
                 // Compute the function's edges.
                 self.compute_function_edges(fun.scope_id, fun.hir_id, &fun.ty, &mut HashSet::new());
             }
-            Symbol::Const(..) => {}
+            Symbol::Const(..) | Symbol::InlineConst(..) => {}
             Symbol::Let(..) | Symbol::Parameter(..) | Symbol::Unknown => {
                 unreachable!()
             }
@@ -328,7 +332,7 @@ impl<'a> GraphTraversal<'a> {
 
                 match self.db.symbol(symbol_id).clone() {
                     Symbol::Unknown => unreachable!(),
-                    Symbol::Function(fun) => {
+                    Symbol::Function(fun) | Symbol::InlineFunction(fun) => {
                         // Add the new scope to the graph.
                         // The parent scope depends on the new scope's captures.
                         self.edges.entry(fun.scope_id).or_default().insert(scope_id);
@@ -337,7 +341,9 @@ impl<'a> GraphTraversal<'a> {
                         self.compute_function_edges(fun.scope_id, fun.hir_id, &fun.ty, visited);
                     }
                     Symbol::Parameter { .. } => {}
-                    Symbol::Let(Let { hir_id, .. }) | Symbol::Const(Const { hir_id, .. }) => {
+                    Symbol::Let(Let { hir_id, .. })
+                    | Symbol::Const(Const { hir_id, .. })
+                    | Symbol::InlineConst(Const { hir_id, .. }) => {
                         self.compute_hir_edges(scope_id, hir_id, visited);
                     }
                 }
