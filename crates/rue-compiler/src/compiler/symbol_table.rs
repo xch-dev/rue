@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{optimizer::DependencyGraph, Database, ScopeId, SymbolId, TypeId};
+use crate::{optimizer::DependencyGraph, symbol::Module, Database, ScopeId, SymbolId, TypeId};
 
 use super::unused::Unused;
 
@@ -45,7 +45,7 @@ impl SymbolTable {
         db: &Database,
         dependency_graph: &DependencyGraph,
         root_scope_id: ScopeId,
-        main_symbol_id: SymbolId,
+        module: &Module,
     ) -> Unused {
         let mut unused = Unused::default();
         let mut used_symbols = HashSet::new();
@@ -57,7 +57,9 @@ impl SymbolTable {
             .flat_map(|scope_id| db.scope(scope_id).local_symbols())
             .collect::<Vec<SymbolId>>()
         {
-            if dependency_graph.symbol_usages(symbol_id) > 0 || symbol_id == main_symbol_id {
+            if dependency_graph.symbol_usages(symbol_id) > 0
+                || module.exported_symbols.contains(&symbol_id)
+            {
                 used_symbols.insert(symbol_id);
                 continue;
             }
@@ -83,7 +85,7 @@ impl SymbolTable {
         }
 
         for type_id in db.named_types() {
-            if used_types.contains(&type_id) {
+            if used_types.contains(&type_id) || module.exported_types.contains(&type_id) {
                 continue;
             }
 

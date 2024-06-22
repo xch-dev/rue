@@ -68,7 +68,7 @@ fn precompile(db: &mut Database, root: &Root) -> Option<LirId> {
     let module_clone = module.clone();
 
     let graph = DependencyGraph::build(db, &module_clone);
-    let unused = symbol_table.calculate_unused(db, &graph, scope_id, main_symbol_id);
+    let unused = symbol_table.calculate_unused(db, &graph, scope_id, &module_clone);
 
     for symbol_id in &unused.symbol_ids {
         if unused.exempt_symbols.contains(symbol_id) {
