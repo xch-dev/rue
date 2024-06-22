@@ -12,7 +12,7 @@ mod ty;
 use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
 use compiler::Compiler;
-use optimizer::{GraphTraversal, Optimizer};
+use optimizer::{DependencyGraph, Optimizer};
 use rowan::TextRange;
 use rue_parser::Root;
 use scope::Scope;
@@ -58,11 +58,8 @@ fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
         return None;
     };
 
-    let traversal = GraphTraversal::new(db);
-    let dependency_graph = traversal.build_graph(&[main_symbol_id]);
-
-    let unused =
-        symbol_table.calculate_unused(db, &dependency_graph, root_scope_id, main_symbol_id);
+    let graph = DependencyGraph::build(db, &[main_symbol_id]);
+    let unused = symbol_table.calculate_unused(db, &graph, root_scope_id, main_symbol_id);
 
     for symbol_id in &unused.symbol_ids {
         if unused.exempt_symbols.contains(symbol_id) {
@@ -94,7 +91,7 @@ fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
         db.warning(kind, token.text_range());
     }
 
-    let mut optimizer = Optimizer::new(db, dependency_graph);
+    let mut optimizer = Optimizer::new(db, graph);
     Some(optimizer.opt_main(main_symbol_id))
 }
 

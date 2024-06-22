@@ -18,6 +18,10 @@ pub struct DependencyGraph {
 }
 
 impl DependencyGraph {
+    pub fn build(db: &mut Database, exported_symbols: &[SymbolId]) -> Self {
+        GraphTraversal::new(db).build_graph(exported_symbols)
+    }
+
     pub fn env(&self, scope_id: ScopeId) -> EnvironmentId {
         self.env[&scope_id]
     }
@@ -31,14 +35,14 @@ impl DependencyGraph {
     }
 }
 
-pub struct GraphTraversal<'a> {
+struct GraphTraversal<'a> {
     db: &'a mut Database,
     graph: DependencyGraph,
     edges: HashMap<ScopeId, IndexSet<ScopeId>>,
 }
 
 impl<'a> GraphTraversal<'a> {
-    pub fn new(db: &'a mut Database) -> Self {
+    fn new(db: &'a mut Database) -> Self {
         Self {
             db,
             graph: DependencyGraph::default(),
@@ -46,7 +50,7 @@ impl<'a> GraphTraversal<'a> {
         }
     }
 
-    pub fn build_graph(mut self, exported_symbols: &[SymbolId]) -> DependencyGraph {
+    fn build_graph(mut self, exported_symbols: &[SymbolId]) -> DependencyGraph {
         for &symbol_id in exported_symbols {
             self.compute_edges(symbol_id);
         }
