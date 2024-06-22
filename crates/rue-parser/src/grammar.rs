@@ -317,17 +317,14 @@ fn expr(p: &mut Parser) {
 }
 
 fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializer: bool) {
-    if p.at(SyntaxKind::Not) || p.at(SyntaxKind::Minus) {
-        p.start(SyntaxKind::PrefixExpr);
-        p.bump();
-        expr_binding_power(p, 0, allow_initializer);
-        p.finish();
-        return;
-    }
-
     let checkpoint = p.checkpoint();
 
-    if p.at(SyntaxKind::Int)
+    if p.at(SyntaxKind::Not) || p.at(SyntaxKind::Minus) {
+        p.start_at(checkpoint, SyntaxKind::PrefixExpr);
+        p.bump();
+        expr_binding_power(p, 255, allow_initializer);
+        p.finish();
+    } else if p.at(SyntaxKind::Int)
         || p.at(SyntaxKind::Hex)
         || p.at(SyntaxKind::String)
         || p.at(SyntaxKind::True)
