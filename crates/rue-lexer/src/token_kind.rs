@@ -12,6 +12,7 @@ pub enum TokenKind {
     OpenBrace,
     CloseBrace,
 
+    Mod,
     Fun,
     Inline,
     Import,

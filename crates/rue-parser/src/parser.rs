@@ -190,6 +190,7 @@ fn convert_tokens<'a>(
             TokenKind::OpenBrace => SyntaxKind::OpenBrace,
             TokenKind::CloseBrace => SyntaxKind::CloseBrace,
 
+            TokenKind::Mod => SyntaxKind::Mod,
             TokenKind::Fun => SyntaxKind::Fun,
             TokenKind::Inline => SyntaxKind::Inline,
             TokenKind::Import => SyntaxKind::Import,

@@ -11,9 +11,9 @@ use rue_parser::{
     AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
     FunctionCall, FunctionItem, FunctionType as AstFunctionType, GroupExpr, GuardExpr, IfExpr,
     IfStmt, IndexAccess, InitializerExpr, InitializerField, Item, LambdaExpr, LetStmt, ListExpr,
-    ListType, LiteralExpr, OptionalType, PairExpr, PairType as AstPairType, Path, PrefixExpr,
-    PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, Type as AstType,
-    TypeAliasItem,
+    ListType, LiteralExpr, ModuleItem, OptionalType, PairExpr, PairType as AstPairType, Path,
+    PrefixExpr, PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind, SyntaxToken,
+    Type as AstType, TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -21,7 +21,7 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::{BinOp, Hir},
     scope::Scope,
-    symbol::{Const, Function, Let, Symbol},
+    symbol::{Const, Function, Let, Module, Symbol},
     ty::{EnumType, EnumVariant, FunctionType, Guard, PairType, Rest, StructType, Type, Value},
     Comparison, ErrorKind, TypeSystem, WarningKind,
 };
@@ -90,48 +90,74 @@ impl<'a> Compiler<'a> {
         self.sym
     }
 
-    /// Declares all of the items in a root.
-    pub fn declare_root(&mut self, root: &Root, scope_id: ScopeId) -> Declarations {
-        self.scope_stack.push(scope_id);
-        let declarations = self.declare_items(&root.items());
-        self.scope_stack.pop().unwrap();
-        declarations
-    }
-
     /// Declare all items into scope without compiling their body.
     /// This ensures no circular references are resolved at this time.
     pub fn declare_items(&mut self, items: &[Item]) -> Declarations {
         let mut type_ids = Vec::new();
         let mut symbol_ids = Vec::new();
+        let mut exported_types = Vec::new();
+        let mut exported_symbols = Vec::new();
 
         for item in items {
             match item {
                 Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias(ty)),
                 Item::StructItem(struct_item) => type_ids.push(self.declare_struct(struct_item)),
                 Item::EnumItem(enum_item) => type_ids.push(self.declare_enum(enum_item)),
-                Item::FunctionItem(..) | Item::ConstItem(..) | Item::ImportItem(..) => {}
+                Item::ModuleItem(..)
+                | Item::FunctionItem(..)
+                | Item::ConstItem(..)
+                | Item::ImportItem(..) => continue,
+            }
+
+            if item.export().is_some() {
+                exported_types.push(*type_ids.last().unwrap());
             }
         }
 
         for item in items {
             match item {
+                Item::ModuleItem(module) => symbol_ids.push(self.declare_module(module)),
                 Item::FunctionItem(function) => symbol_ids.push(self.declare_function(function)),
                 Item::ConstItem(const_item) => symbol_ids.push(self.declare_const(const_item)),
                 Item::TypeAliasItem(..)
                 | Item::StructItem(..)
                 | Item::EnumItem(..)
-                | Item::ImportItem(..) => {}
+                | Item::ImportItem(..) => continue,
+            }
+
+            if item.export().is_some() {
+                exported_symbols.push(*symbol_ids.last().unwrap());
             }
         }
 
         Declarations {
             type_ids,
             symbol_ids,
+            exported_types,
+            exported_symbols,
         }
     }
 
+    pub fn declare_root(&mut self, root: &Root) -> (SymbolId, Declarations) {
+        let scope_id = self.db.alloc_scope(Scope::default());
+        let module_id = self.db.alloc_symbol(Symbol::Module(Module {
+            scope_id,
+            exported_symbols: IndexSet::new(),
+            exported_types: IndexSet::new(),
+        }));
+
+        self.scope_stack.push(scope_id);
+        let declarations = self.declare_items(&root.items());
+        self.scope_stack.pop().unwrap();
+
+        (module_id, declarations)
+    }
+
     /// Compile the root by lowering all items into scope.
-    pub fn compile_root(&mut self, root: &Root, scope_id: ScopeId, declarations: Declarations) {
+    pub fn compile_root(&mut self, root: &Root, module_id: SymbolId, declarations: Declarations) {
+        let Symbol::Module(Module { scope_id, .. }) = self.db.symbol_mut(module_id).clone() else {
+            unreachable!();
+        };
         self.scope_stack.push(scope_id);
         self.compile_items(&root.items(), declarations);
         self.scope_stack.pop().unwrap();
@@ -160,7 +186,10 @@ impl<'a> Compiler<'a> {
                     self.compile_enum(enum_item, type_id);
                     self.type_definition_stack.pop().unwrap();
                 }
-                Item::FunctionItem(..) | Item::ConstItem(..) | Item::ImportItem(..) => {}
+                Item::ModuleItem(..)
+                | Item::FunctionItem(..)
+                | Item::ConstItem(..)
+                | Item::ImportItem(..) => {}
             }
         }
 
@@ -178,12 +207,56 @@ impl<'a> Compiler<'a> {
                     self.compile_const(const_item, symbol_id);
                     self.symbol_stack.pop().unwrap();
                 }
-                Item::TypeAliasItem(..)
+                Item::ModuleItem(..)
+                | Item::TypeAliasItem(..)
                 | Item::StructItem(..)
                 | Item::EnumItem(..)
                 | Item::ImportItem(..) => {}
             }
         }
+    }
+
+    /// Define a module in the current scope.
+    /// This creates a new scope for the module, and declares its items.
+    /// The exports are added during this phase too.
+    fn declare_module(&mut self, module_item: &ModuleItem) -> SymbolId {
+        // Add the symbol to the stack early so you can track type references.
+        let scope_id = self.db.alloc_scope(Scope::default());
+        let symbol_id = self.db.alloc_symbol(Symbol::Module(Module {
+            scope_id,
+            exported_symbols: IndexSet::new(),
+            exported_types: IndexSet::new(),
+        }));
+
+        if let Some(name) = module_item.name() {
+            self.scope_mut().define_symbol(name.to_string(), symbol_id);
+            self.db.insert_scope_token(scope_id, name.clone());
+            self.db.insert_symbol_token(symbol_id, name);
+        }
+
+        // Add the symbol to the stack early so you can track type references.
+        self.symbol_stack.push(symbol_id);
+        self.scope_stack.push(scope_id);
+
+        let items = module_item.items();
+        let declarations = self.declare_items(&items);
+        self.compile_items(&items, declarations.clone());
+
+        self.scope_stack.pop().unwrap();
+        self.symbol_stack.pop().unwrap();
+
+        let Symbol::Module(Module {
+            exported_symbols,
+            exported_types,
+            ..
+        }) = self.db.symbol_mut(symbol_id)
+        else {
+            unreachable!();
+        };
+        exported_types.extend(declarations.exported_types);
+        exported_symbols.extend(declarations.exported_symbols);
+
+        symbol_id
     }
 
     /// Define a function in the current scope.

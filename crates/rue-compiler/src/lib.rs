@@ -12,11 +12,9 @@ mod ty;
 use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
 use compiler::Compiler;
-use indexmap::IndexSet;
 use optimizer::{DependencyGraph, Optimizer};
 use rowan::TextRange;
 use rue_parser::Root;
-use scope::Scope;
 use symbol::{Module, Symbol};
 use ty::Type;
 
@@ -46,21 +44,18 @@ pub fn analyze(root: &Root) -> Vec<Diagnostic> {
 }
 
 fn precompile(db: &mut Database, root: &Root) -> Option<LirId> {
-    let module_scope_id = db.alloc_scope(Scope::default());
-
-    let module_id = db.alloc_symbol(Symbol::Module(Module {
-        scope_id: module_scope_id,
-        exported_symbols: IndexSet::new(),
-    }));
-
     let mut compiler = Compiler::new(db);
 
-    let declarations = compiler.declare_root(root, module_scope_id);
-    compiler.compile_root(root, module_scope_id, declarations);
+    let (module_id, declarations) = compiler.declare_root(root);
+    compiler.compile_root(root, module_id, declarations);
 
     let symbol_table = compiler.finish();
 
-    let Some(main_symbol_id) = db.scope_mut(module_scope_id).symbol("main") else {
+    let Symbol::Module(Module { scope_id, .. }) = db.symbol_mut(module_id).clone() else {
+        unreachable!();
+    };
+
+    let Some(main_symbol_id) = db.scope_mut(scope_id).symbol("main") else {
         db.error(ErrorKind::MissingMain, TextRange::new(0.into(), 0.into()));
         return None;
     };
@@ -68,11 +63,12 @@ fn precompile(db: &mut Database, root: &Root) -> Option<LirId> {
     let Symbol::Module(module) = db.symbol_mut(module_id) else {
         unreachable!();
     };
+
     module.exported_symbols.insert(main_symbol_id);
     let module_clone = module.clone();
 
     let graph = DependencyGraph::build(db, &module_clone);
-    let unused = symbol_table.calculate_unused(db, &graph, module_scope_id, main_symbol_id);
+    let unused = symbol_table.calculate_unused(db, &graph, scope_id, main_symbol_id);
 
     for symbol_id in &unused.symbol_ids {
         if unused.exempt_symbols.contains(symbol_id) {

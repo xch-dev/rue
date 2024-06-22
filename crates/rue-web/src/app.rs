@@ -295,7 +295,8 @@ fn Rue(source: &'static str) -> impl IntoView {
                     class = "text-red-600 dark:text-red-500";
                 }
             }
-            TokenKind::Fun
+            TokenKind::Mod
+            | TokenKind::Fun
             | TokenKind::Inline
             | TokenKind::Import
             | TokenKind::Export

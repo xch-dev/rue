@@ -22,6 +22,7 @@ pub enum SyntaxKind {
     OpenBrace,
     CloseBrace,
 
+    Mod,
     Fun,
     Inline,
     Import,
@@ -76,6 +77,7 @@ pub enum SyntaxKind {
     BlockComment,
 
     Root,
+    ModuleItem,
     FunctionItem,
     FunctionParam,
     TypeAliasItem,
@@ -143,6 +145,7 @@ impl fmt::Display for SyntaxKind {
                 Self::CloseBracket => "']'",
                 Self::OpenBrace => "'{'",
                 Self::CloseBrace => "'}'",
+                Self::Mod => "'mod'",
                 Self::Fun => "'fun'",
                 Self::Inline => "'inline'",
                 Self::Import => "'import'",
@@ -191,6 +194,7 @@ impl fmt::Display for SyntaxKind {
                 Self::LineComment => "line comment",
                 Self::BlockComment => "block comment",
                 Self::Root => "root",
+                Self::ModuleItem => "module item",
                 Self::FunctionItem => "function item",
                 Self::FunctionParam => "function param",
                 Self::TypeAliasItem => "type alias item",

@@ -11,7 +11,8 @@ pub fn root(p: &mut Parser<'_>) {
 }
 
 fn at_item(p: &mut Parser<'_>) -> bool {
-    p.at(SyntaxKind::Fun)
+    p.at(SyntaxKind::Mod)
+        || p.at(SyntaxKind::Fun)
         || p.at(SyntaxKind::Type)
         || p.at(SyntaxKind::Struct)
         || p.at(SyntaxKind::Enum)
@@ -31,7 +32,9 @@ fn item(p: &mut Parser<'_>) {
     } else if p.at(SyntaxKind::Const) {
         const_item(p, cp);
     } else if !inline {
-        if p.at(SyntaxKind::Type) {
+        if p.at(SyntaxKind::Mod) {
+            module_item(p, cp);
+        } else if p.at(SyntaxKind::Type) {
             type_alias_item(p, cp);
         } else if p.at(SyntaxKind::Struct) {
             struct_item(p, cp);
@@ -45,6 +48,18 @@ fn item(p: &mut Parser<'_>) {
     } else {
         p.error(&[]);
     }
+}
+
+fn module_item(p: &mut Parser<'_>, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::ModuleItem);
+    p.expect(SyntaxKind::Mod);
+    p.expect(SyntaxKind::Ident);
+    p.expect(SyntaxKind::OpenBrace);
+    while !p.at(SyntaxKind::CloseBrace) {
+        item(p);
+    }
+    p.expect(SyntaxKind::CloseBrace);
+    p.finish();
 }
 
 fn function_item(p: &mut Parser<'_>, cp: Checkpoint) {

@@ -56,6 +56,7 @@ ast_node!(Root);
 
 ast_enum!(
     Item,
+    ModuleItem,
     FunctionItem,
     TypeAliasItem,
     ConstItem,
@@ -63,6 +64,7 @@ ast_enum!(
     EnumItem,
     ImportItem,
 );
+ast_node!(ModuleItem);
 ast_node!(FunctionItem);
 ast_node!(FunctionParam);
 ast_node!(TypeAliasItem);
@@ -136,6 +138,40 @@ ast_node!(AssumeStmt);
 impl Root {
     pub fn items(&self) -> Vec<Item> {
         self.syntax().children().filter_map(Item::cast).collect()
+    }
+}
+
+impl Item {
+    pub fn export(&self) -> Option<SyntaxToken> {
+        match self {
+            Item::ModuleItem(item) => item.export(),
+            Item::FunctionItem(item) => item.export(),
+            Item::TypeAliasItem(item) => item.export(),
+            Item::StructItem(item) => item.export(),
+            Item::EnumItem(item) => item.export(),
+            Item::ConstItem(item) => item.export(),
+            Item::ImportItem(_item) => None,
+        }
+    }
+}
+
+impl ModuleItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn items(&self) -> Vec<Item> {
+        self.syntax().children().filter_map(Item::cast).collect()
+    }
+
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Export)
     }
 }
 

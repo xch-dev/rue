@@ -60,5 +60,6 @@ pub struct Const {
 #[derive(Debug, Clone)]
 pub struct Module {
     pub scope_id: ScopeId,
+    pub exported_types: IndexSet<TypeId>,
     pub exported_symbols: IndexSet<SymbolId>,
 }
