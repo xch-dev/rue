@@ -53,7 +53,7 @@ impl<'a> Optimizer<'a> {
 
     fn opt_path(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
         let mut current_env_id = env_id;
-        let mut environment = self.db.env(env_id).build().to_vec();
+        let mut environment = self.db.env(env_id).build().clone();
 
         while let Some(parent_env_id) = self.db.env(current_env_id).parent() {
             assert!(self.db.env(current_env_id).parameters().is_empty());
@@ -147,7 +147,7 @@ impl<'a> Optimizer<'a> {
                         return self.opt_inline_function_call(
                             env_id,
                             function_env_id,
-                            ty.clone(),
+                            &ty.clone(),
                             *hir_id,
                             args.clone(),
                             *varargs,
@@ -334,7 +334,7 @@ impl<'a> Optimizer<'a> {
         &mut self,
         env_id: EnvironmentId,
         function_env_id: EnvironmentId,
-        ty: FunctionType,
+        ty: &FunctionType,
         hir_id: HirId,
         args: Vec<HirId>,
         varargs: bool,

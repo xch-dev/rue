@@ -236,14 +236,15 @@ fn Rue(source: &'static str) -> impl IntoView {
                     .map(Token::kind)
                     == Some(TokenKind::OpenParen) =>
             {
-                class = "text-blue-600 dark:text-blue-300"
+                class = "text-blue-600 dark:text-blue-300";
             }
             TokenKind::Ident if text.chars().next().unwrap_or('\0').is_uppercase() => {
-                class = "text-green-700 dark:text-yellow-200"
+                class = "text-green-700 dark:text-yellow-200";
             }
             TokenKind::Ident => class = "text-gray-700 dark:text-red-400",
-            TokenKind::Int => class = "text-fuchsia-600 dark:text-green-300",
-            TokenKind::Hex { .. } => class = "text-fuchsia-600 dark:text-green-300",
+            TokenKind::Int | TokenKind::Hex { .. } => {
+                class = "text-fuchsia-600 dark:text-green-300";
+            }
             TokenKind::String { .. } => class = "text-cyan-600 dark:text-lime-300",
             TokenKind::OpenParen
             | TokenKind::CloseParen
@@ -312,7 +313,7 @@ fn Rue(source: &'static str) -> impl IntoView {
             | TokenKind::As
             | TokenKind::Is => class = "text-purple-700 dark:text-purple-400",
             TokenKind::Nil | TokenKind::True | TokenKind::False => {
-                class = "text-orange-700 dark:text-orange-300"
+                class = "text-orange-700 dark:text-orange-300";
             }
             TokenKind::Dot
             | TokenKind::Comma
@@ -340,7 +341,7 @@ fn Rue(source: &'static str) -> impl IntoView {
             | TokenKind::Or => class = "text-blue-700 dark:text-blue-300",
             TokenKind::Whitespace => class = "",
             TokenKind::LineComment | TokenKind::BlockComment { .. } => {
-                class = "text-gray-500 dark:text-gray-400"
+                class = "text-gray-500 dark:text-gray-400";
             }
             TokenKind::Unknown => class = "text-red-600 dark:text-red-500",
         };

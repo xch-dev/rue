@@ -133,19 +133,16 @@ impl fmt::Display for SyntaxKind {
             match self {
                 Self::Eof => "end of file",
                 Self::Error => "error",
-
                 Self::Ident => "identifier",
                 Self::Int => "integer literal",
                 Self::Hex => "hex literal",
                 Self::String => "string",
-
                 Self::OpenParen => "'('",
                 Self::CloseParen => "')'",
                 Self::OpenBracket => "'['",
                 Self::CloseBracket => "']'",
                 Self::OpenBrace => "'{'",
                 Self::CloseBrace => "'}'",
-
                 Self::Fun => "'fun'",
                 Self::Inline => "'inline'",
                 Self::Import => "'import'",
@@ -155,7 +152,6 @@ impl fmt::Display for SyntaxKind {
                 Self::Enum => "'enum'",
                 Self::Let => "'let'",
                 Self::Const => "'const'",
-
                 Self::If => "'if'",
                 Self::Else => "'else'",
                 Self::Return => "'return'",
@@ -167,7 +163,6 @@ impl fmt::Display for SyntaxKind {
                 Self::False => "'false'",
                 Self::As => "'as'",
                 Self::Is => "'is'",
-
                 Self::Dot => "'.'",
                 Self::Comma => "','",
                 Self::Colon => "':'",
@@ -177,7 +172,6 @@ impl fmt::Display for SyntaxKind {
                 Self::FatArrow => "'=>'",
                 Self::Spread => "'...'",
                 Self::Question => "'?'",
-
                 Self::Plus => "'+'",
                 Self::Minus => "'-'",
                 Self::Star => "'*'",
@@ -191,14 +185,11 @@ impl fmt::Display for SyntaxKind {
                 Self::Equals => "'=='",
                 Self::NotEquals => "'!='",
                 Self::Assign => "'='",
-
                 Self::And => "'&&'",
                 Self::Or => "'||'",
-
                 Self::Whitespace => "whitespace",
                 Self::LineComment => "line comment",
                 Self::BlockComment => "block comment",
-
                 Self::Root => "root",
                 Self::FunctionItem => "function item",
                 Self::FunctionParam => "function param",
@@ -211,17 +202,14 @@ impl fmt::Display for SyntaxKind {
                 Self::ImportItem => "import item",
                 Self::ImportPath => "import path",
                 Self::ImportGroup => "import group",
-
                 Self::LetStmt => "let statement",
                 Self::IfStmt => "if statement",
                 Self::ReturnStmt => "return statement",
                 Self::RaiseStmt => "raise statement",
                 Self::AssertStmt => "assert statement",
                 Self::AssumeStmt => "assume statement",
-
                 Self::Block => "block",
                 Self::Path => "identifier path",
-
                 Self::InitializerExpr => "initializer expression",
                 Self::InitializerField => "initializer field",
                 Self::LiteralExpr => "literal expression",
@@ -240,7 +228,6 @@ impl fmt::Display for SyntaxKind {
                 Self::FunctionCallArg => "function call argument",
                 Self::FieldAccess => "field access",
                 Self::IndexAccess => "index access",
-
                 Self::ListType => "list type",
                 Self::ListTypeItem => "list type item",
                 Self::PairType => "pair type",

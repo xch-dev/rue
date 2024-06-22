@@ -115,8 +115,7 @@ impl<'a> Parser<'a> {
         self.eat_whitespace();
         self.items
             .get(self.cursor + index)
-            .map(|(kind, _)| *kind)
-            .unwrap_or(SyntaxKind::Eof)
+            .map_or(SyntaxKind::Eof, |(kind, _)| *kind)
     }
 
     fn eat_whitespace(&mut self) {

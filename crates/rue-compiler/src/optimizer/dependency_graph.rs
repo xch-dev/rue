@@ -142,13 +142,13 @@ impl<'a> GraphTraversal<'a> {
             Hir::Atom(_bytes) => {}
 
             // These operators each depend on a single child HIR node.
-            Hir::PubkeyForExp(hir_id) => self.visit_hir(scope_id, hir_id, visited),
-            Hir::Sha256(hir_id) => self.visit_hir(scope_id, hir_id, visited),
-            Hir::Strlen(hir_id) => self.visit_hir(scope_id, hir_id, visited),
-            Hir::First(hir_id) => self.visit_hir(scope_id, hir_id, visited),
-            Hir::Rest(hir_id) => self.visit_hir(scope_id, hir_id, visited),
-            Hir::Not(hir_id) => self.visit_hir(scope_id, hir_id, visited),
-            Hir::IsCons(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+            Hir::PubkeyForExp(hir_id)
+            | Hir::Sha256(hir_id)
+            | Hir::Strlen(hir_id)
+            | Hir::First(hir_id)
+            | Hir::Rest(hir_id)
+            | Hir::Not(hir_id)
+            | Hir::IsCons(hir_id) => self.visit_hir(scope_id, hir_id, visited),
 
             // These depend on multiple HIR nodes, in order.
             // This ensures that every part of the HIR is visited.
@@ -221,8 +221,9 @@ impl<'a> GraphTraversal<'a> {
             }
 
             // TODO: Should these be visited in a different scope if they aren't inline?
-            Symbol::Let(Let { hir_id, .. }) => self.visit_hir(scope_id, hir_id, visited),
-            Symbol::Const(Const { hir_id, .. }) => self.visit_hir(scope_id, hir_id, visited),
+            Symbol::Let(Let { hir_id, .. }) | Symbol::Const(Const { hir_id, .. }) => {
+                self.visit_hir(scope_id, hir_id, visited);
+            }
 
             // Functions are visited in the scope in which they are defined.
             // TODO: For inline functions, should this be visited in the current scope?
@@ -241,7 +242,7 @@ impl<'a> GraphTraversal<'a> {
                 self.edges.entry(fun.scope_id).or_default();
 
                 // Compute the function's edges.
-                self.compute_function_edges(fun.scope_id, fun.hir_id, fun.ty, &mut HashSet::new());
+                self.compute_function_edges(fun.scope_id, fun.hir_id, &fun.ty, &mut HashSet::new());
             }
             Symbol::Const(..) => {}
             Symbol::Let(..) | Symbol::Parameter(..) | Symbol::Unknown => {
@@ -342,7 +343,7 @@ impl<'a> GraphTraversal<'a> {
                         self.edges.entry(fun.scope_id).or_default().insert(scope_id);
 
                         // Compute the function's edges.
-                        self.compute_function_edges(fun.scope_id, fun.hir_id, fun.ty, visited);
+                        self.compute_function_edges(fun.scope_id, fun.hir_id, &fun.ty, visited);
                     }
                     Symbol::Parameter { .. } => {}
                     Symbol::Let(Let { hir_id, .. }) | Symbol::Const(Const { hir_id, .. }) => {
@@ -357,7 +358,7 @@ impl<'a> GraphTraversal<'a> {
         &mut self,
         scope_id: ScopeId,
         hir_id: HirId,
-        ty: FunctionType,
+        ty: &FunctionType,
         visited: &mut HashSet<(ScopeId, HirId)>,
     ) {
         // Initialize the new scope's environment.

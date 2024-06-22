@@ -2,8 +2,6 @@ use std::collections::HashSet;
 
 use crate::{ty::Type, Comparison, Database, TypeId};
 
-use Comparison::*;
-
 pub trait TypeSystem {
     fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> Comparison;
     fn is_cyclic(&self, type_id: TypeId) -> bool;
@@ -20,6 +18,7 @@ impl TypeSystem for Database {
 }
 
 impl Database {
+    #[allow(clippy::match_same_arms, clippy::too_many_lines)]
     fn compare_type_visitor(
         &self,
         lhs: TypeId,
@@ -28,7 +27,7 @@ impl Database {
     ) -> Comparison {
         let key = (lhs, rhs);
         if lhs == rhs || !visited.insert(key) {
-            return Equal;
+            return Comparison::Equal;
         }
 
         let comparison = match (self.ty(lhs), self.ty(rhs)) {
@@ -37,68 +36,68 @@ impl Database {
 
             // We should have already given a diagnostic for `Unknown`.
             // So we will go ahead and pretend they are equal to everything.
-            (Type::Unknown, _) | (_, Type::Unknown) => Equal,
+            (Type::Unknown, _) | (_, Type::Unknown) => Comparison::Equal,
 
             // These are of course equal atomic types.
-            (Type::Any, Type::Any) => Equal,
-            (Type::Int, Type::Int) => Equal,
-            (Type::Bool, Type::Bool) => Equal,
-            (Type::Bytes, Type::Bytes) => Equal,
-            (Type::Bytes32, Type::Bytes32) => Equal,
-            (Type::PublicKey, Type::PublicKey) => Equal,
-            (Type::Nil, Type::Nil) => Equal,
+            (Type::Any, Type::Any) => Comparison::Equal,
+            (Type::Int, Type::Int) => Comparison::Equal,
+            (Type::Bool, Type::Bool) => Comparison::Equal,
+            (Type::Bytes, Type::Bytes) => Comparison::Equal,
+            (Type::Bytes32, Type::Bytes32) => Comparison::Equal,
+            (Type::PublicKey, Type::PublicKey) => Comparison::Equal,
+            (Type::Nil, Type::Nil) => Comparison::Equal,
 
             // We should treat `Bytes32` as a subtype of `Bytes` and therefore equal.
             // `PublicKey` however, can have different meaning, so is not equal.
             // `Bytes` is also not equal to `Bytes32` since it's unsized.
-            (Type::Bytes32, Type::Bytes) => Equal,
+            (Type::Bytes32, Type::Bytes) => Comparison::Equal,
 
             // You can cast `Any` to anything, but it's not implicit.
             // So many languages make `Any` implicit and it makes it hard to debug.
-            (Type::Any, _) => Castable,
+            (Type::Any, _) => Comparison::Castable,
 
             // However, anything can be assigned to `Any` implicitly.
-            (_, Type::Any) => Assignable,
+            (_, Type::Any) => Comparison::Assignable,
 
             // You have to explicitly convert between other atom types.
             // This is because the compiled output can change depending on the type.
-            (Type::Int, Type::Bytes) => Castable,
-            (Type::Bool, Type::Bytes) => Castable,
-            (Type::Bool, Type::Int) => Castable,
-            (Type::Nil, Type::Int) => Castable,
-            (Type::Nil, Type::Bool) => Castable,
-            (Type::PublicKey, Type::Bytes) => Castable,
-            (Type::PublicKey, Type::Int) => Castable,
-            (Type::Bytes, Type::Int) => Castable,
-            (Type::Bytes32, Type::Int) => Castable,
+            (Type::Int, Type::Bytes) => Comparison::Castable,
+            (Type::Bool, Type::Bytes) => Comparison::Castable,
+            (Type::Bool, Type::Int) => Comparison::Castable,
+            (Type::Nil, Type::Int) => Comparison::Castable,
+            (Type::Nil, Type::Bool) => Comparison::Castable,
+            (Type::PublicKey, Type::Bytes) => Comparison::Castable,
+            (Type::PublicKey, Type::Int) => Comparison::Castable,
+            (Type::Bytes, Type::Int) => Comparison::Castable,
+            (Type::Bytes32, Type::Int) => Comparison::Castable,
 
             // Let's allow assigning `Nil` to `Bytes` for ease of use.
             // The only alternative without needing a cast is empty strings.
-            (Type::Nil, Type::Bytes) => Assignable,
+            (Type::Nil, Type::Bytes) => Comparison::Assignable,
 
             // Size changing conversions are not possible without a type guard.
-            (Type::Bytes, Type::Bytes32) => Superset,
-            (Type::Bytes, Type::PublicKey) => Superset,
-            (Type::Bytes, Type::Nil) => Superset,
-            (Type::Bytes, Type::Bool) => Superset,
-            (Type::Int, Type::Bytes32) => Superset,
-            (Type::Int, Type::PublicKey) => Superset,
-            (Type::Int, Type::Nil) => Superset,
-            (Type::Int, Type::Bool) => Superset,
-            (Type::Bool, Type::PublicKey) => Unrelated,
-            (Type::Bool, Type::Bytes32) => Unrelated,
-            (Type::Bool, Type::Nil) => Unrelated,
-            (Type::Nil, Type::Bytes32) => Unrelated,
-            (Type::Nil, Type::PublicKey) => Unrelated,
-            (Type::PublicKey, Type::Bytes32) => Unrelated,
-            (Type::PublicKey, Type::Bool) => Unrelated,
-            (Type::PublicKey, Type::Nil) => Unrelated,
-            (Type::Bytes32, Type::PublicKey) => Unrelated,
-            (Type::Bytes32, Type::Bool) => Unrelated,
-            (Type::Bytes32, Type::Nil) => Unrelated,
+            (Type::Bytes, Type::Bytes32) => Comparison::Superset,
+            (Type::Bytes, Type::PublicKey) => Comparison::Superset,
+            (Type::Bytes, Type::Nil) => Comparison::Superset,
+            (Type::Bytes, Type::Bool) => Comparison::Superset,
+            (Type::Int, Type::Bytes32) => Comparison::Superset,
+            (Type::Int, Type::PublicKey) => Comparison::Superset,
+            (Type::Int, Type::Nil) => Comparison::Superset,
+            (Type::Int, Type::Bool) => Comparison::Superset,
+            (Type::Bool, Type::PublicKey) => Comparison::Unrelated,
+            (Type::Bool, Type::Bytes32) => Comparison::Unrelated,
+            (Type::Bool, Type::Nil) => Comparison::Unrelated,
+            (Type::Nil, Type::Bytes32) => Comparison::Unrelated,
+            (Type::Nil, Type::PublicKey) => Comparison::Unrelated,
+            (Type::PublicKey, Type::Bytes32) => Comparison::Unrelated,
+            (Type::PublicKey, Type::Bool) => Comparison::Unrelated,
+            (Type::PublicKey, Type::Nil) => Comparison::Unrelated,
+            (Type::Bytes32, Type::PublicKey) => Comparison::Unrelated,
+            (Type::Bytes32, Type::Bool) => Comparison::Unrelated,
+            (Type::Bytes32, Type::Nil) => Comparison::Unrelated,
 
             // These are the variants of the `Optional` type.
-            (Type::Nil, Type::Optional(..)) => Assignable,
+            (Type::Nil, Type::Optional(..)) => Comparison::Assignable,
             (Type::Optional(lhs), Type::Optional(rhs)) => {
                 self.compare_type_visitor(*lhs, *rhs, visited)
             }
@@ -106,7 +105,7 @@ impl Database {
 
             // TODO: Unions would make this more generalized and useful.
             // I should add unions back.
-            (Type::Optional(_inner), _) => Unrelated,
+            (Type::Optional(_inner), _) => Comparison::Unrelated,
 
             // Compare both sides of a `Pair`.
             (Type::Pair(lhs), Type::Pair(rhs)) => {
@@ -121,78 +120,78 @@ impl Database {
             (Type::Pair(pair), Type::List(inner)) => {
                 let inner = self.compare_type_visitor(pair.first, *inner, visited);
                 let rest = self.compare_type_visitor(pair.rest, rhs, visited);
-                Assignable & inner & rest
+                Comparison::Assignable & inner & rest
             }
 
             // A `List` is not a valid pair since `Nil` is also a valid list.
             // It's a `Superset` only if the opposite comparison is not `Unrelated`.
             (Type::List(..), Type::Pair(..)) => {
-                Superset & self.compare_type_visitor(rhs, lhs, visited)
+                Comparison::Superset & self.compare_type_visitor(rhs, lhs, visited)
             }
 
             // Nothing else can be assigned to or from a `Pair`.
-            (Type::Pair(..), _) | (_, Type::Pair(..)) => Unrelated,
+            (Type::Pair(..), _) | (_, Type::Pair(..)) => Comparison::Unrelated,
 
             // A `List` just compares with the inner type of another `List`.
             (Type::List(lhs), Type::List(rhs)) => self.compare_type_visitor(*lhs, *rhs, visited),
 
             // `Nil` is a valid list.
-            (Type::Nil, Type::List(..)) => Assignable,
-            (Type::List(..), Type::Nil) => Superset,
+            (Type::Nil, Type::List(..)) => Comparison::Assignable,
+            (Type::List(..), Type::Nil) => Comparison::Superset,
 
             // `List` is not compatible with atoms.
-            (Type::Bytes, Type::List(..)) => Unrelated,
-            (Type::Bytes32, Type::List(..)) => Unrelated,
-            (Type::PublicKey, Type::List(..)) => Unrelated,
-            (Type::Int, Type::List(..)) => Unrelated,
-            (Type::Bool, Type::List(..)) => Unrelated,
-            (Type::List(..), Type::Bytes) => Unrelated,
-            (Type::List(..), Type::Bytes32) => Unrelated,
-            (Type::List(..), Type::PublicKey) => Unrelated,
-            (Type::List(..), Type::Int) => Unrelated,
-            (Type::List(..), Type::Bool) => Unrelated,
+            (Type::Bytes, Type::List(..)) => Comparison::Unrelated,
+            (Type::Bytes32, Type::List(..)) => Comparison::Unrelated,
+            (Type::PublicKey, Type::List(..)) => Comparison::Unrelated,
+            (Type::Int, Type::List(..)) => Comparison::Unrelated,
+            (Type::Bool, Type::List(..)) => Comparison::Unrelated,
+            (Type::List(..), Type::Bytes) => Comparison::Unrelated,
+            (Type::List(..), Type::Bytes32) => Comparison::Unrelated,
+            (Type::List(..), Type::PublicKey) => Comparison::Unrelated,
+            (Type::List(..), Type::Int) => Comparison::Unrelated,
+            (Type::List(..), Type::Bool) => Comparison::Unrelated,
 
             // A `Struct` is castable to others only if the fields are identical.
             (Type::Struct(lhs), Type::Struct(rhs)) => {
                 if lhs.fields.len() == rhs.fields.len() {
-                    let mut result = Castable;
+                    let mut result = Comparison::Castable;
                     for i in 0..lhs.fields.len() {
                         result &= self.compare_type_visitor(lhs.fields[i], rhs.fields[i], visited);
                     }
                     result
                 } else {
-                    Unrelated
+                    Comparison::Unrelated
                 }
             }
-            (Type::Struct(..), _) | (_, Type::Struct(..)) => Unrelated,
+            (Type::Struct(..), _) | (_, Type::Struct(..)) => Comparison::Unrelated,
 
             // Enum variants are assignable only to their respective enum.
             (Type::EnumVariant(variant_type), Type::Enum(..)) => {
                 if variant_type.enum_type == rhs {
-                    Assignable
+                    Comparison::Assignable
                 } else {
-                    Unrelated
+                    Comparison::Unrelated
                 }
             }
 
             // But not the other way around.
             (Type::Enum(..), Type::EnumVariant(variant_type)) => {
                 if variant_type.enum_type == lhs {
-                    Superset
+                    Comparison::Superset
                 } else {
-                    Unrelated
+                    Comparison::Unrelated
                 }
             }
 
             // Enums and their variants are not assignable to anything except themselves.
-            (Type::Enum(..), _) | (_, Type::Enum(..)) => Unrelated,
-            (Type::EnumVariant(..), _) | (_, Type::EnumVariant(..)) => Unrelated,
+            (Type::Enum(..), _) | (_, Type::Enum(..)) => Comparison::Unrelated,
+            (Type::EnumVariant(..), _) | (_, Type::EnumVariant(..)) => Comparison::Unrelated,
 
             // The parameters and return types of functions are checked.
             // This can be made more flexible later.
             (Type::Function(lhs), Type::Function(rhs)) => {
                 if lhs.param_types.len() != rhs.param_types.len() || lhs.rest != rhs.rest {
-                    Unrelated
+                    Comparison::Unrelated
                 } else {
                     let mut result =
                         self.compare_type_visitor(lhs.return_type, rhs.return_type, visited);
@@ -210,7 +209,7 @@ impl Database {
             }
 
             // There is likely nothing that should relate to a function.
-            (Type::Function(..), _) | (_, Type::Function(..)) => Unrelated,
+            (Type::Function(..), _) | (_, Type::Function(..)) => Comparison::Unrelated,
         };
 
         visited.remove(&key);
@@ -219,22 +218,22 @@ impl Database {
 
     fn is_cyclic_visitor(&self, ty: TypeId, visited_aliases: &mut HashSet<TypeId>) -> bool {
         match self.ty_raw(ty).clone() {
-            Type::List(..) => false,
             Type::Pair(pair) => {
                 self.is_cyclic_visitor(pair.first, visited_aliases)
                     || self.is_cyclic_visitor(pair.rest, visited_aliases)
             }
-            Type::Struct { .. } => false,
-            Type::Enum { .. } => false,
-            Type::EnumVariant { .. } => false,
-            Type::Function { .. } => false,
             Type::Alias(alias) => {
                 if !visited_aliases.insert(alias) {
                     return true;
                 }
                 self.is_cyclic_visitor(alias, visited_aliases)
             }
-            Type::Unknown
+            Type::List(..)
+            | Type::Struct(..)
+            | Type::Enum(..)
+            | Type::EnumVariant(..)
+            | Type::Function(..)
+            | Type::Unknown
             | Type::Nil
             | Type::Any
             | Type::Int
@@ -279,45 +278,54 @@ mod tests {
         let (mut db, ty) = setup();
 
         let int_alias = db.alloc_type(Type::Alias(ty.int));
-        assert_eq!(db.compare_type(int_alias, ty.int), Equal);
-        assert_eq!(db.compare_type(ty.int, int_alias), Equal);
-        assert_eq!(db.compare_type(int_alias, int_alias), Equal);
+        assert_eq!(db.compare_type(int_alias, ty.int), Comparison::Equal);
+        assert_eq!(db.compare_type(ty.int, int_alias), Comparison::Equal);
+        assert_eq!(db.compare_type(int_alias, int_alias), Comparison::Equal);
 
         let double_alias = db.alloc_type(Type::Alias(int_alias));
-        assert_eq!(db.compare_type(double_alias, ty.int), Equal);
-        assert_eq!(db.compare_type(ty.int, double_alias), Equal);
-        assert_eq!(db.compare_type(double_alias, double_alias), Equal);
-        assert_eq!(db.compare_type(double_alias, int_alias), Equal);
-        assert_eq!(db.compare_type(int_alias, double_alias), Equal);
+        assert_eq!(db.compare_type(double_alias, ty.int), Comparison::Equal);
+        assert_eq!(db.compare_type(ty.int, double_alias), Comparison::Equal);
+        assert_eq!(
+            db.compare_type(double_alias, double_alias),
+            Comparison::Equal
+        );
+        assert_eq!(db.compare_type(double_alias, int_alias), Comparison::Equal);
+        assert_eq!(db.compare_type(int_alias, double_alias), Comparison::Equal);
     }
 
     #[test]
     fn test_any_type() {
         let (db, ty) = setup();
-        assert_eq!(db.compare_type(ty.any, ty.int), Castable);
-        assert_eq!(db.compare_type(ty.any, ty.any), Equal);
-        assert_eq!(db.compare_type(ty.int, ty.any), Assignable);
+        assert_eq!(db.compare_type(ty.any, ty.int), Comparison::Castable);
+        assert_eq!(db.compare_type(ty.any, ty.any), Comparison::Equal);
+        assert_eq!(db.compare_type(ty.int, ty.any), Comparison::Assignable);
     }
 
     #[test]
     fn test_unknown_type() {
         let (db, ty) = setup();
-        assert_eq!(db.compare_type(ty.any, ty.unknown), Equal);
-        assert_eq!(db.compare_type(ty.int, ty.unknown), Equal);
-        assert_eq!(db.compare_type(ty.unknown, ty.int), Equal);
-        assert_eq!(db.compare_type(ty.unknown, ty.any), Equal);
+        assert_eq!(db.compare_type(ty.any, ty.unknown), Comparison::Equal);
+        assert_eq!(db.compare_type(ty.int, ty.unknown), Comparison::Equal);
+        assert_eq!(db.compare_type(ty.unknown, ty.int), Comparison::Equal);
+        assert_eq!(db.compare_type(ty.unknown, ty.any), Comparison::Equal);
     }
 
     #[test]
     fn test_atom_types() {
         let (db, ty) = setup();
-        assert_eq!(db.compare_type(ty.bytes, ty.bytes32), Superset);
-        assert_eq!(db.compare_type(ty.bytes32, ty.bytes), Equal);
-        assert_eq!(db.compare_type(ty.bytes, ty.public_key), Superset);
-        assert_eq!(db.compare_type(ty.public_key, ty.bytes), Castable);
-        assert_eq!(db.compare_type(ty.bytes, ty.int), Castable);
-        assert_eq!(db.compare_type(ty.int, ty.bytes), Castable);
-        assert_eq!(db.compare_type(ty.int, ty.int), Equal);
+        assert_eq!(db.compare_type(ty.bytes, ty.bytes32), Comparison::Superset);
+        assert_eq!(db.compare_type(ty.bytes32, ty.bytes), Comparison::Equal);
+        assert_eq!(
+            db.compare_type(ty.bytes, ty.public_key),
+            Comparison::Superset
+        );
+        assert_eq!(
+            db.compare_type(ty.public_key, ty.bytes),
+            Comparison::Castable
+        );
+        assert_eq!(db.compare_type(ty.bytes, ty.int), Comparison::Castable);
+        assert_eq!(db.compare_type(ty.int, ty.bytes), Comparison::Castable);
+        assert_eq!(db.compare_type(ty.int, ty.int), Comparison::Equal);
     }
 
     #[test]
@@ -325,12 +333,15 @@ mod tests {
         let (mut db, ty) = setup();
 
         let list = db.alloc_type(Type::List(ty.int));
-        assert_eq!(db.compare_type(ty.nil, ty.int), Castable);
-        assert_eq!(db.compare_type(ty.nil, ty.bool), Castable);
-        assert_eq!(db.compare_type(ty.nil, ty.bytes), Assignable);
-        assert_eq!(db.compare_type(ty.nil, ty.bytes32), Unrelated);
-        assert_eq!(db.compare_type(ty.nil, ty.public_key), Unrelated);
-        assert_eq!(db.compare_type(ty.nil, list), Assignable);
+        assert_eq!(db.compare_type(ty.nil, ty.int), Comparison::Castable);
+        assert_eq!(db.compare_type(ty.nil, ty.bool), Comparison::Castable);
+        assert_eq!(db.compare_type(ty.nil, ty.bytes), Comparison::Assignable);
+        assert_eq!(db.compare_type(ty.nil, ty.bytes32), Comparison::Unrelated);
+        assert_eq!(
+            db.compare_type(ty.nil, ty.public_key),
+            Comparison::Unrelated
+        );
+        assert_eq!(db.compare_type(ty.nil, list), Comparison::Assignable);
     }
 
     #[test]
@@ -341,28 +352,37 @@ mod tests {
             first: ty.int,
             rest: ty.int,
         }));
-        assert_eq!(db.compare_type(int_pair, int_pair), Equal);
+        assert_eq!(db.compare_type(int_pair, int_pair), Comparison::Equal);
 
         let bytes_pair = db.alloc_type(Type::Pair(PairType {
             first: ty.bytes,
             rest: ty.bytes,
         }));
-        assert_eq!(db.compare_type(int_pair, bytes_pair), Castable);
-        assert_eq!(db.compare_type(bytes_pair, int_pair), Castable);
+        assert_eq!(db.compare_type(int_pair, bytes_pair), Comparison::Castable);
+        assert_eq!(db.compare_type(bytes_pair, int_pair), Comparison::Castable);
 
         let bytes32_pair = db.alloc_type(Type::Pair(PairType {
             first: ty.bytes32,
             rest: ty.bytes32,
         }));
-        assert_eq!(db.compare_type(bytes_pair, bytes32_pair), Superset);
-        assert_eq!(db.compare_type(bytes32_pair, bytes_pair), Equal);
+        assert_eq!(
+            db.compare_type(bytes_pair, bytes32_pair),
+            Comparison::Superset
+        );
+        assert_eq!(db.compare_type(bytes32_pair, bytes_pair), Comparison::Equal);
 
         let bytes32_bytes = db.alloc_type(Type::Pair(PairType {
             first: ty.bytes32,
             rest: ty.bytes,
         }));
-        assert_eq!(db.compare_type(bytes_pair, bytes32_bytes), Superset);
-        assert_eq!(db.compare_type(bytes32_bytes, bytes_pair), Equal);
+        assert_eq!(
+            db.compare_type(bytes_pair, bytes32_bytes),
+            Comparison::Superset
+        );
+        assert_eq!(
+            db.compare_type(bytes32_bytes, bytes_pair),
+            Comparison::Equal
+        );
     }
 
     #[test]
@@ -370,32 +390,38 @@ mod tests {
         let (mut db, ty) = setup();
 
         let int_list = db.alloc_type(Type::List(ty.int));
-        assert_eq!(db.compare_type(int_list, int_list), Equal);
+        assert_eq!(db.compare_type(int_list, int_list), Comparison::Equal);
 
         let pair_list = db.alloc_type(Type::Pair(PairType {
             first: ty.int,
             rest: int_list,
         }));
-        assert_eq!(db.compare_type(pair_list, int_list), Assignable);
-        assert_eq!(db.compare_type(int_list, pair_list), Superset);
+        assert_eq!(db.compare_type(pair_list, int_list), Comparison::Assignable);
+        assert_eq!(db.compare_type(int_list, pair_list), Comparison::Superset);
 
         let pair_nil = db.alloc_type(Type::Pair(PairType {
             first: ty.int,
             rest: ty.nil,
         }));
-        assert_eq!(db.compare_type(pair_nil, int_list), Assignable);
+        assert_eq!(db.compare_type(pair_nil, int_list), Comparison::Assignable);
 
         let pair_unrelated_first = db.alloc_type(Type::Pair(PairType {
             first: pair_list,
             rest: ty.nil,
         }));
-        assert_eq!(db.compare_type(pair_unrelated_first, int_list), Unrelated);
+        assert_eq!(
+            db.compare_type(pair_unrelated_first, int_list),
+            Comparison::Unrelated
+        );
 
         let pair_unrelated_rest = db.alloc_type(Type::Pair(PairType {
             first: ty.int,
             rest: ty.int,
         }));
-        assert_eq!(db.compare_type(pair_unrelated_rest, int_list), Unrelated);
+        assert_eq!(
+            db.compare_type(pair_unrelated_rest, int_list),
+            Comparison::Unrelated
+        );
     }
 
     #[test]
@@ -405,17 +431,20 @@ mod tests {
         let two_ints = db.alloc_type(Type::Struct(StructType {
             fields: fields(&[ty.int, ty.int]),
         }));
-        assert_eq!(db.compare_type(two_ints, two_ints), Equal);
+        assert_eq!(db.compare_type(two_ints, two_ints), Comparison::Equal);
 
         let one_int = db.alloc_type(Type::Struct(StructType {
             fields: fields(&[ty.int]),
         }));
-        assert_eq!(db.compare_type(one_int, two_ints), Unrelated);
+        assert_eq!(db.compare_type(one_int, two_ints), Comparison::Unrelated);
 
         let empty_struct = db.alloc_type(Type::Struct(StructType {
             fields: fields(&[]),
         }));
-        assert_eq!(db.compare_type(empty_struct, empty_struct), Equal);
+        assert_eq!(
+            db.compare_type(empty_struct, empty_struct),
+            Comparison::Equal
+        );
     }
 
     #[test]
@@ -435,8 +464,8 @@ mod tests {
             variants: fields(&[variant]),
         });
 
-        assert_eq!(db.compare_type(enum_type, variant), Superset);
-        assert_eq!(db.compare_type(variant, enum_type), Assignable);
+        assert_eq!(db.compare_type(enum_type, variant), Comparison::Superset);
+        assert_eq!(db.compare_type(variant, enum_type), Comparison::Assignable);
     }
 
     #[test]
@@ -448,23 +477,35 @@ mod tests {
             rest: Rest::Nil,
             return_type: ty.bool,
         }));
-        assert_eq!(db.compare_type(int_to_bool, int_to_bool), Equal);
+        assert_eq!(db.compare_type(int_to_bool, int_to_bool), Comparison::Equal);
 
         let int_to_int = db.alloc_type(Type::Function(FunctionType {
             param_types: vec![ty.int],
             rest: Rest::Nil,
             return_type: ty.int,
         }));
-        assert_eq!(db.compare_type(int_to_bool, int_to_int), Castable);
-        assert_eq!(db.compare_type(int_to_int, int_to_bool), Superset);
+        assert_eq!(
+            db.compare_type(int_to_bool, int_to_int),
+            Comparison::Castable
+        );
+        assert_eq!(
+            db.compare_type(int_to_int, int_to_bool),
+            Comparison::Superset
+        );
 
         let int_list = db.alloc_type(Type::List(ty.int));
-        let ints_to_bool = db.alloc_type(Type::Function(FunctionType {
+        let int_list_to_bool = db.alloc_type(Type::Function(FunctionType {
             param_types: vec![int_list],
             rest: Rest::Nil,
             return_type: ty.bool,
         }));
-        assert_eq!(db.compare_type(int_to_bool, ints_to_bool), Unrelated);
-        assert_eq!(db.compare_type(ints_to_bool, int_to_bool), Unrelated);
+        assert_eq!(
+            db.compare_type(int_to_bool, int_list_to_bool),
+            Comparison::Unrelated
+        );
+        assert_eq!(
+            db.compare_type(int_list_to_bool, int_to_bool),
+            Comparison::Unrelated
+        );
     }
 }

@@ -468,7 +468,7 @@ impl InitializerField {
     }
 
     pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().filter_map(Expr::cast).next()
+        self.syntax().children().find_map(Expr::cast)
     }
 }
 
@@ -476,8 +476,7 @@ impl LiteralExpr {
     pub fn value(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .next()
+            .find_map(SyntaxElement::into_token)
     }
 }
 
@@ -511,7 +510,7 @@ impl PrefixExpr {
     }
 
     pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().filter_map(Expr::cast).next()
+        self.syntax().children().find_map(Expr::cast)
     }
 }
 

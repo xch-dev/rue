@@ -30,8 +30,7 @@ impl SymbolTable {
     pub fn type_referenced_by_symbol(&self, type_id: TypeId, symbol_id: SymbolId) -> bool {
         self.symbol_type_references
             .get(&symbol_id)
-            .map(|type_ids| type_ids.contains(&type_id))
-            .unwrap_or(false)
+            .is_some_and(|type_ids| type_ids.contains(&type_id))
     }
 
     pub fn referenced_types_for_type(&self, type_id: TypeId) -> Vec<TypeId> {

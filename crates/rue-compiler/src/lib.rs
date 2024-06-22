@@ -38,18 +38,18 @@ impl Output {
     }
 }
 
-pub fn analyze(root: Root) -> Vec<Diagnostic> {
+pub fn analyze(root: &Root) -> Vec<Diagnostic> {
     let mut db = Database::default();
     precompile(&mut db, root);
     db.diagnostics().to_vec()
 }
 
-fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
+fn precompile(db: &mut Database, root: &Root) -> Option<LirId> {
     let root_scope_id = db.alloc_scope(Scope::default());
 
     let mut compiler = Compiler::new(db);
 
-    let declarations = compiler.declare_root(root.clone(), root_scope_id);
+    let declarations = compiler.declare_root(root, root_scope_id);
     compiler.compile_root(root, root_scope_id, declarations);
 
     let symbol_table = compiler.finish();
@@ -96,7 +96,7 @@ fn precompile(db: &mut Database, root: Root) -> Option<LirId> {
     Some(optimizer.opt_main(main_symbol_id))
 }
 
-pub fn compile(allocator: &mut Allocator, root: Root, parsing_succeeded: bool) -> Output {
+pub fn compile(allocator: &mut Allocator, root: &Root, parsing_succeeded: bool) -> Output {
     let mut db = Database::default();
     let lir_id = precompile(&mut db, root);
     let diagnostics = db.diagnostics().to_vec();

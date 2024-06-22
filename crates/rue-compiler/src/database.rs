@@ -214,7 +214,7 @@ impl Database {
 
         format!(
             "Scope({:?}, Symbols = [{}])",
-            self.scope_token(scope_id).map(|token| token.to_string()),
+            self.scope_token(scope_id).map(ToString::to_string),
             defined_symbols
         )
     }

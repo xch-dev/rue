@@ -1,3 +1,5 @@
+#![allow(clippy::map_unwrap_or)]
+
 use std::{collections::HashMap, fmt, str::FromStr};
 
 pub(crate) use builtins::{builtins, Builtins};
@@ -28,6 +30,13 @@ mod builtins;
 mod declarations;
 mod symbol_table;
 mod unused;
+
+enum Statement {
+    Let(ScopeId),
+    If(HirId, HirId),
+    Return(Value),
+    Assume,
+}
 
 /// Responsible for lowering the AST into the HIR.
 /// Performs name resolution and type checking.
@@ -82,20 +91,20 @@ impl<'a> Compiler<'a> {
     }
 
     /// Declares all of the items in a root.
-    pub fn declare_root(&mut self, root: Root, scope_id: ScopeId) -> Declarations {
+    pub fn declare_root(&mut self, root: &Root, scope_id: ScopeId) -> Declarations {
         self.scope_stack.push(scope_id);
-        let declarations = self.declare_items(root.items());
+        let declarations = self.declare_items(&root.items());
         self.scope_stack.pop().unwrap();
         declarations
     }
 
     /// Declare all items into scope without compiling their body.
     /// This ensures no circular references are resolved at this time.
-    pub fn declare_items(&mut self, items: Vec<Item>) -> Declarations {
+    pub fn declare_items(&mut self, items: &[Item]) -> Declarations {
         let mut type_ids = Vec::new();
         let mut symbol_ids = Vec::new();
 
-        for item in items.clone() {
+        for item in items {
             match item {
                 Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias(ty)),
                 Item::StructItem(struct_item) => type_ids.push(self.declare_struct(struct_item)),
@@ -104,7 +113,7 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        for item in items.clone() {
+        for item in items {
             match item {
                 Item::FunctionItem(function) => symbol_ids.push(self.declare_function(function)),
                 Item::ConstItem(const_item) => symbol_ids.push(self.declare_const(const_item)),
@@ -119,16 +128,16 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compile the root by lowering all items into scope.
-    pub fn compile_root(&mut self, root: Root, scope_id: ScopeId, declarations: Declarations) {
+    pub fn compile_root(&mut self, root: &Root, scope_id: ScopeId, declarations: Declarations) {
         self.scope_stack.push(scope_id);
-        self.compile_items(root.items(), declarations);
+        self.compile_items(&root.items(), declarations);
         self.scope_stack.pop().unwrap();
     }
 
     /// Lower all of the items in the list in the proper order.
     /// This is done in two passes to handle forward references.
-    fn compile_items(&mut self, items: Vec<Item>, mut declarations: Declarations) {
-        for item in items.clone() {
+    fn compile_items(&mut self, items: &[Item], mut declarations: Declarations) {
+        for item in items {
             match item {
                 Item::TypeAliasItem(ty) => {
                     let type_id = declarations.type_ids.remove(0);
@@ -175,7 +184,7 @@ impl<'a> Compiler<'a> {
     /// This does not compile the function body, but it creates a new scope for it.
     /// Parameter symbols are defined now in the inner function scope.
     /// The function body is compiled later to allow for forward references.
-    fn declare_function(&mut self, function_item: FunctionItem) -> SymbolId {
+    fn declare_function(&mut self, function_item: &FunctionItem) -> SymbolId {
         // Add the symbol to the stack early so you can track type references.
         let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
         self.symbol_stack.push(symbol_id);
@@ -184,8 +193,7 @@ impl<'a> Compiler<'a> {
 
         let return_type = function_item
             .return_type()
-            .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         let mut param_types = Vec::new();
         let mut rest = Rest::Nil;
@@ -199,8 +207,7 @@ impl<'a> Compiler<'a> {
 
             let type_id = param
                 .ty()
-                .map(|ty| self.compile_type(ty))
-                .unwrap_or(self.builtins.unknown);
+                .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
             param_types.push(type_id);
 
@@ -249,15 +256,14 @@ impl<'a> Compiler<'a> {
     }
 
     /// Define a constant in the current scope, but don't lower its body.
-    fn declare_const(&mut self, const_item: ConstItem) -> SymbolId {
+    fn declare_const(&mut self, const_item: &ConstItem) -> SymbolId {
         // Add the symbol to the stack early so you can track type references.
         let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
         self.symbol_stack.push(symbol_id);
 
         let type_id = const_item
             .ty()
-            .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
@@ -276,7 +282,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Define a type for an alias in the current scope, but leave it as unknown for now.
-    fn declare_type_alias(&mut self, type_alias: TypeAliasItem) -> TypeId {
+    fn declare_type_alias(&mut self, type_alias: &TypeAliasItem) -> TypeId {
         let type_id = self.db.alloc_type(Type::Unknown);
         if let Some(name) = type_alias.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
@@ -286,7 +292,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Define a type for a struct in the current scope, but leave it as unknown for now.
-    fn declare_struct(&mut self, struct_item: StructItem) -> TypeId {
+    fn declare_struct(&mut self, struct_item: &StructItem) -> TypeId {
         let type_id = self.db.alloc_type(Type::Unknown);
         if let Some(name) = struct_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
@@ -297,7 +303,7 @@ impl<'a> Compiler<'a> {
 
     /// Define a type for an enum in the current scope.
     /// This creates the enum variants as well, but they are left as unknown types.
-    fn declare_enum(&mut self, enum_item: EnumItem) -> TypeId {
+    fn declare_enum(&mut self, enum_item: &EnumItem) -> TypeId {
         let mut variants = IndexMap::new();
 
         for variant in enum_item.variants() {
@@ -326,7 +332,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compiles the body of a function within the function's scope.
-    fn compile_function(&mut self, function: FunctionItem, symbol_id: SymbolId) {
+    fn compile_function(&mut self, function: &FunctionItem, symbol_id: SymbolId) {
         let Some(body) = function.body() else {
             return;
         };
@@ -338,7 +344,7 @@ impl<'a> Compiler<'a> {
 
         // We don't care about explicit returns in this context.
         self.scope_stack.push(scope_id);
-        let value = self.compile_block(body, Some(ty.return_type)).0;
+        let value = self.compile_block(&body, Some(ty.return_type)).0;
         self.scope_stack.pop().unwrap();
 
         // Ensure that the body is assignable to the return type.
@@ -357,7 +363,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compiles a constant's value.
-    fn compile_const(&mut self, const_item: ConstItem, symbol_id: SymbolId) {
+    fn compile_const(&mut self, const_item: &ConstItem, symbol_id: SymbolId) {
         let Some(expr) = const_item.expr() else {
             return;
         };
@@ -366,7 +372,7 @@ impl<'a> Compiler<'a> {
             unreachable!();
         };
 
-        let output = self.compile_expr(expr, Some(type_id));
+        let output = self.compile_expr(&expr, Some(type_id));
 
         // Ensure that the expression is assignable to the constant's type.
         self.type_check(output.type_id, type_id, const_item.syntax().text_range());
@@ -380,13 +386,12 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compile and resolve the type that the alias points to.
-    fn compile_type_alias(&mut self, ty: TypeAliasItem, alias_type_id: TypeId) {
+    fn compile_type_alias(&mut self, ty: &TypeAliasItem, alias_type_id: TypeId) {
         self.type_definition_stack.push(alias_type_id);
 
         let type_id = ty
             .ty()
-            .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         // Set the alias type to the resolved type.
         *self.db.ty_mut(alias_type_id) = Type::Alias(type_id);
@@ -401,7 +406,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compile and resolve a struct type.
-    fn compile_struct(&mut self, struct_item: StructItem, type_id: TypeId) {
+    fn compile_struct(&mut self, struct_item: &StructItem, type_id: TypeId) {
         self.type_definition_stack.push(type_id);
         let fields = self.compile_struct_fields(struct_item.fields());
         *self.db.ty_mut(type_id) = Type::Struct(StructType { fields });
@@ -415,8 +420,7 @@ impl<'a> Compiler<'a> {
         for field in fields {
             let type_id = field
                 .ty()
-                .map(|ty| self.compile_type(ty))
-                .unwrap_or(self.builtins.unknown);
+                .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
             if let Some(name) = field.name() {
                 named_fields.insert(name.to_string(), type_id);
@@ -427,7 +431,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compile and resolve an enum type, and each of its variants' struct fields.
-    fn compile_enum(&mut self, enum_item: EnumItem, type_id: TypeId) {
+    fn compile_enum(&mut self, enum_item: &EnumItem, type_id: TypeId) {
         self.type_definition_stack.push(type_id);
 
         let Type::Enum(enum_type) = self.db.ty(type_id).clone() else {
@@ -458,8 +462,9 @@ impl<'a> Compiler<'a> {
 
             let discriminant = variant
                 .discriminant()
-                .map(|discriminant| self.compile_int(discriminant).hir_id)
-                .unwrap_or(self.builtins.unknown_hir);
+                .map_or(self.builtins.unknown_hir, |discriminant| {
+                    self.compile_int(&discriminant).hir_id
+                });
 
             *self.db.ty_mut(variant_type) = Type::EnumVariant(EnumVariant {
                 name: name.to_string(),
@@ -475,7 +480,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compiles a let statement and returns its new scope id.
-    fn compile_let_stmt(&mut self, let_stmt: LetStmt) -> Option<ScopeId> {
+    fn compile_let_stmt(&mut self, let_stmt: &LetStmt) -> Option<ScopeId> {
         // Add the symbol to the stack early so you can track type references.
         let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
         self.symbol_stack.push(symbol_id);
@@ -486,7 +491,7 @@ impl<'a> Compiler<'a> {
         // Compile the expression.
         let value = let_stmt
             .expr()
-            .map(|expr| self.compile_expr(expr, expected_type))
+            .map(|expr| self.compile_expr(&expr, expected_type))
             .unwrap_or(self.unknown());
 
         // Check that the expression's type matches the type annotation, if present.
@@ -522,13 +527,13 @@ impl<'a> Compiler<'a> {
     /// Compiles an if statement, returning the condition HIR, then block HIR, and else block guards.
     fn compile_if_stmt(
         &mut self,
-        if_stmt: IfStmt,
+        if_stmt: &IfStmt,
         expected_type: Option<TypeId>,
     ) -> (HirId, HirId, HashMap<SymbolId, TypeId>) {
         // Compile the condition expression.
         let condition = if_stmt
             .condition()
-            .map(|condition| self.compile_expr(condition, Some(self.builtins.bool)))
+            .map(|condition| self.compile_expr(&condition, Some(self.builtins.bool)))
             .unwrap_or_else(|| self.unknown());
 
         // Check that the condition is a boolean.
@@ -547,7 +552,7 @@ impl<'a> Compiler<'a> {
 
             // Compile the then block.
             self.scope_stack.push(scope_id);
-            let (value, explicit_return) = self.compile_block(then_block.clone(), expected_type);
+            let (value, explicit_return) = self.compile_block(&then_block, expected_type);
             self.scope_stack.pop().unwrap();
 
             // Pop the type guards, since we've left the scope.
@@ -578,19 +583,13 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compile a block expression into the current scope, returning the HIR and whether there was an explicit return.
-    fn compile_block(&mut self, block: Block, expected_type: Option<TypeId>) -> (Value, bool) {
+    fn compile_block(&mut self, block: &Block, expected_type: Option<TypeId>) -> (Value, bool) {
         // Compile all of the items in the block first.
         // This means that statements can use item symbols in any order,
         // but items cannot use statement symbols.
-        let declarations = self.declare_items(block.items());
-        self.compile_items(block.items(), declarations);
-
-        enum Statement {
-            Let(ScopeId),
-            If(HirId, HirId),
-            Return(Value),
-            Assume,
-        }
+        let items = block.items();
+        let declarations = self.declare_items(&items);
+        self.compile_items(&items, declarations);
 
         let mut statements = Vec::new();
         let mut explicit_return = false;
@@ -599,14 +598,14 @@ impl<'a> Compiler<'a> {
         for stmt in block.stmts() {
             match stmt {
                 Stmt::LetStmt(let_stmt) => {
-                    let Some(scope_id) = self.compile_let_stmt(let_stmt) else {
+                    let Some(scope_id) = self.compile_let_stmt(&let_stmt) else {
                         continue;
                     };
                     statements.push(Statement::Let(scope_id));
                 }
                 Stmt::IfStmt(if_stmt) => {
                     let (condition_hir, then_hir, else_guards) =
-                        self.compile_if_stmt(if_stmt, expected_type);
+                        self.compile_if_stmt(&if_stmt, expected_type);
 
                     // Push the type guards onto the stack.
                     // This will be popped in reverse order later after all statements have been lowered.
@@ -617,7 +616,7 @@ impl<'a> Compiler<'a> {
                 Stmt::ReturnStmt(return_stmt) => {
                     let value = return_stmt
                         .expr()
-                        .map(|expr| self.compile_expr(expr, expected_type))
+                        .map(|expr| self.compile_expr(&expr, expected_type))
                         .unwrap_or_else(|| self.unknown());
 
                     // Make sure that the return value matches the expected type.
@@ -637,7 +636,7 @@ impl<'a> Compiler<'a> {
                     // The value is also optional.
                     let value = raise_stmt
                         .expr()
-                        .map(|expr| self.compile_expr(expr, None).hir_id);
+                        .map(|expr| self.compile_expr(&expr, None).hir_id);
 
                     let hir_id = self.db.alloc_hir(Hir::Raise(value));
 
@@ -649,7 +648,7 @@ impl<'a> Compiler<'a> {
                     // Compile the condition expression.
                     let condition = assert_stmt
                         .expr()
-                        .map(|condition| self.compile_expr(condition, Some(self.builtins.bool)))
+                        .map(|condition| self.compile_expr(&condition, Some(self.builtins.bool)))
                         .unwrap_or_else(|| self.unknown());
 
                     // Make sure that the condition is a boolean.
@@ -668,13 +667,13 @@ impl<'a> Compiler<'a> {
                     let raise = self.db.alloc_hir(Hir::Raise(None));
 
                     // We lower this down to an inverted if statement.
-                    statements.push(Statement::If(not_condition, raise))
+                    statements.push(Statement::If(not_condition, raise));
                 }
                 Stmt::AssumeStmt(assume_stmt) => {
                     // Compile the expression.
                     let expr = assume_stmt
                         .expr()
-                        .map(|expr| self.compile_expr(expr, Some(self.builtins.bool)))
+                        .map(|expr| self.compile_expr(&expr, Some(self.builtins.bool)))
                         .unwrap_or_else(|| self.unknown());
 
                     // Make sure that the condition is a boolean.
@@ -685,7 +684,7 @@ impl<'a> Compiler<'a> {
                     );
 
                     self.type_guard_stack.push(expr.then_guards());
-                    statements.push(Statement::Assume)
+                    statements.push(Statement::Assume);
                 }
             }
         }
@@ -693,7 +692,7 @@ impl<'a> Compiler<'a> {
         // Compile the expression of the block, if present.
         let mut body = block
             .expr()
-            .map(|expr| self.compile_expr(expr, expected_type))
+            .map(|expr| self.compile_expr(&expr, expected_type))
             .unwrap_or(self.unknown());
 
         // Ensure that the block terminates.
@@ -740,11 +739,11 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compile a block in the context of an expression.
-    fn compile_block_expr(&mut self, block: Block, expected_type: Option<TypeId>) -> Value {
+    fn compile_block_expr(&mut self, block: &Block, expected_type: Option<TypeId>) -> Value {
         let scope_id = self.db.alloc_scope(Scope::default());
 
         self.scope_stack.push(scope_id);
-        let (value, explicit_return) = self.compile_block(block.clone(), expected_type);
+        let (value, explicit_return) = self.compile_block(block, expected_type);
         self.scope_stack.pop().unwrap();
 
         if explicit_return {
@@ -756,7 +755,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compiles any expression.
-    fn compile_expr(&mut self, expr: Expr, expected_type: Option<TypeId>) -> Value {
+    fn compile_expr(&mut self, expr: &Expr, expected_type: Option<TypeId>) -> Value {
         match &expr {
             Expr::Path(..) => {}
             _ => self.is_callee = false,
@@ -768,7 +767,7 @@ impl<'a> Compiler<'a> {
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
             Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
             Expr::PairExpr(pair) => self.compile_pair_expr(pair, expected_type),
-            Expr::Block(block) => self.compile_block_expr(block.clone(), expected_type),
+            Expr::Block(block) => self.compile_block_expr(block, expected_type),
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
@@ -787,8 +786,8 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compiles an initializer expression.
-    fn compile_initializer_expr(&mut self, initializer: InitializerExpr) -> Value {
-        let ty = initializer.path().map(|path| self.compile_path_type(path));
+    fn compile_initializer_expr(&mut self, initializer: &InitializerExpr) -> Value {
+        let ty = initializer.path().map(|path| self.compile_path_type(&path));
 
         match ty.map(|ty| self.db.ty(ty)).cloned() {
             Some(Type::Struct(struct_type)) => {
@@ -849,7 +848,7 @@ impl<'a> Compiler<'a> {
 
             let value = field
                 .expr()
-                .map(|expr| self.compile_expr(expr, expected_type))
+                .map(|expr| self.compile_expr(&expr, expected_type))
                 .unwrap_or(self.unknown());
 
             // Check the type of the field initializer.
@@ -905,7 +904,7 @@ impl<'a> Compiler<'a> {
         for field in struct_fields.keys().rev() {
             let field = specified_fields
                 .get(field)
-                .cloned()
+                .copied()
                 .unwrap_or(self.builtins.unknown_hir);
 
             hir_id = self.db.alloc_hir(Hir::Pair(field, hir_id));
@@ -915,10 +914,10 @@ impl<'a> Compiler<'a> {
     }
 
     /// Compiles a field access expression, or special properties for certain types.
-    fn compile_field_access(&mut self, field_access: FieldAccess) -> Value {
+    fn compile_field_access(&mut self, field_access: &FieldAccess) -> Value {
         let Some(value) = field_access
             .expr()
-            .map(|expr| self.compile_expr(expr, None))
+            .map(|expr| self.compile_expr(&expr, None))
         else {
             return self.unknown();
         };
@@ -932,16 +931,15 @@ impl<'a> Compiler<'a> {
                 if let Some(field) = struct_type.fields.get_full(field_name.text()) {
                     let (index, _, field_type) = field;
                     return Value::new(self.compile_index(value.hir_id, index, false), *field_type);
-                } else {
-                    self.db.error(
-                        ErrorKind::UndefinedField {
-                            field: field_name.to_string(),
-                            ty: self.type_name(value.type_id),
-                        },
-                        field_name.text_range(),
-                    );
-                    return self.unknown();
                 }
+                self.db.error(
+                    ErrorKind::UndefinedField {
+                        field: field_name.to_string(),
+                        ty: self.type_name(value.type_id),
+                    },
+                    field_name.text_range(),
+                );
+                return self.unknown();
             }
             Type::Pair(PairType { first, rest }) => match field_name.text() {
                 "first" => {
@@ -971,10 +969,10 @@ impl<'a> Compiler<'a> {
         self.unknown()
     }
 
-    fn compile_index_access(&mut self, index_access: IndexAccess) -> Value {
+    fn compile_index_access(&mut self, index_access: &IndexAccess) -> Value {
         let Some(value) = index_access
             .expr()
-            .map(|expr| self.compile_expr(expr, None))
+            .map(|expr| self.compile_expr(&expr, None))
         else {
             return self.unknown();
         };
@@ -982,7 +980,7 @@ impl<'a> Compiler<'a> {
         let Some(index_token) = index_access.index() else {
             return self.unknown();
         };
-        let index = self.compile_int_raw(index_token.clone());
+        let index = Self::compile_int_raw(&index_token);
 
         let Type::List(item_type) = self.db.ty(value.type_id).clone() else {
             self.db.error(
@@ -1006,12 +1004,12 @@ impl<'a> Compiler<'a> {
         result
     }
 
-    fn compile_prefix_expr(&mut self, prefix_expr: PrefixExpr) -> Value {
+    fn compile_prefix_expr(&mut self, prefix_expr: &PrefixExpr) -> Value {
         let Some(expr) = prefix_expr.expr() else {
             return self.unknown();
         };
 
-        let expr = self.compile_expr(expr, None);
+        let expr = self.compile_expr(&expr, None);
 
         let Some(op) = prefix_expr.op() else {
             return self.unknown();
@@ -1053,7 +1051,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_binary_expr(&mut self, binary: BinaryExpr) -> Value {
+    fn compile_binary_expr(&mut self, binary: &BinaryExpr) -> Value {
         let Some(op) = binary.op() else {
             return self.unknown();
         };
@@ -1065,7 +1063,7 @@ impl<'a> Compiler<'a> {
             () => {
                 binary
                     .lhs()
-                    .map(|lhs| self.compile_expr(lhs, None))
+                    .map(|lhs| self.compile_expr(&lhs, None))
                     .unwrap_or_else(|| self.unknown())
             };
         }
@@ -1074,7 +1072,7 @@ impl<'a> Compiler<'a> {
             () => {
                 binary
                     .rhs()
-                    .map(|rhs| self.compile_expr(rhs, None))
+                    .map(|rhs| self.compile_expr(&rhs, None))
                     .unwrap_or_else(|| self.unknown())
             };
         }
@@ -1285,12 +1283,12 @@ impl<'a> Compiler<'a> {
 
     fn compile_group_expr(
         &mut self,
-        group_expr: GroupExpr,
+        group_expr: &GroupExpr,
         expected_type: Option<TypeId>,
     ) -> Value {
         let Some(expr) = group_expr
             .expr()
-            .map(|expr| self.compile_expr(expr, expected_type))
+            .map(|expr| self.compile_expr(&expr, expected_type))
         else {
             return self.unknown();
         };
@@ -1298,36 +1296,34 @@ impl<'a> Compiler<'a> {
         expr
     }
 
-    fn compile_cast_expr(&mut self, cast: CastExpr, expected_type: Option<TypeId>) -> Value {
+    fn compile_cast_expr(&mut self, cast: &CastExpr, expected_type: Option<TypeId>) -> Value {
         let Some(expr) = cast
             .expr()
-            .map(|expr| self.compile_expr(expr, expected_type))
+            .map(|expr| self.compile_expr(&expr, expected_type))
         else {
             return self.unknown();
         };
 
         let ty = cast
             .ty()
-            .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         self.cast_check(expr.type_id, ty, cast.expr().unwrap().syntax().text_range());
 
         Value::new(expr.hir_id, ty)
     }
 
-    fn compile_guard_expr(&mut self, guard: GuardExpr, expected_type: Option<TypeId>) -> Value {
+    fn compile_guard_expr(&mut self, guard: &GuardExpr, expected_type: Option<TypeId>) -> Value {
         let Some(expr) = guard
             .expr()
-            .map(|expr| self.compile_expr(expr, expected_type))
+            .map(|expr| self.compile_expr(&expr, expected_type))
         else {
             return self.unknown();
         };
 
         let ty = guard
             .ty()
-            .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         let Some((guard, hir_id)) =
             self.guard_into(expr.type_id, ty, expr.hir_id, guard.syntax().text_range())
@@ -1435,15 +1431,15 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_literal_expr(&mut self, literal: LiteralExpr) -> Value {
+    fn compile_literal_expr(&mut self, literal: &LiteralExpr) -> Value {
         let Some(value) = literal.value() else {
             return self.unknown();
         };
 
         match value.kind() {
-            SyntaxKind::Int => self.compile_int(value),
-            SyntaxKind::Hex => self.compile_hex(value),
-            SyntaxKind::String => self.compile_string(value),
+            SyntaxKind::Int => self.compile_int(&value),
+            SyntaxKind::Hex => self.compile_hex(&value),
+            SyntaxKind::String => self.compile_string(&value),
             SyntaxKind::True => {
                 Value::new(self.db.alloc_hir(Hir::Atom(vec![1])), self.builtins.bool)
             }
@@ -1459,7 +1455,7 @@ impl<'a> Compiler<'a> {
 
     fn compile_list_expr(
         &mut self,
-        list_expr: ListExpr,
+        list_expr: &ListExpr,
         expected_expr_type: Option<TypeId>,
     ) -> Value {
         let mut items = Vec::new();
@@ -1482,7 +1478,7 @@ impl<'a> Compiler<'a> {
 
             let output = item
                 .expr()
-                .map(|expr| self.compile_expr(expr, expected_item_type))
+                .map(|expr| self.compile_expr(&expr, expected_item_type))
                 .unwrap_or(self.unknown());
 
             if let Some(expected_item_type) = expected_item_type {
@@ -1535,7 +1531,7 @@ impl<'a> Compiler<'a> {
         )
     }
 
-    fn compile_pair_expr(&mut self, pair_expr: PairExpr, expected_type: Option<TypeId>) -> Value {
+    fn compile_pair_expr(&mut self, pair_expr: &PairExpr, expected_type: Option<TypeId>) -> Value {
         let expected_first = expected_type.and_then(|ty| match self.db.ty(ty) {
             Type::Pair(pair) => Some(pair.first),
             _ => None,
@@ -1547,7 +1543,7 @@ impl<'a> Compiler<'a> {
         });
 
         let first = if let Some(first) = pair_expr.first() {
-            let value = self.compile_expr(first.clone(), expected_first);
+            let value = self.compile_expr(&first, expected_first);
             self.type_check(
                 value.type_id,
                 expected_first.unwrap_or(self.builtins.unknown),
@@ -1559,7 +1555,7 @@ impl<'a> Compiler<'a> {
         };
 
         let rest = if let Some(rest) = pair_expr.rest() {
-            let value = self.compile_expr(rest.clone(), expected_rest);
+            let value = self.compile_expr(&rest, expected_rest);
             self.type_check(
                 value.type_id,
                 expected_rest.unwrap_or(self.builtins.unknown),
@@ -1581,7 +1577,7 @@ impl<'a> Compiler<'a> {
 
     fn compile_lambda_expr(
         &mut self,
-        lambda_expr: LambdaExpr,
+        lambda_expr: &LambdaExpr,
         expected_type: Option<TypeId>,
     ) -> Value {
         let expected = expected_type.and_then(|ty| match self.db.ty(ty) {
@@ -1634,7 +1630,7 @@ impl<'a> Compiler<'a> {
             .or(expected.map(|expected| expected.return_type));
 
         self.scope_stack.push(scope_id);
-        let body = self.compile_expr(body, expected_return_type);
+        let body = self.compile_expr(&body, expected_return_type);
         self.scope_stack.pop().expect("lambda not in scope stack");
 
         let return_type = expected_return_type.unwrap_or(body.type_id);
@@ -1664,10 +1660,10 @@ impl<'a> Compiler<'a> {
         )
     }
 
-    fn compile_if_expr(&mut self, if_expr: IfExpr, expected_type: Option<TypeId>) -> Value {
+    fn compile_if_expr(&mut self, if_expr: &IfExpr, expected_type: Option<TypeId>) -> Value {
         let condition = if_expr
             .condition()
-            .map(|condition| self.compile_expr(condition, Some(self.builtins.bool)));
+            .map(|condition| self.compile_expr(&condition, Some(self.builtins.bool)));
 
         if let Some(condition) = condition.as_ref() {
             self.type_guard_stack.push(condition.then_guards());
@@ -1675,7 +1671,7 @@ impl<'a> Compiler<'a> {
 
         let then_block = if_expr
             .then_block()
-            .map(|then_block| self.compile_block_expr(then_block, expected_type));
+            .map(|then_block| self.compile_block_expr(&then_block, expected_type));
 
         if condition.is_some() {
             self.type_guard_stack.pop().unwrap();
@@ -1690,7 +1686,7 @@ impl<'a> Compiler<'a> {
 
         let else_block = if_expr
             .else_block()
-            .map(|else_block| self.compile_block_expr(else_block, expected_type));
+            .map(|else_block| self.compile_block_expr(&else_block, expected_type));
 
         if condition.is_some() {
             self.type_guard_stack.pop().unwrap();
@@ -1715,8 +1711,7 @@ impl<'a> Compiler<'a> {
         let ty = then_block
             .as_ref()
             .or(else_block.as_ref())
-            .map(|block| block.type_id)
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |block| block.type_id);
 
         let value = condition.and_then(|condition| {
             then_block.and_then(|then_block| {
@@ -1733,7 +1728,7 @@ impl<'a> Compiler<'a> {
         Value::new(value.unwrap_or(self.builtins.unknown_hir), ty)
     }
 
-    fn compile_int_raw<T, E>(&mut self, int: SyntaxToken) -> T
+    fn compile_int_raw<T, E>(int: &SyntaxToken) -> T
     where
         T: FromStr<Err = E>,
         E: fmt::Debug,
@@ -1744,8 +1739,8 @@ impl<'a> Compiler<'a> {
             .expect("failed to parse into BigInt")
     }
 
-    fn compile_int(&mut self, int: SyntaxToken) -> Value {
-        let num = self.compile_int_raw(int);
+    fn compile_int(&mut self, int: &SyntaxToken) -> Value {
+        let num = Self::compile_int_raw(int);
 
         let mut allocator = Allocator::new();
         let ptr = allocator
@@ -1759,7 +1754,7 @@ impl<'a> Compiler<'a> {
         )
     }
 
-    fn compile_hex(&mut self, hex: SyntaxToken) -> Value {
+    fn compile_hex(&mut self, hex: &SyntaxToken) -> Value {
         let Ok(bytes) = hex::decode(
             hex.text()
                 .replace("0x", "")
@@ -1783,7 +1778,7 @@ impl<'a> Compiler<'a> {
         )
     }
 
-    fn compile_string(&mut self, string: SyntaxToken) -> Value {
+    fn compile_string(&mut self, string: &SyntaxToken) -> Value {
         let text = string.text();
         let quote = text.chars().next().unwrap();
         let after_prefix = &text[1..];
@@ -1801,7 +1796,7 @@ impl<'a> Compiler<'a> {
         )
     }
 
-    fn compile_path_expr(&mut self, path: Path) -> Value {
+    fn compile_path_expr(&mut self, path: &Path) -> Value {
         let mut idents = path.idents();
 
         if idents.len() > 1 {
@@ -1846,9 +1841,9 @@ impl<'a> Compiler<'a> {
                     Symbol::Function(Function { ty, .. }) => {
                         self.db.alloc_type(Type::Function(ty.clone()))
                     }
-                    Symbol::Parameter(type_id) => *type_id,
-                    Symbol::Let(Let { type_id, .. }) => *type_id,
-                    Symbol::Const(Const { type_id, .. }) => *type_id,
+                    Symbol::Parameter(type_id)
+                    | Symbol::Let(Let { type_id, .. })
+                    | Symbol::Const(Const { type_id, .. }) => *type_id,
                 }),
         )
     }
@@ -1869,9 +1864,8 @@ impl<'a> Compiler<'a> {
         if function_type.rest == Rest::Nil {
             if index + 1 == len {
                 return Some(param_types[index]);
-            } else {
-                return None;
             }
+            return None;
         }
 
         if spread {
@@ -1884,23 +1878,22 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_function_call(&mut self, call: FunctionCall) -> Value {
+    fn compile_function_call(&mut self, call: &FunctionCall) -> Value {
         let Some(callee) = call.callee() else {
             return self.unknown();
         };
 
         self.is_callee = true;
-        let callee = self.compile_expr(callee, None);
+        let callee = self.compile_expr(&callee, None);
 
-        let expected = match self.db.ty(callee.type_id) {
-            Type::Function(function) => Some(function.clone()),
-            _ => {
-                self.db.error(
-                    ErrorKind::UncallableType(self.type_name(callee.type_id)),
-                    call.callee().unwrap().syntax().text_range(),
-                );
-                None
-            }
+        let expected = if let Type::Function(fun) = self.db.ty(callee.type_id) {
+            Some(fun.clone())
+        } else {
+            self.db.error(
+                ErrorKind::UncallableType(self.type_name(callee.type_id)),
+                call.callee().unwrap().syntax().text_range(),
+            );
+            None
         };
 
         let mut args = Vec::new();
@@ -1920,7 +1913,7 @@ impl<'a> Compiler<'a> {
 
             let value = arg
                 .expr()
-                .map(|expr| self.compile_expr(expr, expected_type))
+                .map(|expr| self.compile_expr(&expr, expected_type))
                 .unwrap_or_else(|| self.unknown());
 
             arg_types.push(value.type_id);
@@ -2019,24 +2012,22 @@ impl<'a> Compiler<'a> {
             varargs: spread,
         });
 
-        let type_id = expected
-            .map(|expected| expected.return_type)
-            .unwrap_or(self.builtins.unknown);
+        let type_id = expected.map_or(self.builtins.unknown, |expected| expected.return_type);
 
         Value::new(hir_id, type_id)
     }
 
     fn compile_type(&mut self, ty: AstType) -> TypeId {
         match ty {
-            AstType::Path(path) => self.compile_path_type(path),
-            AstType::ListType(list) => self.compile_list_type(list),
-            AstType::FunctionType(function) => self.compile_function_type(function),
-            AstType::PairType(tuple) => self.compile_pair_type(tuple),
-            AstType::OptionalType(optional) => self.compile_optional_type(optional),
+            AstType::Path(path) => self.compile_path_type(&path),
+            AstType::ListType(list) => self.compile_list_type(&list),
+            AstType::FunctionType(function) => self.compile_function_type(&function),
+            AstType::PairType(tuple) => self.compile_pair_type(&tuple),
+            AstType::OptionalType(optional) => self.compile_optional_type(&optional),
         }
     }
 
-    fn compile_path_type(&mut self, path: Path) -> TypeId {
+    fn compile_path_type(&mut self, path: &Path) -> TypeId {
         let mut idents = path.idents();
 
         let name = idents.remove(0);
@@ -2080,24 +2071,22 @@ impl<'a> Compiler<'a> {
     }
 
     fn path_into_type(&mut self, ty: TypeId, name: &str, range: TextRange) -> TypeId {
-        match self.db.ty(ty) {
-            Type::Enum(enum_type) => {
-                if let Some(&variant_type) = enum_type.variants.get(name) {
-                    return variant_type;
-                }
-                self.db
-                    .error(ErrorKind::UnknownEnumVariant(name.to_string()), range);
-                self.builtins.unknown
-            }
-            _ => {
-                self.db
-                    .error(ErrorKind::PathIntoNonEnum(self.type_name(ty)), range);
-                self.builtins.unknown
-            }
+        let Type::Enum(enum_type) = self.db.ty(ty) else {
+            self.db
+                .error(ErrorKind::PathIntoNonEnum(self.type_name(ty)), range);
+            return self.builtins.unknown;
+        };
+
+        if let Some(&variant_type) = enum_type.variants.get(name) {
+            return variant_type;
         }
+
+        self.db
+            .error(ErrorKind::UnknownEnumVariant(name.to_string()), range);
+        self.builtins.unknown
     }
 
-    fn compile_list_type(&mut self, list: ListType) -> TypeId {
+    fn compile_list_type(&mut self, list: &ListType) -> TypeId {
         let Some(inner) = list.ty() else {
             return self.builtins.unknown;
         };
@@ -2106,21 +2095,19 @@ impl<'a> Compiler<'a> {
         self.db.alloc_type(Type::List(item_type))
     }
 
-    fn compile_pair_type(&mut self, pair_type: AstPairType) -> TypeId {
+    fn compile_pair_type(&mut self, pair_type: &AstPairType) -> TypeId {
         let first = pair_type
             .first()
-            .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         let rest = pair_type
             .rest()
-            .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         self.db.alloc_type(Type::Pair(PairType { first, rest }))
     }
 
-    fn compile_function_type(&mut self, function: AstFunctionType) -> TypeId {
+    fn compile_function_type(&mut self, function: &AstFunctionType) -> TypeId {
         let mut param_types = Vec::new();
         let mut rest = Rest::Nil;
 
@@ -2129,8 +2116,7 @@ impl<'a> Compiler<'a> {
         for (i, param) in function.params().into_iter().enumerate() {
             let type_id = param
                 .ty()
-                .map(|ty| self.compile_type(ty))
-                .unwrap_or(self.builtins.unknown);
+                .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
             param_types.push(type_id);
 
@@ -2146,8 +2132,7 @@ impl<'a> Compiler<'a> {
 
         let return_type = function
             .ret()
-            .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         self.db.alloc_type(Type::Function(FunctionType {
             param_types,
@@ -2156,11 +2141,10 @@ impl<'a> Compiler<'a> {
         }))
     }
 
-    fn compile_optional_type(&mut self, optional: OptionalType) -> TypeId {
+    fn compile_optional_type(&mut self, optional: &OptionalType) -> TypeId {
         let ty = optional
             .ty()
-            .map(|ty| self.compile_type(ty))
-            .unwrap_or(self.builtins.unknown);
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         if let Type::Optional(inner) = self.db.ty_raw(ty).clone() {
             self.db.warning(
@@ -2217,7 +2201,7 @@ impl<'a> Compiler<'a> {
             Type::PublicKey => "PublicKey".to_string(),
             Type::List(items) => {
                 let inner = self.type_name_visitor(*items, stack);
-                format!("{}[]", inner)
+                format!("{inner}[]")
             }
             Type::Pair(PairType { first, rest }) => {
                 let first = self.type_name_visitor(*first, stack);
@@ -2264,7 +2248,7 @@ impl<'a> Compiler<'a> {
             Type::Alias(..) => unreachable!(),
             Type::Optional(ty) => {
                 let inner = self.type_name_visitor(*ty, stack);
-                format!("{}?", inner)
+                format!("{inner}?")
             }
         };
 
@@ -2302,7 +2286,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn symbol_type(&self, symbol_id: SymbolId) -> Option<TypeId> {
-        for guards in self.type_guard_stack.iter() {
+        for guards in &self.type_guard_stack {
             if let Some(guard) = guards.get(&symbol_id) {
                 return Some(*guard);
             }

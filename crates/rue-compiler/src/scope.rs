@@ -32,7 +32,7 @@ impl Scope {
     }
 
     pub fn type_name(&self, type_id: TypeId) -> Option<&str> {
-        self.type_names.get(&type_id).map(|s| s.as_str())
+        self.type_names.get(&type_id).map(String::as_str)
     }
 
     pub fn is_local(&self, symbol_id: SymbolId) -> bool {
