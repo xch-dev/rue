@@ -19,7 +19,7 @@ pub struct DependencyGraph {
 
 impl DependencyGraph {
     pub fn build(db: &mut Database, exported_symbols: &[SymbolId]) -> Self {
-        GraphTraversal::new(db).build_graph(exported_symbols)
+        GraphTraversal::new(db).build(exported_symbols)
     }
 
     pub fn env(&self, scope_id: ScopeId) -> EnvironmentId {
@@ -50,7 +50,7 @@ impl<'a> GraphTraversal<'a> {
         }
     }
 
-    fn build_graph(mut self, exported_symbols: &[SymbolId]) -> DependencyGraph {
+    fn build(mut self, exported_symbols: &[SymbolId]) -> DependencyGraph {
         for &symbol_id in exported_symbols {
             self.compute_edges(symbol_id);
         }
@@ -109,14 +109,16 @@ impl<'a> GraphTraversal<'a> {
         }
 
         match self.db.hir(hir_id).clone() {
-            Hir::Atom(_) | Hir::Unknown => {}
-            Hir::PubkeyForExp(hir_id)
-            | Hir::Sha256(hir_id)
-            | Hir::Strlen(hir_id)
-            | Hir::First(hir_id)
-            | Hir::Rest(hir_id)
-            | Hir::Not(hir_id)
-            | Hir::IsCons(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+            // We can't rely on files being valid, so we ignore unknown HIR.
+            Hir::Unknown => {}
+            Hir::Atom(_bytes) => {}
+            Hir::PubkeyForExp(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+            Hir::Sha256(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+            Hir::Strlen(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+            Hir::First(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+            Hir::Rest(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+            Hir::Not(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+            Hir::IsCons(hir_id) => self.visit_hir(scope_id, hir_id, visited),
             Hir::Raise(hir_id) => {
                 if let Some(hir_id) = hir_id {
                     self.visit_hir(scope_id, hir_id, visited);
@@ -150,24 +152,44 @@ impl<'a> GraphTraversal<'a> {
             } => {
                 self.visit_hir(scope_id, hir_id, visited);
             }
-            Hir::Reference(symbol_id) => {
-                self.graph
-                    .symbol_usages
-                    .entry(symbol_id)
-                    .and_modify(|count| *count += 1)
-                    .or_insert(1);
+            Hir::Reference(symbol_id) => self.visit_reference(scope_id, symbol_id, visited),
+        }
+    }
 
-                self.propagate_capture(scope_id, symbol_id, &mut HashSet::new());
+    fn visit_reference(
+        &mut self,
+        scope_id: ScopeId,
+        symbol_id: SymbolId,
+        visited: &mut HashSet<(ScopeId, HirId)>,
+    ) {
+        self.graph
+            .symbol_usages
+            .entry(symbol_id)
+            .and_modify(|count| *count += 1)
+            .or_insert(1);
 
-                match self.db.symbol(symbol_id).clone() {
-                    Symbol::Unknown => unreachable!(),
-                    Symbol::Function(fun) => self.visit_hir(fun.scope_id, fun.hir_id, visited),
-                    Symbol::Parameter { .. } => {}
-                    Symbol::Let(Let { hir_id, .. }) | Symbol::Const(Const { hir_id, .. }) => {
-                        self.visit_hir(scope_id, hir_id, visited);
-                    }
-                }
+        self.propagate_capture(scope_id, symbol_id, &mut HashSet::new());
+
+        match self.db.symbol(symbol_id).clone() {
+            // It's not possible to visit unknown symbols,
+            // this would be a compiler bug if it were reached.
+            Symbol::Unknown => {
+                unreachable!(
+                    "Unknown symbol {} in scope {}",
+                    self.db.dbg_symbol(symbol_id),
+                    self.db.dbg_scope(scope_id)
+                )
             }
+
+            Symbol::Let(Let { hir_id, .. }) => self.visit_hir(scope_id, hir_id, visited),
+            Symbol::Const(Const { hir_id, .. }) => self.visit_hir(scope_id, hir_id, visited),
+
+            // Functions are visited in the scope in which they are defined.
+            Symbol::Function(fun) => self.visit_hir(fun.scope_id, fun.hir_id, visited),
+
+            // Parameters don't need to be visited, since currently
+            // they are just a reference to the environment.
+            Symbol::Parameter { .. } => {}
         }
     }
 

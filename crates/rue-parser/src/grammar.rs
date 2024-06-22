@@ -343,9 +343,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8, allow_initializ
             while !p.at(SyntaxKind::CloseBrace) {
                 p.start(SyntaxKind::InitializerField);
                 p.expect(SyntaxKind::Ident);
-                if p.try_eat(SyntaxKind::Colon) {
-                    expr(p);
-                }
+                p.expect(SyntaxKind::Colon);
+                expr(p);
                 p.finish();
                 if !p.try_eat(SyntaxKind::Comma) {
                     break;

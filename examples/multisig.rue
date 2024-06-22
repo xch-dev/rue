@@ -1,7 +1,7 @@
 enum Condition {
     AggSigMe = 50 {
         public_key: PublicKey,
-        message: Bytes32,
+        message: Bytes,
     }
 }
 
@@ -61,7 +61,7 @@ fun check_signatures(
 
     let agg_sig = Condition::AggSigMe {
         public_key: public_keys.first,
-        message,
+        message: message,
     };
 
     [agg_sig, ...check_signatures(public_keys.rest, required - 1, indices.rest, pos + 1, message)]
