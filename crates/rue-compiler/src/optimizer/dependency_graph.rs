@@ -315,15 +315,7 @@ impl<'a> GraphTraversal<'a> {
                 }
 
                 let env_id = self.graph.env[&scope_id];
-
-                let mut environment = Environment::binding(env_id);
-                for symbol_id in self.db.scope(child_scope_id).local_symbols() {
-                    if self.db.symbol(symbol_id).is_definition() {
-                        environment.define(symbol_id);
-                    }
-                }
-
-                let child_env_id = self.db.alloc_env(environment);
+                let child_env_id = self.db.alloc_env(Environment::binding(env_id));
                 self.graph.env.insert(child_scope_id, child_env_id);
 
                 self.compute_hir_edges(child_scope_id, hir_id, visited);
