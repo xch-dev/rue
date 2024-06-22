@@ -11,6 +11,9 @@ use crate::{
 
 use super::environment::Environment;
 
+/// Responsible for converting the compiler's `Scope` objects to the lower level `Environment`.
+/// It does this by determining which scopes depend on each other,
+/// then capturing symbols from higher scopes into lower ones.
 #[derive(Debug, Default)]
 pub struct DependencyGraph {
     env: IndexMap<ScopeId, EnvironmentId>,
