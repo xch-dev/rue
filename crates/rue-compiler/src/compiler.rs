@@ -8,10 +8,8 @@ use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, ConstItem, EnumItem, FieldAccess, FunctionCall, FunctionItem,
-    FunctionType as AstFunctionType, IndexAccess, Item, LambdaExpr, ListExpr, ListType, ModuleItem,
-    OptionalType, PairType as AstPairType, Path, Root, StructField, StructItem, SyntaxToken,
-    Type as AstType, TypeAliasItem,
+    AstNode, ConstItem, EnumItem, FieldAccess, FunctionCall, FunctionItem, IndexAccess, Item,
+    LambdaExpr, ListExpr, ModuleItem, Root, StructField, StructItem, SyntaxToken, TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -21,7 +19,7 @@ use crate::{
     scope::Scope,
     symbol::{Const, Function, Module, Symbol},
     ty::{EnumType, EnumVariant, FunctionType, PairType, Rest, StructType, Type, Value},
-    Comparison, ErrorKind, TypeSystem, WarningKind,
+    Comparison, ErrorKind, TypeSystem,
 };
 
 mod block;
@@ -30,6 +28,7 @@ mod declarations;
 mod expr;
 mod stmt;
 mod symbol_table;
+mod ty;
 mod unused;
 
 /// Responsible for lowering the AST into the HIR.
@@ -1059,47 +1058,6 @@ impl<'a> Compiler<'a> {
         Value::new(hir_id, type_id)
     }
 
-    fn compile_type(&mut self, ty: AstType) -> TypeId {
-        match ty {
-            AstType::Path(path) => self.compile_path_type(&path),
-            AstType::ListType(list) => self.compile_list_type(&list),
-            AstType::FunctionType(function) => self.compile_function_type(&function),
-            AstType::PairType(tuple) => self.compile_pair_type(&tuple),
-            AstType::OptionalType(optional) => self.compile_optional_type(&optional),
-        }
-    }
-
-    fn compile_path_type(&mut self, path: &Path) -> TypeId {
-        let mut idents = path.idents();
-
-        let name = idents.remove(0);
-        let mut ty = None;
-
-        for &scope_id in self.scope_stack.iter().rev() {
-            if let Some(found_type_id) = self.db.scope(scope_id).type_alias(name.text()) {
-                ty = Some(found_type_id);
-                break;
-            }
-        }
-
-        let Some(mut ty) = ty else {
-            self.db.error(
-                ErrorKind::UndefinedType(name.to_string()),
-                name.text_range(),
-            );
-            return self.builtins.unknown;
-        };
-
-        self.type_reference(ty);
-
-        for name in idents {
-            ty = self.path_into_type(ty, name.text(), name.text_range());
-            self.type_reference(ty);
-        }
-
-        ty
-    }
-
     fn type_reference(&mut self, referenced_type_id: TypeId) {
         if let Some(symbol_id) = self.symbol_stack.last() {
             self.sym
@@ -1126,77 +1084,6 @@ impl<'a> Compiler<'a> {
         self.db
             .error(ErrorKind::UnknownEnumVariant(name.to_string()), range);
         self.builtins.unknown
-    }
-
-    fn compile_list_type(&mut self, list: &ListType) -> TypeId {
-        let Some(inner) = list.ty() else {
-            return self.builtins.unknown;
-        };
-
-        let item_type = self.compile_type(inner);
-        self.db.alloc_type(Type::List(item_type))
-    }
-
-    fn compile_pair_type(&mut self, pair_type: &AstPairType) -> TypeId {
-        let first = pair_type
-            .first()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-        let rest = pair_type
-            .rest()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-        self.db.alloc_type(Type::Pair(PairType { first, rest }))
-    }
-
-    fn compile_function_type(&mut self, function: &AstFunctionType) -> TypeId {
-        let mut param_types = Vec::new();
-        let mut rest = Rest::Nil;
-
-        let len = function.params().len();
-
-        for (i, param) in function.params().into_iter().enumerate() {
-            let type_id = param
-                .ty()
-                .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-            param_types.push(type_id);
-
-            if param.spread().is_some() {
-                if i + 1 == len {
-                    rest = Rest::Parameter;
-                } else {
-                    self.db
-                        .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
-                }
-            }
-        }
-
-        let return_type = function
-            .ret()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-        self.db.alloc_type(Type::Function(FunctionType {
-            param_types,
-            rest,
-            return_type,
-        }))
-    }
-
-    fn compile_optional_type(&mut self, optional: &OptionalType) -> TypeId {
-        let ty = optional
-            .ty()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-        if let Type::Optional(inner) = self.db.ty_raw(ty).clone() {
-            self.db.warning(
-                WarningKind::UselessOptionalType,
-                optional.syntax().text_range(),
-            );
-            return inner;
-        }
-
-        self.db.alloc_type(Type::Optional(ty))
     }
 
     fn try_unwrap_optional(&mut self, ty: TypeId) -> TypeId {
