@@ -8,8 +8,8 @@ use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, ConstItem, EnumItem, FieldAccess, FunctionCall, FunctionItem, IndexAccess, Item,
-    LambdaExpr, ListExpr, ModuleItem, Root, StructField, StructItem, SyntaxToken, TypeAliasItem,
+    AstNode, ConstItem, EnumItem, FieldAccess, FunctionItem, IndexAccess, Item, LambdaExpr,
+    ModuleItem, Root, StructField, StructItem, SyntaxToken, TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -659,84 +659,6 @@ impl<'a> Compiler<'a> {
         result
     }
 
-    fn compile_list_expr(
-        &mut self,
-        list_expr: &ListExpr,
-        expected_expr_type: Option<TypeId>,
-    ) -> Value {
-        let mut items = Vec::new();
-        let mut nil_terminated = true;
-
-        let mut list_type = expected_expr_type;
-        let mut item_type = expected_expr_type.and_then(|ty| match self.db.ty(ty) {
-            Type::List(ty) => Some(*ty),
-            _ => None,
-        });
-
-        let len = list_expr.items().len();
-
-        for (i, item) in list_expr.items().into_iter().enumerate() {
-            let expected_item_type = if item.spread().is_some() {
-                list_type
-            } else {
-                item_type
-            };
-
-            let output = item
-                .expr()
-                .map(|expr| self.compile_expr(&expr, expected_item_type))
-                .unwrap_or(self.unknown());
-
-            if let Some(expected_item_type) = expected_item_type {
-                self.type_check(
-                    output.type_id,
-                    expected_item_type,
-                    item.syntax().text_range(),
-                );
-            }
-
-            if i == 0 && item_type.is_none() {
-                if item.spread().is_some() {
-                    list_type = Some(output.type_id);
-                    item_type = match self.db.ty(output.type_id) {
-                        Type::List(ty) => Some(*ty),
-                        _ => None,
-                    };
-                } else {
-                    list_type = Some(self.db.alloc_type(Type::List(output.type_id)));
-                    item_type = Some(output.type_id);
-                }
-            }
-
-            if let Some(spread) = item.spread() {
-                if i + 1 == len {
-                    nil_terminated = false;
-                } else {
-                    self.db
-                        .error(ErrorKind::NonFinalSpread, spread.text_range());
-                }
-            }
-
-            items.push(output.hir_id);
-        }
-
-        let mut hir_id = self.builtins.nil_hir;
-
-        for (i, item) in items.into_iter().rev().enumerate() {
-            if i == 0 && !nil_terminated {
-                hir_id = item;
-            } else {
-                hir_id = self.db.alloc_hir(Hir::Pair(item, hir_id));
-            }
-        }
-
-        Value::new(
-            hir_id,
-            self.db
-                .alloc_type(Type::List(item_type.unwrap_or(self.builtins.unknown))),
-        )
-    }
-
     fn compile_lambda_expr(
         &mut self,
         lambda_expr: &LambdaExpr,
@@ -919,145 +841,6 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_function_call(&mut self, call: &FunctionCall) -> Value {
-        let Some(callee) = call.callee() else {
-            return self.unknown();
-        };
-
-        self.is_callee = true;
-        let callee = self.compile_expr(&callee, None);
-
-        let expected = if let Type::Function(fun) = self.db.ty(callee.type_id) {
-            Some(fun.clone())
-        } else {
-            self.db.error(
-                ErrorKind::UncallableType(self.type_name(callee.type_id)),
-                call.callee().unwrap().syntax().text_range(),
-            );
-            None
-        };
-
-        let mut args = Vec::new();
-        let mut arg_types = Vec::new();
-        let mut spread = false;
-
-        let arg_len = call.args().len();
-
-        for (i, arg) in call.args().into_iter().enumerate().rev() {
-            let expected_type = expected.as_ref().and_then(|expected| {
-                self.expected_param_type(
-                    expected.clone(),
-                    i,
-                    i + 1 == arg_len && arg.spread().is_some(),
-                )
-            });
-
-            let value = arg
-                .expr()
-                .map(|expr| self.compile_expr(&expr, expected_type))
-                .unwrap_or_else(|| self.unknown());
-
-            arg_types.push(value.type_id);
-
-            if arg.spread().is_some() {
-                if i + 1 == arg_len {
-                    spread = true;
-                } else {
-                    self.db
-                        .error(ErrorKind::NonFinalSpread, arg.syntax().text_range());
-                }
-            }
-
-            args.push(value.hir_id);
-        }
-
-        args.reverse();
-        arg_types.reverse();
-
-        if let Some(expected) = expected.as_ref() {
-            let param_len = expected.param_types.len();
-
-            let too_few_args = arg_types.len() < param_len
-                && !(expected.rest == Rest::Parameter && arg_types.len() == param_len - 1);
-            let too_many_args = arg_types.len() > param_len && expected.rest == Rest::Nil;
-
-            if too_few_args && expected.rest == Rest::Parameter {
-                self.db.error(
-                    ErrorKind::TooFewArgumentsWithVarargs {
-                        expected: param_len - 1,
-                        found: arg_types.len(),
-                    },
-                    call.syntax().text_range(),
-                );
-            } else if too_few_args || too_many_args {
-                self.db.error(
-                    ErrorKind::ArgumentMismatch {
-                        expected: param_len,
-                        found: arg_types.len(),
-                    },
-                    call.syntax().text_range(),
-                );
-            }
-
-            for (i, arg) in arg_types.into_iter().enumerate() {
-                if i + 1 == arg_len && spread && expected.rest == Rest::Nil {
-                    self.db.error(
-                        ErrorKind::NonVarargSpread,
-                        call.args()[i].syntax().text_range(),
-                    );
-                    continue;
-                }
-
-                if i + 1 >= param_len
-                    && (i + 1 < arg_len || !spread)
-                    && expected.rest == Rest::Parameter
-                {
-                    match self.db.ty(expected.param_types.last().copied().unwrap()) {
-                        Type::List(list_type) => {
-                            self.type_check(arg, *list_type, call.args()[i].syntax().text_range());
-                        }
-                        _ => {
-                            self.db.error(
-                                ErrorKind::NonListVararg,
-                                call.args()[i].syntax().text_range(),
-                            );
-                        }
-                    }
-                    continue;
-                }
-
-                if i + 1 == arg_len && spread && expected.rest == Rest::Parameter {
-                    self.type_check(
-                        arg,
-                        expected.param_types[param_len - 1],
-                        call.args()[i].syntax().text_range(),
-                    );
-                    continue;
-                }
-
-                self.type_check(
-                    arg,
-                    expected
-                        .param_types
-                        .get(i)
-                        .copied()
-                        .unwrap_or(self.builtins.unknown),
-                    call.args()[i].syntax().text_range(),
-                );
-            }
-        }
-
-        let hir_id = self.db.alloc_hir(Hir::FunctionCall {
-            callee: callee.hir_id,
-            args,
-            varargs: spread,
-        });
-
-        let type_id = expected.map_or(self.builtins.unknown, |expected| expected.return_type);
-
-        Value::new(hir_id, type_id)
-    }
-
     fn type_reference(&mut self, referenced_type_id: TypeId) {
         if let Some(symbol_id) = self.symbol_stack.last() {
             self.sym
@@ -1068,22 +851,6 @@ impl<'a> Compiler<'a> {
             self.sym
                 .insert_type_type_reference(*type_id, referenced_type_id);
         }
-    }
-
-    fn path_into_type(&mut self, ty: TypeId, name: &str, range: TextRange) -> TypeId {
-        let Type::Enum(enum_type) = self.db.ty(ty) else {
-            self.db
-                .error(ErrorKind::PathIntoNonEnum(self.type_name(ty)), range);
-            return self.builtins.unknown;
-        };
-
-        if let Some(&variant_type) = enum_type.variants.get(name) {
-            return variant_type;
-        }
-
-        self.db
-            .error(ErrorKind::UnknownEnumVariant(name.to_string()), range);
-        self.builtins.unknown
     }
 
     fn try_unwrap_optional(&mut self, ty: TypeId) -> TypeId {

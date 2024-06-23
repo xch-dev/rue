@@ -1,6 +1,7 @@
+use rowan::TextRange;
 use rue_parser::Path;
 
-use crate::{compiler::Compiler, ErrorKind, TypeId};
+use crate::{compiler::Compiler, ty::Type, ErrorKind, TypeId};
 
 impl Compiler<'_> {
     pub fn compile_path_type(&mut self, path: &Path) -> TypeId {
@@ -32,5 +33,21 @@ impl Compiler<'_> {
         }
 
         ty
+    }
+
+    fn path_into_type(&mut self, ty: TypeId, name: &str, range: TextRange) -> TypeId {
+        let Type::Enum(enum_type) = self.db.ty(ty) else {
+            self.db
+                .error(ErrorKind::PathIntoNonEnum(self.type_name(ty)), range);
+            return self.builtins.unknown;
+        };
+
+        if let Some(&variant_type) = enum_type.variants.get(name) {
+            return variant_type;
+        }
+
+        self.db
+            .error(ErrorKind::UnknownEnumVariant(name.to_string()), range);
+        self.builtins.unknown
     }
 }
