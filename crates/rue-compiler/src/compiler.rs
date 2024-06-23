@@ -10,8 +10,8 @@ use rowan::TextRange;
 use rue_parser::{
     AstNode, Block, ConstItem, EnumItem, FieldAccess, FunctionCall, FunctionItem,
     FunctionType as AstFunctionType, IfStmt, IndexAccess, Item, LambdaExpr, LetStmt, ListExpr,
-    ListType, LiteralExpr, ModuleItem, OptionalType, PairType as AstPairType, Path, Root, Stmt,
-    StructField, StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
+    ListType, ModuleItem, OptionalType, PairType as AstPairType, Path, Root, Stmt, StructField,
+    StructItem, SyntaxToken, Type as AstType, TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -924,28 +924,6 @@ impl<'a> Compiler<'a> {
         result
     }
 
-    fn compile_literal_expr(&mut self, literal: &LiteralExpr) -> Value {
-        let Some(value) = literal.value() else {
-            return self.unknown();
-        };
-
-        match value.kind() {
-            SyntaxKind::Int => self.compile_int(&value),
-            SyntaxKind::Hex => self.compile_hex(&value),
-            SyntaxKind::String => self.compile_string(&value),
-            SyntaxKind::True => {
-                Value::new(self.db.alloc_hir(Hir::Atom(vec![1])), self.builtins.bool)
-            }
-            SyntaxKind::False => {
-                Value::new(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.bool)
-            }
-            SyntaxKind::Nil => {
-                Value::new(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.nil)
-            }
-            _ => unreachable!(),
-        }
-    }
-
     fn compile_list_expr(
         &mut self,
         list_expr: &ListExpr,
@@ -1173,61 +1151,6 @@ impl<'a> Compiler<'a> {
             } else {
                 self.builtins.bytes
             },
-        )
-    }
-
-    fn compile_path_expr(&mut self, path: &Path) -> Value {
-        let mut idents = path.idents();
-
-        if idents.len() > 1 {
-            self.db
-                .error(ErrorKind::PathNotAllowed, path.syntax().text_range());
-            return self.unknown();
-        }
-
-        let name = idents.remove(0);
-
-        let Some(symbol_id) = self
-            .scope_stack
-            .iter()
-            .rev()
-            .find_map(|&scope_id| self.db.scope(scope_id).symbol(name.text()))
-        else {
-            self.db.error(
-                ErrorKind::UndefinedReference(name.to_string()),
-                name.text_range(),
-            );
-            return self.unknown();
-        };
-
-        if matches!(self.db.symbol(symbol_id), Symbol::Module(..)) {
-            self.db
-                .error(ErrorKind::ModuleReference, path.syntax().text_range());
-            return self.unknown();
-        }
-
-        if !self.is_callee && matches!(self.db.symbol(symbol_id), Symbol::InlineFunction(..)) {
-            self.db.error(
-                ErrorKind::InlineFunctionReference,
-                path.syntax().text_range(),
-            );
-            return self.unknown();
-        }
-
-        Value::new(
-            self.db.alloc_hir(Hir::Reference(symbol_id)),
-            self.symbol_type(symbol_id)
-                .unwrap_or_else(|| match self.db.symbol(symbol_id) {
-                    Symbol::Unknown | Symbol::Module(..) => unreachable!(),
-                    Symbol::Function(Function { ty, .. })
-                    | Symbol::InlineFunction(Function { ty, .. }) => {
-                        self.db.alloc_type(Type::Function(ty.clone()))
-                    }
-                    Symbol::Parameter(type_id)
-                    | Symbol::Let(Let { type_id, .. })
-                    | Symbol::Const(Const { type_id, .. })
-                    | Symbol::InlineConst(Const { type_id, .. }) => *type_id,
-                }),
         )
     }
 

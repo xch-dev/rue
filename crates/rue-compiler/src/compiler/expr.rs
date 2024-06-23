@@ -11,7 +11,9 @@ mod group_expr;
 mod guard_expr;
 mod if_expr;
 mod initializer_expr;
+mod literal_expr;
 mod pair_expr;
+mod path_expr;
 mod prefix_expr;
 
 impl Compiler<'_> {
