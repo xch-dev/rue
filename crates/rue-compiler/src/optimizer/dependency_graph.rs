@@ -54,6 +54,11 @@ impl<'a> GraphTraversal<'a> {
     }
 
     fn build(mut self, entrypoint: &Module) -> DependencyGraph {
+        self.graph.env.insert(
+            entrypoint.scope_id,
+            self.db.alloc_env(Environment::default()),
+        );
+
         for &symbol_id in &entrypoint.exported_symbols {
             self.compute_edges(symbol_id);
         }

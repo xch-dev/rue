@@ -23,7 +23,6 @@ mod path;
 mod stmt;
 mod symbol_table;
 mod ty;
-mod unused;
 
 /// Responsible for lowering the AST into the HIR.
 /// Performs name resolution and type checking.
