@@ -10,7 +10,7 @@ impl Compiler<'_> {
 
         if let Type::Optional(inner) = self.db.ty_raw(ty).clone() {
             self.db.warning(
-                WarningKind::UselessOptionalType,
+                WarningKind::RedundantOptional,
                 optional.syntax().text_range(),
             );
             return inner;

@@ -1,4 +1,4 @@
-use rue_parser::{AstNode, FunctionCall};
+use rue_parser::{AstNode, FunctionCallExpr};
 
 use crate::{
     compiler::Compiler,
@@ -8,7 +8,7 @@ use crate::{
 };
 
 impl Compiler<'_> {
-    pub fn compile_function_call_expr(&mut self, call: &FunctionCall) -> Value {
+    pub fn compile_function_call_expr(&mut self, call: &FunctionCallExpr) -> Value {
         let Some(callee) = call.callee() else {
             return self.unknown();
         };

@@ -19,6 +19,7 @@ mod block;
 mod builtins;
 mod expr;
 mod item;
+mod path;
 mod stmt;
 mod symbol_table;
 mod ty;

@@ -78,11 +78,10 @@ ast_node!(ImportPath);
 ast_node!(ImportGroup);
 
 ast_node!(Block);
-ast_node!(Path);
 
 ast_enum!(
     Expr,
-    Path,
+    PathExpr,
     InitializerExpr,
     LiteralExpr,
     ListExpr,
@@ -95,10 +94,11 @@ ast_enum!(
     CastExpr,
     GuardExpr,
     IfExpr,
-    FunctionCall,
-    FieldAccess,
-    IndexAccess
+    FunctionCallExpr,
+    FieldAccessExpr,
+    IndexAccessExpr
 );
+ast_node!(PathExpr);
 ast_node!(InitializerExpr);
 ast_node!(InitializerField);
 ast_node!(LiteralExpr);
@@ -111,15 +111,23 @@ ast_node!(GroupExpr);
 ast_node!(CastExpr);
 ast_node!(GuardExpr);
 ast_node!(IfExpr);
-ast_node!(FunctionCall);
+ast_node!(FunctionCallExpr);
 ast_node!(FunctionCallArg);
-ast_node!(FieldAccess);
-ast_node!(IndexAccess);
+ast_node!(FieldAccessExpr);
+ast_node!(IndexAccessExpr);
 
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
 
-ast_enum!(Type, Path, ListType, PairType, FunctionType, OptionalType);
+ast_enum!(
+    Type,
+    PathType,
+    ListType,
+    PairType,
+    FunctionType,
+    OptionalType
+);
+ast_node!(PathType);
 ast_node!(ListType);
 ast_node!(ListTypeItem);
 ast_node!(PairType);
@@ -416,16 +424,6 @@ impl Block {
     }
 }
 
-impl Path {
-    pub fn idents(&self) -> Vec<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .filter(|token| token.kind() == SyntaxKind::Ident)
-            .collect()
-    }
-}
-
 impl LetStmt {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
@@ -482,9 +480,19 @@ impl AssumeStmt {
     }
 }
 
+impl PathExpr {
+    pub fn idents(&self) -> Vec<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .collect()
+    }
+}
+
 impl InitializerExpr {
-    pub fn path(&self) -> Option<Path> {
-        self.syntax().children().find_map(Path::cast)
+    pub fn path(&self) -> Option<PathExpr> {
+        self.syntax().children().find_map(PathExpr::cast)
     }
 
     pub fn fields(&self) -> Vec<InitializerField> {
@@ -719,7 +727,7 @@ impl IfExpr {
     }
 }
 
-impl FunctionCall {
+impl FunctionCallExpr {
     pub fn callee(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
     }
@@ -745,7 +753,7 @@ impl FunctionCallArg {
     }
 }
 
-impl FieldAccess {
+impl FieldAccessExpr {
     pub fn expr(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
     }
@@ -758,7 +766,7 @@ impl FieldAccess {
     }
 }
 
-impl IndexAccess {
+impl IndexAccessExpr {
     pub fn expr(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
     }
@@ -768,6 +776,16 @@ impl IndexAccess {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Int)
+    }
+}
+
+impl PathType {
+    pub fn idents(&self) -> Vec<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .collect()
     }
 }
 

@@ -1,4 +1,4 @@
-use rue_parser::{AstNode, Path};
+use rue_parser::{AstNode, PathExpr};
 
 use crate::{
     compiler::Compiler,
@@ -9,12 +9,12 @@ use crate::{
 };
 
 impl Compiler<'_> {
-    pub fn compile_path_expr(&mut self, path: &Path) -> Value {
+    pub fn compile_path_expr(&mut self, path: &PathExpr) -> Value {
         let mut idents = path.idents();
 
         if idents.len() > 1 {
             self.db
-                .error(ErrorKind::PathNotAllowed, path.syntax().text_range());
+                .error(ErrorKind::InvalidSymbolPath, path.syntax().text_range());
             return self.unknown();
         }
 
@@ -27,7 +27,7 @@ impl Compiler<'_> {
             .find_map(|&scope_id| self.db.scope(scope_id).symbol(name.text()))
         else {
             self.db.error(
-                ErrorKind::UndefinedReference(name.to_string()),
+                ErrorKind::UnknownSymbol(name.to_string()),
                 name.text_range(),
             );
             return self.unknown();

@@ -73,7 +73,8 @@ fn precompile(db: &mut Database, root: &Root) -> Option<LirId> {
         let token = db.symbol_token(*symbol_id).unwrap();
         let kind = match db.symbol(*symbol_id).clone() {
             Symbol::Unknown => unreachable!(),
-            Symbol::Module(..) => WarningKind::UnusedModule(token.to_string()),
+            // Symbol::Module(..) => WarningKind::UnusedModule(token.to_string()),
+            Symbol::Module(..) => continue,
             Symbol::Function(..) => WarningKind::UnusedFunction(token.to_string()),
             Symbol::InlineFunction(..) => WarningKind::UnusedInlineFunction(token.to_string()),
             Symbol::Parameter(..) => WarningKind::UnusedParameter(token.to_string()),
