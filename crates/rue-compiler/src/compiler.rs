@@ -8,10 +8,10 @@ use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, Block, ConstItem, EnumItem, FieldAccess, FunctionCall, FunctionItem,
-    FunctionType as AstFunctionType, IfStmt, IndexAccess, Item, LambdaExpr, LetStmt, ListExpr,
-    ListType, ModuleItem, OptionalType, PairType as AstPairType, Path, Root, Stmt, StructField,
-    StructItem, SyntaxToken, Type as AstType, TypeAliasItem,
+    AstNode, ConstItem, EnumItem, FieldAccess, FunctionCall, FunctionItem,
+    FunctionType as AstFunctionType, IndexAccess, Item, LambdaExpr, ListExpr, ListType, ModuleItem,
+    OptionalType, PairType as AstPairType, Path, Root, StructField, StructItem, SyntaxToken,
+    Type as AstType, TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -19,23 +19,18 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::Hir,
     scope::Scope,
-    symbol::{Const, Function, Let, Module, Symbol},
+    symbol::{Const, Function, Module, Symbol},
     ty::{EnumType, EnumVariant, FunctionType, PairType, Rest, StructType, Type, Value},
     Comparison, ErrorKind, TypeSystem, WarningKind,
 };
 
+mod block;
 mod builtins;
 mod declarations;
 mod expr;
+mod stmt;
 mod symbol_table;
 mod unused;
-
-enum Statement {
-    Let(ScopeId),
-    If(HirId, HirId),
-    Return(Value),
-    Assume,
-}
 
 /// Responsible for lowering the AST into the HIR.
 /// Performs name resolution and type checking.
@@ -572,265 +567,6 @@ impl<'a> Compiler<'a> {
         }
 
         self.type_definition_stack.pop().unwrap();
-    }
-
-    /// Compiles a let statement and returns its new scope id.
-    fn compile_let_stmt(&mut self, let_stmt: &LetStmt) -> Option<ScopeId> {
-        // Add the symbol to the stack early so you can track type references.
-        let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
-        self.symbol_stack.push(symbol_id);
-
-        // This doesn't default to unknown, since we want to infer the type if possible.
-        let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
-
-        // Compile the expression.
-        let value = let_stmt
-            .expr()
-            .map(|expr| self.compile_expr(&expr, expected_type))
-            .unwrap_or(self.unknown());
-
-        // Check that the expression's type matches the type annotation, if present.
-        if let Some(expected_type) = expected_type {
-            self.type_check(value.type_id, expected_type, let_stmt.syntax().text_range());
-        }
-
-        // If the name can't be resolved, there's no reason to continue compiling it.
-        // We only do the above steps first to catch any other errors that may occur.
-        let Some(name) = let_stmt.name() else {
-            self.symbol_stack.pop().unwrap();
-            return None;
-        };
-
-        *self.db.symbol_mut(symbol_id) = Symbol::Let(Let {
-            type_id: expected_type.unwrap_or(value.type_id),
-            hir_id: value.hir_id,
-        });
-
-        // Every let binding is a new scope for now, to ensure references are resolved in the proper order.
-        let mut let_scope = Scope::default();
-        let_scope.define_symbol(name.to_string(), symbol_id);
-        self.db.insert_symbol_token(symbol_id, name.clone());
-
-        let scope_id = self.db.alloc_scope(let_scope);
-        self.db.insert_scope_token(scope_id, name);
-        self.scope_stack.push(scope_id);
-        self.symbol_stack.pop().unwrap();
-
-        Some(scope_id)
-    }
-
-    /// Compiles an if statement, returning the condition HIR, then block HIR, and else block guards.
-    fn compile_if_stmt(
-        &mut self,
-        if_stmt: &IfStmt,
-        expected_type: Option<TypeId>,
-    ) -> (HirId, HirId, HashMap<SymbolId, TypeId>) {
-        // Compile the condition expression.
-        let condition = if_stmt
-            .condition()
-            .map(|condition| self.compile_expr(&condition, Some(self.builtins.bool)))
-            .unwrap_or_else(|| self.unknown());
-
-        // Check that the condition is a boolean.
-        self.type_check(
-            condition.type_id,
-            self.builtins.bool,
-            if_stmt.syntax().text_range(),
-        );
-
-        let then_block = if let Some(then_block) = if_stmt.then_block() {
-            // We create a new scope for the then block.
-            let scope_id = self.db.alloc_scope(Scope::default());
-
-            // We can apply any type guards from the condition.
-            self.type_guard_stack.push(condition.then_guards());
-
-            // Compile the then block.
-            self.scope_stack.push(scope_id);
-            let (value, explicit_return) = self.compile_block(&then_block, expected_type);
-            self.scope_stack.pop().unwrap();
-
-            // Pop the type guards, since we've left the scope.
-            self.type_guard_stack.pop().unwrap();
-
-            // If there's an implicit return, we want to raise an error.
-            // This could technically work but makes the intent of the code unclear.
-            if !explicit_return {
-                self.db.error(
-                    ErrorKind::ImplicitReturnInIf,
-                    then_block.syntax().text_range(),
-                );
-            }
-
-            value
-        } else {
-            self.unknown()
-        };
-
-        // Check that the output matches the expected type.
-        self.type_check(
-            then_block.type_id,
-            expected_type.unwrap_or(self.builtins.unknown),
-            if_stmt.syntax().text_range(),
-        );
-
-        (condition.hir_id, then_block.hir_id, condition.else_guards())
-    }
-
-    /// Compile a block expression into the current scope, returning the HIR and whether there was an explicit return.
-    fn compile_block(&mut self, block: &Block, expected_type: Option<TypeId>) -> (Value, bool) {
-        // Compile all of the items in the block first.
-        // This means that statements can use item symbols in any order,
-        // but items cannot use statement symbols.
-        let items = block.items();
-        let declarations = self.declare_items(&items);
-        self.compile_items(&items, declarations);
-
-        let mut statements = Vec::new();
-        let mut explicit_return = false;
-        let mut is_terminated = block.expr().is_some();
-
-        for stmt in block.stmts() {
-            match stmt {
-                Stmt::LetStmt(let_stmt) => {
-                    let Some(scope_id) = self.compile_let_stmt(&let_stmt) else {
-                        continue;
-                    };
-                    statements.push(Statement::Let(scope_id));
-                }
-                Stmt::IfStmt(if_stmt) => {
-                    let (condition_hir, then_hir, else_guards) =
-                        self.compile_if_stmt(&if_stmt, expected_type);
-
-                    // Push the type guards onto the stack.
-                    // This will be popped in reverse order later after all statements have been lowered.
-                    self.type_guard_stack.push(else_guards);
-
-                    statements.push(Statement::If(condition_hir, then_hir));
-                }
-                Stmt::ReturnStmt(return_stmt) => {
-                    let value = return_stmt
-                        .expr()
-                        .map(|expr| self.compile_expr(&expr, expected_type))
-                        .unwrap_or_else(|| self.unknown());
-
-                    // Make sure that the return value matches the expected type.
-                    self.type_check(
-                        value.type_id,
-                        expected_type.unwrap_or(self.builtins.unknown),
-                        return_stmt.syntax().text_range(),
-                    );
-
-                    explicit_return = true;
-                    is_terminated = true;
-
-                    statements.push(Statement::Return(value));
-                }
-                Stmt::RaiseStmt(raise_stmt) => {
-                    // You can raise any value as an error, so we don't need to check the type.
-                    // The value is also optional.
-                    let value = raise_stmt
-                        .expr()
-                        .map(|expr| self.compile_expr(&expr, None).hir_id);
-
-                    let hir_id = self.db.alloc_hir(Hir::Raise(value));
-
-                    is_terminated = true;
-
-                    statements.push(Statement::Return(Value::new(hir_id, self.builtins.unknown)));
-                }
-                Stmt::AssertStmt(assert_stmt) => {
-                    // Compile the condition expression.
-                    let condition = assert_stmt
-                        .expr()
-                        .map(|condition| self.compile_expr(&condition, Some(self.builtins.bool)))
-                        .unwrap_or_else(|| self.unknown());
-
-                    // Make sure that the condition is a boolean.
-                    self.type_check(
-                        condition.type_id,
-                        self.builtins.bool,
-                        assert_stmt.syntax().text_range(),
-                    );
-
-                    // If the condition is false, we raise an error.
-                    // So we can assume that the condition is true from this point on.
-                    // This will be popped in reverse order later after all statements have been lowered.
-                    self.type_guard_stack.push(condition.then_guards());
-
-                    let not_condition = self.db.alloc_hir(Hir::Not(condition.hir_id));
-                    let raise = self.db.alloc_hir(Hir::Raise(None));
-
-                    // We lower this down to an inverted if statement.
-                    statements.push(Statement::If(not_condition, raise));
-                }
-                Stmt::AssumeStmt(assume_stmt) => {
-                    // Compile the expression.
-                    let expr = assume_stmt
-                        .expr()
-                        .map(|expr| self.compile_expr(&expr, Some(self.builtins.bool)))
-                        .unwrap_or_else(|| self.unknown());
-
-                    // Make sure that the condition is a boolean.
-                    self.type_check(
-                        expr.type_id,
-                        self.builtins.bool,
-                        assume_stmt.syntax().text_range(),
-                    );
-
-                    self.type_guard_stack.push(expr.then_guards());
-                    statements.push(Statement::Assume);
-                }
-            }
-        }
-
-        // Compile the expression of the block, if present.
-        let mut body = block
-            .expr()
-            .map(|expr| self.compile_expr(&expr, expected_type))
-            .unwrap_or(self.unknown());
-
-        // Ensure that the block terminates.
-        if !is_terminated {
-            self.db
-                .error(ErrorKind::EmptyBlock, block.syntax().text_range());
-        }
-
-        // Pop each statement in reverse order and mutate the body.
-        for statement in statements.into_iter().rev() {
-            match statement {
-                Statement::Let(scope_id) => {
-                    body = Value::new(
-                        self.db.alloc_hir(Hir::Definition {
-                            scope_id,
-                            hir_id: body.hir_id,
-                        }),
-                        body.type_id,
-                    );
-                    self.scope_stack.pop().unwrap();
-                }
-                Statement::Return(value) => {
-                    body = value;
-                }
-                Statement::If(condition, then_block) => {
-                    self.type_guard_stack.pop().unwrap();
-
-                    body = Value::new(
-                        self.db.alloc_hir(Hir::If {
-                            condition,
-                            then_block,
-                            else_block: body.hir_id,
-                        }),
-                        body.type_id,
-                    );
-                }
-                Statement::Assume => {
-                    self.type_guard_stack.pop().unwrap();
-                }
-            }
-        }
-
-        (body, explicit_return)
     }
 
     /// Compiles a field access expression, or special properties for certain types.
