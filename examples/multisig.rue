@@ -5,22 +5,6 @@ enum Condition {
     }
 }
 
-fun tree_hash(value: Any) -> Bytes32 {
-    if value is Bytes {
-        tree_hash_atom(value)
-    } else {
-        tree_hash_pair(tree_hash(value.first), tree_hash(value.rest))
-    }
-}
-
-inline fun tree_hash_atom(value: Bytes) -> Bytes32 {
-    sha256(1 as Bytes + value)
-}
-
-inline fun tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
-    sha256(2 as Bytes + first + rest)
-}
-
 fun concat_lists(a: Condition[], b: Condition[]) -> Condition[] {
     if a is (Condition, Condition[]) {
         return [a.first, ...concat_lists(a.rest, b)];

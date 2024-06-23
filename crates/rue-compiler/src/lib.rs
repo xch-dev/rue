@@ -11,7 +11,8 @@ mod ty;
 
 use clvmr::{Allocator, NodePtr};
 use compiler::{
-    build_graph, codegen, compile_modules, load_module, setup_compiler, try_export_main,
+    build_graph, codegen, compile_modules, load_module, load_standard_library, setup_compiler,
+    try_export_main,
 };
 use rue_parser::Root;
 
@@ -38,6 +39,7 @@ pub fn analyze(root: &Root) -> Vec<Diagnostic> {
     let mut db = Database::default();
     let mut ctx = setup_compiler(&mut db);
 
+    load_standard_library(&mut ctx);
     let main_module_id = load_module(&mut ctx, root);
     let symbol_table = compile_modules(ctx);
 
@@ -51,6 +53,7 @@ pub fn compile(allocator: &mut Allocator, root: &Root, should_codegen: bool) -> 
     let mut db = Database::default();
     let mut ctx = setup_compiler(&mut db);
 
+    load_standard_library(&mut ctx);
     let main_module_id = load_module(&mut ctx, root);
     let symbol_table = compile_modules(ctx);
 

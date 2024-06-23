@@ -1,6 +1,6 @@
 use clvmr::{Allocator, NodePtr};
 use indexmap::IndexMap;
-use rue_parser::Root;
+use rue_parser::{parse, Root};
 
 use crate::{
     codegen::Codegen,
@@ -23,6 +23,16 @@ pub fn setup_compiler(db: &mut Database) -> CompilerContext<'_> {
         compiler,
         roots: IndexMap::new(),
     }
+}
+
+pub fn load_standard_library(ctx: &mut CompilerContext<'_>) {
+    let (root, parser_errors) = parse(include_str!("../../../../std/stdlib.rue"));
+    assert_eq!(parser_errors, Vec::new());
+    let module_id = load_module(ctx, &root);
+    let Symbol::Module(module) = ctx.compiler.db.symbol_mut(module_id).clone() else {
+        unreachable!();
+    };
+    ctx.compiler.scope_stack.push(module.scope_id);
 }
 
 pub fn load_module(ctx: &mut CompilerContext<'_>, root: &Root) -> SymbolId {
