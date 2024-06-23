@@ -80,9 +80,6 @@ pub enum WarningKind {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
 pub enum ErrorKind {
-    #[error("missing `main` function")]
-    MissingMain,
-
     #[error("unknown symbol `{0}`")]
     UndefinedReference(String),
 

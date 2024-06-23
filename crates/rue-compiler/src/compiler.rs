@@ -42,10 +42,10 @@ enum Statement {
 /// Performs name resolution and type checking.
 pub struct Compiler<'a> {
     // The database is mutable because we need to allocate new symbols and types.
-    db: &'a mut Database,
+    pub db: &'a mut Database,
 
     // The scope stack is used to keep track of the current scope.
-    scope_stack: Vec<ScopeId>,
+    pub scope_stack: Vec<ScopeId>,
 
     // The symbol stack is used for calculating types referenced in symbols.
     symbol_stack: Vec<SymbolId>,
@@ -207,8 +207,10 @@ impl<'a> Compiler<'a> {
                     self.compile_const(const_item, symbol_id);
                     self.symbol_stack.pop().unwrap();
                 }
-                Item::ModuleItem(..)
-                | Item::TypeAliasItem(..)
+                Item::ModuleItem(..) => {
+                    declarations.symbol_ids.remove(0);
+                }
+                Item::TypeAliasItem(..)
                 | Item::StructItem(..)
                 | Item::EnumItem(..)
                 | Item::ImportItem(..) => {}

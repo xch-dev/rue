@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::SyntaxKind;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParserError {
     kind: ParserErrorKind,
     span: Range<usize>,

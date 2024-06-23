@@ -13,7 +13,6 @@ use clvmr::{Allocator, NodePtr};
 use codegen::Codegen;
 use compiler::Compiler;
 use optimizer::{DependencyGraph, Optimizer};
-use rowan::TextRange;
 use rue_parser::Root;
 use symbol::{Module, Symbol};
 use ty::Type;
@@ -55,10 +54,7 @@ fn precompile(db: &mut Database, root: &Root) -> Option<LirId> {
         unreachable!();
     };
 
-    let Some(main_symbol_id) = db.scope_mut(scope_id).symbol("main") else {
-        db.error(ErrorKind::MissingMain, TextRange::new(0.into(), 0.into()));
-        return None;
-    };
+    let main_symbol_id = db.scope_mut(scope_id).symbol("main")?;
 
     let Symbol::Module(module) = db.symbol_mut(module_id) else {
         unreachable!();
