@@ -5,6 +5,7 @@ use crate::{SymbolId, TypeId};
 use super::Compiler;
 
 mod const_item;
+mod function_item;
 
 #[derive(Debug, Clone)]
 pub struct Declarations {
@@ -42,7 +43,9 @@ impl Compiler<'_> {
         for item in items {
             match item {
                 Item::ModuleItem(module) => symbol_ids.push(self.declare_module(module)),
-                Item::FunctionItem(function) => symbol_ids.push(self.declare_function(function)),
+                Item::FunctionItem(function) => {
+                    symbol_ids.push(self.declare_function_item(function));
+                }
                 Item::ConstItem(const_item) => symbol_ids.push(self.declare_const_item(const_item)),
                 Item::TypeAliasItem(..)
                 | Item::StructItem(..)
@@ -98,7 +101,7 @@ impl Compiler<'_> {
                 Item::FunctionItem(function) => {
                     let symbol_id = declarations.symbol_ids.remove(0);
                     self.symbol_stack.push(symbol_id);
-                    self.compile_function(function, symbol_id);
+                    self.compile_function_item(function, symbol_id);
                     self.symbol_stack.pop().unwrap();
                 }
                 Item::ConstItem(const_item) => {
