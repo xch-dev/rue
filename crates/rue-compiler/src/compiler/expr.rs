@@ -4,10 +4,12 @@ use crate::{ty::Value, TypeId};
 
 use super::Compiler;
 
+mod binary_expr;
 mod block_expr;
 mod if_expr;
 mod initializer_expr;
 mod pair_expr;
+mod prefix_expr;
 
 impl Compiler<'_> {
     pub fn compile_expr(&mut self, expr: &Expr, expected_type: Option<TypeId>) -> Value {
