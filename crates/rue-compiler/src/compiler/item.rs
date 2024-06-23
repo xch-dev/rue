@@ -6,6 +6,7 @@ use super::Compiler;
 
 mod const_item;
 mod function_item;
+mod module_item;
 
 #[derive(Debug, Clone)]
 pub struct Declarations {
