@@ -135,11 +135,9 @@ impl Compiler<'_> {
                     match path_kind {
                         PathKind::Type => {
                             self.type_reference(type_id);
-                            return Some(PathItem::Type(type_id));
+                            Some(PathItem::Type(type_id))
                         }
-                        PathKind::Symbol => {
-                            return Some(PathItem::Symbol(symbol_id));
-                        }
+                        PathKind::Symbol => Some(PathItem::Symbol(symbol_id)),
                     }
                 } else if let Some(type_id) = type_id {
                     self.type_reference(type_id);
