@@ -6,6 +6,7 @@ use std::str::Chars;
 pub use token::*;
 pub use token_kind::*;
 
+#[derive(Debug, Clone)]
 pub struct Lexer<'a> {
     source: &'a str,
     chars: Chars<'a>,
@@ -118,6 +119,7 @@ impl<'a> Lexer<'a> {
                     self.bump();
                 }
                 match &self.source[start..self.pos] {
+                    "mod" => TokenKind::Mod,
                     "fun" => TokenKind::Fun,
                     "inline" => TokenKind::Inline,
                     "import" => TokenKind::Import,
@@ -322,6 +324,7 @@ mod tests {
 
     #[test]
     fn test_keyword() {
+        check("mod", &[TokenKind::Mod]);
         check("fun", &[TokenKind::Fun]);
         check("inline", &[TokenKind::Inline]);
         check("import", &[TokenKind::Import]);

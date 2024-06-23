@@ -36,7 +36,6 @@ impl<'a> Optimizer<'a> {
         };
 
         let env_id = self.graph.env(fun.scope_id);
-
         let body = self.opt_hir(env_id, fun.hir_id);
 
         let mut args = Vec::new();
@@ -54,7 +53,7 @@ impl<'a> Optimizer<'a> {
 
     fn opt_path(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
         let mut current_env_id = env_id;
-        let mut environment = self.db.env(env_id).build().to_vec();
+        let mut environment = self.db.env(env_id).build().clone();
 
         while let Some(parent_env_id) = self.db.env(current_env_id).parent() {
             assert!(self.db.env(current_env_id).parameters().is_empty());
@@ -85,12 +84,9 @@ impl<'a> Optimizer<'a> {
 
     fn opt_definition(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
         match self.db.symbol(symbol_id).clone() {
-            Symbol::Unknown => unreachable!(),
+            Symbol::Unknown | Symbol::Module(..) => unreachable!(),
             Symbol::Function(Function {
-                inline: false,
-                hir_id,
-                scope_id,
-                ..
+                hir_id, scope_id, ..
             }) => {
                 let function_env_id = self.graph.env(scope_id);
 
@@ -107,14 +103,8 @@ impl<'a> Optimizer<'a> {
 
                 self.db.alloc_lir(Lir::FunctionBody(body))
             }
-            Symbol::Const(Const {
-                inline: false,
-                hir_id,
-                ..
-            }) => self.opt_hir(env_id, hir_id),
-            Symbol::Parameter(..)
-            | Symbol::Function(Function { inline: true, .. })
-            | Symbol::Const(Const { inline: true, .. }) => {
+            Symbol::Const(Const { hir_id, .. }) => self.opt_hir(env_id, hir_id),
+            Symbol::Parameter(..) | Symbol::InlineFunction(..) | Symbol::InlineConst(..) => {
                 unreachable!();
             }
             Symbol::Let(symbol) => self.opt_hir(env_id, symbol.hir_id),
@@ -136,11 +126,10 @@ impl<'a> Optimizer<'a> {
                 varargs,
             } => {
                 if let Hir::Reference(symbol_id) = self.db.hir(*callee) {
-                    if let Symbol::Function(Function {
+                    if let Symbol::InlineFunction(Function {
                         scope_id,
                         ty,
                         hir_id,
-                        inline: true,
                         ..
                     }) = self.db.symbol(*symbol_id)
                     {
@@ -148,7 +137,7 @@ impl<'a> Optimizer<'a> {
                         return self.opt_inline_function_call(
                             env_id,
                             function_env_id,
-                            ty.clone(),
+                            &ty.clone(),
                             *hir_id,
                             args.clone(),
                             *varargs,
@@ -252,20 +241,14 @@ impl<'a> Optimizer<'a> {
 
     fn opt_reference(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
         match self.db.symbol(symbol_id).clone() {
-            Symbol::Function(Function {
-                scope_id,
-                inline: false,
-                ..
-            }) => {
+            Symbol::Function(Function { scope_id, .. }) => {
                 let function_env_id = self.graph.env(scope_id);
                 let body = self.opt_path(env_id, symbol_id);
 
                 let mut captures = Vec::new();
 
-                for symbol_id in self.db.scope(scope_id).local_symbols() {
-                    if self.db.symbol(symbol_id).is_definition() {
-                        captures.push(self.opt_path(env_id, symbol_id));
-                    }
+                for symbol_id in self.db.env(function_env_id).definitions() {
+                    captures.push(self.opt_path(env_id, symbol_id));
                 }
 
                 for symbol_id in self.db.env(function_env_id).captures() {
@@ -274,15 +257,9 @@ impl<'a> Optimizer<'a> {
 
                 self.db.alloc_lir(Lir::Closure(body, captures))
             }
-            Symbol::Function(Function { inline: true, .. }) => self.db.alloc_lir(Lir::Atom(vec![])),
-            Symbol::Const(Const {
-                hir_id,
-                inline: true,
-                ..
-            }) => self.opt_hir(env_id, hir_id),
-            Symbol::Let(..) | Symbol::Const(Const { inline: false, .. }) => {
-                self.opt_path(env_id, symbol_id)
-            }
+            Symbol::InlineFunction(..) => self.db.alloc_lir(Lir::Atom(vec![])),
+            Symbol::InlineConst(Const { hir_id, .. }) => self.opt_hir(env_id, hir_id),
+            Symbol::Let(..) | Symbol::Const(..) => self.opt_path(env_id, symbol_id),
             Symbol::Parameter { .. } => {
                 for inline_parameter_map in self.inline_parameter_stack.iter().rev() {
                     if let Some(lir_id) = inline_parameter_map.get(&symbol_id) {
@@ -291,7 +268,7 @@ impl<'a> Optimizer<'a> {
                 }
                 self.opt_path(env_id, symbol_id)
             }
-            Symbol::Unknown => unreachable!(),
+            Symbol::Unknown | Symbol::Module(..) => unreachable!(),
         }
     }
 
@@ -337,7 +314,7 @@ impl<'a> Optimizer<'a> {
         &mut self,
         env_id: EnvironmentId,
         function_env_id: EnvironmentId,
-        ty: FunctionType,
+        ty: &FunctionType,
         hir_id: HirId,
         args: Vec<HirId>,
         varargs: bool,

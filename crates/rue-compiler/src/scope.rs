@@ -1,21 +1,19 @@
-use std::collections::HashMap;
-
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 
 use crate::{database::TypeId, SymbolId};
 
 #[derive(Debug, Default)]
 pub struct Scope {
-    symbol_table: HashMap<String, SymbolId>,
-    type_aliases: HashMap<String, TypeId>,
+    symbol_table: IndexMap<String, SymbolId>,
+    symbol_names: IndexMap<SymbolId, String>,
+    type_aliases: IndexMap<String, TypeId>,
     type_names: IndexMap<TypeId, String>,
-    local_symbols: IndexSet<SymbolId>,
 }
 
 impl Scope {
     pub fn define_symbol(&mut self, name: String, symbol_id: SymbolId) {
-        self.symbol_table.insert(name, symbol_id);
-        self.local_symbols.insert(symbol_id);
+        self.symbol_table.insert(name.clone(), symbol_id);
+        self.symbol_names.insert(symbol_id, name);
     }
 
     pub fn symbol(&self, name: &str) -> Option<SymbolId> {
@@ -32,15 +30,19 @@ impl Scope {
     }
 
     pub fn type_name(&self, type_id: TypeId) -> Option<&str> {
-        self.type_names.get(&type_id).map(|s| s.as_str())
+        self.type_names.get(&type_id).map(String::as_str)
+    }
+
+    pub fn symbol_name(&self, symbol_id: SymbolId) -> Option<&str> {
+        self.symbol_names.get(&symbol_id).map(String::as_str)
     }
 
     pub fn is_local(&self, symbol_id: SymbolId) -> bool {
-        self.local_symbols.contains(&symbol_id)
+        self.symbol_names.contains_key(&symbol_id)
     }
 
     pub fn local_symbols(&self) -> Vec<SymbolId> {
-        self.local_symbols.iter().copied().collect()
+        self.symbol_names.keys().copied().collect()
     }
 
     pub fn local_types(&self) -> Vec<TypeId> {

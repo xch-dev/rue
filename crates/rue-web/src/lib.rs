@@ -1,4 +1,4 @@
-#![allow(clippy::empty_docs)]
+#![allow(clippy::empty_docs, clippy::wildcard_imports)]
 
 pub mod app;
 pub mod error_template;

@@ -69,7 +69,7 @@ impl<'a> Codegen<'a> {
 
     pub fn gen_lir(&mut self, lir_id: LirId) -> NodePtr {
         match self.db.lir(lir_id).clone() {
-            Lir::Atom(atom) => self.gen_atom(atom.clone()),
+            Lir::Atom(atom) => self.gen_atom(&atom),
             Lir::Pair(first, rest) => self.gen_pair(first, rest),
             Lir::Quote(value) => self.gen_quote(value),
             Lir::Path(path) => self.allocator.new_small_number(path).unwrap(),
@@ -102,8 +102,8 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    fn gen_atom(&mut self, value: Vec<u8>) -> NodePtr {
-        let int_ptr = self.allocator.new_atom(&value).unwrap();
+    fn gen_atom(&mut self, value: &[u8]) -> NodePtr {
+        let int_ptr = self.allocator.new_atom(value).unwrap();
         self.quote(int_ptr)
     }
 
@@ -115,13 +115,15 @@ impl<'a> Codegen<'a> {
 
     fn gen_run(&mut self, program: LirId, args: Option<LirId>) -> NodePtr {
         let program = self.gen_lir(program);
-        let args = args
-            .map(|args| self.gen_lir(args))
-            .unwrap_or(self.allocator.one());
+        let args = args.map_or(self.allocator.one(), |args| self.gen_lir(args));
         self.list(&[self.ops.a, program, args])
     }
 
     fn gen_apply(&mut self, body: LirId, args: Vec<LirId>) -> NodePtr {
+        if args.is_empty() {
+            return self.gen_lir(body);
+        }
+
         let body = self.gen_quote(body);
         let args: Vec<NodePtr> = args.into_iter().map(|arg| self.gen_lir(arg)).collect();
         let args = self.runtime_list(&args, self.ops.q);
@@ -131,6 +133,11 @@ impl<'a> Codegen<'a> {
     fn gen_closure(&mut self, body: LirId, args: Vec<LirId>) -> NodePtr {
         let body = self.gen_lir(body);
         let args: Vec<NodePtr> = args.into_iter().map(|arg| self.gen_lir(arg)).collect();
+
+        if args.is_empty() {
+            return body;
+        }
+
         self.gen_closure_wrapper(body, &args)
     }
 

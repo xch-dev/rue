@@ -2,7 +2,7 @@ use http::status::StatusCode;
 use leptos::*;
 use thiserror::Error;
 
-#[derive(Clone, Debug, Error)]
+#[derive(Debug, Clone, Copy, Error)]
 pub enum AppError {
     #[error("Not Found")]
     NotFound,
@@ -36,7 +36,7 @@ pub fn ErrorTemplate(
     // Downcast lets us take a type that implements `std::error::Error`
     let errors: Vec<AppError> = errors
         .into_iter()
-        .filter_map(|(_k, v)| v.downcast_ref::<AppError>().cloned())
+        .filter_map(|(_k, v)| v.downcast_ref::<AppError>().copied())
         .collect();
     println!("Errors: {errors:#?}");
 

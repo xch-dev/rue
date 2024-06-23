@@ -14,7 +14,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a str, tokens: &[Token]) -> Self {
+    pub(crate) fn new(source: &'a str, tokens: &[Token]) -> Self {
         let mut errors = Vec::new();
         let items = convert_tokens(&mut errors, source, tokens);
 
@@ -115,8 +115,7 @@ impl<'a> Parser<'a> {
         self.eat_whitespace();
         self.items
             .get(self.cursor + index)
-            .map(|(kind, _)| *kind)
-            .unwrap_or(SyntaxKind::Eof)
+            .map_or(SyntaxKind::Eof, |(kind, _)| *kind)
     }
 
     fn eat_whitespace(&mut self) {
@@ -191,6 +190,7 @@ fn convert_tokens<'a>(
             TokenKind::OpenBrace => SyntaxKind::OpenBrace,
             TokenKind::CloseBrace => SyntaxKind::CloseBrace,
 
+            TokenKind::Mod => SyntaxKind::Mod,
             TokenKind::Fun => SyntaxKind::Fun,
             TokenKind::Inline => SyntaxKind::Inline,
             TokenKind::Import => SyntaxKind::Import,

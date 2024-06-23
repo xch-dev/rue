@@ -28,7 +28,7 @@ fn main() {
     }
 
     let mut allocator = Allocator::new();
-    let output = compile(&mut allocator, ast, errors.is_empty());
+    let output = compile(&mut allocator, &ast, errors.is_empty());
 
     if !output.diagnostics().is_empty() {
         let mut has_error = false;
@@ -41,10 +41,10 @@ fn main() {
             match error.kind() {
                 DiagnosticKind::Error(kind) => {
                     has_error = true;
-                    eprintln!("Error: {} at {line}:{col}", kind)
+                    eprintln!("Error: {kind} at {line}:{col}");
                 }
                 DiagnosticKind::Warning(kind) => {
-                    eprintln!("Warning: {} at {line}:{col}", kind)
+                    eprintln!("Warning: {kind} at {line}:{col}");
                 }
             }
         }
@@ -67,6 +67,6 @@ fn main() {
             "Serialized output: {}",
             hex::encode(node_to_bytes(&allocator, output.1).unwrap())
         ),
-        Err(error) => eprintln!("Error: {:?}", error),
+        Err(error) => eprintln!("Error: {error:?}"),
     }
 }

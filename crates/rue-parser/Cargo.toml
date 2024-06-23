@@ -3,6 +3,9 @@ name = "rue-parser"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 indexmap = "2.2.6"
 num-derive = "0.4.2"

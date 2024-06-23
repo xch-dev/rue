@@ -1,4 +1,7 @@
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use clap::Parser;
 use clvm_tools_rs::classic::clvm_tools::binutils;
@@ -13,16 +16,14 @@ use indexmap::{IndexMap, IndexSet};
 use rue_compiler::{compile, DiagnosticKind};
 use rue_parser::{line_col, LineCol};
 use serde::{Deserialize, Serialize};
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-enum ExpectedTestData {
+enum Expected {
     Case(TestCase),
     Errs(TestErrors),
 }
-
-use ExpectedTestData::*;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct TestCase {
@@ -31,6 +32,8 @@ struct TestCase {
     input: String,
     output: String,
     hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
 }
 
 #[derive(Clone)]
@@ -63,14 +66,18 @@ fn iter_tests() -> impl Iterator<Item = PathBuf> {
         .into_iter()
         .chain(WalkDir::new(manifest_dir.join("../../examples")))
         .map(Result::unwrap)
-        .filter(|file| file.path().to_str().unwrap().ends_with(".rue"))
-        .map(|file| file.into_path())
+        .filter(|file| {
+            Path::new(file.path().to_str().unwrap())
+                .extension()
+                .map_or(false, |ext| ext.eq_ignore_ascii_case("rue"))
+        })
+        .map(DirEntry::into_path)
 }
 
 fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
     let (root, parser_errors) = rue_parser::parse(source);
     let mut allocator = Allocator::new();
-    let output = compile(&mut allocator, root, parser_errors.is_empty());
+    let output = compile(&mut allocator, &root, parser_errors.is_empty());
 
     let parser_errors: Vec<String> = parser_errors
         .into_iter()
@@ -90,8 +97,8 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
             let line = line + 1;
             let col = col + 1;
             match error.kind() {
-                DiagnosticKind::Error(kind) => format!("{} at {line}:{col}", kind),
-                DiagnosticKind::Warning(kind) => format!("{} at {line}:{col}", kind),
+                DiagnosticKind::Error(kind) => format!("{kind} at {line}:{col}"),
+                DiagnosticKind::Warning(kind) => format!("{kind} at {line}:{col}"),
             }
         })
         .collect();
@@ -128,7 +135,13 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
             let output = binutils::disassemble(&old_allocator, output_ptr, None);
             (cost, Ok(output))
         }
-        Err(error) => (0, Err(error.to_string())),
+        Err(error) => {
+            let output_bytes = node_to_bytes(&allocator, error.0).unwrap();
+            let output_ptr =
+                clvmr_old::serde::node_from_bytes(&mut old_allocator, &output_bytes).unwrap();
+            let output = binutils::disassemble(&old_allocator, output_ptr, None);
+            (0, Err(output))
+        }
     };
 
     Ok(TestOutput {
@@ -144,7 +157,7 @@ fn main() {
 
     let failed = run_tests(args.update);
     if failed > 0 {
-        println!("\n{} tests failed", failed);
+        println!("\n{failed} tests failed");
         std::process::exit(1);
     }
 }
@@ -156,7 +169,7 @@ fn run_tests(update: bool) -> usize {
         .ok()
         .unwrap_or_default();
 
-    let mut test_cases: IndexMap<String, ExpectedTestData> = toml::from_str(&text).unwrap();
+    let mut test_cases: IndexMap<String, Expected> = toml::from_str(&text).unwrap();
     let mut visited_names = IndexSet::new();
 
     let mut failed_count = 0;
@@ -172,7 +185,7 @@ fn run_tests(update: bool) -> usize {
             .unwrap();
 
         if !visited_names.insert(name.to_string()) {
-            println!("duplicate test name: {}", name);
+            println!("duplicate test name: {name}");
             failed_count += 1;
             continue;
         }
@@ -198,24 +211,27 @@ fn run_tests(update: bool) -> usize {
             &source,
             &expected
                 .as_ref()
-                .and_then(|expected| match expected {
-                    Case(test_case) => Some(test_case.input.clone()),
-                    _ => None,
+                .and_then(|expected| {
+                    if let Expected::Case(case) = expected {
+                        Some(case.input.clone())
+                    } else {
+                        None
+                    }
                 })
                 .unwrap_or("()".to_string()),
         );
 
         if let Some(expected) = expected.clone() {
             match (expected, &output) {
-                (Errs(expected_test_errors), Err(test_errors)) => {
+                (Expected::Errs(expected_test_errors), Err(test_errors)) => {
                     if expected_test_errors.parser_errors != test_errors.parser_errors {
                         lines.push("expected parser errors:".to_string());
                         for error in expected_test_errors.parser_errors {
-                            lines.push(format!("  {}", error));
+                            lines.push(format!("  {error}"));
                         }
                         lines.push("actual parser errors:".to_string());
-                        for error in test_errors.parser_errors.iter() {
-                            lines.push(format!("  {}", error));
+                        for error in &test_errors.parser_errors {
+                            lines.push(format!("  {error}"));
                         }
                         failed = true;
                     }
@@ -223,38 +239,38 @@ fn run_tests(update: bool) -> usize {
                     if expected_test_errors.compiler_errors != test_errors.compiler_errors {
                         lines.push("expected compiler errors:".to_string());
                         for error in expected_test_errors.compiler_errors {
-                            lines.push(format!("  {}", error));
+                            lines.push(format!("  {error}"));
                         }
                         lines.push("actual compiler errors:".to_string());
-                        for error in test_errors.compiler_errors.iter() {
-                            lines.push(format!("  {}", error));
+                        for error in &test_errors.compiler_errors {
+                            lines.push(format!("  {error}"));
                         }
                         failed = true;
                     }
                 }
-                (Errs(expected_test_errors), Ok(..)) => {
+                (Expected::Errs(expected_test_errors), Ok(..)) => {
                     lines.push("expected parser errors:".to_string());
                     for error in expected_test_errors.parser_errors {
-                        lines.push(format!("  {}", error));
+                        lines.push(format!("  {error}"));
                     }
                     lines.push("expected compiler errors:".to_string());
                     for error in expected_test_errors.compiler_errors {
-                        lines.push(format!("  {}", error));
+                        lines.push(format!("  {error}"));
                     }
                     failed = true;
                 }
-                (Case(_expected), Err(test_errors)) => {
+                (Expected::Case(_expected), Err(test_errors)) => {
                     lines.push("unexpected parser errors:".to_string());
-                    for error in test_errors.parser_errors.iter() {
-                        lines.push(format!("  {}", error));
+                    for error in &test_errors.parser_errors {
+                        lines.push(format!("  {error}"));
                     }
                     lines.push("unexpected compiler errors:".to_string());
-                    for error in test_errors.compiler_errors.iter() {
-                        lines.push(format!("  {}", error));
+                    for error in &test_errors.compiler_errors {
+                        lines.push(format!("  {error}"));
                     }
                     failed = true;
                 }
-                (Case(expected), Ok(actual)) => {
+                (Expected::Case(expected), Ok(actual)) => {
                     if expected.bytes != actual.bytes.len() {
                         lines.push(format!(
                             "expected bytes: {}, actual bytes: {}",
@@ -280,20 +296,20 @@ fn run_tests(update: bool) -> usize {
 
                     let mut output_failed = false;
 
-                    match &actual.output {
-                        Ok(output) => {
-                            if &expected.output != output {
-                                lines.push(format!("expected output: {}", expected.output));
-                                lines.push(format!("actual output: {}", output));
-                                failed = true;
-                                output_failed = true;
-                            }
-                        }
-                        Err(error) => {
-                            lines.push(format!("unexpected clvm error: {}", error));
+                    if let Ok(actual_output) = actual.output.as_ref() {
+                        if &expected.output != actual_output {
+                            lines.push(format!("expected output: {}", expected.output));
+                            lines.push(format!("actual output: {actual_output}"));
                             failed = true;
                             output_failed = true;
                         }
+                    }
+
+                    if expected.error.as_ref() != actual.output.as_ref().err() {
+                        lines.push(format!("expected error: {:?}", expected.error.as_ref()));
+                        lines.push(format!("actual error: {:?}", actual.output.as_ref().err()));
+                        failed = true;
+                        output_failed = true;
                     }
 
                     if output_failed {
@@ -307,19 +323,23 @@ fn run_tests(update: bool) -> usize {
             failed_count += 1;
 
             let new_expected = match output {
-                Ok(output) => Case(TestCase {
+                Ok(output) => Expected::Case(TestCase {
                     bytes: output.bytes.len(),
                     cost: output.cost,
                     input: expected
-                        .and_then(|expected| match expected {
-                            Case(case) => Some(case.input.clone()),
-                            _ => None,
+                        .and_then(|expected| {
+                            if let Expected::Case(case) = expected {
+                                Some(case.input.clone())
+                            } else {
+                                None
+                            }
                         })
                         .unwrap_or("()".to_string()),
-                    output: output.output.unwrap_or("()".to_string()),
+                    output: output.output.clone().unwrap_or("()".to_string()),
                     hash: output.hash,
+                    error: output.output.err().map(|error| error.to_string()),
                 }),
-                Err(errors) => Errs(errors),
+                Err(errors) => Expected::Errs(errors),
             };
             test_cases.insert(name.to_string(), new_expected);
 
@@ -331,9 +351,9 @@ fn run_tests(update: bool) -> usize {
     }
 
     for (test, lines) in failed_tests {
-        println!("\ntest failed: {}", test);
+        println!("\ntest failed: {test}");
         for line in lines {
-            println!("  {}", line);
+            println!("  {line}");
         }
     }
 

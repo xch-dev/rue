@@ -2,10 +2,9 @@
 #[tokio::main]
 async fn main() {
     use axum::Router;
-    use leptos::*;
+    use leptos::get_configuration;
     use leptos_axum::{generate_route_list, LeptosRoutes};
-    use rue_web::app::*;
-    use rue_web::fileserv::file_and_error_handler;
+    use rue_web::{app::App, fileserv::file_and_error_handler};
 
     let conf = get_configuration(None).await.unwrap();
     let leptos_options = conf.leptos_options;

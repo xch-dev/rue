@@ -27,7 +27,7 @@ pub enum Type {
     Optional(TypeId),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct PairType {
     pub first: TypeId,
     pub rest: TypeId,

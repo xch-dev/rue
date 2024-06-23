@@ -1,0 +1,7 @@
+fun main() -> Int {
+    let num = 42;
+    let factor = 2;
+    let product = num * factor;
+    let sum = num + factor + product;
+    sum
+}

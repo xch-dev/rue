@@ -3,6 +3,9 @@ name = "rue-tests"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 rue-parser = { path = "../rue-parser" }
 rue-compiler = { path = "../rue-compiler" }

@@ -16,7 +16,7 @@ use crate::{
     DiagnosticKind, ErrorKind, WarningKind,
 };
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Database {
     diagnostics: Vec<Diagnostic>,
     scopes: Arena<Scope>,
@@ -196,10 +196,13 @@ impl Database {
 
         match self.symbol(symbol_id) {
             Symbol::Unknown => format!("<unknown symbol {}>", symbol_id.0.index()),
+            Symbol::Module(..) => format!("<module {}>", symbol_id.0.index()),
             Symbol::Parameter(..) => format!("<parameter {}>", symbol_id.0.index()),
             Symbol::Function(..) => format!("<function {}>", symbol_id.0.index()),
+            Symbol::InlineFunction(..) => format!("<inline function {}>", symbol_id.0.index()),
             Symbol::Let(..) => format!("<let {}>", symbol_id.0.index()),
             Symbol::Const(..) => format!("<const {}>", symbol_id.0.index()),
+            Symbol::InlineConst(..) => format!("<inline const {}>", symbol_id.0.index()),
         }
     }
 
@@ -214,7 +217,7 @@ impl Database {
 
         format!(
             "Scope({:?}, Symbols = [{}])",
-            self.scope_token(scope_id).map(|token| token.to_string()),
+            self.scope_token(scope_id).map(ToString::to_string),
             defined_symbols
         )
     }

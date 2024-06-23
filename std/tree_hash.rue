@@ -1,4 +1,4 @@
-fun tree_hash(value: Any) -> Bytes32 {
+export fun tree_hash(value: Any) -> Bytes32 {
     if value is Bytes {
         sha256(1 as Bytes + value)
     } else {

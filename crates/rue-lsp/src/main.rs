@@ -1,7 +1,11 @@
 use rue_compiler::{analyze, DiagnosticKind};
 use rue_parser::{line_col, parse, LineCol};
 use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
+use tower_lsp::lsp_types::{
+    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    InitializeParams, InitializeResult, InitializedParams, MessageType, Position, Range,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+};
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 #[derive(Debug)]
@@ -44,7 +48,7 @@ impl LanguageServer for Backend {
             params.content_changes[0].text.clone(),
             params.text_document.version,
         )
-        .await
+        .await;
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -52,10 +56,16 @@ impl LanguageServer for Backend {
     }
 }
 
+/// This is a hack to get around a Rust compiler error.
+#[allow(clippy::needless_pass_by_value)]
+fn analyze_owned(root: rue_parser::Root) -> Vec<rue_compiler::Diagnostic> {
+    analyze(&root)
+}
+
 impl Backend {
     async fn on_change(&self, uri: Url, text: String, _version: i32) {
         let (root, errors) = parse(&text);
-        let compiler_errors = analyze(root);
+        let compiler_errors = analyze_owned(root);
 
         let mut diagnostics: Vec<Diagnostic> = errors
             .into_iter()
@@ -77,8 +87,8 @@ impl Backend {
             let end = line_col(&text, error.span().end);
 
             let (message, severity) = match error.kind() {
-                DiagnosticKind::Error(kind) => (format!("{}", kind), DiagnosticSeverity::ERROR),
-                DiagnosticKind::Warning(kind) => (format!("{}", kind), DiagnosticSeverity::WARNING),
+                DiagnosticKind::Error(kind) => (format!("{kind}"), DiagnosticSeverity::ERROR),
+                DiagnosticKind::Warning(kind) => (format!("{kind}"), DiagnosticSeverity::WARNING),
             };
 
             diagnostics.push(diagnostic(start, end, message, severity));
@@ -99,12 +109,12 @@ fn diagnostic(
     Diagnostic {
         range: Range {
             start: Position {
-                line: start.line as u32,
-                character: start.col as u32,
+                line: start.line.try_into().unwrap(),
+                character: start.col.try_into().unwrap(),
             },
             end: Position {
-                line: end.line as u32,
-                character: end.col as u32,
+                line: end.line.try_into().unwrap(),
+                character: end.col.try_into().unwrap(),
             },
         },
         message,

@@ -1,0 +1,3 @@
+fun main() -> Nil {
+    raise 'why hello there';
+}
