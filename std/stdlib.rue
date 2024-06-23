@@ -1,4 +1,4 @@
-fun tree_hash(value: Any) -> Bytes32 {
+export fun tree_hash(value: Any) -> Bytes32 {
     if value is Bytes {
         tree_hash_atom(value)
     } else {
@@ -6,10 +6,18 @@ fun tree_hash(value: Any) -> Bytes32 {
     }
 }
 
-inline fun tree_hash_atom(value: Bytes) -> Bytes32 {
+export inline fun tree_hash_atom(value: Bytes) -> Bytes32 {
     sha256(1 as Bytes + value)
 }
 
-inline fun tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
+export inline fun tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
     sha256(2 as Bytes + first + rest)
+}
+
+export fun another_something() -> Int {
+    42
+}
+
+fun something() -> Int {
+    42
 }

@@ -39,12 +39,17 @@ pub fn analyze(root: &Root) -> Vec<Diagnostic> {
     let mut db = Database::default();
     let mut ctx = setup_compiler(&mut db);
 
-    load_standard_library(&mut ctx);
+    let stdlib = load_standard_library(&mut ctx);
     let main_module_id = load_module(&mut ctx, root);
     let symbol_table = compile_modules(ctx);
 
     try_export_main(&mut db, main_module_id);
-    build_graph(&mut db, &symbol_table, main_module_id);
+    build_graph(
+        &mut db,
+        &symbol_table,
+        main_module_id,
+        &[main_module_id, stdlib],
+    );
 
     db.diagnostics().to_vec()
 }
@@ -53,12 +58,17 @@ pub fn compile(allocator: &mut Allocator, root: &Root, should_codegen: bool) -> 
     let mut db = Database::default();
     let mut ctx = setup_compiler(&mut db);
 
-    load_standard_library(&mut ctx);
+    let stdlib = load_standard_library(&mut ctx);
     let main_module_id = load_module(&mut ctx, root);
     let symbol_table = compile_modules(ctx);
 
     let main = try_export_main(&mut db, main_module_id).expect("missing main function");
-    let graph = build_graph(&mut db, &symbol_table, main_module_id);
+    let graph = build_graph(
+        &mut db,
+        &symbol_table,
+        main_module_id,
+        &[main_module_id, stdlib],
+    );
 
     Output {
         diagnostics: db.diagnostics().to_vec(),

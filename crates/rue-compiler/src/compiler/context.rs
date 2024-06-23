@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use clvmr::{Allocator, NodePtr};
 use indexmap::IndexMap;
 use rue_parser::{parse, Root};
@@ -5,6 +7,7 @@ use rue_parser::{parse, Root};
 use crate::{
     codegen::Codegen,
     optimizer::{DependencyGraph, Optimizer},
+    scope::Scope,
     symbol::{Module, Symbol},
     Database, SymbolId,
 };
@@ -25,14 +28,46 @@ pub fn setup_compiler(db: &mut Database) -> CompilerContext<'_> {
     }
 }
 
-pub fn load_standard_library(ctx: &mut CompilerContext<'_>) {
+pub fn load_standard_library(ctx: &mut CompilerContext<'_>) -> SymbolId {
     let (root, parser_errors) = parse(include_str!("../../../../std/stdlib.rue"));
     assert_eq!(parser_errors, Vec::new());
-    let module_id = load_module(ctx, &root);
+
+    let (module_id, declarations) = ctx.compiler.declare_root(&root);
+    ctx.compiler.compile_root(&root, module_id, declarations);
+
     let Symbol::Module(module) = ctx.compiler.db.symbol_mut(module_id).clone() else {
         unreachable!();
     };
-    ctx.compiler.scope_stack.push(module.scope_id);
+
+    let mut scope = Scope::default();
+
+    for &symbol_id in &module.exported_symbols {
+        scope.define_symbol(
+            ctx.compiler
+                .db
+                .scope(module.scope_id)
+                .symbol_name(symbol_id)
+                .unwrap()
+                .to_string(),
+            symbol_id,
+        );
+    }
+
+    for &type_id in &module.exported_types {
+        scope.define_type(
+            ctx.compiler
+                .db
+                .scope(module.scope_id)
+                .type_name(type_id)
+                .unwrap()
+                .to_string(),
+            type_id,
+        );
+    }
+
+    let scope_id = ctx.compiler.db.alloc_scope(scope);
+    ctx.compiler.scope_stack.push(scope_id);
+    module_id
 }
 
 pub fn load_module(ctx: &mut CompilerContext<'_>, root: &Root) -> SymbolId {
@@ -51,13 +86,26 @@ pub fn compile_modules(mut ctx: CompilerContext<'_>) -> SymbolTable {
 pub fn build_graph(
     db: &mut Database,
     symbol_table: &SymbolTable,
-    entrypoint: SymbolId,
+    main_module_id: SymbolId,
+    library_module_ids: &[SymbolId],
 ) -> DependencyGraph {
-    let Symbol::Module(module) = db.symbol_mut(entrypoint).clone() else {
+    let mut ignored_symbols = HashSet::new();
+    let mut ignored_types = HashSet::new();
+
+    for &module_id in library_module_ids {
+        let Symbol::Module(module) = db.symbol_mut(module_id).clone() else {
+            unreachable!();
+        };
+        ignored_symbols.extend(module.exported_symbols.iter().copied());
+        ignored_types.extend(module.exported_types.iter().copied());
+    }
+
+    let Symbol::Module(module) = db.symbol_mut(main_module_id).clone() else {
         unreachable!();
     };
+
     let graph = DependencyGraph::build(db, &module);
-    symbol_table.calculate_unused(db, &graph, &module);
+    symbol_table.calculate_unused(db, &graph, &ignored_symbols, &ignored_types);
     graph
 }
 

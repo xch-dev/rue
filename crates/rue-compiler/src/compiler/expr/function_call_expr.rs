@@ -18,6 +18,8 @@ impl Compiler<'_> {
 
         let expected = if let Type::Function(fun) = self.db.ty(callee.type_id) {
             Some(fun.clone())
+        } else if let Type::Unknown = self.db.ty(callee.type_id) {
+            None
         } else {
             self.db.error(
                 ErrorKind::UncallableType(self.type_name(callee.type_id)),
