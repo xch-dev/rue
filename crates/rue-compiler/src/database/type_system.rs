@@ -252,7 +252,6 @@ mod tests {
 
     use crate::{
         compiler::{builtins, Builtins},
-        scope::Scope,
         ty::{EnumType, EnumVariant, FunctionType, PairType, Rest, StructType},
     };
 
@@ -260,8 +259,7 @@ mod tests {
 
     fn setup() -> (Database, Builtins) {
         let mut db = Database::new();
-        let mut scope = Scope::default();
-        let ty = builtins(&mut db, &mut scope);
+        let ty = builtins(&mut db);
         (db, ty)
     }
 
