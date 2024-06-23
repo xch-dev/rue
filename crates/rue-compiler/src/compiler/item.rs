@@ -5,6 +5,7 @@ use crate::{SymbolId, TypeId};
 use super::Compiler;
 
 mod const_item;
+mod enum_item;
 mod function_item;
 mod module_item;
 
