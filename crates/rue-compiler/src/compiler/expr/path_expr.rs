@@ -14,12 +14,16 @@ use crate::{
 
 impl Compiler<'_> {
     pub fn compile_path_expr(&mut self, idents: &[SyntaxToken], text_range: TextRange) -> Value {
-        let Some(mut item) = self.resolve_base_path(&idents[0], PathKind::Symbol) else {
+        let Some(mut item) =
+            self.resolve_base_path(&idents[0], PathKind::Symbol, idents.len() == 1)
+        else {
             return self.unknown();
         };
 
-        for name in idents.iter().skip(1) {
-            let Some(next_item) = self.resolve_next_path(item, name) else {
+        for (i, name) in idents.iter().enumerate().skip(1) {
+            let Some(next_item) =
+                self.resolve_next_path(item, name, PathKind::Symbol, i == idents.len() - 1)
+            else {
                 return self.unknown();
             };
             item = next_item;

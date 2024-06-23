@@ -11,12 +11,15 @@ use crate::{
 
 impl Compiler<'_> {
     pub fn compile_path_type(&mut self, idents: &[SyntaxToken], text_range: TextRange) -> TypeId {
-        let Some(mut item) = self.resolve_base_path(&idents[0], PathKind::Type) else {
+        let Some(mut item) = self.resolve_base_path(&idents[0], PathKind::Type, idents.len() == 1)
+        else {
             return self.builtins.unknown;
         };
 
-        for name in idents.iter().skip(1) {
-            let Some(next_item) = self.resolve_next_path(item, name) else {
+        for (i, name) in idents.iter().enumerate().skip(1) {
+            let Some(next_item) =
+                self.resolve_next_path(item, name, PathKind::Type, i == idents.len() - 1)
+            else {
                 return self.builtins.unknown;
             };
             item = next_item;
