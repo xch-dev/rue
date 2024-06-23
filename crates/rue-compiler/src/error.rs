@@ -77,6 +77,18 @@ pub enum WarningKind {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
 pub enum ErrorKind {
+    #[error("type with namespace `{0}` is already defined")]
+    NamespaceTakenType(String),
+
+    #[error("symbol with namespace `{0}` is already defined")]
+    NamespaceTakenSymbol(String),
+
+    #[error("type `{0}` is already defined")]
+    DuplicateType(String),
+
+    #[error("symbol `{0}` is already defined")]
+    DuplicateSymbol(String),
+
     #[error("unknown symbol `{0}`")]
     UnknownSymbol(String),
 

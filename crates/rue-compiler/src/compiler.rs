@@ -267,6 +267,11 @@ impl<'a> Compiler<'a> {
         None
     }
 
+    fn scope(&self) -> &Scope {
+        self.db
+            .scope(self.scope_stack.last().copied().expect("no scope found"))
+    }
+
     fn scope_mut(&mut self) -> &mut Scope {
         self.db
             .scope_mut(self.scope_stack.last().copied().expect("no scope found"))
