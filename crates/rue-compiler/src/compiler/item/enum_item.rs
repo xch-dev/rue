@@ -10,7 +10,7 @@ use crate::{
 impl Compiler<'_> {
     /// Define a type for an enum in the current scope.
     /// This creates the enum variants as well, but they are left as unknown types.
-    pub fn declare_enum(&mut self, enum_item: &EnumItem) -> TypeId {
+    pub fn declare_enum_item(&mut self, enum_item: &EnumItem) -> TypeId {
         let mut variants = IndexMap::new();
 
         for variant in enum_item.variants() {
@@ -39,7 +39,7 @@ impl Compiler<'_> {
     }
 
     /// Compile and resolve an enum type, and each of its variants' struct fields.
-    pub fn compile_enum(&mut self, enum_item: &EnumItem, type_id: TypeId) {
+    pub fn compile_enum_item(&mut self, enum_item: &EnumItem, type_id: TypeId) {
         self.type_definition_stack.push(type_id);
 
         let Type::Enum(enum_type) = self.db.ty(type_id).clone() else {

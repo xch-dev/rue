@@ -3,16 +3,15 @@
 use std::collections::HashMap;
 
 pub(crate) use builtins::{builtins, Builtins};
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 use rowan::TextRange;
-use rue_parser::{AstNode, StructField, StructItem, TypeAliasItem};
 use symbol_table::SymbolTable;
 
 use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::Hir,
     scope::Scope,
-    ty::{FunctionType, PairType, Rest, StructType, Type, Value},
+    ty::{FunctionType, PairType, Rest, Type, Value},
     Comparison, ErrorKind, TypeSystem,
 };
 
@@ -75,71 +74,6 @@ impl<'a> Compiler<'a> {
     /// Lowering is completed, extract the diagnostics.
     pub fn finish(self) -> SymbolTable {
         self.sym
-    }
-
-    /// Define a type for an alias in the current scope, but leave it as unknown for now.
-    fn declare_type_alias(&mut self, type_alias: &TypeAliasItem) -> TypeId {
-        let type_id = self.db.alloc_type(Type::Unknown);
-        if let Some(name) = type_alias.name() {
-            self.scope_mut().define_type(name.to_string(), type_id);
-            self.db.insert_type_token(type_id, name);
-        }
-        type_id
-    }
-
-    /// Define a type for a struct in the current scope, but leave it as unknown for now.
-    fn declare_struct(&mut self, struct_item: &StructItem) -> TypeId {
-        let type_id = self.db.alloc_type(Type::Unknown);
-        if let Some(name) = struct_item.name() {
-            self.scope_mut().define_type(name.to_string(), type_id);
-            self.db.insert_type_token(type_id, name);
-        }
-        type_id
-    }
-
-    /// Compile and resolve the type that the alias points to.
-    fn compile_type_alias(&mut self, ty: &TypeAliasItem, alias_type_id: TypeId) {
-        self.type_definition_stack.push(alias_type_id);
-
-        let type_id = ty
-            .ty()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-        // Set the alias type to the resolved type.
-        *self.db.ty_mut(alias_type_id) = Type::Alias(type_id);
-
-        // A cycle between type aliases has been detected.
-        // We set it to unknown to prevent stack overflow issues later.
-        if self.detect_cycle(alias_type_id, ty.syntax().text_range()) {
-            *self.db.ty_mut(alias_type_id) = Type::Unknown;
-        }
-
-        self.type_definition_stack.pop().unwrap();
-    }
-
-    /// Compile and resolve a struct type.
-    fn compile_struct(&mut self, struct_item: &StructItem, type_id: TypeId) {
-        self.type_definition_stack.push(type_id);
-        let fields = self.compile_struct_fields(struct_item.fields());
-        *self.db.ty_mut(type_id) = Type::Struct(StructType { fields });
-        self.type_definition_stack.pop().unwrap();
-    }
-
-    /// Compile and resolve the fields of a struct.
-    fn compile_struct_fields(&mut self, fields: Vec<StructField>) -> IndexMap<String, TypeId> {
-        let mut named_fields = IndexMap::new();
-
-        for field in fields {
-            let type_id = field
-                .ty()
-                .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-            if let Some(name) = field.name() {
-                named_fields.insert(name.to_string(), type_id);
-            };
-        }
-
-        named_fields
     }
 
     fn compile_index(&mut self, value: HirId, index: usize, rest: bool) -> HirId {

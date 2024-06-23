@@ -39,7 +39,7 @@ impl Compiler<'_> {
     /// Define a module in the current scope.
     /// This creates a new scope for the module, and declares its items.
     /// The exports are added during this phase too.
-    pub fn declare_module(&mut self, module_item: &ModuleItem) -> SymbolId {
+    pub fn declare_module_item(&mut self, module_item: &ModuleItem) -> SymbolId {
         // Add the symbol to the stack early so you can track type references.
         let scope_id = self.db.alloc_scope(Scope::default());
         let symbol_id = self.db.alloc_symbol(Symbol::Module(Module {

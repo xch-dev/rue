@@ -8,6 +8,8 @@ mod const_item;
 mod enum_item;
 mod function_item;
 mod module_item;
+mod struct_item;
+mod type_alias_item;
 
 #[derive(Debug, Clone)]
 pub struct Declarations {
@@ -28,9 +30,11 @@ impl Compiler<'_> {
 
         for item in items {
             match item {
-                Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias(ty)),
-                Item::StructItem(struct_item) => type_ids.push(self.declare_struct(struct_item)),
-                Item::EnumItem(enum_item) => type_ids.push(self.declare_enum(enum_item)),
+                Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias_item(ty)),
+                Item::StructItem(struct_item) => {
+                    type_ids.push(self.declare_struct_item(struct_item));
+                }
+                Item::EnumItem(enum_item) => type_ids.push(self.declare_enum_item(enum_item)),
                 Item::ModuleItem(..)
                 | Item::FunctionItem(..)
                 | Item::ConstItem(..)
@@ -44,7 +48,7 @@ impl Compiler<'_> {
 
         for item in items {
             match item {
-                Item::ModuleItem(module) => symbol_ids.push(self.declare_module(module)),
+                Item::ModuleItem(module) => symbol_ids.push(self.declare_module_item(module)),
                 Item::FunctionItem(function) => {
                     symbol_ids.push(self.declare_function_item(function));
                 }
@@ -76,19 +80,19 @@ impl Compiler<'_> {
                 Item::TypeAliasItem(ty) => {
                     let type_id = declarations.type_ids.remove(0);
                     self.type_definition_stack.push(type_id);
-                    self.compile_type_alias(ty, type_id);
+                    self.compile_type_alias_item(ty, type_id);
                     self.type_definition_stack.pop().unwrap();
                 }
                 Item::StructItem(struct_item) => {
                     let type_id = declarations.type_ids.remove(0);
                     self.type_definition_stack.push(type_id);
-                    self.compile_struct(struct_item, type_id);
+                    self.compile_struct_item(struct_item, type_id);
                     self.type_definition_stack.pop().unwrap();
                 }
                 Item::EnumItem(enum_item) => {
                     let type_id = declarations.type_ids.remove(0);
                     self.type_definition_stack.push(type_id);
-                    self.compile_enum(enum_item, type_id);
+                    self.compile_enum_item(enum_item, type_id);
                     self.type_definition_stack.pop().unwrap();
                 }
                 Item::ModuleItem(..)
