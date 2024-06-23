@@ -59,6 +59,10 @@ impl Database {
             // However, anything can be assigned to `Any` implicitly.
             (_, Type::Any) => Comparison::Assignable,
 
+            // `Generic` types are unrelated to everything else except their specific instance.
+            // The only exception is the `Any` type above.
+            (Type::Generic, _) | (_, Type::Generic) => Comparison::Unrelated,
+
             // You have to explicitly convert between other atom types.
             // This is because the compiled output can change depending on the type.
             (Type::Int, Type::Bytes) => Comparison::Castable,
@@ -234,6 +238,7 @@ impl Database {
             | Type::EnumVariant(..)
             | Type::Function(..)
             | Type::Unknown
+            | Type::Generic
             | Type::Nil
             | Type::Any
             | Type::Int
@@ -289,6 +294,17 @@ mod tests {
         );
         assert_eq!(db.compare_type(double_alias, int_alias), Comparison::Equal);
         assert_eq!(db.compare_type(int_alias, double_alias), Comparison::Equal);
+    }
+
+    #[test]
+    fn test_generic_type() {
+        let (mut db, ty) = setup();
+        let a = db.alloc_type(Type::Generic);
+        let b = db.alloc_type(Type::Generic);
+        assert_eq!(db.compare_type(a, b), Comparison::Unrelated);
+        assert_eq!(db.compare_type(a, ty.int), Comparison::Unrelated);
+        assert_eq!(db.compare_type(ty.int, a), Comparison::Unrelated);
+        assert_eq!(db.compare_type(a, a), Comparison::Equal);
     }
 
     #[test]

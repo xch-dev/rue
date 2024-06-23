@@ -31,7 +31,7 @@ impl Compiler<'_> {
         }
 
         let return_type = function
-            .ret()
+            .return_type()
             .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         self.db.alloc_type(Type::Function(FunctionType {

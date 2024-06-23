@@ -10,6 +10,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum Type {
     Unknown,
+    Generic,
     Nil,
     Any,
     Int,

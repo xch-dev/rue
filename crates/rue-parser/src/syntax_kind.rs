@@ -125,6 +125,8 @@ pub enum SyntaxKind {
     FunctionType,
     FunctionTypeParam,
     OptionalType,
+
+    GenericTypes,
 }
 
 impl fmt::Display for SyntaxKind {
@@ -239,6 +241,8 @@ impl fmt::Display for SyntaxKind {
                 Self::FunctionType => "function type",
                 Self::FunctionTypeParam => "function type parameter",
                 Self::OptionalType => "optional type",
+
+                Self::GenericTypes => "generic types",
             }
         )
     }

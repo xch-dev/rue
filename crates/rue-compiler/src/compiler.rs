@@ -19,6 +19,7 @@ mod block;
 mod builtins;
 mod context;
 mod expr;
+mod generic_types;
 mod item;
 mod path;
 mod stmt;
@@ -165,6 +166,7 @@ impl<'a> Compiler<'a> {
 
         let name = match self.db.ty(ty) {
             Type::Unknown => "{unknown}".to_string(),
+            Type::Generic => "{generic}".to_string(),
             Type::Nil => "Nil".to_string(),
             Type::Any => "Any".to_string(),
             Type::Int => "Int".to_string(),
