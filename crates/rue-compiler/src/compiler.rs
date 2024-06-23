@@ -8,11 +8,10 @@ use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, Block, CastExpr, ConstItem, EnumItem, FieldAccess, FunctionCall, FunctionItem,
-    FunctionType as AstFunctionType, GroupExpr, GuardExpr, IfStmt, IndexAccess, Item, LambdaExpr,
-    LetStmt, ListExpr, ListType, LiteralExpr, ModuleItem, OptionalType, PairType as AstPairType,
-    Path, Root, Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, Type as AstType,
-    TypeAliasItem,
+    AstNode, Block, ConstItem, EnumItem, FieldAccess, FunctionCall, FunctionItem,
+    FunctionType as AstFunctionType, GuardExpr, IfStmt, IndexAccess, Item, LambdaExpr, LetStmt,
+    ListExpr, ListType, LiteralExpr, ModuleItem, OptionalType, PairType as AstPairType, Path, Root,
+    Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -923,38 +922,6 @@ impl<'a> Compiler<'a> {
             result = self.db.alloc_hir(Hir::First(result));
         }
         result
-    }
-
-    fn compile_group_expr(
-        &mut self,
-        group_expr: &GroupExpr,
-        expected_type: Option<TypeId>,
-    ) -> Value {
-        let Some(expr) = group_expr
-            .expr()
-            .map(|expr| self.compile_expr(&expr, expected_type))
-        else {
-            return self.unknown();
-        };
-
-        expr
-    }
-
-    fn compile_cast_expr(&mut self, cast: &CastExpr, expected_type: Option<TypeId>) -> Value {
-        let Some(expr) = cast
-            .expr()
-            .map(|expr| self.compile_expr(&expr, expected_type))
-        else {
-            return self.unknown();
-        };
-
-        let ty = cast
-            .ty()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-        self.cast_check(expr.type_id, ty, cast.expr().unwrap().syntax().text_range());
-
-        Value::new(expr.hir_id, ty)
     }
 
     fn compile_guard_expr(&mut self, guard: &GuardExpr, expected_type: Option<TypeId>) -> Value {
