@@ -1,7 +1,11 @@
-use rue_parser::{AstNode, PathExpr};
+use rowan::TextRange;
+use rue_parser::SyntaxToken;
 
 use crate::{
-    compiler::Compiler,
+    compiler::{
+        path::{PathItem, PathKind},
+        Compiler,
+    },
     hir::Hir,
     symbol::{Const, Function, Let, Symbol},
     ty::{Type, Value},
@@ -9,41 +13,34 @@ use crate::{
 };
 
 impl Compiler<'_> {
-    pub fn compile_path_expr(&mut self, path: &PathExpr) -> Value {
-        let mut idents = path.idents();
-
-        if idents.len() > 1 {
-            self.db
-                .error(ErrorKind::InvalidSymbolPath, path.syntax().text_range());
-            return self.unknown();
-        }
-
-        let name = idents.remove(0);
-
-        let Some(symbol_id) = self
-            .scope_stack
-            .iter()
-            .rev()
-            .find_map(|&scope_id| self.db.scope(scope_id).symbol(name.text()))
-        else {
-            self.db.error(
-                ErrorKind::UnknownSymbol(name.to_string()),
-                name.text_range(),
-            );
+    pub fn compile_path_expr(&mut self, idents: &[SyntaxToken], text_range: TextRange) -> Value {
+        let Some(mut item) = self.resolve_base_path(&idents[0], PathKind::Symbol) else {
             return self.unknown();
         };
 
+        for name in idents.iter().skip(1) {
+            let Some(next_item) = self.resolve_next_path(item, name) else {
+                return self.unknown();
+            };
+            item = next_item;
+        }
+
+        let symbol_id = match item {
+            PathItem::Symbol(symbol_id) => symbol_id,
+            PathItem::Type(..) => {
+                self.db.error(ErrorKind::ExpectedSymbolPath, text_range);
+                return self.unknown();
+            }
+        };
+
         if matches!(self.db.symbol(symbol_id), Symbol::Module(..)) {
-            self.db
-                .error(ErrorKind::ModuleReference, path.syntax().text_range());
+            self.db.error(ErrorKind::ModuleReference, text_range);
             return self.unknown();
         }
 
         if !self.is_callee && matches!(self.db.symbol(symbol_id), Symbol::InlineFunction(..)) {
-            self.db.error(
-                ErrorKind::InlineFunctionReference,
-                path.syntax().text_range(),
-            );
+            self.db
+                .error(ErrorKind::InlineFunctionReference, text_range);
             return self.unknown();
         }
 
