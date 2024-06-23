@@ -3,12 +3,11 @@
 use std::collections::HashMap;
 
 pub(crate) use builtins::{builtins, Builtins};
-use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};
+use item::Declarations;
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, ConstItem, EnumItem, FunctionItem, Item, ModuleItem, Root, StructField, StructItem,
-    TypeAliasItem,
+    AstNode, EnumItem, FunctionItem, ModuleItem, Root, StructField, StructItem, TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -16,15 +15,15 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::Hir,
     scope::Scope,
-    symbol::{Const, Function, Module, Symbol},
+    symbol::{Function, Module, Symbol},
     ty::{EnumType, EnumVariant, FunctionType, PairType, Rest, StructType, Type, Value},
     Comparison, ErrorKind, TypeSystem,
 };
 
 mod block;
 mod builtins;
-mod declarations;
 mod expr;
+mod item;
 mod stmt;
 mod symbol_table;
 mod ty;
@@ -82,54 +81,6 @@ impl<'a> Compiler<'a> {
         self.sym
     }
 
-    /// Declare all items into scope without compiling their body.
-    /// This ensures no circular references are resolved at this time.
-    pub fn declare_items(&mut self, items: &[Item]) -> Declarations {
-        let mut type_ids = Vec::new();
-        let mut symbol_ids = Vec::new();
-        let mut exported_types = Vec::new();
-        let mut exported_symbols = Vec::new();
-
-        for item in items {
-            match item {
-                Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias(ty)),
-                Item::StructItem(struct_item) => type_ids.push(self.declare_struct(struct_item)),
-                Item::EnumItem(enum_item) => type_ids.push(self.declare_enum(enum_item)),
-                Item::ModuleItem(..)
-                | Item::FunctionItem(..)
-                | Item::ConstItem(..)
-                | Item::ImportItem(..) => continue,
-            }
-
-            if item.export().is_some() {
-                exported_types.push(*type_ids.last().unwrap());
-            }
-        }
-
-        for item in items {
-            match item {
-                Item::ModuleItem(module) => symbol_ids.push(self.declare_module(module)),
-                Item::FunctionItem(function) => symbol_ids.push(self.declare_function(function)),
-                Item::ConstItem(const_item) => symbol_ids.push(self.declare_const(const_item)),
-                Item::TypeAliasItem(..)
-                | Item::StructItem(..)
-                | Item::EnumItem(..)
-                | Item::ImportItem(..) => continue,
-            }
-
-            if item.export().is_some() {
-                exported_symbols.push(*symbol_ids.last().unwrap());
-            }
-        }
-
-        Declarations {
-            type_ids,
-            symbol_ids,
-            exported_types,
-            exported_symbols,
-        }
-    }
-
     pub fn declare_root(&mut self, root: &Root) -> (SymbolId, Declarations) {
         let scope_id = self.db.alloc_scope(Scope::default());
         let module_id = self.db.alloc_symbol(Symbol::Module(Module {
@@ -153,61 +104,6 @@ impl<'a> Compiler<'a> {
         self.scope_stack.push(scope_id);
         self.compile_items(&root.items(), declarations);
         self.scope_stack.pop().unwrap();
-    }
-
-    /// Lower all of the items in the list in the proper order.
-    /// This is done in two passes to handle forward references.
-    fn compile_items(&mut self, items: &[Item], mut declarations: Declarations) {
-        for item in items {
-            match item {
-                Item::TypeAliasItem(ty) => {
-                    let type_id = declarations.type_ids.remove(0);
-                    self.type_definition_stack.push(type_id);
-                    self.compile_type_alias(ty, type_id);
-                    self.type_definition_stack.pop().unwrap();
-                }
-                Item::StructItem(struct_item) => {
-                    let type_id = declarations.type_ids.remove(0);
-                    self.type_definition_stack.push(type_id);
-                    self.compile_struct(struct_item, type_id);
-                    self.type_definition_stack.pop().unwrap();
-                }
-                Item::EnumItem(enum_item) => {
-                    let type_id = declarations.type_ids.remove(0);
-                    self.type_definition_stack.push(type_id);
-                    self.compile_enum(enum_item, type_id);
-                    self.type_definition_stack.pop().unwrap();
-                }
-                Item::ModuleItem(..)
-                | Item::FunctionItem(..)
-                | Item::ConstItem(..)
-                | Item::ImportItem(..) => {}
-            }
-        }
-
-        for item in items {
-            match item {
-                Item::FunctionItem(function) => {
-                    let symbol_id = declarations.symbol_ids.remove(0);
-                    self.symbol_stack.push(symbol_id);
-                    self.compile_function(function, symbol_id);
-                    self.symbol_stack.pop().unwrap();
-                }
-                Item::ConstItem(const_item) => {
-                    let symbol_id = declarations.symbol_ids.remove(0);
-                    self.symbol_stack.push(symbol_id);
-                    self.compile_const(const_item, symbol_id);
-                    self.symbol_stack.pop().unwrap();
-                }
-                Item::ModuleItem(..) => {
-                    declarations.symbol_ids.remove(0);
-                }
-                Item::TypeAliasItem(..)
-                | Item::StructItem(..)
-                | Item::EnumItem(..)
-                | Item::ImportItem(..) => {}
-            }
-        }
     }
 
     /// Define a module in the current scope.
@@ -335,32 +231,6 @@ impl<'a> Compiler<'a> {
         self.symbol_stack.pop().unwrap()
     }
 
-    /// Define a constant in the current scope, but don't lower its body.
-    fn declare_const(&mut self, const_item: &ConstItem) -> SymbolId {
-        // Add the symbol to the stack early so you can track type references.
-        let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
-        self.symbol_stack.push(symbol_id);
-
-        let type_id = const_item
-            .ty()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-        let hir_id = self.db.alloc_hir(Hir::Unknown);
-
-        if const_item.inline().is_some() {
-            *self.db.symbol_mut(symbol_id) = Symbol::InlineConst(Const { type_id, hir_id });
-        } else {
-            *self.db.symbol_mut(symbol_id) = Symbol::Const(Const { type_id, hir_id });
-        }
-
-        if let Some(name) = const_item.name() {
-            self.scope_mut().define_symbol(name.to_string(), symbol_id);
-            self.db.insert_symbol_token(symbol_id, name);
-        }
-
-        self.symbol_stack.pop().unwrap()
-    }
-
     /// Define a type for an alias in the current scope, but leave it as unknown for now.
     fn declare_type_alias(&mut self, type_alias: &TypeAliasItem) -> TypeId {
         let type_id = self.db.alloc_type(Type::Unknown);
@@ -444,33 +314,6 @@ impl<'a> Compiler<'a> {
             unreachable!();
         };
         *hir_id = value.hir_id;
-    }
-
-    /// Compiles a constant's value.
-    fn compile_const(&mut self, const_item: &ConstItem, symbol_id: SymbolId) {
-        let Some(expr) = const_item.expr() else {
-            return;
-        };
-
-        let (Symbol::Const(Const { type_id, .. }) | Symbol::InlineConst(Const { type_id, .. })) =
-            self.db.symbol(symbol_id).clone()
-        else {
-            unreachable!();
-        };
-
-        let output = self.compile_expr(&expr, Some(type_id));
-
-        // Ensure that the expression is assignable to the constant's type.
-        self.type_check(output.type_id, type_id, const_item.syntax().text_range());
-
-        // We ignore type guards here for now.
-        // Just set the constant HIR.
-        let (Symbol::Const(Const { hir_id, .. }) | Symbol::InlineConst(Const { hir_id, .. })) =
-            self.db.symbol_mut(symbol_id)
-        else {
-            unreachable!();
-        };
-        *hir_id = output.hir_id;
     }
 
     /// Compile and resolve the type that the alias points to.
