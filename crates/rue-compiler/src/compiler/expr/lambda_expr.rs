@@ -80,6 +80,7 @@ impl Compiler<'_> {
             param_types: param_types.clone(),
             rest,
             return_type,
+            generic_types: Vec::new(),
         };
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function(Function {

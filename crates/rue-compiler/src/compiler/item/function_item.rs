@@ -67,6 +67,7 @@ impl Compiler<'_> {
             param_types,
             rest,
             return_type,
+            generic_types: Vec::new(),
         };
 
         if function_item.inline().is_some() {

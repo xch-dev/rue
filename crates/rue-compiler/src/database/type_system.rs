@@ -1,23 +1,174 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use crate::{ty::Type, Comparison, Database, TypeId};
+use crate::{
+    ty::{EnumType, EnumVariant, FunctionType, PairType, StructType, Type},
+    Comparison, Database, TypeId,
+};
 
-pub trait TypeSystem {
-    fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> Comparison;
-    fn is_cyclic(&self, type_id: TypeId) -> bool;
-}
+impl Database {
+    pub fn substitute_type(
+        &mut self,
+        type_id: TypeId,
+        substitutions: &HashMap<TypeId, TypeId>,
+    ) -> TypeId {
+        self.substitute_type_visitor(type_id, substitutions, &mut HashSet::new())
+    }
 
-impl TypeSystem for Database {
-    fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> Comparison {
+    pub fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> Comparison {
         self.compare_type_visitor(lhs, rhs, &mut HashSet::new())
     }
 
-    fn is_cyclic(&self, type_id: TypeId) -> bool {
+    pub fn is_cyclic(&self, type_id: TypeId) -> bool {
         self.is_cyclic_visitor(type_id, &mut HashSet::new())
     }
-}
 
-impl Database {
+    pub fn substitute_type_visitor(
+        &mut self,
+        type_id: TypeId,
+        substitutions: &HashMap<TypeId, TypeId>,
+        visited: &mut HashSet<TypeId>,
+    ) -> TypeId {
+        if let Some(type_id) = substitutions.get(&type_id).copied() {
+            return type_id;
+        }
+
+        if !visited.insert(type_id) {
+            return type_id;
+        }
+
+        match self.ty(type_id).clone() {
+            Type::Alias(..) => unreachable!(),
+            Type::Pair(pair) => {
+                let new_pair = PairType {
+                    first: self.substitute_type_visitor(pair.first, substitutions, visited),
+                    rest: self.substitute_type_visitor(pair.rest, substitutions, visited),
+                };
+
+                if new_pair == pair {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Pair(new_pair))
+                }
+            }
+            Type::Enum(enum_type) => {
+                let new_enum = EnumType {
+                    variants: enum_type
+                        .variants
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                self.substitute_type_visitor(*v, substitutions, visited),
+                            )
+                        })
+                        .collect(),
+                };
+
+                if new_enum == enum_type {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Enum(new_enum))
+                }
+            }
+            Type::EnumVariant(enum_variant) => {
+                let new_variant = EnumVariant {
+                    name: enum_variant.name.clone(),
+                    enum_type: enum_variant.enum_type,
+                    fields: enum_variant
+                        .fields
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                self.substitute_type_visitor(*v, substitutions, visited),
+                            )
+                        })
+                        .collect(),
+                    discriminant: enum_variant.discriminant,
+                };
+
+                if new_variant == enum_variant {
+                    type_id
+                } else {
+                    self.alloc_type(Type::EnumVariant(new_variant))
+                }
+            }
+            Type::List(inner) => {
+                let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
+
+                if new_inner == inner {
+                    type_id
+                } else {
+                    self.alloc_type(Type::List(new_inner))
+                }
+            }
+            Type::Struct(struct_type) => {
+                let new_struct = StructType {
+                    fields: struct_type
+                        .fields
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                self.substitute_type_visitor(*v, substitutions, visited),
+                            )
+                        })
+                        .collect(),
+                };
+
+                if new_struct == struct_type {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Struct(new_struct))
+                }
+            }
+            Type::Function(function) => {
+                let new_function = FunctionType {
+                    param_types: function
+                        .param_types
+                        .iter()
+                        .map(|ty| self.substitute_type_visitor(*ty, substitutions, visited))
+                        .collect(),
+                    rest: function.rest,
+                    return_type: self.substitute_type_visitor(
+                        function.return_type,
+                        substitutions,
+                        visited,
+                    ),
+                    generic_types: function
+                        .generic_types
+                        .iter()
+                        .map(|ty| self.substitute_type_visitor(*ty, substitutions, visited))
+                        .collect(),
+                };
+
+                if new_function == function {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Function(new_function))
+                }
+            }
+            Type::Optional(inner) => {
+                let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
+
+                if new_inner == inner {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Optional(inner))
+                }
+            }
+            Type::Unknown
+            | Type::Generic
+            | Type::Any
+            | Type::Bool
+            | Type::Bytes
+            | Type::Bytes32
+            | Type::Int
+            | Type::Nil
+            | Type::PublicKey => type_id,
+        }
+    }
+
     #[allow(clippy::match_same_arms, clippy::too_many_lines)]
     fn compare_type_visitor(
         &self,
@@ -490,6 +641,7 @@ mod tests {
             param_types: vec![ty.int],
             rest: Rest::Nil,
             return_type: ty.bool,
+            generic_types: Vec::new(),
         }));
         assert_eq!(db.compare_type(int_to_bool, int_to_bool), Comparison::Equal);
 
@@ -497,6 +649,7 @@ mod tests {
             param_types: vec![ty.int],
             rest: Rest::Nil,
             return_type: ty.int,
+            generic_types: Vec::new(),
         }));
         assert_eq!(
             db.compare_type(int_to_bool, int_to_int),
@@ -512,6 +665,7 @@ mod tests {
             param_types: vec![int_list],
             rest: Rest::Nil,
             return_type: ty.bool,
+            generic_types: Vec::new(),
         }));
         assert_eq!(
             db.compare_type(int_to_bool, int_list_to_bool),

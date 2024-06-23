@@ -86,6 +86,7 @@ fn sha256(db: &mut Database, builtins: &Builtins) -> SymbolId {
             param_types: vec![builtins.bytes],
             rest: Rest::Nil,
             return_type: builtins.bytes32,
+            generic_types: Vec::new(),
         },
     }))
 }
@@ -105,6 +106,7 @@ fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
             param_types: vec![builtins.bytes32],
             rest: Rest::Nil,
             return_type: builtins.public_key,
+            generic_types: Vec::new(),
         },
     }))
 }

@@ -4,7 +4,7 @@ use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir},
     ty::{Guard, Value},
-    Comparison, ErrorKind, TypeSystem,
+    Comparison, ErrorKind,
 };
 
 impl Compiler<'_> {

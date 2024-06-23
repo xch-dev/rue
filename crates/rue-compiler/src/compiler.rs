@@ -12,7 +12,7 @@ use crate::{
     hir::Hir,
     scope::Scope,
     ty::{FunctionType, PairType, Rest, Type, Value},
-    Comparison, ErrorKind, TypeSystem,
+    Comparison, ErrorKind,
 };
 
 mod block;
