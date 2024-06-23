@@ -8,12 +8,11 @@ use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, Expr, FieldAccess,
-    FunctionCall, FunctionItem, FunctionType as AstFunctionType, GroupExpr, GuardExpr, IfExpr,
-    IfStmt, IndexAccess, InitializerExpr, InitializerField, Item, LambdaExpr, LetStmt, ListExpr,
-    ListType, LiteralExpr, ModuleItem, OptionalType, PairExpr, PairType as AstPairType, Path,
-    PrefixExpr, PrefixOp, Root, Stmt, StructField, StructItem, SyntaxKind, SyntaxToken,
-    Type as AstType, TypeAliasItem,
+    AstNode, BinaryExpr, BinaryOp, Block, CastExpr, ConstItem, EnumItem, FieldAccess, FunctionCall,
+    FunctionItem, FunctionType as AstFunctionType, GroupExpr, GuardExpr, IfStmt, IndexAccess,
+    InitializerExpr, InitializerField, Item, LambdaExpr, LetStmt, ListExpr, ListType, LiteralExpr,
+    ModuleItem, OptionalType, PairExpr, PairType as AstPairType, Path, PrefixExpr, PrefixOp, Root,
+    Stmt, StructField, StructItem, SyntaxKind, SyntaxToken, Type as AstType, TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -28,6 +27,7 @@ use crate::{
 
 mod builtins;
 mod declarations;
+mod expr;
 mod symbol_table;
 mod unused;
 
@@ -42,10 +42,10 @@ enum Statement {
 /// Performs name resolution and type checking.
 pub struct Compiler<'a> {
     // The database is mutable because we need to allocate new symbols and types.
-    pub db: &'a mut Database,
+    db: &'a mut Database,
 
     // The scope stack is used to keep track of the current scope.
-    pub scope_stack: Vec<ScopeId>,
+    scope_stack: Vec<ScopeId>,
 
     // The symbol stack is used for calculating types referenced in symbols.
     symbol_stack: Vec<SymbolId>,
@@ -832,53 +832,6 @@ impl<'a> Compiler<'a> {
         }
 
         (body, explicit_return)
-    }
-
-    /// Compile a block in the context of an expression.
-    fn compile_block_expr(&mut self, block: &Block, expected_type: Option<TypeId>) -> Value {
-        let scope_id = self.db.alloc_scope(Scope::default());
-
-        self.scope_stack.push(scope_id);
-        let (value, explicit_return) = self.compile_block(block, expected_type);
-        self.scope_stack.pop().unwrap();
-
-        if explicit_return {
-            self.db
-                .error(ErrorKind::ExplicitReturnInExpr, block.syntax().text_range());
-        }
-
-        value
-    }
-
-    /// Compiles any expression.
-    fn compile_expr(&mut self, expr: &Expr, expected_type: Option<TypeId>) -> Value {
-        match &expr {
-            Expr::Path(..) => {}
-            _ => self.is_callee = false,
-        }
-
-        let value = match expr {
-            Expr::Path(path) => self.compile_path_expr(path),
-            Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
-            Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
-            Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
-            Expr::PairExpr(pair) => self.compile_pair_expr(pair, expected_type),
-            Expr::Block(block) => self.compile_block_expr(block, expected_type),
-            Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
-            Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
-            Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
-            Expr::GroupExpr(expr) => self.compile_group_expr(expr, expected_type),
-            Expr::CastExpr(cast) => self.compile_cast_expr(cast, expected_type),
-            Expr::GuardExpr(guard) => self.compile_guard_expr(guard, expected_type),
-            Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
-            Expr::FunctionCall(call) => self.compile_function_call(call),
-            Expr::FieldAccess(field_access) => self.compile_field_access(field_access),
-            Expr::IndexAccess(index_access) => self.compile_index_access(index_access),
-        };
-
-        self.is_callee = false;
-
-        value
     }
 
     /// Compiles an initializer expression.
@@ -1753,74 +1706,6 @@ impl<'a> Compiler<'a> {
             self.db.alloc_hir(Hir::Reference(symbol_id)),
             self.db.alloc_type(Type::Function(ty)),
         )
-    }
-
-    fn compile_if_expr(&mut self, if_expr: &IfExpr, expected_type: Option<TypeId>) -> Value {
-        let condition = if_expr
-            .condition()
-            .map(|condition| self.compile_expr(&condition, Some(self.builtins.bool)));
-
-        if let Some(condition) = condition.as_ref() {
-            self.type_guard_stack.push(condition.then_guards());
-        }
-
-        let then_block = if_expr
-            .then_block()
-            .map(|then_block| self.compile_block_expr(&then_block, expected_type));
-
-        if condition.is_some() {
-            self.type_guard_stack.pop().unwrap();
-        }
-
-        if let Some(condition) = condition.as_ref() {
-            self.type_guard_stack.push(condition.else_guards());
-        }
-
-        let expected_type =
-            expected_type.or_else(|| then_block.as_ref().map(|then_block| then_block.type_id));
-
-        let else_block = if_expr
-            .else_block()
-            .map(|else_block| self.compile_block_expr(&else_block, expected_type));
-
-        if condition.is_some() {
-            self.type_guard_stack.pop().unwrap();
-        }
-
-        if let Some(condition_type) = condition.as_ref().map(|condition| condition.type_id) {
-            self.type_check(
-                condition_type,
-                self.builtins.bool,
-                if_expr.condition().unwrap().syntax().text_range(),
-            );
-        }
-
-        if let (Some(then_block), Some(else_block)) = (&then_block, &else_block) {
-            self.type_check(
-                else_block.type_id,
-                then_block.type_id,
-                if_expr.else_block().unwrap().syntax().text_range(),
-            );
-        }
-
-        let ty = then_block
-            .as_ref()
-            .or(else_block.as_ref())
-            .map_or(self.builtins.unknown, |block| block.type_id);
-
-        let value = condition.and_then(|condition| {
-            then_block.and_then(|then_block| {
-                else_block.map(|else_block| {
-                    self.db.alloc_hir(Hir::If {
-                        condition: condition.hir_id,
-                        then_block: then_block.hir_id,
-                        else_block: else_block.hir_id,
-                    })
-                })
-            })
-        });
-
-        Value::new(value.unwrap_or(self.builtins.unknown_hir), ty)
     }
 
     fn compile_int_raw<T, E>(int: &SyntaxToken) -> T
