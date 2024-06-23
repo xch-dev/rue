@@ -1,4 +1,4 @@
-use rue_parser::Type;
+use rue_parser::{AstNode, Type};
 
 use crate::TypeId;
 
@@ -13,7 +13,9 @@ mod path_type;
 impl Compiler<'_> {
     pub fn compile_type(&mut self, ty: Type) -> TypeId {
         match ty {
-            Type::Path(path) => self.compile_path_type(&path),
+            Type::PathType(path) => {
+                self.compile_path_type(&path.idents(), path.syntax().text_range())
+            }
             Type::ListType(list) => self.compile_list_type(&list),
             Type::FunctionType(function) => self.compile_function_type(&function),
             Type::PairType(tuple) => self.compile_pair_type(&tuple),

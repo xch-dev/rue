@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{optimizer::DependencyGraph, symbol::Module, Database, ScopeId, SymbolId, TypeId};
-
-use super::unused::Unused;
+use crate::{
+    optimizer::DependencyGraph, symbol::Symbol, ty::Type, Database, SymbolId, TypeId, WarningKind,
+};
 
 #[derive(Debug, Default)]
 pub struct SymbolTable {
@@ -42,34 +42,36 @@ impl SymbolTable {
 
     pub fn calculate_unused(
         &self,
-        db: &Database,
+        db: &mut Database,
         dependency_graph: &DependencyGraph,
-        root_scope_id: ScopeId,
-        module: &Module,
-    ) -> Unused {
-        let mut unused = Unused::default();
+        ignored_symbols: &HashSet<SymbolId>,
+        ignored_types: &HashSet<TypeId>,
+    ) {
+        let mut type_ids = IndexSet::new();
+        let mut symbol_ids = IndexSet::new();
+        let mut exempt_types = IndexSet::new();
+        let mut exempt_symbols = IndexSet::new();
+
         let mut used_symbols = HashSet::new();
 
         for symbol_id in dependency_graph
             .visited_scopes()
             .into_iter()
-            .chain([root_scope_id])
             .flat_map(|scope_id| db.scope(scope_id).local_symbols())
             .collect::<Vec<SymbolId>>()
         {
-            if dependency_graph.symbol_usages(symbol_id) > 0
-                || module.exported_symbols.contains(&symbol_id)
+            if dependency_graph.symbol_usages(symbol_id) > 0 || ignored_symbols.contains(&symbol_id)
             {
                 used_symbols.insert(symbol_id);
                 continue;
             }
 
-            unused.symbol_ids.insert(symbol_id);
+            symbol_ids.insert(symbol_id);
 
             let token = db.symbol_token(symbol_id).unwrap();
 
             if token.text().starts_with('_') {
-                unused.exempt_symbols.insert(symbol_id);
+                exempt_symbols.insert(symbol_id);
             }
         }
 
@@ -85,20 +87,52 @@ impl SymbolTable {
         }
 
         for type_id in db.named_types() {
-            if used_types.contains(&type_id) || module.exported_types.contains(&type_id) {
+            if used_types.contains(&type_id) || ignored_types.contains(&type_id) {
                 continue;
             }
 
-            unused.type_ids.insert(type_id);
+            type_ids.insert(type_id);
 
             let token = db.type_token(type_id).unwrap();
 
             if token.text().starts_with('_') {
-                unused.exempt_types.insert(type_id);
+                exempt_types.insert(type_id);
             }
         }
 
-        unused
+        for symbol_id in &symbol_ids {
+            if exempt_symbols.contains(symbol_id) {
+                continue;
+            }
+            let token = db.symbol_token(*symbol_id).unwrap();
+            let kind = match db.symbol(*symbol_id).clone() {
+                Symbol::Unknown => unreachable!(),
+                // Symbol::Module(..) => WarningKind::UnusedModule(token.to_string()),
+                Symbol::Module(..) => continue,
+                Symbol::Function(..) => WarningKind::UnusedFunction(token.to_string()),
+                Symbol::InlineFunction(..) => WarningKind::UnusedInlineFunction(token.to_string()),
+                Symbol::Parameter(..) => WarningKind::UnusedParameter(token.to_string()),
+                Symbol::Let(..) => WarningKind::UnusedLet(token.to_string()),
+                Symbol::Const(..) => WarningKind::UnusedConst(token.to_string()),
+                Symbol::InlineConst(..) => WarningKind::UnusedInlineConst(token.to_string()),
+            };
+            db.warning(kind, token.text_range());
+        }
+
+        for type_id in &type_ids {
+            if exempt_types.contains(type_id) {
+                continue;
+            }
+            let token = db.type_token(*type_id).unwrap();
+            let kind = match db.ty_raw(*type_id) {
+                Type::Alias(..) => WarningKind::UnusedTypeAlias(token.to_string()),
+                Type::Struct(..) => WarningKind::UnusedStruct(token.to_string()),
+                Type::Enum(..) => WarningKind::UnusedEnum(token.to_string()),
+                Type::EnumVariant(..) => WarningKind::UnusedEnumVariant(token.to_string()),
+                _ => continue,
+            };
+            db.warning(kind, token.text_range());
+        }
     }
 
     fn calculate_used_types(&self, type_id: TypeId, used_types: &mut HashSet<TypeId>) {

@@ -38,9 +38,6 @@ pub enum DiagnosticKind {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
 pub enum WarningKind {
-    #[error("unused module `{0}`")]
-    UnusedModule(String),
-
     #[error("unused function `{0}`")]
     UnusedFunction(String),
 
@@ -72,7 +69,7 @@ pub enum WarningKind {
     UnusedTypeAlias(String),
 
     #[error("type is already optional")]
-    UselessOptionalType,
+    RedundantOptional,
 
     #[error("value already has type `{0}`")]
     RedundantTypeCheck(String),
@@ -80,11 +77,23 @@ pub enum WarningKind {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
 pub enum ErrorKind {
+    #[error("type with namespace `{0}` is already defined")]
+    NamespaceTakenType(String),
+
+    #[error("symbol with namespace `{0}` is already defined")]
+    NamespaceTakenSymbol(String),
+
+    #[error("type `{0}` is already defined")]
+    DuplicateType(String),
+
+    #[error("symbol `{0}` is already defined")]
+    DuplicateSymbol(String),
+
     #[error("unknown symbol `{0}`")]
-    UndefinedReference(String),
+    UnknownSymbol(String),
 
     #[error("unknown type `{0}`")]
-    UndefinedType(String),
+    UnknownType(String),
 
     #[error("inline functions cannot be referenced without being called")]
     InlineFunctionReference,
@@ -143,11 +152,26 @@ pub enum ErrorKind {
     #[error("unknown enum variant `{0}`")]
     UnknownEnumVariant(String),
 
-    #[error("paths are not allowed in this context")]
-    PathNotAllowed,
+    #[error("could not resolve `{0}` in module")]
+    UnknownModulePath(String),
 
-    #[error("cannot path into non-enum type `{0}`")]
-    PathIntoNonEnum(String),
+    #[error("symbol `{0}` is private")]
+    PrivateSymbol(String),
+
+    #[error("type `{0}` is private")]
+    PrivateType(String),
+
+    #[error("cannot path into type `{0}`")]
+    InvalidTypePath(String),
+
+    #[error("cannot path into symbol")]
+    InvalidSymbolPath,
+
+    #[error("expected path to type, but found symbol")]
+    ExpectedTypePath,
+
+    #[error("expected path to symbol, but found type")]
+    ExpectedSymbolPath,
 
     #[error("cannot check type `{from}` against `{to}`")]
     UnsupportedTypeGuard { from: String, to: String },

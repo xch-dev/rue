@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-pub(crate) use builtins::{builtins, Builtins};
+pub(crate) use builtins::Builtins;
 use indexmap::IndexSet;
 use rowan::TextRange;
 use symbol_table::SymbolTable;
@@ -17,12 +17,17 @@ use crate::{
 
 mod block;
 mod builtins;
+mod context;
 mod expr;
 mod item;
+mod path;
 mod stmt;
 mod symbol_table;
 mod ty;
-mod unused;
+
+#[cfg(test)]
+pub use builtins::*;
+pub use context::*;
 
 /// Responsible for lowering the AST into the HIR.
 /// Performs name resolution and type checking.
@@ -54,14 +59,10 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(db: &'a mut Database) -> Self {
-        let mut builtin_scope = Scope::default();
-        let builtins = builtins(db, &mut builtin_scope);
-        let builtins_id = db.alloc_scope(builtin_scope);
-
+    pub fn new(db: &'a mut Database, builtins: Builtins) -> Self {
         Self {
             db,
-            scope_stack: vec![builtins_id],
+            scope_stack: vec![builtins.scope_id],
             symbol_stack: Vec::new(),
             type_definition_stack: Vec::new(),
             type_guard_stack: Vec::new(),
@@ -264,6 +265,11 @@ impl<'a> Compiler<'a> {
             }
         }
         None
+    }
+
+    fn scope(&self) -> &Scope {
+        self.db
+            .scope(self.scope_stack.last().copied().expect("no scope found"))
     }
 
     fn scope_mut(&mut self) -> &mut Scope {

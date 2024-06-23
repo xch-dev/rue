@@ -28,10 +28,17 @@ impl Compiler<'_> {
 
     /// Compile the root by lowering all items into scope.
     pub fn compile_root(&mut self, root: &Root, module_id: SymbolId, declarations: Declarations) {
-        let Symbol::Module(Module { scope_id, .. }) = self.db.symbol_mut(module_id).clone() else {
+        let Symbol::Module(Module {
+            scope_id,
+            exported_symbols,
+            exported_types,
+        }) = self.db.symbol_mut(module_id)
+        else {
             unreachable!();
         };
-        self.scope_stack.push(scope_id);
+        exported_symbols.extend(declarations.exported_symbols.clone());
+        exported_types.extend(declarations.exported_types.clone());
+        self.scope_stack.push(*scope_id);
         self.compile_items(&root.items(), declarations);
         self.scope_stack.pop().unwrap();
     }

@@ -3,11 +3,12 @@ use crate::{
     scope::Scope,
     symbol::{Function, Symbol},
     ty::{FunctionType, Rest, Type},
-    Database, HirId, SymbolId, TypeId,
+    Database, HirId, ScopeId, SymbolId, TypeId,
 };
 
 /// These are the built-in types and most commonly used HIR nodes.
 pub struct Builtins {
+    pub scope_id: ScopeId,
     pub any: TypeId,
     pub int: TypeId,
     pub bool: TypeId,
@@ -21,7 +22,9 @@ pub struct Builtins {
 }
 
 /// Defines intrinsics that cannot be implemented in Rue.
-pub fn builtins(db: &mut Database, scope: &mut Scope) -> Builtins {
+pub fn builtins(db: &mut Database) -> Builtins {
+    let mut scope = Scope::default();
+
     let int = db.alloc_type(Type::Int);
     let bool = db.alloc_type(Type::Bool);
     let bytes = db.alloc_type(Type::Bytes);
@@ -42,6 +45,7 @@ pub fn builtins(db: &mut Database, scope: &mut Scope) -> Builtins {
     scope.define_type("Any".to_string(), any);
 
     let builtins = Builtins {
+        scope_id: db.alloc_scope(scope),
         any,
         int,
         bool,
@@ -54,8 +58,14 @@ pub fn builtins(db: &mut Database, scope: &mut Scope) -> Builtins {
         unknown_hir,
     };
 
-    scope.define_symbol("sha256".to_string(), sha256(db, &builtins));
-    scope.define_symbol("pubkey_for_exp".to_string(), pubkey_for_exp(db, &builtins));
+    let sha256 = sha256(db, &builtins);
+    let pubkey_for_exp = pubkey_for_exp(db, &builtins);
+
+    db.scope_mut(builtins.scope_id)
+        .define_symbol("sha256".to_string(), sha256);
+
+    db.scope_mut(builtins.scope_id)
+        .define_symbol("pubkey_for_exp".to_string(), pubkey_for_exp);
 
     builtins
 }

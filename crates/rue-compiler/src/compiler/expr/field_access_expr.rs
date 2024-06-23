@@ -1,4 +1,4 @@
-use rue_parser::FieldAccess;
+use rue_parser::FieldAccessExpr;
 
 use crate::{
     compiler::Compiler,
@@ -9,7 +9,7 @@ use crate::{
 
 impl Compiler<'_> {
     /// Compiles a field access expression, or special properties for certain types.
-    pub fn compile_field_access_expr(&mut self, field_access: &FieldAccess) -> Value {
+    pub fn compile_field_access_expr(&mut self, field_access: &FieldAccessExpr) -> Value {
         let Some(value) = field_access
             .expr()
             .map(|expr| self.compile_expr(&expr, None))

@@ -1,4 +1,4 @@
-use rue_parser::{AstNode, IndexAccess};
+use rue_parser::{AstNode, IndexAccessExpr};
 
 use crate::{
     compiler::Compiler,
@@ -7,7 +7,7 @@ use crate::{
 };
 
 impl Compiler<'_> {
-    pub fn compile_index_access_expr(&mut self, index_access: &IndexAccess) -> Value {
+    pub fn compile_index_access_expr(&mut self, index_access: &IndexAccessExpr) -> Value {
         let Some(value) = index_access
             .expr()
             .map(|expr| self.compile_expr(&expr, None))

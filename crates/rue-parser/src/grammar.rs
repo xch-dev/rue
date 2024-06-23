@@ -302,15 +302,6 @@ fn assume_stmt(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn path(p: &mut Parser<'_>) {
-    p.start(SyntaxKind::Path);
-    p.expect(SyntaxKind::Ident);
-    while p.try_eat(SyntaxKind::PathSeparator) {
-        p.expect(SyntaxKind::Ident);
-    }
-    p.finish();
-}
-
 fn binding_power(op: BinaryOp) -> (u8, u8) {
     match op {
         BinaryOp::Or => (1, 2),
@@ -350,7 +341,7 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
         p.bump();
         p.finish();
     } else if p.at(SyntaxKind::Ident) {
-        path(p);
+        path_expr(p);
 
         if p.at(SyntaxKind::OpenBrace) && allow_initializer {
             p.start_at(checkpoint, SyntaxKind::InitializerExpr);
@@ -393,7 +384,7 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
 
     loop {
         if p.at(SyntaxKind::OpenParen) {
-            p.start_at(checkpoint, SyntaxKind::FunctionCall);
+            p.start_at(checkpoint, SyntaxKind::FunctionCallExpr);
             p.bump();
             while !p.at(SyntaxKind::CloseParen) {
                 function_call_arg(p);
@@ -404,12 +395,12 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             p.expect(SyntaxKind::CloseParen);
             p.finish();
         } else if p.at(SyntaxKind::Dot) {
-            p.start_at(checkpoint, SyntaxKind::FieldAccess);
+            p.start_at(checkpoint, SyntaxKind::FieldAccessExpr);
             p.bump();
             p.expect(SyntaxKind::Ident);
             p.finish();
         } else if p.at(SyntaxKind::OpenBracket) {
-            p.start_at(checkpoint, SyntaxKind::IndexAccess);
+            p.start_at(checkpoint, SyntaxKind::IndexAccessExpr);
             p.bump();
             p.expect(SyntaxKind::Int);
             p.expect(SyntaxKind::CloseBracket);
@@ -474,6 +465,15 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
     }
 }
 
+fn path_expr(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::PathExpr);
+    p.expect(SyntaxKind::Ident);
+    while p.try_eat(SyntaxKind::PathSeparator) {
+        p.expect(SyntaxKind::Ident);
+    }
+    p.finish();
+}
+
 fn function_call_arg(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionCallArg);
     p.try_eat(SyntaxKind::Spread);
@@ -532,7 +532,7 @@ fn ty(p: &mut Parser<'_>) {
     let checkpoint = p.checkpoint();
 
     if p.at(SyntaxKind::Ident) {
-        path(p);
+        path_type(p);
     } else if p.at(SyntaxKind::Fun) {
         p.start(SyntaxKind::FunctionType);
         p.bump();
@@ -574,6 +574,15 @@ fn ty(p: &mut Parser<'_>) {
             break;
         }
     }
+}
+
+fn path_type(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::PathType);
+    p.expect(SyntaxKind::Ident);
+    while p.try_eat(SyntaxKind::PathSeparator) {
+        p.expect(SyntaxKind::Ident);
+    }
+    p.finish();
 }
 
 fn function_type_param(p: &mut Parser<'_>) {

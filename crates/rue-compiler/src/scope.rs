@@ -4,29 +4,29 @@ use crate::{database::TypeId, SymbolId};
 
 #[derive(Debug, Default)]
 pub struct Scope {
-    symbol_table: IndexMap<String, SymbolId>,
+    named_symbols: IndexMap<String, SymbolId>,
     symbol_names: IndexMap<SymbolId, String>,
-    type_aliases: IndexMap<String, TypeId>,
+    named_types: IndexMap<String, TypeId>,
     type_names: IndexMap<TypeId, String>,
 }
 
 impl Scope {
     pub fn define_symbol(&mut self, name: String, symbol_id: SymbolId) {
-        self.symbol_table.insert(name.clone(), symbol_id);
+        self.named_symbols.insert(name.clone(), symbol_id);
         self.symbol_names.insert(symbol_id, name);
     }
 
     pub fn symbol(&self, name: &str) -> Option<SymbolId> {
-        self.symbol_table.get(name).copied()
+        self.named_symbols.get(name).copied()
     }
 
     pub fn define_type(&mut self, name: String, type_id: TypeId) {
-        self.type_aliases.insert(name.clone(), type_id);
+        self.named_types.insert(name.clone(), type_id);
         self.type_names.insert(type_id, name);
     }
 
-    pub fn type_alias(&self, name: &str) -> Option<TypeId> {
-        self.type_aliases.get(name).copied()
+    pub fn ty(&self, name: &str) -> Option<TypeId> {
+        self.named_types.get(name).copied()
     }
 
     pub fn type_name(&self, type_id: TypeId) -> Option<&str> {

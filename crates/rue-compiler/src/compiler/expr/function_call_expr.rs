@@ -1,4 +1,4 @@
-use rue_parser::{AstNode, FunctionCall};
+use rue_parser::{AstNode, FunctionCallExpr};
 
 use crate::{
     compiler::Compiler,
@@ -8,7 +8,7 @@ use crate::{
 };
 
 impl Compiler<'_> {
-    pub fn compile_function_call_expr(&mut self, call: &FunctionCall) -> Value {
+    pub fn compile_function_call_expr(&mut self, call: &FunctionCallExpr) -> Value {
         let Some(callee) = call.callee() else {
             return self.unknown();
         };
@@ -18,6 +18,8 @@ impl Compiler<'_> {
 
         let expected = if let Type::Function(fun) = self.db.ty(callee.type_id) {
             Some(fun.clone())
+        } else if let Type::Unknown = self.db.ty(callee.type_id) {
+            None
         } else {
             self.db.error(
                 ErrorKind::UncallableType(self.type_name(callee.type_id)),
