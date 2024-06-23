@@ -6,6 +6,8 @@ use super::Compiler;
 
 mod block_expr;
 mod if_expr;
+mod initializer_expr;
+mod pair_expr;
 
 impl Compiler<'_> {
     pub fn compile_expr(&mut self, expr: &Expr, expected_type: Option<TypeId>) -> Value {
