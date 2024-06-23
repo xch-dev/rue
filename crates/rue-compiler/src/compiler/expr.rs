@@ -8,6 +8,7 @@ mod binary_expr;
 mod block_expr;
 mod cast_expr;
 mod group_expr;
+mod guard_expr;
 mod if_expr;
 mod initializer_expr;
 mod pair_expr;
