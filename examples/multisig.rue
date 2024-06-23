@@ -1,10 +1,3 @@
-enum Condition {
-    AggSigMe = 50 {
-        public_key: PublicKey,
-        message: Bytes,
-    }
-}
-
 fun concat_lists(a: Condition[], b: Condition[]) -> Condition[] {
     if a is (Condition, Condition[]) {
         return [a.first, ...concat_lists(a.rest, b)];

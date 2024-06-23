@@ -14,3 +14,115 @@ export inline fun tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
     sha256(2 as Bytes + first + rest)
 }
 
+export enum Condition {
+    Remark = 1 {
+        // TODO: Optional value
+    },
+    AggSigParent = 43 {
+        public_key: PublicKey,
+        message: Bytes,
+    },
+    AggSigPuzzle = 44 {
+        public_key: PublicKey,
+        message: Bytes,
+    },
+    AggSigAmount = 45 {
+        public_key: PublicKey,
+        message: Bytes,
+    },
+    AggSigPuzzleAmount = 46 {
+        public_key: PublicKey,
+        message: Bytes,
+    },
+    AggSigParentAmount = 47 {
+        public_key: PublicKey,
+        message: Bytes,
+    },
+    AggSigParentPuzzle = 48 {
+        public_key: PublicKey,
+        message: Bytes,
+    },
+    AggSigUnsafe = 49 {
+        public_key: PublicKey,
+        message: Bytes,
+    },
+    AggSigMe = 50 {
+        public_key: PublicKey,
+        message: Bytes,
+    },
+    CreateCoin = 51 {
+        puzzle_hash: Bytes32,
+        amount: Int,
+        // TODO: Optional memos
+    },
+    ReserveFee = 52 {
+        amount: Int,
+    },
+    CreateCoinAnnouncement = 60 {
+        message: Bytes,
+    },
+    AssertCoinAnnouncement = 61 {
+        announcement_id: Bytes32,
+    },
+    CreatePuzzleAnnouncement = 62 {
+        message: Bytes,
+    },
+    AssertPuzzleAnnouncement = 63 {
+        announcement_id: Bytes32,
+    },
+    AssertConcurrentSpend = 64 {
+        coin_id: Bytes32,
+    },
+    AssertConcurrentPuzzle = 65 {
+        puzzle_hash: Bytes32,
+    },
+    AssertMyCoinId = 70 {
+        coin_id: Bytes32,
+    },
+    AssertMyParentId = 71 {
+        parent_coin_id: Bytes32,
+    },
+    AssertMyPuzzleHash = 72 {
+        puzzle_hash: Bytes32,
+    },
+    AssertMyAmount = 73 {
+        amount: Int,
+    },
+    AssertMyBirthSeconds = 74 {
+        seconds: Int,
+    },
+    AssertMyBirthHeight = 75 {
+        height: Int,
+    },
+    AssertEphemeral = 76 {
+        // TODO: Unit variants and enum repr
+    },
+    AssertSecondsRelative = 80 {
+        seconds: Int,
+    },
+    AssertSecondsAbsolute = 81 {
+        seconds: Int,
+    },
+    AssertHeightRelative = 82 {
+        height: Int,
+    },
+    AssertHeightAbsolute = 83 {
+        height: Int,
+    },
+    AssertBeforeSecondsRelative = 84 {
+        seconds: Int,
+    },
+    AssertBeforeSecondsAbsolute = 85 {
+        seconds: Int,
+    },
+    AssertBeforeHeightRelative = 86 {
+        height: Int,
+    },
+    AssertBeforeHeightAbsolute = 87 {
+        height: Int,
+    },
+    Softfork = 90 {
+        cost: Int,
+        // TODO: Rest args with type `Any`
+    },
+}

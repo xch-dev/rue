@@ -9,6 +9,7 @@ use crate::{
     optimizer::{DependencyGraph, Optimizer},
     scope::Scope,
     symbol::{Module, Symbol},
+    ty::Type,
     Database, SymbolId,
 };
 
@@ -98,6 +99,13 @@ pub fn build_graph(
         };
         ignored_symbols.extend(module.exported_symbols.iter().copied());
         ignored_types.extend(module.exported_types.iter().copied());
+    }
+
+    for type_id in ignored_types.clone() {
+        let Type::Enum(enum_type) = db.ty(type_id) else {
+            continue;
+        };
+        ignored_types.extend(enum_type.variants.values());
     }
 
     let Symbol::Module(module) = db.symbol_mut(main_module_id).clone() else {
