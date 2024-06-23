@@ -7,11 +7,14 @@ use super::Compiler;
 mod binary_expr;
 mod block_expr;
 mod cast_expr;
+mod field_access_expr;
 mod function_call_expr;
 mod group_expr;
 mod guard_expr;
 mod if_expr;
+mod index_access_expr;
 mod initializer_expr;
+mod lambda_expr;
 mod list_expr;
 mod literal_expr;
 mod pair_expr;
@@ -40,8 +43,8 @@ impl Compiler<'_> {
             Expr::GuardExpr(guard) => self.compile_guard_expr(guard, expected_type),
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
             Expr::FunctionCall(call) => self.compile_function_call_expr(call),
-            Expr::FieldAccess(field_access) => self.compile_field_access(field_access),
-            Expr::IndexAccess(index_access) => self.compile_index_access(index_access),
+            Expr::FieldAccess(field_access) => self.compile_field_access_expr(field_access),
+            Expr::IndexAccess(index_access) => self.compile_index_access_expr(index_access),
         };
 
         self.is_callee = false;

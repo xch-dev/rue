@@ -1,15 +1,14 @@
 #![allow(clippy::map_unwrap_or)]
 
-use std::{collections::HashMap, fmt, str::FromStr};
+use std::collections::HashMap;
 
 pub(crate) use builtins::{builtins, Builtins};
-use clvmr::Allocator;
 use declarations::Declarations;
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 use rue_parser::{
-    AstNode, ConstItem, EnumItem, FieldAccess, FunctionItem, IndexAccess, Item, LambdaExpr,
-    ModuleItem, Root, StructField, StructItem, SyntaxToken, TypeAliasItem,
+    AstNode, ConstItem, EnumItem, FunctionItem, Item, ModuleItem, Root, StructField, StructItem,
+    TypeAliasItem,
 };
 use symbol_table::SymbolTable;
 
@@ -568,86 +567,6 @@ impl<'a> Compiler<'a> {
         self.type_definition_stack.pop().unwrap();
     }
 
-    /// Compiles a field access expression, or special properties for certain types.
-    fn compile_field_access(&mut self, field_access: &FieldAccess) -> Value {
-        let Some(value) = field_access
-            .expr()
-            .map(|expr| self.compile_expr(&expr, None))
-        else {
-            return self.unknown();
-        };
-
-        let Some(field_name) = field_access.field() else {
-            return self.unknown();
-        };
-
-        match self.db.ty(value.type_id).clone() {
-            Type::Struct(struct_type) => {
-                if let Some(field) = struct_type.fields.get_full(field_name.text()) {
-                    let (index, _, field_type) = field;
-                    return Value::new(self.compile_index(value.hir_id, index, false), *field_type);
-                }
-                self.db.error(
-                    ErrorKind::UndefinedField {
-                        field: field_name.to_string(),
-                        ty: self.type_name(value.type_id),
-                    },
-                    field_name.text_range(),
-                );
-                return self.unknown();
-            }
-            Type::Pair(PairType { first, rest }) => match field_name.text() {
-                "first" => {
-                    return Value::new(self.db.alloc_hir(Hir::First(value.hir_id)), first);
-                }
-                "rest" => {
-                    return Value::new(self.db.alloc_hir(Hir::Rest(value.hir_id)), rest);
-                }
-                _ => {}
-            },
-            Type::Bytes | Type::Bytes32 if field_name.text() == "length" => {
-                return Value::new(
-                    self.db.alloc_hir(Hir::Strlen(value.hir_id)),
-                    self.builtins.int,
-                );
-            }
-            _ => {}
-        }
-
-        self.db.error(
-            ErrorKind::InvalidFieldAccess {
-                field: field_name.to_string(),
-                ty: self.type_name(value.type_id),
-            },
-            field_name.text_range(),
-        );
-        self.unknown()
-    }
-
-    fn compile_index_access(&mut self, index_access: &IndexAccess) -> Value {
-        let Some(value) = index_access
-            .expr()
-            .map(|expr| self.compile_expr(&expr, None))
-        else {
-            return self.unknown();
-        };
-
-        let Some(index_token) = index_access.index() else {
-            return self.unknown();
-        };
-        let index = Self::compile_int_raw(&index_token);
-
-        let Type::List(item_type) = self.db.ty(value.type_id).clone() else {
-            self.db.error(
-                ErrorKind::IndexAccess(self.type_name(value.type_id)),
-                index_access.expr().unwrap().syntax().text_range(),
-            );
-            return self.unknown();
-        };
-
-        Value::new(self.compile_index(value.hir_id, index, false), item_type)
-    }
-
     fn compile_index(&mut self, value: HirId, index: usize, rest: bool) -> HirId {
         let mut result = value;
         for _ in 0..index {
@@ -657,158 +576,6 @@ impl<'a> Compiler<'a> {
             result = self.db.alloc_hir(Hir::First(result));
         }
         result
-    }
-
-    fn compile_lambda_expr(
-        &mut self,
-        lambda_expr: &LambdaExpr,
-        expected_type: Option<TypeId>,
-    ) -> Value {
-        let expected = expected_type.and_then(|ty| match self.db.ty(ty) {
-            Type::Function(function) => Some(function.clone()),
-            _ => None,
-        });
-
-        let mut scope = Scope::default();
-        let mut param_types = Vec::new();
-        let mut rest = Rest::Nil;
-
-        let len = lambda_expr.params().len();
-
-        for (i, param) in lambda_expr.params().into_iter().enumerate() {
-            let type_id = param
-                .ty()
-                .map(|ty| self.compile_type(ty))
-                .or(expected
-                    .as_ref()
-                    .and_then(|expected| expected.param_types.get(i).copied()))
-                .unwrap_or(self.builtins.unknown);
-
-            param_types.push(type_id);
-
-            if let Some(name) = param.name() {
-                let symbol_id = self.db.alloc_symbol(Symbol::Parameter(type_id));
-                scope.define_symbol(name.to_string(), symbol_id);
-                self.db.insert_symbol_token(symbol_id, name);
-            };
-
-            if param.spread().is_some() {
-                if i + 1 == len {
-                    rest = Rest::Parameter;
-                } else {
-                    self.db
-                        .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
-                }
-            }
-        }
-
-        let scope_id = self.db.alloc_scope(scope);
-
-        let Some(body) = lambda_expr.body() else {
-            return self.unknown();
-        };
-
-        let expected_return_type = lambda_expr
-            .ty()
-            .map(|ty| self.compile_type(ty))
-            .or(expected.map(|expected| expected.return_type));
-
-        self.scope_stack.push(scope_id);
-        let body = self.compile_expr(&body, expected_return_type);
-        self.scope_stack.pop().expect("lambda not in scope stack");
-
-        let return_type = expected_return_type.unwrap_or(body.type_id);
-
-        self.type_check(
-            body.type_id,
-            return_type,
-            lambda_expr.body().unwrap().syntax().text_range(),
-        );
-
-        let ty = FunctionType {
-            param_types: param_types.clone(),
-            rest,
-            return_type,
-        };
-
-        let symbol_id = self.db.alloc_symbol(Symbol::Function(Function {
-            scope_id,
-            hir_id: body.hir_id,
-            ty: ty.clone(),
-        }));
-
-        Value::new(
-            self.db.alloc_hir(Hir::Reference(symbol_id)),
-            self.db.alloc_type(Type::Function(ty)),
-        )
-    }
-
-    fn compile_int_raw<T, E>(int: &SyntaxToken) -> T
-    where
-        T: FromStr<Err = E>,
-        E: fmt::Debug,
-    {
-        int.text()
-            .replace('_', "")
-            .parse()
-            .expect("failed to parse into BigInt")
-    }
-
-    fn compile_int(&mut self, int: &SyntaxToken) -> Value {
-        let num = Self::compile_int_raw(int);
-
-        let mut allocator = Allocator::new();
-        let ptr = allocator
-            .new_number(num)
-            .expect("number is too large to be represented in memory in an Allocator instance");
-
-        Value::new(
-            self.db
-                .alloc_hir(Hir::Atom(allocator.atom(ptr).as_ref().to_vec())),
-            self.builtins.int,
-        )
-    }
-
-    fn compile_hex(&mut self, hex: &SyntaxToken) -> Value {
-        let Ok(bytes) = hex::decode(
-            hex.text()
-                .replace("0x", "")
-                .replace("0X", "")
-                .replace('_', ""),
-        ) else {
-            return Value::new(self.builtins.unknown_hir, self.builtins.bytes);
-        };
-
-        let bytes_len = bytes.len();
-
-        Value::new(
-            self.db.alloc_hir(Hir::Atom(bytes)),
-            if bytes_len == 32 {
-                self.builtins.bytes32
-            } else if bytes_len == 48 {
-                self.builtins.public_key
-            } else {
-                self.builtins.bytes
-            },
-        )
-    }
-
-    fn compile_string(&mut self, string: &SyntaxToken) -> Value {
-        let text = string.text();
-        let quote = text.chars().next().unwrap();
-        let after_prefix = &text[1..];
-        let before_suffix = after_prefix.strip_suffix(quote).unwrap_or(after_prefix);
-
-        let bytes = before_suffix.as_bytes();
-
-        Value::new(
-            self.db.alloc_hir(Hir::Atom(bytes.to_vec())),
-            if bytes.len() == 32 {
-                self.builtins.bytes32
-            } else {
-                self.builtins.bytes
-            },
-        )
     }
 
     fn expected_param_type(
