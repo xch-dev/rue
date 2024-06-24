@@ -47,7 +47,7 @@ impl Compiler<'_> {
         hir_id: HirId,
         text_range: TextRange,
     ) -> Option<(Guard, HirId)> {
-        if self.db.compare_type_raw(from, to) <= Comparison::Assignable {
+        if self.db.compare_type(from, to) <= Comparison::Assignable {
             self.db.warning(
                 WarningKind::RedundantTypeCheck(self.type_name(from)),
                 text_range,
@@ -57,11 +57,11 @@ impl Compiler<'_> {
 
         match (self.db.ty(from).clone(), self.db.ty(to).clone()) {
             (Type::Any, Type::Pair(PairType { first, rest })) => {
-                if self.db.compare_type_raw(first, self.builtins.any) > Comparison::Equal {
+                if !self.db.compare_type(first, self.builtins.any).is_equal() {
                     self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
-                if self.db.compare_type_raw(rest, self.builtins.any) > Comparison::Equal {
+                if !self.db.compare_type(rest, self.builtins.any).is_equal() {
                     self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
@@ -78,11 +78,11 @@ impl Compiler<'_> {
                 Some((Guard::new(to, pair_type), hir_id))
             }
             (Type::List(inner), Type::Pair(PairType { first, rest })) => {
-                if self.db.compare_type_raw(first, inner) > Comparison::Equal {
+                if !self.db.compare_type(first, inner).is_equal() {
                     self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
                 }
 
-                if self.db.compare_type_raw(rest, from) > Comparison::Equal {
+                if !self.db.compare_type(rest, from).is_equal() {
                     self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
                 }
 
