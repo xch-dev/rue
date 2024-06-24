@@ -71,6 +71,7 @@ ast_node!(TypeAliasItem);
 ast_node!(StructItem);
 ast_node!(EnumItem);
 ast_node!(EnumVariant);
+ast_node!(EnumVariantFields);
 ast_node!(ConstItem);
 ast_node!(StructField);
 ast_node!(ImportItem);
@@ -341,11 +342,8 @@ impl EnumVariant {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn fields(&self) -> Vec<StructField> {
-        self.syntax()
-            .children()
-            .filter_map(StructField::cast)
-            .collect()
+    pub fn fields(&self) -> Option<EnumVariantFields> {
+        self.syntax().children().find_map(EnumVariantFields::cast)
     }
 
     pub fn discriminant(&self) -> Option<SyntaxToken> {
@@ -353,6 +351,15 @@ impl EnumVariant {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Int)
+    }
+}
+
+impl EnumVariantFields {
+    pub fn fields(&self) -> Vec<StructField> {
+        self.syntax()
+            .children()
+            .filter_map(StructField::cast)
+            .collect()
     }
 }
 

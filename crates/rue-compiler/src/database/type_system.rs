@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ty::{EnumType, EnumVariant, FunctionType, PairType, StructType, Type},
+    ty::{EnumType, EnumVariantType, FunctionType, PairType, StructType, Type},
     Comparison, Database, TypeId,
 };
 
@@ -100,6 +100,7 @@ impl Database {
             }
             Type::Enum(enum_type) => {
                 let new_enum = EnumType {
+                    has_fields: enum_type.has_fields,
                     variants: enum_type
                         .variants
                         .iter()
@@ -119,8 +120,7 @@ impl Database {
                 }
             }
             Type::EnumVariant(enum_variant) => {
-                let new_variant = EnumVariant {
-                    name: enum_variant.name.clone(),
+                let new_variant = EnumVariantType {
                     enum_type: enum_variant.enum_type,
                     fields: enum_variant
                         .fields
@@ -476,7 +476,7 @@ mod tests {
 
     use crate::{
         compiler::{builtins, Builtins},
-        ty::{EnumType, EnumVariant, FunctionType, PairType, Rest, StructType},
+        ty::{EnumType, EnumVariantType, FunctionType, PairType, Rest, StructType},
     };
 
     use super::*;
@@ -756,14 +756,14 @@ mod tests {
 
         let enum_type = db.alloc_type(Type::Unknown);
 
-        let variant = db.alloc_type(Type::EnumVariant(EnumVariant {
-            name: "Variant".to_string(),
+        let variant = db.alloc_type(Type::EnumVariant(EnumVariantType {
             enum_type,
             fields: fields(&[ty.int]),
             discriminant: ty.unknown_hir,
         }));
 
         *db.ty_mut(enum_type) = Type::Enum(EnumType {
+            has_fields: true,
             variants: fields(&[variant]),
         });
 

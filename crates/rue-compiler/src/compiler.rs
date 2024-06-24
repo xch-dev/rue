@@ -213,7 +213,18 @@ impl<'a> Compiler<'a> {
                 format!(
                     "{}::{} {{ {} }}",
                     enum_name,
-                    enum_variant.name,
+                    match self.db.ty(enum_variant.enum_type) {
+                        Type::Enum(enum_type) => {
+                            enum_type
+                                .variants
+                                .iter()
+                                .find(|item| *item.1 == ty)
+                                .expect("enum type is missing variant")
+                                .0
+                                .clone()
+                        }
+                        _ => unreachable!(),
+                    },
                     fields.join(", ")
                 )
             }

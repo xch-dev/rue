@@ -244,3 +244,35 @@ compiler_errors = [
     "expected type `Bytes`, but found `Int` at 2:31",
     "expected type `(Int, Bytes)`, but found `(Int, Int)` at 2:5",
 ]
+
+[duplicate_variants]
+parser_errors = []
+compiler_errors = [
+    "duplicate enum variant `SameName` at 3:5",
+    "duplicate enum discriminant `1` at 4:29",
+    "unused enum variant `SameName` at 2:5",
+    "unused enum variant `DuplicateDiscriminant` at 4:5",
+]
+
+[unused_symbols]
+parser_errors = []
+compiler_errors = [
+    "unused inline constant `UNUSED_INDIRECT_CONSTANT` at 1:14",
+    "unused inline constant `UNUSED_CONSTANT` at 2:14",
+    "unused function `unused_indirect_function` at 21:5",
+    "unused function `unused_function` at 25:5",
+    "unused inline constant `UNUSED_INNER_CONSTANT` at 6:18",
+    "unused function `unused_inner_function` at 8:9",
+    "unused let binding `unused_let` at 5:9",
+]
+
+[unused_types]
+parser_errors = []
+compiler_errors = [
+    "unused type alias `A` at 2:6",
+    "unused enum variant `A` at 7:5",
+    "unused enum variant `B` at 10:5",
+    "unused enum variant `C` at 14:5",
+    "unused enum `Some` at 6:6",
+    "unused struct `Thing` at 17:8",
+]

@@ -1,4 +1,5 @@
-use clvmr::{Allocator, NodePtr};
+use clvmr::Allocator;
+use num_bigint::BigInt;
 use rue_parser::{LiteralExpr, SyntaxKind, SyntaxToken};
 
 use crate::{compiler::Compiler, hir::Hir, ty::Value, ErrorKind};
@@ -29,7 +30,7 @@ impl Compiler<'_> {
         Value::new(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.nil)
     }
 
-    pub fn compile_int_literal(&mut self, int: &SyntaxToken) -> Value {
+    fn compile_int_literal(&mut self, int: &SyntaxToken) -> Value {
         // Parse the literal into `BigInt`.
         // It should not be possible to have a syntax error at this point.
         let bigint = int
@@ -38,21 +39,13 @@ impl Compiler<'_> {
             .parse()
             .expect("failed to parse integer literal");
 
-        // Create a CLVM allocator.
-        let mut allocator = Allocator::new();
-
-        // Try to allocate the number.
-        let ptr = allocator.new_number(bigint).unwrap_or_else(|_| {
+        let atom = Self::bigint_to_bytes(bigint).unwrap_or_else(|| {
             self.db.error(ErrorKind::IntegerTooLarge, int.text_range());
-            NodePtr::NIL
+            Vec::new()
         });
 
         // Extract the atom representation of the number.
-        Value::new(
-            self.db
-                .alloc_hir(Hir::Atom(allocator.atom(ptr).as_ref().to_vec())),
-            self.builtins.int,
-        )
+        Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.builtins.int)
     }
 
     fn compile_hex_literal(&mut self, hex: &SyntaxToken) -> Value {
@@ -98,5 +91,16 @@ impl Compiler<'_> {
                 .alloc_hir(Hir::Atom(text.replace(quote, "").as_bytes().to_vec())),
             self.builtins.bytes,
         )
+    }
+
+    pub fn bigint_to_bytes(bigint: BigInt) -> Option<Vec<u8>> {
+        // Create a CLVM allocator.
+        let mut allocator = Allocator::new();
+
+        // Try to allocate the number.
+        let ptr = allocator.new_number(bigint).ok()?;
+
+        // Extract the atom representation of the number.
+        Some(allocator.atom(ptr).as_ref().to_vec())
     }
 }
