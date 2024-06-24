@@ -196,3 +196,27 @@ export fun calculate_coin_id(
     assert puzzle_hash is Bytes32;
     sha256(parent_coin_id + puzzle_hash + amount as Bytes)
 }
+
+export fun map<T, U>(list: T[], fn: fun(T) -> U) -> U[] {
+    if list is Nil {
+        return nil;
+    }
+    [fn(list.first), ...map(list.rest, fn)]
+}
+
+export fun filter<T>(list: T[], fn: fun(T) -> Bool) -> T[] {
+    if list is Nil {
+        return nil;
+    }
+    if fn(list.first) {
+        return [list.first, ...filter(list.rest, fn)];
+    }
+    filter(list.rest, fn)
+}
+
+export fun fold<T, U>(list: T[], initial: U, fn: fun(U, T) -> U) -> U {
+    if list is Nil {
+        return initial;
+    }
+    fold(list.rest, fn(initial, list.first), fn)
+}

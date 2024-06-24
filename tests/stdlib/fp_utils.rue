@@ -1,0 +1,4 @@
+fun main() -> Nil {
+    assert tree_hash(map([1, 2, 3], fun(num: Int) => num * 2)) == tree_hash([2, 4, 6]);
+    nil
+}
