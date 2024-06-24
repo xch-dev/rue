@@ -220,7 +220,7 @@ impl Database {
             (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
 
             // We need to infer `Generic` types, and return `Unrelated` if incompatible.
-            (_, Type::Generic) if ctx.infer_generics => {
+            (_, Type::Generic) => {
                 let mut found = None;
 
                 for generics in ctx.generic_type_stack.iter().rev() {
@@ -231,9 +231,11 @@ impl Database {
 
                 if let Some(found) = found {
                     self.compare_type_visitor(lhs, found, ctx)
-                } else {
+                } else if ctx.infer_generics {
                     ctx.generic_type_stack.last_mut().unwrap().insert(rhs, lhs);
                     Comparison::Assignable
+                } else {
+                    Comparison::Unrelated
                 }
             }
 
@@ -264,7 +266,7 @@ impl Database {
 
             // `Generic` types are unrelated to everything else except their specific instance.
             // The only exception is the `Any` type above.
-            (Type::Generic, _) | (_, Type::Generic) => Comparison::Unrelated,
+            (Type::Generic, _) => Comparison::Unrelated,
 
             // You have to explicitly convert between other atom types.
             // This is because the compiled output can change depending on the type.
