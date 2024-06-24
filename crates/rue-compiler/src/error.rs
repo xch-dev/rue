@@ -191,7 +191,7 @@ pub enum ErrorKind {
     #[error("explicit return is not allowed in expressions")]
     ExplicitReturnInExpr,
 
-    #[error("blocks must either have a an expression value, return statement, or raise an error")]
+    #[error("block missing return value")]
     EmptyBlock,
 
     #[error("cannot check equality on non-atom type `{0}`")]
