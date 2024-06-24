@@ -18,6 +18,20 @@ pub enum Comparison {
     Unrelated,
 }
 
+impl Comparison {
+    pub fn is_equal(self) -> bool {
+        self == Self::Equal
+    }
+
+    pub fn is_assignable(self) -> bool {
+        self <= Self::Assignable
+    }
+
+    pub fn is_castable(self) -> bool {
+        self <= Self::Castable
+    }
+}
+
 impl BitAnd for Comparison {
     type Output = Self;
 

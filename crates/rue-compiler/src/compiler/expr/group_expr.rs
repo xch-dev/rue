@@ -8,13 +8,11 @@ impl Compiler<'_> {
         group_expr: &GroupExpr,
         expected_type: Option<TypeId>,
     ) -> Value {
-        let Some(expr) = group_expr
+        // Compile the inner expression, or return unknown if it's missing.
+        // This would be a parser error, so no diagnostic is needed.
+        group_expr
             .expr()
             .map(|expr| self.compile_expr(&expr, expected_type))
-        else {
-            return self.unknown();
-        };
-
-        expr
+            .unwrap_or_else(|| self.unknown())
     }
 }

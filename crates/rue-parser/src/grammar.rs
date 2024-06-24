@@ -147,9 +147,12 @@ fn enum_item(p: &mut Parser<'_>, cp: Checkpoint) {
 fn enum_variant(p: &mut Parser<'_>) {
     p.start(SyntaxKind::EnumVariant);
     p.expect(SyntaxKind::Ident);
-    p.expect(SyntaxKind::Assign);
-    p.expect(SyntaxKind::Int);
-    if p.try_eat(SyntaxKind::OpenBrace) {
+    if p.try_eat(SyntaxKind::Assign) {
+        p.expect(SyntaxKind::Int);
+    }
+    if p.at(SyntaxKind::OpenBrace) {
+        p.start(SyntaxKind::EnumVariantFields);
+        p.bump();
         while !p.at(SyntaxKind::CloseBrace) {
             struct_field(p);
             if !p.try_eat(SyntaxKind::Comma) {
@@ -157,6 +160,7 @@ fn enum_variant(p: &mut Parser<'_>) {
             }
         }
         p.expect(SyntaxKind::CloseBrace);
+        p.finish();
     }
     p.finish();
 }

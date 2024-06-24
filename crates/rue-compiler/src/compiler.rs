@@ -12,7 +12,7 @@ use crate::{
     hir::Hir,
     scope::Scope,
     ty::{FunctionType, PairType, Rest, Type, Value},
-    Comparison, ErrorKind,
+    ErrorKind,
 };
 
 mod block;
@@ -139,13 +139,6 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn try_unwrap_optional(&mut self, ty: TypeId) -> TypeId {
-        match self.db.ty(ty) {
-            Type::Optional(inner) => self.try_unwrap_optional(*inner),
-            _ => ty,
-        }
-    }
-
     fn detect_cycle(&mut self, type_id: TypeId, text_range: TextRange) -> bool {
         if self.db.is_cyclic(type_id) {
             self.db.error(ErrorKind::RecursiveTypeAlias, text_range);
@@ -213,7 +206,18 @@ impl<'a> Compiler<'a> {
                 format!(
                     "{}::{} {{ {} }}",
                     enum_name,
-                    enum_variant.name,
+                    match self.db.ty(enum_variant.enum_type) {
+                        Type::Enum(enum_type) => {
+                            enum_type
+                                .variants
+                                .iter()
+                                .find(|item| *item.1 == ty)
+                                .expect("enum type is missing variant")
+                                .0
+                                .clone()
+                        }
+                        _ => unreachable!(),
+                    },
                     fields.join(", ")
                 )
             }
@@ -245,10 +249,10 @@ impl<'a> Compiler<'a> {
             self.db
                 .compare_type_with_generics(from, to, &mut self.generic_type_stack)
         } else {
-            self.db.compare_type_raw(from, to)
+            self.db.compare_type(from, to)
         };
 
-        if comparison > Comparison::Assignable {
+        if !comparison.is_assignable() {
             self.db.error(
                 ErrorKind::TypeMismatch {
                     expected: self.type_name(to),
@@ -264,10 +268,10 @@ impl<'a> Compiler<'a> {
             self.db
                 .compare_type_with_generics(from, to, &mut self.generic_type_stack)
         } else {
-            self.db.compare_type_raw(from, to)
+            self.db.compare_type(from, to)
         };
 
-        if comparison > Comparison::Castable {
+        if !comparison.is_castable() {
             self.db.error(
                 ErrorKind::CastMismatch {
                     expected: self.type_name(to),

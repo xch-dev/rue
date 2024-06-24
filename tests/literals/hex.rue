@@ -1,4 +1,6 @@
 fun main() -> Bytes {
+    assert 0x00 != nil;
+
     0x8b1651043cbbeb0e94d3db3ac81462a1b9c38706c165ac61c66fb54b4d448fc9
         + bytes32_literal()
         + public_key_literal() as Bytes

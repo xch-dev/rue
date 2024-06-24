@@ -152,6 +152,15 @@ pub enum ErrorKind {
     #[error("duplicate enum variant `{0}`")]
     DuplicateEnumVariant(String),
 
+    #[error("duplicate enum discriminant `{0}`")]
+    DuplicateEnumDiscriminant(String),
+
+    #[error("enum discriminant too large")]
+    EnumDiscriminantTooLarge,
+
+    #[error("cannot reference enum variants of enums with fields")]
+    EnumVariantWithFields,
+
     #[error("unknown enum variant `{0}`")]
     UnknownEnumVariant(String),
 
@@ -196,6 +205,9 @@ pub enum ErrorKind {
 
     #[error("cannot check equality on non-atom type `{0}`")]
     NonAtomEquality(String),
+
+    #[error("integer too large to allocate in memory")]
+    IntegerTooLarge,
 }
 
 /// Join a list of names into a string, wrapped in backticks.

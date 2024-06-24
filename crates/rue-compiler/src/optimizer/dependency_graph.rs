@@ -355,12 +355,6 @@ impl<'a> GraphTraversal<'a> {
                 self.compute_hir_edges(child_scope_id, hir_id, visited);
             }
             Hir::Reference(symbol_id) => {
-                self.graph
-                    .symbol_usages
-                    .entry(symbol_id)
-                    .and_modify(|count| *count += 1)
-                    .or_insert(1);
-
                 match self.db.symbol(symbol_id).clone() {
                     Symbol::Unknown | Symbol::Module(..) => unreachable!(),
                     Symbol::Function(fun) | Symbol::InlineFunction(fun) => {

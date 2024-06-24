@@ -18,7 +18,12 @@ impl Compiler<'_> {
         let Some(index_token) = index_access.index() else {
             return self.unknown();
         };
-        let index = Self::compile_int_raw(&index_token);
+
+        let index = index_token
+            .text()
+            .replace('_', "")
+            .parse()
+            .expect("failed to parse integer literal");
 
         let Type::List(item_type) = self.db.ty(value.type_id).clone() else {
             self.db.error(

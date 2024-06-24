@@ -41,11 +41,11 @@ output = "1"
 hash = "41c686371ebb31d9e697cad70b910b68a367ebb452b6a4c48da832d7215f3d38"
 
 [hex]
-bytes = 167
-cost = 3841
+bytes = 203
+cost = 4635
 input = "()"
 output = "0x8b1651043cbbeb0e94d3db3ac81462a1b9c38706c165ac61c66fb54b4d448fc9c7f1b5ae1edc940f18cd1581597a50f48f44a5e5226a23570fea78cdc135707dff02ffff01ff06ffff14ffff01827d94ffff01298080ff0180ff02ffff01ff06ffff14ffff01827d94ffff0000000000"
-hash = "5da7ebc63772dc4ed857d0fdf6dea1435d012ae530b4af1418c3fa80708f59da"
+hash = "c873546a22ff735b3019f0b96af87222d99cfc7400ce0f68e4159ba96bc9340c"
 
 [nil]
 bytes = 1
@@ -125,11 +125,11 @@ output = "()"
 hash = "effeb1746e184bef22476b4c4d1d78c6abadcc50baf77340a31093e232a33e2f"
 
 [multisig]
-bytes = 581
-cost = 28340
+bytes = 535
+cost = 27502
 input = "((0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000) 1 (()) ((51 0x0000000000000000000000000000000000000000000000000000000000000000 1000)))"
 output = "((g1_multiply 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 0x502cea601814d49886e0713402860d6054f6947d811b3b93100c6b364626651a) (g1_negate 0x0000000000000000000000000000000000000000000000000000000000000000 1000))"
-hash = "de54be8cbc8fcd942fac31cafe4269dc416060892c6a5fb9c74926123c33b3c5"
+hash = "d4eab02c66dbc76f72b2f5f98b945db9fe3de19cafefc794221e0c066c246b02"
 
 [if]
 bytes = 25
@@ -139,11 +139,11 @@ output = "42"
 hash = "837525fb91b88dbf02d9ef5a0b322f6943f93424b6e8fe6d26dd1be6d3311871"
 
 [type_guards]
-bytes = 91
-cost = 1844
+bytes = 63
+cost = 1332
 input = "()"
 output = "5"
-hash = "02b98083cb7ae70daea35a867c0de9fc5a0b198bb0b5427efcef7056e7beaa68"
+hash = "32ed6e4964102d7093ef350019dfd14c99a3ea9feac1f3502194384b8976f7c1"
 
 [if_stmt]
 bytes = 107
@@ -153,11 +153,11 @@ output = "\"small\""
 hash = "beaad80d005a15cffa2be04ba60e8dab6462381745fc0599619f0a50e82eda79"
 
 [let]
-bytes = 79
-cost = 3690
+bytes = 51
+cost = 3174
 input = "()"
 output = "128"
-hash = "0a357412c1f0d72ec5b275e0b41096e37f205a1f51c94c7a995691508139fa7f"
+hash = "ab22424773ba46a0dc3c41009422f432c74cf1e123e4573a40abc84874a46d31"
 
 [assert]
 bytes = 97
@@ -204,18 +204,18 @@ compiler_errors = [
 ]
 
 [p2_conditions]
-bytes = 167
-cost = 19407
+bytes = 153
+cost = 19149
 input = "(0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 ((51 0x291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8 1000)))"
 output = "((g1_multiply 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 0xc239bbcfc69fb5abacdd8dc174c6b33170c6d902dec3bc1c87662020cf044313) (g1_negate 0x291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8 1000))"
-hash = "abc43bf1142122da14e73971da004668ce7b8785ca2b6ac41427b8ef3193f957"
+hash = "769eb86a3d074f2e9beba52db764fc6b858f6df703c99cc5b0e8b0fba6cb06f7"
 
 [p2_delegated_or_hidden]
-bytes = 305
-cost = 24974
+bytes = 261
+cost = 24716
 input = "(0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 () (q . ((51 0x291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8 1000))) 1)"
 output = "((g1_multiply 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 0x3d7e1145b5969c12f4889f4f1f66bde0e4d3ba54b91784cf604294d162b44b69) (g1_negate 0x291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8 1000))"
-hash = "670f06e052dedc68788dd17acb7d100203a1533d11f9c679d0f23bd3d555f122"
+hash = "c891006043970c3e1f1e3d975081447096760b8a6c70b037b00613bfa585021c"
 
 [fp_utils]
 bytes = 873
@@ -223,3 +223,63 @@ cost = 92626
 input = "()"
 output = "()"
 hash = "5f8d285dbefef4c4c7ccfcc4f204710c21f46ea45bfe6d5b4e81562ef183adde"
+
+[cast_expr]
+bytes = 73
+cost = 1022
+input = "()"
+output = "()"
+hash = "a6f4a0e74a8a9f813a570ad56a8686f7e42bc26c116f6cf0f3f881e0a4ffb70e"
+
+[group_expr]
+bytes = 3
+cost = 20
+input = "()"
+output = "42"
+hash = "ce97d04b4f84066533255fcc56345626c245afd50e24c6c14c52c8e78e8b9f33"
+
+[pair_expr]
+parser_errors = []
+compiler_errors = [
+    "expected type `Bytes`, but found `Int` at 2:31",
+    "expected type `(Int, Bytes)`, but found `(Int, Int)` at 2:5",
+]
+
+[duplicate_variants]
+parser_errors = []
+compiler_errors = [
+    "duplicate enum variant `SameName` at 3:5",
+    "duplicate enum discriminant `1` at 4:29",
+    "unused enum variant `SameName` at 2:5",
+    "unused enum variant `DuplicateDiscriminant` at 4:5",
+]
+
+[unused_symbols]
+parser_errors = []
+compiler_errors = [
+    "unused inline constant `UNUSED_INDIRECT_CONSTANT` at 1:14",
+    "unused inline constant `UNUSED_CONSTANT` at 2:14",
+    "unused function `unused_indirect_function` at 21:5",
+    "unused function `unused_function` at 25:5",
+    "unused inline constant `UNUSED_INNER_CONSTANT` at 6:18",
+    "unused function `unused_inner_function` at 8:9",
+    "unused let binding `unused_let` at 5:9",
+]
+
+[unused_types]
+parser_errors = []
+compiler_errors = [
+    "unused type alias `A` at 2:6",
+    "unused enum variant `A` at 7:5",
+    "unused enum variant `B` at 10:5",
+    "unused enum variant `C` at 14:5",
+    "unused enum `Some` at 6:6",
+    "unused struct `Thing` at 17:8",
+]
+
+[not]
+bytes = 15
+cost = 623
+input = "()"
+output = "()"
+hash = "e7a613b58b23e44d70e889f8d8975724c9f786d19d5491428c6ca63eb87420ad"

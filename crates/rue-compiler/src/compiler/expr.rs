@@ -41,7 +41,7 @@ impl Compiler<'_> {
             Expr::PrefixExpr(prefix) => self.compile_prefix_expr(prefix),
             Expr::BinaryExpr(binary) => self.compile_binary_expr(binary),
             Expr::GroupExpr(expr) => self.compile_group_expr(expr, expected_type),
-            Expr::CastExpr(cast) => self.compile_cast_expr(cast, expected_type),
+            Expr::CastExpr(cast) => self.compile_cast_expr(cast),
             Expr::GuardExpr(guard) => self.compile_guard_expr(guard, expected_type),
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
             Expr::FunctionCallExpr(call) => self.compile_function_call_expr(call),

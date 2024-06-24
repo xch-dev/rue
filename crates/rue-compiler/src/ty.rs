@@ -22,7 +22,7 @@ pub enum Type {
     List(TypeId),
     Struct(StructType),
     Enum(EnumType),
-    EnumVariant(EnumVariant),
+    EnumVariant(EnumVariantType),
     Function(FunctionType),
     Alias(TypeId),
     Optional(TypeId),
@@ -41,12 +41,12 @@ pub struct StructType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumType {
+    pub has_fields: bool,
     pub variants: IndexMap<String, TypeId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EnumVariant {
-    pub name: String,
+pub struct EnumVariantType {
     pub enum_type: TypeId,
     pub fields: IndexMap<String, TypeId>,
     pub discriminant: HirId,
