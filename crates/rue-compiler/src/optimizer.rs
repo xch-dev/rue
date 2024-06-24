@@ -84,7 +84,6 @@ impl<'a> Optimizer<'a> {
 
     fn opt_definition(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
         match self.db.symbol(symbol_id).clone() {
-            Symbol::Unknown | Symbol::Module(..) => unreachable!(),
             Symbol::Function(Function {
                 hir_id, scope_id, ..
             }) => {
@@ -104,28 +103,45 @@ impl<'a> Optimizer<'a> {
                 self.db.alloc_lir(Lir::FunctionBody(body))
             }
             Symbol::Const(Const { hir_id, .. }) => self.opt_hir(env_id, hir_id),
-            Symbol::Parameter(..) | Symbol::InlineFunction(..) | Symbol::InlineConst(..) => {
-                unreachable!();
+            Symbol::Let(symbol) if self.graph.symbol_usages(symbol_id) > 0 => {
+                self.opt_hir(env_id, symbol.hir_id)
             }
-            Symbol::Let(symbol) => self.opt_hir(env_id, symbol.hir_id),
+            Symbol::Unknown
+            | Symbol::Module(..)
+            | Symbol::Parameter(..)
+            | Symbol::Let(..)
+            | Symbol::InlineFunction(..)
+            | Symbol::InlineConst(..) => unreachable!(),
         }
     }
 
     fn opt_hir(&mut self, env_id: EnvironmentId, hir_id: HirId) -> LirId {
-        match self.db.hir(hir_id) {
+        match self.db.hir(hir_id).clone() {
             Hir::Unknown => self.db.alloc_lir(Lir::Atom(Vec::new())),
             Hir::Atom(atom) => self.db.alloc_lir(Lir::Atom(atom.clone())),
-            Hir::Pair(first, rest) => self.opt_pair(env_id, *first, *rest),
-            Hir::Reference(symbol_id) => self.opt_reference(env_id, *symbol_id),
+            Hir::Pair(first, rest) => self.opt_pair(env_id, first, rest),
+            Hir::Reference(symbol_id) => self.opt_reference(env_id, symbol_id),
             Hir::Definition { scope_id, hir_id } => {
-                self.opt_env_definition(env_id, *scope_id, *hir_id)
+                let definition_env_id = self.graph.env(scope_id);
+                for symbol_id in self.db.env_mut(definition_env_id).definitions() {
+                    let Symbol::Let(..) = self.db.symbol(symbol_id) else {
+                        continue;
+                    };
+
+                    if self.graph.symbol_usages(symbol_id) == 1 {
+                        self.db
+                            .env_mut(definition_env_id)
+                            .remove_definition(symbol_id);
+                    }
+                }
+                self.opt_env_definition(env_id, scope_id, hir_id)
             }
             Hir::FunctionCall {
                 callee,
                 args,
                 varargs,
             } => {
-                if let Hir::Reference(symbol_id) = self.db.hir(*callee) {
+                if let Hir::Reference(symbol_id) = self.db.hir(callee) {
                     if let Symbol::InlineFunction(Function {
                         scope_id,
                         ty,
@@ -140,11 +156,11 @@ impl<'a> Optimizer<'a> {
                             &ty.clone(),
                             *hir_id,
                             args.clone(),
-                            *varargs,
+                            varargs,
                         );
                     }
                 }
-                self.opt_function_call(env_id, *callee, args.clone(), *varargs)
+                self.opt_function_call(env_id, callee, args, varargs)
             }
             Hir::BinaryOp { op, lhs, rhs } => {
                 let handler = match op {
@@ -164,21 +180,21 @@ impl<'a> Optimizer<'a> {
                     BinOp::LogicalAnd => Self::opt_logical_and,
                     BinOp::LogicalOr => Self::opt_logical_or,
                 };
-                handler(self, env_id, *lhs, *rhs)
+                handler(self, env_id, lhs, rhs)
             }
-            Hir::First(value) => self.opt_first(env_id, *value),
-            Hir::Rest(value) => self.opt_rest(env_id, *value),
-            Hir::Not(value) => self.opt_not(env_id, *value),
-            Hir::Raise(value) => self.opt_raise(env_id, *value),
-            Hir::Sha256(value) => self.opt_sha256(env_id, *value),
-            Hir::IsCons(value) => self.opt_is_cons(env_id, *value),
-            Hir::Strlen(value) => self.opt_strlen(env_id, *value),
-            Hir::PubkeyForExp(value) => self.opt_pubkey_for_exp(env_id, *value),
+            Hir::First(value) => self.opt_first(env_id, value),
+            Hir::Rest(value) => self.opt_rest(env_id, value),
+            Hir::Not(value) => self.opt_not(env_id, value),
+            Hir::Raise(value) => self.opt_raise(env_id, value),
+            Hir::Sha256(value) => self.opt_sha256(env_id, value),
+            Hir::IsCons(value) => self.opt_is_cons(env_id, value),
+            Hir::Strlen(value) => self.opt_strlen(env_id, value),
+            Hir::PubkeyForExp(value) => self.opt_pubkey_for_exp(env_id, value),
             Hir::If {
                 condition,
                 then_block,
                 else_block,
-            } => self.opt_if(env_id, *condition, *then_block, *else_block),
+            } => self.opt_if(env_id, condition, then_block, else_block),
         }
     }
 
@@ -259,6 +275,9 @@ impl<'a> Optimizer<'a> {
             }
             Symbol::InlineFunction(..) => self.db.alloc_lir(Lir::Atom(vec![])),
             Symbol::InlineConst(Const { hir_id, .. }) => self.opt_hir(env_id, hir_id),
+            Symbol::Let(symbol) if self.graph.symbol_usages(symbol_id) == 1 => {
+                self.opt_hir(env_id, symbol.hir_id)
+            }
             Symbol::Let(..) | Symbol::Const(..) => self.opt_path(env_id, symbol_id),
             Symbol::Parameter { .. } => {
                 for inline_parameter_map in self.inline_parameter_stack.iter().rev() {
