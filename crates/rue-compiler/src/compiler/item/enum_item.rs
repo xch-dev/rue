@@ -71,7 +71,7 @@ impl Compiler<'_> {
             let discriminant = variant
                 .discriminant()
                 .map_or(self.builtins.unknown_hir, |discriminant| {
-                    self.compile_int(&discriminant).hir_id
+                    self.compile_int_literal(&discriminant).hir_id
                 });
 
             *self.db.ty_mut(variant_type) = Type::EnumVariant(EnumVariant {

@@ -196,6 +196,9 @@ pub enum ErrorKind {
 
     #[error("cannot check equality on non-atom type `{0}`")]
     NonAtomEquality(String),
+
+    #[error("integer too large to allocate in memory")]
+    IntegerTooLarge,
 }
 
 /// Join a list of names into a string, wrapped in backticks.
