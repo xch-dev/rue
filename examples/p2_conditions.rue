@@ -1,0 +1,9 @@
+// This puzzle has not been audited or tested, and is for example purposes only.
+
+fun main(public_key: PublicKey, conditions: Condition[]) -> Condition[] {
+    let agg_sig = Condition::AggSigMe {
+        public_key: public_key,
+        message: tree_hash(conditions),
+    };
+    [agg_sig, ...conditions]
+}

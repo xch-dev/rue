@@ -112,6 +112,19 @@ export enum Condition {
     },
 }
 
+export fun concat<T>(a: T[], b: T[]) -> T[] {
+    if a is (T, T[]) {
+        return [a.first, ...concat(a.rest, b)];
+    }
+    if b is (T, T[]) {
+        return [b.first, ...concat(a, b.rest)];
+    }
+    nil
+}
+
+inline const ATOM_PREFIX: Bytes = 1 as Bytes;
+inline const PAIR_PREFIX: Bytes = 2 as Bytes;
+
 export fun tree_hash(value: Any) -> Bytes32 {
     if value is Bytes {
         tree_hash_atom(value)
@@ -121,19 +134,65 @@ export fun tree_hash(value: Any) -> Bytes32 {
 }
 
 export inline fun tree_hash_atom(value: Bytes) -> Bytes32 {
-    sha256(1 as Bytes + value)
+    sha256(ATOM_PREFIX + value)
 }
 
 export inline fun tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
-    sha256(2 as Bytes + first + rest)
+    sha256(PAIR_PREFIX + first + rest)
 }
 
-export fun concat<T>(a: T[], b: T[]) -> T[] {
-    if a is (T, T[]) {
-        return [a.first, ...concat(a.rest, b)];
+inline const OP_Q: Bytes = 1 as Bytes;
+inline const OP_A: Bytes = 2 as Bytes;
+inline const OP_C: Bytes = 4 as Bytes;
+
+inline const OP_Q_TREE_HASH: Bytes32 = tree_hash_atom(OP_Q);
+inline const OP_A_TREE_HASH: Bytes32 = tree_hash_atom(OP_A);
+inline const OP_C_TREE_HASH: Bytes32 = tree_hash_atom(OP_C);
+inline const ONE_TREE_HASH: Bytes32 = tree_hash_atom(1 as Bytes);
+
+const NIL_TREE_HASH: Bytes32 = tree_hash_atom(nil);
+const APPLY_PREIMAGE_PREFIX: Bytes = PAIR_PREFIX + OP_A_TREE_HASH;
+const CONS_PREIMAGE_PREFIX: Bytes = PAIR_PREFIX + OP_C_TREE_HASH;
+
+inline fun quote_hash(value: Bytes32) -> Bytes32 {
+    tree_hash_pair(OP_Q_TREE_HASH, value)
+}
+
+inline fun two_item_list_hash(first: Bytes32, rest: Bytes32) -> Bytes32 {
+    tree_hash_pair(first, tree_hash_pair(rest, NIL_TREE_HASH))
+}
+
+inline fun apply_hash(mod_hash: Bytes32, environment_hash: Bytes32) -> Bytes32 {
+    sha256(APPLY_PREIMAGE_PREFIX + two_item_list_hash(quote_hash(mod_hash), environment_hash))
+}
+
+inline fun update_hash_with_parameter(
+    parameter_hash: Bytes32,
+    environment_hash: Bytes32
+) -> Bytes32 {
+    sha256(CONS_PREIMAGE_PREFIX + two_item_list_hash(quote_hash(parameter_hash), environment_hash))
+}
+
+fun curried_params_hash(parameters: Bytes32[]) -> Bytes32 {
+    if parameters is Nil {
+        return ONE_TREE_HASH;
     }
-    if b is (T, T[]) {
-        return [b.first, ...concat(a, b.rest)];
-    }
-    nil
+    update_hash_with_parameter(parameters.first, curried_params_hash(parameters.rest))
+}
+
+export inline fun curry_tree_hash(
+    mod_hash: Bytes32,
+    ...parameters: Bytes32[]
+) -> Bytes32 {
+    apply_hash(mod_hash, curried_params_hash(parameters))
+}
+
+export fun calculate_coin_id(
+    parent_coin_id: Bytes,
+    puzzle_hash: Bytes,
+    amount: Int,
+) -> Bytes32 {
+    assert parent_coin_id is Bytes32;
+    assert puzzle_hash is Bytes32;
+    sha256(parent_coin_id + puzzle_hash + amount as Bytes)
 }

@@ -1,3 +1,5 @@
+// This puzzle has not been audited or tested, and is for example purposes only.
+
 fun main(
     public_keys: PublicKey[],
     required: Int,
