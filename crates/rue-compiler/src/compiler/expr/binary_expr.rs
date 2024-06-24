@@ -39,7 +39,10 @@ impl Compiler<'_> {
                 let lhs = lhs!();
                 let rhs = rhs!();
 
-                if self.db.compare_type(lhs.type_id, self.builtins.public_key) == Comparison::Equal
+                if self
+                    .db
+                    .compare_type_raw(lhs.type_id, self.builtins.public_key)
+                    == Comparison::Equal
                 {
                     self.type_check(rhs.type_id, self.builtins.public_key, text_range);
                     (
@@ -48,7 +51,7 @@ impl Compiler<'_> {
                         rhs.hir_id,
                         self.builtins.public_key,
                     )
-                } else if self.db.compare_type(lhs.type_id, self.builtins.bytes)
+                } else if self.db.compare_type_raw(lhs.type_id, self.builtins.bytes)
                     == Comparison::Equal
                 {
                     self.type_check(rhs.type_id, self.builtins.bytes, text_range);
@@ -91,14 +94,16 @@ impl Compiler<'_> {
                 let lhs = lhs!();
                 let rhs = rhs!();
 
-                if self.db.compare_type(lhs.type_id, self.builtins.bytes) > Comparison::Castable
-                    || self.db.compare_type(rhs.type_id, self.builtins.bytes) > Comparison::Castable
+                if self.db.compare_type_raw(lhs.type_id, self.builtins.bytes) > Comparison::Castable
+                    || self.db.compare_type_raw(rhs.type_id, self.builtins.bytes)
+                        > Comparison::Castable
                 {
                     self.db.error(
                         ErrorKind::NonAtomEquality(self.type_name(lhs.type_id)),
                         text_range,
                     );
-                } else if self.db.compare_type(lhs.type_id, self.builtins.nil) == Comparison::Equal
+                } else if self.db.compare_type_raw(lhs.type_id, self.builtins.nil)
+                    == Comparison::Equal
                 {
                     if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir_id) {
                         value.guards.insert(
@@ -106,7 +111,8 @@ impl Compiler<'_> {
                             Guard::new(self.builtins.nil, self.try_unwrap_optional(rhs.type_id)),
                         );
                     }
-                } else if self.db.compare_type(rhs.type_id, self.builtins.nil) == Comparison::Equal
+                } else if self.db.compare_type_raw(rhs.type_id, self.builtins.nil)
+                    == Comparison::Equal
                 {
                     if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir_id) {
                         value.guards.insert(
@@ -124,14 +130,16 @@ impl Compiler<'_> {
                 let lhs = lhs!();
                 let rhs = rhs!();
 
-                if self.db.compare_type(lhs.type_id, self.builtins.bytes) > Comparison::Castable
-                    || self.db.compare_type(rhs.type_id, self.builtins.bytes) > Comparison::Castable
+                if self.db.compare_type_raw(lhs.type_id, self.builtins.bytes) > Comparison::Castable
+                    || self.db.compare_type_raw(rhs.type_id, self.builtins.bytes)
+                        > Comparison::Castable
                 {
                     self.db.error(
                         ErrorKind::NonAtomEquality(self.type_name(lhs.type_id)),
                         text_range,
                     );
-                } else if self.db.compare_type(lhs.type_id, self.builtins.nil) == Comparison::Equal
+                } else if self.db.compare_type_raw(lhs.type_id, self.builtins.nil)
+                    == Comparison::Equal
                 {
                     if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir_id) {
                         value.guards.insert(
@@ -139,7 +147,8 @@ impl Compiler<'_> {
                             Guard::new(self.try_unwrap_optional(rhs.type_id), self.builtins.nil),
                         );
                     }
-                } else if self.db.compare_type(rhs.type_id, self.builtins.nil) == Comparison::Equal
+                } else if self.db.compare_type_raw(rhs.type_id, self.builtins.nil)
+                    == Comparison::Equal
                 {
                     if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir_id) {
                         value.guards.insert(

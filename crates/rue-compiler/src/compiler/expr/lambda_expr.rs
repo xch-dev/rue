@@ -65,7 +65,9 @@ impl Compiler<'_> {
             .or(expected.map(|expected| expected.return_type));
 
         self.scope_stack.push(scope_id);
+        self.allow_generic_inference_stack.push(false);
         let body = self.compile_expr(&body, expected_return_type);
+        self.allow_generic_inference_stack.pop().unwrap();
         self.scope_stack.pop().expect("lambda not in scope stack");
 
         let return_type = expected_return_type.unwrap_or(body.type_id);

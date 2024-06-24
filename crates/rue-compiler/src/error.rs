@@ -56,6 +56,9 @@ pub enum WarningKind {
     #[error("unused let binding `{0}`")]
     UnusedLet(String),
 
+    #[error("unused generic type `{0}`")]
+    UnusedGenericType(String),
+
     #[error("unused enum `{0}`")]
     UnusedEnum(String),
 

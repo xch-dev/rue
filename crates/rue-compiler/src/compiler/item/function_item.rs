@@ -5,7 +5,7 @@ use crate::{
     hir::Hir,
     scope::Scope,
     symbol::{Function, Symbol},
-    ty::{FunctionType, Rest},
+    ty::{FunctionType, Rest, Type},
     ErrorKind, SymbolId,
 };
 
@@ -19,11 +19,32 @@ impl Compiler<'_> {
         let symbol_id = self.db.alloc_symbol(Symbol::Unknown);
         self.symbol_stack.push(symbol_id);
 
-        let mut scope = Scope::default();
+        let scope_id = self.db.alloc_scope(Scope::default());
+        self.scope_stack.push(scope_id);
 
-        let return_type = function_item
-            .return_type()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+        let mut generic_types = Vec::new();
+
+        for generic_type in function_item
+            .generic_types()
+            .map(|generics| generics.idents())
+            .unwrap_or_default()
+        {
+            let type_id = self.db.alloc_type(Type::Generic);
+
+            if self.scope().ty(generic_type.text()).is_some() {
+                self.db.error(
+                    ErrorKind::DuplicateType(generic_type.text().to_string()),
+                    generic_type.text_range(),
+                );
+            }
+
+            self.scope_mut()
+                .define_type(generic_type.to_string(), type_id);
+
+            self.db.insert_type_token(type_id, generic_type);
+
+            generic_types.push(type_id);
+        }
 
         let mut param_types = Vec::new();
         let mut rest = Rest::Nil;
@@ -44,7 +65,7 @@ impl Compiler<'_> {
             *self.db.symbol_mut(symbol_id) = Symbol::Parameter(type_id);
 
             if let Some(name) = param.name() {
-                scope.define_symbol(name.to_string(), symbol_id);
+                self.scope_mut().define_symbol(name.to_string(), symbol_id);
                 self.db.insert_symbol_token(symbol_id, name);
             }
 
@@ -60,14 +81,19 @@ impl Compiler<'_> {
             self.symbol_stack.pop().unwrap();
         }
 
-        let scope_id = self.db.alloc_scope(scope);
+        let return_type = function_item
+            .return_type()
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+
+        self.scope_stack.pop().unwrap();
+
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
         let ty = FunctionType {
+            generic_types,
             param_types,
             rest,
             return_type,
-            generic_types: Vec::new(),
         };
 
         if function_item.inline().is_some() {
@@ -108,7 +134,9 @@ impl Compiler<'_> {
 
         // We don't care about explicit returns in this context.
         self.scope_stack.push(scope_id);
+        self.allow_generic_inference_stack.push(false);
         let value = self.compile_block(&body, Some(ty.return_type)).0;
+        self.allow_generic_inference_stack.pop().unwrap();
         self.scope_stack.pop().unwrap();
 
         // Ensure that the body is assignable to the return type.

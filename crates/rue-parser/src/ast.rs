@@ -439,11 +439,6 @@ impl LetStmt {
     }
 
     pub fn ty(&self) -> Option<Type> {
-        let exprs: Vec<Expr> = self.syntax().children().filter_map(Expr::cast).collect();
-        let types: Vec<Type> = self.syntax().children().filter_map(Type::cast).collect();
-        if exprs.len() == 1 && types.len() == 1 {
-            return None;
-        }
         self.syntax().children().find_map(Type::cast)
     }
 
