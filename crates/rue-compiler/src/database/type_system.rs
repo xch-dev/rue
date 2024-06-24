@@ -309,6 +309,9 @@ impl Database {
                 self.compare_type_visitor(*lhs, *rhs, ctx)
             }
             (_, Type::Optional(inner)) => self.compare_type_visitor(lhs, *inner, ctx),
+            (Type::Optional(inner), Type::Bytes) => {
+                Comparison::Castable & self.compare_type_visitor(*inner, rhs, ctx)
+            }
 
             // TODO: Unions would make this more generalized and useful.
             // I should add unions back.

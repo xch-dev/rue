@@ -1,0 +1,25 @@
+// This puzzle has not been audited or tested, and is for example purposes only.
+
+fun main(
+    synthetic_pk: PublicKey,
+    original_pk: PublicKey?,
+    delegated_puzzle: fun(...Any) -> Condition[],
+    delegated_solution: Any
+) -> Condition[] {
+    let conditions = delegated_puzzle(...delegated_solution);
+    let delegated_puzzle_hash = tree_hash(delegated_puzzle);
+
+    if original_pk != nil {
+        let exponent = sha256(original_pk as Bytes + delegated_puzzle_hash);
+        let offset_pk = pubkey_for_exp(exponent);
+        assert synthetic_pk == original_pk + offset_pk;
+        return conditions;
+    }
+
+    let agg_sig_me = Condition::AggSigMe {
+        public_key: synthetic_pk,
+        message: delegated_puzzle_hash,
+    };
+
+    [agg_sig_me, ...conditions]
+}
