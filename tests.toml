@@ -276,3 +276,10 @@ compiler_errors = [
     "unused enum `Some` at 6:6",
     "unused struct `Thing` at 17:8",
 ]
+
+[not]
+bytes = 15
+cost = 623
+input = "()"
+output = "()"
+hash = "e7a613b58b23e44d70e889f8d8975724c9f786d19d5491428c6ca63eb87420ad"
