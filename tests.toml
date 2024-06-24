@@ -223,3 +223,10 @@ cost = 92626
 input = "()"
 output = "()"
 hash = "5f8d285dbefef4c4c7ccfcc4f204710c21f46ea45bfe6d5b4e81562ef183adde"
+
+[cast_expr]
+bytes = 101
+cost = 1542
+input = "()"
+output = "()"
+hash = "610233d711f94830b599d1e865fad5b27e8cb6773785ef9103b6ed2da77f9200"
