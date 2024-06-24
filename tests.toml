@@ -230,3 +230,17 @@ cost = 1542
 input = "()"
 output = "()"
 hash = "610233d711f94830b599d1e865fad5b27e8cb6773785ef9103b6ed2da77f9200"
+
+[group_expr]
+bytes = 3
+cost = 20
+input = "()"
+output = "42"
+hash = "ce97d04b4f84066533255fcc56345626c245afd50e24c6c14c52c8e78e8b9f33"
+
+[pair_expr]
+parser_errors = []
+compiler_errors = [
+    "expected type `Bytes`, but found `Int` at 2:31",
+    "expected type `(Int, Bytes)`, but found `(Int, Int)` at 2:5",
+]

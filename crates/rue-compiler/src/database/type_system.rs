@@ -56,6 +56,20 @@ impl Database {
         self.is_cyclic_visitor(type_id, &mut HashSet::new())
     }
 
+    pub fn first_type(&self, type_id: TypeId) -> Option<TypeId> {
+        let Type::Pair(pair) = self.ty(type_id) else {
+            return None;
+        };
+        Some(pair.first)
+    }
+
+    pub fn rest_type(&self, type_id: TypeId) -> Option<TypeId> {
+        let Type::Pair(pair) = self.ty(type_id) else {
+            return None;
+        };
+        Some(pair.rest)
+    }
+
     pub fn substitute_type_visitor(
         &mut self,
         type_id: TypeId,
