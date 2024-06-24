@@ -143,6 +143,8 @@ ast_node!(RaiseStmt);
 ast_node!(AssertStmt);
 ast_node!(AssumeStmt);
 
+ast_node!(GenericTypes);
+
 impl Root {
     pub fn items(&self) -> Vec<Item> {
         self.syntax().children().filter_map(Item::cast).collect()
@@ -189,6 +191,10 @@ impl FunctionItem {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_types(&self) -> Option<GenericTypes> {
+        self.syntax().children().find_map(GenericTypes::cast)
     }
 
     pub fn params(&self) -> Vec<FunctionParam> {
@@ -433,11 +439,6 @@ impl LetStmt {
     }
 
     pub fn ty(&self) -> Option<Type> {
-        let exprs: Vec<Expr> = self.syntax().children().filter_map(Expr::cast).collect();
-        let types: Vec<Type> = self.syntax().children().filter_map(Type::cast).collect();
-        if exprs.len() == 1 && types.len() == 1 {
-            return None;
-        }
         self.syntax().children().find_map(Type::cast)
     }
 
@@ -826,7 +827,7 @@ impl FunctionType {
             .collect()
     }
 
-    pub fn ret(&self) -> Option<Type> {
+    pub fn return_type(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }
 }
@@ -847,5 +848,15 @@ impl FunctionTypeParam {
 impl OptionalType {
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
+    }
+}
+
+impl GenericTypes {
+    pub fn idents(&self) -> Vec<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .collect()
     }
 }

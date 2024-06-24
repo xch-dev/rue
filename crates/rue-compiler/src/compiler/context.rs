@@ -108,6 +108,13 @@ pub fn build_graph(
         ignored_types.extend(enum_type.variants.values());
     }
 
+    for symbol_id in ignored_symbols.clone() {
+        let Symbol::Function(function) = db.symbol_mut(symbol_id).clone() else {
+            continue;
+        };
+        ignored_types.extend(function.ty.generic_types.iter().copied());
+    }
+
     let Symbol::Module(module) = db.symbol_mut(main_module_id).clone() else {
         unreachable!();
     };

@@ -1,38 +1,241 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use crate::{ty::Type, Comparison, Database, TypeId};
+use crate::{
+    ty::{EnumType, EnumVariant, FunctionType, PairType, StructType, Type},
+    Comparison, Database, TypeId,
+};
 
-pub trait TypeSystem {
-    fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> Comparison;
-    fn is_cyclic(&self, type_id: TypeId) -> bool;
+#[derive(Debug)]
+struct ComparisonContext<'a> {
+    visited: HashSet<(TypeId, TypeId)>,
+    generic_type_stack: &'a mut Vec<HashMap<TypeId, TypeId>>,
+    infer_generics: bool,
 }
 
-impl TypeSystem for Database {
-    fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> Comparison {
-        self.compare_type_visitor(lhs, rhs, &mut HashSet::new())
-    }
-
-    fn is_cyclic(&self, type_id: TypeId) -> bool {
-        self.is_cyclic_visitor(type_id, &mut HashSet::new())
+impl<'a> ComparisonContext<'a> {
+    fn new(generic_type_stack: &'a mut Vec<HashMap<TypeId, TypeId>>, infer_generics: bool) -> Self {
+        Self {
+            visited: HashSet::new(),
+            generic_type_stack,
+            infer_generics,
+        }
     }
 }
 
 impl Database {
+    pub fn substitute_type(
+        &mut self,
+        type_id: TypeId,
+        substitutions: &HashMap<TypeId, TypeId>,
+    ) -> TypeId {
+        self.substitute_type_visitor(type_id, substitutions, &mut HashSet::new())
+    }
+
+    pub fn compare_type_raw(&self, lhs: TypeId, rhs: TypeId) -> Comparison {
+        self.compare_type_visitor(
+            lhs,
+            rhs,
+            &mut ComparisonContext::new(&mut Vec::new(), false),
+        )
+    }
+
+    pub fn compare_type_with_generics(
+        &self,
+        lhs: TypeId,
+        rhs: TypeId,
+        generic_type_stack: &mut Vec<HashMap<TypeId, TypeId>>,
+    ) -> Comparison {
+        self.compare_type_visitor(
+            lhs,
+            rhs,
+            &mut ComparisonContext::new(generic_type_stack, true),
+        )
+    }
+
+    pub fn is_cyclic(&self, type_id: TypeId) -> bool {
+        self.is_cyclic_visitor(type_id, &mut HashSet::new())
+    }
+
+    pub fn substitute_type_visitor(
+        &mut self,
+        type_id: TypeId,
+        substitutions: &HashMap<TypeId, TypeId>,
+        visited: &mut HashSet<TypeId>,
+    ) -> TypeId {
+        if let Some(type_id) = substitutions.get(&type_id).copied() {
+            return type_id;
+        }
+
+        if !visited.insert(type_id) {
+            return type_id;
+        }
+
+        match self.ty(type_id).clone() {
+            Type::Alias(..) => unreachable!(),
+            Type::Pair(pair) => {
+                let new_pair = PairType {
+                    first: self.substitute_type_visitor(pair.first, substitutions, visited),
+                    rest: self.substitute_type_visitor(pair.rest, substitutions, visited),
+                };
+
+                if new_pair == pair {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Pair(new_pair))
+                }
+            }
+            Type::Enum(enum_type) => {
+                let new_enum = EnumType {
+                    variants: enum_type
+                        .variants
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                self.substitute_type_visitor(*v, substitutions, visited),
+                            )
+                        })
+                        .collect(),
+                };
+
+                if new_enum == enum_type {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Enum(new_enum))
+                }
+            }
+            Type::EnumVariant(enum_variant) => {
+                let new_variant = EnumVariant {
+                    name: enum_variant.name.clone(),
+                    enum_type: enum_variant.enum_type,
+                    fields: enum_variant
+                        .fields
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                self.substitute_type_visitor(*v, substitutions, visited),
+                            )
+                        })
+                        .collect(),
+                    discriminant: enum_variant.discriminant,
+                };
+
+                if new_variant == enum_variant {
+                    type_id
+                } else {
+                    self.alloc_type(Type::EnumVariant(new_variant))
+                }
+            }
+            Type::List(inner) => {
+                let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
+
+                if new_inner == inner {
+                    type_id
+                } else {
+                    self.alloc_type(Type::List(new_inner))
+                }
+            }
+            Type::Struct(struct_type) => {
+                let new_struct = StructType {
+                    fields: struct_type
+                        .fields
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                self.substitute_type_visitor(*v, substitutions, visited),
+                            )
+                        })
+                        .collect(),
+                };
+
+                if new_struct == struct_type {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Struct(new_struct))
+                }
+            }
+            Type::Function(function) => {
+                let new_function = FunctionType {
+                    param_types: function
+                        .param_types
+                        .iter()
+                        .map(|ty| self.substitute_type_visitor(*ty, substitutions, visited))
+                        .collect(),
+                    rest: function.rest,
+                    return_type: self.substitute_type_visitor(
+                        function.return_type,
+                        substitutions,
+                        visited,
+                    ),
+                    generic_types: function
+                        .generic_types
+                        .iter()
+                        .map(|ty| self.substitute_type_visitor(*ty, substitutions, visited))
+                        .collect(),
+                };
+
+                if new_function == function {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Function(new_function))
+                }
+            }
+            Type::Optional(inner) => {
+                let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
+
+                if new_inner == inner {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Optional(inner))
+                }
+            }
+            Type::Unknown
+            | Type::Generic
+            | Type::Any
+            | Type::Bool
+            | Type::Bytes
+            | Type::Bytes32
+            | Type::Int
+            | Type::Nil
+            | Type::PublicKey => type_id,
+        }
+    }
+
     #[allow(clippy::match_same_arms, clippy::too_many_lines)]
     fn compare_type_visitor(
         &self,
         lhs: TypeId,
         rhs: TypeId,
-        visited: &mut HashSet<(TypeId, TypeId)>,
+        ctx: &mut ComparisonContext<'_>,
     ) -> Comparison {
         let key = (lhs, rhs);
-        if lhs == rhs || !visited.insert(key) {
+        if lhs == rhs || !ctx.visited.insert(key) {
             return Comparison::Equal;
         }
 
         let comparison = match (self.ty(lhs), self.ty(rhs)) {
             // Aliases are already resolved at this point.
             (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
+
+            // We need to infer `Generic` types, and return `Unrelated` if incompatible.
+            (_, Type::Generic) if ctx.infer_generics => {
+                let mut found = None;
+
+                for generics in ctx.generic_type_stack.iter().rev() {
+                    if let Some(&generic) = generics.get(&rhs) {
+                        found = Some(generic);
+                    }
+                }
+
+                if let Some(found) = found {
+                    self.compare_type_visitor(lhs, found, ctx)
+                } else {
+                    ctx.generic_type_stack.last_mut().unwrap().insert(rhs, lhs);
+                    Comparison::Assignable
+                }
+            }
 
             // We should have already given a diagnostic for `Unknown`.
             // So we will go ahead and pretend they are equal to everything.
@@ -58,6 +261,10 @@ impl Database {
 
             // However, anything can be assigned to `Any` implicitly.
             (_, Type::Any) => Comparison::Assignable,
+
+            // `Generic` types are unrelated to everything else except their specific instance.
+            // The only exception is the `Any` type above.
+            (Type::Generic, _) | (_, Type::Generic) => Comparison::Unrelated,
 
             // You have to explicitly convert between other atom types.
             // This is because the compiled output can change depending on the type.
@@ -99,9 +306,9 @@ impl Database {
             // These are the variants of the `Optional` type.
             (Type::Nil, Type::Optional(..)) => Comparison::Assignable,
             (Type::Optional(lhs), Type::Optional(rhs)) => {
-                self.compare_type_visitor(*lhs, *rhs, visited)
+                self.compare_type_visitor(*lhs, *rhs, ctx)
             }
-            (_, Type::Optional(inner)) => self.compare_type_visitor(lhs, *inner, visited),
+            (_, Type::Optional(inner)) => self.compare_type_visitor(lhs, *inner, ctx),
 
             // TODO: Unions would make this more generalized and useful.
             // I should add unions back.
@@ -109,8 +316,8 @@ impl Database {
 
             // Compare both sides of a `Pair`.
             (Type::Pair(lhs), Type::Pair(rhs)) => {
-                let first = self.compare_type_visitor(lhs.first, rhs.first, visited);
-                let rest = self.compare_type_visitor(lhs.rest, rhs.rest, visited);
+                let first = self.compare_type_visitor(lhs.first, rhs.first, ctx);
+                let rest = self.compare_type_visitor(lhs.rest, rhs.rest, ctx);
                 first & rest
             }
 
@@ -118,22 +325,22 @@ impl Database {
             // and the rest is also a valid `List` of the same type.
             // However, it's not considered equal but rather assignable.
             (Type::Pair(pair), Type::List(inner)) => {
-                let inner = self.compare_type_visitor(pair.first, *inner, visited);
-                let rest = self.compare_type_visitor(pair.rest, rhs, visited);
+                let inner = self.compare_type_visitor(pair.first, *inner, ctx);
+                let rest = self.compare_type_visitor(pair.rest, rhs, ctx);
                 Comparison::Assignable & inner & rest
             }
 
             // A `List` is not a valid pair since `Nil` is also a valid list.
             // It's a `Superset` only if the opposite comparison is not `Unrelated`.
             (Type::List(..), Type::Pair(..)) => {
-                Comparison::Superset & self.compare_type_visitor(rhs, lhs, visited)
+                Comparison::Superset & self.compare_type_visitor(rhs, lhs, ctx)
             }
 
             // Nothing else can be assigned to or from a `Pair`.
             (Type::Pair(..), _) | (_, Type::Pair(..)) => Comparison::Unrelated,
 
             // A `List` just compares with the inner type of another `List`.
-            (Type::List(lhs), Type::List(rhs)) => self.compare_type_visitor(*lhs, *rhs, visited),
+            (Type::List(lhs), Type::List(rhs)) => self.compare_type_visitor(*lhs, *rhs, ctx),
 
             // `Nil` is a valid list.
             (Type::Nil, Type::List(..)) => Comparison::Assignable,
@@ -156,7 +363,7 @@ impl Database {
                 if lhs.fields.len() == rhs.fields.len() {
                     let mut result = Comparison::Castable;
                     for i in 0..lhs.fields.len() {
-                        result &= self.compare_type_visitor(lhs.fields[i], rhs.fields[i], visited);
+                        result &= self.compare_type_visitor(lhs.fields[i], rhs.fields[i], ctx);
                     }
                     result
                 } else {
@@ -194,14 +401,11 @@ impl Database {
                     Comparison::Unrelated
                 } else {
                     let mut result =
-                        self.compare_type_visitor(lhs.return_type, rhs.return_type, visited);
+                        self.compare_type_visitor(lhs.return_type, rhs.return_type, ctx);
 
                     for i in 0..lhs.param_types.len() {
-                        result &= self.compare_type_visitor(
-                            lhs.param_types[i],
-                            rhs.param_types[i],
-                            visited,
-                        );
+                        result &=
+                            self.compare_type_visitor(lhs.param_types[i], rhs.param_types[i], ctx);
                     }
 
                     result
@@ -212,7 +416,7 @@ impl Database {
             (Type::Function(..), _) | (_, Type::Function(..)) => Comparison::Unrelated,
         };
 
-        visited.remove(&key);
+        ctx.visited.remove(&key);
         comparison
     }
 
@@ -234,6 +438,7 @@ impl Database {
             | Type::EnumVariant(..)
             | Type::Function(..)
             | Type::Unknown
+            | Type::Generic
             | Type::Nil
             | Type::Any
             | Type::Int
@@ -272,58 +477,112 @@ mod tests {
     }
 
     #[test]
+    fn test_substitution() {
+        let (mut db, ty) = setup();
+
+        let a = db.alloc_type(Type::Generic);
+        let b = db.alloc_type(Type::Generic);
+
+        let a_list = db.alloc_type(Type::List(a));
+
+        let function = db.alloc_type(Type::Function(FunctionType {
+            param_types: vec![a_list],
+            rest: Rest::Nil,
+            return_type: b,
+            generic_types: vec![a, b],
+        }));
+
+        let int_list = db.alloc_type(Type::List(ty.int));
+
+        let substitutions = [(a, ty.int), (b, ty.bool)].into_iter().collect();
+        let substituted = db.substitute_type(function, &substitutions);
+
+        let expected = db.alloc_type(Type::Function(FunctionType {
+            param_types: vec![int_list],
+            rest: Rest::Nil,
+            return_type: ty.bool,
+            generic_types: vec![a, b],
+        }));
+
+        assert_eq!(
+            db.compare_type_raw(substituted, expected),
+            Comparison::Equal
+        );
+    }
+
+    #[test]
     fn test_alias_resolution() {
         let (mut db, ty) = setup();
 
         let int_alias = db.alloc_type(Type::Alias(ty.int));
-        assert_eq!(db.compare_type(int_alias, ty.int), Comparison::Equal);
-        assert_eq!(db.compare_type(ty.int, int_alias), Comparison::Equal);
-        assert_eq!(db.compare_type(int_alias, int_alias), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(int_alias, ty.int), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(ty.int, int_alias), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(int_alias, int_alias), Comparison::Equal);
 
         let double_alias = db.alloc_type(Type::Alias(int_alias));
-        assert_eq!(db.compare_type(double_alias, ty.int), Comparison::Equal);
-        assert_eq!(db.compare_type(ty.int, double_alias), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(double_alias, ty.int), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(ty.int, double_alias), Comparison::Equal);
         assert_eq!(
-            db.compare_type(double_alias, double_alias),
+            db.compare_type_raw(double_alias, double_alias),
             Comparison::Equal
         );
-        assert_eq!(db.compare_type(double_alias, int_alias), Comparison::Equal);
-        assert_eq!(db.compare_type(int_alias, double_alias), Comparison::Equal);
+        assert_eq!(
+            db.compare_type_raw(double_alias, int_alias),
+            Comparison::Equal
+        );
+        assert_eq!(
+            db.compare_type_raw(int_alias, double_alias),
+            Comparison::Equal
+        );
+    }
+
+    #[test]
+    fn test_generic_type() {
+        let (mut db, ty) = setup();
+        let a = db.alloc_type(Type::Generic);
+        let b = db.alloc_type(Type::Generic);
+        assert_eq!(db.compare_type_raw(a, b), Comparison::Unrelated);
+        assert_eq!(db.compare_type_raw(a, ty.int), Comparison::Unrelated);
+        assert_eq!(db.compare_type_raw(ty.int, a), Comparison::Unrelated);
+        assert_eq!(db.compare_type_raw(a, a), Comparison::Equal);
     }
 
     #[test]
     fn test_any_type() {
         let (db, ty) = setup();
-        assert_eq!(db.compare_type(ty.any, ty.int), Comparison::Castable);
-        assert_eq!(db.compare_type(ty.any, ty.any), Comparison::Equal);
-        assert_eq!(db.compare_type(ty.int, ty.any), Comparison::Assignable);
+        assert_eq!(db.compare_type_raw(ty.any, ty.int), Comparison::Castable);
+        assert_eq!(db.compare_type_raw(ty.any, ty.any), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(ty.int, ty.any), Comparison::Assignable);
     }
 
     #[test]
     fn test_unknown_type() {
         let (db, ty) = setup();
-        assert_eq!(db.compare_type(ty.any, ty.unknown), Comparison::Equal);
-        assert_eq!(db.compare_type(ty.int, ty.unknown), Comparison::Equal);
-        assert_eq!(db.compare_type(ty.unknown, ty.int), Comparison::Equal);
-        assert_eq!(db.compare_type(ty.unknown, ty.any), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(ty.any, ty.unknown), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(ty.int, ty.unknown), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(ty.unknown, ty.int), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(ty.unknown, ty.any), Comparison::Equal);
     }
 
     #[test]
     fn test_atom_types() {
         let (db, ty) = setup();
-        assert_eq!(db.compare_type(ty.bytes, ty.bytes32), Comparison::Superset);
-        assert_eq!(db.compare_type(ty.bytes32, ty.bytes), Comparison::Equal);
         assert_eq!(
-            db.compare_type(ty.bytes, ty.public_key),
+            db.compare_type_raw(ty.bytes, ty.bytes32),
+            Comparison::Superset
+        );
+        assert_eq!(db.compare_type_raw(ty.bytes32, ty.bytes), Comparison::Equal);
+        assert_eq!(
+            db.compare_type_raw(ty.bytes, ty.public_key),
             Comparison::Superset
         );
         assert_eq!(
-            db.compare_type(ty.public_key, ty.bytes),
+            db.compare_type_raw(ty.public_key, ty.bytes),
             Comparison::Castable
         );
-        assert_eq!(db.compare_type(ty.bytes, ty.int), Comparison::Castable);
-        assert_eq!(db.compare_type(ty.int, ty.bytes), Comparison::Castable);
-        assert_eq!(db.compare_type(ty.int, ty.int), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(ty.bytes, ty.int), Comparison::Castable);
+        assert_eq!(db.compare_type_raw(ty.int, ty.bytes), Comparison::Castable);
+        assert_eq!(db.compare_type_raw(ty.int, ty.int), Comparison::Equal);
     }
 
     #[test]
@@ -331,15 +590,21 @@ mod tests {
         let (mut db, ty) = setup();
 
         let list = db.alloc_type(Type::List(ty.int));
-        assert_eq!(db.compare_type(ty.nil, ty.int), Comparison::Castable);
-        assert_eq!(db.compare_type(ty.nil, ty.bool), Comparison::Castable);
-        assert_eq!(db.compare_type(ty.nil, ty.bytes), Comparison::Assignable);
-        assert_eq!(db.compare_type(ty.nil, ty.bytes32), Comparison::Unrelated);
+        assert_eq!(db.compare_type_raw(ty.nil, ty.int), Comparison::Castable);
+        assert_eq!(db.compare_type_raw(ty.nil, ty.bool), Comparison::Castable);
         assert_eq!(
-            db.compare_type(ty.nil, ty.public_key),
+            db.compare_type_raw(ty.nil, ty.bytes),
+            Comparison::Assignable
+        );
+        assert_eq!(
+            db.compare_type_raw(ty.nil, ty.bytes32),
             Comparison::Unrelated
         );
-        assert_eq!(db.compare_type(ty.nil, list), Comparison::Assignable);
+        assert_eq!(
+            db.compare_type_raw(ty.nil, ty.public_key),
+            Comparison::Unrelated
+        );
+        assert_eq!(db.compare_type_raw(ty.nil, list), Comparison::Assignable);
     }
 
     #[test]
@@ -350,35 +615,44 @@ mod tests {
             first: ty.int,
             rest: ty.int,
         }));
-        assert_eq!(db.compare_type(int_pair, int_pair), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(int_pair, int_pair), Comparison::Equal);
 
         let bytes_pair = db.alloc_type(Type::Pair(PairType {
             first: ty.bytes,
             rest: ty.bytes,
         }));
-        assert_eq!(db.compare_type(int_pair, bytes_pair), Comparison::Castable);
-        assert_eq!(db.compare_type(bytes_pair, int_pair), Comparison::Castable);
+        assert_eq!(
+            db.compare_type_raw(int_pair, bytes_pair),
+            Comparison::Castable
+        );
+        assert_eq!(
+            db.compare_type_raw(bytes_pair, int_pair),
+            Comparison::Castable
+        );
 
         let bytes32_pair = db.alloc_type(Type::Pair(PairType {
             first: ty.bytes32,
             rest: ty.bytes32,
         }));
         assert_eq!(
-            db.compare_type(bytes_pair, bytes32_pair),
+            db.compare_type_raw(bytes_pair, bytes32_pair),
             Comparison::Superset
         );
-        assert_eq!(db.compare_type(bytes32_pair, bytes_pair), Comparison::Equal);
+        assert_eq!(
+            db.compare_type_raw(bytes32_pair, bytes_pair),
+            Comparison::Equal
+        );
 
         let bytes32_bytes = db.alloc_type(Type::Pair(PairType {
             first: ty.bytes32,
             rest: ty.bytes,
         }));
         assert_eq!(
-            db.compare_type(bytes_pair, bytes32_bytes),
+            db.compare_type_raw(bytes_pair, bytes32_bytes),
             Comparison::Superset
         );
         assert_eq!(
-            db.compare_type(bytes32_bytes, bytes_pair),
+            db.compare_type_raw(bytes32_bytes, bytes_pair),
             Comparison::Equal
         );
     }
@@ -388,27 +662,36 @@ mod tests {
         let (mut db, ty) = setup();
 
         let int_list = db.alloc_type(Type::List(ty.int));
-        assert_eq!(db.compare_type(int_list, int_list), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(int_list, int_list), Comparison::Equal);
 
         let pair_list = db.alloc_type(Type::Pair(PairType {
             first: ty.int,
             rest: int_list,
         }));
-        assert_eq!(db.compare_type(pair_list, int_list), Comparison::Assignable);
-        assert_eq!(db.compare_type(int_list, pair_list), Comparison::Superset);
+        assert_eq!(
+            db.compare_type_raw(pair_list, int_list),
+            Comparison::Assignable
+        );
+        assert_eq!(
+            db.compare_type_raw(int_list, pair_list),
+            Comparison::Superset
+        );
 
         let pair_nil = db.alloc_type(Type::Pair(PairType {
             first: ty.int,
             rest: ty.nil,
         }));
-        assert_eq!(db.compare_type(pair_nil, int_list), Comparison::Assignable);
+        assert_eq!(
+            db.compare_type_raw(pair_nil, int_list),
+            Comparison::Assignable
+        );
 
         let pair_unrelated_first = db.alloc_type(Type::Pair(PairType {
             first: pair_list,
             rest: ty.nil,
         }));
         assert_eq!(
-            db.compare_type(pair_unrelated_first, int_list),
+            db.compare_type_raw(pair_unrelated_first, int_list),
             Comparison::Unrelated
         );
 
@@ -417,7 +700,7 @@ mod tests {
             rest: ty.int,
         }));
         assert_eq!(
-            db.compare_type(pair_unrelated_rest, int_list),
+            db.compare_type_raw(pair_unrelated_rest, int_list),
             Comparison::Unrelated
         );
     }
@@ -429,18 +712,21 @@ mod tests {
         let two_ints = db.alloc_type(Type::Struct(StructType {
             fields: fields(&[ty.int, ty.int]),
         }));
-        assert_eq!(db.compare_type(two_ints, two_ints), Comparison::Equal);
+        assert_eq!(db.compare_type_raw(two_ints, two_ints), Comparison::Equal);
 
         let one_int = db.alloc_type(Type::Struct(StructType {
             fields: fields(&[ty.int]),
         }));
-        assert_eq!(db.compare_type(one_int, two_ints), Comparison::Unrelated);
+        assert_eq!(
+            db.compare_type_raw(one_int, two_ints),
+            Comparison::Unrelated
+        );
 
         let empty_struct = db.alloc_type(Type::Struct(StructType {
             fields: fields(&[]),
         }));
         assert_eq!(
-            db.compare_type(empty_struct, empty_struct),
+            db.compare_type_raw(empty_struct, empty_struct),
             Comparison::Equal
         );
     }
@@ -462,8 +748,14 @@ mod tests {
             variants: fields(&[variant]),
         });
 
-        assert_eq!(db.compare_type(enum_type, variant), Comparison::Superset);
-        assert_eq!(db.compare_type(variant, enum_type), Comparison::Assignable);
+        assert_eq!(
+            db.compare_type_raw(enum_type, variant),
+            Comparison::Superset
+        );
+        assert_eq!(
+            db.compare_type_raw(variant, enum_type),
+            Comparison::Assignable
+        );
     }
 
     #[test]
@@ -474,20 +766,25 @@ mod tests {
             param_types: vec![ty.int],
             rest: Rest::Nil,
             return_type: ty.bool,
+            generic_types: Vec::new(),
         }));
-        assert_eq!(db.compare_type(int_to_bool, int_to_bool), Comparison::Equal);
+        assert_eq!(
+            db.compare_type_raw(int_to_bool, int_to_bool),
+            Comparison::Equal
+        );
 
         let int_to_int = db.alloc_type(Type::Function(FunctionType {
             param_types: vec![ty.int],
             rest: Rest::Nil,
             return_type: ty.int,
+            generic_types: Vec::new(),
         }));
         assert_eq!(
-            db.compare_type(int_to_bool, int_to_int),
+            db.compare_type_raw(int_to_bool, int_to_int),
             Comparison::Castable
         );
         assert_eq!(
-            db.compare_type(int_to_int, int_to_bool),
+            db.compare_type_raw(int_to_int, int_to_bool),
             Comparison::Superset
         );
 
@@ -496,13 +793,14 @@ mod tests {
             param_types: vec![int_list],
             rest: Rest::Nil,
             return_type: ty.bool,
+            generic_types: Vec::new(),
         }));
         assert_eq!(
-            db.compare_type(int_to_bool, int_list_to_bool),
+            db.compare_type_raw(int_to_bool, int_list_to_bool),
             Comparison::Unrelated
         );
         assert_eq!(
-            db.compare_type(int_list_to_bool, int_to_bool),
+            db.compare_type_raw(int_list_to_bool, int_to_bool),
             Comparison::Unrelated
         );
     }

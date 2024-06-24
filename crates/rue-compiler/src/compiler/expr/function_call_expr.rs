@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rue_parser::{AstNode, FunctionCallExpr};
 
 use crate::{
@@ -27,6 +29,9 @@ impl Compiler<'_> {
             );
             None
         };
+
+        self.generic_type_stack.push(HashMap::new());
+        self.allow_generic_inference_stack.push(true);
 
         let mut args = Vec::new();
         let mut arg_types = Vec::new();
@@ -144,7 +149,14 @@ impl Compiler<'_> {
             varargs: spread,
         });
 
-        let type_id = expected.map_or(self.builtins.unknown, |expected| expected.return_type);
+        let mut type_id = expected.map_or(self.builtins.unknown, |expected| expected.return_type);
+
+        self.allow_generic_inference_stack.pop().unwrap();
+        let generic_types = self.generic_type_stack.pop().unwrap();
+
+        if !generic_types.is_empty() {
+            type_id = self.db.substitute_type(type_id, &generic_types);
+        }
 
         Value::new(hir_id, type_id)
     }

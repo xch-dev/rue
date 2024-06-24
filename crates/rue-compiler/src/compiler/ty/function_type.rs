@@ -31,13 +31,14 @@ impl Compiler<'_> {
         }
 
         let return_type = function
-            .ret()
+            .return_type()
             .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
         self.db.alloc_type(Type::Function(FunctionType {
             param_types,
             rest,
             return_type,
+            generic_types: Vec::new(),
         }))
     }
 }

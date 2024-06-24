@@ -66,6 +66,9 @@ fn function_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::FunctionItem);
     p.expect(SyntaxKind::Fun);
     p.expect(SyntaxKind::Ident);
+    if p.at(SyntaxKind::LessThan) {
+        generic_types(p);
+    }
     function_params(p);
     p.expect(SyntaxKind::Arrow);
     ty(p);
@@ -589,5 +592,18 @@ fn function_type_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionTypeParam);
     p.try_eat(SyntaxKind::Spread);
     ty(p);
+    p.finish();
+}
+
+fn generic_types(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::GenericTypes);
+    p.expect(SyntaxKind::LessThan);
+    while !p.at(SyntaxKind::GreaterThan) {
+        p.expect(SyntaxKind::Ident);
+        if !p.try_eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::GreaterThan);
     p.finish();
 }

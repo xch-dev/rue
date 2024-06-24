@@ -125,6 +125,7 @@ impl SymbolTable {
             }
             let token = db.type_token(*type_id).unwrap();
             let kind = match db.ty_raw(*type_id) {
+                Type::Generic => WarningKind::UnusedGenericType(token.to_string()),
                 Type::Alias(..) => WarningKind::UnusedTypeAlias(token.to_string()),
                 Type::Struct(..) => WarningKind::UnusedStruct(token.to_string()),
                 Type::Enum(..) => WarningKind::UnusedEnum(token.to_string()),

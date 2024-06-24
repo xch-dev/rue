@@ -55,7 +55,7 @@ fn main() {
                 "Serialized output: {}",
                 hex::encode(node_to_bytes(&allocator, output.1).unwrap())
             ),
-            Err(error) => eprintln!("Error: {error:?}"),
+            Err(error) => eprintln!("error: {error:?}"),
         }
     }
 }
@@ -71,10 +71,10 @@ fn print_diagnostics(source: &str, diagnostics: &[Diagnostic]) -> bool {
         match error.kind() {
             DiagnosticKind::Error(kind) => {
                 has_error = true;
-                eprintln!("Error: {kind} at {line}:{col}");
+                eprintln!("error: {kind} at {line}:{col}");
             }
             DiagnosticKind::Warning(kind) => {
-                eprintln!("Warning: {kind} at {line}:{col}");
+                eprintln!("warning: {kind} at {line}:{col}");
             }
         }
     }

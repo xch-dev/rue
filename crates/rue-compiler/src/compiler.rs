@@ -12,13 +12,14 @@ use crate::{
     hir::Hir,
     scope::Scope,
     ty::{FunctionType, PairType, Rest, Type, Value},
-    Comparison, ErrorKind, TypeSystem,
+    Comparison, ErrorKind,
 };
 
 mod block;
 mod builtins;
 mod context;
 mod expr;
+mod generic_types;
 mod item;
 mod path;
 mod stmt;
@@ -47,6 +48,12 @@ pub struct Compiler<'a> {
     // The type guard stack is used for overriding types in certain contexts.
     type_guard_stack: Vec<HashMap<SymbolId, TypeId>>,
 
+    // The generic type stack is used for overriding generic types that are being checked against.
+    generic_type_stack: Vec<HashMap<TypeId, TypeId>>,
+
+    // Whether or not generic type inference is allowed.
+    allow_generic_inference_stack: Vec<bool>,
+
     // Whether the current expression is directly the callee of a function call.
     is_callee: bool,
 
@@ -66,6 +73,8 @@ impl<'a> Compiler<'a> {
             symbol_stack: Vec::new(),
             type_definition_stack: Vec::new(),
             type_guard_stack: Vec::new(),
+            generic_type_stack: Vec::new(),
+            allow_generic_inference_stack: vec![false],
             is_callee: false,
             sym: SymbolTable::default(),
             builtins,
@@ -165,6 +174,7 @@ impl<'a> Compiler<'a> {
 
         let name = match self.db.ty(ty) {
             Type::Unknown => "{unknown}".to_string(),
+            Type::Generic => "{generic}".to_string(),
             Type::Nil => "Nil".to_string(),
             Type::Any => "Any".to_string(),
             Type::Int => "Int".to_string(),
@@ -231,7 +241,14 @@ impl<'a> Compiler<'a> {
     }
 
     fn type_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
-        if self.db.compare_type(from, to) > Comparison::Assignable {
+        let comparison = if self.allow_generic_inference_stack.last().copied().unwrap() {
+            self.db
+                .compare_type_with_generics(from, to, &mut self.generic_type_stack)
+        } else {
+            self.db.compare_type_raw(from, to)
+        };
+
+        if comparison > Comparison::Assignable {
             self.db.error(
                 ErrorKind::TypeMismatch {
                     expected: self.type_name(to),
@@ -243,7 +260,14 @@ impl<'a> Compiler<'a> {
     }
 
     fn cast_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
-        if self.db.compare_type(from, to) > Comparison::Castable {
+        let comparison = if self.allow_generic_inference_stack.last().copied().unwrap() {
+            self.db
+                .compare_type_with_generics(from, to, &mut self.generic_type_stack)
+        } else {
+            self.db.compare_type_raw(from, to)
+        };
+
+        if comparison > Comparison::Castable {
             self.db.error(
                 ErrorKind::CastMismatch {
                     expected: self.type_name(to),

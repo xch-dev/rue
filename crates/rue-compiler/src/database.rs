@@ -9,7 +9,6 @@ mod type_system;
 
 pub use comparison::*;
 pub use ids::*;
-pub use type_system::*;
 
 use crate::{
     hir::Hir, lir::Lir, optimizer::Environment, scope::Scope, symbol::Symbol, ty::Type, Diagnostic,

@@ -7,9 +7,10 @@ use crate::{
     SymbolId,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Unknown,
+    Generic,
     Nil,
     Any,
     Int,
@@ -27,23 +28,23 @@ pub enum Type {
     Optional(TypeId),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PairType {
     pub first: TypeId,
     pub rest: TypeId,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructType {
     pub fields: IndexMap<String, TypeId>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumType {
     pub variants: IndexMap<String, TypeId>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumVariant {
     pub name: String,
     pub enum_type: TypeId,
@@ -51,8 +52,9 @@ pub struct EnumVariant {
     pub discriminant: HirId,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionType {
+    pub generic_types: Vec<TypeId>,
     pub param_types: Vec<TypeId>,
     pub rest: Rest,
     pub return_type: TypeId,
