@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ty::{EnumType, EnumVariantType, FunctionType, PairType, StructType, Type},
+    value::{EnumType, EnumVariantType, FunctionType, PairType, StructType, Type},
     Comparison, Database, TypeId,
 };
 
@@ -136,6 +136,7 @@ impl Database {
             Type::EnumVariant(enum_variant) => {
                 let new_variant = EnumVariantType {
                     enum_type: enum_variant.enum_type,
+                    original_type_id: enum_variant.original_type_id,
                     fields: enum_variant
                         .fields
                         .iter()
@@ -166,6 +167,7 @@ impl Database {
             }
             Type::Struct(struct_type) => {
                 let new_struct = StructType {
+                    original_type_id: struct_type.original_type_id,
                     fields: struct_type
                         .fields
                         .iter()
@@ -497,7 +499,7 @@ mod tests {
 
     use crate::{
         compiler::{builtins, Builtins},
-        ty::{EnumType, EnumVariantType, FunctionType, PairType, Rest, StructType},
+        value::{EnumType, EnumVariantType, FunctionType, PairType, Rest, StructType},
     };
 
     use super::*;
@@ -713,19 +715,25 @@ mod tests {
     fn test_struct_types() {
         let (mut db, ty) = setup();
 
-        let two_ints = db.alloc_type(Type::Struct(StructType {
+        let two_ints = db.alloc_type(Type::Unknown);
+        *db.ty_mut(two_ints) = Type::Struct(StructType {
+            original_type_id: two_ints,
             fields: fields(&[ty.int, ty.int]),
-        }));
+        });
         assert_eq!(db.compare_type(two_ints, two_ints), Comparison::Equal);
 
-        let one_int = db.alloc_type(Type::Struct(StructType {
+        let one_int = db.alloc_type(Type::Unknown);
+        *db.ty_mut(one_int) = Type::Struct(StructType {
+            original_type_id: one_int,
             fields: fields(&[ty.int]),
-        }));
+        });
         assert_eq!(db.compare_type(one_int, two_ints), Comparison::Unrelated);
 
-        let empty_struct = db.alloc_type(Type::Struct(StructType {
+        let empty_struct = db.alloc_type(Type::Unknown);
+        *db.ty_mut(empty_struct) = Type::Struct(StructType {
+            original_type_id: empty_struct,
             fields: fields(&[]),
-        }));
+        });
         assert_eq!(
             db.compare_type(empty_struct, empty_struct),
             Comparison::Equal
@@ -738,11 +746,13 @@ mod tests {
 
         let enum_type = db.alloc_type(Type::Unknown);
 
-        let variant = db.alloc_type(Type::EnumVariant(EnumVariantType {
+        let variant = db.alloc_type(Type::Unknown);
+        *db.ty_mut(variant) = Type::EnumVariant(EnumVariantType {
             enum_type,
+            original_type_id: variant,
             fields: fields(&[ty.int]),
             discriminant: ty.unknown_hir,
-        }));
+        });
 
         *db.ty_mut(enum_type) = Type::Enum(EnumType {
             has_fields: true,

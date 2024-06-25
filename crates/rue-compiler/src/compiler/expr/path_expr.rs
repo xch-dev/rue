@@ -7,8 +7,8 @@ use crate::{
         Compiler,
     },
     hir::Hir,
-    symbol::{Const, Function, Let, Symbol},
-    ty::{Type, Value},
+    symbol::{Function, Symbol},
+    value::{GuardPath, Type, Value},
     ErrorKind,
 };
 
@@ -59,20 +59,30 @@ impl Compiler<'_> {
             return self.unknown();
         }
 
-        let type_id =
-            self.symbol_type(symbol_id)
-                .unwrap_or_else(|| match self.db.symbol(symbol_id) {
-                    Symbol::Unknown | Symbol::Module(..) => unreachable!(),
-                    Symbol::Function(Function { ty, .. })
-                    | Symbol::InlineFunction(Function { ty, .. }) => {
-                        self.db.alloc_type(Type::Function(ty.clone()))
-                    }
-                    Symbol::Parameter(type_id)
-                    | Symbol::Let(Let { type_id, .. })
-                    | Symbol::Const(Const { type_id, .. })
-                    | Symbol::InlineConst(Const { type_id, .. }) => *type_id,
-                });
+        let override_type_id = self.symbol_type(&GuardPath::new(symbol_id));
 
-        Value::new(self.db.alloc_hir(Hir::Reference(symbol_id)), type_id)
+        let mut value = match self.db.symbol(symbol_id).clone() {
+            Symbol::Unknown | Symbol::Module(..) => unreachable!(),
+            Symbol::Function(Function { ty, .. }) | Symbol::InlineFunction(Function { ty, .. }) => {
+                let type_id = self.db.alloc_type(Type::Function(ty.clone()));
+                Value::new(
+                    self.db.alloc_hir(Hir::Reference(symbol_id)),
+                    override_type_id.unwrap_or(type_id),
+                )
+            }
+            Symbol::Parameter(type_id) => Value::new(
+                self.db.alloc_hir(Hir::Reference(symbol_id)),
+                override_type_id.unwrap_or(type_id),
+            ),
+            Symbol::Let(mut value) | Symbol::Const(mut value) | Symbol::InlineConst(mut value) => {
+                if let Some(type_id) = override_type_id {
+                    value.type_id = type_id;
+                }
+                value.hir_id = self.db.alloc_hir(Hir::Reference(symbol_id));
+                value
+            }
+        };
+        value.guard_path = Some(GuardPath::new(symbol_id));
+        value
     }
 }

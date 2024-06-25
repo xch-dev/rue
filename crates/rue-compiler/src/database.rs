@@ -11,8 +11,8 @@ pub use comparison::*;
 pub use ids::*;
 
 use crate::{
-    hir::Hir, lir::Lir, optimizer::Environment, scope::Scope, symbol::Symbol, ty::Type, Diagnostic,
-    DiagnosticKind, ErrorKind, WarningKind,
+    hir::Hir, lir::Lir, optimizer::Environment, scope::Scope, symbol::Symbol, value::Type,
+    Diagnostic, DiagnosticKind, ErrorKind, WarningKind,
 };
 
 #[derive(Debug, Default)]

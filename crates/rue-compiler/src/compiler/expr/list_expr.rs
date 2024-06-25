@@ -3,7 +3,7 @@ use rue_parser::{AstNode, ListExpr};
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    ty::{Type, Value},
+    value::{Type, Value},
     ErrorKind, TypeId,
 };
 

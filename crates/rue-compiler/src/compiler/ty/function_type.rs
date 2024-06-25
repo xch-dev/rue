@@ -4,7 +4,7 @@ use rue_parser::{AstNode, FunctionType as Ast};
 
 use crate::{
     compiler::Compiler,
-    ty::{FunctionType, Rest, Type},
+    value::{FunctionType, Rest, Type},
     ErrorKind, TypeId,
 };
 

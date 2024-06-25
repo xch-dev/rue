@@ -7,7 +7,7 @@ mod lir;
 mod optimizer;
 mod scope;
 mod symbol;
-mod ty;
+mod value;
 
 use clvmr::{Allocator, NodePtr};
 use compiler::{

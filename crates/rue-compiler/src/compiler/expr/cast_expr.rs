@@ -1,6 +1,6 @@
 use rue_parser::{AstNode, CastExpr};
 
-use crate::{compiler::Compiler, ty::Value};
+use crate::{compiler::Compiler, value::Value};
 
 impl Compiler<'_> {
     pub fn compile_cast_expr(&mut self, cast: &CastExpr) -> Value {

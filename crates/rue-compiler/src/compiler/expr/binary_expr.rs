@@ -4,7 +4,7 @@ use rue_parser::{AstNode, BinaryExpr, BinaryOp, Expr};
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir},
-    ty::{Guard, Value},
+    value::{Guard, Value},
     ErrorKind, HirId, TypeId,
 };
 
@@ -167,11 +167,12 @@ impl Compiler<'_> {
             .compare_type(lhs.type_id, self.builtins.nil)
             .is_equal()
         {
-            if let Hir::Reference(symbol_id) = self.db.hir(rhs.hir_id) {
-                value.guards.insert(
-                    *symbol_id,
-                    Guard::new(self.builtins.nil, self.db.non_optional(rhs.type_id)),
-                );
+            if let Some(guard_path) = rhs.guard_path {
+                let then_type = self.builtins.nil;
+                let else_type = self.db.non_optional(rhs.type_id);
+                value
+                    .guards
+                    .insert(guard_path, Guard::new(then_type, else_type));
             }
         }
 
@@ -180,11 +181,12 @@ impl Compiler<'_> {
             .compare_type(rhs.type_id, self.builtins.nil)
             .is_equal()
         {
-            if let Hir::Reference(symbol_id) = self.db.hir(lhs.hir_id) {
-                value.guards.insert(
-                    *symbol_id,
-                    Guard::new(self.builtins.nil, self.db.non_optional(lhs.type_id)),
-                );
+            if let Some(guard_path) = lhs.guard_path.clone() {
+                let then_type = self.builtins.nil;
+                let else_type = self.db.non_optional(lhs.type_id);
+                value
+                    .guards
+                    .insert(guard_path, Guard::new(then_type, else_type));
             }
         }
 

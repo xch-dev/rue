@@ -5,7 +5,7 @@ use crate::{
     hir::Hir,
     scope::Scope,
     symbol::{Function, Symbol},
-    ty::{FunctionType, Rest, Type, Value},
+    value::{FunctionType, Rest, Type, Value},
     ErrorKind, TypeId,
 };
 

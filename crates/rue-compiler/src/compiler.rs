@@ -11,7 +11,7 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::Hir,
     scope::Scope,
-    ty::{PairType, Type, Value},
+    value::{GuardPath, PairType, Type, Value},
     ErrorKind,
 };
 
@@ -46,7 +46,7 @@ pub struct Compiler<'a> {
     type_definition_stack: Vec<TypeId>,
 
     // The type guard stack is used for overriding types in certain contexts.
-    type_guard_stack: Vec<HashMap<SymbolId, TypeId>>,
+    type_guard_stack: Vec<HashMap<GuardPath, TypeId>>,
 
     // The generic type stack is used for overriding generic types that are being checked against.
     generic_type_stack: Vec<HashMap<TypeId, TypeId>>,
@@ -155,13 +155,19 @@ impl<'a> Compiler<'a> {
                 format!("({first}, {rest})")
             }
             Type::Struct(struct_type) => {
-                let fields: Vec<String> = struct_type
-                    .fields
-                    .iter()
-                    .map(|(name, ty)| format!("{}: {}", name, self.type_name_visitor(*ty, stack)))
-                    .collect();
+                if struct_type.original_type_id == ty {
+                    let fields: Vec<String> = struct_type
+                        .fields
+                        .iter()
+                        .map(|(name, ty)| {
+                            format!("{}: {}", name, self.type_name_visitor(*ty, stack))
+                        })
+                        .collect();
 
-                format!("{{ {} }}", fields.join(", "))
+                    format!("{{ {} }}", fields.join(", "))
+                } else {
+                    self.type_name_visitor(struct_type.original_type_id, stack)
+                }
             }
             Type::Enum { .. } => "<unnamed enum>".to_string(),
             Type::EnumVariant(enum_variant) => {
@@ -181,7 +187,7 @@ impl<'a> Compiler<'a> {
                             enum_type
                                 .variants
                                 .iter()
-                                .find(|item| *item.1 == ty)
+                                .find(|item| *item.1 == enum_variant.original_type_id)
                                 .expect("enum type is missing variant")
                                 .0
                                 .clone()
@@ -260,9 +266,9 @@ impl<'a> Compiler<'a> {
         Value::new(self.builtins.unknown_hir, self.builtins.unknown)
     }
 
-    fn symbol_type(&self, symbol_id: SymbolId) -> Option<TypeId> {
+    fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeId> {
         for guards in &self.type_guard_stack {
-            if let Some(guard) = guards.get(&symbol_id) {
+            if let Some(guard) = guards.get(guard_path) {
                 return Some(*guard);
             }
         }

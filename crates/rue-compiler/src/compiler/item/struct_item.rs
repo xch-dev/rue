@@ -3,7 +3,7 @@ use rue_parser::{StructField, StructItem};
 
 use crate::{
     compiler::Compiler,
-    ty::{StructType, Type},
+    value::{StructType, Type},
     TypeId,
 };
 
@@ -22,7 +22,10 @@ impl Compiler<'_> {
     pub fn compile_struct_item(&mut self, struct_item: &StructItem, type_id: TypeId) {
         self.type_definition_stack.push(type_id);
         let fields = self.compile_struct_fields(struct_item.fields());
-        *self.db.ty_mut(type_id) = Type::Struct(StructType { fields });
+        *self.db.ty_mut(type_id) = Type::Struct(StructType {
+            original_type_id: type_id,
+            fields,
+        });
         self.type_definition_stack.pop().unwrap();
     }
 

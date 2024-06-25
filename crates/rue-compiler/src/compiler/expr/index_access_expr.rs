@@ -2,7 +2,7 @@ use rue_parser::{AstNode, IndexAccessExpr};
 
 use crate::{
     compiler::Compiler,
-    ty::{Type, Value},
+    value::{Type, Value},
     ErrorKind,
 };
 

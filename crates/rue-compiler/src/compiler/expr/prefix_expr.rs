@@ -3,7 +3,7 @@ use rue_parser::{AstNode, PrefixExpr, PrefixOp};
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir},
-    ty::Value,
+    value::Value,
 };
 
 impl Compiler<'_> {

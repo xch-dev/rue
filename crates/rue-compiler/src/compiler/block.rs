@@ -1,6 +1,6 @@
 use rue_parser::{AstNode, Block, Stmt};
 
-use crate::{hir::Hir, ty::Value, ErrorKind, TypeId};
+use crate::{hir::Hir, value::Value, ErrorKind, TypeId};
 
 use super::{stmt::Statement, Compiler};
 

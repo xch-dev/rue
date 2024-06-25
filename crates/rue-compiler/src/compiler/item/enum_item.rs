@@ -8,7 +8,7 @@ use rue_parser::EnumItem;
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    ty::{EnumType, EnumVariantType, Type},
+    value::{EnumType, EnumVariantType, Type},
     ErrorKind, TypeId,
 };
 
@@ -147,6 +147,7 @@ impl Compiler<'_> {
             // Update the variant to use the real `EnumVariant` type.
             *self.db.ty_mut(variant_type_id) = Type::EnumVariant(EnumVariantType {
                 enum_type: enum_type_id,
+                original_type_id: variant_type_id,
                 fields,
                 discriminant,
             });

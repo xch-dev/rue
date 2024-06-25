@@ -1,6 +1,6 @@
 use rue_parser::{AstNode, Expr};
 
-use crate::{ty::Value, TypeId};
+use crate::{value::Value, TypeId};
 
 use super::Compiler;
 

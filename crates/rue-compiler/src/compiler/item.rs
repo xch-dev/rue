@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use rue_parser::Item;
 
-use crate::{symbol::Symbol, ty::Type, ErrorKind, SymbolId, TypeId};
+use crate::{symbol::Symbol, value::Type, ErrorKind, SymbolId, TypeId};
 
 use super::Compiler;
 

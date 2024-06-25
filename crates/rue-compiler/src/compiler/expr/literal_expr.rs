@@ -2,7 +2,7 @@ use clvmr::Allocator;
 use num_bigint::BigInt;
 use rue_parser::{LiteralExpr, SyntaxKind, SyntaxToken};
 
-use crate::{compiler::Compiler, hir::Hir, ty::Value, ErrorKind};
+use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
 
 impl Compiler<'_> {
     pub fn compile_literal_expr(&mut self, literal: &LiteralExpr) -> Value {
