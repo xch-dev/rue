@@ -335,3 +335,17 @@ compiler_errors = [
     "expected 2 arguments, but found 1 at 53:11",
     "expected type `Int`, but found `Int[]` at 54:30",
 ]
+
+[field_guards]
+bytes = 161
+cost = 2133
+input = "()"
+output = "()"
+hash = "3878fc2ed6b703c7c3d00f9f5d8f170ec252ca439be6e5b5b516e1dce1adc0d7"
+
+[bound_guards]
+bytes = 43
+cost = 776
+input = "()"
+output = "4124"
+hash = "d0a5759dd672aff132a772ec07f3a06ac8bb994e6ba0e29c5f21a354a41e602e"
