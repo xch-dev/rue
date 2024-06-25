@@ -26,6 +26,7 @@ pub enum Type {
     Function(FunctionType),
     Alias(TypeId),
     Optional(TypeId),
+    PossiblyUndefined(TypeId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +64,8 @@ pub struct FunctionType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rest {
     Nil,
-    Parameter,
+    Spread,
+    Optional,
 }
 
 #[derive(Debug, Clone)]

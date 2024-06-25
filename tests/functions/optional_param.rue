@@ -1,0 +1,11 @@
+fun main() -> Int {
+    square(5) + square()
+}
+
+fun square(num?: Int) -> Int {
+    if num.exists {
+        num * num
+    } else {
+        0
+    }
+}

@@ -116,11 +116,20 @@ pub enum ErrorKind {
     #[error("cannot call expression with type `{0}`")]
     UncallableType(String),
 
-    #[error("expected {expected} arguments, but found {found}")]
+    #[error(
+        "expected {expected} argument{}, but found {found}",
+        if *expected == 1 { "" } else { "s" }
+    )]
     ArgumentMismatch { expected: usize, found: usize },
 
-    #[error("expected at least {expected} arguments, but found {found}")]
-    TooFewArgumentsWithVarargs { expected: usize, found: usize },
+    #[error(
+        "expected at least {expected} argument{}, but found {found}",
+        if *expected == 1 { "" } else { "s" }
+    )]
+    ArgumentMismatchSpread { expected: usize, found: usize },
+
+    #[error("expected {} or {expected} arguments, but found {found}", expected - 1)]
+    ArgumentMismatchOptional { expected: usize, found: usize },
 
     #[error("uninitializable type `{0}`")]
     UninitializableType(String),
@@ -140,14 +149,26 @@ pub enum ErrorKind {
     #[error("cannot index into non-list type `{0}`")]
     IndexAccess(String),
 
-    #[error("the spread operator can only be used on the last element")]
-    NonFinalSpread,
+    #[error("the spread operator can only be used on the last list item")]
+    InvalidSpreadItem,
 
-    #[error("cannot spread expression in non-vararg function call")]
-    NonVarargSpread,
+    #[error("the spread operator can only be used on the last argument")]
+    InvalidSpreadArgument,
 
-    #[error("cannot pass arguments directly (without spreading) to non-list vararg function call")]
-    NonListVararg,
+    #[error("the spread operator can only be used on the last parameter")]
+    InvalidSpreadParameter,
+
+    #[error("optional can only be used on the last parameter")]
+    InvalidOptionalParameter,
+
+    #[error("the spread operator cannot be used on optional parameters")]
+    OptionalParameterSpread,
+
+    #[error("the function does not support the spread operator")]
+    DisallowedSpread,
+
+    #[error("the function requires the spread operator on the last argument")]
+    RequiredSpread,
 
     #[error("duplicate enum variant `{0}`")]
     DuplicateEnumVariant(String),

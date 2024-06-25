@@ -1,0 +1,10 @@
+fun main() -> Int {
+    sum(1, 2, 3, 4, ...[5, 6])
+}
+
+fun sum(...nums: Int[]) -> Int {
+    if nums is Nil {
+        return 0;
+    }
+    nums.first + sum(...nums.rest)
+}

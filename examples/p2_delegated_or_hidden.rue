@@ -3,7 +3,7 @@
 fun main(
     synthetic_pk: PublicKey,
     original_pk: PublicKey?,
-    delegated_puzzle: fun(...Any) -> Condition[],
+    delegated_puzzle: fun(...solution: Any) -> Condition[],
     delegated_solution: Any
 ) -> Condition[] {
     let conditions = delegated_puzzle(...delegated_solution);

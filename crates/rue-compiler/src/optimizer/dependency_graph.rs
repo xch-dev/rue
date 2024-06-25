@@ -163,6 +163,7 @@ impl<'a> GraphTraversal<'a> {
             | Hir::Strlen(hir_id)
             | Hir::First(hir_id)
             | Hir::Rest(hir_id)
+            | Hir::CheckExists(hir_id)
             | Hir::Not(hir_id)
             | Hir::IsCons(hir_id) => self.visit_hir(scope_id, hir_id, visited),
 
@@ -303,6 +304,7 @@ impl<'a> GraphTraversal<'a> {
             | Hir::Strlen(hir_id)
             | Hir::First(hir_id)
             | Hir::Rest(hir_id)
+            | Hir::CheckExists(hir_id)
             | Hir::Not(hir_id)
             | Hir::IsCons(hir_id) => self.compute_hir_edges(scope_id, hir_id, visited),
             Hir::Raise(hir_id) => {
@@ -394,10 +396,9 @@ impl<'a> GraphTraversal<'a> {
             .collect();
 
         if !self.graph.env.contains_key(&scope_id) {
-            let environment_id = self.db.alloc_env(Environment::function(
-                parameters,
-                ty.rest == Rest::Parameter,
-            ));
+            let environment_id = self
+                .db
+                .alloc_env(Environment::function(parameters, ty.rest == Rest::Spread));
 
             self.graph.env.insert(scope_id, environment_id);
         }

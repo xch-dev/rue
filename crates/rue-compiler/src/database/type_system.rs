@@ -77,6 +77,13 @@ impl Database {
         }
     }
 
+    pub fn unwrap_list(&mut self, ty: TypeId) -> Option<TypeId> {
+        match self.ty(ty) {
+            Type::List(inner) => Some(*inner),
+            _ => None,
+        }
+    }
+
     pub fn substitute_type_visitor(
         &mut self,
         type_id: TypeId,
@@ -203,7 +210,7 @@ impl Database {
                     self.alloc_type(Type::Function(new_function))
                 }
             }
-            Type::Optional(inner) => {
+            Type::Optional(inner) | Type::PossiblyUndefined(inner) => {
                 let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
 
                 if new_inner == inner {
@@ -263,6 +270,11 @@ impl Database {
             // We should have already given a diagnostic for `Unknown`.
             // So we will go ahead and pretend they are equal to everything.
             (Type::Unknown, _) | (_, Type::Unknown) => Comparison::Equal,
+
+            // Possibly undefined is a special type.
+            (Type::PossiblyUndefined(..), _) | (_, Type::PossiblyUndefined(..)) => {
+                Comparison::Unrelated
+            }
 
             // These are of course equal atomic types.
             (Type::Any, Type::Any) => Comparison::Equal,
@@ -472,7 +484,9 @@ impl Database {
             | Type::Bytes
             | Type::Bytes32
             | Type::PublicKey => false,
-            Type::Optional(ty) => self.is_cyclic_visitor(ty, visited_aliases),
+            Type::Optional(ty) | Type::PossiblyUndefined(ty) => {
+                self.is_cyclic_visitor(ty, visited_aliases)
+            }
         }
     }
 }

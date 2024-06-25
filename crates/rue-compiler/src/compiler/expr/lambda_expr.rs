@@ -10,6 +10,7 @@ use crate::{
 };
 
 impl Compiler<'_> {
+    // TODO: Update and cleanup lambdas with the new features.
     pub fn compile_lambda_expr(
         &mut self,
         lambda_expr: &LambdaExpr,
@@ -45,10 +46,12 @@ impl Compiler<'_> {
 
             if param.spread().is_some() {
                 if i + 1 == len {
-                    rest = Rest::Parameter;
+                    rest = Rest::Spread;
                 } else {
-                    self.db
-                        .error(ErrorKind::NonFinalSpread, param.syntax().text_range());
+                    self.db.error(
+                        ErrorKind::InvalidSpreadParameter,
+                        param.syntax().text_range(),
+                    );
                 }
             }
         }

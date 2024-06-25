@@ -62,7 +62,7 @@ impl Compiler<'_> {
                     nil_terminated = false;
                 } else {
                     self.db
-                        .error(ErrorKind::NonFinalSpread, spread.text_range());
+                        .error(ErrorKind::InvalidSpreadItem, spread.text_range());
                 }
             }
 
