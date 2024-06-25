@@ -188,8 +188,11 @@ pub enum ErrorKind {
     #[error("enum discriminant too large")]
     EnumDiscriminantTooLarge,
 
-    #[error("cannot reference enum variants of enums with fields")]
+    #[error("cannot directly reference enum variants with fields")]
     EnumVariantWithFields,
+
+    #[error("cannot initialize enum variants without fields")]
+    EnumVariantWithoutFields,
 
     #[error("unknown enum variant `{0}`")]
     UnknownEnumVariant(String),

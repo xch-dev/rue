@@ -1,7 +1,7 @@
 
 export enum Condition {
     Remark = 1 {
-        // TODO: Optional value
+        value?: Any,
     },
     AggSigParent = 43 {
         public_key: PublicKey,
@@ -38,7 +38,7 @@ export enum Condition {
     CreateCoin = 51 {
         puzzle_hash: Bytes32,
         amount: Int,
-        // TODO: Optional memos
+        memos?: Bytes[],
     },
     ReserveFee = 52 {
         amount: Int,
@@ -79,9 +79,7 @@ export enum Condition {
     AssertMyBirthHeight = 75 {
         height: Int,
     },
-    AssertEphemeral = 76 {
-        // TODO: Unit variants and enum repr
-    },
+    AssertEphemeral = 76,
     AssertSecondsRelative = 80 {
         seconds: Int,
     },
@@ -108,7 +106,7 @@ export enum Condition {
     },
     Softfork = 90 {
         cost: Int,
-        // TODO: Rest args with type `Any`
+        value?: Any,
     },
 }
 

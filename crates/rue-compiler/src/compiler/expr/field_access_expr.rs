@@ -54,13 +54,12 @@ impl Compiler<'_> {
                 }
             }
             Type::EnumVariant(variant_type) => {
-                if let Some((index, _, &field_type)) =
-                    variant_type.fields.get_full(field_name.text())
-                {
+                let fields = variant_type.fields.unwrap_or_default();
+
+                if let Some((index, _, &field_type)) = fields.get_full(field_name.text()) {
                     let mut type_id = field_type;
 
-                    if index == variant_type.fields.len() - 1 && variant_type.rest == Rest::Optional
-                    {
+                    if index == fields.len() - 1 && variant_type.rest == Rest::Optional {
                         type_id = self.db.alloc_type(Type::PossiblyUndefined(type_id));
                     }
 
@@ -68,8 +67,7 @@ impl Compiler<'_> {
                         self.compile_index(
                             old_value.hir_id,
                             index,
-                            index == variant_type.fields.len() - 1
-                                && variant_type.rest == Rest::Spread,
+                            index == fields.len() - 1 && variant_type.rest == Rest::Spread,
                         ),
                         type_id,
                     )

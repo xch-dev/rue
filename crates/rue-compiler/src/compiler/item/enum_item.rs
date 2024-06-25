@@ -148,7 +148,11 @@ impl Compiler<'_> {
             *self.db.ty_mut(variant_type_id) = Type::EnumVariant(EnumVariantType {
                 enum_type: enum_type_id,
                 original_type_id: variant_type_id,
-                fields,
+                fields: if variant.fields().is_some() {
+                    Some(fields)
+                } else {
+                    None
+                },
                 rest,
                 discriminant,
             });

@@ -164,7 +164,7 @@ impl<'a> Compiler<'a> {
                         })
                         .collect();
 
-                    format!("{{ {} }}", fields.join(", "))
+                    format!("{{{}}}", fields.join(", "))
                 } else {
                     self.type_name_visitor(struct_type.original_type_id, stack)
                 }
@@ -173,29 +173,31 @@ impl<'a> Compiler<'a> {
             Type::EnumVariant(enum_variant) => {
                 let enum_name = self.type_name_visitor(enum_variant.enum_type, stack);
 
-                let fields: Vec<String> = enum_variant
-                    .fields
-                    .iter()
-                    .map(|(name, ty)| format!("{}: {}", name, self.type_name_visitor(*ty, stack)))
-                    .collect();
+                let fields: Option<Vec<String>> = enum_variant.fields.as_ref().map(|fields| {
+                    fields
+                        .iter()
+                        .map(|(name, ty)| {
+                            format!("{}: {}", name, self.type_name_visitor(*ty, stack))
+                        })
+                        .collect()
+                });
 
-                format!(
-                    "{}::{} {{ {} }}",
-                    enum_name,
-                    match self.db.ty(enum_variant.enum_type) {
-                        Type::Enum(enum_type) => {
-                            enum_type
-                                .variants
-                                .iter()
-                                .find(|item| *item.1 == enum_variant.original_type_id)
-                                .expect("enum type is missing variant")
-                                .0
-                                .clone()
-                        }
-                        _ => unreachable!(),
-                    },
-                    fields.join(", ")
-                )
+                let variant_name = match self.db.ty(enum_variant.enum_type) {
+                    Type::Enum(enum_type) => enum_type
+                        .variants
+                        .iter()
+                        .find(|item| *item.1 == enum_variant.original_type_id)
+                        .expect("enum type is missing variant")
+                        .0
+                        .clone(),
+                    _ => unreachable!(),
+                };
+
+                if let Some(fields) = fields {
+                    format!("{enum_name}::{variant_name} {{{}}}", fields.join(", "))
+                } else {
+                    format!("{enum_name}::{variant_name}")
+                }
             }
             Type::Function(function_type) => {
                 let params: Vec<String> = function_type

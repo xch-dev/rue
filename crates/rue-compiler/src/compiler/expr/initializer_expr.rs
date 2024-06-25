@@ -33,21 +33,29 @@ impl Compiler<'_> {
                 }
             }
             Some(Type::EnumVariant(enum_variant)) => {
-                let fields_hir_id = self.compile_initializer_fields(
-                    ty.unwrap(),
-                    &enum_variant.fields,
-                    enum_variant.rest,
-                    initializer.fields(),
-                    initializer.syntax().text_range(),
-                );
+                if let Some(fields) = enum_variant.fields {
+                    let fields_hir_id = self.compile_initializer_fields(
+                        ty.unwrap(),
+                        &fields,
+                        enum_variant.rest,
+                        initializer.fields(),
+                        initializer.syntax().text_range(),
+                    );
 
-                let hir_id = self
-                    .db
-                    .alloc_hir(Hir::Pair(enum_variant.discriminant, fields_hir_id));
+                    let hir_id = self
+                        .db
+                        .alloc_hir(Hir::Pair(enum_variant.discriminant, fields_hir_id));
 
-                match ty {
-                    Some(struct_type) => Value::new(hir_id, struct_type),
-                    None => self.unknown(),
+                    match ty {
+                        Some(struct_type) => Value::new(hir_id, struct_type),
+                        None => self.unknown(),
+                    }
+                } else {
+                    self.db.error(
+                        ErrorKind::EnumVariantWithoutFields,
+                        initializer.path().unwrap().syntax().text_range(),
+                    );
+                    self.unknown()
                 }
             }
             Some(_) => {

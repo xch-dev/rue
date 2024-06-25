@@ -364,3 +364,13 @@ input = "()"
 output = "()"
 hash = "42840c6aebec47ce2e01629ce381b461c19695264281a7b1aab5d4ff54506775"
 error = "()"
+
+[unit_variant]
+parser_errors = []
+compiler_errors = [
+    "unused let binding `non_unit` at 7:9",
+    "unused let binding `unit` at 8:9",
+    "unused enum variant `NonUnit` at 2:5",
+    "unused enum variant `Unit` at 3:5",
+    "unused enum `Enum` at 1:6",
+]

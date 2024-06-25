@@ -1,0 +1,10 @@
+enum Enum {
+    NonUnit {},
+    Unit,
+}
+
+fun main() -> Int {
+    let non_unit = Enum::NonUnit {};
+    let unit = Enum::Unit;
+    0
+}

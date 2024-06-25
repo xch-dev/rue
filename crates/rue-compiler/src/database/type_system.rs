@@ -137,16 +137,17 @@ impl Database {
                 let new_variant = EnumVariantType {
                     enum_type: enum_variant.enum_type,
                     original_type_id: enum_variant.original_type_id,
-                    fields: enum_variant
-                        .fields
-                        .iter()
-                        .map(|(k, v)| {
-                            (
-                                k.clone(),
-                                self.substitute_type_visitor(*v, substitutions, visited),
-                            )
-                        })
-                        .collect(),
+                    fields: enum_variant.fields.as_ref().map(|fields| {
+                        fields
+                            .iter()
+                            .map(|(k, v)| {
+                                (
+                                    k.clone(),
+                                    self.substitute_type_visitor(*v, substitutions, visited),
+                                )
+                            })
+                            .collect()
+                    }),
                     rest: enum_variant.rest,
                     discriminant: enum_variant.discriminant,
                 };
@@ -755,7 +756,7 @@ mod tests {
         *db.ty_mut(variant) = Type::EnumVariant(EnumVariantType {
             enum_type,
             original_type_id: variant,
-            fields: fields(&[ty.int]),
+            fields: Some(fields(&[ty.int])),
             discriminant: ty.unknown_hir,
             rest: Rest::Nil,
         });

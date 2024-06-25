@@ -47,7 +47,7 @@ pub struct EnumType {
 pub struct EnumVariantType {
     pub enum_type: TypeId,
     pub original_type_id: TypeId,
-    pub fields: IndexMap<String, TypeId>,
+    pub fields: Option<IndexMap<String, TypeId>>,
     pub rest: Rest,
     pub discriminant: HirId,
 }
