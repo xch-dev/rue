@@ -158,11 +158,20 @@ pub enum ErrorKind {
     #[error("the spread operator can only be used on the last parameter")]
     InvalidSpreadParameter,
 
+    #[error("the spread operator can only be used on the last field")]
+    InvalidSpreadField,
+
     #[error("optional can only be used on the last parameter")]
     InvalidOptionalParameter,
 
+    #[error("optional can only be used on the last field")]
+    InvalidOptionalField,
+
     #[error("the spread operator cannot be used on optional parameters")]
     OptionalParameterSpread,
+
+    #[error("the spread operator cannot be used on optional fields")]
+    OptionalFieldSpread,
 
     #[error("the function does not support the spread operator")]
     DisallowedSpread,

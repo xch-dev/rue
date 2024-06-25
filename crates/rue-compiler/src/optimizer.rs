@@ -248,11 +248,17 @@ impl<'a> Optimizer<'a> {
 
     fn opt_first(&mut self, env_id: EnvironmentId, hir_id: HirId) -> LirId {
         let lir_id = self.opt_hir(env_id, hir_id);
+        if let Lir::Path(path) = self.db.lir(lir_id) {
+            return self.db.alloc_lir(Lir::Path(f(*path)));
+        }
         self.db.alloc_lir(Lir::First(lir_id))
     }
 
     fn opt_rest(&mut self, env_id: EnvironmentId, hir_id: HirId) -> LirId {
         let lir_id = self.opt_hir(env_id, hir_id);
+        if let Lir::Path(path) = self.db.lir(lir_id) {
+            return self.db.alloc_lir(Lir::Path(r(*path)));
+        }
         self.db.alloc_lir(Lir::Rest(lir_id))
     }
 
@@ -514,4 +520,28 @@ impl<'a> Optimizer<'a> {
 
         self.db.alloc_lir(Lir::Run(if_expr, None))
     }
+}
+
+fn compose_paths(a: u32, mut b: u32) -> u32 {
+    let mut mask = 1;
+    let mut temp_path = a;
+    while temp_path > 1 {
+        b <<= 1;
+        mask <<= 1;
+        temp_path >>= 1;
+    }
+
+    mask -= 1;
+    b | (a & mask)
+}
+
+const FIRST: u32 = 2;
+const REST: u32 = 3;
+
+fn f(path: u32) -> u32 {
+    compose_paths(path, FIRST)
+}
+
+fn r(path: u32) -> u32 {
+    compose_paths(path, REST)
 }

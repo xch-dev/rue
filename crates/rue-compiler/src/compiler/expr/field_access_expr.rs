@@ -3,7 +3,7 @@ use rue_parser::FieldAccessExpr;
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    value::{Guard, GuardPathItem, PairType, Type, Value},
+    value::{Guard, GuardPathItem, PairType, Rest, Type, Value},
     ErrorKind,
 };
 
@@ -23,11 +23,23 @@ impl Compiler<'_> {
 
         let mut new_value = match self.db.ty(old_value.type_id).clone() {
             Type::Struct(struct_type) => {
-                if let Some(field) = struct_type.fields.get_full(field_name.text()) {
-                    let (index, _, field_type) = field;
+                if let Some((index, _, &field_type)) =
+                    struct_type.fields.get_full(field_name.text())
+                {
+                    let mut type_id = field_type;
+
+                    if index == struct_type.fields.len() - 1 && struct_type.rest == Rest::Optional {
+                        type_id = self.db.alloc_type(Type::PossiblyUndefined(type_id));
+                    }
+
                     Value::new(
-                        self.compile_index(old_value.hir_id, index, false),
-                        *field_type,
+                        self.compile_index(
+                            old_value.hir_id,
+                            index,
+                            index == struct_type.fields.len() - 1
+                                && struct_type.rest == Rest::Spread,
+                        ),
+                        type_id,
                     )
                     .extend_guard_path(old_value, GuardPathItem::Field(field_name.to_string()))
                 } else {
@@ -42,11 +54,24 @@ impl Compiler<'_> {
                 }
             }
             Type::EnumVariant(variant_type) => {
-                if let Some(field) = variant_type.fields.get_full(field_name.text()) {
-                    let (index, _, field_type) = field;
+                if let Some((index, _, &field_type)) =
+                    variant_type.fields.get_full(field_name.text())
+                {
+                    let mut type_id = field_type;
+
+                    if index == variant_type.fields.len() - 1 && variant_type.rest == Rest::Optional
+                    {
+                        type_id = self.db.alloc_type(Type::PossiblyUndefined(type_id));
+                    }
+
                     Value::new(
-                        self.compile_index(old_value.hir_id, index, false),
-                        *field_type,
+                        self.compile_index(
+                            old_value.hir_id,
+                            index,
+                            index == variant_type.fields.len() - 1
+                                && variant_type.rest == Rest::Spread,
+                        ),
+                        type_id,
                     )
                     .extend_guard_path(old_value, GuardPathItem::Field(field_name.to_string()))
                 } else {

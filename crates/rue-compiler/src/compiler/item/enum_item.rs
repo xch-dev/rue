@@ -95,7 +95,7 @@ impl Compiler<'_> {
             self.type_definition_stack.push(variant_type_id);
 
             // Compile the fields of the variant.
-            let fields = variant
+            let (fields, rest) = variant
                 .fields()
                 .map(|ast| self.compile_struct_fields(ast.fields()))
                 .unwrap_or_default();
@@ -149,6 +149,7 @@ impl Compiler<'_> {
                 enum_type: enum_type_id,
                 original_type_id: variant_type_id,
                 fields,
+                rest,
                 discriminant,
             });
 
