@@ -33,8 +33,8 @@ impl Compiler<'_> {
 
         let mut value = Value::new(hir_id, self.builtins.bool);
 
-        if let Hir::Reference(symbol_id) = self.db.hir(expr.hir_id) {
-            value.guards.insert(*symbol_id, guard);
+        if let Some(guard_path) = expr.guard_path {
+            value.guards.insert(guard_path, guard);
         }
 
         value

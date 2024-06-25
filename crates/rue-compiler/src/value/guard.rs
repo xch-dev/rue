@@ -1,8 +1,6 @@
-use std::{collections::HashMap, ops::Not};
+use std::ops::Not;
 
-use crate::{SymbolId, TypeId};
-
-pub type Guards = HashMap<SymbolId, Guard>;
+use crate::TypeId;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Guard {

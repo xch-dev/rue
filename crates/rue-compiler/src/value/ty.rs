@@ -32,6 +32,7 @@ pub struct PairType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructType {
+    pub original_type_id: TypeId,
     pub fields: IndexMap<String, TypeId>,
 }
 
@@ -44,6 +45,7 @@ pub struct EnumType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumVariantType {
     pub enum_type: TypeId,
+    pub original_type_id: TypeId,
     pub fields: IndexMap<String, TypeId>,
     pub discriminant: HirId,
 }
