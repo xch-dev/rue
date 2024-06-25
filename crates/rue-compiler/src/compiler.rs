@@ -11,7 +11,7 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::Hir,
     scope::Scope,
-    ty::{FunctionType, PairType, Rest, Type, Value},
+    ty::{PairType, Type, Value},
     ErrorKind,
 };
 
@@ -95,36 +95,6 @@ impl<'a> Compiler<'a> {
             result = self.db.alloc_hir(Hir::First(result));
         }
         result
-    }
-
-    fn expected_param_type(
-        &self,
-        function_type: FunctionType,
-        index: usize,
-        spread: bool,
-    ) -> Option<TypeId> {
-        let param_types = function_type.param_types;
-        let len = param_types.len();
-
-        if index + 1 < len {
-            return Some(param_types[index]);
-        }
-
-        if function_type.rest == Rest::Nil {
-            if index + 1 == len {
-                return Some(param_types[index]);
-            }
-            return None;
-        }
-
-        if spread {
-            return Some(param_types[len - 1]);
-        }
-
-        match self.db.ty(param_types[len - 1]) {
-            Type::List(list_type) => Some(*list_type),
-            _ => None,
-        }
     }
 
     fn type_reference(&mut self, referenced_type_id: TypeId) {
@@ -236,6 +206,10 @@ impl<'a> Compiler<'a> {
             Type::Optional(ty) => {
                 let inner = self.type_name_visitor(*ty, stack);
                 format!("{inner}?")
+            }
+            Type::PossiblyUndefined(ty) => {
+                let inner = self.type_name_visitor(*ty, stack);
+                format!("possibly undefined {inner}")
             }
         };
 

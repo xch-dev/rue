@@ -3,7 +3,7 @@ use rue_parser::FieldAccessExpr;
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    ty::{PairType, Type, Value},
+    ty::{Guard, PairType, Type, Value},
     ErrorKind,
 };
 
@@ -50,6 +50,19 @@ impl Compiler<'_> {
                     self.db.alloc_hir(Hir::Strlen(value.hir_id)),
                     self.builtins.int,
                 );
+            }
+            Type::PossiblyUndefined(inner) if field_name.text() == "exists" => {
+                let maybe_nil_reference = self.db.alloc_hir(Hir::CheckExists(value.hir_id));
+                let exists = self.db.alloc_hir(Hir::IsCons(maybe_nil_reference));
+                let mut new_value = Value::new(exists, self.builtins.bool);
+
+                if let Hir::Reference(symbol_id) = self.db.hir(value.hir_id).clone() {
+                    new_value
+                        .guards
+                        .insert(symbol_id, Guard::new(inner, value.type_id));
+                }
+
+                return new_value;
             }
             _ => {}
         }

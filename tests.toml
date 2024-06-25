@@ -283,3 +283,55 @@ cost = 623
 input = "()"
 output = "()"
 hash = "e7a613b58b23e44d70e889f8d8975724c9f786d19d5491428c6ca63eb87420ad"
+
+[optional_param]
+bytes = 69
+cost = 3150
+input = "()"
+output = "25"
+hash = "391d788eddb3e3d3e83b78ad6e7e4fc9a9dd897096d933481d36bd2816f93863"
+
+[varargs]
+bytes = 127
+cost = 11401
+input = "()"
+output = "21"
+hash = "1d14002c095c0e7269af3397809111a9d2464fa72a409edc08811e9740cf0b7f"
+
+[function_call]
+parser_errors = []
+compiler_errors = [
+    "expected 0 arguments, but found 1 at 3:11",
+    "expected 0 or 1 arguments, but found 2 at 7:11",
+    "the function does not support the spread operator at 8:25",
+    "expected 0 or 1 arguments, but found 2 at 9:11",
+    "the function does not support the spread operator at 9:28",
+    "expected 1 or 2 arguments, but found 0 at 11:11",
+    "expected 1 or 2 arguments, but found 3 at 14:11",
+    "expected 1 or 2 arguments, but found 4 at 15:11",
+    "the function does not support the spread operator at 16:25",
+    "the function does not support the spread operator at 17:28",
+    "expected 1 or 2 arguments, but found 3 at 18:11",
+    "the function does not support the spread operator at 18:31",
+    "expected 1 or 2 arguments, but found 4 at 19:11",
+    "the function does not support the spread operator at 19:34",
+    "the function does not support the spread operator at 20:28",
+    "expected type `Int[]`, but found `Int` at 26:28",
+    "expected type `Int[]`, but found `Int` at 27:31",
+    "expected at least 2 arguments, but found 0 at 31:11",
+    "expected type `Int[]`, but found `Int` at 36:31",
+    "expected 1 argument, but found 0 at 40:11",
+    "the function requires the spread operator on the last argument at 41:27",
+    "expected 1 argument, but found 2 at 42:11",
+    "the function requires the spread operator on the last argument at 42:27",
+    "expected 1 argument, but found 2 at 44:11",
+    "expected type `Int`, but found `Int[]` at 45:27",
+    "expected 1 argument, but found 2 at 46:11",
+    "expected type `Int`, but found `Int[]` at 46:30",
+    "expected 2 arguments, but found 0 at 48:11",
+    "expected 2 arguments, but found 1 at 49:11",
+    "the function requires the spread operator on the last argument at 50:30",
+    "expected 2 arguments, but found 1 at 51:11",
+    "expected 2 arguments, but found 1 at 53:11",
+    "expected type `Int`, but found `Int[]` at 54:30",
+]

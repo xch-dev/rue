@@ -121,6 +121,7 @@ impl<'a> Optimizer<'a> {
             Hir::Atom(atom) => self.db.alloc_lir(Lir::Atom(atom.clone())),
             Hir::Pair(first, rest) => self.opt_pair(env_id, first, rest),
             Hir::Reference(symbol_id) => self.opt_reference(env_id, symbol_id),
+            Hir::CheckExists(value) => self.opt_check_exists(env_id, value),
             Hir::Definition { scope_id, hir_id } => {
                 let definition_env_id = self.graph.env(scope_id);
                 for symbol_id in self.db.env_mut(definition_env_id).definitions() {
@@ -196,6 +197,29 @@ impl<'a> Optimizer<'a> {
                 else_block,
             } => self.opt_if(env_id, condition, then_block, else_block),
         }
+    }
+
+    fn opt_check_exists(&mut self, env_id: EnvironmentId, hir_id: HirId) -> LirId {
+        let value = self.opt_hir(env_id, hir_id);
+        let Lir::Path(path) = self.db.lir(value).clone() else {
+            panic!("invalid state, expected path for existence check");
+        };
+        self.db.alloc_lir(Lir::Path(Self::pack_bits(path)))
+    }
+
+    fn pack_bits(mut n: u32) -> u32 {
+        let mut result = 0;
+        let mut position = 0;
+
+        while n > 0 {
+            if n & 1 != 0 {
+                result |= 1 << position;
+                position += 1;
+            }
+            n >>= 1;
+        }
+
+        result
     }
 
     fn opt_env_definition(
@@ -350,7 +374,7 @@ impl<'a> Optimizer<'a> {
             .into_iter()
             .enumerate()
         {
-            if i + 1 == param_len && ty.rest == Rest::Parameter {
+            if i + 1 == param_len && ty.rest == Rest::Spread {
                 let mut rest = self.db.alloc_hir(Hir::Atom(Vec::new()));
                 for (i, arg) in args.clone().into_iter().rev().enumerate() {
                     if i == 0 && varargs {

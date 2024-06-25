@@ -59,8 +59,7 @@ impl Compiler<'_> {
             return self.unknown();
         }
 
-        Value::new(
-            self.db.alloc_hir(Hir::Reference(symbol_id)),
+        let type_id =
             self.symbol_type(symbol_id)
                 .unwrap_or_else(|| match self.db.symbol(symbol_id) {
                     Symbol::Unknown | Symbol::Module(..) => unreachable!(),
@@ -72,7 +71,8 @@ impl Compiler<'_> {
                     | Symbol::Let(Let { type_id, .. })
                     | Symbol::Const(Const { type_id, .. })
                     | Symbol::InlineConst(Const { type_id, .. }) => *type_id,
-                }),
-        )
+                });
+
+        Value::new(self.db.alloc_hir(Hir::Reference(symbol_id)), type_id)
     }
 }

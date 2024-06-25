@@ -25,6 +25,7 @@ pub enum Hir {
     },
     First(HirId),
     Rest(HirId),
+    CheckExists(HirId),
     Not(HirId),
     Raise(Option<HirId>),
     Sha256(HirId),
