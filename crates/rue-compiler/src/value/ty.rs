@@ -34,6 +34,7 @@ pub struct PairType {
 pub struct StructType {
     pub original_type_id: TypeId,
     pub fields: IndexMap<String, TypeId>,
+    pub rest: Rest,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +47,8 @@ pub struct EnumType {
 pub struct EnumVariantType {
     pub enum_type: TypeId,
     pub original_type_id: TypeId,
-    pub fields: IndexMap<String, TypeId>,
+    pub fields: Option<IndexMap<String, TypeId>>,
+    pub rest: Rest,
     pub discriminant: HirId,
 }
 
@@ -58,8 +60,9 @@ pub struct FunctionType {
     pub return_type: TypeId,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Rest {
+    #[default]
     Nil,
     Spread,
     Optional,

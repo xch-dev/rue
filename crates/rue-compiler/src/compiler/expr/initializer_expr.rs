@@ -7,7 +7,7 @@ use rue_parser::{AstNode, InitializerExpr, InitializerField};
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    value::{Type, Value},
+    value::{Rest, Type, Value},
     ErrorKind, HirId, TypeId,
 };
 
@@ -22,6 +22,7 @@ impl Compiler<'_> {
                 let hir_id = self.compile_initializer_fields(
                     ty.unwrap(),
                     &struct_type.fields,
+                    struct_type.rest,
                     initializer.fields(),
                     initializer.syntax().text_range(),
                 );
@@ -32,20 +33,29 @@ impl Compiler<'_> {
                 }
             }
             Some(Type::EnumVariant(enum_variant)) => {
-                let fields_hir_id = self.compile_initializer_fields(
-                    ty.unwrap(),
-                    &enum_variant.fields,
-                    initializer.fields(),
-                    initializer.syntax().text_range(),
-                );
+                if let Some(fields) = enum_variant.fields {
+                    let fields_hir_id = self.compile_initializer_fields(
+                        ty.unwrap(),
+                        &fields,
+                        enum_variant.rest,
+                        initializer.fields(),
+                        initializer.syntax().text_range(),
+                    );
 
-                let hir_id = self
-                    .db
-                    .alloc_hir(Hir::Pair(enum_variant.discriminant, fields_hir_id));
+                    let hir_id = self
+                        .db
+                        .alloc_hir(Hir::Pair(enum_variant.discriminant, fields_hir_id));
 
-                match ty {
-                    Some(struct_type) => Value::new(hir_id, struct_type),
-                    None => self.unknown(),
+                    match ty {
+                        Some(struct_type) => Value::new(hir_id, struct_type),
+                        None => self.unknown(),
+                    }
+                } else {
+                    self.db.error(
+                        ErrorKind::EnumVariantWithoutFields,
+                        initializer.path().unwrap().syntax().text_range(),
+                    );
+                    self.unknown()
                 }
             }
             Some(_) => {
@@ -63,6 +73,7 @@ impl Compiler<'_> {
         &mut self,
         struct_type: TypeId,
         struct_fields: &IndexMap<String, TypeId>,
+        rest: Rest,
         initializer_fields: Vec<InitializerField>,
         text_range: TextRange,
     ) -> HirId {
@@ -111,8 +122,14 @@ impl Compiler<'_> {
         // Check for any missing fields and report them.
         let missing_fields: Vec<String> = struct_fields
             .keys()
-            .filter(|name| !specified_fields.contains_key(*name))
-            .cloned()
+            .enumerate()
+            .filter(|&(i, name)| {
+                if rest == Rest::Optional && i == struct_fields.len() - 1 {
+                    return false;
+                }
+                !specified_fields.contains_key(name)
+            })
+            .map(|(_, name)| name.to_string())
             .collect();
 
         if !missing_fields.is_empty() {
@@ -128,13 +145,20 @@ impl Compiler<'_> {
         let mut hir_id = self.builtins.nil_hir;
 
         // Construct a nil-terminated list from the arguments.
-        for field in struct_fields.keys().rev() {
-            let field = specified_fields
-                .get(field)
-                .copied()
-                .unwrap_or(self.builtins.unknown_hir);
+        for (i, field) in struct_fields.keys().rev().enumerate() {
+            let value = specified_fields.get(field).copied();
 
-            hir_id = self.db.alloc_hir(Hir::Pair(field, hir_id));
+            if value.is_none() && i == 0 && rest == Rest::Optional {
+                continue;
+            }
+
+            let field = value.unwrap_or(self.builtins.unknown_hir);
+
+            if i == 0 && rest == Rest::Spread {
+                hir_id = field;
+            } else {
+                hir_id = self.db.alloc_hir(Hir::Pair(field, hir_id));
+            }
         }
 
         hir_id

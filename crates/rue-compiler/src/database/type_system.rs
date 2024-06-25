@@ -137,16 +137,18 @@ impl Database {
                 let new_variant = EnumVariantType {
                     enum_type: enum_variant.enum_type,
                     original_type_id: enum_variant.original_type_id,
-                    fields: enum_variant
-                        .fields
-                        .iter()
-                        .map(|(k, v)| {
-                            (
-                                k.clone(),
-                                self.substitute_type_visitor(*v, substitutions, visited),
-                            )
-                        })
-                        .collect(),
+                    fields: enum_variant.fields.as_ref().map(|fields| {
+                        fields
+                            .iter()
+                            .map(|(k, v)| {
+                                (
+                                    k.clone(),
+                                    self.substitute_type_visitor(*v, substitutions, visited),
+                                )
+                            })
+                            .collect()
+                    }),
+                    rest: enum_variant.rest,
                     discriminant: enum_variant.discriminant,
                 };
 
@@ -178,6 +180,7 @@ impl Database {
                             )
                         })
                         .collect(),
+                    rest: struct_type.rest,
                 };
 
                 if new_struct == struct_type {
@@ -719,6 +722,7 @@ mod tests {
         *db.ty_mut(two_ints) = Type::Struct(StructType {
             original_type_id: two_ints,
             fields: fields(&[ty.int, ty.int]),
+            rest: Rest::Nil,
         });
         assert_eq!(db.compare_type(two_ints, two_ints), Comparison::Equal);
 
@@ -726,6 +730,7 @@ mod tests {
         *db.ty_mut(one_int) = Type::Struct(StructType {
             original_type_id: one_int,
             fields: fields(&[ty.int]),
+            rest: Rest::Nil,
         });
         assert_eq!(db.compare_type(one_int, two_ints), Comparison::Unrelated);
 
@@ -733,6 +738,7 @@ mod tests {
         *db.ty_mut(empty_struct) = Type::Struct(StructType {
             original_type_id: empty_struct,
             fields: fields(&[]),
+            rest: Rest::Nil,
         });
         assert_eq!(
             db.compare_type(empty_struct, empty_struct),
@@ -750,8 +756,9 @@ mod tests {
         *db.ty_mut(variant) = Type::EnumVariant(EnumVariantType {
             enum_type,
             original_type_id: variant,
-            fields: fields(&[ty.int]),
+            fields: Some(fields(&[ty.int])),
             discriminant: ty.unknown_hir,
+            rest: Rest::Nil,
         });
 
         *db.ty_mut(enum_type) = Type::Enum(EnumType {

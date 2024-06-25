@@ -158,11 +158,20 @@ pub enum ErrorKind {
     #[error("the spread operator can only be used on the last parameter")]
     InvalidSpreadParameter,
 
+    #[error("the spread operator can only be used on the last field")]
+    InvalidSpreadField,
+
     #[error("optional can only be used on the last parameter")]
     InvalidOptionalParameter,
 
+    #[error("optional can only be used on the last field")]
+    InvalidOptionalField,
+
     #[error("the spread operator cannot be used on optional parameters")]
     OptionalParameterSpread,
+
+    #[error("the spread operator cannot be used on optional fields")]
+    OptionalFieldSpread,
 
     #[error("the function does not support the spread operator")]
     DisallowedSpread,
@@ -179,8 +188,11 @@ pub enum ErrorKind {
     #[error("enum discriminant too large")]
     EnumDiscriminantTooLarge,
 
-    #[error("cannot reference enum variants of enums with fields")]
+    #[error("cannot directly reference enum variants with fields")]
     EnumVariantWithFields,
+
+    #[error("cannot initialize enum variants without fields")]
+    EnumVariantWithoutFields,
 
     #[error("unknown enum variant `{0}`")]
     UnknownEnumVariant(String),

@@ -124,7 +124,9 @@ fn struct_item(p: &mut Parser<'_>, cp: Checkpoint) {
 
 fn struct_field(p: &mut Parser<'_>) {
     p.start(SyntaxKind::StructField);
+    p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
+    p.try_eat(SyntaxKind::Question);
     p.expect(SyntaxKind::Colon);
     ty(p);
     p.finish();

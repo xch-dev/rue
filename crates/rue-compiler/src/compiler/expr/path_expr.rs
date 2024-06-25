@@ -33,14 +33,9 @@ impl Compiler<'_> {
             PathItem::Symbol(symbol_id) => symbol_id,
             PathItem::Type(type_id) => {
                 if let Type::EnumVariant(variant_type) = self.db.ty(type_id).clone() {
-                    let Type::Enum(enum_type) = self.db.ty(variant_type.enum_type) else {
-                        unreachable!();
-                    };
-
-                    if enum_type.has_fields {
+                    if variant_type.fields.is_some() {
                         self.db.error(ErrorKind::EnumVariantWithFields, text_range);
                     }
-
                     return Value::new(variant_type.discriminant, type_id);
                 }
                 self.db.error(ErrorKind::ExpectedSymbolPath, text_range);
