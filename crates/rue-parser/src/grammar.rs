@@ -377,6 +377,7 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
         if p.try_eat(SyntaxKind::Comma) {
             p.start_at(checkpoint, SyntaxKind::PairExpr);
             expr(p);
+            p.try_eat(SyntaxKind::Comma);
         } else {
             p.start_at(checkpoint, SyntaxKind::GroupExpr);
         }

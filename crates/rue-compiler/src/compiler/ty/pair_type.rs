@@ -2,7 +2,7 @@ use rue_parser::PairType as Ast;
 
 use crate::{
     compiler::Compiler,
-    ty::{PairType, Type},
+    value::{PairType, Type},
     TypeId,
 };
 

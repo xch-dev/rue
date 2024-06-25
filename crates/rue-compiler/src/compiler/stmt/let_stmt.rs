@@ -1,11 +1,6 @@
 use rue_parser::{AstNode, LetStmt};
 
-use crate::{
-    compiler::Compiler,
-    scope::Scope,
-    symbol::{Let, Symbol},
-    ScopeId,
-};
+use crate::{compiler::Compiler, scope::Scope, symbol::Symbol, ScopeId};
 
 impl Compiler<'_> {
     /// Compiles a let statement and returns its new scope id.
@@ -18,7 +13,7 @@ impl Compiler<'_> {
         let expected_type = let_stmt.ty().map(|ty| self.compile_type(ty));
 
         // Compile the expression.
-        let value = let_stmt
+        let mut value = let_stmt
             .expr()
             .map(|expr| self.compile_expr(&expr, expected_type))
             .unwrap_or(self.unknown());
@@ -35,10 +30,11 @@ impl Compiler<'_> {
             return None;
         };
 
-        *self.db.symbol_mut(symbol_id) = Symbol::Let(Let {
-            type_id: expected_type.unwrap_or(value.type_id),
-            hir_id: value.hir_id,
-        });
+        if let Some(expected_type) = expected_type {
+            value.type_id = expected_type;
+        }
+
+        *self.db.symbol_mut(symbol_id) = Symbol::Let(value);
 
         // Every let binding is a new scope for now, to ensure references are resolved in the proper order.
         let mut let_scope = Scope::default();

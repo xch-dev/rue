@@ -4,8 +4,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     hir::Hir,
-    symbol::{Const, Let, Module, Symbol},
-    ty::{FunctionType, Rest},
+    symbol::{Module, Symbol},
+    value::{FunctionType, Rest, Value},
     Database, EnvironmentId, HirId, ScopeId, SymbolId,
 };
 
@@ -126,9 +126,9 @@ impl<'a> GraphTraversal<'a> {
             Symbol::Function(fun) | Symbol::InlineFunction(fun) => {
                 self.visit_hir(fun.scope_id, fun.hir_id, visited);
             }
-            Symbol::Let(Let { hir_id, .. })
-            | Symbol::Const(Const { hir_id, .. })
-            | Symbol::InlineConst(Const { hir_id, .. }) => {
+            Symbol::Let(Value { hir_id, .. })
+            | Symbol::Const(Value { hir_id, .. })
+            | Symbol::InlineConst(Value { hir_id, .. }) => {
                 self.visit_hir(scope_id, hir_id, visited);
             }
         }
@@ -247,9 +247,9 @@ impl<'a> GraphTraversal<'a> {
             }
 
             // TODO: Should these be visited in a different scope if they aren't inline?
-            Symbol::Let(Let { hir_id, .. })
-            | Symbol::Const(Const { hir_id, .. })
-            | Symbol::InlineConst(Const { hir_id, .. }) => {
+            Symbol::Let(Value { hir_id, .. })
+            | Symbol::Const(Value { hir_id, .. })
+            | Symbol::InlineConst(Value { hir_id, .. }) => {
                 self.visit_hir(scope_id, hir_id, visited);
             }
 
@@ -368,9 +368,9 @@ impl<'a> GraphTraversal<'a> {
                         self.compute_function_edges(fun.scope_id, fun.hir_id, &fun.ty, visited);
                     }
                     Symbol::Parameter { .. } => {}
-                    Symbol::Let(Let { hir_id, .. })
-                    | Symbol::Const(Const { hir_id, .. })
-                    | Symbol::InlineConst(Const { hir_id, .. }) => {
+                    Symbol::Let(Value { hir_id, .. })
+                    | Symbol::Const(Value { hir_id, .. })
+                    | Symbol::InlineConst(Value { hir_id, .. }) => {
                         self.compute_hir_edges(scope_id, hir_id, visited);
                     }
                 }

@@ -7,7 +7,7 @@ use rue_parser::{AstNode, InitializerExpr, InitializerField};
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    ty::{Type, Value},
+    value::{Type, Value},
     ErrorKind, HirId, TypeId,
 };
 

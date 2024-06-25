@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ty::{EnumType, EnumVariantType, FunctionType, PairType, StructType, Type},
+    value::{EnumType, EnumVariantType, FunctionType, PairType, StructType, Type},
     Comparison, Database, TypeId,
 };
 
@@ -497,7 +497,7 @@ mod tests {
 
     use crate::{
         compiler::{builtins, Builtins},
-        ty::{EnumType, EnumVariantType, FunctionType, PairType, Rest, StructType},
+        value::{EnumType, EnumVariantType, FunctionType, PairType, Rest, StructType},
     };
 
     use super::*;

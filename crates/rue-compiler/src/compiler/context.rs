@@ -9,7 +9,7 @@ use crate::{
     optimizer::{DependencyGraph, Optimizer},
     scope::Scope,
     symbol::{Module, Symbol},
-    ty::Type,
+    value::Type,
     Database, SymbolId,
 };
 

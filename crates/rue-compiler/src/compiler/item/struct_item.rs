@@ -3,7 +3,7 @@ use rue_parser::{StructField, StructItem};
 
 use crate::{
     compiler::Compiler,
-    ty::{StructType, Type},
+    value::{StructType, Type},
     TypeId,
 };
 

@@ -4,8 +4,8 @@ use crate::{
     database::{Database, HirId, LirId, SymbolId},
     hir::{BinOp, Hir},
     lir::Lir,
-    symbol::{Const, Function, Symbol},
-    ty::{FunctionType, Rest},
+    symbol::{Function, Symbol},
+    value::{FunctionType, Rest, Value},
     EnvironmentId, ScopeId,
 };
 
@@ -102,7 +102,7 @@ impl<'a> Optimizer<'a> {
 
                 self.db.alloc_lir(Lir::FunctionBody(body))
             }
-            Symbol::Const(Const { hir_id, .. }) => self.opt_hir(env_id, hir_id),
+            Symbol::Const(Value { hir_id, .. }) => self.opt_hir(env_id, hir_id),
             Symbol::Let(symbol) if self.graph.symbol_usages(symbol_id) > 0 => {
                 self.opt_hir(env_id, symbol.hir_id)
             }
@@ -298,7 +298,7 @@ impl<'a> Optimizer<'a> {
                 self.db.alloc_lir(Lir::Closure(body, captures))
             }
             Symbol::InlineFunction(..) => self.db.alloc_lir(Lir::Atom(vec![])),
-            Symbol::InlineConst(Const { hir_id, .. }) => self.opt_hir(env_id, hir_id),
+            Symbol::InlineConst(Value { hir_id, .. }) => self.opt_hir(env_id, hir_id),
             Symbol::Let(symbol) if self.graph.symbol_usages(symbol_id) == 1 => {
                 self.opt_hir(env_id, symbol.hir_id)
             }

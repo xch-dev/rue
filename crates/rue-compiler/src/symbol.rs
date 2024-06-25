@@ -2,7 +2,7 @@ use indexmap::IndexSet;
 
 use crate::{
     database::{HirId, ScopeId, TypeId},
-    ty::FunctionType,
+    value::{FunctionType, Value},
     SymbolId,
 };
 
@@ -12,9 +12,9 @@ pub enum Symbol {
     Function(Function),
     InlineFunction(Function),
     Parameter(TypeId),
-    Let(Let),
-    Const(Const),
-    InlineConst(Const),
+    Let(Value),
+    Const(Value),
+    InlineConst(Value),
     Module(Module),
 }
 
@@ -43,18 +43,6 @@ pub struct Function {
     pub scope_id: ScopeId,
     pub hir_id: HirId,
     pub ty: FunctionType,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Let {
-    pub type_id: TypeId,
-    pub hir_id: HirId,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Const {
-    pub type_id: TypeId,
-    pub hir_id: HirId,
 }
 
 #[derive(Debug, Clone)]

@@ -3,7 +3,7 @@ use rue_parser::{AstNode, PairExpr};
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    ty::{PairType, Type, Value},
+    value::{PairType, Type, Value},
     TypeId,
 };
 

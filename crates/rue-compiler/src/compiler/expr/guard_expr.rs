@@ -4,7 +4,7 @@ use rue_parser::{AstNode, GuardExpr};
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir},
-    ty::{Guard, PairType, Type, Value},
+    value::{Guard, PairType, Type, Value},
     Comparison, ErrorKind, HirId, TypeId, WarningKind,
 };
 

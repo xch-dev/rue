@@ -1,6 +1,6 @@
 use rue_parser::{AstNode, OptionalType};
 
-use crate::{compiler::Compiler, ty::Type, TypeId, WarningKind};
+use crate::{compiler::Compiler, value::Type, TypeId, WarningKind};
 
 impl Compiler<'_> {
     pub fn compile_optional_type(&mut self, optional: &OptionalType) -> TypeId {

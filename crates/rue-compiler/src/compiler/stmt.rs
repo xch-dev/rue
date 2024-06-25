@@ -1,4 +1,4 @@
-use crate::{ty::Value, HirId, ScopeId};
+use crate::{value::Value, HirId, ScopeId};
 
 mod if_stmt;
 mod let_stmt;

@@ -1,6 +1,6 @@
 use rue_parser::{AstNode, TypeAliasItem};
 
-use crate::{compiler::Compiler, ty::Type, TypeId};
+use crate::{compiler::Compiler, value::Type, TypeId};
 
 impl Compiler<'_> {
     /// Define a type for an alias in the current scope, but leave it as unknown for now.

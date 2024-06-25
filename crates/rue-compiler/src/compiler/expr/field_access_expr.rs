@@ -3,7 +3,7 @@ use rue_parser::FieldAccessExpr;
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    ty::{Guard, PairType, Type, Value},
+    value::{Guard, PairType, Type, Value},
     ErrorKind,
 };
 

@@ -8,7 +8,7 @@ use rue_parser::EnumItem;
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    ty::{EnumType, EnumVariantType, Type},
+    value::{EnumType, EnumVariantType, Type},
     ErrorKind, TypeId,
 };
 

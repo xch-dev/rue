@@ -11,7 +11,7 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::Hir,
     scope::Scope,
-    ty::{PairType, Type, Value},
+    value::{PairType, Type, Value},
     ErrorKind,
 };
 

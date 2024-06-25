@@ -4,7 +4,7 @@ use rue_parser::{AstNode, BinaryExpr, BinaryOp, Expr};
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir},
-    ty::{Guard, Value},
+    value::{Guard, Value},
     ErrorKind, HirId, TypeId,
 };
 
