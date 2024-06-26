@@ -139,11 +139,14 @@ output = "42"
 hash = "837525fb91b88dbf02d9ef5a0b322f6943f93424b6e8fe6d26dd1be6d3311871"
 
 [type_guards]
-bytes = 63
-cost = 1332
-input = "()"
-output = "5"
-hash = "32ed6e4964102d7093ef350019dfd14c99a3ea9feac1f3502194384b8976f7c1"
+parser_errors = []
+compiler_errors = [
+    "unused function `bytes_guard` at 15:5",
+    "unused function `bytes32_guard` at 23:5",
+    "unused function `public_key_guard` at 33:5",
+    "unused function `inverted_guard` at 43:5",
+    "unused function `pair_guard` at 51:5",
+]
 
 [if_stmt]
 bytes = 107
@@ -374,3 +377,68 @@ compiler_errors = [
     "unused enum variant `Unit` at 3:5",
     "unused enum `Enum` at 1:6",
 ]
+
+[royalty_split]
+bytes = 433
+cost = 20323
+input = "(((0x42840c6aebec47ce2e01629ce381b461c19695264281a7b1aab5d4ff54506775 1) (0x917b0e1ee2c8ad5755e1f97c4642ea653288acf816eee1b0d537dd8e01106711 2)) 3 100000)"
+output = "((60 36) (73 0x0186a0) (g1_negate 0x42840c6aebec47ce2e01629ce381b461c19695264281a7b1aab5d4ff54506775 0x008235 (0x42840c6aebec47ce2e01629ce381b461c19695264281a7b1aab5d4ff54506775)) (g1_negate 0x917b0e1ee2c8ad5755e1f97c4642ea653288acf816eee1b0d537dd8e01106711 0x01046a (0x917b0e1ee2c8ad5755e1f97c4642ea653288acf816eee1b0d537dd8e01106711)))"
+hash = "83edaa46ef48ec8bbc8be46b4dd0485ee870fed36f7e51fad3f714cda94bd14c"
+
+[list_types]
+parser_errors = []
+compiler_errors = [
+    "unused let binding `empty` at 2:9",
+    "unused let binding `empty_hinted` at 3:9",
+]
+
+[pair_types]
+bytes = 57
+cost = 3035
+input = "()"
+output = "80"
+hash = "91cecc8bd72dfaf559214ff324f9df7f45c652a96b8f5ae5e3b7fae0dd851014"
+
+[nested_scopes]
+bytes = 421
+cost = 0
+input = "()"
+output = "()"
+hash = "8d496dc7cdbc417db2132eda6894b29a91511f176e93a1ea943d210cd27822b2"
+error = "()"
+
+[birecursive_functions]
+bytes = 195
+cost = 12822
+input = "()"
+output = "()"
+hash = "770bb2c0b2582924adf403e62374f8424a2ed510eef70b5f450eccab238a4911"
+
+[implicit_return_if_stmt]
+parser_errors = []
+compiler_errors = [
+    "implicit return is not allowed in if statements, use an explicit return statement at 2:19",
+    "block missing return value at 10:19",
+    "implicit return is not allowed in if statements, use an explicit return statement at 10:19",
+    "block missing return value at 9:22",
+    "block missing return value at 16:19",
+    "implicit return is not allowed in if statements, use an explicit return statement at 16:19",
+    "unused function `another` at 9:5",
+    "unused function `yet_another` at 15:5",
+    "unused function `raise_ok` at 24:5",
+]
+
+[recursive_type_alias]
+parser_errors = []
+compiler_errors = [
+    "type aliases cannot reference themselves at 4:1",
+    "type aliases cannot reference themselves at 7:1",
+    "unused type alias `E` at 6:6",
+]
+
+[and_guard]
+bytes = 63
+cost = 1332
+input = "()"
+output = "5"
+hash = "32ed6e4964102d7093ef350019dfd14c99a3ea9feac1f3502194384b8976f7c1"
