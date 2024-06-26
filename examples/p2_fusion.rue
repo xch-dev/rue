@@ -1,0 +1,64 @@
+// This puzzle has not been audited or tested, and is for example purposes only.
+
+// Also known as a "singleton struct".
+struct SingletonInfo {
+    mod_hash: Bytes32,
+    launcher_id: Bytes32,
+    ...launcher_puzzle_hash: Bytes32,
+}
+
+// Calculate the full puzzle hash for a singleton.
+inline fun singleton_puzzle_hash(singleton_info: SingletonInfo, inner_puzzle_hash: Bytes32) -> Bytes32 {
+    curry_tree_hash(singleton_info.mod_hash, tree_hash(singleton_info), inner_puzzle_hash)
+}
+
+fun main(
+    fusion_singleton: SingletonInfo,
+    fusion_inner_puzzle_hash: Bytes32,
+    fusion_coin_id: Bytes32,
+    my_launcher_id: Bytes32,
+    my_inner_puzzle_hash: Bytes32,
+    my_amount: Int,
+    p2_puzzle_hash: Bytes32,
+) -> Condition[] {
+    // The NFT singleton has the same mod hash and launcher puzzle hash as the fusion singleton.
+    let nft_singleton = SingletonInfo {
+        mod_hash: fusion_singleton.mod_hash,
+        launcher_id: my_launcher_id,
+        launcher_puzzle_hash: fusion_singleton.launcher_puzzle_hash,
+    };
+
+    // Calculate the full puzzle hashes for the NFT and fusion singletons.
+    let fusion_puzzle_hash = singleton_puzzle_hash(fusion_singleton, fusion_inner_puzzle_hash);
+    let nft_puzzle_hash = singleton_puzzle_hash(nft_singleton, my_inner_puzzle_hash);
+
+    // Calculate the announcement message.
+    let announcement_message = sha256(fusion_coin_id + my_launcher_id + p2_puzzle_hash);
+
+    [
+        // Make sure that the amount in the solution is correct.
+        Condition::AssertMyAmount { amount: my_amount },
+
+        // Prove supplied NFT coin matches the expected derived puzzle hash.
+        Condition::AssertMyPuzzleHash { puzzle_hash: nft_puzzle_hash },
+
+
+        // Assert that the fusion singleton announced this NFT spend.
+        Condition::AssertPuzzleAnnouncement {
+            announcement_id: sha256(fusion_puzzle_hash + announcement_message),
+        },
+
+        // Unlock the NFT to the new p2 puzzle hash, with a hint.
+        Condition::CreateCoin {
+            puzzle_hash: p2_puzzle_hash,
+            amount: my_amount,
+            memos: [p2_puzzle_hash],
+        },
+
+        // Announce that a specific singleton is being spent to
+        // help prevent ephemeral singleton spends from influencing.
+        Condition::CreateCoinAnnouncement {
+            message: announcement_message,
+        }
+    ]
+}
