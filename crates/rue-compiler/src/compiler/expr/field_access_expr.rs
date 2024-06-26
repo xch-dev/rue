@@ -44,10 +44,7 @@ impl Compiler<'_> {
                     .extend_guard_path(old_value, GuardPathItem::Field(field_name.to_string()))
                 } else {
                     self.db.error(
-                        ErrorKind::UndefinedField {
-                            field: field_name.to_string(),
-                            ty: self.type_name(old_value.type_id),
-                        },
+                        ErrorKind::UnknownField(field_name.to_string()),
                         field_name.text_range(),
                     );
                     return self.unknown();
@@ -74,10 +71,7 @@ impl Compiler<'_> {
                     .extend_guard_path(old_value, GuardPathItem::Field(field_name.to_string()))
                 } else {
                     self.db.error(
-                        ErrorKind::UndefinedField {
-                            field: field_name.to_string(),
-                            ty: self.type_name(old_value.type_id),
-                        },
+                        ErrorKind::UnknownField(field_name.to_string()),
                         field_name.text_range(),
                     );
                     return self.unknown();
@@ -94,10 +88,10 @@ impl Compiler<'_> {
                 }
                 _ => {
                     self.db.error(
-                        ErrorKind::InvalidFieldAccess {
-                            field: field_name.to_string(),
-                            ty: self.type_name(old_value.type_id),
-                        },
+                        ErrorKind::InvalidFieldAccess(
+                            field_name.to_string(),
+                            self.type_name(old_value.type_id),
+                        ),
                         field_name.text_range(),
                     );
                     return self.unknown();
@@ -122,10 +116,10 @@ impl Compiler<'_> {
             }
             _ => {
                 self.db.error(
-                    ErrorKind::InvalidFieldAccess {
-                        field: field_name.to_string(),
-                        ty: self.type_name(old_value.type_id),
-                    },
+                    ErrorKind::InvalidFieldAccess(
+                        field_name.to_string(),
+                        self.type_name(old_value.type_id),
+                    ),
                     field_name.text_range(),
                 );
                 return self.unknown();

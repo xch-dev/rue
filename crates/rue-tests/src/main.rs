@@ -85,7 +85,7 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
             let LineCol { line, col } = line_col(source, error.span().start);
             let line = line + 1;
             let col = col + 1;
-            format!("{} at {line}:{col}", error.kind())
+            format!("Error: {} ({line}:{col})", error.kind())
         })
         .collect();
 
@@ -97,8 +97,8 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
             let line = line + 1;
             let col = col + 1;
             match error.kind() {
-                DiagnosticKind::Error(kind) => format!("{kind} at {line}:{col}"),
-                DiagnosticKind::Warning(kind) => format!("{kind} at {line}:{col}"),
+                DiagnosticKind::Error(kind) => format!("Error: {kind} ({line}:{col})"),
+                DiagnosticKind::Warning(kind) => format!("Error: {kind} ({line}:{col})"),
             }
         })
         .collect();

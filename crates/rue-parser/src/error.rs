@@ -32,16 +32,16 @@ pub enum ParserErrorKind {
         found: SyntaxKind,
     },
 
-    #[error("unknown token `{0}`")]
+    #[error("Unknown token `{0}`.")]
     UnknownToken(String),
 
-    #[error("unterminated string")]
+    #[error("Unterminated string literal.")]
     UnterminatedString,
 
-    #[error("unterminated block comment")]
+    #[error("Unterminated block comment.")]
     UnterminatedBlockComment,
 
-    #[error("missing digits in hex literal")]
+    #[error("Missing digits in hex literal.")]
     MissingHexDigits,
 }
 

@@ -31,7 +31,7 @@ impl Compiler<'_> {
         // Compile the rest expression, if present.
         // It's a parser error if not, so it's fine to return unknown.
         let rest = pair
-            .first()
+            .rest()
             .map(|expr| {
                 let value = self.compile_expr(&expr, rest);
                 self.type_check(

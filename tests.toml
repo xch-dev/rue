@@ -141,11 +141,11 @@ hash = "837525fb91b88dbf02d9ef5a0b322f6943f93424b6e8fe6d26dd1be6d3311871"
 [type_guards]
 parser_errors = []
 compiler_errors = [
-    "unused function `bytes_guard` at 15:5",
-    "unused function `bytes32_guard` at 23:5",
-    "unused function `public_key_guard` at 33:5",
-    "unused function `inverted_guard` at 43:5",
-    "unused function `pair_guard` at 51:5",
+    "Error: Unused function `bytes_guard`. (15:5)",
+    "Error: Unused function `bytes32_guard`. (23:5)",
+    "Error: Unused function `public_key_guard`. (33:5)",
+    "Error: Unused function `inverted_guard`. (43:5)",
+    "Error: Unused function `pair_guard`. (51:5)",
 ]
 
 [if_stmt]
@@ -201,9 +201,9 @@ hash = "291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8"
 [invalid_references]
 parser_errors = []
 compiler_errors = [
-    "inline functions cannot be referenced without being called at 2:22",
-    "unused inline function `some` at 6:12",
-    "unused let binding `inline_fun` at 2:9",
+    "Error: Cannot reference inline function `some`, since it is not a value. Inline functions must be resolved at compile time. Try calling the function instead. (2:22)",
+    "Error: Unused inline function `some`. (6:12)",
+    "Error: Unused let binding `inline_fun`. (2:9)",
 ]
 
 [p2_conditions]
@@ -242,42 +242,42 @@ output = "42"
 hash = "ce97d04b4f84066533255fcc56345626c245afd50e24c6c14c52c8e78e8b9f33"
 
 [pair_expr]
-parser_errors = []
-compiler_errors = [
-    "expected type `Bytes`, but found `Int` at 2:31",
-    "expected type `(Int, Bytes)`, but found `(Int, Int)` at 2:5",
-]
+bytes = 38
+cost = 1588
+input = "()"
+output = "72"
+hash = "945e2133d0b2424b4811f3b292b98a94a339588457b014d34fcd29be27f49410"
 
 [duplicate_variants]
 parser_errors = []
 compiler_errors = [
-    "duplicate enum variant `SameName` at 3:5",
-    "duplicate enum discriminant `1` at 4:29",
-    "unused enum variant `SameName` at 2:5",
-    "unused enum variant `DuplicateDiscriminant` at 4:5",
+    "Error: Duplicate enum variant `SameName` specified. (3:5)",
+    "Error: Duplicate enum discriminant `1` specified. (4:29)",
+    "Error: Unused enum variant `SameName`. (2:5)",
+    "Error: Unused enum variant `DuplicateDiscriminant`. (4:5)",
 ]
 
 [unused_symbols]
 parser_errors = []
 compiler_errors = [
-    "unused inline constant `UNUSED_INDIRECT_CONSTANT` at 1:14",
-    "unused inline constant `UNUSED_CONSTANT` at 2:14",
-    "unused function `unused_indirect_function` at 21:5",
-    "unused function `unused_function` at 25:5",
-    "unused inline constant `UNUSED_INNER_CONSTANT` at 6:18",
-    "unused function `unused_inner_function` at 8:9",
-    "unused let binding `unused_let` at 5:9",
+    "Error: Unused inline constant `UNUSED_INDIRECT_CONSTANT`. (1:14)",
+    "Error: Unused inline constant `UNUSED_CONSTANT`. (2:14)",
+    "Error: Unused function `unused_indirect_function`. (21:5)",
+    "Error: Unused function `unused_function`. (25:5)",
+    "Error: Unused inline constant `UNUSED_INNER_CONSTANT`. (6:18)",
+    "Error: Unused function `unused_inner_function`. (8:9)",
+    "Error: Unused let binding `unused_let`. (5:9)",
 ]
 
 [unused_types]
 parser_errors = []
 compiler_errors = [
-    "unused type alias `A` at 2:6",
-    "unused enum variant `A` at 7:5",
-    "unused enum variant `B` at 10:5",
-    "unused enum variant `C` at 14:5",
-    "unused enum `Some` at 6:6",
-    "unused struct `Thing` at 17:8",
+    "Error: Unused type alias `A`. (2:6)",
+    "Error: Unused enum variant `A`. (7:5)",
+    "Error: Unused enum variant `B`. (10:5)",
+    "Error: Unused enum variant `C`. (14:5)",
+    "Error: Unused enum `Some`. (6:6)",
+    "Error: Unused struct `Thing`. (17:8)",
 ]
 
 [not]
@@ -304,47 +304,47 @@ hash = "54de8fd5de2b5e54d4e396d06821f9e3a131f737383fc66900f6a5af4923e498"
 [function_call]
 parser_errors = []
 compiler_errors = [
-    "expected 0 arguments, but found 1 at 3:11",
-    "expected 0 or 1 arguments, but found 2 at 7:11",
-    "the function does not support the spread operator at 8:25",
-    "expected 0 or 1 arguments, but found 2 at 9:11",
-    "the function does not support the spread operator at 9:28",
-    "expected 1 or 2 arguments, but found 0 at 11:11",
-    "expected 1 or 2 arguments, but found 3 at 14:11",
-    "expected 1 or 2 arguments, but found 4 at 15:11",
-    "the function does not support the spread operator at 16:25",
-    "the function does not support the spread operator at 17:28",
-    "expected 1 or 2 arguments, but found 3 at 18:11",
-    "the function does not support the spread operator at 18:31",
-    "expected 1 or 2 arguments, but found 4 at 19:11",
-    "the function does not support the spread operator at 19:34",
-    "the function does not support the spread operator at 20:28",
-    "expected type `Int[]`, but found `Int` at 26:28",
-    "expected type `Int[]`, but found `Int` at 27:31",
-    "expected at least 2 arguments, but found 0 at 31:11",
-    "expected type `Int[]`, but found `Int` at 36:31",
-    "expected 1 argument, but found 0 at 40:11",
-    "the function requires the spread operator on the last argument at 41:27",
-    "expected 1 argument, but found 2 at 42:11",
-    "the function requires the spread operator on the last argument at 42:27",
-    "expected 1 argument, but found 2 at 44:11",
-    "expected type `Int`, but found `Int[]` at 45:27",
-    "expected 1 argument, but found 2 at 46:11",
-    "expected type `Int`, but found `Int[]` at 46:30",
-    "expected 2 arguments, but found 0 at 48:11",
-    "expected 2 arguments, but found 1 at 49:11",
-    "the function requires the spread operator on the last argument at 50:30",
-    "expected 2 arguments, but found 1 at 51:11",
-    "expected 2 arguments, but found 1 at 53:11",
-    "expected type `Int`, but found `Int[]` at 54:30",
+    "Error: Expected 0 arguments, but found 1. (3:11)",
+    "Error: Expected either 0 or 1 arguments, but found 2. (7:11)",
+    "Error: This function does not support the spread operator on its last argument. (8:25)",
+    "Error: Expected either 0 or 1 arguments, but found 2. (9:11)",
+    "Error: This function does not support the spread operator on its last argument. (9:28)",
+    "Error: Expected either 1 or 2 arguments, but found 0. (11:11)",
+    "Error: Expected either 1 or 2 arguments, but found 3. (14:11)",
+    "Error: Expected either 1 or 2 arguments, but found 4. (15:11)",
+    "Error: This function does not support the spread operator on its last argument. (16:25)",
+    "Error: This function does not support the spread operator on its last argument. (17:28)",
+    "Error: Expected either 1 or 2 arguments, but found 3. (18:11)",
+    "Error: This function does not support the spread operator on its last argument. (18:31)",
+    "Error: Expected either 1 or 2 arguments, but found 4. (19:11)",
+    "Error: This function does not support the spread operator on its last argument. (19:34)",
+    "Error: This function does not support the spread operator on its last argument. (20:28)",
+    "Error: Expected type `Int[]`, but found `Int`. (26:28)",
+    "Error: Expected type `Int[]`, but found `Int`. (27:31)",
+    "Error: Expected at least 2 arguments, but found 0. (31:11)",
+    "Error: Expected type `Int[]`, but found `Int`. (36:31)",
+    "Error: Expected 1 argument, but found 0. (40:11)",
+    "Error: This function requires the spread operator on its last argument. (41:27)",
+    "Error: Expected 1 argument, but found 2. (42:11)",
+    "Error: This function requires the spread operator on its last argument. (42:27)",
+    "Error: Expected 1 argument, but found 2. (44:11)",
+    "Error: Expected type `Int`, but found `Int[]`. (45:27)",
+    "Error: Expected 1 argument, but found 2. (46:11)",
+    "Error: Expected type `Int`, but found `Int[]`. (46:30)",
+    "Error: Expected 2 arguments, but found 0. (48:11)",
+    "Error: Expected 2 arguments, but found 1. (49:11)",
+    "Error: This function requires the spread operator on its last argument. (50:30)",
+    "Error: Expected 2 arguments, but found 1. (51:11)",
+    "Error: Expected 2 arguments, but found 1. (53:11)",
+    "Error: Expected type `Int`, but found `Int[]`. (54:30)",
 ]
 
 [field_guards]
-bytes = 161
-cost = 2133
+bytes = 153
+cost = 1943
 input = "()"
 output = "()"
-hash = "3878fc2ed6b703c7c3d00f9f5d8f170ec252ca439be6e5b5b516e1dce1adc0d7"
+hash = "42d769a7d2365e83a02528d601e7ee728325cf2c2f89ea012e9190e63c26638a"
 
 [bound_guards]
 bytes = 43
@@ -371,11 +371,11 @@ error = "()"
 [unit_variant]
 parser_errors = []
 compiler_errors = [
-    "unused let binding `non_unit` at 7:9",
-    "unused let binding `unit` at 8:9",
-    "unused enum variant `NonUnit` at 2:5",
-    "unused enum variant `Unit` at 3:5",
-    "unused enum `Enum` at 1:6",
+    "Error: Unused let binding `non_unit`. (7:9)",
+    "Error: Unused let binding `unit`. (8:9)",
+    "Error: Unused enum variant `NonUnit`. (2:5)",
+    "Error: Unused enum variant `Unit`. (3:5)",
+    "Error: Unused enum `Enum`. (1:6)",
 ]
 
 [royalty_split]
@@ -388,16 +388,16 @@ hash = "83edaa46ef48ec8bbc8be46b4dd0485ee870fed36f7e51fad3f714cda94bd14c"
 [list_types]
 parser_errors = []
 compiler_errors = [
-    "unused let binding `empty` at 2:9",
-    "unused let binding `empty_hinted` at 3:9",
+    "Error: Unused let binding `empty`. (2:9)",
+    "Error: Unused let binding `empty_hinted`. (3:9)",
 ]
 
 [pair_types]
 bytes = 57
 cost = 3035
 input = "()"
-output = "80"
-hash = "91cecc8bd72dfaf559214ff324f9df7f45c652a96b8f5ae5e3b7fae0dd851014"
+output = "88"
+hash = "aba8a83e1a912b2a232cbed31ac0686b717bec369377051d98caf9b5c00a4818"
 
 [nested_scopes]
 bytes = 421
@@ -417,23 +417,23 @@ hash = "770bb2c0b2582924adf403e62374f8424a2ed510eef70b5f450eccab238a4911"
 [implicit_return_if_stmt]
 parser_errors = []
 compiler_errors = [
-    "implicit return is not allowed in if statements, use an explicit return statement at 2:19",
-    "block missing return value at 10:19",
-    "implicit return is not allowed in if statements, use an explicit return statement at 10:19",
-    "block missing return value at 9:22",
-    "block missing return value at 16:19",
-    "implicit return is not allowed in if statements, use an explicit return statement at 16:19",
-    "unused function `another` at 9:5",
-    "unused function `yet_another` at 15:5",
-    "unused function `raise_ok` at 24:5",
+    "Error: Implicit returns are not allowed in if statements. Either use an explicit return statement at the end of the block, or raise an error. (2:19)",
+    "Error: Blocks must either return an expression or raise an error. (10:19)",
+    "Error: Implicit returns are not allowed in if statements. Either use an explicit return statement at the end of the block, or raise an error. (10:19)",
+    "Error: Blocks must either return an expression or raise an error. (9:22)",
+    "Error: Blocks must either return an expression or raise an error. (16:19)",
+    "Error: Implicit returns are not allowed in if statements. Either use an explicit return statement at the end of the block, or raise an error. (16:19)",
+    "Error: Unused function `another`. (9:5)",
+    "Error: Unused function `yet_another`. (15:5)",
+    "Error: Unused function `raise_ok`. (24:5)",
 ]
 
 [recursive_type_alias]
 parser_errors = []
 compiler_errors = [
-    "type aliases cannot reference themselves at 4:1",
-    "type aliases cannot reference themselves at 7:1",
-    "unused type alias `E` at 6:6",
+    "Error: Cycle detected when resolving type alias `D`. Type aliases cannot reference themselves. (4:6)",
+    "Error: Cycle detected when resolving type alias `F`. Type aliases cannot reference themselves. (7:6)",
+    "Error: Unused type alias `E`. (6:6)",
 ]
 
 [and_guard]

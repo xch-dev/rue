@@ -622,7 +622,7 @@ dependencies = [
  "encoding8",
  "getrandom",
  "hex",
- "indoc",
+ "indoc 1.0.9",
  "js-sys",
  "lazy_static",
  "linked-hash-map",
@@ -1705,6 +1705,12 @@ name = "indoc"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa799dd5ed20a7e349f3b4639aa80d74549c81716d9ec4f994c9b5815598306"
+
+[[package]]
+name = "indoc"
+version = "2.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b248f5224d1d606005e02c97f5aa4e88eeb230488bcc03bc9ca4d7991399f2b5"
 
 [[package]]
 name = "instant"
@@ -2823,13 +2829,13 @@ dependencies = [
  "hex",
  "id-arena",
  "indexmap",
+ "indoc 2.0.5",
  "log",
  "num-bigint",
  "num-iter",
  "num-traits",
  "rowan",
  "rue-parser",
- "thiserror",
 ]
 
 [[package]]

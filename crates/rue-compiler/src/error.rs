@@ -1,6 +1,6 @@
-use std::ops::Range;
+use std::{fmt, ops::Range};
 
-use thiserror::Error;
+use indoc::formatdoc;
 
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
@@ -36,211 +36,273 @@ pub enum DiagnosticKind {
     Error(ErrorKind),
 }
 
-#[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WarningKind {
-    #[error("unused function `{0}`")]
     UnusedFunction(String),
-
-    #[error("unused inline function `{0}`")]
     UnusedInlineFunction(String),
-
-    #[error("unused parameter `{0}`")]
     UnusedParameter(String),
-
-    #[error("unused constant `{0}`")]
     UnusedConst(String),
-
-    #[error("unused inline constant `{0}`")]
     UnusedInlineConst(String),
-
-    #[error("unused let binding `{0}`")]
     UnusedLet(String),
-
-    #[error("unused generic type `{0}`")]
     UnusedGenericType(String),
-
-    #[error("unused enum `{0}`")]
     UnusedEnum(String),
-
-    #[error("unused enum variant `{0}`")]
     UnusedEnumVariant(String),
-
-    #[error("unused struct `{0}`")]
     UnusedStruct(String),
-
-    #[error("unused type alias `{0}`")]
     UnusedTypeAlias(String),
-
-    #[error("type is already optional")]
-    RedundantOptional,
-
-    #[error("value already has type `{0}`")]
+    RedundantOptionalType(String),
     RedundantTypeCheck(String),
 }
 
-#[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
+impl fmt::Display for WarningKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::UnusedFunction(name) => format!("Unused function `{name}`."),
+            Self::UnusedInlineFunction(name) => format!("Unused inline function `{name}`."),
+            Self::UnusedParameter(name) => format!("Unused parameter `{name}`."),
+            Self::UnusedConst(name) => format!("Unused constant `{name}`."),
+            Self::UnusedInlineConst(name) => format!("Unused inline constant `{name}`."),
+            Self::UnusedLet(name) => format!("Unused let binding `{name}`."),
+            Self::UnusedGenericType(name) => format!("Unused generic type `{name}`."),
+            Self::UnusedEnum(name) => format!("Unused enum `{name}`."),
+            Self::UnusedEnumVariant(name) => format!("Unused enum variant `{name}`."),
+            Self::UnusedStruct(name) => format!("Unused struct `{name}`."),
+            Self::UnusedTypeAlias(name) => format!("Unused type alias `{name}`."),
+            Self::RedundantOptionalType(ty) => {
+                format!("This has no effect, since `{ty}` is already an optional type.")
+            }
+            Self::RedundantTypeCheck(ty) => format!(
+                "It's redundant to guard against `{ty}`, since the value already has that type."
+            ),
+        };
+        write!(f, "{}", message.trim())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ErrorKind {
-    #[error("type with namespace `{0}` is already defined")]
-    NamespaceTakenType(String),
-
-    #[error("symbol with namespace `{0}` is already defined")]
-    NamespaceTakenSymbol(String),
-
-    #[error("type `{0}` is already defined")]
+    // Duplicate definitions.
     DuplicateType(String),
-
-    #[error("symbol `{0}` is already defined")]
     DuplicateSymbol(String),
+    ModuleNameTakenByEnum(String),
+    EnumNameTakenByModule(String),
 
-    #[error("unknown symbol `{0}`")]
+    // Invalid symbol references.
     UnknownSymbol(String),
-
-    #[error("unknown type `{0}`")]
     UnknownType(String),
+    InlineFunctionReference(String),
+    ModuleReference(String),
 
-    #[error("inline functions cannot be referenced without being called")]
-    InlineFunctionReference,
+    // Types.
+    RecursiveTypeAlias(String),
+    TypeMismatch(String, String),
+    CastMismatch(String, String),
 
-    #[error("modules cannot be referenced, since they are not values")]
-    ModuleReference,
-
-    #[error("type aliases cannot reference themselves")]
-    RecursiveTypeAlias,
-
-    #[error("expected type `{expected}`, but found `{found}`")]
-    TypeMismatch { expected: String, found: String },
-
-    #[error("cannot cast type `{found}` to `{expected}`")]
-    CastMismatch { expected: String, found: String },
-
-    #[error("cannot call expression with type `{0}`")]
+    // Function calls.
     UncallableType(String),
+    ArgumentMismatch(usize, usize),
+    ArgumentMismatchSpread(usize, usize),
+    ArgumentMismatchOptional(usize, usize),
 
-    #[error(
-        "expected {expected} argument{}, but found {found}",
-        if *expected == 1 { "" } else { "s" }
-    )]
-    ArgumentMismatch { expected: usize, found: usize },
-
-    #[error(
-        "expected at least {expected} argument{}, but found {found}",
-        if *expected == 1 { "" } else { "s" }
-    )]
-    ArgumentMismatchSpread { expected: usize, found: usize },
-
-    #[error("expected {} or {expected} arguments, but found {found}", expected - 1)]
-    ArgumentMismatchOptional { expected: usize, found: usize },
-
-    #[error("uninitializable type `{0}`")]
+    // Field initialization.
     UninitializableType(String),
+    InvalidEnumVariantInitializer(String),
+    InvalidEnumVariantReference(String),
+    DuplicateInitializerField(String),
+    UnknownInitializerField(String),
+    MissingInitializerFields(Vec<String>),
 
-    #[error("duplicate field `{0}`")]
-    DuplicateField(String),
+    // Field access.
+    UnknownField(String),
+    InvalidFieldAccess(String, String),
+    InvalidIndexAccess(String),
 
-    #[error("undefined field `{field}` on type `{ty}`")]
-    UndefinedField { field: String, ty: String },
-
-    #[error("missing fields on type `{ty}`: {}", join_names(.fields))]
-    MissingFields { fields: Vec<String>, ty: String },
-
-    #[error("cannot access field `{field}` of non-struct type `{ty}`")]
-    InvalidFieldAccess { field: String, ty: String },
-
-    #[error("cannot index into non-list type `{0}`")]
-    IndexAccess(String),
-
-    #[error("the spread operator can only be used on the last list item")]
+    // Spread and optional.
     InvalidSpreadItem,
-
-    #[error("the spread operator can only be used on the last argument")]
     InvalidSpreadArgument,
-
-    #[error("the spread operator can only be used on the last parameter")]
     InvalidSpreadParameter,
-
-    #[error("the spread operator can only be used on the last field")]
     InvalidSpreadField,
-
-    #[error("optional can only be used on the last parameter")]
     InvalidOptionalParameter,
-
-    #[error("optional can only be used on the last field")]
     InvalidOptionalField,
-
-    #[error("the spread operator cannot be used on optional parameters")]
     OptionalParameterSpread,
-
-    #[error("the spread operator cannot be used on optional fields")]
     OptionalFieldSpread,
+    UnsupportedFunctionSpread,
+    RequiredFunctionSpread,
 
-    #[error("the function does not support the spread operator")]
-    DisallowedSpread,
-
-    #[error("the function requires the spread operator on the last argument")]
-    RequiredSpread,
-
-    #[error("duplicate enum variant `{0}`")]
+    // Enum variant definitions.
     DuplicateEnumVariant(String),
-
-    #[error("duplicate enum discriminant `{0}`")]
     DuplicateEnumDiscriminant(String),
-
-    #[error("enum discriminant too large")]
     EnumDiscriminantTooLarge,
-
-    #[error("cannot directly reference enum variants with fields")]
-    EnumVariantWithFields,
-
-    #[error("cannot initialize enum variants without fields")]
-    EnumVariantWithoutFields,
-
-    #[error("unknown enum variant `{0}`")]
-    UnknownEnumVariant(String),
-
-    #[error("could not resolve `{0}` in module")]
+    
+    // Paths.
+    UnknownEnumVariantPath(String),
     UnknownModulePath(String),
-
-    #[error("symbol `{0}` is private")]
     PrivateSymbol(String),
-
-    #[error("type `{0}` is private")]
     PrivateType(String),
-
-    #[error("cannot path into type `{0}`")]
     InvalidTypePath(String),
+    InvalidSymbolPath(Option<String>),
+    ExpectedTypePath(String),
+    ExpectedSymbolPath(String),
 
-    #[error("cannot path into symbol")]
-    InvalidSymbolPath,
-
-    #[error("expected path to type, but found symbol")]
-    ExpectedTypePath,
-
-    #[error("expected path to symbol, but found type")]
-    ExpectedSymbolPath,
-
-    #[error("cannot check type `{from}` against `{to}`")]
-    UnsupportedTypeGuard { from: String, to: String },
-
-    #[error("cannot check `Any` against pair with types other than `Any`")]
+    // Type guards.
+    UnsupportedTypeGuard(String, String),
     NonAnyPairTypeGuard,
-
-    #[error("cannot check list against pair with types other than the list item type and the list itself")]
     NonListPairTypeGuard,
 
-    #[error("implicit return is not allowed in if statements, use an explicit return statement")]
+    // Blocks
     ImplicitReturnInIf,
-
-    #[error("explicit return is not allowed in expressions")]
     ExplicitReturnInExpr,
-
-    #[error("block missing return value")]
     EmptyBlock,
-
-    #[error("cannot check equality on non-atom type `{0}`")]
     NonAtomEquality(String),
-
-    #[error("integer too large to allocate in memory")]
     IntegerTooLarge,
+}
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            // Duplicate definitions.
+            Self::DuplicateType(name) => format!("There is already a type named `{name}` in this scope."),
+            Self::DuplicateSymbol(name) => format!("There is already a symbol named `{name}` in this scope."),
+            Self::ModuleNameTakenByEnum(name) => formatdoc!("
+                There is already an enum type named `{name}` in this scope. \
+                This isn't allowed to prevent ambiguity when referencing items.
+            "),
+            Self::EnumNameTakenByModule(name) => formatdoc!("
+                There is already a module named `{name}` in this scope. \
+                This isn't allowed to prevent ambiguity when referencing items.
+            "),
+
+            // Invalid symbol references.
+            Self::UnknownSymbol(name) => format!("Reference to unknown symbol `{name}`."),
+            Self::UnknownType(name) => format!("Reference to unknown type `{name}`."),
+            Self::InlineFunctionReference(name) => formatdoc!("
+                Cannot reference inline function `{name}`, since it is not a value. \
+                Inline functions must be resolved at compile time. \
+                Try calling the function instead.
+            "),
+            Self::ModuleReference(name) => formatdoc!("
+                Cannot reference module `{name}`, since it is not a value. \
+                Perhaps you meant to use the `::` operator to access a symbol in the module?
+            "),
+            
+            // Types.
+            Self::RecursiveTypeAlias(name) => formatdoc!("
+                Cycle detected when resolving type alias `{name}`. \
+                Type aliases cannot reference themselves.
+            "),
+            Self::TypeMismatch(found, expected) => format!("Expected type `{expected}`, but found `{found}`."),
+            Self::CastMismatch(found, expected) => format!("Cannot cast type `{found}` to `{expected}`."),
+
+            // Function calls.
+            Self::UncallableType(ty) => format!("Expression with type `{ty}` cannot be called, since it is not a function."),
+            Self::ArgumentMismatch(found, expected) => {
+                format!(
+                    "Expected {expected} argument{}, but found {found}.",
+                    if *expected == 1 { "" } else { "s" }
+                )
+            }
+            Self::ArgumentMismatchSpread (found, expected) => {
+                format!(
+                    "Expected at least {expected} argument{}, but found {found}.",
+                    if *expected == 1 { "" } else { "s" }
+                )
+            }
+            Self::ArgumentMismatchOptional (found, expected)=> {
+                format!("Expected either {} or {expected} arguments, but found {found}.", expected - 1)
+            }
+
+            // Field initialization.
+            Self::UninitializableType(ty) => formatdoc!("
+                Cannot initializable type `{ty}`. \
+                Only structs and enum variants with fields can be initialized.
+            "),
+            Self::InvalidEnumVariantReference(name) => formatdoc!("
+                Cannot reference enum variant `{name}`. \
+                Enum variants with fields cannot be referenced directly. \
+                Consider initializing the enum variant instead.
+            "),
+            Self::InvalidEnumVariantInitializer(name) => formatdoc!("
+                Cannot initialize enum variant `{name}`. \
+                Enum variants without fields cannot be initialized. \
+                Consider referencing the enum variant directly.
+            "),
+            Self::DuplicateInitializerField(name) => format!("Duplicate field `{name}` specified in initializer."),
+            Self::UnknownInitializerField(name) => format!("Unknown field `{name}` specified in initializer."),
+            Self::MissingInitializerFields(fields) => format!("Missing fields in initializer: {}.", join_names(fields)),
+
+            // Field access.
+            Self::UnknownField(name) => format!("Cannot reference unknown field `{name}`."),
+            Self::InvalidFieldAccess(field, ty) => format!("Cannot reference field `{field}` of type `{ty}`."),
+            Self::InvalidIndexAccess(ty) => format!("Cannot index into type `{ty}`."),
+
+            // Spread and optional.
+            Self::InvalidSpreadItem => formatdoc!("
+                The spread operator can only be used on the last item in a list. \
+                This is because it requires recursion at runtime to concatenate lists together. \
+                By only allowing it on the last item by default, this additional complexity and runtime cost is avoided.
+            "),
+            Self::InvalidSpreadArgument => formatdoc!("
+                The spread operator can only be used on the last argument in a function call. \
+                This is because it requires recursion at runtime to concatenate lists together. \
+                By only allowing it on the last item by default, this additional complexity and runtime cost is avoided.
+            "),
+            Self::InvalidSpreadParameter => formatdoc!("
+                The spread operator can only be used on the last parameter in a function. \
+                Otherwise, it would be ambiguous where the parameter should start and end.
+            "),
+            Self::InvalidSpreadField => formatdoc!("
+                The spread operator can only be used on the last field. \
+                Otherwise, it would be ambiguous where the field should start and end.
+            "),
+            Self::InvalidOptionalParameter => formatdoc!("
+                Only the last parameter in a function can be optional. \
+                Otherwise, it would be ambiguous which optional parameter was specified.
+            "),
+            Self::InvalidOptionalField => formatdoc!("
+                Only the last field can be optional. \
+                Otherwise, it would be ambiguous which optional field was specified.
+            "),
+            Self::OptionalParameterSpread => "The spread operator cannot be used on optional parameters.".to_string(),
+            Self::OptionalFieldSpread => "The spread operator cannot be used on optional fields.".to_string(),
+            Self::UnsupportedFunctionSpread => "This function does not support the spread operator on its last argument.".to_string(),
+            Self::RequiredFunctionSpread => "This function requires the spread operator on its last argument.".to_string(),
+
+            // Enum variant definitions.
+            Self::DuplicateEnumVariant(name) => format!("Duplicate enum variant `{name}` specified."),
+            Self::DuplicateEnumDiscriminant(discriminant) => format!("Duplicate enum discriminant `{discriminant}` specified."),
+            Self::EnumDiscriminantTooLarge => "Enum discriminant is too large to allocate in CLVM.".to_string(),
+            
+            // Paths.
+            Self::UnknownEnumVariantPath(name) => format!("Unknown enum variant `{name}`."),
+            Self::UnknownModulePath(name) => format!("Could not resolve `{name}` in module."),
+            Self::PrivateSymbol(name) => format!("Cannot access private symbol `{name}` in module."),
+            Self::PrivateType(name) => format!("Cannot access private type `{name}` in module."),
+            Self::InvalidTypePath(ty) => format!("Cannot path into type `{ty}`."),
+            Self::InvalidSymbolPath(name) => if let Some(name) = name {
+                format!("Cannot path into symbol `{name}`.")
+            } else {
+                "Cannot path into symbol.".to_string()
+            },
+            Self::ExpectedTypePath(name) => format!("Expected type, but found symbol `{name}` instead."),
+            Self::ExpectedSymbolPath(name) => format!("Expected symbol, but found type `{name}` instead."),
+
+            // Type guards.
+            Self::UnsupportedTypeGuard(from, to) => format!("Cannot check type `{from}` against `{to}`."),
+            Self::NonAnyPairTypeGuard => "Cannot check `Any` against pair types other than `(Any, Any)`.".to_string(),
+            Self::NonListPairTypeGuard => "Cannot check `T[]` against pair types other than `(T, T[])`.".to_string(),
+
+            // Blocks
+            Self::ImplicitReturnInIf => formatdoc!("
+                Implicit returns are not allowed in if statements. \
+                Either use an explicit return statement at the end of the block, \
+                or raise an error.
+            "),
+            Self::ExplicitReturnInExpr => "Explicit return is not allowed within expressions.".to_string(),
+            Self::EmptyBlock => "Blocks must either return an expression or raise an error.".to_string(),
+            Self::NonAtomEquality(ty) => format!("Cannot check equality on non-atom type `{ty}`."),
+            Self::IntegerTooLarge => "Integer literal is too large to allocate in CLVM.".to_string(),
+        };
+        write!(f, "{}", message.trim())
+    }
 }
 
 /// Join a list of names into a string, wrapped in backticks.
