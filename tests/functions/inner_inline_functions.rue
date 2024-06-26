@@ -1,0 +1,45 @@
+const CONST: Int = 43874913874;
+
+fun main() -> Int {
+    outer_1(42) + outer_2(42) + outer_3(42) + outer_4(42) + outer_closure(42)(42)
+}
+
+inline fun outer_closure(num_1: Int) -> fun(num: Int) -> Int {
+    const FACTOR: Int = 2;
+    fun inner(num_2: Int) -> Int {
+        num_1 * num_2 * FACTOR * outer_1(num_1 * num_2) + CONST
+    }
+    inner
+}
+
+inline fun outer_1(num: Int) -> Int {
+    inline const FACTOR: Int = 2;
+    inline fun inner() -> Int {
+        num * FACTOR
+    }
+    inner()
+}
+
+inline fun outer_2(num: Int) -> Int {
+    const FACTOR: Int = 2;
+    inline fun inner() -> Int {
+        num * FACTOR
+    }
+    inner()
+}
+
+inline fun outer_3(num: Int) -> Int {
+    const FACTOR: Int = 2;
+    fun inner() -> Int {
+        num * FACTOR
+    }
+    inner()
+}
+
+inline fun outer_4(num: Int) -> Int {
+    inline const FACTOR: Int = 2;
+    fun inner() -> Int {
+        num * FACTOR
+    }
+    inner()
+}

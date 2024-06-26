@@ -2,7 +2,7 @@ use indexmap::IndexSet;
 
 use crate::{EnvironmentId, SymbolId};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Environment {
     defined_symbols: IndexSet<SymbolId>,
     captured_symbols: IndexSet<SymbolId>,

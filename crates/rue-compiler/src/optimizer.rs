@@ -52,6 +52,12 @@ impl<'a> Optimizer<'a> {
     }
 
     fn opt_path(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
+        for inline_parameter_map in self.inline_parameter_stack.iter().rev() {
+            if let Some(lir_id) = inline_parameter_map.get(&symbol_id) {
+                return *lir_id;
+            }
+        }
+
         let mut current_env_id = env_id;
         let mut environment = self.db.env(env_id).build().clone();
 
@@ -66,7 +72,12 @@ impl<'a> Optimizer<'a> {
         let index = environment
             .iter()
             .position(|&id| id == symbol_id)
-            .unwrap_or_else(|| panic!("symbol not found in environment: {symbol_id:?}"));
+            .unwrap_or_else(|| {
+                panic!(
+                    "Symbol `{}` not found in environment.",
+                    self.db.dbg_symbol(symbol_id)
+                );
+            });
 
         let mut path = 1;
 
@@ -308,13 +319,7 @@ impl<'a> Optimizer<'a> {
             Symbol::Let(symbol) if self.graph.symbol_usages(symbol_id) == 1 => {
                 self.opt_hir(env_id, symbol.hir_id)
             }
-            Symbol::Let(..) | Symbol::Const(..) => self.opt_path(env_id, symbol_id),
-            Symbol::Parameter { .. } => {
-                for inline_parameter_map in self.inline_parameter_stack.iter().rev() {
-                    if let Some(lir_id) = inline_parameter_map.get(&symbol_id) {
-                        return *lir_id;
-                    }
-                }
+            Symbol::Let(..) | Symbol::Const(..) | Symbol::Parameter(..) => {
                 self.opt_path(env_id, symbol_id)
             }
             Symbol::Unknown | Symbol::Module(..) => unreachable!(),
@@ -370,6 +375,20 @@ impl<'a> Optimizer<'a> {
     ) -> LirId {
         let mut inline_parameter_map = HashMap::new();
         let mut args = args;
+
+        let env = self.db.env(function_env_id).clone();
+        for symbol_id in env.definitions() {
+            if self.db.symbol(symbol_id).is_parameter() {
+                continue;
+            }
+            self.db.env_mut(env_id).define(symbol_id);
+        }
+        for symbol_id in env.captures() {
+            if self.db.symbol(symbol_id).is_parameter() {
+                continue;
+            }
+            self.db.env_mut(env_id).capture(symbol_id);
+        }
 
         let param_len = self.db.env(function_env_id).parameters().len();
 
