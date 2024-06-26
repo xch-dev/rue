@@ -1,0 +1,23 @@
+fun main() -> Int {
+    a(5)
+}
+
+fun a(num: Int) -> Int {
+    if num > 0 {
+        b(num - 1)
+    } else {
+        c()
+    }
+}
+
+fun b(num: Int) -> Int {
+    if num > 0 {
+        a(num - 1)
+    } else {
+        0
+    }
+}
+
+fun c() -> Int {
+    52
+}

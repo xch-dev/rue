@@ -1,0 +1,15 @@
+fun main() -> Int {
+    let empty = [];
+    let empty_hinted: Int[] = empty;
+
+    let items = [1, 2, 3];
+    let items_hinted: Int[] = items;
+
+    let spread = [...items];
+    let spread_hinted: Int[] = [...items];
+
+    let prepend = [0, ...items];
+    let prepend_hinted: Int[] = [0, ...items];
+
+    items[0] + items_hinted[1] + spread[2] + spread_hinted[0] + prepend[1] + prepend_hinted[2]
+}

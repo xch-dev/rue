@@ -1,0 +1,11 @@
+type A = B;
+type B = C;
+type C = D;
+type D = A;
+
+type E = F;
+type F = E;
+
+fun main() -> A {
+    true
+}

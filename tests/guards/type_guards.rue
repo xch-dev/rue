@@ -1,8 +1,57 @@
 fun main() -> Int {
-    let a = [1, 2, 3];
-    let b = [4, 5, 6];
+    let items = [1, 2, 3];
+    let bytes = "Hello, world!";
+    sum(...items) + (bytes is Bytes32) as Int
+}
 
-    assume !(a is Nil) && !(b is Nil);
+fun sum(...nums: Int[]) -> Int {
+    if nums is (Int, Int[]) {
+        nums.first + sum(...nums.rest)
+    } else {
+        0
+    }
+}
 
-    a.first + b.first
+fun bytes_guard(value: Any) -> Bool {
+    if value is Bytes {
+        value.length > 1
+    } else {
+        false
+    }
+}
+
+fun bytes32_guard(value: Any) -> Bool {
+    assert value is Bytes;
+    
+    if value is Bytes32 {
+        value.length > 1
+    } else {
+        false
+    }
+}
+
+fun public_key_guard(value: Any) -> Bool {
+    assert value is Bytes;
+    
+    if value is PublicKey {
+        value.length > 1
+    } else {
+        false
+    }
+}
+
+fun inverted_guard(value: Any) -> Bool {
+    if !(value is (Any, Any)) {
+        value.length > 1
+    } else {
+        false
+    }
+}
+
+fun pair_guard(value: Any) -> Int {
+    if value is (Any, Any) {
+        pair_guard(value.first) + pair_guard(value.rest)
+    } else {
+        value as Int
+    }
 }
