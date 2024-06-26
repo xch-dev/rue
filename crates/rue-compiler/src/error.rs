@@ -132,7 +132,7 @@ pub enum ErrorKind {
     DuplicateEnumVariant(String),
     DuplicateEnumDiscriminant(String),
     EnumDiscriminantTooLarge,
-    
+
     // Paths.
     UnknownEnumVariantPath(String),
     UnknownModulePath(String),
@@ -183,7 +183,7 @@ impl fmt::Display for ErrorKind {
                 Cannot reference module `{name}`, since it is not a value. \
                 Perhaps you meant to use the `::` operator to access a symbol in the module?
             "),
-            
+
             // Types.
             Self::RecursiveTypeAlias(name) => formatdoc!("
                 Cycle detected when resolving type alias `{name}`. \
@@ -270,7 +270,7 @@ impl fmt::Display for ErrorKind {
             Self::DuplicateEnumVariant(name) => format!("Duplicate enum variant `{name}` specified."),
             Self::DuplicateEnumDiscriminant(discriminant) => format!("Duplicate enum discriminant `{discriminant}` specified."),
             Self::EnumDiscriminantTooLarge => "Enum discriminant is too large to allocate in CLVM.".to_string(),
-            
+
             // Paths.
             Self::UnknownEnumVariantPath(name) => format!("Unknown enum variant `{name}`."),
             Self::UnknownModulePath(name) => format!("Could not resolve `{name}` in module."),
