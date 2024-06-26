@@ -2861,7 +2861,6 @@ dependencies = [
  "num-traits",
  "rowan",
  "rue-lexer",
- "thiserror",
 ]
 
 [[package]]

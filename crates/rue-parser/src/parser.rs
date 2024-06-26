@@ -65,10 +65,7 @@ impl<'a> Parser<'a> {
             true
         } else {
             let found = self.nth(0);
-            self.push_error(ParserErrorKind::UnexpectedToken {
-                expected: vec![kind],
-                found,
-            });
+            self.push_error(ParserErrorKind::UnexpectedToken(vec![kind], found));
             self.expected_kinds.clear();
             false
         }
@@ -90,7 +87,7 @@ impl<'a> Parser<'a> {
         let expected: Vec<SyntaxKind> = self.expected_kinds.drain(..).collect();
         let found = self.nth(0);
 
-        self.push_error(ParserErrorKind::UnexpectedToken { expected, found });
+        self.push_error(ParserErrorKind::UnexpectedToken(expected, found));
 
         if self.at_end() || set.contains(&found) {
             return;
