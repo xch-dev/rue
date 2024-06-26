@@ -16,19 +16,23 @@ impl Compiler<'_> {
             return self.builtins.unknown;
         };
 
+        let mut last_ident = idents[0].to_string();
+
         for (i, name) in idents.iter().enumerate().skip(1) {
             let Some(next_item) =
                 self.resolve_next_path(item, name, PathKind::Type, i == idents.len() - 1)
             else {
                 return self.builtins.unknown;
             };
+            last_ident = name.to_string();
             item = next_item;
         }
 
         match item {
             PathItem::Type(type_id) => type_id,
             PathItem::Symbol(..) => {
-                self.db.error(ErrorKind::ExpectedTypePath, text_range);
+                self.db
+                    .error(ErrorKind::ExpectedTypePath(last_ident), text_range);
                 self.builtins.unknown
             }
         }

@@ -20,12 +20,15 @@ impl Compiler<'_> {
             return self.unknown();
         };
 
+        let mut last_ident = idents[0].to_string();
+
         for (i, name) in idents.iter().enumerate().skip(1) {
             let Some(next_item) =
                 self.resolve_next_path(item, name, PathKind::Symbol, i == idents.len() - 1)
             else {
                 return self.unknown();
             };
+            last_ident = name.to_string();
             item = next_item;
         }
 
@@ -34,23 +37,28 @@ impl Compiler<'_> {
             PathItem::Type(type_id) => {
                 if let Type::EnumVariant(variant_type) = self.db.ty(type_id).clone() {
                     if variant_type.fields.is_some() {
-                        self.db.error(ErrorKind::EnumVariantWithFields, text_range);
+                        self.db.error(
+                            ErrorKind::InvalidEnumVariantReference(self.type_name(type_id)),
+                            text_range,
+                        );
                     }
                     return Value::new(variant_type.discriminant, type_id);
                 }
-                self.db.error(ErrorKind::ExpectedSymbolPath, text_range);
+                self.db
+                    .error(ErrorKind::ExpectedSymbolPath(last_ident), text_range);
                 return self.unknown();
             }
         };
 
         if matches!(self.db.symbol(symbol_id), Symbol::Module(..)) {
-            self.db.error(ErrorKind::ModuleReference, text_range);
+            self.db
+                .error(ErrorKind::ModuleReference(last_ident), text_range);
             return self.unknown();
         }
 
         if !self.is_callee && matches!(self.db.symbol(symbol_id), Symbol::InlineFunction(..)) {
             self.db
-                .error(ErrorKind::InlineFunctionReference, text_range);
+                .error(ErrorKind::InlineFunctionReference(last_ident), text_range);
             return self.unknown();
         }
 

@@ -20,7 +20,6 @@ impl Compiler<'_> {
         match ty.map(|ty| self.db.ty(ty)).cloned() {
             Some(Type::Struct(struct_type)) => {
                 let hir_id = self.compile_initializer_fields(
-                    ty.unwrap(),
                     &struct_type.fields,
                     struct_type.rest,
                     initializer.fields(),
@@ -35,7 +34,6 @@ impl Compiler<'_> {
             Some(Type::EnumVariant(enum_variant)) => {
                 if let Some(fields) = enum_variant.fields {
                     let fields_hir_id = self.compile_initializer_fields(
-                        ty.unwrap(),
                         &fields,
                         enum_variant.rest,
                         initializer.fields(),
@@ -52,7 +50,7 @@ impl Compiler<'_> {
                     }
                 } else {
                     self.db.error(
-                        ErrorKind::EnumVariantWithoutFields,
+                        ErrorKind::InvalidEnumVariantInitializer(self.type_name(ty.unwrap())),
                         initializer.path().unwrap().syntax().text_range(),
                     );
                     self.unknown()
@@ -71,7 +69,6 @@ impl Compiler<'_> {
 
     fn compile_initializer_fields(
         &mut self,
-        struct_type: TypeId,
         struct_fields: &IndexMap<String, TypeId>,
         rest: Rest,
         initializer_fields: Vec<InitializerField>,
@@ -103,15 +100,12 @@ impl Compiler<'_> {
             // Insert the field if it exists and hasn't already been assigned.
             if specified_fields.contains_key(name.text()) {
                 self.db.error(
-                    ErrorKind::DuplicateField(name.to_string()),
+                    ErrorKind::DuplicateInitializerField(name.to_string()),
                     name.text_range(),
                 );
             } else if !struct_fields.contains_key(name.text()) {
                 self.db.error(
-                    ErrorKind::UndefinedField {
-                        field: name.to_string(),
-                        ty: self.type_name(struct_type),
-                    },
+                    ErrorKind::UnknownInitializerField(name.to_string()),
                     name.text_range(),
                 );
             } else {
@@ -134,10 +128,7 @@ impl Compiler<'_> {
 
         if !missing_fields.is_empty() {
             self.db.error(
-                ErrorKind::MissingFields {
-                    fields: missing_fields,
-                    ty: self.type_name(struct_type),
-                },
+                ErrorKind::MissingInitializerFields(missing_fields),
                 text_range,
             );
         }

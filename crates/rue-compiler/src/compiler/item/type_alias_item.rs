@@ -1,6 +1,6 @@
-use rue_parser::{AstNode, TypeAliasItem};
+use rue_parser::TypeAliasItem;
 
-use crate::{compiler::Compiler, value::Type, TypeId};
+use crate::{compiler::Compiler, value::Type, ErrorKind, TypeId};
 
 impl Compiler<'_> {
     /// Define a type for an alias in the current scope, but leave it as unknown for now.
@@ -14,10 +14,10 @@ impl Compiler<'_> {
     }
 
     /// Compile and resolve the type that the alias points to.
-    pub fn compile_type_alias_item(&mut self, ty: &TypeAliasItem, alias_type_id: TypeId) {
+    pub fn compile_type_alias_item(&mut self, type_alias: &TypeAliasItem, alias_type_id: TypeId) {
         self.type_definition_stack.push(alias_type_id);
 
-        let type_id = ty
+        let type_id = type_alias
             .ty()
             .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
@@ -26,7 +26,16 @@ impl Compiler<'_> {
 
         // A cycle between type aliases has been detected.
         // We set it to unknown to prevent stack overflow issues later.
-        if self.detect_cycle(alias_type_id, ty.syntax().text_range()) {
+        if self.db.is_cyclic(alias_type_id) {
+            let name = type_alias
+                .name()
+                .expect("the name should exist if it's in a cyclic reference");
+
+            self.db.error(
+                ErrorKind::RecursiveTypeAlias(name.to_string()),
+                name.text_range(),
+            );
+
             *self.db.ty_mut(alias_type_id) = Type::Unknown;
         }
 

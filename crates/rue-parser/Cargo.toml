@@ -12,4 +12,3 @@ num-derive = "0.4.2"
 num-traits = "0.2.18"
 rowan = "0.15.15"
 rue-lexer = { path = "../rue-lexer" }
-thiserror = "1.0.58"

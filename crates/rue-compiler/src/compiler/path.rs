@@ -88,7 +88,7 @@ impl Compiler<'_> {
 
                 let Some(variant_type) = enum_type.variants.get(name.text()).copied() else {
                     self.db.error(
-                        ErrorKind::UnknownEnumVariant(name.text().to_string()),
+                        ErrorKind::UnknownEnumVariantPath(name.text().to_string()),
                         name.text_range(),
                     );
                     return None;
@@ -99,8 +99,10 @@ impl Compiler<'_> {
             }
             PathItem::Symbol(module_id) => {
                 let Symbol::Module(module) = self.db.symbol(module_id) else {
-                    self.db
-                        .error(ErrorKind::InvalidSymbolPath, name.text_range());
+                    self.db.error(
+                        ErrorKind::InvalidSymbolPath(self.symbol_name(module_id)),
+                        name.text_range(),
+                    );
                     return None;
                 };
 

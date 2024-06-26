@@ -119,10 +119,7 @@ impl Compiler<'_> {
             Rest::Nil => {
                 if args.len() != function.param_types.len() {
                     self.db.error(
-                        ErrorKind::ArgumentMismatch {
-                            expected: function.param_types.len(),
-                            found: args.len(),
-                        },
+                        ErrorKind::ArgumentMismatch(args.len(), function.param_types.len()),
                         ast.syntax().text_range(),
                     );
                 }
@@ -132,10 +129,7 @@ impl Compiler<'_> {
                     && args.len() != function.param_types.len() - 1
                 {
                     self.db.error(
-                        ErrorKind::ArgumentMismatchOptional {
-                            expected: function.param_types.len(),
-                            found: args.len(),
-                        },
+                        ErrorKind::ArgumentMismatchOptional(args.len(), function.param_types.len()),
                         ast.syntax().text_range(),
                     );
                 }
@@ -148,19 +142,16 @@ impl Compiler<'_> {
                 {
                     if args.len() < function.param_types.len() - 1 {
                         self.db.error(
-                            ErrorKind::ArgumentMismatchSpread {
-                                expected: function.param_types.len(),
-                                found: args.len(),
-                            },
+                            ErrorKind::ArgumentMismatchSpread(
+                                args.len(),
+                                function.param_types.len(),
+                            ),
                             ast.syntax().text_range(),
                         );
                     }
                 } else if args.len() != function.param_types.len() {
                     self.db.error(
-                        ErrorKind::ArgumentMismatch {
-                            expected: function.param_types.len(),
-                            found: args.len(),
-                        },
+                        ErrorKind::ArgumentMismatch(args.len(), function.param_types.len()),
                         ast.syntax().text_range(),
                     );
                 }
@@ -175,7 +166,7 @@ impl Compiler<'_> {
             if last && spread {
                 if function.rest != Rest::Spread {
                     self.db.error(
-                        ErrorKind::DisallowedSpread,
+                        ErrorKind::UnsupportedFunctionSpread,
                         ast_args[i].syntax().text_range(),
                     );
                 } else if i >= function.param_types.len() - 1 {
@@ -188,8 +179,10 @@ impl Compiler<'_> {
                 {
                     self.type_check(arg, inner_list_type, ast_args[i].syntax().text_range());
                 } else if i == function.param_types.len() - 1 && !spread {
-                    self.db
-                        .error(ErrorKind::RequiredSpread, ast_args[i].syntax().text_range());
+                    self.db.error(
+                        ErrorKind::RequiredFunctionSpread,
+                        ast_args[i].syntax().text_range(),
+                    );
                 }
             } else if i < function.param_types.len() {
                 let param_type = function.param_types[i];

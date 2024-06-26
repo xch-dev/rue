@@ -28,7 +28,7 @@ fn main() {
         let line = line + 1;
         let col = col + 1;
 
-        eprintln!("{} at {line}:{col}", error.kind());
+        eprintln!("Error: {} ({line}:{col})", error.kind());
     }
 
     if args.analyze {
@@ -71,10 +71,10 @@ fn print_diagnostics(source: &str, diagnostics: &[Diagnostic]) -> bool {
         match error.kind() {
             DiagnosticKind::Error(kind) => {
                 has_error = true;
-                eprintln!("error: {kind} at {line}:{col}");
+                eprintln!("Error: {kind} ({line}:{col})");
             }
             DiagnosticKind::Warning(kind) => {
-                eprintln!("warning: {kind} at {line}:{col}");
+                eprintln!("Warning: {kind} ({line}:{col})");
             }
         }
     }

@@ -27,7 +27,7 @@ impl Compiler<'_> {
 
         let Type::List(item_type) = self.db.ty(value.type_id).clone() else {
             self.db.error(
-                ErrorKind::IndexAccess(self.type_name(value.type_id)),
+                ErrorKind::InvalidIndexAccess(self.type_name(value.type_id)),
                 index_access.expr().unwrap().syntax().text_range(),
             );
             return self.unknown();

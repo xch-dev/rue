@@ -120,10 +120,7 @@ impl Compiler<'_> {
             }
             _ => {
                 self.db.error(
-                    ErrorKind::UnsupportedTypeGuard {
-                        from: self.type_name(from),
-                        to: self.type_name(to),
-                    },
+                    ErrorKind::UnsupportedTypeGuard(self.type_name(from), self.type_name(to)),
                     text_range,
                 );
                 None

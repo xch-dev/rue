@@ -212,7 +212,7 @@ impl Compiler<'_> {
 
                     if type_namespaces.contains(&name.to_string()) {
                         self.db.error(
-                            ErrorKind::NamespaceTakenType(name.to_string()),
+                            ErrorKind::ModuleNameTakenByEnum(name.to_string()),
                             name.text_range(),
                         );
                     }
@@ -233,7 +233,7 @@ impl Compiler<'_> {
 
                     if symbol_namespaces.contains(&name.to_string()) {
                         self.db.error(
-                            ErrorKind::NamespaceTakenSymbol(name.to_string()),
+                            ErrorKind::EnumNameTakenByModule(name.to_string()),
                             name.text_range(),
                         );
                     }

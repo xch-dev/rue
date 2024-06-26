@@ -109,13 +109,13 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn detect_cycle(&mut self, type_id: TypeId, text_range: TextRange) -> bool {
-        if self.db.is_cyclic(type_id) {
-            self.db.error(ErrorKind::RecursiveTypeAlias, text_range);
-            true
-        } else {
-            false
+    fn symbol_name(&self, symbol_id: SymbolId) -> Option<String> {
+        for &scope_id in self.scope_stack.iter().rev() {
+            if let Some(name) = self.db.scope(scope_id).symbol_name(symbol_id) {
+                return Some(name.to_string());
+            }
         }
+        None
     }
 
     fn type_name(&self, ty: TypeId) -> String {
@@ -236,10 +236,7 @@ impl<'a> Compiler<'a> {
 
         if !comparison.is_assignable() {
             self.db.error(
-                ErrorKind::TypeMismatch {
-                    expected: self.type_name(to),
-                    found: self.type_name(from),
-                },
+                ErrorKind::TypeMismatch(self.type_name(from), self.type_name(to)),
                 range,
             );
         }
@@ -255,10 +252,7 @@ impl<'a> Compiler<'a> {
 
         if !comparison.is_castable() {
             self.db.error(
-                ErrorKind::CastMismatch {
-                    expected: self.type_name(to),
-                    found: self.type_name(from),
-                },
+                ErrorKind::CastMismatch(self.type_name(from), self.type_name(to)),
                 range,
             );
         }
