@@ -59,6 +59,6 @@ fun main(
         // help prevent ephemeral singleton spends from influencing.
         Condition::CreateCoinAnnouncement {
             message: announcement_message,
-        }
+        },
     ]
 }
