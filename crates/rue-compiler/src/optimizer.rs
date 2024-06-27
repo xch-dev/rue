@@ -14,6 +14,7 @@ mod environment;
 
 pub use dependency_graph::*;
 pub use environment::*;
+use indexmap::IndexSet;
 
 pub struct Optimizer<'a> {
     db: &'a mut Database,
@@ -34,21 +35,10 @@ impl<'a> Optimizer<'a> {
         let Symbol::Function(fun) = self.db.symbol(main).clone() else {
             unreachable!();
         };
-
         let env_id = self.graph.env(fun.scope_id);
-        let body = self.opt_hir(env_id, fun.hir_id);
-
-        let mut args = Vec::new();
-
-        for symbol_id in self.db.env(env_id).definitions() {
-            args.push(self.opt_definition(env_id, symbol_id));
-        }
-
-        for symbol_id in self.db.env(env_id).captures() {
-            args.push(self.opt_definition(env_id, symbol_id));
-        }
-
-        self.db.alloc_lir(Lir::Curry(body, args))
+        let mut definitions = self.db.env(env_id).definitions();
+        definitions.extend(self.db.env(env_id).captures());
+        self.opt_definitions(env_id, definitions, fun.hir_id)
     }
 
     fn opt_path(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
@@ -59,7 +49,7 @@ impl<'a> Optimizer<'a> {
         }
 
         let mut current_env_id = env_id;
-        let mut environment = self.db.env(env_id).build().clone();
+        let mut environment: Vec<SymbolId> = self.db.env(env_id).build().into_iter().collect();
 
         while let Some(parent_env_id) = self.db.env(current_env_id).parent() {
             assert!(self.db.env(current_env_id).parameters().is_empty());
@@ -99,19 +89,12 @@ impl<'a> Optimizer<'a> {
                 hir_id, scope_id, ..
             }) => {
                 let function_env_id = self.graph.env(scope_id);
-
-                let mut body = self.opt_hir(function_env_id, hir_id);
-                let mut definitions = Vec::new();
-
-                for symbol_id in self.db.env(function_env_id).definitions() {
-                    definitions.push(self.opt_definition(function_env_id, symbol_id));
-                }
-
-                if !definitions.is_empty() {
-                    body = self.db.alloc_lir(Lir::Curry(body, definitions));
-                }
-
-                self.db.alloc_lir(Lir::FunctionBody(body))
+                let function = self.opt_definitions(
+                    function_env_id,
+                    self.db.env(function_env_id).definitions(),
+                    hir_id,
+                );
+                self.db.alloc_lir(Lir::Quote(function))
             }
             Symbol::Const(Value { hir_id, .. }) => self.opt_hir(env_id, hir_id),
             Symbol::Let(symbol) if self.graph.symbol_usages(symbol_id) > 0 => {
@@ -126,6 +109,52 @@ impl<'a> Optimizer<'a> {
         }
     }
 
+    fn opt_definitions(
+        &mut self,
+        mut env_id: EnvironmentId,
+        definitions: IndexSet<SymbolId>,
+        body: HirId,
+    ) -> LirId {
+        let mut remaining: IndexSet<SymbolId> = definitions.into_iter().collect();
+        let mut curries = Vec::new();
+
+        while !remaining.is_empty() {
+            let no_references = remaining
+                .iter()
+                .filter(|&symbol_id| {
+                    !self.db.symbol(*symbol_id).is_constant()
+                        || self
+                            .graph
+                            .constant_references(*symbol_id)
+                            .intersection(&remaining)
+                            .count()
+                            == 0
+                })
+                .copied()
+                .collect::<Vec<_>>();
+
+            let mut args = Vec::new();
+
+            for &symbol_id in &no_references {
+                args.push(self.opt_definition(env_id, symbol_id));
+            }
+
+            curries.push(args);
+            remaining.retain(|&symbol_id| !no_references.contains(&symbol_id));
+            if !remaining.is_empty() {
+                env_id = self.db.alloc_env(Environment::binding(env_id));
+            }
+        }
+
+        let mut body = self.opt_hir(env_id, body);
+
+        for args in curries.into_iter().rev() {
+            body = self.db.alloc_lir(Lir::Curry(body, args));
+        }
+
+        body
+    }
+
     fn opt_hir(&mut self, env_id: EnvironmentId, hir_id: HirId) -> LirId {
         match self.db.hir(hir_id).clone() {
             Hir::Unknown => self.db.alloc_lir(Lir::Atom(Vec::new())),
@@ -134,18 +163,6 @@ impl<'a> Optimizer<'a> {
             Hir::Reference(symbol_id, ..) => self.opt_reference(env_id, symbol_id),
             Hir::CheckExists(value) => self.opt_check_exists(env_id, value),
             Hir::Definition { scope_id, hir_id } => {
-                let definition_env_id = self.graph.env(scope_id);
-                for symbol_id in self.db.env_mut(definition_env_id).definitions() {
-                    let Symbol::Let(..) = self.db.symbol(symbol_id) else {
-                        continue;
-                    };
-
-                    if self.graph.symbol_usages(symbol_id) == 1 {
-                        self.db
-                            .env_mut(definition_env_id)
-                            .remove_definition(symbol_id);
-                    }
-                }
                 self.opt_env_definition(env_id, scope_id, hir_id)
             }
             Hir::FunctionCall {
@@ -239,6 +256,17 @@ impl<'a> Optimizer<'a> {
         scope_id: ScopeId,
         hir_id: HirId,
     ) -> LirId {
+        let definition_env_id = self.graph.env(scope_id);
+        for symbol_id in self.db.env_mut(definition_env_id).definitions() {
+            let Symbol::Let(..) = self.db.symbol(symbol_id) else {
+                continue;
+            };
+            if self.graph.symbol_usages(symbol_id) == 1 {
+                self.db
+                    .env_mut(definition_env_id)
+                    .remove_definition(symbol_id);
+            }
+        }
         let child_env_id = self.graph.env(scope_id);
         let body = self.opt_hir(child_env_id, hir_id);
 
@@ -375,20 +403,6 @@ impl<'a> Optimizer<'a> {
     ) -> LirId {
         let mut inline_parameter_map = HashMap::new();
         let mut args = args;
-
-        let env = self.db.env(function_env_id).clone();
-        for symbol_id in env.definitions() {
-            if self.db.symbol(symbol_id).is_parameter() {
-                continue;
-            }
-            self.db.env_mut(env_id).define(symbol_id);
-        }
-        for symbol_id in env.captures() {
-            if self.db.symbol(symbol_id).is_parameter() {
-                continue;
-            }
-            self.db.env_mut(env_id).capture(symbol_id);
-        }
 
         let param_len = self.db.env(function_env_id).parameters().len();
 

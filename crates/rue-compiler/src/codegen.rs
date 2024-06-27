@@ -76,7 +76,6 @@ impl<'a> Codegen<'a> {
             Lir::Run(program, args) => self.gen_run(program, args),
             Lir::Curry(body, args) => self.gen_apply(body, args),
             Lir::Closure(body, args) => self.gen_closure(body, args),
-            Lir::FunctionBody(body) => self.gen_quote(body),
             Lir::First(value) => self.gen_first(value),
             Lir::Rest(value) => self.gen_rest(value),
             Lir::Raise(value) => self.gen_raise(value),

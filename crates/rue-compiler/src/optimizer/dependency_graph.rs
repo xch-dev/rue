@@ -18,6 +18,7 @@ use super::Environment;
 pub struct DependencyGraph {
     env: IndexMap<ScopeId, EnvironmentId>,
     symbol_usages: HashMap<SymbolId, usize>,
+    constant_references: HashMap<SymbolId, IndexSet<SymbolId>>,
 }
 
 impl DependencyGraph {
@@ -34,7 +35,14 @@ impl DependencyGraph {
     }
 
     pub fn symbol_usages(&self, symbol_id: SymbolId) -> usize {
-        *self.symbol_usages.get(&symbol_id).unwrap_or(&0)
+        self.symbol_usages.get(&symbol_id).copied().unwrap_or(0)
+    }
+
+    pub fn constant_references(&self, symbol_id: SymbolId) -> IndexSet<SymbolId> {
+        self.constant_references
+            .get(&symbol_id)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -42,7 +50,7 @@ struct GraphTraversal<'a> {
     db: &'a mut Database,
     graph: DependencyGraph,
     edges: HashMap<ScopeId, IndexSet<ScopeId>>,
-    constant_reference_stack: HashSet<SymbolId>,
+    constant_reference_stack: IndexSet<SymbolId>,
 }
 
 impl<'a> GraphTraversal<'a> {
@@ -51,7 +59,7 @@ impl<'a> GraphTraversal<'a> {
             db,
             graph: DependencyGraph::default(),
             edges: HashMap::new(),
-            constant_reference_stack: HashSet::new(),
+            constant_reference_stack: IndexSet::new(),
         }
     }
 
@@ -224,6 +232,14 @@ impl<'a> GraphTraversal<'a> {
     ) {
         let symbol = self.db.symbol(symbol_id).clone();
 
+        for &definition_id in &self.constant_reference_stack {
+            self.graph
+                .constant_references
+                .entry(definition_id)
+                .or_default()
+                .insert(symbol_id);
+        }
+
         if symbol.is_constant() && !self.constant_reference_stack.insert(symbol_id) {
             return;
         }
@@ -231,7 +247,7 @@ impl<'a> GraphTraversal<'a> {
         self.graph
             .symbol_usages
             .entry(symbol_id)
-            .and_modify(|count| *count += 1)
+            .and_modify(|usages| *usages += 1)
             .or_insert(1);
 
         self.propagate_capture(scope_id, symbol_id, &mut HashSet::new());
@@ -265,8 +281,26 @@ impl<'a> GraphTraversal<'a> {
 
             // Functions are visited in the scope in which they are defined.
             // TODO: For inline functions, should this be visited in the current scope?
-            Symbol::Function(fun) | Symbol::InlineFunction(fun) => {
+            Symbol::Function(fun) => {
                 self.visit_hir(fun.scope_id, fun.hir_id, visited);
+            }
+
+            Symbol::InlineFunction(fun) => {
+                self.visit_hir(fun.scope_id, fun.hir_id, visited);
+
+                let env = self.db.env(self.graph.env(fun.scope_id)).clone();
+                for symbol_id in env.definitions() {
+                    if self.db.symbol(symbol_id).is_parameter() {
+                        continue;
+                    }
+                    self.db.env_mut(self.graph.env(scope_id)).define(symbol_id);
+                }
+                for symbol_id in env.captures() {
+                    if self.db.symbol(symbol_id).is_parameter() {
+                        continue;
+                    }
+                    self.db.env_mut(self.graph.env(scope_id)).capture(symbol_id);
+                }
             }
 
             // Parameters don't need to be visited, since currently
@@ -274,7 +308,7 @@ impl<'a> GraphTraversal<'a> {
             Symbol::Parameter(..) => {}
         }
 
-        self.constant_reference_stack.remove(&symbol_id);
+        self.constant_reference_stack.shift_remove(&symbol_id);
     }
 
     fn compute_edges(&mut self, symbol_id: SymbolId) {
@@ -400,7 +434,7 @@ impl<'a> GraphTraversal<'a> {
                     }
                 }
 
-                self.constant_reference_stack.remove(&symbol_id);
+                self.constant_reference_stack.shift_remove(&symbol_id);
             }
         }
     }
