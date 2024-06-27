@@ -95,7 +95,8 @@ impl Compiler<'_> {
         }));
 
         Value::new(
-            self.db.alloc_hir(Hir::Reference(symbol_id)),
+            self.db
+                .alloc_hir(Hir::Reference(symbol_id, lambda_expr.syntax().text_range())),
             self.db.alloc_type(Type::Function(ty)),
         )
     }

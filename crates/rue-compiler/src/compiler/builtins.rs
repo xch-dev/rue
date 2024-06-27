@@ -1,3 +1,5 @@
+use rowan::TextRange;
+
 use crate::{
     hir::Hir,
     scope::Scope,
@@ -75,7 +77,7 @@ fn sha256(db: &mut Database, builtins: &Builtins) -> SymbolId {
 
     let param = db.alloc_symbol(Symbol::Parameter(builtins.bytes));
     scope.define_symbol("bytes".to_string(), param);
-    let param_ref = db.alloc_hir(Hir::Reference(param));
+    let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
     let hir_id = db.alloc_hir(Hir::Sha256(param_ref));
     let scope_id = db.alloc_scope(scope);
 
@@ -95,7 +97,7 @@ fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
     let mut scope = Scope::default();
     let param = db.alloc_symbol(Symbol::Parameter(builtins.bytes32));
     scope.define_symbol("exponent".to_string(), param);
-    let param_ref = db.alloc_hir(Hir::Reference(param));
+    let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
     let hir_id = db.alloc_hir(Hir::PubkeyForExp(param_ref));
     let scope_id = db.alloc_scope(scope);
 

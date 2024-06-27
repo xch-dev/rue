@@ -131,7 +131,7 @@ impl<'a> Optimizer<'a> {
             Hir::Unknown => self.db.alloc_lir(Lir::Atom(Vec::new())),
             Hir::Atom(atom) => self.db.alloc_lir(Lir::Atom(atom.clone())),
             Hir::Pair(first, rest) => self.opt_pair(env_id, first, rest),
-            Hir::Reference(symbol_id) => self.opt_reference(env_id, symbol_id),
+            Hir::Reference(symbol_id, ..) => self.opt_reference(env_id, symbol_id),
             Hir::CheckExists(value) => self.opt_check_exists(env_id, value),
             Hir::Definition { scope_id, hir_id } => {
                 let definition_env_id = self.graph.env(scope_id);
@@ -153,7 +153,7 @@ impl<'a> Optimizer<'a> {
                 args,
                 varargs,
             } => {
-                if let Hir::Reference(symbol_id) = self.db.hir(callee) {
+                if let Hir::Reference(symbol_id, ..) = self.db.hir(callee) {
                     if let Symbol::InlineFunction(Function {
                         scope_id,
                         ty,
@@ -346,7 +346,7 @@ impl<'a> Optimizer<'a> {
             lir_id = self.db.alloc_lir(Lir::Pair(arg, lir_id));
         }
 
-        let callee = if let Hir::Reference(symbol_id) = self.db.hir(callee).clone() {
+        let callee = if let Hir::Reference(symbol_id, ..) = self.db.hir(callee).clone() {
             if let Symbol::Function(Function { scope_id, .. }) = self.db.symbol(symbol_id) {
                 let callee_env_id = self.graph.env(*scope_id);
                 for symbol_id in self.db.env(callee_env_id).captures().into_iter().rev() {

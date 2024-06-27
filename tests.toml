@@ -456,3 +456,21 @@ cost = 16974
 input = "()"
 output = "0x0a37e3fbe2"
 hash = "09c547472ecee6e0a98aee751c1f8ce575c973578acf81c096e4b92e98ddad8b"
+
+[recursive_constants]
+parser_errors = []
+compiler_errors = [
+    "Error: Cannot recursively call inline function. (18:27)",
+    "Error: Cannot recursively call inline function. (15:5)",
+    "Error: Cannot recursively call inline function. (7:5)",
+    "Error: Cannot recursively reference constant. (1:16)",
+    "Error: Cannot recursively reference constant. (3:16)",
+]
+
+[mixed_constants]
+bytes = 69
+cost = 0
+input = "()"
+output = "()"
+hash = "6b22541a3bc2076b97b019433a8f158e9ba7e326f178d6e969f96a7f65a5f19c"
+error = "()"

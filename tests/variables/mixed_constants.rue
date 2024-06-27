@@ -1,0 +1,12 @@
+const GREETING: Bytes = 'Hello';
+const NAME: Bytes = 'Bob';
+
+inline const COMMA: Bytes = ',';
+inline const SPACE: Bytes = ' ';
+inline const EXCLAIM: Bytes = '!';
+
+const MESSAGE: Bytes = GREETING + COMMA + SPACE + NAME + EXCLAIM;
+
+fun main() -> Bytes {
+    MESSAGE
+}

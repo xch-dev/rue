@@ -6,7 +6,7 @@ use crate::{
     hir::Hir,
     symbol::{Module, Symbol},
     value::{FunctionType, Rest, Value},
-    Database, EnvironmentId, HirId, ScopeId, SymbolId,
+    Database, EnvironmentId, ErrorKind, HirId, ScopeId, SymbolId,
 };
 
 use super::Environment;
@@ -42,6 +42,7 @@ struct GraphTraversal<'a> {
     db: &'a mut Database,
     graph: DependencyGraph,
     edges: HashMap<ScopeId, IndexSet<ScopeId>>,
+    constant_reference_stack: HashSet<SymbolId>,
 }
 
 impl<'a> GraphTraversal<'a> {
@@ -50,6 +51,7 @@ impl<'a> GraphTraversal<'a> {
             db,
             graph: DependencyGraph::default(),
             edges: HashMap::new(),
+            constant_reference_stack: HashSet::new(),
         }
     }
 
@@ -62,6 +64,8 @@ impl<'a> GraphTraversal<'a> {
         for &symbol_id in &entrypoint.exported_symbols {
             self.compute_edges(symbol_id);
         }
+
+        self.constant_reference_stack.clear();
 
         let mut visited = HashSet::new();
         for &symbol_id in &entrypoint.exported_symbols {
@@ -205,7 +209,7 @@ impl<'a> GraphTraversal<'a> {
             } => self.visit_hir(scope_id, hir_id, visited),
 
             // Resolves a reference to a symbol. This doesn't have any direct child HIR nodes.
-            Hir::Reference(symbol_id) => self.visit_reference(scope_id, symbol_id, visited),
+            Hir::Reference(symbol_id, ..) => self.visit_reference(scope_id, symbol_id, visited),
         }
     }
 
@@ -218,6 +222,12 @@ impl<'a> GraphTraversal<'a> {
         symbol_id: SymbolId,
         visited: &mut HashSet<(ScopeId, HirId)>,
     ) {
+        let symbol = self.db.symbol(symbol_id).clone();
+
+        if symbol.is_constant() && !self.constant_reference_stack.insert(symbol_id) {
+            return;
+        }
+
         self.graph
             .symbol_usages
             .entry(symbol_id)
@@ -226,7 +236,7 @@ impl<'a> GraphTraversal<'a> {
 
         self.propagate_capture(scope_id, symbol_id, &mut HashSet::new());
 
-        match self.db.symbol(symbol_id).clone() {
+        match symbol {
             // It's not possible to visit unknown symbols,
             // this would be a compiler bug if it were reached.
             Symbol::Unknown => {
@@ -263,6 +273,8 @@ impl<'a> GraphTraversal<'a> {
             // they are just a reference to the environment.
             Symbol::Parameter(..) => {}
         }
+
+        self.constant_reference_stack.remove(&symbol_id);
     }
 
     fn compute_edges(&mut self, symbol_id: SymbolId) {
@@ -356,8 +368,21 @@ impl<'a> GraphTraversal<'a> {
                 self.graph.env.insert(child_scope_id, child_env_id);
                 self.compute_hir_edges(child_scope_id, hir_id, visited);
             }
-            Hir::Reference(symbol_id) => {
-                match self.db.symbol(symbol_id).clone() {
+            Hir::Reference(symbol_id, text_range) => {
+                let symbol = self.db.symbol(symbol_id).clone();
+
+                if symbol.is_constant() && !self.constant_reference_stack.insert(symbol_id) {
+                    let kind = match symbol {
+                        Symbol::Const(..) => ErrorKind::RecursiveConstantReference,
+                        Symbol::InlineConst(..) => ErrorKind::RecursiveInlineConstantReference,
+                        Symbol::InlineFunction(..) => ErrorKind::RecursiveInlineFunctionCall,
+                        _ => unreachable!(),
+                    };
+                    self.db.error(kind, text_range);
+                    return;
+                }
+
+                match symbol {
                     Symbol::Unknown | Symbol::Module(..) => unreachable!(),
                     Symbol::Function(fun) | Symbol::InlineFunction(fun) => {
                         // Add the new scope to the graph.
@@ -374,6 +399,8 @@ impl<'a> GraphTraversal<'a> {
                         self.compute_hir_edges(scope_id, hir_id, visited);
                     }
                 }
+
+                self.constant_reference_stack.remove(&symbol_id);
             }
         }
     }

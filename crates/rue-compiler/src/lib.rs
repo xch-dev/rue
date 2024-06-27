@@ -54,7 +54,7 @@ pub fn analyze(root: &Root) -> Vec<Diagnostic> {
     db.diagnostics().to_vec()
 }
 
-pub fn compile(allocator: &mut Allocator, root: &Root, should_codegen: bool) -> Output {
+pub fn compile(allocator: &mut Allocator, root: &Root, mut should_codegen: bool) -> Output {
     let mut db = Database::default();
     let mut ctx = setup_compiler(&mut db);
 
@@ -69,6 +69,8 @@ pub fn compile(allocator: &mut Allocator, root: &Root, should_codegen: bool) -> 
         main_module_id,
         &[main_module_id, stdlib],
     );
+
+    should_codegen &= !db.diagnostics().iter().any(Diagnostic::is_error);
 
     Output {
         diagnostics: db.diagnostics().to_vec(),

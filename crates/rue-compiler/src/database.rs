@@ -156,7 +156,7 @@ impl Database {
             Hir::Pair(first, rest) => {
                 format!("Pair({}, {})", self.dbg_hir(*first), self.dbg_hir(*rest))
             }
-            Hir::Reference(symbol_id) => format!("Reference({})", self.dbg_symbol(*symbol_id)),
+            Hir::Reference(symbol_id, ..) => format!("Reference({})", self.dbg_symbol(*symbol_id)),
             Hir::CheckExists(hir_id) => {
                 format!("CheckExists({})", self.dbg_hir(*hir_id))
             }

@@ -148,12 +148,19 @@ pub enum ErrorKind {
     NonAnyPairTypeGuard,
     NonListPairTypeGuard,
 
-    // Blocks
+    // Blocks.
     ImplicitReturnInIf,
     ExplicitReturnInExpr,
     EmptyBlock,
+
+    // Atoms.
     NonAtomEquality(String),
     IntegerTooLarge,
+
+    // Recursive constants.
+    RecursiveConstantReference,
+    RecursiveInlineConstantReference,
+    RecursiveInlineFunctionCall,
 }
 
 impl fmt::Display for ErrorKind {
@@ -290,7 +297,7 @@ impl fmt::Display for ErrorKind {
             Self::NonAnyPairTypeGuard => "Cannot check `Any` against pair types other than `(Any, Any)`.".to_string(),
             Self::NonListPairTypeGuard => "Cannot check `T[]` against pair types other than `(T, T[])`.".to_string(),
 
-            // Blocks
+            // Blocks.
             Self::ImplicitReturnInIf => formatdoc!("
                 Implicit returns are not allowed in if statements. \
                 Either use an explicit return statement at the end of the block, \
@@ -298,8 +305,15 @@ impl fmt::Display for ErrorKind {
             "),
             Self::ExplicitReturnInExpr => "Explicit return is not allowed within expressions.".to_string(),
             Self::EmptyBlock => "Blocks must either return an expression or raise an error.".to_string(),
+
+            // Atoms.
             Self::NonAtomEquality(ty) => format!("Cannot check equality on non-atom type `{ty}`."),
             Self::IntegerTooLarge => "Integer literal is too large to allocate in CLVM.".to_string(),
+
+            // Recursive constants.
+            Self::RecursiveConstantReference => "Cannot recursively reference constant.".to_string(),
+            Self::RecursiveInlineConstantReference => "Cannot recursively reference inline constant.".to_string(),
+            Self::RecursiveInlineFunctionCall => "Cannot recursively call inline function.".to_string(),
         };
         write!(f, "{}", message.trim())
     }

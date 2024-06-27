@@ -36,6 +36,13 @@ impl Symbol {
             Symbol::Function(..) | Symbol::Let(..) | Symbol::Const(..)
         )
     }
+
+    pub fn is_constant(&self) -> bool {
+        matches!(
+            self,
+            Symbol::Const(..) | Symbol::InlineConst(..) | Symbol::InlineFunction(..)
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
