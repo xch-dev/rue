@@ -39,16 +39,16 @@ impl Environment {
         self.captured_symbols.insert(symbol_id);
     }
 
-    pub fn definitions(&self) -> Vec<SymbolId> {
-        self.defined_symbols.iter().copied().collect()
+    pub fn definitions(&self) -> IndexSet<SymbolId> {
+        self.defined_symbols.clone()
     }
 
-    pub fn captures(&self) -> Vec<SymbolId> {
-        self.captured_symbols.iter().copied().collect()
+    pub fn captures(&self) -> IndexSet<SymbolId> {
+        self.captured_symbols.clone()
     }
 
-    pub fn parameters(&self) -> Vec<SymbolId> {
-        self.parameters.iter().copied().collect()
+    pub fn parameters(&self) -> IndexSet<SymbolId> {
+        self.parameters.clone()
     }
 
     pub fn rest_parameter(&self) -> bool {
@@ -59,8 +59,8 @@ impl Environment {
         self.parent
     }
 
-    pub fn build(&self) -> Vec<SymbolId> {
-        let mut symbol_ids = Vec::new();
+    pub fn build(&self) -> IndexSet<SymbolId> {
+        let mut symbol_ids = IndexSet::new();
         symbol_ids.extend(self.defined_symbols.iter().copied());
 
         if self.parent.is_none() {

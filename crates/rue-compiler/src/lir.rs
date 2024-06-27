@@ -9,7 +9,6 @@ pub enum Lir {
     Quote(LirId),
     Curry(LirId, Vec<LirId>),
     Closure(LirId, Vec<LirId>),
-    FunctionBody(LirId),
     First(LirId),
     Rest(LirId),
     Raise(Option<LirId>),
