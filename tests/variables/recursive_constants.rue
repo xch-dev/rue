@@ -1,0 +1,26 @@
+const A: Int = A;
+const B: Int = C;
+const C: Int = B;
+const D: Int = A;
+
+inline fun fn() -> Int {
+    fn()
+}
+
+inline fun first() -> Int {
+    second()
+}
+
+inline fun second() -> Int {
+    first()
+}
+
+inline const CONST: Int = fn_to_call();
+
+inline fun fn_to_call() -> Int {
+    CONST
+}
+
+fun main() -> Int {
+    fn_to_call() + CONST + first() + second() + fn() + A + B + C + D
+}

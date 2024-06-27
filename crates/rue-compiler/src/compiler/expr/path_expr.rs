@@ -69,19 +69,19 @@ impl Compiler<'_> {
             Symbol::Function(Function { ty, .. }) | Symbol::InlineFunction(Function { ty, .. }) => {
                 let type_id = self.db.alloc_type(Type::Function(ty.clone()));
                 Value::new(
-                    self.db.alloc_hir(Hir::Reference(symbol_id)),
+                    self.db.alloc_hir(Hir::Reference(symbol_id, text_range)),
                     override_type_id.unwrap_or(type_id),
                 )
             }
             Symbol::Parameter(type_id) => Value::new(
-                self.db.alloc_hir(Hir::Reference(symbol_id)),
+                self.db.alloc_hir(Hir::Reference(symbol_id, text_range)),
                 override_type_id.unwrap_or(type_id),
             ),
             Symbol::Let(mut value) | Symbol::Const(mut value) | Symbol::InlineConst(mut value) => {
                 if let Some(type_id) = override_type_id {
                     value.type_id = type_id;
                 }
-                value.hir_id = self.db.alloc_hir(Hir::Reference(symbol_id));
+                value.hir_id = self.db.alloc_hir(Hir::Reference(symbol_id, text_range));
                 value
             }
         };

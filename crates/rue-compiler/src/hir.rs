@@ -1,3 +1,5 @@
+use rowan::TextRange;
+
 use crate::{
     database::{HirId, SymbolId},
     ScopeId,
@@ -8,7 +10,7 @@ pub enum Hir {
     Unknown,
     Atom(Vec<u8>),
     Pair(HirId, HirId),
-    Reference(SymbolId),
+    Reference(SymbolId, TextRange),
     Definition {
         scope_id: ScopeId,
         hir_id: HirId,
