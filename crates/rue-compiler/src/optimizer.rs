@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     database::{Database, HirId, LirId, SymbolId},
-    hir::{BinOp, Hir},
+    hir::{BinOp, Hir, Op},
     lir::Lir,
     symbol::{Function, Symbol},
     value::{FunctionType, Rest, Value},
@@ -161,10 +161,18 @@ impl<'a> Optimizer<'a> {
             Hir::Atom(atom) => self.db.alloc_lir(Lir::Atom(atom.clone())),
             Hir::Pair(first, rest) => self.opt_pair(env_id, first, rest),
             Hir::Reference(symbol_id, ..) => self.opt_reference(env_id, symbol_id),
-            Hir::CheckExists(value) => self.opt_check_exists(env_id, value),
+            Hir::Op(Op::First, value) => self.opt_first(env_id, value),
+            Hir::Op(Op::Rest, value) => self.opt_rest(env_id, value),
+            Hir::Op(Op::Not, value) => self.opt_not(env_id, value),
+            Hir::Op(Op::Sha256, value) => self.opt_sha256(env_id, value),
+            Hir::Op(Op::Listp, value) => self.opt_listp(env_id, value),
+            Hir::Op(Op::Strlen, value) => self.opt_strlen(env_id, value),
+            Hir::Op(Op::PubkeyForExp, value) => self.opt_pubkey_for_exp(env_id, value),
+            Hir::Op(Op::Exists, value) => self.opt_check_exists(env_id, value),
             Hir::Definition { scope_id, hir_id } => {
                 self.opt_env_definition(env_id, scope_id, hir_id)
             }
+            Hir::Raise(value) => self.opt_raise(env_id, value),
             Hir::FunctionCall {
                 callee,
                 args,
@@ -191,7 +199,7 @@ impl<'a> Optimizer<'a> {
                 }
                 self.opt_function_call(env_id, callee, args, varargs)
             }
-            Hir::BinaryOp { op, lhs, rhs } => {
+            Hir::BinaryOp(op, lhs, rhs) => {
                 let handler = match op {
                     BinOp::Add => Self::opt_add,
                     BinOp::Subtract => Self::opt_subtract,
@@ -211,14 +219,6 @@ impl<'a> Optimizer<'a> {
                 };
                 handler(self, env_id, lhs, rhs)
             }
-            Hir::First(value) => self.opt_first(env_id, value),
-            Hir::Rest(value) => self.opt_rest(env_id, value),
-            Hir::Not(value) => self.opt_not(env_id, value),
-            Hir::Raise(value) => self.opt_raise(env_id, value),
-            Hir::Sha256(value) => self.opt_sha256(env_id, value),
-            Hir::IsCons(value) => self.opt_is_cons(env_id, value),
-            Hir::Strlen(value) => self.opt_strlen(env_id, value),
-            Hir::PubkeyForExp(value) => self.opt_pubkey_for_exp(env_id, value),
             Hir::If {
                 condition,
                 then_block,
@@ -309,9 +309,9 @@ impl<'a> Optimizer<'a> {
         self.db.alloc_lir(Lir::Sha256(vec![lir_id]))
     }
 
-    fn opt_is_cons(&mut self, env_id: EnvironmentId, hir_id: HirId) -> LirId {
+    fn opt_listp(&mut self, env_id: EnvironmentId, hir_id: HirId) -> LirId {
         let lir_id = self.opt_hir(env_id, hir_id);
-        self.db.alloc_lir(Lir::IsCons(lir_id))
+        self.db.alloc_lir(Lir::Listp(lir_id))
     }
 
     fn opt_strlen(&mut self, env_id: EnvironmentId, hir_id: HirId) -> LirId {

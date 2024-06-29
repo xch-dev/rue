@@ -170,14 +170,7 @@ impl<'a> GraphTraversal<'a> {
             Hir::Atom(_bytes) => {}
 
             // These operators each depend on a single child HIR node.
-            Hir::PubkeyForExp(hir_id)
-            | Hir::Sha256(hir_id)
-            | Hir::Strlen(hir_id)
-            | Hir::First(hir_id)
-            | Hir::Rest(hir_id)
-            | Hir::CheckExists(hir_id)
-            | Hir::Not(hir_id)
-            | Hir::IsCons(hir_id) => self.visit_hir(scope_id, hir_id, visited),
+            Hir::Op(_op, hir_id) => self.visit_hir(scope_id, hir_id, visited),
 
             // These depend on multiple HIR nodes, in order.
             // This ensures that every part of the HIR is visited.
@@ -205,7 +198,7 @@ impl<'a> GraphTraversal<'a> {
                 self.visit_hir(scope_id, then_block, visited);
                 self.visit_hir(scope_id, else_block, visited);
             }
-            Hir::BinaryOp { lhs, rhs, .. } => {
+            Hir::BinaryOp(_op, lhs, rhs) => {
                 self.visit_hir(scope_id, lhs, visited);
                 self.visit_hir(scope_id, rhs, visited);
             }
@@ -345,14 +338,7 @@ impl<'a> GraphTraversal<'a> {
 
         match self.db.hir(hir_id).clone() {
             Hir::Atom(_) | Hir::Unknown => {}
-            Hir::PubkeyForExp(hir_id)
-            | Hir::Sha256(hir_id)
-            | Hir::Strlen(hir_id)
-            | Hir::First(hir_id)
-            | Hir::Rest(hir_id)
-            | Hir::CheckExists(hir_id)
-            | Hir::Not(hir_id)
-            | Hir::IsCons(hir_id) => self.compute_hir_edges(scope_id, hir_id, visited),
+            Hir::Op(_op, hir_id) => self.compute_hir_edges(scope_id, hir_id, visited),
             Hir::Raise(hir_id) => {
                 if let Some(hir_id) = hir_id {
                     self.compute_hir_edges(scope_id, hir_id, visited);
@@ -378,7 +364,7 @@ impl<'a> GraphTraversal<'a> {
                 self.compute_hir_edges(scope_id, then_block, visited);
                 self.compute_hir_edges(scope_id, else_block, visited);
             }
-            Hir::BinaryOp { lhs, rhs, .. } => {
+            Hir::BinaryOp(_op, lhs, rhs) => {
                 self.compute_hir_edges(scope_id, lhs, visited);
                 self.compute_hir_edges(scope_id, rhs, visited);
             }

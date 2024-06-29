@@ -2,7 +2,7 @@ use rue_parser::{AstNode, PrefixExpr, PrefixOp};
 
 use crate::{
     compiler::Compiler,
-    hir::{BinOp, Hir},
+    hir::{BinOp, Hir, Op},
     value::Value,
 };
 
@@ -41,8 +41,10 @@ impl Compiler<'_> {
         match op {
             PrefixOp::Not => {
                 // Negate the expression and its type guards.
-                let mut value =
-                    Value::new(self.db.alloc_hir(Hir::Not(expr.hir_id)), self.builtins.bool);
+                let mut value = Value::new(
+                    self.db.alloc_hir(Hir::Op(Op::Not, expr.hir_id)),
+                    self.builtins.bool,
+                );
 
                 for (symbol_id, guard) in expr.guards {
                     value.guards.insert(symbol_id, !guard);
@@ -53,11 +55,11 @@ impl Compiler<'_> {
             PrefixOp::Neg => Value::new(
                 // Subtract the expression from nil.
                 // TODO: Is there a more efficient way to do this?
-                self.db.alloc_hir(Hir::BinaryOp {
-                    op: BinOp::Subtract,
-                    lhs: self.builtins.nil_hir,
-                    rhs: expr.hir_id,
-                }),
+                self.db.alloc_hir(Hir::BinaryOp(
+                    BinOp::Subtract,
+                    self.builtins.nil_hir,
+                    expr.hir_id,
+                )),
                 self.builtins.int,
             ),
         }

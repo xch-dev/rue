@@ -11,7 +11,12 @@ pub use comparison::*;
 pub use ids::*;
 
 use crate::{
-    hir::Hir, lir::Lir, optimizer::Environment, scope::Scope, symbol::Symbol, value::Type,
+    hir::{Hir, Op},
+    lir::Lir,
+    optimizer::Environment,
+    scope::Scope,
+    symbol::Symbol,
+    value::Type,
     Diagnostic, DiagnosticKind, ErrorKind, WarningKind,
 };
 
@@ -137,29 +142,29 @@ impl Database {
         match self.hir(id) {
             Hir::Unknown => "<unknown hir>".to_string(),
             Hir::Atom(bytes) => format!("Atom({})", hex::encode(bytes)),
-            Hir::BinaryOp { op, lhs, rhs } => {
+            Hir::BinaryOp(op, lhs, rhs) => {
                 format!("{op:?}({}, {})", self.dbg_hir(*lhs), self.dbg_hir(*rhs))
             }
-            Hir::First(hir_id) => format!("First({})", self.dbg_hir(*hir_id)),
-            Hir::Rest(hir_id) => format!("Rest({})", self.dbg_hir(*hir_id)),
-            Hir::Sha256(hir_id) => format!("Sha256({})", self.dbg_hir(*hir_id)),
-            Hir::IsCons(hir_id) => format!("IsCons({})", self.dbg_hir(*hir_id)),
-            Hir::Not(hir_id) => format!("Not({})", self.dbg_hir(*hir_id)),
-            Hir::Strlen(hir_id) => format!("Strlen({})", self.dbg_hir(*hir_id)),
+            Hir::Op(op, hir_id) => match op {
+                Op::First => format!("First({})", self.dbg_hir(*hir_id)),
+                Op::Rest => format!("Rest({})", self.dbg_hir(*hir_id)),
+                Op::Sha256 => format!("Sha256({})", self.dbg_hir(*hir_id)),
+                Op::Listp => format!("Listp({})", self.dbg_hir(*hir_id)),
+                Op::Not => format!("Not({})", self.dbg_hir(*hir_id)),
+                Op::Strlen => format!("Strlen({})", self.dbg_hir(*hir_id)),
+                Op::PubkeyForExp => format!("PubkeyForExp({})", self.dbg_hir(*hir_id)),
+                Op::Exists => format!("Exists({})", self.dbg_hir(*hir_id)),
+            },
             Hir::Raise(hir_id) => format!(
                 "Raise({})",
                 hir_id
                     .map(|hir_id| self.dbg_hir(hir_id))
                     .unwrap_or_default()
             ),
-            Hir::PubkeyForExp(hir_id) => format!("PubkeyForExp({})", self.dbg_hir(*hir_id)),
             Hir::Pair(first, rest) => {
                 format!("Pair({}, {})", self.dbg_hir(*first), self.dbg_hir(*rest))
             }
             Hir::Reference(symbol_id, ..) => format!("Reference({})", self.dbg_symbol(*symbol_id)),
-            Hir::CheckExists(hir_id) => {
-                format!("CheckExists({})", self.dbg_hir(*hir_id))
-            }
             Hir::FunctionCall {
                 callee,
                 args,

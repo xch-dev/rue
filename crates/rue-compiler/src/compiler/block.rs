@@ -1,6 +1,10 @@
 use rue_parser::{AstNode, Block, Stmt};
 
-use crate::{hir::Hir, value::Value, ErrorKind, TypeId};
+use crate::{
+    hir::{Hir, Op},
+    value::Value,
+    ErrorKind, TypeId,
+};
 
 use super::{stmt::Statement, Compiler};
 
@@ -86,7 +90,7 @@ impl Compiler<'_> {
                     // This will be popped in reverse order later after all statements have been lowered.
                     self.type_guard_stack.push(condition.then_guards());
 
-                    let not_condition = self.db.alloc_hir(Hir::Not(condition.hir_id));
+                    let not_condition = self.db.alloc_hir(Hir::Op(Op::Not, condition.hir_id));
                     let raise = self.db.alloc_hir(Hir::Raise(None));
 
                     // We lower this down to an inverted if statement.

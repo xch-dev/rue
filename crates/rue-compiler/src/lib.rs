@@ -4,6 +4,7 @@ mod database;
 mod error;
 mod hir;
 mod lir;
+mod lowerer;
 mod optimizer;
 mod scope;
 mod symbol;

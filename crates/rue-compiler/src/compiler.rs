@@ -9,7 +9,7 @@ use symbol_table::SymbolTable;
 
 use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
-    hir::Hir,
+    hir::{Hir, Op},
     scope::Scope,
     value::{GuardPath, PairType, Type, Value},
     ErrorKind,
@@ -89,10 +89,10 @@ impl<'a> Compiler<'a> {
     fn compile_index(&mut self, value: HirId, index: usize, rest: bool) -> HirId {
         let mut result = value;
         for _ in 0..index {
-            result = self.db.alloc_hir(Hir::Rest(result));
+            result = self.db.alloc_hir(Hir::Op(Op::Rest, result));
         }
         if !rest {
-            result = self.db.alloc_hir(Hir::First(result));
+            result = self.db.alloc_hir(Hir::Op(Op::First, result));
         }
         result
     }

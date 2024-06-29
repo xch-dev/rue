@@ -20,25 +20,26 @@ pub enum Hir {
         args: Vec<HirId>,
         varargs: bool,
     },
-    BinaryOp {
-        op: BinOp,
-        lhs: HirId,
-        rhs: HirId,
-    },
-    First(HirId),
-    Rest(HirId),
-    CheckExists(HirId),
-    Not(HirId),
+    Op(Op, HirId),
+    BinaryOp(BinOp, HirId, HirId),
     Raise(Option<HirId>),
-    Sha256(HirId),
-    IsCons(HirId),
-    Strlen(HirId),
-    PubkeyForExp(HirId),
     If {
         condition: HirId,
         then_block: HirId,
         else_block: HirId,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Op {
+    First,
+    Rest,
+    Sha256,
+    Listp,
+    Strlen,
+    PubkeyForExp,
+    Exists,
+    Not,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

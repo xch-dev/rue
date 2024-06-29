@@ -1,7 +1,7 @@
 use rowan::TextRange;
 
 use crate::{
-    hir::Hir,
+    hir::{Hir, Op},
     scope::Scope,
     symbol::{Function, Symbol},
     value::{FunctionType, Rest, Type},
@@ -78,7 +78,7 @@ fn sha256(db: &mut Database, builtins: &Builtins) -> SymbolId {
     let param = db.alloc_symbol(Symbol::Parameter(builtins.bytes));
     scope.define_symbol("bytes".to_string(), param);
     let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
-    let hir_id = db.alloc_hir(Hir::Sha256(param_ref));
+    let hir_id = db.alloc_hir(Hir::Op(Op::Sha256, param_ref));
     let scope_id = db.alloc_scope(scope);
 
     db.alloc_symbol(Symbol::InlineFunction(Function {
@@ -98,7 +98,7 @@ fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
     let param = db.alloc_symbol(Symbol::Parameter(builtins.bytes32));
     scope.define_symbol("exponent".to_string(), param);
     let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
-    let hir_id = db.alloc_hir(Hir::PubkeyForExp(param_ref));
+    let hir_id = db.alloc_hir(Hir::Op(Op::PubkeyForExp, param_ref));
     let scope_id = db.alloc_scope(scope);
 
     db.alloc_symbol(Symbol::InlineFunction(Function {

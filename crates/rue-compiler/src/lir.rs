@@ -13,7 +13,7 @@ pub enum Lir {
     Rest(LirId),
     Raise(Option<LirId>),
     Sha256(Vec<LirId>),
-    IsCons(LirId),
+    Listp(LirId),
     Strlen(LirId),
     PubkeyForExp(LirId),
     If(LirId, LirId, LirId),
