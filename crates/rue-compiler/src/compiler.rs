@@ -19,7 +19,6 @@ mod block;
 mod builtins;
 mod context;
 mod expr;
-mod generic_types;
 mod item;
 mod path;
 mod stmt;
