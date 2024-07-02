@@ -284,24 +284,6 @@ impl<'a> Lowerer<'a> {
         (self.lower_predefined_reference(symbol_id), captures)
     }
 
-    fn propagate_inline_function(&mut self, env_id: EnvironmentId, function_env_id: EnvironmentId) {
-        let function_env = self.db.env(function_env_id).clone();
-
-        for symbol_id in function_env.definitions() {
-            if matches!(self.db.symbol(symbol_id), Symbol::Parameter(..)) {
-                continue;
-            }
-            self.db.env_mut(env_id).define(symbol_id);
-        }
-
-        for symbol_id in function_env.captures() {
-            if matches!(self.db.symbol(symbol_id), Symbol::Parameter(..)) {
-                continue;
-            }
-            self.db.env_mut(env_id).capture(symbol_id);
-        }
-    }
-
     fn lower_inline_function_call(
         &mut self,
         env_id: EnvironmentId,
@@ -310,7 +292,6 @@ impl<'a> Lowerer<'a> {
         varargs: bool,
     ) -> MirId {
         let function_env_id = self.graph.environment_id(function.scope_id);
-        self.propagate_inline_function(env_id, function_env_id);
 
         let params = self.db.env(function_env_id).parameters();
 

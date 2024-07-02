@@ -377,12 +377,39 @@ impl<'a> GraphBuilder<'a> {
             Symbol::Let(value) | Symbol::Const(value) | Symbol::InlineConst(value) => {
                 self.ref_hir(scope_id, value.hir_id);
             }
-            Symbol::Function(function) | Symbol::InlineFunction(function) => {
+            Symbol::Function(function) => {
                 self.ref_hir(function.scope_id, function.hir_id);
+            }
+            Symbol::InlineFunction(function) => {
+                self.ref_inline_function(scope_id, &function);
             }
             Symbol::Parameter(..) => {}
         }
 
         self.constant_stack.shift_remove(&symbol_id);
+    }
+
+    fn ref_inline_function(&mut self, scope_id: ScopeId, function: &Function) {
+        let env_id = self.graph.environments[&scope_id];
+        self.ref_hir(function.scope_id, function.hir_id);
+
+        let env = self
+            .db
+            .env(self.graph.environments[&function.scope_id])
+            .clone();
+
+        for symbol_id in env.definitions() {
+            if matches!(self.db.symbol(symbol_id), Symbol::Parameter(..)) {
+                continue;
+            }
+            self.db.env_mut(env_id).define(symbol_id);
+        }
+
+        for symbol_id in env.captures() {
+            if matches!(self.db.symbol(symbol_id), Symbol::Parameter(..)) {
+                continue;
+            }
+            self.db.env_mut(env_id).capture(symbol_id);
+        }
     }
 }
