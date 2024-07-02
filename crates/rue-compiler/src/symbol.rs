@@ -19,10 +19,6 @@ pub enum Symbol {
 }
 
 impl Symbol {
-    pub fn is_parameter(&self) -> bool {
-        matches!(self, Symbol::Parameter { .. })
-    }
-
     pub fn is_capturable(&self) -> bool {
         matches!(
             self,
@@ -30,7 +26,7 @@ impl Symbol {
         )
     }
 
-    pub fn is_definition(&self) -> bool {
+    pub fn is_definable(&self) -> bool {
         matches!(
             self,
             Symbol::Function(..) | Symbol::Let(..) | Symbol::Const(..)

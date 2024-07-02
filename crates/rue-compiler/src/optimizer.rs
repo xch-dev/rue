@@ -32,7 +32,7 @@ impl<'a> Optimizer<'a> {
         let Symbol::Function(fun) = self.db.symbol(main).clone() else {
             unreachable!();
         };
-        let env_id = self.graph.env(fun.scope_id);
+        let env_id = self.graph.environment_id(fun.scope_id);
         let mut definitions = self.db.env(env_id).definitions();
         definitions.extend(self.db.env(env_id).captures());
         self.opt_definitions(env_id, definitions, fun.hir_id)
@@ -85,7 +85,7 @@ impl<'a> Optimizer<'a> {
             Symbol::Function(Function {
                 hir_id, scope_id, ..
             }) => {
-                let function_env_id = self.graph.env(scope_id);
+                let function_env_id = self.graph.environment_id(scope_id);
                 let function = self.opt_definitions(
                     function_env_id,
                     self.db.env(function_env_id).definitions(),
@@ -94,7 +94,7 @@ impl<'a> Optimizer<'a> {
                 self.db.alloc_lir(Lir::Quote(function))
             }
             Symbol::Const(Value { hir_id, .. }) => self.opt_hir(env_id, hir_id),
-            Symbol::Let(symbol) if self.graph.symbol_usages(symbol_id) > 0 => {
+            Symbol::Let(symbol) if self.graph.symbol_references(symbol_id) > 0 => {
                 self.opt_hir(env_id, symbol.hir_id)
             }
             Symbol::Unknown
@@ -181,7 +181,7 @@ impl<'a> Optimizer<'a> {
                         ..
                     }) = self.db.symbol(*symbol_id)
                     {
-                        let function_env_id = self.graph.env(*scope_id);
+                        let function_env_id = self.graph.environment_id(*scope_id);
                         return self.opt_inline_function_call(
                             env_id,
                             function_env_id,
@@ -249,18 +249,18 @@ impl<'a> Optimizer<'a> {
         scope_id: ScopeId,
         hir_id: HirId,
     ) -> LirId {
-        let definition_env_id = self.graph.env(scope_id);
+        let definition_env_id = self.graph.environment_id(scope_id);
         for symbol_id in self.db.env_mut(definition_env_id).definitions() {
             let Symbol::Let(..) = self.db.symbol(symbol_id) else {
                 continue;
             };
-            if self.graph.symbol_usages(symbol_id) == 1 {
+            if self.graph.symbol_references(symbol_id) == 1 {
                 self.db
                     .env_mut(definition_env_id)
                     .remove_definition(symbol_id);
             }
         }
-        let child_env_id = self.graph.env(scope_id);
+        let child_env_id = self.graph.environment_id(scope_id);
         let body = self.opt_hir(child_env_id, hir_id);
 
         let mut args = Vec::new();
@@ -320,7 +320,7 @@ impl<'a> Optimizer<'a> {
     fn opt_reference(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
         match self.db.symbol(symbol_id).clone() {
             Symbol::Function(Function { scope_id, .. }) => {
-                let function_env_id = self.graph.env(scope_id);
+                let function_env_id = self.graph.environment_id(scope_id);
                 let body = self.opt_path(env_id, symbol_id);
 
                 let mut captures = Vec::new();
@@ -337,7 +337,7 @@ impl<'a> Optimizer<'a> {
             }
             Symbol::InlineFunction(..) => self.db.alloc_lir(Lir::Atom(vec![])),
             Symbol::InlineConst(Value { hir_id, .. }) => self.opt_hir(env_id, hir_id),
-            Symbol::Let(symbol) if self.graph.symbol_usages(symbol_id) == 1 => {
+            Symbol::Let(symbol) if self.graph.symbol_references(symbol_id) == 1 => {
                 self.opt_hir(env_id, symbol.hir_id)
             }
             Symbol::Let(..) | Symbol::Const(..) | Symbol::Parameter(..) => {
@@ -369,7 +369,7 @@ impl<'a> Optimizer<'a> {
 
         let callee = if let Hir::Reference(symbol_id, ..) = self.db.hir(callee).clone() {
             if let Symbol::Function(Function { scope_id, .. }) = self.db.symbol(symbol_id) {
-                let callee_env_id = self.graph.env(*scope_id);
+                let callee_env_id = self.graph.environment_id(*scope_id);
                 for symbol_id in self.db.env(callee_env_id).captures().into_iter().rev() {
                     let capture = self.opt_path(env_id, symbol_id);
                     lir_id = self.db.alloc_lir(Lir::Pair(capture, lir_id));
