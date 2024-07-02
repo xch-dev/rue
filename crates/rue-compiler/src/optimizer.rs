@@ -169,9 +169,7 @@ impl<'a> Optimizer<'a> {
             Hir::Op(Op::Strlen, value) => self.opt_strlen(env_id, value),
             Hir::Op(Op::PubkeyForExp, value) => self.opt_pubkey_for_exp(env_id, value),
             Hir::Op(Op::Exists, value) => self.opt_check_exists(env_id, value),
-            Hir::Definition { scope_id, hir_id } => {
-                self.opt_env_definition(env_id, scope_id, hir_id)
-            }
+            Hir::Definition(scope_id, hir_id) => self.opt_env_definition(env_id, scope_id, hir_id),
             Hir::Raise(value) => self.opt_raise(env_id, value),
             Hir::FunctionCall {
                 callee,
@@ -219,11 +217,9 @@ impl<'a> Optimizer<'a> {
                 };
                 handler(self, env_id, lhs, rhs)
             }
-            Hir::If {
-                condition,
-                then_block,
-                else_block,
-            } => self.opt_if(env_id, condition, then_block, else_block),
+            Hir::If(condition, then_block, else_block) => {
+                self.opt_if(env_id, condition, then_block, else_block)
+            }
         }
     }
 

@@ -11,10 +11,7 @@ pub enum Hir {
     Atom(Vec<u8>),
     Pair(HirId, HirId),
     Reference(SymbolId, TextRange),
-    Definition {
-        scope_id: ScopeId,
-        hir_id: HirId,
-    },
+    Definition(ScopeId, HirId),
     FunctionCall {
         callee: HirId,
         args: Vec<HirId>,
@@ -23,11 +20,7 @@ pub enum Hir {
     Op(Op, HirId),
     BinaryOp(BinOp, HirId, HirId),
     Raise(Option<HirId>),
-    If {
-        condition: HirId,
-        then_block: HirId,
-        else_block: HirId,
-    },
+    If(HirId, HirId, HirId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

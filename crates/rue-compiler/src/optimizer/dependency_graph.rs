@@ -189,11 +189,7 @@ impl<'a> GraphTraversal<'a> {
                     self.visit_hir(scope_id, arg, visited);
                 }
             }
-            Hir::If {
-                condition,
-                then_block,
-                else_block,
-            } => {
+            Hir::If(condition, then_block, else_block) => {
                 self.visit_hir(scope_id, condition, visited);
                 self.visit_hir(scope_id, then_block, visited);
                 self.visit_hir(scope_id, else_block, visited);
@@ -205,9 +201,7 @@ impl<'a> GraphTraversal<'a> {
 
             // A definition consists of a new scope and an HIR node for the rest of the body.
             // TODO: Should this add the scope id to the graph?
-            Hir::Definition {
-                hir_id, scope_id, ..
-            } => self.visit_hir(scope_id, hir_id, visited),
+            Hir::Definition(scope_id, hir_id) => self.visit_hir(scope_id, hir_id, visited),
 
             // Resolves a reference to a symbol. This doesn't have any direct child HIR nodes.
             Hir::Reference(symbol_id, ..) => self.visit_reference(scope_id, symbol_id, visited),
@@ -355,11 +349,7 @@ impl<'a> GraphTraversal<'a> {
                     self.compute_hir_edges(scope_id, arg, visited);
                 }
             }
-            Hir::If {
-                condition,
-                then_block,
-                else_block,
-            } => {
+            Hir::If(condition, then_block, else_block) => {
                 self.compute_hir_edges(scope_id, condition, visited);
                 self.compute_hir_edges(scope_id, then_block, visited);
                 self.compute_hir_edges(scope_id, else_block, visited);
@@ -368,11 +358,7 @@ impl<'a> GraphTraversal<'a> {
                 self.compute_hir_edges(scope_id, lhs, visited);
                 self.compute_hir_edges(scope_id, rhs, visited);
             }
-            Hir::Definition {
-                hir_id,
-                scope_id: child_scope_id,
-                ..
-            } => {
+            Hir::Definition(child_scope_id, hir_id) => {
                 // Add the scope to the graph.
                 if !self
                     .edges

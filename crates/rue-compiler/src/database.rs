@@ -178,16 +178,12 @@ impl Database {
                     .join(", "),
                 varargs
             ),
-            Hir::Definition { scope_id, hir_id } => format!(
+            Hir::Definition(scope_id, hir_id) => format!(
                 "Definition({}, {})",
                 self.dbg_scope(*scope_id),
                 self.dbg_hir(*hir_id)
             ),
-            Hir::If {
-                condition,
-                then_block,
-                else_block,
-            } => format!(
+            Hir::If(condition, then_block, else_block) => format!(
                 "If({}, {}, {})",
                 self.dbg_hir(*condition),
                 self.dbg_hir(*then_block),

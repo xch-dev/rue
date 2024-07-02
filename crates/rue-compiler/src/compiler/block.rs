@@ -133,10 +133,7 @@ impl Compiler<'_> {
             match statement {
                 Statement::Let(scope_id) => {
                     body = Value::new(
-                        self.db.alloc_hir(Hir::Definition {
-                            scope_id,
-                            hir_id: body.hir_id,
-                        }),
+                        self.db.alloc_hir(Hir::Definition(scope_id, body.hir_id)),
                         body.type_id,
                     );
                     self.scope_stack.pop().unwrap();
@@ -148,11 +145,8 @@ impl Compiler<'_> {
                     self.type_guard_stack.pop().unwrap();
 
                     body = Value::new(
-                        self.db.alloc_hir(Hir::If {
-                            condition,
-                            then_block,
-                            else_block: body.hir_id,
-                        }),
+                        self.db
+                            .alloc_hir(Hir::If(condition, then_block, body.hir_id)),
                         body.type_id,
                     );
                 }
