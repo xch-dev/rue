@@ -6,6 +6,8 @@ mod environment;
 mod error;
 mod hir;
 mod lir;
+mod lowerer;
+mod mir;
 mod optimizer;
 mod scope;
 mod symbol;
@@ -77,7 +79,7 @@ pub fn compile(allocator: &mut Allocator, root: &Root, mut should_codegen: bool)
     Output {
         diagnostics: db.diagnostics().to_vec(),
         node_ptr: if should_codegen {
-            codegen(allocator, &mut db, graph, main)
+            codegen(allocator, &mut db, &graph, main)
         } else {
             NodePtr::default()
         },

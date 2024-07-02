@@ -12,34 +12,34 @@ inline fun outer_closure(num_1: Int) -> fun(num: Int) -> Int {
     inner
 }
 
-inline fun outer_1(num: Int) -> Int {
+inline fun outer_1(num_a: Int) -> Int {
     inline const FACTOR: Int = 2;
-    inline fun inner() -> Int {
-        num * FACTOR
+    inline fun inner_1() -> Int {
+        num_a * FACTOR
     }
-    inner()
+    inner_1()
 }
 
-inline fun outer_2(num: Int) -> Int {
+inline fun outer_2(num_b: Int) -> Int {
     const FACTOR: Int = 2;
-    inline fun inner() -> Int {
-        num * FACTOR
+    inline fun inner_2() -> Int {
+        num_b * FACTOR
     }
-    inner()
+    inner_2()
 }
 
-inline fun outer_3(num: Int) -> Int {
+inline fun outer_3(num_c: Int) -> Int {
     const FACTOR: Int = 2;
-    fun inner() -> Int {
-        num * FACTOR
+    fun inner_3() -> Int {
+        num_c * FACTOR
     }
-    inner()
+    inner_3()
 }
 
-inline fun outer_4(num: Int) -> Int {
+inline fun outer_4(num_d: Int) -> Int {
     inline const FACTOR: Int = 2;
-    fun inner() -> Int {
-        num * FACTOR
+    fun inner_4() -> Int {
+        num_d * FACTOR
     }
-    inner()
+    inner_4()
 }

@@ -155,7 +155,7 @@ impl<'a> GraphBuilder<'a> {
                 self.walk_hir(scope_id, first);
                 self.walk_hir(scope_id, rest);
             }
-            Hir::FunctionCall { callee, args, .. } => {
+            Hir::FunctionCall(callee, args, _varargs) => {
                 self.walk_hir(scope_id, callee);
                 for arg in args {
                     self.walk_hir(scope_id, arg);
@@ -323,7 +323,7 @@ impl<'a> GraphBuilder<'a> {
                 self.ref_hir(scope_id, first);
                 self.ref_hir(scope_id, rest);
             }
-            Hir::FunctionCall { callee, args, .. } => {
+            Hir::FunctionCall(callee, args, _varargs) => {
                 self.ref_hir(scope_id, callee);
                 for arg in args {
                     self.ref_hir(scope_id, arg);
@@ -377,44 +377,12 @@ impl<'a> GraphBuilder<'a> {
             Symbol::Let(value) | Symbol::Const(value) | Symbol::InlineConst(value) => {
                 self.ref_hir(scope_id, value.hir_id);
             }
-            Symbol::Function(function) => {
+            Symbol::Function(function) | Symbol::InlineFunction(function) => {
                 self.ref_hir(function.scope_id, function.hir_id);
-            }
-            Symbol::InlineFunction(function) => {
-                self.ref_inline_function(scope_id, &function);
             }
             Symbol::Parameter(..) => {}
         }
 
         self.constant_stack.shift_remove(&symbol_id);
-    }
-
-    fn ref_inline_function(&mut self, scope_id: ScopeId, function: &Function) {
-        self.ref_hir(function.scope_id, function.hir_id);
-
-        let env = self
-            .db
-            .env(self.graph.environments[&function.scope_id])
-            .clone();
-
-        for symbol_id in env.definitions() {
-            if matches!(self.db.symbol(symbol_id), Symbol::Parameter(..)) {
-                continue;
-            }
-
-            self.db
-                .env_mut(self.graph.environments[&scope_id])
-                .define(symbol_id);
-        }
-
-        for symbol_id in env.captures() {
-            if matches!(self.db.symbol(symbol_id), Symbol::Parameter(..)) {
-                continue;
-            }
-
-            self.db
-                .env_mut(self.graph.environments[&scope_id])
-                .capture(symbol_id);
-        }
     }
 }

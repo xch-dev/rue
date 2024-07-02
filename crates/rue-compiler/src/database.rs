@@ -14,6 +14,7 @@ use crate::{
     environment::Environment,
     hir::{Hir, Op},
     lir::Lir,
+    mir::Mir,
     scope::Scope,
     symbol::Symbol,
     value::Type,
@@ -27,6 +28,7 @@ pub struct Database {
     symbols: Arena<Symbol>,
     types: Arena<Type>,
     hir: Arena<Hir>,
+    mir: Arena<Mir>,
     lir: Arena<Lir>,
     environments: Arena<Environment>,
     symbol_tokens: IndexMap<SymbolId, SyntaxToken>,
@@ -53,6 +55,10 @@ impl Database {
 
     pub(crate) fn alloc_hir(&mut self, hir: Hir) -> HirId {
         HirId(self.hir.alloc(hir))
+    }
+
+    pub(crate) fn alloc_mir(&mut self, mir: Mir) -> MirId {
+        MirId(self.mir.alloc(mir))
     }
 
     pub(crate) fn alloc_lir(&mut self, lir: Lir) -> LirId {
@@ -84,6 +90,10 @@ impl Database {
 
     pub fn hir(&self, id: HirId) -> &Hir {
         &self.hir[id.0]
+    }
+
+    pub fn mir(&self, id: MirId) -> &Mir {
+        &self.mir[id.0]
     }
 
     pub fn lir(&self, id: LirId) -> &Lir {
@@ -165,11 +175,7 @@ impl Database {
                 format!("Pair({}, {})", self.dbg_hir(*first), self.dbg_hir(*rest))
             }
             Hir::Reference(symbol_id, ..) => format!("Reference({})", self.dbg_symbol(*symbol_id)),
-            Hir::FunctionCall {
-                callee,
-                args,
-                varargs,
-            } => format!(
+            Hir::FunctionCall(callee, args, varargs) => format!(
                 "Call({}, [{}], Varargs = {})",
                 self.dbg_hir(*callee),
                 args.iter()

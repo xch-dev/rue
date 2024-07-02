@@ -7,6 +7,7 @@ use rue_parser::{parse, Root};
 use crate::{
     codegen::Codegen,
     dependency_graph::DependencyGraph,
+    lowerer::Lowerer,
     optimizer::Optimizer,
     scope::Scope,
     symbol::{Module, Symbol},
@@ -128,11 +129,13 @@ pub fn build_graph(
 pub fn codegen(
     allocator: &mut Allocator,
     db: &mut Database,
-    graph: DependencyGraph,
+    graph: &DependencyGraph,
     entrypoint: SymbolId,
 ) -> NodePtr {
-    let mut optimizer = Optimizer::new(db, graph);
-    let lir_id = optimizer.opt_main(entrypoint);
+    let mut lowerer = Lowerer::new(db, graph);
+    let (env_id, mir_id) = lowerer.lower_main(entrypoint);
+    let mut optimizer = Optimizer::new(db);
+    let lir_id = optimizer.opt_mir(env_id, mir_id);
     let mut codegen = Codegen::new(db, allocator);
     codegen.gen_lir(lir_id)
 }

@@ -99,11 +99,11 @@ impl Compiler<'_> {
 
         // Build the HIR for the function call.
 
-        let hir_id = self.db.alloc_hir(Hir::FunctionCall {
-            callee: callee.map_or(self.builtins.unknown_hir, |callee| callee.hir_id),
-            args: args.iter().map(|arg| arg.hir_id).collect(),
-            varargs: spread,
-        });
+        let hir_id = self.db.alloc_hir(Hir::FunctionCall(
+            callee.map_or(self.builtins.unknown_hir, |callee| callee.hir_id),
+            args.iter().map(|arg| arg.hir_id).collect(),
+            spread,
+        ));
 
         Value::new(hir_id, type_id)
     }

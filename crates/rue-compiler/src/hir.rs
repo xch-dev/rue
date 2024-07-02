@@ -12,11 +12,7 @@ pub enum Hir {
     Pair(HirId, HirId),
     Reference(SymbolId, TextRange),
     Definition(ScopeId, HirId),
-    FunctionCall {
-        callee: HirId,
-        args: Vec<HirId>,
-        varargs: bool,
-    },
+    FunctionCall(HirId, Vec<HirId>, bool),
     Op(Op, HirId),
     BinaryOp(BinOp, HirId, HirId),
     Raise(Option<HirId>),
