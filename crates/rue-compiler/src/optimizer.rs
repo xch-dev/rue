@@ -53,7 +53,7 @@ impl<'a> Optimizer<'a> {
 
         while let Some(parent_env_id) = self.db.env(current_env_id).parent() {
             assert!(self.db.env(current_env_id).parameters().is_empty());
-            assert!(!self.db.env(current_env_id).rest_parameter());
+            assert!(!self.db.env(current_env_id).rest());
 
             current_env_id = parent_env_id;
             environment.extend(self.db.env(current_env_id).build());
@@ -71,7 +71,7 @@ impl<'a> Optimizer<'a> {
 
         let mut path = 1;
 
-        if !(index + 1 == environment.len() && self.db.env(env_id).rest_parameter()) {
+        if !(index + 1 == environment.len() && self.db.env(env_id).rest()) {
             path *= 2;
         }
 
