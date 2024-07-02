@@ -11,9 +11,9 @@ pub use comparison::*;
 pub use ids::*;
 
 use crate::{
+    environment::Environment,
     hir::{Hir, Op},
     lir::Lir,
-    optimizer::Environment,
     scope::Scope,
     symbol::Symbol,
     value::Type,

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    optimizer::DependencyGraph, symbol::Symbol, value::Type, Database, SymbolId, TypeId,
+    dependency_graph::DependencyGraph, symbol::Symbol, value::Type, Database, SymbolId, TypeId,
     WarningKind,
 };
 

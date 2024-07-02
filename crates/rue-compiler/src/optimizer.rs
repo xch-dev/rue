@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use crate::{
     database::{Database, HirId, LirId, SymbolId},
+    dependency_graph::DependencyGraph,
+    environment::Environment,
     hir::{BinOp, Hir, Op},
     lir::Lir,
     symbol::{Function, Symbol},
@@ -9,11 +11,6 @@ use crate::{
     EnvironmentId, ScopeId,
 };
 
-mod dependency_graph;
-mod environment;
-
-pub use dependency_graph::*;
-pub use environment::*;
 use indexmap::IndexSet;
 
 pub struct Optimizer<'a> {

@@ -1,6 +1,8 @@
 mod codegen;
 mod compiler;
 mod database;
+mod dependency_graph;
+mod environment;
 mod error;
 mod hir;
 mod lir;

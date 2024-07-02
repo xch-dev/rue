@@ -3,13 +3,12 @@ use std::collections::{HashMap, HashSet};
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
+    environment::Environment,
     hir::Hir,
     symbol::{Module, Symbol},
     value::{FunctionType, Rest, Value},
     Database, EnvironmentId, ErrorKind, HirId, ScopeId, SymbolId,
 };
-
-use super::Environment;
 
 /// Responsible for converting the compiler's `Scope` objects to the lower level `Environment`.
 /// It does this by determining which scopes depend on each other,

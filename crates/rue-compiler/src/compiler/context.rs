@@ -6,7 +6,8 @@ use rue_parser::{parse, Root};
 
 use crate::{
     codegen::Codegen,
-    optimizer::{DependencyGraph, Optimizer},
+    dependency_graph::DependencyGraph,
+    optimizer::Optimizer,
     scope::Scope,
     symbol::{Module, Symbol},
     value::Type,
