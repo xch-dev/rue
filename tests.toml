@@ -467,6 +467,10 @@ compiler_errors = [
     "Error: Cannot recursively reference constant. (3:16)",
 ]
 
+[recursive_constant_fn]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively reference constant. (8:5)"]
+
 [mixed_constants]
 bytes = 77
 cost = 0

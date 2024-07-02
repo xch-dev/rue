@@ -14,7 +14,7 @@ pub struct DependencyGraph {
     environments: IndexMap<ScopeId, EnvironmentId>,
     parent_scopes: IndexMap<ScopeId, IndexSet<ScopeId>>,
     symbol_references: IndexMap<SymbolId, usize>,
-    constant_references: IndexMap<SymbolId, IndexSet<SymbolId>>,
+    references: IndexMap<SymbolId, IndexSet<SymbolId>>,
 }
 
 impl DependencyGraph {
@@ -29,11 +29,8 @@ impl DependencyGraph {
             .unwrap_or_default()
     }
 
-    pub fn constant_references(&self, symbol_id: SymbolId) -> IndexSet<SymbolId> {
-        self.constant_references
-            .get(&symbol_id)
-            .cloned()
-            .unwrap_or_default()
+    pub fn references(&self, symbol_id: SymbolId) -> IndexSet<SymbolId> {
+        self.references.get(&symbol_id).cloned().unwrap_or_default()
     }
 
     pub fn environment_id(&self, scope_id: ScopeId) -> EnvironmentId {
@@ -46,14 +43,11 @@ impl DependencyGraph {
         let mut builder = GraphBuilder {
             db,
             graph: Self::default(),
-            constant_stack: IndexSet::new(),
+            symbol_stack: IndexSet::new(),
             visited: IndexSet::new(),
         };
         builder.walk_module(entrypoint);
-        assert!(
-            builder.constant_stack.is_empty(),
-            "constant_stack is not empty"
-        );
+        assert!(builder.symbol_stack.is_empty(), "symbol stack is not empty");
         builder.visited.clear();
         builder.ref_module(entrypoint);
         builder.graph
@@ -63,7 +57,7 @@ impl DependencyGraph {
 struct GraphBuilder<'a> {
     db: &'a mut Database,
     graph: DependencyGraph,
-    constant_stack: IndexSet<SymbolId>,
+    symbol_stack: IndexSet<SymbolId>,
     visited: IndexSet<(ScopeId, HirId)>,
 }
 
@@ -215,22 +209,26 @@ impl<'a> GraphBuilder<'a> {
     fn walk_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId, text_range: TextRange) {
         let symbol = self.db.symbol(symbol_id).clone();
 
-        let error = match symbol {
-            Symbol::Const(..) if !self.constant_stack.insert(symbol_id) => {
-                Some(ErrorKind::RecursiveConstantReference)
-            }
-            Symbol::InlineConst(..) if !self.constant_stack.insert(symbol_id) => {
-                Some(ErrorKind::RecursiveInlineConstantReference)
-            }
-            Symbol::InlineFunction(..) if !self.constant_stack.insert(symbol_id) => {
-                Some(ErrorKind::RecursiveInlineFunctionCall)
-            }
-            _ => None,
-        };
+        for &key in &self.symbol_stack {
+            self.graph
+                .references
+                .entry(key)
+                .or_default()
+                .insert(symbol_id);
+        }
 
-        if let Some(error) = error {
-            self.db.error(error, text_range);
-            return;
+        if !self.symbol_stack.insert(symbol_id) {
+            let error = match symbol {
+                Symbol::Const(..) => Some(ErrorKind::RecursiveConstantReference),
+                Symbol::InlineConst(..) => Some(ErrorKind::RecursiveInlineConstantReference),
+                Symbol::InlineFunction(..) => Some(ErrorKind::RecursiveInlineFunctionCall),
+                _ => None,
+            };
+
+            if let Some(error) = error {
+                self.db.error(error, text_range);
+                return;
+            }
         }
 
         match symbol {
@@ -250,7 +248,38 @@ impl<'a> GraphBuilder<'a> {
             }
         }
 
-        self.constant_stack.shift_remove(&symbol_id);
+        self.symbol_stack.shift_remove(&symbol_id);
+
+        if let Some(references) = self.graph.references.get(&symbol_id).cloned() {
+            for reference in references {
+                if !self
+                    .graph
+                    .references
+                    .get(&reference)
+                    .cloned()
+                    .unwrap_or_default()
+                    .contains(&symbol_id)
+                {
+                    continue;
+                }
+
+                if let Symbol::Function(..) = self.db.symbol(reference) {
+                    let error = match self.db.symbol(symbol_id) {
+                        Symbol::Const(..) => Some(ErrorKind::RecursiveConstantReference),
+                        Symbol::InlineConst(..) => {
+                            Some(ErrorKind::RecursiveInlineConstantReference)
+                        }
+                        Symbol::InlineFunction(..) => Some(ErrorKind::RecursiveInlineFunctionCall),
+                        _ => None,
+                    };
+
+                    if let Some(error) = error {
+                        self.db.error(error, text_range);
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     fn propagate_capture(
@@ -350,15 +379,7 @@ impl<'a> GraphBuilder<'a> {
     fn resolve_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) {
         let symbol = self.db.symbol(symbol_id).clone();
 
-        for &constant in &self.constant_stack {
-            self.graph
-                .constant_references
-                .entry(constant)
-                .or_default()
-                .insert(symbol_id);
-        }
-
-        if self.db.symbol(symbol_id).is_constant() && !self.constant_stack.insert(symbol_id) {
+        if self.db.symbol(symbol_id).is_constant() && !self.symbol_stack.insert(symbol_id) {
             return;
         }
 
@@ -386,7 +407,7 @@ impl<'a> GraphBuilder<'a> {
             Symbol::Parameter(..) => {}
         }
 
-        self.constant_stack.shift_remove(&symbol_id);
+        self.symbol_stack.shift_remove(&symbol_id);
     }
 
     fn ref_inline_function(&mut self, scope_id: ScopeId, function: &Function) {

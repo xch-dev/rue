@@ -165,13 +165,18 @@ impl<'a> Lowerer<'a> {
             let no_references = remaining
                 .iter()
                 .filter(|&symbol_id| {
-                    !self.db.symbol(*symbol_id).is_constant()
-                        || self
-                            .graph
-                            .constant_references(*symbol_id)
-                            .intersection(&remaining)
-                            .count()
-                            == 0
+                    if !self.db.symbol(*symbol_id).is_constant() {
+                        return true;
+                    }
+
+                    let references: IndexSet<SymbolId> = self
+                        .graph
+                        .references(*symbol_id)
+                        .into_iter()
+                        .filter(|symbol_id| self.db.symbol(*symbol_id).is_constant())
+                        .collect();
+
+                    references.intersection(&remaining).count() == 0
                 })
                 .copied()
                 .collect::<Vec<_>>();
