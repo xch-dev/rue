@@ -3,7 +3,7 @@ use rue_parser::{AstNode, BinaryExpr, BinaryOp, Expr};
 
 use crate::{
     compiler::Compiler,
-    hir::{BinOp, Hir},
+    hir::{BinOp, Hir, Op},
     value::{Guard, Value},
     ErrorKind, HirId, TypeId,
 };
@@ -42,7 +42,7 @@ impl Compiler<'_> {
     }
 
     fn binary_op(&mut self, op: BinOp, lhs: HirId, rhs: HirId, type_id: TypeId) -> Value {
-        Value::new(self.db.alloc_hir(Hir::BinaryOp { op, lhs, rhs }), type_id)
+        Value::new(self.db.alloc_hir(Hir::BinaryOp(op, lhs, rhs)), type_id)
     }
 
     fn op_add(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
@@ -201,7 +201,7 @@ impl Compiler<'_> {
         let comparison = self.op_equals(lhs, rhs, text_range);
 
         let mut value = Value::new(
-            self.db.alloc_hir(Hir::Not(comparison.hir_id)),
+            self.db.alloc_hir(Hir::Op(Op::Not, comparison.hir_id)),
             self.builtins.bool,
         );
 

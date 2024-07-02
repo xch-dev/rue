@@ -11,7 +11,13 @@ pub use comparison::*;
 pub use ids::*;
 
 use crate::{
-    hir::Hir, lir::Lir, optimizer::Environment, scope::Scope, symbol::Symbol, value::Type,
+    environment::Environment,
+    hir::{Hir, Op},
+    lir::Lir,
+    mir::Mir,
+    scope::Scope,
+    symbol::Symbol,
+    value::Type,
     Diagnostic, DiagnosticKind, ErrorKind, WarningKind,
 };
 
@@ -22,6 +28,7 @@ pub struct Database {
     symbols: Arena<Symbol>,
     types: Arena<Type>,
     hir: Arena<Hir>,
+    mir: Arena<Mir>,
     lir: Arena<Lir>,
     environments: Arena<Environment>,
     symbol_tokens: IndexMap<SymbolId, SyntaxToken>,
@@ -48,6 +55,10 @@ impl Database {
 
     pub(crate) fn alloc_hir(&mut self, hir: Hir) -> HirId {
         HirId(self.hir.alloc(hir))
+    }
+
+    pub(crate) fn alloc_mir(&mut self, mir: Mir) -> MirId {
+        MirId(self.mir.alloc(mir))
     }
 
     pub(crate) fn alloc_lir(&mut self, lir: Lir) -> LirId {
@@ -79,6 +90,10 @@ impl Database {
 
     pub fn hir(&self, id: HirId) -> &Hir {
         &self.hir[id.0]
+    }
+
+    pub fn mir(&self, id: MirId) -> &Mir {
+        &self.mir[id.0]
     }
 
     pub fn lir(&self, id: LirId) -> &Lir {
@@ -137,34 +152,30 @@ impl Database {
         match self.hir(id) {
             Hir::Unknown => "<unknown hir>".to_string(),
             Hir::Atom(bytes) => format!("Atom({})", hex::encode(bytes)),
-            Hir::BinaryOp { op, lhs, rhs } => {
+            Hir::BinaryOp(op, lhs, rhs) => {
                 format!("{op:?}({}, {})", self.dbg_hir(*lhs), self.dbg_hir(*rhs))
             }
-            Hir::First(hir_id) => format!("First({})", self.dbg_hir(*hir_id)),
-            Hir::Rest(hir_id) => format!("Rest({})", self.dbg_hir(*hir_id)),
-            Hir::Sha256(hir_id) => format!("Sha256({})", self.dbg_hir(*hir_id)),
-            Hir::IsCons(hir_id) => format!("IsCons({})", self.dbg_hir(*hir_id)),
-            Hir::Not(hir_id) => format!("Not({})", self.dbg_hir(*hir_id)),
-            Hir::Strlen(hir_id) => format!("Strlen({})", self.dbg_hir(*hir_id)),
+            Hir::Op(op, hir_id) => match op {
+                Op::First => format!("First({})", self.dbg_hir(*hir_id)),
+                Op::Rest => format!("Rest({})", self.dbg_hir(*hir_id)),
+                Op::Sha256 => format!("Sha256({})", self.dbg_hir(*hir_id)),
+                Op::Listp => format!("Listp({})", self.dbg_hir(*hir_id)),
+                Op::Not => format!("Not({})", self.dbg_hir(*hir_id)),
+                Op::Strlen => format!("Strlen({})", self.dbg_hir(*hir_id)),
+                Op::PubkeyForExp => format!("PubkeyForExp({})", self.dbg_hir(*hir_id)),
+                Op::Exists => format!("Exists({})", self.dbg_hir(*hir_id)),
+            },
             Hir::Raise(hir_id) => format!(
                 "Raise({})",
                 hir_id
                     .map(|hir_id| self.dbg_hir(hir_id))
                     .unwrap_or_default()
             ),
-            Hir::PubkeyForExp(hir_id) => format!("PubkeyForExp({})", self.dbg_hir(*hir_id)),
             Hir::Pair(first, rest) => {
                 format!("Pair({}, {})", self.dbg_hir(*first), self.dbg_hir(*rest))
             }
             Hir::Reference(symbol_id, ..) => format!("Reference({})", self.dbg_symbol(*symbol_id)),
-            Hir::CheckExists(hir_id) => {
-                format!("CheckExists({})", self.dbg_hir(*hir_id))
-            }
-            Hir::FunctionCall {
-                callee,
-                args,
-                varargs,
-            } => format!(
+            Hir::FunctionCall(callee, args, varargs) => format!(
                 "Call({}, [{}], Varargs = {})",
                 self.dbg_hir(*callee),
                 args.iter()
@@ -173,16 +184,12 @@ impl Database {
                     .join(", "),
                 varargs
             ),
-            Hir::Definition { scope_id, hir_id } => format!(
+            Hir::Definition(scope_id, hir_id) => format!(
                 "Definition({}, {})",
                 self.dbg_scope(*scope_id),
                 self.dbg_hir(*hir_id)
             ),
-            Hir::If {
-                condition,
-                then_block,
-                else_block,
-            } => format!(
+            Hir::If(condition, then_block, else_block) => format!(
                 "If({}, {}, {})",
                 self.dbg_hir(*condition),
                 self.dbg_hir(*then_block),

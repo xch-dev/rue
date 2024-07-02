@@ -80,7 +80,7 @@ impl<'a> Codegen<'a> {
             Lir::Rest(value) => self.gen_rest(value),
             Lir::Raise(value) => self.gen_raise(value),
             Lir::Sha256(values) => self.gen_sha256(values),
-            Lir::IsCons(value) => self.gen_is_cons(value),
+            Lir::Listp(value) => self.gen_listp(value),
             Lir::Strlen(value) => self.gen_strlen(value),
             Lir::PubkeyForExp(value) => self.gen_pubkey_for_exp(value),
             Lir::Concat(values) => self.gen_concat(values),
@@ -172,7 +172,7 @@ impl<'a> Codegen<'a> {
         self.list(&args)
     }
 
-    fn gen_is_cons(&mut self, value: LirId) -> NodePtr {
+    fn gen_listp(&mut self, value: LirId) -> NodePtr {
         let value = self.gen_lir(value);
         self.list(&[self.ops.l, value])
     }

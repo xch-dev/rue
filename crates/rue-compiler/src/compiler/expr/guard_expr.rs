@@ -3,7 +3,7 @@ use rue_parser::{AstNode, GuardExpr};
 
 use crate::{
     compiler::Compiler,
-    hir::{BinOp, Hir},
+    hir::{BinOp, Hir, Op},
     value::{Guard, PairType, Type, Value},
     Comparison, ErrorKind, HirId, TypeId, WarningKind,
 };
@@ -65,7 +65,7 @@ impl Compiler<'_> {
                     self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
-                let hir_id = self.db.alloc_hir(Hir::IsCons(hir_id));
+                let hir_id = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
                 Some((Guard::new(to, self.builtins.bytes), hir_id))
             }
             (Type::Any, Type::Bytes) => {
@@ -73,8 +73,8 @@ impl Compiler<'_> {
                     first: self.builtins.any,
                     rest: self.builtins.any,
                 }));
-                let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
-                let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
+                let is_cons = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
+                let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, is_cons));
                 Some((Guard::new(to, pair_type), hir_id))
             }
             (Type::List(inner), Type::Pair(PairType { first, rest })) => {
@@ -86,7 +86,7 @@ impl Compiler<'_> {
                     self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
                 }
 
-                let hir_id = self.db.alloc_hir(Hir::IsCons(hir_id));
+                let hir_id = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
                 Some((Guard::new(to, self.builtins.nil), hir_id))
             }
             (Type::List(inner), Type::Nil) => {
@@ -94,28 +94,24 @@ impl Compiler<'_> {
                     first: inner,
                     rest: from,
                 }));
-                let is_cons = self.db.alloc_hir(Hir::IsCons(hir_id));
-                let hir_id = self.db.alloc_hir(Hir::Not(is_cons));
+                let is_cons = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
+                let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, is_cons));
                 Some((Guard::new(to, pair_type), hir_id))
             }
             (Type::Bytes, Type::Bytes32) => {
-                let strlen = self.db.alloc_hir(Hir::Strlen(hir_id));
+                let strlen = self.db.alloc_hir(Hir::Op(Op::Strlen, hir_id));
                 let length = self.db.alloc_hir(Hir::Atom(vec![32]));
-                let hir_id = self.db.alloc_hir(Hir::BinaryOp {
-                    op: BinOp::Equals,
-                    lhs: strlen,
-                    rhs: length,
-                });
+                let hir_id = self
+                    .db
+                    .alloc_hir(Hir::BinaryOp(BinOp::Equals, strlen, length));
                 Some((Guard::new(to, from), hir_id))
             }
             (Type::Bytes, Type::PublicKey) => {
-                let strlen = self.db.alloc_hir(Hir::Strlen(hir_id));
+                let strlen = self.db.alloc_hir(Hir::Op(Op::Strlen, hir_id));
                 let length = self.db.alloc_hir(Hir::Atom(vec![48]));
-                let hir_id = self.db.alloc_hir(Hir::BinaryOp {
-                    op: BinOp::Equals,
-                    lhs: strlen,
-                    rhs: length,
-                });
+                let hir_id = self
+                    .db
+                    .alloc_hir(Hir::BinaryOp(BinOp::Equals, strlen, length));
                 Some((Guard::new(to, from), hir_id))
             }
             _ => {

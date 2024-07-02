@@ -451,11 +451,11 @@ output = "((73 1) (72 0x6155f55414a5cd9193bef33744095a78d57852cf24241b25edeffad6
 hash = "4696e7a2b7682e2df01ab47e6e002d0dca895f99c6172e4a55a3e033499532b7"
 
 [inner_inline_functions]
-bytes = 338
-cost = 16974
+bytes = 330
+cost = 16903
 input = "()"
 output = "0x0a37e3fbe2"
-hash = "09c547472ecee6e0a98aee751c1f8ce575c973578acf81c096e4b92e98ddad8b"
+hash = "20b2f4a2a700fd53852a81395f0bb729800ecd6701995572251e592e72809ce5"
 
 [recursive_constants]
 parser_errors = []
@@ -468,9 +468,9 @@ compiler_errors = [
 ]
 
 [mixed_constants]
-bytes = 69
+bytes = 77
 cost = 0
 input = "()"
 output = "()"
-hash = "6b22541a3bc2076b97b019433a8f158e9ba7e326f178d6e969f96a7f65a5f19c"
+hash = "716aad695971ca498be0b4fa19d12c0fba65d6ff26470cbafcf9674c6eb179b7"
 error = "()"

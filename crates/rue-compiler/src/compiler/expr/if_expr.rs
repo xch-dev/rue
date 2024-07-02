@@ -59,11 +59,11 @@ impl Compiler<'_> {
         let value = condition.and_then(|condition| {
             then_block.and_then(|then_block| {
                 else_block.map(|else_block| {
-                    self.db.alloc_hir(Hir::If {
-                        condition: condition.hir_id,
-                        then_block: then_block.hir_id,
-                        else_block: else_block.hir_id,
-                    })
+                    self.db.alloc_hir(Hir::If(
+                        condition.hir_id,
+                        then_block.hir_id,
+                        else_block.hir_id,
+                    ))
                 })
             })
         });

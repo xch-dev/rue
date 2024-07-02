@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    optimizer::DependencyGraph, symbol::Symbol, value::Type, Database, SymbolId, TypeId,
+    dependency_graph::DependencyGraph, symbol::Symbol, value::Type, Database, SymbolId, TypeId,
     WarningKind,
 };
 
@@ -56,12 +56,13 @@ impl SymbolTable {
         let mut used_symbols = HashSet::new();
 
         for symbol_id in dependency_graph
-            .visited_scopes()
+            .scopes()
             .into_iter()
             .flat_map(|scope_id| db.scope(scope_id).local_symbols())
             .collect::<Vec<SymbolId>>()
         {
-            if dependency_graph.symbol_usages(symbol_id) > 0 || ignored_symbols.contains(&symbol_id)
+            if dependency_graph.symbol_references(symbol_id) > 0
+                || ignored_symbols.contains(&symbol_id)
             {
                 used_symbols.insert(symbol_id);
                 continue;
