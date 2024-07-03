@@ -400,11 +400,11 @@ output = "88"
 hash = "aba8a83e1a912b2a232cbed31ac0686b717bec369377051d98caf9b5c00a4818"
 
 [nested_scopes]
-bytes = 421
+bytes = 431
 cost = 0
 input = "()"
 output = "()"
-hash = "8d496dc7cdbc417db2132eda6894b29a91511f176e93a1ea943d210cd27822b2"
+hash = "436d27a96d4cb1d784f37827fa0731237cf95ed3da8e5edfd6dda72b311e02fa"
 error = "()"
 
 [birecursive_functions]
@@ -451,11 +451,11 @@ output = "((73 1) (72 0x6155f55414a5cd9193bef33744095a78d57852cf24241b25edeffad6
 hash = "4696e7a2b7682e2df01ab47e6e002d0dca895f99c6172e4a55a3e033499532b7"
 
 [inner_inline_functions]
-bytes = 330
-cost = 16903
+bytes = 338
+cost = 17058
 input = "()"
 output = "0x0a37e3fbe2"
-hash = "20b2f4a2a700fd53852a81395f0bb729800ecd6701995572251e592e72809ce5"
+hash = "e35e4ca2afdac561d0b00a82ec35d39036b11c09fbd32732c39b79e091740a98"
 
 [recursive_constants]
 parser_errors = []
@@ -473,8 +473,7 @@ compiler_errors = ["Error: Cannot recursively reference constant. (8:5)"]
 
 [mixed_constants]
 bytes = 77
-cost = 0
+cost = 2805
 input = "()"
-output = "()"
-hash = "716aad695971ca498be0b4fa19d12c0fba65d6ff26470cbafcf9674c6eb179b7"
-error = "()"
+output = "\"Hello, Bob!\""
+hash = "ad1d14ebd66b8fad929ee4b816aa51410d12f987bbeabffd571d0701fe061281"

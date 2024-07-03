@@ -34,7 +34,9 @@ impl<'a> Lowerer<'a> {
         };
 
         let env_id = self.graph.environment_id(function.scope_id);
+
         let env = self.db.env_mut(env_id);
+
         for capture in env.captures() {
             env.define(capture);
             env.remove_capture(capture);
@@ -42,6 +44,7 @@ impl<'a> Lowerer<'a> {
 
         let definitions = self.db.env(env_id).definitions();
         let mir_id = self.lower_symbols(env_id, definitions, function.hir_id);
+
         (env_id, mir_id)
     }
 
@@ -160,10 +163,13 @@ impl<'a> Lowerer<'a> {
 
     fn lower_symbols(
         &mut self,
-        mut env_id: EnvironmentId,
+        env_id: EnvironmentId,
         mut definitions: IndexSet<SymbolId>,
         body: HirId,
     ) -> MirId {
+        let env = self.db.env(env_id).clone();
+        let mut env_id = self.db.alloc_env(env);
+        let original_env_id = env_id;
         let mut groups = Vec::new();
 
         while !definitions.is_empty() {
@@ -192,6 +198,9 @@ impl<'a> Lowerer<'a> {
 
             for &symbol_id in &symbol_ids {
                 self.db.env_mut(env_id).define(symbol_id);
+                self.db
+                    .env_mut(original_env_id)
+                    .remove_definition(symbol_id);
                 group.push(symbol_id);
             }
 
