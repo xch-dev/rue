@@ -31,6 +31,10 @@ impl Environment {
         self.definitions.shift_remove(&symbol_id);
     }
 
+    pub fn remove_capture(&mut self, symbol_id: SymbolId) {
+        self.captures.shift_remove(&symbol_id);
+    }
+
     pub fn define(&mut self, symbol_id: SymbolId) {
         self.definitions.insert(symbol_id);
     }

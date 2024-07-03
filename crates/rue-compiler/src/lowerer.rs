@@ -32,9 +32,15 @@ impl<'a> Lowerer<'a> {
         let Symbol::Function(function) = self.db.symbol(main).clone() else {
             unreachable!();
         };
+
         let env_id = self.graph.environment_id(function.scope_id);
-        let mut definitions = self.db.env(env_id).definitions();
-        definitions.extend(self.db.env(env_id).captures());
+        let env = self.db.env_mut(env_id);
+        for capture in env.captures() {
+            env.define(capture);
+            env.remove_capture(capture);
+        }
+
+        let definitions = self.db.env(env_id).definitions();
         let mir_id = self.lower_symbols(env_id, definitions, function.hir_id);
         (env_id, mir_id)
     }
@@ -155,20 +161,15 @@ impl<'a> Lowerer<'a> {
     fn lower_symbols(
         &mut self,
         mut env_id: EnvironmentId,
-        definitions: IndexSet<SymbolId>,
+        mut definitions: IndexSet<SymbolId>,
         body: HirId,
     ) -> MirId {
-        let mut remaining: IndexSet<SymbolId> = definitions.into_iter().collect();
-        let mut curries = Vec::new();
+        let mut groups = Vec::new();
 
-        while !remaining.is_empty() {
-            let no_references = remaining
+        while !definitions.is_empty() {
+            let symbol_ids = definitions
                 .iter()
                 .filter(|&symbol_id| {
-                    if !self.db.symbol(*symbol_id).is_constant() {
-                        return true;
-                    }
-
                     let references: IndexSet<SymbolId> = self
                         .graph
                         .references(*symbol_id)
@@ -176,27 +177,36 @@ impl<'a> Lowerer<'a> {
                         .filter(|symbol_id| self.db.symbol(*symbol_id).is_constant())
                         .collect();
 
-                    references.intersection(&remaining).count() == 0
+                    let dependencies = references.intersection(&definitions).count();
+
+                    dependencies == 0
+                        || (!matches!(self.db.symbol(*symbol_id), Symbol::Function(..))
+                            && !self.db.symbol(*symbol_id).is_constant())
                 })
                 .copied()
                 .collect::<Vec<_>>();
 
-            let mut args = Vec::new();
+            let mut group = Vec::new();
 
-            for &symbol_id in &no_references {
-                args.push(self.lower_symbol(env_id, symbol_id));
+            env_id = self.db.alloc_env(Environment::binding(env_id));
+
+            for &symbol_id in &symbol_ids {
+                self.db.env_mut(env_id).define(symbol_id);
+                group.push(symbol_id);
             }
 
-            curries.push(args);
-            remaining.retain(|&symbol_id| !no_references.contains(&symbol_id));
-            if !remaining.is_empty() {
-                env_id = self.db.alloc_env(Environment::binding(env_id));
-            }
+            groups.push((group, env_id));
+            definitions.retain(|&symbol_id| !symbol_ids.contains(&symbol_id));
         }
 
         let mut body = self.lower_hir(env_id, body);
 
-        for args in curries.into_iter().rev() {
+        for (symbol_ids, env_id) in groups.into_iter().rev() {
+            let args = symbol_ids
+                .into_iter()
+                .map(|symbol_id| self.lower_symbol(env_id, symbol_id))
+                .collect::<Vec<_>>();
+            body = self.db.alloc_mir(Mir::Environment(env_id, body));
             body = self.db.alloc_mir(Mir::Curry(body, args));
         }
 
