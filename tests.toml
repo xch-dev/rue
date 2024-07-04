@@ -68,3 +68,31 @@ cost = 20
 input = "()"
 output = "42"
 hash = "ce97d04b4f84066533255fcc56345626c245afd50e24c6c14c52c8e78e8b9f33"
+
+[inline_const_inline_function_call]
+bytes = 33
+cost = 2965
+input = "()"
+output = "0x288b694028"
+hash = "69389ce0c73b645b5a464c742903668325aec5dabd3899a287a99dea3feec9bd"
+
+[const_inline_function_call]
+bytes = 47
+cost = 3219
+input = "()"
+output = "0x288b694028"
+hash = "89c3c7387b014f236e551e690874afe0f922b113714d1a8e2a93948f3a4dc643"
+
+[inline_const_function_call]
+bytes = 60
+cost = 3811
+input = "()"
+output = "0x288b694028"
+hash = "c081e27512e27d099468a58b6567ba5bf0bf72ae8e90fe0db6b32c027323822d"
+
+[const_function_call]
+bytes = 74
+cost = 4069
+input = "()"
+output = "0x288b694028"
+hash = "0f74e7fd57bb9a7e05cf979ee986a8e0120801d2b18019c275a9717fce22f379"
