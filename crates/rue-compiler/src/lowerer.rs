@@ -176,18 +176,12 @@ impl<'a> Lowerer<'a> {
             let symbol_ids = definitions
                 .iter()
                 .filter(|&symbol_id| {
-                    let references: IndexSet<SymbolId> = self
-                        .graph
-                        .references(*symbol_id)
-                        .into_iter()
-                        .filter(|symbol_id| self.db.symbol(*symbol_id).is_constant())
-                        .collect();
+                    let references: IndexSet<SymbolId> =
+                        self.graph.all_references(*symbol_id).into_iter().collect();
 
                     let dependencies = references.intersection(&definitions).count();
 
-                    dependencies == 0
-                        || (!matches!(self.db.symbol(*symbol_id), Symbol::Function(..))
-                            && !self.db.symbol(*symbol_id).is_constant())
+                    dependencies == 0 || !self.db.symbol(*symbol_id).is_constant()
                 })
                 .copied()
                 .collect::<Vec<_>>();

@@ -29,8 +29,24 @@ impl DependencyGraph {
             .unwrap_or_default()
     }
 
-    pub fn references(&self, symbol_id: SymbolId) -> IndexSet<SymbolId> {
-        self.references.get(&symbol_id).cloned().unwrap_or_default()
+    pub fn all_references(&self, symbol_id: SymbolId) -> IndexSet<SymbolId> {
+        let mut visited = IndexSet::new();
+        let mut stack = vec![symbol_id];
+
+        while let Some(symbol_id) = stack.pop() {
+            if !visited.insert(symbol_id) {
+                continue;
+            }
+
+            if let Some(references) = self.references.get(&symbol_id) {
+                for &reference in references {
+                    stack.push(reference);
+                }
+            }
+        }
+
+        visited.shift_remove(&symbol_id);
+        visited
     }
 
     pub fn environment_id(&self, scope_id: ScopeId) -> EnvironmentId {
