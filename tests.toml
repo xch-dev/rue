@@ -467,10 +467,20 @@ compiler_errors = [
     "Error: Cannot recursively reference constant. (3:16)",
 ]
 
+[recursive_constant_fn]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively reference constant. (8:5)"]
+
 [mixed_constants]
 bytes = 77
-cost = 0
+cost = 2805
 input = "()"
-output = "()"
-hash = "716aad695971ca498be0b4fa19d12c0fba65d6ff26470cbafcf9674c6eb179b7"
-error = "()"
+output = "\"Hello, Bob!\""
+hash = "ad1d14ebd66b8fad929ee4b816aa51410d12f987bbeabffd571d0701fe061281"
+
+[constant_fn]
+bytes = 91
+cost = 3720
+input = "()"
+output = "168"
+hash = "7fc2cfb46635824ad8ff88791d26e85b67005144de915a2530be4a379774b1c0"
