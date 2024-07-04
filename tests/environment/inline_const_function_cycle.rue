@@ -1,0 +1,9 @@
+fun main() -> Int {
+    fn()
+}
+
+inline const CONST: Int = fn();
+
+fun fn() -> Int {
+    CONST
+}

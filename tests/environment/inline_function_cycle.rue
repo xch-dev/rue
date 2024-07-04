@@ -1,0 +1,11 @@
+fun main() -> Int {
+    a()
+}
+
+inline fun a() -> Int {
+    b()
+}
+
+inline fun b() -> Int {
+    a()
+}

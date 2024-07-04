@@ -1,0 +1,6 @@
+inline const A: Int = 42;
+inline const B: Int = A;
+
+fun main() -> Int {
+    B
+}

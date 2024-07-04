@@ -317,6 +317,32 @@ fn run_tests(update: bool) -> usize {
                     }
                 }
             }
+        } else {
+            match &output {
+                Ok(output) => {
+                    lines.push(format!("bytes: {}", output.bytes.len()));
+                    lines.push(format!("cost: {}", output.cost));
+                    lines.push(format!("hash: {}", output.hash));
+                    match &output.output {
+                        Ok(output) => {
+                            lines.push(format!("output: {output}"));
+                        }
+                        Err(error) => {
+                            lines.push(format!("error: {error}"));
+                        }
+                    }
+                }
+                Err(errors) => {
+                    lines.push("parser errors:".to_string());
+                    for error in &errors.parser_errors {
+                        lines.push(format!("  {error}"));
+                    }
+                    lines.push("compiler errors:".to_string());
+                    for error in &errors.compiler_errors {
+                        lines.push(format!("  {error}"));
+                    }
+                }
+            }
         }
 
         if failed {

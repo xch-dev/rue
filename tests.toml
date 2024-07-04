@@ -1,0 +1,70 @@
+[const_function_cycle]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively reference constant. (8:5)"]
+
+[recursive_function]
+bytes = 95
+cost = 10406
+input = "()"
+output = "120"
+hash = "e287a4cdf0ee9e003ee4450c1408d162e08db92a141035bf3ff932d46ca87f93"
+
+[const_multiple_reference]
+bytes = 77
+cost = 2805
+input = "()"
+output = "\"Hello, Bob!\""
+hash = "ad1d14ebd66b8fad929ee4b816aa51410d12f987bbeabffd571d0701fe061281"
+
+[inline_function_cycle]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively call inline function. (10:5)"]
+
+[const_reference]
+bytes = 31
+cost = 528
+input = "()"
+output = "42"
+hash = "e3429ee993cedb79fa5b67ebd52635a294daf9c69b1c1d1a967f884fb4c3f1d1"
+
+[inline_const_inline_function_cycle]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively call inline function. (5:27)"]
+
+[mixed_consts]
+bytes = 43
+cost = 2144
+input = "()"
+output = "126"
+hash = "834c349efb47a4863d393d9266c217f5b2ab0da53d1b4cd03b1df43ac19ca85f"
+
+[inline_const_function_cycle]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively reference inline constant. (8:5)"]
+
+[inline_const_self]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively reference inline constant. (1:27)"]
+
+[recursive_inline_function]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively call inline function. (6:5)"]
+
+[const_inline_function_cycle]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively call inline function. (5:20)"]
+
+[const_self]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively reference constant. (1:20)"]
+
+[const_cycle]
+parser_errors = []
+compiler_errors = ["Error: Cannot recursively reference constant. (2:16)"]
+
+[inline_const_reference]
+bytes = 3
+cost = 20
+input = "()"
+output = "42"
+hash = "ce97d04b4f84066533255fcc56345626c245afd50e24c6c14c52c8e78e8b9f33"

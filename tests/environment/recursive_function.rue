@@ -1,0 +1,11 @@
+fun main() -> Int {
+    factorial(5)
+}
+
+fun factorial(num: Int) -> Int {
+    if num > 2 {
+        num * factorial(num - 1)
+    } else {
+        num
+    }
+}
