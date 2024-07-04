@@ -28,7 +28,6 @@ impl<'a> Optimizer<'a> {
             Mir::Op(Op::Listp, value) => self.opt_listp(env_id, value),
             Mir::Op(Op::Strlen, value) => self.opt_strlen(env_id, value),
             Mir::Op(Op::PubkeyForExp, value) => self.opt_pubkey_for_exp(env_id, value),
-            Mir::Op(Op::Exists, value) => self.opt_check_exists(env_id, value),
             Mir::Raise(value) => self.opt_raise(env_id, value),
             Mir::BinaryOp(op, lhs, rhs) => {
                 let handler = match op {
@@ -127,29 +126,6 @@ impl<'a> Optimizer<'a> {
         }
 
         self.db.alloc_lir(Lir::Path(path))
-    }
-
-    fn opt_check_exists(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
-        let value = self.opt_mir(env_id, mir_id);
-        let Lir::Path(path) = self.db.lir(value).clone() else {
-            panic!("invalid LIR, expected path for existence check");
-        };
-        self.db.alloc_lir(Lir::Path(Self::pack_bits(path)))
-    }
-
-    fn pack_bits(mut n: u32) -> u32 {
-        let mut result = 0;
-        let mut position = 0;
-
-        while n > 0 {
-            if n & 1 != 0 {
-                result |= 1 << position;
-                position += 1;
-            }
-            n >>= 1;
-        }
-
-        result
     }
 
     fn opt_pair(&mut self, env_id: EnvironmentId, first: MirId, rest: MirId) -> LirId {

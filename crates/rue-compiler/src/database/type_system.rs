@@ -70,16 +70,16 @@ impl Database {
         Some(pair.rest)
     }
 
-    pub fn non_optional(&mut self, ty: TypeId) -> TypeId {
+    pub fn non_nullable(&mut self, ty: TypeId) -> TypeId {
         match self.ty(ty) {
-            Type::Optional(inner) => self.non_optional(*inner),
+            Type::Nullable(inner) => self.non_nullable(*inner),
             _ => ty,
         }
     }
 
     pub fn non_undefined(&mut self, ty: TypeId) -> TypeId {
         match self.ty(ty) {
-            Type::PossiblyUndefined(inner) => self.non_undefined(*inner),
+            Type::Optional(inner) => self.non_undefined(*inner),
             _ => ty,
         }
     }
@@ -222,7 +222,16 @@ impl Database {
                     self.alloc_type(Type::Function(new_function))
                 }
             }
-            Type::Optional(inner) | Type::PossiblyUndefined(inner) => {
+            Type::Nullable(inner) => {
+                let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
+
+                if new_inner == inner {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Nullable(inner))
+                }
+            }
+            Type::Optional(inner) => {
                 let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
 
                 if new_inner == inner {
@@ -284,9 +293,7 @@ impl Database {
             (Type::Unknown, _) | (_, Type::Unknown) => Comparison::Equal,
 
             // Possibly undefined is a special type.
-            (Type::PossiblyUndefined(..), _) | (_, Type::PossiblyUndefined(..)) => {
-                Comparison::Unrelated
-            }
+            (Type::Optional(..), _) | (_, Type::Optional(..)) => Comparison::Unrelated,
 
             // These are of course equal atomic types.
             (Type::Any, Type::Any) => Comparison::Equal,
@@ -350,19 +357,19 @@ impl Database {
             (Type::Bytes32, Type::Bool) => Comparison::Unrelated,
             (Type::Bytes32, Type::Nil) => Comparison::Unrelated,
 
-            // These are the variants of the `Optional` type.
-            (Type::Nil, Type::Optional(..)) => Comparison::Assignable,
-            (Type::Optional(lhs), Type::Optional(rhs)) => {
+            // These are the variants of the `Nullable` type.
+            (Type::Nil, Type::Nullable(..)) => Comparison::Assignable,
+            (Type::Nullable(lhs), Type::Nullable(rhs)) => {
                 self.compare_type_visitor(*lhs, *rhs, ctx)
             }
-            (_, Type::Optional(inner)) => self.compare_type_visitor(lhs, *inner, ctx),
-            (Type::Optional(inner), Type::Bytes) => {
+            (_, Type::Nullable(inner)) => self.compare_type_visitor(lhs, *inner, ctx),
+            (Type::Nullable(inner), Type::Bytes) => {
                 Comparison::Castable & self.compare_type_visitor(*inner, rhs, ctx)
             }
 
             // TODO: Unions would make this more generalized and useful.
             // I should add unions back.
-            (Type::Optional(_inner), _) => Comparison::Unrelated,
+            (Type::Nullable(_inner), _) => Comparison::Unrelated,
 
             // Compare both sides of a `Pair`.
             (Type::Pair(lhs), Type::Pair(rhs)) => {
@@ -496,9 +503,7 @@ impl Database {
             | Type::Bytes
             | Type::Bytes32
             | Type::PublicKey => false,
-            Type::Optional(ty) | Type::PossiblyUndefined(ty) => {
-                self.is_cyclic_visitor(ty, visited_aliases)
-            }
+            Type::Nullable(ty) | Type::Optional(ty) => self.is_cyclic_visitor(ty, visited_aliases),
         }
     }
 }

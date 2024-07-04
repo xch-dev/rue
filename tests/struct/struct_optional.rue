@@ -11,7 +11,7 @@ fun main() -> Int {
 }
 
 fun sum(point: Point) -> Int {
-    if point.z.exists {
+    if point.z? {
         point.x + point.y + point.z
     } else {
         point.x + point.y

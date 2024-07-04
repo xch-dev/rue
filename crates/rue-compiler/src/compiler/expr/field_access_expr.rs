@@ -29,15 +29,14 @@ impl Compiler<'_> {
                     let mut type_id = field_type;
 
                     if index == struct_type.fields.len() - 1 && struct_type.rest == Rest::Optional {
-                        type_id = self.db.alloc_type(Type::PossiblyUndefined(type_id));
+                        type_id = self.db.alloc_type(Type::Optional(type_id));
                     }
 
                     Value::new(
                         self.compile_index(
                             old_value.hir_id,
                             index,
-                            index == struct_type.fields.len() - 1
-                                && struct_type.rest == Rest::Spread,
+                            index == struct_type.fields.len() - 1 && struct_type.rest != Rest::Nil,
                         ),
                         type_id,
                     )
@@ -57,14 +56,14 @@ impl Compiler<'_> {
                     let mut type_id = field_type;
 
                     if index == fields.len() - 1 && variant_type.rest == Rest::Optional {
-                        type_id = self.db.alloc_type(Type::PossiblyUndefined(type_id));
+                        type_id = self.db.alloc_type(Type::Optional(type_id));
                     }
 
                     Value::new(
                         self.compile_index(
                             old_value.hir_id,
                             index,
-                            index == fields.len() - 1 && variant_type.rest == Rest::Spread,
+                            index == fields.len() - 1 && variant_type.rest != Rest::Nil,
                         ),
                         type_id,
                     )
@@ -113,8 +112,9 @@ impl Compiler<'_> {
         };
 
         if let Some(guard_path) = new_value.guard_path.as_ref() {
-            if let Some(type_id) = self.symbol_type(guard_path) {
-                new_value.type_id = type_id;
+            if let Some(type_override) = self.symbol_type(guard_path) {
+                new_value.type_id = type_override.type_id;
+                new_value.hir_id = self.apply_mutation(new_value.hir_id, type_override.mutation);
             }
         }
 

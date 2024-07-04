@@ -6,7 +6,7 @@ use rue_parser::{AstNode, InitializerExpr, InitializerField};
 
 use crate::{
     compiler::Compiler,
-    hir::{Hir, Op},
+    hir::Hir,
     value::{Rest, Type, Value},
     ErrorKind, HirId, TypeId,
 };
@@ -93,7 +93,7 @@ impl Compiler<'_> {
             if rest == Rest::Optional
                 && struct_fields.get_index_of(name.text()) == Some(struct_fields.len() - 1)
             {
-                optional |= matches!(self.db.ty(value.type_id), Type::PossiblyUndefined(..));
+                optional |= matches!(self.db.ty(value.type_id), Type::Optional(..));
                 value.type_id = self.db.non_undefined(value.type_id);
             }
 
@@ -152,10 +152,8 @@ impl Compiler<'_> {
 
             let field = value.unwrap_or(self.builtins.unknown_hir);
 
-            if i == 0 && rest == Rest::Spread {
+            if i == 0 && (rest == Rest::Spread || (rest == Rest::Optional && optional)) {
                 hir_id = field;
-            } else if i == 0 && rest == Rest::Optional && optional {
-                hir_id = self.db.alloc_hir(Hir::Op(Op::Exists, field));
             } else {
                 hir_id = self.db.alloc_hir(Hir::Pair(field, hir_id));
             }

@@ -27,7 +27,6 @@ pub enum Op {
     Listp,
     Strlen,
     PubkeyForExp,
-    Exists,
     Not,
 }
 

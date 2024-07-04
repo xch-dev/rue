@@ -408,6 +408,10 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             }
             p.expect(SyntaxKind::CloseParen);
             p.finish();
+        } else if p.at(SyntaxKind::Question) {
+            p.start_at(checkpoint, SyntaxKind::ExistsExpr);
+            p.bump();
+            p.finish();
         } else if p.at(SyntaxKind::Dot) {
             p.start_at(checkpoint, SyntaxKind::FieldAccessExpr);
             p.bump();
@@ -588,7 +592,7 @@ fn ty(p: &mut Parser<'_>) {
             p.expect(SyntaxKind::CloseBracket);
             p.finish();
         } else if p.at(SyntaxKind::Question) {
-            p.start_at(checkpoint, SyntaxKind::OptionalType);
+            p.start_at(checkpoint, SyntaxKind::NullableType);
             p.bump();
             p.finish();
         } else {

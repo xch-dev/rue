@@ -6,7 +6,7 @@ use super::Compiler;
 
 mod function_type;
 mod list_type;
-mod optional_type;
+mod nullable_type;
 mod pair_type;
 mod path_type;
 
@@ -19,7 +19,7 @@ impl Compiler<'_> {
             Type::ListType(list) => self.compile_list_type(&list),
             Type::FunctionType(function) => self.compile_function_type(&function),
             Type::PairType(tuple) => self.compile_pair_type(&tuple),
-            Type::OptionalType(optional) => self.compile_optional_type(&optional),
+            Type::NullableType(optional) => self.compile_nullable_type(&optional),
         }
     }
 }

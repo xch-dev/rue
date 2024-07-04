@@ -4,7 +4,7 @@ use rue_parser::{AstNode, GuardExpr};
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir, Op},
-    value::{Guard, PairType, Type, Value},
+    value::{Guard, PairType, Type, TypeOverride, Value},
     Comparison, ErrorKind, HirId, TypeId, WarningKind,
 };
 
@@ -52,7 +52,10 @@ impl Compiler<'_> {
                 WarningKind::RedundantTypeCheck(self.type_name(from)),
                 text_range,
             );
-            return Some((Guard::new(to, self.builtins.bool), hir_id));
+            return Some((
+                Guard::new(TypeOverride::new(to), TypeOverride::new(self.builtins.bool)),
+                hir_id,
+            ));
         }
 
         match (self.db.ty(from).clone(), self.db.ty(to).clone()) {
@@ -66,7 +69,13 @@ impl Compiler<'_> {
                 }
 
                 let hir_id = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
-                Some((Guard::new(to, self.builtins.bytes), hir_id))
+                Some((
+                    Guard::new(
+                        TypeOverride::new(to),
+                        TypeOverride::new(self.builtins.bytes),
+                    ),
+                    hir_id,
+                ))
             }
             (Type::Any, Type::Bytes) => {
                 let pair_type = self.db.alloc_type(Type::Pair(PairType {
@@ -75,7 +84,10 @@ impl Compiler<'_> {
                 }));
                 let is_cons = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, is_cons));
-                Some((Guard::new(to, pair_type), hir_id))
+                Some((
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(pair_type)),
+                    hir_id,
+                ))
             }
             (Type::List(inner), Type::Pair(PairType { first, rest })) => {
                 if !self.db.compare_type(first, inner).is_equal() {
@@ -87,7 +99,10 @@ impl Compiler<'_> {
                 }
 
                 let hir_id = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
-                Some((Guard::new(to, self.builtins.nil), hir_id))
+                Some((
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(self.builtins.nil)),
+                    hir_id,
+                ))
             }
             (Type::List(inner), Type::Nil) => {
                 let pair_type = self.db.alloc_type(Type::Pair(PairType {
@@ -96,7 +111,10 @@ impl Compiler<'_> {
                 }));
                 let is_cons = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, is_cons));
-                Some((Guard::new(to, pair_type), hir_id))
+                Some((
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(pair_type)),
+                    hir_id,
+                ))
             }
             (Type::Bytes, Type::Bytes32) => {
                 let strlen = self.db.alloc_hir(Hir::Op(Op::Strlen, hir_id));
@@ -104,7 +122,10 @@ impl Compiler<'_> {
                 let hir_id = self
                     .db
                     .alloc_hir(Hir::BinaryOp(BinOp::Equals, strlen, length));
-                Some((Guard::new(to, from), hir_id))
+                Some((
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(from)),
+                    hir_id,
+                ))
             }
             (Type::Bytes, Type::PublicKey) => {
                 let strlen = self.db.alloc_hir(Hir::Op(Op::Strlen, hir_id));
@@ -112,7 +133,10 @@ impl Compiler<'_> {
                 let hir_id = self
                     .db
                     .alloc_hir(Hir::BinaryOp(BinOp::Equals, strlen, length));
-                Some((Guard::new(to, from), hir_id))
+                Some((
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(from)),
+                    hir_id,
+                ))
             }
             (Type::Enum(..), Type::EnumVariant(variant_type)) => {
                 if variant_type.enum_type != from {
@@ -128,7 +152,10 @@ impl Compiler<'_> {
                     first,
                     variant_type.discriminant,
                 ));
-                Some((Guard::new(to, from), hir_id))
+                Some((
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(from)),
+                    hir_id,
+                ))
             }
             _ => {
                 self.db.error(

@@ -4,7 +4,7 @@ use rue_parser::{AstNode, BinaryExpr, BinaryOp, Expr};
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir, Op},
-    value::{Guard, Value},
+    value::{Guard, TypeOverride, Value},
     ErrorKind, HirId, TypeId,
 };
 
@@ -172,10 +172,11 @@ impl Compiler<'_> {
         {
             if let Some(guard_path) = rhs.guard_path {
                 let then_type = self.builtins.nil;
-                let else_type = self.db.non_optional(rhs.type_id);
-                value
-                    .guards
-                    .insert(guard_path, Guard::new(then_type, else_type));
+                let else_type = self.db.non_nullable(rhs.type_id);
+                value.guards.insert(
+                    guard_path,
+                    Guard::new(TypeOverride::new(then_type), TypeOverride::new(else_type)),
+                );
             }
         }
 
@@ -186,10 +187,11 @@ impl Compiler<'_> {
         {
             if let Some(guard_path) = lhs.guard_path.clone() {
                 let then_type = self.builtins.nil;
-                let else_type = self.db.non_optional(lhs.type_id);
-                value
-                    .guards
-                    .insert(guard_path, Guard::new(then_type, else_type));
+                let else_type = self.db.non_nullable(lhs.type_id);
+                value.guards.insert(
+                    guard_path,
+                    Guard::new(TypeOverride::new(then_type), TypeOverride::new(else_type)),
+                );
             }
         }
 

@@ -28,14 +28,14 @@ impl Value {
         }
     }
 
-    pub fn then_guards(&self) -> HashMap<GuardPath, TypeId> {
+    pub fn then_guards(&self) -> HashMap<GuardPath, TypeOverride> {
         self.guards
             .iter()
             .map(|(k, v)| (k.clone(), v.then_type))
             .collect()
     }
 
-    pub fn else_guards(&self) -> HashMap<GuardPath, TypeId> {
+    pub fn else_guards(&self) -> HashMap<GuardPath, TypeOverride> {
         self.guards
             .iter()
             .map(|(k, v)| (k.clone(), v.else_type))
