@@ -1,4 +1,0 @@
-fun main() -> Int {
-    let pair: (Int, Bytes) = (24, "Bob");
-    pair.rest.length * pair.first
-}

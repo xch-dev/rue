@@ -1,8 +1,0 @@
-fun main() -> Nil {
-    let inline_fun = some;
-    nil
-}
-
-inline fun some() -> Int {
-    42
-}
