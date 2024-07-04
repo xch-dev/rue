@@ -32,6 +32,9 @@ impl<'a> Optimizer<'a> {
             Mir::Raise(value) => self.opt_raise(env_id, value),
             Mir::BinaryOp(op, lhs, rhs) => {
                 let handler = match op {
+                    BinOp::BitwiseAnd => Self::opt_bitwise_and,
+                    BinOp::BitwiseOr => Self::opt_bitwise_or,
+                    BinOp::BitwiseXor => Self::opt_bitwise_xor,
                     BinOp::Add => Self::opt_add,
                     BinOp::Subtract => Self::opt_subtract,
                     BinOp::Multiply => Self::opt_multiply,
@@ -129,7 +132,7 @@ impl<'a> Optimizer<'a> {
     fn opt_check_exists(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let value = self.opt_mir(env_id, mir_id);
         let Lir::Path(path) = self.db.lir(value).clone() else {
-            panic!("invalid state, expected path for existence check");
+            panic!("invalid LIR, expected path for existence check");
         };
         self.db.alloc_lir(Lir::Path(Self::pack_bits(path)))
     }
@@ -157,18 +160,20 @@ impl<'a> Optimizer<'a> {
 
     fn opt_first(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        if let Lir::Path(path) = self.db.lir(lir_id) {
-            return self.db.alloc_lir(Lir::Path(f(*path)));
+        match self.db.lir(lir_id) {
+            Lir::Path(path) => self.db.alloc_lir(Lir::Path(f(*path))),
+            Lir::Pair(first, _) => *first,
+            _ => self.db.alloc_lir(Lir::First(lir_id)),
         }
-        self.db.alloc_lir(Lir::First(lir_id))
     }
 
     fn opt_rest(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        if let Lir::Path(path) = self.db.lir(lir_id) {
-            return self.db.alloc_lir(Lir::Path(r(*path)));
+        match self.db.lir(lir_id) {
+            Lir::Path(path) => self.db.alloc_lir(Lir::Path(r(*path))),
+            Lir::Pair(_, rest) => *rest,
+            _ => self.db.alloc_lir(Lir::Rest(lir_id)),
         }
-        self.db.alloc_lir(Lir::Rest(lir_id))
     }
 
     fn opt_sha256(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
@@ -192,6 +197,24 @@ impl<'a> Optimizer<'a> {
     fn opt_pubkey_for_exp(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
         self.db.alloc_lir(Lir::PubkeyForExp(lir_id))
+    }
+
+    fn opt_bitwise_and(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::LogAnd(vec![lhs, rhs]))
+    }
+
+    fn opt_bitwise_or(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::LogIor(vec![lhs, rhs]))
+    }
+
+    fn opt_bitwise_xor(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::LogXor(vec![lhs, rhs]))
     }
 
     fn opt_add(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {

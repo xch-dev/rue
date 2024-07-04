@@ -233,6 +233,9 @@ fn convert_tokens<'a>(
             TokenKind::NotEquals => SyntaxKind::NotEquals,
             TokenKind::Assign => SyntaxKind::Assign,
 
+            TokenKind::BitAnd => SyntaxKind::BitAnd,
+            TokenKind::BitOr => SyntaxKind::BitOr,
+            TokenKind::BitXor => SyntaxKind::BitXor,
             TokenKind::And => SyntaxKind::And,
             TokenKind::Or => SyntaxKind::Or,
 

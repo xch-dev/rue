@@ -77,6 +77,13 @@ impl Database {
         }
     }
 
+    pub fn non_undefined(&mut self, ty: TypeId) -> TypeId {
+        match self.ty(ty) {
+            Type::PossiblyUndefined(inner) => self.non_undefined(*inner),
+            _ => ty,
+        }
+    }
+
     pub fn unwrap_list(&mut self, ty: TypeId) -> Option<TypeId> {
         match self.ty(ty) {
             Type::List(inner) => Some(*inner),

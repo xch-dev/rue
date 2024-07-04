@@ -69,6 +69,9 @@ pub enum SyntaxKind {
     NotEquals,
     Assign,
 
+    BitAnd,
+    BitOr,
+    BitXor,
     And,
     Or,
 
@@ -191,6 +194,9 @@ impl fmt::Display for SyntaxKind {
                 Self::Equals => "'=='",
                 Self::NotEquals => "'!='",
                 Self::Assign => "'='",
+                Self::BitAnd => "'&'",
+                Self::BitOr => "'|'",
+                Self::BitXor => "'^'",
                 Self::And => "'&&'",
                 Self::Or => "'||'",
                 Self::Whitespace => "whitespace",

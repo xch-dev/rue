@@ -86,15 +86,16 @@ impl<'a> Lexer<'a> {
                     self.bump();
                     TokenKind::And
                 }
-                _ => TokenKind::Unknown,
+                _ => TokenKind::BitAnd,
             },
             '|' => match self.peek() {
                 '|' => {
                     self.bump();
                     TokenKind::Or
                 }
-                _ => TokenKind::Unknown,
+                _ => TokenKind::BitOr,
             },
+            '^' => TokenKind::BitXor,
             '?' => TokenKind::Question,
             '.' => match self.peek() {
                 '.' if self.peek_nth(1) == '.' => {

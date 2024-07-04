@@ -114,6 +114,22 @@ impl Compiler<'_> {
                     .alloc_hir(Hir::BinaryOp(BinOp::Equals, strlen, length));
                 Some((Guard::new(to, from), hir_id))
             }
+            (Type::Enum(..), Type::EnumVariant(variant_type)) => {
+                if variant_type.enum_type != from {
+                    self.db.error(
+                        ErrorKind::UnsupportedTypeGuard(self.type_name(from), self.type_name(to)),
+                        text_range,
+                    );
+                    return None;
+                }
+                let first = self.db.alloc_hir(Hir::Op(Op::First, hir_id));
+                let hir_id = self.db.alloc_hir(Hir::BinaryOp(
+                    BinOp::Equals,
+                    first,
+                    variant_type.discriminant,
+                ));
+                Some((Guard::new(to, from), hir_id))
+            }
             _ => {
                 self.db.error(
                     ErrorKind::UnsupportedTypeGuard(self.type_name(from), self.type_name(to)),

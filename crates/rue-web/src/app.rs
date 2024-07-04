@@ -338,6 +338,9 @@ fn Rue(source: &'static str) -> impl IntoView {
             | TokenKind::GreaterThanEquals
             | TokenKind::Equals
             | TokenKind::NotEquals
+            | TokenKind::BitAnd
+            | TokenKind::BitOr
+            | TokenKind::BitXor
             | TokenKind::And
             | TokenKind::Or => class = "text-blue-700 dark:text-blue-300",
             TokenKind::Whitespace => class = "",

@@ -321,8 +321,11 @@ fn binding_power(op: BinaryOp) -> (u8, u8) {
         | BinaryOp::GreaterThan
         | BinaryOp::LessThanEquals
         | BinaryOp::GreaterThanEquals => (7, 8),
-        BinaryOp::Add | BinaryOp::Subtract => (9, 10),
-        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (11, 12),
+        BinaryOp::BitOr => (9, 10),
+        BinaryOp::BitXor => (11, 12),
+        BinaryOp::BitAnd => (13, 14),
+        BinaryOp::Add | BinaryOp::Subtract => (15, 16),
+        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (17, 18),
     }
 }
 
@@ -458,6 +461,12 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             BinaryOp::And
         } else if p.at(SyntaxKind::Or) {
             BinaryOp::Or
+        } else if p.at(SyntaxKind::BitAnd) {
+            BinaryOp::BitAnd
+        } else if p.at(SyntaxKind::BitOr) {
+            BinaryOp::BitOr
+        } else if p.at(SyntaxKind::BitXor) {
+            BinaryOp::BitXor
         } else {
             return;
         };

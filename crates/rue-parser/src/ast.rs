@@ -589,6 +589,9 @@ impl PrefixExpr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
+    BitAnd,
+    BitOr,
+    BitXor,
     Add,
     Subtract,
     Multiply,
@@ -606,6 +609,9 @@ pub enum BinaryOp {
 
 fn binary_op(kind: SyntaxKind) -> Option<BinaryOp> {
     match kind {
+        SyntaxKind::BitAnd => Some(BinaryOp::BitAnd),
+        SyntaxKind::BitOr => Some(BinaryOp::BitOr),
+        SyntaxKind::BitXor => Some(BinaryOp::BitXor),
         SyntaxKind::Plus => Some(BinaryOp::Add),
         SyntaxKind::Minus => Some(BinaryOp::Subtract),
         SyntaxKind::Star => Some(BinaryOp::Multiply),

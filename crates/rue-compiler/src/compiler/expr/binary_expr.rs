@@ -38,6 +38,9 @@ impl Compiler<'_> {
             BinaryOp::LessThanEquals => self.op_less_than_equals(&lhs, rhs, text_range),
             BinaryOp::And => self.op_and(lhs, rhs, text_range),
             BinaryOp::Or => self.op_or(&lhs, rhs, text_range),
+            BinaryOp::BitAnd => self.op_bitwise_and(&lhs, rhs, text_range),
+            BinaryOp::BitOr => self.op_bitwise_or(&lhs, rhs, text_range),
+            BinaryOp::BitXor => self.op_bitwise_xor(&lhs, rhs, text_range),
         }
     }
 
@@ -312,5 +315,35 @@ impl Compiler<'_> {
         self.type_check(lhs.type_id, self.builtins.bool, text_range);
         self.type_check(rhs.type_id, self.builtins.bool, text_range);
         self.binary_op(BinOp::LogicalOr, lhs.hir_id, rhs.hir_id, self.builtins.bool)
+    }
+
+    fn op_bitwise_and(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
+        let rhs = rhs
+            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .unwrap_or_else(|| self.unknown());
+
+        self.type_check(lhs.type_id, self.builtins.int, text_range);
+        self.type_check(rhs.type_id, self.builtins.int, text_range);
+        self.binary_op(BinOp::BitwiseAnd, lhs.hir_id, rhs.hir_id, self.builtins.int)
+    }
+
+    fn op_bitwise_or(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
+        let rhs = rhs
+            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .unwrap_or_else(|| self.unknown());
+
+        self.type_check(lhs.type_id, self.builtins.int, text_range);
+        self.type_check(rhs.type_id, self.builtins.int, text_range);
+        self.binary_op(BinOp::BitwiseOr, lhs.hir_id, rhs.hir_id, self.builtins.int)
+    }
+
+    fn op_bitwise_xor(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
+        let rhs = rhs
+            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .unwrap_or_else(|| self.unknown());
+
+        self.type_check(lhs.type_id, self.builtins.int, text_range);
+        self.type_check(rhs.type_id, self.builtins.int, text_range);
+        self.binary_op(BinOp::BitwiseXor, lhs.hir_id, rhs.hir_id, self.builtins.int)
     }
 }

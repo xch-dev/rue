@@ -59,6 +59,9 @@ pub enum TokenKind {
     NotEquals,
     Assign,
 
+    BitAnd,
+    BitOr,
+    BitXor,
     And,
     Or,
 

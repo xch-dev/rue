@@ -1,0 +1,18 @@
+struct Point {
+    x: Int,
+    y: Int,
+    z?: Int,
+}
+
+fun main() -> Nil {
+    let point_xy = Point { x: 42, y: 34 };
+    let new_point_xy = Point { x: point_xy.x, y: point_xy.y, z: point_xy.z };
+
+    let point_xyz = Point { x: 42, y: 34, z: 69 };
+    let new_point_xyz = Point { x: point_xyz.x, y: point_xyz.y, z: point_xyz.z };
+
+    assert tree_hash(point_xy) == tree_hash(new_point_xy);
+    assert tree_hash(point_xyz) == tree_hash(new_point_xyz);
+
+    nil
+}

@@ -33,6 +33,9 @@ pub enum Op {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinOp {
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
     Add,
     Subtract,
     Multiply,

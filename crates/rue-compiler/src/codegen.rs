@@ -30,6 +30,9 @@ struct Ops {
     div: NodePtr,
     divmod: NodePtr,
     gt: NodePtr,
+    logand: NodePtr,
+    logior: NodePtr,
+    logxor: NodePtr,
     point_add: NodePtr,
     pubkey_for_exp: NodePtr,
     not: NodePtr,
@@ -58,6 +61,9 @@ impl<'a> Codegen<'a> {
             div: allocator.new_small_number(19).unwrap(),
             divmod: allocator.new_small_number(20).unwrap(),
             gt: allocator.new_small_number(21).unwrap(),
+            logand: allocator.new_small_number(24).unwrap(),
+            logior: allocator.new_small_number(25).unwrap(),
+            logxor: allocator.new_small_number(26).unwrap(),
             point_add: allocator.new_small_number(29).unwrap(),
             pubkey_for_exp: allocator.new_small_number(30).unwrap(),
             not: allocator.new_small_number(32).unwrap(),
@@ -91,6 +97,9 @@ impl<'a> Codegen<'a> {
             Lir::Not(value) => self.gen_not(value),
             Lir::Any(values) => self.gen_any(values),
             Lir::All(values) => self.gen_all(values),
+            Lir::LogAnd(values) => self.gen_logand(values),
+            Lir::LogIor(values) => self.gen_logior(values),
+            Lir::LogXor(values) => self.gen_logxor(values),
             Lir::Add(values) => self.gen_add(values),
             Lir::Sub(values) => self.gen_sub(values),
             Lir::Mul(values) => self.gen_mul(values),
@@ -225,6 +234,30 @@ impl<'a> Codegen<'a> {
 
     fn gen_all(&mut self, values: Vec<LirId>) -> NodePtr {
         let mut args = vec![self.ops.all];
+        for value in values {
+            args.push(self.gen_lir(value));
+        }
+        self.list(&args)
+    }
+
+    fn gen_logand(&mut self, values: Vec<LirId>) -> NodePtr {
+        let mut args = vec![self.ops.logand];
+        for value in values {
+            args.push(self.gen_lir(value));
+        }
+        self.list(&args)
+    }
+
+    fn gen_logior(&mut self, values: Vec<LirId>) -> NodePtr {
+        let mut args = vec![self.ops.logior];
+        for value in values {
+            args.push(self.gen_lir(value));
+        }
+        self.list(&args)
+    }
+
+    fn gen_logxor(&mut self, values: Vec<LirId>) -> NodePtr {
+        let mut args = vec![self.ops.logxor];
         for value in values {
             args.push(self.gen_lir(value));
         }
