@@ -1,3 +1,6 @@
+use num_bigint::BigInt;
+use num_traits::One;
+
 use crate::{
     database::{Database, LirId, SymbolId},
     hir::{BinOp, Op},
@@ -124,7 +127,7 @@ impl<'a> Optimizer<'a> {
                 );
             });
 
-        let mut path = 1;
+        let mut path = BigInt::one();
 
         if !(index + 1 == environment.len() && self.db.env(env_id).rest()) {
             path *= 2;
@@ -147,7 +150,7 @@ impl<'a> Optimizer<'a> {
     fn opt_first(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
         match self.db.lir(lir_id) {
-            Lir::Path(path) => self.db.alloc_lir(Lir::Path(f(*path))),
+            Lir::Path(path) => self.db.alloc_lir(Lir::Path(f(path.clone()))),
             Lir::Pair(first, _) => *first,
             _ => self.db.alloc_lir(Lir::First(lir_id)),
         }
@@ -156,7 +159,7 @@ impl<'a> Optimizer<'a> {
     fn opt_rest(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
         match self.db.lir(lir_id) {
-            Lir::Path(path) => self.db.alloc_lir(Lir::Path(r(*path))),
+            Lir::Path(path) => self.db.alloc_lir(Lir::Path(r(path.clone()))),
             Lir::Pair(_, rest) => *rest,
             _ => self.db.alloc_lir(Lir::Rest(lir_id)),
         }
@@ -380,10 +383,10 @@ impl<'a> Optimizer<'a> {
     }
 }
 
-fn compose_paths(a: u32, mut b: u32) -> u32 {
-    let mut mask = 1;
-    let mut temp_path = a;
-    while temp_path > 1 {
+fn compose_paths(a: BigInt, mut b: BigInt) -> BigInt {
+    let mut mask = BigInt::one();
+    let mut temp_path = a.clone();
+    while temp_path > BigInt::one() {
         b <<= 1;
         mask <<= 1;
         temp_path >>= 1;
@@ -393,13 +396,10 @@ fn compose_paths(a: u32, mut b: u32) -> u32 {
     b | (a & mask)
 }
 
-const FIRST: u32 = 2;
-const REST: u32 = 3;
-
-fn f(path: u32) -> u32 {
-    compose_paths(path, FIRST)
+fn f(path: BigInt) -> BigInt {
+    compose_paths(path, BigInt::from(2))
 }
 
-fn r(path: u32) -> u32 {
-    compose_paths(path, REST)
+fn r(path: BigInt) -> BigInt {
+    compose_paths(path, BigInt::from(3))
 }

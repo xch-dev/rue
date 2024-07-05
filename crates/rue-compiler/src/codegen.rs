@@ -1,4 +1,5 @@
 use clvmr::{Allocator, NodePtr};
+use num_bigint::BigInt;
 
 use crate::{
     database::{Database, LirId},
@@ -86,7 +87,7 @@ impl<'a> Codegen<'a> {
             Lir::Atom(atom) => self.gen_atom(&atom),
             Lir::Pair(first, rest) => self.gen_pair(first, rest),
             Lir::Quote(value) => self.gen_quote(value),
-            Lir::Path(path) => self.allocator.new_small_number(path).unwrap(),
+            Lir::Path(path) => self.gen_path(&path),
             Lir::Run(program, args) => self.gen_run(program, args),
             Lir::Curry(body, args) => self.gen_apply(body, args),
             Lir::Closure(body, args) => self.gen_closure(body, args),
@@ -120,6 +121,15 @@ impl<'a> Codegen<'a> {
             Lir::Ash(lhs, rhs) => self.gen_ash(lhs, rhs),
             Lir::Rem(lhs, rhs) => self.gen_rem(lhs, rhs),
         }
+    }
+
+    fn gen_path(&mut self, path: &BigInt) -> NodePtr {
+        let bytes: Vec<u8> = path.to_signed_bytes_be();
+        let mut slice = bytes.as_slice();
+        while (!slice.is_empty()) && (slice[0] == 0) {
+            slice = &slice[1..];
+        }
+        self.allocator.new_atom(slice).unwrap()
     }
 
     fn gen_atom(&mut self, value: &[u8]) -> NodePtr {

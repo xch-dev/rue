@@ -1,10 +1,12 @@
+use num_bigint::BigInt;
+
 use crate::database::LirId;
 
 #[derive(Debug, Clone)]
 pub enum Lir {
     Atom(Vec<u8>),
     Pair(LirId, LirId),
-    Path(u32),
+    Path(BigInt),
     Run(LirId, Option<LirId>),
     Quote(LirId),
     Curry(LirId, Vec<LirId>),
