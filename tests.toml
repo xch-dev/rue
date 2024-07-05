@@ -356,3 +356,10 @@ cost = 38337
 input = "()"
 output = "55"
 hash = "85bd712a2ed26bacd4717e0dee543e9d2356c14a3a42eea7b4846c166593dc2a"
+
+[lambda_rest_param]
+bytes = 39
+cost = 1308
+input = "()"
+output = "76"
+hash = "aa829b650e411406892664c9b603c79dc68e0df99e54e67a913e4ba682cf846d"
