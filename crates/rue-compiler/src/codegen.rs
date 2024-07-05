@@ -124,7 +124,7 @@ impl<'a> Codegen<'a> {
     }
 
     fn gen_path(&mut self, path: &BigInt) -> NodePtr {
-        let bytes: Vec<u8> = path.to_signed_bytes_be();
+        let bytes = path.to_signed_bytes_be();
         let mut slice = bytes.as_slice();
         while (!slice.is_empty()) && (slice[0] == 0) {
             slice = &slice[1..];
