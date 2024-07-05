@@ -35,6 +35,8 @@ impl<'a> Optimizer<'a> {
                     BinOp::BitwiseAnd => Self::opt_bitwise_and,
                     BinOp::BitwiseOr => Self::opt_bitwise_or,
                     BinOp::BitwiseXor => Self::opt_bitwise_xor,
+                    BinOp::LeftArithShift => Self::opt_left_arith_shift,
+                    BinOp::RightArithShift => Self::opt_right_arith_shift,
                     BinOp::Add => Self::opt_add,
                     BinOp::Subtract => Self::opt_subtract,
                     BinOp::Multiply => Self::opt_multiply,
@@ -204,6 +206,20 @@ impl<'a> Optimizer<'a> {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
         self.db.alloc_lir(Lir::LogXor(vec![lhs, rhs]))
+    }
+
+    fn opt_right_arith_shift(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        let nil = self.db.alloc_lir(Lir::Atom(Vec::new()));
+        let neg_rhs = self.db.alloc_lir(Lir::Sub(vec![nil, rhs]));
+        self.db.alloc_lir(Lir::Ash(lhs, neg_rhs))
+    }
+
+    fn opt_left_arith_shift(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::Ash(lhs, rhs))
     }
 
     fn opt_add(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {

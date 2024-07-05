@@ -231,6 +231,8 @@ fn convert_tokens<'a>(
             TokenKind::BitwiseOr => SyntaxKind::BitwiseOr,
             TokenKind::BitwiseXor => SyntaxKind::BitwiseXor,
             TokenKind::BitwiseNot => SyntaxKind::BitwiseNot,
+            TokenKind::LeftArithShift => SyntaxKind::LeftArithShift,
+            TokenKind::RightArithShift => SyntaxKind::RightArithShift,
             TokenKind::And => SyntaxKind::And,
             TokenKind::Or => SyntaxKind::Or,
             TokenKind::Question => SyntaxKind::Question,

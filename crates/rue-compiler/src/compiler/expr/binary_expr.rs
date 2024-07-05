@@ -41,6 +41,8 @@ impl Compiler<'_> {
             BinaryOp::BitwiseAnd => self.op_bitwise_and(lhs, rhs, text_range),
             BinaryOp::BitwiseOr => self.op_bitwise_or(&lhs, rhs, text_range),
             BinaryOp::BitwiseXor => self.op_bitwise_xor(&lhs, rhs, text_range),
+            BinaryOp::LeftArithShift => self.op_left_arith_shift(&lhs, rhs, text_range),
+            BinaryOp::RightArithShift => self.op_right_arith_shift(&lhs, rhs, text_range),
         }
     }
 
@@ -371,5 +373,45 @@ impl Compiler<'_> {
         self.type_check(lhs.type_id, self.builtins.int, text_range);
         self.type_check(rhs.type_id, self.builtins.int, text_range);
         self.binary_op(BinOp::BitwiseXor, lhs.hir_id, rhs.hir_id, self.builtins.int)
+    }
+
+    fn op_left_arith_shift(
+        &mut self,
+        lhs: &Value,
+        rhs: Option<&Expr>,
+        text_range: TextRange,
+    ) -> Value {
+        let rhs = rhs
+            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .unwrap_or_else(|| self.unknown());
+
+        self.type_check(lhs.type_id, self.builtins.int, text_range);
+        self.type_check(rhs.type_id, self.builtins.int, text_range);
+        self.binary_op(
+            BinOp::LeftArithShift,
+            lhs.hir_id,
+            rhs.hir_id,
+            self.builtins.int,
+        )
+    }
+
+    fn op_right_arith_shift(
+        &mut self,
+        lhs: &Value,
+        rhs: Option<&Expr>,
+        text_range: TextRange,
+    ) -> Value {
+        let rhs = rhs
+            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .unwrap_or_else(|| self.unknown());
+
+        self.type_check(lhs.type_id, self.builtins.int, text_range);
+        self.type_check(rhs.type_id, self.builtins.int, text_range);
+        self.binary_op(
+            BinOp::RightArithShift,
+            lhs.hir_id,
+            rhs.hir_id,
+            self.builtins.int,
+        )
     }
 }

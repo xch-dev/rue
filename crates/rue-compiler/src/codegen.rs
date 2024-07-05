@@ -31,6 +31,7 @@ struct Ops {
     div: NodePtr,
     divmod: NodePtr,
     gt: NodePtr,
+    ash: NodePtr,
     logand: NodePtr,
     logior: NodePtr,
     logxor: NodePtr,
@@ -65,6 +66,7 @@ impl<'a> Codegen<'a> {
             div: allocator.new_small_number(19).unwrap(),
             divmod: allocator.new_small_number(20).unwrap(),
             gt: allocator.new_small_number(21).unwrap(),
+            ash: allocator.new_small_number(22).unwrap(),
             logand: allocator.new_small_number(24).unwrap(),
             logior: allocator.new_small_number(25).unwrap(),
             logxor: allocator.new_small_number(26).unwrap(),
@@ -115,6 +117,7 @@ impl<'a> Codegen<'a> {
             Lir::Eq(lhs, rhs) => self.gen_eq(lhs, rhs),
             Lir::Gt(lhs, rhs) => self.gen_gt(lhs, rhs),
             Lir::GtBytes(lhs, rhs) => self.gen_gt_bytes(lhs, rhs),
+            Lir::Ash(lhs, rhs) => self.gen_ash(lhs, rhs),
             Lir::Rem(lhs, rhs) => self.gen_rem(lhs, rhs),
         }
     }
@@ -336,6 +339,12 @@ impl<'a> Codegen<'a> {
         let lhs = self.gen_lir(lhs);
         let rhs = self.gen_lir(rhs);
         self.list(&[self.ops.eq, lhs, rhs])
+    }
+
+    fn gen_ash(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {
+        let lhs = self.gen_lir(lhs);
+        let rhs = self.gen_lir(rhs);
+        self.list(&[self.ops.ash, lhs, rhs])
     }
 
     fn gen_closure_wrapper(&mut self, body: NodePtr, captures: &[NodePtr]) -> NodePtr {

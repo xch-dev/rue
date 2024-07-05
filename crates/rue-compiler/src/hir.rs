@@ -36,6 +36,8 @@ pub enum BinOp {
     BitwiseAnd,
     BitwiseOr,
     BitwiseXor,
+    LeftArithShift,
+    RightArithShift,
     Add,
     Subtract,
     Multiply,

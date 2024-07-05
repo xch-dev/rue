@@ -454,3 +454,10 @@ cost = 4977
 input = "()"
 output = "1"
 hash = "bc9d13262f5a2ab4c0e75a62ade773d493a624e05248c596a58bd85d8466c68f"
+
+[bitwise_shift]
+bytes = 41
+cost = 3169
+input = "()"
+output = "0x01802fdd4320000008137f"
+hash = "b0b28be1cdfa60b6624869eba168e6a19b84b6d15c9a4ceedba208b0271f6ae3"

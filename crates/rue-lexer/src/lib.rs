@@ -49,12 +49,20 @@ impl<'a> Lexer<'a> {
                     self.bump();
                     TokenKind::LessThanEquals
                 }
+                '<' => {
+                    self.bump();
+                    TokenKind::LeftArithShift
+                }
                 _ => TokenKind::LessThan,
             },
             '>' => match self.peek() {
                 '=' => {
                     self.bump();
                     TokenKind::GreaterThanEquals
+                }
+                '>' => {
+                    self.bump();
+                    TokenKind::RightArithShift
                 }
                 _ => TokenKind::GreaterThan,
             },
@@ -336,13 +344,13 @@ mod tests {
         check("enum", &[TokenKind::Enum]);
         check("let", &[TokenKind::Let]);
         check("const", &[TokenKind::Const]);
-
         check("if", &[TokenKind::If]);
         check("else", &[TokenKind::Else]);
         check("return", &[TokenKind::Return]);
         check("raise", &[TokenKind::Raise]);
         check("assert", &[TokenKind::Assert]);
         check("assume", &[TokenKind::Assume]);
+        check("nil", &[TokenKind::Nil]);
         check("true", &[TokenKind::True]);
         check("false", &[TokenKind::False]);
         check("nil", &[TokenKind::Nil]);
@@ -397,6 +405,16 @@ mod tests {
         check("!", &[TokenKind::Not]);
         check("&&", &[TokenKind::And]);
         check("||", &[TokenKind::Or]);
+    }
+
+    #[test]
+    fn test_bitwise_ops() {
+        check("&", &[TokenKind::BitwiseAnd]);
+        check("|", &[TokenKind::BitwiseOr]);
+        check("^", &[TokenKind::BitwiseXor]);
+        check("~", &[TokenKind::BitwiseNot]);
+        check("<<", &[TokenKind::LeftArithShift]);
+        check(">>", &[TokenKind::RightArithShift]);
     }
 
     #[test]

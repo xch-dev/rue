@@ -324,8 +324,9 @@ fn binding_power(op: BinaryOp) -> (u8, u8) {
         BinaryOp::BitwiseOr => (9, 10),
         BinaryOp::BitwiseXor => (11, 12),
         BinaryOp::BitwiseAnd => (13, 14),
-        BinaryOp::Add | BinaryOp::Subtract => (15, 16),
-        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (17, 18),
+        BinaryOp::LeftArithShift | BinaryOp::RightArithShift => (15, 16),
+        BinaryOp::Add | BinaryOp::Subtract => (17, 18),
+        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (19, 20),
     }
 }
 
@@ -475,6 +476,10 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             BinaryOp::BitwiseOr
         } else if p.at(SyntaxKind::BitwiseXor) {
             BinaryOp::BitwiseXor
+        } else if p.at(SyntaxKind::LeftArithShift) {
+            BinaryOp::LeftArithShift
+        } else if p.at(SyntaxKind::RightArithShift) {
+            BinaryOp::RightArithShift
         } else {
             return;
         };

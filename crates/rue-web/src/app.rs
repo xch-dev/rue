@@ -342,6 +342,8 @@ fn Rue(source: &'static str) -> impl IntoView {
             | TokenKind::BitwiseOr
             | TokenKind::BitwiseXor
             | TokenKind::BitwiseNot
+            | TokenKind::LeftArithShift
+            | TokenKind::RightArithShift
             | TokenKind::And
             | TokenKind::Or => class = "text-blue-700 dark:text-blue-300",
             TokenKind::Whitespace => class = "",

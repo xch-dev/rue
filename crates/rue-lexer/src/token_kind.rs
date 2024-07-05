@@ -57,6 +57,8 @@ pub enum TokenKind {
     BitwiseOr,
     BitwiseXor,
     BitwiseNot,
+    LeftArithShift,
+    RightArithShift,
     And,
     Or,
     Whitespace,
