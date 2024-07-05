@@ -138,7 +138,7 @@ impl Compiler<'_> {
                     hir_id,
                 ))
             }
-            (Type::Enum(..), Type::EnumVariant(variant_type)) => {
+            (Type::Enum(enum_type), Type::EnumVariant(variant_type)) => {
                 if variant_type.enum_type != from {
                     self.db.error(
                         ErrorKind::UnsupportedTypeGuard(self.type_name(from), self.type_name(to)),
@@ -146,12 +146,50 @@ impl Compiler<'_> {
                     );
                     return None;
                 }
-                let first = self.db.alloc_hir(Hir::Op(Op::First, hir_id));
+
+                let hir_id = if enum_type.has_fields {
+                    let first = self.db.alloc_hir(Hir::Op(Op::First, hir_id));
+                    self.db.alloc_hir(Hir::BinaryOp(
+                        BinOp::Equals,
+                        first,
+                        variant_type.discriminant,
+                    ))
+                } else {
+                    self.db.alloc_hir(Hir::BinaryOp(
+                        BinOp::Equals,
+                        hir_id,
+                        variant_type.discriminant,
+                    ))
+                };
+
+                Some((
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(from)),
+                    hir_id,
+                ))
+            }
+            (Type::Int, Type::EnumVariant(variant_type)) => {
+                let Type::Enum(enum_type) = self.db.ty(variant_type.enum_type).clone() else {
+                    self.db.error(
+                        ErrorKind::UnsupportedTypeGuard(self.type_name(from), self.type_name(to)),
+                        text_range,
+                    );
+                    return None;
+                };
+
+                if enum_type.has_fields {
+                    self.db.error(
+                        ErrorKind::UnsupportedTypeGuard(self.type_name(from), self.type_name(to)),
+                        text_range,
+                    );
+                    return None;
+                }
+
                 let hir_id = self.db.alloc_hir(Hir::BinaryOp(
                     BinOp::Equals,
-                    first,
+                    hir_id,
                     variant_type.discriminant,
                 ));
+
                 Some((
                     Guard::new(TypeOverride::new(to), TypeOverride::new(from)),
                     hir_id,

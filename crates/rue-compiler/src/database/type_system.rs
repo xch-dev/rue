@@ -447,7 +447,20 @@ impl Database {
                 }
             }
 
-            // Enums and their variants are not assignable to anything except themselves.
+            // You can cast numeric enums to `Int`.
+            (Type::EnumVariant(variant_type), Type::Bytes | Type::Int) => {
+                self.compare_type_visitor(variant_type.enum_type, rhs, ctx)
+            }
+
+            (Type::Enum(enum_type), Type::Bytes | Type::Int) => {
+                if enum_type.has_fields {
+                    Comparison::Unrelated
+                } else {
+                    Comparison::Castable
+                }
+            }
+
+            // Enums and their variants are not assignable to anything else.
             (Type::Enum(..), _) | (_, Type::Enum(..)) => Comparison::Unrelated,
             (Type::EnumVariant(..), _) | (_, Type::EnumVariant(..)) => Comparison::Unrelated,
 

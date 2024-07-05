@@ -1,0 +1,22 @@
+enum Value {
+    Pair {
+        first: Int,
+        rest: Int,
+    },
+    Single {
+        num: Int,
+    }
+}
+
+fun main() -> Int {
+    let pair: Value = Value::Pair {
+        first: 1000,
+        rest: 2000,
+    };
+    assert pair is Value::Pair;
+
+    let single = Value::Single {
+        num: 1000,
+    };
+    single.num
+}

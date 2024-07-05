@@ -204,3 +204,31 @@ hash = "11efffdca3fc8786b6e51cc51f13a52e02fc6af181c5b7019424251ae785bd00"
 [block_nested_return]
 parser_errors = []
 compiler_errors = ["Error: Explicit return is not allowed within expressions. (2:10)"]
+
+[enum_discriminant]
+bytes = 199
+cost = 3534
+input = "()"
+output = "()"
+hash = "1a9674474efa85b2616b28fc2ae4f1b6a199273973e482ea74498fcc507141cf"
+
+[enum_fields]
+bytes = 33
+cost = 636
+input = "()"
+output = "1"
+hash = "26a3b6ddb8b3a9604c1eb6b61c67135e3f5f6b78a329790b7e0d5e9123123934"
+
+[enum_numeric]
+bytes = 103
+cost = 2002
+input = "()"
+output = "()"
+hash = "a904e8177e07f7f7c2454b8cb53017f85181b0b7841ba9275950e4d6151c9b84"
+
+[enum_mixed]
+bytes = 279
+cost = 33360
+input = "()"
+output = "()"
+hash = "0af9a22b05c1ceb929e756159fb1c9dffbbc725179e6669ab4c00e712e0008ab"

@@ -42,7 +42,18 @@ impl Compiler<'_> {
                             text_range,
                         );
                     }
-                    return Value::new(variant_type.discriminant, type_id);
+
+                    let Type::Enum(enum_type) = self.db.ty(variant_type.enum_type) else {
+                        unreachable!();
+                    };
+
+                    let mut hir_id = variant_type.discriminant;
+
+                    if enum_type.has_fields {
+                        hir_id = self.db.alloc_hir(Hir::Pair(hir_id, self.builtins.nil_hir));
+                    }
+
+                    return Value::new(hir_id, type_id);
                 }
                 self.db
                     .error(ErrorKind::ExpectedSymbolPath(last_ident), text_range);

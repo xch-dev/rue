@@ -134,7 +134,7 @@ impl Compiler<'_> {
 
     fn op_equals(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bytes)))
+            .map(|rhs| self.compile_expr(rhs, Some(lhs.type_id)))
             .unwrap_or_else(|| self.unknown());
 
         let mut value = self.binary_op(BinOp::Equals, lhs.hir_id, rhs.hir_id, self.builtins.bool);
