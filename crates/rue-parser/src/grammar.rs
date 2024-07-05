@@ -524,6 +524,9 @@ fn list_expr(p: &mut Parser<'_>) {
 fn lambda_expr(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LambdaExpr);
     p.expect(SyntaxKind::Fun);
+    if p.at(SyntaxKind::LessThan) {
+        generic_types(p);
+    }
     p.expect(SyntaxKind::OpenParen);
     while !p.at(SyntaxKind::CloseParen) {
         lambda_param(p);

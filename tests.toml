@@ -363,3 +363,17 @@ cost = 1308
 input = "()"
 output = "76"
 hash = "aa829b650e411406892664c9b603c79dc68e0df99e54e67a913e4ba682cf846d"
+
+[function_generics]
+bytes = 117
+cost = 4675
+input = "()"
+output = "152"
+hash = "38b1cec180a0bc0f5ec91097cec51971df126e3b18af54ddba4a3e4a36f9c285"
+
+[lambda_generics]
+bytes = 117
+cost = 4675
+input = "()"
+output = "152"
+hash = "38b1cec180a0bc0f5ec91097cec51971df126e3b18af54ddba4a3e4a36f9c285"

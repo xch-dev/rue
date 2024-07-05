@@ -714,6 +714,10 @@ impl PairExpr {
 }
 
 impl LambdaExpr {
+    pub fn generic_types(&self) -> Option<GenericTypes> {
+        self.syntax().children().find_map(GenericTypes::cast)
+    }
+
     pub fn params(&self) -> Vec<LambdaParam> {
         self.syntax()
             .children()
