@@ -56,4 +56,6 @@ pub enum BinOp {
     PointAdd,
     LogicalAnd,
     LogicalOr,
+    Any,
+    All,
 }

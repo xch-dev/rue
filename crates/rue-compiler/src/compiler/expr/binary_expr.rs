@@ -38,7 +38,7 @@ impl Compiler<'_> {
             | BinaryOp::LessThanEquals => self.op_comparison(&lhs, rhs, op, text_range),
             BinaryOp::And => self.op_and(lhs, rhs, text_range),
             BinaryOp::Or => self.op_or(&lhs, rhs, text_range),
-            BinaryOp::BitwiseAnd => self.op_bitwise_and(&lhs, rhs, text_range),
+            BinaryOp::BitwiseAnd => self.op_bitwise_and(lhs, rhs, text_range),
             BinaryOp::BitwiseOr => self.op_bitwise_or(&lhs, rhs, text_range),
             BinaryOp::BitwiseXor => self.op_bitwise_xor(&lhs, rhs, text_range),
         }
@@ -313,7 +313,24 @@ impl Compiler<'_> {
         self.binary_op(BinOp::LogicalOr, lhs.hir_id, rhs.hir_id, self.builtins.bool)
     }
 
-    fn op_bitwise_and(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
+    fn op_bitwise_and(&mut self, lhs: Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
+        if self
+            .db
+            .compare_type(lhs.type_id, self.builtins.bool)
+            .is_assignable()
+        {
+            let rhs = rhs
+                .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bool)))
+                .unwrap_or_else(|| self.unknown());
+
+            self.type_check(rhs.type_id, self.builtins.bool, text_range);
+
+            let mut value = self.binary_op(BinOp::All, lhs.hir_id, rhs.hir_id, self.builtins.bool);
+            value.guards.extend(lhs.guards);
+            value.guards.extend(rhs.guards);
+            return value;
+        }
+
         let rhs = rhs
             .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
             .unwrap_or_else(|| self.unknown());
@@ -324,6 +341,19 @@ impl Compiler<'_> {
     }
 
     fn op_bitwise_or(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
+        if self
+            .db
+            .compare_type(lhs.type_id, self.builtins.bool)
+            .is_assignable()
+        {
+            let rhs = rhs
+                .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bool)))
+                .unwrap_or_else(|| self.unknown());
+
+            self.type_check(rhs.type_id, self.builtins.bool, text_range);
+            return self.binary_op(BinOp::Any, lhs.hir_id, rhs.hir_id, self.builtins.bool);
+        }
+
         let rhs = rhs
             .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
             .unwrap_or_else(|| self.unknown());

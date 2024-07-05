@@ -40,6 +40,7 @@ impl<'a> Optimizer<'a> {
                     BinOp::Multiply => Self::opt_multiply,
                     BinOp::Divide => Self::opt_divide,
                     BinOp::Remainder => Self::opt_remainder,
+                    BinOp::DivMod => Self::opt_divmod,
                     BinOp::LessThan => Self::opt_lt,
                     BinOp::GreaterThan => Self::opt_gt,
                     BinOp::LessThanEquals => Self::opt_lteq,
@@ -54,7 +55,8 @@ impl<'a> Optimizer<'a> {
                     BinOp::PointAdd => Self::opt_point_add,
                     BinOp::LogicalAnd => Self::opt_logical_and,
                     BinOp::LogicalOr => Self::opt_logical_or,
-                    BinOp::DivMod => Self::opt_divmod,
+                    BinOp::All => Self::opt_all,
+                    BinOp::Any => Self::opt_any,
                 };
                 handler(self, env_id, lhs, rhs)
             }
@@ -311,6 +313,18 @@ impl<'a> Optimizer<'a> {
     fn opt_logical_or(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let one = self.db.alloc_mir(Mir::Atom(vec![1]));
         self.opt_if(env_id, lhs, one, rhs)
+    }
+
+    fn opt_any(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::Any(vec![lhs, rhs]))
+    }
+
+    fn opt_all(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::All(vec![lhs, rhs]))
     }
 
     fn opt_not(&mut self, env_id: EnvironmentId, value: MirId) -> LirId {

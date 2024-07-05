@@ -440,3 +440,17 @@ cost = 2290
 input = "()"
 output = "351"
 hash = "de6c6f0ac685dc08dc7ac5ca788ba3464cc1b0c6e08ee7758ab3e6c35fb3b821"
+
+[bitwise_arithmatic]
+bytes = 51
+cost = 3118
+input = "()"
+output = "0x064cc0"
+hash = "96a314da556b577d15a2e0a2db42e3b7f22610ab4336ed86713716c5a029e787"
+
+[boolean_arithmetic]
+bytes = 55
+cost = 4977
+input = "()"
+output = "1"
+hash = "bc9d13262f5a2ab4c0e75a62ade773d493a624e05248c596a58bd85d8466c68f"
