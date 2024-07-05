@@ -96,6 +96,7 @@ pub enum ErrorKind {
     RecursiveTypeAlias(String),
     TypeMismatch(String, String),
     CastMismatch(String, String),
+    CannotInferType,
 
     // Function calls.
     UncallableType(String),
@@ -199,6 +200,7 @@ impl fmt::Display for ErrorKind {
             "),
             Self::TypeMismatch(found, expected) => format!("Expected type `{expected}`, but found `{found}`."),
             Self::CastMismatch(found, expected) => format!("Cannot cast type `{found}` to `{expected}`."),
+            Self::CannotInferType => "Lambda parameter type could not be inferred.".to_string(),
 
             // Function calls.
             Self::UncallableType(ty) => format!("Expression with type `{ty}` cannot be called, since it is not a function."),

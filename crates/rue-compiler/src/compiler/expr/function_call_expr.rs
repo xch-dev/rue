@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
+use rowan::TextRange;
 use rue_parser::{AstNode, FunctionCallExpr};
 
 use crate::{
     compiler::Compiler,
     hir::Hir,
     value::{FunctionType, Rest, Type, Value},
-    ErrorKind, TypeId,
+    ErrorKind,
 };
 
 impl Compiler<'_> {
@@ -41,12 +42,19 @@ impl Compiler<'_> {
 
         // Compile the arguments naively, and defer type checking until later.
         let mut args = Vec::new();
-        let mut spread = false;
 
         let call_args = call.args();
         let len = call_args.len();
+        let spread = call_args
+            .last()
+            .map(|arg| arg.spread().is_some())
+            .unwrap_or(false);
 
-        for (i, arg) in call_args.into_iter().enumerate() {
+        if let Some(function_type) = &function_type {
+            self.check_argument_length(function_type, len, call.syntax().text_range());
+        }
+
+        for (i, arg) in call_args.iter().enumerate() {
             // Determine the expected type.
             let expected_type = function_type.as_ref().and_then(|ty| {
                 if i < ty.param_types.len() {
@@ -66,23 +74,47 @@ impl Compiler<'_> {
                 .unwrap_or_else(|| self.unknown());
 
             // Add the argument to the list.
+            let type_id = expr.type_id;
             args.push(expr);
 
             // Check if it's a spread argument.
-            if arg.spread().is_some() {
-                if i == len - 1 {
-                    spread = true;
-                } else {
-                    self.db
-                        .error(ErrorKind::InvalidSpreadArgument, arg.syntax().text_range());
-                }
-            }
-        }
+            let last = i == len - 1;
 
-        // Check that the arguments match the parameters.
-        if let Some(function_type) = function_type.as_ref() {
-            let arg_types = args.iter().map(|arg| arg.type_id).collect::<Vec<_>>();
-            self.check_arguments(call, function_type, &arg_types, spread);
+            if arg.spread().is_some() && !last {
+                self.db
+                    .error(ErrorKind::InvalidSpreadArgument, arg.syntax().text_range());
+            }
+
+            // Check the type of the argument.
+            let Some(function) = &function_type else {
+                continue;
+            };
+
+            if last && spread {
+                if function.rest != Rest::Spread {
+                    self.db.error(
+                        ErrorKind::UnsupportedFunctionSpread,
+                        call_args[i].syntax().text_range(),
+                    );
+                } else if i >= function.param_types.len() - 1 {
+                    let expected_type = *function.param_types.last().unwrap();
+                    self.type_check(type_id, expected_type, call_args[i].syntax().text_range());
+                }
+            } else if function.rest == Rest::Spread && i >= function.param_types.len() - 1 {
+                if let Some(inner_list_type) =
+                    self.db.unwrap_list(*function.param_types.last().unwrap())
+                {
+                    self.type_check(type_id, inner_list_type, call_args[i].syntax().text_range());
+                } else if i == function.param_types.len() - 1 && !spread {
+                    self.db.error(
+                        ErrorKind::RequiredFunctionSpread,
+                        call_args[i].syntax().text_range(),
+                    );
+                }
+            } else if i < function.param_types.len() {
+                let param_type = function.param_types[i];
+                self.type_check(type_id, param_type, call_args[i].syntax().text_range());
+            }
         }
 
         // The generic type context is no longer needed.
@@ -108,29 +140,27 @@ impl Compiler<'_> {
         Value::new(hir_id, type_id)
     }
 
-    fn check_arguments(
+    fn check_argument_length(
         &mut self,
-        ast: &FunctionCallExpr,
         function: &FunctionType,
-        args: &[TypeId],
-        spread: bool,
+        length: usize,
+        text_range: TextRange,
     ) {
         match function.rest {
             Rest::Nil => {
-                if args.len() != function.param_types.len() {
+                if length != function.param_types.len() {
                     self.db.error(
-                        ErrorKind::ArgumentMismatch(args.len(), function.param_types.len()),
-                        ast.syntax().text_range(),
+                        ErrorKind::ArgumentMismatch(length, function.param_types.len()),
+                        text_range,
                     );
                 }
             }
             Rest::Optional => {
-                if args.len() != function.param_types.len()
-                    && args.len() != function.param_types.len() - 1
+                if length != function.param_types.len() && length != function.param_types.len() - 1
                 {
                     self.db.error(
-                        ErrorKind::ArgumentMismatchOptional(args.len(), function.param_types.len()),
-                        ast.syntax().text_range(),
+                        ErrorKind::ArgumentMismatchOptional(length, function.param_types.len()),
+                        text_range,
                     );
                 }
             }
@@ -140,53 +170,18 @@ impl Compiler<'_> {
                     .unwrap_list(*function.param_types.last().unwrap())
                     .is_some()
                 {
-                    if args.len() < function.param_types.len() - 1 {
+                    if length < function.param_types.len() - 1 {
                         self.db.error(
-                            ErrorKind::ArgumentMismatchSpread(
-                                args.len(),
-                                function.param_types.len(),
-                            ),
-                            ast.syntax().text_range(),
+                            ErrorKind::ArgumentMismatchSpread(length, function.param_types.len()),
+                            text_range,
                         );
                     }
-                } else if args.len() != function.param_types.len() {
+                } else if length != function.param_types.len() {
                     self.db.error(
-                        ErrorKind::ArgumentMismatch(args.len(), function.param_types.len()),
-                        ast.syntax().text_range(),
+                        ErrorKind::ArgumentMismatch(length, function.param_types.len()),
+                        text_range,
                     );
                 }
-            }
-        }
-
-        let ast_args = ast.args();
-
-        for (i, &arg) in args.iter().enumerate() {
-            let last = i == args.len() - 1;
-
-            if last && spread {
-                if function.rest != Rest::Spread {
-                    self.db.error(
-                        ErrorKind::UnsupportedFunctionSpread,
-                        ast_args[i].syntax().text_range(),
-                    );
-                } else if i >= function.param_types.len() - 1 {
-                    let expected_type = *function.param_types.last().unwrap();
-                    self.type_check(arg, expected_type, ast_args[i].syntax().text_range());
-                }
-            } else if function.rest == Rest::Spread && i >= function.param_types.len() - 1 {
-                if let Some(inner_list_type) =
-                    self.db.unwrap_list(*function.param_types.last().unwrap())
-                {
-                    self.type_check(arg, inner_list_type, ast_args[i].syntax().text_range());
-                } else if i == function.param_types.len() - 1 && !spread {
-                    self.db.error(
-                        ErrorKind::RequiredFunctionSpread,
-                        ast_args[i].syntax().text_range(),
-                    );
-                }
-            } else if i < function.param_types.len() {
-                let param_type = function.param_types[i];
-                self.type_check(arg, param_type, ast_args[i].syntax().text_range());
             }
         }
     }

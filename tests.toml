@@ -298,3 +298,26 @@ cost = 16903
 input = "()"
 output = "0x0a37e3fbe2"
 hash = "20b2f4a2a700fd53852a81395f0bb729800ecd6701995572251e592e72809ce5"
+
+[infer_generic_lambda]
+bytes = 65
+cost = 2018
+input = "()"
+output = "420"
+hash = "e1bb38bc03b979e06bcfc2341001b12647928e29d682637eee425adf5b1bf212"
+
+[infer_lambda_params]
+parser_errors = []
+compiler_errors = [
+    "Error: Lambda parameter type could not be inferred. (2:24)",
+    "Error: Unused let binding `no_infer`. (2:9)",
+    "Error: Unused let binding `infer`. (3:9)",
+    "Error: Unused let binding `explicit`. (4:9)",
+]
+
+[infer_list]
+bytes = 159
+cost = 8514
+input = "()"
+output = "6"
+hash = "ee19b1c05eca9a43d56459fe1280a0de4b6d3a965ba9653253ade3f5b51fa653"

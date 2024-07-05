@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rue_parser::{AstNode, LambdaExpr};
 
 use crate::{
@@ -10,12 +12,19 @@ use crate::{
 };
 
 impl Compiler<'_> {
-    // TODO: Update and cleanup lambdas with the new features.
     pub fn compile_lambda_expr(
         &mut self,
         lambda_expr: &LambdaExpr,
         expected_type: Option<TypeId>,
     ) -> Value {
+        // Precompute the substitutions based on generic types.
+        let mut substitutions = HashMap::new();
+
+        for generics in &self.generic_type_stack {
+            substitutions.extend(generics);
+        }
+
+        // Determine the expected type of the lambda expression.
         let expected = expected_type.and_then(|ty| match self.db.ty(ty) {
             Type::Function(function) => Some(function.clone()),
             _ => None,
@@ -28,13 +37,21 @@ impl Compiler<'_> {
         let len = lambda_expr.params().len();
 
         for (i, param) in lambda_expr.params().into_iter().enumerate() {
+            // Determine the expected type of the parameter.
             let type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
                 .or(expected
                     .as_ref()
                     .and_then(|expected| expected.param_types.get(i).copied()))
-                .unwrap_or(self.builtins.unknown);
+                .unwrap_or_else(|| {
+                    self.db
+                        .error(ErrorKind::CannotInferType, param.syntax().text_range());
+                    self.builtins.unknown
+                });
+
+            // Substitute generic types in the parameter type.
+            let type_id = self.db.substitute_type(type_id, &substitutions);
 
             param_types.push(type_id);
 
@@ -44,15 +61,29 @@ impl Compiler<'_> {
                 self.db.insert_symbol_token(symbol_id, name);
             };
 
-            if param.spread().is_some() {
-                if i + 1 == len {
-                    rest = Rest::Spread;
-                } else {
-                    self.db.error(
-                        ErrorKind::InvalidSpreadParameter,
-                        param.syntax().text_range(),
-                    );
-                }
+            let last = i + 1 == len;
+            let spread = param.spread().is_some();
+            let optional = param.optional().is_some();
+
+            if spread && optional {
+                self.db.error(
+                    ErrorKind::OptionalParameterSpread,
+                    param.syntax().text_range(),
+                );
+            } else if spread && !last {
+                self.db.error(
+                    ErrorKind::InvalidSpreadParameter,
+                    param.syntax().text_range(),
+                );
+            } else if optional && !last {
+                self.db.error(
+                    ErrorKind::InvalidOptionalParameter,
+                    param.syntax().text_range(),
+                );
+            } else if spread {
+                rest = Rest::Spread;
+            } else if optional {
+                rest = Rest::Optional;
             }
         }
 

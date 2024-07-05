@@ -4,7 +4,7 @@ use rue_parser::{AstNode, BinaryExpr, BinaryOp, Expr};
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir, Op},
-    value::{Guard, TypeOverride, Value},
+    value::{Guard, Type, TypeOverride, Value},
     ErrorKind, HirId, TypeId,
 };
 
@@ -49,6 +49,13 @@ impl Compiler<'_> {
     }
 
     fn op_add(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
+        if matches!(self.db.ty(lhs.type_id), Type::Unknown) {
+            if let Some(rhs) = rhs {
+                self.compile_expr(rhs, None);
+            }
+            return self.unknown();
+        }
+
         if self
             .db
             .compare_type(lhs.type_id, self.builtins.public_key)
@@ -133,6 +140,13 @@ impl Compiler<'_> {
     }
 
     fn op_equals(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
+        if matches!(self.db.ty(lhs.type_id), Type::Unknown) {
+            if let Some(rhs) = rhs {
+                self.compile_expr(rhs, None);
+            }
+            return self.unknown();
+        }
+
         let rhs = rhs
             .map(|rhs| self.compile_expr(rhs, Some(lhs.type_id)))
             .unwrap_or_else(|| self.unknown());
