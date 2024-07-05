@@ -96,3 +96,45 @@ cost = 4069
 input = "()"
 output = "0x288b694028"
 hash = "0f74e7fd57bb9a7e05cf979ee986a8e0120801d2b18019c275a9717fce22f379"
+
+[struct_optional_initializer]
+bytes = 323
+cost = 50921
+input = "()"
+output = "()"
+hash = "7346d21032e40d7c691f7411e3d115810f167d1985389d65acf581670c230d0e"
+
+[struct_single_optional]
+bytes = 83
+cost = 1526
+input = "()"
+output = "42"
+hash = "45498b59825a240e1dc1029d15863922b8cc91152421f11d2cdc1a7d8999b90c"
+
+[struct_inner_optional]
+bytes = 181
+cost = 3329
+input = "()"
+output = "()"
+hash = "9d76d68d33ab457ba1482630892e687c2a062b6081d5a386b344696908bab9e8"
+
+[struct_optional]
+bytes = 127
+cost = 5030
+input = "()"
+output = "221"
+hash = "cca28c8cd08bf5e84d1b51883b045c1018acc21064c8f82c5d0c223f5e1039a8"
+
+[struct]
+bytes = 37
+cost = 1256
+input = "()"
+output = "76"
+hash = "c67747a8ff480fc4601cb986915d1fbc71ca8c88b879343f6da284a385e2fc4f"
+
+[struct_rest]
+bytes = 31
+cost = 1157
+input = "()"
+output = "76"
+hash = "917b0e1ee2c8ad5755e1f97c4642ea653288acf816eee1b0d537dd8e01106711"
