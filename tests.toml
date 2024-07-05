@@ -232,3 +232,69 @@ cost = 33360
 input = "()"
 output = "()"
 hash = "0af9a22b05c1ceb929e756159fb1c9dffbbc725179e6669ab4c00e712e0008ab"
+
+[enum_empty]
+bytes = 177
+cost = 12614
+input = "()"
+output = "()"
+hash = "b1a579071d1400cffb70369511e553d9ece5c6966bb03c5b19cd48bde773c8d5"
+
+[function_call]
+parser_errors = []
+compiler_errors = [
+    "Error: Expected 0 arguments, but found 1. (3:11)",
+    "Error: Expected either 0 or 1 arguments, but found 2. (7:11)",
+    "Error: This function does not support the spread operator on its last argument. (8:25)",
+    "Error: Expected either 0 or 1 arguments, but found 2. (9:11)",
+    "Error: This function does not support the spread operator on its last argument. (9:28)",
+    "Error: Expected either 1 or 2 arguments, but found 0. (11:11)",
+    "Error: Expected either 1 or 2 arguments, but found 3. (14:11)",
+    "Error: Expected either 1 or 2 arguments, but found 4. (15:11)",
+    "Error: This function does not support the spread operator on its last argument. (16:25)",
+    "Error: This function does not support the spread operator on its last argument. (17:28)",
+    "Error: Expected either 1 or 2 arguments, but found 3. (18:11)",
+    "Error: This function does not support the spread operator on its last argument. (18:31)",
+    "Error: Expected either 1 or 2 arguments, but found 4. (19:11)",
+    "Error: This function does not support the spread operator on its last argument. (19:34)",
+    "Error: This function does not support the spread operator on its last argument. (20:28)",
+    "Error: Expected type `Int[]`, but found `Int`. (26:28)",
+    "Error: Expected type `Int[]`, but found `Int`. (27:31)",
+    "Error: Expected at least 2 arguments, but found 0. (31:11)",
+    "Error: Expected type `Int[]`, but found `Int`. (36:31)",
+    "Error: Expected 1 argument, but found 0. (40:11)",
+    "Error: This function requires the spread operator on its last argument. (41:27)",
+    "Error: Expected 1 argument, but found 2. (42:11)",
+    "Error: This function requires the spread operator on its last argument. (42:27)",
+    "Error: Expected 1 argument, but found 2. (44:11)",
+    "Error: Expected type `Int`, but found `Int[]`. (45:27)",
+    "Error: Expected 1 argument, but found 2. (46:11)",
+    "Error: Expected type `Int`, but found `Int[]`. (46:30)",
+    "Error: Expected 2 arguments, but found 0. (48:11)",
+    "Error: Expected 2 arguments, but found 1. (49:11)",
+    "Error: This function requires the spread operator on its last argument. (50:30)",
+    "Error: Expected 2 arguments, but found 1. (51:11)",
+    "Error: Expected 2 arguments, but found 1. (53:11)",
+    "Error: Expected type `Int`, but found `Int[]`. (54:30)",
+]
+
+[struct_empty]
+bytes = 165
+cost = 4104
+input = "()"
+output = "()"
+hash = "bb2f6e4150d64965b692025d779786e459fc00ab5f7a6cf748315c5d470d64e6"
+
+[birecursive_functions]
+bytes = 195
+cost = 12822
+input = "()"
+output = "()"
+hash = "770bb2c0b2582924adf403e62374f8424a2ed510eef70b5f450eccab238a4911"
+
+[inner_inline_functions]
+bytes = 330
+cost = 16903
+input = "()"
+output = "0x0a37e3fbe2"
+hash = "20b2f4a2a700fd53852a81395f0bb729800ecd6701995572251e592e72809ce5"
