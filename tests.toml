@@ -468,3 +468,17 @@ cost = 2976
 input = "()"
 output = "0x0bd3655e"
 hash = "d6224e2135be13786c5a0002968bb0f851e50dabf69a96d3721ae3747bd91b85"
+
+[function_closure_empty]
+bytes = 63
+cost = 1973
+input = "()"
+output = "800"
+hash = "d80031fb54d0b0f33f0bc25e4faf3ba2555b90a82a461d42be8cdeab41fe8e57"
+
+[function_closure_nested]
+bytes = 161
+cost = 3468
+input = "()"
+output = "800"
+hash = "e977dca31ec8aba231dd0e858a3235d2dea5ed36aefed5f12c48ec02bf450b77"

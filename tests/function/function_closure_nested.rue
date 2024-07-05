@@ -1,0 +1,12 @@
+fun main() -> Int {
+    gen(400)()
+}
+
+const FACTOR: Int = 2;
+
+fun gen(num: Int) -> fun() -> Int {
+    fun fn() -> Int {
+        num * FACTOR
+    }
+    fn
+}
