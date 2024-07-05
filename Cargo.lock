@@ -2900,6 +2900,7 @@ version = "0.1.0"
 name = "rue-lsp"
 version = "0.1.0"
 dependencies = [
+ "clvmr 0.6.1",
  "rue-compiler",
  "rue-parser",
  "tokio",

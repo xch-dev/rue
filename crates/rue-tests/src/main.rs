@@ -85,7 +85,7 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
         .collect();
 
     let compiler_errors: Vec<String> = output
-        .diagnostics()
+        .diagnostics
         .iter()
         .map(|error| {
             let LineCol { line, col } = line_col(source, error.span().start);
@@ -105,10 +105,10 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
         });
     }
 
-    let bytes = node_to_bytes(&allocator, output.node_ptr()).unwrap();
-    let hash = hex::encode(tree_hash(&allocator, output.node_ptr()));
+    let bytes = node_to_bytes(&allocator, output.node_ptr).unwrap();
+    let hash = hex::encode(tree_hash(&allocator, output.node_ptr));
     let input_ptr = parse_clvm(&mut allocator, input).unwrap();
-    let output = run_clvm(&mut allocator, output.node_ptr(), input_ptr, u64::MAX);
+    let output = run_clvm(&mut allocator, output.node_ptr, input_ptr, u64::MAX);
 
     let (cost, output) = match output {
         Ok((node_ptr, cost)) => (cost, Ok(stringify_clvm(&allocator, node_ptr).unwrap())),

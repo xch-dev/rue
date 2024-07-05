@@ -1,27 +1,36 @@
 use std::fs;
 
 use clap::Parser;
-use clvmr::{serde::node_to_bytes, Allocator, NodePtr};
-use rue_clvm::{run_clvm, stringify_clvm};
-use rue_compiler::{analyze, compile, Diagnostic, DiagnosticKind};
+use clvmr::{serde::node_to_bytes, Allocator};
+use rue_compiler::{compile, Diagnostic, DiagnosticKind};
 use rue_parser::{line_col, parse, LineCol};
 
-/// The Rue language compiler and toolchain.
+/// CLI tools for working with the Rue compiler.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-struct Args {
-    /// The source file to compile.
-    file: String,
+enum Command {
+    /// Compile a Rue source file.
+    Build {
+        /// The source file to compile.
+        file: String,
+    },
 
-    /// Whether to only analyze.
-    #[clap(long, short)]
-    analyze: bool,
+    /// Check a Rue source file for errors.
+    Check {
+        /// The source file to check.
+        file: String,
+    },
 }
 
 fn main() {
-    let args = Args::parse();
+    match Command::parse() {
+        Command::Build { file } => build(file, true),
+        Command::Check { file } => build(file, false),
+    }
+}
 
-    let source = fs::read_to_string(args.file).expect("could not read source file");
+fn build(file: String, should_compile: bool) {
+    let source = fs::read_to_string(file).expect("could not read source file");
     let (ast, errors) = parse(&source);
 
     for error in &errors {
@@ -32,23 +41,18 @@ fn main() {
         eprintln!("Error: {} ({line}:{col})", error.kind());
     }
 
-    if args.analyze {
-        let diagnostics = analyze(&ast);
-        print_diagnostics(&source, &diagnostics);
-    } else {
-        let mut allocator = Allocator::new();
-        let output = compile(&mut allocator, &ast, errors.is_empty());
+    let mut allocator = Allocator::new();
+    let output = compile(&mut allocator, &ast, should_compile && errors.is_empty());
 
-        if print_diagnostics(&source, output.diagnostics()) {
-            return;
-        }
+    if print_diagnostics(&source, &output.diagnostics) {
+        return;
+    }
 
-        let bytes = node_to_bytes(&allocator, output.node_ptr()).unwrap();
+    if should_compile {
+        let bytes = node_to_bytes(&allocator, output.node_ptr).unwrap();
         println!("{}", hex::encode(bytes));
-        match run_clvm(&mut allocator, output.node_ptr(), NodePtr::NIL, 0) {
-            Ok(output) => eprintln!("Output: {}", stringify_clvm(&allocator, output.0).unwrap()),
-            Err(error) => eprintln!("error: {error:?}"),
-        }
+    } else {
+        println!("No errors found.");
     }
 }
 
