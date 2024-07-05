@@ -433,3 +433,10 @@ cost = 1015
 input = "()"
 output = "1"
 hash = "6cc8789b7e210c91be9828d93533b756d1e5e58e341b70f2d1e20f246e633ff8"
+
+[divmod]
+bytes = 35
+cost = 2290
+input = "()"
+output = "351"
+hash = "de6c6f0ac685dc08dc7ac5ca788ba3464cc1b0c6e08ee7758ab3e6c35fb3b821"

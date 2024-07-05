@@ -1,10 +1,10 @@
 use rowan::TextRange;
 
 use crate::{
-    hir::{Hir, Op},
+    hir::{BinOp, Hir, Op},
     scope::Scope,
     symbol::{Function, Symbol},
-    value::{FunctionType, Rest, Type},
+    value::{FunctionType, PairType, Rest, Type},
     Database, HirId, ScopeId, SymbolId, TypeId,
 };
 
@@ -62,12 +62,16 @@ pub fn builtins(db: &mut Database) -> Builtins {
 
     let sha256 = sha256(db, &builtins);
     let pubkey_for_exp = pubkey_for_exp(db, &builtins);
+    let divmod = divmod(db, &builtins);
 
     db.scope_mut(builtins.scope_id)
         .define_symbol("sha256".to_string(), sha256);
 
     db.scope_mut(builtins.scope_id)
         .define_symbol("pubkey_for_exp".to_string(), pubkey_for_exp);
+
+    db.scope_mut(builtins.scope_id)
+        .define_symbol("divmod".to_string(), divmod);
 
     builtins
 }
@@ -108,6 +112,34 @@ fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
             param_types: vec![builtins.bytes32],
             rest: Rest::Nil,
             return_type: builtins.public_key,
+            generic_types: Vec::new(),
+        },
+    }))
+}
+
+fn divmod(db: &mut Database, builtins: &Builtins) -> SymbolId {
+    let mut scope = Scope::default();
+    let lhs = db.alloc_symbol(Symbol::Parameter(builtins.int));
+    let rhs = db.alloc_symbol(Symbol::Parameter(builtins.int));
+    scope.define_symbol("lhs".to_string(), lhs);
+    scope.define_symbol("rhs".to_string(), rhs);
+    let lhs_ref = db.alloc_hir(Hir::Reference(lhs, TextRange::default()));
+    let rhs_ref = db.alloc_hir(Hir::Reference(rhs, TextRange::default()));
+    let hir_id = db.alloc_hir(Hir::BinaryOp(BinOp::DivMod, lhs_ref, rhs_ref));
+    let scope_id = db.alloc_scope(scope);
+
+    let int_pair = db.alloc_type(Type::Pair(PairType {
+        first: builtins.int,
+        rest: builtins.int,
+    }));
+
+    db.alloc_symbol(Symbol::InlineFunction(Function {
+        scope_id,
+        hir_id,
+        ty: FunctionType {
+            param_types: vec![builtins.int, builtins.int],
+            rest: Rest::Nil,
+            return_type: int_pair,
             generic_types: Vec::new(),
         },
     }))

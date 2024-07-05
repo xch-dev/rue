@@ -41,6 +41,7 @@ pub enum BinOp {
     Multiply,
     Divide,
     Remainder,
+    DivMod,
     LessThan,
     GreaterThan,
     LessThanEquals,

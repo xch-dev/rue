@@ -54,6 +54,7 @@ impl<'a> Optimizer<'a> {
                     BinOp::PointAdd => Self::opt_point_add,
                     BinOp::LogicalAnd => Self::opt_logical_and,
                     BinOp::LogicalOr => Self::opt_logical_or,
+                    BinOp::DivMod => Self::opt_divmod,
                 };
                 handler(self, env_id, lhs, rhs)
             }
@@ -315,6 +316,12 @@ impl<'a> Optimizer<'a> {
     fn opt_not(&mut self, env_id: EnvironmentId, value: MirId) -> LirId {
         let value = self.opt_mir(env_id, value);
         self.db.alloc_lir(Lir::Not(value))
+    }
+
+    fn opt_divmod(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::Divmod(lhs, rhs))
     }
 
     fn opt_raise(&mut self, env_id: EnvironmentId, value: Option<MirId>) -> LirId {
