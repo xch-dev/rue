@@ -8,6 +8,7 @@ workspace = true
 
 [dependencies]
 rue-parser = { path = "../rue-parser" }
+rue-clvm = { path = "../rue-clvm" }
 clvmr = "0.6.1"
 id-arena = "2.2.1"
 indexmap = "2.2.6"

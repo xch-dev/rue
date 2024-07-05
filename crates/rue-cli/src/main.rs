@@ -1,10 +1,8 @@
 use std::fs;
 
 use clap::Parser;
-use clvmr::{
-    run_program, serde::node_to_bytes, Allocator, ChiaDialect, NodePtr,
-    ENABLE_BLS_OPS_OUTSIDE_GUARD, ENABLE_FIXED_DIV,
-};
+use clvmr::{serde::node_to_bytes, Allocator, NodePtr};
+use rue_clvm::{run_clvm, stringify_clvm};
 use rue_compiler::{analyze, compile, Diagnostic, DiagnosticKind};
 use rue_parser::{line_col, parse, LineCol};
 
@@ -47,17 +45,8 @@ fn main() {
 
         let bytes = node_to_bytes(&allocator, output.node_ptr()).unwrap();
         println!("{}", hex::encode(bytes));
-        match run_program(
-            &mut allocator,
-            &ChiaDialect::new(ENABLE_BLS_OPS_OUTSIDE_GUARD | ENABLE_FIXED_DIV),
-            output.node_ptr(),
-            NodePtr::NIL,
-            0,
-        ) {
-            Ok(output) => eprintln!(
-                "Serialized output: {}",
-                hex::encode(node_to_bytes(&allocator, output.1).unwrap())
-            ),
+        match run_clvm(&mut allocator, output.node_ptr(), NodePtr::NIL, 0) {
+            Ok(output) => eprintln!("Output: {}", stringify_clvm(&allocator, output.0).unwrap()),
             Err(error) => eprintln!("error: {error:?}"),
         }
     }

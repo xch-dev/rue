@@ -4,15 +4,10 @@ use std::{
 };
 
 use clap::Parser;
-use clvm_tools_rs::classic::clvm_tools::binutils;
 use clvm_utils::tree_hash;
-use clvmr::{
-    reduction::Reduction,
-    run_program,
-    serde::{node_from_bytes, node_to_bytes},
-    Allocator, ChiaDialect, ENABLE_BLS_OPS_OUTSIDE_GUARD, ENABLE_FIXED_DIV,
-};
+use clvmr::{serde::node_to_bytes, Allocator};
 use indexmap::{IndexMap, IndexSet};
+use rue_clvm::{parse_clvm, run_clvm, stringify_clvm};
 use rue_compiler::{compile, DiagnosticKind};
 use rue_parser::{line_col, LineCol};
 use serde::{Deserialize, Serialize};
@@ -112,36 +107,12 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
 
     let bytes = node_to_bytes(&allocator, output.node_ptr()).unwrap();
     let hash = hex::encode(tree_hash(&allocator, output.node_ptr()));
-
-    let mut old_allocator = clvmr_old::Allocator::new();
-
-    let input_ptr = binutils::assemble(&mut old_allocator, input).unwrap();
-    let input_bytes = clvmr_old::serde::node_to_bytes(&old_allocator, input_ptr).unwrap();
-    let input_ptr = node_from_bytes(&mut allocator, &input_bytes).unwrap();
-
-    let output = run_program(
-        &mut allocator,
-        &ChiaDialect::new(ENABLE_BLS_OPS_OUTSIDE_GUARD | ENABLE_FIXED_DIV),
-        output.node_ptr(),
-        input_ptr,
-        u64::MAX,
-    );
+    let input_ptr = parse_clvm(&mut allocator, input).unwrap();
+    let output = run_clvm(&mut allocator, output.node_ptr(), input_ptr, u64::MAX);
 
     let (cost, output) = match output {
-        Ok(Reduction(cost, node_ptr)) => {
-            let output_bytes = node_to_bytes(&allocator, node_ptr).unwrap();
-            let output_ptr =
-                clvmr_old::serde::node_from_bytes(&mut old_allocator, &output_bytes).unwrap();
-            let output = binutils::disassemble(&old_allocator, output_ptr, None);
-            (cost, Ok(output))
-        }
-        Err(error) => {
-            let output_bytes = node_to_bytes(&allocator, error.0).unwrap();
-            let output_ptr =
-                clvmr_old::serde::node_from_bytes(&mut old_allocator, &output_bytes).unwrap();
-            let output = binutils::disassemble(&old_allocator, output_ptr, None);
-            (0, Err(output))
-        }
+        Ok((node_ptr, cost)) => (cost, Ok(stringify_clvm(&allocator, node_ptr).unwrap())),
+        Err(error) => (0, Err(stringify_clvm(&allocator, error.0).unwrap())),
     };
 
     Ok(TestOutput {
