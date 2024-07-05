@@ -557,14 +557,18 @@ impl LiteralExpr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrefixOp {
+    BitwiseNot,
     Not,
-    Neg,
+    Positive,
+    Negative,
 }
 
 fn prefix_op(kind: SyntaxKind) -> Option<PrefixOp> {
     match kind {
+        SyntaxKind::BitwiseNot => Some(PrefixOp::BitwiseNot),
         SyntaxKind::Not => Some(PrefixOp::Not),
-        SyntaxKind::Minus => Some(PrefixOp::Neg),
+        SyntaxKind::Plus => Some(PrefixOp::Positive),
+        SyntaxKind::Minus => Some(PrefixOp::Negative),
         _ => None,
     }
 }
@@ -591,9 +595,9 @@ impl PrefixExpr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
-    BitAnd,
-    BitOr,
-    BitXor,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
     Add,
     Subtract,
     Multiply,
@@ -611,9 +615,9 @@ pub enum BinaryOp {
 
 fn binary_op(kind: SyntaxKind) -> Option<BinaryOp> {
     match kind {
-        SyntaxKind::BitAnd => Some(BinaryOp::BitAnd),
-        SyntaxKind::BitOr => Some(BinaryOp::BitOr),
-        SyntaxKind::BitXor => Some(BinaryOp::BitXor),
+        SyntaxKind::BitwiseAnd => Some(BinaryOp::BitwiseAnd),
+        SyntaxKind::BitwiseOr => Some(BinaryOp::BitwiseOr),
+        SyntaxKind::BitwiseXor => Some(BinaryOp::BitwiseXor),
         SyntaxKind::Plus => Some(BinaryOp::Add),
         SyntaxKind::Minus => Some(BinaryOp::Subtract),
         SyntaxKind::Star => Some(BinaryOp::Multiply),

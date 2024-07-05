@@ -28,6 +28,7 @@ pub enum Op {
     Strlen,
     PubkeyForExp,
     Not,
+    BitwiseNot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

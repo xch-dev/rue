@@ -321,9 +321,9 @@ fn binding_power(op: BinaryOp) -> (u8, u8) {
         | BinaryOp::GreaterThan
         | BinaryOp::LessThanEquals
         | BinaryOp::GreaterThanEquals => (7, 8),
-        BinaryOp::BitOr => (9, 10),
-        BinaryOp::BitXor => (11, 12),
-        BinaryOp::BitAnd => (13, 14),
+        BinaryOp::BitwiseOr => (9, 10),
+        BinaryOp::BitwiseXor => (11, 12),
+        BinaryOp::BitwiseAnd => (13, 14),
         BinaryOp::Add | BinaryOp::Subtract => (15, 16),
         BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (17, 18),
     }
@@ -338,7 +338,11 @@ fn expr(p: &mut Parser<'_>) {
 fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initializer: bool) {
     let checkpoint = p.checkpoint();
 
-    if p.at(SyntaxKind::Not) || p.at(SyntaxKind::Minus) {
+    if p.at(SyntaxKind::Not)
+        || p.at(SyntaxKind::Minus)
+        || p.at(SyntaxKind::Plus)
+        || p.at(SyntaxKind::BitwiseNot)
+    {
         p.start_at(checkpoint, SyntaxKind::PrefixExpr);
         p.bump();
         expr_binding_power(p, 255, allow_initializer);
@@ -465,12 +469,12 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             BinaryOp::And
         } else if p.at(SyntaxKind::Or) {
             BinaryOp::Or
-        } else if p.at(SyntaxKind::BitAnd) {
-            BinaryOp::BitAnd
-        } else if p.at(SyntaxKind::BitOr) {
-            BinaryOp::BitOr
-        } else if p.at(SyntaxKind::BitXor) {
-            BinaryOp::BitXor
+        } else if p.at(SyntaxKind::BitwiseAnd) {
+            BinaryOp::BitwiseAnd
+        } else if p.at(SyntaxKind::BitwiseOr) {
+            BinaryOp::BitwiseOr
+        } else if p.at(SyntaxKind::BitwiseXor) {
+            BinaryOp::BitwiseXor
         } else {
             return;
         };

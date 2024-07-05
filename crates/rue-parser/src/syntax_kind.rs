@@ -9,19 +9,16 @@ pub enum SyntaxKind {
     #[default]
     Eof,
     Error,
-
     Ident,
     Int,
     Hex,
     String,
-
     OpenParen,
     CloseParen,
     OpenBracket,
     CloseBracket,
     OpenBrace,
     CloseBrace,
-
     Mod,
     Fun,
     Inline,
@@ -32,7 +29,6 @@ pub enum SyntaxKind {
     Enum,
     Let,
     Const,
-
     If,
     Else,
     Return,
@@ -44,7 +40,6 @@ pub enum SyntaxKind {
     False,
     As,
     Is,
-
     Dot,
     Comma,
     Colon,
@@ -54,7 +49,6 @@ pub enum SyntaxKind {
     FatArrow,
     Spread,
     Question,
-
     Plus,
     Minus,
     Star,
@@ -68,17 +62,15 @@ pub enum SyntaxKind {
     Equals,
     NotEquals,
     Assign,
-
-    BitAnd,
-    BitOr,
-    BitXor,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseNot,
     And,
     Or,
-
     Whitespace,
     LineComment,
     BlockComment,
-
     Root,
     ModuleItem,
     FunctionItem,
@@ -93,14 +85,12 @@ pub enum SyntaxKind {
     ImportItem,
     ImportPath,
     ImportGroup,
-
     LetStmt,
     IfStmt,
     ReturnStmt,
     RaiseStmt,
     AssertStmt,
     AssumeStmt,
-
     Block,
     PathExpr,
     InitializerExpr,
@@ -122,7 +112,6 @@ pub enum SyntaxKind {
     FieldAccessExpr,
     IndexAccessExpr,
     ExistsExpr,
-
     PathType,
     ListType,
     ListTypeItem,
@@ -130,7 +119,6 @@ pub enum SyntaxKind {
     FunctionType,
     FunctionTypeParam,
     NullableType,
-
     GenericTypes,
 }
 
@@ -195,9 +183,10 @@ impl fmt::Display for SyntaxKind {
                 Self::Equals => "'=='",
                 Self::NotEquals => "'!='",
                 Self::Assign => "'='",
-                Self::BitAnd => "'&'",
-                Self::BitOr => "'|'",
-                Self::BitXor => "'^'",
+                Self::BitwiseAnd => "'&'",
+                Self::BitwiseOr => "'|'",
+                Self::BitwiseXor => "'^'",
+                Self::BitwiseNot => "'~'",
                 Self::And => "'&&'",
                 Self::Or => "'||'",
                 Self::Whitespace => "whitespace",

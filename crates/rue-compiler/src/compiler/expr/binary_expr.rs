@@ -38,9 +38,9 @@ impl Compiler<'_> {
             BinaryOp::LessThanEquals => self.op_less_than_equals(&lhs, rhs, text_range),
             BinaryOp::And => self.op_and(lhs, rhs, text_range),
             BinaryOp::Or => self.op_or(&lhs, rhs, text_range),
-            BinaryOp::BitAnd => self.op_bitwise_and(&lhs, rhs, text_range),
-            BinaryOp::BitOr => self.op_bitwise_or(&lhs, rhs, text_range),
-            BinaryOp::BitXor => self.op_bitwise_xor(&lhs, rhs, text_range),
+            BinaryOp::BitwiseAnd => self.op_bitwise_and(&lhs, rhs, text_range),
+            BinaryOp::BitwiseOr => self.op_bitwise_or(&lhs, rhs, text_range),
+            BinaryOp::BitwiseXor => self.op_bitwise_xor(&lhs, rhs, text_range),
         }
     }
 

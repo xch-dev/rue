@@ -28,6 +28,7 @@ impl<'a> Optimizer<'a> {
             Mir::Op(Op::Listp, value) => self.opt_listp(env_id, value),
             Mir::Op(Op::Strlen, value) => self.opt_strlen(env_id, value),
             Mir::Op(Op::PubkeyForExp, value) => self.opt_pubkey_for_exp(env_id, value),
+            Mir::Op(Op::BitwiseNot, value) => self.opt_bitwise_not(env_id, value),
             Mir::Raise(value) => self.opt_raise(env_id, value),
             Mir::BinaryOp(op, lhs, rhs) => {
                 let handler = match op {
@@ -173,6 +174,11 @@ impl<'a> Optimizer<'a> {
     fn opt_pubkey_for_exp(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
         self.db.alloc_lir(Lir::PubkeyForExp(lir_id))
+    }
+
+    fn opt_bitwise_not(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
+        let lir_id = self.opt_mir(env_id, mir_id);
+        self.db.alloc_lir(Lir::LogNot(lir_id))
     }
 
     fn opt_bitwise_and(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {

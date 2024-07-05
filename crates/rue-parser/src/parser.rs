@@ -179,14 +179,12 @@ fn convert_tokens<'a>(
                 }
                 SyntaxKind::String
             }
-
             TokenKind::OpenParen => SyntaxKind::OpenParen,
             TokenKind::CloseParen => SyntaxKind::CloseParen,
             TokenKind::OpenBracket => SyntaxKind::OpenBracket,
             TokenKind::CloseBracket => SyntaxKind::CloseBracket,
             TokenKind::OpenBrace => SyntaxKind::OpenBrace,
             TokenKind::CloseBrace => SyntaxKind::CloseBrace,
-
             TokenKind::Mod => SyntaxKind::Mod,
             TokenKind::Fun => SyntaxKind::Fun,
             TokenKind::Inline => SyntaxKind::Inline,
@@ -197,7 +195,6 @@ fn convert_tokens<'a>(
             TokenKind::Enum => SyntaxKind::Enum,
             TokenKind::Let => SyntaxKind::Let,
             TokenKind::Const => SyntaxKind::Const,
-
             TokenKind::If => SyntaxKind::If,
             TokenKind::Else => SyntaxKind::Else,
             TokenKind::Return => SyntaxKind::Return,
@@ -209,7 +206,6 @@ fn convert_tokens<'a>(
             TokenKind::False => SyntaxKind::False,
             TokenKind::As => SyntaxKind::As,
             TokenKind::Is => SyntaxKind::Is,
-
             TokenKind::Dot => SyntaxKind::Dot,
             TokenKind::Comma => SyntaxKind::Comma,
             TokenKind::Colon => SyntaxKind::Colon,
@@ -218,7 +214,6 @@ fn convert_tokens<'a>(
             TokenKind::Arrow => SyntaxKind::Arrow,
             TokenKind::FatArrow => SyntaxKind::FatArrow,
             TokenKind::Spread => SyntaxKind::Spread,
-
             TokenKind::Plus => SyntaxKind::Plus,
             TokenKind::Minus => SyntaxKind::Minus,
             TokenKind::Star => SyntaxKind::Star,
@@ -232,15 +227,13 @@ fn convert_tokens<'a>(
             TokenKind::Equals => SyntaxKind::Equals,
             TokenKind::NotEquals => SyntaxKind::NotEquals,
             TokenKind::Assign => SyntaxKind::Assign,
-
-            TokenKind::BitAnd => SyntaxKind::BitAnd,
-            TokenKind::BitOr => SyntaxKind::BitOr,
-            TokenKind::BitXor => SyntaxKind::BitXor,
+            TokenKind::BitwiseAnd => SyntaxKind::BitwiseAnd,
+            TokenKind::BitwiseOr => SyntaxKind::BitwiseOr,
+            TokenKind::BitwiseXor => SyntaxKind::BitwiseXor,
+            TokenKind::BitwiseNot => SyntaxKind::BitwiseNot,
             TokenKind::And => SyntaxKind::And,
             TokenKind::Or => SyntaxKind::Or,
-
             TokenKind::Question => SyntaxKind::Question,
-
             TokenKind::Whitespace => SyntaxKind::Whitespace,
             TokenKind::LineComment => SyntaxKind::LineComment,
             TokenKind::BlockComment { is_terminated } => {

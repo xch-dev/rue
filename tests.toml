@@ -391,3 +391,24 @@ cost = 17954
 input = "()"
 output = "0xf1fb6ca14066f4236b3cc44a79a78fe90d44f1d45e04f9b9939863db71b99560"
 hash = "da23d6cdd53ce5a6807d40aa0a73b8d2d748a0e8684394e94681c00708f3e660"
+
+[concat_bytes]
+bytes = 42
+cost = 2500
+input = "()"
+output = "\"Hello, world!\""
+hash = "6da79c81642d2949a1ca049098cd148cfb1ec7444a86cd6392fb46faf6e76391"
+
+[integer_separator]
+bytes = 6
+cost = 20
+input = "()"
+output = "0x00a410"
+hash = "d28346434be1c700babb5934b8ca2897f24c0b18179f258ba6c90bf4288a4c07"
+
+[unary_operators]
+bytes = 35
+cost = 3511
+input = "()"
+output = "56"
+hash = "a3ad966c4598996c554bddb908f6204c02ca363c54a91f74200d9fd30597ac09"

@@ -22,6 +22,7 @@ pub enum Lir {
     Any(Vec<LirId>),
     Concat(Vec<LirId>),
     PointAdd(Vec<LirId>),
+    LogNot(LirId),
     LogAnd(Vec<LirId>),
     LogIor(Vec<LirId>),
     LogXor(Vec<LirId>),

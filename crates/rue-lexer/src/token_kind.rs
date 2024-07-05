@@ -4,14 +4,12 @@ pub enum TokenKind {
     Int,
     Hex { is_valid: bool },
     String { is_terminated: bool },
-
     OpenParen,
     CloseParen,
     OpenBracket,
     CloseBracket,
     OpenBrace,
     CloseBrace,
-
     Mod,
     Fun,
     Inline,
@@ -22,7 +20,6 @@ pub enum TokenKind {
     Enum,
     Let,
     Const,
-
     If,
     Else,
     Return,
@@ -34,7 +31,6 @@ pub enum TokenKind {
     False,
     As,
     Is,
-
     Dot,
     Comma,
     Colon,
@@ -44,7 +40,6 @@ pub enum TokenKind {
     FatArrow,
     Spread,
     Question,
-
     Plus,
     Minus,
     Star,
@@ -58,13 +53,12 @@ pub enum TokenKind {
     Equals,
     NotEquals,
     Assign,
-
-    BitAnd,
-    BitOr,
-    BitXor,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseNot,
     And,
     Or,
-
     Whitespace,
     LineComment,
     BlockComment { is_terminated: bool },

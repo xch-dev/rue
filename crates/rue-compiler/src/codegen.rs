@@ -33,6 +33,7 @@ struct Ops {
     logand: NodePtr,
     logior: NodePtr,
     logxor: NodePtr,
+    lognot: NodePtr,
     point_add: NodePtr,
     pubkey_for_exp: NodePtr,
     not: NodePtr,
@@ -64,6 +65,7 @@ impl<'a> Codegen<'a> {
             logand: allocator.new_small_number(24).unwrap(),
             logior: allocator.new_small_number(25).unwrap(),
             logxor: allocator.new_small_number(26).unwrap(),
+            lognot: allocator.new_small_number(27).unwrap(),
             point_add: allocator.new_small_number(29).unwrap(),
             pubkey_for_exp: allocator.new_small_number(30).unwrap(),
             not: allocator.new_small_number(32).unwrap(),
@@ -100,6 +102,7 @@ impl<'a> Codegen<'a> {
             Lir::LogAnd(values) => self.gen_logand(values),
             Lir::LogIor(values) => self.gen_logior(values),
             Lir::LogXor(values) => self.gen_logxor(values),
+            Lir::LogNot(value) => self.gen_lognot(value),
             Lir::Add(values) => self.gen_add(values),
             Lir::Sub(values) => self.gen_sub(values),
             Lir::Mul(values) => self.gen_mul(values),
@@ -262,6 +265,11 @@ impl<'a> Codegen<'a> {
             args.push(self.gen_lir(value));
         }
         self.list(&args)
+    }
+
+    fn gen_lognot(&mut self, value: LirId) -> NodePtr {
+        let value = self.gen_lir(value);
+        self.list(&[self.ops.lognot, value])
     }
 
     fn gen_add(&mut self, values: Vec<LirId>) -> NodePtr {
