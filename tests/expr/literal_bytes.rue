@@ -1,0 +1,12 @@
+fun main() -> Bytes32 {
+    let zero_byte: Bytes = 0x00;
+    assert zero_byte != nil;
+
+    let bytes32: Bytes32 = 0xc7f1b5ae1edc940f18cd1581597a50f48f44a5e5226a23570fea78cdc135707d;
+    assert bytes32.length == 32;
+
+    let public_key: PublicKey = 0xff02ffff01ff06ffff14ffff01827d94ffff01298080ff0180ff02ffff01ff06ffff14ffff01827d94ffff0000000000;
+    assert public_key as Bytes.length == 48;
+
+    tree_hash([zero_byte, bytes32, public_key as Bytes])
+}

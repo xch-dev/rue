@@ -377,3 +377,17 @@ cost = 4675
 input = "()"
 output = "152"
 hash = "38b1cec180a0bc0f5ec91097cec51971df126e3b18af54ddba4a3e4a36f9c285"
+
+[std]
+bytes = 833
+cost = 91303
+input = "()"
+output = "()"
+hash = "3fe4d62a7db919b25377cb207f16fa0fb6519e123366eaa23014dd5d7c967ca2"
+
+[literal_bytes]
+bytes = 371
+cost = 17954
+input = "()"
+output = "0xf1fb6ca14066f4236b3cc44a79a78fe90d44f1d45e04f9b9939863db71b99560"
+hash = "da23d6cdd53ce5a6807d40aa0a73b8d2d748a0e8684394e94681c00708f3e660"
