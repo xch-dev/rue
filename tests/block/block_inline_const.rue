@@ -1,0 +1,16 @@
+fun main() -> Int {
+    inline const OUTER_1: Int = 42;
+    inline const OUTER_2: Int = OUTER_1;
+
+    inline const RESULT: Int = {
+        inline const INNER_1: Int = 42;
+        inline const INNER_2: Int = OUTER_1 + OUTER_2;
+
+        INNER_1 + INNER_2
+    };
+
+    {
+        inline const INNER: Int = 1000;
+        RESULT + OUTER_1 + INNER
+    }
+}

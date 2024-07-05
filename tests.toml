@@ -138,3 +138,69 @@ cost = 1157
 input = "()"
 output = "76"
 hash = "917b0e1ee2c8ad5755e1f97c4642ea653288acf816eee1b0d537dd8e01106711"
+
+[block_const]
+bytes = 101
+cost = 4468
+input = "()"
+output = "1168"
+hash = "9417e13c05b85934e8a305f36ccc83bf55fec11978461c6ebb630b739f837c43"
+
+[block_nested_raise]
+bytes = 21
+cost = 0
+input = "()"
+output = "()"
+hash = "6fdd7c92cc7f9e42a53e07e6123bb5267cc5cc08912d5cb8ed26925aa6fd9672"
+error = "\"Explicit raise\""
+
+[block_let]
+bytes = 47
+cost = 3460
+input = "()"
+output = "1168"
+hash = "3070c823a9d006d346744228f842e6f86692158d6afa8705d01a4be322a8e751"
+
+[block_raise]
+bytes = 21
+cost = 0
+input = "()"
+output = "()"
+hash = "6fdd7c92cc7f9e42a53e07e6123bb5267cc5cc08912d5cb8ed26925aa6fd9672"
+error = "\"Explicit raise\""
+
+[block]
+bytes = 3
+cost = 20
+input = "()"
+output = "42"
+hash = "ce97d04b4f84066533255fcc56345626c245afd50e24c6c14c52c8e78e8b9f33"
+
+[block_nested]
+bytes = 5
+cost = 20
+input = "()"
+output = "1000"
+hash = "8172dac13078e7c4ce8a6062bb5dd117bb39d45b7e9ca3b9970dfef4be188ac8"
+
+[block_return]
+parser_errors = []
+compiler_errors = ["Error: Explicit return is not allowed within expressions. (2:5)"]
+
+[block_function]
+bytes = 57
+cost = 1749
+input = "()"
+output = "84"
+hash = "1a6d758fe06cbcd5d1911a5419c1308b52fc69c95872483506e28f6348b08a44"
+
+[block_inline_const]
+bytes = 37
+cost = 3150
+input = "()"
+output = "1168"
+hash = "11efffdca3fc8786b6e51cc51f13a52e02fc6af181c5b7019424251ae785bd00"
+
+[block_nested_return]
+parser_errors = []
+compiler_errors = ["Error: Explicit return is not allowed within expressions. (2:10)"]

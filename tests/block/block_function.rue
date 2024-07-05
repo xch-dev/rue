@@ -1,0 +1,13 @@
+fun main() -> Int {
+    let output = {
+        fun inner() -> Int {
+            42
+        }
+        (inner, inner())
+    };
+    
+    let closure = output.first;
+    let value = output.rest;
+
+    closure() + value
+}
