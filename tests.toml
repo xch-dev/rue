@@ -293,11 +293,11 @@ output = "()"
 hash = "770bb2c0b2582924adf403e62374f8424a2ed510eef70b5f450eccab238a4911"
 
 [inner_inline_functions]
-bytes = 330
-cost = 16903
+bytes = 329
+cost = 16899
 input = "()"
 output = "0x0a37e3fbe2"
-hash = "20b2f4a2a700fd53852a81395f0bb729800ecd6701995572251e592e72809ce5"
+hash = "921423faa6da77bee705fcefd72b1a48d260fd74f197a387c39168e2438cdc8b"
 
 [infer_generic_lambda]
 bytes = 65
@@ -379,11 +379,11 @@ output = "152"
 hash = "38b1cec180a0bc0f5ec91097cec51971df126e3b18af54ddba4a3e4a36f9c285"
 
 [std]
-bytes = 833
-cost = 91303
+bytes = 832
+cost = 91299
 input = "()"
 output = "()"
-hash = "3fe4d62a7db919b25377cb207f16fa0fb6519e123366eaa23014dd5d7c967ca2"
+hash = "7eab50734f88cbad6a3794be152d314496d7ae932f39947f34a7884ab1492f67"
 
 [literal_bytes]
 bytes = 371
@@ -461,3 +461,10 @@ cost = 3169
 input = "()"
 output = "0x01802fdd4320000008137f"
 hash = "b0b28be1cdfa60b6624869eba168e6a19b84b6d15c9a4ceedba208b0271f6ae3"
+
+[function_closure]
+bytes = 128
+cost = 2976
+input = "()"
+output = "0x0bd3655e"
+hash = "d6224e2135be13786c5a0002968bb0f851e50dabf69a96d3721ae3747bd91b85"
