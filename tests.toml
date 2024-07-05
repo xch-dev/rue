@@ -482,3 +482,12 @@ cost = 3468
 input = "()"
 output = "800"
 hash = "e977dca31ec8aba231dd0e858a3235d2dea5ed36aefed5f12c48ec02bf450b77"
+
+[enum_duplicate_variants]
+parser_errors = []
+compiler_errors = [
+    "Error: Duplicate enum variant `SameName` specified. (3:5)",
+    "Error: Duplicate enum discriminant `1` specified. (4:29)",
+    "Error: Unused enum variant `SameName`. (2:5)",
+    "Error: Unused enum variant `DuplicateDiscriminant`. (4:5)",
+]
