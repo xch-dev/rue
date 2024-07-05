@@ -1,0 +1,4 @@
+fun main() -> Int {
+    let double = fun(num: Int) => num * 2;
+    double(41374)
+}

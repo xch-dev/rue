@@ -56,7 +56,15 @@ impl Compiler<'_> {
             param_types.push(type_id);
 
             if let Some(name) = param.name() {
-                let symbol_id = self.db.alloc_symbol(Symbol::Parameter(type_id));
+                let param_type_id = if param.optional().is_some() {
+                    // If the parameter is optional, wrap the type in a possibly undefined type.
+                    // This prevents referencing the parameter until it's checked for undefined.
+                    self.db.alloc_type(Type::Optional(type_id))
+                } else {
+                    type_id
+                };
+
+                let symbol_id = self.db.alloc_symbol(Symbol::Parameter(param_type_id));
                 scope.define_symbol(name.to_string(), symbol_id);
                 self.db.insert_symbol_token(symbol_id, name);
             };

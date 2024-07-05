@@ -321,3 +321,38 @@ cost = 8514
 input = "()"
 output = "6"
 hash = "ee19b1c05eca9a43d56459fe1280a0de4b6d3a965ba9653253ade3f5b51fa653"
+
+[lambda_closure]
+bytes = 126
+cost = 2924
+input = "()"
+output = "0x0bd3655e"
+hash = "b763f5925776b54a89372b978675838cf789c55298a0f1308c75dcab03bcffc5"
+
+[function_optional_param]
+bytes = 93
+cost = 4591
+input = "()"
+output = "0x022dd0"
+hash = "2a2a2d7f11cf180c6eae1aa9861802c105010567e03420acf2c0885b986fac3d"
+
+[lambda]
+bytes = 42
+cost = 1580
+input = "()"
+output = "0x01433c"
+hash = "ac5f7e1600f0a49fd046d4a6e9ff1f861d473d41b7cc5cd81c83b50e0b259be8"
+
+[lambda_optional_param]
+bytes = 119
+cost = 3593
+input = "()"
+output = "12166"
+hash = "393ef8f70b3649f193063f8ce3fe41b66633374e2cd877fda5cbbcc88b93f782"
+
+[function_rest_param]
+bytes = 163
+cost = 38337
+input = "()"
+output = "55"
+hash = "85bd712a2ed26bacd4717e0dee543e9d2356c14a3a42eea7b4846c166593dc2a"
