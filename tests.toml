@@ -412,3 +412,24 @@ cost = 3511
 input = "()"
 output = "56"
 hash = "a3ad966c4598996c554bddb908f6204c02ca363c54a91f74200d9fd30597ac09"
+
+[integer_arithmetic]
+bytes = 128
+cost = 13108
+input = "()"
+output = "6"
+hash = "2433e3217cfdcede4c34181cde09ece49286df30423fad24c04c814b36ffce81"
+
+[integer_comparison]
+bytes = 149
+cost = 1777
+input = "()"
+output = "1"
+hash = "aa746fd552041c2c763181825bdf1900c8c0bd47e6762905e0ebcc9f5f101927"
+
+[byte_comparison]
+bytes = 193
+cost = 1015
+input = "()"
+output = "1"
+hash = "6cc8789b7e210c91be9828d93533b756d1e5e58e341b70f2d1e20f246e633ff8"

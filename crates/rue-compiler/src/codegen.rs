@@ -21,6 +21,7 @@ struct Ops {
     l: NodePtr,
     x: NodePtr,
     eq: NodePtr,
+    gt_bytes: NodePtr,
     sha256: NodePtr,
     strlen: NodePtr,
     concat: NodePtr,
@@ -53,6 +54,7 @@ impl<'a> Codegen<'a> {
             l: allocator.new_small_number(7).unwrap(),
             x: allocator.new_small_number(8).unwrap(),
             eq: allocator.new_small_number(9).unwrap(),
+            gt_bytes: allocator.new_small_number(10).unwrap(),
             sha256: allocator.new_small_number(11).unwrap(),
             strlen: allocator.new_small_number(13).unwrap(),
             concat: allocator.new_small_number(14).unwrap(),
@@ -110,6 +112,7 @@ impl<'a> Codegen<'a> {
             Lir::Divmod(lhs, rhs) => self.gen_divmod(lhs, rhs),
             Lir::Eq(lhs, rhs) => self.gen_eq(lhs, rhs),
             Lir::Gt(lhs, rhs) => self.gen_gt(lhs, rhs),
+            Lir::GtBytes(lhs, rhs) => self.gen_gt_bytes(lhs, rhs),
         }
     }
 
@@ -312,6 +315,12 @@ impl<'a> Codegen<'a> {
         let lhs = self.gen_lir(lhs);
         let rhs = self.gen_lir(rhs);
         self.list(&[self.ops.gt, lhs, rhs])
+    }
+
+    fn gen_gt_bytes(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {
+        let lhs = self.gen_lir(lhs);
+        let rhs = self.gen_lir(rhs);
+        self.list(&[self.ops.gt_bytes, lhs, rhs])
     }
 
     fn gen_eq(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {

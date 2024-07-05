@@ -32,10 +32,10 @@ impl Compiler<'_> {
             BinaryOp::Remainder => self.op_remainder(&lhs, rhs, text_range),
             BinaryOp::Equals => self.op_equals(&lhs, rhs, text_range),
             BinaryOp::NotEquals => self.op_not_equals(&lhs, rhs, text_range),
-            BinaryOp::GreaterThan => self.op_greater_than(&lhs, rhs, text_range),
-            BinaryOp::LessThan => self.op_less_than(&lhs, rhs, text_range),
-            BinaryOp::GreaterThanEquals => self.op_greater_than_equals(&lhs, rhs, text_range),
-            BinaryOp::LessThanEquals => self.op_less_than_equals(&lhs, rhs, text_range),
+            BinaryOp::GreaterThan
+            | BinaryOp::LessThan
+            | BinaryOp::GreaterThanEquals
+            | BinaryOp::LessThanEquals => self.op_comparison(&lhs, rhs, op, text_range),
             BinaryOp::And => self.op_and(lhs, rhs, text_range),
             BinaryOp::Or => self.op_or(&lhs, rhs, text_range),
             BinaryOp::BitwiseAnd => self.op_bitwise_and(&lhs, rhs, text_range),
@@ -231,69 +231,49 @@ impl Compiler<'_> {
         value
     }
 
-    fn op_greater_than(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
-        let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
-            .unwrap_or_else(|| self.unknown());
-
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(
-            BinOp::GreaterThan,
-            lhs.hir_id,
-            rhs.hir_id,
-            self.builtins.bool,
-        )
-    }
-
-    fn op_less_than(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
-        let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
-            .unwrap_or_else(|| self.unknown());
-
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(BinOp::LessThan, lhs.hir_id, rhs.hir_id, self.builtins.bool)
-    }
-
-    fn op_greater_than_equals(
+    fn op_comparison(
         &mut self,
         lhs: &Value,
         rhs: Option<&Expr>,
+        op: BinaryOp,
         text_range: TextRange,
     ) -> Value {
+        if self
+            .db
+            .compare_type(lhs.type_id, self.builtins.bytes)
+            .is_assignable()
+        {
+            let op = match op {
+                BinaryOp::GreaterThan => BinOp::GreaterThanBytes,
+                BinaryOp::LessThan => BinOp::LessThanBytes,
+                BinaryOp::GreaterThanEquals => BinOp::GreaterThanBytesEquals,
+                BinaryOp::LessThanEquals => BinOp::LessThanBytesEquals,
+                _ => unreachable!(),
+            };
+
+            let rhs = rhs
+                .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bytes)))
+                .unwrap_or_else(|| self.unknown());
+
+            self.type_check(rhs.type_id, self.builtins.bytes, text_range);
+            return self.binary_op(op, lhs.hir_id, rhs.hir_id, self.builtins.bool);
+        }
+
+        let op = match op {
+            BinaryOp::GreaterThan => BinOp::GreaterThan,
+            BinaryOp::LessThan => BinOp::LessThan,
+            BinaryOp::GreaterThanEquals => BinOp::GreaterThanBytes,
+            BinaryOp::LessThanEquals => BinOp::LessThanBytes,
+            _ => unreachable!(),
+        };
+
         let rhs = rhs
             .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
             .unwrap_or_else(|| self.unknown());
 
         self.type_check(lhs.type_id, self.builtins.int, text_range);
         self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(
-            BinOp::GreaterThanEquals,
-            lhs.hir_id,
-            rhs.hir_id,
-            self.builtins.bool,
-        )
-    }
-
-    fn op_less_than_equals(
-        &mut self,
-        lhs: &Value,
-        rhs: Option<&Expr>,
-        text_range: TextRange,
-    ) -> Value {
-        let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
-            .unwrap_or_else(|| self.unknown());
-
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(
-            BinOp::LessThanEquals,
-            lhs.hir_id,
-            rhs.hir_id,
-            self.builtins.bool,
-        )
+        self.binary_op(op, lhs.hir_id, rhs.hir_id, self.builtins.bool)
     }
 
     fn op_and(&mut self, lhs: Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {

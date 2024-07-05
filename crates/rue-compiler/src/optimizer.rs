@@ -44,6 +44,10 @@ impl<'a> Optimizer<'a> {
                     BinOp::GreaterThan => Self::opt_gt,
                     BinOp::LessThanEquals => Self::opt_lteq,
                     BinOp::GreaterThanEquals => Self::opt_gteq,
+                    BinOp::LessThanBytes => Self::opt_lt_bytes,
+                    BinOp::GreaterThanBytes => Self::opt_gt_bytes,
+                    BinOp::LessThanBytesEquals => Self::opt_lteq_bytes,
+                    BinOp::GreaterThanBytesEquals => Self::opt_gteq_bytes,
                     BinOp::Equals => Self::opt_eq,
                     BinOp::NotEquals => Self::opt_neq,
                     BinOp::Concat => Self::opt_concat,
@@ -250,6 +254,29 @@ impl<'a> Optimizer<'a> {
         let rhs = self.opt_mir(env_id, rhs);
         let eq = self.db.alloc_lir(Lir::Eq(lhs, rhs));
         let gt = self.db.alloc_lir(Lir::Gt(lhs, rhs));
+        self.db.alloc_lir(Lir::Any(vec![eq, gt]))
+    }
+
+    fn opt_lt_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        self.opt_gt_bytes(env_id, rhs, lhs)
+    }
+
+    fn opt_gt_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::GtBytes(lhs, rhs))
+    }
+
+    fn opt_lteq_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let gt = self.opt_gt_bytes(env_id, lhs, rhs);
+        self.db.alloc_lir(Lir::Not(gt))
+    }
+
+    fn opt_gteq_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        let eq = self.db.alloc_lir(Lir::Eq(lhs, rhs));
+        let gt = self.db.alloc_lir(Lir::GtBytes(lhs, rhs));
         self.db.alloc_lir(Lir::Any(vec![eq, gt]))
     }
 
