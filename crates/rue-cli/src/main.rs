@@ -1,7 +1,10 @@
 use std::fs;
 
 use clap::Parser;
-use clvmr::{run_program, serde::node_to_bytes, Allocator, ChiaDialect, NodePtr};
+use clvmr::{
+    run_program, serde::node_to_bytes, Allocator, ChiaDialect, NodePtr,
+    ENABLE_BLS_OPS_OUTSIDE_GUARD, ENABLE_FIXED_DIV,
+};
 use rue_compiler::{analyze, compile, Diagnostic, DiagnosticKind};
 use rue_parser::{line_col, parse, LineCol};
 
@@ -46,7 +49,7 @@ fn main() {
         println!("{}", hex::encode(bytes));
         match run_program(
             &mut allocator,
-            &ChiaDialect::new(0),
+            &ChiaDialect::new(ENABLE_BLS_OPS_OUTSIDE_GUARD | ENABLE_FIXED_DIV),
             output.node_ptr(),
             NodePtr::NIL,
             0,

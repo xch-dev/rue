@@ -10,7 +10,7 @@ use clvmr::{
     reduction::Reduction,
     run_program,
     serde::{node_from_bytes, node_to_bytes},
-    Allocator, ChiaDialect,
+    Allocator, ChiaDialect, ENABLE_BLS_OPS_OUTSIDE_GUARD, ENABLE_FIXED_DIV,
 };
 use indexmap::{IndexMap, IndexSet};
 use rue_compiler::{compile, DiagnosticKind};
@@ -121,7 +121,7 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
 
     let output = run_program(
         &mut allocator,
-        &ChiaDialect::new(0),
+        &ChiaDialect::new(ENABLE_BLS_OPS_OUTSIDE_GUARD | ENABLE_FIXED_DIV),
         output.node_ptr(),
         input_ptr,
         u64::MAX,

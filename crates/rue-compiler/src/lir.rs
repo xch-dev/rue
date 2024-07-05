@@ -34,4 +34,5 @@ pub enum Lir {
     Eq(LirId, LirId),
     Gt(LirId, LirId),
     GtBytes(LirId, LirId),
+    Rem(LirId, LirId),
 }

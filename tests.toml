@@ -414,11 +414,11 @@ output = "56"
 hash = "a3ad966c4598996c554bddb908f6204c02ca363c54a91f74200d9fd30597ac09"
 
 [integer_arithmetic]
-bytes = 128
-cost = 13108
+bytes = 120
+cost = 12724
 input = "()"
 output = "6"
-hash = "2433e3217cfdcede4c34181cde09ece49286df30423fad24c04c814b36ffce81"
+hash = "c2511e3b5862761baf0f07157464a069058723439d72efd0c79e15654985258d"
 
 [integer_comparison]
 bytes = 149

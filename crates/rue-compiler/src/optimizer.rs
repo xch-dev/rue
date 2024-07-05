@@ -230,8 +230,7 @@ impl<'a> Optimizer<'a> {
     fn opt_remainder(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        let divmod = self.db.alloc_lir(Lir::Divmod(lhs, rhs));
-        self.db.alloc_lir(Lir::Rest(divmod))
+        self.db.alloc_lir(Lir::Rem(lhs, rhs))
     }
 
     fn opt_lt(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {

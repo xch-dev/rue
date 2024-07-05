@@ -40,6 +40,7 @@ struct Ops {
     not: NodePtr,
     any: NodePtr,
     all: NodePtr,
+    rem: NodePtr,
 }
 
 impl<'a> Codegen<'a> {
@@ -73,6 +74,7 @@ impl<'a> Codegen<'a> {
             not: allocator.new_small_number(32).unwrap(),
             any: allocator.new_small_number(33).unwrap(),
             all: allocator.new_small_number(34).unwrap(),
+            rem: allocator.new_small_number(61).unwrap(),
         };
         Self { db, allocator, ops }
     }
@@ -113,6 +115,7 @@ impl<'a> Codegen<'a> {
             Lir::Eq(lhs, rhs) => self.gen_eq(lhs, rhs),
             Lir::Gt(lhs, rhs) => self.gen_gt(lhs, rhs),
             Lir::GtBytes(lhs, rhs) => self.gen_gt_bytes(lhs, rhs),
+            Lir::Rem(lhs, rhs) => self.gen_rem(lhs, rhs),
         }
     }
 
@@ -309,6 +312,12 @@ impl<'a> Codegen<'a> {
         let lhs = self.gen_lir(lhs);
         let rhs = self.gen_lir(rhs);
         self.list(&[self.ops.divmod, lhs, rhs])
+    }
+
+    fn gen_rem(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {
+        let lhs = self.gen_lir(lhs);
+        let rhs = self.gen_lir(rhs);
+        self.list(&[self.ops.rem, lhs, rhs])
     }
 
     fn gen_gt(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {
