@@ -8,9 +8,22 @@ use crate::{
 
 use super::{stmt::Statement, Compiler};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BlockTerminator {
+    Implicit,
+    Return,
+    Raise,
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockSummary {
+    pub value: Value,
+    pub terminator: BlockTerminator,
+}
+
 impl Compiler<'_> {
     /// Compile a block expression into the current scope, returning the HIR and whether there was an explicit return.
-    pub fn compile_block(&mut self, block: &Block, expected_type: Option<TypeId>) -> (Value, bool) {
+    pub fn compile_block(&mut self, block: &Block, expected_type: Option<TypeId>) -> BlockSummary {
         // Compile all of the items in the block first.
         // This means that statements can use item symbols in any order,
         // but items cannot use statement symbols.
@@ -19,7 +32,7 @@ impl Compiler<'_> {
         self.compile_items(&items, declarations);
 
         let mut statements = Vec::new();
-        let mut explicit_return = false;
+        let mut terminator = BlockTerminator::Implicit;
         let mut is_terminated = block.expr().is_some();
 
         for stmt in block.stmts() {
@@ -53,7 +66,7 @@ impl Compiler<'_> {
                         return_stmt.syntax().text_range(),
                     );
 
-                    explicit_return = true;
+                    terminator = BlockTerminator::Return;
                     is_terminated = true;
 
                     statements.push(Statement::Return(value));
@@ -67,6 +80,7 @@ impl Compiler<'_> {
 
                     let hir_id = self.db.alloc_hir(Hir::Raise(value));
 
+                    terminator = BlockTerminator::Raise;
                     is_terminated = true;
 
                     statements.push(Statement::Return(Value::new(hir_id, self.builtins.unknown)));
@@ -88,6 +102,7 @@ impl Compiler<'_> {
                     // If the condition is false, we raise an error.
                     // So we can assume that the condition is true from this point on.
                     // This will be popped in reverse order later after all statements have been lowered.
+
                     self.type_guard_stack.push(condition.then_guards());
 
                     let not_condition = self.db.alloc_hir(Hir::Op(Op::Not, condition.hir_id));
@@ -156,6 +171,9 @@ impl Compiler<'_> {
             }
         }
 
-        (body, explicit_return)
+        BlockSummary {
+            value: body,
+            terminator,
+        }
     }
 }

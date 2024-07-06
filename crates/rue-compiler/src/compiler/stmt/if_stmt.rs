@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use rue_parser::{AstNode, IfStmt};
 
 use crate::{
-    compiler::Compiler,
+    compiler::{block::BlockTerminator, Compiler},
     scope::Scope,
     value::{GuardPath, TypeOverride},
     ErrorKind, HirId, TypeId,
@@ -38,7 +38,7 @@ impl Compiler<'_> {
 
             // Compile the then block.
             self.scope_stack.push(scope_id);
-            let (value, explicit_return) = self.compile_block(&then_block, expected_type);
+            let summary = self.compile_block(&then_block, expected_type);
             self.scope_stack.pop().unwrap();
 
             // Pop the type guards, since we've left the scope.
@@ -46,14 +46,14 @@ impl Compiler<'_> {
 
             // If there's an implicit return, we want to raise an error.
             // This could technically work but makes the intent of the code unclear.
-            if !explicit_return {
+            if summary.terminator == BlockTerminator::Implicit {
                 self.db.error(
                     ErrorKind::ImplicitReturnInIf,
                     then_block.syntax().text_range(),
                 );
             }
 
-            value
+            summary.value
         } else {
             self.unknown()
         };

@@ -262,7 +262,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeOverride> {
-        for guards in &self.type_guard_stack {
+        for guards in self.type_guard_stack.iter().rev() {
             if let Some(guard) = guards.get(guard_path) {
                 return Some(*guard);
             }
