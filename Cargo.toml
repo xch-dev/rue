@@ -2,6 +2,11 @@
 resolver = "2"
 members = ["crates/*"]
 
+[workspace.package]
+readme = "README.md"
+keywords = ["chia", "blockchain", "crypto"]
+categories = ["cryptography::cryptocurrencies", "development-tools"]
+
 [workspace.lints.rust]
 unsafe_code = "deny"
 rust_2018_idioms = "deny"

@@ -2,6 +2,14 @@
 name = "rue-lsp"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
+description = "Provides a language server for Rue."
+authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
+homepage = "https://github.com/rigidity/rue"
+repository = "https://github.com/rigidity/rue"
+readme = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
 
 [lints]
 workspace = true
