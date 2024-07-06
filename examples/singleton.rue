@@ -1,0 +1,94 @@
+// This puzzle has not been audited or tested, and is for example purposes only.
+
+struct Singleton {
+    mod_hash: Bytes32,
+    launcher_id: Bytes32,
+    launcher_puzzle_hash: Bytes32,
+}
+
+struct LineageProof {
+    parent_parent_coin_info: Bytes32,
+    parent_inner_puzzle_hash: Bytes32?,
+    parent_amount: Int,
+}
+
+fun singleton_puzzle_hash(singleton: Singleton, inner_puzzle_hash: Bytes32) -> Bytes32 {
+    curry_tree_hash(singleton.mod_hash, tree_hash(singleton), inner_puzzle_hash)
+}
+
+fun main(
+    singleton: Singleton,
+    inner_puzzle: fun(...solution: Any) -> Condition[],
+    lineage_proof: LineageProof,
+    my_amount: Int,
+    inner_solution: Any,
+) -> Condition[] {
+    // Ensure that the amount is odd.
+    assert my_amount & 1 == 1;
+
+    // Verify the lineage proof.
+    let is_eve = lineage_proof.parent_inner_puzzle_hash == nil;
+    
+    let parent_puzzle_hash = if is_eve {
+        singleton.launcher_puzzle_hash
+    } else {
+        singleton_puzzle_hash(singleton, lineage_proof.parent_inner_puzzle_hash)
+    };
+
+    let parent_coin_id = calculate_coin_id(
+        lineage_proof.parent_parent_coin_info,
+        parent_puzzle_hash,
+        lineage_proof.parent_amount,
+    );
+
+    assert is_eve || parent_coin_id == singleton.launcher_id;
+
+    // Run the inner puzzle.
+    let conditions = inner_puzzle(...inner_solution);
+    
+    [
+        Condition::AssertMyAmount { amount: my_amount },
+        Condition::AssertMyParentId { parent_coin_id: parent_coin_id },
+        ...morph_conditions(singleton, conditions, false),
+    ]
+}
+
+fun morph_conditions(
+    singleton: Singleton,
+    conditions: Condition[],
+    found_singleton_output: Bool,
+) -> Condition[] {
+    if conditions is Nil {
+        // We must have a singleton output.
+        assert found_singleton_output;
+        return nil;
+    }
+
+    let condition = conditions.first;
+    let rest = conditions.rest;
+    
+    if !(condition is Condition::CreateCoin && condition.amount & 1 == 1) {
+        // We don't need to morph this condition.
+        return [
+            condition,
+            ...morph_conditions(singleton, rest, found_singleton_output),
+        ];
+    }
+
+    // We need to morph this odd output, but it must be the only one.
+    assert !found_singleton_output;
+
+    if condition.amount == -113 {
+        // We are melting the singleton, so we don't need to have an output.
+        return morph_conditions(singleton, rest, true);
+    }
+
+    // Wrap the puzzle hash in the singleton layer.
+    let output = Condition::CreateCoin {
+        puzzle_hash: singleton_puzzle_hash(singleton, condition.puzzle_hash),
+        amount: condition.amount,
+        memos: condition.memos,
+    };
+
+    [output, ...morph_conditions(singleton, rest, true)]
+}

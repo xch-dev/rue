@@ -1,0 +1,37 @@
+// This puzzle has not been audited or tested, and is for example purposes only.
+
+fun main(
+    public_keys: PublicKey[],
+    required: Int,
+    indices: Int[],
+    conditions: Condition[],
+) -> Condition[] {
+    let message = tree_hash(conditions);
+    let agg_sigs = check_signatures(public_keys, required, indices, 0, message);
+    concat(agg_sigs, conditions)
+}
+
+fun check_signatures(
+    public_keys: PublicKey[],
+    required: Int,
+    indices: Int[],
+    pos: Int,
+    message: Bytes,
+) -> Condition[] {
+    if required == 0 {
+        return nil;
+    }
+
+    assume !(public_keys is Nil) && !(indices is Nil);
+
+    if indices.first != pos {
+        return check_signatures(public_keys.rest, required, indices, pos + 1, message);
+    }
+
+    let agg_sig = Condition::AggSigMe {
+        public_key: public_keys.first,
+        message: message,
+    };
+
+    [agg_sig, ...check_signatures(public_keys.rest, required - 1, indices.rest, pos + 1, message)]
+}
