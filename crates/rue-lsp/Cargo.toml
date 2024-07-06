@@ -15,8 +15,8 @@ categories = { workspace = true }
 workspace = true
 
 [dependencies]
-rue-parser = { path = "../rue-parser" }
-rue-compiler = { path = "../rue-compiler" }
+rue-parser = { path = "../rue-parser", version = "0.1.0" }
+rue-compiler = { path = "../rue-compiler", version = "0.1.0" }
 tokio = { version = "1.37.0", features = ["full"] }
 tower-lsp = "0.20.0"
 clvmr = "0.6.1"
