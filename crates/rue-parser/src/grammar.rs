@@ -321,8 +321,12 @@ fn binding_power(op: BinaryOp) -> (u8, u8) {
         | BinaryOp::GreaterThan
         | BinaryOp::LessThanEquals
         | BinaryOp::GreaterThanEquals => (7, 8),
-        BinaryOp::Add | BinaryOp::Subtract => (9, 10),
-        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (11, 12),
+        BinaryOp::BitwiseOr => (9, 10),
+        BinaryOp::BitwiseXor => (11, 12),
+        BinaryOp::BitwiseAnd => (13, 14),
+        BinaryOp::LeftArithShift | BinaryOp::RightArithShift => (15, 16),
+        BinaryOp::Add | BinaryOp::Subtract => (17, 18),
+        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (19, 20),
     }
 }
 
@@ -335,7 +339,11 @@ fn expr(p: &mut Parser<'_>) {
 fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initializer: bool) {
     let checkpoint = p.checkpoint();
 
-    if p.at(SyntaxKind::Not) || p.at(SyntaxKind::Minus) {
+    if p.at(SyntaxKind::Not)
+        || p.at(SyntaxKind::Minus)
+        || p.at(SyntaxKind::Plus)
+        || p.at(SyntaxKind::BitwiseNot)
+    {
         p.start_at(checkpoint, SyntaxKind::PrefixExpr);
         p.bump();
         expr_binding_power(p, 255, allow_initializer);
@@ -405,6 +413,10 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             }
             p.expect(SyntaxKind::CloseParen);
             p.finish();
+        } else if p.at(SyntaxKind::Question) {
+            p.start_at(checkpoint, SyntaxKind::ExistsExpr);
+            p.bump();
+            p.finish();
         } else if p.at(SyntaxKind::Dot) {
             p.start_at(checkpoint, SyntaxKind::FieldAccessExpr);
             p.bump();
@@ -458,6 +470,16 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             BinaryOp::And
         } else if p.at(SyntaxKind::Or) {
             BinaryOp::Or
+        } else if p.at(SyntaxKind::BitwiseAnd) {
+            BinaryOp::BitwiseAnd
+        } else if p.at(SyntaxKind::BitwiseOr) {
+            BinaryOp::BitwiseOr
+        } else if p.at(SyntaxKind::BitwiseXor) {
+            BinaryOp::BitwiseXor
+        } else if p.at(SyntaxKind::LeftArithShift) {
+            BinaryOp::LeftArithShift
+        } else if p.at(SyntaxKind::RightArithShift) {
+            BinaryOp::RightArithShift
         } else {
             return;
         };
@@ -511,6 +533,9 @@ fn list_expr(p: &mut Parser<'_>) {
 fn lambda_expr(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LambdaExpr);
     p.expect(SyntaxKind::Fun);
+    if p.at(SyntaxKind::LessThan) {
+        generic_types(p);
+    }
     p.expect(SyntaxKind::OpenParen);
     while !p.at(SyntaxKind::CloseParen) {
         lambda_param(p);
@@ -579,7 +604,7 @@ fn ty(p: &mut Parser<'_>) {
             p.expect(SyntaxKind::CloseBracket);
             p.finish();
         } else if p.at(SyntaxKind::Question) {
-            p.start_at(checkpoint, SyntaxKind::OptionalType);
+            p.start_at(checkpoint, SyntaxKind::NullableType);
             p.bump();
             p.finish();
         } else {

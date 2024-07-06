@@ -1,0 +1,3 @@
+fun main() -> Int {
+    ~(41249 | 0x4128 as Int & 0x4128 as Int ^ 0x4128 as Int) & 412897
+}

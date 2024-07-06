@@ -49,7 +49,7 @@ pub enum WarningKind {
     UnusedEnumVariant(String),
     UnusedStruct(String),
     UnusedTypeAlias(String),
-    RedundantOptionalType(String),
+    RedundantNullableType(String),
     RedundantTypeCheck(String),
 }
 
@@ -67,8 +67,8 @@ impl fmt::Display for WarningKind {
             Self::UnusedEnumVariant(name) => format!("Unused enum variant `{name}`."),
             Self::UnusedStruct(name) => format!("Unused struct `{name}`."),
             Self::UnusedTypeAlias(name) => format!("Unused type alias `{name}`."),
-            Self::RedundantOptionalType(ty) => {
-                format!("This has no effect, since `{ty}` is already an optional type.")
+            Self::RedundantNullableType(ty) => {
+                format!("This has no effect, since `{ty}` is already a nullable type.")
             }
             Self::RedundantTypeCheck(ty) => format!(
                 "It's redundant to guard against `{ty}`, since the value already has that type."
@@ -96,6 +96,7 @@ pub enum ErrorKind {
     RecursiveTypeAlias(String),
     TypeMismatch(String, String),
     CastMismatch(String, String),
+    CannotInferType,
 
     // Function calls.
     UncallableType(String),
@@ -147,6 +148,7 @@ pub enum ErrorKind {
     UnsupportedTypeGuard(String, String),
     NonAnyPairTypeGuard,
     NonListPairTypeGuard,
+    InvalidExistanceCheck(String),
 
     // Blocks.
     ImplicitReturnInIf,
@@ -198,6 +200,7 @@ impl fmt::Display for ErrorKind {
             "),
             Self::TypeMismatch(found, expected) => format!("Expected type `{expected}`, but found `{found}`."),
             Self::CastMismatch(found, expected) => format!("Cannot cast type `{found}` to `{expected}`."),
+            Self::CannotInferType => "Lambda parameter type could not be inferred.".to_string(),
 
             // Function calls.
             Self::UncallableType(ty) => format!("Expression with type `{ty}` cannot be called, since it is not a function."),
@@ -296,6 +299,7 @@ impl fmt::Display for ErrorKind {
             Self::UnsupportedTypeGuard(from, to) => format!("Cannot check type `{from}` against `{to}`."),
             Self::NonAnyPairTypeGuard => "Cannot check `Any` against pair types other than `(Any, Any)`.".to_string(),
             Self::NonListPairTypeGuard => "Cannot check `T[]` against pair types other than `(T, T[])`.".to_string(),
+            Self::InvalidExistanceCheck(ty) => format!("Cannot check existence of value with type `{ty}`, since it can't be undefined."),
 
             // Blocks.
             Self::ImplicitReturnInIf => formatdoc!("

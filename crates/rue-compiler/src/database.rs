@@ -163,7 +163,7 @@ impl Database {
                 Op::Not => format!("Not({})", self.dbg_hir(*hir_id)),
                 Op::Strlen => format!("Strlen({})", self.dbg_hir(*hir_id)),
                 Op::PubkeyForExp => format!("PubkeyForExp({})", self.dbg_hir(*hir_id)),
-                Op::Exists => format!("Exists({})", self.dbg_hir(*hir_id)),
+                Op::BitwiseNot => format!("BitwiseNot({})", self.dbg_hir(*hir_id)),
             },
             Hir::Raise(hir_id) => format!(
                 "Raise({})",

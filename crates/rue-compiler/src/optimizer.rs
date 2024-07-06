@@ -1,3 +1,7 @@
+use num_bigint::BigInt;
+use num_traits::One;
+use rue_clvm::{first_path, rest_path};
+
 use crate::{
     database::{Database, LirId, SymbolId},
     hir::{BinOp, Op},
@@ -28,25 +32,37 @@ impl<'a> Optimizer<'a> {
             Mir::Op(Op::Listp, value) => self.opt_listp(env_id, value),
             Mir::Op(Op::Strlen, value) => self.opt_strlen(env_id, value),
             Mir::Op(Op::PubkeyForExp, value) => self.opt_pubkey_for_exp(env_id, value),
-            Mir::Op(Op::Exists, value) => self.opt_check_exists(env_id, value),
+            Mir::Op(Op::BitwiseNot, value) => self.opt_bitwise_not(env_id, value),
             Mir::Raise(value) => self.opt_raise(env_id, value),
             Mir::BinaryOp(op, lhs, rhs) => {
                 let handler = match op {
+                    BinOp::BitwiseAnd => Self::opt_bitwise_and,
+                    BinOp::BitwiseOr => Self::opt_bitwise_or,
+                    BinOp::BitwiseXor => Self::opt_bitwise_xor,
+                    BinOp::LeftArithShift => Self::opt_left_arith_shift,
+                    BinOp::RightArithShift => Self::opt_right_arith_shift,
                     BinOp::Add => Self::opt_add,
                     BinOp::Subtract => Self::opt_subtract,
                     BinOp::Multiply => Self::opt_multiply,
                     BinOp::Divide => Self::opt_divide,
                     BinOp::Remainder => Self::opt_remainder,
+                    BinOp::DivMod => Self::opt_divmod,
                     BinOp::LessThan => Self::opt_lt,
                     BinOp::GreaterThan => Self::opt_gt,
                     BinOp::LessThanEquals => Self::opt_lteq,
                     BinOp::GreaterThanEquals => Self::opt_gteq,
+                    BinOp::LessThanBytes => Self::opt_lt_bytes,
+                    BinOp::GreaterThanBytes => Self::opt_gt_bytes,
+                    BinOp::LessThanBytesEquals => Self::opt_lteq_bytes,
+                    BinOp::GreaterThanBytesEquals => Self::opt_gteq_bytes,
                     BinOp::Equals => Self::opt_eq,
                     BinOp::NotEquals => Self::opt_neq,
                     BinOp::Concat => Self::opt_concat,
                     BinOp::PointAdd => Self::opt_point_add,
                     BinOp::LogicalAnd => Self::opt_logical_and,
                     BinOp::LogicalOr => Self::opt_logical_or,
+                    BinOp::All => Self::opt_all,
+                    BinOp::Any => Self::opt_any,
                 };
                 handler(self, env_id, lhs, rhs)
             }
@@ -112,7 +128,7 @@ impl<'a> Optimizer<'a> {
                 );
             });
 
-        let mut path = 1;
+        let mut path = BigInt::one();
 
         if !(index + 1 == environment.len() && self.db.env(env_id).rest()) {
             path *= 2;
@@ -126,29 +142,6 @@ impl<'a> Optimizer<'a> {
         self.db.alloc_lir(Lir::Path(path))
     }
 
-    fn opt_check_exists(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
-        let value = self.opt_mir(env_id, mir_id);
-        let Lir::Path(path) = self.db.lir(value).clone() else {
-            panic!("invalid state, expected path for existence check");
-        };
-        self.db.alloc_lir(Lir::Path(Self::pack_bits(path)))
-    }
-
-    fn pack_bits(mut n: u32) -> u32 {
-        let mut result = 0;
-        let mut position = 0;
-
-        while n > 0 {
-            if n & 1 != 0 {
-                result |= 1 << position;
-                position += 1;
-            }
-            n >>= 1;
-        }
-
-        result
-    }
-
     fn opt_pair(&mut self, env_id: EnvironmentId, first: MirId, rest: MirId) -> LirId {
         let first = self.opt_mir(env_id, first);
         let rest = self.opt_mir(env_id, rest);
@@ -157,18 +150,20 @@ impl<'a> Optimizer<'a> {
 
     fn opt_first(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        if let Lir::Path(path) = self.db.lir(lir_id) {
-            return self.db.alloc_lir(Lir::Path(f(*path)));
+        match self.db.lir(lir_id) {
+            Lir::Path(path) => self.db.alloc_lir(Lir::Path(first_path(path.clone()))),
+            Lir::Pair(first, _) => *first,
+            _ => self.db.alloc_lir(Lir::First(lir_id)),
         }
-        self.db.alloc_lir(Lir::First(lir_id))
     }
 
     fn opt_rest(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        if let Lir::Path(path) = self.db.lir(lir_id) {
-            return self.db.alloc_lir(Lir::Path(r(*path)));
+        match self.db.lir(lir_id) {
+            Lir::Path(path) => self.db.alloc_lir(Lir::Path(rest_path(path.clone()))),
+            Lir::Pair(_, rest) => *rest,
+            _ => self.db.alloc_lir(Lir::Rest(lir_id)),
         }
-        self.db.alloc_lir(Lir::Rest(lir_id))
     }
 
     fn opt_sha256(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
@@ -192,6 +187,43 @@ impl<'a> Optimizer<'a> {
     fn opt_pubkey_for_exp(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
         self.db.alloc_lir(Lir::PubkeyForExp(lir_id))
+    }
+
+    fn opt_bitwise_not(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
+        let lir_id = self.opt_mir(env_id, mir_id);
+        self.db.alloc_lir(Lir::LogNot(lir_id))
+    }
+
+    fn opt_bitwise_and(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::LogAnd(vec![lhs, rhs]))
+    }
+
+    fn opt_bitwise_or(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::LogIor(vec![lhs, rhs]))
+    }
+
+    fn opt_bitwise_xor(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::LogXor(vec![lhs, rhs]))
+    }
+
+    fn opt_right_arith_shift(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        let nil = self.db.alloc_lir(Lir::Atom(Vec::new()));
+        let neg_rhs = self.db.alloc_lir(Lir::Sub(vec![nil, rhs]));
+        self.db.alloc_lir(Lir::Ash(lhs, neg_rhs))
+    }
+
+    fn opt_left_arith_shift(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::Ash(lhs, rhs))
     }
 
     fn opt_add(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
@@ -221,8 +253,7 @@ impl<'a> Optimizer<'a> {
     fn opt_remainder(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        let divmod = self.db.alloc_lir(Lir::Divmod(lhs, rhs));
-        self.db.alloc_lir(Lir::Rest(divmod))
+        self.db.alloc_lir(Lir::Rem(lhs, rhs))
     }
 
     fn opt_lt(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
@@ -245,6 +276,29 @@ impl<'a> Optimizer<'a> {
         let rhs = self.opt_mir(env_id, rhs);
         let eq = self.db.alloc_lir(Lir::Eq(lhs, rhs));
         let gt = self.db.alloc_lir(Lir::Gt(lhs, rhs));
+        self.db.alloc_lir(Lir::Any(vec![eq, gt]))
+    }
+
+    fn opt_lt_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        self.opt_gt_bytes(env_id, rhs, lhs)
+    }
+
+    fn opt_gt_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::GtBytes(lhs, rhs))
+    }
+
+    fn opt_lteq_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let gt = self.opt_gt_bytes(env_id, lhs, rhs);
+        self.db.alloc_lir(Lir::Not(gt))
+    }
+
+    fn opt_gteq_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        let eq = self.db.alloc_lir(Lir::Eq(lhs, rhs));
+        let gt = self.db.alloc_lir(Lir::GtBytes(lhs, rhs));
         self.db.alloc_lir(Lir::Any(vec![eq, gt]))
     }
 
@@ -281,9 +335,27 @@ impl<'a> Optimizer<'a> {
         self.opt_if(env_id, lhs, one, rhs)
     }
 
+    fn opt_any(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::Any(vec![lhs, rhs]))
+    }
+
+    fn opt_all(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::All(vec![lhs, rhs]))
+    }
+
     fn opt_not(&mut self, env_id: EnvironmentId, value: MirId) -> LirId {
         let value = self.opt_mir(env_id, value);
         self.db.alloc_lir(Lir::Not(value))
+    }
+
+    fn opt_divmod(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
+        let lhs = self.opt_mir(env_id, lhs);
+        let rhs = self.opt_mir(env_id, rhs);
+        self.db.alloc_lir(Lir::Divmod(lhs, rhs))
     }
 
     fn opt_raise(&mut self, env_id: EnvironmentId, value: Option<MirId>) -> LirId {
@@ -310,28 +382,4 @@ impl<'a> Optimizer<'a> {
 
         self.db.alloc_lir(Lir::Run(if_expr, None))
     }
-}
-
-fn compose_paths(a: u32, mut b: u32) -> u32 {
-    let mut mask = 1;
-    let mut temp_path = a;
-    while temp_path > 1 {
-        b <<= 1;
-        mask <<= 1;
-        temp_path >>= 1;
-    }
-
-    mask -= 1;
-    b | (a & mask)
-}
-
-const FIRST: u32 = 2;
-const REST: u32 = 3;
-
-fn f(path: u32) -> u32 {
-    compose_paths(path, FIRST)
-}
-
-fn r(path: u32) -> u32 {
-    compose_paths(path, REST)
 }

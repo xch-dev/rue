@@ -20,8 +20,8 @@ pub enum Type {
     EnumVariant(EnumVariantType),
     Function(FunctionType),
     Alias(TypeId),
+    Nullable(TypeId),
     Optional(TypeId),
-    PossiblyUndefined(TypeId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

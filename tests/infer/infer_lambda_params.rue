@@ -1,0 +1,6 @@
+fun main() -> Int {
+    let no_infer = fun(num) => { num };
+    let infer: fun(num: Int) -> Int = fun(num) => { num };
+    let explicit = fun(num: Int) => { num };
+    no_infer(1) + infer(2) + explicit(3)
+}

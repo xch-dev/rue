@@ -1,0 +1,7 @@
+fun main() -> Int {
+    generic(42, fun(value) => value * 10)
+}
+
+fun generic<T>(value: T, fn: fun(value: T) -> T) -> T {
+    fn(value)
+}

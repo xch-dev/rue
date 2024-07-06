@@ -4,15 +4,10 @@ use std::{
 };
 
 use clap::Parser;
-use clvm_tools_rs::classic::clvm_tools::binutils;
 use clvm_utils::tree_hash;
-use clvmr::{
-    reduction::Reduction,
-    run_program,
-    serde::{node_from_bytes, node_to_bytes},
-    Allocator, ChiaDialect,
-};
+use clvmr::{serde::node_to_bytes, Allocator};
 use indexmap::{IndexMap, IndexSet};
+use rue_clvm::{parse_clvm, run_clvm, stringify_clvm};
 use rue_compiler::{compile, DiagnosticKind};
 use rue_parser::{line_col, LineCol};
 use serde::{Deserialize, Serialize};
@@ -90,7 +85,7 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
         .collect();
 
     let compiler_errors: Vec<String> = output
-        .diagnostics()
+        .diagnostics
         .iter()
         .map(|error| {
             let LineCol { line, col } = line_col(source, error.span().start);
@@ -110,38 +105,14 @@ fn run_test(source: &str, input: &str) -> Result<TestOutput, TestErrors> {
         });
     }
 
-    let bytes = node_to_bytes(&allocator, output.node_ptr()).unwrap();
-    let hash = hex::encode(tree_hash(&allocator, output.node_ptr()));
-
-    let mut old_allocator = clvmr_old::Allocator::new();
-
-    let input_ptr = binutils::assemble(&mut old_allocator, input).unwrap();
-    let input_bytes = clvmr_old::serde::node_to_bytes(&old_allocator, input_ptr).unwrap();
-    let input_ptr = node_from_bytes(&mut allocator, &input_bytes).unwrap();
-
-    let output = run_program(
-        &mut allocator,
-        &ChiaDialect::new(0),
-        output.node_ptr(),
-        input_ptr,
-        u64::MAX,
-    );
+    let bytes = node_to_bytes(&allocator, output.node_ptr).unwrap();
+    let hash = hex::encode(tree_hash(&allocator, output.node_ptr));
+    let input_ptr = parse_clvm(&mut allocator, input).unwrap();
+    let output = run_clvm(&mut allocator, output.node_ptr, input_ptr, u64::MAX);
 
     let (cost, output) = match output {
-        Ok(Reduction(cost, node_ptr)) => {
-            let output_bytes = node_to_bytes(&allocator, node_ptr).unwrap();
-            let output_ptr =
-                clvmr_old::serde::node_from_bytes(&mut old_allocator, &output_bytes).unwrap();
-            let output = binutils::disassemble(&old_allocator, output_ptr, None);
-            (cost, Ok(output))
-        }
-        Err(error) => {
-            let output_bytes = node_to_bytes(&allocator, error.0).unwrap();
-            let output_ptr =
-                clvmr_old::serde::node_from_bytes(&mut old_allocator, &output_bytes).unwrap();
-            let output = binutils::disassemble(&old_allocator, output_ptr, None);
-            (0, Err(output))
-        }
+        Ok((node_ptr, cost)) => (cost, Ok(stringify_clvm(&allocator, node_ptr).unwrap())),
+        Err(error) => (0, Err(stringify_clvm(&allocator, error.0).unwrap())),
     };
 
     Ok(TestOutput {
@@ -314,6 +285,32 @@ fn run_tests(update: bool) -> usize {
 
                     if output_failed {
                         lines.push(format!("compiled program: {}", hex::encode(&actual.bytes)));
+                    }
+                }
+            }
+        } else {
+            match &output {
+                Ok(output) => {
+                    lines.push(format!("bytes: {}", output.bytes.len()));
+                    lines.push(format!("cost: {}", output.cost));
+                    lines.push(format!("hash: {}", output.hash));
+                    match &output.output {
+                        Ok(output) => {
+                            lines.push(format!("output: {output}"));
+                        }
+                        Err(error) => {
+                            lines.push(format!("error: {error}"));
+                        }
+                    }
+                }
+                Err(errors) => {
+                    lines.push("parser errors:".to_string());
+                    for error in &errors.parser_errors {
+                        lines.push(format!("  {error}"));
+                    }
+                    lines.push("compiler errors:".to_string());
+                    for error in &errors.compiler_errors {
+                        lines.push(format!("  {error}"));
                     }
                 }
             }

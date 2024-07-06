@@ -1,7 +1,0 @@
-fun main(value: Any) -> Int {
-    assert value is Bytes;
-    let value = value as Int;
-    
-    assert value >= 0;
-    value * 2
-}

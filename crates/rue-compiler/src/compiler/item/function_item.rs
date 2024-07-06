@@ -73,7 +73,7 @@ impl Compiler<'_> {
             *self.db.symbol_mut(symbol_id) = Symbol::Parameter(if param.optional().is_some() {
                 // If the parameter is optional, wrap the type in a possibly undefined type.
                 // This prevents referencing the parameter until it's checked for undefined.
-                self.db.alloc_type(Type::PossiblyUndefined(type_id))
+                self.db.alloc_type(Type::Optional(type_id))
             } else {
                 // Otherwise, just use the type.
                 type_id

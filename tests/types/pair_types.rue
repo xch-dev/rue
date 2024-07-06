@@ -1,6 +1,0 @@
-fun main() -> Int {
-    let pair = (20, 24);
-    let pair_hinted: (Int, Int) = pair;
-
-    pair.first + pair.rest + pair_hinted.first + pair_hinted.rest
-}

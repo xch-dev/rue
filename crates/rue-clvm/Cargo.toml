@@ -1,0 +1,15 @@
+[package]
+name = "rue-clvm"
+version = "0.1.0"
+edition = "2021"
+
+[lints]
+workspace = true
+
+[dependencies]
+clvmr = "0.6.1"
+clvmr_old = { version = "0.3.2", package = "clvmr" }
+clvm_tools_rs = "0.1.41"
+thiserror = "1.0.61"
+num-bigint = "0.4.6"
+num-traits = "0.2.19"

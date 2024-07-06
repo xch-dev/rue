@@ -1,0 +1,11 @@
+struct Test {
+    a: Int,
+    ...b: Int,
+}
+
+fun main() -> Int {
+    let lambda = fun(...nums: Test) => {
+        nums.a + nums.b
+    };
+    lambda(...Test { a: 42, b: 34 })
+}

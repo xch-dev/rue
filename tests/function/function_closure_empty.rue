@@ -1,0 +1,10 @@
+fun main() -> Int {
+    gen()(400)
+}
+
+fun gen() -> fun(num: Int) -> Int {
+    fun fn(num: Int) -> Int {
+        num * 2
+    }
+    fn
+}

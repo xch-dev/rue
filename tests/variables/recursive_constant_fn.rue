@@ -1,9 +1,0 @@
-fun main() -> Int {
-    fn()
-}
-
-const CONSTANT: Int = fn();
-
-fun fn() -> Int {
-    CONSTANT
-}

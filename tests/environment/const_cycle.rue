@@ -1,0 +1,6 @@
+const A: Int = B;
+const B: Int = A;
+
+fun main() -> Int {
+    A
+}

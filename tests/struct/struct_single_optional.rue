@@ -1,0 +1,11 @@
+struct Value {
+    num?: Int,
+}
+
+fun main() -> Int {
+    let empty = Value {};
+    let value = Value { num: 42 };
+    assert !empty.num?;
+    assert value.num?;
+    value.num
+}

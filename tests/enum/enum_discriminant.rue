@@ -1,0 +1,18 @@
+enum Num {
+    Zero,
+    One = 1,
+    Two,
+    Three,
+    Five = 5,
+    Six = 6,
+}
+
+fun main() -> Nil {
+    assert Num::Zero as Int == 0;
+    assert Num::One as Int == 1;
+    assert Num::Two as Int == 2;
+    assert Num::Three as Int == 3;
+    assert Num::Five as Int == 5;
+    assert Num::Six as Int == 6;
+    nil
+}

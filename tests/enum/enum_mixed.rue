@@ -1,0 +1,10 @@
+enum Test {
+    Unit = 0,
+    Value = 1 { num: Int },
+}
+
+fun main() -> Nil {
+    assert tree_hash(Test::Unit) == tree_hash([0]);
+    assert tree_hash(Test::Value { num: 1000 }) == tree_hash([1, 1000]);
+    nil
+}

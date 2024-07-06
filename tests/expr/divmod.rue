@@ -1,0 +1,6 @@
+fun main() -> Int {
+    let result = divmod(31587, 412);
+    let quotient = result.first;
+    let remainder = result.rest;
+    quotient + remainder
+}

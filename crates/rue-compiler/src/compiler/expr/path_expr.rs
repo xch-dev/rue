@@ -42,7 +42,18 @@ impl Compiler<'_> {
                             text_range,
                         );
                     }
-                    return Value::new(variant_type.discriminant, type_id);
+
+                    let Type::Enum(enum_type) = self.db.ty(variant_type.enum_type) else {
+                        unreachable!();
+                    };
+
+                    let mut hir_id = variant_type.discriminant;
+
+                    if enum_type.has_fields {
+                        hir_id = self.db.alloc_hir(Hir::Pair(hir_id, self.builtins.nil_hir));
+                    }
+
+                    return Value::new(hir_id, type_id);
                 }
                 self.db
                     .error(ErrorKind::ExpectedSymbolPath(last_ident), text_range);
@@ -62,26 +73,28 @@ impl Compiler<'_> {
             return self.unknown();
         }
 
-        let override_type_id = self.symbol_type(&GuardPath::new(symbol_id));
+        let type_override = self.symbol_type(&GuardPath::new(symbol_id));
+        let override_type_id = type_override.map(|ty| ty.type_id);
+        let mut reference = self.db.alloc_hir(Hir::Reference(symbol_id, text_range));
+
+        if let Some(mutation) = type_override.map(|ty| ty.mutation) {
+            reference = self.apply_mutation(reference, mutation);
+        }
 
         let mut value = match self.db.symbol(symbol_id).clone() {
             Symbol::Unknown | Symbol::Module(..) => unreachable!(),
             Symbol::Function(Function { ty, .. }) | Symbol::InlineFunction(Function { ty, .. }) => {
                 let type_id = self.db.alloc_type(Type::Function(ty.clone()));
-                Value::new(
-                    self.db.alloc_hir(Hir::Reference(symbol_id, text_range)),
-                    override_type_id.unwrap_or(type_id),
-                )
+                Value::new(reference, override_type_id.unwrap_or(type_id))
             }
-            Symbol::Parameter(type_id) => Value::new(
-                self.db.alloc_hir(Hir::Reference(symbol_id, text_range)),
-                override_type_id.unwrap_or(type_id),
-            ),
+            Symbol::Parameter(type_id) => {
+                Value::new(reference, override_type_id.unwrap_or(type_id))
+            }
             Symbol::Let(mut value) | Symbol::Const(mut value) | Symbol::InlineConst(mut value) => {
                 if let Some(type_id) = override_type_id {
                     value.type_id = type_id;
                 }
-                value.hir_id = self.db.alloc_hir(Hir::Reference(symbol_id, text_range));
+                value.hir_id = reference;
                 value
             }
         };

@@ -1,0 +1,7 @@
+const A: Int = 42;
+inline const B: Int = A;
+const C: Int = B;
+
+fun main() -> Int {
+    A + B + C
+}

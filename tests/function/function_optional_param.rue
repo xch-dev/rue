@@ -1,0 +1,11 @@
+fun main() -> Int {
+    multiply(10) * multiply(34, 42)
+}
+
+fun multiply(num: Int, factor?: Int) -> Int {
+    if factor? {
+        num * factor
+    } else {
+        num * num
+    }
+}

@@ -1,0 +1,4 @@
+fun main() -> Int {
+    let nums = [1, 2, 3];
+    fold(nums, 0, fun(acc, num) => acc + num)
+}

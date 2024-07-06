@@ -75,16 +75,27 @@ impl Compiler<'_> {
         text_range: TextRange,
     ) -> HirId {
         let mut specified_fields = HashMap::new();
+        let mut optional = false;
 
         for field in initializer_fields {
-            let expected_type = field
-                .name()
-                .and_then(|name| struct_fields.get(name.text()).copied());
+            let Some(name) = field.name() else {
+                continue;
+            };
 
-            let value = field
+            let expected_type = struct_fields.get(name.text()).copied();
+
+            let mut value = field
                 .expr()
                 .map(|expr| self.compile_expr(&expr, expected_type))
                 .unwrap_or(self.unknown());
+
+            // Resolve optional fields.
+            if rest == Rest::Optional
+                && struct_fields.get_index_of(name.text()) == Some(struct_fields.len() - 1)
+            {
+                optional |= matches!(self.db.ty(value.type_id), Type::Optional(..));
+                value.type_id = self.db.non_undefined(value.type_id);
+            }
 
             // Check the type of the field initializer.
             self.type_check(
@@ -92,10 +103,6 @@ impl Compiler<'_> {
                 expected_type.unwrap_or(self.builtins.unknown),
                 field.syntax().text_range(),
             );
-
-            let Some(name) = field.name() else {
-                continue;
-            };
 
             // Insert the field if it exists and hasn't already been assigned.
             if specified_fields.contains_key(name.text()) {
@@ -139,13 +146,13 @@ impl Compiler<'_> {
         for (i, field) in struct_fields.keys().rev().enumerate() {
             let value = specified_fields.get(field).copied();
 
-            if value.is_none() && i == 0 && rest == Rest::Optional {
+            if i == 0 && rest == Rest::Optional && value.is_none() {
                 continue;
             }
 
             let field = value.unwrap_or(self.builtins.unknown_hir);
 
-            if i == 0 && rest == Rest::Spread {
+            if i == 0 && (rest == Rest::Spread || (rest == Rest::Optional && optional)) {
                 hir_id = field;
             } else {
                 hir_id = self.db.alloc_hir(Hir::Pair(field, hir_id));

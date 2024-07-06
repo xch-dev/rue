@@ -1,7 +1,0 @@
-fun main() -> Int {
-    if true {
-        1
-    } else {
-        false as Int
-    }
-}

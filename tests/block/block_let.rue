@@ -1,0 +1,16 @@
+fun main() -> Int {
+    let outer_1 = 42;
+    let outer_2 = outer_1;
+
+    let result = {
+        let inner_1 = 42;
+        let inner_2 = outer_1 + outer_2;
+
+        inner_1 + inner_2
+    };
+
+    {
+        let inner = 1000;
+        result + outer_1 + inner
+    }
+}

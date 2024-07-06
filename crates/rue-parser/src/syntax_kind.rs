@@ -9,19 +9,16 @@ pub enum SyntaxKind {
     #[default]
     Eof,
     Error,
-
     Ident,
     Int,
     Hex,
     String,
-
     OpenParen,
     CloseParen,
     OpenBracket,
     CloseBracket,
     OpenBrace,
     CloseBrace,
-
     Mod,
     Fun,
     Inline,
@@ -32,7 +29,6 @@ pub enum SyntaxKind {
     Enum,
     Let,
     Const,
-
     If,
     Else,
     Return,
@@ -44,7 +40,6 @@ pub enum SyntaxKind {
     False,
     As,
     Is,
-
     Dot,
     Comma,
     Colon,
@@ -54,7 +49,6 @@ pub enum SyntaxKind {
     FatArrow,
     Spread,
     Question,
-
     Plus,
     Minus,
     Star,
@@ -68,14 +62,17 @@ pub enum SyntaxKind {
     Equals,
     NotEquals,
     Assign,
-
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseNot,
+    LeftArithShift,
+    RightArithShift,
     And,
     Or,
-
     Whitespace,
     LineComment,
     BlockComment,
-
     Root,
     ModuleItem,
     FunctionItem,
@@ -90,14 +87,12 @@ pub enum SyntaxKind {
     ImportItem,
     ImportPath,
     ImportGroup,
-
     LetStmt,
     IfStmt,
     ReturnStmt,
     RaiseStmt,
     AssertStmt,
     AssumeStmt,
-
     Block,
     PathExpr,
     InitializerExpr,
@@ -118,15 +113,14 @@ pub enum SyntaxKind {
     FunctionCallArg,
     FieldAccessExpr,
     IndexAccessExpr,
-
+    ExistsExpr,
     PathType,
     ListType,
     ListTypeItem,
     PairType,
     FunctionType,
     FunctionTypeParam,
-    OptionalType,
-
+    NullableType,
     GenericTypes,
 }
 
@@ -191,6 +185,12 @@ impl fmt::Display for SyntaxKind {
                 Self::Equals => "'=='",
                 Self::NotEquals => "'!='",
                 Self::Assign => "'='",
+                Self::BitwiseAnd => "'&'",
+                Self::BitwiseOr => "'|'",
+                Self::BitwiseXor => "'^'",
+                Self::BitwiseNot => "'~'",
+                Self::LeftArithShift => "'<<'",
+                Self::RightArithShift => "'>>'",
                 Self::And => "'&&'",
                 Self::Or => "'||'",
                 Self::Whitespace => "whitespace",
@@ -236,13 +236,14 @@ impl fmt::Display for SyntaxKind {
                 Self::FunctionCallArg => "function call argument",
                 Self::FieldAccessExpr => "field access expression",
                 Self::IndexAccessExpr => "index access expression",
+                Self::ExistsExpr => "exists expression",
                 Self::PathType => "path type",
                 Self::ListType => "list type",
                 Self::ListTypeItem => "list type item",
                 Self::PairType => "pair type",
                 Self::FunctionType => "function type",
                 Self::FunctionTypeParam => "function type parameter",
-                Self::OptionalType => "optional type",
+                Self::NullableType => "nullable type",
 
                 Self::GenericTypes => "generic types",
             }

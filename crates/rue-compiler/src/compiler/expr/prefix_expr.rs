@@ -10,8 +10,10 @@ impl Compiler<'_> {
     pub fn compile_prefix_expr(&mut self, prefix_expr: &PrefixExpr) -> Value {
         // Determine the expected type based on the prefix operator.
         let expected_type = match prefix_expr.op() {
+            Some(PrefixOp::BitwiseNot | PrefixOp::Positive | PrefixOp::Negative) => {
+                Some(self.builtins.int)
+            }
             Some(PrefixOp::Not) => Some(self.builtins.bool),
-            Some(PrefixOp::Neg) => Some(self.builtins.int),
             None => None,
         };
 
@@ -52,9 +54,8 @@ impl Compiler<'_> {
 
                 value
             }
-            PrefixOp::Neg => Value::new(
+            PrefixOp::Negative => Value::new(
                 // Subtract the expression from nil.
-                // TODO: Is there a more efficient way to do this?
                 self.db.alloc_hir(Hir::BinaryOp(
                     BinOp::Subtract,
                     self.builtins.nil_hir,
@@ -62,6 +63,17 @@ impl Compiler<'_> {
                 )),
                 self.builtins.int,
             ),
+            PrefixOp::Positive => {
+                // Return the expression as is.
+                expr
+            }
+            PrefixOp::BitwiseNot => {
+                // Negate the expression and its type guards.
+                Value::new(
+                    self.db.alloc_hir(Hir::Op(Op::BitwiseNot, expr.hir_id)),
+                    self.builtins.int,
+                )
+            }
         }
     }
 }

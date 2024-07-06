@@ -1,0 +1,5 @@
+fun main() -> Int {
+    {
+        raise "Explicit raise";
+    }
+}

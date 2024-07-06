@@ -1,10 +1,12 @@
+use num_bigint::BigInt;
+
 use crate::database::LirId;
 
 #[derive(Debug, Clone)]
 pub enum Lir {
     Atom(Vec<u8>),
     Pair(LirId, LirId),
-    Path(u32),
+    Path(BigInt),
     Run(LirId, Option<LirId>),
     Quote(LirId),
     Curry(LirId, Vec<LirId>),
@@ -22,6 +24,10 @@ pub enum Lir {
     Any(Vec<LirId>),
     Concat(Vec<LirId>),
     PointAdd(Vec<LirId>),
+    LogNot(LirId),
+    LogAnd(Vec<LirId>),
+    LogIor(Vec<LirId>),
+    LogXor(Vec<LirId>),
     Add(Vec<LirId>),
     Sub(Vec<LirId>),
     Mul(Vec<LirId>),
@@ -29,4 +35,7 @@ pub enum Lir {
     Divmod(LirId, LirId),
     Eq(LirId, LirId),
     Gt(LirId, LirId),
+    GtBytes(LirId, LirId),
+    Rem(LirId, LirId),
+    Ash(LirId, LirId),
 }

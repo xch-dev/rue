@@ -2,7 +2,12 @@ use std::collections::HashMap;
 
 use rue_parser::{AstNode, IfStmt};
 
-use crate::{compiler::Compiler, scope::Scope, value::GuardPath, ErrorKind, HirId, TypeId};
+use crate::{
+    compiler::Compiler,
+    scope::Scope,
+    value::{GuardPath, TypeOverride},
+    ErrorKind, HirId, TypeId,
+};
 
 impl Compiler<'_> {
     /// Compiles an if statement, returning the condition HIR, then block HIR, and else block guards.
@@ -10,7 +15,7 @@ impl Compiler<'_> {
         &mut self,
         if_stmt: &IfStmt,
         expected_type: Option<TypeId>,
-    ) -> (HirId, HirId, HashMap<GuardPath, TypeId>) {
+    ) -> (HirId, HirId, HashMap<GuardPath, TypeOverride>) {
         // Compile the condition expression.
         let condition = if_stmt
             .condition()

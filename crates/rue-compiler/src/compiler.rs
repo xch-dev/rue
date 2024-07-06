@@ -11,7 +11,7 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId, TypeId},
     hir::{Hir, Op},
     scope::Scope,
-    value::{GuardPath, PairType, Type, Value},
+    value::{GuardPath, Mutation, PairType, Type, TypeOverride, Value},
     ErrorKind,
 };
 
@@ -45,7 +45,7 @@ pub struct Compiler<'a> {
     type_definition_stack: Vec<TypeId>,
 
     // The type guard stack is used for overriding types in certain contexts.
-    type_guard_stack: Vec<HashMap<GuardPath, TypeId>>,
+    type_guard_stack: Vec<HashMap<GuardPath, TypeOverride>>,
 
     // The generic type stack is used for overriding generic types that are being checked against.
     generic_type_stack: Vec<HashMap<TypeId, TypeId>>,
@@ -210,13 +210,13 @@ impl<'a> Compiler<'a> {
                 format!("fun({}) -> {}", params.join(", "), ret)
             }
             Type::Alias(..) => unreachable!(),
-            Type::Optional(ty) => {
+            Type::Nullable(ty) => {
                 let inner = self.type_name_visitor(*ty, stack);
                 format!("{inner}?")
             }
-            Type::PossiblyUndefined(ty) => {
+            Type::Optional(ty) => {
                 let inner = self.type_name_visitor(*ty, stack);
-                format!("possibly undefined {inner}")
+                format!("optional {inner}")
             }
         };
 
@@ -261,13 +261,20 @@ impl<'a> Compiler<'a> {
         Value::new(self.builtins.unknown_hir, self.builtins.unknown)
     }
 
-    fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeId> {
+    fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeOverride> {
         for guards in &self.type_guard_stack {
             if let Some(guard) = guards.get(guard_path) {
                 return Some(*guard);
             }
         }
         None
+    }
+
+    fn apply_mutation(&mut self, hir_id: HirId, mutation: Mutation) -> HirId {
+        match mutation {
+            Mutation::None => hir_id,
+            Mutation::UnwrapOptional => self.db.alloc_hir(Hir::Op(Op::First, hir_id)),
+        }
     }
 
     fn scope(&self) -> &Scope {

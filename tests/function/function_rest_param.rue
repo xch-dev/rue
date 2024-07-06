@@ -1,0 +1,18 @@
+fun main() -> Int {
+    sum(...range_inclusive(1, 10))
+}
+
+fun range_inclusive(start: Int, end: Int) -> Int[] {
+    if start > end {
+        return nil;
+    }
+    [start, ...range_inclusive(start + 1, end)]
+}
+
+fun sum(...nums: Int[]) -> Int {
+    if nums is (Int, Int[]) {
+        nums.first + sum(...nums.rest)
+    } else {
+        0
+    }
+}

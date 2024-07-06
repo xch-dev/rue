@@ -1,0 +1,11 @@
+fun main() -> Int {
+    sum_pair(map_pair((42, 34), fun(value) => value * 2))
+}
+
+fun sum_pair(pair: (Int, Int)) -> Int {
+    pair.first + pair.rest
+}
+
+fun map_pair<T>(pair: (T, T), predicate: fun(value: T) -> T) -> (T, T) {
+    (predicate(pair.first), predicate(pair.rest))
+}

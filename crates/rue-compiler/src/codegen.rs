@@ -1,4 +1,5 @@
 use clvmr::{Allocator, NodePtr};
+use num_bigint::BigInt;
 
 use crate::{
     database::{Database, LirId},
@@ -21,6 +22,7 @@ struct Ops {
     l: NodePtr,
     x: NodePtr,
     eq: NodePtr,
+    gt_bytes: NodePtr,
     sha256: NodePtr,
     strlen: NodePtr,
     concat: NodePtr,
@@ -30,11 +32,17 @@ struct Ops {
     div: NodePtr,
     divmod: NodePtr,
     gt: NodePtr,
+    ash: NodePtr,
+    logand: NodePtr,
+    logior: NodePtr,
+    logxor: NodePtr,
+    lognot: NodePtr,
     point_add: NodePtr,
     pubkey_for_exp: NodePtr,
     not: NodePtr,
     any: NodePtr,
     all: NodePtr,
+    rem: NodePtr,
 }
 
 impl<'a> Codegen<'a> {
@@ -49,6 +57,7 @@ impl<'a> Codegen<'a> {
             l: allocator.new_small_number(7).unwrap(),
             x: allocator.new_small_number(8).unwrap(),
             eq: allocator.new_small_number(9).unwrap(),
+            gt_bytes: allocator.new_small_number(10).unwrap(),
             sha256: allocator.new_small_number(11).unwrap(),
             strlen: allocator.new_small_number(13).unwrap(),
             concat: allocator.new_small_number(14).unwrap(),
@@ -58,11 +67,17 @@ impl<'a> Codegen<'a> {
             div: allocator.new_small_number(19).unwrap(),
             divmod: allocator.new_small_number(20).unwrap(),
             gt: allocator.new_small_number(21).unwrap(),
+            ash: allocator.new_small_number(22).unwrap(),
+            logand: allocator.new_small_number(24).unwrap(),
+            logior: allocator.new_small_number(25).unwrap(),
+            logxor: allocator.new_small_number(26).unwrap(),
+            lognot: allocator.new_small_number(27).unwrap(),
             point_add: allocator.new_small_number(29).unwrap(),
             pubkey_for_exp: allocator.new_small_number(30).unwrap(),
             not: allocator.new_small_number(32).unwrap(),
             any: allocator.new_small_number(33).unwrap(),
             all: allocator.new_small_number(34).unwrap(),
+            rem: allocator.new_small_number(61).unwrap(),
         };
         Self { db, allocator, ops }
     }
@@ -72,7 +87,7 @@ impl<'a> Codegen<'a> {
             Lir::Atom(atom) => self.gen_atom(&atom),
             Lir::Pair(first, rest) => self.gen_pair(first, rest),
             Lir::Quote(value) => self.gen_quote(value),
-            Lir::Path(path) => self.allocator.new_small_number(path).unwrap(),
+            Lir::Path(path) => self.gen_path(&path),
             Lir::Run(program, args) => self.gen_run(program, args),
             Lir::Curry(body, args) => self.gen_apply(body, args),
             Lir::Closure(body, args) => self.gen_closure(body, args),
@@ -91,6 +106,10 @@ impl<'a> Codegen<'a> {
             Lir::Not(value) => self.gen_not(value),
             Lir::Any(values) => self.gen_any(values),
             Lir::All(values) => self.gen_all(values),
+            Lir::LogAnd(values) => self.gen_logand(values),
+            Lir::LogIor(values) => self.gen_logior(values),
+            Lir::LogXor(values) => self.gen_logxor(values),
+            Lir::LogNot(value) => self.gen_lognot(value),
             Lir::Add(values) => self.gen_add(values),
             Lir::Sub(values) => self.gen_sub(values),
             Lir::Mul(values) => self.gen_mul(values),
@@ -98,7 +117,19 @@ impl<'a> Codegen<'a> {
             Lir::Divmod(lhs, rhs) => self.gen_divmod(lhs, rhs),
             Lir::Eq(lhs, rhs) => self.gen_eq(lhs, rhs),
             Lir::Gt(lhs, rhs) => self.gen_gt(lhs, rhs),
+            Lir::GtBytes(lhs, rhs) => self.gen_gt_bytes(lhs, rhs),
+            Lir::Ash(lhs, rhs) => self.gen_ash(lhs, rhs),
+            Lir::Rem(lhs, rhs) => self.gen_rem(lhs, rhs),
         }
+    }
+
+    fn gen_path(&mut self, path: &BigInt) -> NodePtr {
+        let bytes = path.to_signed_bytes_be();
+        let mut slice = bytes.as_slice();
+        while (!slice.is_empty()) && (slice[0] == 0) {
+            slice = &slice[1..];
+        }
+        self.allocator.new_atom(slice).unwrap()
     }
 
     fn gen_atom(&mut self, value: &[u8]) -> NodePtr {
@@ -231,6 +262,35 @@ impl<'a> Codegen<'a> {
         self.list(&args)
     }
 
+    fn gen_logand(&mut self, values: Vec<LirId>) -> NodePtr {
+        let mut args = vec![self.ops.logand];
+        for value in values {
+            args.push(self.gen_lir(value));
+        }
+        self.list(&args)
+    }
+
+    fn gen_logior(&mut self, values: Vec<LirId>) -> NodePtr {
+        let mut args = vec![self.ops.logior];
+        for value in values {
+            args.push(self.gen_lir(value));
+        }
+        self.list(&args)
+    }
+
+    fn gen_logxor(&mut self, values: Vec<LirId>) -> NodePtr {
+        let mut args = vec![self.ops.logxor];
+        for value in values {
+            args.push(self.gen_lir(value));
+        }
+        self.list(&args)
+    }
+
+    fn gen_lognot(&mut self, value: LirId) -> NodePtr {
+        let value = self.gen_lir(value);
+        self.list(&[self.ops.lognot, value])
+    }
+
     fn gen_add(&mut self, values: Vec<LirId>) -> NodePtr {
         let mut args = vec![self.ops.add];
         for value in values {
@@ -267,16 +327,34 @@ impl<'a> Codegen<'a> {
         self.list(&[self.ops.divmod, lhs, rhs])
     }
 
+    fn gen_rem(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {
+        let lhs = self.gen_lir(lhs);
+        let rhs = self.gen_lir(rhs);
+        self.list(&[self.ops.rem, lhs, rhs])
+    }
+
     fn gen_gt(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {
         let lhs = self.gen_lir(lhs);
         let rhs = self.gen_lir(rhs);
         self.list(&[self.ops.gt, lhs, rhs])
     }
 
+    fn gen_gt_bytes(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {
+        let lhs = self.gen_lir(lhs);
+        let rhs = self.gen_lir(rhs);
+        self.list(&[self.ops.gt_bytes, lhs, rhs])
+    }
+
     fn gen_eq(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {
         let lhs = self.gen_lir(lhs);
         let rhs = self.gen_lir(rhs);
         self.list(&[self.ops.eq, lhs, rhs])
+    }
+
+    fn gen_ash(&mut self, lhs: LirId, rhs: LirId) -> NodePtr {
+        let lhs = self.gen_lir(lhs);
+        let rhs = self.gen_lir(rhs);
+        self.list(&[self.ops.ash, lhs, rhs])
     }
 
     fn gen_closure_wrapper(&mut self, body: NodePtr, captures: &[NodePtr]) -> NodePtr {

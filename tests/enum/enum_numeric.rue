@@ -1,0 +1,18 @@
+enum Mode {
+    Locked,
+    Unlocked,
+    Open,
+}
+
+fun main() -> Nil {
+    let open: Mode = Mode::Open;
+    assert open is Mode::Open;
+
+    let locked = Mode::Locked;
+    assert locked as Int != Mode::Unlocked as Int;
+
+    let value = 1;
+    assert value is Mode::Unlocked;
+
+    nil
+}

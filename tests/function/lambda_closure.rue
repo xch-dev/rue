@@ -1,0 +1,7 @@
+fun main() -> Int {
+    multiplier(42)(4723891)
+}
+
+fun multiplier(factor: Int) -> fun(num: Int) -> Int {
+    (fun(num) => num * factor)
+}

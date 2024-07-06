@@ -97,7 +97,8 @@ ast_enum!(
     IfExpr,
     FunctionCallExpr,
     FieldAccessExpr,
-    IndexAccessExpr
+    IndexAccessExpr,
+    ExistsExpr
 );
 ast_node!(PathExpr);
 ast_node!(InitializerExpr);
@@ -116,6 +117,7 @@ ast_node!(FunctionCallExpr);
 ast_node!(FunctionCallArg);
 ast_node!(FieldAccessExpr);
 ast_node!(IndexAccessExpr);
+ast_node!(ExistsExpr);
 
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
@@ -126,7 +128,7 @@ ast_enum!(
     ListType,
     PairType,
     FunctionType,
-    OptionalType
+    NullableType
 );
 ast_node!(PathType);
 ast_node!(ListType);
@@ -134,7 +136,7 @@ ast_node!(ListTypeItem);
 ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
-ast_node!(OptionalType);
+ast_node!(NullableType);
 
 ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt, AssumeStmt);
 ast_node!(LetStmt);
@@ -555,14 +557,18 @@ impl LiteralExpr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrefixOp {
+    BitwiseNot,
     Not,
-    Neg,
+    Positive,
+    Negative,
 }
 
 fn prefix_op(kind: SyntaxKind) -> Option<PrefixOp> {
     match kind {
+        SyntaxKind::BitwiseNot => Some(PrefixOp::BitwiseNot),
         SyntaxKind::Not => Some(PrefixOp::Not),
-        SyntaxKind::Minus => Some(PrefixOp::Neg),
+        SyntaxKind::Plus => Some(PrefixOp::Positive),
+        SyntaxKind::Minus => Some(PrefixOp::Negative),
         _ => None,
     }
 }
@@ -589,6 +595,11 @@ impl PrefixExpr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    LeftArithShift,
+    RightArithShift,
     Add,
     Subtract,
     Multiply,
@@ -606,6 +617,11 @@ pub enum BinaryOp {
 
 fn binary_op(kind: SyntaxKind) -> Option<BinaryOp> {
     match kind {
+        SyntaxKind::BitwiseAnd => Some(BinaryOp::BitwiseAnd),
+        SyntaxKind::BitwiseOr => Some(BinaryOp::BitwiseOr),
+        SyntaxKind::BitwiseXor => Some(BinaryOp::BitwiseXor),
+        SyntaxKind::LeftArithShift => Some(BinaryOp::LeftArithShift),
+        SyntaxKind::RightArithShift => Some(BinaryOp::RightArithShift),
         SyntaxKind::Plus => Some(BinaryOp::Add),
         SyntaxKind::Minus => Some(BinaryOp::Subtract),
         SyntaxKind::Star => Some(BinaryOp::Multiply),
@@ -706,6 +722,10 @@ impl PairExpr {
 }
 
 impl LambdaExpr {
+    pub fn generic_types(&self) -> Option<GenericTypes> {
+        self.syntax().children().find_map(GenericTypes::cast)
+    }
+
     pub fn params(&self) -> Vec<LambdaParam> {
         self.syntax()
             .children()
@@ -815,6 +835,12 @@ impl IndexAccessExpr {
     }
 }
 
+impl ExistsExpr {
+    pub fn expr(&self) -> Option<Expr> {
+        self.syntax().children().find_map(Expr::cast)
+    }
+}
+
 impl PathType {
     pub fn idents(&self) -> Vec<SyntaxToken> {
         self.syntax()
@@ -894,7 +920,7 @@ impl FunctionTypeParam {
     }
 }
 
-impl OptionalType {
+impl NullableType {
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }

@@ -1,0 +1,5 @@
+inline const VALUE: Int = VALUE;
+
+fun main() -> Int {
+    VALUE
+}

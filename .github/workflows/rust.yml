@@ -17,16 +17,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+      - name: Cargo binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+
+      - name: Instal cargo-workspaces
+        run: cargo binstall cargo-workspaces --locked -y
 
       - name: Run tests
         run: cargo test --all-features --workspace
 
       - name: Clippy
-        run: cargo clippy --workspace
+        run: cargo clippy --workspace --all-features --all-targets
+
+      - name: Unused dependencies
+        run: |
+          cargo binstall cargo-machete --locked -y
+          cargo machete
 
       - name: Fmt
         run: cargo fmt --all -- --files-with-diff --check
+
+      - name: Publish
+        if: startsWith(github.event.ref, 'refs/tags')
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.cargo_registry_token }}
+        run: cargo ws publish --publish-as-is --allow-dirty

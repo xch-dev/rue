@@ -1,0 +1,9 @@
+fun main() -> Int {
+    PRECOMPUTED + compute(417298)
+}
+
+const PRECOMPUTED: Int = compute(42);
+
+inline fun compute(num: Int) -> Int {
+    num * num
+}
