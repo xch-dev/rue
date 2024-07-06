@@ -374,17 +374,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clvm-traits"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02bafec86e28113b45d5e169fc33660b41437d508553ed4a8584f57ff6446e37"
-dependencies = [
- "clvmr 0.7.0",
- "num-bigint",
- "thiserror",
-]
-
-[[package]]
 name = "clvm-utils"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -392,17 +381,6 @@ checksum = "98561c4a24ecfa751ff73dd4fd94411af110f5c5306c558c7fb3a96f711ce43e"
 dependencies = [
  "clvm-traits 0.6.0",
  "clvmr 0.6.1",
-]
-
-[[package]]
-name = "clvm-utils"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fd4bef8cc2e4854a7c4ae4a29747a5f66c0d3e74463fb414aa0b5406ab4a4cb"
-dependencies = [
- "clvm-traits 0.9.0",
- "clvmr 0.7.0",
- "hex",
 ]
 
 [[package]]
@@ -462,23 +440,6 @@ name = "clvmr"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "deb235bb5ce94e1e64e54cede97ca5a4766590d3584dea1b4285499d8e7f56f6"
-dependencies = [
- "chia-bls 0.4.0",
- "hex-literal",
- "k256",
- "lazy_static",
- "num-bigint",
- "num-integer",
- "num-traits",
- "p256",
- "sha2 0.10.8",
-]
-
-[[package]]
-name = "clvmr"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4b05784a842671ccedbefb0e3dabab7d0eb3411395f5182a4c68722a5284591"
 dependencies = [
  "chia-bls 0.4.0",
  "hex-literal",
@@ -1419,7 +1380,6 @@ dependencies = [
  "hex",
  "rue-clvm",
  "rue-compiler",
- "rue-lexer",
  "rue-parser",
 ]
 
@@ -1427,11 +1387,9 @@ dependencies = [
 name = "rue-clvm"
 version = "0.1.0"
 dependencies = [
- "clvm-utils 0.9.0",
  "clvm_tools_rs",
  "clvmr 0.3.3",
  "clvmr 0.6.1",
- "hex",
  "num-bigint",
  "num-traits",
  "thiserror",
@@ -1448,7 +1406,6 @@ dependencies = [
  "indoc 2.0.5",
  "log",
  "num-bigint",
- "num-iter",
  "num-traits",
  "rowan",
  "rue-clvm",
@@ -1486,7 +1443,7 @@ name = "rue-tests"
 version = "0.1.0"
 dependencies = [
  "clap",
- "clvm-utils 0.6.0",
+ "clvm-utils",
  "clvmr 0.6.1",
  "hex",
  "indexmap",
