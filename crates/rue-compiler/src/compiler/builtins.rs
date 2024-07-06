@@ -63,6 +63,7 @@ pub fn builtins(db: &mut Database) -> Builtins {
     let sha256 = sha256(db, &builtins);
     let pubkey_for_exp = pubkey_for_exp(db, &builtins);
     let divmod = divmod(db, &builtins);
+    let substr = substr(db, &builtins);
 
     db.scope_mut(builtins.scope_id)
         .define_symbol("sha256".to_string(), sha256);
@@ -72,6 +73,9 @@ pub fn builtins(db: &mut Database) -> Builtins {
 
     db.scope_mut(builtins.scope_id)
         .define_symbol("divmod".to_string(), divmod);
+
+    db.scope_mut(builtins.scope_id)
+        .define_symbol("substr".to_string(), substr);
 
     builtins
 }
@@ -140,6 +144,32 @@ fn divmod(db: &mut Database, builtins: &Builtins) -> SymbolId {
             param_types: vec![builtins.int, builtins.int],
             rest: Rest::Nil,
             return_type: int_pair,
+            generic_types: Vec::new(),
+        },
+    }))
+}
+
+fn substr(db: &mut Database, builtins: &Builtins) -> SymbolId {
+    let mut scope = Scope::default();
+    let value = db.alloc_symbol(Symbol::Parameter(builtins.bytes));
+    let start = db.alloc_symbol(Symbol::Parameter(builtins.int));
+    let end = db.alloc_symbol(Symbol::Parameter(builtins.int));
+    scope.define_symbol("value".to_string(), value);
+    scope.define_symbol("start".to_string(), start);
+    scope.define_symbol("end".to_string(), end);
+    let value_ref = db.alloc_hir(Hir::Reference(value, TextRange::default()));
+    let start_ref = db.alloc_hir(Hir::Reference(start, TextRange::default()));
+    let end_ref = db.alloc_hir(Hir::Reference(end, TextRange::default()));
+    let hir_id = db.alloc_hir(Hir::Substr(value_ref, start_ref, end_ref));
+    let scope_id = db.alloc_scope(scope);
+
+    db.alloc_symbol(Symbol::InlineFunction(Function {
+        scope_id,
+        hir_id,
+        ty: FunctionType {
+            param_types: vec![builtins.bytes, builtins.int, builtins.int],
+            rest: Rest::Nil,
+            return_type: builtins.bytes,
             generic_types: Vec::new(),
         },
     }))

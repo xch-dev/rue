@@ -113,10 +113,7 @@ export fun concat<T>(a: T[], b: T[]) -> T[] {
     if a is (T, T[]) {
         return [a.first, ...concat(a.rest, b)];
     }
-    if b is (T, T[]) {
-        return [b.first, ...concat(a, b.rest)];
-    }
-    nil
+    b
 }
 
 inline const ATOM_PREFIX: Bytes = 1 as Bytes;

@@ -180,6 +180,11 @@ impl<'a> GraphBuilder<'a> {
                 self.walk_hir(scope_id, lhs);
                 self.walk_hir(scope_id, rhs);
             }
+            Hir::Substr(value, start, end) => {
+                self.walk_hir(scope_id, value);
+                self.walk_hir(scope_id, start);
+                self.walk_hir(scope_id, end);
+            }
             Hir::Definition(child_scope_id, hir_id) => {
                 self.walk_definition(scope_id, child_scope_id, hir_id);
             }
@@ -382,6 +387,11 @@ impl<'a> GraphBuilder<'a> {
             Hir::BinaryOp(_op, lhs, rhs) => {
                 self.ref_hir(scope_id, lhs);
                 self.ref_hir(scope_id, rhs);
+            }
+            Hir::Substr(value, start, end) => {
+                self.ref_hir(scope_id, value);
+                self.ref_hir(scope_id, start);
+                self.ref_hir(scope_id, end);
             }
             Hir::Definition(scope_id, hir_id) => {
                 self.ref_hir(scope_id, hir_id);

@@ -11,6 +11,7 @@ pub enum Mir {
     Pair(MirId, MirId),
     Op(Op, MirId),
     BinaryOp(BinOp, MirId, MirId),
+    Substr(MirId, MirId, MirId),
     Raise(Option<MirId>),
     If(MirId, MirId, MirId),
     Run(MirId, MirId),

@@ -17,6 +17,7 @@ pub enum Lir {
     Sha256(Vec<LirId>),
     Listp(LirId),
     Strlen(LirId),
+    Substr(LirId, LirId, LirId),
     PubkeyForExp(LirId),
     If(LirId, LirId, LirId),
     Not(LirId),

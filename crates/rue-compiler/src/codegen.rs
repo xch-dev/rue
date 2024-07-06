@@ -24,6 +24,7 @@ struct Ops {
     eq: NodePtr,
     gt_bytes: NodePtr,
     sha256: NodePtr,
+    substr: NodePtr,
     strlen: NodePtr,
     concat: NodePtr,
     add: NodePtr,
@@ -59,6 +60,7 @@ impl<'a> Codegen<'a> {
             eq: allocator.new_small_number(9).unwrap(),
             gt_bytes: allocator.new_small_number(10).unwrap(),
             sha256: allocator.new_small_number(11).unwrap(),
+            substr: allocator.new_small_number(12).unwrap(),
             strlen: allocator.new_small_number(13).unwrap(),
             concat: allocator.new_small_number(14).unwrap(),
             add: allocator.new_small_number(16).unwrap(),
@@ -96,6 +98,7 @@ impl<'a> Codegen<'a> {
             Lir::Raise(value) => self.gen_raise(value),
             Lir::Sha256(values) => self.gen_sha256(values),
             Lir::Listp(value) => self.gen_listp(value),
+            Lir::Substr(value, start, end) => self.gen_substr(value, start, end),
             Lir::Strlen(value) => self.gen_strlen(value),
             Lir::PubkeyForExp(value) => self.gen_pubkey_for_exp(value),
             Lir::Concat(values) => self.gen_concat(values),
@@ -206,6 +209,13 @@ impl<'a> Codegen<'a> {
     fn gen_listp(&mut self, value: LirId) -> NodePtr {
         let value = self.gen_lir(value);
         self.list(&[self.ops.l, value])
+    }
+
+    fn gen_substr(&mut self, value: LirId, start: LirId, end: LirId) -> NodePtr {
+        let value = self.gen_lir(value);
+        let start = self.gen_lir(start);
+        let end = self.gen_lir(end);
+        self.list(&[self.ops.substr, value, start, end])
     }
 
     fn gen_strlen(&mut self, value: LirId) -> NodePtr {

@@ -66,6 +66,12 @@ impl<'a> Optimizer<'a> {
                 };
                 handler(self, env_id, lhs, rhs)
             }
+            Mir::Substr(value, start, end) => {
+                let value = self.opt_mir(env_id, value);
+                let start = self.opt_mir(env_id, start);
+                let end = self.opt_mir(env_id, end);
+                self.db.alloc_lir(Lir::Substr(value, start, end))
+            }
             Mir::If(condition, then_block, else_block) => {
                 self.opt_if(env_id, condition, then_block, else_block)
             }
