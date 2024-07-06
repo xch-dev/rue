@@ -183,7 +183,7 @@ impl Compiler<'_> {
         // We don't care about explicit returns in this context.
         self.scope_stack.push(scope_id);
         self.allow_generic_inference_stack.push(false);
-        let value = self.compile_block(&body, Some(ty.return_type)).0;
+        let value = self.compile_block(&body, Some(ty.return_type)).value;
         self.allow_generic_inference_stack.pop().unwrap();
         self.scope_stack.pop().unwrap();
 

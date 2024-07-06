@@ -1373,7 +1373,7 @@ dependencies = [
 
 [[package]]
 name = "rue-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "clvmr 0.6.1",
@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "rue-clvm"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clvm_tools_rs",
  "clvmr 0.3.3",
@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "rue-compiler"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clvmr 0.6.1",
  "hex",
@@ -1414,11 +1414,11 @@ dependencies = [
 
 [[package]]
 name = "rue-lexer"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "rue-lsp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clvmr 0.6.1",
  "rue-compiler",
@@ -1429,7 +1429,7 @@ dependencies = [
 
 [[package]]
 name = "rue-parser"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "indexmap",
  "num-derive",

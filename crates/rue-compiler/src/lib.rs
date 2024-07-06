@@ -37,7 +37,7 @@ pub fn compile(allocator: &mut Allocator, root: &Root, mut should_codegen: bool)
     let main_module_id = load_module(&mut ctx, root);
     let symbol_table = compile_modules(ctx);
 
-    let main = try_export_main(&mut db, main_module_id).expect("missing main function");
+    let main = try_export_main(&mut db, main_module_id);
     let graph = build_graph(
         &mut db,
         &symbol_table,
@@ -50,7 +50,12 @@ pub fn compile(allocator: &mut Allocator, root: &Root, mut should_codegen: bool)
     Output {
         diagnostics: db.diagnostics().to_vec(),
         node_ptr: if should_codegen {
-            codegen(allocator, &mut db, &graph, main)
+            codegen(
+                allocator,
+                &mut db,
+                &graph,
+                main.expect("missing main function"),
+            )
         } else {
             NodePtr::default()
         },

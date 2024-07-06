@@ -555,3 +555,10 @@ input = "((0x42840c6aebec47ce2e01629ce381b461c19695264281a7b1aab5d4ff54506775 0x
 output = "()"
 hash = "ca8bea1d975df6e382a60ef70f92d14de0eca974c548175adc6ee8c79597f91b"
 error = "()"
+
+[enum_type_guard]
+bytes = 131
+cost = 1710
+input = "()"
+output = "()"
+hash = "e3153c4596c3b27d1f1cea81cf4c475e2d8f617330a82684bd97f6fae2bacf50"

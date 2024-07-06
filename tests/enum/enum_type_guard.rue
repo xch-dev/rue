@@ -1,0 +1,21 @@
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+fun main() -> Int {
+    let color: Color = Color::Red;
+
+    if color is Color::Green {
+        raise "Unreachable";
+    }
+
+    if color is Color::Blue {
+        raise "Unreachable";
+    }
+
+    assert color is Color::Red;
+    let red: Color::Red = color;
+    red as Int
+}
