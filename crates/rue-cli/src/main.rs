@@ -1,7 +1,8 @@
 use std::fs;
 
 use clap::Parser;
-use clvmr::{serde::node_to_bytes, Allocator};
+use clvmr::{serde::node_to_bytes, Allocator, NodePtr};
+use rue_clvm::{parse_clvm, run_clvm, stringify_clvm};
 use rue_compiler::{compile, Diagnostic, DiagnosticKind};
 use rue_parser::{line_col, parse, LineCol};
 
@@ -13,6 +14,10 @@ enum Command {
     Build {
         /// The source file to compile.
         file: String,
+
+        /// A list of parameters to run the compiled program with.
+        #[clap(long, short = 'r')]
+        run: Option<Option<String>>,
     },
 
     /// Check a Rue source file for errors.
@@ -24,12 +29,12 @@ enum Command {
 
 fn main() {
     match Command::parse() {
-        Command::Build { file } => build(file, true),
-        Command::Check { file } => build(file, false),
+        Command::Build { file, run } => build(file, true, &run),
+        Command::Check { file } => build(file, false, &None),
     }
 }
 
-fn build(file: String, should_compile: bool) {
+fn build(file: String, should_compile: bool, run: &Option<Option<String>>) {
     let source = fs::read_to_string(file).expect("could not read source file");
     let (ast, errors) = parse(&source);
 
@@ -53,6 +58,22 @@ fn build(file: String, should_compile: bool) {
         println!("{}", hex::encode(bytes));
     } else {
         println!("No errors found.");
+    }
+
+    if let Some(run) = run {
+        let environment = run.as_ref().map_or(NodePtr::NIL, |run| {
+            parse_clvm(&mut allocator, run).expect("could not parse input")
+        });
+
+        match run_clvm(&mut allocator, output.node_ptr, environment, u64::MAX) {
+            Ok((result, cost)) => {
+                eprintln!("Result: {}", stringify_clvm(&allocator, result).unwrap());
+                eprintln!("Cost: {cost}");
+            }
+            Err(error) => {
+                eprintln!("Error: {}", stringify_clvm(&allocator, error.0).unwrap());
+            }
+        }
     }
 }
 
