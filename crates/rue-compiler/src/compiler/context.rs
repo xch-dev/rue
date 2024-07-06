@@ -32,7 +32,7 @@ pub fn setup_compiler(db: &mut Database) -> CompilerContext<'_> {
 }
 
 pub fn load_standard_library(ctx: &mut CompilerContext<'_>) -> SymbolId {
-    let (root, parser_errors) = parse(include_str!("../../../../std/stdlib.rue"));
+    let (root, parser_errors) = parse(include_str!("../../stdlib.rue"));
     assert_eq!(parser_errors, Vec::new());
 
     let (module_id, declarations) = ctx.compiler.declare_root(&root);
