@@ -15,7 +15,7 @@ struct PuzzleTruths {
 
 // The coin section of the CAT's truths.
 struct CoinTruths {
-    my_id: Bytes32,
+    my_coin_id: Bytes32,
     ...my_coin: Coin,
 }
 
@@ -111,7 +111,7 @@ fun main(
     let inner_puzzle_hash = tree_hash(inner_puzzle);
     
     // Calculate coin ids.
-    let coin_id = calculate_coin_id(my_coin.parent_coin_info, my_coin.puzzle_hash, my_coin.amount);
+    let my_coin_id = calculate_coin_id(my_coin.parent_coin_info, my_coin.puzzle_hash, my_coin.amount);
     let next_coin_id = calculate_coin_id(
         next_coin_proof.parent_coin_info,
         cat_puzzle_hash(cat_info, next_coin_proof.inner_puzzle_hash),
@@ -125,7 +125,7 @@ fun main(
             cat_info: cat_info,
         },
         coin_truths: CoinTruths {
-            my_id: coin_id,
+            my_coin_id: my_coin_id,
             my_coin: my_coin,
         },
     };
@@ -152,7 +152,7 @@ fun main(
             message: RING_MORPH_BYTE + tree_hash([prev_coin_id, prev_subtotal] as Any[]),
         },
         Condition::AssertCoinAnnouncement {
-            announcement_id: sha256(next_coin_id + RING_MORPH_BYTE + tree_hash([coin_id, subtotal] as Any[])),
+            announcement_id: sha256(next_coin_id + RING_MORPH_BYTE + tree_hash([my_coin_id, subtotal] as Any[])),
         },
         ...morph.conditions,
     ];
@@ -185,7 +185,7 @@ fun main(
 
     [
         // Make sure that the coin is correct.
-        Condition::AssertMyCoinId { coin_id: coin_id },
+        Condition::AssertMyCoinId { coin_id: my_coin_id },
 
         // Output the other conditions as well.
         ...final_conditions,

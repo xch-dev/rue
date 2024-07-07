@@ -1,0 +1,18 @@
+fun main() -> Bool {
+    let outer: Int? = 42;
+    let another_outer = 19;
+    let not_used_in_block = false;
+    let result = !not_used_in_block && outer is Int && {
+        let double = double(outer);
+        outer + double + double - double + another_outer == 126 + 19
+    };
+    !not_used_in_block && another_outer == 19 && result && another() && outer == 42 && another_outer == 19
+}
+
+inline fun double(num: Int) -> Int {
+    num * 2
+}
+
+fun another() -> Bool {
+    true
+}

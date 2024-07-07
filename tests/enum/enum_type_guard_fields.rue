@@ -1,0 +1,9 @@
+enum Value {
+    A = 1 { num: Int },
+    B = 2 { num: Int },
+}
+
+fun main() -> Int {
+    let a: Value = Value::A { num: 1 };
+    (if a is Value::A { 500 } else { 1000 }) + (if a is Value::B { 500 } else { 1000 })
+}

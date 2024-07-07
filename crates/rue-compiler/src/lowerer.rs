@@ -226,7 +226,7 @@ impl<'a> Lowerer<'a> {
         match self.db.symbol(symbol_id).clone() {
             Symbol::Function(function) => self.lower_function(&function),
             Symbol::Const(constant) => self.lower_hir(env_id, constant.hir_id),
-            Symbol::Let(binding) if self.graph.symbol_references(symbol_id) > 0 => {
+            Symbol::Let(binding) if self.graph.symbol_references(symbol_id) > 1 => {
                 self.lower_hir(env_id, binding.hir_id)
             }
             Symbol::Unknown

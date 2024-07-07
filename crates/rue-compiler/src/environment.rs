@@ -40,6 +40,9 @@ impl Environment {
     }
 
     pub fn capture(&mut self, symbol_id: SymbolId) {
+        if self.parent.is_some() {
+            return;
+        }
         self.captures.insert(symbol_id);
     }
 
