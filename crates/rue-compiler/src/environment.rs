@@ -66,6 +66,10 @@ impl Environment {
         self.parent
     }
 
+    pub fn parent_mut(&mut self) -> &mut Option<EnvironmentId> {
+        &mut self.parent
+    }
+
     pub fn build(&self) -> IndexSet<SymbolId> {
         let mut symbol_ids = IndexSet::new();
         symbol_ids.extend(self.definitions.iter().copied());

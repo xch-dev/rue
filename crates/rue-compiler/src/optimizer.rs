@@ -116,21 +116,7 @@ impl<'a> Optimizer<'a> {
         let mut environment = Vec::new();
         let mut rest;
 
-        println!("Referencing {}", self.db.dbg_symbol(symbol_id));
-
         loop {
-            for symbol_id in self.db.env(env_id).definitions() {
-                println!("  Defining {}", self.db.dbg_symbol(symbol_id));
-            }
-
-            for symbol_id in self.db.env(env_id).captures() {
-                println!("  Capturing {}", self.db.dbg_symbol(symbol_id));
-            }
-
-            for symbol_id in self.db.env(env_id).parameters() {
-                println!("  Parameter {}", self.db.dbg_symbol(symbol_id));
-            }
-
             environment.extend(self.db.env(env_id).build());
             rest = self.db.env(env_id).rest();
 

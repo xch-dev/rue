@@ -214,16 +214,9 @@ impl<'a> GraphBuilder<'a> {
             .or_default()
             .insert(parent_scope_id);
 
-        let parent_environment_id = self.graph.environments[&parent_scope_id];
-
-        let child_environment_id = self
-            .db
-            .alloc_env(Environment::binding(parent_environment_id));
-
-        self.graph
-            .environments
-            .insert(child_scope_id, child_environment_id);
-
+        let parent_env_id = self.graph.environments[&parent_scope_id];
+        let child_env_id = self.db.alloc_env(Environment::binding(parent_env_id));
+        self.graph.environments.insert(child_scope_id, child_env_id);
         self.walk_hir(child_scope_id, hir_id);
     }
 

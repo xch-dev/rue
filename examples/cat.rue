@@ -131,14 +131,11 @@ fun main(
     };
 
     // Check whether the parent is a CAT or not.
-    let parent_is_cat = lineage_proof is LineageProof && {
-        let parent_coin_id = calculate_coin_id(
-            lineage_proof.parent_parent_coin_info,
-            cat_puzzle_hash(cat_info, lineage_proof.parent_inner_puzzle_hash),
-            lineage_proof.parent_amount,
-        );
-        my_coin.parent_coin_info == parent_coin_id
-    };
+    let parent_is_cat = lineage_proof is LineageProof && my_coin.parent_coin_info == calculate_coin_id(
+        lineage_proof.parent_parent_coin_info,
+        cat_puzzle_hash(cat_info, lineage_proof.parent_inner_puzzle_hash),
+        lineage_proof.parent_amount,
+    );
 
     // Calculate the new subtotal.
     let remainder = my_coin.amount - morph.sum;
