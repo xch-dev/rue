@@ -425,12 +425,6 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             p.bump();
             p.expect(SyntaxKind::Ident);
             p.finish();
-        } else if p.at(SyntaxKind::OpenBracket) {
-            p.start_at(checkpoint, SyntaxKind::IndexAccessExpr);
-            p.bump();
-            p.expect(SyntaxKind::Int);
-            p.expect(SyntaxKind::CloseBracket);
-            p.finish();
         } else if p.at(SyntaxKind::As) {
             p.start_at(checkpoint, SyntaxKind::CastExpr);
             p.bump();
@@ -601,16 +595,7 @@ fn ty(p: &mut Parser<'_>) {
     }
 
     loop {
-        if p.at(SyntaxKind::OpenBracket) {
-            p.start_at(checkpoint, SyntaxKind::ListType);
-            p.bump();
-            p.expect(SyntaxKind::CloseBracket);
-            p.finish();
-        } else if p.at(SyntaxKind::Question) {
-            p.start_at(checkpoint, SyntaxKind::NullableType);
-            p.bump();
-            p.finish();
-        } else if p.at(SyntaxKind::BitwiseOr) {
+        if p.at(SyntaxKind::BitwiseOr) {
             p.start_at(checkpoint, SyntaxKind::UnionType);
             p.bump();
             ty(p);

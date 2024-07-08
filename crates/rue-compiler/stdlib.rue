@@ -39,7 +39,7 @@ export enum Condition {
     CreateCoin = 51 {
         puzzle_hash: Bytes32,
         amount: Int,
-        memos?: Bytes[],
+        memos?: List<Bytes>,
     },
     ReserveFee = 52 {
         amount: Int,
@@ -111,11 +111,11 @@ export enum Condition {
     },
 }
 
-export fun concat<T>(a: T[], b: T[]) -> T[] {
-    if a is (T, T[]) {
+export fun concat<T>(a: List<T>, b: List<T>) -> List<T> {
+    if a is (T, List<T>) {
         return [a.first, ...concat(a.rest, b)];
     }
-    if b is (T, T[]) {
+    if b is (T, List<T>) {
         return [b.first, ...concat(a, b.rest)];
     }
     nil
@@ -172,7 +172,7 @@ inline fun update_hash_with_parameter(
     sha256(CONS_PREIMAGE_PREFIX + two_item_list_hash(quote_hash(parameter_hash), environment_hash))
 }
 
-fun curried_params_hash(parameters: Bytes32[]) -> Bytes32 {
+fun curried_params_hash(parameters: List<Bytes32>) -> Bytes32 {
     if parameters is Nil {
         return ONE_TREE_HASH;
     }
@@ -181,7 +181,7 @@ fun curried_params_hash(parameters: Bytes32[]) -> Bytes32 {
 
 export inline fun curry_tree_hash(
     mod_hash: Bytes32,
-    ...parameters: Bytes32[]
+    ...parameters: List<Bytes32>
 ) -> Bytes32 {
     apply_hash(mod_hash, curried_params_hash(parameters))
 }
@@ -196,14 +196,14 @@ export fun calculate_coin_id(
     sha256(parent_coin_id + puzzle_hash + amount as Bytes)
 }
 
-export fun map<T, U>(list: T[], fn: fun(item: T) -> U) -> U[] {
+export fun map<T, U>(list: List<T>, fn: fun(item: T) -> U) -> List<U> {
     if list is Nil {
         return nil;
     }
     [fn(list.first), ...map(list.rest, fn)]
 }
 
-export fun filter<T>(list: T[], fn: fun(item: T) -> Bool) -> T[] {
+export fun filter<T>(list: List<T>, fn: fun(item: T) -> Bool) -> List<T> {
     if list is Nil {
         return nil;
     }
@@ -213,7 +213,7 @@ export fun filter<T>(list: T[], fn: fun(item: T) -> Bool) -> T[] {
     filter(list.rest, fn)
 }
 
-export fun fold<T, U>(list: T[], initial: U, fn: fun(acc: U, item: T) -> U) -> U {
+export fun fold<T, U>(list: List<T>, initial: U, fn: fun(acc: U, item: T) -> U) -> U {
     if list is Nil {
         return initial;
     }

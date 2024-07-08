@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{value::Type, Comparison, Database, TypeId};
+use crate::{
+    value::{EnumType, EnumVariantType, FunctionType, PairType, StructType, Type},
+    Comparison, Database, TypeId,
+};
 
 #[derive(Debug)]
 struct ComparisonContext<'a> {
@@ -50,6 +53,14 @@ impl Database {
         )
     }
 
+    pub fn substitute_type(
+        &mut self,
+        type_id: TypeId,
+        substitutions: &HashMap<TypeId, TypeId>,
+    ) -> TypeId {
+        self.substitute_type_visitor(type_id, substitutions, &mut HashSet::new())
+    }
+
     pub fn first_type(&self, type_id: TypeId) -> Option<TypeId> {
         let Type::Pair(pair) = self.ty(type_id) else {
             return None;
@@ -64,25 +75,30 @@ impl Database {
         Some(pair.rest)
     }
 
-    pub fn non_nullable(&mut self, ty: TypeId) -> TypeId {
+    pub fn unwrap_optional(&mut self, ty: TypeId) -> TypeId {
         match self.ty(ty) {
-            Type::Nullable(inner) => self.non_nullable(*inner),
+            Type::Optional(inner) => self.unwrap_optional(*inner),
             _ => ty,
         }
     }
 
-    pub fn non_undefined(&mut self, ty: TypeId) -> TypeId {
-        match self.ty(ty) {
-            Type::Optional(inner) => self.non_undefined(*inner),
-            _ => ty,
-        }
-    }
+    pub fn flatten_union(&mut self, type_id: TypeId) -> Vec<TypeId> {
+        let mut visited = HashSet::new();
+        let mut stack = vec![type_id];
+        let mut result = Vec::new();
 
-    pub fn unwrap_list(&mut self, ty: TypeId) -> Option<TypeId> {
-        match self.ty(ty) {
-            Type::List(inner) => Some(*inner),
-            _ => None,
+        while let Some(type_id) = stack.pop() {
+            if !visited.insert(type_id) {
+                continue;
+            }
+
+            match self.ty(type_id) {
+                Type::Union(items) => stack.extend(items),
+                _ => result.push(type_id),
+            }
         }
+
+        result
     }
 
     #[allow(clippy::match_same_arms, clippy::too_many_lines)]
@@ -105,14 +121,14 @@ impl Database {
             (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
 
             // We need to apply substitutions.
-            (Type::Substitute(ty), _) => {
+            (Type::Lazy(ty), _) => {
                 ctx.substitution_stack.push(ty.substitutions.clone());
                 let result = self.compare_type_visitor(ty.type_id, rhs, ctx);
                 ctx.substitution_stack.pop().unwrap();
                 result
             }
 
-            (_, Type::Substitute(ty)) => {
+            (_, Type::Lazy(ty)) => {
                 ctx.substitution_stack.push(ty.substitutions.clone());
                 let result = self.compare_type_visitor(lhs, ty.type_id, ctx);
                 ctx.substitution_stack.pop().unwrap();
@@ -224,19 +240,6 @@ impl Database {
             (Type::Bytes32, Type::Bool) => Comparison::Unrelated,
             (Type::Bytes32, Type::Nil) => Comparison::Unrelated,
 
-            // These are the variants of the `Nullable` type.
-            (Type::Nil, Type::Nullable(..)) => Comparison::Assignable,
-            (Type::Nullable(lhs), Type::Nullable(rhs)) => {
-                self.compare_type_visitor(*lhs, *rhs, ctx)
-            }
-            (_, Type::Nullable(inner)) => self.compare_type_visitor(lhs, *inner, ctx),
-            (Type::Nullable(inner), Type::Bytes) => {
-                Comparison::Castable & self.compare_type_visitor(*inner, rhs, ctx)
-            }
-
-            // Special `Nullable` type.
-            (Type::Nullable(_inner), _) => Comparison::Unrelated,
-
             // Union types are equal if all of the variants are compatible.
             (Type::Union(items), _) => {
                 let mut result = Comparison::Equal;
@@ -261,42 +264,8 @@ impl Database {
                 first & rest
             }
 
-            // A `Pair` is a valid `List` if its first type is the same as the list's inner type
-            // and the rest is also a valid `List` of the same type.
-            // However, it's not considered equal but rather assignable.
-            (Type::Pair(pair), Type::List(inner)) => {
-                let inner = self.compare_type_visitor(pair.first, *inner, ctx);
-                let rest = self.compare_type_visitor(pair.rest, rhs, ctx);
-                Comparison::Assignable & inner & rest
-            }
-
-            // A `List` is not a valid pair since `Nil` is also a valid list.
-            // It's a `Superset` only if the opposite comparison is not `Unrelated`.
-            (Type::List(..), Type::Pair(..)) => {
-                Comparison::Superset & self.compare_type_visitor(rhs, lhs, ctx)
-            }
-
             // Nothing else can be assigned to or from a `Pair`.
             (Type::Pair(..), _) | (_, Type::Pair(..)) => Comparison::Unrelated,
-
-            // A `List` just compares with the inner type of another `List`.
-            (Type::List(lhs), Type::List(rhs)) => self.compare_type_visitor(*lhs, *rhs, ctx),
-
-            // `Nil` is a valid list.
-            (Type::Nil, Type::List(..)) => Comparison::Assignable,
-            (Type::List(..), Type::Nil) => Comparison::Superset,
-
-            // `List` is not compatible with atoms.
-            (Type::Bytes, Type::List(..)) => Comparison::Unrelated,
-            (Type::Bytes32, Type::List(..)) => Comparison::Unrelated,
-            (Type::PublicKey, Type::List(..)) => Comparison::Unrelated,
-            (Type::Int, Type::List(..)) => Comparison::Unrelated,
-            (Type::Bool, Type::List(..)) => Comparison::Unrelated,
-            (Type::List(..), Type::Bytes) => Comparison::Unrelated,
-            (Type::List(..), Type::Bytes32) => Comparison::Unrelated,
-            (Type::List(..), Type::PublicKey) => Comparison::Unrelated,
-            (Type::List(..), Type::Int) => Comparison::Unrelated,
-            (Type::List(..), Type::Bool) => Comparison::Unrelated,
 
             // A `Struct` is castable to others only if the fields are identical.
             (Type::Struct(lhs), Type::Struct(rhs)) => {
@@ -372,18 +341,169 @@ impl Database {
         ctx.visited.remove(&key);
         comparison
     }
+
+    fn substitute_type_visitor(
+        &mut self,
+        type_id: TypeId,
+        substitutions: &HashMap<TypeId, TypeId>,
+        visited: &mut HashSet<TypeId>,
+    ) -> TypeId {
+        if let Some(&substitution) = substitutions.get(&type_id) {
+            return substitution;
+        }
+
+        if !visited.insert(type_id) {
+            return type_id;
+        }
+
+        match self.ty(type_id).clone() {
+            Type::Alias(..) | Type::Ref(..) => unreachable!(),
+            Type::Int
+            | Type::Any
+            | Type::Bool
+            | Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Nil
+            | Type::Unknown
+            | Type::Generic => type_id,
+            Type::Lazy(lazy) => {
+                let mut new_substitutions = lazy.substitutions;
+                new_substitutions.extend(substitutions);
+                self.substitute_type_visitor(lazy.type_id, &new_substitutions, visited)
+            }
+            Type::Union(items) => {
+                let new_items = items
+                    .iter()
+                    .map(|item| self.substitute_type_visitor(*item, substitutions, visited))
+                    .collect();
+                if new_items == items {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Union(new_items))
+                }
+            }
+            Type::Optional(inner_type_id) => {
+                let new_inner = self.substitute_type_visitor(inner_type_id, substitutions, visited);
+                if new_inner == inner_type_id {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Optional(new_inner))
+                }
+            }
+            Type::Pair(pair) => {
+                let new_pair = PairType {
+                    first: self.substitute_type_visitor(pair.first, substitutions, visited),
+                    rest: self.substitute_type_visitor(pair.rest, substitutions, visited),
+                };
+                if new_pair == pair {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Pair(new_pair))
+                }
+            }
+            Type::Function(function) => {
+                let new_function = FunctionType {
+                    generic_types: function.generic_types.clone(),
+                    param_types: function
+                        .param_types
+                        .iter()
+                        .map(|param| self.substitute_type_visitor(*param, substitutions, visited))
+                        .collect(),
+                    return_type: self.substitute_type_visitor(
+                        function.return_type,
+                        substitutions,
+                        visited,
+                    ),
+                    rest: function.rest,
+                };
+                if new_function == function {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Function(new_function))
+                }
+            }
+            Type::Struct(struct_type) => {
+                let new_struct = StructType {
+                    original_type_id: struct_type.original_type_id,
+                    fields: struct_type
+                        .fields
+                        .iter()
+                        .map(|(name, field)| {
+                            (
+                                name.clone(),
+                                self.substitute_type_visitor(*field, substitutions, visited),
+                            )
+                        })
+                        .collect(),
+                    rest: struct_type.rest,
+                };
+                if new_struct == struct_type {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Struct(new_struct))
+                }
+            }
+            Type::Enum(enum_type) => {
+                let new_enum = EnumType {
+                    variants: enum_type
+                        .variants
+                        .iter()
+                        .map(|(name, variant)| {
+                            (
+                                name.clone(),
+                                self.substitute_type_visitor(*variant, substitutions, visited),
+                            )
+                        })
+                        .collect(),
+                    has_fields: enum_type.has_fields,
+                };
+                if new_enum == enum_type {
+                    type_id
+                } else {
+                    self.alloc_type(Type::Enum(new_enum))
+                }
+            }
+            Type::EnumVariant(enum_variant) => {
+                let new_variant = EnumVariantType {
+                    enum_type: enum_variant.enum_type,
+                    original_type_id: enum_variant.original_type_id,
+                    fields: enum_variant.fields.as_ref().map(|fields| {
+                        fields
+                            .iter()
+                            .map(|(name, field)| {
+                                (
+                                    name.clone(),
+                                    self.substitute_type_visitor(*field, substitutions, visited),
+                                )
+                            })
+                            .collect()
+                    }),
+                    discriminant: enum_variant.discriminant.clone(),
+                    rest: enum_variant.rest,
+                };
+                if new_variant == enum_variant {
+                    type_id
+                } else {
+                    self.alloc_type(Type::EnumVariant(new_variant))
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use indexmap::IndexMap;
+    use num_bigint::BigInt;
+    use num_traits::Zero;
 
     use crate::{
         compiler::{builtins, Builtins},
         scope::Scope,
         value::{
-            AliasType, EnumType, EnumVariantType, FunctionType, PairType, Rest, StructType,
-            SubstitutionType,
+            AliasType, EnumType, EnumVariantType, FunctionType, LazyType, PairType, Rest,
+            StructType,
         },
     };
 
@@ -410,25 +530,28 @@ mod tests {
         let a = db.alloc_type(Type::Generic);
         let b = db.alloc_type(Type::Generic);
 
-        let a_list = db.alloc_type(Type::List(a));
+        let a_pair = db.alloc_type(Type::Pair(PairType { first: a, rest: a }));
 
         let function = db.alloc_type(Type::Function(FunctionType {
-            param_types: vec![a_list],
+            param_types: vec![a_pair],
             rest: Rest::Nil,
             return_type: b,
             generic_types: vec![a, b],
         }));
 
-        let int_list = db.alloc_type(Type::List(ty.int));
+        let int_pair = db.alloc_type(Type::Pair(PairType {
+            first: ty.int,
+            rest: ty.int,
+        }));
 
         let substitutions = [(a, ty.int), (b, ty.bool)].into_iter().collect();
-        let substituted = db.alloc_type(Type::Substitute(SubstitutionType {
+        let substituted = db.alloc_type(Type::Lazy(LazyType {
             type_id: function,
             substitutions,
         }));
 
         let expected = db.alloc_type(Type::Function(FunctionType {
-            param_types: vec![int_list],
+            param_types: vec![int_pair],
             rest: Rest::Nil,
             return_type: ty.bool,
             generic_types: vec![a, b],
@@ -515,9 +638,7 @@ mod tests {
 
     #[test]
     fn test_nil_type() {
-        let (mut db, ty) = setup();
-
-        let list = db.alloc_type(Type::List(ty.int));
+        let (db, ty) = setup();
         assert_eq!(db.compare_type(ty.nil, ty.int), Comparison::Castable);
         assert_eq!(db.compare_type(ty.nil, ty.bool), Comparison::Castable);
         assert_eq!(db.compare_type(ty.nil, ty.bytes), Comparison::Assignable);
@@ -526,7 +647,6 @@ mod tests {
             db.compare_type(ty.nil, ty.public_key),
             Comparison::Unrelated
         );
-        assert_eq!(db.compare_type(ty.nil, list), Comparison::Assignable);
     }
 
     #[test]
@@ -567,45 +687,6 @@ mod tests {
         assert_eq!(
             db.compare_type(bytes32_bytes, bytes_pair),
             Comparison::Equal
-        );
-    }
-
-    #[test]
-    fn test_list_types() {
-        let (mut db, ty) = setup();
-
-        let int_list = db.alloc_type(Type::List(ty.int));
-        assert_eq!(db.compare_type(int_list, int_list), Comparison::Equal);
-
-        let pair_list = db.alloc_type(Type::Pair(PairType {
-            first: ty.int,
-            rest: int_list,
-        }));
-        assert_eq!(db.compare_type(pair_list, int_list), Comparison::Assignable);
-        assert_eq!(db.compare_type(int_list, pair_list), Comparison::Superset);
-
-        let pair_nil = db.alloc_type(Type::Pair(PairType {
-            first: ty.int,
-            rest: ty.nil,
-        }));
-        assert_eq!(db.compare_type(pair_nil, int_list), Comparison::Assignable);
-
-        let pair_unrelated_first = db.alloc_type(Type::Pair(PairType {
-            first: pair_list,
-            rest: ty.nil,
-        }));
-        assert_eq!(
-            db.compare_type(pair_unrelated_first, int_list),
-            Comparison::Unrelated
-        );
-
-        let pair_unrelated_rest = db.alloc_type(Type::Pair(PairType {
-            first: ty.int,
-            rest: ty.int,
-        }));
-        assert_eq!(
-            db.compare_type(pair_unrelated_rest, int_list),
-            Comparison::Unrelated
         );
     }
 
@@ -652,7 +733,7 @@ mod tests {
             enum_type,
             original_type_id: variant,
             fields: Some(fields(&[ty.int])),
-            discriminant: ty.unknown_hir,
+            discriminant: BigInt::zero(),
             rest: Rest::Nil,
         });
 
@@ -692,19 +773,22 @@ mod tests {
             Comparison::Superset
         );
 
-        let int_list = db.alloc_type(Type::List(ty.int));
-        let int_list_to_bool = db.alloc_type(Type::Function(FunctionType {
-            param_types: vec![int_list],
+        let int_pair = db.alloc_type(Type::Pair(PairType {
+            first: ty.int,
+            rest: ty.int,
+        }));
+        let int_pair_to_bool = db.alloc_type(Type::Function(FunctionType {
+            param_types: vec![int_pair],
             rest: Rest::Nil,
             return_type: ty.bool,
             generic_types: Vec::new(),
         }));
         assert_eq!(
-            db.compare_type(int_to_bool, int_list_to_bool),
+            db.compare_type(int_to_bool, int_pair_to_bool),
             Comparison::Unrelated
         );
         assert_eq!(
-            db.compare_type(int_list_to_bool, int_to_bool),
+            db.compare_type(int_pair_to_bool, int_to_bool),
             Comparison::Unrelated
         );
     }

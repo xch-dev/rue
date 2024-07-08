@@ -132,7 +132,6 @@ pub enum ErrorKind {
     // Enum variant definitions.
     DuplicateEnumVariant(String),
     DuplicateEnumDiscriminant(String),
-    EnumDiscriminantTooLarge,
 
     // Paths.
     UnknownEnumVariantPath(String),
@@ -282,7 +281,6 @@ impl fmt::Display for ErrorKind {
             // Enum variant definitions.
             Self::DuplicateEnumVariant(name) => format!("Duplicate enum variant `{name}` specified."),
             Self::DuplicateEnumDiscriminant(discriminant) => format!("Duplicate enum discriminant `{discriminant}` specified."),
-            Self::EnumDiscriminantTooLarge => "Enum discriminant is too large to allocate in CLVM.".to_string(),
 
             // Paths.
             Self::UnknownEnumVariantPath(name) => format!("Unknown enum variant `{name}`."),

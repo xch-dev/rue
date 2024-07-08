@@ -1,3 +1,4 @@
+mod atom;
 mod codegen;
 mod compiler;
 mod database;
@@ -30,7 +31,7 @@ pub struct Output {
 }
 
 pub fn compile(allocator: &mut Allocator, root: &Root, mut should_codegen: bool) -> Output {
-    let mut db = Database::default();
+    let mut db = Database::new();
     let mut ctx = setup_compiler(&mut db);
 
     let stdlib = load_standard_library(&mut ctx);

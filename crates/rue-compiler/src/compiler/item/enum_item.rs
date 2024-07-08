@@ -7,7 +7,6 @@ use rue_parser::EnumItem;
 
 use crate::{
     compiler::Compiler,
-    hir::Hir,
     value::{EnumType, EnumVariantType, Type},
     ErrorKind, TypeId,
 };
@@ -131,18 +130,6 @@ impl Compiler<'_> {
                 highest_discriminant = Some(BigInt::zero());
                 BigInt::zero()
             };
-
-            let atom = Self::bigint_to_bytes(discriminant).unwrap_or_else(|| {
-                self.db.error(
-                    ErrorKind::EnumDiscriminantTooLarge,
-                    variant
-                        .discriminant()
-                        .map_or(name.text_range(), |token| token.text_range()),
-                );
-                Vec::new()
-            });
-
-            let discriminant = self.db.alloc_hir(Hir::Atom(atom));
 
             // Update the variant to use the real `EnumVariant` type.
             *self.db.ty_mut(variant_type_id) = Type::EnumVariant(EnumVariantType {

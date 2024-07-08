@@ -17,6 +17,7 @@ use crate::{
 
 mod block;
 mod builtins;
+mod constraint;
 mod context;
 mod expr;
 mod item;
@@ -138,9 +139,9 @@ impl<'a> Compiler<'a> {
             Type::Ref(..) | Type::Alias(..) => unreachable!(),
             Type::Unknown => "{unknown}".to_string(),
             Type::Generic => "{generic}".to_string(),
-            Type::Substitute(subtitute) => {
+            Type::Lazy(subtitute) => {
                 let inner = self.type_name_visitor(subtitute.type_id, stack);
-                format!("{{substitute {inner}}}")
+                format!("{{lazy {inner}}}")
             }
             Type::Nil => "Nil".to_string(),
             Type::Any => "Any".to_string(),
@@ -156,10 +157,6 @@ impl<'a> Compiler<'a> {
                     .collect();
 
                 format!("({})", items.join(" | "))
-            }
-            Type::List(items) => {
-                let inner = self.type_name_visitor(*items, stack);
-                format!("{inner}[]")
             }
             Type::Pair(PairType { first, rest }) => {
                 let first = self.type_name_visitor(*first, stack);
@@ -222,10 +219,6 @@ impl<'a> Compiler<'a> {
 
                 format!("fun({}) -> {}", params.join(", "), ret)
             }
-            Type::Nullable(ty) => {
-                let inner = self.type_name_visitor(*ty, stack);
-                format!("{inner}?")
-            }
             Type::Optional(ty) => {
                 let inner = self.type_name_visitor(*ty, stack);
                 format!("optional {inner}")
@@ -287,6 +280,43 @@ impl<'a> Compiler<'a> {
             Mutation::None => hir_id,
             Mutation::UnwrapOptional => self.db.alloc_hir(Hir::Op(Op::First, hir_id)),
         }
+    }
+
+    pub fn list_inner_type(&mut self, type_id: TypeId) -> Option<TypeId> {
+        let items = self.db.flatten_union(type_id);
+
+        if items.len() != 2 {
+            return None;
+        }
+
+        let first = items[0];
+        let second = items[1];
+
+        let pair = if self
+            .db
+            .compare_type(first, self.builtins.nil)
+            .is_assignable()
+        {
+            second
+        } else if self
+            .db
+            .compare_type(second, self.builtins.nil)
+            .is_assignable()
+        {
+            first
+        } else {
+            return None;
+        };
+
+        let Type::Pair(pair) = self.db.ty(pair) else {
+            return None;
+        };
+
+        if !self.db.compare_type(pair.rest, type_id).is_equal() {
+            return None;
+        }
+
+        Some(pair.first)
     }
 
     fn scope(&self) -> &Scope {

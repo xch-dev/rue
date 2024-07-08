@@ -188,7 +188,7 @@ impl Compiler<'_> {
         {
             if let Some(guard_path) = rhs.guard_path {
                 let then_type = self.builtins.nil;
-                let else_type = self.db.non_nullable(rhs.type_id);
+                let else_type = self.db.unwrap_optional(rhs.type_id);
                 value.guards.insert(
                     guard_path,
                     Guard::new(TypeOverride::new(then_type), TypeOverride::new(else_type)),
@@ -203,7 +203,7 @@ impl Compiler<'_> {
         {
             if let Some(guard_path) = lhs.guard_path.clone() {
                 let then_type = self.builtins.nil;
-                let else_type = self.db.non_nullable(lhs.type_id);
+                let else_type = self.db.unwrap_optional(lhs.type_id);
                 value.guards.insert(
                     guard_path,
                     Guard::new(TypeOverride::new(then_type), TypeOverride::new(else_type)),

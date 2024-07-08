@@ -2,6 +2,7 @@ use rowan::TextRange;
 use rue_parser::PathItem;
 
 use crate::{
+    atom::int_to_atom,
     compiler::{
         path::{Path, PathKind},
         Compiler,
@@ -49,11 +50,13 @@ impl Compiler<'_> {
                         );
                     }
 
-                    let Type::Enum(enum_type) = self.db.ty(variant_type.enum_type) else {
+                    let Type::Enum(enum_type) = self.db.ty(variant_type.enum_type).clone() else {
                         unreachable!();
                     };
 
-                    let mut hir_id = variant_type.discriminant;
+                    let mut hir_id = self
+                        .db
+                        .alloc_hir(Hir::Atom(int_to_atom(variant_type.discriminant)));
 
                     if enum_type.has_fields {
                         hir_id = self.db.alloc_hir(Hir::Pair(hir_id, self.builtins.nil_hir));

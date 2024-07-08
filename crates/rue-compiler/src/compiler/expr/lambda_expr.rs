@@ -7,7 +7,7 @@ use crate::{
     hir::Hir,
     scope::Scope,
     symbol::{Function, Symbol},
-    value::{FunctionType, Rest, SubstitutionType, Type, Value},
+    value::{FunctionType, Rest, Type, Value},
     ErrorKind, TypeId,
 };
 
@@ -84,10 +84,7 @@ impl Compiler<'_> {
 
             // Substitute generic types in the parameter type.
             if !substitutions.is_empty() {
-                type_id = self.db.alloc_type(Type::Substitute(SubstitutionType {
-                    type_id,
-                    substitutions: substitutions.clone(),
-                }));
+                type_id = self.db.substitute_type(type_id, &substitutions);
             }
 
             param_types.push(type_id);

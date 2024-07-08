@@ -89,33 +89,33 @@ impl Compiler<'_> {
                     hir_id,
                 ))
             }
-            (Type::List(inner), Type::Pair(PairType { first, rest })) => {
-                if !self.db.compare_type(first, inner).is_equal() {
-                    self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
-                }
+            // (Type::List(inner), Type::Pair(PairType { first, rest })) => {
+            //     if !self.db.compare_type(first, inner).is_equal() {
+            //         self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
+            //     }
 
-                if !self.db.compare_type(rest, from).is_equal() {
-                    self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
-                }
+            //     if !self.db.compare_type(rest, from).is_equal() {
+            //         self.db.error(ErrorKind::NonListPairTypeGuard, text_range);
+            //     }
 
-                let hir_id = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
-                Some((
-                    Guard::new(TypeOverride::new(to), TypeOverride::new(self.builtins.nil)),
-                    hir_id,
-                ))
-            }
-            (Type::List(inner), Type::Nil) => {
-                let pair_type = self.db.alloc_type(Type::Pair(PairType {
-                    first: inner,
-                    rest: from,
-                }));
-                let is_cons = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
-                let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, is_cons));
-                Some((
-                    Guard::new(TypeOverride::new(to), TypeOverride::new(pair_type)),
-                    hir_id,
-                ))
-            }
+            //     let hir_id = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
+            //     Some((
+            //         Guard::new(TypeOverride::new(to), TypeOverride::new(self.builtins.nil)),
+            //         hir_id,
+            //     ))
+            // }
+            // (Type::List(inner), Type::Nil) => {
+            //     let pair_type = self.db.alloc_type(Type::Pair(PairType {
+            //         first: inner,
+            //         rest: from,
+            //     }));
+            //     let is_cons = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
+            //     let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, is_cons));
+            //     Some((
+            //         Guard::new(TypeOverride::new(to), TypeOverride::new(pair_type)),
+            //         hir_id,
+            //     ))
+            // }
             (Type::Bytes, Type::Bytes32) => {
                 let strlen = self.db.alloc_hir(Hir::Op(Op::Strlen, hir_id));
                 let length = self.db.alloc_hir(Hir::Atom(vec![32]));

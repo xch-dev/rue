@@ -13,7 +13,6 @@ mod function_call_expr;
 mod group_expr;
 mod guard_expr;
 mod if_expr;
-mod index_access_expr;
 mod initializer_expr;
 mod lambda_expr;
 mod list_expr;
@@ -35,7 +34,7 @@ impl Compiler<'_> {
             }
             Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
-            Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
+            Expr::ListExpr(list) => self.compile_list_expr(list), // TODO: Type inference.
             Expr::PairExpr(pair) => self.compile_pair_expr(pair, expected_type),
             Expr::Block(block) => self.compile_block_expr(block, expected_type),
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
@@ -47,7 +46,6 @@ impl Compiler<'_> {
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
             Expr::FunctionCallExpr(call) => self.compile_function_call_expr(call),
             Expr::FieldAccessExpr(field_access) => self.compile_field_access_expr(field_access),
-            Expr::IndexAccessExpr(index_access) => self.compile_index_access_expr(index_access),
             Expr::ExistsExpr(exists) => self.compile_exists_expr(exists),
         };
 

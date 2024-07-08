@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
+use num_bigint::BigInt;
 
-use crate::{
-    database::{HirId, TypeId},
-    ScopeId,
-};
+use crate::{database::TypeId, ScopeId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -20,15 +18,13 @@ pub enum Type {
     PublicKey,
     Pair(PairType),
     Union(Vec<TypeId>),
-    List(TypeId),
     Struct(StructType),
     Enum(EnumType),
     EnumVariant(EnumVariantType),
     Function(FunctionType),
     Alias(AliasType),
     Ref(TypeId),
-    Substitute(SubstitutionType),
-    Nullable(TypeId),
+    Lazy(LazyType),
     Optional(TypeId),
 }
 
@@ -40,7 +36,7 @@ pub struct AliasType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SubstitutionType {
+pub struct LazyType {
     pub type_id: TypeId,
     pub substitutions: HashMap<TypeId, TypeId>,
 }
@@ -70,7 +66,7 @@ pub struct EnumVariantType {
     pub original_type_id: TypeId,
     pub fields: Option<IndexMap<String, TypeId>>,
     pub rest: Rest,
-    pub discriminant: HirId,
+    pub discriminant: BigInt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

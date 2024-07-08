@@ -6,7 +6,7 @@ use rue_parser::{AstNode, FunctionCallExpr};
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    value::{FunctionType, Rest, SubstitutionType, Type, Value},
+    value::{FunctionType, Rest, Type, Value},
     ErrorKind,
 };
 
@@ -60,7 +60,7 @@ impl Compiler<'_> {
                 if i < ty.param_types.len() {
                     Some(ty.param_types[i])
                 } else if ty.rest == Rest::Spread {
-                    self.db.unwrap_list(*ty.param_types.last().unwrap())
+                    self.list_inner_type(*ty.param_types.last().unwrap())
                 } else {
                     None
                 }
@@ -102,7 +102,7 @@ impl Compiler<'_> {
                 }
             } else if function.rest == Rest::Spread && i >= function.param_types.len() - 1 {
                 if let Some(inner_list_type) =
-                    self.db.unwrap_list(*function.param_types.last().unwrap())
+                    self.list_inner_type(*function.param_types.last().unwrap())
                 {
                     self.type_check(type_id, inner_list_type, call_args[i].syntax().text_range());
                 } else if i == function.param_types.len() - 1 && !spread {
@@ -126,14 +126,10 @@ impl Compiler<'_> {
             function_type.map_or(self.builtins.unknown, |expected| expected.return_type);
 
         if !generic_types.is_empty() {
-            type_id = self.db.alloc_type(Type::Substitute(SubstitutionType {
-                type_id,
-                substitutions: generic_types,
-            }));
+            type_id = self.db.substitute_type(type_id, &generic_types);
         }
 
         // Build the HIR for the function call.
-
         let hir_id = self.db.alloc_hir(Hir::FunctionCall(
             callee.map_or(self.builtins.unknown_hir, |callee| callee.hir_id),
             args.iter().map(|arg| arg.hir_id).collect(),
@@ -169,8 +165,7 @@ impl Compiler<'_> {
             }
             Rest::Spread => {
                 if self
-                    .db
-                    .unwrap_list(*function.param_types.last().unwrap())
+                    .list_inner_type(*function.param_types.last().unwrap())
                     .is_some()
                 {
                     if length < function.param_types.len() - 1 {

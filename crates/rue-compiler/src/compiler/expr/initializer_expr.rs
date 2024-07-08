@@ -5,6 +5,7 @@ use rowan::TextRange;
 use rue_parser::{AstNode, InitializerExpr, InitializerField};
 
 use crate::{
+    atom::int_to_atom,
     compiler::Compiler,
     hir::Hir,
     value::{Rest, Type, Value},
@@ -40,9 +41,11 @@ impl Compiler<'_> {
                         initializer.syntax().text_range(),
                     );
 
-                    let hir_id = self
+                    let discriminant = self
                         .db
-                        .alloc_hir(Hir::Pair(enum_variant.discriminant, fields_hir_id));
+                        .alloc_hir(Hir::Atom(int_to_atom(enum_variant.discriminant)));
+
+                    let hir_id = self.db.alloc_hir(Hir::Pair(discriminant, fields_hir_id));
 
                     match ty {
                         Some(struct_type) => Value::new(hir_id, struct_type),
@@ -94,7 +97,7 @@ impl Compiler<'_> {
                 && struct_fields.get_index_of(name.text()) == Some(struct_fields.len() - 1)
             {
                 optional |= matches!(self.db.ty(value.type_id), Type::Optional(..));
-                value.type_id = self.db.non_undefined(value.type_id);
+                value.type_id = self.db.unwrap_optional(value.type_id);
             }
 
             // Check the type of the field initializer.

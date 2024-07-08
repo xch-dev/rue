@@ -97,7 +97,6 @@ ast_enum!(
     IfExpr,
     FunctionCallExpr,
     FieldAccessExpr,
-    IndexAccessExpr,
     ExistsExpr
 );
 ast_node!(PathExpr);
@@ -116,28 +115,16 @@ ast_node!(IfExpr);
 ast_node!(FunctionCallExpr);
 ast_node!(FunctionCallArg);
 ast_node!(FieldAccessExpr);
-ast_node!(IndexAccessExpr);
 ast_node!(ExistsExpr);
 
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
 
-ast_enum!(
-    Type,
-    PathType,
-    ListType,
-    PairType,
-    FunctionType,
-    NullableType,
-    UnionType
-);
+ast_enum!(Type, PathType, PairType, FunctionType, UnionType);
 ast_node!(PathType);
-ast_node!(ListType);
-ast_node!(ListTypeItem);
 ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
-ast_node!(NullableType);
 ast_node!(UnionType);
 
 ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt, AssumeStmt);
@@ -829,19 +816,6 @@ impl FieldAccessExpr {
     }
 }
 
-impl IndexAccessExpr {
-    pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
-    }
-
-    pub fn index(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Int)
-    }
-}
-
 impl ExistsExpr {
     pub fn expr(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
@@ -854,25 +828,6 @@ impl PathType {
             .children()
             .filter_map(PathItem::cast)
             .collect()
-    }
-}
-
-impl ListType {
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
-    }
-}
-
-impl ListTypeItem {
-    pub fn spread(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Spread)
-    }
-
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
     }
 }
 
@@ -921,12 +876,6 @@ impl FunctionTypeParam {
             .find(|token| token.kind() == SyntaxKind::Spread)
     }
 
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
-    }
-}
-
-impl NullableType {
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }

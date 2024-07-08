@@ -4,7 +4,7 @@ use rue_parser::{AstNode, PathItem};
 
 use crate::{
     symbol::Symbol,
-    value::{SubstitutionType, Type},
+    value::{LazyType, Type},
     ErrorKind, SymbolId, TypeId,
 };
 
@@ -119,7 +119,7 @@ impl Compiler<'_> {
                 substitutions.insert(*generic_type, type_id);
             }
 
-            let type_id = self.db.alloc_type(Type::Substitute(SubstitutionType {
+            let type_id = self.db.alloc_type(Type::Lazy(LazyType {
                 type_id: alias_type.type_id,
                 substitutions,
             }));
