@@ -15,6 +15,7 @@ pub enum Hir {
     FunctionCall(HirId, Vec<HirId>, bool),
     Op(Op, HirId),
     BinaryOp(BinOp, HirId, HirId),
+    Substr(HirId, HirId, HirId),
     Raise(Option<HirId>),
     If(HirId, HirId, HirId),
 }

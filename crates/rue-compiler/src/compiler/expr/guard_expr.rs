@@ -195,6 +195,23 @@ impl Compiler<'_> {
                     hir_id,
                 ))
             }
+            (Type::Nullable(inner), Type::Nil) => {
+                let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, hir_id));
+
+                Some((
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(inner)),
+                    hir_id,
+                ))
+            }
+            (Type::Nullable(inner), _) if self.db.compare_type(to, inner).is_equal() => {
+                let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, hir_id));
+                let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, hir_id));
+
+                Some((
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(inner)),
+                    hir_id,
+                ))
+            }
             _ => {
                 self.db.error(
                     ErrorKind::UnsupportedTypeGuard(self.type_name(from), self.type_name(to)),

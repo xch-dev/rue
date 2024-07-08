@@ -165,6 +165,12 @@ impl Database {
                 Op::PubkeyForExp => format!("PubkeyForExp({})", self.dbg_hir(*hir_id)),
                 Op::BitwiseNot => format!("BitwiseNot({})", self.dbg_hir(*hir_id)),
             },
+            Hir::Substr(start, end, string) => format!(
+                "Substr({}, {}, {})",
+                self.dbg_hir(*start),
+                self.dbg_hir(*end),
+                self.dbg_hir(*string)
+            ),
             Hir::Raise(hir_id) => format!(
                 "Raise({})",
                 hir_id

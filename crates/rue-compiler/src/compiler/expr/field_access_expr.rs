@@ -59,9 +59,11 @@ impl Compiler<'_> {
                         type_id = self.db.alloc_type(Type::Optional(type_id));
                     }
 
+                    let fields_hir_id = self.db.alloc_hir(Hir::Op(Op::Rest, old_value.hir_id));
+
                     Value::new(
                         self.compile_index(
-                            old_value.hir_id,
+                            fields_hir_id,
                             index,
                             index == fields.len() - 1 && variant_type.rest != Rest::Nil,
                         ),

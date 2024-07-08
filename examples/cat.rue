@@ -1,0 +1,269 @@
+// This puzzle has not been audited or tested, and is for example purposes only.
+
+// Information about the CAT, used for currying purposes.
+struct CatInfo {
+    mod_hash: Bytes32,
+    mod_hash_hash: Bytes32,
+    asset_id: Bytes32,
+}
+
+// The puzzle section of the CAT's truths.
+struct PuzzleTruths {
+    inner_puzzle_hash: Bytes32,
+    ...cat_info: CatInfo,
+}
+
+// The coin section of the CAT's truths.
+struct CoinTruths {
+    my_coin_id: Bytes32,
+    ...my_coin: Coin,
+}
+
+// The full truth struct for the CAT puzzle.
+struct Truths {
+    puzzle_truths: PuzzleTruths,
+    ...coin_truths: CoinTruths,
+}
+
+// The TAIL puzzle itself.
+type Tail = fun(
+    truths: Truths,
+    parent_is_cat: Bool,
+    lineage_proof: LineageProof?,
+    extra_delta: Int,
+    conditions: Condition[],
+    tail_solution: Any[],
+) -> Condition[];
+
+// Information about the TAIL reveal.
+// This is revealed with `RunTailCondition`.
+struct TailInfo {
+    tail_puzzle: Tail,
+    tail_solution: Any[],
+}
+
+// A custom condition `(51 () -113 tail_puzzle tail_solution)`.
+// We can check `Condition::CreateCoin` then cast to this type instead.
+struct RunTailCondition {
+    opcode: Int,
+    puzzle_hash: Nil,
+    amount: Int,
+    tail_puzzle: Tail,
+    tail_solution: Any[],
+}
+
+// Information about the current coin.
+struct Coin {
+    parent_coin_info: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+// Proof that the coin is a CAT with the same asset id.
+struct CoinProof {
+    parent_coin_info: Bytes32,
+    inner_puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+// Proof that the parent coin is a CAT with the same asset id.
+struct LineageProof {
+    parent_parent_coin_info: Bytes32,
+    parent_inner_puzzle_hash: Bytes32,
+    parent_amount: Int,
+}
+
+// The byte prepended to announcements.
+// Inner puzzle announcements must not start with this byte.
+inline const RING_MORPH_BYTE: Bytes = 0xcb;
+
+// Calculate the full CAT puzzle hash with curried parameters.
+inline fun cat_puzzle_hash(cat_info: CatInfo, inner_puzzle_hash: Bytes32) -> Bytes32 {
+    curry_tree_hash(
+        cat_info.mod_hash,
+        cat_info.mod_hash_hash,
+        tree_hash_atom(cat_info.asset_id),
+        inner_puzzle_hash
+    )
+}
+
+fun main(
+    mod_hash: Bytes32,
+    asset_id: Bytes32,
+    inner_puzzle: fun(...solution: Any) -> Condition[],
+    inner_solution: Any,
+    lineage_proof: LineageProof?,
+    prev_coin_id: Bytes32,
+    my_coin: Coin,
+    next_coin_proof: CoinProof,
+    prev_subtotal: Int,
+    extra_delta: Int,
+) -> Condition[] {
+    // For simplicity, we'll pack these values into a struct.
+    let cat_info = CatInfo {
+        mod_hash: mod_hash,
+        mod_hash_hash: tree_hash_atom(mod_hash),
+        asset_id: asset_id,
+    };
+
+    // Calculate the inner puzzle hash and conditions.
+    let morph = morph_conditions(inner_puzzle(...inner_solution), cat_info, nil);
+    let inner_puzzle_hash = tree_hash(inner_puzzle);
+    
+    // Calculate coin ids.
+    let my_coin_id = calculate_coin_id(my_coin.parent_coin_info, my_coin.puzzle_hash, my_coin.amount);
+    let next_coin_id = calculate_coin_id(
+        next_coin_proof.parent_coin_info,
+        cat_puzzle_hash(cat_info, next_coin_proof.inner_puzzle_hash),
+        next_coin_proof.amount,
+    );
+
+    // Create the CAT Truth struct.
+    let truths = Truths {
+        puzzle_truths: PuzzleTruths {
+            inner_puzzle_hash: inner_puzzle_hash,
+            cat_info: cat_info,
+        },
+        coin_truths: CoinTruths {
+            my_coin_id: my_coin_id,
+            my_coin: my_coin,
+        },
+    };
+
+    // Check whether the parent is a CAT or not.
+    let parent_is_cat = lineage_proof is LineageProof && my_coin.parent_coin_info == calculate_coin_id(
+        lineage_proof.parent_parent_coin_info,
+        cat_puzzle_hash(cat_info, lineage_proof.parent_inner_puzzle_hash),
+        lineage_proof.parent_amount,
+    );
+
+    // Calculate the new subtotal.
+    let remainder = my_coin.amount - morph.sum;
+    let subtotal = prev_subtotal + remainder + extra_delta;
+
+    // Prepend the ring conditions to the morphed conditions.
+    // This ensures that the previous and next CATs are linked.
+    // When they form a ring like this, you can be sure the supply isn't changed.
+    let conditions: Condition[] = [
+        Condition::CreateCoinAnnouncement {
+            message: RING_MORPH_BYTE + tree_hash([prev_coin_id, prev_subtotal] as Any[]),
+        },
+        Condition::AssertCoinAnnouncement {
+            announcement_id: sha256(next_coin_id + RING_MORPH_BYTE + tree_hash([my_coin_id, subtotal] as Any[])),
+        },
+        ...morph.conditions,
+    ];
+
+    let final_conditions = if morph.tail_info is TailInfo {
+        // Make sure the asset id matches the revealed TAIL.
+        assert tree_hash(morph.tail_info.tail_puzzle) == asset_id;
+
+        // Run the TAIL puzzle with its solution.
+        // It also has access to various information about the CAT spend.
+        let tail_conditions = morph.tail_info.tail_puzzle(
+            truths,
+            parent_is_cat,
+            lineage_proof,
+            extra_delta,
+            conditions,
+            morph.tail_info.tail_solution
+        );
+
+        // Prepend the TAIL's conditions.
+        concat(tail_conditions, conditions)
+    } else {
+        // If there's no TAIL, make sure the extra delta is zero.
+        // It must have a parent that is also a CAT.
+        assert parent_is_cat && extra_delta == 0;
+
+        // Output the conditions as they are.
+        conditions
+    };
+
+    [
+        // Make sure that the coin is correct.
+        Condition::AssertMyCoinId { coin_id: my_coin_id },
+
+        // Output the other conditions as well.
+        ...final_conditions,
+    ]
+}
+
+struct Morph {
+    // The morphed conditions.
+    conditions: Condition[],
+
+    // The total amount of coins created.
+    sum: Int,
+
+    // Information about the TAIL, revealed in the conditions.
+    tail_info: TailInfo?,
+}
+
+// Morph all of the conditions and extract the TAIL info.
+fun morph_conditions(
+    conditions: Condition[],
+    cat_info: CatInfo,
+    tail_info: TailInfo?,
+) -> Morph {
+    // If there are no conditions, return an empty morph.
+    if conditions is Nil {
+        return Morph {
+            conditions: nil,
+            sum: 0,
+            tail_info: tail_info,
+        };
+    }
+
+    let condition = conditions.first;
+
+    if condition is Condition::CreateCoin {
+        // If the amount is -113, it's a TAIL reveal.
+        if condition.amount == -113 {
+            let run_tail = condition as Any as RunTailCondition;
+
+            let rest = morph_conditions(conditions.rest, cat_info, TailInfo {
+                tail_puzzle: run_tail.tail_puzzle,
+                tail_solution: run_tail.tail_solution,
+            });
+
+            return Morph {
+                conditions: rest.conditions,
+                sum: rest.sum,
+                tail_info: rest.tail_info,
+            };
+        }
+
+        // Otherwise, morph the condition by wrapping the puzzle hash in the CAT layer.
+        let morphed = Condition::CreateCoin {
+            puzzle_hash: cat_puzzle_hash(cat_info, condition.puzzle_hash),
+            amount: condition.amount,
+            memos: condition.memos,
+        };
+
+        let rest = morph_conditions(conditions.rest, cat_info, tail_info);
+
+        return Morph {
+            conditions: [morphed, ...rest.conditions],
+            sum: condition.amount + rest.sum,
+            tail_info: rest.tail_info,
+        };
+    }
+
+    // If the condition is a coin announcement,
+    // make sure it's not pretending to be part of the ring.
+    if condition is Condition::CreateCoinAnnouncement
+        && condition.message.length == 33
+        && substr(condition.message, 0, 1) == RING_MORPH_BYTE
+    {
+        raise;
+    }
+
+    let rest = morph_conditions(conditions.rest, cat_info, tail_info);
+
+    Morph {
+        conditions: [condition, ...rest.conditions],
+        sum: rest.sum,
+        tail_info: rest.tail_info,
+    }
+}

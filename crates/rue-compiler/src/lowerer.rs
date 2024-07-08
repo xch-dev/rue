@@ -66,6 +66,12 @@ impl<'a> Lowerer<'a> {
                 let rhs = self.lower_hir(env_id, rhs);
                 self.db.alloc_mir(Mir::BinaryOp(op, lhs, rhs))
             }
+            Hir::Substr(hir_id, start, end) => {
+                let hir_id = self.lower_hir(env_id, hir_id);
+                let start = self.lower_hir(env_id, start);
+                let end = self.lower_hir(env_id, end);
+                self.db.alloc_mir(Mir::Substr(hir_id, start, end))
+            }
             Hir::Raise(value) => {
                 let value = value.map(|hir_id| self.lower_hir(env_id, hir_id));
                 self.db.alloc_mir(Mir::Raise(value))
@@ -220,7 +226,7 @@ impl<'a> Lowerer<'a> {
         match self.db.symbol(symbol_id).clone() {
             Symbol::Function(function) => self.lower_function(&function),
             Symbol::Const(constant) => self.lower_hir(env_id, constant.hir_id),
-            Symbol::Let(binding) if self.graph.symbol_references(symbol_id) > 0 => {
+            Symbol::Let(binding) if self.graph.symbol_references(symbol_id) > 1 => {
                 self.lower_hir(env_id, binding.hir_id)
             }
             Symbol::Unknown

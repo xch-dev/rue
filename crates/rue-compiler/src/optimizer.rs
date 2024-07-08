@@ -66,6 +66,12 @@ impl<'a> Optimizer<'a> {
                 };
                 handler(self, env_id, lhs, rhs)
             }
+            Mir::Substr(value, start, end) => {
+                let value = self.opt_mir(env_id, value);
+                let start = self.opt_mir(env_id, start);
+                let end = self.opt_mir(env_id, end);
+                self.db.alloc_lir(Lir::Substr(value, start, end))
+            }
             Mir::If(condition, then_block, else_block) => {
                 self.opt_if(env_id, condition, then_block, else_block)
             }
@@ -106,16 +112,21 @@ impl<'a> Optimizer<'a> {
         self.db.alloc_lir(Lir::Quote(value))
     }
 
-    fn opt_path(&mut self, env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
-        let mut current_env_id = env_id;
-        let mut environment: Vec<SymbolId> = self.db.env(env_id).build().into_iter().collect();
+    fn opt_path(&mut self, mut env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
+        let mut environment = Vec::new();
+        let mut rest;
 
-        while let Some(parent_env_id) = self.db.env(current_env_id).parent() {
-            assert!(self.db.env(current_env_id).parameters().is_empty());
-            assert!(!self.db.env(current_env_id).rest());
+        loop {
+            environment.extend(self.db.env(env_id).build());
+            rest = self.db.env(env_id).rest();
 
-            current_env_id = parent_env_id;
-            environment.extend(self.db.env(current_env_id).build());
+            let Some(parent_env_id) = self.db.env(env_id).parent() else {
+                break;
+            };
+
+            assert!(self.db.env(env_id).parameters().is_empty());
+            assert!(!self.db.env(env_id).rest());
+            env_id = parent_env_id;
         }
 
         let index = environment
@@ -130,7 +141,7 @@ impl<'a> Optimizer<'a> {
 
         let mut path = BigInt::one();
 
-        if !(index + 1 == environment.len() && self.db.env(env_id).rest()) {
+        if !(index + 1 == environment.len() && rest) {
             path *= 2;
         }
 
@@ -229,7 +240,18 @@ impl<'a> Optimizer<'a> {
     fn opt_add(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.db.alloc_lir(Lir::Add(vec![lhs, rhs]))
+        let mut args = Vec::new();
+        if let Lir::Add(lhs) = self.db.lir(lhs) {
+            args.extend(lhs);
+        } else {
+            args.push(lhs);
+        }
+        if let Lir::Add(rhs) = self.db.lir(rhs) {
+            args.extend(rhs);
+        } else {
+            args.push(rhs);
+        }
+        self.db.alloc_lir(Lir::Add(args))
     }
 
     fn opt_subtract(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
@@ -241,7 +263,18 @@ impl<'a> Optimizer<'a> {
     fn opt_multiply(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.db.alloc_lir(Lir::Mul(vec![lhs, rhs]))
+        let mut args = Vec::new();
+        if let Lir::Mul(lhs) = self.db.lir(lhs) {
+            args.extend(lhs);
+        } else {
+            args.push(lhs);
+        }
+        if let Lir::Mul(rhs) = self.db.lir(rhs) {
+            args.extend(rhs);
+        } else {
+            args.push(rhs);
+        }
+        self.db.alloc_lir(Lir::Mul(args))
     }
 
     fn opt_divide(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
@@ -316,7 +349,18 @@ impl<'a> Optimizer<'a> {
     fn opt_concat(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.db.alloc_lir(Lir::Concat(vec![lhs, rhs]))
+        let mut args = Vec::new();
+        if let Lir::Concat(lhs) = self.db.lir(lhs) {
+            args.extend(lhs);
+        } else {
+            args.push(lhs);
+        }
+        if let Lir::Concat(rhs) = self.db.lir(rhs) {
+            args.extend(rhs);
+        } else {
+            args.push(rhs);
+        }
+        self.db.alloc_lir(Lir::Concat(args))
     }
 
     fn opt_point_add(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
@@ -338,13 +382,35 @@ impl<'a> Optimizer<'a> {
     fn opt_any(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.db.alloc_lir(Lir::Any(vec![lhs, rhs]))
+        let mut args = Vec::new();
+        if let Lir::Any(lhs) = self.db.lir(lhs) {
+            args.extend(lhs);
+        } else {
+            args.push(lhs);
+        }
+        if let Lir::Any(rhs) = self.db.lir(rhs) {
+            args.extend(rhs);
+        } else {
+            args.push(rhs);
+        }
+        self.db.alloc_lir(Lir::Any(args))
     }
 
     fn opt_all(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.db.alloc_lir(Lir::All(vec![lhs, rhs]))
+        let mut args = Vec::new();
+        if let Lir::All(lhs) = self.db.lir(lhs) {
+            args.extend(lhs);
+        } else {
+            args.push(lhs);
+        }
+        if let Lir::All(rhs) = self.db.lir(rhs) {
+            args.extend(rhs);
+        } else {
+            args.push(rhs);
+        }
+        self.db.alloc_lir(Lir::All(args))
     }
 
     fn opt_not(&mut self, env_id: EnvironmentId, value: MirId) -> LirId {

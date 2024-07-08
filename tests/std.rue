@@ -2,5 +2,14 @@ fun main() -> Nil {
     assert tree_hash(map([1, 2, 3], fun(num) => num * 2)) == tree_hash([2, 4, 6]);
     assert tree_hash(filter([1, 2, 3, 4, 5], fun(num) => num < 4)) == tree_hash([1, 2, 3]);
     assert tree_hash(fold([1, 2, 3], 0, fun(acc, num) => acc + num)) == tree_hash(6);
+    assert tree_hash_atom(1000 as Bytes) == 0x9c8a37623ec5b06e573f77f2698477ed5da8b5f7bbe3196991367690bd262ed5;
+    assert tree_hash(1000) == 0x9c8a37623ec5b06e573f77f2698477ed5da8b5f7bbe3196991367690bd262ed5;
+    assert tree_hash_pair(tree_hash_atom(1000 as Bytes), tree_hash_atom(2000 as Bytes)) == 0x79df35e4ce0cfdc608f5ab4775229df652077558acdcd3fc83e871f1478e51ee;
+    assert tree_hash((1000, 2000)) == 0x79df35e4ce0cfdc608f5ab4775229df652077558acdcd3fc83e871f1478e51ee;
+    assert curry_tree_hash(
+        tree_hash_atom(1000 as Bytes),
+        tree_hash_atom(2000 as Bytes),
+        tree_hash_atom(3000 as Bytes),
+    ) == 0xd1a6496f0036a38ac1ba828003d89994b28f52313f553ce99996bd4d59b85983;
     nil
 }
