@@ -19,6 +19,7 @@ pub enum Type {
     Bytes32,
     PublicKey,
     Pair(PairType),
+    Union(Vec<TypeId>),
     List(TypeId),
     Struct(StructType),
     Enum(EnumType),

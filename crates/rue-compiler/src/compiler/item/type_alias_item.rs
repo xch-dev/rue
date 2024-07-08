@@ -65,15 +65,19 @@ impl Compiler<'_> {
     pub fn compile_type_alias_item(&mut self, type_alias: &TypeAliasItem, type_id: TypeId) {
         self.type_definition_stack.push(type_id);
 
-        let body_type_id = type_alias
-            .ty()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
-
-        // Set the alias type to the resolved type.
         let Type::Alias(alias_type) = self.db.ty(type_id).clone() else {
             unreachable!();
         };
 
+        self.scope_stack.push(alias_type.scope_id);
+
+        let body_type_id = type_alias
+            .ty()
+            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+
+        self.scope_stack.pop().unwrap();
+
+        // Set the alias type to the resolved type.
         let Type::Ref(inner) = self.db.ty_mut(alias_type.type_id) else {
             unreachable!();
         };

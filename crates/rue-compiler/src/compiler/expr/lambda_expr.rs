@@ -70,7 +70,7 @@ impl Compiler<'_> {
 
         for (i, param) in lambda_expr.params().into_iter().enumerate() {
             // Determine the expected type of the parameter.
-            let type_id = param
+            let mut type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
                 .or(expected
@@ -83,10 +83,12 @@ impl Compiler<'_> {
                 });
 
             // Substitute generic types in the parameter type.
-            let type_id = self.db.alloc_type(Type::Substitute(SubstitutionType {
-                type_id,
-                substitutions: substitutions.clone(),
-            }));
+            if !substitutions.is_empty() {
+                type_id = self.db.alloc_type(Type::Substitute(SubstitutionType {
+                    type_id,
+                    substitutions: substitutions.clone(),
+                }));
+            }
 
             param_types.push(type_id);
 

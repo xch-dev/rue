@@ -138,7 +138,10 @@ impl<'a> Compiler<'a> {
             Type::Ref(..) | Type::Alias(..) => unreachable!(),
             Type::Unknown => "{unknown}".to_string(),
             Type::Generic => "{generic}".to_string(),
-            Type::Substitute(..) => "{substitute}".to_string(),
+            Type::Substitute(subtitute) => {
+                let inner = self.type_name_visitor(subtitute.type_id, stack);
+                format!("{{substitute {inner}}}")
+            }
             Type::Nil => "Nil".to_string(),
             Type::Any => "Any".to_string(),
             Type::Int => "Int".to_string(),
@@ -146,6 +149,14 @@ impl<'a> Compiler<'a> {
             Type::Bytes => "Bytes".to_string(),
             Type::Bytes32 => "Bytes32".to_string(),
             Type::PublicKey => "PublicKey".to_string(),
+            Type::Union(items) => {
+                let items: Vec<String> = items
+                    .iter()
+                    .map(|&ty| self.type_name_visitor(ty, stack))
+                    .collect();
+
+                format!("({})", items.join(" | "))
+            }
             Type::List(items) => {
                 let inner = self.type_name_visitor(*items, stack);
                 format!("{inner}[]")

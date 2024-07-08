@@ -9,6 +9,7 @@ mod list_type;
 mod nullable_type;
 mod pair_type;
 mod path_type;
+mod union_type;
 
 impl Compiler<'_> {
     pub fn compile_type(&mut self, ty: Type) -> TypeId {
@@ -20,6 +21,7 @@ impl Compiler<'_> {
             Type::FunctionType(function) => self.compile_function_type(&function),
             Type::PairType(tuple) => self.compile_pair_type(&tuple),
             Type::NullableType(optional) => self.compile_nullable_type(&optional),
+            Type::UnionType(union) => self.compile_union_type(&union),
         }
     }
 }

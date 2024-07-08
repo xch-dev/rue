@@ -610,6 +610,14 @@ fn ty(p: &mut Parser<'_>) {
             p.start_at(checkpoint, SyntaxKind::NullableType);
             p.bump();
             p.finish();
+        } else if p.at(SyntaxKind::BitwiseOr) {
+            p.start_at(checkpoint, SyntaxKind::UnionType);
+            p.bump();
+            ty(p);
+            while p.try_eat(SyntaxKind::BitwiseOr) {
+                ty(p);
+            }
+            p.finish();
         } else {
             break;
         }
@@ -619,7 +627,7 @@ fn ty(p: &mut Parser<'_>) {
 fn path_type(p: &mut Parser<'_>) {
     p.start(SyntaxKind::PathType);
     path_item(p, false);
-    while p.try_eat(SyntaxKind::PathSeparator) {
+    while p.at(SyntaxKind::LessThan) || p.try_eat(SyntaxKind::PathSeparator) {
         path_item(p, true);
     }
     p.finish();

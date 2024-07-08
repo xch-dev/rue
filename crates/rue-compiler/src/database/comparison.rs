@@ -1,4 +1,4 @@
-use std::ops::{BitAnd, BitAndAssign};
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Comparison {
@@ -43,5 +43,19 @@ impl BitAnd for Comparison {
 impl BitAndAssign for Comparison {
     fn bitand_assign(&mut self, rhs: Self) {
         *self = *self & rhs;
+    }
+}
+
+impl BitOr for Comparison {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.min(rhs)
+    }
+}
+
+impl BitOrAssign for Comparison {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = *self | rhs;
     }
 }

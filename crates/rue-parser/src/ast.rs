@@ -128,7 +128,8 @@ ast_enum!(
     ListType,
     PairType,
     FunctionType,
-    NullableType
+    NullableType,
+    UnionType
 );
 ast_node!(PathType);
 ast_node!(ListType);
@@ -137,6 +138,7 @@ ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
 ast_node!(NullableType);
+ast_node!(UnionType);
 
 ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt, AssumeStmt);
 ast_node!(LetStmt);
@@ -927,6 +929,12 @@ impl FunctionTypeParam {
 impl NullableType {
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
+    }
+}
+
+impl UnionType {
+    pub fn types(&self) -> Vec<Type> {
+        self.syntax().children().filter_map(Type::cast).collect()
     }
 }
 

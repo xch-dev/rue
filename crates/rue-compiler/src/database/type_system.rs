@@ -6,6 +6,7 @@ use crate::{value::Type, Comparison, Database, TypeId};
 struct ComparisonContext<'a> {
     visited: HashSet<(TypeId, TypeId)>,
     substitution_stack: &'a mut Vec<HashMap<TypeId, TypeId>>,
+    initial_substitution_length: usize,
     generic_stack_frame: Option<usize>,
 }
 
@@ -16,10 +17,12 @@ impl<'a> ComparisonContext<'a> {
         } else {
             None
         };
+        let initial_substitution_length = substitution_stack.len();
 
         Self {
             visited: HashSet::new(),
             substitution_stack,
+            initial_substitution_length,
             generic_stack_frame,
         }
     }
@@ -136,6 +139,26 @@ impl Database {
                 }
             }
 
+            (Type::Generic, _) => {
+                let mut found = None;
+
+                for (i, substititons) in ctx.substitution_stack.iter().enumerate().rev() {
+                    if i < ctx.initial_substitution_length {
+                        break;
+                    }
+
+                    if let Some(&substititon) = substititons.get(&lhs) {
+                        found = Some(substititon);
+                    }
+                }
+
+                if let Some(found) = found {
+                    self.compare_type_visitor(found, rhs, ctx)
+                } else {
+                    Comparison::Unrelated
+                }
+            }
+
             // We should have already given a diagnostic for `Unknown`.
             // So we will go ahead and pretend they are equal to everything.
             (Type::Unknown, _) | (_, Type::Unknown) => Comparison::Equal,
@@ -163,10 +186,6 @@ impl Database {
 
             // However, anything can be assigned to `Any` implicitly.
             (_, Type::Any) => Comparison::Assignable,
-
-            // `Generic` types are unrelated to everything else except their specific instance.
-            // The only exception is the `Any` type above.
-            (Type::Generic, _) => Comparison::Unrelated,
 
             // You have to explicitly convert between other atom types.
             // This is because the compiled output can change depending on the type.
@@ -215,9 +234,25 @@ impl Database {
                 Comparison::Castable & self.compare_type_visitor(*inner, rhs, ctx)
             }
 
-            // TODO: Unions would make this more generalized and useful.
-            // I should add unions back.
+            // Special `Nullable` type.
             (Type::Nullable(_inner), _) => Comparison::Unrelated,
+
+            // Union types are equal if all of the variants are compatible.
+            (Type::Union(items), _) => {
+                let mut result = Comparison::Equal;
+                for &item in items {
+                    result &= self.compare_type_visitor(item, rhs, ctx);
+                }
+                result
+            }
+
+            (_, Type::Union(items)) => {
+                let mut result = Comparison::Unrelated;
+                for &item in items {
+                    result |= self.compare_type_visitor(lhs, item, ctx);
+                }
+                result
+            }
 
             // Compare both sides of a `Pair`.
             (Type::Pair(lhs), Type::Pair(rhs)) => {
