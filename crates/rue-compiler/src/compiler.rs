@@ -135,8 +135,10 @@ impl<'a> Compiler<'a> {
         stack.insert(ty);
 
         let name = match self.db.ty(ty) {
+            Type::Ref(..) | Type::Alias(..) => unreachable!(),
             Type::Unknown => "{unknown}".to_string(),
             Type::Generic => "{generic}".to_string(),
+            Type::Substitute(..) => "{substitute}".to_string(),
             Type::Nil => "Nil".to_string(),
             Type::Any => "Any".to_string(),
             Type::Int => "Int".to_string(),
@@ -209,7 +211,6 @@ impl<'a> Compiler<'a> {
 
                 format!("fun({}) -> {}", params.join(", "), ret)
             }
-            Type::Alias(..) => unreachable!(),
             Type::Nullable(ty) => {
                 let inner = self.type_name_visitor(*ty, stack);
                 format!("{inner}?")

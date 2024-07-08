@@ -1,9 +1,9 @@
 use rowan::TextRange;
-use rue_parser::SyntaxToken;
+use rue_parser::PathItem;
 
 use crate::{
     compiler::{
-        path::{PathItem, PathKind},
+        path::{Path, PathKind},
         Compiler,
     },
     hir::Hir,
@@ -13,28 +13,34 @@ use crate::{
 };
 
 impl Compiler<'_> {
-    pub fn compile_path_expr(&mut self, idents: &[SyntaxToken], text_range: TextRange) -> Value {
-        let Some(mut item) =
-            self.resolve_base_path(&idents[0], PathKind::Symbol, idents.len() == 1)
+    pub fn compile_path_expr(&mut self, items: &[PathItem], text_range: TextRange) -> Value {
+        let Some(mut path) = self.resolve_base_path(&items[0], PathKind::Symbol, items.len() == 1)
         else {
             return self.unknown();
         };
 
-        let mut last_ident = idents[0].to_string();
+        let mut last_ident = items[0]
+            .ident()
+            .map(|name| name.to_string())
+            .unwrap_or("{unknown}".to_string());
 
-        for (i, name) in idents.iter().enumerate().skip(1) {
-            let Some(next_item) =
-                self.resolve_next_path(item, name, PathKind::Symbol, i == idents.len() - 1)
+        for (i, item) in items.iter().enumerate().skip(1) {
+            let Some(next_path) =
+                self.resolve_next_path(path, item, PathKind::Symbol, i == items.len() - 1)
             else {
                 return self.unknown();
             };
-            last_ident = name.to_string();
-            item = next_item;
+
+            if let Some(name) = item.ident() {
+                last_ident = name.to_string();
+            }
+
+            path = next_path;
         }
 
-        let symbol_id = match item {
-            PathItem::Symbol(symbol_id) => symbol_id,
-            PathItem::Type(type_id) => {
+        let symbol_id = match path {
+            Path::Symbol(symbol_id) => symbol_id,
+            Path::Type(type_id) => {
                 if let Type::EnumVariant(variant_type) = self.db.ty(type_id).clone() {
                     if variant_type.fields.is_some() {
                         self.db.error(

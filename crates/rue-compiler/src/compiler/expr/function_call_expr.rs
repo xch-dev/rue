@@ -6,7 +6,7 @@ use rue_parser::{AstNode, FunctionCallExpr};
 use crate::{
     compiler::Compiler,
     hir::Hir,
-    value::{FunctionType, Rest, Type, Value},
+    value::{FunctionType, Rest, SubstitutionType, Type, Value},
     ErrorKind,
 };
 
@@ -126,7 +126,10 @@ impl Compiler<'_> {
             function_type.map_or(self.builtins.unknown, |expected| expected.return_type);
 
         if !generic_types.is_empty() {
-            type_id = self.db.substitute_type(type_id, &generic_types);
+            type_id = self.db.alloc_type(Type::Substitute(SubstitutionType {
+                type_id,
+                substitutions: generic_types,
+            }));
         }
 
         // Build the HIR for the function call.

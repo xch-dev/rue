@@ -7,7 +7,7 @@ use crate::{
     hir::Hir,
     scope::Scope,
     symbol::{Function, Symbol},
-    value::{FunctionType, Rest, Type, Value},
+    value::{FunctionType, Rest, SubstitutionType, Type, Value},
     ErrorKind, TypeId,
 };
 
@@ -38,7 +38,7 @@ impl Compiler<'_> {
 
         // Add the generic types to the scope.
         for generic_type in lambda_expr
-            .generic_types()
+            .generic_params()
             .map(|generics| generics.idents())
             .unwrap_or_default()
         {
@@ -83,7 +83,10 @@ impl Compiler<'_> {
                 });
 
             // Substitute generic types in the parameter type.
-            let type_id = self.db.substitute_type(type_id, &substitutions);
+            let type_id = self.db.alloc_type(Type::Substitute(SubstitutionType {
+                type_id,
+                substitutions: substitutions.clone(),
+            }));
 
             param_types.push(type_id);
 

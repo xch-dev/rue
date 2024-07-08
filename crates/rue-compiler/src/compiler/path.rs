@@ -1,11 +1,17 @@
-use rue_parser::SyntaxToken;
+use std::collections::HashMap;
 
-use crate::{symbol::Symbol, value::Type, ErrorKind, SymbolId, TypeId};
+use rue_parser::{AstNode, PathItem};
+
+use crate::{
+    symbol::Symbol,
+    value::{SubstitutionType, Type},
+    ErrorKind, SymbolId, TypeId,
+};
 
 use super::Compiler;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PathItem {
+pub enum Path {
     Symbol(SymbolId),
     Type(TypeId),
 }
@@ -19,10 +25,12 @@ pub enum PathKind {
 impl Compiler<'_> {
     pub fn resolve_base_path(
         &mut self,
-        name: &SyntaxToken,
+        item: &PathItem,
         path_kind: PathKind,
         last: bool,
-    ) -> Option<PathItem> {
+    ) -> Option<Path> {
+        let name = item.ident()?;
+
         for &scope_id in self.scope_stack.iter().rev() {
             let type_id = self.db.scope(scope_id).ty(name.text());
             let symbol_id = self.db.scope(scope_id).symbol(name.text());
@@ -30,31 +38,31 @@ impl Compiler<'_> {
             if let (Some(type_id), Some(symbol_id)) = (type_id, symbol_id) {
                 if let Symbol::Module(..) = self.db.symbol(symbol_id) {
                     if !last {
-                        return Some(PathItem::Symbol(symbol_id));
+                        return Some(Path::Symbol(symbol_id));
                     }
                 }
 
                 if let Type::Enum(..) = self.db.ty(type_id) {
                     if !last {
                         self.type_reference(type_id);
-                        return Some(PathItem::Type(type_id));
+                        return Some(Path::Type(type_id));
                     }
                 }
 
                 match path_kind {
                     PathKind::Type => {
                         self.type_reference(type_id);
-                        return Some(PathItem::Type(type_id));
+                        return Some(Path::Type(type_id));
                     }
                     PathKind::Symbol => {
-                        return Some(PathItem::Symbol(symbol_id));
+                        return Some(Path::Symbol(symbol_id));
                     }
                 }
             } else if let Some(type_id) = type_id {
                 self.type_reference(type_id);
-                return Some(PathItem::Type(type_id));
+                return Some(Path::Type(type_id));
             } else if let Some(symbol_id) = symbol_id {
-                return Some(PathItem::Symbol(symbol_id));
+                return Some(Path::Symbol(symbol_id));
             }
         }
 
@@ -71,13 +79,56 @@ impl Compiler<'_> {
 
     pub fn resolve_next_path(
         &mut self,
-        item: PathItem,
-        name: &SyntaxToken,
+        path: Path,
+        item: &PathItem,
         path_kind: PathKind,
         last: bool,
-    ) -> Option<PathItem> {
-        match item {
-            PathItem::Type(type_id) => {
+    ) -> Option<Path> {
+        let Some(name) = item.ident() else {
+            let args = item.generic_args()?;
+            let text_range = args.syntax().text_range();
+            let args = args.types();
+
+            let Path::Type(type_id) = path else {
+                self.db.error(ErrorKind::InvalidGenericArgs, text_range);
+                return None;
+            };
+
+            let Type::Alias(alias_type) = self.db.ty(type_id).clone() else {
+                self.db.error(ErrorKind::InvalidGenericArgs, text_range);
+                return None;
+            };
+
+            if alias_type.generic_types.is_empty() {
+                self.db.error(ErrorKind::InvalidGenericArgs, text_range);
+                return None;
+            }
+
+            if alias_type.generic_types.len() != args.len() {
+                self.db.error(
+                    ErrorKind::GenericArgMismatch(args.len(), alias_type.generic_types.len()),
+                    text_range,
+                );
+                return None;
+            }
+
+            let mut substitutions = HashMap::new();
+
+            for (generic_type, arg) in alias_type.generic_types.iter().zip(args) {
+                let type_id = self.compile_type(arg);
+                substitutions.insert(*generic_type, type_id);
+            }
+
+            let type_id = self.db.alloc_type(Type::Substitute(SubstitutionType {
+                type_id: alias_type.type_id,
+                substitutions,
+            }));
+
+            return Some(Path::Type(type_id));
+        };
+
+        match path {
+            Path::Type(type_id) => {
                 let Type::Enum(enum_type) = self.db.ty(type_id) else {
                     self.db.error(
                         ErrorKind::InvalidTypePath(self.type_name(type_id)),
@@ -95,9 +146,9 @@ impl Compiler<'_> {
                 };
 
                 self.type_reference(variant_type);
-                Some(PathItem::Type(variant_type))
+                Some(Path::Type(variant_type))
             }
-            PathItem::Symbol(module_id) => {
+            Path::Symbol(module_id) => {
                 let Symbol::Module(module) = self.db.symbol(module_id) else {
                     self.db.error(
                         ErrorKind::InvalidSymbolPath(self.symbol_name(module_id)),
@@ -123,29 +174,29 @@ impl Compiler<'_> {
                 if let (Some(type_id), Some(symbol_id)) = (type_id, symbol_id) {
                     if let Symbol::Module(..) = self.db.symbol(symbol_id) {
                         if !last {
-                            return Some(PathItem::Symbol(symbol_id));
+                            return Some(Path::Symbol(symbol_id));
                         }
                     }
 
                     if let Type::Enum(..) = self.db.ty(type_id) {
                         if !last {
                             self.type_reference(type_id);
-                            return Some(PathItem::Type(type_id));
+                            return Some(Path::Type(type_id));
                         }
                     }
 
                     match path_kind {
                         PathKind::Type => {
                             self.type_reference(type_id);
-                            Some(PathItem::Type(type_id))
+                            Some(Path::Type(type_id))
                         }
-                        PathKind::Symbol => Some(PathItem::Symbol(symbol_id)),
+                        PathKind::Symbol => Some(Path::Symbol(symbol_id)),
                     }
                 } else if let Some(type_id) = type_id {
                     self.type_reference(type_id);
-                    Some(PathItem::Type(type_id))
+                    Some(Path::Type(type_id))
                 } else if let Some(symbol_id) = symbol_id {
-                    Some(PathItem::Symbol(symbol_id))
+                    Some(Path::Symbol(symbol_id))
                 } else if private_type {
                     self.db.error(
                         ErrorKind::PrivateType(name.text().to_string()),

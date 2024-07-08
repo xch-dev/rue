@@ -23,7 +23,7 @@ impl Compiler<'_> {
 
         // Add the generic types to the scope.
         for generic_type in function_item
-            .generic_types()
+            .generic_params()
             .map(|generics| generics.idents())
             .unwrap_or_default()
         {

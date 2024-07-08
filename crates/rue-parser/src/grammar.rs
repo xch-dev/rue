@@ -67,7 +67,7 @@ fn function_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.expect(SyntaxKind::Fun);
     p.expect(SyntaxKind::Ident);
     if p.at(SyntaxKind::LessThan) {
-        generic_types(p);
+        generic_params(p);
     }
     function_params(p);
     p.expect(SyntaxKind::Arrow);
@@ -101,6 +101,9 @@ fn type_alias_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::TypeAliasItem);
     p.expect(SyntaxKind::Type);
     p.expect(SyntaxKind::Ident);
+    if p.at(SyntaxKind::LessThan) {
+        generic_params(p);
+    }
     p.expect(SyntaxKind::Assign);
     ty(p);
     p.expect(SyntaxKind::Semicolon);
@@ -500,9 +503,9 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
 
 fn path_expr(p: &mut Parser<'_>) {
     p.start(SyntaxKind::PathExpr);
-    p.expect(SyntaxKind::Ident);
+    path_item(p, false);
     while p.try_eat(SyntaxKind::PathSeparator) {
-        p.expect(SyntaxKind::Ident);
+        path_item(p, true);
     }
     p.finish();
 }
@@ -534,7 +537,7 @@ fn lambda_expr(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LambdaExpr);
     p.expect(SyntaxKind::Fun);
     if p.at(SyntaxKind::LessThan) {
-        generic_types(p);
+        generic_params(p);
     }
     p.expect(SyntaxKind::OpenParen);
     while !p.at(SyntaxKind::CloseParen) {
@@ -615,9 +618,9 @@ fn ty(p: &mut Parser<'_>) {
 
 fn path_type(p: &mut Parser<'_>) {
     p.start(SyntaxKind::PathType);
-    p.expect(SyntaxKind::Ident);
+    path_item(p, false);
     while p.try_eat(SyntaxKind::PathSeparator) {
-        p.expect(SyntaxKind::Ident);
+        path_item(p, true);
     }
     p.finish();
 }
@@ -632,8 +635,8 @@ fn function_type_param(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn generic_types(p: &mut Parser<'_>) {
-    p.start(SyntaxKind::GenericTypes);
+fn generic_params(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::GenericParams);
     p.expect(SyntaxKind::LessThan);
     while !p.at(SyntaxKind::GreaterThan) {
         p.expect(SyntaxKind::Ident);
@@ -642,5 +645,28 @@ fn generic_types(p: &mut Parser<'_>) {
         }
     }
     p.expect(SyntaxKind::GreaterThan);
+    p.finish();
+}
+
+fn generic_args(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::GenericArgs);
+    p.expect(SyntaxKind::LessThan);
+    while !p.at(SyntaxKind::GreaterThan) {
+        ty(p);
+        if !p.try_eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::GreaterThan);
+    p.finish();
+}
+
+fn path_item(p: &mut Parser<'_>, allow_generic_args: bool) {
+    p.start(SyntaxKind::PathItem);
+    if allow_generic_args && p.at(SyntaxKind::LessThan) {
+        generic_args(p);
+    } else {
+        p.expect(SyntaxKind::Ident);
+    }
     p.finish();
 }

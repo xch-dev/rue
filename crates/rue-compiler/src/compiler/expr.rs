@@ -31,7 +31,7 @@ impl Compiler<'_> {
 
         let value = match expr {
             Expr::PathExpr(path) => {
-                self.compile_path_expr(&path.idents(), path.syntax().text_range())
+                self.compile_path_expr(&path.items(), path.syntax().text_range())
             }
             Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),

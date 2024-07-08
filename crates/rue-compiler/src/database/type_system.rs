@@ -1,36 +1,31 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{
-    value::{EnumType, EnumVariantType, FunctionType, PairType, StructType, Type},
-    Comparison, Database, TypeId,
-};
+use crate::{value::Type, Comparison, Database, TypeId};
 
 #[derive(Debug)]
 struct ComparisonContext<'a> {
     visited: HashSet<(TypeId, TypeId)>,
-    generic_type_stack: &'a mut Vec<HashMap<TypeId, TypeId>>,
-    infer_generics: bool,
+    substitution_stack: &'a mut Vec<HashMap<TypeId, TypeId>>,
+    generic_stack_frame: Option<usize>,
 }
 
 impl<'a> ComparisonContext<'a> {
-    fn new(generic_type_stack: &'a mut Vec<HashMap<TypeId, TypeId>>, infer_generics: bool) -> Self {
+    fn new(substitution_stack: &'a mut Vec<HashMap<TypeId, TypeId>>, infer_generics: bool) -> Self {
+        let generic_stack_frame = if infer_generics {
+            Some(substitution_stack.len() - 1)
+        } else {
+            None
+        };
+
         Self {
             visited: HashSet::new(),
-            generic_type_stack,
-            infer_generics,
+            substitution_stack,
+            generic_stack_frame,
         }
     }
 }
 
 impl Database {
-    pub fn substitute_type(
-        &mut self,
-        type_id: TypeId,
-        substitutions: &HashMap<TypeId, TypeId>,
-    ) -> TypeId {
-        self.substitute_type_visitor(type_id, substitutions, &mut HashSet::new())
-    }
-
     pub fn compare_type(&self, lhs: TypeId, rhs: TypeId) -> Comparison {
         self.compare_type_visitor(
             lhs,
@@ -50,10 +45,6 @@ impl Database {
             rhs,
             &mut ComparisonContext::new(generic_type_stack, true),
         )
-    }
-
-    pub fn is_cyclic(&self, type_id: TypeId) -> bool {
-        self.is_cyclic_visitor(type_id, &mut HashSet::new())
     }
 
     pub fn first_type(&self, type_id: TypeId) -> Option<TypeId> {
@@ -91,167 +82,6 @@ impl Database {
         }
     }
 
-    pub fn substitute_type_visitor(
-        &mut self,
-        type_id: TypeId,
-        substitutions: &HashMap<TypeId, TypeId>,
-        visited: &mut HashSet<TypeId>,
-    ) -> TypeId {
-        if let Some(type_id) = substitutions.get(&type_id).copied() {
-            return type_id;
-        }
-
-        if !visited.insert(type_id) {
-            return type_id;
-        }
-
-        match self.ty(type_id).clone() {
-            Type::Alias(..) => unreachable!(),
-            Type::Pair(pair) => {
-                let new_pair = PairType {
-                    first: self.substitute_type_visitor(pair.first, substitutions, visited),
-                    rest: self.substitute_type_visitor(pair.rest, substitutions, visited),
-                };
-
-                if new_pair == pair {
-                    type_id
-                } else {
-                    self.alloc_type(Type::Pair(new_pair))
-                }
-            }
-            Type::Enum(enum_type) => {
-                let new_enum = EnumType {
-                    has_fields: enum_type.has_fields,
-                    variants: enum_type
-                        .variants
-                        .iter()
-                        .map(|(k, v)| {
-                            (
-                                k.clone(),
-                                self.substitute_type_visitor(*v, substitutions, visited),
-                            )
-                        })
-                        .collect(),
-                };
-
-                if new_enum == enum_type {
-                    type_id
-                } else {
-                    self.alloc_type(Type::Enum(new_enum))
-                }
-            }
-            Type::EnumVariant(enum_variant) => {
-                let new_variant = EnumVariantType {
-                    enum_type: enum_variant.enum_type,
-                    original_type_id: enum_variant.original_type_id,
-                    fields: enum_variant.fields.as_ref().map(|fields| {
-                        fields
-                            .iter()
-                            .map(|(k, v)| {
-                                (
-                                    k.clone(),
-                                    self.substitute_type_visitor(*v, substitutions, visited),
-                                )
-                            })
-                            .collect()
-                    }),
-                    rest: enum_variant.rest,
-                    discriminant: enum_variant.discriminant,
-                };
-
-                if new_variant == enum_variant {
-                    type_id
-                } else {
-                    self.alloc_type(Type::EnumVariant(new_variant))
-                }
-            }
-            Type::List(inner) => {
-                let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
-
-                if new_inner == inner {
-                    type_id
-                } else {
-                    self.alloc_type(Type::List(new_inner))
-                }
-            }
-            Type::Struct(struct_type) => {
-                let new_struct = StructType {
-                    original_type_id: struct_type.original_type_id,
-                    fields: struct_type
-                        .fields
-                        .iter()
-                        .map(|(k, v)| {
-                            (
-                                k.clone(),
-                                self.substitute_type_visitor(*v, substitutions, visited),
-                            )
-                        })
-                        .collect(),
-                    rest: struct_type.rest,
-                };
-
-                if new_struct == struct_type {
-                    type_id
-                } else {
-                    self.alloc_type(Type::Struct(new_struct))
-                }
-            }
-            Type::Function(function) => {
-                let new_function = FunctionType {
-                    param_types: function
-                        .param_types
-                        .iter()
-                        .map(|ty| self.substitute_type_visitor(*ty, substitutions, visited))
-                        .collect(),
-                    rest: function.rest,
-                    return_type: self.substitute_type_visitor(
-                        function.return_type,
-                        substitutions,
-                        visited,
-                    ),
-                    generic_types: function
-                        .generic_types
-                        .iter()
-                        .map(|ty| self.substitute_type_visitor(*ty, substitutions, visited))
-                        .collect(),
-                };
-
-                if new_function == function {
-                    type_id
-                } else {
-                    self.alloc_type(Type::Function(new_function))
-                }
-            }
-            Type::Nullable(inner) => {
-                let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
-
-                if new_inner == inner {
-                    type_id
-                } else {
-                    self.alloc_type(Type::Nullable(inner))
-                }
-            }
-            Type::Optional(inner) => {
-                let new_inner = self.substitute_type_visitor(inner, substitutions, visited);
-
-                if new_inner == inner {
-                    type_id
-                } else {
-                    self.alloc_type(Type::Optional(inner))
-                }
-            }
-            Type::Unknown
-            | Type::Generic
-            | Type::Any
-            | Type::Bool
-            | Type::Bytes
-            | Type::Bytes32
-            | Type::Int
-            | Type::Nil
-            | Type::PublicKey => type_id,
-        }
-    }
-
     #[allow(clippy::match_same_arms, clippy::too_many_lines)]
     fn compare_type_visitor(
         &self,
@@ -265,23 +95,41 @@ impl Database {
         }
 
         let comparison = match (self.ty(lhs), self.ty(rhs)) {
+            // References are already resolved at this point.
+            (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
+
             // Aliases are already resolved at this point.
             (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
+
+            // We need to apply substitutions.
+            (Type::Substitute(ty), _) => {
+                ctx.substitution_stack.push(ty.substitutions.clone());
+                let result = self.compare_type_visitor(ty.type_id, rhs, ctx);
+                ctx.substitution_stack.pop().unwrap();
+                result
+            }
+
+            (_, Type::Substitute(ty)) => {
+                ctx.substitution_stack.push(ty.substitutions.clone());
+                let result = self.compare_type_visitor(lhs, ty.type_id, ctx);
+                ctx.substitution_stack.pop().unwrap();
+                result
+            }
 
             // We need to infer `Generic` types, and return `Unrelated` if incompatible.
             (_, Type::Generic) => {
                 let mut found = None;
 
-                for generics in ctx.generic_type_stack.iter().rev() {
-                    if let Some(&generic) = generics.get(&rhs) {
-                        found = Some(generic);
+                for substititons in ctx.substitution_stack.iter().rev() {
+                    if let Some(&substititon) = substititons.get(&rhs) {
+                        found = Some(substititon);
                     }
                 }
 
                 if let Some(found) = found {
                     self.compare_type_visitor(lhs, found, ctx)
-                } else if ctx.infer_generics {
-                    ctx.generic_type_stack.last_mut().unwrap().insert(rhs, lhs);
+                } else if let Some(generic_stack_frame) = ctx.generic_stack_frame {
+                    ctx.substitution_stack[generic_stack_frame].insert(rhs, lhs);
                     Comparison::Assignable
                 } else {
                     Comparison::Unrelated
@@ -489,36 +337,6 @@ impl Database {
         ctx.visited.remove(&key);
         comparison
     }
-
-    fn is_cyclic_visitor(&self, ty: TypeId, visited_aliases: &mut HashSet<TypeId>) -> bool {
-        match self.ty_raw(ty).clone() {
-            Type::Pair(pair) => {
-                self.is_cyclic_visitor(pair.first, visited_aliases)
-                    || self.is_cyclic_visitor(pair.rest, visited_aliases)
-            }
-            Type::Alias(alias) => {
-                if !visited_aliases.insert(alias) {
-                    return true;
-                }
-                self.is_cyclic_visitor(alias, visited_aliases)
-            }
-            Type::List(..)
-            | Type::Struct(..)
-            | Type::Enum(..)
-            | Type::EnumVariant(..)
-            | Type::Function(..)
-            | Type::Unknown
-            | Type::Generic
-            | Type::Nil
-            | Type::Any
-            | Type::Int
-            | Type::Bool
-            | Type::Bytes
-            | Type::Bytes32
-            | Type::PublicKey => false,
-            Type::Nullable(ty) | Type::Optional(ty) => self.is_cyclic_visitor(ty, visited_aliases),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -527,7 +345,11 @@ mod tests {
 
     use crate::{
         compiler::{builtins, Builtins},
-        value::{EnumType, EnumVariantType, FunctionType, PairType, Rest, StructType},
+        scope::Scope,
+        value::{
+            AliasType, EnumType, EnumVariantType, FunctionType, PairType, Rest, StructType,
+            SubstitutionType,
+        },
     };
 
     use super::*;
@@ -565,7 +387,10 @@ mod tests {
         let int_list = db.alloc_type(Type::List(ty.int));
 
         let substitutions = [(a, ty.int), (b, ty.bool)].into_iter().collect();
-        let substituted = db.substitute_type(function, &substitutions);
+        let substituted = db.alloc_type(Type::Substitute(SubstitutionType {
+            type_id: function,
+            substitutions,
+        }));
 
         let expected = db.alloc_type(Type::Function(FunctionType {
             param_types: vec![int_list],
@@ -581,12 +406,22 @@ mod tests {
     fn test_alias_resolution() {
         let (mut db, ty) = setup();
 
-        let int_alias = db.alloc_type(Type::Alias(ty.int));
+        let scope_id = db.alloc_scope(Scope::default());
+
+        let int_alias = db.alloc_type(Type::Alias(AliasType {
+            type_id: ty.int,
+            generic_types: Vec::new(),
+            scope_id,
+        }));
         assert_eq!(db.compare_type(int_alias, ty.int), Comparison::Equal);
         assert_eq!(db.compare_type(ty.int, int_alias), Comparison::Equal);
         assert_eq!(db.compare_type(int_alias, int_alias), Comparison::Equal);
 
-        let double_alias = db.alloc_type(Type::Alias(int_alias));
+        let double_alias = db.alloc_type(Type::Alias(AliasType {
+            type_id: int_alias,
+            generic_types: Vec::new(),
+            scope_id,
+        }));
         assert_eq!(db.compare_type(double_alias, ty.int), Comparison::Equal);
         assert_eq!(db.compare_type(ty.int, double_alias), Comparison::Equal);
         assert_eq!(

@@ -82,8 +82,8 @@ impl Database {
     }
 
     pub fn ty(&self, mut id: TypeId) -> &Type {
-        while let Type::Alias(alias) = self.ty_raw(id) {
-            id = *alias;
+        while let Type::Ref(type_id) = self.ty_raw(id) {
+            id = *type_id;
         }
         self.ty_raw(id)
     }

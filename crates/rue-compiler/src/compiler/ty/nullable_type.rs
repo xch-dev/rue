@@ -8,7 +8,7 @@ impl Compiler<'_> {
             .ty()
             .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
 
-        if let Type::Nullable(inner) = self.db.ty_raw(ty).clone() {
+        if let Type::Nullable(inner) = self.db.ty(ty).clone() {
             self.db.warning(
                 WarningKind::RedundantNullableType(self.type_name(ty)),
                 optional.syntax().text_range(),

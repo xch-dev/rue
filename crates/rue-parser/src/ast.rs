@@ -146,7 +146,9 @@ ast_node!(RaiseStmt);
 ast_node!(AssertStmt);
 ast_node!(AssumeStmt);
 
-ast_node!(GenericTypes);
+ast_node!(GenericParams);
+ast_node!(GenericArgs);
+ast_node!(PathItem);
 
 impl Root {
     pub fn items(&self) -> Vec<Item> {
@@ -196,8 +198,8 @@ impl FunctionItem {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn generic_types(&self) -> Option<GenericTypes> {
-        self.syntax().children().find_map(GenericTypes::cast)
+    pub fn generic_params(&self) -> Option<GenericParams> {
+        self.syntax().children().find_map(GenericParams::cast)
     }
 
     pub fn params(&self) -> Vec<FunctionParam> {
@@ -263,6 +265,10 @@ impl TypeAliasItem {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_params(&self) -> Option<GenericParams> {
+        self.syntax().children().find_map(GenericParams::cast)
     }
 
     pub fn ty(&self) -> Option<Type> {
@@ -512,11 +518,10 @@ impl AssumeStmt {
 }
 
 impl PathExpr {
-    pub fn idents(&self) -> Vec<SyntaxToken> {
+    pub fn items(&self) -> Vec<PathItem> {
         self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .children()
+            .filter_map(PathItem::cast)
             .collect()
     }
 }
@@ -722,8 +727,8 @@ impl PairExpr {
 }
 
 impl LambdaExpr {
-    pub fn generic_types(&self) -> Option<GenericTypes> {
-        self.syntax().children().find_map(GenericTypes::cast)
+    pub fn generic_params(&self) -> Option<GenericParams> {
+        self.syntax().children().find_map(GenericParams::cast)
     }
 
     pub fn params(&self) -> Vec<LambdaParam> {
@@ -842,11 +847,10 @@ impl ExistsExpr {
 }
 
 impl PathType {
-    pub fn idents(&self) -> Vec<SyntaxToken> {
+    pub fn items(&self) -> Vec<PathItem> {
         self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .children()
+            .filter_map(PathItem::cast)
             .collect()
     }
 }
@@ -926,12 +930,31 @@ impl NullableType {
     }
 }
 
-impl GenericTypes {
+impl GenericParams {
     pub fn idents(&self) -> Vec<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .filter(|token| token.kind() == SyntaxKind::Ident)
             .collect()
+    }
+}
+
+impl GenericArgs {
+    pub fn types(&self) -> Vec<Type> {
+        self.syntax().children().filter_map(Type::cast).collect()
+    }
+}
+
+impl PathItem {
+    pub fn ident(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_args(&self) -> Option<GenericArgs> {
+        self.syntax().children().find_map(GenericArgs::cast)
     }
 }

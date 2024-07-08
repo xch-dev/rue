@@ -121,7 +121,9 @@ pub enum SyntaxKind {
     FunctionType,
     FunctionTypeParam,
     NullableType,
-    GenericTypes,
+    GenericParams,
+    GenericArgs,
+    PathItem,
 }
 
 impl fmt::Display for SyntaxKind {
@@ -244,8 +246,9 @@ impl fmt::Display for SyntaxKind {
                 Self::FunctionType => "function type",
                 Self::FunctionTypeParam => "function type parameter",
                 Self::NullableType => "nullable type",
-
-                Self::GenericTypes => "generic types",
+                Self::GenericParams => "generic parameters",
+                Self::GenericArgs => "generic arguments",
+                Self::PathItem => "path item",
             }
         )
     }

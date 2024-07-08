@@ -1,6 +1,11 @@
+use std::collections::HashMap;
+
 use indexmap::IndexMap;
 
-use crate::database::{HirId, TypeId};
+use crate::{
+    database::{HirId, TypeId},
+    ScopeId,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -19,9 +24,24 @@ pub enum Type {
     Enum(EnumType),
     EnumVariant(EnumVariantType),
     Function(FunctionType),
-    Alias(TypeId),
+    Alias(AliasType),
+    Ref(TypeId),
+    Substitute(SubstitutionType),
     Nullable(TypeId),
     Optional(TypeId),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AliasType {
+    pub type_id: TypeId,
+    pub generic_types: Vec<TypeId>,
+    pub scope_id: ScopeId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubstitutionType {
+    pub type_id: TypeId,
+    pub substitutions: HashMap<TypeId, TypeId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
