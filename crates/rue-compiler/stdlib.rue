@@ -1,3 +1,5 @@
+export type List<T> = (T, List<T>) | Nil;
+
 export enum Condition {
     Remark = 1 {
         value?: Any,

@@ -81,6 +81,7 @@ impl SymbolTable {
             used_symbols
                 .iter()
                 .any(|symbol_id| self.type_referenced_by_symbol(*type_id, *symbol_id))
+                || ignored_types.contains(type_id)
         });
 
         let mut used_types = HashSet::new();
@@ -109,7 +110,6 @@ impl SymbolTable {
             let token = db.symbol_token(*symbol_id).unwrap();
             let kind = match db.symbol(*symbol_id).clone() {
                 Symbol::Unknown => unreachable!(),
-                // Symbol::Module(..) => WarningKind::UnusedModule(token.to_string()),
                 Symbol::Module(..) => continue,
                 Symbol::Function(..) => WarningKind::UnusedFunction(token.to_string()),
                 Symbol::InlineFunction(..) => WarningKind::UnusedInlineFunction(token.to_string()),
