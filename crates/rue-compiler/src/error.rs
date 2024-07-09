@@ -148,8 +148,7 @@ pub enum ErrorKind {
 
     // Type guards.
     UnsupportedTypeGuard(String, String),
-    NonAnyPairTypeGuard,
-    NonListPairTypeGuard,
+    RecursiveTypeGuard(String, String),
     InvalidExistanceCheck(String),
 
     // Blocks.
@@ -300,9 +299,8 @@ impl fmt::Display for ErrorKind {
             Self::ExpectedGenericArgs(name) => format!("Expected generic arguments for `{name}`."),
 
             // Type guards.
-            Self::UnsupportedTypeGuard(from, to) => format!("Cannot check type `{from}` against `{to}`."),
-            Self::NonAnyPairTypeGuard => "Cannot check `Any` against pair types other than `(Any, Any)`.".to_string(),
-            Self::NonListPairTypeGuard => "Cannot check `T[]` against pair types other than `(T, T[])`.".to_string(),
+            Self::UnsupportedTypeGuard(from, to) => format!("The structure of type `{from}` is incompatible with `{to}`, so this check is impossible."),
+            Self::RecursiveTypeGuard(from, to) => format!("Cannot unroll recursive type check between `{from}` and `{to}`."),
             Self::InvalidExistanceCheck(ty) => format!("Cannot check existence of value with type `{ty}`, since it can't be undefined."),
 
             // Blocks.

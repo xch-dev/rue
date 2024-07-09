@@ -17,7 +17,6 @@ use crate::{
 
 mod block;
 mod builtins;
-mod constraint;
 mod context;
 mod expr;
 mod item;
@@ -129,6 +128,10 @@ impl<'a> Compiler<'a> {
             }
         }
 
+        if let Some(token) = self.db.type_token(ty) {
+            return token.text().to_string();
+        }
+
         if stack.contains(&ty) {
             return "<recursive>".to_string();
         }
@@ -143,8 +146,8 @@ impl<'a> Compiler<'a> {
                 let inner = self.type_name_visitor(subtitute.type_id, stack);
                 format!("{{lazy {inner}}}")
             }
-            Type::Nil => "Nil".to_string(),
             Type::Any => "Any".to_string(),
+            Type::Nil => "Nil".to_string(),
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Bytes => "Bytes".to_string(),

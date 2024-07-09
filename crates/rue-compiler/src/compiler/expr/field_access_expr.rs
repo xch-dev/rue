@@ -95,7 +95,7 @@ impl Compiler<'_> {
                     return self.unknown();
                 }
             },
-            Type::Bytes | Type::Bytes32 if field_name.text() == "length" => Value::new(
+            Type::Bytes if field_name.text() == "length" => Value::new(
                 self.db.alloc_hir(Hir::Op(Op::Strlen, old_value.hir_id)),
                 self.builtins.int,
             ),

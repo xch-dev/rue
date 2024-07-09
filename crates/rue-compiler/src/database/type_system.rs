@@ -375,7 +375,13 @@ impl Database {
             Type::Union(items) => {
                 let new_items = items
                     .iter()
-                    .map(|item| self.substitute_type_visitor(*item, substitutions, visited))
+                    .flat_map(|item| {
+                        let type_id = self.substitute_type_visitor(*item, substitutions, visited);
+                        match self.ty(type_id) {
+                            Type::Union(items) => items.clone(),
+                            _ => vec![type_id],
+                        }
+                    })
                     .collect();
                 if new_items == items {
                     type_id

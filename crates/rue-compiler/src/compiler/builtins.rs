@@ -19,6 +19,7 @@ pub struct Builtins {
     pub public_key: TypeId,
     pub nil: TypeId,
     pub nil_hir: HirId,
+    pub one_hir: HirId,
     pub unknown: TypeId,
     pub unknown_hir: HirId,
 }
@@ -35,6 +36,7 @@ pub fn builtins(db: &mut Database) -> Builtins {
     let any = db.alloc_type(Type::Any);
     let nil = db.alloc_type(Type::Nil);
     let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
+    let one_hir = db.alloc_hir(Hir::Atom(vec![1]));
     let unknown = db.alloc_type(Type::Unknown);
     let unknown_hir = db.alloc_hir(Hir::Unknown);
 
@@ -56,6 +58,7 @@ pub fn builtins(db: &mut Database) -> Builtins {
         public_key,
         nil,
         nil_hir,
+        one_hir,
         unknown,
         unknown_hir,
     };

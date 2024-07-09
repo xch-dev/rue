@@ -9,8 +9,8 @@ use crate::{database::TypeId, ScopeId};
 pub enum Type {
     Unknown,
     Generic,
-    Nil,
     Any,
+    Nil,
     Int,
     Bool,
     Bytes,
