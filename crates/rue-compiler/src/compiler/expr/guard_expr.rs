@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use num_bigint::BigInt;
 use rowan::TextRange;
 use rue_parser::{AstNode, GuardExpr};
 
@@ -9,6 +10,15 @@ use crate::{
     value::{Guard, PairType, Rest, Type, TypeOverride, Value},
     ErrorKind, HirId, TypeId,
 };
+
+enum Check {
+    None,
+    IsAtom,
+    IsPair,
+    Length(BigInt),
+    And(Vec<Check>),
+    Or(Vec<Check>),
+}
 
 impl Compiler<'_> {
     pub fn compile_guard_expr(
@@ -53,6 +63,47 @@ impl Compiler<'_> {
         }
 
         value
+    }
+
+    fn guard_into(
+        &mut self,
+        old_type_id: TypeId,
+        new_type_id: TypeId,
+        hir_id: HirId,
+        text_range: TextRange,
+        visited: &mut HashSet<(TypeId, TypeId)>,
+    ) -> Option<HirId> {
+        if !visited.insert((old_type_id, new_type_id)) {
+            self.db.error(
+                ErrorKind::RecursiveTypeGuard(
+                    self.type_name(old_type_id),
+                    self.type_name(new_type_id),
+                ),
+                text_range,
+            );
+            return None;
+        }
+
+        if old_type_id == new_type_id {
+            visited.remove(&(old_type_id, new_type_id));
+            return Some(hir_id);
+        }
+
+        let result = self.guard_into_match(old_type_id, new_type_id, hir_id, text_range, visited);
+
+        visited.remove(&(old_type_id, new_type_id));
+
+        if result.is_none() {
+            self.db.error(
+                ErrorKind::UnsupportedTypeGuard(
+                    self.type_name(old_type_id),
+                    self.type_name(new_type_id),
+                ),
+                text_range,
+            );
+        }
+
+        result
     }
 
     #[allow(clippy::match_same_arms)]
@@ -212,154 +263,10 @@ impl Compiler<'_> {
                 | Type::PublicKey
                 | Type::Int),
             ) => {
-                let mut possible = false;
-                let mut check_bytes = false;
-                let mut check_size = false;
-
-                for item in items {
-                    match self.db.ty(item) {
-                        Type::Alias(..) | Type::Ref(..) | Type::Lazy(..) | Type::Union(..) => {
-                            unreachable!()
-                        }
-                        Type::Optional(..) => return None,
-                        Type::Pair(..) => {
-                            check_bytes = true;
-                        }
-                        Type::Unknown
-                        | Type::Any
-                        | Type::Generic
-                        | Type::Function(..)
-                        | Type::Enum(..)
-                        | Type::EnumVariant(..) => {
-                            check_bytes = true;
-                            check_size = true;
-                            possible = true;
-                        }
-                        Type::Struct(struct_type) => {
-                            let no_fields = struct_type.fields.is_empty();
-                            let transparent_field =
-                                struct_type.fields.len() == 1 && struct_type.rest == Rest::Spread;
-
-                            if (no_fields || transparent_field) && new == Type::Nil {
-                                check_bytes = true;
-                                check_size = true;
-                                possible = true;
-                            } else {
-                                check_bytes = true;
-                            }
-                        }
-                        Type::PublicKey => {
-                            if new == Type::PublicKey {
-                                possible = true;
-                            } else {
-                                check_size = true;
-                            }
-                        }
-                        Type::Bytes32 => {
-                            if new == Type::Bytes32 {
-                                possible = true;
-                            } else {
-                                check_size = true;
-                            }
-                        }
-                        Type::Nil => {
-                            if matches!(new, Type::Nil | Type::Bool) {
-                                possible = true;
-                            } else {
-                                check_size = true;
-                            }
-                        }
-                        Type::Bool => {
-                            if new == Type::Bool {
-                                possible = true;
-                            } else {
-                                check_size = true;
-                            }
-                        }
-                        Type::Bytes | Type::Int => {
-                            check_size = true;
-                            possible = true;
-                        }
-                    }
-                }
-
-                if !possible {
-                    return None;
-                }
-
-                if check_bytes {
-                    self.guard_into(self.builtins.any, new_type_id, hir_id, text_range, visited)
-                } else if check_size {
-                    self.guard_into(
-                        self.builtins.bytes,
-                        new_type_id,
-                        hir_id,
-                        text_range,
-                        visited,
-                    )
-                } else {
-                    Some(self.builtins.one_hir)
-                }
+                todo!()
             }
             (Type::Union(items), Type::Pair(..)) => {
-                let mut possible = false;
-                let mut check_pair = false;
-
-                for item in items {
-                    match self.db.ty(item) {
-                        Type::Alias(..) | Type::Ref(..) | Type::Lazy(..) | Type::Union(..) => {
-                            unreachable!()
-                        }
-                        Type::Optional(..) => return None,
-                        Type::Pair(..) => {
-                            possible = true;
-                        }
-                        Type::Unknown
-                        | Type::Any
-                        | Type::Generic
-                        | Type::Function(..)
-                        | Type::Enum(..)
-                        | Type::EnumVariant(..) => {
-                            check_pair = true;
-                            possible = true;
-                        }
-                        Type::Struct(struct_type) => {
-                            let no_fields = struct_type.fields.is_empty();
-                            let transparent_field =
-                                struct_type.fields.len() == 1 && struct_type.rest == Rest::Spread;
-
-                            if no_fields || transparent_field {
-                                check_pair = true;
-                            }
-
-                            if !no_fields {
-                                possible = true;
-                            }
-                        }
-                        Type::Nil
-                        | Type::Bool
-                        | Type::Bytes
-                        | Type::Bytes32
-                        | Type::PublicKey
-                        | Type::Int => {
-                            check_pair = true;
-                        }
-                    }
-                }
-
-                if !possible {
-                    return None;
-                }
-
-                if check_pair {
-                    self.guard_into(self.builtins.any, new_type_id, hir_id, text_range, visited)
-                } else {
-                    let any_pair = self.db.alloc_type(Type::Pair(PairType {
-                        first: self.builtins.any,
-                        rest: self.builtins.any,
-                    }));
-                    self.guard_into(any_pair, new_type_id, hir_id, text_range, visited)
-                }
+                todo!()
             }
             // TODO: Implement these
             (Type::Optional(..), _) | (_, Type::Optional(..)) => None,
@@ -370,44 +277,79 @@ impl Compiler<'_> {
         }
     }
 
-    fn guard_into(
-        &mut self,
-        old_type_id: TypeId,
-        new_type_id: TypeId,
-        hir_id: HirId,
-        text_range: TextRange,
-        visited: &mut HashSet<(TypeId, TypeId)>,
-    ) -> Option<HirId> {
-        if !visited.insert((old_type_id, new_type_id)) {
-            self.db.error(
-                ErrorKind::RecursiveTypeGuard(
-                    self.type_name(old_type_id),
-                    self.type_name(new_type_id),
-                ),
-                text_range,
-            );
-            return None;
+    #[allow(clippy::match_same_arms)]
+    fn differentiate(&self, old_type_id: TypeId, new_type_id: TypeId) -> Option<Check> {
+        match (
+            self.db.ty(old_type_id).clone(),
+            self.db.ty(new_type_id).clone(),
+        ) {
+            (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
+            (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
+            (Type::Lazy(..), _) | (_, Type::Lazy(..)) => unreachable!(),
+            (Type::Union(..), _) | (_, Type::Union(..)) => unreachable!(),
+            (_, Type::Generic) => None,
+            (Type::Function(..), _) | (_, Type::Function(..)) => None,
+            (Type::Bytes32, Type::PublicKey) | (Type::PublicKey, Type::Bytes32) => None,
+            (Type::Nil, Type::PublicKey) | (Type::PublicKey, Type::Nil) => None,
+            (Type::Bytes32, Type::Nil) | (Type::Nil, Type::Bytes32) => None,
+            (Type::Bytes32, Type::Bool) | (Type::Bool, Type::Bytes32) => None,
+            (Type::Bool, Type::PublicKey) | (Type::PublicKey, Type::Bool) => None,
+            (
+                Type::Pair(..),
+                Type::Nil | Type::Int | Type::Bool | Type::Bytes | Type::Bytes32 | Type::PublicKey,
+            )
+            | (
+                Type::Nil | Type::Int | Type::Bool | Type::Bytes | Type::Bytes32 | Type::PublicKey,
+                Type::Pair(..),
+            ) => None,
+            (_, Type::Any) => Some(Check::None),
+            (Type::Nil, Type::Bool) => Some(Check::None),
+            (Type::Unknown, _) | (_, Type::Unknown) => Some(Check::None),
+            (Type::PublicKey, Type::PublicKey) => Some(Check::None),
+            (Type::Bytes32, Type::Bytes32) => Some(Check::None),
+            (Type::Nil, Type::Nil) => Some(Check::None),
+            (Type::Bool, Type::Bool) => Some(Check::None),
+            (
+                Type::Nil | Type::Bool | Type::Int | Type::Bytes | Type::Bytes32 | Type::PublicKey,
+                Type::Bytes | Type::Int,
+            ) => Some(Check::None),
+            (Type::Any | Type::Generic, Type::Bytes32) => Some(Check::And(vec![
+                Check::IsAtom,
+                Check::Length(BigInt::from(32)),
+            ])),
+            (Type::Any | Type::Generic, Type::PublicKey) => Some(Check::And(vec![
+                Check::IsAtom,
+                Check::Length(BigInt::from(48)),
+            ])),
+            (Type::Any | Type::Generic, Type::Nil) => Some(Check::And(vec![
+                Check::IsAtom,
+                Check::Length(BigInt::from(0)),
+            ])),
+            (Type::Any | Type::Generic, Type::Bool) => Some(Check::And(vec![
+                Check::IsAtom,
+                Check::Or(vec![
+                    Check::Length(BigInt::from(0)),
+                    Check::Length(BigInt::from(1)),
+                ]),
+            ])),
+            (Type::Any | Type::Generic, Type::Bytes | Type::Int) => Some(Check::IsAtom),
+            (Type::Any | Type::Generic, Type::Pair(..)) => Some(Check::IsPair),
+            (Type::Bytes | Type::Int, Type::Bytes32) => Some(Check::Length(BigInt::from(32))),
+            (Type::Bytes | Type::Int, Type::PublicKey) => Some(Check::Length(BigInt::from(48))),
+            (Type::Bytes | Type::Int, Type::Bool) => Some(Check::Or(vec![
+                Check::Length(BigInt::from(0)),
+                Check::Length(BigInt::from(1)),
+            ])),
+            (Type::Bytes | Type::Int | Type::Bool, Type::Nil) => {
+                Some(Check::Length(BigInt::from(0)))
+            }
+            (Type::Pair(..), Type::Pair(..)) => Some(Check::None),
+
+            // TODO: Add these.
+            (Type::Optional(..), _) | (_, Type::Optional(..)) => None,
+            (Type::Struct(..), _) | (_, Type::Struct(..)) => None,
+            (Type::Enum(..), _) | (_, Type::Enum(..)) => None,
+            (Type::EnumVariant(..), _) | (_, Type::EnumVariant(..)) => None,
         }
-
-        if old_type_id == new_type_id {
-            visited.remove(&(old_type_id, new_type_id));
-            return Some(hir_id);
-        }
-
-        let result = self.guard_into_match(old_type_id, new_type_id, hir_id, text_range, visited);
-
-        visited.remove(&(old_type_id, new_type_id));
-
-        if result.is_none() {
-            self.db.error(
-                ErrorKind::UnsupportedTypeGuard(
-                    self.type_name(old_type_id),
-                    self.type_name(new_type_id),
-                ),
-                text_range,
-            );
-        }
-
-        result
     }
 }
