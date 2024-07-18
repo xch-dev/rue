@@ -15,12 +15,12 @@ categories = { workspace = true }
 workspace = true
 
 [dependencies]
-clap = { version = "4.5.4", features = ["derive"] }
-rue-parser = { path = "../../crates/rue-parser", version = "0.1.0" }
-rue-compiler = { path = "../../crates/rue-compiler", version = "0.1.0" }
-rue-clvm = { path = "../../crates/rue-clvm", version = "0.1.0" }
-clvmr = "0.6.1"
-hex = "0.4.3"
+clap = { workspace = true, features = ["derive"] }
+rue-parser = { workspace = true }
+rue-compiler = { workspace = true }
+rue-clvm = { workspace = true }
+clvmr = { workspace = true }
+hex = { workspace = true }
 
 [[bin]]
 name = "rue"

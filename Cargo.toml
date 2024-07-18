@@ -34,3 +34,29 @@ module_name_repetitions = "allow"
 multiple_crate_versions = "allow"
 must_use_candidate = "allow"
 too_many_lines = "allow"
+
+[workspace.dependencies]
+rue-parser = { path = "./crates/rue-parser", version = "0.1.0" }
+rue-compiler = { path = "./crates/rue-compiler", version = "0.1.0" }
+rue-clvm = { path = "./crates/rue-clvm", version = "0.1.0" }
+rue-lexer = { path = "./crates/rue-lexer", version = "0.1.0" }
+clvmr_old = { version = "0.3.2", package = "clvmr" }
+clvmr = "0.6.1"
+clap = "4.5.4"
+hex = "0.4.3"
+clvm_tools_rs = "0.1.41"
+thiserror = "1.0.61"
+num-bigint = "0.4.6"
+num-traits = "0.2.19"
+num-derive = "0.4.2"
+id-arena = "2.2.1"
+indexmap = "2.2.6"
+rowan = "0.15.15"
+log = "0.4.21"
+indoc = "2.0.5"
+tokio = "1.37.0"
+tower-lsp = "0.20.0"
+clvm-utils = "0.6.0"
+toml = "0.8.12"
+serde = "1.0.197"
+walkdir = "2.5.0"

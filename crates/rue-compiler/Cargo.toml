@@ -15,14 +15,14 @@ categories = { workspace = true }
 workspace = true
 
 [dependencies]
-rue-parser = { path = "../rue-parser", version = "0.1.0" }
-rue-clvm = { path = "../rue-clvm", version = "0.1.0" }
-clvmr = "0.6.1"
-id-arena = "2.2.1"
-indexmap = "2.2.6"
-rowan = "0.15.15"
-num-traits = "0.2.18"
-num-bigint = "0.4.4"
-log = "0.4.21"
-hex = "0.4.3"
-indoc = "2.0.5"
+rue-parser = { workspace = true }
+rue-clvm = { workspace = true }
+clvmr = { workspace = true }
+id-arena = { workspace = true }
+indexmap = { workspace = true }
+rowan = { workspace = true }
+num-traits = { workspace = true }
+num-bigint = { workspace = true }
+log = { workspace = true }
+hex = { workspace = true }
+indoc = { workspace = true }

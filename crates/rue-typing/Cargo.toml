@@ -1,9 +1,9 @@
 [package]
-name = "rue-clvm"
+name = "rue-typing"
 version = "0.1.1"
 edition = "2021"
 license = "Apache-2.0"
-description = "CLVM utilities for the Rue compiler."
+description = "The type system used by the Rue compiler."
 authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
 homepage = "https://github.com/rigidity/rue"
 repository = "https://github.com/rigidity/rue"
@@ -15,9 +15,3 @@ categories = { workspace = true }
 workspace = true
 
 [dependencies]
-clvmr = { workspace = true }
-clvmr_old = { workspace = true }
-clvm_tools_rs = { workspace = true }
-thiserror = { workspace = true }
-num-bigint = { workspace = true }
-num-traits = { workspace = true }
