@@ -197,6 +197,8 @@ where
                 pairs.push((*first, *rest));
             }
         }
+
+        visited.remove(&(item, rhs));
     }
 
     let always_atom = atom_count == length;
@@ -265,7 +267,7 @@ fn fmt_val(f: &mut fmt::Formatter<'_>, path: &[CheckPath]) -> fmt::Result {
 
 fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath>) -> fmt::Result {
     match check {
-        Check::None => write!(f, "()"),
+        Check::None => write!(f, "1"),
         Check::IsPair => {
             write!(f, "(l ")?;
             fmt_val(f, path)?;
@@ -289,7 +291,7 @@ fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath
             write!(f, " ())")
         }
         Check::Length(len) => {
-            write!(f, "(= (stlren ")?;
+            write!(f, "(= (strlen ")?;
             fmt_val(f, path)?;
             write!(f, ") {len})")
         }
@@ -343,7 +345,7 @@ fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath
                 path.pop().unwrap();
                 Ok(())
             } else {
-                write!(f, "()")
+                write!(f, "1")
             }
         }
     }
@@ -351,18 +353,9 @@ fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath
 
 #[cfg(test)]
 mod tests {
-    use regex::Regex;
-
     use crate::StandardTypes;
 
     use super::*;
-
-    fn trim(text: &str) -> String {
-        Regex::new(r"\s+")
-            .unwrap()
-            .replace_all(text.trim(), " ")
-            .replace(" )", ")")
-    }
 
     #[test]
     fn check_any_bytes32() {
@@ -370,7 +363,7 @@ mod tests {
         let types = StandardTypes::alloc(&mut db);
         assert_eq!(
             format!("{}", db.check(types.any, types.bytes32).unwrap()),
-            "(and (not (l val)) (= (stlren val) 32))"
+            "(and (not (l val)) (= (strlen val) 32))"
         );
     }
 
@@ -395,6 +388,22 @@ mod tests {
     }
 
     #[test]
+    fn check_optional_int() {
+        let mut db = TypeSystem::new();
+        let types = StandardTypes::alloc(&mut db);
+        let pair = db.alloc(Type::Pair(types.int, types.int));
+        let optional_pair = db.alloc(Type::Union(vec![pair, types.nil]));
+        assert_eq!(
+            format!("{}", db.check(optional_pair, types.nil).unwrap()),
+            "(and (not (l val)) (= val ()))"
+        );
+        assert_eq!(
+            format!("{}", db.check(optional_pair, pair).unwrap()),
+            "(and (l val) 1)"
+        );
+    }
+
+    #[test]
     fn check_any_pair_bytes32_pair_int_nil() {
         let mut db = TypeSystem::new();
         let types = StandardTypes::alloc(&mut db);
@@ -402,31 +411,41 @@ mod tests {
         let int_nil_pair = db.alloc(Type::Pair(types.int, types.nil));
         let ty = db.alloc(Type::Pair(types.bytes32, int_nil_pair));
 
+        assert_eq!(format!("{}", db.check(types.any, ty).unwrap()), "(and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (l (r val)) (all (not (l (f (r val)))) (and (not (l (r (r val)))) (= (r (r val)) ()))))))");
+    }
+
+    #[test]
+    fn check_complex_type_unions() {
+        let mut db = TypeSystem::new();
+        let types = StandardTypes::alloc(&mut db);
+
+        let int_nil_pair = db.alloc(Type::Pair(types.int, types.nil));
+        let bytes32_pair = db.alloc(Type::Pair(types.bytes32, types.bytes32));
+        let complex_pair = db.alloc(Type::Pair(int_nil_pair, bytes32_pair));
+
+        let lhs = db.alloc(Type::Union(vec![
+            types.bytes32,
+            types.public_key,
+            types.nil,
+            complex_pair,
+            int_nil_pair,
+            bytes32_pair,
+            types.bool,
+        ]));
+
+        let rhs = db.alloc(Type::Union(vec![
+            types.bytes32,
+            bytes32_pair,
+            types.nil,
+            complex_pair,
+        ]));
+
         assert_eq!(
-            format!("{}", db.check(types.any, ty).unwrap()),
-            trim(
-                "
-                (and
-                    (l val)
-                    (all
-                        (and
-                            (not (l (f val)))
-                            (= (stlren (f val)) 32)
-                        )
-                        (and
-                            (l (r val))
-                            (all
-                                (not (l (f (r val))))
-                                (and
-                                    (not (l (r (r val))))
-                                    (= (r (r val)) ())
-                                )
-                            )
-                        )
-                    )
-                )
-                "
-            )
+            format!("{}", db.check(lhs, rhs).unwrap()),
+            "(or (and (not (l val)) (= (strlen val) 32)) (and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (not (l val)) (= val ())) (and (l val) (all (and (l (f val)) 1) (and (l (r val)) 1))))"
+        );
+        assert_eq!(format!("{}", db.check(types.any, rhs).unwrap()),
+            "(or (and (not (l val)) (= (strlen val) 32)) (and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (not (l val)) (= val ())) (and (l val) (all (and (l (f val)) (all (not (l (f (f val)))) (and (not (l (r (f val)))) (= (r (f val)) ())))) (and (l (r val)) (all (and (not (l (f (r val)))) (= (strlen (f (r val))) 32)) (and (not (l (r (r val)))) (= (strlen (r (r val))) 32)))))))"
         );
     }
 }

@@ -1460,7 +1460,6 @@ name = "rue-typing"
 version = "0.1.1"
 dependencies = [
  "id-arena",
- "regex",
  "thiserror",
 ]
 
