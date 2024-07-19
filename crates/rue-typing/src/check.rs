@@ -411,7 +411,10 @@ mod tests {
         let int_nil_pair = db.alloc(Type::Pair(types.int, types.nil));
         let ty = db.alloc(Type::Pair(types.bytes32, int_nil_pair));
 
-        assert_eq!(format!("{}", db.check(types.any, ty).unwrap()), "(and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (l (r val)) (all (not (l (f (r val)))) (and (not (l (r (r val)))) (= (r (r val)) ()))))))");
+        assert_eq!(
+            format!("{}", db.check(types.any, ty).unwrap()),
+            "(and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (l (r val)) (all (not (l (f (r val)))) (and (not (l (r (r val)))) (= (r (r val)) ()))))))"
+        );
     }
 
     #[test]
