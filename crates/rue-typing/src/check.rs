@@ -1,4 +1,4 @@
-use std::{collections::HashSet, hash::BuildHasher};
+use std::{collections::HashSet, fmt, hash::BuildHasher};
 
 use crate::{Type, TypeId, TypeSystem};
 
@@ -8,7 +8,7 @@ pub enum CheckError {
     Impossible(TypeId, TypeId),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Check {
     None,
     IsPair,
@@ -20,6 +20,18 @@ pub enum Check {
     Or(Vec<Check>),
     If(Box<Check>, Box<Check>, Box<Check>),
     Pair(Box<Check>, Box<Check>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CheckPath {
+    First,
+    Rest,
+}
+
+impl fmt::Display for Check {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_check(self, f, &mut Vec::new())
+    }
 }
 
 /// Returns [`None`] for recursive checks.
@@ -211,6 +223,106 @@ where
     Ok(check)
 }
 
-pub fn simplify_check(check: Check) -> Check {
-    check
+fn fmt_val(f: &mut fmt::Formatter<'_>, path: &[CheckPath]) -> fmt::Result {
+    for path in path.iter().rev() {
+        match path {
+            CheckPath::First => write!(f, "(f ")?,
+            CheckPath::Rest => write!(f, "(r ")?,
+        }
+    }
+    write!(f, "val")?;
+    for _ in 0..path.len() {
+        write!(f, ")")?;
+    }
+    Ok(())
+}
+
+fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath>) -> fmt::Result {
+    match check {
+        Check::None => write!(f, "()"),
+        Check::IsPair => {
+            write!(f, "(l ")?;
+            fmt_val(f, path)?;
+            write!(f, ")")
+        }
+        Check::IsAtom => {
+            write!(f, "(not (l ")?;
+            fmt_val(f, path)?;
+            write!(f, "))")
+        }
+        Check::IsBool => {
+            write!(f, "(any (= ")?;
+            fmt_val(f, path)?;
+            write!(f, " ()) (= ")?;
+            fmt_val(f, path)?;
+            write!(f, " 1))")
+        }
+        Check::IsNil => {
+            write!(f, "(= ")?;
+            fmt_val(f, path)?;
+            write!(f, " ())")
+        }
+        Check::Length(len) => {
+            write!(f, "(= (stlren ")?;
+            fmt_val(f, path)?;
+            write!(f, ") {len})")
+        }
+        Check::And(checks) => {
+            write!(f, "(and")?;
+            for (i, check) in checks.iter().enumerate() {
+                if i > 0 {
+                    write!(f, " ")?;
+                }
+                fmt_check(check, f, path)?;
+            }
+            write!(f, ")")
+        }
+        Check::Or(checks) => {
+            write!(f, "(or")?;
+            for (i, check) in checks.iter().enumerate() {
+                if i > 0 {
+                    write!(f, " ")?;
+                }
+                fmt_check(check, f, path)?;
+            }
+            write!(f, ")")
+        }
+        Check::If(cond, then, else_) => {
+            write!(f, "(if ")?;
+            fmt_check(cond, f, path)?;
+            write!(f, " ")?;
+            fmt_check(then, f, path)?;
+            write!(f, " ")?;
+            fmt_check(else_, f, path)?;
+            write!(f, ")")
+        }
+        Check::Pair(first, rest) => {
+            let has_first = first.as_ref() != &Check::None;
+            let has_rest = rest.as_ref() != &Check::None;
+
+            if has_first && has_rest {
+                write!(f, "(all ")?;
+                path.push(CheckPath::First);
+                fmt_check(first, f, path)?;
+                path.pop().unwrap();
+                write!(f, " ")?;
+                path.push(CheckPath::Rest);
+                fmt_check(rest, f, path)?;
+                path.pop().unwrap();
+                write!(f, ")")
+            } else if has_first {
+                path.push(CheckPath::First);
+                fmt_check(first, f, path)?;
+                path.pop().unwrap();
+                Ok(())
+            } else if has_rest {
+                path.push(CheckPath::Rest);
+                fmt_check(rest, f, path)?;
+                path.pop().unwrap();
+                Ok(())
+            } else {
+                write!(f, "()")
+            }
+        }
+    }
 }
