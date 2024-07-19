@@ -16,3 +16,4 @@ workspace = true
 
 [dependencies]
 id-arena = { workspace = true }
+thiserror = { workspace = true }
