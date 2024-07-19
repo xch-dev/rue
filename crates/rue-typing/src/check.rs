@@ -40,7 +40,7 @@ impl fmt::Display for Check {
 
 /// Returns [`None`] for recursive checks.
 pub(crate) fn check_type<S>(
-    types: &mut TypeSystem,
+    types: &TypeSystem,
     lhs: TypeId,
     rhs: TypeId,
     visited: &mut HashSet<(TypeId, TypeId), S>,
@@ -98,108 +98,7 @@ where
             Check::Or(result)
         }
 
-        (Type::Union(items), _) => {
-            let mut atom_count = 0;
-            let mut bool_count = 0;
-            let mut nil_count = 0;
-            let mut bytes32_count = 0;
-            let mut public_key_count = 0;
-            let mut pairs = Vec::new();
-
-            let mut items: VecDeque<_> = items.clone().into();
-            let mut length = 0;
-
-            while !items.is_empty() {
-                let item = items.remove(0).unwrap();
-                length += 1;
-
-                match types.get(item) {
-                    Type::Ref(..) => unreachable!(),
-                    Type::Union(child_items) => {
-                        items.extend(child_items);
-                    }
-                    Type::Unknown => {}
-                    Type::Bytes | Type::Int => {
-                        atom_count += 1;
-                    }
-                    Type::Bytes32 => {
-                        atom_count += 1;
-                        bytes32_count += 1;
-                    }
-                    Type::PublicKey => {
-                        atom_count += 1;
-                        public_key_count += 1;
-                    }
-                    Type::Bool => {
-                        atom_count += 1;
-                        bool_count += 1;
-                    }
-                    Type::Nil => {
-                        atom_count += 1;
-                        nil_count += 1;
-                        bool_count += 1;
-                    }
-                    Type::Pair(first, rest) => {
-                        pairs.push((*first, *rest));
-                    }
-                }
-            }
-
-            let always_atom = atom_count == length;
-            let always_pair = pairs.len() == length;
-            let always_bool = bool_count == length;
-            let always_nil = nil_count == length;
-            let always_bytes32 = bytes32_count == length;
-            let always_public_key = public_key_count == length;
-
-            match types.get(rhs) {
-                Type::Unknown => Check::None,
-                Type::Ref(..) => unreachable!(),
-                Type::Union(..) => unreachable!(),
-                Type::Bytes if always_atom => Check::None,
-                Type::Int if always_atom => Check::None,
-                Type::Bool if always_bool => Check::None,
-                Type::Nil if always_nil => Check::None,
-                Type::Bytes32 if always_bytes32 => Check::None,
-                Type::PublicKey if always_public_key => Check::None,
-                Type::Bytes32 if always_atom => Check::Length(32),
-                Type::PublicKey if always_atom => Check::Length(48),
-                Type::Bool if always_atom => Check::IsBool,
-                Type::Nil if always_atom => Check::IsNil,
-                Type::Bytes => Check::IsAtom,
-                Type::Int => Check::IsAtom,
-                Type::Bytes32 => Check::And(vec![Check::IsAtom, Check::Length(32)]),
-                Type::PublicKey => Check::And(vec![Check::IsAtom, Check::Length(48)]),
-                Type::Bool => Check::And(vec![Check::IsAtom, Check::IsBool]),
-                Type::Nil => Check::And(vec![Check::IsAtom, Check::IsNil]),
-                Type::Pair(..) if always_atom => return Err(CheckError::Impossible(lhs, rhs)),
-                Type::Pair(first, rest) => {
-                    let (first, rest) = (*first, *rest);
-
-                    // Prevent infinite recursion.
-                    // TODO: This is a bit of a hack.
-                    check_type(types, lhs, first, visited)?;
-                    check_type(types, lhs, rest, visited)?;
-
-                    let first_items =
-                        types.alloc(Type::Union(pairs.iter().map(|(first, _)| *first).collect()));
-
-                    let rest_items =
-                        types.alloc(Type::Union(pairs.iter().map(|(_, rest)| *rest).collect()));
-
-                    let first = check_type(types, first_items, first, visited)?;
-                    let rest = check_type(types, rest_items, rest, visited)?;
-
-                    let pair_check = Check::Pair(Box::new(first), Box::new(rest));
-
-                    if always_pair {
-                        pair_check
-                    } else {
-                        Check::And(vec![Check::IsPair, pair_check])
-                    }
-                }
-            }
-        }
+        (Type::Union(items), _) => check_union_against_rhs(types, lhs, items, rhs, visited)?,
 
         (Type::PublicKey, Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::Bytes32, Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
@@ -238,6 +137,116 @@ where
     visited.remove(&(lhs, rhs));
 
     Ok(check)
+}
+
+fn check_union_against_rhs<S>(
+    types: &TypeSystem,
+    original_type_id: TypeId,
+    items: &[TypeId],
+    rhs: TypeId,
+    visited: &mut HashSet<(TypeId, TypeId), S>,
+) -> Result<Check, CheckError>
+where
+    S: BuildHasher,
+{
+    let mut atom_count = 0;
+    let mut bool_count = 0;
+    let mut nil_count = 0;
+    let mut bytes32_count = 0;
+    let mut public_key_count = 0;
+    let mut pairs = Vec::new();
+
+    let mut items: VecDeque<_> = items.iter().copied().collect::<VecDeque<_>>();
+    let mut length = 0;
+
+    while !items.is_empty() {
+        let item = items.remove(0).unwrap();
+        length += 1;
+
+        if !visited.insert((item, rhs)) {
+            return Err(CheckError::Recursive(item, rhs));
+        }
+
+        match types.get(item) {
+            Type::Ref(..) => unreachable!(),
+            Type::Union(child_items) => {
+                items.extend(child_items);
+            }
+            Type::Unknown => {}
+            Type::Bytes | Type::Int => {
+                atom_count += 1;
+            }
+            Type::Bytes32 => {
+                atom_count += 1;
+                bytes32_count += 1;
+            }
+            Type::PublicKey => {
+                atom_count += 1;
+                public_key_count += 1;
+            }
+            Type::Bool => {
+                atom_count += 1;
+                bool_count += 1;
+            }
+            Type::Nil => {
+                atom_count += 1;
+                nil_count += 1;
+                bool_count += 1;
+            }
+            Type::Pair(first, rest) => {
+                pairs.push((*first, *rest));
+            }
+        }
+    }
+
+    let always_atom = atom_count == length;
+    let always_pair = pairs.len() == length;
+    let always_bool = bool_count == length;
+    let always_nil = nil_count == length;
+    let always_bytes32 = bytes32_count == length;
+    let always_public_key = public_key_count == length;
+
+    Ok(match types.get(rhs) {
+        Type::Unknown => Check::None,
+        Type::Ref(..) => unreachable!(),
+        Type::Union(..) => unreachable!(),
+        Type::Bytes if always_atom => Check::None,
+        Type::Int if always_atom => Check::None,
+        Type::Bool if always_bool => Check::None,
+        Type::Nil if always_nil => Check::None,
+        Type::Bytes32 if always_bytes32 => Check::None,
+        Type::PublicKey if always_public_key => Check::None,
+        Type::Bytes32 if always_atom => Check::Length(32),
+        Type::PublicKey if always_atom => Check::Length(48),
+        Type::Bool if always_atom => Check::IsBool,
+        Type::Nil if always_atom => Check::IsNil,
+        Type::Bytes => Check::IsAtom,
+        Type::Int => Check::IsAtom,
+        Type::Bytes32 => Check::And(vec![Check::IsAtom, Check::Length(32)]),
+        Type::PublicKey => Check::And(vec![Check::IsAtom, Check::Length(48)]),
+        Type::Bool => Check::And(vec![Check::IsAtom, Check::IsBool]),
+        Type::Nil => Check::And(vec![Check::IsAtom, Check::IsNil]),
+        Type::Pair(..) if always_atom => return Err(CheckError::Impossible(original_type_id, rhs)),
+        Type::Pair(first, rest) => {
+            let (first, rest) = (*first, *rest);
+
+            let first_items: Vec<_> = pairs.iter().map(|(first, _)| *first).collect();
+            let rest_items: Vec<_> = pairs.iter().map(|(_, rest)| *rest).collect();
+
+            let first =
+                check_union_against_rhs(types, original_type_id, &first_items, first, visited)?;
+            let rest =
+                check_union_against_rhs(types, original_type_id, &rest_items, rest, visited)?;
+
+            let pair_check = Check::Pair(Box::new(first), Box::new(rest));
+
+            if always_pair {
+                pair_check
+            } else {
+                Check::And(vec![Check::IsPair, pair_check])
+            }
+        }
+    })
 }
 
 fn fmt_val(f: &mut fmt::Formatter<'_>, path: &[CheckPath]) -> fmt::Result {
