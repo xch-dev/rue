@@ -358,6 +358,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn check_incompatible() {
+        let mut db = TypeSystem::new();
+        let types = StandardTypes::alloc(&mut db);
+        assert!(matches!(
+            db.check(types.bytes32, types.public_key).unwrap_err(),
+            CheckError::Impossible(..)
+        ));
+    }
+
+    #[test]
     fn check_any_bytes32() {
         let mut db = TypeSystem::new();
         let types = StandardTypes::alloc(&mut db);
