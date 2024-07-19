@@ -57,8 +57,7 @@ where
 
         (Type::Unknown, _) | (_, Type::Unknown) => Check::None,
 
-        // TODO: Are these correct?
-        (Type::Never, _) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Never, _) => Check::None,
         (_, Type::Never) => return Err(CheckError::Impossible(lhs, rhs)),
 
         (Type::Bytes, Type::Bytes) => Check::None,
@@ -177,7 +176,6 @@ where
                 items.extend(child_items);
             }
             Type::Unknown => {}
-            // TODO: Is this correct?
             Type::Never => {
                 length -= 1;
             }
@@ -218,7 +216,6 @@ where
 
     Ok(match types.get(rhs) {
         Type::Unknown => Check::None,
-        // TODO: Is this correct?
         Type::Never => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Ref(..) => unreachable!(),
         Type::Union(..) => unreachable!(),

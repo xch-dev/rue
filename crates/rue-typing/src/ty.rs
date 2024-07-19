@@ -39,7 +39,6 @@ where
 
         (Type::Unknown, _) | (_, Type::Unknown) => Comparison::Assignable,
 
-        // TODO: Is this correct?
         (Type::Never, _) => Comparison::Assignable,
         (_, Type::Never) => Comparison::Superset,
 
@@ -77,30 +76,6 @@ where
             max(result, Comparison::Assignable)
         }
 
-        // (Type::Union(lhs), _) => {
-        //     let mut results = Vec::new();
-        //     for lhs in lhs {
-        //         let comparison = compare_type(types, *lhs, rhs, visited);
-        //         results.push(comparison);
-        //     }
-        //     if results.iter().all(|cmp| cmp == &Comparison::Incompatible) {
-        //         Comparison::Incompatible
-        //     } else {
-        //         max(
-        //             min(*results.iter().max().unwrap(), Comparison::Superset),
-        //             Comparison::Assignable,
-        //         )
-        //     }
-        // }
-
-        // (_, Type::Union(rhs)) => {
-        //     let mut result = Comparison::Assignable;
-        //     for rhs in rhs {
-        //         let comparison = compare_type(types, lhs, *rhs, visited);
-        //         result = min(result, comparison);
-        //     }
-        //     max(result, Comparison::Assignable)
-        // }
         (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
             let first = compare_type(types, *lhs_first, *rhs_first, visited);
             let rest = compare_type(types, *lhs_rest, *rhs_rest, visited);
