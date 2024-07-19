@@ -15,3 +15,4 @@ categories = { workspace = true }
 workspace = true
 
 [dependencies]
+id-arena = { workspace = true }
