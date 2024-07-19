@@ -261,6 +261,169 @@ where
     })
 }
 
+pub(crate) fn simplify_check(check: Check) -> Check {
+    match check {
+        Check::None => Check::None,
+        Check::IsAtom => Check::IsAtom,
+        Check::IsPair => Check::IsPair,
+        Check::IsBool => Check::IsBool,
+        Check::IsNil => Check::IsNil,
+        Check::Length(len) => {
+            if len == 0 {
+                Check::IsNil
+            } else {
+                Check::Length(len)
+            }
+        }
+        Check::And(items) => {
+            let mut result = Vec::new();
+
+            let mut is_atom = false;
+            let mut is_pair = false;
+            let mut is_bool = false;
+            let mut is_nil = false;
+            let mut length = false;
+
+            let mut items: VecDeque<_> = items.into();
+
+            while !items.is_empty() {
+                let item = simplify_check(items.pop_front().unwrap());
+
+                match item {
+                    Check::None => continue,
+                    Check::IsAtom => {
+                        if is_atom {
+                            continue;
+                        }
+                        is_atom = true;
+                    }
+                    Check::IsPair => {
+                        if is_pair {
+                            continue;
+                        }
+                        is_pair = true;
+                    }
+                    Check::IsBool => {
+                        if is_bool {
+                            continue;
+                        }
+                        is_bool = true;
+                    }
+                    Check::IsNil => {
+                        if is_nil {
+                            continue;
+                        }
+                        is_nil = true;
+                    }
+                    Check::Length(..) => {
+                        if length {
+                            continue;
+                        }
+                        length = false;
+                    }
+                    Check::And(children) => {
+                        items.extend(children);
+                        continue;
+                    }
+                    _ => {}
+                }
+
+                result.push(item);
+            }
+
+            if result.is_empty() {
+                Check::None
+            } else if result.len() == 1 {
+                result.remove(0)
+            } else {
+                Check::And(result)
+            }
+        }
+        Check::Or(items) => {
+            let mut result = Vec::new();
+            let mut atoms: Vec<Check> = Vec::new();
+            let mut pairs: Vec<Check> = Vec::new();
+
+            let mut items: VecDeque<_> = items.into();
+
+            while !items.is_empty() {
+                let item = simplify_check(items.pop_front().unwrap());
+
+                match item {
+                    Check::And(children) => {
+                        match children
+                            .iter()
+                            .find(|child| matches!(child, Check::IsAtom | Check::IsPair))
+                        {
+                            Some(Check::IsAtom) => {
+                                atoms.push(Check::And(
+                                    children
+                                        .into_iter()
+                                        .filter(|child| *child != Check::IsAtom)
+                                        .collect(),
+                                ));
+                                continue;
+                            }
+                            Some(Check::IsPair) => {
+                                pairs.push(Check::And(
+                                    children
+                                        .into_iter()
+                                        .filter(|child| *child != Check::IsPair)
+                                        .collect(),
+                                ));
+                                continue;
+                            }
+                            _ => {}
+                        }
+                    }
+                    Check::Or(children) => {
+                        items.extend(children);
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+
+            if !atoms.is_empty() && !pairs.is_empty() {
+                if atoms.len() > pairs.len() {
+                    result.push(Check::If(
+                        Box::new(Check::IsAtom),
+                        Box::new(Check::Or(atoms)),
+                        Box::new(Check::Or(pairs)),
+                    ));
+                } else {
+                    result.push(Check::If(
+                        Box::new(Check::IsPair),
+                        Box::new(Check::Or(pairs)),
+                        Box::new(Check::Or(atoms)),
+                    ));
+                }
+            } else if atoms.is_empty() {
+                result.push(Check::And(vec![Check::IsPair, Check::Or(pairs)]));
+            } else if pairs.is_empty() {
+                result.push(Check::And(vec![Check::IsAtom, Check::Or(atoms)]));
+            }
+
+            if result.len() == 1 {
+                result.remove(0)
+            } else {
+                Check::Or(result)
+            }
+        }
+        Check::If(cond, then, else_) => {
+            let cond = simplify_check(*cond);
+            let then = simplify_check(*then);
+            let else_ = simplify_check(*else_);
+            Check::If(Box::new(cond), Box::new(then), Box::new(else_))
+        }
+        Check::Pair(first, rest) => {
+            let first = simplify_check(*first);
+            let rest = simplify_check(*rest);
+            Check::Pair(Box::new(first), Box::new(rest))
+        }
+    }
+}
+
 fn fmt_val(f: &mut fmt::Formatter<'_>, path: &[CheckPath]) -> fmt::Result {
     for path in path.iter().rev() {
         match path {
@@ -532,7 +695,7 @@ mod tests {
 
         assert_eq!(
             format!("{}", db.check(lhs, rhs).unwrap()),
-            "(or (and (not (l val)) (= (strlen val) 32)) (and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (not (l val)) (= val ())) (and (l val) (all (and (l (f val)) 1) (and (l (r val)) 1))))"
+            "(if (l val) (or (and (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (all (and (l (f val)) 1) (and (l (r val)) 1)))) (or (and (= (strlen val) 32)) (and (= val ()))))"
         );
 
         assert_eq!(db.compare(lhs, rhs), Comparison::Superset);
@@ -544,7 +707,7 @@ mod tests {
         );
 
         assert_eq!(format!("{}", db.check(types.any, rhs).unwrap()),
-            "(or (and (not (l val)) (= (strlen val) 32)) (and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (not (l val)) (= val ())) (and (l val) (all (and (l (f val)) (all (not (l (f (f val)))) (and (not (l (r (f val)))) (= (r (f val)) ())))) (and (l (r val)) (all (and (not (l (f (r val)))) (= (strlen (f (r val))) 32)) (and (not (l (r (r val)))) (= (strlen (r (r val))) 32)))))))"
+            "(if (l val) (or (and (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (all (and (l (f val)) (all (not (l (f (f val)))) (and (not (l (r (f val)))) (= (r (f val)) ())))) (and (l (r val)) (all (and (not (l (f (r val)))) (= (strlen (f (r val))) 32)) (and (not (l (r (r val)))) (= (strlen (r (r val))) 32))))))) (or (and (= (strlen val) 32)) (and (= val ()))))"
         );
 
         assert_eq!(db.compare(types.any, rhs), Comparison::Superset);
