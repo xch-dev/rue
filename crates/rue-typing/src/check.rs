@@ -1,4 +1,8 @@
-use std::{collections::HashSet, fmt, hash::BuildHasher};
+use std::{
+    collections::{HashSet, VecDeque},
+    fmt,
+    hash::BuildHasher,
+};
 
 use crate::{Type, TypeId, TypeSystem};
 
@@ -35,7 +39,7 @@ impl fmt::Display for Check {
 }
 
 /// Returns [`None`] for recursive checks.
-pub fn check_type<S>(
+pub(crate) fn check_type<S>(
     types: &mut TypeSystem,
     lhs: TypeId,
     rhs: TypeId,
@@ -86,13 +90,13 @@ where
 
         (Type::Bool, Type::Nil) => Check::IsNil,
 
-        (_, Type::Union(items)) => Check::Or(
-            items
-                .clone()
-                .into_iter()
-                .map(|item| check_type(types, lhs, item, visited))
-                .collect::<Result<_, _>>()?,
-        ),
+        (_, Type::Union(items)) => {
+            let mut result = Vec::new();
+            for item in items.clone() {
+                result.push(check_type(types, lhs, item, visited)?);
+            }
+            Check::Or(result)
+        }
 
         (Type::Union(items), _) => {
             let mut atom_count = 0;
@@ -102,10 +106,18 @@ where
             let mut public_key_count = 0;
             let mut pairs = Vec::new();
 
-            for item in items {
-                match types.get(*item) {
+            let mut items: VecDeque<_> = items.clone().into();
+            let mut length = 0;
+
+            while !items.is_empty() {
+                let item = items.remove(0).unwrap();
+                length += 1;
+
+                match types.get(item) {
                     Type::Ref(..) => unreachable!(),
-                    Type::Union(..) => unreachable!(),
+                    Type::Union(child_items) => {
+                        items.extend(child_items);
+                    }
                     Type::Unknown => {}
                     Type::Bytes | Type::Int => {
                         atom_count += 1;
@@ -133,12 +145,12 @@ where
                 }
             }
 
-            let always_atom = atom_count == items.len();
-            let always_pair = pairs.len() == items.len();
-            let always_bool = bool_count == items.len();
-            let always_nil = nil_count == items.len();
-            let always_bytes32 = bytes32_count == items.len();
-            let always_public_key = public_key_count == items.len();
+            let always_atom = atom_count == length;
+            let always_pair = pairs.len() == length;
+            let always_bool = bool_count == length;
+            let always_nil = nil_count == length;
+            let always_bytes32 = bytes32_count == length;
+            let always_public_key = public_key_count == length;
 
             match types.get(rhs) {
                 Type::Unknown => Check::None,
@@ -163,6 +175,11 @@ where
                 Type::Pair(..) if always_atom => return Err(CheckError::Impossible(lhs, rhs)),
                 Type::Pair(first, rest) => {
                     let (first, rest) = (*first, *rest);
+
+                    // Prevent infinite recursion.
+                    // TODO: This is a bit of a hack.
+                    check_type(types, lhs, first, visited)?;
+                    check_type(types, lhs, rest, visited)?;
 
                     let first_items =
                         types.alloc(Type::Union(pairs.iter().map(|(first, _)| *first).collect()));
@@ -269,20 +286,16 @@ fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath
         }
         Check::And(checks) => {
             write!(f, "(and")?;
-            for (i, check) in checks.iter().enumerate() {
-                if i > 0 {
-                    write!(f, " ")?;
-                }
+            for check in checks {
+                write!(f, " ")?;
                 fmt_check(check, f, path)?;
             }
             write!(f, ")")
         }
         Check::Or(checks) => {
             write!(f, "(or")?;
-            for (i, check) in checks.iter().enumerate() {
-                if i > 0 {
-                    write!(f, " ")?;
-                }
+            for check in checks {
+                write!(f, " ")?;
                 fmt_check(check, f, path)?;
             }
             write!(f, ")")
@@ -324,5 +337,87 @@ fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath
                 write!(f, "()")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use regex::Regex;
+
+    use crate::StandardTypes;
+
+    use super::*;
+
+    fn trim(text: &str) -> String {
+        Regex::new(r"\s+")
+            .unwrap()
+            .replace_all(text.trim(), " ")
+            .replace(" )", ")")
+    }
+
+    #[test]
+    fn check_any_bytes32() {
+        let mut db = TypeSystem::new();
+        let types = StandardTypes::alloc(&mut db);
+        assert_eq!(
+            format!("{}", db.check(types.any, types.bytes32).unwrap()),
+            "(and (not (l val)) (= (stlren val) 32))"
+        );
+    }
+
+    #[test]
+    fn check_any_int() {
+        let mut db = TypeSystem::new();
+        let types = StandardTypes::alloc(&mut db);
+        assert_eq!(
+            format!("{}", db.check(types.any, types.int).unwrap()),
+            "(not (l val))"
+        );
+    }
+
+    #[test]
+    fn check_any_any() {
+        let mut db = TypeSystem::new();
+        let types = StandardTypes::alloc(&mut db);
+        assert!(matches!(
+            db.check(types.any, types.any).unwrap_err(),
+            CheckError::Recursive(..)
+        ));
+    }
+
+    #[test]
+    fn check_any_pair_bytes32_pair_int_nil() {
+        let mut db = TypeSystem::new();
+        let types = StandardTypes::alloc(&mut db);
+
+        let int_nil_pair = db.alloc(Type::Pair(types.int, types.nil));
+        let ty = db.alloc(Type::Pair(types.bytes32, int_nil_pair));
+
+        assert_eq!(
+            format!("{}", db.check(types.any, ty).unwrap()),
+            trim(
+                "
+                (and
+                    (l val)
+                    (all
+                        (and
+                            (not (l (f val)))
+                            (= (stlren (f val)) 32)
+                        )
+                        (and
+                            (l (r val))
+                            (all
+                                (not (l (f (r val))))
+                                (and
+                                    (not (l (r (r val))))
+                                    (= (r (r val)) ())
+                                )
+                            )
+                        )
+                    )
+                )
+                "
+            )
+        );
     }
 }

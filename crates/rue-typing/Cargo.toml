@@ -17,3 +17,6 @@ workspace = true
 [dependencies]
 id-arena = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+regex = { workspace = true }
