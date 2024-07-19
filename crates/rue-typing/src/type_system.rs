@@ -2,7 +2,9 @@ use std::collections::HashSet;
 
 use id_arena::{Arena, Id};
 
-use crate::{check_type, compare_type, Check, CheckError, Comparison, Type};
+use crate::{
+    check_type, compare_type, difference_type, Check, CheckError, Comparison, StandardTypes, Type,
+};
 
 pub type TypeId = Id<Type>;
 
@@ -40,5 +42,9 @@ impl TypeSystem {
 
     pub fn check(&self, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {
         check_type(self, lhs, rhs, &mut HashSet::new())
+    }
+
+    pub fn difference(&mut self, std: &StandardTypes, lhs: TypeId, rhs: TypeId) -> TypeId {
+        difference_type(self, std, lhs, rhs, &mut HashSet::new())
     }
 }

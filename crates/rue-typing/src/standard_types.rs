@@ -3,6 +3,7 @@ use crate::{Type, TypeId, TypeSystem};
 #[derive(Debug, Clone, Copy)]
 pub struct StandardTypes {
     pub unknown: TypeId,
+    pub never: TypeId,
     pub any: TypeId,
     pub bytes: TypeId,
     pub bytes32: TypeId,
@@ -15,6 +16,7 @@ pub struct StandardTypes {
 impl StandardTypes {
     pub fn alloc(type_system: &mut TypeSystem) -> Self {
         let unknown = type_system.alloc(Type::Unknown);
+        let never = type_system.alloc(Type::Never);
         let bytes = type_system.alloc(Type::Bytes);
         let bytes32 = type_system.alloc(Type::Bytes32);
         let public_key = type_system.alloc(Type::PublicKey);
@@ -28,6 +30,7 @@ impl StandardTypes {
 
         Self {
             unknown,
+            never,
             any,
             bytes,
             bytes32,

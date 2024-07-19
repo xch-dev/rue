@@ -57,6 +57,10 @@ where
 
         (Type::Unknown, _) | (_, Type::Unknown) => Check::None,
 
+        // TODO: Are these correct?
+        (Type::Never, _) => return Err(CheckError::Impossible(lhs, rhs)),
+        (_, Type::Never) => return Err(CheckError::Impossible(lhs, rhs)),
+
         (Type::Bytes, Type::Bytes) => Check::None,
         (Type::Bytes32, Type::Bytes32) => Check::None,
         (Type::PublicKey, Type::PublicKey) => Check::None,
@@ -173,6 +177,10 @@ where
                 items.extend(child_items);
             }
             Type::Unknown => {}
+            // TODO: Is this correct?
+            Type::Never => {
+                length -= 1;
+            }
             Type::Bytes | Type::Int => {
                 atom_count += 1;
             }
@@ -210,6 +218,8 @@ where
 
     Ok(match types.get(rhs) {
         Type::Unknown => Check::None,
+        // TODO: Is this correct?
+        Type::Never => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Ref(..) => unreachable!(),
         Type::Union(..) => unreachable!(),
         Type::Bytes if always_atom => Check::None,
@@ -353,7 +363,7 @@ fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath
 
 #[cfg(test)]
 mod tests {
-    use crate::StandardTypes;
+    use crate::{Comparison, StandardTypes};
 
     use super::*;
 
@@ -361,40 +371,67 @@ mod tests {
     fn check_incompatible() {
         let mut db = TypeSystem::new();
         let types = StandardTypes::alloc(&mut db);
+
         assert!(matches!(
             db.check(types.bytes32, types.public_key).unwrap_err(),
             CheckError::Impossible(..)
         ));
+
+        assert_eq!(
+            db.compare(types.bytes32, types.public_key),
+            Comparison::Incompatible
+        );
+
+        let difference = db.difference(&types, types.bytes32, types.public_key);
+        assert_eq!(db.compare(difference, types.bytes32), Comparison::Equal);
     }
 
     #[test]
     fn check_any_bytes32() {
         let mut db = TypeSystem::new();
         let types = StandardTypes::alloc(&mut db);
+
         assert_eq!(
             format!("{}", db.check(types.any, types.bytes32).unwrap()),
             "(and (not (l val)) (= (strlen val) 32))"
         );
+
+        assert_eq!(db.compare(types.any, types.bytes32), Comparison::Superset);
+
+        let difference = db.difference(&types, types.any, types.bytes32);
+        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
     }
 
     #[test]
     fn check_any_int() {
         let mut db = TypeSystem::new();
         let types = StandardTypes::alloc(&mut db);
+
         assert_eq!(
             format!("{}", db.check(types.any, types.int).unwrap()),
             "(not (l val))"
         );
+
+        assert_eq!(db.compare(types.any, types.int), Comparison::Superset);
+
+        let difference = db.difference(&types, types.any, types.int);
+        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
     }
 
     #[test]
     fn check_any_any() {
         let mut db = TypeSystem::new();
         let types = StandardTypes::alloc(&mut db);
+
         assert!(matches!(
             db.check(types.any, types.any).unwrap_err(),
             CheckError::Recursive(..)
         ));
+
+        assert_eq!(db.compare(types.any, types.any), Comparison::Assignable);
+
+        let difference = db.difference(&types, types.any, types.any);
+        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
     }
 
     #[test]
@@ -403,14 +440,43 @@ mod tests {
         let types = StandardTypes::alloc(&mut db);
         let pair = db.alloc(Type::Pair(types.int, types.int));
         let optional_pair = db.alloc(Type::Union(vec![pair, types.nil]));
+
         assert_eq!(
             format!("{}", db.check(optional_pair, types.nil).unwrap()),
             "(and (not (l val)) (= val ()))"
         );
+
+        assert_eq!(db.compare(optional_pair, types.nil), Comparison::Superset);
+
+        let difference = db.difference(&types, optional_pair, types.nil);
+        assert_eq!(db.compare(difference, pair), Comparison::Equal);
+
         assert_eq!(
             format!("{}", db.check(optional_pair, pair).unwrap()),
             "(and (l val) 1)"
         );
+
+        assert_eq!(db.compare(optional_pair, pair), Comparison::Superset);
+
+        let difference = db.difference(&types, optional_pair, pair);
+        assert_eq!(db.compare(difference, types.nil), Comparison::Equal);
+    }
+
+    #[test]
+    fn check_simple_union() {
+        let mut db = TypeSystem::new();
+        let types = StandardTypes::alloc(&mut db);
+        let union = db.alloc(Type::Union(vec![types.bytes32, types.public_key]));
+
+        assert_eq!(
+            format!("{}", db.check(union, types.public_key).unwrap()),
+            "(= (strlen val) 48)"
+        );
+
+        assert_eq!(db.compare(union, types.public_key), Comparison::Superset);
+
+        let difference = db.difference(&types, union, types.public_key);
+        assert_eq!(db.compare(difference, types.bytes32), Comparison::Equal);
     }
 
     #[test]
@@ -425,6 +491,11 @@ mod tests {
             format!("{}", db.check(types.any, ty).unwrap()),
             "(and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (l (r val)) (all (not (l (f (r val)))) (and (not (l (r (r val)))) (= (r (r val)) ()))))))"
         );
+
+        assert_eq!(db.compare(types.any, ty), Comparison::Superset);
+
+        let difference = db.difference(&types, types.any, ty);
+        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
     }
 
     #[test]
@@ -453,12 +524,32 @@ mod tests {
             complex_pair,
         ]));
 
+        let expected_diff = db.alloc(Type::Union(vec![
+            int_nil_pair,
+            types.public_key,
+            types.bool,
+        ]));
+
         assert_eq!(
             format!("{}", db.check(lhs, rhs).unwrap()),
             "(or (and (not (l val)) (= (strlen val) 32)) (and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (not (l val)) (= val ())) (and (l val) (all (and (l (f val)) 1) (and (l (r val)) 1))))"
         );
+
+        assert_eq!(db.compare(lhs, rhs), Comparison::Superset);
+
+        let difference = db.difference(&types, lhs, rhs);
+        assert_eq!(
+            db.compare(difference, expected_diff),
+            Comparison::Assignable
+        );
+
         assert_eq!(format!("{}", db.check(types.any, rhs).unwrap()),
             "(or (and (not (l val)) (= (strlen val) 32)) (and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (not (l val)) (= val ())) (and (l val) (all (and (l (f val)) (all (not (l (f (f val)))) (and (not (l (r (f val)))) (= (r (f val)) ())))) (and (l (r val)) (all (and (not (l (f (r val)))) (= (strlen (f (r val))) 32)) (and (not (l (r (r val)))) (= (strlen (r (r val))) 32)))))))"
         );
+
+        assert_eq!(db.compare(types.any, rhs), Comparison::Superset);
+
+        let difference = db.difference(&types, types.any, rhs);
+        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
     }
 }
