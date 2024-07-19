@@ -4,7 +4,7 @@ use std::{
     hash::BuildHasher,
 };
 
-use crate::{Type, TypeId, TypeSystem};
+use crate::{Type, TypeId, TypePath, TypeSystem};
 
 #[derive(Debug, Clone, Copy)]
 pub enum CheckError {
@@ -24,12 +24,6 @@ pub enum Check {
     Or(Vec<Check>),
     If(Box<Check>, Box<Check>, Box<Check>),
     Pair(Box<Check>, Box<Check>),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CheckPath {
-    First,
-    Rest,
 }
 
 impl fmt::Display for Check {
@@ -421,11 +415,11 @@ pub(crate) fn simplify_check(check: Check) -> Check {
     }
 }
 
-fn fmt_val(f: &mut fmt::Formatter<'_>, path: &[CheckPath]) -> fmt::Result {
+fn fmt_val(f: &mut fmt::Formatter<'_>, path: &[TypePath]) -> fmt::Result {
     for path in path.iter().rev() {
         match path {
-            CheckPath::First => write!(f, "(f ")?,
-            CheckPath::Rest => write!(f, "(r ")?,
+            TypePath::First => write!(f, "(f ")?,
+            TypePath::Rest => write!(f, "(r ")?,
         }
     }
     write!(f, "val")?;
@@ -435,7 +429,7 @@ fn fmt_val(f: &mut fmt::Formatter<'_>, path: &[CheckPath]) -> fmt::Result {
     Ok(())
 }
 
-fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath>) -> fmt::Result {
+fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<TypePath>) -> fmt::Result {
     match check {
         Check::None => write!(f, "1"),
         Check::IsPair => {
@@ -496,21 +490,21 @@ fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<CheckPath
 
             if has_first && has_rest {
                 write!(f, "(all ")?;
-                path.push(CheckPath::First);
+                path.push(TypePath::First);
                 fmt_check(first, f, path)?;
                 path.pop().unwrap();
                 write!(f, " ")?;
-                path.push(CheckPath::Rest);
+                path.push(TypePath::Rest);
                 fmt_check(rest, f, path)?;
                 path.pop().unwrap();
                 write!(f, ")")
             } else if has_first {
-                path.push(CheckPath::First);
+                path.push(TypePath::First);
                 fmt_check(first, f, path)?;
                 path.pop().unwrap();
                 Ok(())
             } else if has_rest {
-                path.push(CheckPath::Rest);
+                path.push(TypePath::Rest);
                 fmt_check(rest, f, path)?;
                 path.pop().unwrap();
                 Ok(())
