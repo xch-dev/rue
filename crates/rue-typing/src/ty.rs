@@ -1,7 +1,6 @@
 use std::{
     cmp::{max, min},
     collections::{HashMap, HashSet},
-    hash::BuildHasher,
 };
 
 use crate::{Alias, Comparison, Lazy, StandardTypes, TypeId, TypePath, TypeSystem};
@@ -193,16 +192,13 @@ pub(crate) fn compare_type(
     comparison
 }
 
-pub(crate) fn difference_type<S>(
+pub(crate) fn difference_type(
     types: &mut TypeSystem,
     std: &StandardTypes,
     lhs: TypeId,
     rhs: TypeId,
-    visited: &mut HashSet<(TypeId, TypeId), S>,
-) -> TypeId
-where
-    S: BuildHasher,
-{
+    visited: &mut HashSet<(TypeId, TypeId)>,
+) -> TypeId {
     if !visited.insert((lhs, rhs)) {
         return lhs;
     }
