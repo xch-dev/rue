@@ -1,6 +1,9 @@
-use std::cmp::{max, min};
+use std::{
+    cmp::{max, min},
+    collections::{HashMap, HashSet},
+};
 
-use crate::{ComparisonContext, Type, TypeId, TypeSystem};
+use crate::{Type, TypeId, TypeSystem};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Comparison {
@@ -9,6 +12,13 @@ pub enum Comparison {
     Castable,
     Superset,
     Incompatible,
+}
+
+pub(crate) struct ComparisonContext<'a> {
+    pub visited: HashSet<(TypeId, TypeId)>,
+    pub substitution_stack: &'a mut Vec<HashMap<TypeId, TypeId>>,
+    pub initial_substitution_length: usize,
+    pub generic_stack_frame: Option<usize>,
 }
 
 pub(crate) fn compare_type(

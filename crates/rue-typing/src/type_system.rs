@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 use id_arena::{Arena, Id};
 
 use crate::{
-    check_type, compare_type, difference_type, replace_type, simplify_check, structural_type,
-    Check, CheckError, Comparison, ComparisonContext, StandardTypes, Type, TypePath,
+    check_type, compare_type, difference_type, replace_type, simplify_check, stringify_type,
+    substitute_type, Check, CheckError, Comparison, ComparisonContext, StandardTypes, Type,
+    TypePath,
 };
 
 pub type TypeId = Id<Type>;
@@ -35,6 +36,14 @@ impl TypeSystem {
             Type::Ref(id) => self.get_mut(*id),
             _ => &mut self.arena[id],
         }
+    }
+
+    pub fn stringify_named(&self, type_id: TypeId, names: &HashMap<TypeId, String>) -> String {
+        stringify_type(self, type_id, names, &mut HashSet::new())
+    }
+
+    pub fn stringify(&self, type_id: TypeId) -> String {
+        self.stringify_named(type_id, &HashMap::new())
     }
 
     pub fn compare(&self, lhs: TypeId, rhs: TypeId) -> Comparison {
@@ -68,12 +77,26 @@ impl TypeSystem {
         )
     }
 
+    pub fn substitute(
+        &mut self,
+        type_id: TypeId,
+        mut substitutions: HashMap<TypeId, TypeId>,
+    ) -> TypeId {
+        substitute_type(self, type_id, &mut substitutions, true, &mut HashSet::new())
+    }
+
     pub fn structure(
         &mut self,
         type_id: TypeId,
         mut substitutions: HashMap<TypeId, TypeId>,
     ) -> TypeId {
-        structural_type(self, type_id, &mut substitutions, &mut HashSet::new())
+        substitute_type(
+            self,
+            type_id,
+            &mut substitutions,
+            false,
+            &mut HashSet::new(),
+        )
     }
 
     pub fn check(&self, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {

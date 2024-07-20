@@ -20,13 +20,6 @@ pub enum Type {
     Alias(Alias),
 }
 
-pub(crate) struct ComparisonContext<'a> {
-    pub visited: HashSet<(TypeId, TypeId)>,
-    pub substitution_stack: &'a mut Vec<HashMap<TypeId, TypeId>>,
-    pub initial_substitution_length: usize,
-    pub generic_stack_frame: Option<usize>,
-}
-
 pub(crate) fn replace_type(
     types: &mut TypeSystem,
     type_id: TypeId,
@@ -46,10 +39,11 @@ pub(crate) fn replace_type(
     }
 }
 
-pub(crate) fn structural_type(
+pub(crate) fn substitute_type(
     types: &mut TypeSystem,
     type_id: TypeId,
     substitutions: &mut HashMap<TypeId, TypeId>,
+    preserve_semantics: bool,
     visited: &mut HashSet<TypeId>,
 ) -> TypeId {
     if let Some(new_type_id) = substitutions.get(&type_id) {
@@ -74,8 +68,9 @@ pub(crate) fn structural_type(
         Type::Pair(first, rest) => {
             let (first, rest) = (*first, *rest);
 
-            let new_first = structural_type(types, first, substitutions, visited);
-            let new_rest = structural_type(types, rest, substitutions, visited);
+            let new_first =
+                substitute_type(types, first, substitutions, preserve_semantics, visited);
+            let new_rest = substitute_type(types, rest, substitutions, preserve_semantics, visited);
 
             if new_first == first && new_rest == rest {
                 type_id
@@ -88,7 +83,13 @@ pub(crate) fn structural_type(
             let mut result = Vec::new();
 
             for item in &items {
-                result.push(structural_type(types, *item, substitutions, visited));
+                result.push(substitute_type(
+                    types,
+                    *item,
+                    substitutions,
+                    preserve_semantics,
+                    visited,
+                ));
             }
 
             if result == items {
@@ -99,9 +100,38 @@ pub(crate) fn structural_type(
         }
         Type::Lazy(lazy) => {
             substitutions.extend(lazy.substitutions.clone());
-            structural_type(types, lazy.type_id, substitutions, visited)
+            substitute_type(
+                types,
+                lazy.type_id,
+                substitutions,
+                preserve_semantics,
+                visited,
+            )
         }
-        Type::Alias(alias) => alias.type_id,
+        Type::Alias(alias) => {
+            let alias = alias.clone();
+
+            let new_type_id = substitute_type(
+                types,
+                alias.type_id,
+                substitutions,
+                preserve_semantics,
+                visited,
+            );
+
+            if preserve_semantics {
+                if new_type_id == alias.type_id {
+                    type_id
+                } else {
+                    types.alloc(Type::Alias(Alias {
+                        type_id: new_type_id,
+                        generic_types: alias.generic_types,
+                    }))
+                }
+            } else {
+                new_type_id
+            }
+        }
     };
 
     visited.remove(&type_id);
