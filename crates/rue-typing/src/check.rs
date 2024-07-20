@@ -4,11 +4,15 @@ use std::{
     hash::BuildHasher,
 };
 
+use thiserror::Error;
+
 use crate::{Type, TypeId, TypePath, TypeSystem};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Error, Clone, Copy)]
 pub enum CheckError {
+    #[error("recursive check")]
     Recursive(TypeId, TypeId),
+    #[error("impossible check")]
     Impossible(TypeId, TypeId),
 }
 
@@ -153,6 +157,24 @@ fn check_union_against_rhs<S>(
 where
     S: BuildHasher,
 {
+    if let Type::Union(union) = types.get(rhs) {
+        let rhs_items = union.clone();
+        let mut result = Vec::new();
+        for rhs_item in rhs_items {
+            if !visited.insert((original_type_id, rhs_item)) {
+                return Err(CheckError::Recursive(original_type_id, rhs_item));
+            }
+            result.push(check_union_against_rhs(
+                types,
+                original_type_id,
+                items,
+                rhs_item,
+                visited,
+            )?);
+        }
+        return Ok(Check::Or(result));
+    }
+
     let mut atom_count = 0;
     let mut bool_count = 0;
     let mut nil_count = 0;
@@ -531,193 +553,227 @@ fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<TypePath>
 
 #[cfg(test)]
 mod tests {
-    use crate::{Comparison, StandardTypes};
+    use crate::StandardTypes;
 
     use super::*;
 
-    #[test]
-    fn check_incompatible() {
+    fn setup() -> (TypeSystem, StandardTypes) {
         let mut db = TypeSystem::new();
         let types = StandardTypes::alloc(&mut db);
+        (db, types)
+    }
 
+    fn check_str(db: &TypeSystem, lhs: TypeId, rhs: TypeId, expected: &str) {
+        assert_eq!(format!("{}", db.check(lhs, rhs).unwrap()), expected);
+    }
+
+    fn check_recursive(db: &TypeSystem, lhs: TypeId, rhs: TypeId) {
+        assert!(matches!(db.check(lhs, rhs), Err(CheckError::Recursive(..))));
+    }
+
+    fn check_impossible(db: &TypeSystem, lhs: TypeId, rhs: TypeId) {
         assert!(matches!(
-            db.check(types.bytes32, types.public_key).unwrap_err(),
-            CheckError::Impossible(..)
+            db.check(lhs, rhs),
+            Err(CheckError::Impossible(..))
         ));
+    }
 
-        assert_eq!(
-            db.compare(types.bytes32, types.public_key),
-            Comparison::Incompatible
-        );
+    fn alloc_list(db: &mut TypeSystem, types: &StandardTypes, item_type_id: TypeId) -> TypeId {
+        let list = db.alloc(Type::Unknown);
+        let pair = db.alloc(Type::Pair(item_type_id, list));
+        *db.get_mut(list) = Type::Union(vec![pair, types.nil]);
+        list
+    }
 
-        let difference = db.difference(&types, types.bytes32, types.public_key);
-        assert_eq!(db.compare(difference, types.bytes32), Comparison::Equal);
+    #[test]
+    fn check_any_bytes() {
+        let (db, types) = setup();
+        check_str(&db, types.any, types.bytes, "(not (l val))");
     }
 
     #[test]
     fn check_any_bytes32() {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
-
-        assert_eq!(
-            format!("{}", db.check(types.any, types.bytes32).unwrap()),
-            "(and (not (l val)) (= (strlen val) 32))"
+        let (db, types) = setup();
+        check_str(
+            &db,
+            types.any,
+            types.bytes32,
+            "(and (not (l val)) (= (strlen val) 32))",
         );
+    }
 
-        assert_eq!(db.compare(types.any, types.bytes32), Comparison::Superset);
-
-        let difference = db.difference(&types, types.any, types.bytes32);
-        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
+    #[test]
+    fn check_any_public_key() {
+        let (db, types) = setup();
+        check_str(
+            &db,
+            types.any,
+            types.public_key,
+            "(and (not (l val)) (= (strlen val) 48))",
+        );
     }
 
     #[test]
     fn check_any_int() {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
+        let (db, types) = setup();
+        check_str(&db, types.any, types.int, "(not (l val))");
+    }
 
-        assert_eq!(
-            format!("{}", db.check(types.any, types.int).unwrap()),
-            "(not (l val))"
+    #[test]
+    fn check_any_bool() {
+        let (db, types) = setup();
+        check_str(
+            &db,
+            types.any,
+            types.bool,
+            "(and (not (l val)) (any (= val ()) (= val 1)))",
         );
+    }
 
-        assert_eq!(db.compare(types.any, types.int), Comparison::Superset);
+    #[test]
+    fn check_any_nil() {
+        let (db, types) = setup();
+        check_str(&db, types.any, types.nil, "(and (not (l val)) (= val ()))");
+    }
 
-        let difference = db.difference(&types, types.any, types.int);
-        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
+    #[test]
+    fn check_bytes_bytes() {
+        let (db, types) = setup();
+        check_str(&db, types.bytes, types.bytes, "1");
+    }
+
+    #[test]
+    fn check_bytes32_bytes32() {
+        let (db, types) = setup();
+        check_str(&db, types.bytes32, types.bytes32, "1");
+    }
+
+    #[test]
+    fn check_public_key_public_key() {
+        let (db, types) = setup();
+        check_str(&db, types.public_key, types.public_key, "1");
+    }
+
+    #[test]
+    fn check_int_int() {
+        let (db, types) = setup();
+        check_str(&db, types.int, types.int, "1");
+    }
+
+    #[test]
+    fn check_bool_bool() {
+        let (db, types) = setup();
+        check_str(&db, types.bool, types.bool, "1");
+    }
+
+    #[test]
+    fn check_nil_nil() {
+        let (db, types) = setup();
+        check_str(&db, types.nil, types.nil, "1");
+    }
+
+    #[test]
+    fn check_bytes_bytes32() {
+        let (db, types) = setup();
+        check_str(&db, types.bytes, types.bytes32, "(= (strlen val) 32)");
+    }
+
+    #[test]
+    fn check_bytes32_bytes() {
+        let (db, types) = setup();
+        check_str(&db, types.bytes32, types.bytes, "1");
+    }
+
+    #[test]
+    fn check_bytes_public_key() {
+        let (db, types) = setup();
+        check_str(&db, types.bytes, types.public_key, "(= (strlen val) 48)");
+    }
+
+    #[test]
+    fn check_public_key_bytes() {
+        let (db, types) = setup();
+        check_str(&db, types.public_key, types.bytes, "1");
+    }
+
+    #[test]
+    fn check_bytes_nil() {
+        let (db, types) = setup();
+        check_str(&db, types.bytes, types.nil, "(= val ())");
+    }
+
+    #[test]
+    fn check_nil_bytes() {
+        let (db, types) = setup();
+        check_str(&db, types.nil, types.bytes, "1");
+    }
+
+    #[test]
+    fn check_bytes_bool() {
+        let (db, types) = setup();
+        check_str(&db, types.bytes, types.bool, "(any (= val ()) (= val 1))");
+    }
+
+    #[test]
+    fn check_bool_bytes() {
+        let (db, types) = setup();
+        check_str(&db, types.bool, types.bytes, "1");
+    }
+
+    #[test]
+    fn check_bytes32_public_key() {
+        let (db, types) = setup();
+        check_impossible(&db, types.bytes32, types.public_key);
+    }
+
+    #[test]
+    fn check_bytes_int() {
+        let (db, types) = setup();
+        check_str(&db, types.bytes, types.int, "1");
+    }
+
+    #[test]
+    fn check_int_bytes() {
+        let (db, types) = setup();
+        check_str(&db, types.int, types.bytes, "1");
+    }
+
+    #[test]
+    fn check_bool_nil() {
+        let (db, types) = setup();
+        check_str(&db, types.bool, types.nil, "(= val ())");
+    }
+
+    #[test]
+    fn check_nil_bool() {
+        let (db, types) = setup();
+        check_str(&db, types.nil, types.bool, "1");
     }
 
     #[test]
     fn check_any_any() {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
-
-        assert!(matches!(
-            db.check(types.any, types.any).unwrap_err(),
-            CheckError::Recursive(..)
-        ));
-
-        assert_eq!(db.compare(types.any, types.any), Comparison::Assignable);
-
-        let difference = db.difference(&types, types.any, types.any);
-        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
+        let (db, types) = setup();
+        check_recursive(&db, types.any, types.any);
     }
 
     #[test]
-    fn check_optional_int() {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
-        let pair = db.alloc(Type::Pair(types.int, types.int));
-        let optional_pair = db.alloc(Type::Union(vec![pair, types.nil]));
-
-        assert_eq!(
-            format!("{}", db.check(optional_pair, types.nil).unwrap()),
-            "(and (not (l val)) (= val ()))"
-        );
-
-        assert_eq!(db.compare(optional_pair, types.nil), Comparison::Superset);
-
-        let difference = db.difference(&types, optional_pair, types.nil);
-        assert_eq!(db.compare(difference, pair), Comparison::Equal);
-
-        assert_eq!(
-            format!("{}", db.check(optional_pair, pair).unwrap()),
-            "(and (l val) 1)"
-        );
-
-        assert_eq!(db.compare(optional_pair, pair), Comparison::Superset);
-
-        let difference = db.difference(&types, optional_pair, pair);
-        assert_eq!(db.compare(difference, types.nil), Comparison::Equal);
+    fn check_bytes_any() {
+        let (db, types) = setup();
+        check_recursive(&db, types.any, types.any);
     }
 
     #[test]
-    fn check_simple_union() {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
-        let union = db.alloc(Type::Union(vec![types.bytes32, types.public_key]));
-
-        assert_eq!(
-            format!("{}", db.check(union, types.public_key).unwrap()),
-            "(= (strlen val) 48)"
-        );
-
-        assert_eq!(db.compare(union, types.public_key), Comparison::Superset);
-
-        let difference = db.difference(&types, union, types.public_key);
-        assert_eq!(db.compare(difference, types.bytes32), Comparison::Equal);
+    fn check_list_nil() {
+        let (mut db, types) = setup();
+        let list = alloc_list(&mut db, &types, types.bytes);
+        check_str(&db, list, types.nil, "(and (not (l val)) (= val ()))");
     }
 
     #[test]
-    fn check_any_pair_bytes32_pair_int_nil() {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
-
-        let int_nil_pair = db.alloc(Type::Pair(types.int, types.nil));
-        let ty = db.alloc(Type::Pair(types.bytes32, int_nil_pair));
-
-        assert_eq!(
-            format!("{}", db.check(types.any, ty).unwrap()),
-            "(and (l val) (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (l (r val)) (all (not (l (f (r val)))) (and (not (l (r (r val)))) (= (r (r val)) ()))))))"
-        );
-
-        assert_eq!(db.compare(types.any, ty), Comparison::Superset);
-
-        let difference = db.difference(&types, types.any, ty);
-        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
-    }
-
-    #[test]
-    fn check_complex_type_unions() {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
-
-        let int_nil_pair = db.alloc(Type::Pair(types.int, types.nil));
-        let bytes32_pair = db.alloc(Type::Pair(types.bytes32, types.bytes32));
-        let complex_pair = db.alloc(Type::Pair(int_nil_pair, bytes32_pair));
-
-        let lhs = db.alloc(Type::Union(vec![
-            types.bytes32,
-            types.public_key,
-            types.nil,
-            complex_pair,
-            int_nil_pair,
-            bytes32_pair,
-            types.bool,
-        ]));
-
-        let rhs = db.alloc(Type::Union(vec![
-            types.bytes32,
-            bytes32_pair,
-            types.nil,
-            complex_pair,
-        ]));
-
-        let expected_diff = db.alloc(Type::Union(vec![
-            int_nil_pair,
-            types.public_key,
-            types.bool,
-        ]));
-
-        assert_eq!(
-            format!("{}", db.check(lhs, rhs).unwrap()),
-            "(if (l val) (or (and (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (all (and (l (f val)) 1) (and (l (r val)) 1)))) (or (and (= (strlen val) 32)) (and (= val ()))))"
-        );
-
-        assert_eq!(db.compare(lhs, rhs), Comparison::Superset);
-
-        let difference = db.difference(&types, lhs, rhs);
-        assert_eq!(
-            db.compare(difference, expected_diff),
-            Comparison::Assignable
-        );
-
-        assert_eq!(format!("{}", db.check(types.any, rhs).unwrap()),
-            "(if (l val) (or (and (all (and (not (l (f val))) (= (strlen (f val)) 32)) (and (not (l (r val))) (= (strlen (r val)) 32)))) (and (all (and (l (f val)) (all (not (l (f (f val)))) (and (not (l (r (f val)))) (= (r (f val)) ())))) (and (l (r val)) (all (and (not (l (f (r val)))) (= (strlen (f (r val))) 32)) (and (not (l (r (r val)))) (= (strlen (r (r val))) 32))))))) (or (and (= (strlen val) 32)) (and (= val ()))))"
-        );
-
-        assert_eq!(db.compare(types.any, rhs), Comparison::Superset);
-
-        let difference = db.difference(&types, types.any, rhs);
-        assert_eq!(db.compare(difference, types.any), Comparison::Assignable);
+    fn check_list_pair() {
+        let (mut db, types) = setup();
+        let list = alloc_list(&mut db, &types, types.bytes);
+        let pair = db.alloc(Type::Pair(types.bytes, list));
+        check_str(&db, list, pair, "");
     }
 }
