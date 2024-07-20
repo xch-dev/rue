@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use id_arena::{Arena, Id};
 
 use crate::{
-    check_type, compare_type, difference_type, replace_type, simplify_check, Check, CheckError,
-    Comparison, ComparisonContext, StandardTypes, Type, TypePath,
+    check_type, compare_type, difference_type, replace_type, simplify_check, structural_type,
+    Check, CheckError, Comparison, ComparisonContext, StandardTypes, Type, TypePath,
 };
 
 pub type TypeId = Id<Type>;
@@ -45,19 +45,35 @@ impl TypeSystem {
         &self,
         lhs: TypeId,
         rhs: TypeId,
-        generic_type_stack: &mut Vec<HashMap<TypeId, TypeId>>,
+        substitution_stack: &mut Vec<HashMap<TypeId, TypeId>>,
         infer_generics: bool,
     ) -> Comparison {
+        let generic_stack_frame = if infer_generics {
+            Some(substitution_stack.len() - 1)
+        } else {
+            None
+        };
+        let initial_substitution_length = substitution_stack.len();
+
         compare_type(
             self,
             lhs,
             rhs,
             &mut ComparisonContext {
                 visited: HashSet::new(),
-                generic_type_stack,
-                infer_generics,
+                substitution_stack,
+                initial_substitution_length,
+                generic_stack_frame,
             },
         )
+    }
+
+    pub fn structure(
+        &mut self,
+        type_id: TypeId,
+        mut substitutions: HashMap<TypeId, TypeId>,
+    ) -> TypeId {
+        structural_type(self, type_id, &mut substitutions, &mut HashSet::new())
     }
 
     pub fn check(&self, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {

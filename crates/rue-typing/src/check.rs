@@ -48,6 +48,8 @@ where
 
     let check = match (types.get(lhs), types.get(rhs)) {
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
+        (Type::Lazy(..), _) | (_, Type::Lazy(..)) => unreachable!(),
+        (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
 
         // TODO: Implement generic type checking?
         (Type::Generic, _) => Check::None,
@@ -171,6 +173,9 @@ where
 
         match types.get(item) {
             Type::Ref(..) => unreachable!(),
+            Type::Lazy(..) => unreachable!(),
+            Type::Alias(..) => unreachable!(),
+
             Type::Union(child_items) => {
                 items.extend(child_items);
             }
@@ -215,11 +220,13 @@ where
     let always_public_key = public_key_count == length;
 
     Ok(match types.get(rhs) {
+        Type::Ref(..) => unreachable!(),
+        Type::Lazy(..) => unreachable!(),
+        Type::Alias(..) => unreachable!(),
+        Type::Union(..) => unreachable!(),
         Type::Unknown => Check::None,
         Type::Generic => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Never => return Err(CheckError::Impossible(original_type_id, rhs)),
-        Type::Ref(..) => unreachable!(),
-        Type::Union(..) => unreachable!(),
         Type::Bytes if always_atom => Check::None,
         Type::Int if always_atom => Check::None,
         Type::Bool if always_bool => Check::None,
