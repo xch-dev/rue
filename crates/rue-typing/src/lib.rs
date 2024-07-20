@@ -1,5 +1,6 @@
 mod check;
 mod comparison;
+mod difference;
 mod semantic_types;
 mod standard_types;
 mod ty;
@@ -13,3 +14,5 @@ pub use standard_types::*;
 pub use ty::*;
 pub use type_path::*;
 pub use type_system::*;
+
+pub(crate) use difference::difference_type;
