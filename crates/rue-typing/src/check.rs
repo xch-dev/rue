@@ -49,7 +49,12 @@ where
     let check = match (types.get(lhs), types.get(rhs)) {
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
 
-        (Type::Unknown, _) | (_, Type::Unknown) => Check::None,
+        // TODO: Implement generic type checking?
+        (Type::Generic, _) => Check::None,
+        (_, Type::Generic) => Check::None,
+
+        (Type::Unknown, _) => Check::None,
+        (_, Type::Unknown) => Check::None,
 
         (Type::Never, _) => Check::None,
         (_, Type::Never) => return Err(CheckError::Impossible(lhs, rhs)),
@@ -169,6 +174,7 @@ where
             Type::Union(child_items) => {
                 items.extend(child_items);
             }
+            Type::Generic => return Err(CheckError::Impossible(item, rhs)),
             Type::Unknown => {}
             Type::Never => {
                 length -= 1;
@@ -210,6 +216,7 @@ where
 
     Ok(match types.get(rhs) {
         Type::Unknown => Check::None,
+        Type::Generic => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Never => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Ref(..) => unreachable!(),
         Type::Union(..) => unreachable!(),

@@ -1,14 +1,15 @@
 use std::{
     cmp::{max, min},
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     hash::BuildHasher,
 };
 
-use crate::{Comparison, StandardTypes, TypeId, TypeSystem};
+use crate::{Comparison, StandardTypes, TypeId, TypePath, TypeSystem};
 
 #[derive(Debug, Clone)]
 pub enum Type {
     Unknown,
+    Generic,
     Never,
     Bytes,
     Bytes32,
@@ -21,21 +22,43 @@ pub enum Type {
     Ref(TypeId),
 }
 
-pub(crate) fn compare_type<S>(
+pub(crate) struct ComparisonContext<'a> {
+    pub visited: HashSet<(TypeId, TypeId)>,
+    pub generic_type_stack: &'a mut Vec<HashMap<TypeId, TypeId>>,
+    pub infer_generics: bool,
+}
+
+pub(crate) fn compare_type(
     types: &TypeSystem,
     lhs: TypeId,
     rhs: TypeId,
-    visited: &mut HashSet<(TypeId, TypeId), S>,
-) -> Comparison
-where
-    S: BuildHasher,
-{
-    if !visited.insert((lhs, rhs)) {
+    ctx: &mut ComparisonContext<'_>,
+) -> Comparison {
+    if !ctx.visited.insert((lhs, rhs)) {
         return Comparison::Assignable;
     }
 
     let comparison = match (types.get(lhs), types.get(rhs)) {
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
+
+        (_, Type::Generic) => {
+            let mut type_id = None;
+
+            for generics in ctx.generic_type_stack.iter().rev() {
+                if let Some(&generic) = generics.get(&rhs) {
+                    type_id = Some(generic);
+                }
+            }
+
+            if let Some(type_id) = type_id {
+                compare_type(types, lhs, type_id, ctx)
+            } else if ctx.infer_generics {
+                ctx.generic_type_stack.last_mut().unwrap().insert(rhs, lhs);
+                Comparison::Assignable
+            } else {
+                Comparison::Incompatible
+            }
+        }
 
         (Type::Unknown, _) | (_, Type::Unknown) => Comparison::Assignable,
 
@@ -50,7 +73,7 @@ where
             let length = items.len();
 
             for item in items {
-                let cmp = compare_type(types, item, rhs, visited);
+                let cmp = compare_type(types, item, rhs, ctx);
                 result = max(result, cmp);
                 if cmp == Comparison::Incompatible {
                     incompatible_count += 1;
@@ -69,7 +92,7 @@ where
             let mut result = Comparison::Incompatible;
 
             for item in items {
-                let cmp = compare_type(types, lhs, item, visited);
+                let cmp = compare_type(types, lhs, item, ctx);
                 result = min(result, cmp);
             }
 
@@ -77,8 +100,8 @@ where
         }
 
         (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
-            let first = compare_type(types, *lhs_first, *rhs_first, visited);
-            let rest = compare_type(types, *lhs_rest, *rhs_rest, visited);
+            let first = compare_type(types, *lhs_first, *rhs_first, ctx);
+            let rest = compare_type(types, *lhs_rest, *rhs_rest, ctx);
             max(first, rest)
         }
         (Type::Pair(..), _) | (_, Type::Pair(..)) => Comparison::Incompatible,
@@ -123,9 +146,11 @@ where
         (Type::Bool, Type::Nil) => Comparison::Incompatible,
         (Type::Nil, Type::Bytes32) => Comparison::Incompatible,
         (Type::Nil, Type::PublicKey) => Comparison::Incompatible,
+
+        (Type::Generic, _) => Comparison::Incompatible,
     };
 
-    visited.remove(&(lhs, rhs));
+    ctx.visited.remove(&(lhs, rhs));
 
     comparison
 }
@@ -146,6 +171,10 @@ where
 
     let result = match (types.get(lhs), types.get(rhs)) {
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
+
+        // TODO: Not sure how to implement this yet.
+        (Type::Generic, _) => lhs,
+        (_, Type::Generic) => lhs,
 
         (Type::Unknown, _) | (_, Type::Unknown) => lhs,
 
@@ -265,4 +294,23 @@ where
     visited.remove(&(lhs, rhs));
 
     result
+}
+
+pub(crate) fn replace_type(
+    types: &mut TypeSystem,
+    type_id: TypeId,
+    replace_type_id: TypeId,
+    path: &[TypePath],
+) -> TypeId {
+    if path.is_empty() {
+        return replace_type_id;
+    }
+
+    match types.get(type_id) {
+        Type::Pair(first, rest) => match path[0] {
+            TypePath::First => replace_type(types, *first, replace_type_id, &path[1..]),
+            TypePath::Rest => replace_type(types, *rest, replace_type_id, &path[1..]),
+        },
+        _ => type_id,
+    }
 }
