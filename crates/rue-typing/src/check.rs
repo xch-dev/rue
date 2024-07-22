@@ -7,10 +7,15 @@ use std::{
 use crate::{Comparison, Type, TypeId, TypePath, TypeSystem};
 
 mod check_error;
+mod simplify_and;
 mod simplify_check;
+mod simplify_or;
 
 pub use check_error::*;
+
+pub(crate) use simplify_and::*;
 pub(crate) use simplify_check::*;
+pub(crate) use simplify_or::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Check {
