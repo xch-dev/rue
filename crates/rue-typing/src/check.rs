@@ -4,18 +4,13 @@ use std::{
     hash::BuildHasher,
 };
 
-use thiserror::Error;
-
 use crate::{Comparison, Type, TypeId, TypePath, TypeSystem};
 
-#[derive(Debug, Error, Clone, Copy)]
-pub enum CheckError {
-    #[error("recursive check")]
-    Recursive(TypeId, TypeId),
+mod check_error;
+mod simplify_check;
 
-    #[error("impossible check")]
-    Impossible(TypeId, TypeId),
-}
+pub use check_error::*;
+pub(crate) use simplify_check::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Check {
