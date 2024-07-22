@@ -62,64 +62,80 @@ mod tests {
     use super::*;
 
     #[test]
-    fn simplify_and_none() {
-        assert_eq!(simplify_and_shallow(vec![Check::None]), Check::None);
+    fn test_simplify_and_none() {
+        assert_eq!(simplify_and_shallow([Check::None]), Check::None);
     }
 
     #[test]
-    fn simplify_none_and_none() {
+    fn test_simplify_none_and_none() {
         assert_eq!(
-            simplify_and_shallow(vec![Check::None, Check::None]),
+            simplify_and_shallow([Check::None, Check::None]),
             Check::None
         );
     }
 
     #[test]
-    fn simplify_check_and_none() {
+    fn test_simplify_check_and_none() {
         assert_eq!(
-            simplify_and_shallow(vec![Check::None, Check::IsAtom]),
+            simplify_and_shallow([Check::None, Check::IsAtom]),
             Check::IsAtom
         );
         assert_eq!(
-            simplify_and_shallow(vec![Check::IsAtom, Check::None]),
-            Check::IsAtom
-        );
-    }
-
-    #[test]
-    fn simplify_and_one_check() {
-        assert_eq!(simplify_and_shallow(vec![Check::IsAtom]), Check::IsAtom);
-    }
-
-    #[test]
-    fn simplify_atom_and_atom() {
-        assert_eq!(
-            simplify_and_shallow(vec![Check::IsAtom, Check::IsAtom]),
+            simplify_and_shallow([Check::IsAtom, Check::None]),
             Check::IsAtom
         );
     }
 
     #[test]
-    fn simplify_atom_and_pair() {
+    fn test_simplify_and_one_check() {
+        assert_eq!(simplify_and_shallow([Check::IsAtom]), Check::IsAtom);
+    }
+
+    #[test]
+    fn test_simplify_atom_and_atom() {
         assert_eq!(
-            simplify_and_shallow(vec![Check::IsAtom, Check::IsPair]),
+            simplify_and_shallow([Check::IsAtom, Check::IsAtom]),
+            Check::IsAtom
+        );
+    }
+
+    #[test]
+    fn test_simplify_atom_and_pair() {
+        assert_eq!(
+            simplify_and_shallow([Check::IsAtom, Check::IsPair]),
             Check::And(vec![Check::IsAtom, Check::IsPair])
         );
     }
 
     #[test]
-    fn simplify_pair_and_pair() {
+    fn test_simplify_pair_and_pair() {
         assert_eq!(
-            simplify_and_shallow(vec![Check::IsPair, Check::IsPair]),
+            simplify_and_shallow([Check::IsPair, Check::IsPair]),
             Check::IsPair
         );
     }
 
     #[test]
-    fn simplify_pair_and_atom() {
+    fn test_simplify_pair_and_atom() {
         assert_eq!(
-            simplify_and_shallow(vec![Check::IsPair, Check::IsAtom]),
+            simplify_and_shallow([Check::IsPair, Check::IsAtom]),
             Check::And(vec![Check::IsPair, Check::IsAtom])
+        );
+    }
+
+    #[test]
+    fn test_simplify_and_shallow() {
+        assert_eq!(
+            simplify_and_shallow([Check::And(vec![Check::None, Check::None])]),
+            Check::And(vec![Check::None, Check::None])
+        );
+    }
+
+    #[test]
+    fn test_simplify_and_deep() {
+        assert_eq!(
+            simplify_and_deep(vec![Check::And(vec![Check::None, Check::None])]),
+            Check::None
         );
     }
 }
