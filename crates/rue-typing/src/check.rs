@@ -6,7 +6,7 @@ use std::{
 
 use thiserror::Error;
 
-use crate::{Type, TypeId, TypePath, TypeSystem};
+use crate::{Comparison, Type, TypeId, TypePath, TypeSystem};
 
 #[derive(Debug, Error, Clone, Copy)]
 pub enum CheckError {
@@ -38,7 +38,7 @@ impl fmt::Display for Check {
 
 /// Returns [`None`] for recursive checks.
 pub(crate) fn check_type<S>(
-    types: &TypeSystem,
+    types: &mut TypeSystem,
     lhs: TypeId,
     rhs: TypeId,
     visited: &mut HashSet<(TypeId, TypeId), S>,
@@ -47,6 +47,9 @@ where
     S: BuildHasher,
 {
     if !visited.insert((lhs, rhs)) {
+        if types.compare(lhs, rhs) <= Comparison::Castable {
+            return Ok(Check::None);
+        }
         return Err(CheckError::Recursive(lhs, rhs));
     }
 
@@ -106,7 +109,10 @@ where
             Check::Or(result)
         }
 
-        (Type::Union(items), _) => check_union_against_rhs(types, lhs, items, rhs, visited)?,
+        (Type::Union(items), _) => {
+            let items = items.clone();
+            check_union_against_rhs(types, lhs, &items, rhs, visited)?
+        }
 
         (Type::PublicKey, Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::Bytes32, Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
@@ -148,7 +154,7 @@ where
 }
 
 fn check_union_against_rhs<S>(
-    types: &TypeSystem,
+    types: &mut TypeSystem,
     original_type_id: TypeId,
     items: &[TypeId],
     rhs: TypeId,
@@ -157,6 +163,12 @@ fn check_union_against_rhs<S>(
 where
     S: BuildHasher,
 {
+    let union = types.alloc(Type::Union(items.to_vec()));
+
+    if types.compare(union, rhs) <= Comparison::Castable {
+        return Ok(Check::None);
+    }
+
     if let Type::Union(union) = types.get(rhs) {
         let rhs_items = union.clone();
         let mut result = Vec::new();
@@ -373,62 +385,137 @@ pub(crate) fn simplify_check(check: Check) -> Check {
 
             let mut items: VecDeque<_> = items.into();
 
+            let mut is_atom = false;
+            let mut is_pair = false;
+
             while !items.is_empty() {
                 let item = simplify_check(items.pop_front().unwrap());
 
+                let mut and = Vec::new();
+
                 match item {
+                    Check::None => return Check::None,
                     Check::And(children) => {
                         match children
                             .iter()
                             .find(|child| matches!(child, Check::IsAtom | Check::IsPair))
                         {
                             Some(Check::IsAtom) => {
-                                atoms.push(Check::And(
-                                    children
-                                        .into_iter()
-                                        .filter(|child| *child != Check::IsAtom)
-                                        .collect(),
-                                ));
-                                continue;
+                                let mut children: Vec<Check> = children
+                                    .into_iter()
+                                    .filter(|child| *child != Check::IsAtom)
+                                    .collect();
+
+                                if children.is_empty() {
+                                    result.push(Check::IsAtom);
+                                } else if children.len() == 1 {
+                                    atoms.push(children.remove(0));
+                                } else {
+                                    atoms.push(Check::And(children));
+                                }
                             }
                             Some(Check::IsPair) => {
-                                pairs.push(Check::And(
-                                    children
-                                        .into_iter()
-                                        .filter(|child| *child != Check::IsPair)
-                                        .collect(),
-                                ));
-                                continue;
+                                let mut children: Vec<Check> = children
+                                    .into_iter()
+                                    .filter(|child| *child != Check::IsPair)
+                                    .collect();
+
+                                if children.is_empty() {
+                                    result.push(Check::IsPair);
+                                } else if children.len() == 1 {
+                                    pairs.push(children.remove(0));
+                                } else {
+                                    pairs.push(Check::And(children));
+                                }
                             }
-                            _ => {}
+                            _ => {
+                                and.extend(children);
+                            }
                         }
                     }
                     Check::Or(children) => {
                         items.extend(children);
-                        continue;
                     }
-                    _ => {}
+                    item => {
+                        and.push(item);
+                    }
+                }
+
+                let mut new_and = Vec::new();
+
+                for and_item in and {
+                    match and_item {
+                        Check::IsAtom => {
+                            if is_atom {
+                                continue;
+                            } else if is_pair {
+                                return Check::None;
+                            }
+                            new_and.push(Check::IsAtom);
+                            is_atom = true;
+                        }
+                        Check::IsPair => {
+                            if is_pair {
+                                continue;
+                            } else if is_atom {
+                                return Check::None;
+                            }
+                            new_and.push(Check::IsPair);
+                            is_pair = true;
+                        }
+                        item => {
+                            new_and.push(item);
+                        }
+                    }
+                }
+
+                if new_and.is_empty() {
+                    continue;
+                }
+
+                if new_and.len() == 1 {
+                    result.push(new_and.remove(0));
+                } else {
+                    result.push(Check::And(new_and));
                 }
             }
 
-            if !atoms.is_empty() && !pairs.is_empty() {
-                if atoms.len() > pairs.len() {
+            let prefer_atoms = atoms.len() > pairs.len();
+
+            let atoms = if atoms.is_empty() {
+                Check::None
+            } else if atoms.len() == 1 {
+                atoms.remove(0)
+            } else {
+                Check::Or(atoms)
+            };
+
+            let pairs = if pairs.is_empty() {
+                Check::None
+            } else if pairs.len() == 1 {
+                pairs.remove(0)
+            } else {
+                Check::Or(pairs)
+            };
+
+            if atoms != Check::None && pairs != Check::None {
+                if prefer_atoms {
                     result.push(Check::If(
                         Box::new(Check::IsAtom),
-                        Box::new(Check::Or(atoms)),
-                        Box::new(Check::Or(pairs)),
+                        Box::new(atoms),
+                        Box::new(pairs),
                     ));
                 } else {
                     result.push(Check::If(
                         Box::new(Check::IsPair),
-                        Box::new(Check::Or(pairs)),
-                        Box::new(Check::Or(atoms)),
+                        Box::new(pairs),
+                        Box::new(atoms),
                     ));
                 }
-            } else if atoms.is_empty() {
-                result.push(Check::And(vec![Check::IsPair, Check::Or(pairs)]));
-            } else if pairs.is_empty() {
-                result.push(Check::And(vec![Check::IsAtom, Check::Or(atoms)]));
+            } else if atoms == Check::None && pairs != Check::None {
+                result.push(Check::And(vec![Check::IsPair, pairs]));
+            } else if pairs == Check::None && atoms != Check::None {
+                result.push(Check::And(vec![Check::IsAtom, atoms]));
             }
 
             if result.len() == 1 {
@@ -446,7 +533,12 @@ pub(crate) fn simplify_check(check: Check) -> Check {
         Check::Pair(first, rest) => {
             let first = simplify_check(*first);
             let rest = simplify_check(*rest);
-            Check::Pair(Box::new(first), Box::new(rest))
+
+            if first == Check::None && rest == Check::None {
+                Check::None
+            } else {
+                Check::Pair(Box::new(first), Box::new(rest))
+            }
         }
     }
 }
@@ -563,15 +655,15 @@ mod tests {
         (db, types)
     }
 
-    fn check_str(db: &TypeSystem, lhs: TypeId, rhs: TypeId, expected: &str) {
+    fn check_str(db: &mut TypeSystem, lhs: TypeId, rhs: TypeId, expected: &str) {
         assert_eq!(format!("{}", db.check(lhs, rhs).unwrap()), expected);
     }
 
-    fn check_recursive(db: &TypeSystem, lhs: TypeId, rhs: TypeId) {
+    fn check_recursive(db: &mut TypeSystem, lhs: TypeId, rhs: TypeId) {
         assert!(matches!(db.check(lhs, rhs), Err(CheckError::Recursive(..))));
     }
 
-    fn check_impossible(db: &TypeSystem, lhs: TypeId, rhs: TypeId) {
+    fn check_impossible(db: &mut TypeSystem, lhs: TypeId, rhs: TypeId) {
         assert!(matches!(
             db.check(lhs, rhs),
             Err(CheckError::Impossible(..))
@@ -587,15 +679,15 @@ mod tests {
 
     #[test]
     fn check_any_bytes() {
-        let (db, types) = setup();
-        check_str(&db, types.any, types.bytes, "(not (l val))");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.any, types.bytes, "(not (l val))");
     }
 
     #[test]
     fn check_any_bytes32() {
-        let (db, types) = setup();
+        let (mut db, types) = setup();
         check_str(
-            &db,
+            &mut db,
             types.any,
             types.bytes32,
             "(and (not (l val)) (= (strlen val) 32))",
@@ -604,9 +696,9 @@ mod tests {
 
     #[test]
     fn check_any_public_key() {
-        let (db, types) = setup();
+        let (mut db, types) = setup();
         check_str(
-            &db,
+            &mut db,
             types.any,
             types.public_key,
             "(and (not (l val)) (= (strlen val) 48))",
@@ -615,15 +707,15 @@ mod tests {
 
     #[test]
     fn check_any_int() {
-        let (db, types) = setup();
-        check_str(&db, types.any, types.int, "(not (l val))");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.any, types.int, "(not (l val))");
     }
 
     #[test]
     fn check_any_bool() {
-        let (db, types) = setup();
+        let (mut db, types) = setup();
         check_str(
-            &db,
+            &mut db,
             types.any,
             types.bool,
             "(and (not (l val)) (any (= val ()) (= val 1)))",
@@ -632,141 +724,156 @@ mod tests {
 
     #[test]
     fn check_any_nil() {
-        let (db, types) = setup();
-        check_str(&db, types.any, types.nil, "(and (not (l val)) (= val ()))");
+        let (mut db, types) = setup();
+        check_str(
+            &mut db,
+            types.any,
+            types.nil,
+            "(and (not (l val)) (= val ()))",
+        );
     }
 
     #[test]
     fn check_bytes_bytes() {
-        let (db, types) = setup();
-        check_str(&db, types.bytes, types.bytes, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.bytes, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes32_bytes32() {
-        let (db, types) = setup();
-        check_str(&db, types.bytes32, types.bytes32, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.bytes32, types.bytes32, "1");
     }
 
     #[test]
     fn check_public_key_public_key() {
-        let (db, types) = setup();
-        check_str(&db, types.public_key, types.public_key, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.public_key, types.public_key, "1");
     }
 
     #[test]
     fn check_int_int() {
-        let (db, types) = setup();
-        check_str(&db, types.int, types.int, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.int, types.int, "1");
     }
 
     #[test]
     fn check_bool_bool() {
-        let (db, types) = setup();
-        check_str(&db, types.bool, types.bool, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.bool, types.bool, "1");
     }
 
     #[test]
     fn check_nil_nil() {
-        let (db, types) = setup();
-        check_str(&db, types.nil, types.nil, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.nil, types.nil, "1");
     }
 
     #[test]
     fn check_bytes_bytes32() {
-        let (db, types) = setup();
-        check_str(&db, types.bytes, types.bytes32, "(= (strlen val) 32)");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.bytes, types.bytes32, "(= (strlen val) 32)");
     }
 
     #[test]
     fn check_bytes32_bytes() {
-        let (db, types) = setup();
-        check_str(&db, types.bytes32, types.bytes, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.bytes32, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes_public_key() {
-        let (db, types) = setup();
-        check_str(&db, types.bytes, types.public_key, "(= (strlen val) 48)");
+        let (mut db, types) = setup();
+        check_str(
+            &mut db,
+            types.bytes,
+            types.public_key,
+            "(= (strlen val) 48)",
+        );
     }
 
     #[test]
     fn check_public_key_bytes() {
-        let (db, types) = setup();
-        check_str(&db, types.public_key, types.bytes, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.public_key, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes_nil() {
-        let (db, types) = setup();
-        check_str(&db, types.bytes, types.nil, "(= val ())");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.bytes, types.nil, "(= val ())");
     }
 
     #[test]
     fn check_nil_bytes() {
-        let (db, types) = setup();
-        check_str(&db, types.nil, types.bytes, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.nil, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes_bool() {
-        let (db, types) = setup();
-        check_str(&db, types.bytes, types.bool, "(any (= val ()) (= val 1))");
+        let (mut db, types) = setup();
+        check_str(
+            &mut db,
+            types.bytes,
+            types.bool,
+            "(any (= val ()) (= val 1))",
+        );
     }
 
     #[test]
     fn check_bool_bytes() {
-        let (db, types) = setup();
-        check_str(&db, types.bool, types.bytes, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.bool, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes32_public_key() {
-        let (db, types) = setup();
-        check_impossible(&db, types.bytes32, types.public_key);
+        let (mut db, types) = setup();
+        check_impossible(&mut db, types.bytes32, types.public_key);
     }
 
     #[test]
     fn check_bytes_int() {
-        let (db, types) = setup();
-        check_str(&db, types.bytes, types.int, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.bytes, types.int, "1");
     }
 
     #[test]
     fn check_int_bytes() {
-        let (db, types) = setup();
-        check_str(&db, types.int, types.bytes, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.int, types.bytes, "1");
     }
 
     #[test]
     fn check_bool_nil() {
-        let (db, types) = setup();
-        check_str(&db, types.bool, types.nil, "(= val ())");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.bool, types.nil, "(= val ())");
     }
 
     #[test]
     fn check_nil_bool() {
-        let (db, types) = setup();
-        check_str(&db, types.nil, types.bool, "1");
+        let (mut db, types) = setup();
+        check_str(&mut db, types.nil, types.bool, "1");
     }
 
     #[test]
     fn check_any_any() {
-        let (db, types) = setup();
-        check_recursive(&db, types.any, types.any);
+        let (mut db, types) = setup();
+        check_str(&mut db, types.any, types.any, "1");
     }
 
     #[test]
     fn check_bytes_any() {
-        let (db, types) = setup();
-        check_recursive(&db, types.any, types.any);
+        let (mut db, types) = setup();
+        check_str(&mut db, types.any, types.any, "1");
     }
 
     #[test]
     fn check_list_nil() {
         let (mut db, types) = setup();
         let list = alloc_list(&mut db, &types, types.bytes);
-        check_str(&db, list, types.nil, "(and (not (l val)) (= val ()))");
+        check_str(&mut db, list, types.nil, "(and (not (l val)) (= val ()))");
     }
 
     #[test]
@@ -774,6 +881,13 @@ mod tests {
         let (mut db, types) = setup();
         let list = alloc_list(&mut db, &types, types.bytes);
         let pair = db.alloc(Type::Pair(types.bytes, list));
-        check_str(&db, list, pair, "");
+        check_str(&mut db, list, pair, "(l val)");
+    }
+
+    #[test]
+    fn check_any_list() {
+        let (mut db, types) = setup();
+        let list = alloc_list(&mut db, &types, types.bytes);
+        check_recursive(&mut db, types.any, list);
     }
 }

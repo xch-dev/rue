@@ -99,7 +99,7 @@ impl TypeSystem {
         )
     }
 
-    pub fn check(&self, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {
+    pub fn check(&mut self, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {
         check_type(self, lhs, rhs, &mut HashSet::new()).map(simplify_check)
     }
 
