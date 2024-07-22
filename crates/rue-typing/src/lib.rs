@@ -2,6 +2,7 @@ mod check;
 mod comparison;
 mod difference;
 mod semantic_types;
+mod simplify_check;
 mod standard_types;
 mod stringify;
 mod ty;
@@ -17,4 +18,5 @@ pub use type_path::*;
 pub use type_system::*;
 
 pub(crate) use difference::difference_type;
+pub(crate) use simplify_check::simplify_check;
 pub(crate) use stringify::stringify_type;
