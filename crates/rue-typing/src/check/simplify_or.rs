@@ -6,9 +6,7 @@ pub(crate) fn simplify_or_deep(items: Vec<Check>) -> Check {
     let mut result = Vec::new();
     let mut atoms: Vec<Check> = Vec::new();
     let mut pairs: Vec<Check> = Vec::new();
-
     let mut items: VecDeque<_> = items.into();
-
     let mut is_atom = false;
     let mut is_pair = false;
 
@@ -104,47 +102,58 @@ pub(crate) fn simplify_or_deep(items: Vec<Check>) -> Check {
         }
     }
 
-    let prefer_atoms = atoms.len() > pairs.len();
-
-    let atoms = if atoms.is_empty() {
-        Check::None
-    } else if atoms.len() == 1 {
-        atoms.remove(0)
-    } else {
-        Check::Or(atoms)
-    };
-
-    let pairs = if pairs.is_empty() {
-        Check::None
-    } else if pairs.len() == 1 {
-        pairs.remove(0)
-    } else {
-        Check::Or(pairs)
-    };
-
-    if atoms != Check::None && pairs != Check::None {
-        if prefer_atoms {
-            result.push(Check::If(
-                Box::new(Check::IsAtom),
-                Box::new(atoms),
-                Box::new(pairs),
-            ));
-        } else {
-            result.push(Check::If(
-                Box::new(Check::IsPair),
-                Box::new(pairs),
-                Box::new(atoms),
-            ));
-        }
-    } else if atoms == Check::None && pairs != Check::None {
-        result.push(Check::And(vec![Check::IsPair, pairs]));
-    } else if pairs == Check::None && atoms != Check::None {
-        result.push(Check::And(vec![Check::IsAtom, atoms]));
+    if let Some(check) = construct_shape_checks(atoms, pairs) {
+        result.push(check);
     }
 
-    if result.len() == 1 {
-        result.remove(0)
+    construct_or(result)
+}
+
+fn construct_shape_checks(
+    mut atom_checks: Vec<Check>,
+    mut pair_checks: Vec<Check>,
+) -> Option<Check> {
+    let prefer_atoms = atom_checks.len() > pair_checks.len();
+
+    let atoms = if atom_checks.is_empty() {
+        Check::None
+    } else if atom_checks.len() == 1 {
+        atom_checks.remove(0)
     } else {
-        Check::Or(result)
+        Check::Or(atom_checks)
+    };
+
+    let pairs = if pair_checks.is_empty() {
+        Check::None
+    } else if pair_checks.len() == 1 {
+        pair_checks.remove(0)
+    } else {
+        Check::Or(pair_checks)
+    };
+
+    let check = if atoms != Check::None && pairs != Check::None {
+        if prefer_atoms {
+            Check::If(Box::new(Check::IsAtom), Box::new(atoms), Box::new(pairs))
+        } else {
+            Check::If(Box::new(Check::IsPair), Box::new(pairs), Box::new(atoms))
+        }
+    } else if atoms == Check::None && pairs != Check::None {
+        Check::And(vec![Check::IsPair, pairs])
+    } else if pairs == Check::None && atoms != Check::None {
+        Check::And(vec![Check::IsAtom, atoms])
+    } else {
+        return None;
+    };
+
+    Some(check)
+}
+
+fn construct_or(mut items: Vec<Check>) -> Check {
+    if items.is_empty() {
+        unreachable!()
+    } else if items.len() == 1 {
+        items.remove(0)
+    } else {
+        Check::Or(items)
     }
 }
