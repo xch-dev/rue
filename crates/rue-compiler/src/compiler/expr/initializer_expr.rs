@@ -100,7 +100,7 @@ impl Compiler<'_> {
             // Check the type of the field initializer.
             self.type_check(
                 value.type_id,
-                expected_type.unwrap_or(self.builtins.unknown),
+                expected_type.unwrap_or(self.ty.std().unknown),
                 field.syntax().text_range(),
             );
 

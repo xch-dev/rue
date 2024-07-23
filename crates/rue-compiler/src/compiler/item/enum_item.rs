@@ -41,7 +41,7 @@ impl Compiler<'_> {
 
             // Allocate a new type for the variant.
             // It has to be `Unknown` for now, since field types may not be declared yet.
-            let type_id = self.db.alloc_type(Type::Unknown);
+            let type_id = self.ty.alloc(Type::Unknown);
 
             // Add the variant to the enum and define the token for the variant.
             variants.insert(name.to_string(), type_id);
@@ -49,7 +49,7 @@ impl Compiler<'_> {
         }
 
         // Allocate a new type for the enum.
-        let type_id = self.db.alloc_type(Type::Enum(EnumType {
+        let type_id = self.ty.alloc(Type::Enum(EnumType {
             has_fields,
             variants,
         }));

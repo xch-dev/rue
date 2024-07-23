@@ -29,7 +29,7 @@ impl Compiler<'_> {
                     let mut type_id = field_type;
 
                     if index == struct_type.fields.len() - 1 && struct_type.rest == Rest::Optional {
-                        type_id = self.db.alloc_type(Type::Optional(type_id));
+                        type_id = self.ty.alloc(Type::Optional(type_id));
                     }
 
                     Value::new(
@@ -56,7 +56,7 @@ impl Compiler<'_> {
                     let mut type_id = field_type;
 
                     if index == fields.len() - 1 && variant_type.rest == Rest::Optional {
-                        type_id = self.db.alloc_type(Type::Optional(type_id));
+                        type_id = self.ty.alloc(Type::Optional(type_id));
                     }
 
                     let fields_hir_id = self.db.alloc_hir(Hir::Op(Op::Rest, old_value.hir_id));
@@ -99,7 +99,7 @@ impl Compiler<'_> {
             },
             Type::Bytes | Type::Bytes32 if field_name.text() == "length" => Value::new(
                 self.db.alloc_hir(Hir::Op(Op::Strlen, old_value.hir_id)),
-                self.builtins.int,
+                self.ty.std().int,
             ),
             _ => {
                 self.db.error(

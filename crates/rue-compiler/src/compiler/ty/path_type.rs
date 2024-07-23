@@ -1,19 +1,20 @@
 use rowan::TextRange;
 use rue_parser::SyntaxToken;
+use rue_typing::TypeId;
 
 use crate::{
     compiler::{
         path::{PathItem, PathKind},
         Compiler,
     },
-    ErrorKind, TypeId,
+    ErrorKind,
 };
 
 impl Compiler<'_> {
     pub fn compile_path_type(&mut self, idents: &[SyntaxToken], text_range: TextRange) -> TypeId {
         let Some(mut item) = self.resolve_base_path(&idents[0], PathKind::Type, idents.len() == 1)
         else {
-            return self.builtins.unknown;
+            return self.ty.std().unknown;
         };
 
         let mut last_ident = idents[0].to_string();
@@ -22,7 +23,7 @@ impl Compiler<'_> {
             let Some(next_item) =
                 self.resolve_next_path(item, name, PathKind::Type, i == idents.len() - 1)
             else {
-                return self.builtins.unknown;
+                return self.ty.std().unknown;
             };
             last_ident = name.to_string();
             item = next_item;
@@ -33,7 +34,7 @@ impl Compiler<'_> {
             PathItem::Symbol(..) => {
                 self.db
                     .error(ErrorKind::ExpectedTypePath(last_ident), text_range);
-                self.builtins.unknown
+                self.ty.std().unknown
             }
         }
     }

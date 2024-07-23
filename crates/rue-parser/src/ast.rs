@@ -120,10 +120,8 @@ ast_node!(IndexAccessExpr);
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
 
-ast_enum!(Type, PathType, ListType, PairType, FunctionType);
+ast_enum!(Type, PathType, PairType, FunctionType);
 ast_node!(PathType);
-ast_node!(ListType);
-ast_node!(ListTypeItem);
 ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
@@ -832,25 +830,6 @@ impl PathType {
             .filter_map(SyntaxElement::into_token)
             .filter(|token| token.kind() == SyntaxKind::Ident)
             .collect()
-    }
-}
-
-impl ListType {
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
-    }
-}
-
-impl ListTypeItem {
-    pub fn spread(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Spread)
-    }
-
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
     }
 }
 

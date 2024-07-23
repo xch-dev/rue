@@ -4,7 +4,6 @@ use rue_typing::TypeId;
 use super::Compiler;
 
 mod function_type;
-mod list_type;
 mod pair_type;
 mod path_type;
 
@@ -14,7 +13,6 @@ impl Compiler<'_> {
             Type::PathType(path) => {
                 self.compile_path_type(&path.idents(), path.syntax().text_range())
             }
-            Type::ListType(list) => self.compile_list_type(&list),
             Type::FunctionType(function) => self.compile_function_type(&function),
             Type::PairType(tuple) => self.compile_pair_type(&tuple),
         }

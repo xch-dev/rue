@@ -52,7 +52,7 @@ impl Compiler<'_> {
                         _ => None,
                     };
                 } else {
-                    list_type = Some(self.db.alloc_type(Type::List(output.type_id)));
+                    list_type = Some(self.ty.alloc(Type::List(output.type_id)));
                     item_type = Some(output.type_id);
                 }
             }
@@ -82,7 +82,7 @@ impl Compiler<'_> {
         Value::new(
             hir_id,
             self.db
-                .alloc_type(Type::List(item_type.unwrap_or(self.builtins.unknown))),
+                .alloc_type(Type::List(item_type.unwrap_or(self.ty.std().unknown))),
         )
     }
 }

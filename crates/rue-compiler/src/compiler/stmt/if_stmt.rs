@@ -19,13 +19,13 @@ impl Compiler<'_> {
         // Compile the condition expression.
         let condition = if_stmt
             .condition()
-            .map(|condition| self.compile_expr(&condition, Some(self.builtins.bool)))
+            .map(|condition| self.compile_expr(&condition, Some(self.ty.std().bool)))
             .unwrap_or_else(|| self.unknown());
 
         // Check that the condition is a boolean.
         self.type_check(
             condition.type_id,
-            self.builtins.bool,
+            self.ty.std().bool,
             if_stmt.syntax().text_range(),
         );
 
@@ -61,7 +61,7 @@ impl Compiler<'_> {
         // Check that the output matches the expected type.
         self.type_check(
             then_block.type_id,
-            expected_type.unwrap_or(self.builtins.unknown),
+            expected_type.unwrap_or(self.ty.std().unknown),
             if_stmt.syntax().text_range(),
         );
 

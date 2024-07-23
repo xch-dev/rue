@@ -84,7 +84,7 @@ impl Compiler<'_> {
         let mut value = match self.db.symbol(symbol_id).clone() {
             Symbol::Unknown | Symbol::Module(..) => unreachable!(),
             Symbol::Function(Function { ty, .. }) | Symbol::InlineFunction(Function { ty, .. }) => {
-                let type_id = self.db.alloc_type(Type::Function(ty.clone()));
+                let type_id = self.ty.alloc(Type::Function(ty.clone()));
                 Value::new(reference, override_type_id.unwrap_or(type_id))
             }
             Symbol::Parameter(type_id) => {

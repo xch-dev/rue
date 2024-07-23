@@ -123,7 +123,7 @@ impl Compiler<'_> {
 
         // Calculate the return type.
         let mut type_id =
-            function_type.map_or(self.builtins.unknown, |expected| expected.return_type);
+            function_type.map_or(self.ty.std().unknown, |expected| expected.return_type);
 
         if !generic_types.is_empty() {
             type_id = self.db.substitute_type(type_id, &generic_types);

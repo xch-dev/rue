@@ -10,7 +10,7 @@ use crate::{
 impl Compiler<'_> {
     /// Define a type for a struct in the current scope, but leave it as unknown for now.
     pub fn declare_struct_item(&mut self, struct_item: &StructItem) -> TypeId {
-        let type_id = self.db.alloc_type(Type::Unknown);
+        let type_id = self.ty.alloc(Type::Unknown);
         if let Some(name) = struct_item.name() {
             self.scope_mut().define_type(name.to_string(), type_id);
             self.db.insert_type_token(type_id, name);
@@ -43,7 +43,7 @@ impl Compiler<'_> {
         for (i, field) in fields.into_iter().enumerate() {
             let type_id = field
                 .ty()
-                .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+                .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
             // Check if it's a spread or optional parameter.
             let last = i + 1 == len;

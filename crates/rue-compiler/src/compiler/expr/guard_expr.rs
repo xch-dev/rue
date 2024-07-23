@@ -23,7 +23,7 @@ impl Compiler<'_> {
 
         let ty = guard
             .ty()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+            .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
         let Some((guard, hir_id)) =
             self.guard_into(expr.type_id, ty, expr.hir_id, guard.syntax().text_range())
@@ -31,7 +31,7 @@ impl Compiler<'_> {
             return Value::new(self.builtins.unknown_hir, ty);
         };
 
-        let mut value = Value::new(hir_id, self.builtins.bool);
+        let mut value = Value::new(hir_id, self.ty.std().bool);
 
         if let Some(guard_path) = expr.guard_path {
             value.guards.insert(guard_path, guard);
@@ -53,18 +53,18 @@ impl Compiler<'_> {
                 text_range,
             );
             return Some((
-                Guard::new(TypeOverride::new(to), TypeOverride::new(self.builtins.bool)),
+                Guard::new(TypeOverride::new(to), TypeOverride::new(self.ty.std().bool)),
                 hir_id,
             ));
         }
 
         match (self.db.ty(from).clone(), self.db.ty(to).clone()) {
             (Type::Any, Type::Pair(PairType { first, rest })) => {
-                if !self.db.compare_type(first, self.builtins.any).is_equal() {
+                if !self.db.compare_type(first, self.ty.std().any).is_equal() {
                     self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
-                if !self.db.compare_type(rest, self.builtins.any).is_equal() {
+                if !self.db.compare_type(rest, self.ty.std().any).is_equal() {
                     self.db.error(ErrorKind::NonAnyPairTypeGuard, text_range);
                 }
 
@@ -72,15 +72,15 @@ impl Compiler<'_> {
                 Some((
                     Guard::new(
                         TypeOverride::new(to),
-                        TypeOverride::new(self.builtins.bytes),
+                        TypeOverride::new(self.ty.std().bytes),
                     ),
                     hir_id,
                 ))
             }
             (Type::Any, Type::Bytes) => {
-                let pair_type = self.db.alloc_type(Type::Pair(PairType {
-                    first: self.builtins.any,
-                    rest: self.builtins.any,
+                let pair_type = self.ty.alloc(Type::Pair(PairType {
+                    first: self.ty.std().any,
+                    rest: self.ty.std().any,
                 }));
                 let is_cons = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
                 let hir_id = self.db.alloc_hir(Hir::Op(Op::Not, is_cons));
@@ -100,12 +100,12 @@ impl Compiler<'_> {
 
                 let hir_id = self.db.alloc_hir(Hir::Op(Op::Listp, hir_id));
                 Some((
-                    Guard::new(TypeOverride::new(to), TypeOverride::new(self.builtins.nil)),
+                    Guard::new(TypeOverride::new(to), TypeOverride::new(self.ty.std().nil)),
                     hir_id,
                 ))
             }
             (Type::List(inner), Type::Nil) => {
-                let pair_type = self.db.alloc_type(Type::Pair(PairType {
+                let pair_type = self.ty.alloc(Type::Pair(PairType {
                     first: inner,
                     rest: from,
                 }));

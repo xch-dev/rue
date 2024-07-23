@@ -28,7 +28,7 @@ impl Compiler<'_> {
             .unwrap_or_default()
         {
             // Create the generic type id.
-            let type_id = self.db.alloc_type(Type::Generic);
+            let type_id = self.ty.alloc(Type::Generic);
 
             // Check for duplicate generic types.
             if self.scope().ty(generic_type.text()).is_some() {
@@ -65,7 +65,7 @@ impl Compiler<'_> {
             // Otherwise, it's a parser error.
             let type_id = param
                 .ty()
-                .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+                .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
             // Add the parameter type to the list and update the parameter symbol.
             param_types.push(type_id);
@@ -73,7 +73,7 @@ impl Compiler<'_> {
             *self.db.symbol_mut(symbol_id) = Symbol::Parameter(if param.optional().is_some() {
                 // If the parameter is optional, wrap the type in a possibly undefined type.
                 // This prevents referencing the parameter until it's checked for undefined.
-                self.db.alloc_type(Type::Optional(type_id))
+                self.ty.alloc(Type::Optional(type_id))
             } else {
                 // Otherwise, just use the type.
                 type_id
@@ -125,7 +125,7 @@ impl Compiler<'_> {
         // Otherwise, it's a parser error.
         let return_type = function_item
             .return_type()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+            .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
         self.scope_stack.pop().unwrap();
 

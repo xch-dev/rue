@@ -21,7 +21,7 @@ impl Compiler<'_> {
                 let value = self.compile_expr(&expr, first);
                 self.type_check(
                     value.type_id,
-                    first.unwrap_or(self.builtins.unknown),
+                    first.unwrap_or(self.ty.std().unknown),
                     expr.syntax().text_range(),
                 );
                 value
@@ -36,7 +36,7 @@ impl Compiler<'_> {
                 let value = self.compile_expr(&expr, rest);
                 self.type_check(
                     value.type_id,
-                    rest.unwrap_or(self.builtins.unknown),
+                    rest.unwrap_or(self.ty.std().unknown),
                     expr.syntax().text_range(),
                 );
                 value
@@ -44,7 +44,7 @@ impl Compiler<'_> {
             .unwrap_or_else(|| self.unknown());
 
         let hir_id = self.db.alloc_hir(Hir::Pair(first.hir_id, rest.hir_id));
-        let type_id = self.db.alloc_type(Type::Pair(PairType {
+        let type_id = self.ty.alloc(Type::Pair(PairType {
             first: first.type_id,
             rest: rest.type_id,
         }));

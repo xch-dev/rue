@@ -6,7 +6,7 @@ impl Compiler<'_> {
     pub fn compile_if_expr(&mut self, if_expr: &IfExpr, expected_type: Option<TypeId>) -> Value {
         let condition = if_expr
             .condition()
-            .map(|condition| self.compile_expr(&condition, Some(self.builtins.bool)));
+            .map(|condition| self.compile_expr(&condition, Some(self.ty.std().bool)));
 
         if let Some(condition) = condition.as_ref() {
             self.type_guard_stack.push(condition.then_guards());
@@ -38,7 +38,7 @@ impl Compiler<'_> {
         if let Some(condition_type) = condition.as_ref().map(|condition| condition.type_id) {
             self.type_check(
                 condition_type,
-                self.builtins.bool,
+                self.ty.std().bool,
                 if_expr.condition().unwrap().syntax().text_range(),
             );
         }
@@ -54,7 +54,7 @@ impl Compiler<'_> {
         let ty = then_block
             .as_ref()
             .or(else_block.as_ref())
-            .map_or(self.builtins.unknown, |block| block.type_id);
+            .map_or(self.ty.std().unknown, |block| block.type_id);
 
         let value = condition.and_then(|condition| {
             then_block.and_then(|then_block| {

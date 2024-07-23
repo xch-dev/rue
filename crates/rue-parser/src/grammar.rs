@@ -562,8 +562,6 @@ fn lambda_param(p: &mut Parser<'_>) {
 const TYPE_RECOVERY_SET: &[SyntaxKind] = &[SyntaxKind::OpenBrace, SyntaxKind::CloseBrace];
 
 fn ty(p: &mut Parser<'_>) {
-    let checkpoint = p.checkpoint();
-
     if p.at(SyntaxKind::Ident) {
         path_type(p);
     } else if p.at(SyntaxKind::Fun) {
@@ -591,17 +589,6 @@ fn ty(p: &mut Parser<'_>) {
         p.finish();
     } else {
         return p.error(TYPE_RECOVERY_SET);
-    }
-
-    loop {
-        if p.at(SyntaxKind::OpenBracket) {
-            p.start_at(checkpoint, SyntaxKind::ListType);
-            p.bump();
-            p.expect(SyntaxKind::CloseBracket);
-            p.finish();
-        } else {
-            break;
-        }
     }
 }
 

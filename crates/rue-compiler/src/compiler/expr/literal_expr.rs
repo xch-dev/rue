@@ -23,11 +23,11 @@ impl Compiler<'_> {
 
     fn compile_bool_literal(&mut self, value: bool) -> Value {
         let atom = if value { vec![1] } else { vec![] };
-        Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.builtins.bool)
+        Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.ty.std().bool)
     }
 
     fn compile_nil_literal(&mut self) -> Value {
-        Value::new(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.nil)
+        Value::new(self.db.alloc_hir(Hir::Atom(Vec::new())), self.ty.std().nil)
     }
 
     fn compile_int_literal(&mut self, int: &SyntaxToken) -> Value {
@@ -45,7 +45,7 @@ impl Compiler<'_> {
         });
 
         // Extract the atom representation of the number.
-        Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.builtins.int)
+        Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.ty.std().int)
     }
 
     fn compile_hex_literal(&mut self, hex: &SyntaxToken) -> Value {
@@ -67,15 +67,15 @@ impl Compiler<'_> {
             if bytes_len == 32 {
                 // We'll assume this is a `Bytes32` since it's the correct length.
                 // This makes putting hashes in the code more convenient.
-                self.builtins.bytes32
+                self.ty.std().bytes32
             } else if bytes_len == 48 {
                 // We'll assume this is a `PublicKey` since it's the correct length.
                 // It's unlikely to intend the type being `Bytes`, but you can cast if needed.
-                self.builtins.public_key
+                self.ty.std().public_key
             } else {
                 // Everything else is just `Bytes`.
                 // Leading zeros are not removed, so `0x00` is different than `0`.
-                self.builtins.bytes
+                self.ty.std().bytes
             },
         )
     }
@@ -89,7 +89,7 @@ impl Compiler<'_> {
         Value::new(
             self.db
                 .alloc_hir(Hir::Atom(text.replace(quote, "").as_bytes().to_vec())),
-            self.builtins.bytes,
+            self.ty.std().bytes,
         )
     }
 

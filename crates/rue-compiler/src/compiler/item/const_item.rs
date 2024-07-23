@@ -11,7 +11,7 @@ impl Compiler<'_> {
 
         let type_id = const_item
             .ty()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+            .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 

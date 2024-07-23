@@ -11,9 +11,9 @@ impl Compiler<'_> {
         // Determine the expected type based on the prefix operator.
         let expected_type = match prefix_expr.op() {
             Some(PrefixOp::BitwiseNot | PrefixOp::Positive | PrefixOp::Negative) => {
-                Some(self.builtins.int)
+                Some(self.ty.std().int)
             }
-            Some(PrefixOp::Not) => Some(self.builtins.bool),
+            Some(PrefixOp::Not) => Some(self.ty.std().bool),
             None => None,
         };
 
@@ -32,7 +32,7 @@ impl Compiler<'_> {
         // Check the type of the expression.
         self.type_check(
             expr.type_id,
-            expected_type.unwrap_or(self.builtins.unknown),
+            expected_type.unwrap_or(self.ty.std().unknown),
             prefix_expr
                 .expr()
                 .map_or(prefix_expr.syntax().text_range(), |ast| {
@@ -45,7 +45,7 @@ impl Compiler<'_> {
                 // Negate the expression and its type guards.
                 let mut value = Value::new(
                     self.db.alloc_hir(Hir::Op(Op::Not, expr.hir_id)),
-                    self.builtins.bool,
+                    self.ty.std().bool,
                 );
 
                 for (symbol_id, guard) in expr.guards {
@@ -61,7 +61,7 @@ impl Compiler<'_> {
                     self.builtins.nil_hir,
                     expr.hir_id,
                 )),
-                self.builtins.int,
+                self.ty.std().int,
             ),
             PrefixOp::Positive => {
                 // Return the expression as is.
@@ -71,7 +71,7 @@ impl Compiler<'_> {
                 // Negate the expression and its type guards.
                 Value::new(
                     self.db.alloc_hir(Hir::Op(Op::BitwiseNot, expr.hir_id)),
-                    self.builtins.int,
+                    self.ty.std().int,
                 )
             }
         }

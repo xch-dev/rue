@@ -22,6 +22,7 @@ use rue_parser::Root;
 
 pub use database::*;
 pub use error::*;
+use rue_typing::TypeSystem;
 
 #[derive(Debug)]
 pub struct Output {
@@ -30,8 +31,9 @@ pub struct Output {
 }
 
 pub fn compile(allocator: &mut Allocator, root: &Root, mut should_codegen: bool) -> Output {
-    let mut db = Database::default();
-    let mut ctx = setup_compiler(&mut db);
+    let mut db = Database::new();
+    let mut ty = TypeSystem::new();
+    let mut ctx = setup_compiler(&mut db, &mut ty);
 
     let stdlib = load_standard_library(&mut ctx);
     let main_module_id = load_module(&mut ctx, root);
@@ -40,6 +42,7 @@ pub fn compile(allocator: &mut Allocator, root: &Root, mut should_codegen: bool)
     let main = try_export_main(&mut db, main_module_id);
     let graph = build_graph(
         &mut db,
+        &ty,
         &symbol_table,
         main_module_id,
         &[main_module_id, stdlib],

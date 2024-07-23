@@ -43,7 +43,7 @@ impl Compiler<'_> {
             .unwrap_or_default()
         {
             // Create the generic type id.
-            let type_id = self.db.alloc_type(Type::Generic);
+            let type_id = self.ty.alloc(Type::Generic);
 
             // Check for duplicate generic types.
             if self.scope().ty(generic_type.text()).is_some() {
@@ -79,7 +79,7 @@ impl Compiler<'_> {
                 .unwrap_or_else(|| {
                     self.db
                         .error(ErrorKind::CannotInferType, param.syntax().text_range());
-                    self.builtins.unknown
+                    self.ty.std().unknown
                 });
 
             // Substitute generic types in the parameter type.
@@ -91,7 +91,7 @@ impl Compiler<'_> {
                 let param_type_id = if param.optional().is_some() {
                     // If the parameter is optional, wrap the type in a possibly undefined type.
                     // This prevents referencing the parameter until it's checked for undefined.
-                    self.db.alloc_type(Type::Optional(type_id))
+                    self.ty.alloc(Type::Optional(type_id))
                 } else {
                     type_id
                 };
@@ -166,7 +166,7 @@ impl Compiler<'_> {
         Value::new(
             self.db
                 .alloc_hir(Hir::Reference(symbol_id, lambda_expr.syntax().text_range())),
-            self.db.alloc_type(Type::Function(ty)),
+            self.ty.alloc(Type::Function(ty)),
         )
     }
 }

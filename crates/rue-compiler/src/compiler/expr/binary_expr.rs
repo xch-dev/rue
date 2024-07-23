@@ -60,7 +60,7 @@ impl Compiler<'_> {
 
         if self
             .db
-            .compare_type(lhs.type_id, self.builtins.public_key)
+            .compare_type(lhs.type_id, self.ty.std().public_key)
             .is_equal()
         {
             return self.add_public_key(lhs.hir_id, rhs, text_range);
@@ -68,77 +68,77 @@ impl Compiler<'_> {
 
         if self
             .db
-            .compare_type(lhs.type_id, self.builtins.bytes)
+            .compare_type(lhs.type_id, self.ty.std().bytes)
             .is_equal()
         {
             return self.add_bytes(lhs.hir_id, rhs, text_range);
         }
 
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(BinOp::Add, lhs.hir_id, rhs.hir_id, self.builtins.int)
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
+        self.binary_op(BinOp::Add, lhs.hir_id, rhs.hir_id, self.ty.std().int)
     }
 
     fn add_public_key(&mut self, lhs: HirId, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.public_key)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().public_key)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(rhs.type_id, self.builtins.public_key, text_range);
-        self.binary_op(BinOp::PointAdd, lhs, rhs.hir_id, self.builtins.public_key)
+        self.type_check(rhs.type_id, self.ty.std().public_key, text_range);
+        self.binary_op(BinOp::PointAdd, lhs, rhs.hir_id, self.ty.std().public_key)
     }
 
     fn add_bytes(&mut self, lhs: HirId, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bytes)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bytes)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(rhs.type_id, self.builtins.bytes, text_range);
-        self.binary_op(BinOp::Concat, lhs, rhs.hir_id, self.builtins.bytes)
+        self.type_check(rhs.type_id, self.ty.std().bytes, text_range);
+        self.binary_op(BinOp::Concat, lhs, rhs.hir_id, self.ty.std().bytes)
     }
 
     fn op_subtract(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(BinOp::Subtract, lhs.hir_id, rhs.hir_id, self.builtins.int)
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
+        self.binary_op(BinOp::Subtract, lhs.hir_id, rhs.hir_id, self.ty.std().int)
     }
 
     fn op_multiply(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(BinOp::Multiply, lhs.hir_id, rhs.hir_id, self.builtins.int)
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
+        self.binary_op(BinOp::Multiply, lhs.hir_id, rhs.hir_id, self.ty.std().int)
     }
 
     fn op_divide(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(BinOp::Divide, lhs.hir_id, rhs.hir_id, self.builtins.int)
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
+        self.binary_op(BinOp::Divide, lhs.hir_id, rhs.hir_id, self.ty.std().int)
     }
 
     fn op_remainder(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(BinOp::Remainder, lhs.hir_id, rhs.hir_id, self.builtins.int)
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
+        self.binary_op(BinOp::Remainder, lhs.hir_id, rhs.hir_id, self.ty.std().int)
     }
 
     fn op_equals(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
@@ -153,13 +153,13 @@ impl Compiler<'_> {
             .map(|rhs| self.compile_expr(rhs, Some(lhs.type_id)))
             .unwrap_or_else(|| self.unknown());
 
-        let mut value = self.binary_op(BinOp::Equals, lhs.hir_id, rhs.hir_id, self.builtins.bool);
+        let mut value = self.binary_op(BinOp::Equals, lhs.hir_id, rhs.hir_id, self.ty.std().bool);
 
         let mut is_atom = true;
 
         if !self
             .db
-            .compare_type(lhs.type_id, self.builtins.bytes)
+            .compare_type(lhs.type_id, self.ty.std().bytes)
             .is_castable()
         {
             self.db.error(
@@ -171,7 +171,7 @@ impl Compiler<'_> {
 
         if !self
             .db
-            .compare_type(rhs.type_id, self.builtins.bytes)
+            .compare_type(rhs.type_id, self.ty.std().bytes)
             .is_castable()
         {
             self.db.error(
@@ -183,11 +183,11 @@ impl Compiler<'_> {
 
         if self
             .db
-            .compare_type(lhs.type_id, self.builtins.nil)
+            .compare_type(lhs.type_id, self.ty.std().nil)
             .is_equal()
         {
             if let Some(guard_path) = rhs.guard_path {
-                let then_type = self.builtins.nil;
+                let then_type = self.ty.std().nil;
                 let else_type = self.db.non_nullable(rhs.type_id);
                 value.guards.insert(
                     guard_path,
@@ -198,11 +198,11 @@ impl Compiler<'_> {
 
         if self
             .db
-            .compare_type(rhs.type_id, self.builtins.nil)
+            .compare_type(rhs.type_id, self.ty.std().nil)
             .is_equal()
         {
             if let Some(guard_path) = lhs.guard_path.clone() {
-                let then_type = self.builtins.nil;
+                let then_type = self.ty.std().nil;
                 let else_type = self.db.non_nullable(lhs.type_id);
                 value.guards.insert(
                     guard_path,
@@ -223,7 +223,7 @@ impl Compiler<'_> {
 
         let mut value = Value::new(
             self.db.alloc_hir(Hir::Op(Op::Not, comparison.hir_id)),
-            self.builtins.bool,
+            self.ty.std().bool,
         );
 
         for (symbol_id, guard) in comparison.guards {
@@ -242,7 +242,7 @@ impl Compiler<'_> {
     ) -> Value {
         if self
             .db
-            .compare_type(lhs.type_id, self.builtins.bytes)
+            .compare_type(lhs.type_id, self.ty.std().bytes)
             .is_assignable()
         {
             let op = match op {
@@ -254,11 +254,11 @@ impl Compiler<'_> {
             };
 
             let rhs = rhs
-                .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bytes)))
+                .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bytes)))
                 .unwrap_or_else(|| self.unknown());
 
-            self.type_check(rhs.type_id, self.builtins.bytes, text_range);
-            return self.binary_op(op, lhs.hir_id, rhs.hir_id, self.builtins.bool);
+            self.type_check(rhs.type_id, self.ty.std().bytes, text_range);
+            return self.binary_op(op, lhs.hir_id, rhs.hir_id, self.ty.std().bool);
         }
 
         let op = match op {
@@ -270,31 +270,31 @@ impl Compiler<'_> {
         };
 
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(op, lhs.hir_id, rhs.hir_id, self.builtins.bool)
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
+        self.binary_op(op, lhs.hir_id, rhs.hir_id, self.ty.std().bool)
     }
 
     fn op_and(&mut self, lhs: Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         self.type_guard_stack.push(lhs.then_guards());
 
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bool)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bool)))
             .unwrap_or_else(|| self.unknown());
 
         self.type_guard_stack.pop().unwrap();
 
-        self.type_check(lhs.type_id, self.builtins.bool, text_range);
-        self.type_check(rhs.type_id, self.builtins.bool, text_range);
+        self.type_check(lhs.type_id, self.ty.std().bool, text_range);
+        self.type_check(rhs.type_id, self.ty.std().bool, text_range);
 
         let mut value = self.binary_op(
             BinOp::LogicalAnd,
             lhs.hir_id,
             rhs.hir_id,
-            self.builtins.bool,
+            self.ty.std().bool,
         );
         value.guards.extend(lhs.guards);
         value.guards.extend(rhs.guards);
@@ -305,74 +305,74 @@ impl Compiler<'_> {
         self.type_guard_stack.push(lhs.then_guards());
 
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bool)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bool)))
             .unwrap_or_else(|| self.unknown());
 
         self.type_guard_stack.pop().unwrap();
 
-        self.type_check(lhs.type_id, self.builtins.bool, text_range);
-        self.type_check(rhs.type_id, self.builtins.bool, text_range);
-        self.binary_op(BinOp::LogicalOr, lhs.hir_id, rhs.hir_id, self.builtins.bool)
+        self.type_check(lhs.type_id, self.ty.std().bool, text_range);
+        self.type_check(rhs.type_id, self.ty.std().bool, text_range);
+        self.binary_op(BinOp::LogicalOr, lhs.hir_id, rhs.hir_id, self.ty.std().bool)
     }
 
     fn op_bitwise_and(&mut self, lhs: Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         if self
             .db
-            .compare_type(lhs.type_id, self.builtins.bool)
+            .compare_type(lhs.type_id, self.ty.std().bool)
             .is_assignable()
         {
             let rhs = rhs
-                .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bool)))
+                .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bool)))
                 .unwrap_or_else(|| self.unknown());
 
-            self.type_check(rhs.type_id, self.builtins.bool, text_range);
+            self.type_check(rhs.type_id, self.ty.std().bool, text_range);
 
-            let mut value = self.binary_op(BinOp::All, lhs.hir_id, rhs.hir_id, self.builtins.bool);
+            let mut value = self.binary_op(BinOp::All, lhs.hir_id, rhs.hir_id, self.ty.std().bool);
             value.guards.extend(lhs.guards);
             value.guards.extend(rhs.guards);
             return value;
         }
 
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(BinOp::BitwiseAnd, lhs.hir_id, rhs.hir_id, self.builtins.int)
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
+        self.binary_op(BinOp::BitwiseAnd, lhs.hir_id, rhs.hir_id, self.ty.std().int)
     }
 
     fn op_bitwise_or(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         if self
             .db
-            .compare_type(lhs.type_id, self.builtins.bool)
+            .compare_type(lhs.type_id, self.ty.std().bool)
             .is_assignable()
         {
             let rhs = rhs
-                .map(|rhs| self.compile_expr(rhs, Some(self.builtins.bool)))
+                .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bool)))
                 .unwrap_or_else(|| self.unknown());
 
-            self.type_check(rhs.type_id, self.builtins.bool, text_range);
-            return self.binary_op(BinOp::Any, lhs.hir_id, rhs.hir_id, self.builtins.bool);
+            self.type_check(rhs.type_id, self.ty.std().bool, text_range);
+            return self.binary_op(BinOp::Any, lhs.hir_id, rhs.hir_id, self.ty.std().bool);
         }
 
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(BinOp::BitwiseOr, lhs.hir_id, rhs.hir_id, self.builtins.int)
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
+        self.binary_op(BinOp::BitwiseOr, lhs.hir_id, rhs.hir_id, self.ty.std().int)
     }
 
     fn op_bitwise_xor(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
-        self.binary_op(BinOp::BitwiseXor, lhs.hir_id, rhs.hir_id, self.builtins.int)
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
+        self.binary_op(BinOp::BitwiseXor, lhs.hir_id, rhs.hir_id, self.ty.std().int)
     }
 
     fn op_left_arith_shift(
@@ -382,16 +382,16 @@ impl Compiler<'_> {
         text_range: TextRange,
     ) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
         self.binary_op(
             BinOp::LeftArithShift,
             lhs.hir_id,
             rhs.hir_id,
-            self.builtins.int,
+            self.ty.std().int,
         )
     }
 
@@ -402,16 +402,16 @@ impl Compiler<'_> {
         text_range: TextRange,
     ) -> Value {
         let rhs = rhs
-            .map(|rhs| self.compile_expr(rhs, Some(self.builtins.int)))
+            .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().int)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_check(lhs.type_id, self.builtins.int, text_range);
-        self.type_check(rhs.type_id, self.builtins.int, text_range);
+        self.type_check(lhs.type_id, self.ty.std().int, text_range);
+        self.type_check(rhs.type_id, self.ty.std().int, text_range);
         self.binary_op(
             BinOp::RightArithShift,
             lhs.hir_id,
             rhs.hir_id,
-            self.builtins.int,
+            self.ty.std().int,
         )
     }
 }

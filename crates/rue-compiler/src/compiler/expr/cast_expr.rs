@@ -7,7 +7,7 @@ impl Compiler<'_> {
         // It's fine to default to unknown, since the cast check will succeed anyways.
         let type_id = cast
             .ty()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+            .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
         // Let's used the cast type as the expected type.
         let Some(expr) = cast
