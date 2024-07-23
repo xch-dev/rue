@@ -368,4 +368,32 @@ mod tests {
         let rhs = db.alloc(Type::Pair(types.atom, types.atom));
         assert_eq!(db.compare(lhs, rhs), Comparison::Assignable);
     }
+
+    #[test]
+    fn test_generic_inference() {
+        let (mut db, types) = setup();
+
+        let generic = db.alloc(Type::Generic);
+
+        let mut stack = vec![HashMap::new()];
+
+        assert_eq!(
+            db.compare_with_generics(types.int, generic, &mut stack, true),
+            Comparison::Assignable
+        );
+
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack[0].get(&generic), Some(&types.int));
+
+        for infer in [true, false] {
+            assert_eq!(
+                db.compare_with_generics(types.bytes, generic, &mut stack, infer),
+                Comparison::Castable
+            );
+            assert_eq!(
+                db.compare_with_generics(types.any, generic, &mut stack, infer),
+                Comparison::Superset
+            );
+        }
+    }
 }
