@@ -61,6 +61,7 @@ where
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
         (Type::Lazy(..), _) | (_, Type::Lazy(..)) => unreachable!(),
         (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
+        (Type::Struct(..), _) | (_, Type::Struct(..)) => unreachable!(),
 
         // TODO: Implement generic type checking?
         (Type::Generic, _) => Check::None,
@@ -233,10 +234,7 @@ where
             Type::Ref(..) => unreachable!(),
             Type::Lazy(..) => unreachable!(),
             Type::Alias(..) => unreachable!(),
-
-            Type::Union(child_items) => {
-                items.extend(child_items);
-            }
+            Type::Struct(..) => unreachable!(),
             Type::Generic => return Err(CheckError::Impossible(item, rhs)),
             Type::Unknown => {}
             Type::Never => {
@@ -265,6 +263,9 @@ where
             Type::Pair(first, rest) => {
                 pairs.push((*first, *rest));
             }
+            Type::Union(child_items) => {
+                items.extend(child_items);
+            }
         }
 
         visited.remove(&(item, rhs));
@@ -275,6 +276,7 @@ where
         Type::Lazy(..) => unreachable!(),
         Type::Alias(..) => unreachable!(),
         Type::Union(..) => unreachable!(),
+        Type::Struct(..) => unreachable!(),
         Type::Unknown => Check::None,
         Type::Generic => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Never => return Err(CheckError::Impossible(original_type_id, rhs)),
@@ -332,7 +334,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{alloc_list, setup};
+    use std::collections::HashMap;
+
+    use indexmap::indexmap;
+
+    use crate::{alloc_list, alloc_struct, setup};
 
     use super::*;
 
@@ -570,6 +576,22 @@ mod tests {
         let (mut db, types) = setup();
         let point_end = db.alloc(Type::Pair(types.int, types.nil));
         let point = db.alloc(Type::Pair(types.int, point_end));
+        check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) ()))");
+    }
+
+    #[test]
+    fn check_any_point_struct() {
+        let (mut db, types) = setup();
+        let point_struct = alloc_struct(
+            &mut db,
+            &types,
+            &indexmap! {
+                "x".to_string() => types.int,
+                "y".to_string() => types.int,
+            },
+            true,
+        );
+        let point = db.structure(point_struct, HashMap::new());
         check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) ()))");
     }
 }

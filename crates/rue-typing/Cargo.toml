@@ -17,6 +17,7 @@ workspace = true
 [dependencies]
 id-arena = { workspace = true }
 thiserror = { workspace = true }
+indexmap = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

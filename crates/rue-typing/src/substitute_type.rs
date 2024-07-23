@@ -88,8 +88,36 @@ pub(crate) fn substitute_type(
                     type_id
                 } else {
                     types.alloc(Type::Alias(Alias {
+                        original_type_id: Some(alias.original_type_id.unwrap_or(type_id)),
                         type_id: new_type_id,
                         generic_types: alias.generic_types,
+                    }))
+                }
+            } else {
+                new_type_id
+            }
+        }
+        Type::Struct(ty) => {
+            let ty = ty.clone();
+
+            let new_type_id = substitute_type(
+                types,
+                ty.type_id,
+                substitutions,
+                preserve_semantics,
+                visited,
+            );
+
+            if preserve_semantics {
+                if new_type_id == ty.type_id {
+                    type_id
+                } else {
+                    types.alloc(Type::Struct(crate::Struct {
+                        original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
+                        type_id: new_type_id,
+                        field_names: ty.field_names,
+                        nil_terminated: ty.nil_terminated,
+                        generic_types: ty.generic_types,
                     }))
                 }
             } else {

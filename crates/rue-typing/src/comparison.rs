@@ -194,6 +194,15 @@ pub(crate) fn compare_type(
 
         (Type::Alias(alias), _) => compare_type(types, alias.type_id, rhs, ctx),
         (_, Type::Alias(alias)) => compare_type(types, lhs, alias.type_id, ctx),
+
+        (Type::Struct(lhs), _) => max(
+            compare_type(types, lhs.type_id, rhs, ctx),
+            Comparison::Castable,
+        ),
+        (_, Type::Struct(rhs)) => max(
+            compare_type(types, lhs, rhs.type_id, ctx),
+            Comparison::Castable,
+        ),
     };
 
     ctx.visited.remove(&(lhs, rhs));

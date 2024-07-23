@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{Type, TypeId, TypeSystem};
+use crate::{Struct, Type, TypeId, TypeSystem};
 
 pub(crate) fn stringify_type(
     types: &TypeSystem,
@@ -47,6 +47,7 @@ pub(crate) fn stringify_type(
         }
         Type::Lazy(lazy) => stringify_type(types, lazy.type_id, names, visited),
         Type::Alias(alias) => stringify_type(types, alias.type_id, names, visited),
+        Type::Struct(Struct { type_id, .. }) => stringify_type(types, *type_id, names, visited),
     };
 
     visited.remove(&type_id);

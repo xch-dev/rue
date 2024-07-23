@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{StandardTypes, Type, TypeId, TypeSystem};
+use crate::{StandardTypes, Struct, Type, TypeId, TypeSystem};
 
 pub(crate) fn difference_type(
     types: &mut TypeSystem,
@@ -146,6 +146,31 @@ pub(crate) fn difference_type(
 
         (Type::Alias(alias), _) => difference_type(types, std, alias.type_id, rhs, visited),
         (_, Type::Alias(alias)) => difference_type(types, std, lhs, alias.type_id, visited),
+
+        (Type::Struct(ty), _) => {
+            let ty = ty.clone();
+            let type_id = difference_type(types, std, ty.type_id, rhs, visited);
+
+            types.alloc(Type::Struct(Struct {
+                original_type_id: Some(ty.original_type_id.unwrap_or(lhs)),
+                type_id,
+                field_names: ty.field_names,
+                nil_terminated: ty.nil_terminated,
+                generic_types: ty.generic_types,
+            }))
+        }
+        (_, Type::Struct(ty)) => {
+            let ty = ty.clone();
+            let type_id = difference_type(types, std, lhs, ty.type_id, visited);
+
+            types.alloc(Type::Struct(Struct {
+                original_type_id: Some(ty.original_type_id.unwrap_or(rhs)),
+                type_id,
+                field_names: ty.field_names,
+                nil_terminated: ty.nil_terminated,
+                generic_types: ty.generic_types,
+            }))
+        }
     };
 
     visited.remove(&(lhs, rhs));
