@@ -204,6 +204,11 @@ pub(crate) fn compare_type(
             Comparison::Castable,
         ),
 
+        (Type::Callable(lhs), Type::Callable(rhs)) => max(
+            compare_type(db, lhs.parameters, rhs.parameters, ctx),
+            compare_type(db, lhs.return_type, rhs.return_type, ctx),
+        ),
+
         (Type::Callable(..), _) => compare_type(db, lhs, db.standard_types().any, ctx),
         (_, Type::Callable(..)) => Comparison::Incompatible,
     };
@@ -329,7 +334,7 @@ mod tests {
     fn test_compare_list_any() {
         let mut db = TypeSystem::new();
         let types = db.standard_types();
-        let list = alloc_list(&mut db, &types, types.int);
+        let list = alloc_list(&mut db, types.int);
         assert_eq!(db.compare(list, types.any), Comparison::Assignable);
     }
 
@@ -365,7 +370,7 @@ mod tests {
         let pair_inner_inner = db.alloc(Type::Pair(types.any, types.nil));
         let pair_inner = db.alloc(Type::Pair(pair_inner_inner, pair_inner_inner));
         let pair = db.alloc(Type::Pair(types.int, pair_inner));
-        let list = alloc_list(&mut db, &types, pair);
+        let list = alloc_list(&mut db, pair);
         assert_eq!(db.compare(list, types.any), Comparison::Assignable);
     }
 

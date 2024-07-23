@@ -1,7 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use indexmap::IndexMap;
-
 use crate::{Alias, Callable, Type, TypeId, TypeSystem};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -125,12 +123,13 @@ pub(crate) fn substitute_type(
                 visited,
             );
 
-            let mut new_parameters = IndexMap::new();
-            for (name, parameter) in &callable.parameters {
-                let new_parameter =
-                    substitute_type(types, *parameter, substitutions, semantics, visited);
-                new_parameters.insert(name.clone(), new_parameter);
-            }
+            let new_parameters = substitute_type(
+                types,
+                callable.parameters,
+                substitutions,
+                semantics,
+                visited,
+            );
 
             match semantics {
                 Semantics::Preserve => {
@@ -141,6 +140,7 @@ pub(crate) fn substitute_type(
                     } else {
                         types.alloc(Type::Callable(Callable {
                             original_type_id: Some(callable.original_type_id.unwrap_or(type_id)),
+                            parameter_names: callable.parameter_names,
                             parameters: new_parameters,
                             return_type: new_return_type,
                             rest: callable.rest,

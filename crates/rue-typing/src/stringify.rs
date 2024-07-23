@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{Callable, Rest, Struct, Type, TypeId, TypeSystem};
+use crate::{Callable, Struct, Type, TypeId, TypeSystem};
 
 pub(crate) fn stringify_type(
     types: &TypeSystem,
@@ -51,43 +51,12 @@ pub(crate) fn stringify_type(
         Type::Callable(Callable {
             parameters,
             return_type,
-            rest,
             ..
         }) => {
             let mut result = "fun(".to_string();
-
-            for (index, (parameter_name, parameter_type)) in
-                parameters.clone().into_iter().enumerate()
-            {
-                if index > 0 {
-                    result.push_str(", ");
-                }
-
-                if index == parameters.len() - 1 {
-                    match rest {
-                        Rest::Spread => {
-                            result.push_str("...");
-                            result.push_str(&parameter_name);
-                        }
-                        Rest::Nil => {
-                            result.push_str(&parameter_name);
-                        }
-                        Rest::Optional => {
-                            result.push_str(&parameter_name);
-                            result.push('?');
-                        }
-                    }
-                } else {
-                    result.push_str(&parameter_name);
-                }
-
-                result.push_str(": ");
-                result.push_str(&stringify_type(types, parameter_type, names, visited));
-            }
-
+            result.push_str(&stringify_type(types, *parameters, names, visited));
             result.push_str(") -> ");
             result.push_str(&stringify_type(types, *return_type, names, visited));
-
             result
         }
     };
@@ -101,7 +70,7 @@ pub(crate) fn stringify_type(
 mod tests {
     use indexmap::indexmap;
 
-    use crate::alloc_callable;
+    use crate::{alloc_callable, Rest};
 
     use super::*;
 
@@ -139,7 +108,7 @@ mod tests {
 
         let callable = alloc_callable(
             &mut db,
-            indexmap! {
+            &indexmap! {
                 "a".to_string() => types.int,
                 "b".to_string() => types.bytes,
             },
@@ -149,7 +118,7 @@ mod tests {
 
         assert_eq!(
             db.stringify_named(callable, &HashMap::new()),
-            "fun(a: Int, b: Bytes) -> Bool"
+            "fun((Int, (Bytes, Nil))) -> Bool"
         );
     }
 }

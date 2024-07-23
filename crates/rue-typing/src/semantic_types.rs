@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 
 use crate::TypeId;
 
@@ -37,8 +37,8 @@ pub struct Alias {
 #[derive(Debug, Clone)]
 pub struct Struct {
     pub original_type_id: Option<TypeId>,
-    pub type_id: TypeId,
     pub field_names: IndexSet<String>,
+    pub type_id: TypeId,
     pub rest: Rest,
     pub generic_types: Vec<TypeId>,
 }
@@ -47,7 +47,8 @@ pub struct Struct {
 #[derive(Debug, Clone)]
 pub struct Callable {
     pub original_type_id: Option<TypeId>,
-    pub parameters: IndexMap<String, TypeId>,
+    pub parameter_names: IndexSet<String>,
+    pub parameters: TypeId,
     pub return_type: TypeId,
     pub rest: Rest,
     pub generic_types: Vec<TypeId>,

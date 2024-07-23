@@ -583,7 +583,7 @@ mod tests {
     fn check_list_nil() {
         let mut db = TypeSystem::new();
         let types = db.standard_types();
-        let list = alloc_list(&mut db, &types, types.bytes);
+        let list = alloc_list(&mut db, types.bytes);
         check_str(&mut db, list, types.nil, "(not (l val))");
     }
 
@@ -591,7 +591,7 @@ mod tests {
     fn check_list_pair() {
         let mut db = TypeSystem::new();
         let types = db.standard_types();
-        let list = alloc_list(&mut db, &types, types.bytes);
+        let list = alloc_list(&mut db, types.bytes);
         let pair = db.alloc(Type::Pair(types.bytes, list));
         check_str(&mut db, list, pair, "(l val)");
     }
@@ -600,7 +600,7 @@ mod tests {
     fn check_any_list() {
         let mut db = TypeSystem::new();
         let types = db.standard_types();
-        let list = alloc_list(&mut db, &types, types.bytes);
+        let list = alloc_list(&mut db, types.bytes);
         check_recursive(&mut db, types.any, list);
     }
 
@@ -619,7 +619,6 @@ mod tests {
         let types = db.standard_types();
         let point_struct = alloc_struct(
             &mut db,
-            &types,
             &indexmap! {
                 "x".to_string() => types.int,
                 "y".to_string() => types.int,
