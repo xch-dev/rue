@@ -1,5 +1,6 @@
 use std::fmt;
 
+mod attributes;
 mod check_error;
 mod check_type;
 mod simplify_and;
@@ -9,6 +10,7 @@ mod stringify_check;
 
 pub use check_error::*;
 
+pub(crate) use attributes::*;
 pub(crate) use check_type::*;
 pub(crate) use simplify_and::*;
 pub(crate) use simplify_check::*;
