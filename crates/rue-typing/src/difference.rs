@@ -3,15 +3,16 @@ use std::collections::HashSet;
 use num_bigint::BigInt;
 use num_traits::One;
 
-use crate::{bigint_to_bytes, Enum, StandardTypes, Struct, Type, TypeId, TypeSystem, Variant};
+use crate::{bigint_to_bytes, Enum, Struct, Type, TypeId, TypeSystem, Variant};
 
 pub(crate) fn difference_type(
     types: &mut TypeSystem,
-    std: &StandardTypes,
     lhs: TypeId,
     rhs: TypeId,
     visited: &mut HashSet<(TypeId, TypeId)>,
 ) -> TypeId {
+    let std = types.std();
+
     if !visited.insert((lhs, rhs)) {
         return lhs;
     }
@@ -198,8 +199,8 @@ pub(crate) fn difference_type(
             let (lhs_first, lhs_rest) = (*lhs_first, *lhs_rest);
             let (rhs_first, rhs_rest) = (*rhs_first, *rhs_rest);
 
-            let first = difference_type(types, std, lhs_first, rhs_first, visited);
-            let rest = difference_type(types, std, lhs_rest, rhs_rest, visited);
+            let first = difference_type(types, lhs_first, rhs_first, visited);
+            let rest = difference_type(types, lhs_rest, rhs_rest, visited);
 
             if matches!(types.get(first), Type::Never) || matches!(types.get(first), Type::Never) {
                 std.never
@@ -216,7 +217,7 @@ pub(crate) fn difference_type(
             let mut result = Vec::new();
 
             for item in &items {
-                let item = difference_type(types, std, *item, rhs, visited);
+                let item = difference_type(types, *item, rhs, visited);
                 if matches!(types.get(item), Type::Never) {
                     continue;
                 }
@@ -238,17 +239,17 @@ pub(crate) fn difference_type(
             let items = items.clone();
             let mut lhs = lhs;
             for item in items {
-                lhs = difference_type(types, std, lhs, item, visited);
+                lhs = difference_type(types, lhs, item, visited);
             }
             lhs
         }
 
-        (Type::Alias(alias), _) => difference_type(types, std, alias.type_id, rhs, visited),
-        (_, Type::Alias(alias)) => difference_type(types, std, lhs, alias.type_id, visited),
+        (Type::Alias(alias), _) => difference_type(types, alias.type_id, rhs, visited),
+        (_, Type::Alias(alias)) => difference_type(types, lhs, alias.type_id, visited),
 
         (Type::Struct(ty), _) => {
             let ty = ty.clone();
-            let type_id = difference_type(types, std, ty.type_id, rhs, visited);
+            let type_id = difference_type(types, ty.type_id, rhs, visited);
 
             types.alloc(Type::Struct(Struct {
                 original_type_id: Some(ty.original_type_id.unwrap_or(lhs)),
@@ -260,7 +261,7 @@ pub(crate) fn difference_type(
         }
         (_, Type::Struct(ty)) => {
             let ty = ty.clone();
-            let type_id = difference_type(types, std, lhs, ty.type_id, visited);
+            let type_id = difference_type(types, lhs, ty.type_id, visited);
 
             types.alloc(Type::Struct(Struct {
                 original_type_id: Some(ty.original_type_id.unwrap_or(rhs)),
@@ -273,7 +274,7 @@ pub(crate) fn difference_type(
 
         (Type::Enum(ty), _) => {
             let ty = ty.clone();
-            let type_id = difference_type(types, std, ty.type_id, rhs, visited);
+            let type_id = difference_type(types, ty.type_id, rhs, visited);
 
             types.alloc(Type::Enum(Enum {
                 original_type_id: Some(ty.original_type_id.unwrap_or(lhs)),
@@ -284,7 +285,7 @@ pub(crate) fn difference_type(
         }
         (_, Type::Enum(ty)) => {
             let ty = ty.clone();
-            let type_id = difference_type(types, std, lhs, ty.type_id, visited);
+            let type_id = difference_type(types, lhs, ty.type_id, visited);
 
             types.alloc(Type::Enum(Enum {
                 original_type_id: Some(ty.original_type_id.unwrap_or(rhs)),
@@ -296,7 +297,7 @@ pub(crate) fn difference_type(
 
         (Type::Variant(variant), _) => {
             let variant = variant.clone();
-            let type_id = difference_type(types, std, variant.type_id, rhs, visited);
+            let type_id = difference_type(types, variant.type_id, rhs, visited);
 
             types.alloc(Type::Variant(Variant {
                 original_type_id: Some(variant.original_type_id.unwrap_or(lhs)),
@@ -310,7 +311,7 @@ pub(crate) fn difference_type(
         }
         (_, Type::Variant(variant)) => {
             let variant = variant.clone();
-            let type_id = difference_type(types, std, lhs, variant.type_id, visited);
+            let type_id = difference_type(types, lhs, variant.type_id, visited);
 
             types.alloc(Type::Variant(Variant {
                 original_type_id: Some(variant.original_type_id.unwrap_or(rhs)),

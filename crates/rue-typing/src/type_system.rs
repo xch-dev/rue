@@ -103,16 +103,16 @@ impl TypeSystem {
         }
     }
 
-    pub fn pair_first(&self, type_id: TypeId) -> Option<TypeId> {
+    pub fn get_pair(&self, type_id: TypeId) -> Option<(TypeId, TypeId)> {
         match self.get(type_id) {
-            Type::Pair(first, _) => Some(*first),
+            Type::Pair(first, rest) => Some((*first, *rest)),
             _ => None,
         }
     }
 
-    pub fn pair_rest(&self, type_id: TypeId) -> Option<TypeId> {
+    pub fn get_union(&self, type_id: TypeId) -> Option<&[TypeId]> {
         match self.get(type_id) {
-            Type::Pair(_, rest) => Some(*rest),
+            Type::Union(types) => Some(types),
             _ => None,
         }
     }
@@ -178,8 +178,8 @@ impl TypeSystem {
         check_type(self, lhs, rhs, &mut HashSet::new()).map(simplify_check)
     }
 
-    pub fn difference(&mut self, std: &StandardTypes, lhs: TypeId, rhs: TypeId) -> TypeId {
-        difference_type(self, std, lhs, rhs, &mut HashSet::new())
+    pub fn difference(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+        difference_type(self, lhs, rhs, &mut HashSet::new())
     }
 
     pub fn replace(

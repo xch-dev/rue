@@ -1,6 +1,7 @@
 use rue_parser::TypeAliasItem;
+use rue_typing::{Alias, Type, TypeId};
 
-use crate::{compiler::Compiler, value::Type, ErrorKind, TypeId};
+use crate::compiler::Compiler;
 
 impl Compiler<'_> {
     /// Define a type for an alias in the current scope, but leave it as unknown for now.
@@ -22,22 +23,11 @@ impl Compiler<'_> {
             .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
         // Set the alias type to the resolved type.
-        *self.db.ty_mut(alias_type_id) = Type::Alias(type_id);
-
-        // A cycle between type aliases has been detected.
-        // We set it to unknown to prevent stack overflow issues later.
-        if self.db.is_cyclic(alias_type_id) {
-            let name = type_alias
-                .name()
-                .expect("the name should exist if it's in a cyclic reference");
-
-            self.db.error(
-                ErrorKind::RecursiveTypeAlias(name.to_string()),
-                name.text_range(),
-            );
-
-            *self.db.ty_mut(alias_type_id) = Type::Unknown;
-        }
+        *self.ty.get_mut(alias_type_id) = Type::Alias(Alias {
+            original_type_id: None,
+            type_id,
+            generic_types: Vec::new(),
+        });
 
         self.type_definition_stack.pop().unwrap();
     }

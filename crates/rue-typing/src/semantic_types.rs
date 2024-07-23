@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use indexmap::IndexSet;
 use num_bigint::BigInt;
 
-use crate::TypeId;
+use crate::{Comparison, Type, TypeId, TypeSystem};
 
 /// The kind of ending that a list has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -85,4 +85,194 @@ pub struct Variant {
     pub generic_types: Vec<TypeId>,
     /// The discriminant value.
     pub discriminant: BigInt,
+}
+
+/// Constructs a structural type consisting of the items in a list.
+pub fn construct_items(
+    db: &mut TypeSystem,
+    items: impl DoubleEndedIterator<Item = TypeId>,
+    rest: Rest,
+) -> TypeId {
+    let mut result = db.std().nil;
+    for (i, item) in items.rev().enumerate() {
+        if i == 0 {
+            match rest {
+                Rest::Spread => {
+                    result = item;
+                    continue;
+                }
+                Rest::Optional => {
+                    result = db.alloc(Type::Pair(item, result));
+                    result = db.alloc(Type::Union(vec![result, db.std().nil]));
+                    continue;
+                }
+                Rest::Nil => {}
+            }
+        }
+        result = db.alloc(Type::Pair(item, result));
+    }
+    result
+}
+
+/// Deconstructs a structural type into a list of items and a rest value.
+pub fn deconstruct_items(
+    db: &mut TypeSystem,
+    type_id: TypeId,
+    length: usize,
+    rest: Rest,
+) -> Option<Vec<TypeId>> {
+    let mut items = Vec::with_capacity(length);
+    let mut current = type_id;
+
+    for i in (0..length).rev() {
+        if i == 0 {
+            match rest {
+                Rest::Spread => {
+                    items.push(current);
+                    break;
+                }
+                Rest::Optional => {
+                    if db.compare(db.std().nil, current) > Comparison::Assignable {
+                        return None;
+                    }
+
+                    let non_nil = db.difference(current, db.std().nil);
+                    let (first, rest) = db.get_pair(non_nil)?;
+
+                    if db.compare(rest, db.std().nil) > Comparison::Equal {
+                        return None;
+                    }
+
+                    items.push(first);
+                    break;
+                }
+                Rest::Nil => {
+                    let (first, rest) = db.get_pair(current)?;
+                    items.push(first);
+                    if db.compare(rest, db.std().nil) > Comparison::Equal {
+                        return None;
+                    }
+                    break;
+                }
+            }
+        }
+        let (first, rest) = db.get_pair(current)?;
+        items.push(first);
+        current = rest;
+    }
+
+    Some(items)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_construct_int_nil() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let type_id = construct_items(&mut db, [std.int].into_iter(), Rest::Nil);
+        let items = deconstruct_items(&mut db, type_id, 1, Rest::Nil);
+        assert_eq!(items, Some(vec![std.int]));
+    }
+
+    #[test]
+    fn test_construct_int() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let type_id = construct_items(&mut db, [std.int].into_iter(), Rest::Spread);
+        let items = deconstruct_items(&mut db, type_id, 1, Rest::Spread);
+        assert_eq!(items, Some(vec![std.int]));
+    }
+
+    #[test]
+    fn test_construct_int_optional() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let type_id = construct_items(&mut db, [std.int].into_iter(), Rest::Optional);
+        let items = deconstruct_items(&mut db, type_id, 1, Rest::Optional);
+        assert_eq!(items, Some(vec![std.int]));
+    }
+
+    #[test]
+    fn test_construct_empty_nil() {
+        let mut db = TypeSystem::new();
+        let type_id = construct_items(&mut db, [].into_iter(), Rest::Nil);
+        let items = deconstruct_items(&mut db, type_id, 0, Rest::Nil);
+        assert_eq!(items, Some(vec![]));
+    }
+
+    #[test]
+    fn test_construct_empty() {
+        let mut db = TypeSystem::new();
+        let type_id = construct_items(&mut db, [].into_iter(), Rest::Spread);
+        let items = deconstruct_items(&mut db, type_id, 0, Rest::Spread);
+        assert_eq!(items, Some(vec![]));
+    }
+
+    #[test]
+    fn test_construct_empty_optional() {
+        let mut db = TypeSystem::new();
+        let type_id = construct_items(&mut db, [].into_iter(), Rest::Optional);
+        let items = deconstruct_items(&mut db, type_id, 0, Rest::Optional);
+        assert_eq!(items, Some(vec![]));
+    }
+
+    #[test]
+    fn test_construct_int_int_nil() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let type_id = construct_items(&mut db, [std.int, std.int].into_iter(), Rest::Nil);
+        let items = deconstruct_items(&mut db, type_id, 2, Rest::Nil);
+        assert_eq!(items, Some(vec![std.int, std.int]));
+    }
+
+    #[test]
+    fn test_construct_int_int() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let type_id = construct_items(&mut db, [std.int, std.int].into_iter(), Rest::Spread);
+        let items = deconstruct_items(&mut db, type_id, 2, Rest::Spread);
+        assert_eq!(items, Some(vec![std.int, std.int]));
+    }
+
+    #[test]
+    fn test_construct_int_int_optional() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let type_id = construct_items(&mut db, [std.int, std.int].into_iter(), Rest::Optional);
+        let items = deconstruct_items(&mut db, type_id, 2, Rest::Optional);
+        assert_eq!(items, Some(vec![std.int, std.int]));
+    }
+
+    #[test]
+    fn test_construct_bytes32_pair_nil() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let pair = db.alloc(Type::Pair(std.bytes32, std.nil));
+        let type_id = construct_items(&mut db, [std.bytes32, pair].into_iter(), Rest::Nil);
+        let items = deconstruct_items(&mut db, type_id, 2, Rest::Nil);
+        assert_eq!(items, Some(vec![std.bytes32, pair]));
+    }
+
+    #[test]
+    fn test_construct_bytes32_pair() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let pair = db.alloc(Type::Pair(std.bytes32, std.nil));
+        let type_id = construct_items(&mut db, [std.bytes32, pair].into_iter(), Rest::Spread);
+        let items = deconstruct_items(&mut db, type_id, 2, Rest::Spread);
+        assert_eq!(items, Some(vec![std.bytes32, pair]));
+    }
+
+    #[test]
+    fn test_construct_bytes32_pair_optional() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let pair = db.alloc(Type::Pair(std.bytes32, std.nil));
+        let type_id = construct_items(&mut db, [std.bytes32, pair].into_iter(), Rest::Optional);
+        let items = deconstruct_items(&mut db, type_id, 2, Rest::Optional);
+        assert_eq!(items, Some(vec![std.bytes32, pair]));
+    }
 }
