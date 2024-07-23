@@ -5,13 +5,14 @@ use std::collections::HashMap;
 pub(crate) use builtins::Builtins;
 use indexmap::IndexSet;
 use rowan::TextRange;
+use rue_typing::TypeId;
 use symbol_table::SymbolTable;
 
 use crate::{
-    database::{Database, HirId, ScopeId, SymbolId, TypeId},
+    database::{Database, HirId, ScopeId, SymbolId},
     hir::{Hir, Op},
     scope::Scope,
-    value::{GuardPath, Mutation, PairType, Type, TypeOverride, Value},
+    value::{GuardPath, Mutation, TypeOverride, Value},
     ErrorKind,
 };
 
@@ -25,8 +26,6 @@ mod stmt;
 mod symbol_table;
 mod ty;
 
-#[cfg(test)]
-pub use builtins::*;
 pub use context::*;
 
 /// Responsible for lowering the AST into the HIR.
@@ -134,91 +133,7 @@ impl<'a> Compiler<'a> {
 
         stack.insert(ty);
 
-        let name = match self.db.ty(ty) {
-            Type::Unknown => "{unknown}".to_string(),
-            Type::Generic => "{generic}".to_string(),
-            Type::Nil => "Nil".to_string(),
-            Type::Any => "Any".to_string(),
-            Type::Int => "Int".to_string(),
-            Type::Bool => "Bool".to_string(),
-            Type::Bytes => "Bytes".to_string(),
-            Type::Bytes32 => "Bytes32".to_string(),
-            Type::PublicKey => "PublicKey".to_string(),
-            Type::List(items) => {
-                let inner = self.type_name_visitor(*items, stack);
-                format!("{inner}[]")
-            }
-            Type::Pair(PairType { first, rest }) => {
-                let first = self.type_name_visitor(*first, stack);
-                let rest = self.type_name_visitor(*rest, stack);
-                format!("({first}, {rest})")
-            }
-            Type::Struct(struct_type) => {
-                if struct_type.original_type_id == ty {
-                    let fields: Vec<String> = struct_type
-                        .fields
-                        .iter()
-                        .map(|(name, ty)| {
-                            format!("{}: {}", name, self.type_name_visitor(*ty, stack))
-                        })
-                        .collect();
-
-                    format!("{{{}}}", fields.join(", "))
-                } else {
-                    self.type_name_visitor(struct_type.original_type_id, stack)
-                }
-            }
-            Type::Enum { .. } => "<unnamed enum>".to_string(),
-            Type::EnumVariant(enum_variant) => {
-                let enum_name = self.type_name_visitor(enum_variant.enum_type, stack);
-
-                let fields: Option<Vec<String>> = enum_variant.fields.as_ref().map(|fields| {
-                    fields
-                        .iter()
-                        .map(|(name, ty)| {
-                            format!("{}: {}", name, self.type_name_visitor(*ty, stack))
-                        })
-                        .collect()
-                });
-
-                let variant_name = match self.db.ty(enum_variant.enum_type) {
-                    Type::Enum(enum_type) => enum_type
-                        .variants
-                        .iter()
-                        .find(|item| *item.1 == enum_variant.original_type_id)
-                        .expect("enum type is missing variant")
-                        .0
-                        .clone(),
-                    _ => unreachable!(),
-                };
-
-                if let Some(fields) = fields {
-                    format!("{enum_name}::{variant_name} {{{}}}", fields.join(", "))
-                } else {
-                    format!("{enum_name}::{variant_name}")
-                }
-            }
-            Type::Function(function_type) => {
-                let params: Vec<String> = function_type
-                    .param_types
-                    .iter()
-                    .map(|&ty| self.type_name_visitor(ty, stack))
-                    .collect();
-
-                let ret = self.type_name_visitor(function_type.return_type, stack);
-
-                format!("fun({}) -> {}", params.join(", "), ret)
-            }
-            Type::Alias(..) => unreachable!(),
-            Type::Nullable(ty) => {
-                let inner = self.type_name_visitor(*ty, stack);
-                format!("{inner}?")
-            }
-            Type::Optional(ty) => {
-                let inner = self.type_name_visitor(*ty, stack);
-                format!("optional {inner}")
-            }
-        };
+        let name = match self.db.ty(ty) {};
 
         stack.pop().unwrap();
 

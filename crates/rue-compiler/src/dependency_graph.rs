@@ -1,11 +1,11 @@
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
+use rue_typing::Rest;
 
 use crate::{
     environment::Environment,
     hir::Hir,
     symbol::{Function, Module, Symbol},
-    value::Rest,
     Database, EnvironmentId, ErrorKind, HirId, ScopeId, SymbolId,
 };
 

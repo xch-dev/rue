@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
+use rue_typing::Rest;
 
 use crate::{
     dependency_graph::DependencyGraph,
@@ -8,7 +9,6 @@ use crate::{
     hir::Hir,
     mir::Mir,
     symbol::{Function, Symbol},
-    value::Rest,
     Database, EnvironmentId, HirId, MirId, ScopeId, SymbolId,
 };
 

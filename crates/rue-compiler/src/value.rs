@@ -2,13 +2,13 @@ use std::collections::HashMap;
 
 mod guard;
 mod guard_path;
-mod ty;
 
 pub use guard::*;
 pub use guard_path::*;
-pub use ty::*;
 
-use crate::{HirId, TypeId};
+use rue_typing::TypeId;
+
+use crate::HirId;
 
 #[derive(Debug, Clone)]
 pub struct Value {

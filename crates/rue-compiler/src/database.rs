@@ -5,10 +5,10 @@ use rue_parser::SyntaxToken;
 
 mod comparison;
 mod ids;
-mod type_system;
 
 pub use comparison::*;
 pub use ids::*;
+use rue_typing::TypeId;
 
 use crate::{
     environment::Environment,
@@ -17,7 +17,6 @@ use crate::{
     mir::Mir,
     scope::Scope,
     symbol::Symbol,
-    value::Type,
     Diagnostic, DiagnosticKind, ErrorKind, WarningKind,
 };
 
@@ -26,7 +25,6 @@ pub struct Database {
     diagnostics: Vec<Diagnostic>,
     scopes: Arena<Scope>,
     symbols: Arena<Symbol>,
-    types: Arena<Type>,
     hir: Arena<Hir>,
     mir: Arena<Mir>,
     lir: Arena<Lir>,
@@ -47,10 +45,6 @@ impl Database {
 
     pub(crate) fn alloc_symbol(&mut self, symbol: Symbol) -> SymbolId {
         SymbolId(self.symbols.alloc(symbol))
-    }
-
-    pub(crate) fn alloc_type(&mut self, ty: Type) -> TypeId {
-        TypeId(self.types.alloc(ty))
     }
 
     pub(crate) fn alloc_hir(&mut self, hir: Hir) -> HirId {
@@ -77,17 +71,6 @@ impl Database {
         &self.symbols[id.0]
     }
 
-    pub fn ty_raw(&self, id: TypeId) -> &Type {
-        &self.types[id.0]
-    }
-
-    pub fn ty(&self, mut id: TypeId) -> &Type {
-        while let Type::Alias(alias) = self.ty_raw(id) {
-            id = *alias;
-        }
-        self.ty_raw(id)
-    }
-
     pub fn hir(&self, id: HirId) -> &Hir {
         &self.hir[id.0]
     }
@@ -102,10 +85,6 @@ impl Database {
 
     pub fn env(&self, id: EnvironmentId) -> &Environment {
         &self.environments[id.0]
-    }
-
-    pub(crate) fn ty_mut(&mut self, id: TypeId) -> &mut Type {
-        &mut self.types[id.0]
     }
 
     pub(crate) fn env_mut(&mut self, id: EnvironmentId) -> &mut Environment {

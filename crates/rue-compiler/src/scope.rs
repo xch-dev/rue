@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
+use rue_typing::TypeId;
 
-use crate::{database::TypeId, SymbolId};
+use crate::SymbolId;
 
 #[derive(Debug, Default)]
 pub struct Scope {
