@@ -1462,6 +1462,7 @@ dependencies = [
  "anyhow",
  "id-arena",
  "indexmap",
+ "num-bigint",
  "thiserror",
 ]
 

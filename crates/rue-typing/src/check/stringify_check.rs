@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Display};
 
 use crate::TypePath;
 
@@ -38,14 +38,16 @@ pub(crate) fn stringify_check(
         Check::IsBool => {
             write!(f, "(any (= ")?;
             stringify_value(f, path)?;
-            write!(f, " ()) (= ")?;
+            write!(f, " 0) (= ")?;
             stringify_value(f, path)?;
             write!(f, " 1))")
         }
-        Check::IsNil => {
+        Check::Value(value) => {
             write!(f, "(= ")?;
             stringify_value(f, path)?;
-            write!(f, " ())")
+            write!(f, " ")?;
+            value.fmt(f)?;
+            write!(f, ")")
         }
         Check::Length(len) => {
             write!(f, "(= (strlen ")?;

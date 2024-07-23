@@ -18,6 +18,7 @@ workspace = true
 id-arena = { workspace = true }
 thiserror = { workspace = true }
 indexmap = { workspace = true }
+num-bigint = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

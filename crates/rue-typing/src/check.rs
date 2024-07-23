@@ -10,6 +10,7 @@ mod stringify_check;
 pub use check_error::*;
 
 pub(crate) use check_type::*;
+use num_bigint::BigInt;
 pub(crate) use simplify_and::*;
 pub(crate) use simplify_check::*;
 pub(crate) use simplify_or::*;
@@ -21,7 +22,7 @@ pub enum Check {
     IsPair,
     IsAtom,
     IsBool,
-    IsNil,
+    Value(BigInt),
     Length(usize),
     And(Vec<Check>),
     Or(Vec<Check>),

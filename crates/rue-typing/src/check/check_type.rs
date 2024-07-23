@@ -3,6 +3,8 @@ use std::{
     hash::BuildHasher,
 };
 
+use num_bigint::BigInt;
+
 use crate::{Comparison, Type, TypeId, TypeSystem};
 
 use super::{Check, CheckError};
@@ -73,21 +75,21 @@ where
         (Type::Nil, Type::Bool) => Check::None,
 
         (Type::Atom, Type::Bool) => Check::IsBool,
-        (Type::Atom, Type::Nil) => Check::IsNil,
+        (Type::Atom, Type::Nil) => Check::Value(BigInt::ZERO),
         (Type::Atom, Type::PublicKey) => Check::Length(48),
         (Type::Atom, Type::Bytes32) => Check::Length(32),
 
         (Type::Bytes, Type::Bool) => Check::IsBool,
-        (Type::Bytes, Type::Nil) => Check::IsNil,
+        (Type::Bytes, Type::Nil) => Check::Value(BigInt::ZERO),
         (Type::Bytes, Type::PublicKey) => Check::Length(48),
         (Type::Bytes, Type::Bytes32) => Check::Length(32),
 
         (Type::Int, Type::Bool) => Check::IsBool,
-        (Type::Int, Type::Nil) => Check::IsNil,
+        (Type::Int, Type::Nil) => Check::Value(BigInt::ZERO),
         (Type::Int, Type::PublicKey) => Check::Length(48),
         (Type::Int, Type::Bytes32) => Check::Length(32),
 
-        (Type::Bool, Type::Nil) => Check::IsNil,
+        (Type::Bool, Type::Nil) => Check::Value(BigInt::ZERO),
 
         (_, Type::Union(items)) => {
             let mut result = Vec::new();
@@ -260,7 +262,7 @@ where
         Type::Bytes32 if atom_count == length => Check::Length(32),
         Type::PublicKey if atom_count == length => Check::Length(48),
         Type::Bool if atom_count == length => Check::IsBool,
-        Type::Nil if atom_count == length => Check::IsNil,
+        Type::Nil if atom_count == length => Check::Value(BigInt::ZERO),
         Type::Atom => Check::IsAtom,
         Type::Bytes => Check::IsAtom,
         Type::Int => Check::IsAtom,
@@ -271,7 +273,7 @@ where
         Type::Bytes32 => Check::And(vec![Check::IsAtom, Check::Length(32)]),
         Type::PublicKey => Check::And(vec![Check::IsAtom, Check::Length(48)]),
         Type::Bool => Check::And(vec![Check::IsAtom, Check::IsBool]),
-        Type::Nil => Check::And(vec![Check::IsAtom, Check::IsNil]),
+        Type::Nil => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
         Type::Pair(..) if atom_count == length => {
             return Err(CheckError::Impossible(original_type_id, rhs))
         }
@@ -373,7 +375,7 @@ mod tests {
             &mut db,
             types.any,
             types.bool,
-            "(and (not (l val)) (any (= val ()) (= val 1)))",
+            "(and (not (l val)) (any (= val 0) (= val 1)))",
         );
     }
 
@@ -385,7 +387,7 @@ mod tests {
             &mut db,
             types.any,
             types.nil,
-            "(and (not (l val)) (= val ()))",
+            "(and (not (l val)) (= val 0))",
         );
     }
 
@@ -468,7 +470,7 @@ mod tests {
     fn check_bytes_nil() {
         let mut db = TypeSystem::new();
         let types = db.standard_types();
-        check_str(&mut db, types.bytes, types.nil, "(= val ())");
+        check_str(&mut db, types.bytes, types.nil, "(= val 0)");
     }
 
     #[test]
@@ -486,7 +488,7 @@ mod tests {
             &mut db,
             types.bytes,
             types.bool,
-            "(any (= val ()) (= val 1))",
+            "(any (= val 0) (= val 1))",
         );
     }
 
@@ -522,7 +524,7 @@ mod tests {
     fn check_bool_nil() {
         let mut db = TypeSystem::new();
         let types = db.standard_types();
-        check_str(&mut db, types.bool, types.nil, "(= val ())");
+        check_str(&mut db, types.bool, types.nil, "(= val 0)");
     }
 
     #[test]
@@ -577,7 +579,7 @@ mod tests {
         let types = db.standard_types();
         let point_end = db.alloc(Type::Pair(types.int, types.nil));
         let point = db.alloc(Type::Pair(types.int, point_end));
-        check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) ()))");
+        check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) 0))");
     }
 
     #[test]
@@ -599,6 +601,6 @@ mod tests {
                 callable: types.never,
             },
         );
-        check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) ()))");
+        check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) 0))");
     }
 }

@@ -149,6 +149,8 @@ fn construct_or(mut items: Vec<Check>) -> Check {
 
 #[cfg(test)]
 mod tests {
+    use num_bigint::BigInt;
+
     use super::*;
 
     #[test]
@@ -185,8 +187,8 @@ mod tests {
     #[test]
     fn test_simplify_or_two_checks() {
         assert_eq!(
-            simplify_or_shallow([Check::IsPair, Check::IsNil]),
-            Check::Or(vec![Check::IsNil, Check::IsPair])
+            simplify_or_shallow([Check::IsPair, Check::Value(BigInt::ZERO)]),
+            Check::Or(vec![Check::Value(BigInt::ZERO), Check::IsPair])
         );
     }
 

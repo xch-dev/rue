@@ -1,3 +1,5 @@
+use num_bigint::BigInt;
+
 use super::{simplify_and_deep, simplify_or_deep, Check};
 
 pub(crate) fn simplify_check(check: Check) -> Check {
@@ -6,10 +8,10 @@ pub(crate) fn simplify_check(check: Check) -> Check {
         Check::IsAtom => Check::IsAtom,
         Check::IsPair => Check::IsPair,
         Check::IsBool => Check::IsBool,
-        Check::IsNil => Check::IsNil,
+        Check::Value(value) => Check::Value(value),
         Check::Length(len) => {
             if len == 0 {
-                Check::IsNil
+                Check::Value(BigInt::ZERO)
             } else {
                 Check::Length(len)
             }
