@@ -86,7 +86,9 @@ pub(crate) fn union_attributes(
             Type::Alias(..) => unreachable!(),
             Type::Struct(..) => unreachable!(),
             Type::Callable(..) => unreachable!(),
-            Type::Generic => return Err(CheckError::Impossible(key.0, key.1)),
+            Type::Generic => {
+                length -= 1;
+            }
             Type::Unknown => {}
             Type::Never => {
                 length -= 1;

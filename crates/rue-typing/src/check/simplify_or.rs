@@ -35,7 +35,7 @@ pub(crate) fn simplify_or_shallow(items: impl IntoIterator<Item = Check>) -> Che
 
     for item in items {
         match item {
-            Check::None => return Check::None,
+            Check::True => return Check::True,
             Check::IsAtom if any_atom => continue,
             Check::IsPair if any_pair => continue,
             Check::IsAtom => {
@@ -80,7 +80,7 @@ pub(crate) fn simplify_or_shallow(items: impl IntoIterator<Item = Check>) -> Che
     match (atom_check, pair_check) {
         (ShapeCheck::None, ShapeCheck::None) => {}
         (ShapeCheck::Any, ShapeCheck::Any) => {
-            return Check::None;
+            return Check::True;
         }
         (ShapeCheck::Any, ShapeCheck::None) => {
             result.push(Check::IsAtom);
@@ -155,27 +155,27 @@ mod tests {
 
     #[test]
     fn test_simplify_or_none() {
-        assert_eq!(simplify_or_shallow([Check::None]), Check::None);
+        assert_eq!(simplify_or_shallow([Check::True]), Check::True);
     }
 
     #[test]
     fn test_simplify_none_or_none() {
-        assert_eq!(simplify_or_shallow([Check::None, Check::None]), Check::None);
+        assert_eq!(simplify_or_shallow([Check::True, Check::True]), Check::True);
     }
 
     #[test]
     fn test_simplify_check_or_none() {
         assert_eq!(
-            simplify_or_shallow([Check::IsAtom, Check::None]),
-            Check::None
+            simplify_or_shallow([Check::IsAtom, Check::True]),
+            Check::True
         );
     }
 
     #[test]
     fn test_simplify_none_or_check() {
         assert_eq!(
-            simplify_or_shallow([Check::None, Check::IsAtom]),
-            Check::None
+            simplify_or_shallow([Check::True, Check::IsAtom]),
+            Check::True
         );
     }
 
@@ -196,7 +196,7 @@ mod tests {
     fn test_simplify_atom_or_pair() {
         assert_eq!(
             simplify_or_shallow([Check::IsAtom, Check::IsPair]),
-            Check::None
+            Check::True
         );
     }
 
@@ -204,7 +204,7 @@ mod tests {
     fn test_simplify_pair_or_atom() {
         assert_eq!(
             simplify_or_shallow([Check::IsPair, Check::IsAtom]),
-            Check::None
+            Check::True
         );
     }
 

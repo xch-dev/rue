@@ -4,7 +4,8 @@ use super::{simplify_and_deep, simplify_or_deep, Check};
 
 pub(crate) fn simplify_check(check: Check) -> Check {
     match check {
-        Check::None => Check::None,
+        Check::True => Check::True,
+        Check::False => Check::False,
         Check::IsAtom => Check::IsAtom,
         Check::IsPair => Check::IsPair,
         Check::Value(value) => Check::Value(value),
@@ -24,7 +25,7 @@ pub(crate) fn simplify_check(check: Check) -> Check {
             Check::If(Box::new(cond), Box::new(then), Box::new(else_))
         }
         Check::First(first) => match simplify_check(*first) {
-            Check::None => Check::None,
+            Check::True => Check::True,
             Check::And(items) => Check::And(
                 items
                     .into_iter()
@@ -40,7 +41,7 @@ pub(crate) fn simplify_check(check: Check) -> Check {
             first => Check::First(Box::new(first)),
         },
         Check::Rest(rest) => match simplify_check(*rest) {
-            Check::None => Check::None,
+            Check::True => Check::True,
             Check::And(items) => Check::And(
                 items
                     .into_iter()

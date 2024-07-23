@@ -6,7 +6,4 @@ use crate::TypeId;
 pub enum CheckError {
     #[error("recursive check")]
     Recursive(TypeId, TypeId),
-
-    #[error("impossible check")]
-    Impossible(TypeId, TypeId),
 }

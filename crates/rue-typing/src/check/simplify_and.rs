@@ -27,7 +27,7 @@ pub(crate) fn simplify_and_shallow(items: impl IntoIterator<Item = Check>) -> Ch
 
     for item in items {
         match item {
-            Check::None => continue,
+            Check::True => continue,
             Check::IsAtom if is_atom => continue,
             Check::IsAtom => is_atom = true,
             Check::IsPair if is_pair => continue,
@@ -46,7 +46,7 @@ pub(crate) fn simplify_and_shallow(items: impl IntoIterator<Item = Check>) -> Ch
 
 pub(crate) fn construct_and(mut items: Vec<Check>) -> Check {
     if items.is_empty() {
-        Check::None
+        Check::True
     } else if items.len() == 1 {
         items.remove(0)
     } else {
@@ -60,21 +60,21 @@ mod tests {
 
     #[test]
     fn test_simplify_and_none() {
-        assert_eq!(simplify_and_shallow([Check::None]), Check::None);
+        assert_eq!(simplify_and_shallow([Check::True]), Check::True);
     }
 
     #[test]
     fn test_simplify_none_and_none() {
         assert_eq!(
-            simplify_and_shallow([Check::None, Check::None]),
-            Check::None
+            simplify_and_shallow([Check::True, Check::True]),
+            Check::True
         );
     }
 
     #[test]
     fn test_simplify_check_and_none() {
         assert_eq!(
-            simplify_and_shallow([Check::IsAtom, Check::None]),
+            simplify_and_shallow([Check::IsAtom, Check::True]),
             Check::IsAtom
         );
     }
@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn test_simplify_none_and_check() {
         assert_eq!(
-            simplify_and_shallow([Check::None, Check::IsAtom]),
+            simplify_and_shallow([Check::True, Check::IsAtom]),
             Check::IsAtom
         );
     }
@@ -127,16 +127,16 @@ mod tests {
     #[test]
     fn test_simplify_and_shallow() {
         assert_eq!(
-            simplify_and_shallow([Check::And(vec![Check::None, Check::None])]),
-            Check::And(vec![Check::None, Check::None])
+            simplify_and_shallow([Check::And(vec![Check::True, Check::True])]),
+            Check::And(vec![Check::True, Check::True])
         );
     }
 
     #[test]
     fn test_simplify_and_deep() {
         assert_eq!(
-            simplify_and_deep(vec![Check::And(vec![Check::None, Check::None])]),
-            Check::None
+            simplify_and_deep(vec![Check::And(vec![Check::True, Check::True])]),
+            Check::True
         );
     }
 }

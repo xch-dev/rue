@@ -10,7 +10,8 @@ pub(crate) fn stringify_check(
     path: &mut Vec<TypePath>,
 ) -> fmt::Result {
     match check {
-        Check::None => write!(f, "1"),
+        Check::True => write!(f, "1"),
+        Check::False => write!(f, "0"),
         Check::IsPair => {
             write!(f, "(l ")?;
             stringify_value(f, path)?;

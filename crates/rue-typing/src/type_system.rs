@@ -46,8 +46,8 @@ impl Default for TypeSystem {
         names.insert(public_key, "PublicKey".to_string());
         names.insert(int, "Int".to_string());
         names.insert(bool, "Bool".to_string());
-        names.insert(true_bool, "true".to_string());
-        names.insert(false_bool, "false".to_string());
+        names.insert(true_bool, "True".to_string());
+        names.insert(false_bool, "False".to_string());
         names.insert(nil, "Nil".to_string());
         names.insert(any, "Any".to_string());
 

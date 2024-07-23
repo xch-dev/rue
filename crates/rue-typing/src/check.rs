@@ -21,7 +21,8 @@ use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Check {
-    None,
+    True,
+    False,
     IsPair,
     IsAtom,
     Value(BigInt),
