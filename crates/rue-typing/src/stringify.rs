@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn stringify_atoms() {
         let db = TypeSystem::new();
-        let types = db.standard_types();
+        let types = db.std();
 
         assert_eq!(db.stringify(types.unknown), "{unknown}");
         assert_eq!(db.stringify(types.never), "Never");
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn stringify_named() {
         let db = TypeSystem::new();
-        let types = db.standard_types();
+        let types = db.std();
 
         let mut names = HashMap::new();
         names.insert(types.any, "CustomAny".to_string());
@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn test_stringify_callable() {
         let mut db = TypeSystem::new();
-        let types = db.standard_types();
+        let types = db.std();
 
         let callable = alloc_callable(
             &mut db,

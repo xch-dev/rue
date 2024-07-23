@@ -1,6 +1,6 @@
 use std::ops::Not;
 
-use crate::TypeId;
+use rue_typing::TypeId;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Guard {

@@ -1,6 +1,5 @@
 use rue_parser::{AstNode, Type};
-
-use crate::TypeId;
+use rue_typing::TypeId;
 
 use super::Compiler;
 

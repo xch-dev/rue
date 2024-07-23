@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 
 pub(crate) use builtins::Builtins;
-use indexmap::IndexSet;
+
 use rowan::TextRange;
-use rue_typing::TypeId;
+use rue_typing::{Comparison, TypeId, TypeSystem};
 use symbol_table::SymbolTable;
 
 use crate::{
@@ -33,6 +33,9 @@ pub use context::*;
 pub struct Compiler<'a> {
     // The database is mutable because we need to allocate new symbols and types.
     db: &'a mut Database,
+
+    // The type system is responsible for type checking and type inference.
+    ty: TypeSystem,
 
     // The scope stack is used to keep track of the current scope.
     scope_stack: Vec<ScopeId>,
@@ -67,6 +70,7 @@ impl<'a> Compiler<'a> {
     pub fn new(db: &'a mut Database, builtins: Builtins) -> Self {
         Self {
             db,
+            ty: TypeSystem::new(),
             scope_stack: vec![builtins.scope_id],
             symbol_stack: Vec::new(),
             type_definition_stack: Vec::new(),
@@ -116,39 +120,29 @@ impl<'a> Compiler<'a> {
         None
     }
 
-    fn type_name(&self, ty: TypeId) -> String {
-        self.type_name_visitor(ty, &mut IndexSet::new())
-    }
+    fn type_name(&self, type_id: TypeId) -> String {
+        let mut names = HashMap::new();
 
-    fn type_name_visitor(&self, ty: TypeId, stack: &mut IndexSet<TypeId>) -> String {
-        for &scope_id in self.scope_stack.iter().rev() {
-            if let Some(name) = self.db.scope(scope_id).type_name(ty) {
-                return name.to_string();
+        for &scope_id in self.scope_stack.iter() {
+            for type_id in self.db.scope(scope_id).local_types() {
+                if let Some(name) = self.db.scope(scope_id).type_name(type_id) {
+                    names.insert(type_id, name.to_string());
+                }
             }
         }
 
-        if stack.contains(&ty) {
-            return "<recursive>".to_string();
-        }
-
-        stack.insert(ty);
-
-        let name = match self.db.ty(ty) {};
-
-        stack.pop().unwrap();
-
-        name
+        self.ty.stringify_named(type_id, names)
     }
 
     fn type_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
         let comparison = if self.allow_generic_inference_stack.last().copied().unwrap() {
-            self.db
-                .compare_type_with_generics(from, to, &mut self.generic_type_stack)
+            self.ty
+                .compare_with_generics(from, to, &mut self.generic_type_stack, true)
         } else {
-            self.db.compare_type(from, to)
+            self.ty.compare(from, to)
         };
 
-        if !comparison.is_assignable() {
+        if comparison > Comparison::Assignable {
             self.db.error(
                 ErrorKind::TypeMismatch(self.type_name(from), self.type_name(to)),
                 range,
@@ -158,13 +152,13 @@ impl<'a> Compiler<'a> {
 
     fn cast_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
         let comparison = if self.allow_generic_inference_stack.last().copied().unwrap() {
-            self.db
-                .compare_type_with_generics(from, to, &mut self.generic_type_stack)
+            self.ty
+                .compare_with_generics(from, to, &mut self.generic_type_stack, true)
         } else {
-            self.db.compare_type(from, to)
+            self.ty.compare(from, to)
         };
 
-        if !comparison.is_castable() {
+        if comparison > Comparison::Castable {
             self.db.error(
                 ErrorKind::CastMismatch(self.type_name(from), self.type_name(to)),
                 range,
@@ -173,7 +167,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn unknown(&self) -> Value {
-        Value::new(self.builtins.unknown_hir, self.builtins.unknown)
+        Value::new(self.builtins.unknown, self.ty.std().unknown)
     }
 
     fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeOverride> {

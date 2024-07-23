@@ -77,7 +77,7 @@ impl TypeSystem {
         Self::default()
     }
 
-    pub fn standard_types(&self) -> StandardTypes {
+    pub fn std(&self) -> StandardTypes {
         self.types
     }
 
