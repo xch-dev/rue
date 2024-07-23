@@ -247,17 +247,6 @@ where
         visited.remove(&(item, rhs));
     }
 
-    let always_atom = atom_count == length;
-    let always_pair = pairs.len() == length;
-    let always_bool = bool_count == length;
-    let always_nil = nil_count == length;
-    let always_bytes32 = bytes32_count == length;
-    let always_public_key = public_key_count == length;
-    let atom_always_nil = nil_count == atom_count;
-    let atom_always_bool = bool_count == atom_count;
-    let atom_always_bytes32 = bytes32_count == atom_count;
-    let atom_always_public_key = public_key_count == atom_count;
-
     Ok(match types.get(rhs) {
         Type::Ref(..) => unreachable!(),
         Type::Lazy(..) => unreachable!(),
@@ -266,27 +255,29 @@ where
         Type::Unknown => Check::None,
         Type::Generic => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Never => return Err(CheckError::Impossible(original_type_id, rhs)),
-        Type::Bytes if always_atom => Check::None,
-        Type::Int if always_atom => Check::None,
-        Type::Bool if always_bool => Check::None,
-        Type::Nil if always_nil => Check::None,
-        Type::Bytes32 if always_bytes32 => Check::None,
-        Type::PublicKey if always_public_key => Check::None,
-        Type::Bytes32 if always_atom => Check::Length(32),
-        Type::PublicKey if always_atom => Check::Length(48),
-        Type::Bool if always_atom => Check::IsBool,
-        Type::Nil if always_atom => Check::IsNil,
+        Type::Bytes if atom_count == length => Check::None,
+        Type::Int if atom_count == length => Check::None,
+        Type::Bool if bool_count == length => Check::None,
+        Type::Nil if nil_count == length => Check::None,
+        Type::Bytes32 if bytes32_count == length => Check::None,
+        Type::PublicKey if public_key_count == length => Check::None,
+        Type::Bytes32 if atom_count == length => Check::Length(32),
+        Type::PublicKey if atom_count == length => Check::Length(48),
+        Type::Bool if atom_count == length => Check::IsBool,
+        Type::Nil if atom_count == length => Check::IsNil,
         Type::Bytes => Check::IsAtom,
         Type::Int => Check::IsAtom,
-        Type::Bytes32 if atom_always_bytes32 => Check::IsAtom,
-        Type::PublicKey if atom_always_public_key => Check::IsAtom,
-        Type::Bool if atom_always_bool => Check::IsAtom,
-        Type::Nil if atom_always_nil => Check::IsAtom,
+        Type::Bytes32 if bytes32_count == atom_count => Check::IsAtom,
+        Type::PublicKey if public_key_count == atom_count => Check::IsAtom,
+        Type::Bool if bool_count == atom_count => Check::IsAtom,
+        Type::Nil if nil_count == atom_count => Check::IsAtom,
         Type::Bytes32 => Check::And(vec![Check::IsAtom, Check::Length(32)]),
         Type::PublicKey => Check::And(vec![Check::IsAtom, Check::Length(48)]),
         Type::Bool => Check::And(vec![Check::IsAtom, Check::IsBool]),
         Type::Nil => Check::And(vec![Check::IsAtom, Check::IsNil]),
-        Type::Pair(..) if always_atom => return Err(CheckError::Impossible(original_type_id, rhs)),
+        Type::Pair(..) if atom_count == length => {
+            return Err(CheckError::Impossible(original_type_id, rhs))
+        }
         Type::Pair(first, rest) => {
             let (first, rest) = (*first, *rest);
 
@@ -300,7 +291,7 @@ where
 
             let pair_check = Check::Pair(Box::new(first), Box::new(rest));
 
-            if always_pair {
+            if pairs.len() == length {
                 pair_check
             } else {
                 Check::And(vec![Check::IsPair, pair_check])
