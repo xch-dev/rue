@@ -17,6 +17,7 @@ pub use check::*;
 pub use comparison::*;
 pub use semantic_types::*;
 pub use standard_types::*;
+pub use substitute_type::*;
 pub use ty::*;
 pub use type_path::*;
 pub use type_system::*;
@@ -24,7 +25,6 @@ pub use type_system::*;
 pub(crate) use difference::difference_type;
 pub(crate) use replace_type::replace_type;
 pub(crate) use stringify::stringify_type;
-pub(crate) use substitute_type::{substitute_type, Semantics};
 
 #[cfg(test)]
 mod test_tools;

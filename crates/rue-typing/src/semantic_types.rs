@@ -165,8 +165,26 @@ pub fn deconstruct_items(
     Some(items)
 }
 
+/// Unwraps a list type into its inner type.
+pub fn unwrap_list(db: &mut TypeSystem, type_id: TypeId) -> Option<TypeId> {
+    if db.compare(db.std().nil, type_id) > Comparison::Assignable {
+        return None;
+    }
+
+    let non_nil = db.difference(type_id, db.std().nil);
+    let (first, rest) = db.get_pair(non_nil)?;
+
+    if db.compare(rest, type_id) > Comparison::Assignable {
+        return None;
+    }
+
+    Some(first)
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::alloc_list;
+
     use super::*;
 
     #[test]
@@ -275,5 +293,13 @@ mod tests {
         let type_id = construct_items(&mut db, [std.bytes32, pair].into_iter(), Rest::Optional);
         let items = deconstruct_items(&mut db, type_id, 2, Rest::Optional);
         assert_eq!(items, Some(vec![std.bytes32, pair]));
+    }
+
+    #[test]
+    fn test_unwrap_list() {
+        let mut db = TypeSystem::new();
+        let std = db.std();
+        let list = alloc_list(&mut db, std.public_key);
+        assert_eq!(unwrap_list(&mut db, list), Some(std.public_key));
     }
 }
