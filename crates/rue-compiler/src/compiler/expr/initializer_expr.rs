@@ -3,13 +3,9 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use rowan::TextRange;
 use rue_parser::{AstNode, InitializerExpr, InitializerField};
+use rue_typing::{bigint_to_bytes, deconstruct_items, Rest, Type, TypeId};
 
-use crate::{
-    compiler::Compiler,
-    hir::Hir,
-    value::{Rest, Type, Value},
-    ErrorKind, HirId, TypeId,
-};
+use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind, HirId};
 
 impl Compiler<'_> {
     pub fn compile_initializer_expr(&mut self, initializer: &InitializerExpr) -> Value {
@@ -17,10 +13,18 @@ impl Compiler<'_> {
             .path()
             .map(|path| self.compile_path_type(&path.idents(), path.syntax().text_range()));
 
-        match ty.map(|ty| self.db.ty(ty)).cloned() {
+        match ty.map(|ty| self.ty.get(ty)).cloned() {
             Some(Type::Struct(struct_type)) => {
+                let fields = deconstruct_items(
+                    self.ty,
+                    struct_type.type_id,
+                    struct_type.field_names.len(),
+                    struct_type.rest,
+                )
+                .expect("invalid variant type");
+
                 let hir_id = self.compile_initializer_fields(
-                    &struct_type.fields,
+                    &struct_type.field_names.into_iter().zip(fields).collect(),
                     struct_type.rest,
                     initializer.fields(),
                     initializer.syntax().text_range(),
@@ -31,18 +35,28 @@ impl Compiler<'_> {
                     None => self.unknown(),
                 }
             }
-            Some(Type::EnumVariant(enum_variant)) => {
-                if let Some(fields) = enum_variant.fields {
+            Some(Type::Variant(enum_variant)) => {
+                if let Some(field_names) = enum_variant.field_names {
+                    let fields = deconstruct_items(
+                        self.ty,
+                        enum_variant.type_id,
+                        field_names.len(),
+                        enum_variant.rest,
+                    )
+                    .expect("invalid variant type");
+
                     let fields_hir_id = self.compile_initializer_fields(
-                        &fields,
+                        &field_names.into_iter().zip(fields).collect(),
                         enum_variant.rest,
                         initializer.fields(),
                         initializer.syntax().text_range(),
                     );
 
-                    let hir_id = self
+                    let discriminant = self
                         .db
-                        .alloc_hir(Hir::Pair(enum_variant.discriminant, fields_hir_id));
+                        .alloc_hir(Hir::Atom(bigint_to_bytes(enum_variant.discriminant)));
+
+                    let hir_id = self.db.alloc_hir(Hir::Pair(discriminant, fields_hir_id));
 
                     match ty {
                         Some(struct_type) => Value::new(hir_id, struct_type),
@@ -75,7 +89,7 @@ impl Compiler<'_> {
         text_range: TextRange,
     ) -> HirId {
         let mut specified_fields = HashMap::new();
-        let mut optional = false;
+        let optional = false;
 
         for field in initializer_fields {
             let Some(name) = field.name() else {
@@ -84,7 +98,7 @@ impl Compiler<'_> {
 
             let expected_type = struct_fields.get(name.text()).copied();
 
-            let mut value = field
+            let value = field
                 .expr()
                 .map(|expr| self.compile_expr(&expr, expected_type))
                 .unwrap_or(self.unknown());
@@ -93,8 +107,9 @@ impl Compiler<'_> {
             if rest == Rest::Optional
                 && struct_fields.get_index_of(name.text()) == Some(struct_fields.len() - 1)
             {
-                optional |= matches!(self.db.ty(value.type_id), Type::Optional(..));
-                value.type_id = self.db.non_undefined(value.type_id);
+                // TODO: optional |= matches!(self.db.ty(value.type_id), Type::Optional(..));
+                // value.type_id = self.db.non_undefined(value.type_id);
+                todo!()
             }
 
             // Check the type of the field initializer.
@@ -140,7 +155,7 @@ impl Compiler<'_> {
             );
         }
 
-        let mut hir_id = self.builtins.nil_hir;
+        let mut hir_id = self.builtins.nil;
 
         // Construct a nil-terminated list from the arguments.
         for (i, field) in struct_fields.keys().rev().enumerate() {
@@ -150,7 +165,7 @@ impl Compiler<'_> {
                 continue;
             }
 
-            let field = value.unwrap_or(self.builtins.unknown_hir);
+            let field = value.unwrap_or(self.builtins.unknown);
 
             if i == 0 && (rest == Rest::Spread || (rest == Rest::Optional && optional)) {
                 hir_id = field;

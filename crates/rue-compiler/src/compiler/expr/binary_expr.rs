@@ -1,11 +1,12 @@
 use rowan::TextRange;
 use rue_parser::{AstNode, BinaryExpr, BinaryOp, Expr};
+use rue_typing::{Comparison, Type, TypeId};
 
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir, Op},
-    value::{Guard, Type, TypeOverride, Value},
-    ErrorKind, HirId, TypeId,
+    value::{Guard, TypeOverride, Value},
+    ErrorKind, HirId,
 };
 
 impl Compiler<'_> {
@@ -51,26 +52,18 @@ impl Compiler<'_> {
     }
 
     fn op_add(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
-        if matches!(self.db.ty(lhs.type_id), Type::Unknown) {
+        if matches!(self.ty.get(lhs.type_id), Type::Unknown) {
             if let Some(rhs) = rhs {
                 self.compile_expr(rhs, None);
             }
             return self.unknown();
         }
 
-        if self
-            .db
-            .compare_type(lhs.type_id, self.ty.std().public_key)
-            .is_equal()
-        {
+        if self.ty.compare(lhs.type_id, self.ty.std().public_key) == Comparison::Equal {
             return self.add_public_key(lhs.hir_id, rhs, text_range);
         }
 
-        if self
-            .db
-            .compare_type(lhs.type_id, self.ty.std().bytes)
-            .is_equal()
-        {
+        if self.ty.compare(lhs.type_id, self.ty.std().bytes) == Comparison::Equal {
             return self.add_bytes(lhs.hir_id, rhs, text_range);
         }
 
@@ -142,7 +135,7 @@ impl Compiler<'_> {
     }
 
     fn op_equals(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
-        if matches!(self.db.ty(lhs.type_id), Type::Unknown) {
+        if matches!(self.ty.get(lhs.type_id), Type::Unknown) {
             if let Some(rhs) = rhs {
                 self.compile_expr(rhs, None);
             }
@@ -157,11 +150,7 @@ impl Compiler<'_> {
 
         let mut is_atom = true;
 
-        if !self
-            .db
-            .compare_type(lhs.type_id, self.ty.std().bytes)
-            .is_castable()
-        {
+        if self.ty.compare(lhs.type_id, self.ty.std().bytes) > Comparison::Castable {
             self.db.error(
                 ErrorKind::NonAtomEquality(self.type_name(lhs.type_id)),
                 text_range,
@@ -169,11 +158,7 @@ impl Compiler<'_> {
             is_atom = false;
         }
 
-        if !self
-            .db
-            .compare_type(rhs.type_id, self.ty.std().bytes)
-            .is_castable()
-        {
+        if self.ty.compare(rhs.type_id, self.ty.std().bytes) > Comparison::Castable {
             self.db.error(
                 ErrorKind::NonAtomEquality(self.type_name(rhs.type_id)),
                 text_range,
@@ -181,14 +166,10 @@ impl Compiler<'_> {
             is_atom = false;
         }
 
-        if self
-            .db
-            .compare_type(lhs.type_id, self.ty.std().nil)
-            .is_equal()
-        {
+        if self.ty.compare(lhs.type_id, self.ty.std().nil) == Comparison::Equal {
             if let Some(guard_path) = rhs.guard_path {
                 let then_type = self.ty.std().nil;
-                let else_type = self.db.non_nullable(rhs.type_id);
+                let else_type = self.ty.difference(rhs.type_id, self.ty.std().nil);
                 value.guards.insert(
                     guard_path,
                     Guard::new(TypeOverride::new(then_type), TypeOverride::new(else_type)),
@@ -196,14 +177,10 @@ impl Compiler<'_> {
             }
         }
 
-        if self
-            .db
-            .compare_type(rhs.type_id, self.ty.std().nil)
-            .is_equal()
-        {
+        if self.ty.compare(rhs.type_id, self.ty.std().nil) == Comparison::Equal {
             if let Some(guard_path) = lhs.guard_path.clone() {
                 let then_type = self.ty.std().nil;
-                let else_type = self.db.non_nullable(lhs.type_id);
+                let else_type = self.ty.difference(lhs.type_id, self.ty.std().nil);
                 value.guards.insert(
                     guard_path,
                     Guard::new(TypeOverride::new(then_type), TypeOverride::new(else_type)),
@@ -240,11 +217,7 @@ impl Compiler<'_> {
         op: BinaryOp,
         text_range: TextRange,
     ) -> Value {
-        if self
-            .db
-            .compare_type(lhs.type_id, self.ty.std().bytes)
-            .is_assignable()
-        {
+        if self.ty.compare(lhs.type_id, self.ty.std().bytes) <= Comparison::Assignable {
             let op = match op {
                 BinaryOp::GreaterThan => BinOp::GreaterThanBytes,
                 BinaryOp::LessThan => BinOp::LessThanBytes,
@@ -316,11 +289,7 @@ impl Compiler<'_> {
     }
 
     fn op_bitwise_and(&mut self, lhs: Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
-        if self
-            .db
-            .compare_type(lhs.type_id, self.ty.std().bool)
-            .is_assignable()
-        {
+        if self.ty.compare(lhs.type_id, self.ty.std().bool) <= Comparison::Assignable {
             let rhs = rhs
                 .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bool)))
                 .unwrap_or_else(|| self.unknown());
@@ -343,11 +312,7 @@ impl Compiler<'_> {
     }
 
     fn op_bitwise_or(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
-        if self
-            .db
-            .compare_type(lhs.type_id, self.ty.std().bool)
-            .is_assignable()
-        {
+        if self.ty.compare(lhs.type_id, self.ty.std().bool) <= Comparison::Assignable {
             let rhs = rhs
                 .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bool)))
                 .unwrap_or_else(|| self.unknown());

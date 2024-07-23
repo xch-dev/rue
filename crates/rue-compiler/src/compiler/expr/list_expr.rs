@@ -1,5 +1,5 @@
 use rue_parser::{AstNode, ListExpr};
-use rue_typing::{Type, TypeId};
+use rue_typing::{unwrap_list, TypeId};
 
 use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
 
@@ -13,10 +13,7 @@ impl Compiler<'_> {
         let mut nil_terminated = true;
 
         let mut list_type = expected_expr_type;
-        let mut item_type = expected_expr_type.and_then(|ty| match self.db.ty(ty) {
-            Type::List(ty) => Some(*ty),
-            _ => None,
-        });
+        let mut item_type = expected_expr_type.and_then(|ty| unwrap_list(self.ty, ty));
 
         let len = list_expr.items().len();
 
@@ -43,13 +40,11 @@ impl Compiler<'_> {
             if i == 0 && item_type.is_none() {
                 if item.spread().is_some() {
                     list_type = Some(output.type_id);
-                    item_type = match self.db.ty(output.type_id) {
-                        Type::List(ty) => Some(*ty),
-                        _ => None,
-                    };
+                    item_type = unwrap_list(self.ty, output.type_id);
                 } else {
-                    list_type = Some(self.ty.alloc(Type::List(output.type_id)));
-                    item_type = Some(output.type_id);
+                    // TODO: list_type = Some(self.ty.alloc(Type::List(output.type_id)));
+                    // item_type = Some(output.type_id);
+                    todo!()
                 }
             }
 
@@ -75,10 +70,11 @@ impl Compiler<'_> {
             }
         }
 
-        Value::new(
-            hir_id,
-            self.db
-                .alloc_type(Type::List(item_type.unwrap_or(self.ty.std().unknown))),
-        )
+        // TODO: Value::new(
+        //     hir_id,
+        //     self.db
+        //         .alloc_type(Type::List(item_type.unwrap_or(self.ty.std().unknown))),
+        // )
+        todo!()
     }
 }
