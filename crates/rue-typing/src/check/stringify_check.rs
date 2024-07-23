@@ -4,20 +4,6 @@ use crate::TypePath;
 
 use super::Check;
 
-fn stringify_value(f: &mut fmt::Formatter<'_>, path: &[TypePath]) -> fmt::Result {
-    for path in path.iter().rev() {
-        match path {
-            TypePath::First => write!(f, "(f ")?,
-            TypePath::Rest => write!(f, "(r ")?,
-        }
-    }
-    write!(f, "val")?;
-    for _ in 0..path.len() {
-        write!(f, ")")?;
-    }
-    Ok(())
-}
-
 pub(crate) fn stringify_check(
     check: &Check,
     f: &mut fmt::Formatter<'_>,
@@ -92,4 +78,18 @@ pub(crate) fn stringify_check(
             Ok(())
         }
     }
+}
+
+fn stringify_value(f: &mut fmt::Formatter<'_>, path: &[TypePath]) -> fmt::Result {
+    for path in path.iter().rev() {
+        match path {
+            TypePath::First => write!(f, "(f ")?,
+            TypePath::Rest => write!(f, "(r ")?,
+        }
+    }
+    write!(f, "val")?;
+    for _ in 0..path.len() {
+        write!(f, ")")?;
+    }
+    Ok(())
 }
