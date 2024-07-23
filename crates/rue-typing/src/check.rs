@@ -30,7 +30,8 @@ pub enum Check {
     And(Vec<Check>),
     Or(Vec<Check>),
     If(Box<Check>, Box<Check>, Box<Check>),
-    Pair(Box<Check>, Box<Check>),
+    First(Box<Check>),
+    Rest(Box<Check>),
 }
 
 impl fmt::Display for Check {
@@ -164,7 +165,10 @@ where
             let (rhs_first, rhs_rest) = (*rhs_first, *rhs_rest);
             let first = check_type(types, lhs_first, rhs_first, visited)?;
             let rest = check_type(types, lhs_rest, rhs_rest, visited)?;
-            Check::Pair(Box::new(first), Box::new(rest))
+            Check::And(vec![
+                Check::First(Box::new(first)),
+                Check::Rest(Box::new(rest)),
+            ])
         }
     };
 
@@ -310,12 +314,17 @@ where
             let rest =
                 check_union_against_rhs(types, original_type_id, &rest_items, rest, visited)?;
 
-            let pair_check = Check::Pair(Box::new(first), Box::new(rest));
-
             if pairs.len() == length {
-                pair_check
+                Check::And(vec![
+                    Check::First(Box::new(first)),
+                    Check::Rest(Box::new(rest)),
+                ])
             } else {
-                Check::And(vec![Check::IsPair, pair_check])
+                Check::And(vec![
+                    Check::IsPair,
+                    Check::First(Box::new(first)),
+                    Check::Rest(Box::new(rest)),
+                ])
             }
         }
     })

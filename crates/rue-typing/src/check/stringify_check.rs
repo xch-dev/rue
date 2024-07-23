@@ -77,33 +77,17 @@ pub(crate) fn stringify_check(
             stringify_check(else_, f, path)?;
             write!(f, ")")
         }
-        Check::Pair(first, rest) => {
-            let has_first = first.as_ref() != &Check::None;
-            let has_rest = rest.as_ref() != &Check::None;
-
-            if has_first && has_rest {
-                write!(f, "(all ")?;
-                path.push(TypePath::First);
-                stringify_check(first, f, path)?;
-                path.pop().unwrap();
-                write!(f, " ")?;
-                path.push(TypePath::Rest);
-                stringify_check(rest, f, path)?;
-                path.pop().unwrap();
-                write!(f, ")")
-            } else if has_first {
-                path.push(TypePath::First);
-                stringify_check(first, f, path)?;
-                path.pop().unwrap();
-                Ok(())
-            } else if has_rest {
-                path.push(TypePath::Rest);
-                stringify_check(rest, f, path)?;
-                path.pop().unwrap();
-                Ok(())
-            } else {
-                write!(f, "1")
-            }
+        Check::First(first) => {
+            path.push(TypePath::First);
+            stringify_check(first, f, path)?;
+            path.pop().unwrap();
+            Ok(())
+        }
+        Check::Rest(rest) => {
+            path.push(TypePath::Rest);
+            stringify_check(rest, f, path)?;
+            path.pop().unwrap();
+            Ok(())
         }
     }
 }

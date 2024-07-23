@@ -22,14 +22,22 @@ pub(crate) fn simplify_check(check: Check) -> Check {
             let else_ = simplify_check(*else_);
             Check::If(Box::new(cond), Box::new(then), Box::new(else_))
         }
-        Check::Pair(first, rest) => {
+        Check::First(first) => {
             let first = simplify_check(*first);
-            let rest = simplify_check(*rest);
 
-            if first == Check::None && rest == Check::None {
+            if first == Check::None {
                 Check::None
             } else {
-                Check::Pair(Box::new(first), Box::new(rest))
+                Check::First(Box::new(first))
+            }
+        }
+        Check::Rest(rest) => {
+            let rest = simplify_check(*rest);
+
+            if rest == Check::None {
+                Check::None
+            } else {
+                Check::Rest(Box::new(rest))
             }
         }
     }
