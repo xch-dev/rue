@@ -689,4 +689,25 @@ mod tests {
         check_str(&mut db, lhs, rhs, "(= (f val) 50)");
         check_str(&mut db, types.any, rhs, "(and (l val) (not (l (f val))) (= (f val) 50) (l (r val)) (not (l (f (r val)))) (= (strlen (f (r val))) 48) (l (r (r val))) (not (l (f (r (r val))))) (not (l (r (r (r val))))) (= (r (r (r val))) 0))");
     }
+
+    #[test]
+    fn test_check_three_int_int_list() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+        let inner = db.alloc(Type::Pair(types.int, types.int));
+        let pair = db.alloc(Type::Pair(types.int, inner));
+        let list = alloc_list(&mut db, types.int);
+        let union = db.alloc(Type::Union(vec![pair, list]));
+
+        check_str(&mut db, union, union, "1");
+        check_str(&mut db, union, types.int, "(not (l val))");
+        check_str(&mut db, union, types.nil, "(not (l val))");
+        check_recursive(&mut db, union, list);
+        check_str(
+            &mut db,
+            union,
+            pair,
+            "(and (l val) (l (r val)) (not (l (r (r val)))))",
+        );
+    }
 }
