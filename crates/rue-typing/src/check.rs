@@ -4,18 +4,20 @@ use std::{
     hash::BuildHasher,
 };
 
-use crate::{Comparison, Type, TypeId, TypePath, TypeSystem};
+use crate::{Comparison, Type, TypeId, TypeSystem};
 
 mod check_error;
 mod simplify_and;
 mod simplify_check;
 mod simplify_or;
+mod stringify_check;
 
 pub use check_error::*;
 
 pub(crate) use simplify_and::*;
 pub(crate) use simplify_check::*;
 pub(crate) use simplify_or::*;
+pub(crate) use stringify_check::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Check {
@@ -33,7 +35,7 @@ pub enum Check {
 
 impl fmt::Display for Check {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_check(self, f, &mut Vec::new())
+        stringify_check(self, f, &mut Vec::new())
     }
 }
 
@@ -298,106 +300,6 @@ where
             }
         }
     })
-}
-
-fn fmt_val(f: &mut fmt::Formatter<'_>, path: &[TypePath]) -> fmt::Result {
-    for path in path.iter().rev() {
-        match path {
-            TypePath::First => write!(f, "(f ")?,
-            TypePath::Rest => write!(f, "(r ")?,
-        }
-    }
-    write!(f, "val")?;
-    for _ in 0..path.len() {
-        write!(f, ")")?;
-    }
-    Ok(())
-}
-
-fn fmt_check(check: &Check, f: &mut fmt::Formatter<'_>, path: &mut Vec<TypePath>) -> fmt::Result {
-    match check {
-        Check::None => write!(f, "1"),
-        Check::IsPair => {
-            write!(f, "(l ")?;
-            fmt_val(f, path)?;
-            write!(f, ")")
-        }
-        Check::IsAtom => {
-            write!(f, "(not (l ")?;
-            fmt_val(f, path)?;
-            write!(f, "))")
-        }
-        Check::IsBool => {
-            write!(f, "(any (= ")?;
-            fmt_val(f, path)?;
-            write!(f, " ()) (= ")?;
-            fmt_val(f, path)?;
-            write!(f, " 1))")
-        }
-        Check::IsNil => {
-            write!(f, "(= ")?;
-            fmt_val(f, path)?;
-            write!(f, " ())")
-        }
-        Check::Length(len) => {
-            write!(f, "(= (strlen ")?;
-            fmt_val(f, path)?;
-            write!(f, ") {len})")
-        }
-        Check::And(checks) => {
-            write!(f, "(and")?;
-            for check in checks {
-                write!(f, " ")?;
-                fmt_check(check, f, path)?;
-            }
-            write!(f, ")")
-        }
-        Check::Or(checks) => {
-            write!(f, "(or")?;
-            for check in checks {
-                write!(f, " ")?;
-                fmt_check(check, f, path)?;
-            }
-            write!(f, ")")
-        }
-        Check::If(cond, then, else_) => {
-            write!(f, "(if ")?;
-            fmt_check(cond, f, path)?;
-            write!(f, " ")?;
-            fmt_check(then, f, path)?;
-            write!(f, " ")?;
-            fmt_check(else_, f, path)?;
-            write!(f, ")")
-        }
-        Check::Pair(first, rest) => {
-            let has_first = first.as_ref() != &Check::None;
-            let has_rest = rest.as_ref() != &Check::None;
-
-            if has_first && has_rest {
-                write!(f, "(all ")?;
-                path.push(TypePath::First);
-                fmt_check(first, f, path)?;
-                path.pop().unwrap();
-                write!(f, " ")?;
-                path.push(TypePath::Rest);
-                fmt_check(rest, f, path)?;
-                path.pop().unwrap();
-                write!(f, ")")
-            } else if has_first {
-                path.push(TypePath::First);
-                fmt_check(first, f, path)?;
-                path.pop().unwrap();
-                Ok(())
-            } else if has_rest {
-                path.push(TypePath::Rest);
-                fmt_check(rest, f, path)?;
-                path.pop().unwrap();
-                Ok(())
-            } else {
-                write!(f, "1")
-            }
-        }
-    }
 }
 
 #[cfg(test)]
