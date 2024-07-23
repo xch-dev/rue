@@ -10,11 +10,12 @@ mod stringify_check;
 pub use check_error::*;
 
 pub(crate) use check_type::*;
-use num_bigint::BigInt;
 pub(crate) use simplify_and::*;
 pub(crate) use simplify_check::*;
 pub(crate) use simplify_or::*;
 pub(crate) use stringify_check::*;
+
+use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Check {
