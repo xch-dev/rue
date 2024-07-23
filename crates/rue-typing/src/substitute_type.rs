@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{Alias, Callable, Type, TypeId, TypeSystem};
+use crate::{Alias, Callable, Enum, Struct, Type, TypeId, TypeSystem, Variant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Semantics {
@@ -102,12 +102,53 @@ pub(crate) fn substitute_type(
                 if new_type_id == ty.type_id {
                     type_id
                 } else {
-                    types.alloc(Type::Struct(crate::Struct {
+                    types.alloc(Type::Struct(Struct {
                         original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
                         type_id: new_type_id,
                         field_names: ty.field_names,
                         rest: ty.rest,
                         generic_types: ty.generic_types,
+                    }))
+                }
+            } else {
+                new_type_id
+            }
+        }
+        Type::Variant(ty) => {
+            let ty = ty.clone();
+
+            let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics, visited);
+
+            if semantics == Semantics::Preserve {
+                if new_type_id == ty.type_id {
+                    type_id
+                } else {
+                    types.alloc(Type::Variant(Variant {
+                        original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
+                        enum_type: ty.enum_type,
+                        type_id: new_type_id,
+                        field_names: ty.field_names,
+                        rest: ty.rest,
+                        generic_types: ty.generic_types,
+                    }))
+                }
+            } else {
+                new_type_id
+            }
+        }
+        Type::Enum(ty) => {
+            let ty = *ty;
+
+            let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics, visited);
+
+            if semantics == Semantics::Preserve {
+                if new_type_id == ty.type_id {
+                    type_id
+                } else {
+                    types.alloc(Type::Enum(Enum {
+                        original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
+                        type_id: new_type_id,
+                        has_fields: ty.has_fields,
                     }))
                 }
             } else {

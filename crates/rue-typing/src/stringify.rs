@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{Callable, Struct, Type, TypeId, TypeSystem};
+use crate::{Callable, Enum, Struct, Type, TypeId, TypeSystem, Variant};
 
 pub(crate) fn stringify_type(
     types: &TypeSystem,
@@ -50,6 +50,8 @@ pub(crate) fn stringify_type(
         Type::Lazy(lazy) => stringify_type(types, lazy.type_id, names, visited),
         Type::Alias(alias) => stringify_type(types, alias.type_id, names, visited),
         Type::Struct(Struct { type_id, .. }) => stringify_type(types, *type_id, names, visited),
+        Type::Variant(Variant { type_id, .. }) => stringify_type(types, *type_id, names, visited),
+        Type::Enum(Enum { type_id, .. }) => stringify_type(types, *type_id, names, visited),
         Type::Callable(Callable {
             parameters,
             return_type,

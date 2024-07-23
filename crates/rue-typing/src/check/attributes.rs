@@ -86,6 +86,8 @@ pub(crate) fn union_attributes(
             Type::Alias(..) => unreachable!(),
             Type::Struct(..) => unreachable!(),
             Type::Callable(..) => unreachable!(),
+            Type::Enum(..) => unreachable!(),
+            Type::Variant(..) => unreachable!(),
             Type::Generic => {
                 length -= 1;
             }

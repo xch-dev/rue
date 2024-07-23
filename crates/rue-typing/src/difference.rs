@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use num_bigint::BigInt;
 use num_traits::One;
 
-use crate::{bigint_to_bytes, StandardTypes, Struct, Type, TypeId, TypeSystem};
+use crate::{bigint_to_bytes, Enum, StandardTypes, Struct, Type, TypeId, TypeSystem, Variant};
 
 pub(crate) fn difference_type(
     types: &mut TypeSystem,
@@ -270,6 +270,55 @@ pub(crate) fn difference_type(
                 generic_types: ty.generic_types,
             }))
         }
+
+        (Type::Enum(ty), _) => {
+            let ty = *ty;
+            let type_id = difference_type(types, std, ty.type_id, rhs, visited);
+
+            types.alloc(Type::Enum(Enum {
+                original_type_id: Some(ty.original_type_id.unwrap_or(lhs)),
+                type_id,
+                has_fields: ty.has_fields,
+            }))
+        }
+        (_, Type::Enum(ty)) => {
+            let ty = *ty;
+            let type_id = difference_type(types, std, lhs, ty.type_id, visited);
+
+            types.alloc(Type::Enum(Enum {
+                original_type_id: Some(ty.original_type_id.unwrap_or(rhs)),
+                type_id,
+                has_fields: ty.has_fields,
+            }))
+        }
+
+        (Type::Variant(variant), _) => {
+            let variant = variant.clone();
+            let type_id = difference_type(types, std, variant.type_id, rhs, visited);
+
+            types.alloc(Type::Variant(Variant {
+                original_type_id: Some(variant.original_type_id.unwrap_or(lhs)),
+                enum_type: variant.enum_type,
+                field_names: variant.field_names,
+                type_id,
+                rest: variant.rest,
+                generic_types: variant.generic_types,
+            }))
+        }
+        (_, Type::Variant(variant)) => {
+            let variant = variant.clone();
+            let type_id = difference_type(types, std, lhs, variant.type_id, visited);
+
+            types.alloc(Type::Variant(Variant {
+                original_type_id: Some(variant.original_type_id.unwrap_or(rhs)),
+                enum_type: variant.enum_type,
+                field_names: variant.field_names,
+                type_id,
+                rest: variant.rest,
+                generic_types: variant.generic_types,
+            }))
+        }
+
         (Type::Callable(..), _) => lhs,
         (_, Type::Callable(..)) => lhs,
     };

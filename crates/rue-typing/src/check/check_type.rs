@@ -27,6 +27,8 @@ pub(crate) fn check_type(
         (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
         (Type::Struct(..), _) | (_, Type::Struct(..)) => unreachable!(),
         (Type::Callable(..), _) | (_, Type::Callable(..)) => unreachable!(),
+        (Type::Enum(..), _) | (_, Type::Enum(..)) => unreachable!(),
+        (Type::Variant(..), _) | (_, Type::Variant(..)) => unreachable!(),
 
         // TODO: Implement generic type checking?
         (Type::Generic, _) => Check::True,
@@ -288,6 +290,8 @@ fn check_union_against_rhs(
         Type::Union(..) => unreachable!(),
         Type::Struct(..) => unreachable!(),
         Type::Callable(..) => unreachable!(),
+        Type::Enum(..) => unreachable!(),
+        Type::Variant(..) => unreachable!(),
         Type::Unknown => Check::True,
         Type::Generic => Check::False,
         Type::Never => Check::False,
@@ -635,5 +639,54 @@ mod tests {
             },
         );
         check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) 0))");
+    }
+
+    #[test]
+    fn test_check_condition_agg_sig_me() {
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
+
+        let opcode = db.alloc(Type::Value(BigInt::from(49)));
+        let agg_sig_unsafe = alloc_struct(
+            &mut db,
+            &indexmap! {
+                "opcode".to_string() => opcode,
+                "public_key".to_string() => types.public_key,
+                "message".to_string() => types.bytes,
+            },
+            Rest::Nil,
+        );
+
+        let opcode = db.alloc(Type::Value(BigInt::from(50)));
+        let agg_sig_me = alloc_struct(
+            &mut db,
+            &indexmap! {
+                "opcode".to_string() => opcode,
+                "public_key".to_string() => types.public_key,
+                "message".to_string() => types.bytes,
+            },
+            Rest::Nil,
+        );
+
+        let condition = db.alloc(Type::Union(vec![agg_sig_unsafe, agg_sig_me]));
+
+        let lhs = db.substitute(
+            condition,
+            HashMap::new(),
+            Semantics::StructuralOnly {
+                callable: types.any,
+            },
+        );
+
+        let rhs = db.substitute(
+            agg_sig_me,
+            HashMap::new(),
+            Semantics::StructuralOnly {
+                callable: types.never,
+            },
+        );
+
+        check_str(&mut db, lhs, rhs, "(= (f val) 50)");
+        check_str(&mut db, types.any, rhs, "(and (l val) (not (l (f val))) (= (f val) 50) (l (r val)) (not (l (f (r val)))) (= (strlen (f (r val))) 48) (l (r (r val))) (not (l (f (r (r val))))) (not (l (r (r (r val))))) (= (r (r (r val))) 0))");
     }
 }

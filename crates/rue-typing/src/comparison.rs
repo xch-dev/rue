@@ -310,6 +310,28 @@ pub(crate) fn compare_type(
             Comparison::Castable,
         ),
 
+        (Type::Variant(variant), Type::Enum(ty)) => {
+            let comparison = compare_type(db, variant.type_id, ty.type_id, ctx);
+
+            if variant.enum_type == rhs {
+                max(comparison, Comparison::Assignable)
+            } else {
+                max(comparison, Comparison::Castable)
+            }
+        }
+
+        (Type::Enum(ty), _) => max(compare_type(db, ty.type_id, rhs, ctx), Comparison::Castable),
+        (_, Type::Enum(ty)) => max(compare_type(db, lhs, ty.type_id, ctx), Comparison::Castable),
+
+        (Type::Variant(lhs), _) => max(
+            compare_type(db, lhs.type_id, rhs, ctx),
+            Comparison::Castable,
+        ),
+        (_, Type::Variant(rhs)) => max(
+            compare_type(db, lhs, rhs.type_id, ctx),
+            Comparison::Castable,
+        ),
+
         (Type::Callable(lhs), Type::Callable(rhs)) => max(
             compare_type(db, lhs.parameters, rhs.parameters, ctx),
             compare_type(db, lhs.return_type, rhs.return_type, ctx),

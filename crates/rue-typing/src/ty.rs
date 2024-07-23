@@ -1,6 +1,6 @@
 use num_bigint::BigInt;
 
-use crate::{Alias, Callable, Lazy, Struct, TypeId};
+use crate::{Alias, Callable, Enum, Lazy, Struct, TypeId, Variant};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -23,4 +23,6 @@ pub enum Type {
     Alias(Alias),
     Struct(Struct),
     Callable(Callable),
+    Enum(Enum),
+    Variant(Variant),
 }
