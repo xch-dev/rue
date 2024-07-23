@@ -1,11 +1,12 @@
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     hash::BuildHasher,
 };
 
 use num_bigint::BigInt;
+use num_traits::One;
 
-use crate::{Comparison, Type, TypeId, TypeSystem};
+use crate::{bigint_to_bytes, Comparison, Type, TypeId, TypeSystem};
 
 use super::{Check, CheckError};
 
@@ -48,48 +49,191 @@ where
         (Type::Bytes32, Type::Bytes32) => Check::None,
         (Type::PublicKey, Type::PublicKey) => Check::None,
         (Type::Int, Type::Int) => Check::None,
-        (Type::Bool, Type::Bool) => Check::None,
         (Type::Nil, Type::Nil) => Check::None,
+        (Type::True, Type::True) => Check::None,
+        (Type::False, Type::False) => Check::None,
 
         (Type::Bytes32, Type::Atom) => Check::None,
         (Type::PublicKey, Type::Atom) => Check::None,
         (Type::Int, Type::Atom) => Check::None,
         (Type::Bytes, Type::Atom) => Check::None,
-        (Type::Bool, Type::Atom) => Check::None,
         (Type::Nil, Type::Atom) => Check::None,
 
         (Type::Atom, Type::Bytes) => Check::None,
         (Type::Bytes32, Type::Bytes) => Check::None,
         (Type::PublicKey, Type::Bytes) => Check::None,
         (Type::Int, Type::Bytes) => Check::None,
-        (Type::Bool, Type::Bytes) => Check::None,
         (Type::Nil, Type::Bytes) => Check::None,
 
         (Type::Atom, Type::Int) => Check::None,
         (Type::Bytes32, Type::Int) => Check::None,
         (Type::PublicKey, Type::Int) => Check::None,
         (Type::Bytes, Type::Int) => Check::None,
-        (Type::Bool, Type::Int) => Check::None,
         (Type::Nil, Type::Int) => Check::None,
 
-        (Type::Nil, Type::Bool) => Check::None,
-
-        (Type::Atom, Type::Bool) => Check::IsBool,
         (Type::Atom, Type::Nil) => Check::Value(BigInt::ZERO),
         (Type::Atom, Type::PublicKey) => Check::Length(48),
         (Type::Atom, Type::Bytes32) => Check::Length(32),
 
-        (Type::Bytes, Type::Bool) => Check::IsBool,
         (Type::Bytes, Type::Nil) => Check::Value(BigInt::ZERO),
         (Type::Bytes, Type::PublicKey) => Check::Length(48),
         (Type::Bytes, Type::Bytes32) => Check::Length(32),
 
-        (Type::Int, Type::Bool) => Check::IsBool,
         (Type::Int, Type::Nil) => Check::Value(BigInt::ZERO),
         (Type::Int, Type::PublicKey) => Check::Length(48),
         (Type::Int, Type::Bytes32) => Check::Length(32),
 
-        (Type::Bool, Type::Nil) => Check::Value(BigInt::ZERO),
+        (Type::PublicKey, Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Bytes32, Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Nil, Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Nil, Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::PublicKey, Type::Nil) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Bytes32, Type::Nil) => return Err(CheckError::Impossible(lhs, rhs)),
+
+        (Type::True, Type::Atom) => Check::None,
+        (Type::False, Type::Atom) => Check::None,
+        (Type::True, Type::Nil) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::False, Type::Nil) => Check::None,
+        (Type::True, Type::False) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::False, Type::True) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::True, Type::Bytes) => Check::None,
+        (Type::False, Type::Bytes) => Check::None,
+        (Type::True, Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::False, Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::True, Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::False, Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::True, Type::Int) => Check::None,
+        (Type::False, Type::Int) => Check::None,
+
+        (Type::Atom, Type::True) => Check::Value(BigInt::one()),
+        (Type::Atom, Type::False) => Check::Value(BigInt::ZERO),
+        (Type::Bytes, Type::True) => Check::Value(BigInt::one()),
+        (Type::Bytes, Type::False) => Check::Value(BigInt::ZERO),
+        (Type::Int, Type::True) => Check::Value(BigInt::one()),
+        (Type::Int, Type::False) => Check::Value(BigInt::ZERO),
+        (Type::Bytes32, Type::True) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Bytes32, Type::False) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::PublicKey, Type::True) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::PublicKey, Type::False) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Nil, Type::True) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Nil, Type::False) => Check::None,
+
+        (Type::Value(..), Type::Atom) => Check::None,
+        (Type::Value(..), Type::Bytes) => Check::None,
+        (Type::Value(..), Type::Int) => Check::None,
+        (Type::Value(value), Type::Bytes32) => {
+            if bigint_to_bytes(value.clone()).len() == 32 {
+                Check::None
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+        (Type::Value(value), Type::PublicKey) => {
+            if bigint_to_bytes(value.clone()).len() == 48 {
+                Check::None
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+        (Type::Value(value), Type::Nil) => {
+            if value == &BigInt::ZERO {
+                Check::None
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+        (Type::Value(value), Type::True) => {
+            if value == &BigInt::one() {
+                Check::None
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+        (Type::Value(value), Type::False) => {
+            if value == &BigInt::ZERO {
+                Check::None
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+
+        (Type::Atom, Type::Value(value)) => Check::Value(value.clone()),
+        (Type::Bytes, Type::Value(value)) => Check::Value(value.clone()),
+        (Type::Int, Type::Value(value)) => Check::Value(value.clone()),
+        (Type::Bytes32, Type::Value(value)) => {
+            if bigint_to_bytes(value.clone()).len() == 32 {
+                Check::Value(value.clone())
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+        (Type::PublicKey, Type::Value(value)) => {
+            if bigint_to_bytes(value.clone()).len() == 48 {
+                Check::Value(value.clone())
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+        (Type::Nil, Type::Value(value)) => {
+            if value == &BigInt::ZERO {
+                Check::None
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+        (Type::True, Type::Value(value)) => {
+            if value == &BigInt::one() {
+                Check::None
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+        (Type::False, Type::Value(value)) => {
+            if value == &BigInt::ZERO {
+                Check::None
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+
+        (Type::Value(lhs_value), Type::Value(rhs_value)) => {
+            if lhs_value == rhs_value {
+                Check::None
+            } else {
+                return Err(CheckError::Impossible(lhs, rhs));
+            }
+        }
+
+        (Type::Atom, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Bytes, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Bytes32, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::PublicKey, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Int, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Nil, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::True, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::False, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Value(..), Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+
+        (Type::Pair(..), Type::Atom) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Pair(..), Type::Bytes) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Pair(..), Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Pair(..), Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Pair(..), Type::Int) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Pair(..), Type::Nil) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Pair(..), Type::True) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Pair(..), Type::False) => return Err(CheckError::Impossible(lhs, rhs)),
+        (Type::Pair(..), Type::Value(..)) => return Err(CheckError::Impossible(lhs, rhs)),
+
+        (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
+            let (lhs_first, lhs_rest) = (*lhs_first, *lhs_rest);
+            let (rhs_first, rhs_rest) = (*rhs_first, *rhs_rest);
+            let first = check_type(types, lhs_first, rhs_first, visited)?;
+            let rest = check_type(types, lhs_rest, rhs_rest, visited)?;
+            Check::And(vec![
+                Check::First(Box::new(first)),
+                Check::Rest(Box::new(rest)),
+            ])
+        }
 
         (_, Type::Union(items)) => {
             let mut result = Vec::new();
@@ -102,44 +246,6 @@ where
         (Type::Union(items), _) => {
             let items = items.clone();
             check_union_against_rhs(types, lhs, &items, rhs, visited)?
-        }
-
-        (Type::PublicKey, Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Bytes32, Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Nil, Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Nil, Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::PublicKey, Type::Nil) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Bytes32, Type::Nil) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Bool, Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Bool, Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::PublicKey, Type::Bool) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Bytes32, Type::Bool) => return Err(CheckError::Impossible(lhs, rhs)),
-
-        (Type::Atom, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Bytes, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Bytes32, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::PublicKey, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Int, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Bool, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Nil, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
-
-        (Type::Pair(..), Type::Atom) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Pair(..), Type::Bytes) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Pair(..), Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Pair(..), Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Pair(..), Type::Int) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Pair(..), Type::Bool) => return Err(CheckError::Impossible(lhs, rhs)),
-        (Type::Pair(..), Type::Nil) => return Err(CheckError::Impossible(lhs, rhs)),
-
-        (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
-            let (lhs_first, lhs_rest) = (*lhs_first, *lhs_rest);
-            let (rhs_first, rhs_rest) = (*rhs_first, *rhs_rest);
-            let first = check_type(types, lhs_first, rhs_first, visited)?;
-            let rest = check_type(types, lhs_rest, rhs_rest, visited)?;
-            Check::And(vec![
-                Check::First(Box::new(first)),
-                Check::Rest(Box::new(rest)),
-            ])
         }
     };
 
@@ -183,11 +289,10 @@ where
     }
 
     let mut atom_count = 0;
-    let mut bool_count = 0;
-    let mut nil_count = 0;
     let mut bytes32_count = 0;
     let mut public_key_count = 0;
     let mut pairs = Vec::new();
+    let mut values = HashMap::new();
 
     let mut items: VecDeque<_> = items.iter().copied().collect::<VecDeque<_>>();
     let mut length = 0;
@@ -222,14 +327,21 @@ where
                 atom_count += 1;
                 public_key_count += 1;
             }
-            Type::Bool => {
-                atom_count += 1;
-                bool_count += 1;
-            }
             Type::Nil => {
                 atom_count += 1;
-                nil_count += 1;
-                bool_count += 1;
+                *values.entry(BigInt::ZERO).or_insert(0) += 1;
+            }
+            Type::True => {
+                atom_count += 1;
+                *values.entry(BigInt::one()).or_insert(0) += 1;
+            }
+            Type::False => {
+                atom_count += 1;
+                *values.entry(BigInt::ZERO).or_insert(0) += 1;
+            }
+            Type::Value(value) => {
+                atom_count += 1;
+                *values.entry(value.clone()).or_insert(0) += 1;
             }
             Type::Pair(first, rest) => {
                 pairs.push((*first, *rest));
@@ -253,27 +365,41 @@ where
         Type::Generic => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Never => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Atom if atom_count == length => Check::None,
-        Type::Bytes if atom_count == length => Check::None,
-        Type::Int if atom_count == length => Check::None,
-        Type::Bool if bool_count == length => Check::None,
-        Type::Nil if nil_count == length => Check::None,
-        Type::Bytes32 if bytes32_count == length => Check::None,
-        Type::PublicKey if public_key_count == length => Check::None,
-        Type::Bytes32 if atom_count == length => Check::Length(32),
-        Type::PublicKey if atom_count == length => Check::Length(48),
-        Type::Bool if atom_count == length => Check::IsBool,
-        Type::Nil if atom_count == length => Check::Value(BigInt::ZERO),
         Type::Atom => Check::IsAtom,
+        Type::Bytes if atom_count == length => Check::None,
         Type::Bytes => Check::IsAtom,
+        Type::Int if atom_count == length => Check::None,
         Type::Int => Check::IsAtom,
-        Type::Bytes32 if bytes32_count == atom_count => Check::IsAtom,
-        Type::PublicKey if public_key_count == atom_count => Check::IsAtom,
-        Type::Bool if bool_count == atom_count => Check::IsAtom,
-        Type::Nil if nil_count == atom_count => Check::IsAtom,
-        Type::Bytes32 => Check::And(vec![Check::IsAtom, Check::Length(32)]),
-        Type::PublicKey => Check::And(vec![Check::IsAtom, Check::Length(48)]),
-        Type::Bool => Check::And(vec![Check::IsAtom, Check::IsBool]),
+        Type::Nil if values.get(&BigInt::ZERO).copied().unwrap_or(0) == length => Check::None,
+        Type::Nil if values.get(&BigInt::ZERO).copied().unwrap_or(0) == atom_count => Check::IsAtom,
+        Type::Nil if atom_count == length => Check::Value(BigInt::ZERO),
         Type::Nil => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
+        Type::False if values.get(&BigInt::ZERO).copied().unwrap_or(0) == length => Check::None,
+        Type::False if values.get(&BigInt::ZERO).copied().unwrap_or(0) == atom_count => {
+            Check::IsAtom
+        }
+        Type::False if atom_count == length => Check::Value(BigInt::ZERO),
+        Type::False => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
+        Type::True if values.get(&BigInt::one()).copied().unwrap_or(0) == length => Check::None,
+        Type::True if values.get(&BigInt::one()).copied().unwrap_or(0) == atom_count => {
+            Check::IsAtom
+        }
+        Type::True if atom_count == length => Check::Value(BigInt::one()),
+        Type::True => Check::And(vec![Check::IsAtom, Check::Value(BigInt::one())]),
+        Type::Value(value) if values.get(value).copied().unwrap_or(0) == length => Check::None,
+        Type::Value(value) if values.get(value).copied().unwrap_or(0) == atom_count => {
+            Check::IsAtom
+        }
+        Type::Value(value) if atom_count == length => Check::Value(value.clone()),
+        Type::Value(value) => Check::And(vec![Check::IsAtom, Check::Value(value.clone())]),
+        Type::Bytes32 if bytes32_count == length => Check::None,
+        Type::Bytes32 if atom_count == length => Check::Length(32),
+        Type::Bytes32 if bytes32_count == atom_count => Check::IsAtom,
+        Type::Bytes32 => Check::And(vec![Check::IsAtom, Check::Length(32)]),
+        Type::PublicKey if public_key_count == length => Check::None,
+        Type::PublicKey if atom_count == length => Check::Length(48),
+        Type::PublicKey if public_key_count == atom_count => Check::IsAtom,
+        Type::PublicKey => Check::And(vec![Check::IsAtom, Check::Length(48)]),
         Type::Pair(..) if atom_count == length => {
             return Err(CheckError::Impossible(original_type_id, rhs))
         }

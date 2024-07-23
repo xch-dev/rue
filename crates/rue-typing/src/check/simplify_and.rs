@@ -22,7 +22,6 @@ pub(crate) fn simplify_and_shallow(items: impl IntoIterator<Item = Check>) -> Ch
     let mut result = Vec::new();
     let mut is_atom = false;
     let mut is_pair = false;
-    let mut is_bool = false;
     let mut value = false;
     let mut length = false;
 
@@ -33,8 +32,6 @@ pub(crate) fn simplify_and_shallow(items: impl IntoIterator<Item = Check>) -> Ch
             Check::IsAtom => is_atom = true,
             Check::IsPair if is_pair => continue,
             Check::IsPair => is_pair = true,
-            Check::IsBool if is_bool => continue,
-            Check::IsBool => is_bool = true,
             Check::Value(..) if value => continue,
             Check::Value(..) => value = true,
             Check::Length(..) if length => continue,

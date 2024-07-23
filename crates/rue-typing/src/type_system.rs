@@ -14,6 +14,7 @@ pub type TypeId = Id<Type>;
 pub struct TypeSystem {
     arena: Arena<Type>,
     types: StandardTypes,
+    names: HashMap<TypeId, String>,
 }
 
 impl Default for TypeSystem {
@@ -27,7 +28,6 @@ impl Default for TypeSystem {
         let bytes32 = arena.alloc(Type::Bytes32);
         let public_key = arena.alloc(Type::PublicKey);
         let int = arena.alloc(Type::Int);
-        let bool = arena.alloc(Type::Bool);
         let true_bool = arena.alloc(Type::True);
         let false_bool = arena.alloc(Type::False);
         let nil = arena.alloc(Type::Nil);
@@ -35,6 +35,21 @@ impl Default for TypeSystem {
         let any = arena.alloc(Type::Unknown);
         let pair = arena.alloc(Type::Pair(any, any));
         arena[any] = Type::Union(vec![atom, pair]);
+
+        let bool = arena.alloc(Type::Union(vec![false_bool, true_bool]));
+
+        let mut names = HashMap::new();
+        names.insert(never, "Never".to_string());
+        names.insert(atom, "Atom".to_string());
+        names.insert(bytes, "Bytes".to_string());
+        names.insert(bytes32, "Bytes32".to_string());
+        names.insert(public_key, "PublicKey".to_string());
+        names.insert(int, "Int".to_string());
+        names.insert(bool, "Bool".to_string());
+        names.insert(true_bool, "true".to_string());
+        names.insert(false_bool, "false".to_string());
+        names.insert(nil, "Nil".to_string());
+        names.insert(any, "Any".to_string());
 
         Self {
             arena,
@@ -52,6 +67,7 @@ impl Default for TypeSystem {
                 false_bool,
                 nil,
             },
+            names,
         }
     }
 }
@@ -83,12 +99,15 @@ impl TypeSystem {
         }
     }
 
-    pub fn stringify_named(&self, type_id: TypeId, names: &HashMap<TypeId, String>) -> String {
-        stringify_type(self, type_id, names, &mut HashSet::new())
+    pub fn stringify_named(&self, type_id: TypeId, mut names: HashMap<TypeId, String>) -> String {
+        for (id, name) in &self.names {
+            names.entry(*id).or_insert_with(|| name.clone());
+        }
+        stringify_type(self, type_id, &names, &mut HashSet::new())
     }
 
     pub fn stringify(&self, type_id: TypeId) -> String {
-        self.stringify_named(type_id, &HashMap::new())
+        self.stringify_named(type_id, HashMap::new())
     }
 
     pub fn compare(&self, lhs: TypeId, rhs: TypeId) -> Comparison {

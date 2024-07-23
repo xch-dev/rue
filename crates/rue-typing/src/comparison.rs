@@ -133,25 +133,20 @@ pub(crate) fn compare_type(
         (Type::Bytes32, Type::Bytes32) => Comparison::Equal,
         (Type::PublicKey, Type::PublicKey) => Comparison::Equal,
         (Type::Int, Type::Int) => Comparison::Equal,
-        (Type::Bool, Type::Bool) => Comparison::Equal,
         (Type::Nil, Type::Nil) => Comparison::Equal,
 
         (Type::Atom, Type::Bytes32) => Comparison::Superset,
         (Type::Atom, Type::PublicKey) => Comparison::Superset,
-        (Type::Atom, Type::Bool) => Comparison::Superset,
         (Type::Atom, Type::Nil) => Comparison::Superset,
         (Type::Bytes, Type::Bytes32) => Comparison::Superset,
         (Type::Bytes, Type::PublicKey) => Comparison::Superset,
-        (Type::Bytes, Type::Bool) => Comparison::Superset,
         (Type::Bytes, Type::Nil) => Comparison::Superset,
         (Type::Int, Type::Bytes32) => Comparison::Superset,
         (Type::Int, Type::PublicKey) => Comparison::Superset,
-        (Type::Int, Type::Bool) => Comparison::Superset,
         (Type::Int, Type::Nil) => Comparison::Superset,
 
         (Type::Bytes32, Type::Atom) => Comparison::Assignable,
         (Type::PublicKey, Type::Atom) => Comparison::Assignable,
-        (Type::Bool, Type::Atom) => Comparison::Assignable,
         (Type::Nil, Type::Atom) => Comparison::Assignable,
         (Type::Bytes, Type::Atom) => Comparison::Assignable,
         (Type::Int, Type::Atom) => Comparison::Assignable,
@@ -166,28 +161,18 @@ pub(crate) fn compare_type(
         (Type::PublicKey, Type::Bytes) => Comparison::Castable,
         (Type::PublicKey, Type::Int) => Comparison::Castable,
         (Type::Int, Type::Bytes) => Comparison::Castable,
-        (Type::Nil, Type::Bool) => Comparison::Castable,
         (Type::Nil, Type::Int) => Comparison::Castable,
-        (Type::Bool, Type::Bytes) => Comparison::Castable,
-        (Type::Bool, Type::Int) => Comparison::Castable,
 
         (Type::Bytes32, Type::PublicKey) => Comparison::Incompatible,
-        (Type::Bytes32, Type::Bool) => Comparison::Incompatible,
         (Type::Bytes32, Type::Nil) => Comparison::Incompatible,
         (Type::PublicKey, Type::Bytes32) => Comparison::Incompatible,
-        (Type::PublicKey, Type::Bool) => Comparison::Incompatible,
         (Type::PublicKey, Type::Nil) => Comparison::Incompatible,
-        (Type::Bool, Type::Bytes32) => Comparison::Incompatible,
-        (Type::Bool, Type::PublicKey) => Comparison::Incompatible,
-        (Type::Bool, Type::Nil) => Comparison::Incompatible,
         (Type::Nil, Type::Bytes32) => Comparison::Incompatible,
         (Type::Nil, Type::PublicKey) => Comparison::Incompatible,
 
         (Type::True, Type::False) => Comparison::Incompatible,
         (Type::False, Type::True) => Comparison::Incompatible,
 
-        (Type::True, Type::Bool) => Comparison::Assignable,
-        (Type::False, Type::Bool) => Comparison::Assignable,
         (Type::True, Type::Bytes) => Comparison::Castable,
         (Type::False, Type::Bytes) => Comparison::Castable,
         (Type::True, Type::Int) => Comparison::Castable,
@@ -201,8 +186,6 @@ pub(crate) fn compare_type(
         (Type::True, Type::PublicKey) => Comparison::Incompatible,
         (Type::False, Type::PublicKey) => Comparison::Incompatible,
 
-        (Type::Bool, Type::True) => Comparison::Superset,
-        (Type::Bool, Type::False) => Comparison::Superset,
         (Type::Bytes, Type::True) => Comparison::Superset,
         (Type::Bytes, Type::False) => Comparison::Superset,
         (Type::Int, Type::True) => Comparison::Superset,
@@ -247,8 +230,8 @@ pub(crate) fn compare_type(
                 Comparison::Incompatible
             }
         }
-        (Type::Value(value), Type::Bool) => {
-            if value == &BigInt::ZERO || value == &BigInt::one() {
+        (Type::Value(value), Type::False) => {
+            if value == &BigInt::ZERO {
                 Comparison::Castable
             } else {
                 Comparison::Incompatible
@@ -279,8 +262,15 @@ pub(crate) fn compare_type(
                 Comparison::Incompatible
             }
         }
-        (Type::Bool, Type::Value(value)) => {
-            if value == &BigInt::ZERO || value == &BigInt::one() {
+        (Type::True, Type::Value(value)) => {
+            if value == &BigInt::one() {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+        (Type::False, Type::Value(value)) => {
+            if value == &BigInt::ZERO {
                 Comparison::Castable
             } else {
                 Comparison::Incompatible

@@ -22,7 +22,6 @@ pub enum Check {
     None,
     IsPair,
     IsAtom,
-    IsBool,
     Value(BigInt),
     Length(usize),
     And(Vec<Check>),

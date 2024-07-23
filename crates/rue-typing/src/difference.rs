@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use num_bigint::BigInt;
 use num_traits::One;
 
-use crate::{StandardTypes, Struct, Type, TypeId, TypeSystem};
+use crate::{bigint_to_bytes, StandardTypes, Struct, Type, TypeId, TypeSystem};
 
 pub(crate) fn difference_type(
     types: &mut TypeSystem,
@@ -31,57 +31,78 @@ pub(crate) fn difference_type(
         (Type::Bytes32, Type::Bytes32) => std.never,
         (Type::PublicKey, Type::PublicKey) => std.never,
         (Type::Int, Type::Int) => std.never,
-        (Type::Bool, Type::Bool) => std.never,
         (Type::Nil, Type::Nil) => std.never,
+        (Type::True, Type::True) => std.never,
+        (Type::False, Type::False) => std.never,
 
         (Type::Int, Type::Bytes32) => lhs,
         (Type::Int, Type::PublicKey) => lhs,
         (Type::Int, Type::Bytes) => std.never,
         (Type::Int, Type::Atom) => std.never,
-        (Type::Int, Type::Bool) => lhs,
         (Type::Int, Type::Nil) => lhs,
+        (Type::Int, Type::True) => lhs,
+        (Type::Int, Type::False) => lhs,
+        (Type::Int, Type::Value(..)) => lhs,
 
         (Type::Bytes, Type::Bytes32) => lhs,
         (Type::Bytes, Type::PublicKey) => lhs,
         (Type::Bytes, Type::Int) => std.never,
         (Type::Bytes, Type::Atom) => std.never,
-        (Type::Bytes, Type::Bool) => lhs,
         (Type::Bytes, Type::Nil) => lhs,
+        (Type::Bytes, Type::True) => lhs,
+        (Type::Bytes, Type::False) => lhs,
+        (Type::Bytes, Type::Value(..)) => lhs,
 
         (Type::Atom, Type::Bytes32) => lhs,
         (Type::Atom, Type::PublicKey) => lhs,
         (Type::Atom, Type::Int) => std.never,
         (Type::Atom, Type::Bytes) => std.never,
-        (Type::Atom, Type::Bool) => lhs,
         (Type::Atom, Type::Nil) => lhs,
+        (Type::Atom, Type::True) => lhs,
+        (Type::Atom, Type::False) => lhs,
+        (Type::Atom, Type::Value(..)) => lhs,
 
         (Type::Bytes32, Type::PublicKey) => lhs,
         (Type::Bytes32, Type::Bytes) => std.never,
         (Type::Bytes32, Type::Int) => std.never,
         (Type::Bytes32, Type::Atom) => std.never,
-        (Type::Bytes32, Type::Bool) => lhs,
         (Type::Bytes32, Type::Nil) => lhs,
+        (Type::Bytes32, Type::True) => lhs,
+        (Type::Bytes32, Type::False) => lhs,
+        (Type::Bytes32, Type::Value(..)) => lhs,
 
         (Type::PublicKey, Type::Bytes32) => lhs,
         (Type::PublicKey, Type::Bytes) => std.never,
         (Type::PublicKey, Type::Int) => std.never,
         (Type::PublicKey, Type::Atom) => std.never,
-        (Type::PublicKey, Type::Bool) => lhs,
         (Type::PublicKey, Type::Nil) => lhs,
-
-        (Type::Bool, Type::Bytes32) => lhs,
-        (Type::Bool, Type::PublicKey) => lhs,
-        (Type::Bool, Type::Bytes) => std.never,
-        (Type::Bool, Type::Atom) => std.never,
-        (Type::Bool, Type::Int) => std.never,
-        (Type::Bool, Type::Nil) => types.alloc(Type::Value(BigInt::one())),
+        (Type::PublicKey, Type::True) => lhs,
+        (Type::PublicKey, Type::False) => lhs,
+        (Type::PublicKey, Type::Value(..)) => lhs,
 
         (Type::Nil, Type::Bytes32) => lhs,
         (Type::Nil, Type::PublicKey) => lhs,
         (Type::Nil, Type::Bytes) => std.never,
         (Type::Nil, Type::Atom) => std.never,
         (Type::Nil, Type::Int) => std.never,
-        (Type::Nil, Type::Bool) => std.never,
+        (Type::Nil, Type::True) => lhs,
+        (Type::Nil, Type::False) => std.never,
+
+        (Type::True, Type::Atom) => std.never,
+        (Type::True, Type::Bytes) => std.never,
+        (Type::True, Type::Bytes32) => lhs,
+        (Type::True, Type::PublicKey) => lhs,
+        (Type::True, Type::Int) => std.never,
+        (Type::True, Type::Nil) => lhs,
+        (Type::True, Type::False) => lhs,
+
+        (Type::False, Type::Atom) => std.never,
+        (Type::False, Type::Bytes) => std.never,
+        (Type::False, Type::Bytes32) => lhs,
+        (Type::False, Type::PublicKey) => lhs,
+        (Type::False, Type::Int) => std.never,
+        (Type::False, Type::Nil) => lhs,
+        (Type::False, Type::True) => lhs,
 
         (Type::Nil, Type::Value(value)) => {
             if value == &BigInt::ZERO {
@@ -90,15 +111,61 @@ pub(crate) fn difference_type(
                 lhs
             }
         }
-        (Type::Bool, Type::Value(value)) => {
+        (Type::False, Type::Value(value)) => {
             if value == &BigInt::ZERO {
-                types.standard_types().true_bool
-            } else if value == &BigInt::one() {
-                types.standard_types().false_bool
+                std.never
             } else {
                 lhs
             }
         }
+        (Type::True, Type::Value(value)) => {
+            if value == &BigInt::one() {
+                std.never
+            } else {
+                lhs
+            }
+        }
+
+        (Type::Value(..), Type::Atom) => std.never,
+        (Type::Value(..), Type::Bytes) => std.never,
+        (Type::Value(..), Type::Int) => std.never,
+
+        (Type::Value(value), Type::Bytes32) => {
+            if bigint_to_bytes(value.clone()).len() == 32 {
+                std.never
+            } else {
+                lhs
+            }
+        }
+        (Type::Value(value), Type::PublicKey) => {
+            if bigint_to_bytes(value.clone()).len() == 48 {
+                std.never
+            } else {
+                lhs
+            }
+        }
+        (Type::Value(value), Type::True) => {
+            if value == &BigInt::one() {
+                std.never
+            } else {
+                lhs
+            }
+        }
+        (Type::Value(value), Type::False) => {
+            if value == &BigInt::ZERO {
+                std.never
+            } else {
+                lhs
+            }
+        }
+        (Type::Value(value), Type::Nil) => {
+            if value == &BigInt::ZERO {
+                std.never
+            } else {
+                lhs
+            }
+        }
+
         (Type::Value(lhs_value), Type::Value(rhs_value)) => {
             if lhs_value == rhs_value {
                 std.never
@@ -112,16 +179,20 @@ pub(crate) fn difference_type(
         (Type::Bytes32, Type::Pair(..)) => lhs,
         (Type::PublicKey, Type::Pair(..)) => lhs,
         (Type::Int, Type::Pair(..)) => lhs,
-        (Type::Bool, Type::Pair(..)) => lhs,
         (Type::Nil, Type::Pair(..)) => lhs,
+        (Type::True, Type::Pair(..)) => lhs,
+        (Type::False, Type::Pair(..)) => lhs,
+        (Type::Value(..), Type::Pair(..)) => lhs,
 
         (Type::Pair(..), Type::Atom) => lhs,
         (Type::Pair(..), Type::Bytes) => lhs,
         (Type::Pair(..), Type::Bytes32) => lhs,
         (Type::Pair(..), Type::PublicKey) => lhs,
         (Type::Pair(..), Type::Int) => lhs,
-        (Type::Pair(..), Type::Bool) => lhs,
         (Type::Pair(..), Type::Nil) => lhs,
+        (Type::Pair(..), Type::True) => lhs,
+        (Type::Pair(..), Type::False) => lhs,
+        (Type::Pair(..), Type::Value(..)) => lhs,
 
         (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
             let (lhs_first, lhs_rest) = (*lhs_first, *lhs_rest);

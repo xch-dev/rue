@@ -21,13 +21,6 @@ pub(crate) fn stringify_check(
             stringify_value(f, path)?;
             write!(f, "))")
         }
-        Check::IsBool => {
-            write!(f, "(any (= ")?;
-            stringify_value(f, path)?;
-            write!(f, " 0) (= ")?;
-            stringify_value(f, path)?;
-            write!(f, " 1))")
-        }
         Check::Value(value) => {
             write!(f, "(= ")?;
             stringify_value(f, path)?;

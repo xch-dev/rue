@@ -7,7 +7,6 @@ pub(crate) fn simplify_check(check: Check) -> Check {
         Check::None => Check::None,
         Check::IsAtom => Check::IsAtom,
         Check::IsPair => Check::IsPair,
-        Check::IsBool => Check::IsBool,
         Check::Value(value) => Check::Value(value),
         Check::Length(len) => {
             if len == 0 {

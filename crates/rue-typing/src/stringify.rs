@@ -26,8 +26,10 @@ pub(crate) fn stringify_type(
         Type::Bytes32 => "Bytes32".to_string(),
         Type::PublicKey => "PublicKey".to_string(),
         Type::Int => "Int".to_string(),
-        Type::Bool => "Bool".to_string(),
+        Type::True => "True".to_string(),
+        Type::False => "False".to_string(),
         Type::Nil => "Nil".to_string(),
+        Type::Value(value) => format!("{value}"),
         Type::Pair(first, rest) => {
             let first = stringify_type(types, *first, names, visited);
             let rest = stringify_type(types, *rest, names, visited);
@@ -87,7 +89,7 @@ mod tests {
         assert_eq!(db.stringify(types.int), "Int");
         assert_eq!(db.stringify(types.bool), "Bool");
         assert_eq!(db.stringify(types.nil), "Nil");
-        assert_eq!(db.stringify(types.any), "Atom | ({recursive}, {recursive})");
+        assert_eq!(db.stringify(types.any), "Any");
     }
 
     #[test]
@@ -96,9 +98,9 @@ mod tests {
         let types = db.standard_types();
 
         let mut names = HashMap::new();
-        names.insert(types.any, "Any".to_string());
+        names.insert(types.any, "CustomAny".to_string());
 
-        assert_eq!(db.stringify_named(types.any, &names), "Any");
+        assert_eq!(db.stringify_named(types.any, names), "CustomAny");
     }
 
     #[test]
@@ -117,7 +119,7 @@ mod tests {
         );
 
         assert_eq!(
-            db.stringify_named(callable, &HashMap::new()),
+            db.stringify_named(callable, HashMap::new()),
             "fun((Int, (Bytes, Nil))) -> Bool"
         );
     }

@@ -33,8 +33,10 @@ pub(crate) fn substitute_type(
         Type::Bytes32 => type_id,
         Type::PublicKey => type_id,
         Type::Int => type_id,
-        Type::Bool => type_id,
         Type::Nil => type_id,
+        Type::True => type_id,
+        Type::False => type_id,
+        Type::Value(..) => type_id,
         Type::Pair(first, rest) => {
             let (first, rest) = (*first, *rest);
 

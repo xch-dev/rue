@@ -74,7 +74,7 @@ pub struct Variant {
 }
 
 /// Field information for a variant type.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct VariantFields {
     pub fields: TypeId,
     pub rest: Rest,
