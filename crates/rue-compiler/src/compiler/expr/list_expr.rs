@@ -69,7 +69,7 @@ impl Compiler<'_> {
             items.push(output.hir_id);
         }
 
-        let mut hir_id = self.builtins.nil_hir;
+        let mut hir_id = self.builtins.nil;
 
         for (i, item) in items.into_iter().rev().enumerate() {
             if i == 0 && !nil_terminated {

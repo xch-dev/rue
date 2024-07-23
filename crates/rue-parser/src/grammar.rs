@@ -418,12 +418,6 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             p.bump();
             p.expect(SyntaxKind::Ident);
             p.finish();
-        } else if p.at(SyntaxKind::OpenBracket) {
-            p.start_at(checkpoint, SyntaxKind::IndexAccessExpr);
-            p.bump();
-            p.expect(SyntaxKind::Int);
-            p.expect(SyntaxKind::CloseBracket);
-            p.finish();
         } else if p.at(SyntaxKind::As) {
             p.start_at(checkpoint, SyntaxKind::CastExpr);
             p.bump();

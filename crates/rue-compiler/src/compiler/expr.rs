@@ -13,7 +13,6 @@ mod function_call_expr;
 mod group_expr;
 mod guard_expr;
 mod if_expr;
-mod index_access_expr;
 mod initializer_expr;
 mod lambda_expr;
 mod list_expr;
@@ -47,7 +46,6 @@ impl Compiler<'_> {
             Expr::IfExpr(if_expr) => self.compile_if_expr(if_expr, expected_type),
             Expr::FunctionCallExpr(call) => self.compile_function_call_expr(call),
             Expr::FieldAccessExpr(field_access) => self.compile_field_access_expr(field_access),
-            Expr::IndexAccessExpr(index_access) => self.compile_index_access_expr(index_access),
         };
 
         self.is_callee = false;
