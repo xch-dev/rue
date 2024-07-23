@@ -1,4 +1,4 @@
-use crate::{Alias, Lazy, Struct, TypeId};
+use crate::{Alias, Callable, Lazy, Struct, TypeId};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -18,4 +18,5 @@ pub enum Type {
     Lazy(Lazy),
     Alias(Alias),
     Struct(Struct),
+    Callable(Callable),
 }

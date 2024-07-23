@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{Struct, Type, TypeId, TypeSystem};
+use crate::{Callable, Rest, Struct, Type, TypeId, TypeSystem};
 
 pub(crate) fn stringify_type(
     types: &TypeSystem,
@@ -48,6 +48,48 @@ pub(crate) fn stringify_type(
         Type::Lazy(lazy) => stringify_type(types, lazy.type_id, names, visited),
         Type::Alias(alias) => stringify_type(types, alias.type_id, names, visited),
         Type::Struct(Struct { type_id, .. }) => stringify_type(types, *type_id, names, visited),
+        Type::Callable(Callable {
+            parameters,
+            return_type,
+            rest,
+            ..
+        }) => {
+            let mut result = "fun(".to_string();
+
+            for (index, (parameter_name, parameter_type)) in
+                parameters.clone().into_iter().enumerate()
+            {
+                if index > 0 {
+                    result.push_str(", ");
+                }
+
+                if index == parameters.len() - 1 {
+                    match rest {
+                        Rest::Spread => {
+                            result.push_str("...");
+                            result.push_str(&parameter_name);
+                        }
+                        Rest::Nil => {
+                            result.push_str(&parameter_name);
+                        }
+                        Rest::Optional => {
+                            result.push_str(&parameter_name);
+                            result.push('?');
+                        }
+                    }
+                } else {
+                    result.push_str(&parameter_name);
+                }
+
+                result.push_str(": ");
+                result.push_str(&stringify_type(types, parameter_type, names, visited));
+            }
+
+            result.push_str(") -> ");
+            result.push_str(&stringify_type(types, *return_type, names, visited));
+
+            result
+        }
     };
 
     visited.remove(&type_id);
@@ -57,14 +99,16 @@ pub(crate) fn stringify_type(
 
 #[cfg(test)]
 mod tests {
-    use crate::StandardTypes;
+    use indexmap::indexmap;
+
+    use crate::alloc_callable;
 
     use super::*;
 
     #[test]
     fn stringify_atoms() {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
+        let db = TypeSystem::new();
+        let types = db.standard_types();
 
         assert_eq!(db.stringify(types.unknown), "{unknown}");
         assert_eq!(db.stringify(types.never), "Never");
@@ -79,12 +123,33 @@ mod tests {
 
     #[test]
     fn stringify_named() {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
+        let db = TypeSystem::new();
+        let types = db.standard_types();
 
         let mut names = HashMap::new();
         names.insert(types.any, "Any".to_string());
 
         assert_eq!(db.stringify_named(types.any, &names), "Any");
+    }
+
+    #[test]
+    fn test_stringify_callable() {
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
+
+        let callable = alloc_callable(
+            &mut db,
+            indexmap! {
+                "a".to_string() => types.int,
+                "b".to_string() => types.bytes,
+            },
+            types.bool,
+            Rest::Nil,
+        );
+
+        assert_eq!(
+            db.stringify_named(callable, &HashMap::new()),
+            "fun(a: Int, b: Bytes) -> Bool"
+        );
     }
 }

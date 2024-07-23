@@ -19,6 +19,7 @@ pub(crate) fn difference_type(
 
         (Type::Generic, _) | (_, Type::Generic) => lhs,
         (Type::Unknown, _) | (_, Type::Unknown) => lhs,
+
         (Type::Never, _) => std.never,
         (_, Type::Never) => lhs,
 
@@ -155,7 +156,7 @@ pub(crate) fn difference_type(
                 original_type_id: Some(ty.original_type_id.unwrap_or(lhs)),
                 type_id,
                 field_names: ty.field_names,
-                nil_terminated: ty.nil_terminated,
+                rest: ty.rest,
                 generic_types: ty.generic_types,
             }))
         }
@@ -167,10 +168,12 @@ pub(crate) fn difference_type(
                 original_type_id: Some(ty.original_type_id.unwrap_or(rhs)),
                 type_id,
                 field_names: ty.field_names,
-                nil_terminated: ty.nil_terminated,
+                rest: ty.rest,
                 generic_types: ty.generic_types,
             }))
         }
+        (Type::Callable(..), _) => lhs,
+        (_, Type::Callable(..)) => lhs,
     };
 
     visited.remove(&(lhs, rhs));

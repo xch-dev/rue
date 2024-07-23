@@ -1,8 +1,20 @@
 use std::collections::HashMap;
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::TypeId;
+
+/// The kind of ending that a list has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Rest {
+    /// This means that there is no special terminator for the list.
+    /// The last element is the rest value.
+    Spread,
+    /// This means that the list is nil-terminated.
+    Nil,
+    /// This means that the list is nil-terminated, but may contain an additional optional value.
+    Optional,
+}
 
 /// Allows you to map generic types lazily without having to resolve them immediately.
 /// This prevents stack overflows when resolving generic type definitions that reference themselves.
@@ -27,6 +39,16 @@ pub struct Struct {
     pub original_type_id: Option<TypeId>,
     pub type_id: TypeId,
     pub field_names: IndexSet<String>,
-    pub nil_terminated: bool,
+    pub rest: Rest,
+    pub generic_types: Vec<TypeId>,
+}
+
+/// Represents something which can be called with arguments and returns a given type.
+#[derive(Debug, Clone)]
+pub struct Callable {
+    pub original_type_id: Option<TypeId>,
+    pub parameters: IndexMap<String, TypeId>,
+    pub return_type: TypeId,
+    pub rest: Rest,
     pub generic_types: Vec<TypeId>,
 }

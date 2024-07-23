@@ -22,7 +22,7 @@ pub(crate) struct ComparisonContext<'a> {
 }
 
 pub(crate) fn compare_type(
-    types: &TypeSystem,
+    db: &TypeSystem,
     lhs: TypeId,
     rhs: TypeId,
     ctx: &mut ComparisonContext<'_>,
@@ -35,7 +35,7 @@ pub(crate) fn compare_type(
         return Comparison::Assignable;
     }
 
-    let comparison = match (types.get(lhs), types.get(rhs)) {
+    let comparison = match (db.get(lhs), db.get(rhs)) {
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
 
         (_, Type::Generic) => {
@@ -48,7 +48,7 @@ pub(crate) fn compare_type(
             }
 
             if let Some(found) = found {
-                compare_type(types, lhs, found, ctx)
+                compare_type(db, lhs, found, ctx)
             } else if let Some(generic_stack_frame) = ctx.generic_stack_frame {
                 ctx.substitution_stack[generic_stack_frame].insert(rhs, lhs);
                 Comparison::Assignable
@@ -71,7 +71,7 @@ pub(crate) fn compare_type(
             }
 
             if let Some(found) = found {
-                compare_type(types, found, rhs, ctx)
+                compare_type(db, found, rhs, ctx)
             } else {
                 Comparison::Incompatible
             }
@@ -90,7 +90,7 @@ pub(crate) fn compare_type(
             let length = items.len();
 
             for item in items {
-                let cmp = compare_type(types, item, rhs, ctx);
+                let cmp = compare_type(db, item, rhs, ctx);
                 result = max(result, cmp);
                 if cmp == Comparison::Incompatible {
                     incompatible_count += 1;
@@ -109,7 +109,7 @@ pub(crate) fn compare_type(
             let mut result = Comparison::Incompatible;
 
             for item in items {
-                let cmp = compare_type(types, lhs, item, ctx);
+                let cmp = compare_type(db, lhs, item, ctx);
                 result = min(result, cmp);
             }
 
@@ -117,8 +117,8 @@ pub(crate) fn compare_type(
         }
 
         (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
-            let first = compare_type(types, *lhs_first, *rhs_first, ctx);
-            let rest = compare_type(types, *lhs_rest, *rhs_rest, ctx);
+            let first = compare_type(db, *lhs_first, *rhs_first, ctx);
+            let rest = compare_type(db, *lhs_rest, *rhs_rest, ctx);
             max(first, rest)
         }
         (Type::Pair(..), _) | (_, Type::Pair(..)) => Comparison::Incompatible,
@@ -180,29 +180,32 @@ pub(crate) fn compare_type(
 
         (Type::Lazy(lazy), _) => {
             ctx.substitution_stack.push(lazy.substitutions.clone());
-            let result = compare_type(types, lazy.type_id, rhs, ctx);
+            let result = compare_type(db, lazy.type_id, rhs, ctx);
             ctx.substitution_stack.pop().unwrap();
             result
         }
 
         (_, Type::Lazy(lazy)) => {
             ctx.substitution_stack.push(lazy.substitutions.clone());
-            let result = compare_type(types, lhs, lazy.type_id, ctx);
+            let result = compare_type(db, lhs, lazy.type_id, ctx);
             ctx.substitution_stack.pop().unwrap();
             result
         }
 
-        (Type::Alias(alias), _) => compare_type(types, alias.type_id, rhs, ctx),
-        (_, Type::Alias(alias)) => compare_type(types, lhs, alias.type_id, ctx),
+        (Type::Alias(alias), _) => compare_type(db, alias.type_id, rhs, ctx),
+        (_, Type::Alias(alias)) => compare_type(db, lhs, alias.type_id, ctx),
 
         (Type::Struct(lhs), _) => max(
-            compare_type(types, lhs.type_id, rhs, ctx),
+            compare_type(db, lhs.type_id, rhs, ctx),
             Comparison::Castable,
         ),
         (_, Type::Struct(rhs)) => max(
-            compare_type(types, lhs, rhs.type_id, ctx),
+            compare_type(db, lhs, rhs.type_id, ctx),
             Comparison::Castable,
         ),
+
+        (Type::Callable(..), _) => compare_type(db, lhs, db.standard_types().any, ctx),
+        (_, Type::Callable(..)) => Comparison::Incompatible,
     };
 
     ctx.visited.remove(&(lhs, rhs));
@@ -212,37 +215,42 @@ pub(crate) fn compare_type(
 
 #[cfg(test)]
 mod tests {
-    use crate::{alloc_list, setup};
+    use crate::alloc_list;
 
     use super::*;
 
     #[test]
     fn test_compare_int_int() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.int, types.int), Comparison::Equal);
     }
 
     #[test]
     fn test_compare_int_bytes() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.int, types.bytes), Comparison::Castable);
     }
 
     #[test]
     fn test_compare_bytes_int() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.bytes, types.int), Comparison::Castable);
     }
 
     #[test]
     fn test_compare_bytes_bytes32() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.bytes, types.bytes32), Comparison::Superset);
     }
 
     #[test]
     fn test_compare_bytes32_bytes() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(
             db.compare(types.bytes32, types.bytes),
             Comparison::Assignable
@@ -251,7 +259,8 @@ mod tests {
 
     #[test]
     fn test_compare_bytes_public_key() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(
             db.compare(types.bytes, types.public_key),
             Comparison::Superset
@@ -260,7 +269,8 @@ mod tests {
 
     #[test]
     fn test_compare_public_key_bytes() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(
             db.compare(types.public_key, types.bytes),
             Comparison::Castable
@@ -269,7 +279,8 @@ mod tests {
 
     #[test]
     fn test_compare_bytes32_public_key() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(
             db.compare(types.bytes32, types.public_key),
             Comparison::Incompatible
@@ -278,7 +289,8 @@ mod tests {
 
     #[test]
     fn test_compare_public_key_bytes32() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(
             db.compare(types.public_key, types.bytes32),
             Comparison::Incompatible
@@ -287,51 +299,59 @@ mod tests {
 
     #[test]
     fn test_compare_bytes_any() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.bytes, types.any), Comparison::Assignable);
     }
 
     #[test]
     fn test_compare_any_bytes() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.any, types.bytes), Comparison::Superset);
     }
 
     #[test]
     fn test_compare_bytes32_any() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.bytes32, types.any), Comparison::Assignable);
     }
 
     #[test]
     fn test_compare_any_bytes32() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.any, types.bytes32), Comparison::Superset);
     }
 
     #[test]
     fn test_compare_list_any() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let list = alloc_list(&mut db, &types, types.int);
         assert_eq!(db.compare(list, types.any), Comparison::Assignable);
     }
 
     #[test]
     fn test_compare_pair_any() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let pair = db.alloc(Type::Pair(types.int, types.public_key));
         assert_eq!(db.compare(pair, types.any), Comparison::Assignable);
     }
 
     #[test]
     fn test_compare_int_any() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.int, types.any), Comparison::Assignable);
     }
 
     #[test]
     fn test_compare_public_key_any() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(
             db.compare(types.public_key, types.any),
             Comparison::Assignable
@@ -340,7 +360,8 @@ mod tests {
 
     #[test]
     fn test_compare_complex_any() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let pair_inner_inner = db.alloc(Type::Pair(types.any, types.nil));
         let pair_inner = db.alloc(Type::Pair(pair_inner_inner, pair_inner_inner));
         let pair = db.alloc(Type::Pair(types.int, pair_inner));
@@ -350,13 +371,15 @@ mod tests {
 
     #[test]
     fn test_compare_any_any() {
-        let (db, types) = setup();
+        let db = TypeSystem::new();
+        let types = db.standard_types();
         assert_eq!(db.compare(types.any, types.any), Comparison::Equal);
     }
 
     #[test]
     fn test_compare_incompatible_pair() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let lhs = db.alloc(Type::Pair(types.int, types.public_key));
         let rhs = db.alloc(Type::Pair(types.bytes, types.nil));
         assert_eq!(db.compare(lhs, rhs), Comparison::Incompatible);
@@ -364,7 +387,8 @@ mod tests {
 
     #[test]
     fn test_compare_castable_pair() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let lhs = db.alloc(Type::Pair(types.int, types.public_key));
         let rhs = db.alloc(Type::Pair(types.bytes, types.bytes));
         assert_eq!(db.compare(lhs, rhs), Comparison::Castable);
@@ -372,7 +396,8 @@ mod tests {
 
     #[test]
     fn test_compare_assignable_pair() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let lhs = db.alloc(Type::Pair(types.int, types.public_key));
         let rhs = db.alloc(Type::Pair(types.atom, types.atom));
         assert_eq!(db.compare(lhs, rhs), Comparison::Assignable);
@@ -380,7 +405,8 @@ mod tests {
 
     #[test]
     fn test_generic_inference() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
 
         let generic = db.alloc(Type::Generic);
 

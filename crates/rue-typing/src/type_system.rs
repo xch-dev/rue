@@ -4,20 +4,61 @@ use id_arena::{Arena, Id};
 
 use crate::{
     check_type, compare_type, difference_type, replace_type, simplify_check, stringify_type,
-    substitute_type, Check, CheckError, Comparison, ComparisonContext, StandardTypes, Type,
-    TypePath,
+    substitute_type, Check, CheckError, Comparison, ComparisonContext, Semantics, StandardTypes,
+    Type, TypePath,
 };
 
 pub type TypeId = Id<Type>;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct TypeSystem {
     arena: Arena<Type>,
+    types: StandardTypes,
+}
+
+impl Default for TypeSystem {
+    fn default() -> Self {
+        let mut arena = Arena::new();
+
+        let unknown = arena.alloc(Type::Unknown);
+        let never = arena.alloc(Type::Never);
+        let atom = arena.alloc(Type::Atom);
+        let bytes = arena.alloc(Type::Bytes);
+        let bytes32 = arena.alloc(Type::Bytes32);
+        let public_key = arena.alloc(Type::PublicKey);
+        let int = arena.alloc(Type::Int);
+        let bool = arena.alloc(Type::Bool);
+        let nil = arena.alloc(Type::Nil);
+
+        let any = arena.alloc(Type::Unknown);
+        let pair = arena.alloc(Type::Pair(any, any));
+        arena[any] = Type::Union(vec![atom, pair]);
+
+        Self {
+            arena,
+            types: StandardTypes {
+                unknown,
+                never,
+                any,
+                atom,
+                bytes,
+                bytes32,
+                public_key,
+                int,
+                bool,
+                nil,
+            },
+        }
+    }
 }
 
 impl TypeSystem {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn standard_types(&self) -> StandardTypes {
+        self.types
     }
 
     pub fn alloc(&mut self, ty: Type) -> TypeId {
@@ -81,20 +122,13 @@ impl TypeSystem {
         &mut self,
         type_id: TypeId,
         mut substitutions: HashMap<TypeId, TypeId>,
-    ) -> TypeId {
-        substitute_type(self, type_id, &mut substitutions, true, &mut HashSet::new())
-    }
-
-    pub fn structure(
-        &mut self,
-        type_id: TypeId,
-        mut substitutions: HashMap<TypeId, TypeId>,
+        semantics: Semantics,
     ) -> TypeId {
         substitute_type(
             self,
             type_id,
             &mut substitutions,
-            false,
+            semantics,
             &mut HashSet::new(),
         )
     }

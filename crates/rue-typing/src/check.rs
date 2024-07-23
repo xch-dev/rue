@@ -62,6 +62,7 @@ where
         (Type::Lazy(..), _) | (_, Type::Lazy(..)) => unreachable!(),
         (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
         (Type::Struct(..), _) | (_, Type::Struct(..)) => unreachable!(),
+        (Type::Callable(..), _) | (_, Type::Callable(..)) => unreachable!(),
 
         // TODO: Implement generic type checking?
         (Type::Generic, _) => Check::None,
@@ -235,6 +236,7 @@ where
             Type::Lazy(..) => unreachable!(),
             Type::Alias(..) => unreachable!(),
             Type::Struct(..) => unreachable!(),
+            Type::Callable(..) => unreachable!(),
             Type::Generic => return Err(CheckError::Impossible(item, rhs)),
             Type::Unknown => {}
             Type::Never => {
@@ -277,6 +279,7 @@ where
         Type::Alias(..) => unreachable!(),
         Type::Union(..) => unreachable!(),
         Type::Struct(..) => unreachable!(),
+        Type::Callable(..) => unreachable!(),
         Type::Unknown => Check::None,
         Type::Generic => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Never => return Err(CheckError::Impossible(original_type_id, rhs)),
@@ -338,7 +341,7 @@ mod tests {
 
     use indexmap::indexmap;
 
-    use crate::{alloc_list, alloc_struct, setup};
+    use crate::{alloc_list, alloc_struct, Rest, Semantics};
 
     use super::*;
 
@@ -359,13 +362,15 @@ mod tests {
 
     #[test]
     fn check_any_bytes() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.any, types.bytes, "(not (l val))");
     }
 
     #[test]
     fn check_any_bytes32() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(
             &mut db,
             types.any,
@@ -376,7 +381,8 @@ mod tests {
 
     #[test]
     fn check_any_public_key() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(
             &mut db,
             types.any,
@@ -387,13 +393,15 @@ mod tests {
 
     #[test]
     fn check_any_int() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.any, types.int, "(not (l val))");
     }
 
     #[test]
     fn check_any_bool() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(
             &mut db,
             types.any,
@@ -404,7 +412,8 @@ mod tests {
 
     #[test]
     fn check_any_nil() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(
             &mut db,
             types.any,
@@ -415,55 +424,64 @@ mod tests {
 
     #[test]
     fn check_bytes_bytes() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.bytes, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes32_bytes32() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.bytes32, types.bytes32, "1");
     }
 
     #[test]
     fn check_public_key_public_key() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.public_key, types.public_key, "1");
     }
 
     #[test]
     fn check_int_int() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.int, types.int, "1");
     }
 
     #[test]
     fn check_bool_bool() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.bool, types.bool, "1");
     }
 
     #[test]
     fn check_nil_nil() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.nil, types.nil, "1");
     }
 
     #[test]
     fn check_bytes_bytes32() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.bytes, types.bytes32, "(= (strlen val) 32)");
     }
 
     #[test]
     fn check_bytes32_bytes() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.bytes32, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes_public_key() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(
             &mut db,
             types.bytes,
@@ -474,25 +492,29 @@ mod tests {
 
     #[test]
     fn check_public_key_bytes() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.public_key, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes_nil() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.bytes, types.nil, "(= val ())");
     }
 
     #[test]
     fn check_nil_bytes() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.nil, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes_bool() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(
             &mut db,
             types.bytes,
@@ -503,62 +525,72 @@ mod tests {
 
     #[test]
     fn check_bool_bytes() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.bool, types.bytes, "1");
     }
 
     #[test]
     fn check_bytes32_public_key() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_impossible(&mut db, types.bytes32, types.public_key);
     }
 
     #[test]
     fn check_bytes_int() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.bytes, types.int, "1");
     }
 
     #[test]
     fn check_int_bytes() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.int, types.bytes, "1");
     }
 
     #[test]
     fn check_bool_nil() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.bool, types.nil, "(= val ())");
     }
 
     #[test]
     fn check_nil_bool() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.nil, types.bool, "1");
     }
 
     #[test]
     fn check_any_any() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.any, types.any, "1");
     }
 
     #[test]
     fn check_bytes_any() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         check_str(&mut db, types.any, types.any, "1");
     }
 
     #[test]
     fn check_list_nil() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let list = alloc_list(&mut db, &types, types.bytes);
         check_str(&mut db, list, types.nil, "(not (l val))");
     }
 
     #[test]
     fn check_list_pair() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let list = alloc_list(&mut db, &types, types.bytes);
         let pair = db.alloc(Type::Pair(types.bytes, list));
         check_str(&mut db, list, pair, "(l val)");
@@ -566,14 +598,16 @@ mod tests {
 
     #[test]
     fn check_any_list() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let list = alloc_list(&mut db, &types, types.bytes);
         check_recursive(&mut db, types.any, list);
     }
 
     #[test]
     fn check_any_point() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let point_end = db.alloc(Type::Pair(types.int, types.nil));
         let point = db.alloc(Type::Pair(types.int, point_end));
         check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) ()))");
@@ -581,7 +615,8 @@ mod tests {
 
     #[test]
     fn check_any_point_struct() {
-        let (mut db, types) = setup();
+        let mut db = TypeSystem::new();
+        let types = db.standard_types();
         let point_struct = alloc_struct(
             &mut db,
             &types,
@@ -589,9 +624,15 @@ mod tests {
                 "x".to_string() => types.int,
                 "y".to_string() => types.int,
             },
-            true,
+            Rest::Nil,
         );
-        let point = db.structure(point_struct, HashMap::new());
+        let point = db.substitute(
+            point_struct,
+            HashMap::new(),
+            Semantics::StructuralOnly {
+                callable: types.never,
+            },
+        );
         check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) ()))");
     }
 }

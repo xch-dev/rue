@@ -1,12 +1,20 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{Alias, Type, TypeId, TypeSystem};
+use indexmap::IndexMap;
+
+use crate::{Alias, Callable, Type, TypeId, TypeSystem};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Semantics {
+    Preserve,
+    StructuralOnly { callable: TypeId },
+}
 
 pub(crate) fn substitute_type(
     types: &mut TypeSystem,
     type_id: TypeId,
     substitutions: &mut HashMap<TypeId, TypeId>,
-    preserve_semantics: bool,
+    semantics: Semantics,
     visited: &mut HashSet<TypeId>,
 ) -> TypeId {
     if let Some(new_type_id) = substitutions.get(&type_id) {
@@ -32,9 +40,8 @@ pub(crate) fn substitute_type(
         Type::Pair(first, rest) => {
             let (first, rest) = (*first, *rest);
 
-            let new_first =
-                substitute_type(types, first, substitutions, preserve_semantics, visited);
-            let new_rest = substitute_type(types, rest, substitutions, preserve_semantics, visited);
+            let new_first = substitute_type(types, first, substitutions, semantics, visited);
+            let new_rest = substitute_type(types, rest, substitutions, semantics, visited);
 
             if new_first == first && new_rest == rest {
                 type_id
@@ -51,7 +58,7 @@ pub(crate) fn substitute_type(
                     types,
                     *item,
                     substitutions,
-                    preserve_semantics,
+                    semantics,
                     visited,
                 ));
             }
@@ -64,26 +71,15 @@ pub(crate) fn substitute_type(
         }
         Type::Lazy(lazy) => {
             substitutions.extend(lazy.substitutions.clone());
-            substitute_type(
-                types,
-                lazy.type_id,
-                substitutions,
-                preserve_semantics,
-                visited,
-            )
+            substitute_type(types, lazy.type_id, substitutions, semantics, visited)
         }
         Type::Alias(alias) => {
             let alias = alias.clone();
 
-            let new_type_id = substitute_type(
-                types,
-                alias.type_id,
-                substitutions,
-                preserve_semantics,
-                visited,
-            );
+            let new_type_id =
+                substitute_type(types, alias.type_id, substitutions, semantics, visited);
 
-            if preserve_semantics {
+            if semantics == Semantics::Preserve {
                 if new_type_id == alias.type_id {
                     type_id
                 } else {
@@ -100,15 +96,9 @@ pub(crate) fn substitute_type(
         Type::Struct(ty) => {
             let ty = ty.clone();
 
-            let new_type_id = substitute_type(
-                types,
-                ty.type_id,
-                substitutions,
-                preserve_semantics,
-                visited,
-            );
+            let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics, visited);
 
-            if preserve_semantics {
+            if semantics == Semantics::Preserve {
                 if new_type_id == ty.type_id {
                     type_id
                 } else {
@@ -116,12 +106,49 @@ pub(crate) fn substitute_type(
                         original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
                         type_id: new_type_id,
                         field_names: ty.field_names,
-                        nil_terminated: ty.nil_terminated,
+                        rest: ty.rest,
                         generic_types: ty.generic_types,
                     }))
                 }
             } else {
                 new_type_id
+            }
+        }
+        Type::Callable(callable) => {
+            let callable = callable.clone();
+
+            let new_return_type = substitute_type(
+                types,
+                callable.return_type,
+                substitutions,
+                semantics,
+                visited,
+            );
+
+            let mut new_parameters = IndexMap::new();
+            for (name, parameter) in &callable.parameters {
+                let new_parameter =
+                    substitute_type(types, *parameter, substitutions, semantics, visited);
+                new_parameters.insert(name.clone(), new_parameter);
+            }
+
+            match semantics {
+                Semantics::Preserve => {
+                    if new_return_type == callable.return_type
+                        && new_parameters == callable.parameters
+                    {
+                        type_id
+                    } else {
+                        types.alloc(Type::Callable(Callable {
+                            original_type_id: Some(callable.original_type_id.unwrap_or(type_id)),
+                            parameters: new_parameters,
+                            return_type: new_return_type,
+                            rest: callable.rest,
+                            generic_types: callable.generic_types,
+                        }))
+                    }
+                }
+                Semantics::StructuralOnly { callable } => callable,
             }
         }
     };

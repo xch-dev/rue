@@ -22,7 +22,7 @@ pub use type_system::*;
 pub(crate) use difference::difference_type;
 pub(crate) use replace_type::replace_type;
 pub(crate) use stringify::stringify_type;
-pub(crate) use substitute_type::substitute_type;
+pub(crate) use substitute_type::{substitute_type, Semantics};
 
 #[cfg(test)]
 mod test_tools;
