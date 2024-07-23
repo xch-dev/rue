@@ -501,7 +501,7 @@ mod tests {
             &mut db,
             types.any,
             types.bool,
-            "(and (not (l val)) (any (= val 0) (= val 1)))",
+            "(and (not (l val)) (or (= val 0) (= val 1)))",
         );
     }
 
@@ -610,12 +610,7 @@ mod tests {
     fn test_check_bytes_bool() {
         let mut db = TypeSystem::new();
         let types = db.standard_types();
-        check_str(
-            &mut db,
-            types.bytes,
-            types.bool,
-            "(any (= val 0) (= val 1))",
-        );
+        check_str(&mut db, types.bytes, types.bool, "(or (= val 0) (= val 1))");
     }
 
     #[test]
