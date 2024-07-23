@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 use rue_parser::{AstNode, FunctionType as Ast};
-use rue_typing::{Callable, Rest, Type, TypeId};
+use rue_typing::{construct_items, Callable, Rest, Type, TypeId};
 
 use crate::{compiler::Compiler, ErrorKind};
 
@@ -14,9 +14,6 @@ impl Compiler<'_> {
         let len = params.len();
 
         for (i, param) in params.into_iter().enumerate() {
-            // We don't actually use the names yet,
-            // but go ahead and check for duplicates.
-            // TODO: Use the name in the actual type?
             let name = param
                 .name()
                 .map(|token| token.to_string())
@@ -70,6 +67,8 @@ impl Compiler<'_> {
         let return_type = function
             .return_type()
             .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
+
+        let parameters = construct_items(self.ty, parameters.into_iter(), rest);
 
         // Allocate a new type for the function.
         // TODO: Support generic types.

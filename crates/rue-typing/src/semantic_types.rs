@@ -1,18 +1,19 @@
 use std::collections::HashMap;
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use num_bigint::BigInt;
 
 use crate::{Comparison, Type, TypeId, TypeSystem};
 
 /// The kind of ending that a list has.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Rest {
+    /// This means that the list is nil-terminated.
+    #[default]
+    Nil,
     /// This means that there is no special terminator for the list.
     /// The last element is the rest value.
     Spread,
-    /// This means that the list is nil-terminated.
-    Nil,
     /// This means that the list is nil-terminated, but may contain an additional optional value.
     Optional,
 }
@@ -65,7 +66,7 @@ pub struct Enum {
     /// Whether the enum semantically has fields.
     pub has_fields: bool,
     /// This is a map of the original variant names to their type ids.
-    pub variants: HashMap<String, TypeId>,
+    pub variants: IndexMap<String, TypeId>,
 }
 
 /// Represents a variant type which can optionally have fields.

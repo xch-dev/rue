@@ -1,6 +1,7 @@
 use rue_parser::GroupExpr;
+use rue_typing::TypeId;
 
-use crate::{compiler::Compiler, value::Value, TypeId};
+use crate::{compiler::Compiler, value::Value};
 
 impl Compiler<'_> {
     pub fn compile_group_expr(

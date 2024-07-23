@@ -1,11 +1,11 @@
 use rue_parser::{AstNode, FunctionItem};
+use rue_typing::{construct_items, Callable, Rest, Type};
 
 use crate::{
     compiler::Compiler,
     hir::Hir,
     scope::Scope,
     symbol::{Function, Symbol},
-    value::{FunctionType, Rest, Type},
     ErrorKind, SymbolId,
 };
 
@@ -49,6 +49,7 @@ impl Compiler<'_> {
         }
 
         let mut param_types = Vec::new();
+        let mut param_names = Vec::new();
         let mut rest = Rest::Nil;
 
         let params = function_item.params();
@@ -73,7 +74,8 @@ impl Compiler<'_> {
             *self.db.symbol_mut(symbol_id) = Symbol::Parameter(if param.optional().is_some() {
                 // If the parameter is optional, wrap the type in a possibly undefined type.
                 // This prevents referencing the parameter until it's checked for undefined.
-                self.ty.alloc(Type::Optional(type_id))
+                // TODO: self.ty.alloc(Type::Optional(type_id))
+                todo!()
             } else {
                 // Otherwise, just use the type.
                 type_id
@@ -88,8 +90,11 @@ impl Compiler<'_> {
                     );
                 }
 
+                param_names.push(name.to_string());
                 self.scope_mut().define_symbol(name.to_string(), symbol_id);
                 self.db.insert_symbol_token(symbol_id, name);
+            } else {
+                param_names.push(format!("#{}", i));
             }
 
             // Check if it's a spread or optional parameter.
@@ -133,11 +138,13 @@ impl Compiler<'_> {
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
         // Create the function's type.
-        let ty = FunctionType {
-            generic_types,
-            param_types,
-            rest,
+        let ty = Callable {
+            original_type_id: None,
+            parameter_names: param_names.into_iter().collect(),
+            parameters: construct_items(self.ty, param_types.into_iter(), rest),
             return_type,
+            rest,
+            generic_types,
         };
 
         // Update the symbol with the function.

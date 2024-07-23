@@ -1,8 +1,7 @@
-use clvmr::Allocator;
-use num_bigint::BigInt;
 use rue_parser::{LiteralExpr, SyntaxKind, SyntaxToken};
+use rue_typing::bigint_to_bytes;
 
-use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
+use crate::{compiler::Compiler, hir::Hir, value::Value};
 
 impl Compiler<'_> {
     pub fn compile_literal_expr(&mut self, literal: &LiteralExpr) -> Value {
@@ -39,10 +38,7 @@ impl Compiler<'_> {
             .parse()
             .expect("failed to parse integer literal");
 
-        let atom = Self::bigint_to_bytes(bigint).unwrap_or_else(|| {
-            self.db.error(ErrorKind::IntegerTooLarge, int.text_range());
-            Vec::new()
-        });
+        let atom = bigint_to_bytes(bigint);
 
         // Extract the atom representation of the number.
         Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.ty.std().int)
@@ -91,16 +87,5 @@ impl Compiler<'_> {
                 .alloc_hir(Hir::Atom(text.replace(quote, "").as_bytes().to_vec())),
             self.ty.std().bytes,
         )
-    }
-
-    pub fn bigint_to_bytes(bigint: BigInt) -> Option<Vec<u8>> {
-        // Create a CLVM allocator.
-        let mut allocator = Allocator::new();
-
-        // Try to allocate the number.
-        let ptr = allocator.new_number(bigint).ok()?;
-
-        // Extract the atom representation of the number.
-        Some(allocator.atom(ptr).as_ref().to_vec())
     }
 }

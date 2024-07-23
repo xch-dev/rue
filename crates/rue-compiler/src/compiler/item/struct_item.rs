@@ -1,11 +1,8 @@
 use indexmap::IndexMap;
 use rue_parser::{AstNode, StructField, StructItem};
+use rue_typing::{construct_items, Rest, Struct, Type, TypeId};
 
-use crate::{
-    compiler::Compiler,
-    value::{Rest, StructType, Type},
-    ErrorKind, TypeId,
-};
+use crate::{compiler::Compiler, ErrorKind};
 
 impl Compiler<'_> {
     /// Define a type for a struct in the current scope, but leave it as unknown for now.
@@ -19,14 +16,20 @@ impl Compiler<'_> {
     }
 
     /// Compile and resolve a struct type.
-    pub fn compile_struct_item(&mut self, struct_item: &StructItem, type_id: TypeId) {
-        self.type_definition_stack.push(type_id);
+    pub fn compile_struct_item(&mut self, struct_item: &StructItem, struct_type_id: TypeId) {
+        self.type_definition_stack.push(struct_type_id);
+
         let (fields, rest) = self.compile_struct_fields(struct_item.fields());
-        *self.db.ty_mut(type_id) = Type::Struct(StructType {
-            original_type_id: type_id,
-            fields,
+        let type_id = construct_items(self.ty, fields.values().copied(), rest);
+
+        *self.ty.get_mut(struct_type_id) = Type::Struct(Struct {
+            original_type_id: None,
+            field_names: fields.keys().cloned().collect(),
+            type_id,
             rest,
+            generic_types: Vec::new(),
         });
+
         self.type_definition_stack.pop().unwrap();
     }
 

@@ -6,8 +6,8 @@ use crate::{compiler::Compiler, hir::Hir, value::Value};
 impl Compiler<'_> {
     pub fn compile_pair_expr(&mut self, pair: &PairExpr, expected_type: Option<TypeId>) -> Value {
         // Extract the first and rest type out of the expected type.
-        let first = expected_type.and_then(|type_id| self.ty.pair_first(type_id));
-        let rest = expected_type.and_then(|type_id| self.ty.pair_rest(type_id));
+        let first = expected_type.and_then(|type_id| Some(self.ty.get_pair(type_id)?.0));
+        let rest = expected_type.and_then(|type_id| Some(self.ty.get_pair(type_id)?.1));
 
         // Compile the first expression, if present.
         // It's a parser error if not, so it's fine to return unknown.

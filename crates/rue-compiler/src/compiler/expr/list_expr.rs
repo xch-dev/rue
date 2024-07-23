@@ -1,11 +1,7 @@
 use rue_parser::{AstNode, ListExpr};
+use rue_typing::{Type, TypeId};
 
-use crate::{
-    compiler::Compiler,
-    hir::Hir,
-    value::{Type, Value},
-    ErrorKind, TypeId,
-};
+use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
 
 impl Compiler<'_> {
     pub fn compile_list_expr(

@@ -1,9 +1,10 @@
 use rue_parser::FieldAccessExpr;
+use rue_typing::{deconstruct_items, Rest, Type};
 
 use crate::{
     compiler::Compiler,
     hir::{Hir, Op},
-    value::{GuardPathItem, PairType, Rest, Type, Value},
+    value::{GuardPathItem, Value},
     ErrorKind,
 };
 
@@ -21,22 +22,24 @@ impl Compiler<'_> {
             return self.unknown();
         };
 
-        let mut new_value = match self.db.ty(old_value.type_id).clone() {
-            Type::Struct(struct_type) => {
-                if let Some((index, _, &field_type)) =
-                    struct_type.fields.get_full(field_name.text())
-                {
-                    let mut type_id = field_type;
+        let mut new_value = match self.ty.get(old_value.type_id).clone() {
+            Type::Struct(ty) => {
+                let fields = deconstruct_items(self.ty, ty.type_id, ty.field_names.len(), ty.rest)
+                    .expect("invalid struct type");
 
-                    if index == struct_type.fields.len() - 1 && struct_type.rest == Rest::Optional {
-                        type_id = self.ty.alloc(Type::Optional(type_id));
+                if let Some(index) = ty.field_names.get_index_of(field_name.text()) {
+                    let type_id = fields[index];
+
+                    if index == ty.field_names.len() - 1 && ty.rest == Rest::Optional {
+                        todo!();
+                        // TODO: type_id = self.ty.alloc(Type::Optional(type_id));
                     }
 
                     Value::new(
                         self.compile_index(
                             old_value.hir_id,
                             index,
-                            index == struct_type.fields.len() - 1 && struct_type.rest != Rest::Nil,
+                            index == ty.field_names.len() - 1 && ty.rest != Rest::Nil,
                         ),
                         type_id,
                     )
@@ -49,14 +52,24 @@ impl Compiler<'_> {
                     return self.unknown();
                 }
             }
-            Type::EnumVariant(variant_type) => {
-                let fields = variant_type.fields.unwrap_or_default();
+            Type::Variant(variant) => {
+                let field_names = variant.field_names.clone().unwrap_or_default();
 
-                if let Some((index, _, &field_type)) = fields.get_full(field_name.text()) {
-                    let mut type_id = field_type;
+                let fields = variant
+                    .field_names
+                    .as_ref()
+                    .map(|field_names| {
+                        deconstruct_items(self.ty, variant.type_id, field_names.len(), variant.rest)
+                            .expect("invalid struct type")
+                    })
+                    .unwrap_or_default();
 
-                    if index == fields.len() - 1 && variant_type.rest == Rest::Optional {
-                        type_id = self.ty.alloc(Type::Optional(type_id));
+                if let Some(index) = field_names.get_index_of(field_name.text()) {
+                    let type_id = fields[index];
+
+                    if index == fields.len() - 1 && variant.rest == Rest::Optional {
+                        // TODO: type_id = self.ty.alloc(Type::Optional(type_id));
+                        todo!()
                     }
 
                     let fields_hir_id = self.db.alloc_hir(Hir::Op(Op::Rest, old_value.hir_id));
@@ -65,7 +78,7 @@ impl Compiler<'_> {
                         self.compile_index(
                             fields_hir_id,
                             index,
-                            index == fields.len() - 1 && variant_type.rest != Rest::Nil,
+                            index == fields.len() - 1 && variant.rest != Rest::Nil,
                         ),
                         type_id,
                     )
@@ -78,7 +91,7 @@ impl Compiler<'_> {
                     return self.unknown();
                 }
             }
-            Type::Pair(PairType { first, rest }) => match field_name.text() {
+            Type::Pair(first, rest) => match field_name.text() {
                 "first" => Value::new(
                     self.db.alloc_hir(Hir::Op(Op::First, old_value.hir_id)),
                     first,

@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
 use rue_parser::{AstNode, IfStmt};
+use rue_typing::TypeId;
 
 use crate::{
     compiler::{block::BlockTerminator, Compiler},
     scope::Scope,
     value::{GuardPath, TypeOverride},
-    ErrorKind, HirId, TypeId,
+    ErrorKind, HirId,
 };
 
 impl Compiler<'_> {
