@@ -3,7 +3,10 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-use crate::{Type, TypeId, TypeSystem};
+use num_bigint::BigInt;
+use num_traits::One;
+
+use crate::{bigint_to_bytes, Type, TypeId, TypeSystem};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Comparison {
@@ -123,6 +126,8 @@ pub(crate) fn compare_type(
         }
         (Type::Pair(..), _) | (_, Type::Pair(..)) => Comparison::Incompatible,
 
+        (Type::True, Type::True) => Comparison::Equal,
+        (Type::False, Type::False) => Comparison::Equal,
         (Type::Atom, Type::Atom) => Comparison::Equal,
         (Type::Bytes, Type::Bytes) => Comparison::Equal,
         (Type::Bytes32, Type::Bytes32) => Comparison::Equal,
@@ -177,6 +182,117 @@ pub(crate) fn compare_type(
         (Type::Bool, Type::Nil) => Comparison::Incompatible,
         (Type::Nil, Type::Bytes32) => Comparison::Incompatible,
         (Type::Nil, Type::PublicKey) => Comparison::Incompatible,
+
+        (Type::True, Type::False) => Comparison::Incompatible,
+        (Type::False, Type::True) => Comparison::Incompatible,
+
+        (Type::True, Type::Bool) => Comparison::Assignable,
+        (Type::False, Type::Bool) => Comparison::Assignable,
+        (Type::True, Type::Bytes) => Comparison::Castable,
+        (Type::False, Type::Bytes) => Comparison::Castable,
+        (Type::True, Type::Int) => Comparison::Castable,
+        (Type::False, Type::Int) => Comparison::Castable,
+        (Type::True, Type::Atom) => Comparison::Assignable,
+        (Type::False, Type::Atom) => Comparison::Assignable,
+        (Type::True, Type::Nil) => Comparison::Incompatible,
+        (Type::False, Type::Nil) => Comparison::Castable,
+        (Type::True, Type::Bytes32) => Comparison::Incompatible,
+        (Type::False, Type::Bytes32) => Comparison::Incompatible,
+        (Type::True, Type::PublicKey) => Comparison::Incompatible,
+        (Type::False, Type::PublicKey) => Comparison::Incompatible,
+
+        (Type::Bool, Type::True) => Comparison::Superset,
+        (Type::Bool, Type::False) => Comparison::Superset,
+        (Type::Bytes, Type::True) => Comparison::Superset,
+        (Type::Bytes, Type::False) => Comparison::Superset,
+        (Type::Int, Type::True) => Comparison::Superset,
+        (Type::Int, Type::False) => Comparison::Superset,
+        (Type::Atom, Type::True) => Comparison::Superset,
+        (Type::Atom, Type::False) => Comparison::Superset,
+        (Type::Nil, Type::True) => Comparison::Incompatible,
+        (Type::Nil, Type::False) => Comparison::Castable,
+        (Type::Bytes32, Type::True) => Comparison::Incompatible,
+        (Type::Bytes32, Type::False) => Comparison::Incompatible,
+        (Type::PublicKey, Type::True) => Comparison::Incompatible,
+        (Type::PublicKey, Type::False) => Comparison::Incompatible,
+
+        (Type::Value(..), Type::Atom) => Comparison::Assignable,
+        (Type::Value(..), Type::Bytes) => Comparison::Castable,
+        (Type::Value(..), Type::Int) => Comparison::Assignable,
+        (Type::Value(value), Type::Bytes32) => {
+            if bigint_to_bytes(value.clone()).len() == 32 {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+        (Type::Value(value), Type::PublicKey) => {
+            if bigint_to_bytes(value.clone()).len() == 48 {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+        (Type::Value(value), Type::Nil) => {
+            if value == &BigInt::ZERO {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+        (Type::Value(value), Type::True) => {
+            if value == &BigInt::one() {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+        (Type::Value(value), Type::Bool) => {
+            if value == &BigInt::ZERO || value == &BigInt::one() {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
+        (Type::Atom, Type::Value(..)) => Comparison::Superset,
+        (Type::Bytes, Type::Value(..)) => Comparison::Superset,
+        (Type::Int, Type::Value(..)) => Comparison::Superset,
+        (Type::Bytes32, Type::Value(value)) => {
+            if bigint_to_bytes(value.clone()).len() == 32 {
+                Comparison::Superset
+            } else {
+                Comparison::Incompatible
+            }
+        }
+        (Type::PublicKey, Type::Value(value)) => {
+            if bigint_to_bytes(value.clone()).len() == 48 {
+                Comparison::Superset
+            } else {
+                Comparison::Incompatible
+            }
+        }
+        (Type::Nil, Type::Value(value)) => {
+            if value == &BigInt::ZERO {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+        (Type::Bool, Type::Value(value)) => {
+            if value == &BigInt::ZERO || value == &BigInt::one() {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+        (Type::Value(lhs), Type::Value(rhs)) => {
+            if lhs == rhs {
+                Comparison::Equal
+            } else {
+                Comparison::Incompatible
+            }
+        }
 
         (Type::Lazy(lazy), _) => {
             ctx.substitution_stack.push(lazy.substitutions.clone());

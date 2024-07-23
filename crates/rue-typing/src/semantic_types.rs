@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
+use num_bigint::BigInt;
 
 use crate::TypeId;
 
@@ -52,4 +53,29 @@ pub struct Callable {
     pub return_type: TypeId,
     pub rest: Rest,
     pub generic_types: Vec<TypeId>,
+}
+
+/// Represents an enum type which can have multiple variants.
+#[derive(Debug, Clone)]
+pub struct Enum {
+    pub original_variants: Vec<TypeId>,
+    pub has_fields: bool,
+}
+
+/// Represents a variant type which can optionally have fields.
+#[derive(Debug, Clone)]
+pub struct Variant {
+    pub original_type_id: Option<TypeId>,
+    pub enum_type: TypeId,
+    pub field_names: IndexSet<String>,
+    pub fields: Option<VariantFields>,
+    pub generic_types: Vec<TypeId>,
+    pub discriminant: BigInt,
+}
+
+/// Field information for a variant type.
+#[derive(Debug, Clone)]
+pub struct VariantFields {
+    pub fields: TypeId,
+    pub rest: Rest,
 }

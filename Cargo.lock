@@ -1460,9 +1460,11 @@ name = "rue-typing"
 version = "0.1.1"
 dependencies = [
  "anyhow",
+ "clvmr 0.6.1",
  "id-arena",
  "indexmap",
  "num-bigint",
+ "num-traits",
  "thiserror",
 ]
 

@@ -1,3 +1,5 @@
+use num_bigint::BigInt;
+
 use crate::{Alias, Callable, Lazy, Struct, TypeId};
 
 #[derive(Debug, Clone)]
@@ -10,8 +12,10 @@ pub enum Type {
     Bytes32,
     PublicKey,
     Int,
-    Bool,
+    True,
+    False,
     Nil,
+    Value(BigInt),
     Pair(TypeId, TypeId),
     Union(Vec<TypeId>),
     Ref(TypeId),

@@ -1,5 +1,8 @@
 use std::collections::HashSet;
 
+use num_bigint::BigInt;
+use num_traits::One;
+
 use crate::{StandardTypes, Struct, Type, TypeId, TypeSystem};
 
 pub(crate) fn difference_type(
@@ -71,7 +74,7 @@ pub(crate) fn difference_type(
         (Type::Bool, Type::Bytes) => std.never,
         (Type::Bool, Type::Atom) => std.never,
         (Type::Bool, Type::Int) => std.never,
-        (Type::Bool, Type::Nil) => lhs,
+        (Type::Bool, Type::Nil) => types.alloc(Type::Value(BigInt::one())),
 
         (Type::Nil, Type::Bytes32) => lhs,
         (Type::Nil, Type::PublicKey) => lhs,
@@ -79,6 +82,30 @@ pub(crate) fn difference_type(
         (Type::Nil, Type::Atom) => std.never,
         (Type::Nil, Type::Int) => std.never,
         (Type::Nil, Type::Bool) => std.never,
+
+        (Type::Nil, Type::Value(value)) => {
+            if value == &BigInt::ZERO {
+                std.never
+            } else {
+                lhs
+            }
+        }
+        (Type::Bool, Type::Value(value)) => {
+            if value == &BigInt::ZERO {
+                types.standard_types().true_bool
+            } else if value == &BigInt::one() {
+                types.standard_types().false_bool
+            } else {
+                lhs
+            }
+        }
+        (Type::Value(lhs_value), Type::Value(rhs_value)) => {
+            if lhs_value == rhs_value {
+                std.never
+            } else {
+                lhs
+            }
+        }
 
         (Type::Atom, Type::Pair(..)) => lhs,
         (Type::Bytes, Type::Pair(..)) => lhs,

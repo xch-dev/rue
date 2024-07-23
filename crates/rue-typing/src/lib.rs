@@ -1,3 +1,4 @@
+mod bigint;
 mod check;
 mod comparison;
 mod difference;
@@ -11,6 +12,7 @@ mod ty;
 mod type_path;
 mod type_system;
 
+pub use bigint::*;
 pub use check::*;
 pub use comparison::*;
 pub use semantic_types::*;

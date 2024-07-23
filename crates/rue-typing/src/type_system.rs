@@ -28,6 +28,8 @@ impl Default for TypeSystem {
         let public_key = arena.alloc(Type::PublicKey);
         let int = arena.alloc(Type::Int);
         let bool = arena.alloc(Type::Bool);
+        let true_bool = arena.alloc(Type::True);
+        let false_bool = arena.alloc(Type::False);
         let nil = arena.alloc(Type::Nil);
 
         let any = arena.alloc(Type::Unknown);
@@ -46,6 +48,8 @@ impl Default for TypeSystem {
                 public_key,
                 int,
                 bool,
+                true_bool,
+                false_bool,
                 nil,
             },
         }

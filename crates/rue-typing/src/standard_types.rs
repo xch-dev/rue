@@ -11,5 +11,7 @@ pub struct StandardTypes {
     pub public_key: TypeId,
     pub int: TypeId,
     pub bool: TypeId,
+    pub true_bool: TypeId,
+    pub false_bool: TypeId,
     pub nil: TypeId,
 }
