@@ -22,23 +22,37 @@ pub(crate) fn simplify_check(check: Check) -> Check {
             let else_ = simplify_check(*else_);
             Check::If(Box::new(cond), Box::new(then), Box::new(else_))
         }
-        Check::First(first) => {
-            let first = simplify_check(*first);
-
-            if first == Check::None {
-                Check::None
-            } else {
-                Check::First(Box::new(first))
-            }
-        }
-        Check::Rest(rest) => {
-            let rest = simplify_check(*rest);
-
-            if rest == Check::None {
-                Check::None
-            } else {
-                Check::Rest(Box::new(rest))
-            }
-        }
+        Check::First(first) => match simplify_check(*first) {
+            Check::None => Check::None,
+            Check::And(items) => Check::And(
+                items
+                    .into_iter()
+                    .map(|item| Check::First(Box::new(item)))
+                    .collect(),
+            ),
+            Check::Or(items) => Check::Or(
+                items
+                    .into_iter()
+                    .map(|item| Check::First(Box::new(item)))
+                    .collect(),
+            ),
+            first => Check::First(Box::new(first)),
+        },
+        Check::Rest(rest) => match simplify_check(*rest) {
+            Check::None => Check::None,
+            Check::And(items) => Check::And(
+                items
+                    .into_iter()
+                    .map(|item| Check::Rest(Box::new(item)))
+                    .collect(),
+            ),
+            Check::Or(items) => Check::Or(
+                items
+                    .into_iter()
+                    .map(|item| Check::Rest(Box::new(item)))
+                    .collect(),
+            ),
+            rest => Check::Rest(Box::new(rest)),
+        },
     }
 }

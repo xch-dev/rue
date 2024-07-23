@@ -564,4 +564,12 @@ mod tests {
         let list = alloc_list(&mut db, &types, types.bytes);
         check_recursive(&mut db, types.any, list);
     }
+
+    #[test]
+    fn check_any_point() {
+        let (mut db, types) = setup();
+        let point_end = db.alloc(Type::Pair(types.int, types.nil));
+        let point = db.alloc(Type::Pair(types.int, point_end));
+        check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) ()))");
+    }
 }
