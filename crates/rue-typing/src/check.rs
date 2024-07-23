@@ -71,6 +71,7 @@ where
         (Type::Never, _) => Check::None,
         (_, Type::Never) => return Err(CheckError::Impossible(lhs, rhs)),
 
+        (Type::Atom, Type::Atom) => Check::None,
         (Type::Bytes, Type::Bytes) => Check::None,
         (Type::Bytes32, Type::Bytes32) => Check::None,
         (Type::PublicKey, Type::PublicKey) => Check::None,
@@ -78,12 +79,21 @@ where
         (Type::Bool, Type::Bool) => Check::None,
         (Type::Nil, Type::Nil) => Check::None,
 
+        (Type::Bytes32, Type::Atom) => Check::None,
+        (Type::PublicKey, Type::Atom) => Check::None,
+        (Type::Int, Type::Atom) => Check::None,
+        (Type::Bytes, Type::Atom) => Check::None,
+        (Type::Bool, Type::Atom) => Check::None,
+        (Type::Nil, Type::Atom) => Check::None,
+
+        (Type::Atom, Type::Bytes) => Check::None,
         (Type::Bytes32, Type::Bytes) => Check::None,
         (Type::PublicKey, Type::Bytes) => Check::None,
         (Type::Int, Type::Bytes) => Check::None,
         (Type::Bool, Type::Bytes) => Check::None,
         (Type::Nil, Type::Bytes) => Check::None,
 
+        (Type::Atom, Type::Int) => Check::None,
         (Type::Bytes32, Type::Int) => Check::None,
         (Type::PublicKey, Type::Int) => Check::None,
         (Type::Bytes, Type::Int) => Check::None,
@@ -91,6 +101,11 @@ where
         (Type::Nil, Type::Int) => Check::None,
 
         (Type::Nil, Type::Bool) => Check::None,
+
+        (Type::Atom, Type::Bool) => Check::IsBool,
+        (Type::Atom, Type::Nil) => Check::IsNil,
+        (Type::Atom, Type::PublicKey) => Check::Length(48),
+        (Type::Atom, Type::Bytes32) => Check::Length(32),
 
         (Type::Bytes, Type::Bool) => Check::IsBool,
         (Type::Bytes, Type::Nil) => Check::IsNil,
@@ -128,6 +143,7 @@ where
         (Type::PublicKey, Type::Bool) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::Bytes32, Type::Bool) => return Err(CheckError::Impossible(lhs, rhs)),
 
+        (Type::Atom, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::Bytes, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::Bytes32, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::PublicKey, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
@@ -135,6 +151,7 @@ where
         (Type::Bool, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::Nil, Type::Pair(..)) => return Err(CheckError::Impossible(lhs, rhs)),
 
+        (Type::Pair(..), Type::Atom) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::Pair(..), Type::Bytes) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::Pair(..), Type::Bytes32) => return Err(CheckError::Impossible(lhs, rhs)),
         (Type::Pair(..), Type::PublicKey) => return Err(CheckError::Impossible(lhs, rhs)),
@@ -221,7 +238,7 @@ where
             Type::Never => {
                 length -= 1;
             }
-            Type::Bytes | Type::Int => {
+            Type::Atom | Type::Bytes | Type::Int => {
                 atom_count += 1;
             }
             Type::Bytes32 => {
@@ -257,6 +274,7 @@ where
         Type::Unknown => Check::None,
         Type::Generic => return Err(CheckError::Impossible(original_type_id, rhs)),
         Type::Never => return Err(CheckError::Impossible(original_type_id, rhs)),
+        Type::Atom if atom_count == length => Check::None,
         Type::Bytes if atom_count == length => Check::None,
         Type::Int if atom_count == length => Check::None,
         Type::Bool if bool_count == length => Check::None,
@@ -267,6 +285,7 @@ where
         Type::PublicKey if atom_count == length => Check::Length(48),
         Type::Bool if atom_count == length => Check::IsBool,
         Type::Nil if atom_count == length => Check::IsNil,
+        Type::Atom => Check::IsAtom,
         Type::Bytes => Check::IsAtom,
         Type::Int => Check::IsAtom,
         Type::Bytes32 if bytes32_count == atom_count => Check::IsAtom,
@@ -304,15 +323,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::StandardTypes;
+    use crate::{alloc_list, setup};
 
     use super::*;
-
-    fn setup() -> (TypeSystem, StandardTypes) {
-        let mut db = TypeSystem::new();
-        let types = StandardTypes::alloc(&mut db);
-        (db, types)
-    }
 
     fn check_str(db: &mut TypeSystem, lhs: TypeId, rhs: TypeId, expected: &str) {
         assert_eq!(format!("{}", db.check(lhs, rhs).unwrap()), expected);
@@ -327,13 +340,6 @@ mod tests {
             db.check(lhs, rhs),
             Err(CheckError::Impossible(..))
         ));
-    }
-
-    fn alloc_list(db: &mut TypeSystem, types: &StandardTypes, item_type_id: TypeId) -> TypeId {
-        let list = db.alloc(Type::Unknown);
-        let pair = db.alloc(Type::Pair(item_type_id, list));
-        *db.get_mut(list) = Type::Union(vec![pair, types.nil]);
-        list
     }
 
     #[test]

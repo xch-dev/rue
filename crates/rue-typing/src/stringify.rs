@@ -21,6 +21,7 @@ pub(crate) fn stringify_type(
         Type::Unknown => "{unknown}".to_string(),
         Type::Generic => "{generic}".to_string(),
         Type::Never => "Never".to_string(),
+        Type::Atom => "Atom".to_string(),
         Type::Bytes => "Bytes".to_string(),
         Type::Bytes32 => "Bytes32".to_string(),
         Type::PublicKey => "PublicKey".to_string(),
@@ -72,10 +73,7 @@ mod tests {
         assert_eq!(db.stringify(types.int), "Int");
         assert_eq!(db.stringify(types.bool), "Bool");
         assert_eq!(db.stringify(types.nil), "Nil");
-        assert_eq!(
-            db.stringify(types.any),
-            "Bytes | ({recursive}, {recursive})"
-        );
+        assert_eq!(db.stringify(types.any), "Atom | ({recursive}, {recursive})");
     }
 
     #[test]
