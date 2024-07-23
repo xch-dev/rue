@@ -98,7 +98,6 @@ ast_enum!(
     FunctionCallExpr,
     FieldAccessExpr,
     IndexAccessExpr,
-    ExistsExpr
 );
 ast_node!(PathExpr);
 ast_node!(InitializerExpr);
@@ -117,26 +116,17 @@ ast_node!(FunctionCallExpr);
 ast_node!(FunctionCallArg);
 ast_node!(FieldAccessExpr);
 ast_node!(IndexAccessExpr);
-ast_node!(ExistsExpr);
 
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
 
-ast_enum!(
-    Type,
-    PathType,
-    ListType,
-    PairType,
-    FunctionType,
-    NullableType
-);
+ast_enum!(Type, PathType, ListType, PairType, FunctionType);
 ast_node!(PathType);
 ast_node!(ListType);
 ast_node!(ListTypeItem);
 ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
-ast_node!(NullableType);
 
 ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt, AssumeStmt);
 ast_node!(LetStmt);
@@ -835,12 +825,6 @@ impl IndexAccessExpr {
     }
 }
 
-impl ExistsExpr {
-    pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
-    }
-}
-
 impl PathType {
     pub fn idents(&self) -> Vec<SyntaxToken> {
         self.syntax()
@@ -915,12 +899,6 @@ impl FunctionTypeParam {
             .find(|token| token.kind() == SyntaxKind::Spread)
     }
 
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
-    }
-}
-
-impl NullableType {
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }

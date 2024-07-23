@@ -8,7 +8,6 @@ use super::Compiler;
 mod binary_expr;
 mod block_expr;
 mod cast_expr;
-mod exists_expr;
 mod field_access_expr;
 mod function_call_expr;
 mod group_expr;
@@ -49,7 +48,6 @@ impl Compiler<'_> {
             Expr::FunctionCallExpr(call) => self.compile_function_call_expr(call),
             Expr::FieldAccessExpr(field_access) => self.compile_field_access_expr(field_access),
             Expr::IndexAccessExpr(index_access) => self.compile_index_access_expr(index_access),
-            Expr::ExistsExpr(exists) => self.compile_exists_expr(exists),
         };
 
         self.is_callee = false;
