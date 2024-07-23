@@ -253,6 +253,10 @@ where
     let always_nil = nil_count == length;
     let always_bytes32 = bytes32_count == length;
     let always_public_key = public_key_count == length;
+    let atom_always_nil = nil_count == atom_count;
+    let atom_always_bool = bool_count == atom_count;
+    let atom_always_bytes32 = bytes32_count == atom_count;
+    let atom_always_public_key = public_key_count == atom_count;
 
     Ok(match types.get(rhs) {
         Type::Ref(..) => unreachable!(),
@@ -274,6 +278,10 @@ where
         Type::Nil if always_atom => Check::IsNil,
         Type::Bytes => Check::IsAtom,
         Type::Int => Check::IsAtom,
+        Type::Bytes32 if atom_always_bytes32 => Check::IsAtom,
+        Type::PublicKey if atom_always_public_key => Check::IsAtom,
+        Type::Bool if atom_always_bool => Check::IsAtom,
+        Type::Nil if atom_always_nil => Check::IsAtom,
         Type::Bytes32 => Check::And(vec![Check::IsAtom, Check::Length(32)]),
         Type::PublicKey => Check::And(vec![Check::IsAtom, Check::Length(48)]),
         Type::Bool => Check::And(vec![Check::IsAtom, Check::IsBool]),
@@ -631,7 +639,7 @@ mod tests {
     fn check_list_nil() {
         let (mut db, types) = setup();
         let list = alloc_list(&mut db, &types, types.bytes);
-        check_str(&mut db, list, types.nil, "(and (not (l val)) (= val ()))");
+        check_str(&mut db, list, types.nil, "(not (l val))");
     }
 
     #[test]
