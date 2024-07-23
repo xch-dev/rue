@@ -344,4 +344,28 @@ mod tests {
         let (db, types) = setup();
         assert_eq!(db.compare(types.any, types.any), Comparison::Equal);
     }
+
+    #[test]
+    fn test_compare_incompatible_pair() {
+        let (mut db, types) = setup();
+        let lhs = db.alloc(Type::Pair(types.int, types.public_key));
+        let rhs = db.alloc(Type::Pair(types.bytes, types.nil));
+        assert_eq!(db.compare(lhs, rhs), Comparison::Incompatible);
+    }
+
+    #[test]
+    fn test_compare_castable_pair() {
+        let (mut db, types) = setup();
+        let lhs = db.alloc(Type::Pair(types.int, types.public_key));
+        let rhs = db.alloc(Type::Pair(types.bytes, types.bytes));
+        assert_eq!(db.compare(lhs, rhs), Comparison::Castable);
+    }
+
+    #[test]
+    fn test_compare_assignable_pair() {
+        let (mut db, types) = setup();
+        let lhs = db.alloc(Type::Pair(types.int, types.public_key));
+        let rhs = db.alloc(Type::Pair(types.atom, types.atom));
+        assert_eq!(db.compare(lhs, rhs), Comparison::Assignable);
+    }
 }
