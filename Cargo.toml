@@ -37,10 +37,11 @@ too_many_lines = "allow"
 match_same_arms = "allow"
 
 [workspace.dependencies]
-rue-parser = { path = "./crates/rue-parser", version = "0.1.0" }
-rue-compiler = { path = "./crates/rue-compiler", version = "0.1.0" }
-rue-clvm = { path = "./crates/rue-clvm", version = "0.1.0" }
-rue-lexer = { path = "./crates/rue-lexer", version = "0.1.0" }
+rue-parser = { path = "./crates/rue-parser", version = "0.1.1" }
+rue-compiler = { path = "./crates/rue-compiler", version = "0.1.1" }
+rue-typing = { path = "./crates/rue-typing", version = "0.1.1" }
+rue-clvm = { path = "./crates/rue-clvm", version = "0.1.1" }
+rue-lexer = { path = "./crates/rue-lexer", version = "0.1.1" }
 clvmr_old = { version = "0.3.2", package = "clvmr" }
 clvmr = "0.6.1"
 clap = "4.5.4"

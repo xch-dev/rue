@@ -1410,6 +1410,7 @@ dependencies = [
  "rowan",
  "rue-clvm",
  "rue-parser",
+ "rue-typing",
 ]
 
 [[package]]
