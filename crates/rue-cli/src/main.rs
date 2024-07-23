@@ -5,7 +5,7 @@ use std::fs;
 use clap::Parser;
 use clvmr::{serde::node_to_bytes, Allocator, NodePtr};
 use rue_clvm::{parse_clvm, run_clvm, stringify_clvm};
-use rue_compiler::{compile, Diagnostic, DiagnosticKind};
+use rue_compiler::{compile, compile_raw, Diagnostic, DiagnosticKind};
 use rue_parser::{line_col, parse, LineCol};
 
 /// CLI tools for working with the Rue compiler.
@@ -49,7 +49,12 @@ fn build(file: String, should_compile: bool, run: &Option<Option<String>>) {
     }
 
     let mut allocator = Allocator::new();
-    let output = compile(&mut allocator, &ast, should_compile && errors.is_empty());
+    let output = compile_raw(
+        &mut allocator,
+        &ast,
+        should_compile && errors.is_empty(),
+        false,
+    );
 
     if print_diagnostics(&source, &output.diagnostics) {
         return;

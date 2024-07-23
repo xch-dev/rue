@@ -41,6 +41,62 @@ pub(crate) fn compare_type(
     let comparison = match (db.get(lhs), db.get(rhs)) {
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
 
+        (Type::Lazy(lazy), _) => {
+            ctx.substitution_stack.push(lazy.substitutions.clone());
+            let result = compare_type(db, lazy.type_id, rhs, ctx);
+            ctx.substitution_stack.pop().unwrap();
+            result
+        }
+
+        (_, Type::Lazy(lazy)) => {
+            ctx.substitution_stack.push(lazy.substitutions.clone());
+            let result = compare_type(db, lhs, lazy.type_id, ctx);
+            ctx.substitution_stack.pop().unwrap();
+            result
+        }
+
+        (Type::Alias(alias), _) => compare_type(db, alias.type_id, rhs, ctx),
+        (_, Type::Alias(alias)) => compare_type(db, lhs, alias.type_id, ctx),
+
+        (Type::Struct(lhs), _) => max(
+            compare_type(db, lhs.type_id, rhs, ctx),
+            Comparison::Castable,
+        ),
+        (_, Type::Struct(rhs)) => max(
+            compare_type(db, lhs, rhs.type_id, ctx),
+            Comparison::Castable,
+        ),
+
+        (Type::Variant(variant), Type::Enum(ty)) => {
+            let comparison = compare_type(db, variant.type_id, ty.type_id, ctx);
+
+            if variant.enum_type == rhs {
+                max(comparison, Comparison::Assignable)
+            } else {
+                max(comparison, Comparison::Castable)
+            }
+        }
+
+        (Type::Enum(ty), _) => max(compare_type(db, ty.type_id, rhs, ctx), Comparison::Castable),
+        (_, Type::Enum(ty)) => max(compare_type(db, lhs, ty.type_id, ctx), Comparison::Castable),
+
+        (Type::Variant(lhs), _) => max(
+            compare_type(db, lhs.type_id, rhs, ctx),
+            Comparison::Castable,
+        ),
+        (_, Type::Variant(rhs)) => max(
+            compare_type(db, lhs, rhs.type_id, ctx),
+            Comparison::Castable,
+        ),
+
+        (Type::Callable(lhs), Type::Callable(rhs)) => max(
+            compare_type(db, lhs.parameters, rhs.parameters, ctx),
+            compare_type(db, lhs.return_type, rhs.return_type, ctx),
+        ),
+
+        (Type::Callable(..), _) => compare_type(db, lhs, db.std().any, ctx),
+        (_, Type::Callable(..)) => Comparison::Incompatible,
+
         (_, Type::Generic) => {
             let mut found = None;
 
@@ -283,62 +339,6 @@ pub(crate) fn compare_type(
                 Comparison::Incompatible
             }
         }
-
-        (Type::Lazy(lazy), _) => {
-            ctx.substitution_stack.push(lazy.substitutions.clone());
-            let result = compare_type(db, lazy.type_id, rhs, ctx);
-            ctx.substitution_stack.pop().unwrap();
-            result
-        }
-
-        (_, Type::Lazy(lazy)) => {
-            ctx.substitution_stack.push(lazy.substitutions.clone());
-            let result = compare_type(db, lhs, lazy.type_id, ctx);
-            ctx.substitution_stack.pop().unwrap();
-            result
-        }
-
-        (Type::Alias(alias), _) => compare_type(db, alias.type_id, rhs, ctx),
-        (_, Type::Alias(alias)) => compare_type(db, lhs, alias.type_id, ctx),
-
-        (Type::Struct(lhs), _) => max(
-            compare_type(db, lhs.type_id, rhs, ctx),
-            Comparison::Castable,
-        ),
-        (_, Type::Struct(rhs)) => max(
-            compare_type(db, lhs, rhs.type_id, ctx),
-            Comparison::Castable,
-        ),
-
-        (Type::Variant(variant), Type::Enum(ty)) => {
-            let comparison = compare_type(db, variant.type_id, ty.type_id, ctx);
-
-            if variant.enum_type == rhs {
-                max(comparison, Comparison::Assignable)
-            } else {
-                max(comparison, Comparison::Castable)
-            }
-        }
-
-        (Type::Enum(ty), _) => max(compare_type(db, ty.type_id, rhs, ctx), Comparison::Castable),
-        (_, Type::Enum(ty)) => max(compare_type(db, lhs, ty.type_id, ctx), Comparison::Castable),
-
-        (Type::Variant(lhs), _) => max(
-            compare_type(db, lhs.type_id, rhs, ctx),
-            Comparison::Castable,
-        ),
-        (_, Type::Variant(rhs)) => max(
-            compare_type(db, lhs, rhs.type_id, ctx),
-            Comparison::Castable,
-        ),
-
-        (Type::Callable(lhs), Type::Callable(rhs)) => max(
-            compare_type(db, lhs.parameters, rhs.parameters, ctx),
-            compare_type(db, lhs.return_type, rhs.return_type, ctx),
-        ),
-
-        (Type::Callable(..), _) => compare_type(db, lhs, db.std().any, ctx),
-        (_, Type::Callable(..)) => Comparison::Incompatible,
     };
 
     ctx.visited.remove(&(lhs, rhs));
@@ -348,7 +348,9 @@ pub(crate) fn compare_type(
 
 #[cfg(test)]
 mod tests {
-    use crate::alloc_list;
+    use indexmap::indexmap;
+
+    use crate::{alloc_list, alloc_struct, Rest};
 
     use super::*;
 
@@ -500,6 +502,21 @@ mod tests {
         let pair = db.alloc(Type::Pair(types.int, pair_inner));
         let list = alloc_list(&mut db, pair);
         assert_eq!(db.compare(list, types.any), Comparison::Assignable);
+    }
+
+    #[test]
+    fn test_point_struct_any() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+        let point = alloc_struct(
+            &mut db,
+            &indexmap! {
+                "x".to_string() => types.int,
+                "y".to_string() => types.int,
+            },
+            Rest::Nil,
+        );
+        assert_eq!(db.compare(point, types.any), Comparison::Castable);
     }
 
     #[test]

@@ -145,10 +145,8 @@ pub enum ErrorKind {
     ExpectedSymbolPath(String),
 
     // Type guards.
-    UnsupportedTypeGuard(String, String),
-    NonAnyPairTypeGuard,
-    NonListPairTypeGuard,
-    InvalidExistanceCheck(String),
+    ImpossibleTypeCheck(String, String),
+    RecursiveTypeCheck(String, String),
 
     // Blocks.
     ImplicitReturnInIf,
@@ -296,10 +294,8 @@ impl fmt::Display for ErrorKind {
             Self::ExpectedSymbolPath(name) => format!("Expected symbol, but found type `{name}` instead."),
 
             // Type guards.
-            Self::UnsupportedTypeGuard(from, to) => format!("Cannot check type `{from}` against `{to}`."),
-            Self::NonAnyPairTypeGuard => "Cannot check `Any` against pair types other than `(Any, Any)`.".to_string(),
-            Self::NonListPairTypeGuard => "Cannot check `T[]` against pair types other than `(T, T[])`.".to_string(),
-            Self::InvalidExistanceCheck(ty) => format!("Cannot check existence of value with type `{ty}`, since it can't be undefined."),
+            Self::ImpossibleTypeCheck(from, to) => format!("Cannot check type `{from}` against `{to}`."),
+            Self::RecursiveTypeCheck(from, to) => format!("Checking type `{from}` against `{to}` would result in infinite recursion at runtime."),
 
             // Blocks.
             Self::ImplicitReturnInIf => formatdoc!("
