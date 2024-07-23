@@ -1,5 +1,6 @@
 use rowan::TextRange;
 use rue_parser::SyntaxToken;
+use rue_typing::{bigint_to_bytes, Type};
 
 use crate::{
     compiler::{
@@ -8,7 +9,7 @@ use crate::{
     },
     hir::Hir,
     symbol::{Function, Symbol},
-    value::{GuardPath, Type, Value},
+    value::{GuardPath, Value},
     ErrorKind,
 };
 
@@ -35,22 +36,24 @@ impl Compiler<'_> {
         let symbol_id = match item {
             PathItem::Symbol(symbol_id) => symbol_id,
             PathItem::Type(type_id) => {
-                if let Type::EnumVariant(variant_type) = self.db.ty(type_id).clone() {
-                    if variant_type.fields.is_some() {
+                if let Type::Variant(variant) = self.ty.get(type_id).clone() {
+                    if variant.field_names.is_some() {
                         self.db.error(
                             ErrorKind::InvalidEnumVariantReference(self.type_name(type_id)),
                             text_range,
                         );
                     }
 
-                    let Type::Enum(enum_type) = self.db.ty(variant_type.enum_type) else {
+                    let Type::Enum(enum_type) = self.ty.get(variant.enum_type) else {
                         unreachable!();
                     };
 
-                    let mut hir_id = variant_type.discriminant;
+                    let mut hir_id = self
+                        .db
+                        .alloc_hir(Hir::Atom(bigint_to_bytes(variant.discriminant)));
 
                     if enum_type.has_fields {
-                        hir_id = self.db.alloc_hir(Hir::Pair(hir_id, self.builtins.nil_hir));
+                        hir_id = self.db.alloc_hir(Hir::Pair(hir_id, self.builtins.nil));
                     }
 
                     return Value::new(hir_id, type_id);
@@ -84,7 +87,7 @@ impl Compiler<'_> {
         let mut value = match self.db.symbol(symbol_id).clone() {
             Symbol::Unknown | Symbol::Module(..) => unreachable!(),
             Symbol::Function(Function { ty, .. }) | Symbol::InlineFunction(Function { ty, .. }) => {
-                let type_id = self.ty.alloc(Type::Function(ty.clone()));
+                let type_id = self.ty.alloc(Type::Callable(ty.clone()));
                 Value::new(reference, override_type_id.unwrap_or(type_id))
             }
             Symbol::Parameter(type_id) => {

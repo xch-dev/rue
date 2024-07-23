@@ -85,21 +85,35 @@ impl TypeSystem {
         self.arena.alloc(ty)
     }
 
-    pub fn get_raw(&self, id: TypeId) -> &Type {
-        &self.arena[id]
+    pub fn get_raw(&self, type_id: TypeId) -> &Type {
+        &self.arena[type_id]
     }
 
-    pub fn get(&self, id: TypeId) -> &Type {
-        match &self.arena[id] {
-            Type::Ref(id) => self.get(*id),
+    pub fn get(&self, type_id: TypeId) -> &Type {
+        match &self.arena[type_id] {
+            Type::Ref(type_id) => self.get(*type_id),
             ty => ty,
         }
     }
 
-    pub fn get_mut(&mut self, id: TypeId) -> &mut Type {
-        match &self.arena[id] {
-            Type::Ref(id) => self.get_mut(*id),
-            _ => &mut self.arena[id],
+    pub fn get_mut(&mut self, type_id: TypeId) -> &mut Type {
+        match &self.arena[type_id] {
+            Type::Ref(type_id) => self.get_mut(*type_id),
+            _ => &mut self.arena[type_id],
+        }
+    }
+
+    pub fn pair_first(&self, type_id: TypeId) -> Option<TypeId> {
+        match self.get(type_id) {
+            Type::Pair(first, _) => Some(*first),
+            _ => None,
+        }
+    }
+
+    pub fn pair_rest(&self, type_id: TypeId) -> Option<TypeId> {
+        match self.get(type_id) {
+            Type::Pair(_, rest) => Some(*rest),
+            _ => None,
         }
     }
 

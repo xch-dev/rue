@@ -130,6 +130,7 @@ pub(crate) fn substitute_type(
                         field_names: ty.field_names,
                         rest: ty.rest,
                         generic_types: ty.generic_types,
+                        discriminant: ty.discriminant,
                     }))
                 }
             } else {

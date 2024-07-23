@@ -305,6 +305,7 @@ pub(crate) fn difference_type(
                 type_id,
                 rest: variant.rest,
                 generic_types: variant.generic_types,
+                discriminant: variant.discriminant,
             }))
         }
         (_, Type::Variant(variant)) => {
@@ -318,6 +319,7 @@ pub(crate) fn difference_type(
                 type_id,
                 rest: variant.rest,
                 generic_types: variant.generic_types,
+                discriminant: variant.discriminant,
             }))
         }
 

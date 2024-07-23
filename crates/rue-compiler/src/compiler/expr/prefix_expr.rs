@@ -58,7 +58,7 @@ impl Compiler<'_> {
                 // Subtract the expression from nil.
                 self.db.alloc_hir(Hir::BinaryOp(
                     BinOp::Subtract,
-                    self.builtins.nil_hir,
+                    self.builtins.nil,
                     expr.hir_id,
                 )),
                 self.ty.std().int,

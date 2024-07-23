@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
+use num_bigint::BigInt;
 
 use crate::TypeId;
 
@@ -75,11 +76,13 @@ pub struct Variant {
     /// The enum type to which this variant belongs.
     pub enum_type: TypeId,
     /// The field names of the variant.
-    pub field_names: IndexSet<String>,
+    pub field_names: Option<IndexSet<String>>,
     /// The structural type of the enum variant.
     pub type_id: TypeId,
     /// The rest kind of the variant.
     pub rest: Rest,
     /// The generic types of the variant.
     pub generic_types: Vec<TypeId>,
+    /// The discriminant value.
+    pub discriminant: BigInt,
 }
