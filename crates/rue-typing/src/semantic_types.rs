@@ -55,7 +55,7 @@ pub struct Callable {
 }
 
 /// Represents an enum type which can have multiple variants.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Enum {
     /// A pointer to the enum from which this was derived, if any.
     pub original_type_id: Option<TypeId>,
@@ -63,6 +63,8 @@ pub struct Enum {
     pub type_id: TypeId,
     /// Whether the enum semantically has fields.
     pub has_fields: bool,
+    /// This is a map of the original variant names to their type ids.
+    pub variants: HashMap<String, TypeId>,
 }
 
 /// Represents a variant type which can optionally have fields.

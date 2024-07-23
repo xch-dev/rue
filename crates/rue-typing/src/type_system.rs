@@ -85,6 +85,10 @@ impl TypeSystem {
         self.arena.alloc(ty)
     }
 
+    pub fn get_raw(&self, id: TypeId) -> &Type {
+        &self.arena[id]
+    }
+
     pub fn get(&self, id: TypeId) -> &Type {
         match &self.arena[id] {
             Type::Ref(id) => self.get(*id),

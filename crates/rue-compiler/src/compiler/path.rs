@@ -1,6 +1,7 @@
 use rue_parser::SyntaxToken;
+use rue_typing::{Type, TypeId};
 
-use crate::{symbol::Symbol, value::Type, ErrorKind, SymbolId, TypeId};
+use crate::{symbol::Symbol, ErrorKind, SymbolId};
 
 use super::Compiler;
 
@@ -34,7 +35,7 @@ impl Compiler<'_> {
                     }
                 }
 
-                if let Type::Enum(..) = self.db.ty(type_id) {
+                if let Type::Enum(..) = self.ty.get(type_id) {
                     if !last {
                         self.type_reference(type_id);
                         return Some(PathItem::Type(type_id));
@@ -78,7 +79,7 @@ impl Compiler<'_> {
     ) -> Option<PathItem> {
         match item {
             PathItem::Type(type_id) => {
-                let Type::Enum(enum_type) = self.db.ty(type_id) else {
+                let Type::Enum(enum_type) = self.ty.get(type_id) else {
                     self.db.error(
                         ErrorKind::InvalidTypePath(self.type_name(type_id)),
                         name.text_range(),
@@ -127,7 +128,7 @@ impl Compiler<'_> {
                         }
                     }
 
-                    if let Type::Enum(..) = self.db.ty(type_id) {
+                    if let Type::Enum(..) = self.ty.get(type_id) {
                         if !last {
                             self.type_reference(type_id);
                             return Some(PathItem::Type(type_id));

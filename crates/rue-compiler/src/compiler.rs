@@ -35,7 +35,7 @@ pub struct Compiler<'a> {
     db: &'a mut Database,
 
     // The type system is responsible for type checking and type inference.
-    ty: TypeSystem,
+    ty: &'a mut TypeSystem,
 
     // The scope stack is used to keep track of the current scope.
     scope_stack: Vec<ScopeId>,
@@ -67,10 +67,10 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(db: &'a mut Database, builtins: Builtins) -> Self {
+    pub fn new(db: &'a mut Database, ty: &'a mut TypeSystem, builtins: Builtins) -> Self {
         Self {
             db,
-            ty: TypeSystem::new(),
+            ty,
             scope_stack: vec![builtins.scope_id],
             symbol_stack: Vec::new(),
             type_definition_stack: Vec::new(),

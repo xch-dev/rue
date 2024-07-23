@@ -272,23 +272,25 @@ pub(crate) fn difference_type(
         }
 
         (Type::Enum(ty), _) => {
-            let ty = *ty;
+            let ty = ty.clone();
             let type_id = difference_type(types, std, ty.type_id, rhs, visited);
 
             types.alloc(Type::Enum(Enum {
                 original_type_id: Some(ty.original_type_id.unwrap_or(lhs)),
                 type_id,
                 has_fields: ty.has_fields,
+                variants: ty.variants,
             }))
         }
         (_, Type::Enum(ty)) => {
-            let ty = *ty;
+            let ty = ty.clone();
             let type_id = difference_type(types, std, lhs, ty.type_id, visited);
 
             types.alloc(Type::Enum(Enum {
                 original_type_id: Some(ty.original_type_id.unwrap_or(rhs)),
                 type_id,
                 has_fields: ty.has_fields,
+                variants: ty.variants,
             }))
         }
 

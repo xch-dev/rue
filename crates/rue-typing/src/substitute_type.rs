@@ -137,7 +137,7 @@ pub(crate) fn substitute_type(
             }
         }
         Type::Enum(ty) => {
-            let ty = *ty;
+            let ty = ty.clone();
 
             let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics, visited);
 
@@ -149,6 +149,7 @@ pub(crate) fn substitute_type(
                         original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
                         type_id: new_type_id,
                         has_fields: ty.has_fields,
+                        variants: ty.variants,
                     }))
                 }
             } else {

@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 
 use rue_parser::Item;
+use rue_typing::{Type, TypeId};
 
-use crate::{symbol::Symbol, value::Type, ErrorKind, SymbolId, TypeId};
+use crate::{symbol::Symbol, ErrorKind, SymbolId};
 
 use super::Compiler;
 
@@ -164,7 +165,7 @@ impl Compiler<'_> {
             .local_types()
             .into_iter()
             .filter_map(|type_id| {
-                if let Type::Enum(..) = self.db.ty(type_id).clone() {
+                if let Type::Enum(..) = self.ty.get(type_id).clone() {
                     Some(self.scope().type_name(type_id).unwrap().to_string())
                 } else {
                     None

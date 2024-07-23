@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use clvmr::{Allocator, NodePtr};
 use indexmap::IndexMap;
 use rue_parser::{parse, Root};
+use rue_typing::{Type, TypeSystem};
 
 use crate::{
     codegen::Codegen,
@@ -11,7 +12,6 @@ use crate::{
     optimizer::Optimizer,
     scope::Scope,
     symbol::{Module, Symbol},
-    value::Type,
     Database, SymbolId,
 };
 
@@ -22,9 +22,9 @@ pub struct CompilerContext<'a> {
     roots: IndexMap<SymbolId, (Root, Declarations)>,
 }
 
-pub fn setup_compiler(db: &mut Database) -> CompilerContext<'_> {
-    let builtins = builtins(db);
-    let compiler = Compiler::new(db, builtins);
+pub fn setup_compiler<'a>(db: &'a mut Database, ty: &'a mut TypeSystem) -> CompilerContext<'a> {
+    let builtins = builtins(db, ty);
+    let compiler = Compiler::new(db, ty, builtins);
     CompilerContext {
         compiler,
         roots: IndexMap::new(),
@@ -88,6 +88,7 @@ pub fn compile_modules(mut ctx: CompilerContext<'_>) -> SymbolTable {
 
 pub fn build_graph(
     db: &mut Database,
+    ty: &TypeSystem,
     symbol_table: &SymbolTable,
     main_module_id: SymbolId,
     library_module_ids: &[SymbolId],
@@ -104,7 +105,7 @@ pub fn build_graph(
     }
 
     for type_id in ignored_types.clone() {
-        let Type::Enum(enum_type) = db.ty(type_id) else {
+        let Type::Enum(enum_type) = ty.get(type_id) else {
             continue;
         };
         ignored_types.extend(enum_type.variants.values());
@@ -122,7 +123,7 @@ pub fn build_graph(
     };
 
     let graph = DependencyGraph::build(db, &module);
-    symbol_table.calculate_unused(db, &graph, &ignored_symbols, &ignored_types);
+    symbol_table.calculate_unused(db, ty, &graph, &ignored_symbols, &ignored_types);
     graph
 }
 

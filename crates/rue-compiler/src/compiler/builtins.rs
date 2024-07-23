@@ -20,17 +20,16 @@ pub struct Builtins {
 pub fn builtins(db: &mut Database, ty: &mut TypeSystem) -> Builtins {
     let mut scope = Scope::default();
 
-    let std = ty.standard_types();
     let nil = db.alloc_hir(Hir::Atom(Vec::new()));
     let unknown = db.alloc_hir(Hir::Unknown);
 
-    scope.define_type("Nil".to_string(), std.nil);
-    scope.define_type("Int".to_string(), std.int);
-    scope.define_type("Bool".to_string(), std.bool);
-    scope.define_type("Bytes".to_string(), std.bytes);
-    scope.define_type("Bytes32".to_string(), std.bytes32);
-    scope.define_type("PublicKey".to_string(), std.public_key);
-    scope.define_type("Any".to_string(), std.any);
+    scope.define_type("Nil".to_string(), ty.std().nil);
+    scope.define_type("Int".to_string(), ty.std().int);
+    scope.define_type("Bool".to_string(), ty.std().bool);
+    scope.define_type("Bytes".to_string(), ty.std().bytes);
+    scope.define_type("Bytes32".to_string(), ty.std().bytes32);
+    scope.define_type("PublicKey".to_string(), ty.std().public_key);
+    scope.define_type("Any".to_string(), ty.std().any);
 
     let builtins = Builtins {
         scope_id: db.alloc_scope(scope),
@@ -59,11 +58,9 @@ pub fn builtins(db: &mut Database, ty: &mut TypeSystem) -> Builtins {
 }
 
 fn sha256(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
-    let std = ty.standard_types();
-
     let mut scope = Scope::default();
 
-    let param = db.alloc_symbol(Symbol::Parameter(std.bytes));
+    let param = db.alloc_symbol(Symbol::Parameter(ty.std().bytes));
     scope.define_symbol("bytes".to_string(), param);
     let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
     let hir_id = db.alloc_hir(Hir::Op(Op::Sha256, param_ref));
@@ -75,19 +72,17 @@ fn sha256(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         ty: Callable {
             original_type_id: None,
             parameter_names: indexset!["bytes".to_string()],
-            parameters: ty.alloc(Type::Pair(std.bytes, std.nil)),
+            parameters: ty.alloc(Type::Pair(ty.std().bytes, ty.std().nil)),
             rest: Rest::Nil,
-            return_type: std.bytes32,
+            return_type: ty.std().bytes32,
             generic_types: Vec::new(),
         },
     }))
 }
 
 fn pubkey_for_exp(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
-    let std = ty.standard_types();
-
     let mut scope = Scope::default();
-    let param = db.alloc_symbol(Symbol::Parameter(std.bytes32));
+    let param = db.alloc_symbol(Symbol::Parameter(ty.std().bytes32));
     scope.define_symbol("exponent".to_string(), param);
     let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
     let hir_id = db.alloc_hir(Hir::Op(Op::PubkeyForExp, param_ref));
@@ -99,21 +94,19 @@ fn pubkey_for_exp(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         ty: Callable {
             original_type_id: None,
             parameter_names: indexset!["exponent".to_string()],
-            parameters: ty.alloc(Type::Pair(std.bytes32, std.nil)),
+            parameters: ty.alloc(Type::Pair(ty.std().bytes32, ty.std().nil)),
             rest: Rest::Nil,
-            return_type: std.public_key,
+            return_type: ty.std().public_key,
             generic_types: Vec::new(),
         },
     }))
 }
 
 fn divmod(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
-    let std = ty.standard_types();
-
     let mut scope = Scope::default();
 
-    let lhs = db.alloc_symbol(Symbol::Parameter(std.int));
-    let rhs = db.alloc_symbol(Symbol::Parameter(std.int));
+    let lhs = db.alloc_symbol(Symbol::Parameter(ty.std().int));
+    let rhs = db.alloc_symbol(Symbol::Parameter(ty.std().int));
     scope.define_symbol("lhs".to_string(), lhs);
     scope.define_symbol("rhs".to_string(), rhs);
     let lhs_ref = db.alloc_hir(Hir::Reference(lhs, TextRange::default()));
@@ -121,7 +114,7 @@ fn divmod(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
     let hir_id = db.alloc_hir(Hir::BinaryOp(BinOp::DivMod, lhs_ref, rhs_ref));
     let scope_id = db.alloc_scope(scope);
 
-    let int_pair = ty.alloc(Type::Pair(std.int, std.int));
+    let int_pair = ty.alloc(Type::Pair(ty.std().int, ty.std().int));
 
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
@@ -129,7 +122,7 @@ fn divmod(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         ty: Callable {
             original_type_id: None,
             parameter_names: indexset!["lhs".to_string(), "rhs".to_string()],
-            parameters: ty.alloc(Type::Pair(int_pair, std.nil)),
+            parameters: ty.alloc(Type::Pair(int_pair, ty.std().nil)),
             rest: Rest::Nil,
             return_type: int_pair,
             generic_types: Vec::new(),
@@ -138,13 +131,11 @@ fn divmod(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
 }
 
 fn substr(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
-    let std = ty.standard_types();
-
     let mut scope = Scope::default();
 
-    let value = db.alloc_symbol(Symbol::Parameter(std.bytes));
-    let start = db.alloc_symbol(Symbol::Parameter(std.int));
-    let end = db.alloc_symbol(Symbol::Parameter(std.int));
+    let value = db.alloc_symbol(Symbol::Parameter(ty.std().bytes));
+    let start = db.alloc_symbol(Symbol::Parameter(ty.std().int));
+    let end = db.alloc_symbol(Symbol::Parameter(ty.std().int));
     scope.define_symbol("value".to_string(), value);
     scope.define_symbol("start".to_string(), start);
     scope.define_symbol("end".to_string(), end);
@@ -154,9 +145,9 @@ fn substr(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
     let hir_id = db.alloc_hir(Hir::Substr(value_ref, start_ref, end_ref));
     let scope_id = db.alloc_scope(scope);
 
-    let end = ty.alloc(Type::Pair(std.int, std.nil));
-    let int = ty.alloc(Type::Pair(std.int, end));
-    let parameters = ty.alloc(Type::Pair(std.bytes, int));
+    let end = ty.alloc(Type::Pair(ty.std().int, ty.std().nil));
+    let int = ty.alloc(Type::Pair(ty.std().int, end));
+    let parameters = ty.alloc(Type::Pair(ty.std().bytes, int));
 
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
@@ -166,7 +157,7 @@ fn substr(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
             parameter_names: indexset!["value".to_string(), "start".to_string(), "end".to_string()],
             parameters,
             rest: Rest::Nil,
-            return_type: std.bytes,
+            return_type: ty.std().bytes,
             generic_types: Vec::new(),
         },
     }))
