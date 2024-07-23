@@ -47,7 +47,7 @@ pub(crate) fn simplify_and_shallow(items: impl IntoIterator<Item = Check>) -> Ch
     construct_and(result)
 }
 
-fn construct_and(mut items: Vec<Check>) -> Check {
+pub(crate) fn construct_and(mut items: Vec<Check>) -> Check {
     if items.is_empty() {
         Check::None
     } else if items.len() == 1 {
@@ -77,11 +77,15 @@ mod tests {
     #[test]
     fn test_simplify_check_and_none() {
         assert_eq!(
-            simplify_and_shallow([Check::None, Check::IsAtom]),
+            simplify_and_shallow([Check::IsAtom, Check::None]),
             Check::IsAtom
         );
+    }
+
+    #[test]
+    fn test_simplify_none_and_check() {
         assert_eq!(
-            simplify_and_shallow([Check::IsAtom, Check::None]),
+            simplify_and_shallow([Check::None, Check::IsAtom]),
             Check::IsAtom
         );
     }
