@@ -54,7 +54,7 @@ impl Compiler<'_> {
         if let Some(function_type) = &function_type {
             self.check_argument_length(
                 function_type,
-                parameter_types.clone().unwrap(),
+                parameter_types.as_ref().unwrap(),
                 len,
                 call.syntax().text_range(),
             );
@@ -155,7 +155,7 @@ impl Compiler<'_> {
     fn check_argument_length(
         &mut self,
         function: &Callable,
-        parameter_types: Vec<TypeId>,
+        parameter_types: &[TypeId],
         length: usize,
         text_range: TextRange,
     ) {

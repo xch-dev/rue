@@ -116,7 +116,9 @@ pub enum SyntaxKind {
     PairType,
     FunctionType,
     FunctionTypeParam,
-    GenericTypes,
+    UnionType,
+    GenericArgs,
+    GenericParams,
 }
 
 impl fmt::Display for SyntaxKind {
@@ -234,7 +236,9 @@ impl fmt::Display for SyntaxKind {
                 Self::PairType => "pair type",
                 Self::FunctionType => "function type",
                 Self::FunctionTypeParam => "function type parameter",
-                Self::GenericTypes => "generic types",
+                Self::UnionType => "union type",
+                Self::GenericArgs => "generic args",
+                Self::GenericParams => "generic params",
             }
         )
     }

@@ -7,7 +7,7 @@ use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir, Op},
     value::{Guard, TypeOverride, Value},
-    ErrorKind, HirId,
+    ErrorKind, HirId, WarningKind,
 };
 
 impl Compiler<'_> {
@@ -50,6 +50,23 @@ impl Compiler<'_> {
             );
             return self.unknown();
         };
+
+        match check {
+            Check::True => {
+                self.db.warning(
+                    WarningKind::UnnecessaryTypeCheck(self.type_name(lhs), self.type_name(rhs)),
+                    guard.syntax().text_range(),
+                );
+            }
+            Check::False => {
+                self.db.error(
+                    ErrorKind::ImpossibleTypeCheck(self.type_name(lhs), self.type_name(rhs)),
+                    guard.syntax().text_range(),
+                );
+                return self.unknown();
+            }
+            _ => {}
+        }
 
         let hir_id = self.check_hir(expr.hir_id, check);
 

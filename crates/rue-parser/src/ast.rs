@@ -118,11 +118,12 @@ ast_node!(FieldAccessExpr);
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
 
-ast_enum!(Type, PathType, PairType, FunctionType);
+ast_enum!(Type, PathType, PairType, FunctionType, UnionType);
 ast_node!(PathType);
 ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
+ast_node!(UnionType);
 
 ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt, AssumeStmt);
 ast_node!(LetStmt);
@@ -132,7 +133,7 @@ ast_node!(RaiseStmt);
 ast_node!(AssertStmt);
 ast_node!(AssumeStmt);
 
-ast_node!(GenericTypes);
+ast_node!(GenericParams);
 
 impl Root {
     pub fn items(&self) -> Vec<Item> {
@@ -182,8 +183,8 @@ impl FunctionItem {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn generic_types(&self) -> Option<GenericTypes> {
-        self.syntax().children().find_map(GenericTypes::cast)
+    pub fn generic_params(&self) -> Option<GenericParams> {
+        self.syntax().children().find_map(GenericParams::cast)
     }
 
     pub fn params(&self) -> Vec<FunctionParam> {
@@ -708,8 +709,8 @@ impl PairExpr {
 }
 
 impl LambdaExpr {
-    pub fn generic_types(&self) -> Option<GenericTypes> {
-        self.syntax().children().find_map(GenericTypes::cast)
+    pub fn generic_params(&self) -> Option<GenericParams> {
+        self.syntax().children().find_map(GenericParams::cast)
     }
 
     pub fn params(&self) -> Vec<LambdaParam> {
@@ -868,8 +869,14 @@ impl FunctionTypeParam {
     }
 }
 
-impl GenericTypes {
-    pub fn idents(&self) -> Vec<SyntaxToken> {
+impl UnionType {
+    pub fn types(&self) -> Vec<Type> {
+        self.syntax().children().filter_map(Type::cast).collect()
+    }
+}
+
+impl GenericParams {
+    pub fn names(&self) -> Vec<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)

@@ -22,27 +22,26 @@ impl Compiler<'_> {
         let mut generic_types = Vec::new();
 
         // Add the generic types to the scope.
-        for generic_type in function_item
-            .generic_types()
-            .map(|generics| generics.idents())
+        for name in function_item
+            .generic_params()
+            .map(|generics| generics.names())
             .unwrap_or_default()
         {
             // Create the generic type id.
             let type_id = self.ty.alloc(Type::Generic);
 
             // Check for duplicate generic types.
-            if self.scope().ty(generic_type.text()).is_some() {
+            if self.scope().ty(name.text()).is_some() {
                 self.db.error(
-                    ErrorKind::DuplicateType(generic_type.text().to_string()),
-                    generic_type.text_range(),
+                    ErrorKind::DuplicateType(name.text().to_string()),
+                    name.text_range(),
                 );
             }
 
             // Add the generic type to the scope and define the token for the generic type.
-            self.scope_mut()
-                .define_type(generic_type.to_string(), type_id);
+            self.scope_mut().define_type(name.to_string(), type_id);
 
-            self.db.insert_type_token(type_id, generic_type);
+            self.db.insert_type_token(type_id, name);
 
             // Add the generic type to the list so it can be added to the function type.
             generic_types.push(type_id);
@@ -94,7 +93,7 @@ impl Compiler<'_> {
                 self.scope_mut().define_symbol(name.to_string(), symbol_id);
                 self.db.insert_symbol_token(symbol_id, name);
             } else {
-                param_names.push(format!("#{}", i));
+                param_names.push(format!("#{i}"));
             }
 
             // Check if it's a spread or optional parameter.
