@@ -554,6 +554,23 @@ mod tests {
     }
 
     #[test]
+    fn test_compare_nil_list() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+        let list = alloc_list(&mut db, types.int);
+        assert_eq!(db.compare(types.nil, list), Comparison::Assignable);
+    }
+
+    #[test]
+    fn test_compare_pair_list() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+        let pair = db.alloc(Type::Pair(types.int, types.nil));
+        let list = alloc_list(&mut db, types.int);
+        assert_eq!(db.compare(pair, list), Comparison::Assignable);
+    }
+
+    #[test]
     fn test_generic_inference() {
         let mut db = TypeSystem::new();
         let types = db.std();

@@ -142,7 +142,6 @@ impl Compiler<'_> {
         }
 
         // Build the HIR for the function call.
-
         let hir_id = self.db.alloc_hir(Hir::FunctionCall(
             callee.map_or(self.builtins.unknown, |callee| callee.hir_id),
             args.iter().map(|arg| arg.hir_id).collect(),

@@ -23,6 +23,7 @@ impl Compiler<'_> {
         };
 
         let mut new_value = match self.ty.get(old_value.type_id).clone() {
+            Type::Unknown => return self.unknown(),
             Type::Struct(ty) => {
                 let fields = deconstruct_items(self.ty, ty.type_id, ty.field_names.len(), ty.rest)
                     .expect("invalid struct type");

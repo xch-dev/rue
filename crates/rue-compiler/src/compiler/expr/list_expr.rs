@@ -42,9 +42,8 @@ impl Compiler<'_> {
                     list_type = Some(output.type_id);
                     item_type = unwrap_list(self.ty, output.type_id);
                 } else {
-                    // TODO: list_type = Some(self.ty.alloc(Type::List(output.type_id)));
-                    // item_type = Some(output.type_id);
-                    todo!()
+                    list_type = Some(self.ty.alloc_list(output.type_id));
+                    item_type = Some(output.type_id);
                 }
             }
 
@@ -70,11 +69,10 @@ impl Compiler<'_> {
             }
         }
 
-        // TODO: Value::new(
-        //     hir_id,
-        //     self.db
-        //         .alloc_type(Type::List(item_type.unwrap_or(self.ty.std().unknown))),
-        // )
-        todo!()
+        Value::new(
+            hir_id,
+            self.ty
+                .alloc_list(item_type.unwrap_or(self.ty.std().unknown)),
+        )
     }
 }

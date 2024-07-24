@@ -119,6 +119,7 @@ pub enum SyntaxKind {
     UnionType,
     GenericArgs,
     GenericParams,
+    PathItem,
 }
 
 impl fmt::Display for SyntaxKind {
@@ -239,6 +240,7 @@ impl fmt::Display for SyntaxKind {
                 Self::UnionType => "union type",
                 Self::GenericArgs => "generic args",
                 Self::GenericParams => "generic params",
+                Self::PathItem => "path item",
             }
         )
     }

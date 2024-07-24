@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::{Alias, Callable, Enum, Struct, Type, TypeId, TypeSystem, Variant};
 
@@ -13,15 +13,13 @@ pub(crate) fn substitute_type(
     type_id: TypeId,
     substitutions: &mut HashMap<TypeId, TypeId>,
     semantics: Semantics,
-    visited: &mut HashSet<TypeId>,
 ) -> TypeId {
     if let Some(new_type_id) = substitutions.get(&type_id) {
         return *new_type_id;
     }
 
-    if !visited.insert(type_id) {
-        return type_id;
-    }
+    let placeholder = types.alloc(Type::Unknown);
+    substitutions.insert(type_id, placeholder);
 
     let result = match types.get(type_id) {
         Type::Ref(..) => unreachable!(),
@@ -40,8 +38,8 @@ pub(crate) fn substitute_type(
         Type::Pair(first, rest) => {
             let (first, rest) = (*first, *rest);
 
-            let new_first = substitute_type(types, first, substitutions, semantics, visited);
-            let new_rest = substitute_type(types, rest, substitutions, semantics, visited);
+            let new_first = substitute_type(types, first, substitutions, semantics);
+            let new_rest = substitute_type(types, rest, substitutions, semantics);
 
             if new_first == first && new_rest == rest {
                 type_id
@@ -54,13 +52,7 @@ pub(crate) fn substitute_type(
             let mut result = Vec::new();
 
             for item in &items {
-                result.push(substitute_type(
-                    types,
-                    *item,
-                    substitutions,
-                    semantics,
-                    visited,
-                ));
+                result.push(substitute_type(types, *item, substitutions, semantics));
             }
 
             if result == items {
@@ -70,14 +62,21 @@ pub(crate) fn substitute_type(
             }
         }
         Type::Lazy(lazy) => {
+            let mut old_substitutions = HashMap::new();
+            for (key, val) in lazy.substitutions.clone() {
+                if let Some(old) = substitutions.insert(key, val) {
+                    old_substitutions.insert(key, old);
+                }
+            }
             substitutions.extend(lazy.substitutions.clone());
-            substitute_type(types, lazy.type_id, substitutions, semantics, visited)
+            let result = substitute_type(types, lazy.type_id, substitutions, semantics);
+            substitutions.extend(old_substitutions);
+            result
         }
         Type::Alias(alias) => {
             let alias = alias.clone();
 
-            let new_type_id =
-                substitute_type(types, alias.type_id, substitutions, semantics, visited);
+            let new_type_id = substitute_type(types, alias.type_id, substitutions, semantics);
 
             if semantics == Semantics::Preserve {
                 if new_type_id == alias.type_id {
@@ -96,7 +95,7 @@ pub(crate) fn substitute_type(
         Type::Struct(ty) => {
             let ty = ty.clone();
 
-            let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics, visited);
+            let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics);
 
             if semantics == Semantics::Preserve {
                 if new_type_id == ty.type_id {
@@ -117,7 +116,7 @@ pub(crate) fn substitute_type(
         Type::Variant(ty) => {
             let ty = ty.clone();
 
-            let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics, visited);
+            let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics);
 
             if semantics == Semantics::Preserve {
                 if new_type_id == ty.type_id {
@@ -140,7 +139,7 @@ pub(crate) fn substitute_type(
         Type::Enum(ty) => {
             let ty = ty.clone();
 
-            let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics, visited);
+            let new_type_id = substitute_type(types, ty.type_id, substitutions, semantics);
 
             if semantics == Semantics::Preserve {
                 if new_type_id == ty.type_id {
@@ -160,21 +159,11 @@ pub(crate) fn substitute_type(
         Type::Callable(callable) => {
             let callable = callable.clone();
 
-            let new_return_type = substitute_type(
-                types,
-                callable.return_type,
-                substitutions,
-                semantics,
-                visited,
-            );
+            let new_return_type =
+                substitute_type(types, callable.return_type, substitutions, semantics);
 
-            let new_parameters = substitute_type(
-                types,
-                callable.parameters,
-                substitutions,
-                semantics,
-                visited,
-            );
+            let new_parameters =
+                substitute_type(types, callable.parameters, substitutions, semantics);
 
             match semantics {
                 Semantics::Preserve => {
@@ -198,7 +187,7 @@ pub(crate) fn substitute_type(
         }
     };
 
-    visited.remove(&type_id);
+    *types.get_mut(placeholder) = Type::Ref(result);
 
     result
 }

@@ -1,5 +1,5 @@
 use clvmr::Allocator;
-use rue_compiler::{compile, compile_raw, DiagnosticKind};
+use rue_compiler::{compile, DiagnosticKind};
 use rue_parser::{line_col, parse, LineCol};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
@@ -60,7 +60,7 @@ impl LanguageServer for Backend {
 /// This is a hack to get around a Rust compiler error.
 #[allow(clippy::needless_pass_by_value)]
 fn analyze_owned(root: rue_parser::Root) -> Vec<rue_compiler::Diagnostic> {
-    compile_raw(&mut Allocator::new(), &root, false, false).diagnostics
+    compile(&mut Allocator::new(), &root, false).diagnostics
 }
 
 impl Backend {

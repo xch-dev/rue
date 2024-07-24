@@ -1,10 +1,10 @@
 use rowan::TextRange;
-use rue_parser::SyntaxToken;
+use rue_parser::PathItem;
 use rue_typing::{bigint_to_bytes, Type};
 
 use crate::{
     compiler::{
-        path::{PathItem, PathKind},
+        path::{Path, PathKind},
         Compiler,
     },
     hir::Hir,
@@ -14,28 +14,27 @@ use crate::{
 };
 
 impl Compiler<'_> {
-    pub fn compile_path_expr(&mut self, idents: &[SyntaxToken], text_range: TextRange) -> Value {
-        let Some(mut item) =
-            self.resolve_base_path(&idents[0], PathKind::Symbol, idents.len() == 1)
+    pub fn compile_path_expr(&mut self, items: &[PathItem], text_range: TextRange) -> Value {
+        let Some(mut path) = self.resolve_base_path(&items[0], PathKind::Symbol, items.len() == 1)
         else {
             return self.unknown();
         };
 
-        let mut last_ident = idents[0].to_string();
+        let mut last_name = items[0].name().unwrap().to_string();
 
-        for (i, name) in idents.iter().enumerate().skip(1) {
-            let Some(next_item) =
-                self.resolve_next_path(item, name, PathKind::Symbol, i == idents.len() - 1)
+        for (i, item) in items.iter().enumerate().skip(1) {
+            let Some(next_path) =
+                self.resolve_next_path(path, item, PathKind::Symbol, i == items.len() - 1)
             else {
                 return self.unknown();
             };
-            last_ident = name.to_string();
-            item = next_item;
+            last_name = item.name().unwrap().to_string();
+            path = next_path;
         }
 
-        let symbol_id = match item {
-            PathItem::Symbol(symbol_id) => symbol_id,
-            PathItem::Type(type_id) => {
+        let symbol_id = match path {
+            Path::Symbol(symbol_id) => symbol_id,
+            Path::Type(type_id) => {
                 if let Type::Variant(variant) = self.ty.get(type_id).clone() {
                     if variant.field_names.is_some() {
                         self.db.error(
@@ -59,20 +58,20 @@ impl Compiler<'_> {
                     return Value::new(hir_id, type_id);
                 }
                 self.db
-                    .error(ErrorKind::ExpectedSymbolPath(last_ident), text_range);
+                    .error(ErrorKind::ExpectedSymbolPath(last_name), text_range);
                 return self.unknown();
             }
         };
 
         if matches!(self.db.symbol(symbol_id), Symbol::Module(..)) {
             self.db
-                .error(ErrorKind::ModuleReference(last_ident), text_range);
+                .error(ErrorKind::ModuleReference(last_name), text_range);
             return self.unknown();
         }
 
         if !self.is_callee && matches!(self.db.symbol(symbol_id), Symbol::InlineFunction(..)) {
             self.db
-                .error(ErrorKind::InlineFunctionReference(last_ident), text_range);
+                .error(ErrorKind::InlineFunctionReference(last_name), text_range);
             return self.unknown();
         }
 

@@ -109,8 +109,8 @@ export enum Condition {
     },
 }
 
-export fun concat<T>(a: T[], b: T[]) -> T[] {
-    if a is (T, T[]) {
+export fun concat<T>(a: List<T>, b: List<T>) -> List<T> {
+    if a is (T, List<T>) {
         return [a.first, ...concat(a.rest, b)];
     }
     b

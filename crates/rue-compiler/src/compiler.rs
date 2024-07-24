@@ -123,7 +123,7 @@ impl<'a> Compiler<'a> {
     fn type_name(&self, type_id: TypeId) -> String {
         let mut names = HashMap::new();
 
-        for &scope_id in self.scope_stack.iter() {
+        for &scope_id in &self.scope_stack {
             for type_id in self.db.scope(scope_id).local_types() {
                 if let Some(name) = self.db.scope(scope_id).type_name(type_id) {
                     names.insert(type_id, name.to_string());

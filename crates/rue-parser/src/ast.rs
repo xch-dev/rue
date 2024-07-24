@@ -133,7 +133,9 @@ ast_node!(RaiseStmt);
 ast_node!(AssertStmt);
 ast_node!(AssumeStmt);
 
+ast_node!(GenericArgs);
 ast_node!(GenericParams);
+ast_node!(PathItem);
 
 impl Root {
     pub fn items(&self) -> Vec<Item> {
@@ -250,6 +252,10 @@ impl TypeAliasItem {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_params(&self) -> Option<GenericParams> {
+        self.syntax().children().find_map(GenericParams::cast)
     }
 
     pub fn ty(&self) -> Option<Type> {
@@ -499,11 +505,10 @@ impl AssumeStmt {
 }
 
 impl PathExpr {
-    pub fn idents(&self) -> Vec<SyntaxToken> {
+    pub fn items(&self) -> Vec<PathItem> {
         self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .children()
+            .filter_map(PathItem::cast)
             .collect()
     }
 }
@@ -810,11 +815,10 @@ impl FieldAccessExpr {
 }
 
 impl PathType {
-    pub fn idents(&self) -> Vec<SyntaxToken> {
+    pub fn items(&self) -> Vec<PathItem> {
         self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .children()
+            .filter_map(PathItem::cast)
             .collect()
     }
 }
@@ -882,5 +886,24 @@ impl GenericParams {
             .filter_map(SyntaxElement::into_token)
             .filter(|token| token.kind() == SyntaxKind::Ident)
             .collect()
+    }
+}
+
+impl GenericArgs {
+    pub fn types(&self) -> Vec<Type> {
+        self.syntax().children().filter_map(Type::cast).collect()
+    }
+}
+
+impl PathItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_args(&self) -> Option<GenericArgs> {
+        self.syntax().children().find_map(GenericArgs::cast)
     }
 }

@@ -117,6 +117,9 @@ pub enum ErrorKind {
     InvalidSymbolPath(Option<String>),
     ExpectedTypePath(String),
     ExpectedSymbolPath(String),
+    UnexpectedGenericArgs,
+    ExpectedGenericArgs,
+    GenericArgsMismatch(usize, usize),
 
     // Type guards.
     ImpossibleTypeCheck(String, String),
@@ -288,6 +291,11 @@ impl fmt::Display for ErrorKind {
             },
             Self::ExpectedTypePath(name) => format!("Expected type, but found symbol `{name}` instead"),
             Self::ExpectedSymbolPath(name) => format!("Expected symbol, but found type `{name}` instead"),
+            Self::UnexpectedGenericArgs => "Unexpected generic arguments".to_string(),
+            Self::ExpectedGenericArgs => "Expected generic arguments".to_string(),
+            Self::GenericArgsMismatch(found, expected) => {
+                format!("Expected {expected} generic argument{}, but found {found}", if *expected == 1 { "" } else { "s" })
+            }
 
             // Type guards.
             Self::ImpossibleTypeCheck(from, to) => format!("Cannot check type `{from}` against `{to}`"),

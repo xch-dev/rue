@@ -4,8 +4,8 @@ use id_arena::{Arena, Id};
 
 use crate::{
     check_type, compare_type, difference_type, replace_type, simplify_check, stringify_type,
-    substitute_type, Check, CheckError, Comparison, ComparisonContext, Semantics, StandardTypes,
-    Type, TypePath,
+    substitute_type, Alias, Check, CheckError, Comparison, ComparisonContext, Lazy, Semantics,
+    StandardTypes, Type, TypePath,
 };
 
 pub type TypeId = Id<Type>;
@@ -32,11 +32,21 @@ impl Default for TypeSystem {
         let false_bool = arena.alloc(Type::False);
         let nil = arena.alloc(Type::Nil);
 
+        let bool = arena.alloc(Type::Union(vec![false_bool, true_bool]));
+
         let any = arena.alloc(Type::Unknown);
         let pair = arena.alloc(Type::Pair(any, any));
         arena[any] = Type::Union(vec![atom, pair]);
 
-        let bool = arena.alloc(Type::Union(vec![false_bool, true_bool]));
+        let generic_list_item = arena.alloc(Type::Generic);
+        let inner = arena.alloc(Type::Unknown);
+        let unmapped_list = arena.alloc(Type::Alias(Alias {
+            original_type_id: None,
+            type_id: inner,
+            generic_types: vec![generic_list_item],
+        }));
+        let pair = arena.alloc(Type::Pair(generic_list_item, unmapped_list));
+        arena[inner] = Type::Union(vec![pair, nil]);
 
         let mut names = HashMap::new();
         names.insert(never, "Never".to_string());
@@ -50,6 +60,7 @@ impl Default for TypeSystem {
         names.insert(false_bool, "False".to_string());
         names.insert(nil, "Nil".to_string());
         names.insert(any, "Any".to_string());
+        names.insert(unmapped_list, "List".to_string());
 
         Self {
             arena,
@@ -57,6 +68,8 @@ impl Default for TypeSystem {
                 unknown,
                 never,
                 any,
+                unmapped_list,
+                generic_list_item,
                 atom,
                 bytes,
                 bytes32,
@@ -89,6 +102,10 @@ impl TypeSystem {
         &self.arena[type_id]
     }
 
+    pub fn get_raw_mut(&mut self, type_id: TypeId) -> &mut Type {
+        &mut self.arena[type_id]
+    }
+
     pub fn get(&self, type_id: TypeId) -> &Type {
         match &self.arena[type_id] {
             Type::Ref(type_id) => self.get(*type_id),
@@ -115,6 +132,15 @@ impl TypeSystem {
             Type::Union(types) => Some(types),
             _ => None,
         }
+    }
+
+    pub fn alloc_list(&mut self, type_id: TypeId) -> TypeId {
+        let mut substitutions = HashMap::new();
+        substitutions.insert(self.types.generic_list_item, type_id);
+        self.alloc(Type::Lazy(Lazy {
+            type_id: self.types.unmapped_list,
+            substitutions,
+        }))
     }
 
     pub fn stringify_named(&self, type_id: TypeId, mut names: HashMap<TypeId, String>) -> String {
@@ -165,13 +191,7 @@ impl TypeSystem {
         mut substitutions: HashMap<TypeId, TypeId>,
         semantics: Semantics,
     ) -> TypeId {
-        substitute_type(
-            self,
-            type_id,
-            &mut substitutions,
-            semantics,
-            &mut HashSet::new(),
-        )
+        substitute_type(self, type_id, &mut substitutions, semantics)
     }
 
     pub fn check(&mut self, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {
@@ -179,6 +199,8 @@ impl TypeSystem {
     }
 
     pub fn difference(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+        let lhs = self.substitute(lhs, HashMap::new(), Semantics::Preserve);
+        let rhs = self.substitute(rhs, HashMap::new(), Semantics::Preserve);
         difference_type(self, lhs, rhs, &mut HashSet::new())
     }
 

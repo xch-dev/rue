@@ -101,6 +101,9 @@ fn type_alias_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::TypeAliasItem);
     p.expect(SyntaxKind::Type);
     p.expect(SyntaxKind::Ident);
+    if p.at(SyntaxKind::LessThan) {
+        generic_params(p);
+    }
     p.expect(SyntaxKind::Assign);
     ty(p);
     p.expect(SyntaxKind::Semicolon);
@@ -490,9 +493,13 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
 
 fn path_expr(p: &mut Parser<'_>) {
     p.start(SyntaxKind::PathExpr);
+    p.start(SyntaxKind::PathItem);
     p.expect(SyntaxKind::Ident);
+    p.finish();
     while p.try_eat(SyntaxKind::PathSeparator) {
+        p.start(SyntaxKind::PathItem);
         p.expect(SyntaxKind::Ident);
+        p.finish();
     }
     p.finish();
 }
@@ -597,9 +604,18 @@ fn ty(p: &mut Parser<'_>) {
 
 fn path_type(p: &mut Parser<'_>) {
     p.start(SyntaxKind::PathType);
-    p.expect(SyntaxKind::Ident);
+    path_type_item(p);
     while p.try_eat(SyntaxKind::PathSeparator) {
-        p.expect(SyntaxKind::Ident);
+        path_type_item(p);
+    }
+    p.finish();
+}
+
+fn path_type_item(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::PathItem);
+    p.expect(SyntaxKind::Ident);
+    if p.at(SyntaxKind::LessThan) {
+        generic_args(p);
     }
     p.finish();
 }
@@ -630,6 +646,8 @@ fn generic_params(p: &mut Parser<'_>) {
 fn generic_args(p: &mut Parser<'_>) {
     p.start(SyntaxKind::GenericArgs);
     p.expect(SyntaxKind::LessThan);
+    ty(p);
+    p.try_eat(SyntaxKind::Comma);
     while !p.at(SyntaxKind::GreaterThan) {
         ty(p);
         if !p.try_eat(SyntaxKind::Comma) {

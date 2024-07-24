@@ -63,7 +63,7 @@ impl Compiler<'_> {
             return self.add_public_key(lhs.hir_id, rhs, text_range);
         }
 
-        if self.ty.compare(lhs.type_id, self.ty.std().bytes) == Comparison::Equal {
+        if self.ty.compare(lhs.type_id, self.ty.std().bytes) <= Comparison::Assignable {
             return self.add_bytes(lhs.hir_id, rhs, text_range);
         }
 

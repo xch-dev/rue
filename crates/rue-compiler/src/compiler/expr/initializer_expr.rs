@@ -11,7 +11,7 @@ impl Compiler<'_> {
     pub fn compile_initializer_expr(&mut self, initializer: &InitializerExpr) -> Value {
         let ty = initializer
             .path()
-            .map(|path| self.compile_path_type(&path.idents(), path.syntax().text_range()));
+            .map(|path| self.compile_path_type(&path.items(), path.syntax().text_range()));
 
         match ty.map(|ty| self.ty.get(ty)).cloned() {
             Some(Type::Struct(struct_type)) => {

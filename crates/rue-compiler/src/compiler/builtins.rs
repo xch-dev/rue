@@ -30,6 +30,7 @@ pub fn builtins(db: &mut Database, ty: &mut TypeSystem) -> Builtins {
     scope.define_type("Bytes32".to_string(), ty.std().bytes32);
     scope.define_type("PublicKey".to_string(), ty.std().public_key);
     scope.define_type("Any".to_string(), ty.std().any);
+    scope.define_type("List".to_string(), ty.std().unmapped_list);
 
     let builtins = Builtins {
         scope_id: db.alloc_scope(scope),
