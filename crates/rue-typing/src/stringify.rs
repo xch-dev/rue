@@ -47,7 +47,20 @@ pub(crate) fn stringify_type(
 
             result
         }
-        Type::Lazy(lazy) => stringify_type(types, lazy.type_id, names, visited),
+        Type::Lazy(lazy) => {
+            let name = stringify_type(types, lazy.type_id, names, visited);
+            let mut generics = "<".to_string();
+
+            for (index, (_, generic)) in lazy.substitutions.iter().enumerate() {
+                if index > 0 {
+                    generics.push_str(", ");
+                }
+                generics.push_str(&stringify_type(types, *generic, names, visited));
+            }
+
+            generics.push('>');
+            name + &generics
+        }
         Type::Alias(alias) => stringify_type(types, alias.type_id, names, visited),
         Type::Struct(Struct { type_id, .. }) | Type::Variant(Variant { type_id, .. }) => {
             stringify_type(types, *type_id, names, visited)

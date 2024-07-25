@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use id_arena::{Arena, Id};
+use indexmap::IndexMap;
 
 use crate::{
     check_type, compare_type, difference_type, replace_type, simplify_check, stringify_type,
@@ -146,7 +147,7 @@ impl TypeSystem {
     }
 
     pub fn alloc_list(&mut self, type_id: TypeId) -> TypeId {
-        let mut substitutions = HashMap::new();
+        let mut substitutions = IndexMap::new();
         substitutions.insert(self.types.generic_list_item, type_id);
         self.alloc(Type::Lazy(Lazy {
             type_id: self.types.unmapped_list,

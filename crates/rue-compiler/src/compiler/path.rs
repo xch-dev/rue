@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use indexmap::IndexMap;
 use rowan::TextRange;
 use rue_parser::{AstNode, GenericArgs, PathItem};
 use rue_typing::{Lazy, Type, TypeId};
@@ -226,7 +225,7 @@ impl Compiler<'_> {
 
             let mut lazy = Lazy {
                 type_id,
-                substitutions: HashMap::new(),
+                substitutions: IndexMap::new(),
             };
 
             for (generic_type, arg) in alias.generic_types.clone().into_iter().zip(generic_args) {

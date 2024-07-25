@@ -234,13 +234,15 @@ pub(crate) fn compare_type(
 
         // We need to push substititons onto the stack in order to accurately compare them.
         (Type::Lazy(lazy), _) => {
-            ctx.substitution_stack.push(lazy.substitutions.clone());
+            ctx.substitution_stack
+                .push(lazy.substitutions.clone().into_iter().collect());
             let result = compare_type(db, lazy.type_id, rhs, ctx);
             ctx.substitution_stack.pop().unwrap();
             result
         }
         (_, Type::Lazy(lazy)) => {
-            ctx.substitution_stack.push(lazy.substitutions.clone());
+            ctx.substitution_stack
+                .push(lazy.substitutions.clone().into_iter().collect());
             let result = compare_type(db, lhs, lazy.type_id, ctx);
             ctx.substitution_stack.pop().unwrap();
             result

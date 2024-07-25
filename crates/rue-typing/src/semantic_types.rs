@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use indexmap::{IndexMap, IndexSet};
 use num_bigint::BigInt;
 
@@ -24,7 +22,7 @@ pub enum Rest {
 #[derive(Debug, Clone)]
 pub struct Lazy {
     pub type_id: TypeId,
-    pub substitutions: HashMap<TypeId, TypeId>,
+    pub substitutions: IndexMap<TypeId, TypeId>,
 }
 
 /// Represents an alias to a type with a set of generic parameters that must be mapped prior to use.
