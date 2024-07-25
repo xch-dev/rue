@@ -1,4 +1,4 @@
-use crate::{Alias, Struct, Type, TypeId, TypePath, TypeSystem};
+use crate::{Alias, Enum, Struct, Type, TypeId, TypePath, TypeSystem, Variant};
 
 pub(crate) fn replace_type(
     types: &mut TypeSystem,
@@ -29,10 +29,33 @@ pub(crate) fn replace_type(
             let new_type_id = replace_type(types, ty.type_id, replace_type_id, path);
             types.alloc(Type::Struct(Struct {
                 original_type_id: ty.original_type_id,
-                type_id: new_type_id,
                 field_names: ty.field_names,
+                type_id: new_type_id,
                 rest: ty.rest,
                 generic_types: ty.generic_types,
+            }))
+        }
+        Type::Variant(ty) => {
+            let ty = ty.clone();
+            let new_type_id = replace_type(types, ty.type_id, replace_type_id, path);
+            types.alloc(Type::Variant(Variant {
+                original_type_id: ty.original_type_id,
+                original_enum_type_id: ty.original_enum_type_id,
+                field_names: ty.field_names,
+                type_id: new_type_id,
+                rest: ty.rest,
+                generic_types: ty.generic_types,
+                discriminant: ty.discriminant,
+            }))
+        }
+        Type::Enum(ty) => {
+            let ty = ty.clone();
+            let new_type_id = replace_type(types, ty.type_id, replace_type_id, path);
+            types.alloc(Type::Enum(Enum {
+                original_type_id: ty.original_type_id,
+                type_id: new_type_id,
+                has_fields: ty.has_fields,
+                variants: ty.variants,
             }))
         }
         _ => type_id,

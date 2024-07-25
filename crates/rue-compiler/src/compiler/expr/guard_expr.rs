@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use rue_parser::{AstNode, GuardExpr};
-use rue_typing::{bigint_to_bytes, Check, Semantics, TypeId};
+use rue_typing::{bigint_to_bytes, Check, TypeId};
 
 use crate::{
     compiler::Compiler,
@@ -27,23 +25,7 @@ impl Compiler<'_> {
             .ty()
             .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
-        let lhs = self.ty.substitute(
-            expr.type_id,
-            HashMap::new(),
-            Semantics::StructuralOnly {
-                callable: self.ty.std().any,
-            },
-        );
-
-        let rhs = self.ty.substitute(
-            rhs,
-            HashMap::new(),
-            Semantics::StructuralOnly {
-                callable: self.ty.std().never,
-            },
-        );
-
-        let Ok(check) = self.ty.check(lhs, rhs) else {
+        let Ok(check) = self.ty.check(expr.type_id, rhs) else {
             self.db.error(
                 ErrorKind::RecursiveTypeCheck(self.type_name(expr.type_id), self.type_name(rhs)),
                 guard.syntax().text_range(),
@@ -54,13 +36,19 @@ impl Compiler<'_> {
         match check {
             Check::True => {
                 self.db.warning(
-                    WarningKind::UnnecessaryTypeCheck(self.type_name(lhs), self.type_name(rhs)),
+                    WarningKind::UnnecessaryTypeCheck(
+                        self.type_name(expr.type_id),
+                        self.type_name(rhs),
+                    ),
                     guard.syntax().text_range(),
                 );
             }
             Check::False => {
                 self.db.error(
-                    ErrorKind::ImpossibleTypeCheck(self.type_name(lhs), self.type_name(rhs)),
+                    ErrorKind::ImpossibleTypeCheck(
+                        self.type_name(expr.type_id),
+                        self.type_name(rhs),
+                    ),
                     guard.syntax().text_range(),
                 );
                 return self.unknown();

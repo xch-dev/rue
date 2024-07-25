@@ -322,7 +322,7 @@ impl<'a> Lowerer<'a> {
         let mut param_map = HashMap::new();
 
         for (i, &symbol_id) in params.iter().enumerate() {
-            if i + 1 != params.len() || function.ty.rest != Rest::Spread {
+            if i + 1 != params.len() || function.rest != Rest::Spread {
                 let mir_id = self.lower_hir(env_id, args[i]);
                 param_map.insert(symbol_id, mir_id);
                 continue;

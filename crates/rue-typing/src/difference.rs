@@ -18,118 +18,90 @@ pub(crate) fn difference_type(
     }
 
     let result = match (types.get(lhs), types.get(rhs)) {
-        (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
-        (Type::Lazy(..), _) | (_, Type::Lazy(..)) => unreachable!(),
+        (Type::Ref(..) | Type::Lazy(..), _) | (_, Type::Ref(..) | Type::Lazy(..)) => unreachable!(),
 
-        (Type::Generic, _) | (_, Type::Generic) => lhs,
-        (Type::Unknown, _) | (_, Type::Unknown) => lhs,
+        // If you subtract a supertype or equal type, there are no other possible types.
+        (Type::Never, _)
+        | (_, Type::Any | Type::Unknown | Type::Generic | Type::Callable(..))
+        | (Type::Bytes | Type::Int | Type::Value(..), Type::Bytes | Type::Int)
+        | (Type::Bytes32, Type::Bytes32 | Type::Bytes | Type::Int)
+        | (Type::PublicKey, Type::PublicKey | Type::Bytes | Type::Int)
+        | (Type::Nil | Type::False, Type::Nil | Type::Bytes | Type::Int | Type::False)
+        | (Type::True, Type::True | Type::Bytes | Type::Int) => std.never,
 
-        (Type::Never, _) => std.never,
-        (_, Type::Never) => lhs,
+        // If you subtract something which is a subtype, the result is the same as the original type.
+        (_, Type::Never)
+        | (
+            Type::Any
+            | Type::Int
+            | Type::Bytes
+            | Type::Unknown
+            | Type::Generic
+            | Type::Callable(..),
+            Type::Bytes32
+            | Type::PublicKey
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..),
+        )
+        | (
+            Type::Unknown | Type::Generic | Type::Callable(..),
+            Type::Int | Type::Bytes | Type::Pair(..),
+        )
+        | (
+            Type::Bytes32,
+            Type::PublicKey | Type::Nil | Type::True | Type::False | Type::Value(..),
+        )
+        | (
+            Type::PublicKey,
+            Type::Bytes32 | Type::Nil | Type::True | Type::False | Type::Value(..),
+        )
+        | (Type::Nil | Type::False, Type::Bytes32 | Type::PublicKey | Type::True)
+        | (Type::True, Type::Bytes32 | Type::PublicKey | Type::Nil | Type::False)
+        | (
+            Type::Pair(..),
+            Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..),
+        )
+        | (
+            Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..),
+            Type::Pair(..),
+        ) => lhs,
 
-        (Type::Any, Type::Any) => std.never,
-        (Type::Bytes, Type::Bytes) => std.never,
-        (Type::Bytes32, Type::Bytes32) => std.never,
-        (Type::PublicKey, Type::PublicKey) => std.never,
-        (Type::Int, Type::Int) => std.never,
-        (Type::Nil, Type::Nil) => std.never,
-        (Type::True, Type::True) => std.never,
-        (Type::False, Type::False) => std.never,
+        // Any is defined as either Bytes or (Any, Any).
+        (Type::Any, Type::Pair(..)) => std.bytes,
+        (Type::Any, Type::Bytes | Type::Int) => types.alloc(Type::Pair(std.any, std.any)),
 
-        (Type::Int, Type::Bytes32) => lhs,
-        (Type::Int, Type::PublicKey) => lhs,
-        (Type::Int, Type::Bytes) => std.never,
-        (Type::Int, Type::Any) => std.never,
-        (Type::Int, Type::Nil) => lhs,
-        (Type::Int, Type::True) => lhs,
-        (Type::Int, Type::False) => lhs,
-        (Type::Int, Type::Value(..)) => lhs,
-
-        (Type::Bytes, Type::Bytes32) => lhs,
-        (Type::Bytes, Type::PublicKey) => lhs,
-        (Type::Bytes, Type::Int) => std.never,
-        (Type::Bytes, Type::Any) => std.never,
-        (Type::Bytes, Type::Nil) => lhs,
-        (Type::Bytes, Type::True) => lhs,
-        (Type::Bytes, Type::False) => lhs,
-        (Type::Bytes, Type::Value(..)) => lhs,
-
-        (Type::Any, Type::Bytes32) => lhs,
-        (Type::Any, Type::PublicKey) => lhs,
-        (Type::Any, Type::Int) => lhs,
-        (Type::Any, Type::Bytes) => lhs,
-        (Type::Any, Type::Nil) => lhs,
-        (Type::Any, Type::True) => lhs,
-        (Type::Any, Type::False) => lhs,
-        (Type::Any, Type::Value(..)) => lhs,
-
-        (Type::Bytes32, Type::PublicKey) => lhs,
-        (Type::Bytes32, Type::Bytes) => std.never,
-        (Type::Bytes32, Type::Int) => std.never,
-        (Type::Bytes32, Type::Any) => std.never,
-        (Type::Bytes32, Type::Nil) => lhs,
-        (Type::Bytes32, Type::True) => lhs,
-        (Type::Bytes32, Type::False) => lhs,
-        (Type::Bytes32, Type::Value(..)) => lhs,
-
-        (Type::PublicKey, Type::Bytes32) => lhs,
-        (Type::PublicKey, Type::Bytes) => std.never,
-        (Type::PublicKey, Type::Int) => std.never,
-        (Type::PublicKey, Type::Any) => std.never,
-        (Type::PublicKey, Type::Nil) => lhs,
-        (Type::PublicKey, Type::True) => lhs,
-        (Type::PublicKey, Type::False) => lhs,
-        (Type::PublicKey, Type::Value(..)) => lhs,
-
-        (Type::Nil, Type::Bytes32) => lhs,
-        (Type::Nil, Type::PublicKey) => lhs,
-        (Type::Nil, Type::Bytes) => std.never,
-        (Type::Nil, Type::Any) => std.never,
-        (Type::Nil, Type::Int) => std.never,
-        (Type::Nil, Type::True) => lhs,
-        (Type::Nil, Type::False) => std.never,
-
-        (Type::True, Type::Any) => std.never,
-        (Type::True, Type::Bytes) => std.never,
-        (Type::True, Type::Bytes32) => lhs,
-        (Type::True, Type::PublicKey) => lhs,
-        (Type::True, Type::Int) => std.never,
-        (Type::True, Type::Nil) => lhs,
-        (Type::True, Type::False) => lhs,
-
-        (Type::False, Type::Any) => std.never,
-        (Type::False, Type::Bytes) => std.never,
-        (Type::False, Type::Bytes32) => lhs,
-        (Type::False, Type::PublicKey) => lhs,
-        (Type::False, Type::Int) => std.never,
-        (Type::False, Type::Nil) => lhs,
-        (Type::False, Type::True) => lhs,
-
-        (Type::Nil, Type::Value(value)) => {
+        (Type::Nil | Type::False, Type::Value(value))
+        | (Type::Value(value), Type::Nil | Type::False) => {
             if value == &BigInt::ZERO {
                 std.never
             } else {
                 lhs
             }
         }
-        (Type::False, Type::Value(value)) => {
-            if value == &BigInt::ZERO {
-                std.never
-            } else {
-                lhs
-            }
-        }
-        (Type::True, Type::Value(value)) => {
+
+        (Type::True, Type::Value(value)) | (Type::Value(value), Type::True) => {
             if value == &BigInt::one() {
                 std.never
             } else {
                 lhs
             }
         }
-
-        (Type::Value(..), Type::Any) => std.never,
-        (Type::Value(..), Type::Bytes) => std.never,
-        (Type::Value(..), Type::Int) => std.never,
 
         (Type::Value(value), Type::Bytes32) => {
             if bigint_to_bytes(value.clone()).len() == 32 {
@@ -145,27 +117,6 @@ pub(crate) fn difference_type(
                 lhs
             }
         }
-        (Type::Value(value), Type::True) => {
-            if value == &BigInt::one() {
-                std.never
-            } else {
-                lhs
-            }
-        }
-        (Type::Value(value), Type::False) => {
-            if value == &BigInt::ZERO {
-                std.never
-            } else {
-                lhs
-            }
-        }
-        (Type::Value(value), Type::Nil) => {
-            if value == &BigInt::ZERO {
-                std.never
-            } else {
-                lhs
-            }
-        }
 
         (Type::Value(lhs_value), Type::Value(rhs_value)) => {
             if lhs_value == rhs_value {
@@ -174,26 +125,6 @@ pub(crate) fn difference_type(
                 lhs
             }
         }
-
-        (Type::Any, Type::Pair(..)) => lhs,
-        (Type::Bytes, Type::Pair(..)) => lhs,
-        (Type::Bytes32, Type::Pair(..)) => lhs,
-        (Type::PublicKey, Type::Pair(..)) => lhs,
-        (Type::Int, Type::Pair(..)) => lhs,
-        (Type::Nil, Type::Pair(..)) => lhs,
-        (Type::True, Type::Pair(..)) => lhs,
-        (Type::False, Type::Pair(..)) => lhs,
-        (Type::Value(..), Type::Pair(..)) => lhs,
-
-        (Type::Pair(..), Type::Any) => std.never,
-        (Type::Pair(..), Type::Bytes) => lhs,
-        (Type::Pair(..), Type::Bytes32) => lhs,
-        (Type::Pair(..), Type::PublicKey) => lhs,
-        (Type::Pair(..), Type::Int) => lhs,
-        (Type::Pair(..), Type::Nil) => lhs,
-        (Type::Pair(..), Type::True) => lhs,
-        (Type::Pair(..), Type::False) => lhs,
-        (Type::Pair(..), Type::Value(..)) => lhs,
 
         (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
             let (lhs_first, lhs_rest) = (*lhs_first, *lhs_rest);
@@ -209,39 +140,6 @@ pub(crate) fn difference_type(
             } else {
                 types.alloc(Type::Pair(first, rest))
             }
-        }
-
-        (Type::Union(items), _) => {
-            let items = items.clone();
-
-            let mut result = Vec::new();
-
-            for item in &items {
-                let item = difference_type(types, *item, rhs, visited);
-                if matches!(types.get(item), Type::Never) {
-                    continue;
-                }
-                result.push(item);
-            }
-
-            if result.is_empty() {
-                std.never
-            } else if result.len() == 1 {
-                result[0]
-            } else if result == items {
-                lhs
-            } else {
-                types.alloc(Type::Union(result))
-            }
-        }
-
-        (_, Type::Union(items)) => {
-            let items = items.clone();
-            let mut lhs = lhs;
-            for item in items {
-                lhs = difference_type(types, lhs, item, visited);
-            }
-            lhs
         }
 
         (Type::Alias(alias), _) => difference_type(types, alias.type_id, rhs, visited),
@@ -324,8 +222,38 @@ pub(crate) fn difference_type(
             }))
         }
 
-        (Type::Callable(..), _) => lhs,
-        (_, Type::Callable(..)) => lhs,
+        (Type::Union(items), _) => {
+            let items = items.clone();
+
+            let mut result = Vec::new();
+
+            for item in &items {
+                let item = difference_type(types, *item, rhs, visited);
+                if matches!(types.get(item), Type::Never) {
+                    continue;
+                }
+                result.push(item);
+            }
+
+            if result.is_empty() {
+                std.never
+            } else if result.len() == 1 {
+                result[0]
+            } else if result == items {
+                lhs
+            } else {
+                types.alloc(Type::Union(result))
+            }
+        }
+
+        (_, Type::Union(items)) => {
+            let items = items.clone();
+            let mut lhs = lhs;
+            for item in items {
+                lhs = difference_type(types, lhs, item, visited);
+            }
+            lhs
+        }
     };
 
     visited.remove(&(lhs, rhs));

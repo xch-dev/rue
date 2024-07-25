@@ -54,7 +54,7 @@ pub(crate) fn compare_type(
         | (Type::False, Type::False) => Comparison::Equal,
 
         // These are assignable since the structure and semantics match.
-        (_, Type::Any)
+        (_, Type::Any | Type::Unknown)
         | (
             Type::Unknown | Type::Never,
             Type::Bytes
@@ -67,21 +67,6 @@ pub(crate) fn compare_type(
             | Type::Value(..)
             | Type::Pair(..)
             | Type::Callable(..),
-        )
-        | (
-            Type::Never
-            | Type::Any
-            | Type::Bytes
-            | Type::Bytes32
-            | Type::PublicKey
-            | Type::Int
-            | Type::Nil
-            | Type::True
-            | Type::False
-            | Type::Value(..)
-            | Type::Pair(..)
-            | Type::Callable(..),
-            Type::Unknown,
         )
         | (Type::Unknown, Type::Never)
         | (Type::Value(..), Type::Int)

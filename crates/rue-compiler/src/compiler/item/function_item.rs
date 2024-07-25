@@ -137,27 +137,31 @@ impl Compiler<'_> {
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
         // Create the function's type.
-        let ty = Callable {
-            original_type_id: None,
+        let type_id = self.ty.alloc(Type::Unknown);
+
+        *self.ty.get_mut(type_id) = Type::Callable(Callable {
+            original_type_id: type_id,
             parameter_names: param_names.into_iter().collect(),
             parameters: construct_items(self.ty, param_types.into_iter(), rest),
             return_type,
             rest,
             generic_types,
-        };
+        });
 
         // Update the symbol with the function.
         if function_item.inline().is_some() {
             *self.db.symbol_mut(symbol_id) = Symbol::InlineFunction(Function {
                 scope_id,
                 hir_id,
-                ty,
+                type_id,
+                rest,
             });
         } else {
             *self.db.symbol_mut(symbol_id) = Symbol::Function(Function {
                 scope_id,
                 hir_id,
-                ty,
+                type_id,
+                rest,
             });
         }
 
@@ -179,26 +183,36 @@ impl Compiler<'_> {
         };
 
         // Get the function's scope and type.
-        let (Symbol::Function(Function { scope_id, ty, .. })
-        | Symbol::InlineFunction(Function { scope_id, ty, .. })) =
-            self.db.symbol(symbol_id).clone()
+        let (Symbol::Function(Function {
+            scope_id, type_id, ..
+        })
+        | Symbol::InlineFunction(Function {
+            scope_id, type_id, ..
+        })) = self.db.symbol(symbol_id).clone()
         else {
             unreachable!();
         };
 
+        let return_type = self
+            .ty
+            .get_callable(type_id)
+            .map(|callable| callable.return_type);
+
         // We don't care about explicit returns in this context.
         self.scope_stack.push(scope_id);
         self.allow_generic_inference_stack.push(false);
-        let value = self.compile_block(&body, Some(ty.return_type)).value;
+        let value = self.compile_block(&body, return_type).value;
         self.allow_generic_inference_stack.pop().unwrap();
         self.scope_stack.pop().unwrap();
 
         // Ensure that the body is assignable to the return type.
-        self.type_check(
-            value.type_id,
-            ty.return_type,
-            function.body().unwrap().syntax().text_range(),
-        );
+        if let Some(return_type) = return_type {
+            self.type_check(
+                value.type_id,
+                return_type,
+                function.body().unwrap().syntax().text_range(),
+            );
+        }
 
         // Update the function's HIR with the body's HIR, for code generation purposes.
         let (Symbol::Function(Function { hir_id, .. })

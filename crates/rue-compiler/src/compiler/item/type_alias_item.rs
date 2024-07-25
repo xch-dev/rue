@@ -43,11 +43,13 @@ impl Compiler<'_> {
         // Create the alias type.
         let ref_type_id = self.ty.alloc(Type::Ref(self.ty.std().unknown));
 
-        let type_id = self.ty.alloc(Type::Alias(Alias {
-            original_type_id: None,
+        let type_id = self.ty.alloc(Type::Unknown);
+
+        *self.ty.get_mut(type_id) = Type::Alias(Alias {
+            original_type_id: type_id,
             type_id: ref_type_id,
             generic_types,
-        }));
+        });
 
         if let Some(name) = type_alias.name() {
             self.scope_mut().define_type(name.to_string(), type_id);

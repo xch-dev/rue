@@ -72,13 +72,17 @@ impl Compiler<'_> {
 
         // Allocate a new type for the function.
         // TODO: Support generic types.
-        self.ty.alloc(Type::Callable(Callable {
-            original_type_id: None,
+        let type_id = self.ty.alloc(Type::Unknown);
+
+        *self.ty.get_mut(type_id) = Type::Callable(Callable {
+            original_type_id: type_id,
             parameter_names,
             parameters,
             rest,
             return_type,
             generic_types: Vec::new(),
-        }))
+        });
+
+        type_id
     }
 }

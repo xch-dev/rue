@@ -49,12 +49,14 @@ impl Compiler<'_> {
             .ty
             .alloc(Type::Union(variants.values().copied().collect()));
 
-        let enum_type_id = self.ty.alloc(Type::Enum(Enum {
-            original_type_id: None,
+        let enum_type_id = self.ty.alloc(Type::Unknown);
+
+        *self.ty.get_mut(enum_type_id) = Type::Enum(Enum {
+            original_type_id: enum_type_id,
             type_id: enum_structure,
             has_fields,
             variants,
-        }));
+        });
 
         // Add the enum to the scope and define the token for the enum.
         if let Some(name) = enum_item.name() {
@@ -150,8 +152,8 @@ impl Compiler<'_> {
             };
 
             *self.ty.get_mut(variant_type_id) = Type::Variant(Variant {
-                original_type_id: None,
-                enum_type: enum_type_id,
+                original_type_id: variant_type_id,
+                original_enum_type_id: enum_type_id,
                 field_names: if variant.fields().is_some() {
                     Some(fields.keys().cloned().collect())
                 } else {

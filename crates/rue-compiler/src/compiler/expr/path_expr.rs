@@ -43,7 +43,7 @@ impl Compiler<'_> {
                         );
                     }
 
-                    let Type::Enum(enum_type) = self.ty.get(variant.enum_type) else {
+                    let Type::Enum(enum_type) = self.ty.get(variant.original_enum_type_id) else {
                         unreachable!();
                     };
 
@@ -85,11 +85,9 @@ impl Compiler<'_> {
 
         let mut value = match self.db.symbol(symbol_id).clone() {
             Symbol::Unknown | Symbol::Module(..) => unreachable!(),
-            Symbol::Function(Function { ty, .. }) | Symbol::InlineFunction(Function { ty, .. }) => {
-                let type_id = self.ty.alloc(Type::Callable(ty.clone()));
-                Value::new(reference, override_type_id.unwrap_or(type_id))
-            }
-            Symbol::Parameter(type_id) => {
+            Symbol::Function(Function { type_id, .. })
+            | Symbol::InlineFunction(Function { type_id, .. })
+            | Symbol::Parameter(type_id) => {
                 Value::new(reference, override_type_id.unwrap_or(type_id))
             }
             Symbol::Let(mut value) | Symbol::Const(mut value) | Symbol::InlineConst(mut value) => {

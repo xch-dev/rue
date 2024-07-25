@@ -23,7 +23,7 @@ impl Compiler<'_> {
         let type_id = construct_items(self.ty, fields.values().copied(), rest);
 
         *self.ty.get_mut(struct_type_id) = Type::Struct(Struct {
-            original_type_id: None,
+            original_type_id: struct_type_id,
             field_names: fields.keys().cloned().collect(),
             type_id,
             rest,

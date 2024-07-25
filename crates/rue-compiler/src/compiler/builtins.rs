@@ -67,17 +67,22 @@ fn sha256(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
     let hir_id = db.alloc_hir(Hir::Op(Op::Sha256, param_ref));
     let scope_id = db.alloc_scope(scope);
 
+    let type_id = ty.alloc(Type::Unknown);
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["bytes".to_string()],
+        parameters: ty.alloc(Type::Pair(ty.std().bytes, ty.std().nil)),
+        rest: Rest::Nil,
+        return_type: ty.std().bytes32,
+        generic_types: Vec::new(),
+    });
+
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
-        ty: Callable {
-            original_type_id: None,
-            parameter_names: indexset!["bytes".to_string()],
-            parameters: ty.alloc(Type::Pair(ty.std().bytes, ty.std().nil)),
-            rest: Rest::Nil,
-            return_type: ty.std().bytes32,
-            generic_types: Vec::new(),
-        },
+        type_id,
+        rest: Rest::Nil,
     }))
 }
 
@@ -89,17 +94,22 @@ fn pubkey_for_exp(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
     let hir_id = db.alloc_hir(Hir::Op(Op::PubkeyForExp, param_ref));
     let scope_id = db.alloc_scope(scope);
 
+    let type_id = ty.alloc(Type::Unknown);
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["exponent".to_string()],
+        parameters: ty.alloc(Type::Pair(ty.std().bytes32, ty.std().nil)),
+        rest: Rest::Nil,
+        return_type: ty.std().public_key,
+        generic_types: Vec::new(),
+    });
+
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
-        ty: Callable {
-            original_type_id: None,
-            parameter_names: indexset!["exponent".to_string()],
-            parameters: ty.alloc(Type::Pair(ty.std().bytes32, ty.std().nil)),
-            rest: Rest::Nil,
-            return_type: ty.std().public_key,
-            generic_types: Vec::new(),
-        },
+        type_id,
+        rest: Rest::Nil,
     }))
 }
 
@@ -117,17 +127,22 @@ fn divmod(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
 
     let int_pair = ty.alloc(Type::Pair(ty.std().int, ty.std().int));
 
+    let type_id = ty.alloc(Type::Unknown);
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["lhs".to_string(), "rhs".to_string()],
+        parameters: ty.alloc(Type::Pair(int_pair, ty.std().nil)),
+        rest: Rest::Nil,
+        return_type: int_pair,
+        generic_types: Vec::new(),
+    });
+
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
-        ty: Callable {
-            original_type_id: None,
-            parameter_names: indexset!["lhs".to_string(), "rhs".to_string()],
-            parameters: ty.alloc(Type::Pair(int_pair, ty.std().nil)),
-            rest: Rest::Nil,
-            return_type: int_pair,
-            generic_types: Vec::new(),
-        },
+        type_id,
+        rest: Rest::Nil,
     }))
 }
 
@@ -150,16 +165,21 @@ fn substr(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
     let int = ty.alloc(Type::Pair(ty.std().int, end));
     let parameters = ty.alloc(Type::Pair(ty.std().bytes, int));
 
+    let type_id = ty.alloc(Type::Unknown);
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["value".to_string(), "start".to_string(), "end".to_string()],
+        parameters,
+        rest: Rest::Nil,
+        return_type: ty.std().bytes,
+        generic_types: Vec::new(),
+    });
+
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
-        ty: Callable {
-            original_type_id: None,
-            parameter_names: indexset!["value".to_string(), "start".to_string(), "end".to_string()],
-            parameters,
-            rest: Rest::Nil,
-            return_type: ty.std().bytes,
-            generic_types: Vec::new(),
-        },
+        type_id,
+        rest: Rest::Nil,
     }))
 }

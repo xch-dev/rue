@@ -80,22 +80,17 @@ pub(crate) fn union_attributes(
             return Err(CheckError::Recursive(key.0, key.1));
         }
 
-        match db.get(item) {
-            Type::Ref(..) => unreachable!(),
-            Type::Lazy(..) => unreachable!(),
-            Type::Alias(..) => unreachable!(),
-            Type::Struct(..) => unreachable!(),
-            Type::Callable(..) => unreachable!(),
-            Type::Enum(..) => unreachable!(),
-            Type::Variant(..) => unreachable!(),
-            Type::Generic => {
+        match db.get_recursive(item) {
+            Type::Ref(..)
+            | Type::Lazy(..)
+            | Type::Alias(..)
+            | Type::Struct(..)
+            | Type::Enum(..)
+            | Type::Variant(..) => unreachable!(),
+            Type::Generic | Type::Never | Type::Callable(..) => {
                 length -= 1;
             }
-            Type::Unknown => {}
-            Type::Any => {}
-            Type::Never => {
-                length -= 1;
-            }
+            Type::Any | Type::Unknown => {}
             Type::Bytes | Type::Int => {
                 atom_count += 1;
             }
@@ -107,17 +102,13 @@ pub(crate) fn union_attributes(
                 atom_count += 1;
                 public_key_count += 1;
             }
-            Type::Nil => {
+            Type::Nil | Type::False => {
                 atom_count += 1;
                 *values.entry(BigInt::ZERO).or_insert(0) += 1;
             }
             Type::True => {
                 atom_count += 1;
                 *values.entry(BigInt::one()).or_insert(0) += 1;
-            }
-            Type::False => {
-                atom_count += 1;
-                *values.entry(BigInt::ZERO).or_insert(0) += 1;
             }
             Type::Value(value) => {
                 atom_count += 1;

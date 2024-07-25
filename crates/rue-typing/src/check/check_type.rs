@@ -21,55 +21,53 @@ pub(crate) fn check_type(
         return Err(CheckError::Recursive(lhs, rhs));
     }
 
-    let check = match (types.get(lhs), types.get(rhs)) {
-        (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
-        (Type::Lazy(..), _) | (_, Type::Lazy(..)) => unreachable!(),
-        (Type::Alias(..), _) | (_, Type::Alias(..)) => unreachable!(),
-        (Type::Struct(..), _) | (_, Type::Struct(..)) => unreachable!(),
-        (Type::Callable(..), _) | (_, Type::Callable(..)) => unreachable!(),
-        (Type::Enum(..), _) | (_, Type::Enum(..)) => unreachable!(),
-        (Type::Variant(..), _) | (_, Type::Variant(..)) => unreachable!(),
+    let check = match (types.get_recursive(lhs), types.get_recursive(rhs)) {
+        (
+            Type::Ref(..)
+            | Type::Lazy(..)
+            | Type::Alias(..)
+            | Type::Struct(..)
+            | Type::Enum(..)
+            | Type::Variant(..),
+            _,
+        )
+        | (
+            _,
+            Type::Ref(..)
+            | Type::Lazy(..)
+            | Type::Alias(..)
+            | Type::Struct(..)
+            | Type::Enum(..)
+            | Type::Variant(..),
+        ) => {
+            unreachable!()
+        }
 
-        // TODO: Implement generic type checking?
-        (Type::Generic, _) => Check::True,
-        (_, Type::Generic) => Check::True,
+        (_, Type::Any | Type::Unknown)
+        | (Type::Never | Type::Unknown, _)
+        | (Type::Bytes | Type::Int | Type::Value(..), Type::Bytes | Type::Int)
+        | (Type::Bytes32, Type::Bytes | Type::Int | Type::Bytes32)
+        | (Type::PublicKey, Type::Bytes | Type::Int | Type::PublicKey)
+        | (Type::Nil | Type::False, Type::Bytes | Type::Int | Type::Nil | Type::False)
+        | (Type::True, Type::Bytes | Type::Int | Type::True) => Check::True,
 
-        (Type::Unknown, _) => Check::True,
-        (_, Type::Unknown) => Check::True,
-
-        (Type::Never, _) => Check::True,
-        (_, Type::Never) => Check::False,
-
-        (Type::Any, Type::Any) => Check::True,
-        (Type::Bytes, Type::Bytes) => Check::True,
-        (Type::Bytes32, Type::Bytes32) => Check::True,
-        (Type::PublicKey, Type::PublicKey) => Check::True,
-        (Type::Int, Type::Int) => Check::True,
-        (Type::Nil, Type::Nil) => Check::True,
-        (Type::True, Type::True) => Check::True,
-        (Type::False, Type::False) => Check::True,
-
-        (Type::Bytes32, Type::Any) => Check::True,
-        (Type::PublicKey, Type::Any) => Check::True,
-        (Type::Int, Type::Any) => Check::True,
-        (Type::Bytes, Type::Any) => Check::True,
-        (Type::Nil, Type::Any) => Check::True,
-        (Type::True, Type::Any) => Check::True,
-        (Type::False, Type::Any) => Check::True,
-        (Type::Value(..), Type::Any) => Check::True,
-        (Type::Pair(..), Type::Any) => Check::True,
-
-        (Type::Any, Type::Bytes) => Check::IsAtom,
-        (Type::Any, Type::Int) => Check::IsAtom,
-        (Type::Any, Type::Bytes32) => Check::And(vec![Check::IsAtom, Check::Length(32)]),
-        (Type::Any, Type::PublicKey) => Check::And(vec![Check::IsAtom, Check::Length(48)]),
-        (Type::Any, Type::Nil) => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
-        (Type::Any, Type::True) => Check::And(vec![Check::IsAtom, Check::Value(BigInt::one())]),
-        (Type::Any, Type::False) => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
-        (Type::Any, Type::Value(value)) => {
+        (Type::Any | Type::Generic | Type::Callable(..), Type::Bytes | Type::Int) => Check::IsAtom,
+        (Type::Any | Type::Generic | Type::Callable(..), Type::Bytes32) => {
+            Check::And(vec![Check::IsAtom, Check::Length(32)])
+        }
+        (Type::Any | Type::Generic | Type::Callable(..), Type::PublicKey) => {
+            Check::And(vec![Check::IsAtom, Check::Length(48)])
+        }
+        (Type::Any | Type::Generic | Type::Callable(..), Type::False | Type::Nil) => {
+            Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)])
+        }
+        (Type::Any | Type::Generic | Type::Callable(..), Type::True) => {
+            Check::And(vec![Check::IsAtom, Check::Value(BigInt::one())])
+        }
+        (Type::Any | Type::Generic | Type::Callable(..), Type::Value(value)) => {
             Check::And(vec![Check::IsAtom, Check::Value(value.clone())])
         }
-        (Type::Any, Type::Pair(first, rest)) => {
+        (Type::Any | Type::Generic | Type::Callable(..), Type::Pair(first, rest)) => {
             let (first, rest) = (*first, *rest);
             let first = check_type(types, types.std().any, first, visited)?;
             let rest = check_type(types, types.std().any, rest, visited)?;
@@ -80,57 +78,39 @@ pub(crate) fn check_type(
             ])
         }
 
-        (Type::Bytes32, Type::Bytes) => Check::True,
-        (Type::PublicKey, Type::Bytes) => Check::True,
-        (Type::Int, Type::Bytes) => Check::True,
-        (Type::Nil, Type::Bytes) => Check::True,
+        (Type::Bytes | Type::Int, Type::Nil | Type::False) => Check::Value(BigInt::ZERO),
+        (Type::Bytes | Type::Int, Type::True) => Check::Value(BigInt::one()),
+        (Type::Bytes | Type::Int, Type::PublicKey) => Check::Length(48),
+        (Type::Bytes | Type::Int, Type::Bytes32) => Check::Length(32),
 
-        (Type::Bytes32, Type::Int) => Check::True,
-        (Type::PublicKey, Type::Int) => Check::True,
-        (Type::Bytes, Type::Int) => Check::True,
-        (Type::Nil, Type::Int) => Check::True,
+        (_, Type::Never | Type::Generic | Type::Callable(..))
+        | (Type::PublicKey, Type::Bytes32 | Type::Nil | Type::True | Type::False)
+        | (Type::Bytes32, Type::PublicKey | Type::Nil | Type::True | Type::False)
+        | (Type::Nil | Type::False, Type::PublicKey | Type::Bytes32 | Type::True)
+        | (Type::True, Type::PublicKey | Type::Bytes32 | Type::Nil | Type::False)
+        | (
+            Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..),
+            Type::Pair(..),
+        )
+        | (
+            Type::Pair(..),
+            Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..),
+        ) => Check::False,
 
-        (Type::Bytes, Type::Nil) => Check::Value(BigInt::ZERO),
-        (Type::Bytes, Type::PublicKey) => Check::Length(48),
-        (Type::Bytes, Type::Bytes32) => Check::Length(32),
-
-        (Type::Int, Type::Nil) => Check::Value(BigInt::ZERO),
-        (Type::Int, Type::PublicKey) => Check::Length(48),
-        (Type::Int, Type::Bytes32) => Check::Length(32),
-
-        (Type::PublicKey, Type::Bytes32) => Check::False,
-        (Type::Bytes32, Type::PublicKey) => Check::False,
-        (Type::Nil, Type::PublicKey) => Check::False,
-        (Type::Nil, Type::Bytes32) => Check::False,
-        (Type::PublicKey, Type::Nil) => Check::False,
-        (Type::Bytes32, Type::Nil) => Check::False,
-
-        (Type::True, Type::Nil) => Check::False,
-        (Type::False, Type::Nil) => Check::True,
-        (Type::True, Type::False) => Check::False,
-        (Type::False, Type::True) => Check::False,
-        (Type::True, Type::Bytes) => Check::True,
-        (Type::False, Type::Bytes) => Check::True,
-        (Type::True, Type::Bytes32) => Check::False,
-        (Type::False, Type::Bytes32) => Check::False,
-        (Type::True, Type::PublicKey) => Check::False,
-        (Type::False, Type::PublicKey) => Check::False,
-        (Type::True, Type::Int) => Check::True,
-        (Type::False, Type::Int) => Check::True,
-
-        (Type::Bytes, Type::True) => Check::Value(BigInt::one()),
-        (Type::Bytes, Type::False) => Check::Value(BigInt::ZERO),
-        (Type::Int, Type::True) => Check::Value(BigInt::one()),
-        (Type::Int, Type::False) => Check::Value(BigInt::ZERO),
-        (Type::Bytes32, Type::True) => Check::False,
-        (Type::Bytes32, Type::False) => Check::False,
-        (Type::PublicKey, Type::True) => Check::False,
-        (Type::PublicKey, Type::False) => Check::False,
-        (Type::Nil, Type::True) => Check::False,
-        (Type::Nil, Type::False) => Check::True,
-
-        (Type::Value(..), Type::Bytes) => Check::True,
-        (Type::Value(..), Type::Int) => Check::True,
         (Type::Value(value), Type::Bytes32) => {
             if bigint_to_bytes(value.clone()).len() == 32 {
                 Check::True
@@ -138,6 +118,7 @@ pub(crate) fn check_type(
                 Check::False
             }
         }
+
         (Type::Value(value), Type::PublicKey) => {
             if bigint_to_bytes(value.clone()).len() == 48 {
                 Check::True
@@ -145,21 +126,9 @@ pub(crate) fn check_type(
                 Check::False
             }
         }
-        (Type::Value(value), Type::Nil) => {
-            if value == &BigInt::ZERO {
-                Check::True
-            } else {
-                Check::False
-            }
-        }
-        (Type::Value(value), Type::True) => {
-            if value == &BigInt::one() {
-                Check::True
-            } else {
-                Check::False
-            }
-        }
-        (Type::Value(value), Type::False) => {
+
+        (Type::Value(value), Type::Nil | Type::False)
+        | (Type::Nil | Type::False, Type::Value(value)) => {
             if value == &BigInt::ZERO {
                 Check::True
             } else {
@@ -167,8 +136,16 @@ pub(crate) fn check_type(
             }
         }
 
-        (Type::Bytes, Type::Value(value)) => Check::Value(value.clone()),
-        (Type::Int, Type::Value(value)) => Check::Value(value.clone()),
+        (Type::Value(value), Type::True) | (Type::True, Type::Value(value)) => {
+            if value == &BigInt::one() {
+                Check::True
+            } else {
+                Check::False
+            }
+        }
+
+        (Type::Bytes | Type::Int, Type::Value(value)) => Check::Value(value.clone()),
+
         (Type::Bytes32, Type::Value(value)) => {
             if bigint_to_bytes(value.clone()).len() == 32 {
                 Check::Value(value.clone())
@@ -183,27 +160,6 @@ pub(crate) fn check_type(
                 Check::False
             }
         }
-        (Type::Nil, Type::Value(value)) => {
-            if value == &BigInt::ZERO {
-                Check::True
-            } else {
-                Check::False
-            }
-        }
-        (Type::True, Type::Value(value)) => {
-            if value == &BigInt::one() {
-                Check::True
-            } else {
-                Check::False
-            }
-        }
-        (Type::False, Type::Value(value)) => {
-            if value == &BigInt::ZERO {
-                Check::True
-            } else {
-                Check::False
-            }
-        }
 
         (Type::Value(lhs_value), Type::Value(rhs_value)) => {
             if lhs_value == rhs_value {
@@ -212,24 +168,6 @@ pub(crate) fn check_type(
                 Check::False
             }
         }
-
-        (Type::Bytes, Type::Pair(..)) => Check::False,
-        (Type::Bytes32, Type::Pair(..)) => Check::False,
-        (Type::PublicKey, Type::Pair(..)) => Check::False,
-        (Type::Int, Type::Pair(..)) => Check::False,
-        (Type::Nil, Type::Pair(..)) => Check::False,
-        (Type::True, Type::Pair(..)) => Check::False,
-        (Type::False, Type::Pair(..)) => Check::False,
-        (Type::Value(..), Type::Pair(..)) => Check::False,
-
-        (Type::Pair(..), Type::Bytes) => Check::False,
-        (Type::Pair(..), Type::Bytes32) => Check::False,
-        (Type::Pair(..), Type::PublicKey) => Check::False,
-        (Type::Pair(..), Type::Int) => Check::False,
-        (Type::Pair(..), Type::Nil) => Check::False,
-        (Type::Pair(..), Type::True) => Check::False,
-        (Type::Pair(..), Type::False) => Check::False,
-        (Type::Pair(..), Type::Value(..)) => Check::False,
 
         (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
             let (lhs_first, lhs_rest) = (*lhs_first, *lhs_rest);
@@ -294,31 +232,22 @@ fn check_union_against_rhs(
 
     let attrs = union_attributes(types, items, true, rhs, visited)?;
 
-    Ok(match types.get(rhs) {
-        Type::Ref(..) => unreachable!(),
-        Type::Lazy(..) => unreachable!(),
-        Type::Alias(..) => unreachable!(),
-        Type::Union(..) => unreachable!(),
-        Type::Struct(..) => unreachable!(),
-        Type::Callable(..) => unreachable!(),
-        Type::Enum(..) => unreachable!(),
-        Type::Variant(..) => unreachable!(),
-        Type::Unknown => Check::True,
-        Type::Generic => Check::False,
-        Type::Never => Check::False,
-        Type::Any => Check::True,
-        Type::Bytes if attrs.all_atoms() => Check::True,
-        Type::Bytes => Check::IsAtom,
-        Type::Int if attrs.all_atoms() => Check::True,
-        Type::Int => Check::IsAtom,
-        Type::Nil if attrs.all_value(&BigInt::ZERO) => Check::True,
-        Type::Nil if attrs.atoms_are_value(&BigInt::ZERO) => Check::IsAtom,
-        Type::Nil if attrs.all_atoms() => Check::Value(BigInt::ZERO),
-        Type::Nil => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
-        Type::False if attrs.all_value(&BigInt::ZERO) => Check::True,
-        Type::False if attrs.atoms_are_value(&BigInt::ZERO) => Check::IsAtom,
-        Type::False if attrs.all_atoms() => Check::Value(BigInt::ZERO),
-        Type::False => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
+    Ok(match types.get_recursive(rhs) {
+        Type::Ref(..)
+        | Type::Lazy(..)
+        | Type::Union(..)
+        | Type::Alias(..)
+        | Type::Struct(..)
+        | Type::Enum(..)
+        | Type::Variant(..) => unreachable!(),
+        Type::Unknown | Type::Any => Check::True,
+        Type::Never | Type::Generic | Type::Callable(..) => Check::False,
+        Type::Bytes | Type::Int if attrs.all_atoms() => Check::True,
+        Type::Bytes | Type::Int => Check::IsAtom,
+        Type::Nil | Type::False if attrs.all_value(&BigInt::ZERO) => Check::True,
+        Type::Nil | Type::False if attrs.atoms_are_value(&BigInt::ZERO) => Check::IsAtom,
+        Type::Nil | Type::False if attrs.all_atoms() => Check::Value(BigInt::ZERO),
+        Type::Nil | Type::False => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
         Type::True if attrs.all_value(&BigInt::one()) => Check::True,
         Type::True if attrs.atoms_are_value(&BigInt::ZERO) => Check::IsAtom,
         Type::True if attrs.all_atoms() => Check::Value(BigInt::one()),
@@ -365,11 +294,9 @@ fn check_union_against_rhs(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use indexmap::indexmap;
 
-    use crate::{alloc_list, alloc_struct, Rest, Semantics};
+    use crate::{alloc_list, alloc_struct, Rest};
 
     use super::*;
 
@@ -633,20 +560,13 @@ mod tests {
     fn test_check_any_point_struct() {
         let mut db = TypeSystem::new();
         let types = db.std();
-        let point_struct = alloc_struct(
+        let point = alloc_struct(
             &mut db,
             &indexmap! {
                 "x".to_string() => types.int,
                 "y".to_string() => types.int,
             },
             Rest::Nil,
-        );
-        let point = db.substitute(
-            point_struct,
-            HashMap::new(),
-            Semantics::StructuralOnly {
-                callable: types.never,
-            },
         );
         check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) 0))");
     }
@@ -680,24 +600,8 @@ mod tests {
 
         let condition = db.alloc(Type::Union(vec![agg_sig_unsafe, agg_sig_me]));
 
-        let lhs = db.substitute(
-            condition,
-            HashMap::new(),
-            Semantics::StructuralOnly {
-                callable: types.any,
-            },
-        );
-
-        let rhs = db.substitute(
-            agg_sig_me,
-            HashMap::new(),
-            Semantics::StructuralOnly {
-                callable: types.never,
-            },
-        );
-
-        check_str(&mut db, lhs, rhs, "(= (f val) 50)");
-        check_str(&mut db, types.any, rhs, "(and (l val) (not (l (f val))) (= (f val) 50) (l (r val)) (not (l (f (r val)))) (= (strlen (f (r val))) 48) (l (r (r val))) (not (l (f (r (r val))))) (not (l (r (r (r val))))) (= (r (r (r val))) 0))");
+        check_str(&mut db, condition, agg_sig_me, "(= (f val) 50)");
+        check_str(&mut db, types.any, agg_sig_me, "(and (l val) (not (l (f val))) (= (f val) 50) (l (r val)) (not (l (f (r val)))) (= (strlen (f (r val))) 48) (l (r (r val))) (not (l (f (r (r val))))) (not (l (r (r (r val))))) (= (r (r (r val))) 0))");
     }
 
     #[test]

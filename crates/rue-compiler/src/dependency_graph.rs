@@ -136,7 +136,7 @@ impl<'a> GraphBuilder<'a> {
 
         let environment_id = self.db.alloc_env(Environment::function(
             parameters,
-            function.ty.rest != Rest::Nil,
+            function.rest != Rest::Nil,
         ));
 
         self.graph

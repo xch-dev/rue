@@ -4,7 +4,7 @@ use id_arena::{Arena, Id};
 
 use crate::{
     check_type, compare_type, difference_type, replace_type, simplify_check, stringify_type,
-    substitute_type, Alias, Check, CheckError, Comparison, ComparisonContext, Lazy, Semantics,
+    substitute_type, Alias, Callable, Check, CheckError, Comparison, ComparisonContext, Lazy,
     StandardTypes, Type, TypePath,
 };
 
@@ -100,6 +100,16 @@ impl TypeSystem {
         &mut self.arena[type_id]
     }
 
+    pub fn get_recursive(&self, type_id: TypeId) -> &Type {
+        match self.get(type_id) {
+            Type::Alias(ty) => self.get_recursive(ty.type_id),
+            Type::Struct(ty) => self.get_recursive(ty.type_id),
+            Type::Enum(ty) => self.get_recursive(ty.type_id),
+            Type::Variant(ty) => self.get_recursive(ty.type_id),
+            ty => ty,
+        }
+    }
+
     pub fn get(&self, type_id: TypeId) -> &Type {
         match &self.arena[type_id] {
             Type::Ref(type_id) => self.get(*type_id),
@@ -124,6 +134,13 @@ impl TypeSystem {
     pub fn get_union(&self, type_id: TypeId) -> Option<&[TypeId]> {
         match self.get(type_id) {
             Type::Union(types) => Some(types),
+            _ => None,
+        }
+    }
+
+    pub fn get_callable(&self, type_id: TypeId) -> Option<&Callable> {
+        match self.get(type_id) {
+            Type::Callable(callable) => Some(callable),
             _ => None,
         }
     }
@@ -183,18 +200,19 @@ impl TypeSystem {
         &mut self,
         type_id: TypeId,
         mut substitutions: HashMap<TypeId, TypeId>,
-        semantics: Semantics,
     ) -> TypeId {
-        substitute_type(self, type_id, &mut substitutions, semantics)
+        substitute_type(self, type_id, &mut substitutions)
     }
 
     pub fn check(&mut self, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {
+        let lhs = self.substitute(lhs, HashMap::new());
+        let rhs = self.substitute(rhs, HashMap::new());
         check_type(self, lhs, rhs, &mut HashSet::new()).map(simplify_check)
     }
 
     pub fn difference(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
-        let lhs = self.substitute(lhs, HashMap::new(), Semantics::Preserve);
-        let rhs = self.substitute(rhs, HashMap::new(), Semantics::Preserve);
+        let lhs = self.substitute(lhs, HashMap::new());
+        let rhs = self.substitute(rhs, HashMap::new());
         difference_type(self, lhs, rhs, &mut HashSet::new())
     }
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rowan::TextRange;
 use rue_parser::{AstNode, FunctionCallExpr};
-use rue_typing::{deconstruct_items, unwrap_list, Callable, Rest, Semantics, Type, TypeId};
+use rue_typing::{deconstruct_items, unwrap_list, Callable, Rest, Type, TypeId};
 
 use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
 
@@ -136,9 +136,7 @@ impl Compiler<'_> {
             function_type.map_or(self.ty.std().unknown, |expected| expected.return_type);
 
         if !generic_types.is_empty() {
-            type_id = self
-                .ty
-                .substitute(type_id, generic_types, Semantics::Preserve);
+            type_id = self.ty.substitute(type_id, generic_types);
         }
 
         // Build the HIR for the function call.

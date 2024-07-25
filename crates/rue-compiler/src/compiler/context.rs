@@ -115,7 +115,11 @@ pub fn build_graph(
         let Symbol::Function(function) = db.symbol_mut(symbol_id).clone() else {
             continue;
         };
-        ignored_types.extend(function.ty.generic_types.iter().copied());
+        ignored_types.extend(
+            ty.get_callable(function.type_id)
+                .map(|callable| callable.generic_types.clone())
+                .unwrap_or_default(),
+        );
     }
 
     let Symbol::Module(module) = db.symbol_mut(main_module_id).clone() else {
