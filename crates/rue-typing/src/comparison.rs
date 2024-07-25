@@ -323,22 +323,22 @@ pub(crate) fn compare_type(
         (Type::Union(items), _) => {
             let items = items.clone();
             let mut result = Comparison::Assignable;
-            let mut incompatible_count = 0;
 
-            let length = items.len();
+            let mut any_castable = false;
 
             for item in items {
                 let cmp = compare_type(db, item, rhs, ctx);
                 result = max(result, cmp);
-                if cmp == Comparison::Incompatible {
-                    incompatible_count += 1;
+
+                if compare_type(db, rhs, item, ctx) <= Comparison::Castable {
+                    any_castable = true;
                 }
             }
 
-            if incompatible_count == length {
-                Comparison::Incompatible
+            if result == Comparison::Incompatible && any_castable {
+                Comparison::Superset
             } else {
-                min(result, Comparison::Superset)
+                result
             }
         }
 
@@ -346,13 +346,22 @@ pub(crate) fn compare_type(
         (_, Type::Union(items)) => {
             let items = items.clone();
             let mut result = Comparison::Incompatible;
+            let mut any_incompatible = false;
 
             for item in items {
                 let cmp = compare_type(db, lhs, item, ctx);
                 result = min(result, cmp);
+
+                if cmp == Comparison::Incompatible {
+                    any_incompatible = true;
+                }
             }
 
-            max(result, Comparison::Assignable)
+            if any_incompatible && result == Comparison::Superset {
+                Comparison::Incompatible
+            } else {
+                max(result, Comparison::Assignable)
+            }
         }
 
         // Generics are resolved by looking up the substitution in the stack.
@@ -628,7 +637,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generic_inference() {
+    fn test_compare_generic_inference() {
         let mut db = TypeSystem::new();
         let types = db.std();
 
@@ -654,5 +663,44 @@ mod tests {
                 Comparison::Superset
             );
         }
+    }
+
+    #[test]
+    fn test_compare_union_to_rhs_incompatible() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let pair = db.alloc(Type::Pair(types.int, types.public_key));
+        let union = db.alloc(Type::Union(vec![types.bytes32, pair, types.nil]));
+        assert_eq!(db.compare(union, types.bytes), Comparison::Incompatible);
+    }
+
+    #[test]
+    fn test_compare_union_to_rhs_superset() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let pair = db.alloc(Type::Pair(types.int, types.public_key));
+        let union = db.alloc(Type::Union(vec![types.bytes, pair]));
+        assert_eq!(db.compare(union, types.bytes), Comparison::Superset);
+    }
+
+    #[test]
+    fn test_compare_union_to_rhs_assignable() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let union = db.alloc(Type::Union(vec![types.bytes32, types.nil]));
+        assert_eq!(db.compare(union, types.bytes), Comparison::Assignable);
+    }
+
+    #[test]
+    fn test_compare_lhs_to_union_incompatible() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let pair = db.alloc(Type::Pair(types.int, types.public_key));
+        let union = db.alloc(Type::Union(vec![types.bytes32, pair, types.nil]));
+        assert_eq!(db.compare(types.bytes, union), Comparison::Incompatible);
     }
 }
