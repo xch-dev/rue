@@ -21,7 +21,7 @@ pub(crate) fn stringify_type(
         Type::Unknown => "{unknown}".to_string(),
         Type::Generic => "{generic}".to_string(),
         Type::Never => "Never".to_string(),
-        Type::Atom => "Atom".to_string(),
+        Type::Any => "Any".to_string(),
         Type::Bytes => "Bytes".to_string(),
         Type::Bytes32 => "Bytes32".to_string(),
         Type::PublicKey => "PublicKey".to_string(),

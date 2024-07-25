@@ -92,10 +92,11 @@ pub(crate) fn union_attributes(
                 length -= 1;
             }
             Type::Unknown => {}
+            Type::Any => {}
             Type::Never => {
                 length -= 1;
             }
-            Type::Atom | Type::Bytes | Type::Int => {
+            Type::Bytes | Type::Int => {
                 atom_count += 1;
             }
             Type::Bytes32 => {

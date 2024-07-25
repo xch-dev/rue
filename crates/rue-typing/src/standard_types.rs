@@ -7,7 +7,6 @@ pub struct StandardTypes {
     pub any: TypeId,
     pub unmapped_list: TypeId,
     pub generic_list_item: TypeId,
-    pub atom: TypeId,
     pub bytes: TypeId,
     pub bytes32: TypeId,
     pub public_key: TypeId,

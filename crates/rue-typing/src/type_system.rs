@@ -23,7 +23,7 @@ impl Default for TypeSystem {
 
         let unknown = arena.alloc(Type::Unknown);
         let never = arena.alloc(Type::Never);
-        let atom = arena.alloc(Type::Atom);
+        let any = arena.alloc(Type::Any);
         let bytes = arena.alloc(Type::Bytes);
         let bytes32 = arena.alloc(Type::Bytes32);
         let public_key = arena.alloc(Type::PublicKey);
@@ -31,12 +31,7 @@ impl Default for TypeSystem {
         let true_bool = arena.alloc(Type::True);
         let false_bool = arena.alloc(Type::False);
         let nil = arena.alloc(Type::Nil);
-
         let bool = arena.alloc(Type::Union(vec![false_bool, true_bool]));
-
-        let any = arena.alloc(Type::Unknown);
-        let pair = arena.alloc(Type::Pair(any, any));
-        arena[any] = Type::Union(vec![atom, pair]);
 
         let generic_list_item = arena.alloc(Type::Generic);
         let inner = arena.alloc(Type::Unknown);
@@ -50,7 +45,7 @@ impl Default for TypeSystem {
 
         let mut names = HashMap::new();
         names.insert(never, "Never".to_string());
-        names.insert(atom, "Atom".to_string());
+        names.insert(any, "Any".to_string());
         names.insert(bytes, "Bytes".to_string());
         names.insert(bytes32, "Bytes32".to_string());
         names.insert(public_key, "PublicKey".to_string());
@@ -59,7 +54,6 @@ impl Default for TypeSystem {
         names.insert(true_bool, "True".to_string());
         names.insert(false_bool, "False".to_string());
         names.insert(nil, "Nil".to_string());
-        names.insert(any, "Any".to_string());
         names.insert(unmapped_list, "List".to_string());
 
         Self {
@@ -70,7 +64,6 @@ impl Default for TypeSystem {
                 any,
                 unmapped_list,
                 generic_list_item,
-                atom,
                 bytes,
                 bytes32,
                 public_key,

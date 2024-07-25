@@ -180,20 +180,54 @@ pub(crate) fn compare_type(
             let rest = compare_type(db, *lhs_rest, *rhs_rest, ctx);
             max(first, rest)
         }
-        (Type::Pair(..), _) | (_, Type::Pair(..)) => Comparison::Incompatible,
 
-        (Type::True, Type::True) => Comparison::Equal,
-        (Type::False, Type::False) => Comparison::Equal,
-        (Type::Atom, Type::Atom) => Comparison::Equal,
+        (Type::Pair(..), Type::Any) => Comparison::Assignable,
+        (Type::Pair(..), Type::Bytes) => Comparison::Incompatible,
+        (Type::Pair(..), Type::Bytes32) => Comparison::Incompatible,
+        (Type::Pair(..), Type::PublicKey) => Comparison::Incompatible,
+        (Type::Pair(..), Type::Int) => Comparison::Incompatible,
+        (Type::Pair(..), Type::Nil) => Comparison::Incompatible,
+        (Type::Pair(..), Type::True) => Comparison::Incompatible,
+        (Type::Pair(..), Type::False) => Comparison::Incompatible,
+        (Type::Pair(..), Type::Value(..)) => Comparison::Incompatible,
+
+        (Type::Any, Type::Pair(..)) => Comparison::Superset,
+        (Type::Bytes, Type::Pair(..)) => Comparison::Incompatible,
+        (Type::Bytes32, Type::Pair(..)) => Comparison::Incompatible,
+        (Type::PublicKey, Type::Pair(..)) => Comparison::Incompatible,
+        (Type::Int, Type::Pair(..)) => Comparison::Incompatible,
+        (Type::Nil, Type::Pair(..)) => Comparison::Incompatible,
+        (Type::True, Type::Pair(..)) => Comparison::Incompatible,
+        (Type::False, Type::Pair(..)) => Comparison::Incompatible,
+        (Type::Value(..), Type::Pair(..)) => Comparison::Incompatible,
+
+        (Type::Any, Type::Any) => Comparison::Equal,
         (Type::Bytes, Type::Bytes) => Comparison::Equal,
         (Type::Bytes32, Type::Bytes32) => Comparison::Equal,
         (Type::PublicKey, Type::PublicKey) => Comparison::Equal,
         (Type::Int, Type::Int) => Comparison::Equal,
         (Type::Nil, Type::Nil) => Comparison::Equal,
+        (Type::True, Type::True) => Comparison::Equal,
+        (Type::False, Type::False) => Comparison::Equal,
 
-        (Type::Atom, Type::Bytes32) => Comparison::Superset,
-        (Type::Atom, Type::PublicKey) => Comparison::Superset,
-        (Type::Atom, Type::Nil) => Comparison::Superset,
+        (Type::Bytes32, Type::Any) => Comparison::Assignable,
+        (Type::PublicKey, Type::Any) => Comparison::Assignable,
+        (Type::Nil, Type::Any) => Comparison::Assignable,
+        (Type::Bytes, Type::Any) => Comparison::Assignable,
+        (Type::Int, Type::Any) => Comparison::Assignable,
+        (Type::True, Type::Any) => Comparison::Assignable,
+        (Type::False, Type::Any) => Comparison::Assignable,
+        (Type::Value(..), Type::Any) => Comparison::Assignable,
+
+        (Type::Any, Type::Bytes) => Comparison::Superset,
+        (Type::Any, Type::Int) => Comparison::Superset,
+        (Type::Any, Type::Bytes32) => Comparison::Superset,
+        (Type::Any, Type::PublicKey) => Comparison::Superset,
+        (Type::Any, Type::Nil) => Comparison::Superset,
+        (Type::Any, Type::True) => Comparison::Superset,
+        (Type::Any, Type::False) => Comparison::Superset,
+        (Type::Any, Type::Value(..)) => Comparison::Superset,
+
         (Type::Bytes, Type::Bytes32) => Comparison::Superset,
         (Type::Bytes, Type::PublicKey) => Comparison::Superset,
         (Type::Bytes, Type::Nil) => Comparison::Superset,
@@ -201,17 +235,9 @@ pub(crate) fn compare_type(
         (Type::Int, Type::PublicKey) => Comparison::Superset,
         (Type::Int, Type::Nil) => Comparison::Superset,
 
-        (Type::Bytes32, Type::Atom) => Comparison::Assignable,
-        (Type::PublicKey, Type::Atom) => Comparison::Assignable,
-        (Type::Nil, Type::Atom) => Comparison::Assignable,
-        (Type::Bytes, Type::Atom) => Comparison::Assignable,
-        (Type::Int, Type::Atom) => Comparison::Assignable,
-
         (Type::Bytes32, Type::Bytes) => Comparison::Assignable,
         (Type::Nil, Type::Bytes) => Comparison::Assignable,
 
-        (Type::Atom, Type::Int) => Comparison::Castable,
-        (Type::Atom, Type::Bytes) => Comparison::Castable,
         (Type::Bytes, Type::Int) => Comparison::Castable,
         (Type::Bytes32, Type::Int) => Comparison::Castable,
         (Type::PublicKey, Type::Bytes) => Comparison::Castable,
@@ -233,8 +259,6 @@ pub(crate) fn compare_type(
         (Type::False, Type::Bytes) => Comparison::Castable,
         (Type::True, Type::Int) => Comparison::Castable,
         (Type::False, Type::Int) => Comparison::Castable,
-        (Type::True, Type::Atom) => Comparison::Assignable,
-        (Type::False, Type::Atom) => Comparison::Assignable,
         (Type::True, Type::Nil) => Comparison::Incompatible,
         (Type::False, Type::Nil) => Comparison::Castable,
         (Type::True, Type::Bytes32) => Comparison::Incompatible,
@@ -246,8 +270,6 @@ pub(crate) fn compare_type(
         (Type::Bytes, Type::False) => Comparison::Superset,
         (Type::Int, Type::True) => Comparison::Superset,
         (Type::Int, Type::False) => Comparison::Superset,
-        (Type::Atom, Type::True) => Comparison::Superset,
-        (Type::Atom, Type::False) => Comparison::Superset,
         (Type::Nil, Type::True) => Comparison::Incompatible,
         (Type::Nil, Type::False) => Comparison::Castable,
         (Type::Bytes32, Type::True) => Comparison::Incompatible,
@@ -255,7 +277,6 @@ pub(crate) fn compare_type(
         (Type::PublicKey, Type::True) => Comparison::Incompatible,
         (Type::PublicKey, Type::False) => Comparison::Incompatible,
 
-        (Type::Value(..), Type::Atom) => Comparison::Assignable,
         (Type::Value(..), Type::Bytes) => Comparison::Castable,
         (Type::Value(..), Type::Int) => Comparison::Assignable,
         (Type::Value(value), Type::Bytes32) => {
@@ -294,7 +315,6 @@ pub(crate) fn compare_type(
             }
         }
 
-        (Type::Atom, Type::Value(..)) => Comparison::Superset,
         (Type::Bytes, Type::Value(..)) => Comparison::Superset,
         (Type::Int, Type::Value(..)) => Comparison::Superset,
         (Type::Bytes32, Type::Value(value)) => {
@@ -549,7 +569,7 @@ mod tests {
         let mut db = TypeSystem::new();
         let types = db.std();
         let lhs = db.alloc(Type::Pair(types.int, types.public_key));
-        let rhs = db.alloc(Type::Pair(types.atom, types.atom));
+        let rhs = db.alloc(Type::Pair(types.any, types.any));
         assert_eq!(db.compare(lhs, rhs), Comparison::Assignable);
     }
 

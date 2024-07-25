@@ -7,7 +7,7 @@ pub enum Type {
     Unknown,
     Generic,
     Never,
-    Atom,
+    Any,
     Bytes,
     Bytes32,
     PublicKey,

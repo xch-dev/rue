@@ -40,7 +40,7 @@ pub(crate) fn check_type(
         (Type::Never, _) => Check::True,
         (_, Type::Never) => Check::False,
 
-        (Type::Atom, Type::Atom) => Check::True,
+        (Type::Any, Type::Any) => Check::True,
         (Type::Bytes, Type::Bytes) => Check::True,
         (Type::Bytes32, Type::Bytes32) => Check::True,
         (Type::PublicKey, Type::PublicKey) => Check::True,
@@ -49,27 +49,46 @@ pub(crate) fn check_type(
         (Type::True, Type::True) => Check::True,
         (Type::False, Type::False) => Check::True,
 
-        (Type::Bytes32, Type::Atom) => Check::True,
-        (Type::PublicKey, Type::Atom) => Check::True,
-        (Type::Int, Type::Atom) => Check::True,
-        (Type::Bytes, Type::Atom) => Check::True,
-        (Type::Nil, Type::Atom) => Check::True,
+        (Type::Bytes32, Type::Any) => Check::True,
+        (Type::PublicKey, Type::Any) => Check::True,
+        (Type::Int, Type::Any) => Check::True,
+        (Type::Bytes, Type::Any) => Check::True,
+        (Type::Nil, Type::Any) => Check::True,
+        (Type::True, Type::Any) => Check::True,
+        (Type::False, Type::Any) => Check::True,
+        (Type::Value(..), Type::Any) => Check::True,
+        (Type::Pair(..), Type::Any) => Check::True,
 
-        (Type::Atom, Type::Bytes) => Check::True,
+        (Type::Any, Type::Bytes) => Check::IsAtom,
+        (Type::Any, Type::Int) => Check::IsAtom,
+        (Type::Any, Type::Bytes32) => Check::And(vec![Check::IsAtom, Check::Length(32)]),
+        (Type::Any, Type::PublicKey) => Check::And(vec![Check::IsAtom, Check::Length(48)]),
+        (Type::Any, Type::Nil) => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
+        (Type::Any, Type::True) => Check::And(vec![Check::IsAtom, Check::Value(BigInt::one())]),
+        (Type::Any, Type::False) => Check::And(vec![Check::IsAtom, Check::Value(BigInt::ZERO)]),
+        (Type::Any, Type::Value(value)) => {
+            Check::And(vec![Check::IsAtom, Check::Value(value.clone())])
+        }
+        (Type::Any, Type::Pair(first, rest)) => {
+            let (first, rest) = (*first, *rest);
+            let first = check_type(types, types.std().any, first, visited)?;
+            let rest = check_type(types, types.std().any, rest, visited)?;
+            Check::And(vec![
+                Check::IsPair,
+                Check::First(Box::new(first)),
+                Check::Rest(Box::new(rest)),
+            ])
+        }
+
         (Type::Bytes32, Type::Bytes) => Check::True,
         (Type::PublicKey, Type::Bytes) => Check::True,
         (Type::Int, Type::Bytes) => Check::True,
         (Type::Nil, Type::Bytes) => Check::True,
 
-        (Type::Atom, Type::Int) => Check::True,
         (Type::Bytes32, Type::Int) => Check::True,
         (Type::PublicKey, Type::Int) => Check::True,
         (Type::Bytes, Type::Int) => Check::True,
         (Type::Nil, Type::Int) => Check::True,
-
-        (Type::Atom, Type::Nil) => Check::Value(BigInt::ZERO),
-        (Type::Atom, Type::PublicKey) => Check::Length(48),
-        (Type::Atom, Type::Bytes32) => Check::Length(32),
 
         (Type::Bytes, Type::Nil) => Check::Value(BigInt::ZERO),
         (Type::Bytes, Type::PublicKey) => Check::Length(48),
@@ -86,8 +105,6 @@ pub(crate) fn check_type(
         (Type::PublicKey, Type::Nil) => Check::False,
         (Type::Bytes32, Type::Nil) => Check::False,
 
-        (Type::True, Type::Atom) => Check::True,
-        (Type::False, Type::Atom) => Check::True,
         (Type::True, Type::Nil) => Check::False,
         (Type::False, Type::Nil) => Check::True,
         (Type::True, Type::False) => Check::False,
@@ -101,8 +118,6 @@ pub(crate) fn check_type(
         (Type::True, Type::Int) => Check::True,
         (Type::False, Type::Int) => Check::True,
 
-        (Type::Atom, Type::True) => Check::Value(BigInt::one()),
-        (Type::Atom, Type::False) => Check::Value(BigInt::ZERO),
         (Type::Bytes, Type::True) => Check::Value(BigInt::one()),
         (Type::Bytes, Type::False) => Check::Value(BigInt::ZERO),
         (Type::Int, Type::True) => Check::Value(BigInt::one()),
@@ -114,7 +129,6 @@ pub(crate) fn check_type(
         (Type::Nil, Type::True) => Check::False,
         (Type::Nil, Type::False) => Check::True,
 
-        (Type::Value(..), Type::Atom) => Check::True,
         (Type::Value(..), Type::Bytes) => Check::True,
         (Type::Value(..), Type::Int) => Check::True,
         (Type::Value(value), Type::Bytes32) => {
@@ -153,7 +167,6 @@ pub(crate) fn check_type(
             }
         }
 
-        (Type::Atom, Type::Value(value)) => Check::Value(value.clone()),
         (Type::Bytes, Type::Value(value)) => Check::Value(value.clone()),
         (Type::Int, Type::Value(value)) => Check::Value(value.clone()),
         (Type::Bytes32, Type::Value(value)) => {
@@ -200,7 +213,6 @@ pub(crate) fn check_type(
             }
         }
 
-        (Type::Atom, Type::Pair(..)) => Check::False,
         (Type::Bytes, Type::Pair(..)) => Check::False,
         (Type::Bytes32, Type::Pair(..)) => Check::False,
         (Type::PublicKey, Type::Pair(..)) => Check::False,
@@ -210,7 +222,6 @@ pub(crate) fn check_type(
         (Type::False, Type::Pair(..)) => Check::False,
         (Type::Value(..), Type::Pair(..)) => Check::False,
 
-        (Type::Pair(..), Type::Atom) => Check::False,
         (Type::Pair(..), Type::Bytes) => Check::False,
         (Type::Pair(..), Type::Bytes32) => Check::False,
         (Type::Pair(..), Type::PublicKey) => Check::False,
@@ -295,8 +306,7 @@ fn check_union_against_rhs(
         Type::Unknown => Check::True,
         Type::Generic => Check::False,
         Type::Never => Check::False,
-        Type::Atom if attrs.all_atoms() => Check::True,
-        Type::Atom => Check::IsAtom,
+        Type::Any => Check::True,
         Type::Bytes if attrs.all_atoms() => Check::True,
         Type::Bytes => Check::IsAtom,
         Type::Int if attrs.all_atoms() => Check::True,

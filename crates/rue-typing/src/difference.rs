@@ -27,7 +27,7 @@ pub(crate) fn difference_type(
         (Type::Never, _) => std.never,
         (_, Type::Never) => lhs,
 
-        (Type::Atom, Type::Atom) => std.never,
+        (Type::Any, Type::Any) => std.never,
         (Type::Bytes, Type::Bytes) => std.never,
         (Type::Bytes32, Type::Bytes32) => std.never,
         (Type::PublicKey, Type::PublicKey) => std.never,
@@ -39,7 +39,7 @@ pub(crate) fn difference_type(
         (Type::Int, Type::Bytes32) => lhs,
         (Type::Int, Type::PublicKey) => lhs,
         (Type::Int, Type::Bytes) => std.never,
-        (Type::Int, Type::Atom) => std.never,
+        (Type::Int, Type::Any) => std.never,
         (Type::Int, Type::Nil) => lhs,
         (Type::Int, Type::True) => lhs,
         (Type::Int, Type::False) => lhs,
@@ -48,25 +48,25 @@ pub(crate) fn difference_type(
         (Type::Bytes, Type::Bytes32) => lhs,
         (Type::Bytes, Type::PublicKey) => lhs,
         (Type::Bytes, Type::Int) => std.never,
-        (Type::Bytes, Type::Atom) => std.never,
+        (Type::Bytes, Type::Any) => std.never,
         (Type::Bytes, Type::Nil) => lhs,
         (Type::Bytes, Type::True) => lhs,
         (Type::Bytes, Type::False) => lhs,
         (Type::Bytes, Type::Value(..)) => lhs,
 
-        (Type::Atom, Type::Bytes32) => lhs,
-        (Type::Atom, Type::PublicKey) => lhs,
-        (Type::Atom, Type::Int) => std.never,
-        (Type::Atom, Type::Bytes) => std.never,
-        (Type::Atom, Type::Nil) => lhs,
-        (Type::Atom, Type::True) => lhs,
-        (Type::Atom, Type::False) => lhs,
-        (Type::Atom, Type::Value(..)) => lhs,
+        (Type::Any, Type::Bytes32) => lhs,
+        (Type::Any, Type::PublicKey) => lhs,
+        (Type::Any, Type::Int) => lhs,
+        (Type::Any, Type::Bytes) => lhs,
+        (Type::Any, Type::Nil) => lhs,
+        (Type::Any, Type::True) => lhs,
+        (Type::Any, Type::False) => lhs,
+        (Type::Any, Type::Value(..)) => lhs,
 
         (Type::Bytes32, Type::PublicKey) => lhs,
         (Type::Bytes32, Type::Bytes) => std.never,
         (Type::Bytes32, Type::Int) => std.never,
-        (Type::Bytes32, Type::Atom) => std.never,
+        (Type::Bytes32, Type::Any) => std.never,
         (Type::Bytes32, Type::Nil) => lhs,
         (Type::Bytes32, Type::True) => lhs,
         (Type::Bytes32, Type::False) => lhs,
@@ -75,7 +75,7 @@ pub(crate) fn difference_type(
         (Type::PublicKey, Type::Bytes32) => lhs,
         (Type::PublicKey, Type::Bytes) => std.never,
         (Type::PublicKey, Type::Int) => std.never,
-        (Type::PublicKey, Type::Atom) => std.never,
+        (Type::PublicKey, Type::Any) => std.never,
         (Type::PublicKey, Type::Nil) => lhs,
         (Type::PublicKey, Type::True) => lhs,
         (Type::PublicKey, Type::False) => lhs,
@@ -84,12 +84,12 @@ pub(crate) fn difference_type(
         (Type::Nil, Type::Bytes32) => lhs,
         (Type::Nil, Type::PublicKey) => lhs,
         (Type::Nil, Type::Bytes) => std.never,
-        (Type::Nil, Type::Atom) => std.never,
+        (Type::Nil, Type::Any) => std.never,
         (Type::Nil, Type::Int) => std.never,
         (Type::Nil, Type::True) => lhs,
         (Type::Nil, Type::False) => std.never,
 
-        (Type::True, Type::Atom) => std.never,
+        (Type::True, Type::Any) => std.never,
         (Type::True, Type::Bytes) => std.never,
         (Type::True, Type::Bytes32) => lhs,
         (Type::True, Type::PublicKey) => lhs,
@@ -97,7 +97,7 @@ pub(crate) fn difference_type(
         (Type::True, Type::Nil) => lhs,
         (Type::True, Type::False) => lhs,
 
-        (Type::False, Type::Atom) => std.never,
+        (Type::False, Type::Any) => std.never,
         (Type::False, Type::Bytes) => std.never,
         (Type::False, Type::Bytes32) => lhs,
         (Type::False, Type::PublicKey) => lhs,
@@ -127,7 +127,7 @@ pub(crate) fn difference_type(
             }
         }
 
-        (Type::Value(..), Type::Atom) => std.never,
+        (Type::Value(..), Type::Any) => std.never,
         (Type::Value(..), Type::Bytes) => std.never,
         (Type::Value(..), Type::Int) => std.never,
 
@@ -175,7 +175,7 @@ pub(crate) fn difference_type(
             }
         }
 
-        (Type::Atom, Type::Pair(..)) => lhs,
+        (Type::Any, Type::Pair(..)) => lhs,
         (Type::Bytes, Type::Pair(..)) => lhs,
         (Type::Bytes32, Type::Pair(..)) => lhs,
         (Type::PublicKey, Type::Pair(..)) => lhs,
@@ -185,7 +185,7 @@ pub(crate) fn difference_type(
         (Type::False, Type::Pair(..)) => lhs,
         (Type::Value(..), Type::Pair(..)) => lhs,
 
-        (Type::Pair(..), Type::Atom) => lhs,
+        (Type::Pair(..), Type::Any) => std.never,
         (Type::Pair(..), Type::Bytes) => lhs,
         (Type::Pair(..), Type::Bytes32) => lhs,
         (Type::Pair(..), Type::PublicKey) => lhs,

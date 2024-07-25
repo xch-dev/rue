@@ -26,7 +26,7 @@ pub(crate) fn substitute_type(
         Type::Unknown => type_id,
         Type::Generic => type_id,
         Type::Never => type_id,
-        Type::Atom => type_id,
+        Type::Any => type_id,
         Type::Bytes => type_id,
         Type::Bytes32 => type_id,
         Type::PublicKey => type_id,
