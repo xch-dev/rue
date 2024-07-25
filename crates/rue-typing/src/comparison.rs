@@ -416,7 +416,7 @@ pub(crate) fn compare_type(
 mod tests {
     use indexmap::indexmap;
 
-    use crate::{alloc_list, alloc_struct, Rest};
+    use crate::{alloc_list, alloc_struct, alloc_tuple_of, Rest, Struct};
 
     use super::*;
 
@@ -702,5 +702,110 @@ mod tests {
         let pair = db.alloc(Type::Pair(types.int, types.public_key));
         let union = db.alloc(Type::Union(vec![types.bytes32, pair, types.nil]));
         assert_eq!(db.compare(types.bytes, union), Comparison::Incompatible);
+    }
+
+    #[test]
+    fn test_compare_same_derivative_struct() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let struct_type = alloc_struct(
+            &mut db,
+            &indexmap! {
+                "x".to_string() => types.int,
+                "y".to_string() => types.int,
+            },
+            Rest::Nil,
+        );
+
+        let Type::Struct(original) = db.get(struct_type) else {
+            unreachable!();
+        };
+
+        let derivative_struct_type = db.alloc(Type::Struct(Struct {
+            original_type_id: struct_type,
+            type_id: original.type_id,
+            field_names: original.field_names.clone(),
+            rest: original.rest,
+            generic_types: original.generic_types.clone(),
+        }));
+
+        assert_eq!(
+            db.compare(derivative_struct_type, struct_type),
+            Comparison::Equal
+        );
+
+        assert_eq!(
+            db.compare(struct_type, derivative_struct_type),
+            Comparison::Equal
+        );
+    }
+
+    #[test]
+    fn test_compare_different_derivative_struct() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let struct_type = alloc_struct(
+            &mut db,
+            &indexmap! {
+                "x".to_string() => types.int,
+                "y".to_string() => types.int,
+            },
+            Rest::Nil,
+        );
+
+        let Type::Struct(original) = db.get(struct_type).clone() else {
+            unreachable!();
+        };
+
+        let new_inner = alloc_tuple_of(&mut db, [types.int, types.bytes, types.nil].into_iter());
+
+        let derivative_struct_type = db.alloc(Type::Struct(Struct {
+            original_type_id: struct_type,
+            type_id: new_inner,
+            field_names: original.field_names,
+            rest: original.rest,
+            generic_types: original.generic_types,
+        }));
+
+        assert_eq!(
+            db.compare(derivative_struct_type, struct_type),
+            Comparison::Castable
+        );
+
+        assert_eq!(
+            db.compare(struct_type, derivative_struct_type),
+            Comparison::Castable
+        );
+    }
+
+    #[test]
+    fn test_compare_different_struct() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let struct_type = alloc_struct(
+            &mut db,
+            &indexmap! {
+                "x".to_string() => types.int,
+                "y".to_string() => types.int,
+            },
+            Rest::Nil,
+        );
+
+        let other_struct_type = alloc_struct(
+            &mut db,
+            &indexmap! {
+                "x".to_string() => types.int,
+                "y".to_string() => types.int,
+            },
+            Rest::Nil,
+        );
+
+        assert_eq!(
+            db.compare(struct_type, other_struct_type),
+            Comparison::Castable
+        );
     }
 }
