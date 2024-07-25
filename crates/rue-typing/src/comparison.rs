@@ -41,13 +41,231 @@ pub(crate) fn compare_type(
     let comparison = match (db.get(lhs), db.get(rhs)) {
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
 
+        // These types are identical.
+        (Type::Unknown, Type::Unknown)
+        | (Type::Never, Type::Never)
+        | (Type::Any, Type::Any)
+        | (Type::Bytes, Type::Bytes)
+        | (Type::Bytes32, Type::Bytes32)
+        | (Type::PublicKey, Type::PublicKey)
+        | (Type::Int, Type::Int)
+        | (Type::Nil, Type::Nil)
+        | (Type::True, Type::True)
+        | (Type::False, Type::False) => Comparison::Equal,
+
+        // These are assignable since the structure and semantics match.
+        (
+            Type::Pair(..)
+            | Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..),
+            Type::Any,
+        )
+        | (
+            Type::Unknown | Type::Never,
+            Type::Any
+            | Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..)
+            | Type::Pair(..)
+            | Type::Callable(..),
+        )
+        | (
+            Type::Never
+            | Type::Any
+            | Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..)
+            | Type::Pair(..)
+            | Type::Callable(..),
+            Type::Unknown,
+        )
+        | (Type::Unknown, Type::Never)
+        | (Type::Value(..), Type::Int)
+        | (Type::Bytes32 | Type::Nil, Type::Bytes) => Comparison::Assignable,
+
+        // These are castable since the structure matches but the semantics differ.
+        (
+            Type::Bytes | Type::Bytes32 | Type::PublicKey | Type::Nil | Type::True | Type::False,
+            Type::Int,
+        )
+        | (Type::PublicKey | Type::Int | Type::True | Type::False | Type::Value(..), Type::Bytes)
+        | (Type::False, Type::Nil)
+        | (Type::Nil, Type::False) => Comparison::Castable,
+
+        // These are a superset since the right hand side is castable to the left hand side.
+        (
+            Type::Any,
+            Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..)
+            | Type::Pair(..),
+        )
+        | (
+            Type::Bytes | Type::Int,
+            Type::Bytes32
+            | Type::PublicKey
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..),
+        )
+        | (
+            Type::Any
+            | Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..)
+            | Type::Pair(..)
+            | Type::Callable(..),
+            Type::Never,
+        ) => Comparison::Superset,
+
+        // These are incompatible since the structure differs.
+        (
+            Type::Pair(..),
+            Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..),
+        )
+        | (
+            Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..),
+            Type::Pair(..),
+        )
+        | (Type::Bytes32, Type::PublicKey | Type::Nil | Type::True | Type::False)
+        | (Type::PublicKey, Type::Bytes32 | Type::Nil | Type::True | Type::False)
+        | (Type::Nil, Type::Bytes32 | Type::PublicKey | Type::True)
+        | (Type::True, Type::False | Type::Nil)
+        | (Type::False, Type::True)
+        | (Type::True | Type::False, Type::Bytes32 | Type::PublicKey)
+        | (
+            Type::Any
+            | Type::Bytes
+            | Type::Bytes32
+            | Type::PublicKey
+            | Type::Int
+            | Type::Nil
+            | Type::True
+            | Type::False
+            | Type::Value(..)
+            | Type::Pair(..),
+            Type::Callable(..),
+        ) => Comparison::Incompatible,
+
+        // Value is a subtype of Int, so it's castable to Bytes32 if it's 32 bytes long.
+        (Type::Value(value), Type::Bytes32) => {
+            if bigint_to_bytes(value.clone()).len() == 32 {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
+        // Value is a subtype of Int, so it's castable to PublicKey if it's 48 bytes long.
+        (Type::Value(value), Type::PublicKey) => {
+            if bigint_to_bytes(value.clone()).len() == 48 {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
+        // Bytes32 is a superset of Value only if the value is 32 bytes long.
+        (Type::Bytes32, Type::Value(value)) => {
+            if bigint_to_bytes(value.clone()).len() == 32 {
+                Comparison::Superset
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
+        // PublicKey is a superset of Value only if the value is 48 bytes long.
+        (Type::PublicKey, Type::Value(value)) => {
+            if bigint_to_bytes(value.clone()).len() == 48 {
+                Comparison::Superset
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
+        // Nil and False are supersets of Value only if the value is zero.
+        (Type::Nil | Type::False, Type::Value(value))
+        | (Type::Value(value), Type::Nil | Type::False) => {
+            if value == &BigInt::ZERO {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
+        // True is a superset of Value only if the value is one.
+        (Type::True, Type::Value(value)) | (Type::Value(value), Type::True) => {
+            if value == &BigInt::one() {
+                Comparison::Castable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
+        // Value is equal to other instances of Value only if the values are equal.
+        (Type::Value(lhs), Type::Value(rhs)) => {
+            if lhs == rhs {
+                Comparison::Equal
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
+        // A comparison of pairs is done by using whichever comparison is the most restrictive.
+        (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
+            let first = compare_type(db, *lhs_first, *rhs_first, ctx);
+            let rest = compare_type(db, *lhs_rest, *rhs_rest, ctx);
+            max(first, rest)
+        }
+
+        // We need to push substititons onto the stack in order to accurately compare them.
         (Type::Lazy(lazy), _) => {
             ctx.substitution_stack.push(lazy.substitutions.clone());
             let result = compare_type(db, lazy.type_id, rhs, ctx);
             ctx.substitution_stack.pop().unwrap();
             result
         }
-
         (_, Type::Lazy(lazy)) => {
             ctx.substitution_stack.push(lazy.substitutions.clone());
             let result = compare_type(db, lhs, lazy.type_id, ctx);
@@ -55,9 +273,14 @@ pub(crate) fn compare_type(
             result
         }
 
+        // Resolve the alias to the type that it's pointing to.
         (Type::Alias(alias), _) => compare_type(db, alias.type_id, rhs, ctx),
         (_, Type::Alias(alias)) => compare_type(db, lhs, alias.type_id, ctx),
 
+        // Structs are at best castable to other types, since they have different semantics.
+        (Type::Struct(lhs), Type::Struct(rhs)) if lhs.original_type_id == rhs.original_type_id => {
+            compare_type(db, lhs.type_id, rhs.type_id, ctx)
+        }
         (Type::Struct(lhs), _) => max(
             compare_type(db, lhs.type_id, rhs, ctx),
             Comparison::Castable,
@@ -67,19 +290,30 @@ pub(crate) fn compare_type(
             Comparison::Castable,
         ),
 
+        // Variants can be assigned to enums if the structure is assignable and it's the same enum.
         (Type::Variant(variant), Type::Enum(ty)) => {
             let comparison = compare_type(db, variant.type_id, ty.type_id, ctx);
 
-            if variant.enum_type == rhs {
+            if variant.original_enum_type_id == ty.original_type_id {
                 max(comparison, Comparison::Assignable)
             } else {
                 max(comparison, Comparison::Castable)
             }
         }
 
+        // Enums can be assigned if the structure is assignable and it's the same enum.
+        (Type::Enum(lhs), Type::Enum(rhs)) if lhs.original_type_id == rhs.original_type_id => {
+            compare_type(db, lhs.type_id, rhs.type_id, ctx)
+        }
         (Type::Enum(ty), _) => max(compare_type(db, ty.type_id, rhs, ctx), Comparison::Castable),
         (_, Type::Enum(ty)) => max(compare_type(db, lhs, ty.type_id, ctx), Comparison::Castable),
 
+        // Variants can be assigned if the structure is assignable and it's the same variant.
+        (Type::Variant(lhs), Type::Variant(rhs))
+            if lhs.original_type_id == rhs.original_type_id =>
+        {
+            compare_type(db, lhs.type_id, rhs.type_id, ctx)
+        }
         (Type::Variant(lhs), _) => max(
             compare_type(db, lhs.type_id, rhs, ctx),
             Comparison::Castable,
@@ -89,58 +323,15 @@ pub(crate) fn compare_type(
             Comparison::Castable,
         ),
 
+        // Functions can be assigned to other functions if the parameters and return type are assignable.
+        // They're treated like Never on the right hand side and Any on the left hand side.
         (Type::Callable(lhs), Type::Callable(rhs)) => max(
             compare_type(db, lhs.parameters, rhs.parameters, ctx),
             compare_type(db, lhs.return_type, rhs.return_type, ctx),
         ),
-
         (Type::Callable(..), _) => compare_type(db, lhs, db.std().any, ctx),
-        (_, Type::Callable(..)) => Comparison::Incompatible,
 
-        (_, Type::Generic) => {
-            let mut found = None;
-
-            for substititons in ctx.substitution_stack.iter().rev() {
-                if let Some(&substititon) = substititons.get(&rhs) {
-                    found = Some(substititon);
-                }
-            }
-
-            if let Some(found) = found {
-                compare_type(db, lhs, found, ctx)
-            } else if let Some(generic_stack_frame) = ctx.generic_stack_frame {
-                ctx.substitution_stack[generic_stack_frame].insert(rhs, lhs);
-                Comparison::Assignable
-            } else {
-                Comparison::Incompatible
-            }
-        }
-
-        (Type::Generic, _) => {
-            let mut found = None;
-
-            for (i, substititons) in ctx.substitution_stack.iter().enumerate().rev() {
-                if i < ctx.initial_substitution_length {
-                    break;
-                }
-
-                if let Some(&substititon) = substititons.get(&lhs) {
-                    found = Some(substititon);
-                }
-            }
-
-            if let Some(found) = found {
-                compare_type(db, found, rhs, ctx)
-            } else {
-                Comparison::Incompatible
-            }
-        }
-
-        (Type::Unknown, _) | (_, Type::Unknown) => Comparison::Assignable,
-
-        (Type::Never, _) => Comparison::Assignable,
-        (_, Type::Never) => Comparison::Superset,
-
+        // Unions can be assigned to anything so long as each of the items in the union are also.
         (Type::Union(items), _) => {
             let items = items.clone();
             let mut result = Comparison::Assignable;
@@ -163,6 +354,7 @@ pub(crate) fn compare_type(
             }
         }
 
+        // Anything can be assigned to a union so long as it's assignable to at least one of the items.
         (_, Type::Union(items)) => {
             let items = items.clone();
             let mut result = Comparison::Incompatible;
@@ -175,186 +367,43 @@ pub(crate) fn compare_type(
             max(result, Comparison::Assignable)
         }
 
-        (Type::Pair(lhs_first, lhs_rest), Type::Pair(rhs_first, rhs_rest)) => {
-            let first = compare_type(db, *lhs_first, *rhs_first, ctx);
-            let rest = compare_type(db, *lhs_rest, *rhs_rest, ctx);
-            max(first, rest)
-        }
+        // Generics are resolved by looking up the substitution in the stack.
+        // If we're infering, we'll push the substitution onto the proper generic stack frame.
+        (_, Type::Generic) => {
+            let mut found = None;
 
-        (Type::Pair(..), Type::Any) => Comparison::Assignable,
-        (Type::Pair(..), Type::Bytes) => Comparison::Incompatible,
-        (Type::Pair(..), Type::Bytes32) => Comparison::Incompatible,
-        (Type::Pair(..), Type::PublicKey) => Comparison::Incompatible,
-        (Type::Pair(..), Type::Int) => Comparison::Incompatible,
-        (Type::Pair(..), Type::Nil) => Comparison::Incompatible,
-        (Type::Pair(..), Type::True) => Comparison::Incompatible,
-        (Type::Pair(..), Type::False) => Comparison::Incompatible,
-        (Type::Pair(..), Type::Value(..)) => Comparison::Incompatible,
-
-        (Type::Any, Type::Pair(..)) => Comparison::Superset,
-        (Type::Bytes, Type::Pair(..)) => Comparison::Incompatible,
-        (Type::Bytes32, Type::Pair(..)) => Comparison::Incompatible,
-        (Type::PublicKey, Type::Pair(..)) => Comparison::Incompatible,
-        (Type::Int, Type::Pair(..)) => Comparison::Incompatible,
-        (Type::Nil, Type::Pair(..)) => Comparison::Incompatible,
-        (Type::True, Type::Pair(..)) => Comparison::Incompatible,
-        (Type::False, Type::Pair(..)) => Comparison::Incompatible,
-        (Type::Value(..), Type::Pair(..)) => Comparison::Incompatible,
-
-        (Type::Any, Type::Any) => Comparison::Equal,
-        (Type::Bytes, Type::Bytes) => Comparison::Equal,
-        (Type::Bytes32, Type::Bytes32) => Comparison::Equal,
-        (Type::PublicKey, Type::PublicKey) => Comparison::Equal,
-        (Type::Int, Type::Int) => Comparison::Equal,
-        (Type::Nil, Type::Nil) => Comparison::Equal,
-        (Type::True, Type::True) => Comparison::Equal,
-        (Type::False, Type::False) => Comparison::Equal,
-
-        (Type::Bytes32, Type::Any) => Comparison::Assignable,
-        (Type::PublicKey, Type::Any) => Comparison::Assignable,
-        (Type::Nil, Type::Any) => Comparison::Assignable,
-        (Type::Bytes, Type::Any) => Comparison::Assignable,
-        (Type::Int, Type::Any) => Comparison::Assignable,
-        (Type::True, Type::Any) => Comparison::Assignable,
-        (Type::False, Type::Any) => Comparison::Assignable,
-        (Type::Value(..), Type::Any) => Comparison::Assignable,
-
-        (Type::Any, Type::Bytes) => Comparison::Superset,
-        (Type::Any, Type::Int) => Comparison::Superset,
-        (Type::Any, Type::Bytes32) => Comparison::Superset,
-        (Type::Any, Type::PublicKey) => Comparison::Superset,
-        (Type::Any, Type::Nil) => Comparison::Superset,
-        (Type::Any, Type::True) => Comparison::Superset,
-        (Type::Any, Type::False) => Comparison::Superset,
-        (Type::Any, Type::Value(..)) => Comparison::Superset,
-
-        (Type::Bytes, Type::Bytes32) => Comparison::Superset,
-        (Type::Bytes, Type::PublicKey) => Comparison::Superset,
-        (Type::Bytes, Type::Nil) => Comparison::Superset,
-        (Type::Int, Type::Bytes32) => Comparison::Superset,
-        (Type::Int, Type::PublicKey) => Comparison::Superset,
-        (Type::Int, Type::Nil) => Comparison::Superset,
-
-        (Type::Bytes32, Type::Bytes) => Comparison::Assignable,
-        (Type::Nil, Type::Bytes) => Comparison::Assignable,
-
-        (Type::Bytes, Type::Int) => Comparison::Castable,
-        (Type::Bytes32, Type::Int) => Comparison::Castable,
-        (Type::PublicKey, Type::Bytes) => Comparison::Castable,
-        (Type::PublicKey, Type::Int) => Comparison::Castable,
-        (Type::Int, Type::Bytes) => Comparison::Castable,
-        (Type::Nil, Type::Int) => Comparison::Castable,
-
-        (Type::Bytes32, Type::PublicKey) => Comparison::Incompatible,
-        (Type::Bytes32, Type::Nil) => Comparison::Incompatible,
-        (Type::PublicKey, Type::Bytes32) => Comparison::Incompatible,
-        (Type::PublicKey, Type::Nil) => Comparison::Incompatible,
-        (Type::Nil, Type::Bytes32) => Comparison::Incompatible,
-        (Type::Nil, Type::PublicKey) => Comparison::Incompatible,
-
-        (Type::True, Type::False) => Comparison::Incompatible,
-        (Type::False, Type::True) => Comparison::Incompatible,
-
-        (Type::True, Type::Bytes) => Comparison::Castable,
-        (Type::False, Type::Bytes) => Comparison::Castable,
-        (Type::True, Type::Int) => Comparison::Castable,
-        (Type::False, Type::Int) => Comparison::Castable,
-        (Type::True, Type::Nil) => Comparison::Incompatible,
-        (Type::False, Type::Nil) => Comparison::Castable,
-        (Type::True, Type::Bytes32) => Comparison::Incompatible,
-        (Type::False, Type::Bytes32) => Comparison::Incompatible,
-        (Type::True, Type::PublicKey) => Comparison::Incompatible,
-        (Type::False, Type::PublicKey) => Comparison::Incompatible,
-
-        (Type::Bytes, Type::True) => Comparison::Superset,
-        (Type::Bytes, Type::False) => Comparison::Superset,
-        (Type::Int, Type::True) => Comparison::Superset,
-        (Type::Int, Type::False) => Comparison::Superset,
-        (Type::Nil, Type::True) => Comparison::Incompatible,
-        (Type::Nil, Type::False) => Comparison::Castable,
-        (Type::Bytes32, Type::True) => Comparison::Incompatible,
-        (Type::Bytes32, Type::False) => Comparison::Incompatible,
-        (Type::PublicKey, Type::True) => Comparison::Incompatible,
-        (Type::PublicKey, Type::False) => Comparison::Incompatible,
-
-        (Type::Value(..), Type::Bytes) => Comparison::Castable,
-        (Type::Value(..), Type::Int) => Comparison::Assignable,
-        (Type::Value(value), Type::Bytes32) => {
-            if bigint_to_bytes(value.clone()).len() == 32 {
-                Comparison::Castable
-            } else {
-                Comparison::Incompatible
+            for substititons in ctx.substitution_stack.iter().rev() {
+                if let Some(&substititon) = substititons.get(&rhs) {
+                    found = Some(substititon);
+                }
             }
-        }
-        (Type::Value(value), Type::PublicKey) => {
-            if bigint_to_bytes(value.clone()).len() == 48 {
-                Comparison::Castable
-            } else {
-                Comparison::Incompatible
-            }
-        }
-        (Type::Value(value), Type::Nil) => {
-            if value == &BigInt::ZERO {
-                Comparison::Castable
-            } else {
-                Comparison::Incompatible
-            }
-        }
-        (Type::Value(value), Type::True) => {
-            if value == &BigInt::one() {
-                Comparison::Castable
-            } else {
-                Comparison::Incompatible
-            }
-        }
-        (Type::Value(value), Type::False) => {
-            if value == &BigInt::ZERO {
-                Comparison::Castable
+
+            if let Some(found) = found {
+                compare_type(db, lhs, found, ctx)
+            } else if let Some(generic_stack_frame) = ctx.generic_stack_frame {
+                ctx.substitution_stack[generic_stack_frame].insert(rhs, lhs);
+                Comparison::Assignable
             } else {
                 Comparison::Incompatible
             }
         }
 
-        (Type::Bytes, Type::Value(..)) => Comparison::Superset,
-        (Type::Int, Type::Value(..)) => Comparison::Superset,
-        (Type::Bytes32, Type::Value(value)) => {
-            if bigint_to_bytes(value.clone()).len() == 32 {
-                Comparison::Superset
-            } else {
-                Comparison::Incompatible
+        // Generics are resolved by looking up the substitution in the stack.
+        (Type::Generic, _) => {
+            let mut found = None;
+
+            for (i, substititons) in ctx.substitution_stack.iter().enumerate().rev() {
+                if i < ctx.initial_substitution_length {
+                    break;
+                }
+
+                if let Some(&substititon) = substititons.get(&lhs) {
+                    found = Some(substititon);
+                }
             }
-        }
-        (Type::PublicKey, Type::Value(value)) => {
-            if bigint_to_bytes(value.clone()).len() == 48 {
-                Comparison::Superset
-            } else {
-                Comparison::Incompatible
-            }
-        }
-        (Type::Nil, Type::Value(value)) => {
-            if value == &BigInt::ZERO {
-                Comparison::Castable
-            } else {
-                Comparison::Incompatible
-            }
-        }
-        (Type::True, Type::Value(value)) => {
-            if value == &BigInt::one() {
-                Comparison::Castable
-            } else {
-                Comparison::Incompatible
-            }
-        }
-        (Type::False, Type::Value(value)) => {
-            if value == &BigInt::ZERO {
-                Comparison::Castable
-            } else {
-                Comparison::Incompatible
-            }
-        }
-        (Type::Value(lhs), Type::Value(rhs)) => {
-            if lhs == rhs {
-                Comparison::Equal
+
+            if let Some(found) = found {
+                compare_type(db, found, rhs, ctx)
             } else {
                 Comparison::Incompatible
             }

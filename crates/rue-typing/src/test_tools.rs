@@ -35,14 +35,18 @@ pub fn alloc_callable(
         }
     };
 
-    db.alloc(Type::Callable(Callable {
-        original_type_id: None,
+    let type_id = db.alloc(Type::Unknown);
+
+    *db.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
         parameter_names: parameters.keys().cloned().collect(),
         parameters: structure,
         return_type,
         rest,
         generic_types: Vec::new(),
-    }))
+    });
+
+    type_id
 }
 
 pub fn alloc_struct(db: &mut TypeSystem, fields: &IndexMap<String, TypeId>, rest: Rest) -> TypeId {
@@ -66,13 +70,17 @@ pub fn alloc_struct(db: &mut TypeSystem, fields: &IndexMap<String, TypeId>, rest
         }
     };
 
-    db.alloc(Type::Struct(Struct {
-        original_type_id: None,
+    let type_id = db.alloc(Type::Unknown);
+
+    *db.get_mut(type_id) = Type::Struct(Struct {
+        original_type_id: type_id,
         type_id: structure,
         field_names: fields.keys().cloned().collect(),
         rest,
         generic_types: Vec::new(),
-    }))
+    });
+
+    type_id
 }
 
 pub fn alloc_list_of(

@@ -35,11 +35,12 @@ impl Default for TypeSystem {
 
         let generic_list_item = arena.alloc(Type::Generic);
         let inner = arena.alloc(Type::Unknown);
-        let unmapped_list = arena.alloc(Type::Alias(Alias {
-            original_type_id: None,
+        let unmapped_list = arena.alloc(Type::Unknown);
+        arena[unmapped_list] = Type::Alias(Alias {
+            original_type_id: unmapped_list,
             type_id: inner,
             generic_types: vec![generic_list_item],
-        }));
+        });
         let pair = arena.alloc(Type::Pair(generic_list_item, unmapped_list));
         arena[inner] = Type::Union(vec![pair, nil]);
 

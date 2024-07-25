@@ -83,7 +83,7 @@ pub(crate) fn substitute_type(
                     type_id
                 } else {
                     types.alloc(Type::Alias(Alias {
-                        original_type_id: Some(alias.original_type_id.unwrap_or(type_id)),
+                        original_type_id: alias.original_type_id,
                         type_id: new_type_id,
                         generic_types: alias.generic_types,
                     }))
@@ -102,7 +102,7 @@ pub(crate) fn substitute_type(
                     type_id
                 } else {
                     types.alloc(Type::Struct(Struct {
-                        original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
+                        original_type_id: ty.original_type_id,
                         type_id: new_type_id,
                         field_names: ty.field_names,
                         rest: ty.rest,
@@ -123,8 +123,8 @@ pub(crate) fn substitute_type(
                     type_id
                 } else {
                     types.alloc(Type::Variant(Variant {
-                        original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
-                        enum_type: ty.enum_type,
+                        original_type_id: ty.original_type_id,
+                        original_enum_type_id: ty.original_enum_type_id,
                         type_id: new_type_id,
                         field_names: ty.field_names,
                         rest: ty.rest,
@@ -146,7 +146,7 @@ pub(crate) fn substitute_type(
                     type_id
                 } else {
                     types.alloc(Type::Enum(Enum {
-                        original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
+                        original_type_id: ty.original_type_id,
                         type_id: new_type_id,
                         has_fields: ty.has_fields,
                         variants: ty.variants,
@@ -173,7 +173,7 @@ pub(crate) fn substitute_type(
                         type_id
                     } else {
                         types.alloc(Type::Callable(Callable {
-                            original_type_id: Some(callable.original_type_id.unwrap_or(type_id)),
+                            original_type_id: callable.original_type_id,
                             parameter_names: callable.parameter_names,
                             parameters: new_parameters,
                             return_type: new_return_type,

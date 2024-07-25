@@ -30,7 +30,8 @@ pub struct Lazy {
 /// Represents an alias to a type with a set of generic parameters that must be mapped prior to use.
 #[derive(Debug, Clone)]
 pub struct Alias {
-    pub original_type_id: Option<TypeId>,
+    /// A pointer to the alias from which this was derived.
+    pub original_type_id: TypeId,
     pub type_id: TypeId,
     pub generic_types: Vec<TypeId>,
 }
@@ -38,7 +39,8 @@ pub struct Alias {
 /// Struct types are just wrappers around a structural type that provide field information.
 #[derive(Debug, Clone)]
 pub struct Struct {
-    pub original_type_id: Option<TypeId>,
+    /// A pointer to the struct from which this was derived.
+    pub original_type_id: TypeId,
     pub field_names: IndexSet<String>,
     pub type_id: TypeId,
     pub rest: Rest,
@@ -48,7 +50,8 @@ pub struct Struct {
 /// Represents something which can be called with arguments and returns a given type.
 #[derive(Debug, Clone)]
 pub struct Callable {
-    pub original_type_id: Option<TypeId>,
+    /// A pointer to the callable from which this was derived.
+    pub original_type_id: TypeId,
     pub parameter_names: IndexSet<String>,
     pub parameters: TypeId,
     pub return_type: TypeId,
@@ -59,8 +62,8 @@ pub struct Callable {
 /// Represents an enum type which can have multiple variants.
 #[derive(Debug, Clone)]
 pub struct Enum {
-    /// A pointer to the enum from which this was derived, if any.
-    pub original_type_id: Option<TypeId>,
+    /// A pointer to the enum from which this was derived.
+    pub original_type_id: TypeId,
     /// The structural type of the enum.
     pub type_id: TypeId,
     /// Whether the enum semantically has fields.
@@ -72,10 +75,10 @@ pub struct Enum {
 /// Represents a variant type which can optionally have fields.
 #[derive(Debug, Clone)]
 pub struct Variant {
-    /// A pointer to the variant from which this was derived, if any.
-    pub original_type_id: Option<TypeId>,
-    /// The enum type to which this variant belongs.
-    pub enum_type: TypeId,
+    /// A pointer to the variant from which this was derived.
+    pub original_type_id: TypeId,
+    /// The original enum type to which this variant belongs.
+    pub original_enum_type_id: TypeId,
     /// The field names of the variant.
     pub field_names: Option<IndexSet<String>>,
     /// The structural type of the enum variant.

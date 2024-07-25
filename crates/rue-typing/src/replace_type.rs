@@ -19,7 +19,7 @@ pub(crate) fn replace_type(
             let alias = alias.clone();
             let new_type_id = replace_type(types, alias.type_id, replace_type_id, path);
             types.alloc(Type::Alias(Alias {
-                original_type_id: Some(alias.original_type_id.unwrap_or(type_id)),
+                original_type_id: alias.original_type_id,
                 type_id: new_type_id,
                 generic_types: alias.generic_types,
             }))
@@ -28,7 +28,7 @@ pub(crate) fn replace_type(
             let ty = ty.clone();
             let new_type_id = replace_type(types, ty.type_id, replace_type_id, path);
             types.alloc(Type::Struct(Struct {
-                original_type_id: Some(ty.original_type_id.unwrap_or(type_id)),
+                original_type_id: ty.original_type_id,
                 type_id: new_type_id,
                 field_names: ty.field_names,
                 rest: ty.rest,

@@ -252,7 +252,7 @@ pub(crate) fn difference_type(
             let type_id = difference_type(types, ty.type_id, rhs, visited);
 
             types.alloc(Type::Struct(Struct {
-                original_type_id: Some(ty.original_type_id.unwrap_or(lhs)),
+                original_type_id: ty.original_type_id,
                 type_id,
                 field_names: ty.field_names,
                 rest: ty.rest,
@@ -264,7 +264,7 @@ pub(crate) fn difference_type(
             let type_id = difference_type(types, lhs, ty.type_id, visited);
 
             types.alloc(Type::Struct(Struct {
-                original_type_id: Some(ty.original_type_id.unwrap_or(rhs)),
+                original_type_id: ty.original_type_id,
                 type_id,
                 field_names: ty.field_names,
                 rest: ty.rest,
@@ -277,7 +277,7 @@ pub(crate) fn difference_type(
             let type_id = difference_type(types, ty.type_id, rhs, visited);
 
             types.alloc(Type::Enum(Enum {
-                original_type_id: Some(ty.original_type_id.unwrap_or(lhs)),
+                original_type_id: ty.original_type_id,
                 type_id,
                 has_fields: ty.has_fields,
                 variants: ty.variants,
@@ -288,7 +288,7 @@ pub(crate) fn difference_type(
             let type_id = difference_type(types, lhs, ty.type_id, visited);
 
             types.alloc(Type::Enum(Enum {
-                original_type_id: Some(ty.original_type_id.unwrap_or(rhs)),
+                original_type_id: ty.original_type_id,
                 type_id,
                 has_fields: ty.has_fields,
                 variants: ty.variants,
@@ -300,8 +300,8 @@ pub(crate) fn difference_type(
             let type_id = difference_type(types, variant.type_id, rhs, visited);
 
             types.alloc(Type::Variant(Variant {
-                original_type_id: Some(variant.original_type_id.unwrap_or(lhs)),
-                enum_type: variant.enum_type,
+                original_type_id: variant.original_type_id,
+                original_enum_type_id: variant.original_enum_type_id,
                 field_names: variant.field_names,
                 type_id,
                 rest: variant.rest,
@@ -314,8 +314,8 @@ pub(crate) fn difference_type(
             let type_id = difference_type(types, lhs, variant.type_id, visited);
 
             types.alloc(Type::Variant(Variant {
-                original_type_id: Some(variant.original_type_id.unwrap_or(rhs)),
-                enum_type: variant.enum_type,
+                original_type_id: variant.original_type_id,
+                original_enum_type_id: variant.original_enum_type_id,
                 field_names: variant.field_names,
                 type_id,
                 rest: variant.rest,
