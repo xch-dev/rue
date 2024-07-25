@@ -54,22 +54,10 @@ pub(crate) fn compare_type(
         | (Type::False, Type::False) => Comparison::Equal,
 
         // These are assignable since the structure and semantics match.
-        (
-            Type::Pair(..)
-            | Type::Bytes
-            | Type::Bytes32
-            | Type::PublicKey
-            | Type::Int
-            | Type::Nil
-            | Type::True
-            | Type::False
-            | Type::Value(..),
-            Type::Any,
-        )
+        (_, Type::Any)
         | (
             Type::Unknown | Type::Never,
-            Type::Any
-            | Type::Bytes
+            Type::Bytes
             | Type::Bytes32
             | Type::PublicKey
             | Type::Int
@@ -585,7 +573,7 @@ mod tests {
             },
             Rest::Nil,
         );
-        assert_eq!(db.compare(point, types.any), Comparison::Castable);
+        assert_eq!(db.compare(point, types.any), Comparison::Assignable);
     }
 
     #[test]
