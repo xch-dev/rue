@@ -37,13 +37,23 @@ impl Compiler<'_> {
             }
             Some(Type::Variant(enum_variant)) => {
                 if let Some(field_names) = enum_variant.field_names {
-                    let fields = deconstruct_items(
-                        self.ty,
-                        enum_variant.type_id,
-                        field_names.len(),
-                        enum_variant.rest,
-                    )
-                    .expect("invalid variant type");
+                    let Type::Enum(enum_type) = self.ty.get(enum_variant.original_enum_type_id)
+                    else {
+                        unreachable!();
+                    };
+
+                    let fields = if enum_type.has_fields {
+                        let type_id = self
+                            .ty
+                            .get_pair(enum_variant.type_id)
+                            .expect("expected a pair")
+                            .1;
+
+                        deconstruct_items(self.ty, type_id, field_names.len(), enum_variant.rest)
+                            .expect("invalid struct type")
+                    } else {
+                        Vec::new()
+                    };
 
                     let fields_hir_id = self.compile_initializer_fields(
                         &field_names.into_iter().zip(fields).collect(),
@@ -111,7 +121,6 @@ impl Compiler<'_> {
             {
                 // TODO: optional |= matches!(self.db.ty(value.type_id), Type::Optional(..));
                 // value.type_id = self.db.non_undefined(value.type_id);
-                todo!()
             }
 
             // Check the type of the field initializer.

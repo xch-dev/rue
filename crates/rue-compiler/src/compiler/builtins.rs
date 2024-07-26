@@ -129,10 +129,13 @@ fn divmod(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
 
     let type_id = ty.alloc(Type::Unknown);
 
+    let parameters = ty.alloc(Type::Pair(ty.std().int, ty.std().nil));
+    let parameters = ty.alloc(Type::Pair(ty.std().int, parameters));
+
     *ty.get_mut(type_id) = Type::Callable(Callable {
         original_type_id: type_id,
         parameter_names: indexset!["lhs".to_string(), "rhs".to_string()],
-        parameters: ty.alloc(Type::Pair(int_pair, ty.std().nil)),
+        parameters,
         rest: Rest::Nil,
         return_type: int_pair,
         generic_types: Vec::new(),

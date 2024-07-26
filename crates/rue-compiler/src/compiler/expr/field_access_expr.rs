@@ -32,7 +32,6 @@ impl Compiler<'_> {
                     let type_id = fields[index];
 
                     if index == ty.field_names.len() - 1 && ty.rest == Rest::Optional {
-                        todo!();
                         // TODO: type_id = self.ty.alloc(Type::Optional(type_id));
                     }
 
@@ -56,14 +55,28 @@ impl Compiler<'_> {
             Type::Variant(variant) => {
                 let field_names = variant.field_names.clone().unwrap_or_default();
 
-                let fields = variant
-                    .field_names
-                    .as_ref()
-                    .map(|field_names| {
-                        deconstruct_items(self.ty, variant.type_id, field_names.len(), variant.rest)
-                            .expect("invalid struct type")
-                    })
-                    .unwrap_or_default();
+                let Type::Enum(ty) = self.ty.get(variant.original_enum_type_id) else {
+                    unreachable!();
+                };
+
+                let fields = if ty.has_fields {
+                    let type_id = self
+                        .ty
+                        .get_pair(variant.type_id)
+                        .expect("expected a pair")
+                        .1;
+
+                    variant
+                        .field_names
+                        .as_ref()
+                        .map(|field_names| {
+                            deconstruct_items(self.ty, type_id, field_names.len(), variant.rest)
+                                .expect("invalid struct type")
+                        })
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
 
                 if let Some(index) = field_names.get_index_of(field_name.text()) {
                     let type_id = fields[index];

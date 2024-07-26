@@ -100,7 +100,7 @@ impl Compiler<'_> {
                     // If the parameter is optional, wrap the type in a possibly undefined type.
                     // This prevents referencing the parameter until it's checked for undefined.
                     // TODO: self.ty.alloc(Type::Optional(type_id))
-                    todo!()
+                    type_id
                 } else {
                     type_id
                 };
