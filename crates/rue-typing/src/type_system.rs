@@ -205,9 +205,9 @@ impl TypeSystem {
     pub fn substitute(
         &mut self,
         type_id: TypeId,
-        mut substitutions: HashMap<TypeId, TypeId>,
+        substitutions: HashMap<TypeId, TypeId>,
     ) -> TypeId {
-        substitute_type(self, type_id, &mut substitutions)
+        substitute_type(self, type_id, &mut vec![substitutions])
     }
 
     pub fn check(&mut self, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {

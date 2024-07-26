@@ -4,22 +4,20 @@ use crate::{Alias, Callable, Enum, Struct, Type, TypeId, TypeSystem, Variant};
 
 pub(crate) fn substitute_type(
     types: &mut TypeSystem,
-    mut type_id: TypeId,
-    substitutions: &mut HashMap<TypeId, TypeId>,
+    type_id: TypeId,
+    substitutions: &mut Vec<HashMap<TypeId, TypeId>>,
 ) -> TypeId {
-    let mut substituted = false;
-
-    while let Some(new_type_id) = substitutions.get(&type_id) {
-        type_id = *new_type_id;
-        substituted = true;
-    }
-
-    if substituted {
-        return type_id;
+    for frame in substitutions.iter().rev() {
+        if let Some(new_type_id) = frame.get(&type_id) {
+            return *new_type_id;
+        }
     }
 
     let placeholder = types.alloc(Type::Unknown);
-    substitutions.insert(type_id, placeholder);
+    substitutions
+        .last_mut()
+        .unwrap()
+        .insert(type_id, placeholder);
 
     let result = match types.get(type_id) {
         Type::Ref(..) => unreachable!(),
@@ -62,15 +60,10 @@ pub(crate) fn substitute_type(
             }
         }
         Type::Lazy(lazy) => {
-            let mut old_substitutions = HashMap::new();
-            for (key, val) in lazy.substitutions.clone() {
-                if let Some(old) = substitutions.insert(key, val) {
-                    old_substitutions.insert(key, old);
-                }
-            }
+            substitutions.push(lazy.substitutions.clone().into_iter().collect());
             let result = substitute_type(types, lazy.type_id, substitutions);
-            substitutions.extend(old_substitutions);
-            result
+            substitutions.pop().unwrap();
+            substitute_type(types, result, substitutions)
         }
         Type::Alias(alias) => {
             let alias = alias.clone();

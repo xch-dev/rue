@@ -212,7 +212,7 @@ fn check_union_against_rhs(
         return Ok(Check::True);
     }
 
-    if let Type::Union(union) = types.get(rhs) {
+    if let Type::Union(union) = types.get_recursive(rhs) {
         let rhs_items = union.clone();
         let mut result = Vec::new();
         for rhs_item in rhs_items {

@@ -1,12 +1,14 @@
-use indexmap::IndexMap;
+use indexmap::{indexmap, IndexMap};
 
-use crate::{Callable, Rest, Struct, Type, TypeId, TypeSystem};
+use crate::{Callable, Lazy, Rest, Struct, Type, TypeId, TypeSystem};
 
 pub fn alloc_list(db: &mut TypeSystem, item_type_id: TypeId) -> TypeId {
-    let list = db.alloc(Type::Unknown);
-    let pair = db.alloc(Type::Pair(item_type_id, list));
-    *db.get_mut(list) = Type::Union(vec![pair, db.std().nil]);
-    list
+    db.alloc(Type::Lazy(Lazy {
+        type_id: db.std().unmapped_list,
+        substitutions: indexmap! {
+            db.std().generic_list_item => item_type_id,
+        },
+    }))
 }
 
 pub fn alloc_callable(
