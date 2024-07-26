@@ -262,6 +262,10 @@ pub(crate) fn compare_type(
             let mut any_incompatible = false;
 
             for item in &items {
+                if matches!(db.get_recursive(*item), Type::Never) {
+                    continue;
+                }
+
                 let cmp = compare_type(db, lhs, *item, ctx);
                 result = min(result, cmp);
 
@@ -313,6 +317,16 @@ pub(crate) fn compare_type(
         // Variants can be assigned to enums if the structure is assignable and it's the same enum.
         (Type::Variant(variant), Type::Enum(ty)) => {
             let comparison = compare_type(db, lhs, ty.type_id, ctx);
+
+            if variant.original_enum_type_id == ty.original_type_id {
+                max(comparison, Comparison::Assignable)
+            } else {
+                max(comparison, Comparison::Castable)
+            }
+        }
+
+        (Type::Enum(ty), Type::Variant(variant)) => {
+            let comparison = compare_type(db, ty.type_id, rhs, ctx);
 
             if variant.original_enum_type_id == ty.original_type_id {
                 max(comparison, Comparison::Assignable)

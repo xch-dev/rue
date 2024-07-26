@@ -15,7 +15,7 @@ fun main() -> Int {
         raise "Unreachable";
     }
 
-    assert color is Color::Red;
     let red: Color::Red = color;
+    
     red as Int
 }

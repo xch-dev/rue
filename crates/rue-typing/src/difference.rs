@@ -157,18 +157,7 @@ pub(crate) fn difference_type(
                 generic_types: ty.generic_types,
             }))
         }
-        (_, Type::Struct(ty)) => {
-            let ty = ty.clone();
-            let type_id = difference_type(types, lhs, ty.type_id, visited);
-
-            types.alloc(Type::Struct(Struct {
-                original_type_id: ty.original_type_id,
-                type_id,
-                field_names: ty.field_names,
-                rest: ty.rest,
-                generic_types: ty.generic_types,
-            }))
-        }
+        (_, Type::Struct(ty)) => difference_type(types, lhs, ty.type_id, visited),
 
         (Type::Enum(ty), _) => {
             let ty = ty.clone();
@@ -181,17 +170,7 @@ pub(crate) fn difference_type(
                 variants: ty.variants,
             }))
         }
-        (_, Type::Enum(ty)) => {
-            let ty = ty.clone();
-            let type_id = difference_type(types, lhs, ty.type_id, visited);
-
-            types.alloc(Type::Enum(Enum {
-                original_type_id: ty.original_type_id,
-                type_id,
-                has_fields: ty.has_fields,
-                variants: ty.variants,
-            }))
-        }
+        (_, Type::Enum(ty)) => difference_type(types, lhs, ty.type_id, visited),
 
         (Type::Variant(variant), _) => {
             let variant = variant.clone();
@@ -207,20 +186,7 @@ pub(crate) fn difference_type(
                 discriminant: variant.discriminant,
             }))
         }
-        (_, Type::Variant(variant)) => {
-            let variant = variant.clone();
-            let type_id = difference_type(types, lhs, variant.type_id, visited);
-
-            types.alloc(Type::Variant(Variant {
-                original_type_id: variant.original_type_id,
-                original_enum_type_id: variant.original_enum_type_id,
-                field_names: variant.field_names,
-                type_id,
-                rest: variant.rest,
-                generic_types: variant.generic_types,
-                discriminant: variant.discriminant,
-            }))
-        }
+        (_, Type::Variant(variant)) => difference_type(types, lhs, variant.type_id, visited),
 
         (Type::Union(items), _) => {
             let items = items.clone();
@@ -229,7 +195,7 @@ pub(crate) fn difference_type(
 
             for item in &items {
                 let item = difference_type(types, *item, rhs, visited);
-                if matches!(types.get(item), Type::Never) {
+                if matches!(types.get_recursive(item), Type::Never) {
                     continue;
                 }
                 result.push(item);
