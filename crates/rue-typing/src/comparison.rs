@@ -795,4 +795,25 @@ mod tests {
             Comparison::Castable
         );
     }
+
+    #[test]
+    fn test_compare_generic_equal() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+        let generic = db.alloc(Type::Generic);
+        assert_eq!(db.compare(types.int, generic), Comparison::Incompatible);
+        assert_eq!(db.compare(generic, generic), Comparison::Equal);
+    }
+
+    #[test]
+    fn test_compare_generic_list_assignable() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+        let generic = db.alloc(Type::Generic);
+        let list = alloc_list(&mut db, generic);
+        let pair = db.alloc(Type::Pair(generic, list));
+        assert_eq!(db.compare(types.nil, list), Comparison::Assignable);
+        assert_eq!(db.compare(list, list), Comparison::Equal);
+        assert_eq!(db.compare(pair, list), Comparison::Assignable);
+    }
 }

@@ -265,6 +265,9 @@ fn check_union_against_rhs(
         Type::PublicKey if attrs.atoms_are_public_key() => Check::IsAtom,
         Type::PublicKey => Check::And(vec![Check::IsAtom, Check::Length(48)]),
         Type::Pair(..) if attrs.all_atoms() => Check::False,
+        Type::Pair(..) if attrs.pairs.len() == 1 && attrs.atom_count == attrs.length - 1 => {
+            Check::IsPair
+        }
         Type::Pair(first, rest) => {
             let (first, rest) = (*first, *rest);
 
@@ -536,6 +539,15 @@ mod tests {
         let types = db.std();
         let list = alloc_list(&mut db, types.bytes);
         let pair = db.alloc(Type::Pair(types.bytes, list));
+        check_str(&mut db, list, pair, "(l val)");
+    }
+
+    #[test]
+    fn test_check_list_pair_generic() {
+        let mut db = TypeSystem::new();
+        let generic = db.alloc(Type::Generic);
+        let list = alloc_list(&mut db, generic);
+        let pair = db.alloc(Type::Pair(generic, list));
         check_str(&mut db, list, pair, "(l val)");
     }
 
