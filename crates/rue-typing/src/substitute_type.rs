@@ -4,11 +4,18 @@ use crate::{Alias, Callable, Enum, Struct, Type, TypeId, TypeSystem, Variant};
 
 pub(crate) fn substitute_type(
     types: &mut TypeSystem,
-    type_id: TypeId,
+    mut type_id: TypeId,
     substitutions: &mut HashMap<TypeId, TypeId>,
 ) -> TypeId {
-    if let Some(new_type_id) = substitutions.get(&type_id) {
-        return *new_type_id;
+    let mut substituted = false;
+
+    while let Some(new_type_id) = substitutions.get(&type_id) {
+        type_id = *new_type_id;
+        substituted = true;
+    }
+
+    if substituted {
+        return type_id;
     }
 
     let placeholder = types.alloc(Type::Unknown);
@@ -61,7 +68,6 @@ pub(crate) fn substitute_type(
                     old_substitutions.insert(key, old);
                 }
             }
-            substitutions.extend(lazy.substitutions.clone());
             let result = substitute_type(types, lazy.type_id, substitutions);
             substitutions.extend(old_substitutions);
             result

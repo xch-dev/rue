@@ -95,7 +95,7 @@ impl Compiler<'_> {
             Path::Type(type_id) => {
                 let Type::Enum(enum_type) = self.ty.get(type_id) else {
                     self.db.error(
-                        ErrorKind::InvalidTypePath(self.type_name(type_id)),
+                        ErrorKind::InvalidTypePath(self.type_name(type_id, false)),
                         name.text_range(),
                     );
                     return None;

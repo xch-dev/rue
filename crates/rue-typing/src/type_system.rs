@@ -155,15 +155,20 @@ impl TypeSystem {
         }))
     }
 
-    pub fn stringify_named(&self, type_id: TypeId, mut names: HashMap<TypeId, String>) -> String {
+    pub fn stringify_named(
+        &self,
+        type_id: TypeId,
+        mut names: HashMap<TypeId, String>,
+        debug: bool,
+    ) -> String {
         for (id, name) in &self.names {
             names.entry(*id).or_insert_with(|| name.clone());
         }
-        stringify_type(self, type_id, &names, &mut HashSet::new())
+        stringify_type(self, type_id, &names, debug, &mut HashSet::new())
     }
 
-    pub fn stringify(&self, type_id: TypeId) -> String {
-        self.stringify_named(type_id, HashMap::new())
+    pub fn stringify(&self, type_id: TypeId, debug: bool) -> String {
+        self.stringify_named(type_id, HashMap::new(), debug)
     }
 
     pub fn compare(&self, lhs: TypeId, rhs: TypeId) -> Comparison {

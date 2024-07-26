@@ -38,7 +38,7 @@ impl Compiler<'_> {
                 if let Type::Variant(variant) = self.ty.get(type_id).clone() {
                     if variant.field_names.is_some() {
                         self.db.error(
-                            ErrorKind::InvalidEnumVariantReference(self.type_name(type_id)),
+                            ErrorKind::InvalidEnumVariantReference(self.type_name(type_id, false)),
                             text_range,
                         );
                     }

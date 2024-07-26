@@ -31,7 +31,7 @@ impl Compiler<'_> {
         if let Some(callee) = callee.as_ref() {
             if function_type.is_none() {
                 self.db.error(
-                    ErrorKind::UncallableType(self.type_name(callee.type_id)),
+                    ErrorKind::UncallableType(self.type_name(callee.type_id, false)),
                     call.callee().unwrap().syntax().text_range(),
                 );
             }
@@ -134,10 +134,6 @@ impl Compiler<'_> {
         // Calculate the return type.
         let mut type_id =
             function_type.map_or(self.ty.std().unknown, |expected| expected.return_type);
-
-        for (key, val) in &generic_types {
-            println!("{} = {}", self.type_name(*key), self.type_name(*val));
-        }
 
         if !generic_types.is_empty() {
             type_id = self.ty.substitute(type_id, generic_types);
