@@ -6,7 +6,6 @@ pub(crate) fn stringify_type(
     types: &TypeSystem,
     type_id: TypeId,
     names: &HashMap<TypeId, String>,
-    debug: bool,
     visited: &mut HashSet<TypeId>,
 ) -> String {
     if let Some(name) = names.get(&type_id) {
@@ -14,27 +13,13 @@ pub(crate) fn stringify_type(
     }
 
     if !visited.insert(type_id) {
-        return format!(
-            "{{recursive{}}}",
-            if debug {
-                format!("{type_id:?}")
-            } else {
-                String::new()
-            }
-        );
+        return "{recursive}".to_string();
     }
 
     let result = match types.get(type_id) {
         Type::Ref(..) => unreachable!(),
         Type::Unknown => "{unknown}".to_string(),
-        Type::Generic => format!(
-            "{{generic{}}}",
-            if debug {
-                format!("{type_id:?}")
-            } else {
-                String::new()
-            }
-        ),
+        Type::Generic => "{generic}".to_string(),
         Type::Never => "Never".to_string(),
         Type::Any => "Any".to_string(),
         Type::Bytes => "Bytes".to_string(),
@@ -46,8 +31,8 @@ pub(crate) fn stringify_type(
         Type::Nil => "Nil".to_string(),
         Type::Value(value) => format!("{value}"),
         Type::Pair(first, rest) => {
-            let first = stringify_type(types, *first, names, debug, visited);
-            let rest = stringify_type(types, *rest, names, debug, visited);
+            let first = stringify_type(types, *first, names, visited);
+            let rest = stringify_type(types, *rest, names, visited);
             format!("({first}, {rest})")
         }
         Type::Union(items) => {
@@ -57,39 +42,39 @@ pub(crate) fn stringify_type(
                 if index > 0 {
                     result.push_str(" | ");
                 }
-                result.push_str(&stringify_type(types, *item, names, debug, visited));
+                result.push_str(&stringify_type(types, *item, names, visited));
             }
 
             result
         }
         Type::Lazy(lazy) => {
-            let name = stringify_type(types, lazy.type_id, names, debug, visited);
+            let name = stringify_type(types, lazy.type_id, names, visited);
             let mut generics = "<".to_string();
 
             for (index, (_, generic)) in lazy.substitutions.iter().enumerate() {
                 if index > 0 {
                     generics.push_str(", ");
                 }
-                generics.push_str(&stringify_type(types, *generic, names, debug, visited));
+                generics.push_str(&stringify_type(types, *generic, names, visited));
             }
 
             generics.push('>');
             name + &generics
         }
-        Type::Alias(alias) => stringify_type(types, alias.type_id, names, debug, visited),
+        Type::Alias(alias) => stringify_type(types, alias.type_id, names, visited),
         Type::Struct(Struct { type_id, .. }) | Type::Variant(Variant { type_id, .. }) => {
-            stringify_type(types, *type_id, names, debug, visited)
+            stringify_type(types, *type_id, names, visited)
         }
-        Type::Enum(Enum { type_id, .. }) => stringify_type(types, *type_id, names, debug, visited),
+        Type::Enum(Enum { type_id, .. }) => stringify_type(types, *type_id, names, visited),
         Type::Callable(Callable {
             parameters,
             return_type,
             ..
         }) => {
             let mut result = "fun(".to_string();
-            result.push_str(&stringify_type(types, *parameters, names, debug, visited));
+            result.push_str(&stringify_type(types, *parameters, names, visited));
             result.push_str(") -> ");
-            result.push_str(&stringify_type(types, *return_type, names, debug, visited));
+            result.push_str(&stringify_type(types, *return_type, names, visited));
             result
         }
     };
@@ -112,15 +97,15 @@ mod tests {
         let db = TypeSystem::new();
         let types = db.std();
 
-        assert_eq!(db.stringify(types.unknown, false), "{unknown}");
-        assert_eq!(db.stringify(types.never, false), "Never");
-        assert_eq!(db.stringify(types.bytes, false), "Bytes");
-        assert_eq!(db.stringify(types.bytes32, false), "Bytes32");
-        assert_eq!(db.stringify(types.public_key, false), "PublicKey");
-        assert_eq!(db.stringify(types.int, false), "Int");
-        assert_eq!(db.stringify(types.bool, false), "Bool");
-        assert_eq!(db.stringify(types.nil, false), "Nil");
-        assert_eq!(db.stringify(types.any, false), "Any");
+        assert_eq!(db.stringify(types.unknown), "{unknown}");
+        assert_eq!(db.stringify(types.never), "Never");
+        assert_eq!(db.stringify(types.bytes), "Bytes");
+        assert_eq!(db.stringify(types.bytes32), "Bytes32");
+        assert_eq!(db.stringify(types.public_key), "PublicKey");
+        assert_eq!(db.stringify(types.int), "Int");
+        assert_eq!(db.stringify(types.bool), "Bool");
+        assert_eq!(db.stringify(types.nil), "Nil");
+        assert_eq!(db.stringify(types.any), "Any");
     }
 
     #[test]
@@ -131,7 +116,7 @@ mod tests {
         let mut names = HashMap::new();
         names.insert(types.any, "CustomAny".to_string());
 
-        assert_eq!(db.stringify_named(types.any, names, false), "CustomAny");
+        assert_eq!(db.stringify_named(types.any, names), "CustomAny");
     }
 
     #[test]
@@ -150,7 +135,7 @@ mod tests {
         );
 
         assert_eq!(
-            db.stringify_named(callable, HashMap::new(), false),
+            db.stringify_named(callable, HashMap::new()),
             "fun((Int, (Bytes, Nil))) -> Bool"
         );
     }

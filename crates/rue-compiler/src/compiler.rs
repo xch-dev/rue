@@ -120,20 +120,18 @@ impl<'a> Compiler<'a> {
         None
     }
 
-    fn type_name(&self, type_id: TypeId, debug: bool) -> String {
+    fn type_name(&self, type_id: TypeId) -> String {
         let mut names = HashMap::new();
 
-        if !debug {
-            for &scope_id in &self.scope_stack {
-                for type_id in self.db.scope(scope_id).local_types() {
-                    if let Some(name) = self.db.scope(scope_id).type_name(type_id) {
-                        names.insert(type_id, name.to_string());
-                    }
+        for &scope_id in &self.scope_stack {
+            for type_id in self.db.scope(scope_id).local_types() {
+                if let Some(name) = self.db.scope(scope_id).type_name(type_id) {
+                    names.insert(type_id, name.to_string());
                 }
             }
         }
 
-        self.ty.stringify_named(type_id, names, debug)
+        self.ty.stringify_named(type_id, names)
     }
 
     fn type_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
@@ -146,7 +144,7 @@ impl<'a> Compiler<'a> {
 
         if comparison > Comparison::Assignable {
             self.db.error(
-                ErrorKind::TypeMismatch(self.type_name(from, false), self.type_name(to, false)),
+                ErrorKind::TypeMismatch(self.type_name(from), self.type_name(to)),
                 range,
             );
         }
@@ -162,7 +160,7 @@ impl<'a> Compiler<'a> {
 
         if comparison > Comparison::Castable {
             self.db.error(
-                ErrorKind::CastMismatch(self.type_name(from, false), self.type_name(to, false)),
+                ErrorKind::CastMismatch(self.type_name(from), self.type_name(to)),
                 range,
             );
         }

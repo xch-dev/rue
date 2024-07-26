@@ -27,10 +27,7 @@ impl Compiler<'_> {
 
         let Ok(check) = self.ty.check(expr.type_id, rhs) else {
             self.db.error(
-                ErrorKind::RecursiveTypeCheck(
-                    self.type_name(expr.type_id, false),
-                    self.type_name(rhs, false),
-                ),
+                ErrorKind::RecursiveTypeCheck(self.type_name(expr.type_id), self.type_name(rhs)),
                 guard.syntax().text_range(),
             );
             return self.unknown();
@@ -40,8 +37,8 @@ impl Compiler<'_> {
             Check::True => {
                 self.db.warning(
                     WarningKind::UnnecessaryTypeCheck(
-                        self.type_name(expr.type_id, false),
-                        self.type_name(rhs, false),
+                        self.type_name(expr.type_id),
+                        self.type_name(rhs),
                     ),
                     guard.syntax().text_range(),
                 );
@@ -49,8 +46,8 @@ impl Compiler<'_> {
             Check::False => {
                 self.db.error(
                     ErrorKind::ImpossibleTypeCheck(
-                        self.type_name(expr.type_id, false),
-                        self.type_name(rhs, false),
+                        self.type_name(expr.type_id),
+                        self.type_name(rhs),
                     ),
                     guard.syntax().text_range(),
                 );

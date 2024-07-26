@@ -1,13 +1,13 @@
 mod bigint;
 mod check;
 mod comparison;
+mod debug_type;
 mod difference;
 mod replace_type;
 mod semantic_types;
 mod standard_types;
 mod stringify;
 mod substitute_type;
-
 mod ty;
 mod type_path;
 mod type_system;
@@ -21,6 +21,7 @@ pub use ty::*;
 pub use type_path::*;
 pub use type_system::*;
 
+pub(crate) use debug_type::debug_type;
 pub(crate) use difference::difference_type;
 pub(crate) use replace_type::replace_type;
 pub(crate) use stringify::stringify_type;

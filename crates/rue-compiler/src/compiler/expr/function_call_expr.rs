@@ -31,7 +31,7 @@ impl Compiler<'_> {
         if let Some(callee) = callee.as_ref() {
             if function_type.is_none() {
                 self.db.error(
-                    ErrorKind::UncallableType(self.type_name(callee.type_id, false)),
+                    ErrorKind::UncallableType(self.type_name(callee.type_id)),
                     call.callee().unwrap().syntax().text_range(),
                 );
             }

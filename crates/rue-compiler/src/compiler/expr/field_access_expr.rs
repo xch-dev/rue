@@ -117,7 +117,7 @@ impl Compiler<'_> {
                     self.db.error(
                         ErrorKind::InvalidFieldAccess(
                             field_name.to_string(),
-                            self.type_name(old_value.type_id, false),
+                            self.type_name(old_value.type_id),
                         ),
                         field_name.text_range(),
                     );
@@ -132,7 +132,7 @@ impl Compiler<'_> {
                 self.db.error(
                     ErrorKind::InvalidFieldAccess(
                         field_name.to_string(),
-                        self.type_name(old_value.type_id, false),
+                        self.type_name(old_value.type_id),
                     ),
                     field_name.text_range(),
                 );

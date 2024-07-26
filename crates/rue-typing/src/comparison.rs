@@ -232,6 +232,51 @@ pub(crate) fn compare_type(
             max(first, rest)
         }
 
+        // Unions can be assigned to anything so long as each of the items in the union are also.
+        (Type::Union(items), _) => {
+            let items = items.clone();
+            let mut result = Comparison::Assignable;
+
+            let mut any_castable = false;
+
+            for item in items {
+                let cmp = compare_type(db, item, rhs, ctx);
+                result = max(result, cmp);
+
+                if compare_type(db, rhs, item, ctx) <= Comparison::Castable {
+                    any_castable = true;
+                }
+            }
+
+            if result == Comparison::Incompatible && any_castable {
+                Comparison::Superset
+            } else {
+                result
+            }
+        }
+
+        // Anything can be assigned to a union so long as it's assignable to at least one of the items.
+        (_, Type::Union(items)) => {
+            let items = items.clone();
+            let mut result = Comparison::Incompatible;
+            let mut any_incompatible = false;
+
+            for item in &items {
+                let cmp = compare_type(db, lhs, *item, ctx);
+                result = min(result, cmp);
+
+                if cmp == Comparison::Incompatible {
+                    any_incompatible = true;
+                }
+            }
+
+            if any_incompatible && result == Comparison::Superset {
+                Comparison::Incompatible
+            } else {
+                max(result, Comparison::Assignable)
+            }
+        }
+
         // We need to push substititons onto the stack in order to accurately compare them.
         (Type::Lazy(lazy), _) => {
             ctx.substitution_stack
@@ -267,7 +312,7 @@ pub(crate) fn compare_type(
 
         // Variants can be assigned to enums if the structure is assignable and it's the same enum.
         (Type::Variant(variant), Type::Enum(ty)) => {
-            let comparison = compare_type(db, variant.type_id, ty.type_id, ctx);
+            let comparison = compare_type(db, lhs, ty.type_id, ctx);
 
             if variant.original_enum_type_id == ty.original_type_id {
                 max(comparison, Comparison::Assignable)
@@ -305,51 +350,6 @@ pub(crate) fn compare_type(
             compare_type(db, lhs.return_type, rhs.return_type, ctx),
         ),
         (Type::Callable(..), _) => compare_type(db, lhs, db.std().any, ctx),
-
-        // Unions can be assigned to anything so long as each of the items in the union are also.
-        (Type::Union(items), _) => {
-            let items = items.clone();
-            let mut result = Comparison::Assignable;
-
-            let mut any_castable = false;
-
-            for item in items {
-                let cmp = compare_type(db, item, rhs, ctx);
-                result = max(result, cmp);
-
-                if compare_type(db, rhs, item, ctx) <= Comparison::Castable {
-                    any_castable = true;
-                }
-            }
-
-            if result == Comparison::Incompatible && any_castable {
-                Comparison::Superset
-            } else {
-                result
-            }
-        }
-
-        // Anything can be assigned to a union so long as it's assignable to at least one of the items.
-        (_, Type::Union(items)) => {
-            let items = items.clone();
-            let mut result = Comparison::Incompatible;
-            let mut any_incompatible = false;
-
-            for item in items {
-                let cmp = compare_type(db, lhs, item, ctx);
-                result = min(result, cmp);
-
-                if cmp == Comparison::Incompatible {
-                    any_incompatible = true;
-                }
-            }
-
-            if any_incompatible && result == Comparison::Superset {
-                Comparison::Incompatible
-            } else {
-                max(result, Comparison::Assignable)
-            }
-        }
 
         // Generics are resolved by looking up the substitution in the stack.
         // If we're infering, we'll push the substitution onto the proper generic stack frame.
@@ -815,5 +815,24 @@ mod tests {
         assert_eq!(db.compare(types.nil, list), Comparison::Assignable);
         assert_eq!(db.compare(list, list), Comparison::Equal);
         assert_eq!(db.compare(pair, list), Comparison::Assignable);
+    }
+
+    #[test]
+    fn test_compare_pair_union() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let pair_enum = db.alloc(Type::Pair(types.int, types.nil));
+        let pair_enum = db.alloc(Type::Pair(types.int, pair_enum));
+        let zero = db.alloc(Type::Value(BigInt::ZERO));
+        let pair_enum = db.alloc(Type::Pair(zero, pair_enum));
+
+        let int_enum = db.alloc(Type::Pair(types.int, types.nil));
+        let one = db.alloc(Type::Value(BigInt::one()));
+        let int_enum = db.alloc(Type::Pair(one, int_enum));
+
+        let union = db.alloc(Type::Union(vec![pair_enum, int_enum]));
+
+        assert_eq!(db.compare(pair_enum, union), Comparison::Assignable);
     }
 }

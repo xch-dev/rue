@@ -74,9 +74,7 @@ impl Compiler<'_> {
                     }
                 } else {
                     self.db.error(
-                        ErrorKind::InvalidEnumVariantInitializer(
-                            self.type_name(ty.unwrap(), false),
-                        ),
+                        ErrorKind::InvalidEnumVariantInitializer(self.type_name(ty.unwrap())),
                         initializer.path().unwrap().syntax().text_range(),
                     );
                     self.unknown()
@@ -84,7 +82,7 @@ impl Compiler<'_> {
             }
             Some(_) => {
                 self.db.error(
-                    ErrorKind::UninitializableType(self.type_name(ty.unwrap(), false)),
+                    ErrorKind::UninitializableType(self.type_name(ty.unwrap())),
                     initializer.path().unwrap().syntax().text_range(),
                 );
                 self.unknown()

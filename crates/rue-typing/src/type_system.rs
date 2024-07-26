@@ -4,9 +4,9 @@ use id_arena::{Arena, Id};
 use indexmap::IndexMap;
 
 use crate::{
-    check_type, compare_type, difference_type, replace_type, simplify_check, stringify_type,
-    substitute_type, Alias, Callable, Check, CheckError, Comparison, ComparisonContext, Lazy,
-    StandardTypes, Type, TypePath,
+    check_type, compare_type, debug_type, difference_type, replace_type, simplify_check,
+    stringify_type, substitute_type, Alias, Callable, Check, CheckError, Comparison,
+    ComparisonContext, Lazy, StandardTypes, Type, TypePath,
 };
 
 pub type TypeId = Id<Type>;
@@ -155,20 +155,19 @@ impl TypeSystem {
         }))
     }
 
-    pub fn stringify_named(
-        &self,
-        type_id: TypeId,
-        mut names: HashMap<TypeId, String>,
-        debug: bool,
-    ) -> String {
+    pub fn stringify_named(&self, type_id: TypeId, mut names: HashMap<TypeId, String>) -> String {
         for (id, name) in &self.names {
             names.entry(*id).or_insert_with(|| name.clone());
         }
-        stringify_type(self, type_id, &names, debug, &mut HashSet::new())
+        stringify_type(self, type_id, &names, &mut HashSet::new())
     }
 
-    pub fn stringify(&self, type_id: TypeId, debug: bool) -> String {
-        self.stringify_named(type_id, HashMap::new(), debug)
+    pub fn stringify(&self, type_id: TypeId) -> String {
+        self.stringify_named(type_id, HashMap::new())
+    }
+
+    pub fn debug(&self, type_id: TypeId) -> String {
+        debug_type(self, "", type_id, 0, &mut HashSet::new())
     }
 
     pub fn compare(&self, lhs: TypeId, rhs: TypeId) -> Comparison {

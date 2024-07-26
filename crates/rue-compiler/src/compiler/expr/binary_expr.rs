@@ -152,7 +152,7 @@ impl Compiler<'_> {
 
         if self.ty.compare(lhs.type_id, self.ty.std().bytes) > Comparison::Castable {
             self.db.error(
-                ErrorKind::NonAtomEquality(self.type_name(lhs.type_id, false)),
+                ErrorKind::NonAtomEquality(self.type_name(lhs.type_id)),
                 text_range,
             );
             is_atom = false;
@@ -160,7 +160,7 @@ impl Compiler<'_> {
 
         if self.ty.compare(rhs.type_id, self.ty.std().bytes) > Comparison::Castable {
             self.db.error(
-                ErrorKind::NonAtomEquality(self.type_name(rhs.type_id, false)),
+                ErrorKind::NonAtomEquality(self.type_name(rhs.type_id)),
                 text_range,
             );
             is_atom = false;
