@@ -68,7 +68,7 @@ fun two_optional(_a: Int, _b?: Int) -> Bool {
     true
 }
 
-fun one_spread_list(..._a: Int[]) -> Bool {
+fun one_spread_list(..._a: List<Int>) -> Bool {
     true
 }
 
@@ -76,7 +76,7 @@ fun one_spread_raw(..._a: Int) -> Bool {
     true
 }
 
-fun two_spread_list(_a: Int, ..._b: Int[]) -> Bool {
+fun two_spread_list(_a: Int, ..._b: List<Int>) -> Bool {
     true
 }
 

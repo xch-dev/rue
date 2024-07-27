@@ -2,10 +2,10 @@
 
 fun main(
     synthetic_pk: PublicKey,
-    original_pk: PublicKey?,
-    delegated_puzzle: fun(...solution: Any) -> Condition[],
+    original_pk: PublicKey | Nil,
+    delegated_puzzle: fun(...solution: Any) -> List<Condition>,
     delegated_solution: Any
-) -> Condition[] {
+) -> List<Condition> {
     let conditions = delegated_puzzle(...delegated_solution);
     let delegated_puzzle_hash = tree_hash(delegated_puzzle);
 

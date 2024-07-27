@@ -29,17 +29,17 @@ struct Truths {
 type Tail = fun(
     truths: Truths,
     parent_is_cat: Bool,
-    lineage_proof: LineageProof?,
+    lineage_proof: LineageProof | Nil,
     extra_delta: Int,
-    conditions: Condition[],
-    tail_solution: Any[],
-) -> Condition[];
+    conditions: List<Condition>,
+    tail_solution: List<Any>,
+) -> List<Condition>;
 
 // Information about the TAIL reveal.
 // This is revealed with `RunTailCondition`.
 struct TailInfo {
     tail_puzzle: Tail,
-    tail_solution: Any[],
+    tail_solution: List<Any>,
 }
 
 // A custom condition `(51 () -113 tail_puzzle tail_solution)`.
@@ -49,7 +49,7 @@ struct RunTailCondition {
     puzzle_hash: Nil,
     amount: Int,
     tail_puzzle: Tail,
-    tail_solution: Any[],
+    tail_solution: List<Any>,
 }
 
 // Information about the current coin.
@@ -90,15 +90,15 @@ inline fun cat_puzzle_hash(cat_info: CatInfo, inner_puzzle_hash: Bytes32) -> Byt
 fun main(
     mod_hash: Bytes32,
     asset_id: Bytes32,
-    inner_puzzle: fun(...solution: Any) -> Condition[],
+    inner_puzzle: fun(...solution: Any) -> List<Condition>,
     inner_solution: Any,
-    lineage_proof: LineageProof?,
+    lineage_proof: LineageProof | Nil,
     prev_coin_id: Bytes32,
     my_coin: Coin,
     next_coin_proof: CoinProof,
     prev_subtotal: Int,
     extra_delta: Int,
-) -> Condition[] {
+) -> List<Condition> {
     // For simplicity, we'll pack these values into a struct.
     let cat_info = CatInfo {
         mod_hash: mod_hash,
@@ -144,12 +144,12 @@ fun main(
     // Prepend the ring conditions to the morphed conditions.
     // This ensures that the previous and next CATs are linked.
     // When they form a ring like this, you can be sure the supply isn't changed.
-    let conditions: Condition[] = [
+    let conditions: List<Condition> = [
         Condition::CreateCoinAnnouncement {
-            message: RING_MORPH_BYTE + tree_hash([prev_coin_id, prev_subtotal] as Any[]),
+            message: RING_MORPH_BYTE + tree_hash([prev_coin_id, prev_subtotal] as List<Any>),
         },
         Condition::AssertCoinAnnouncement {
-            announcement_id: sha256(next_coin_id + RING_MORPH_BYTE + tree_hash([my_coin_id, subtotal] as Any[])),
+            announcement_id: sha256(next_coin_id + RING_MORPH_BYTE + tree_hash([my_coin_id, subtotal] as List<Any>)),
         },
         ...morph.conditions,
     ];
@@ -191,20 +191,20 @@ fun main(
 
 struct Morph {
     // The morphed conditions.
-    conditions: Condition[],
+    conditions: List<Condition>,
 
     // The total amount of coins created.
     sum: Int,
 
     // Information about the TAIL, revealed in the conditions.
-    tail_info: TailInfo?,
+    tail_info: TailInfo | Nil,
 }
 
 // Morph all of the conditions and extract the TAIL info.
 fun morph_conditions(
-    conditions: Condition[],
+    conditions: List<Condition>,
     cat_info: CatInfo,
-    tail_info: TailInfo?,
+    tail_info: TailInfo | Nil,
 ) -> Morph {
     // If there are no conditions, return an empty morph.
     if conditions is Nil {

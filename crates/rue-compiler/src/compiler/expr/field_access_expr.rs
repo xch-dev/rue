@@ -83,7 +83,6 @@ impl Compiler<'_> {
 
                     if index == fields.len() - 1 && variant.rest == Rest::Optional {
                         // TODO: type_id = self.ty.alloc(Type::Optional(type_id));
-                        todo!()
                     }
 
                     let fields_hir_id = self.db.alloc_hir(Hir::Op(Op::Rest, old_value.hir_id));

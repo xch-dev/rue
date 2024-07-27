@@ -20,7 +20,7 @@ fun main(
     my_inner_puzzle_hash: Bytes32,
     my_amount: Int,
     p2_puzzle_hash: Bytes32,
-) -> Condition[] {
+) -> List<Condition> {
     // The NFT singleton has the same mod hash and launcher puzzle hash as the fusion singleton.
     let nft_singleton = SingletonInfo {
         mod_hash: fusion_singleton.mod_hash,
