@@ -1,6 +1,6 @@
 export enum Condition {
     Remark = 1 {
-        value?: Any,
+        ...value: (Any, Nil) | Nil,
     },
     AggSigParent = 43 {
         public_key: PublicKey,
@@ -37,7 +37,7 @@ export enum Condition {
     CreateCoin = 51 {
         puzzle_hash: Bytes32,
         amount: Int,
-        memos?: List<Bytes>,
+        ...memos: (List<Bytes>, Nil) | Nil,
     },
     ReserveFee = 52 {
         amount: Int,
@@ -105,7 +105,7 @@ export enum Condition {
     },
     Softfork = 90 {
         cost: Int,
-        value?: Any,
+        ...value: (Any, Nil) | Nil,
     },
 }
 

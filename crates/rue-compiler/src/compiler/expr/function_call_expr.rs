@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rowan::TextRange;
 use rue_parser::{AstNode, FunctionCallExpr};
-use rue_typing::{deconstruct_items, unwrap_list, Callable, Rest, Type, TypeId};
+use rue_typing::{deconstruct_items, unwrap_list, Callable, Type, TypeId};
 
 use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
 
@@ -23,8 +23,13 @@ impl Compiler<'_> {
                 });
 
         let parameter_types = function_type.as_ref().map(|ty| {
-            deconstruct_items(self.ty, ty.parameters, ty.parameter_names.len(), ty.rest)
-                .expect("invalid function type")
+            deconstruct_items(
+                self.ty,
+                ty.parameters,
+                ty.parameter_names.len(),
+                ty.nil_terminated,
+            )
+            .expect("invalid function type")
         });
 
         // Make sure the callee is callable, if present.
@@ -67,7 +72,7 @@ impl Compiler<'_> {
 
                 if i < parameter_types.len() {
                     Some(parameter_types[i])
-                } else if ty.rest == Rest::Spread {
+                } else if !ty.nil_terminated {
                     unwrap_list(self.ty, *parameter_types.last().unwrap())
                 } else {
                     None
@@ -101,7 +106,7 @@ impl Compiler<'_> {
             let parameter_types = parameter_types.as_ref().unwrap();
 
             if last && spread {
-                if function.rest != Rest::Spread {
+                if function.nil_terminated {
                     self.db.error(
                         ErrorKind::UnsupportedFunctionSpread,
                         call_args[i].syntax().text_range(),
@@ -110,7 +115,7 @@ impl Compiler<'_> {
                     let expected_type = *parameter_types.last().unwrap();
                     self.type_check(type_id, expected_type, call_args[i].syntax().text_range());
                 }
-            } else if function.rest == Rest::Spread && i >= parameter_types.len() - 1 {
+            } else if !function.nil_terminated && i >= parameter_types.len() - 1 {
                 if let Some(inner_list_type) =
                     unwrap_list(self.ty, *parameter_types.last().unwrap())
                 {
@@ -156,38 +161,25 @@ impl Compiler<'_> {
         length: usize,
         text_range: TextRange,
     ) {
-        match function.rest {
-            Rest::Nil => {
-                if length != parameter_types.len() {
-                    self.db.error(
-                        ErrorKind::ArgumentMismatch(length, parameter_types.len()),
-                        text_range,
-                    );
-                }
+        if function.nil_terminated {
+            if length != parameter_types.len() {
+                self.db.error(
+                    ErrorKind::ArgumentMismatch(length, parameter_types.len()),
+                    text_range,
+                );
             }
-            Rest::Optional => {
-                if length != parameter_types.len() && length != parameter_types.len() - 1 {
-                    self.db.error(
-                        ErrorKind::ArgumentMismatchOptional(length, parameter_types.len()),
-                        text_range,
-                    );
-                }
+        } else if unwrap_list(self.ty, *parameter_types.last().unwrap()).is_some() {
+            if length < parameter_types.len() - 1 {
+                self.db.error(
+                    ErrorKind::ArgumentMismatchSpread(length, parameter_types.len()),
+                    text_range,
+                );
             }
-            Rest::Spread => {
-                if unwrap_list(self.ty, *parameter_types.last().unwrap()).is_some() {
-                    if length < parameter_types.len() - 1 {
-                        self.db.error(
-                            ErrorKind::ArgumentMismatchSpread(length, parameter_types.len()),
-                            text_range,
-                        );
-                    }
-                } else if length != parameter_types.len() {
-                    self.db.error(
-                        ErrorKind::ArgumentMismatch(length, parameter_types.len()),
-                        text_range,
-                    );
-                }
-            }
+        } else if length != parameter_types.len() {
+            self.db.error(
+                ErrorKind::ArgumentMismatch(length, parameter_types.len()),
+                text_range,
+            );
         }
     }
 }

@@ -1,6 +1,5 @@
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
-use rue_typing::Rest;
 
 use crate::{
     environment::Environment,
@@ -134,10 +133,9 @@ impl<'a> GraphBuilder<'a> {
             .filter(|&symbol_id| matches!(self.db.symbol(symbol_id), Symbol::Parameter(_)))
             .collect();
 
-        let environment_id = self.db.alloc_env(Environment::function(
-            parameters,
-            function.rest != Rest::Nil,
-        ));
+        let environment_id = self
+            .db
+            .alloc_env(Environment::function(parameters, !function.nil_terminated));
 
         self.graph
             .environments

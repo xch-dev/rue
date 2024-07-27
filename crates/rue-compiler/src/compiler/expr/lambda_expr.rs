@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexSet;
 use rue_parser::{AstNode, LambdaExpr};
-use rue_typing::{construct_items, deconstruct_items, Callable, Rest, Type, TypeId};
+use rue_typing::{construct_items, deconstruct_items, Callable, Type, TypeId};
 
 use crate::{
     compiler::Compiler,
@@ -33,7 +33,7 @@ impl Compiler<'_> {
                 self.ty,
                 callable.parameters,
                 callable.parameter_names.len(),
-                callable.rest,
+                callable.nil_terminated,
             )
         });
 
@@ -72,7 +72,7 @@ impl Compiler<'_> {
 
         let mut param_types = Vec::new();
         let mut param_names = IndexSet::new();
-        let mut rest = Rest::Nil;
+        let mut nil_terminated = true;
 
         let len = lambda_expr.params().len();
 
@@ -96,16 +96,7 @@ impl Compiler<'_> {
             param_types.push(type_id);
 
             if let Some(name) = param.name() {
-                let param_type_id = if param.optional().is_some() {
-                    // If the parameter is optional, wrap the type in a possibly undefined type.
-                    // This prevents referencing the parameter until it's checked for undefined.
-                    // TODO: self.ty.alloc(Type::Optional(type_id))
-                    type_id
-                } else {
-                    type_id
-                };
-
-                let symbol_id = self.db.alloc_symbol(Symbol::Parameter(param_type_id));
+                let symbol_id = self.db.alloc_symbol(Symbol::Parameter(type_id));
                 self.scope_mut().define_symbol(name.to_string(), symbol_id);
                 param_names.insert(name.to_string());
                 self.db.insert_symbol_token(symbol_id, name);
@@ -115,27 +106,15 @@ impl Compiler<'_> {
 
             let last = i + 1 == len;
             let spread = param.spread().is_some();
-            let optional = param.optional().is_some();
 
-            if spread && optional {
-                self.db.error(
-                    ErrorKind::OptionalParameterSpread,
-                    param.syntax().text_range(),
-                );
-            } else if spread && !last {
-                self.db.error(
-                    ErrorKind::InvalidSpreadParameter,
-                    param.syntax().text_range(),
-                );
-            } else if optional && !last {
-                self.db.error(
-                    ErrorKind::InvalidOptionalParameter,
-                    param.syntax().text_range(),
-                );
-            } else if spread {
-                rest = Rest::Spread;
-            } else if optional {
-                rest = Rest::Optional;
+            if spread {
+                if !last {
+                    self.db.error(
+                        ErrorKind::InvalidSpreadParameter,
+                        param.syntax().text_range(),
+                    );
+                }
+                nil_terminated = false;
             }
         }
 
@@ -163,13 +142,13 @@ impl Compiler<'_> {
         );
 
         let type_id = self.ty.alloc(Type::Unknown);
-        let parameters = construct_items(self.ty, param_types.into_iter(), rest);
+        let parameters = construct_items(self.ty, param_types.into_iter(), nil_terminated);
 
         *self.ty.get_mut(type_id) = Type::Callable(Callable {
             original_type_id: type_id,
             parameter_names: param_names,
             parameters,
-            rest,
+            nil_terminated,
             return_type,
             generic_types: Vec::new(),
         });
@@ -178,7 +157,7 @@ impl Compiler<'_> {
             scope_id,
             hir_id: body.hir_id,
             type_id,
-            rest,
+            nil_terminated,
         }));
 
         Value::new(

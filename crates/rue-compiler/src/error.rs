@@ -76,7 +76,6 @@ pub enum ErrorKind {
     UncallableType(String),
     ArgumentMismatch(usize, usize),
     ArgumentMismatchSpread(usize, usize),
-    ArgumentMismatchOptional(usize, usize),
 
     // Field initialization.
     UninitializableType(String),
@@ -91,15 +90,11 @@ pub enum ErrorKind {
     InvalidFieldAccess(String, String),
     InvalidIndexAccess(String),
 
-    // Spread and optional.
+    // Spread syntax.
     InvalidSpreadItem,
     InvalidSpreadArgument,
     InvalidSpreadParameter,
     InvalidSpreadField,
-    InvalidOptionalParameter,
-    InvalidOptionalField,
-    OptionalParameterSpread,
-    OptionalFieldSpread,
     UnsupportedFunctionSpread,
     RequiredFunctionSpread,
 
@@ -213,9 +208,6 @@ impl fmt::Display for ErrorKind {
                     if *expected == 1 { "" } else { "s" }
                 )
             }
-            Self::ArgumentMismatchOptional (found, expected)=> {
-                format!("Expected either {} or {expected} arguments, but found {found}", expected - 1)
-            }
 
             // Field initialization.
             Self::UninitializableType(ty) => formatdoc!("
@@ -241,7 +233,7 @@ impl fmt::Display for ErrorKind {
             Self::InvalidFieldAccess(field, ty) => format!("Cannot reference field `{field}` of type `{ty}`"),
             Self::InvalidIndexAccess(ty) => format!("Cannot index into type `{ty}`"),
 
-            // Spread and optional.
+            // Spread syntax.
             Self::InvalidSpreadItem => formatdoc!("
                 The spread operator can only be used on the last item in a list. \
                 This is because it requires recursion at runtime to concatenate lists together. \
@@ -260,16 +252,6 @@ impl fmt::Display for ErrorKind {
                 The spread operator can only be used on the last field. \
                 Otherwise, it would be ambiguous where the field should start and end
             "),
-            Self::InvalidOptionalParameter => formatdoc!("
-                Only the last parameter in a function can be optional. \
-                Otherwise, it would be ambiguous which optional parameter was specified
-            "),
-            Self::InvalidOptionalField => formatdoc!("
-                Only the last field can be optional. \
-                Otherwise, it would be ambiguous which optional field was specified
-            "),
-            Self::OptionalParameterSpread => "The spread operator cannot be used on optional parameters".to_string(),
-            Self::OptionalFieldSpread => "The spread operator cannot be used on optional fields".to_string(),
             Self::UnsupportedFunctionSpread => "This function does not support the spread operator on its last argument".to_string(),
             Self::RequiredFunctionSpread => "This function requires the spread operator on its last argument".to_string(),
 

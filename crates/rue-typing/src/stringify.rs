@@ -88,7 +88,7 @@ pub(crate) fn stringify_type(
 mod tests {
     use indexmap::indexmap;
 
-    use crate::{alloc_callable, Rest};
+    use crate::alloc_callable;
 
     use super::*;
 
@@ -131,7 +131,7 @@ mod tests {
                 "b".to_string() => types.bytes,
             },
             types.bool,
-            Rest::Nil,
+            true,
         );
 
         assert_eq!(

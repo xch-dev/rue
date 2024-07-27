@@ -227,13 +227,6 @@ impl FunctionParam {
             .find(|token| token.kind() == SyntaxKind::Spread)
     }
 
-    pub fn optional(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Question)
-    }
-
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -299,13 +292,6 @@ impl StructField {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Spread)
-    }
-
-    pub fn optional(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Question)
     }
 
     pub fn name(&self) -> Option<SyntaxToken> {
@@ -749,13 +735,6 @@ impl LambdaParam {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn optional(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Question)
-    }
-
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }
@@ -852,13 +831,6 @@ impl FunctionTypeParam {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Ident)
-    }
-
-    pub fn optional(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Question)
     }
 
     pub fn spread(&self) -> Option<SyntaxToken> {

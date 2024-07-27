@@ -1,5 +1,5 @@
 use rue_parser::FieldAccessExpr;
-use rue_typing::{deconstruct_items, Rest, Type};
+use rue_typing::{deconstruct_items, Type};
 
 use crate::{
     compiler::Compiler,
@@ -25,21 +25,18 @@ impl Compiler<'_> {
         let mut new_value = match self.ty.get(old_value.type_id).clone() {
             Type::Unknown => return self.unknown(),
             Type::Struct(ty) => {
-                let fields = deconstruct_items(self.ty, ty.type_id, ty.field_names.len(), ty.rest)
-                    .expect("invalid struct type");
+                let fields =
+                    deconstruct_items(self.ty, ty.type_id, ty.field_names.len(), ty.nil_terminated)
+                        .expect("invalid struct type");
 
                 if let Some(index) = ty.field_names.get_index_of(field_name.text()) {
                     let type_id = fields[index];
-
-                    if index == ty.field_names.len() - 1 && ty.rest == Rest::Optional {
-                        // TODO: type_id = self.ty.alloc(Type::Optional(type_id));
-                    }
 
                     Value::new(
                         self.compile_index(
                             old_value.hir_id,
                             index,
-                            index == ty.field_names.len() - 1 && ty.rest != Rest::Nil,
+                            index == ty.field_names.len() - 1 && !ty.nil_terminated,
                         ),
                         type_id,
                     )
@@ -70,8 +67,13 @@ impl Compiler<'_> {
                         .field_names
                         .as_ref()
                         .map(|field_names| {
-                            deconstruct_items(self.ty, type_id, field_names.len(), variant.rest)
-                                .expect("invalid struct type")
+                            deconstruct_items(
+                                self.ty,
+                                type_id,
+                                field_names.len(),
+                                variant.nil_terminated,
+                            )
+                            .expect("invalid struct type")
                         })
                         .unwrap_or_default()
                 } else {
@@ -81,17 +83,13 @@ impl Compiler<'_> {
                 if let Some(index) = field_names.get_index_of(field_name.text()) {
                     let type_id = fields[index];
 
-                    if index == fields.len() - 1 && variant.rest == Rest::Optional {
-                        // TODO: type_id = self.ty.alloc(Type::Optional(type_id));
-                    }
-
                     let fields_hir_id = self.db.alloc_hir(Hir::Op(Op::Rest, old_value.hir_id));
 
                     Value::new(
                         self.compile_index(
                             fields_hir_id,
                             index,
-                            index == fields.len() - 1 && variant.rest != Rest::Nil,
+                            index == fields.len() - 1 && !variant.nil_terminated,
                         ),
                         type_id,
                     )

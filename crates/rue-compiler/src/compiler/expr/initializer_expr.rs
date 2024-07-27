@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use rowan::TextRange;
 use rue_parser::{AstNode, InitializerExpr, InitializerField};
-use rue_typing::{bigint_to_bytes, deconstruct_items, Rest, Type, TypeId};
+use rue_typing::{bigint_to_bytes, deconstruct_items, Type, TypeId};
 
 use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind, HirId};
 
@@ -19,13 +19,13 @@ impl Compiler<'_> {
                     self.ty,
                     struct_type.type_id,
                     struct_type.field_names.len(),
-                    struct_type.rest,
+                    struct_type.nil_terminated,
                 )
                 .expect("invalid variant type");
 
                 let hir_id = self.compile_initializer_fields(
                     &struct_type.field_names.into_iter().zip(fields).collect(),
-                    struct_type.rest,
+                    struct_type.nil_terminated,
                     initializer.fields(),
                     initializer.syntax().text_range(),
                 );
@@ -49,15 +49,20 @@ impl Compiler<'_> {
                             .expect("expected a pair")
                             .1;
 
-                        deconstruct_items(self.ty, type_id, field_names.len(), enum_variant.rest)
-                            .expect("invalid struct type")
+                        deconstruct_items(
+                            self.ty,
+                            type_id,
+                            field_names.len(),
+                            enum_variant.nil_terminated,
+                        )
+                        .expect("invalid struct type")
                     } else {
                         Vec::new()
                     };
 
                     let fields_hir_id = self.compile_initializer_fields(
                         &field_names.into_iter().zip(fields).collect(),
-                        enum_variant.rest,
+                        enum_variant.nil_terminated,
                         initializer.fields(),
                         initializer.syntax().text_range(),
                     );
@@ -94,12 +99,11 @@ impl Compiler<'_> {
     fn compile_initializer_fields(
         &mut self,
         struct_fields: &IndexMap<String, TypeId>,
-        rest: Rest,
+        nil_terminated: bool,
         initializer_fields: Vec<InitializerField>,
         text_range: TextRange,
     ) -> HirId {
         let mut specified_fields = HashMap::new();
-        let optional = false;
 
         for field in initializer_fields {
             let Some(name) = field.name() else {
@@ -112,14 +116,6 @@ impl Compiler<'_> {
                 .expr()
                 .map(|expr| self.compile_expr(&expr, expected_type))
                 .unwrap_or(self.unknown());
-
-            // Resolve optional fields.
-            if rest == Rest::Optional
-                && struct_fields.get_index_of(name.text()) == Some(struct_fields.len() - 1)
-            {
-                // TODO: optional |= matches!(self.db.ty(value.type_id), Type::Optional(..));
-                // value.type_id = self.db.non_undefined(value.type_id);
-            }
 
             // Check the type of the field initializer.
             self.type_check(
@@ -147,14 +143,8 @@ impl Compiler<'_> {
         // Check for any missing fields and report them.
         let missing_fields: Vec<String> = struct_fields
             .keys()
-            .enumerate()
-            .filter(|&(i, name)| {
-                if rest == Rest::Optional && i == struct_fields.len() - 1 {
-                    return false;
-                }
-                !specified_fields.contains_key(name)
-            })
-            .map(|(_, name)| name.to_string())
+            .filter(|name| !specified_fields.contains_key(*name))
+            .cloned()
             .collect();
 
         if !missing_fields.is_empty() {
@@ -170,13 +160,9 @@ impl Compiler<'_> {
         for (i, field) in struct_fields.keys().rev().enumerate() {
             let value = specified_fields.get(field).copied();
 
-            if i == 0 && rest == Rest::Optional && value.is_none() {
-                continue;
-            }
-
             let field = value.unwrap_or(self.builtins.unknown);
 
-            if i == 0 && (rest == Rest::Spread || (rest == Rest::Optional && optional)) {
+            if i == 0 && !nil_terminated {
                 hir_id = field;
             } else {
                 hir_id = self.db.alloc_hir(Hir::Pair(field, hir_id));

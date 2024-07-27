@@ -153,7 +153,7 @@ pub(crate) fn difference_type(
                 original_type_id: ty.original_type_id,
                 type_id,
                 field_names: ty.field_names,
-                rest: ty.rest,
+                nil_terminated: ty.nil_terminated,
                 generic_types: ty.generic_types,
             }))
         }
@@ -181,7 +181,7 @@ pub(crate) fn difference_type(
                 original_enum_type_id: variant.original_enum_type_id,
                 field_names: variant.field_names,
                 type_id,
-                rest: variant.rest,
+                nil_terminated: variant.nil_terminated,
                 generic_types: variant.generic_types,
                 discriminant: variant.discriminant,
             }))

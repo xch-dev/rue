@@ -1,5 +1,5 @@
 use indexmap::IndexSet;
-use rue_typing::{Rest, TypeId};
+use rue_typing::TypeId;
 
 use crate::{
     database::{HirId, ScopeId},
@@ -47,7 +47,7 @@ pub struct Function {
     pub scope_id: ScopeId,
     pub hir_id: HirId,
     pub type_id: TypeId,
-    pub rest: Rest,
+    pub nil_terminated: bool,
 }
 
 #[derive(Debug, Clone)]

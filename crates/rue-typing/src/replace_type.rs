@@ -31,7 +31,7 @@ pub(crate) fn replace_type(
                 original_type_id: ty.original_type_id,
                 field_names: ty.field_names,
                 type_id: new_type_id,
-                rest: ty.rest,
+                nil_terminated: ty.nil_terminated,
                 generic_types: ty.generic_types,
             }))
         }
@@ -43,7 +43,7 @@ pub(crate) fn replace_type(
                 original_enum_type_id: ty.original_enum_type_id,
                 field_names: ty.field_names,
                 type_id: new_type_id,
-                rest: ty.rest,
+                nil_terminated: ty.nil_terminated,
                 generic_types: ty.generic_types,
                 discriminant: ty.discriminant,
             }))

@@ -91,7 +91,6 @@ fn function_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionParam);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
-    p.try_eat(SyntaxKind::Question);
     p.expect(SyntaxKind::Colon);
     ty(p);
     p.finish();
@@ -129,7 +128,6 @@ fn struct_field(p: &mut Parser<'_>) {
     p.start(SyntaxKind::StructField);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
-    p.try_eat(SyntaxKind::Question);
     p.expect(SyntaxKind::Colon);
     ty(p);
     p.finish();
@@ -553,7 +551,6 @@ fn lambda_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LambdaParam);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
-    p.try_eat(SyntaxKind::Question);
     if p.try_eat(SyntaxKind::Colon) {
         ty(p);
     }
@@ -624,7 +621,6 @@ fn function_type_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionTypeParam);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
-    p.try_eat(SyntaxKind::Question);
     p.expect(SyntaxKind::Colon);
     ty(p);
     p.finish();

@@ -1,5 +1,5 @@
 use rue_parser::{AstNode, FunctionItem};
-use rue_typing::{construct_items, Callable, Rest, Type};
+use rue_typing::{construct_items, Callable, Type};
 
 use crate::{
     compiler::Compiler,
@@ -49,7 +49,7 @@ impl Compiler<'_> {
 
         let mut param_types = Vec::new();
         let mut param_names = Vec::new();
-        let mut rest = Rest::Nil;
+        let mut nil_terminated = true;
 
         let params = function_item.params();
         let len = params.len();
@@ -70,15 +70,7 @@ impl Compiler<'_> {
             // Add the parameter type to the list and update the parameter symbol.
             param_types.push(type_id);
 
-            *self.db.symbol_mut(symbol_id) = Symbol::Parameter(if param.optional().is_some() {
-                // If the parameter is optional, wrap the type in a possibly undefined type.
-                // This prevents referencing the parameter until it's checked for undefined.
-                // TODO: self.ty.alloc(Type::Optional(type_id))
-                type_id
-            } else {
-                // Otherwise, just use the type.
-                type_id
-            });
+            *self.db.symbol_mut(symbol_id) = Symbol::Parameter(type_id);
 
             // Add the parameter to the scope and define the token for the parameter.
             if let Some(name) = param.name() {
@@ -99,27 +91,15 @@ impl Compiler<'_> {
             // Check if it's a spread or optional parameter.
             let last = i + 1 == len;
             let spread = param.spread().is_some();
-            let optional = param.optional().is_some();
 
-            if spread && optional {
-                self.db.error(
-                    ErrorKind::OptionalParameterSpread,
-                    param.syntax().text_range(),
-                );
-            } else if spread && !last {
-                self.db.error(
-                    ErrorKind::InvalidSpreadParameter,
-                    param.syntax().text_range(),
-                );
-            } else if optional && !last {
-                self.db.error(
-                    ErrorKind::InvalidOptionalParameter,
-                    param.syntax().text_range(),
-                );
-            } else if spread {
-                rest = Rest::Spread;
-            } else if optional {
-                rest = Rest::Optional;
+            if spread {
+                if !last {
+                    self.db.error(
+                        ErrorKind::InvalidSpreadParameter,
+                        param.syntax().text_range(),
+                    );
+                }
+                nil_terminated = false;
             }
 
             self.symbol_stack.pop().unwrap();
@@ -142,9 +122,9 @@ impl Compiler<'_> {
         *self.ty.get_mut(type_id) = Type::Callable(Callable {
             original_type_id: type_id,
             parameter_names: param_names.into_iter().collect(),
-            parameters: construct_items(self.ty, param_types.into_iter(), rest),
+            parameters: construct_items(self.ty, param_types.into_iter(), nil_terminated),
             return_type,
-            rest,
+            nil_terminated,
             generic_types,
         });
 
@@ -154,14 +134,14 @@ impl Compiler<'_> {
                 scope_id,
                 hir_id,
                 type_id,
-                rest,
+                nil_terminated,
             });
         } else {
             *self.db.symbol_mut(symbol_id) = Symbol::Function(Function {
                 scope_id,
                 hir_id,
                 type_id,
-                rest,
+                nil_terminated,
             });
         }
 

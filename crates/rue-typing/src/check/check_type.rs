@@ -299,7 +299,7 @@ fn check_union_against_rhs(
 mod tests {
     use indexmap::indexmap;
 
-    use crate::{alloc_list, alloc_struct, Rest};
+    use crate::{alloc_list, alloc_struct};
 
     use super::*;
 
@@ -578,7 +578,7 @@ mod tests {
                 "x".to_string() => types.int,
                 "y".to_string() => types.int,
             },
-            Rest::Nil,
+            true,
         );
         check_str(&mut db, types.any, point, "(and (l val) (not (l (f val))) (l (r val)) (not (l (f (r val)))) (not (l (r (r val)))) (= (r (r val)) 0))");
     }
@@ -596,7 +596,7 @@ mod tests {
                 "public_key".to_string() => types.public_key,
                 "message".to_string() => types.bytes,
             },
-            Rest::Nil,
+            true,
         );
 
         let opcode = db.alloc(Type::Value(BigInt::from(50)));
@@ -607,7 +607,7 @@ mod tests {
                 "public_key".to_string() => types.public_key,
                 "message".to_string() => types.bytes,
             },
-            Rest::Nil,
+            true,
         );
 
         let condition = db.alloc(Type::Union(vec![agg_sig_unsafe, agg_sig_me]));

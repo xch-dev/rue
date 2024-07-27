@@ -99,7 +99,7 @@ impl Compiler<'_> {
             self.type_definition_stack.push(variant_type_id);
 
             // Compile the fields of the variant.
-            let (fields, rest) = variant
+            let (fields, nil_terminated) = variant
                 .fields()
                 .map(|ast| self.compile_struct_fields(ast.fields()))
                 .unwrap_or_default();
@@ -145,7 +145,7 @@ impl Compiler<'_> {
                     [discriminant_type]
                         .into_iter()
                         .chain(fields.values().copied()),
-                    rest,
+                    nil_terminated,
                 )
             } else {
                 discriminant_type
@@ -160,7 +160,7 @@ impl Compiler<'_> {
                     None
                 },
                 type_id,
-                rest,
+                nil_terminated,
                 discriminant,
                 generic_types: Vec::new(),
             });

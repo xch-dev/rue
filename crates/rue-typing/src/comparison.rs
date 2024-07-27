@@ -417,7 +417,7 @@ pub(crate) fn compare_type(
 mod tests {
     use indexmap::indexmap;
 
-    use crate::{alloc_list, alloc_struct, alloc_tuple_of, Rest, Struct};
+    use crate::{alloc_list, alloc_struct, alloc_tuple_of, Struct};
 
     use super::*;
 
@@ -581,7 +581,7 @@ mod tests {
                 "x".to_string() => types.int,
                 "y".to_string() => types.int,
             },
-            Rest::Nil,
+            true,
         );
         assert_eq!(db.compare(point, types.any), Comparison::Assignable);
     }
@@ -716,7 +716,7 @@ mod tests {
                 "x".to_string() => types.int,
                 "y".to_string() => types.int,
             },
-            Rest::Nil,
+            true,
         );
 
         let Type::Struct(original) = db.get(struct_type) else {
@@ -727,7 +727,7 @@ mod tests {
             original_type_id: struct_type,
             type_id: original.type_id,
             field_names: original.field_names.clone(),
-            rest: original.rest,
+            nil_terminated: original.nil_terminated,
             generic_types: original.generic_types.clone(),
         }));
 
@@ -753,7 +753,7 @@ mod tests {
                 "x".to_string() => types.int,
                 "y".to_string() => types.int,
             },
-            Rest::Nil,
+            true,
         );
 
         let Type::Struct(original) = db.get(struct_type).clone() else {
@@ -766,7 +766,7 @@ mod tests {
             original_type_id: struct_type,
             type_id: new_inner,
             field_names: original.field_names,
-            rest: original.rest,
+            nil_terminated: original.nil_terminated,
             generic_types: original.generic_types,
         }));
 
@@ -792,7 +792,7 @@ mod tests {
                 "x".to_string() => types.int,
                 "y".to_string() => types.int,
             },
-            Rest::Nil,
+            true,
         );
 
         let other_struct_type = alloc_struct(
@@ -801,7 +801,7 @@ mod tests {
                 "x".to_string() => types.int,
                 "y".to_string() => types.int,
             },
-            Rest::Nil,
+            true,
         );
 
         assert_eq!(

@@ -92,7 +92,7 @@ pub(crate) fn substitute_type(
                     original_type_id: ty.original_type_id,
                     type_id: new_type_id,
                     field_names: ty.field_names,
-                    rest: ty.rest,
+                    nil_terminated: ty.nil_terminated,
                     generic_types: ty.generic_types,
                 }))
             }
@@ -110,7 +110,7 @@ pub(crate) fn substitute_type(
                     original_enum_type_id: ty.original_enum_type_id,
                     type_id: new_type_id,
                     field_names: ty.field_names,
-                    rest: ty.rest,
+                    nil_terminated: ty.nil_terminated,
                     generic_types: ty.generic_types,
                     discriminant: ty.discriminant,
                 }))
@@ -147,7 +147,7 @@ pub(crate) fn substitute_type(
                     parameter_names: callable.parameter_names,
                     parameters: new_parameters,
                     return_type: new_return_type,
-                    rest: callable.rest,
+                    nil_terminated: callable.nil_terminated,
                     generic_types: callable.generic_types,
                 }))
             }

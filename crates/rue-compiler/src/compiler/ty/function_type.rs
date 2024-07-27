@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 use rue_parser::{AstNode, FunctionType as Ast};
-use rue_typing::{construct_items, Callable, Rest, Type, TypeId};
+use rue_typing::{construct_items, Callable, Type, TypeId};
 
 use crate::{compiler::Compiler, ErrorKind};
 
@@ -8,7 +8,7 @@ impl Compiler<'_> {
     pub fn compile_function_type(&mut self, function: &Ast) -> TypeId {
         let mut parameters = Vec::new();
         let mut parameter_names = IndexSet::new();
-        let mut rest = Rest::Nil;
+        let mut nil_terminated = true;
 
         let params = function.params();
         let len = params.len();
@@ -38,27 +38,15 @@ impl Compiler<'_> {
             // Check if it's a spread or optional parameter.
             let last = i + 1 == len;
             let spread = param.spread().is_some();
-            let optional = param.optional().is_some();
 
-            if spread && optional {
-                self.db.error(
-                    ErrorKind::OptionalParameterSpread,
-                    param.syntax().text_range(),
-                );
-            } else if spread && !last {
-                self.db.error(
-                    ErrorKind::InvalidSpreadParameter,
-                    param.syntax().text_range(),
-                );
-            } else if optional && !last {
-                self.db.error(
-                    ErrorKind::InvalidOptionalParameter,
-                    param.syntax().text_range(),
-                );
-            } else if spread {
-                rest = Rest::Spread;
-            } else if optional {
-                rest = Rest::Optional;
+            if spread {
+                if !last {
+                    self.db.error(
+                        ErrorKind::InvalidSpreadParameter,
+                        param.syntax().text_range(),
+                    );
+                }
+                nil_terminated = false;
             }
         }
 
@@ -68,7 +56,7 @@ impl Compiler<'_> {
             .return_type()
             .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
-        let parameters = construct_items(self.ty, parameters.into_iter(), rest);
+        let parameters = construct_items(self.ty, parameters.into_iter(), nil_terminated);
 
         // Allocate a new type for the function.
         // TODO: Support generic types.
@@ -78,7 +66,7 @@ impl Compiler<'_> {
             original_type_id: type_id,
             parameter_names,
             parameters,
-            rest,
+            nil_terminated,
             return_type,
             generic_types: Vec::new(),
         });

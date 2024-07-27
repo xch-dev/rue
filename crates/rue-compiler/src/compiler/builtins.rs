@@ -1,6 +1,6 @@
 use indexmap::indexset;
 use rowan::TextRange;
-use rue_typing::{Callable, Rest, Type, TypeSystem};
+use rue_typing::{Callable, Type, TypeSystem};
 
 use crate::{
     hir::{BinOp, Hir, Op},
@@ -73,7 +73,7 @@ fn sha256(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         original_type_id: type_id,
         parameter_names: indexset!["bytes".to_string()],
         parameters: ty.alloc(Type::Pair(ty.std().bytes, ty.std().nil)),
-        rest: Rest::Nil,
+        nil_terminated: true,
         return_type: ty.std().bytes32,
         generic_types: Vec::new(),
     });
@@ -82,7 +82,7 @@ fn sha256(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         scope_id,
         hir_id,
         type_id,
-        rest: Rest::Nil,
+        nil_terminated: true,
     }))
 }
 
@@ -100,7 +100,7 @@ fn pubkey_for_exp(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         original_type_id: type_id,
         parameter_names: indexset!["exponent".to_string()],
         parameters: ty.alloc(Type::Pair(ty.std().bytes32, ty.std().nil)),
-        rest: Rest::Nil,
+        nil_terminated: true,
         return_type: ty.std().public_key,
         generic_types: Vec::new(),
     });
@@ -109,7 +109,7 @@ fn pubkey_for_exp(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         scope_id,
         hir_id,
         type_id,
-        rest: Rest::Nil,
+        nil_terminated: true,
     }))
 }
 
@@ -136,7 +136,7 @@ fn divmod(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         original_type_id: type_id,
         parameter_names: indexset!["lhs".to_string(), "rhs".to_string()],
         parameters,
-        rest: Rest::Nil,
+        nil_terminated: true,
         return_type: int_pair,
         generic_types: Vec::new(),
     });
@@ -145,7 +145,7 @@ fn divmod(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         scope_id,
         hir_id,
         type_id,
-        rest: Rest::Nil,
+        nil_terminated: true,
     }))
 }
 
@@ -174,7 +174,7 @@ fn substr(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         original_type_id: type_id,
         parameter_names: indexset!["value".to_string(), "start".to_string(), "end".to_string()],
         parameters,
-        rest: Rest::Nil,
+        nil_terminated: true,
         return_type: ty.std().bytes,
         generic_types: Vec::new(),
     });
@@ -183,6 +183,6 @@ fn substr(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
         scope_id,
         hir_id,
         type_id,
-        rest: Rest::Nil,
+        nil_terminated: true,
     }))
 }
