@@ -181,22 +181,16 @@ impl TypeSystem {
         substitution_stack: &mut Vec<HashMap<TypeId, TypeId>>,
         infer_generics: bool,
     ) -> Comparison {
-        let generic_stack_frame = if infer_generics {
-            Some(substitution_stack.len() - 1)
-        } else {
-            None
-        };
-        let initial_substitution_length = substitution_stack.len();
-
         compare_type(
             self,
             lhs,
             rhs,
             &mut ComparisonContext {
                 visited: HashSet::new(),
-                substitution_stack,
-                initial_substitution_length,
-                generic_stack_frame,
+                lhs_substitutions: Vec::new(),
+                rhs_substitutions: Vec::new(),
+                inferred: substitution_stack,
+                infer_generics,
             },
         )
     }

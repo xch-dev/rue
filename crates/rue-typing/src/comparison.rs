@@ -19,9 +19,10 @@ pub enum Comparison {
 
 pub(crate) struct ComparisonContext<'a> {
     pub visited: HashSet<(TypeId, TypeId)>,
-    pub substitution_stack: &'a mut Vec<HashMap<TypeId, TypeId>>,
-    pub initial_substitution_length: usize,
-    pub generic_stack_frame: Option<usize>,
+    pub inferred: &'a mut Vec<HashMap<TypeId, TypeId>>,
+    pub infer_generics: bool,
+    pub lhs_substitutions: Vec<HashMap<TypeId, TypeId>>,
+    pub rhs_substitutions: Vec<HashMap<TypeId, TypeId>>,
 }
 
 pub(crate) fn compare_type(
@@ -30,16 +31,29 @@ pub(crate) fn compare_type(
     rhs: TypeId,
     ctx: &mut ComparisonContext<'_>,
 ) -> Comparison {
-    if lhs == rhs {
-        return Comparison::Equal;
-    }
-
     if !ctx.visited.insert((lhs, rhs)) {
         return Comparison::Assignable;
     }
 
+    let found_lhs = ctx
+        .lhs_substitutions
+        .iter()
+        .rev()
+        .find_map(|substitutions| substitutions.get(&lhs).copied());
+
+    let found_rhs = ctx
+        .rhs_substitutions
+        .iter()
+        .rev()
+        .find_map(|substitutions| substitutions.get(&rhs).copied());
+
     let comparison = match (db.get(lhs), db.get(rhs)) {
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
+
+        // Handle generics and substitutions.
+        (Type::Generic, _) if found_lhs.is_some() => compare_type(db, found_lhs.unwrap(), rhs, ctx),
+        (_, Type::Generic) if found_rhs.is_some() => compare_type(db, lhs, found_rhs.unwrap(), ctx),
+        (Type::Generic, Type::Generic) if lhs == rhs => Comparison::Equal,
 
         // These types are identical.
         (Type::Unknown, Type::Unknown)
@@ -283,17 +297,17 @@ pub(crate) fn compare_type(
 
         // We need to push substititons onto the stack in order to accurately compare them.
         (Type::Lazy(lazy), _) => {
-            ctx.substitution_stack
+            ctx.lhs_substitutions
                 .push(lazy.substitutions.clone().into_iter().collect());
             let result = compare_type(db, lazy.type_id, rhs, ctx);
-            ctx.substitution_stack.pop().unwrap();
+            ctx.lhs_substitutions.pop().unwrap();
             result
         }
         (_, Type::Lazy(lazy)) => {
-            ctx.substitution_stack
+            ctx.rhs_substitutions
                 .push(lazy.substitutions.clone().into_iter().collect());
             let result = compare_type(db, lhs, lazy.type_id, ctx);
-            ctx.substitution_stack.pop().unwrap();
+            ctx.rhs_substitutions.pop().unwrap();
             result
         }
 
@@ -365,21 +379,17 @@ pub(crate) fn compare_type(
         ),
         (Type::Callable(..), _) => compare_type(db, lhs, db.std().any, ctx),
 
-        // Generics are resolved by looking up the substitution in the stack.
-        // If we're infering, we'll push the substitution onto the proper generic stack frame.
+        // Infer generics.
         (_, Type::Generic) => {
-            let mut found = None;
-
-            for substititons in ctx.substitution_stack.iter().rev() {
-                if let Some(&substititon) = substititons.get(&rhs) {
-                    found = Some(substititon);
-                }
-            }
-
-            if let Some(found) = found {
-                compare_type(db, lhs, found, ctx)
-            } else if let Some(generic_stack_frame) = ctx.generic_stack_frame {
-                ctx.substitution_stack[generic_stack_frame].insert(rhs, lhs);
+            if let Some(inferred) = ctx
+                .inferred
+                .iter()
+                .rev()
+                .find_map(|map| map.get(&rhs).copied())
+            {
+                compare_type(db, lhs, inferred, ctx)
+            } else if ctx.infer_generics {
+                ctx.inferred.last_mut().unwrap().insert(rhs, lhs);
                 Comparison::Assignable
             } else {
                 Comparison::Incompatible
@@ -388,20 +398,13 @@ pub(crate) fn compare_type(
 
         // Generics are resolved by looking up the substitution in the stack.
         (Type::Generic, _) => {
-            let mut found = None;
-
-            for (i, substititons) in ctx.substitution_stack.iter().enumerate().rev() {
-                if i < ctx.initial_substitution_length {
-                    break;
-                }
-
-                if let Some(&substititon) = substititons.get(&lhs) {
-                    found = Some(substititon);
-                }
-            }
-
-            if let Some(found) = found {
-                compare_type(db, found, rhs, ctx)
+            if let Some(inferred) = ctx
+                .inferred
+                .iter()
+                .rev()
+                .find_map(|map| map.get(&lhs).copied())
+            {
+                compare_type(db, inferred, rhs, ctx)
             } else {
                 Comparison::Incompatible
             }
@@ -827,7 +830,7 @@ mod tests {
         let list = alloc_list(&mut db, generic);
         let pair = db.alloc(Type::Pair(generic, list));
         assert_eq!(db.compare(types.nil, list), Comparison::Assignable);
-        assert_eq!(db.compare(list, list), Comparison::Equal);
+        assert_eq!(db.compare(list, list), Comparison::Assignable);
         assert_eq!(db.compare(pair, list), Comparison::Assignable);
     }
 
@@ -848,5 +851,20 @@ mod tests {
         let union = db.alloc(Type::Union(vec![pair_enum, int_enum]));
 
         assert_eq!(db.compare(pair_enum, union), Comparison::Assignable);
+    }
+
+    #[test]
+    fn test_compare_list_generics() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let mut stack = vec![HashMap::new()];
+
+        let list = alloc_list(&mut db, types.int);
+        assert_eq!(
+            db.compare_with_generics(list, types.unmapped_list, &mut stack, true),
+            Comparison::Assignable
+        );
+        assert_eq!(stack, vec![[(types.generic_list_item, types.int)].into()]);
     }
 }

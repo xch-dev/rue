@@ -79,12 +79,21 @@ impl Compiler<'_> {
                 }
             });
 
+            println!("\n\n{}", call.syntax().text());
+            if let Some(ty) = expected_type {
+                println!("{}", self.ty.debug(ty));
+            } else {
+                println!("NO EXPECTED");
+            }
+
             // Compile the argument expression, if present.
             // Otherwise, it's a parser error
             let expr = arg
                 .expr()
                 .map(|expr| self.compile_expr(&expr, expected_type))
                 .unwrap_or_else(|| self.unknown());
+
+            println!("{}", self.ty.debug(expr.type_id));
 
             // Add the argument to the list.
             let type_id = expr.type_id;
@@ -130,6 +139,8 @@ impl Compiler<'_> {
                 let param_type = parameter_types[i];
                 self.type_check(type_id, param_type, call_args[i].syntax().text_range());
             }
+
+            println!("{:?}", self.generic_type_stack.last());
         }
 
         // The generic type context is no longer needed.

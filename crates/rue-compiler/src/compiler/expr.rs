@@ -34,7 +34,7 @@ impl Compiler<'_> {
             }
             Expr::InitializerExpr(initializer) => self.compile_initializer_expr(initializer),
             Expr::LiteralExpr(literal) => self.compile_literal_expr(literal),
-            Expr::ListExpr(list) => self.compile_list_expr(list, expected_type),
+            Expr::ListExpr(list) => self.compile_list_expr(list),
             Expr::PairExpr(pair) => self.compile_pair_expr(pair, expected_type),
             Expr::Block(block) => self.compile_block_expr(block, expected_type),
             Expr::LambdaExpr(lambda) => self.compile_lambda_expr(lambda, expected_type),
