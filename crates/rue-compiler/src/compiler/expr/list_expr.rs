@@ -42,6 +42,6 @@ impl Compiler<'_> {
 
         let type_id = construct_items(self.ty, types.into_iter(), nil_terminated);
 
-        Value::new(hir_id, self.ty.alloc_list(type_id))
+        Value::new(hir_id, type_id)
     }
 }

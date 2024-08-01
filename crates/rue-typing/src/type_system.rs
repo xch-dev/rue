@@ -57,6 +57,7 @@ impl Default for TypeSystem {
         names.insert(false_bool, "False".to_string());
         names.insert(nil, "Nil".to_string());
         names.insert(unmapped_list, "List".to_string());
+        names.insert(generic_list_item, "{item}".to_string());
 
         Self {
             arena,
@@ -141,6 +142,14 @@ impl TypeSystem {
 
     pub fn get_callable(&self, type_id: TypeId) -> Option<&Callable> {
         match self.get(type_id) {
+            Type::Callable(callable) => Some(callable),
+            _ => None,
+        }
+    }
+
+    pub fn get_callable_recursive(&mut self, type_id: TypeId) -> Option<&Callable> {
+        let type_id = self.substitute(type_id, HashMap::new());
+        match self.get_recursive(type_id) {
             Type::Callable(callable) => Some(callable),
             _ => None,
         }

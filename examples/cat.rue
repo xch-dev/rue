@@ -220,7 +220,7 @@ fun morph_conditions(
     if condition is Condition::CreateCoin {
         // If the amount is -113, it's a TAIL reveal.
         if condition.amount == -113 {
-            let run_tail = condition as Any as RunTailCondition;
+            let run_tail = cast::<RunTailCondition>(condition);
 
             let rest = morph_conditions(conditions.rest, cat_info, TailInfo {
                 tail_puzzle: run_tail.tail_puzzle,

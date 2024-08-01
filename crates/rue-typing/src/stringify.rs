@@ -19,7 +19,7 @@ pub(crate) fn stringify_type(
     let result = match types.get(type_id) {
         Type::Ref(..) => unreachable!(),
         Type::Unknown => "{unknown}".to_string(),
-        Type::Generic => "{generic}".to_string(),
+        Type::Generic => format!("{{{}}}", type_id.index()),
         Type::Never => "Never".to_string(),
         Type::Any => "Any".to_string(),
         Type::Bytes => "Bytes".to_string(),

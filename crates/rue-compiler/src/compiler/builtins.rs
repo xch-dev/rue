@@ -38,10 +38,14 @@ pub fn builtins(db: &mut Database, ty: &mut TypeSystem) -> Builtins {
         unknown,
     };
 
+    let cast = cast(db, ty);
     let sha256 = sha256(db, ty);
     let pubkey_for_exp = pubkey_for_exp(db, ty);
     let divmod = divmod(db, ty);
     let substr = substr(db, ty);
+
+    db.scope_mut(builtins.scope_id)
+        .define_symbol("cast".to_string(), cast);
 
     db.scope_mut(builtins.scope_id)
         .define_symbol("sha256".to_string(), sha256);
@@ -56,6 +60,34 @@ pub fn builtins(db: &mut Database, ty: &mut TypeSystem) -> Builtins {
         .define_symbol("substr".to_string(), substr);
 
     builtins
+}
+
+fn cast(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
+    let mut scope = Scope::default();
+
+    let param = db.alloc_symbol(Symbol::Parameter(ty.std().any));
+    scope.define_symbol("value".to_string(), param);
+    let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
+    let scope_id = db.alloc_scope(scope);
+
+    let generic = ty.alloc(Type::Generic);
+    let type_id = ty.alloc(Type::Unknown);
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["value".to_string()],
+        parameters: ty.alloc(Type::Pair(ty.std().any, ty.std().nil)),
+        nil_terminated: true,
+        return_type: generic,
+        generic_types: vec![generic],
+    });
+
+    db.alloc_symbol(Symbol::InlineFunction(Function {
+        scope_id,
+        hir_id: param_ref,
+        type_id,
+        nil_terminated: true,
+    }))
 }
 
 fn sha256(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {

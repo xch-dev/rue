@@ -1,6 +1,6 @@
 [const_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference constant. (8:5)"]
+compiler_errors = ["Error: Cannot recursively reference constant (8:5)"]
 
 [recursive_function]
 bytes = 95
@@ -18,7 +18,7 @@ hash = "3e851b5ad6b5c395bd46219991d2c7bb113e91918a065c705cc9068445bcc2a7"
 
 [inline_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively call inline function. (10:5)"]
+compiler_errors = ["Error: Cannot recursively call inline function (10:5)"]
 
 [const_reference]
 bytes = 31
@@ -29,7 +29,7 @@ hash = "e3429ee993cedb79fa5b67ebd52635a294daf9c69b1c1d1a967f884fb4c3f1d1"
 
 [inline_const_inline_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively call inline function. (5:27)"]
+compiler_errors = ["Error: Cannot recursively call inline function (5:27)"]
 
 [mixed_consts]
 bytes = 39
@@ -40,27 +40,27 @@ hash = "14870051d753aa4295466e166782fb5da7f18ad450a0ed0af9d7ccb83a82bed9"
 
 [inline_const_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference inline constant. (8:5)"]
+compiler_errors = ["Error: Cannot recursively reference inline constant (8:5)"]
 
 [inline_const_self]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference inline constant. (1:27)"]
+compiler_errors = ["Error: Cannot recursively reference inline constant (1:27)"]
 
 [recursive_inline_function]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively call inline function. (6:5)"]
+compiler_errors = ["Error: Cannot recursively call inline function (6:5)"]
 
 [const_inline_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively call inline function. (5:20)"]
+compiler_errors = ["Error: Cannot recursively call inline function (5:20)"]
 
 [const_self]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference constant. (1:20)"]
+compiler_errors = ["Error: Cannot recursively reference constant (1:20)"]
 
 [const_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference constant. (2:16)"]
+compiler_errors = ["Error: Cannot recursively reference constant (2:16)"]
 
 [inline_const_reference]
 bytes = 3
@@ -185,7 +185,7 @@ hash = "8172dac13078e7c4ce8a6062bb5dd117bb39d45b7e9ca3b9970dfef4be188ac8"
 
 [block_return]
 parser_errors = []
-compiler_errors = ["Error: Explicit return is not allowed within expressions. (2:5)"]
+compiler_errors = ["Error: Explicit return is not allowed within expressions (2:5)"]
 
 [block_function]
 bytes = 57
@@ -203,7 +203,7 @@ hash = "6636275e009c26ccaba0bde1f76d4e1451f57462b1d2528a3a5df0a3202c1f78"
 
 [block_nested_return]
 parser_errors = []
-compiler_errors = ["Error: Explicit return is not allowed within expressions. (2:10)"]
+compiler_errors = ["Error: Explicit return is not allowed within expressions (2:10)"]
 
 [enum_discriminant]
 bytes = 199
@@ -243,39 +243,39 @@ hash = "600c2c11a7ceb22fd3f5d2559d22120f9ad7e8d47e0966ddcfbcce20e02f373f"
 [function_call]
 parser_errors = []
 compiler_errors = [
-    "Error: Expected 0 arguments, but found 1. (3:11)",
-    "Error: Expected either 0 or 1 arguments, but found 2. (7:11)",
-    "Error: This function does not support the spread operator on its last argument. (8:25)",
-    "Error: Expected either 0 or 1 arguments, but found 2. (9:11)",
-    "Error: This function does not support the spread operator on its last argument. (9:28)",
-    "Error: Expected either 1 or 2 arguments, but found 0. (11:11)",
-    "Error: Expected either 1 or 2 arguments, but found 3. (14:11)",
-    "Error: Expected either 1 or 2 arguments, but found 4. (15:11)",
-    "Error: This function does not support the spread operator on its last argument. (16:25)",
-    "Error: This function does not support the spread operator on its last argument. (17:28)",
-    "Error: Expected either 1 or 2 arguments, but found 3. (18:11)",
-    "Error: This function does not support the spread operator on its last argument. (18:31)",
-    "Error: Expected either 1 or 2 arguments, but found 4. (19:11)",
-    "Error: This function does not support the spread operator on its last argument. (19:34)",
-    "Error: This function does not support the spread operator on its last argument. (20:28)",
-    "Error: Expected type `Int[]`, but found `Int`. (26:28)",
-    "Error: Expected type `Int[]`, but found `Int`. (27:31)",
-    "Error: Expected at least 2 arguments, but found 0. (31:11)",
-    "Error: Expected type `Int[]`, but found `Int`. (36:31)",
-    "Error: Expected 1 argument, but found 0. (40:11)",
-    "Error: This function requires the spread operator on its last argument. (41:27)",
-    "Error: Expected 1 argument, but found 2. (42:11)",
-    "Error: This function requires the spread operator on its last argument. (42:27)",
-    "Error: Expected 1 argument, but found 2. (44:11)",
-    "Error: Expected type `Int`, but found `Int[]`. (45:27)",
-    "Error: Expected 1 argument, but found 2. (46:11)",
-    "Error: Expected type `Int`, but found `Int[]`. (46:30)",
-    "Error: Expected 2 arguments, but found 0. (48:11)",
-    "Error: Expected 2 arguments, but found 1. (49:11)",
-    "Error: This function requires the spread operator on its last argument. (50:30)",
-    "Error: Expected 2 arguments, but found 1. (51:11)",
-    "Error: Expected 2 arguments, but found 1. (53:11)",
-    "Error: Expected type `Int`, but found `Int[]`. (54:30)",
+    "Error: Expected 0 arguments, but found 1 (3:11)",
+    "Error: Expected either 0 or 1 arguments, but found 2 (7:11)",
+    "Error: This function does not support the spread operator on its last argument (8:25)",
+    "Error: Expected either 0 or 1 arguments, but found 2 (9:11)",
+    "Error: This function does not support the spread operator on its last argument (9:28)",
+    "Error: Expected either 1 or 2 arguments, but found 0 (11:11)",
+    "Error: Expected either 1 or 2 arguments, but found 3 (14:11)",
+    "Error: Expected either 1 or 2 arguments, but found 4 (15:11)",
+    "Error: This function does not support the spread operator on its last argument (16:25)",
+    "Error: This function does not support the spread operator on its last argument (17:28)",
+    "Error: Expected either 1 or 2 arguments, but found 3 (18:11)",
+    "Error: This function does not support the spread operator on its last argument (18:31)",
+    "Error: Expected either 1 or 2 arguments, but found 4 (19:11)",
+    "Error: This function does not support the spread operator on its last argument (19:34)",
+    "Error: This function does not support the spread operator on its last argument (20:28)",
+    "Error: Expected type `Int[]`, but found `Int` (26:28)",
+    "Error: Expected type `Int[]`, but found `Int` (27:31)",
+    "Error: Expected at least 2 arguments, but found 0 (31:11)",
+    "Error: Expected type `Int[]`, but found `Int` (36:31)",
+    "Error: Expected 1 argument, but found 0 (40:11)",
+    "Error: This function requires the spread operator on its last argument (41:27)",
+    "Error: Expected 1 argument, but found 2 (42:11)",
+    "Error: This function requires the spread operator on its last argument (42:27)",
+    "Error: Expected 1 argument, but found 2 (44:11)",
+    "Error: Expected type `Int`, but found `Int[]` (45:27)",
+    "Error: Expected 1 argument, but found 2 (46:11)",
+    "Error: Expected type `Int`, but found `Int[]` (46:30)",
+    "Error: Expected 2 arguments, but found 0 (48:11)",
+    "Error: Expected 2 arguments, but found 1 (49:11)",
+    "Error: This function requires the spread operator on its last argument (50:30)",
+    "Error: Expected 2 arguments, but found 1 (51:11)",
+    "Error: Expected 2 arguments, but found 1 (53:11)",
+    "Error: Expected type `Int`, but found `Int[]` (54:30)",
 ]
 
 [struct_empty]
@@ -309,10 +309,10 @@ hash = "e1bb38bc03b979e06bcfc2341001b12647928e29d682637eee425adf5b1bf212"
 [infer_lambda_params]
 parser_errors = []
 compiler_errors = [
-    "Error: Lambda parameter type could not be inferred. (2:24)",
-    "Error: Unused let binding `no_infer`. (2:9)",
-    "Error: Unused let binding `infer`. (3:9)",
-    "Error: Unused let binding `explicit`. (4:9)",
+    "Error: Lambda parameter type could not be inferred (2:24)",
+    "Error: Unused let binding `no_infer` (2:9)",
+    "Error: Unused let binding `infer` (3:9)",
+    "Error: Unused let binding `explicit` (4:9)",
 ]
 
 [infer_list]
@@ -486,10 +486,10 @@ hash = "e977dca31ec8aba231dd0e858a3235d2dea5ed36aefed5f12c48ec02bf450b77"
 [enum_duplicate_variants]
 parser_errors = []
 compiler_errors = [
-    "Error: Duplicate enum variant `SameName` specified. (3:5)",
-    "Error: Duplicate enum discriminant `1` specified. (4:29)",
-    "Error: Unused enum variant `SameName`. (2:5)",
-    "Error: Unused enum variant `DuplicateDiscriminant`. (4:5)",
+    "Error: Duplicate enum variant `SameName` specified (3:5)",
+    "Error: Duplicate enum discriminant `1` specified (4:29)",
+    "Error: Unused enum variant `SameName` (2:5)",
+    "Error: Unused enum variant `DuplicateDiscriminant` (4:5)",
 ]
 
 [p2_fusion]
@@ -544,7 +544,7 @@ hash = "9bdda9e1aa36d402104334fad3d7d9ce5b7b507b92f985e24c21513a012f60c4"
 [p2_delegated_or_hidden]
 bytes = 249
 cost = 20906
-input = "(0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 () (q . ((51 0x291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8 1000))) 1)"
+input = "(0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 () (q  ((51 0x291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8 1000))) 1)"
 output = "((g1_multiply 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 0x3d7e1145b5969c12f4889f4f1f66bde0e4d3ba54b91784cf604294d162b44b69) (g1_negate 0x291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8 1000))"
 hash = "21f96d7bb1b15b83ce81dff3525d4c98793f906f6cc7ebba52a76524a7db6943"
 
@@ -572,7 +572,7 @@ hash = "00f43ce9fcc63d5019e209c103e6b0aaf56bbe7fc7fafae5af7f5ee6887a8719"
 [external_function]
 bytes = 7
 cost = 203
-input = "((q . ((100) (200) (300))))"
+input = "((q  ((100) (200) (300))))"
 output = "((100) (200) (300))"
 hash = "942555c6a5c562ab3dcb4d530a29dd55541ce274c3528b9c5aa7794a862547f3"
 

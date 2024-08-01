@@ -493,10 +493,16 @@ fn path_expr(p: &mut Parser<'_>) {
     p.start(SyntaxKind::PathExpr);
     p.start(SyntaxKind::PathItem);
     p.expect(SyntaxKind::Ident);
+    let mut next = p.try_eat(SyntaxKind::PathSeparator);
+    if next && p.at(SyntaxKind::LessThan) {
+        generic_args(p);
+        next = p.try_eat(SyntaxKind::PathSeparator);
+    }
     p.finish();
-    while p.try_eat(SyntaxKind::PathSeparator) {
+    while next {
         p.start(SyntaxKind::PathItem);
         p.expect(SyntaxKind::Ident);
+        next = p.try_eat(SyntaxKind::PathSeparator);
         p.finish();
     }
     p.finish();

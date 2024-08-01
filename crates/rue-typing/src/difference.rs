@@ -226,3 +226,23 @@ pub(crate) fn difference_type(
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{alloc_list, Comparison};
+
+    use super::*;
+
+    #[test]
+    fn test_difference_list_nil() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let generic = db.alloc(Type::Generic);
+        let list = alloc_list(&mut db, generic);
+        let non_nil = db.difference(list, types.nil);
+
+        assert_eq!(db.compare(non_nil, list), Comparison::Assignable);
+        assert_eq!(db.compare(types.nil, non_nil), Comparison::Incompatible);
+    }
+}

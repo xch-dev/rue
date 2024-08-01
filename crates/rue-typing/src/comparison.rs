@@ -53,7 +53,6 @@ pub(crate) fn compare_type(
         // Handle generics and substitutions.
         (Type::Generic, _) if found_lhs.is_some() => compare_type(db, found_lhs.unwrap(), rhs, ctx),
         (_, Type::Generic) if found_rhs.is_some() => compare_type(db, lhs, found_rhs.unwrap(), ctx),
-        (Type::Generic, Type::Generic) if lhs == rhs => Comparison::Equal,
 
         // These types are identical.
         (Type::Unknown, Type::Unknown)
@@ -388,6 +387,8 @@ pub(crate) fn compare_type(
                 .find_map(|map| map.get(&rhs).copied())
             {
                 compare_type(db, lhs, inferred, ctx)
+            } else if lhs == rhs {
+                Comparison::Equal
             } else if ctx.infer_generics {
                 ctx.inferred.last_mut().unwrap().insert(rhs, lhs);
                 Comparison::Assignable
@@ -396,7 +397,6 @@ pub(crate) fn compare_type(
             }
         }
 
-        // Generics are resolved by looking up the substitution in the stack.
         (Type::Generic, _) => {
             if let Some(inferred) = ctx
                 .inferred
@@ -405,6 +405,8 @@ pub(crate) fn compare_type(
                 .find_map(|map| map.get(&lhs).copied())
             {
                 compare_type(db, inferred, rhs, ctx)
+            } else if lhs == rhs {
+                Comparison::Equal
             } else {
                 Comparison::Incompatible
             }
@@ -854,7 +856,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_list_generics() {
+    fn test_compare_list_unmapped_list_generics() {
         let mut db = TypeSystem::new();
         let types = db.std();
 
@@ -866,5 +868,27 @@ mod tests {
             Comparison::Assignable
         );
         assert_eq!(stack, vec![[(types.generic_list_item, types.int)].into()]);
+    }
+
+    #[test]
+    fn test_compare_tuple_list_generics() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let mut stack = vec![HashMap::new()];
+
+        let tuple = alloc_tuple_of(
+            &mut db,
+            [types.int, types.int, types.int, types.nil].into_iter(),
+        );
+
+        let generic = db.alloc(Type::Generic);
+        let list = alloc_list(&mut db, generic);
+
+        assert_eq!(
+            db.compare_with_generics(tuple, list, &mut stack, true),
+            Comparison::Assignable
+        );
+        assert_eq!(stack, vec![[(generic, types.int)].into()]);
     }
 }

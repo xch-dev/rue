@@ -158,3 +158,27 @@ pub(crate) fn substitute_type(
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{alloc_list, Comparison};
+
+    use super::*;
+
+    #[test]
+    fn test_substitute_generic_list() {
+        let mut db = TypeSystem::new();
+        let types = db.std();
+
+        let generic = db.alloc(Type::Generic);
+        let list = alloc_list(&mut db, generic);
+
+        let mut substitutions = HashMap::new();
+        substitutions.insert(generic, types.bool);
+
+        let result = db.substitute(list, substitutions);
+        let expected = alloc_list(&mut db, types.bool);
+
+        assert_eq!(db.compare(expected, result), Comparison::Assignable);
+    }
+}

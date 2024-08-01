@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rowan::TextRange;
 use rue_parser::{AstNode, FunctionCallExpr};
-use rue_typing::{deconstruct_items, unwrap_list, Callable, Type, TypeId};
+use rue_typing::{deconstruct_items, unwrap_list, Callable, Lazy, Type, TypeId};
 
 use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
 
@@ -14,13 +14,9 @@ impl Compiler<'_> {
         let callee = call.callee().map(|callee| self.compile_expr(&callee, None));
 
         // Get the function type of the callee.
-        let function_type =
-            callee
-                .as_ref()
-                .and_then(|callee| match self.ty.get(callee.type_id).clone() {
-                    Type::Callable(function_type) => Some(function_type),
-                    _ => None,
-                });
+        let function_type = callee
+            .as_ref()
+            .and_then(|callee| self.ty.get_callable_recursive(callee.type_id).cloned());
 
         let parameter_types = function_type.as_ref().map(|ty| {
             deconstruct_items(
@@ -79,21 +75,12 @@ impl Compiler<'_> {
                 }
             });
 
-            println!("\n\n{}", call.syntax().text());
-            if let Some(ty) = expected_type {
-                println!("{}", self.ty.debug(ty));
-            } else {
-                println!("NO EXPECTED");
-            }
-
             // Compile the argument expression, if present.
             // Otherwise, it's a parser error
             let expr = arg
                 .expr()
                 .map(|expr| self.compile_expr(&expr, expected_type))
                 .unwrap_or_else(|| self.unknown());
-
-            println!("{}", self.ty.debug(expr.type_id));
 
             // Add the argument to the list.
             let type_id = expr.type_id;
@@ -139,8 +126,6 @@ impl Compiler<'_> {
                 let param_type = parameter_types[i];
                 self.type_check(type_id, param_type, call_args[i].syntax().text_range());
             }
-
-            println!("{:?}", self.generic_type_stack.last());
         }
 
         // The generic type context is no longer needed.
@@ -152,7 +137,10 @@ impl Compiler<'_> {
             function_type.map_or(self.ty.std().unknown, |expected| expected.return_type);
 
         if !generic_types.is_empty() {
-            type_id = self.ty.substitute(type_id, generic_types);
+            type_id = self.ty.alloc(Type::Lazy(Lazy {
+                type_id,
+                substitutions: generic_types.into_iter().collect(),
+            }));
         }
 
         // Build the HIR for the function call.
