@@ -755,6 +755,10 @@ impl IfExpr {
 }
 
 impl FunctionCallExpr {
+    pub fn generic_args(&self) -> Option<GenericArgs> {
+        self.syntax().children().find_map(GenericArgs::cast)
+    }
+
     pub fn callee(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
     }

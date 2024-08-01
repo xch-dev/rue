@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rowan::TextRange;
 use rue_parser::{AstNode, FunctionCallExpr};
-use rue_typing::{deconstruct_items, unwrap_list, Callable, Lazy, Type, TypeId};
+use rue_typing::{deconstruct_items, unwrap_list, Callable, TypeId};
 
 use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
 
@@ -38,8 +38,48 @@ impl Compiler<'_> {
             }
         }
 
+        let generic_args = if let Some(generic_params) = function_type.as_ref().and_then(|fun| {
+            if fun.generic_types.is_empty() {
+                None
+            } else {
+                Some(fun.generic_types.clone())
+            }
+        }) {
+            if let Some(generic_args) = call.generic_args() {
+                let types = generic_args.types();
+
+                if types.len() == generic_params.len() {
+                    let mut generic_types = HashMap::new();
+
+                    for (i, ty) in types.into_iter().enumerate() {
+                        let type_id = self.compile_type(ty);
+                        generic_types.insert(generic_params[i], type_id);
+                    }
+
+                    generic_types
+                } else {
+                    self.db.error(
+                        ErrorKind::GenericArgsMismatch(types.len(), generic_params.len()),
+                        generic_args.syntax().text_range(),
+                    );
+
+                    HashMap::new()
+                }
+            } else {
+                HashMap::new()
+            }
+        } else {
+            if let Some(generic_args) = call.generic_args() {
+                self.db.error(
+                    ErrorKind::UnexpectedGenericArgs,
+                    generic_args.syntax().text_range(),
+                );
+            }
+            HashMap::new()
+        };
+
         // Push a generic type context for the function, and allow inference.
-        self.generic_type_stack.push(HashMap::new());
+        self.generic_type_stack.push(generic_args);
         self.allow_generic_inference_stack.push(true);
 
         // Compile the arguments naively, and defer type checking until later.
@@ -137,10 +177,7 @@ impl Compiler<'_> {
             function_type.map_or(self.ty.std().unknown, |expected| expected.return_type);
 
         if !generic_types.is_empty() {
-            type_id = self.ty.alloc(Type::Lazy(Lazy {
-                type_id,
-                substitutions: generic_types.into_iter().collect(),
-            }));
+            type_id = self.ty.substitute(type_id, generic_types);
         }
 
         // Build the HIR for the function call.

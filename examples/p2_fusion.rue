@@ -52,7 +52,7 @@ fun main(
         Condition::CreateCoin {
             puzzle_hash: p2_puzzle_hash,
             amount: my_amount,
-            memos: [p2_puzzle_hash],
+            memos: ([p2_puzzle_hash], nil),
         },
 
         // Announce that a specific singleton is being spent to

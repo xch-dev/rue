@@ -84,7 +84,7 @@ impl Compiler<'_> {
                     terminator = BlockTerminator::Raise;
                     is_terminated = true;
 
-                    statements.push(Statement::Return(Value::new(hir_id, self.ty.std().unknown)));
+                    statements.push(Statement::Return(Value::new(hir_id, self.ty.std().never)));
                 }
                 Stmt::AssertStmt(assert_stmt) => {
                     // Compile the condition expression.

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use indexmap::IndexMap;
 use rowan::TextRange;
 use rue_parser::{AstNode, GenericArgs, PathItem};
@@ -198,6 +200,16 @@ impl Compiler<'_> {
         generic_args: Option<GenericArgs>,
         text_range: TextRange,
     ) -> Option<TypeId> {
+        self.handle_generics_impl(type_id, generic_args, text_range)
+            .map(|type_id| self.ty.substitute(type_id, HashMap::new()))
+    }
+
+    fn handle_generics_impl(
+        &mut self,
+        mut type_id: TypeId,
+        generic_args: Option<GenericArgs>,
+        text_range: TextRange,
+    ) -> Option<TypeId> {
         let Type::Alias(alias) = self.ty.get(type_id) else {
             if generic_args.is_some() {
                 self.db.error(ErrorKind::UnexpectedGenericArgs, text_range);
@@ -223,17 +235,24 @@ impl Compiler<'_> {
                 return None;
             }
 
-            let mut lazy = Lazy {
-                type_id,
-                substitutions: IndexMap::new(),
-            };
-
+            let mut substitutions = IndexMap::new();
             for (generic_type, arg) in alias.generic_types.clone().into_iter().zip(generic_args) {
                 let arg = self.compile_type(arg);
-                lazy.substitutions.insert(generic_type, arg);
+                substitutions.insert(generic_type, arg);
             }
 
-            Some(self.ty.alloc(Type::Lazy(lazy)))
+            if self.type_definition_stack.is_empty() {
+                type_id = self
+                    .ty
+                    .substitute(type_id, substitutions.into_iter().collect());
+            } else {
+                type_id = self.ty.alloc(Type::Lazy(Lazy {
+                    type_id,
+                    substitutions,
+                }));
+            }
+
+            Some(type_id)
         } else {
             Some(type_id)
         }

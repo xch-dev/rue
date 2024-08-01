@@ -572,7 +572,7 @@ hash = "00f43ce9fcc63d5019e209c103e6b0aaf56bbe7fc7fafae5af7f5ee6887a8719"
 [external_function]
 bytes = 7
 cost = 203
-input = "((q  ((100) (200) (300))))"
+input = "((q . ((100) (200) (300))))"
 output = "((100) (200) (300))"
 hash = "942555c6a5c562ab3dcb4d530a29dd55541ce274c3528b9c5aa7794a862547f3"
 

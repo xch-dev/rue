@@ -40,7 +40,7 @@ fun split_amount_and_create_coins(
     let create_coin = Condition::CreateCoin {
         puzzle_hash: payout.puzzle_hash,
         amount: if payout.share > 0 { this_amount } else { remaining_amount },
-        memos: [payout.puzzle_hash],
+        memos: ([payout.puzzle_hash], nil),
     };
     let rest = calculate_amount_and_split(payouts.rest, total_amount, total_shares, shares_sum + payout.share, remaining_amount - this_amount);
     [create_coin, ...rest]

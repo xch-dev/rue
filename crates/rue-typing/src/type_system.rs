@@ -1,12 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use id_arena::{Arena, Id};
-use indexmap::IndexMap;
 
 use crate::{
     check_type, compare_type, debug_type, difference_type, replace_type, simplify_check,
     stringify_type, substitute_type, Alias, Callable, Check, CheckError, Comparison,
-    ComparisonContext, Lazy, StandardTypes, Type, TypePath,
+    ComparisonContext, StandardTypes, Type, TypePath,
 };
 
 pub type TypeId = Id<Type>;
@@ -148,20 +147,10 @@ impl TypeSystem {
     }
 
     pub fn get_callable_recursive(&mut self, type_id: TypeId) -> Option<&Callable> {
-        let type_id = self.substitute(type_id, HashMap::new());
         match self.get_recursive(type_id) {
             Type::Callable(callable) => Some(callable),
             _ => None,
         }
-    }
-
-    pub fn alloc_list(&mut self, type_id: TypeId) -> TypeId {
-        let mut substitutions = IndexMap::new();
-        substitutions.insert(self.types.generic_list_item, type_id);
-        self.alloc(Type::Lazy(Lazy {
-            type_id: self.types.unmapped_list,
-            substitutions,
-        }))
     }
 
     pub fn stringify_named(&self, type_id: TypeId, mut names: HashMap<TypeId, String>) -> String {
@@ -213,14 +202,10 @@ impl TypeSystem {
     }
 
     pub fn check(&mut self, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {
-        let lhs = self.substitute(lhs, HashMap::new());
-        let rhs = self.substitute(rhs, HashMap::new());
         check_type(self, lhs, rhs, &mut HashSet::new()).map(simplify_check)
     }
 
     pub fn difference(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
-        let lhs = self.substitute(lhs, HashMap::new());
-        let rhs = self.substitute(rhs, HashMap::new());
         difference_type(self, lhs, rhs, &mut HashSet::new())
     }
 

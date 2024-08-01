@@ -54,6 +54,40 @@ pub(crate) fn compare_type(
         (Type::Generic, _) if found_lhs.is_some() => compare_type(db, found_lhs.unwrap(), rhs, ctx),
         (_, Type::Generic) if found_rhs.is_some() => compare_type(db, lhs, found_rhs.unwrap(), ctx),
 
+        // Infer generics.
+        (_, Type::Generic) => {
+            if let Some(inferred) = ctx
+                .inferred
+                .iter()
+                .rev()
+                .find_map(|map| map.get(&rhs).copied())
+            {
+                compare_type(db, lhs, inferred, ctx)
+            } else if lhs == rhs {
+                Comparison::Equal
+            } else if ctx.infer_generics {
+                ctx.inferred.last_mut().unwrap().insert(rhs, lhs);
+                Comparison::Assignable
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
+        (Type::Generic, _) => {
+            if let Some(inferred) = ctx
+                .inferred
+                .iter()
+                .rev()
+                .find_map(|map| map.get(&lhs).copied())
+            {
+                compare_type(db, inferred, rhs, ctx)
+            } else if lhs == rhs {
+                Comparison::Equal
+            } else {
+                Comparison::Incompatible
+            }
+        }
+
         // These types are identical.
         (Type::Unknown, Type::Unknown)
         | (Type::Never, Type::Never)
@@ -68,20 +102,7 @@ pub(crate) fn compare_type(
 
         // These are assignable since the structure and semantics match.
         (_, Type::Any | Type::Unknown)
-        | (
-            Type::Unknown | Type::Never,
-            Type::Bytes
-            | Type::Bytes32
-            | Type::PublicKey
-            | Type::Int
-            | Type::Nil
-            | Type::True
-            | Type::False
-            | Type::Value(..)
-            | Type::Pair(..)
-            | Type::Callable(..),
-        )
-        | (Type::Unknown, Type::Never)
+        | (Type::Unknown | Type::Never, _)
         | (Type::Value(..), Type::Int)
         | (Type::Bytes32 | Type::Nil, Type::Bytes) => Comparison::Assignable,
 
@@ -377,40 +398,6 @@ pub(crate) fn compare_type(
             compare_type(db, lhs.return_type, rhs.return_type, ctx),
         ),
         (Type::Callable(..), _) => compare_type(db, lhs, db.std().any, ctx),
-
-        // Infer generics.
-        (_, Type::Generic) => {
-            if let Some(inferred) = ctx
-                .inferred
-                .iter()
-                .rev()
-                .find_map(|map| map.get(&rhs).copied())
-            {
-                compare_type(db, lhs, inferred, ctx)
-            } else if lhs == rhs {
-                Comparison::Equal
-            } else if ctx.infer_generics {
-                ctx.inferred.last_mut().unwrap().insert(rhs, lhs);
-                Comparison::Assignable
-            } else {
-                Comparison::Incompatible
-            }
-        }
-
-        (Type::Generic, _) => {
-            if let Some(inferred) = ctx
-                .inferred
-                .iter()
-                .rev()
-                .find_map(|map| map.get(&lhs).copied())
-            {
-                compare_type(db, inferred, rhs, ctx)
-            } else if lhs == rhs {
-                Comparison::Equal
-            } else {
-                Comparison::Incompatible
-            }
-        }
     };
 
     ctx.visited.remove(&(lhs, rhs));
@@ -422,7 +409,7 @@ pub(crate) fn compare_type(
 mod tests {
     use indexmap::indexmap;
 
-    use crate::{alloc_list, alloc_struct, alloc_tuple_of, Struct};
+    use crate::{alloc_list, alloc_struct, alloc_tuple_of, Enum, Struct, Variant};
 
     use super::*;
 
@@ -669,6 +656,47 @@ mod tests {
                 Comparison::Superset
             );
         }
+    }
+
+    #[test]
+    fn test_compare_enum_generic_inference() {
+        let mut db = TypeSystem::new();
+
+        let generic = db.alloc(Type::Generic);
+
+        let mut stack = vec![HashMap::new()];
+
+        let enum_type = db.alloc(Type::Unknown);
+        let variant = db.alloc(Type::Unknown);
+
+        let variant_inner = db.alloc(Type::Value(BigInt::ZERO));
+
+        *db.get_mut(variant) = Type::Variant(Variant {
+            original_enum_type_id: enum_type,
+            original_type_id: variant,
+            type_id: variant_inner,
+            field_names: None,
+            nil_terminated: false,
+            generic_types: vec![],
+            discriminant: BigInt::ZERO,
+        });
+
+        *db.get_mut(enum_type) = Type::Enum(Enum {
+            original_type_id: enum_type,
+            type_id: variant,
+            has_fields: false,
+            variants: indexmap! {
+                "A".to_string() => variant
+            },
+        });
+
+        assert_eq!(
+            db.compare_with_generics(enum_type, generic, &mut stack, true),
+            Comparison::Assignable
+        );
+
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack[0].get(&generic), Some(&enum_type));
     }
 
     #[test]

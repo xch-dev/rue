@@ -63,7 +63,7 @@ pub(crate) fn substitute_type(
             substitutions.push(lazy.substitutions.clone().into_iter().collect());
             let result = substitute_type(types, lazy.type_id, substitutions);
             substitutions.pop().unwrap();
-            substitute_type(types, result, substitutions)
+            result
         }
         Type::Alias(alias) => {
             let alias = alias.clone();

@@ -340,6 +340,8 @@ fn expr(p: &mut Parser<'_>) {
 fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initializer: bool) {
     let checkpoint = p.checkpoint();
 
+    let mut at_generic_args = false;
+
     if p.at(SyntaxKind::Not)
         || p.at(SyntaxKind::Minus)
         || p.at(SyntaxKind::Plus)
@@ -360,9 +362,9 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
         p.bump();
         p.finish();
     } else if p.at(SyntaxKind::Ident) {
-        path_expr(p);
-
-        if p.at(SyntaxKind::OpenBrace) && allow_initializer {
+        if path_expr(p) {
+            at_generic_args = true;
+        } else if p.at(SyntaxKind::OpenBrace) && allow_initializer {
             p.start_at(checkpoint, SyntaxKind::InitializerExpr);
             p.bump();
             while !p.at(SyntaxKind::CloseBrace) {
@@ -403,9 +405,12 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
     }
 
     loop {
-        if p.at(SyntaxKind::OpenParen) {
+        if at_generic_args || p.at(SyntaxKind::OpenParen) {
             p.start_at(checkpoint, SyntaxKind::FunctionCallExpr);
-            p.bump();
+            if at_generic_args {
+                generic_args(p);
+            }
+            p.expect(SyntaxKind::OpenParen);
             while !p.at(SyntaxKind::CloseParen) {
                 function_call_arg(p);
                 if !p.try_eat(SyntaxKind::Comma) {
@@ -414,6 +419,7 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             }
             p.expect(SyntaxKind::CloseParen);
             p.finish();
+            at_generic_args = false;
         } else if p.at(SyntaxKind::Dot) {
             p.start_at(checkpoint, SyntaxKind::FieldAccessExpr);
             p.bump();
@@ -489,23 +495,23 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
     }
 }
 
-fn path_expr(p: &mut Parser<'_>) {
+#[must_use]
+fn path_expr(p: &mut Parser<'_>) -> bool {
     p.start(SyntaxKind::PathExpr);
     p.start(SyntaxKind::PathItem);
     p.expect(SyntaxKind::Ident);
-    let mut next = p.try_eat(SyntaxKind::PathSeparator);
-    if next && p.at(SyntaxKind::LessThan) {
-        generic_args(p);
-        next = p.try_eat(SyntaxKind::PathSeparator);
-    }
     p.finish();
-    while next {
+    while p.try_eat(SyntaxKind::PathSeparator) {
+        if p.at(SyntaxKind::LessThan) {
+            p.finish();
+            return true;
+        }
         p.start(SyntaxKind::PathItem);
         p.expect(SyntaxKind::Ident);
-        next = p.try_eat(SyntaxKind::PathSeparator);
         p.finish();
     }
     p.finish();
+    false
 }
 
 fn function_call_arg(p: &mut Parser<'_>) {
