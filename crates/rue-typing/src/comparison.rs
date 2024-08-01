@@ -50,6 +50,21 @@ pub(crate) fn compare_type(
     let comparison = match (db.get(lhs), db.get(rhs)) {
         (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
 
+        // These types are identical.
+        (Type::Unknown, Type::Unknown)
+        | (Type::Never, Type::Never)
+        | (Type::Any, Type::Any)
+        | (Type::Bytes, Type::Bytes)
+        | (Type::Bytes32, Type::Bytes32)
+        | (Type::PublicKey, Type::PublicKey)
+        | (Type::Int, Type::Int)
+        | (Type::Nil, Type::Nil)
+        | (Type::True, Type::True)
+        | (Type::False, Type::False) => Comparison::Equal,
+
+        // These should always be the case, regardless of the other type.
+        (_, Type::Any | Type::Unknown) | (Type::Unknown | Type::Never, _) => Comparison::Assignable,
+
         // Handle generics and substitutions.
         (Type::Generic, _) if found_lhs.is_some() => compare_type(db, found_lhs.unwrap(), rhs, ctx),
         (_, Type::Generic) if found_rhs.is_some() => compare_type(db, lhs, found_rhs.unwrap(), ctx),
@@ -88,23 +103,10 @@ pub(crate) fn compare_type(
             }
         }
 
-        // These types are identical.
-        (Type::Unknown, Type::Unknown)
-        | (Type::Never, Type::Never)
-        | (Type::Any, Type::Any)
-        | (Type::Bytes, Type::Bytes)
-        | (Type::Bytes32, Type::Bytes32)
-        | (Type::PublicKey, Type::PublicKey)
-        | (Type::Int, Type::Int)
-        | (Type::Nil, Type::Nil)
-        | (Type::True, Type::True)
-        | (Type::False, Type::False) => Comparison::Equal,
-
         // These are assignable since the structure and semantics match.
-        (_, Type::Any | Type::Unknown)
-        | (Type::Unknown | Type::Never, _)
-        | (Type::Value(..), Type::Int)
-        | (Type::Bytes32 | Type::Nil, Type::Bytes) => Comparison::Assignable,
+        (Type::Value(..), Type::Int) | (Type::Bytes32 | Type::Nil, Type::Bytes) => {
+            Comparison::Assignable
+        }
 
         // These are castable since the structure matches but the semantics differ.
         (
