@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rue_typing::HashMap;
 
 use rue_parser::{AstNode, IfStmt};
 use rue_typing::TypeId;

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rue_typing::HashMap;
 
 use indexmap::IndexSet;
 use rue_parser::{AstNode, LambdaExpr};

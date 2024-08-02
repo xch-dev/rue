@@ -1,4 +1,6 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
+
+use crate::{HashMap, HashSet};
 
 use num_bigint::BigInt;
 use num_traits::One;

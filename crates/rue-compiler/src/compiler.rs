@@ -1,6 +1,6 @@
 #![allow(clippy::map_unwrap_or)]
 
-use std::collections::HashMap;
+use rue_typing::HashMap;
 
 pub(crate) use builtins::Builtins;
 

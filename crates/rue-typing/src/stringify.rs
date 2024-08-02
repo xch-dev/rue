@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use crate::{HashMap, HashSet};
 
 use crate::{Callable, Enum, Struct, Type, TypeId, TypeSystem, Variant};
 

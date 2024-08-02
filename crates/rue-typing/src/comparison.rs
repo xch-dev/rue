@@ -1,12 +1,9 @@
-use std::{
-    cmp::{max, min},
-    collections::{HashMap, HashSet},
-};
+use std::cmp::{max, min};
 
 use num_bigint::BigInt;
 use num_traits::One;
 
-use crate::{bigint_to_bytes, Type, TypeId, TypeSystem};
+use crate::{bigint_to_bytes, HashMap, HashSet, Type, TypeId, TypeSystem};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Comparison {
@@ -48,7 +45,7 @@ pub(crate) fn compare_type(
         .find_map(|substitutions| substitutions.get(&rhs).copied());
 
     let comparison = match (db.get(lhs), db.get(rhs)) {
-        (Type::Ref(..), _) | (_, Type::Ref(..)) => unreachable!(),
+        (Type::Ref(..) | Type::Lazy(..), _) | (_, Type::Ref(..) | Type::Lazy(..)) => unreachable!(),
 
         // These types are identical.
         (Type::Unknown, Type::Unknown)
@@ -315,22 +312,6 @@ pub(crate) fn compare_type(
             } else {
                 max(result, Comparison::Assignable)
             }
-        }
-
-        // We need to push substititons onto the stack in order to accurately compare them.
-        (Type::Lazy(lazy), _) => {
-            ctx.lhs_substitutions
-                .push(lazy.substitutions.clone().into_iter().collect());
-            let result = compare_type(db, lazy.type_id, rhs, ctx);
-            ctx.lhs_substitutions.pop().unwrap();
-            result
-        }
-        (_, Type::Lazy(lazy)) => {
-            ctx.rhs_substitutions
-                .push(lazy.substitutions.clone().into_iter().collect());
-            let result = compare_type(db, lhs, lazy.type_id, ctx);
-            ctx.rhs_substitutions.pop().unwrap();
-            result
         }
 
         // Resolve the alias to the type that it's pointing to.

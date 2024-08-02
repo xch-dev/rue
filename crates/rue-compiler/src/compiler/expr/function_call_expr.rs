@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rue_typing::HashMap;
 
 use rowan::TextRange;
 use rue_parser::{AstNode, FunctionCallExpr};

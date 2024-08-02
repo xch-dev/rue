@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use crate::HashSet;
 
 use num_bigint::BigInt;
 use num_traits::One;

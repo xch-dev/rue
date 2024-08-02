@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 use id_arena::{Arena, Id};
 
 use crate::{
     check_type, compare_type, debug_type, difference_type, replace_type, simplify_check,
     stringify_type, substitute_type, Alias, Callable, Check, CheckError, Comparison,
-    ComparisonContext, StandardTypes, Type, TypePath,
+    ComparisonContext, HashMap, HashSet, StandardTypes, Type, TypePath,
 };
 
 pub type TypeId = Id<Type>;
@@ -179,7 +179,9 @@ impl TypeSystem {
         substitution_stack: &mut Vec<HashMap<TypeId, TypeId>>,
         infer_generics: bool,
     ) -> Comparison {
-        compare_type(
+        let start = Instant::now();
+
+        let result = compare_type(
             self,
             lhs,
             rhs,
@@ -190,7 +192,18 @@ impl TypeSystem {
                 inferred: substitution_stack,
                 infer_generics,
             },
-        )
+        );
+        let duration = start.elapsed();
+        if duration > Duration::from_millis(1) {
+            println!(
+                "\n\n\n{duration:?} between {} => {}",
+                self.stringify(lhs),
+                self.stringify(rhs)
+            );
+            println!("LHS {}", self.debug(lhs));
+            println!("RHS {}", self.debug(rhs));
+        }
+        result
     }
 
     pub fn substitute(

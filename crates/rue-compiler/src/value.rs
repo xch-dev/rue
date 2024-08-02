@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rue_typing::HashMap;
 
 mod guard;
 mod guard_path;
