@@ -13,14 +13,7 @@ pub(crate) fn substitute_type(
         }
     }
 
-    let placeholder = types.alloc(Type::Unknown);
-    substitutions
-        .last_mut()
-        .unwrap()
-        .insert(type_id, placeholder);
-
-    let result = match types.get(type_id) {
-        Type::Ref(..) => unreachable!(),
+    match types.get(type_id) {
         Type::Unknown
         | Type::Generic
         | Type::Never
@@ -32,7 +25,30 @@ pub(crate) fn substitute_type(
         | Type::Nil
         | Type::True
         | Type::False
-        | Type::Value(..) => type_id,
+        | Type::Value(..) => return type_id,
+        _ => {}
+    }
+
+    let placeholder = types.alloc(Type::Unknown);
+    substitutions
+        .last_mut()
+        .unwrap()
+        .insert(type_id, placeholder);
+
+    let result = match types.get(type_id) {
+        Type::Ref(..)
+        | Type::Unknown
+        | Type::Generic
+        | Type::Never
+        | Type::Any
+        | Type::Bytes
+        | Type::Bytes32
+        | Type::PublicKey
+        | Type::Int
+        | Type::Nil
+        | Type::True
+        | Type::False
+        | Type::Value(..) => unreachable!(),
         Type::Pair(first, rest) => {
             let (first, rest) = (*first, *rest);
 
@@ -67,7 +83,6 @@ pub(crate) fn substitute_type(
         }
         Type::Alias(alias) => {
             let alias = alias.clone();
-
             let new_type_id = substitute_type(types, alias.type_id, substitutions);
 
             if new_type_id == alias.type_id {
@@ -82,7 +97,6 @@ pub(crate) fn substitute_type(
         }
         Type::Struct(ty) => {
             let ty = ty.clone();
-
             let new_type_id = substitute_type(types, ty.type_id, substitutions);
 
             if new_type_id == ty.type_id {
@@ -99,7 +113,6 @@ pub(crate) fn substitute_type(
         }
         Type::Variant(ty) => {
             let ty = ty.clone();
-
             let new_type_id = substitute_type(types, ty.type_id, substitutions);
 
             if new_type_id == ty.type_id {
@@ -118,7 +131,6 @@ pub(crate) fn substitute_type(
         }
         Type::Enum(ty) => {
             let ty = ty.clone();
-
             let new_type_id = substitute_type(types, ty.type_id, substitutions);
 
             if new_type_id == ty.type_id {
@@ -134,9 +146,7 @@ pub(crate) fn substitute_type(
         }
         Type::Callable(callable) => {
             let callable = callable.clone();
-
             let new_return_type = substitute_type(types, callable.return_type, substitutions);
-
             let new_parameters = substitute_type(types, callable.parameters, substitutions);
 
             if new_return_type == callable.return_type && new_parameters == callable.parameters {
