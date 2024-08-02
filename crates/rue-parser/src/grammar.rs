@@ -576,6 +576,14 @@ fn ty(p: &mut Parser<'_>) {
 
     if p.at(SyntaxKind::Ident) {
         path_type(p);
+    } else if p.at(SyntaxKind::Int)
+        || p.at(SyntaxKind::True)
+        || p.at(SyntaxKind::False)
+        || p.at(SyntaxKind::Nil)
+    {
+        p.start(SyntaxKind::LiteralType);
+        p.bump();
+        p.finish();
     } else if p.at(SyntaxKind::Fun) {
         p.start(SyntaxKind::FunctionType);
         p.bump();

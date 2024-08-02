@@ -2,7 +2,7 @@
 
 fun main(
     synthetic_pk: PublicKey,
-    original_pk: PublicKey | Nil,
+    original_pk: PublicKey | nil,
     delegated_puzzle: fun(...solution: Any) -> List<Condition>,
     delegated_solution: Any
 ) -> List<Condition> {

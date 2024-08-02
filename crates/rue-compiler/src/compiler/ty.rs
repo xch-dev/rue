@@ -4,6 +4,7 @@ use rue_typing::TypeId;
 use super::Compiler;
 
 mod function_type;
+mod literal_type;
 mod pair_type;
 mod path_type;
 mod union_type;
@@ -11,6 +12,7 @@ mod union_type;
 impl Compiler<'_> {
     pub fn compile_type(&mut self, ty: Type) -> TypeId {
         match ty {
+            Type::LiteralType(lit) => self.compile_literal_type(&lit),
             Type::PathType(path) => {
                 self.compile_path_type(&path.items(), path.syntax().text_range())
             }

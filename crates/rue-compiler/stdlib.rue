@@ -1,6 +1,6 @@
 export enum Condition {
     Remark = 1 {
-        ...value: (Any, Nil) | Nil,
+        ...value: (Any, nil) | nil,
     },
     AggSigParent = 43 {
         public_key: PublicKey,
@@ -37,7 +37,7 @@ export enum Condition {
     CreateCoin = 51 {
         puzzle_hash: Bytes32,
         amount: Int,
-        ...memos: (List<Bytes>, Nil) | Nil,
+        ...memos: (List<Bytes>, nil) | nil,
     },
     ReserveFee = 52 {
         amount: Int,
@@ -105,7 +105,7 @@ export enum Condition {
     },
     Softfork = 90 {
         cost: Int,
-        ...value: (Any, Nil) | Nil,
+        ...value: (Any, nil) | nil,
     },
 }
 
@@ -168,7 +168,7 @@ inline fun update_hash_with_parameter(
 }
 
 fun curried_params_hash(parameters: List<Bytes32>) -> Bytes32 {
-    if parameters is Nil {
+    if parameters is nil {
         return ONE_TREE_HASH;
     }
     update_hash_with_parameter(parameters.first, curried_params_hash(parameters.rest))
@@ -192,14 +192,14 @@ export fun calculate_coin_id(
 }
 
 export fun map<T, U>(list: List<T>, fn: fun(item: T) -> U) -> List<U> {
-    if list is Nil {
+    if list is nil {
         return nil;
     }
     [fn(list.first), ...map(list.rest, fn)]
 }
 
 export fun filter<T>(list: List<T>, fn: fun(item: T) -> Bool) -> List<T> {
-    if list is Nil {
+    if list is nil {
         return nil;
     }
     if fn(list.first) {
@@ -209,7 +209,7 @@ export fun filter<T>(list: List<T>, fn: fun(item: T) -> Bool) -> List<T> {
 }
 
 export fun fold<T, U>(list: List<T>, initial: U, fn: fun(acc: U, item: T) -> U) -> U {
-    if list is Nil {
+    if list is nil {
         return initial;
     }
     fold(list.rest, fn(initial, list.first), fn)

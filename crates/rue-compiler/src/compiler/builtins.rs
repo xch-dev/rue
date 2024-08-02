@@ -23,7 +23,6 @@ pub fn builtins(db: &mut Database, ty: &mut TypeSystem) -> Builtins {
     let nil = db.alloc_hir(Hir::Atom(Vec::new()));
     let unknown = db.alloc_hir(Hir::Unknown);
 
-    scope.define_type("Nil".to_string(), ty.std().nil);
     scope.define_type("Int".to_string(), ty.std().int);
     scope.define_type("Bool".to_string(), ty.std().bool);
     scope.define_type("Bytes".to_string(), ty.std().bytes);

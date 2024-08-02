@@ -1,4 +1,4 @@
-fun main() -> Nil {
+fun main() -> nil {
     assert empty();
     assert empty(1);
 

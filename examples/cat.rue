@@ -29,7 +29,7 @@ struct Truths {
 type Tail = fun(
     truths: Truths,
     parent_is_cat: Bool,
-    lineage_proof: LineageProof | Nil,
+    lineage_proof: LineageProof | nil,
     extra_delta: Int,
     conditions: List<Condition>,
     tail_solution: List<Any>,
@@ -46,7 +46,7 @@ struct TailInfo {
 // We can check `Condition::CreateCoin` then cast to this type instead.
 struct RunTailCondition {
     opcode: Int,
-    puzzle_hash: Nil,
+    puzzle_hash: nil,
     amount: Int,
     tail_puzzle: Tail,
     tail_solution: List<Any>,
@@ -92,7 +92,7 @@ fun main(
     asset_id: Bytes32,
     inner_puzzle: fun(...solution: Any) -> List<Condition>,
     inner_solution: Any,
-    lineage_proof: LineageProof | Nil,
+    lineage_proof: LineageProof | nil,
     prev_coin_id: Bytes32,
     my_coin: Coin,
     next_coin_proof: CoinProof,
@@ -197,17 +197,17 @@ struct Morph {
     sum: Int,
 
     // Information about the TAIL, revealed in the conditions.
-    tail_info: TailInfo | Nil,
+    tail_info: TailInfo | nil,
 }
 
 // Morph all of the conditions and extract the TAIL info.
 fun morph_conditions(
     conditions: List<Condition>,
     cat_info: CatInfo,
-    tail_info: TailInfo | Nil,
+    tail_info: TailInfo | nil,
 ) -> Morph {
     // If there are no conditions, return an empty morph.
-    if conditions is Nil {
+    if conditions is nil {
         return Morph {
             conditions: nil,
             sum: 0,

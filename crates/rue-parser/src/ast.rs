@@ -118,7 +118,15 @@ ast_node!(FieldAccessExpr);
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
 
-ast_enum!(Type, PathType, PairType, FunctionType, UnionType);
+ast_enum!(
+    Type,
+    LiteralType,
+    PathType,
+    PairType,
+    FunctionType,
+    UnionType
+);
+ast_node!(LiteralType);
 ast_node!(PathType);
 ast_node!(PairType);
 ast_node!(FunctionType);
@@ -794,6 +802,14 @@ impl FieldAccessExpr {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| matches!(token.kind(), SyntaxKind::Ident))
+    }
+}
+
+impl LiteralType {
+    pub fn value(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .find_map(SyntaxElement::into_token)
     }
 }
 

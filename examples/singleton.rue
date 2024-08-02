@@ -8,7 +8,7 @@ struct Singleton {
 
 struct LineageProof {
     parent_parent_coin_info: Bytes32,
-    parent_inner_puzzle_hash: Bytes32 | Nil,
+    parent_inner_puzzle_hash: Bytes32 | nil,
     parent_amount: Int,
 }
 
@@ -58,7 +58,7 @@ fun morph_conditions(
     conditions: List<Condition>,
     found_singleton_output: Bool,
 ) -> List<Condition> {
-    if conditions is Nil {
+    if conditions is nil {
         // We must have a singleton output.
         assert found_singleton_output;
         return nil;

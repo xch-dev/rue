@@ -1,6 +1,6 @@
 struct Empty {}
 
-fun main() -> Nil {
+fun main() -> nil {
     assert tree_hash(Empty {}) == tree_hash(nil);
     nil
 }
