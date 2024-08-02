@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use id_arena::{Arena, Id};
 
 use crate::{
@@ -179,9 +177,7 @@ impl TypeSystem {
         substitution_stack: &mut Vec<HashMap<TypeId, TypeId>>,
         infer_generics: bool,
     ) -> Comparison {
-        let start = Instant::now();
-
-        let result = compare_type(
+        compare_type(
             self,
             lhs,
             rhs,
@@ -192,18 +188,7 @@ impl TypeSystem {
                 inferred: substitution_stack,
                 infer_generics,
             },
-        );
-        let duration = start.elapsed();
-        if duration > Duration::from_millis(1) {
-            println!(
-                "\n\n\n{duration:?} between {} => {}",
-                self.stringify(lhs),
-                self.stringify(rhs)
-            );
-            println!("LHS {}", self.debug(lhs));
-            println!("RHS {}", self.debug(rhs));
-        }
-        result
+        )
     }
 
     pub fn substitute(

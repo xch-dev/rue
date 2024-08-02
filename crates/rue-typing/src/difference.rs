@@ -243,6 +243,6 @@ mod tests {
         let non_nil = db.difference(list, types.nil);
 
         assert_eq!(db.compare(non_nil, list), Comparison::Assignable);
-        assert_eq!(db.compare(types.nil, non_nil), Comparison::Incompatible);
+        assert_eq!(db.compare(types.nil, non_nil), Comparison::NotEqual);
     }
 }
