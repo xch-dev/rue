@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rue_typing::HashSet;
 
 use clvmr::{Allocator, NodePtr};
 use indexmap::IndexMap;

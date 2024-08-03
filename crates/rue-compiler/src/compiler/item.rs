@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rue_typing::HashSet;
 
 use rue_parser::Item;
 use rue_typing::{Type, TypeId};

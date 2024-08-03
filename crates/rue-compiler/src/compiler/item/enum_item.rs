@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rue_typing::HashSet;
 
 use indexmap::IndexMap;
 use num_bigint::BigInt;

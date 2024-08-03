@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rue_typing::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 use rue_typing::{Type, TypeId, TypeSystem};
