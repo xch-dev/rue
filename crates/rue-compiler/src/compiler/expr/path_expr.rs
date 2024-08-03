@@ -76,22 +76,15 @@ impl Compiler<'_> {
         }
 
         let type_override = self.symbol_type(&GuardPath::new(symbol_id));
-        let override_type_id = type_override.map(|ty| ty.type_id);
-        let mut reference = self.db.alloc_hir(Hir::Reference(symbol_id, text_range));
-
-        if let Some(mutation) = type_override.map(|ty| ty.mutation) {
-            reference = self.apply_mutation(reference, mutation);
-        }
+        let reference = self.db.alloc_hir(Hir::Reference(symbol_id, text_range));
 
         let mut value = match self.db.symbol(symbol_id).clone() {
             Symbol::Unknown | Symbol::Module(..) => unreachable!(),
             Symbol::Function(Function { type_id, .. })
             | Symbol::InlineFunction(Function { type_id, .. })
-            | Symbol::Parameter(type_id) => {
-                Value::new(reference, override_type_id.unwrap_or(type_id))
-            }
+            | Symbol::Parameter(type_id) => Value::new(reference, type_override.unwrap_or(type_id)),
             Symbol::Let(mut value) | Symbol::Const(mut value) | Symbol::InlineConst(mut value) => {
-                if let Some(type_id) = override_type_id {
+                if let Some(type_id) = type_override {
                     value.type_id = type_id;
                 }
                 value.hir_id = reference;

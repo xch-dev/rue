@@ -4,7 +4,7 @@ use rue_typing::{bigint_to_bytes, Check, TypeId};
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir, Op},
-    value::{Guard, TypeOverride, Value},
+    value::{Guard, Value},
     ErrorKind, HirId, WarningKind,
 };
 
@@ -62,11 +62,7 @@ impl Compiler<'_> {
 
         if let Some(guard_path) = expr.guard_path {
             let difference = self.ty.difference(expr.type_id, rhs);
-
-            value.guards.insert(
-                guard_path,
-                Guard::new(TypeOverride::new(rhs), TypeOverride::new(difference)),
-            );
+            value.guards.insert(guard_path, Guard::new(rhs, difference));
         }
 
         value

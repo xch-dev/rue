@@ -6,7 +6,7 @@ use rue_typing::TypeId;
 use crate::{
     compiler::{block::BlockTerminator, Compiler},
     scope::Scope,
-    value::{GuardPath, TypeOverride},
+    value::GuardPath,
     ErrorKind, HirId,
 };
 
@@ -16,7 +16,7 @@ impl Compiler<'_> {
         &mut self,
         if_stmt: &IfStmt,
         expected_type: Option<TypeId>,
-    ) -> (HirId, HirId, HashMap<GuardPath, TypeOverride>) {
+    ) -> (HirId, HirId, HashMap<GuardPath, TypeId>) {
         // Compile the condition expression.
         let condition = if_stmt
             .condition()

@@ -1,6 +1,6 @@
 #![allow(clippy::map_unwrap_or)]
 
-use rue_typing::HashMap;
+use rue_typing::{HashMap, TypePath};
 
 pub(crate) use builtins::Builtins;
 
@@ -12,7 +12,7 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId},
     hir::{Hir, Op},
     scope::Scope,
-    value::{GuardPath, Mutation, TypeOverride, Value},
+    value::{GuardPath, Value},
     ErrorKind,
 };
 
@@ -47,7 +47,7 @@ pub struct Compiler<'a> {
     type_definition_stack: Vec<TypeId>,
 
     // The type guard stack is used for overriding types in certain contexts.
-    type_guard_stack: Vec<HashMap<GuardPath, TypeOverride>>,
+    type_guard_stack: Vec<HashMap<GuardPath, TypeId>>,
 
     // The generic type stack is used for overriding generic types that are being checked against.
     generic_type_stack: Vec<HashMap<TypeId, TypeId>>,
@@ -88,15 +88,14 @@ impl<'a> Compiler<'a> {
         self.sym
     }
 
-    fn compile_index(&mut self, value: HirId, index: usize, rest: bool) -> HirId {
-        let mut result = value;
-        for _ in 0..index {
-            result = self.db.alloc_hir(Hir::Op(Op::Rest, result));
+    fn hir_path(&mut self, mut value: HirId, path_items: &[TypePath]) -> HirId {
+        for path in path_items {
+            match path {
+                TypePath::First => value = self.db.alloc_hir(Hir::Op(Op::First, value)),
+                TypePath::Rest => value = self.db.alloc_hir(Hir::Op(Op::Rest, value)),
+            }
         }
-        if !rest {
-            result = self.db.alloc_hir(Hir::Op(Op::First, result));
-        }
-        result
+        value
     }
 
     fn type_reference(&mut self, referenced_type_id: TypeId) {
@@ -170,20 +169,13 @@ impl<'a> Compiler<'a> {
         Value::new(self.builtins.unknown, self.ty.std().unknown)
     }
 
-    fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeOverride> {
+    fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeId> {
         for guards in self.type_guard_stack.iter().rev() {
             if let Some(guard) = guards.get(guard_path) {
                 return Some(*guard);
             }
         }
         None
-    }
-
-    fn apply_mutation(&mut self, hir_id: HirId, mutation: Mutation) -> HirId {
-        match mutation {
-            Mutation::None => hir_id,
-            Mutation::UnwrapOptional => self.db.alloc_hir(Hir::Op(Op::First, hir_id)),
-        }
     }
 
     fn scope(&self) -> &Scope {

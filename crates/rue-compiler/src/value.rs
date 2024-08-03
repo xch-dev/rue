@@ -1,14 +1,12 @@
+use std::ops::Not;
+
 use rue_typing::HashMap;
 
-mod guard;
-mod guard_path;
-
-pub use guard::*;
-pub use guard_path::*;
-
 use rue_typing::TypeId;
+use rue_typing::TypePath;
 
 use crate::HirId;
+use crate::SymbolId;
 
 #[derive(Debug, Clone)]
 pub struct Value {
@@ -28,28 +26,58 @@ impl Value {
         }
     }
 
-    pub fn then_guards(&self) -> HashMap<GuardPath, TypeOverride> {
+    pub fn then_guards(&self) -> HashMap<GuardPath, TypeId> {
         self.guards
             .iter()
-            .map(|(k, v)| (k.clone(), v.then_type))
+            .map(|(guard_path, guard)| (guard_path.clone(), guard.then_type))
             .collect()
     }
 
-    pub fn else_guards(&self) -> HashMap<GuardPath, TypeOverride> {
+    pub fn else_guards(&self) -> HashMap<GuardPath, TypeId> {
         self.guards
             .iter()
-            .map(|(k, v)| (k.clone(), v.else_type))
+            .map(|(guard_path, guard)| (guard_path.clone(), guard.else_type))
             .collect()
     }
+}
 
-    pub fn extend_guard_path(mut self, old_value: Value, item: GuardPathItem) -> Self {
-        match old_value.guard_path {
-            Some(mut path) => {
-                path.items.push(item);
-                self.guard_path = Some(path);
-                self
-            }
-            None => self,
+#[derive(Debug, Clone, Copy)]
+pub struct Guard {
+    pub then_type: TypeId,
+    pub else_type: TypeId,
+}
+
+impl Guard {
+    pub fn new(then_type: TypeId, else_type: TypeId) -> Self {
+        Self {
+            then_type,
+            else_type,
+        }
+    }
+}
+
+impl Not for Guard {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        Self {
+            then_type: self.else_type,
+            else_type: self.then_type,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GuardPath {
+    pub symbol_id: SymbolId,
+    pub items: Vec<TypePath>,
+}
+
+impl GuardPath {
+    pub fn new(symbol_id: SymbolId) -> Self {
+        Self {
+            symbol_id,
+            items: Vec::new(),
         }
     }
 }

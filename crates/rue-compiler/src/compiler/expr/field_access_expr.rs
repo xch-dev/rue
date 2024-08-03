@@ -1,10 +1,10 @@
-use rue_parser::FieldAccessExpr;
-use rue_typing::{deconstruct_items, Type};
+use rue_parser::{FieldAccessExpr, SyntaxToken};
+use rue_typing::{deconstruct_items, index_to_path, Struct, Type, TypeId, TypePath, Variant};
 
 use crate::{
     compiler::Compiler,
     hir::{Hir, Op},
-    value::{GuardPathItem, Value},
+    value::Value,
     ErrorKind,
 };
 
@@ -18,120 +18,42 @@ impl Compiler<'_> {
             return self.unknown();
         };
 
-        let Some(field_name) = field_access.field() else {
+        let Some(name) = field_access.field() else {
             return self.unknown();
         };
 
         let mut new_value = match self.ty.get(old_value.type_id).clone() {
             Type::Unknown => return self.unknown(),
             Type::Struct(ty) => {
-                let fields =
-                    deconstruct_items(self.ty, ty.type_id, ty.field_names.len(), ty.nil_terminated)
-                        .expect("invalid struct type");
-
-                if let Some(index) = ty.field_names.get_index_of(field_name.text()) {
-                    let type_id = fields[index];
-
-                    Value::new(
-                        self.compile_index(
-                            old_value.hir_id,
-                            index,
-                            index == ty.field_names.len() - 1 && !ty.nil_terminated,
-                        ),
-                        type_id,
-                    )
-                    .extend_guard_path(old_value, GuardPathItem::Field(field_name.to_string()))
-                } else {
-                    self.db.error(
-                        ErrorKind::UnknownField(field_name.to_string()),
-                        field_name.text_range(),
-                    );
+                let Some(value) = self.compile_struct_field_access(old_value, &ty, &name) else {
                     return self.unknown();
-                }
-            }
-            Type::Variant(variant) => {
-                let field_names = variant.field_names.clone().unwrap_or_default();
-
-                let Type::Enum(ty) = self.ty.get(variant.original_enum_type_id) else {
-                    unreachable!();
                 };
-
-                let fields = if ty.has_fields {
-                    let type_id = self
-                        .ty
-                        .get_pair(variant.type_id)
-                        .expect("expected a pair")
-                        .1;
-
-                    variant
-                        .field_names
-                        .as_ref()
-                        .map(|field_names| {
-                            deconstruct_items(
-                                self.ty,
-                                type_id,
-                                field_names.len(),
-                                variant.nil_terminated,
-                            )
-                            .expect("invalid struct type")
-                        })
-                        .unwrap_or_default()
-                } else {
-                    Vec::new()
-                };
-
-                if let Some(index) = field_names.get_index_of(field_name.text()) {
-                    let type_id = fields[index];
-
-                    let fields_hir_id = self.db.alloc_hir(Hir::Op(Op::Rest, old_value.hir_id));
-
-                    Value::new(
-                        self.compile_index(
-                            fields_hir_id,
-                            index,
-                            index == fields.len() - 1 && !variant.nil_terminated,
-                        ),
-                        type_id,
-                    )
-                    .extend_guard_path(old_value, GuardPathItem::Field(field_name.to_string()))
-                } else {
-                    self.db.error(
-                        ErrorKind::UnknownField(field_name.to_string()),
-                        field_name.text_range(),
-                    );
-                    return self.unknown();
-                }
+                value
             }
-            Type::Pair(first, rest) => match field_name.text() {
-                "first" => Value::new(
-                    self.db.alloc_hir(Hir::Op(Op::First, old_value.hir_id)),
-                    first,
-                )
-                .extend_guard_path(old_value, GuardPathItem::First),
-                "rest" => Value::new(self.db.alloc_hir(Hir::Op(Op::Rest, old_value.hir_id)), rest)
-                    .extend_guard_path(old_value, GuardPathItem::Rest),
-                _ => {
-                    self.db.error(
-                        ErrorKind::InvalidFieldAccess(
-                            field_name.to_string(),
-                            self.type_name(old_value.type_id),
-                        ),
-                        field_name.text_range(),
-                    );
+            Type::Variant(ty) => {
+                let Some(value) = self.compile_variant_field_access(old_value, &ty, &name) else {
                     return self.unknown();
-                }
-            },
-            Type::Bytes | Type::Bytes32 if field_name.text() == "length" => Value::new(
+                };
+                value
+            }
+            Type::Pair(first, rest) => {
+                let Some(value) = self.compile_pair_field_access(old_value, first, rest, &name)
+                else {
+                    return self.unknown();
+                };
+                value
+            }
+            Type::Bytes | Type::Bytes32 if name.text() == "length" => Value::new(
                 self.db.alloc_hir(Hir::Op(Op::Strlen, old_value.hir_id)),
                 self.ty.std().int,
             ),
             _ => {
                 self.db.error(
                     ErrorKind::InvalidFieldAccess(
-                        field_name.to_string(),
+                        name.to_string(),
                         self.type_name(old_value.type_id),
                     ),
-                    field_name.text_range(),
+                    name.text_range(),
                 );
                 return self.unknown();
             }
@@ -139,11 +61,126 @@ impl Compiler<'_> {
 
         if let Some(guard_path) = new_value.guard_path.as_ref() {
             if let Some(type_override) = self.symbol_type(guard_path) {
-                new_value.type_id = type_override.type_id;
-                new_value.hir_id = self.apply_mutation(new_value.hir_id, type_override.mutation);
+                new_value.type_id = type_override;
             }
         }
 
         new_value
+    }
+
+    fn compile_pair_field_access(
+        &mut self,
+        old_value: Value,
+        first: TypeId,
+        rest: TypeId,
+        name: &SyntaxToken,
+    ) -> Option<Value> {
+        let path = match name.text() {
+            "first" => TypePath::First,
+            "rest" => TypePath::Rest,
+            _ => {
+                self.db.error(
+                    ErrorKind::InvalidFieldAccess(
+                        name.to_string(),
+                        self.type_name(old_value.type_id),
+                    ),
+                    name.text_range(),
+                );
+                return None;
+            }
+        };
+
+        let type_id = match path {
+            TypePath::First => first,
+            TypePath::Rest => rest,
+        };
+
+        let mut value = Value::new(self.hir_path(old_value.hir_id, &[path]), type_id);
+
+        value.guard_path = old_value.guard_path.map(|mut guard_path| {
+            guard_path.items.push(path);
+            guard_path
+        });
+
+        Some(value)
+    }
+
+    fn compile_struct_field_access(
+        &mut self,
+        old_value: Value,
+        ty: &Struct,
+        name: &SyntaxToken,
+    ) -> Option<Value> {
+        let fields =
+            deconstruct_items(self.ty, ty.type_id, ty.field_names.len(), ty.nil_terminated)
+                .expect("invalid struct type");
+
+        let Some(index) = ty.field_names.get_index_of(name.text()) else {
+            self.db
+                .error(ErrorKind::UnknownField(name.to_string()), name.text_range());
+            return None;
+        };
+
+        let type_id = fields[index];
+
+        let path_items = index_to_path(
+            index,
+            index != ty.field_names.len() - 1 || ty.nil_terminated,
+        );
+
+        let mut value = Value::new(self.hir_path(old_value.hir_id, &path_items), type_id);
+
+        value.guard_path = old_value.guard_path.map(|mut guard_path| {
+            guard_path.items.extend(path_items);
+            guard_path
+        });
+
+        Some(value)
+    }
+
+    fn compile_variant_field_access(
+        &mut self,
+        old_value: Value,
+        ty: &Variant,
+        name: &SyntaxToken,
+    ) -> Option<Value> {
+        let field_names = ty.field_names.clone().unwrap_or_default();
+
+        let Type::Enum(enum_type) = self.ty.get(ty.original_enum_type_id) else {
+            unreachable!();
+        };
+
+        let fields = if enum_type.has_fields {
+            let type_id = self.ty.get_pair(ty.type_id).expect("expected a pair").1;
+
+            ty.field_names
+                .as_ref()
+                .map(|field_names| {
+                    deconstruct_items(self.ty, type_id, field_names.len(), ty.nil_terminated)
+                        .expect("invalid struct type")
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
+        let Some(index) = field_names.get_index_of(name.text()) else {
+            self.db
+                .error(ErrorKind::UnknownField(name.to_string()), name.text_range());
+            return None;
+        };
+
+        let type_id = fields[index];
+
+        let path_items = index_to_path(index + 1, index != fields.len() - 1 || ty.nil_terminated);
+
+        let mut value = Value::new(self.hir_path(old_value.hir_id, &path_items), type_id);
+
+        value.guard_path = old_value.guard_path.map(|mut guard_path| {
+            guard_path.items.extend(path_items);
+            guard_path
+        });
+
+        Some(value)
     }
 }

@@ -5,7 +5,7 @@ use rue_typing::{Comparison, Type, TypeId};
 use crate::{
     compiler::Compiler,
     hir::{BinOp, Hir, Op},
-    value::{Guard, TypeOverride, Value},
+    value::{Guard, Value},
     ErrorKind, HirId,
 };
 
@@ -170,10 +170,9 @@ impl Compiler<'_> {
             if let Some(guard_path) = rhs.guard_path {
                 let then_type = self.ty.std().nil;
                 let else_type = self.ty.difference(rhs.type_id, self.ty.std().nil);
-                value.guards.insert(
-                    guard_path,
-                    Guard::new(TypeOverride::new(then_type), TypeOverride::new(else_type)),
-                );
+                value
+                    .guards
+                    .insert(guard_path, Guard::new(then_type, else_type));
             }
         }
 
@@ -181,10 +180,9 @@ impl Compiler<'_> {
             if let Some(guard_path) = lhs.guard_path.clone() {
                 let then_type = self.ty.std().nil;
                 let else_type = self.ty.difference(lhs.type_id, self.ty.std().nil);
-                value.guards.insert(
-                    guard_path,
-                    Guard::new(TypeOverride::new(then_type), TypeOverride::new(else_type)),
-                );
+                value
+                    .guards
+                    .insert(guard_path, Guard::new(then_type, else_type));
             }
         }
 
