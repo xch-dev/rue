@@ -1,6 +1,6 @@
 mod bigint;
 mod check;
-mod comparison;
+mod compare_type;
 mod debug_type;
 mod difference_type;
 mod map;
@@ -15,7 +15,7 @@ mod type_system;
 
 pub use bigint::*;
 pub use check::*;
-pub use comparison::*;
+pub use compare_type::*;
 pub use map::*;
 pub use semantic_types::*;
 pub use standard_types::*;
