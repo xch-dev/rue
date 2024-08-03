@@ -1,11 +1,9 @@
-use std::collections::HashSet;
+use rue_typing::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
+use rue_typing::{Type, TypeId, TypeSystem};
 
-use crate::{
-    dependency_graph::DependencyGraph, symbol::Symbol, value::Type, Database, SymbolId, TypeId,
-    WarningKind,
-};
+use crate::{dependency_graph::DependencyGraph, symbol::Symbol, Database, SymbolId, WarningKind};
 
 #[derive(Debug, Default)]
 pub struct SymbolTable {
@@ -44,6 +42,7 @@ impl SymbolTable {
     pub fn calculate_unused(
         &self,
         db: &mut Database,
+        ty: &TypeSystem,
         dependency_graph: &DependencyGraph,
         ignored_symbols: &HashSet<SymbolId>,
         ignored_types: &HashSet<TypeId>,
@@ -126,12 +125,12 @@ impl SymbolTable {
                 continue;
             }
             let token = db.type_token(*type_id).unwrap();
-            let kind = match db.ty_raw(*type_id) {
+            let kind = match ty.get_raw(*type_id) {
                 Type::Generic => WarningKind::UnusedGenericType(token.to_string()),
                 Type::Alias(..) => WarningKind::UnusedTypeAlias(token.to_string()),
                 Type::Struct(..) => WarningKind::UnusedStruct(token.to_string()),
                 Type::Enum(..) => WarningKind::UnusedEnum(token.to_string()),
-                Type::EnumVariant(..) => WarningKind::UnusedEnumVariant(token.to_string()),
+                Type::Variant(..) => WarningKind::UnusedEnumVariant(token.to_string()),
                 _ => continue,
             };
             db.warning(kind, token.text_range());

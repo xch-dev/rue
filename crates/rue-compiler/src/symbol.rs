@@ -1,8 +1,9 @@
 use indexmap::IndexSet;
+use rue_typing::TypeId;
 
 use crate::{
-    database::{HirId, ScopeId, TypeId},
-    value::{FunctionType, Value},
+    database::{HirId, ScopeId},
+    value::Value,
     SymbolId,
 };
 
@@ -41,11 +42,12 @@ impl Symbol {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Function {
     pub scope_id: ScopeId,
     pub hir_id: HirId,
-    pub ty: FunctionType,
+    pub type_id: TypeId,
+    pub nil_terminated: bool,
 }
 
 #[derive(Debug, Clone)]

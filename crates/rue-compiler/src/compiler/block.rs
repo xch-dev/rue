@@ -1,9 +1,10 @@
 use rue_parser::{AstNode, Block, Stmt};
+use rue_typing::TypeId;
 
 use crate::{
     hir::{Hir, Op},
     value::Value,
-    ErrorKind, TypeId,
+    ErrorKind,
 };
 
 use super::{stmt::Statement, Compiler};
@@ -62,7 +63,7 @@ impl Compiler<'_> {
                     // Make sure that the return value matches the expected type.
                     self.type_check(
                         value.type_id,
-                        expected_type.unwrap_or(self.builtins.unknown),
+                        expected_type.unwrap_or(self.ty.std().unknown),
                         return_stmt.syntax().text_range(),
                     );
 
@@ -83,19 +84,19 @@ impl Compiler<'_> {
                     terminator = BlockTerminator::Raise;
                     is_terminated = true;
 
-                    statements.push(Statement::Return(Value::new(hir_id, self.builtins.unknown)));
+                    statements.push(Statement::Return(Value::new(hir_id, self.ty.std().never)));
                 }
                 Stmt::AssertStmt(assert_stmt) => {
                     // Compile the condition expression.
                     let condition = assert_stmt
                         .expr()
-                        .map(|condition| self.compile_expr(&condition, Some(self.builtins.bool)))
+                        .map(|condition| self.compile_expr(&condition, Some(self.ty.std().bool)))
                         .unwrap_or_else(|| self.unknown());
 
                     // Make sure that the condition is a boolean.
                     self.type_check(
                         condition.type_id,
-                        self.builtins.bool,
+                        self.ty.std().bool,
                         assert_stmt.syntax().text_range(),
                     );
 
@@ -115,13 +116,13 @@ impl Compiler<'_> {
                     // Compile the expression.
                     let expr = assume_stmt
                         .expr()
-                        .map(|expr| self.compile_expr(&expr, Some(self.builtins.bool)))
+                        .map(|expr| self.compile_expr(&expr, Some(self.ty.std().bool)))
                         .unwrap_or_else(|| self.unknown());
 
                     // Make sure that the condition is a boolean.
                     self.type_check(
                         expr.type_id,
-                        self.builtins.bool,
+                        self.ty.std().bool,
                         assume_stmt.syntax().text_range(),
                     );
 

@@ -67,7 +67,7 @@ fn function_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.expect(SyntaxKind::Fun);
     p.expect(SyntaxKind::Ident);
     if p.at(SyntaxKind::LessThan) {
-        generic_types(p);
+        generic_params(p);
     }
     function_params(p);
     p.expect(SyntaxKind::Arrow);
@@ -91,7 +91,6 @@ fn function_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionParam);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
-    p.try_eat(SyntaxKind::Question);
     p.expect(SyntaxKind::Colon);
     ty(p);
     p.finish();
@@ -101,6 +100,9 @@ fn type_alias_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::TypeAliasItem);
     p.expect(SyntaxKind::Type);
     p.expect(SyntaxKind::Ident);
+    if p.at(SyntaxKind::LessThan) {
+        generic_params(p);
+    }
     p.expect(SyntaxKind::Assign);
     ty(p);
     p.expect(SyntaxKind::Semicolon);
@@ -126,7 +128,6 @@ fn struct_field(p: &mut Parser<'_>) {
     p.start(SyntaxKind::StructField);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
-    p.try_eat(SyntaxKind::Question);
     p.expect(SyntaxKind::Colon);
     ty(p);
     p.finish();
@@ -339,6 +340,8 @@ fn expr(p: &mut Parser<'_>) {
 fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initializer: bool) {
     let checkpoint = p.checkpoint();
 
+    let mut at_generic_args = false;
+
     if p.at(SyntaxKind::Not)
         || p.at(SyntaxKind::Minus)
         || p.at(SyntaxKind::Plus)
@@ -359,9 +362,9 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
         p.bump();
         p.finish();
     } else if p.at(SyntaxKind::Ident) {
-        path_expr(p);
-
-        if p.at(SyntaxKind::OpenBrace) && allow_initializer {
+        if path_expr(p) {
+            at_generic_args = true;
+        } else if p.at(SyntaxKind::OpenBrace) && allow_initializer {
             p.start_at(checkpoint, SyntaxKind::InitializerExpr);
             p.bump();
             while !p.at(SyntaxKind::CloseBrace) {
@@ -402,9 +405,12 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
     }
 
     loop {
-        if p.at(SyntaxKind::OpenParen) {
+        if at_generic_args || p.at(SyntaxKind::OpenParen) {
             p.start_at(checkpoint, SyntaxKind::FunctionCallExpr);
-            p.bump();
+            if at_generic_args {
+                generic_args(p);
+            }
+            p.expect(SyntaxKind::OpenParen);
             while !p.at(SyntaxKind::CloseParen) {
                 function_call_arg(p);
                 if !p.try_eat(SyntaxKind::Comma) {
@@ -413,20 +419,11 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
             }
             p.expect(SyntaxKind::CloseParen);
             p.finish();
-        } else if p.at(SyntaxKind::Question) {
-            p.start_at(checkpoint, SyntaxKind::ExistsExpr);
-            p.bump();
-            p.finish();
+            at_generic_args = false;
         } else if p.at(SyntaxKind::Dot) {
             p.start_at(checkpoint, SyntaxKind::FieldAccessExpr);
             p.bump();
             p.expect(SyntaxKind::Ident);
-            p.finish();
-        } else if p.at(SyntaxKind::OpenBracket) {
-            p.start_at(checkpoint, SyntaxKind::IndexAccessExpr);
-            p.bump();
-            p.expect(SyntaxKind::Int);
-            p.expect(SyntaxKind::CloseBracket);
             p.finish();
         } else if p.at(SyntaxKind::As) {
             p.start_at(checkpoint, SyntaxKind::CastExpr);
@@ -498,13 +495,23 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8, allow_initi
     }
 }
 
-fn path_expr(p: &mut Parser<'_>) {
+#[must_use]
+fn path_expr(p: &mut Parser<'_>) -> bool {
     p.start(SyntaxKind::PathExpr);
+    p.start(SyntaxKind::PathItem);
     p.expect(SyntaxKind::Ident);
+    p.finish();
     while p.try_eat(SyntaxKind::PathSeparator) {
+        if p.at(SyntaxKind::LessThan) {
+            p.finish();
+            return true;
+        }
+        p.start(SyntaxKind::PathItem);
         p.expect(SyntaxKind::Ident);
+        p.finish();
     }
     p.finish();
+    false
 }
 
 fn function_call_arg(p: &mut Parser<'_>) {
@@ -534,7 +541,7 @@ fn lambda_expr(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LambdaExpr);
     p.expect(SyntaxKind::Fun);
     if p.at(SyntaxKind::LessThan) {
-        generic_types(p);
+        generic_params(p);
     }
     p.expect(SyntaxKind::OpenParen);
     while !p.at(SyntaxKind::CloseParen) {
@@ -556,7 +563,6 @@ fn lambda_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LambdaParam);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
-    p.try_eat(SyntaxKind::Question);
     if p.try_eat(SyntaxKind::Colon) {
         ty(p);
     }
@@ -566,10 +572,18 @@ fn lambda_param(p: &mut Parser<'_>) {
 const TYPE_RECOVERY_SET: &[SyntaxKind] = &[SyntaxKind::OpenBrace, SyntaxKind::CloseBrace];
 
 fn ty(p: &mut Parser<'_>) {
-    let checkpoint = p.checkpoint();
+    let cp = p.checkpoint();
 
     if p.at(SyntaxKind::Ident) {
         path_type(p);
+    } else if p.at(SyntaxKind::Int)
+        || p.at(SyntaxKind::True)
+        || p.at(SyntaxKind::False)
+        || p.at(SyntaxKind::Nil)
+    {
+        p.start(SyntaxKind::LiteralType);
+        p.bump();
+        p.finish();
     } else if p.at(SyntaxKind::Fun) {
         p.start(SyntaxKind::FunctionType);
         p.bump();
@@ -597,27 +611,28 @@ fn ty(p: &mut Parser<'_>) {
         return p.error(TYPE_RECOVERY_SET);
     }
 
-    loop {
-        if p.at(SyntaxKind::OpenBracket) {
-            p.start_at(checkpoint, SyntaxKind::ListType);
-            p.bump();
-            p.expect(SyntaxKind::CloseBracket);
-            p.finish();
-        } else if p.at(SyntaxKind::Question) {
-            p.start_at(checkpoint, SyntaxKind::NullableType);
-            p.bump();
-            p.finish();
-        } else {
-            break;
-        }
+    while p.at(SyntaxKind::BitwiseOr) {
+        p.start_at(cp, SyntaxKind::UnionType);
+        p.bump();
+        ty(p);
+        p.finish();
     }
 }
 
 fn path_type(p: &mut Parser<'_>) {
     p.start(SyntaxKind::PathType);
-    p.expect(SyntaxKind::Ident);
+    path_type_item(p);
     while p.try_eat(SyntaxKind::PathSeparator) {
-        p.expect(SyntaxKind::Ident);
+        path_type_item(p);
+    }
+    p.finish();
+}
+
+fn path_type_item(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::PathItem);
+    p.expect(SyntaxKind::Ident);
+    if p.at(SyntaxKind::LessThan) {
+        generic_args(p);
     }
     p.finish();
 }
@@ -626,17 +641,31 @@ fn function_type_param(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionTypeParam);
     p.try_eat(SyntaxKind::Spread);
     p.expect(SyntaxKind::Ident);
-    p.try_eat(SyntaxKind::Question);
     p.expect(SyntaxKind::Colon);
     ty(p);
     p.finish();
 }
 
-fn generic_types(p: &mut Parser<'_>) {
-    p.start(SyntaxKind::GenericTypes);
+fn generic_params(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::GenericParams);
     p.expect(SyntaxKind::LessThan);
     while !p.at(SyntaxKind::GreaterThan) {
         p.expect(SyntaxKind::Ident);
+        if !p.try_eat(SyntaxKind::Comma) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::GreaterThan);
+    p.finish();
+}
+
+fn generic_args(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::GenericArgs);
+    p.expect(SyntaxKind::LessThan);
+    ty(p);
+    p.try_eat(SyntaxKind::Comma);
+    while !p.at(SyntaxKind::GreaterThan) {
+        ty(p);
         if !p.try_eat(SyntaxKind::Comma) {
             break;
         }

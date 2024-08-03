@@ -1,69 +1,50 @@
+use indexmap::indexset;
 use rowan::TextRange;
+use rue_typing::{Callable, Type, TypeSystem};
 
 use crate::{
     hir::{BinOp, Hir, Op},
     scope::Scope,
     symbol::{Function, Symbol},
-    value::{FunctionType, PairType, Rest, Type},
-    Database, HirId, ScopeId, SymbolId, TypeId,
+    Database, HirId, ScopeId, SymbolId,
 };
 
 /// These are the built-in types and most commonly used HIR nodes.
 pub struct Builtins {
     pub scope_id: ScopeId,
-    pub any: TypeId,
-    pub int: TypeId,
-    pub bool: TypeId,
-    pub bytes: TypeId,
-    pub bytes32: TypeId,
-    pub public_key: TypeId,
-    pub nil: TypeId,
-    pub nil_hir: HirId,
-    pub unknown: TypeId,
-    pub unknown_hir: HirId,
+    pub nil: HirId,
+    pub unknown: HirId,
 }
 
 /// Defines intrinsics that cannot be implemented in Rue.
-pub fn builtins(db: &mut Database) -> Builtins {
+pub fn builtins(db: &mut Database, ty: &mut TypeSystem) -> Builtins {
     let mut scope = Scope::default();
 
-    let int = db.alloc_type(Type::Int);
-    let bool = db.alloc_type(Type::Bool);
-    let bytes = db.alloc_type(Type::Bytes);
-    let bytes32 = db.alloc_type(Type::Bytes32);
-    let public_key = db.alloc_type(Type::PublicKey);
-    let any = db.alloc_type(Type::Any);
-    let nil = db.alloc_type(Type::Nil);
-    let nil_hir = db.alloc_hir(Hir::Atom(Vec::new()));
-    let unknown = db.alloc_type(Type::Unknown);
-    let unknown_hir = db.alloc_hir(Hir::Unknown);
+    let nil = db.alloc_hir(Hir::Atom(Vec::new()));
+    let unknown = db.alloc_hir(Hir::Unknown);
 
-    scope.define_type("Nil".to_string(), nil);
-    scope.define_type("Int".to_string(), int);
-    scope.define_type("Bool".to_string(), bool);
-    scope.define_type("Bytes".to_string(), bytes);
-    scope.define_type("Bytes32".to_string(), bytes32);
-    scope.define_type("PublicKey".to_string(), public_key);
-    scope.define_type("Any".to_string(), any);
+    scope.define_type("Int".to_string(), ty.std().int);
+    scope.define_type("Bool".to_string(), ty.std().bool);
+    scope.define_type("Bytes".to_string(), ty.std().bytes);
+    scope.define_type("Bytes32".to_string(), ty.std().bytes32);
+    scope.define_type("PublicKey".to_string(), ty.std().public_key);
+    scope.define_type("Any".to_string(), ty.std().any);
+    scope.define_type("List".to_string(), ty.std().unmapped_list);
 
     let builtins = Builtins {
         scope_id: db.alloc_scope(scope),
-        any,
-        int,
-        bool,
-        bytes,
-        bytes32,
-        public_key,
         nil,
-        nil_hir,
         unknown,
-        unknown_hir,
     };
 
-    let sha256 = sha256(db, &builtins);
-    let pubkey_for_exp = pubkey_for_exp(db, &builtins);
-    let divmod = divmod(db, &builtins);
-    let substr = substr(db, &builtins);
+    let cast = cast(db, ty);
+    let sha256 = sha256(db, ty);
+    let pubkey_for_exp = pubkey_for_exp(db, ty);
+    let divmod = divmod(db, ty);
+    let substr = substr(db, ty);
+
+    db.scope_mut(builtins.scope_id)
+        .define_symbol("cast".to_string(), cast);
 
     db.scope_mut(builtins.scope_id)
         .define_symbol("sha256".to_string(), sha256);
@@ -80,51 +61,94 @@ pub fn builtins(db: &mut Database) -> Builtins {
     builtins
 }
 
-fn sha256(db: &mut Database, builtins: &Builtins) -> SymbolId {
+fn cast(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
     let mut scope = Scope::default();
 
-    let param = db.alloc_symbol(Symbol::Parameter(builtins.bytes));
+    let param = db.alloc_symbol(Symbol::Parameter(ty.std().any));
+    scope.define_symbol("value".to_string(), param);
+    let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
+    let scope_id = db.alloc_scope(scope);
+
+    let generic = ty.alloc(Type::Generic);
+    let type_id = ty.alloc(Type::Unknown);
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["value".to_string()],
+        parameters: ty.alloc(Type::Pair(ty.std().any, ty.std().nil)),
+        nil_terminated: true,
+        return_type: generic,
+        generic_types: vec![generic],
+    });
+
+    db.alloc_symbol(Symbol::InlineFunction(Function {
+        scope_id,
+        hir_id: param_ref,
+        type_id,
+        nil_terminated: true,
+    }))
+}
+
+fn sha256(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
+    let mut scope = Scope::default();
+
+    let param = db.alloc_symbol(Symbol::Parameter(ty.std().bytes));
     scope.define_symbol("bytes".to_string(), param);
     let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
     let hir_id = db.alloc_hir(Hir::Op(Op::Sha256, param_ref));
     let scope_id = db.alloc_scope(scope);
 
+    let type_id = ty.alloc(Type::Unknown);
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["bytes".to_string()],
+        parameters: ty.alloc(Type::Pair(ty.std().bytes, ty.std().nil)),
+        nil_terminated: true,
+        return_type: ty.std().bytes32,
+        generic_types: Vec::new(),
+    });
+
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
-        ty: FunctionType {
-            param_types: vec![builtins.bytes],
-            rest: Rest::Nil,
-            return_type: builtins.bytes32,
-            generic_types: Vec::new(),
-        },
+        type_id,
+        nil_terminated: true,
     }))
 }
 
-fn pubkey_for_exp(db: &mut Database, builtins: &Builtins) -> SymbolId {
+fn pubkey_for_exp(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
     let mut scope = Scope::default();
-    let param = db.alloc_symbol(Symbol::Parameter(builtins.bytes32));
+    let param = db.alloc_symbol(Symbol::Parameter(ty.std().bytes32));
     scope.define_symbol("exponent".to_string(), param);
     let param_ref = db.alloc_hir(Hir::Reference(param, TextRange::default()));
     let hir_id = db.alloc_hir(Hir::Op(Op::PubkeyForExp, param_ref));
     let scope_id = db.alloc_scope(scope);
 
+    let type_id = ty.alloc(Type::Unknown);
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["exponent".to_string()],
+        parameters: ty.alloc(Type::Pair(ty.std().bytes32, ty.std().nil)),
+        nil_terminated: true,
+        return_type: ty.std().public_key,
+        generic_types: Vec::new(),
+    });
+
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
-        ty: FunctionType {
-            param_types: vec![builtins.bytes32],
-            rest: Rest::Nil,
-            return_type: builtins.public_key,
-            generic_types: Vec::new(),
-        },
+        type_id,
+        nil_terminated: true,
     }))
 }
 
-fn divmod(db: &mut Database, builtins: &Builtins) -> SymbolId {
+fn divmod(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
     let mut scope = Scope::default();
-    let lhs = db.alloc_symbol(Symbol::Parameter(builtins.int));
-    let rhs = db.alloc_symbol(Symbol::Parameter(builtins.int));
+
+    let lhs = db.alloc_symbol(Symbol::Parameter(ty.std().int));
+    let rhs = db.alloc_symbol(Symbol::Parameter(ty.std().int));
     scope.define_symbol("lhs".to_string(), lhs);
     scope.define_symbol("rhs".to_string(), rhs);
     let lhs_ref = db.alloc_hir(Hir::Reference(lhs, TextRange::default()));
@@ -132,28 +156,36 @@ fn divmod(db: &mut Database, builtins: &Builtins) -> SymbolId {
     let hir_id = db.alloc_hir(Hir::BinaryOp(BinOp::DivMod, lhs_ref, rhs_ref));
     let scope_id = db.alloc_scope(scope);
 
-    let int_pair = db.alloc_type(Type::Pair(PairType {
-        first: builtins.int,
-        rest: builtins.int,
-    }));
+    let int_pair = ty.alloc(Type::Pair(ty.std().int, ty.std().int));
+
+    let type_id = ty.alloc(Type::Unknown);
+
+    let parameters = ty.alloc(Type::Pair(ty.std().int, ty.std().nil));
+    let parameters = ty.alloc(Type::Pair(ty.std().int, parameters));
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["lhs".to_string(), "rhs".to_string()],
+        parameters,
+        nil_terminated: true,
+        return_type: int_pair,
+        generic_types: Vec::new(),
+    });
 
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
-        ty: FunctionType {
-            param_types: vec![builtins.int, builtins.int],
-            rest: Rest::Nil,
-            return_type: int_pair,
-            generic_types: Vec::new(),
-        },
+        type_id,
+        nil_terminated: true,
     }))
 }
 
-fn substr(db: &mut Database, builtins: &Builtins) -> SymbolId {
+fn substr(db: &mut Database, ty: &mut TypeSystem) -> SymbolId {
     let mut scope = Scope::default();
-    let value = db.alloc_symbol(Symbol::Parameter(builtins.bytes));
-    let start = db.alloc_symbol(Symbol::Parameter(builtins.int));
-    let end = db.alloc_symbol(Symbol::Parameter(builtins.int));
+
+    let value = db.alloc_symbol(Symbol::Parameter(ty.std().bytes));
+    let start = db.alloc_symbol(Symbol::Parameter(ty.std().int));
+    let end = db.alloc_symbol(Symbol::Parameter(ty.std().int));
     scope.define_symbol("value".to_string(), value);
     scope.define_symbol("start".to_string(), start);
     scope.define_symbol("end".to_string(), end);
@@ -163,14 +195,25 @@ fn substr(db: &mut Database, builtins: &Builtins) -> SymbolId {
     let hir_id = db.alloc_hir(Hir::Substr(value_ref, start_ref, end_ref));
     let scope_id = db.alloc_scope(scope);
 
+    let end = ty.alloc(Type::Pair(ty.std().int, ty.std().nil));
+    let int = ty.alloc(Type::Pair(ty.std().int, end));
+    let parameters = ty.alloc(Type::Pair(ty.std().bytes, int));
+
+    let type_id = ty.alloc(Type::Unknown);
+
+    *ty.get_mut(type_id) = Type::Callable(Callable {
+        original_type_id: type_id,
+        parameter_names: indexset!["value".to_string(), "start".to_string(), "end".to_string()],
+        parameters,
+        nil_terminated: true,
+        return_type: ty.std().bytes,
+        generic_types: Vec::new(),
+    });
+
     db.alloc_symbol(Symbol::InlineFunction(Function {
         scope_id,
         hir_id,
-        ty: FunctionType {
-            param_types: vec![builtins.bytes, builtins.int, builtins.int],
-            rest: Rest::Nil,
-            return_type: builtins.bytes,
-            generic_types: Vec::new(),
-        },
+        type_id,
+        nil_terminated: true,
     }))
 }

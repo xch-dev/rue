@@ -1,25 +1,24 @@
 use rue_parser::{AstNode, Type};
-
-use crate::TypeId;
+use rue_typing::TypeId;
 
 use super::Compiler;
 
 mod function_type;
-mod list_type;
-mod nullable_type;
+mod literal_type;
 mod pair_type;
 mod path_type;
+mod union_type;
 
 impl Compiler<'_> {
     pub fn compile_type(&mut self, ty: Type) -> TypeId {
         match ty {
+            Type::LiteralType(lit) => self.compile_literal_type(&lit),
             Type::PathType(path) => {
-                self.compile_path_type(&path.idents(), path.syntax().text_range())
+                self.compile_path_type(&path.items(), path.syntax().text_range())
             }
-            Type::ListType(list) => self.compile_list_type(&list),
             Type::FunctionType(function) => self.compile_function_type(&function),
             Type::PairType(tuple) => self.compile_pair_type(&tuple),
-            Type::NullableType(optional) => self.compile_nullable_type(&optional),
+            Type::UnionType(union) => self.compile_union_type(&union),
         }
     }
 }

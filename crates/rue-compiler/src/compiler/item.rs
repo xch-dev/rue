@@ -1,8 +1,9 @@
-use std::collections::HashSet;
+use rue_typing::HashSet;
 
 use rue_parser::Item;
+use rue_typing::{Type, TypeId};
 
-use crate::{symbol::Symbol, value::Type, ErrorKind, SymbolId, TypeId};
+use crate::{symbol::Symbol, ErrorKind, ScopeId, SymbolId};
 
 use super::Compiler;
 
@@ -17,6 +18,7 @@ mod type_alias_item;
 pub struct Declarations {
     pub type_ids: Vec<TypeId>,
     pub symbol_ids: Vec<SymbolId>,
+    pub scope_ids: Vec<ScopeId>,
     pub exported_types: Vec<TypeId>,
     pub exported_symbols: Vec<SymbolId>,
 }
@@ -29,12 +31,17 @@ impl Compiler<'_> {
 
         let mut type_ids = Vec::new();
         let mut symbol_ids = Vec::new();
+        let mut scope_ids = Vec::new();
         let mut exported_types = Vec::new();
         let mut exported_symbols = Vec::new();
 
         for item in items {
             match item {
-                Item::TypeAliasItem(ty) => type_ids.push(self.declare_type_alias_item(ty)),
+                Item::TypeAliasItem(ty) => {
+                    let (type_id, scope_id) = self.declare_type_alias_item(ty);
+                    type_ids.push(type_id);
+                    scope_ids.push(scope_id);
+                }
                 Item::StructItem(struct_item) => {
                     type_ids.push(self.declare_struct_item(struct_item));
                 }
@@ -71,6 +78,7 @@ impl Compiler<'_> {
         Declarations {
             type_ids,
             symbol_ids,
+            scope_ids,
             exported_types,
             exported_symbols,
         }
@@ -84,7 +92,7 @@ impl Compiler<'_> {
                 Item::TypeAliasItem(ty) => {
                     let type_id = declarations.type_ids.remove(0);
                     self.type_definition_stack.push(type_id);
-                    self.compile_type_alias_item(ty, type_id);
+                    self.compile_type_alias_item(ty, type_id, declarations.scope_ids.remove(0));
                     self.type_definition_stack.pop().unwrap();
                 }
                 Item::StructItem(struct_item) => {
@@ -164,7 +172,7 @@ impl Compiler<'_> {
             .local_types()
             .into_iter()
             .filter_map(|type_id| {
-                if let Type::Enum(..) = self.db.ty(type_id).clone() {
+                if let Type::Enum(..) = self.ty.get(type_id).clone() {
                     Some(self.scope().type_name(type_id).unwrap().to_string())
                 } else {
                     None

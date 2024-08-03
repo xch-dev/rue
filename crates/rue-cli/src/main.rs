@@ -5,7 +5,7 @@ use std::fs;
 use clap::Parser;
 use clvmr::{serde::node_to_bytes, Allocator, NodePtr};
 use rue_clvm::{parse_clvm, run_clvm, stringify_clvm};
-use rue_compiler::{compile, Diagnostic, DiagnosticKind};
+use rue_compiler::{compile_raw, Diagnostic, DiagnosticKind};
 use rue_parser::{line_col, parse, LineCol};
 
 /// CLI tools for working with the Rue compiler.
@@ -20,23 +20,31 @@ enum Command {
         /// A list of parameters to run the compiled program with.
         #[clap(long, short = 'r')]
         run: Option<Option<String>>,
+
+        /// Whether to exclude the standard library.
+        #[clap(long, short = 'n')]
+        no_std: bool,
     },
 
     /// Check a Rue source file for errors.
     Check {
         /// The source file to check.
         file: String,
+
+        /// Whether to exclude the standard library.
+        #[clap(long, short = 'n')]
+        no_std: bool,
     },
 }
 
 fn main() {
     match Command::parse() {
-        Command::Build { file, run } => build(file, true, &run),
-        Command::Check { file } => build(file, false, &None),
+        Command::Build { file, run, no_std } => build(file, true, &run, no_std),
+        Command::Check { file, no_std } => build(file, false, &None, no_std),
     }
 }
 
-fn build(file: String, should_compile: bool, run: &Option<Option<String>>) {
+fn build(file: String, should_compile: bool, run: &Option<Option<String>>, no_std: bool) {
     let source = fs::read_to_string(file).expect("could not read source file");
     let (ast, errors) = parse(&source);
 
@@ -49,7 +57,12 @@ fn build(file: String, should_compile: bool, run: &Option<Option<String>>) {
     }
 
     let mut allocator = Allocator::new();
-    let output = compile(&mut allocator, &ast, should_compile && errors.is_empty());
+    let output = compile_raw(
+        &mut allocator,
+        &ast,
+        should_compile && errors.is_empty(),
+        !no_std,
+    );
 
     if print_diagnostics(&source, &output.diagnostics) {
         return;

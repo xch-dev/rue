@@ -1,0 +1,28 @@
+[package]
+name = "rue-typing"
+version = "0.1.1"
+edition = "2021"
+license = "Apache-2.0"
+description = "The type system used by the Rue compiler."
+authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
+homepage = "https://github.com/rigidity/rue"
+repository = "https://github.com/rigidity/rue"
+readme = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[lints]
+workspace = true
+
+[dependencies]
+id-arena = { workspace = true }
+thiserror = { workspace = true }
+indexmap = { workspace = true }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+clvmr = { workspace = true }
+hashbrown = { workspace = true }
+ahash = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }

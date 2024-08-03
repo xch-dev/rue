@@ -1,6 +1,6 @@
 export enum Condition {
     Remark = 1 {
-        value?: Any,
+        ...value: (Any, nil) | nil,
     },
     AggSigParent = 43 {
         public_key: PublicKey,
@@ -37,7 +37,7 @@ export enum Condition {
     CreateCoin = 51 {
         puzzle_hash: Bytes32,
         amount: Int,
-        memos?: Bytes[],
+        ...memos: (List<Bytes>, nil) | nil,
     },
     ReserveFee = 52 {
         amount: Int,
@@ -105,12 +105,12 @@ export enum Condition {
     },
     Softfork = 90 {
         cost: Int,
-        value?: Any,
+        ...value: (Any, nil) | nil,
     },
 }
 
-export fun concat<T>(a: T[], b: T[]) -> T[] {
-    if a is (T, T[]) {
+export fun concat<T>(a: List<T>, b: List<T>) -> List<T> {
+    if a is (T, List<T>) {
         return [a.first, ...concat(a.rest, b)];
     }
     b
@@ -167,8 +167,8 @@ inline fun update_hash_with_parameter(
     sha256(CONS_PREIMAGE_PREFIX + two_item_list_hash(quote_hash(parameter_hash), environment_hash))
 }
 
-fun curried_params_hash(parameters: Bytes32[]) -> Bytes32 {
-    if parameters is Nil {
+fun curried_params_hash(parameters: List<Bytes32>) -> Bytes32 {
+    if parameters is nil {
         return ONE_TREE_HASH;
     }
     update_hash_with_parameter(parameters.first, curried_params_hash(parameters.rest))
@@ -176,7 +176,7 @@ fun curried_params_hash(parameters: Bytes32[]) -> Bytes32 {
 
 export inline fun curry_tree_hash(
     mod_hash: Bytes32,
-    ...parameters: Bytes32[]
+    ...parameters: List<Bytes32>
 ) -> Bytes32 {
     apply_hash(mod_hash, curried_params_hash(parameters))
 }
@@ -191,15 +191,15 @@ export fun calculate_coin_id(
     sha256(parent_coin_id + puzzle_hash + amount as Bytes)
 }
 
-export fun map<T, U>(list: T[], fn: fun(item: T) -> U) -> U[] {
-    if list is Nil {
+export fun map<T, U>(list: List<T>, fn: fun(item: T) -> U) -> List<U> {
+    if list is nil {
         return nil;
     }
     [fn(list.first), ...map(list.rest, fn)]
 }
 
-export fun filter<T>(list: T[], fn: fun(item: T) -> Bool) -> T[] {
-    if list is Nil {
+export fun filter<T>(list: List<T>, fn: fun(item: T) -> Bool) -> List<T> {
+    if list is nil {
         return nil;
     }
     if fn(list.first) {
@@ -208,8 +208,8 @@ export fun filter<T>(list: T[], fn: fun(item: T) -> Bool) -> T[] {
     filter(list.rest, fn)
 }
 
-export fun fold<T, U>(list: T[], initial: U, fn: fun(acc: U, item: T) -> U) -> U {
-    if list is Nil {
+export fun fold<T, U>(list: List<T>, initial: U, fn: fun(acc: U, item: T) -> U) -> U {
+    if list is nil {
         return initial;
     }
     fold(list.rest, fn(initial, list.first), fn)

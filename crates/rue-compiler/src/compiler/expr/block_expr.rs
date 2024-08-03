@@ -1,10 +1,11 @@
 use rue_parser::{AstNode, Block};
+use rue_typing::TypeId;
 
 use crate::{
     compiler::{block::BlockTerminator, Compiler},
     scope::Scope,
     value::Value,
-    ErrorKind, TypeId,
+    ErrorKind,
 };
 
 impl Compiler<'_> {

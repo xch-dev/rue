@@ -1,28 +1,28 @@
 // This puzzle has not been audited or tested, and is for example purposes only.
 
 fun main(
-    public_keys: PublicKey[],
+    public_keys: List<PublicKey>,
     required: Int,
-    indices: Int[],
-    conditions: Condition[],
-) -> Condition[] {
+    indices: List<Int>,
+    conditions: List<Condition>,
+) -> List<Condition> {
     let message = tree_hash(conditions);
     let agg_sigs = check_signatures(public_keys, required, indices, 0, message);
     concat(agg_sigs, conditions)
 }
 
 fun check_signatures(
-    public_keys: PublicKey[],
+    public_keys: List<PublicKey>,
     required: Int,
-    indices: Int[],
+    indices: List<Int>,
     pos: Int,
     message: Bytes,
-) -> Condition[] {
+) -> List<Condition> {
     if required == 0 {
         return nil;
     }
 
-    assume !(public_keys is Nil) && !(indices is Nil);
+    assume !(public_keys is nil) && !(indices is nil);
 
     if indices.first != pos {
         return check_signatures(public_keys.rest, required, indices, pos + 1, message);

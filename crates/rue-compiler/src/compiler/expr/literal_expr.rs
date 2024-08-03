@@ -1,8 +1,7 @@
-use clvmr::Allocator;
-use num_bigint::BigInt;
 use rue_parser::{LiteralExpr, SyntaxKind, SyntaxToken};
+use rue_typing::bigint_to_bytes;
 
-use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
+use crate::{compiler::Compiler, hir::Hir, value::Value};
 
 impl Compiler<'_> {
     pub fn compile_literal_expr(&mut self, literal: &LiteralExpr) -> Value {
@@ -23,11 +22,11 @@ impl Compiler<'_> {
 
     fn compile_bool_literal(&mut self, value: bool) -> Value {
         let atom = if value { vec![1] } else { vec![] };
-        Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.builtins.bool)
+        Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.ty.std().bool)
     }
 
     fn compile_nil_literal(&mut self) -> Value {
-        Value::new(self.db.alloc_hir(Hir::Atom(Vec::new())), self.builtins.nil)
+        Value::new(self.db.alloc_hir(Hir::Atom(Vec::new())), self.ty.std().nil)
     }
 
     fn compile_int_literal(&mut self, int: &SyntaxToken) -> Value {
@@ -39,13 +38,10 @@ impl Compiler<'_> {
             .parse()
             .expect("failed to parse integer literal");
 
-        let atom = Self::bigint_to_bytes(bigint).unwrap_or_else(|| {
-            self.db.error(ErrorKind::IntegerTooLarge, int.text_range());
-            Vec::new()
-        });
+        let atom = bigint_to_bytes(bigint);
 
         // Extract the atom representation of the number.
-        Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.builtins.int)
+        Value::new(self.db.alloc_hir(Hir::Atom(atom)), self.ty.std().int)
     }
 
     fn compile_hex_literal(&mut self, hex: &SyntaxToken) -> Value {
@@ -67,15 +63,15 @@ impl Compiler<'_> {
             if bytes_len == 32 {
                 // We'll assume this is a `Bytes32` since it's the correct length.
                 // This makes putting hashes in the code more convenient.
-                self.builtins.bytes32
+                self.ty.std().bytes32
             } else if bytes_len == 48 {
                 // We'll assume this is a `PublicKey` since it's the correct length.
                 // It's unlikely to intend the type being `Bytes`, but you can cast if needed.
-                self.builtins.public_key
+                self.ty.std().public_key
             } else {
                 // Everything else is just `Bytes`.
                 // Leading zeros are not removed, so `0x00` is different than `0`.
-                self.builtins.bytes
+                self.ty.std().bytes
             },
         )
     }
@@ -89,18 +85,7 @@ impl Compiler<'_> {
         Value::new(
             self.db
                 .alloc_hir(Hir::Atom(text.replace(quote, "").as_bytes().to_vec())),
-            self.builtins.bytes,
+            self.ty.std().bytes,
         )
-    }
-
-    pub fn bigint_to_bytes(bigint: BigInt) -> Option<Vec<u8>> {
-        // Create a CLVM allocator.
-        let mut allocator = Allocator::new();
-
-        // Try to allocate the number.
-        let ptr = allocator.new_number(bigint).ok()?;
-
-        // Extract the atom representation of the number.
-        Some(allocator.atom(ptr).as_ref().to_vec())
     }
 }

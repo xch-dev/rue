@@ -1,18 +1,12 @@
 use id_arena::Id;
 
-use crate::{
-    environment::Environment, hir::Hir, lir::Lir, mir::Mir, scope::Scope, symbol::Symbol,
-    value::Type,
-};
+use crate::{environment::Environment, hir::Hir, lir::Lir, mir::Mir, scope::Scope, symbol::Symbol};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolId(pub(super) Id<Symbol>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ScopeId(pub(super) Id<Scope>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeId(pub(super) Id<Type>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HirId(pub(super) Id<Hir>);

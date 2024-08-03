@@ -1,11 +1,11 @@
 use rue_parser::{AstNode, FunctionItem};
+use rue_typing::{construct_items, Callable, Type};
 
 use crate::{
     compiler::Compiler,
     hir::Hir,
     scope::Scope,
     symbol::{Function, Symbol},
-    value::{FunctionType, Rest, Type},
     ErrorKind, SymbolId,
 };
 
@@ -22,34 +22,34 @@ impl Compiler<'_> {
         let mut generic_types = Vec::new();
 
         // Add the generic types to the scope.
-        for generic_type in function_item
-            .generic_types()
-            .map(|generics| generics.idents())
+        for name in function_item
+            .generic_params()
+            .map(|generics| generics.names())
             .unwrap_or_default()
         {
             // Create the generic type id.
-            let type_id = self.db.alloc_type(Type::Generic);
+            let type_id = self.ty.alloc(Type::Generic);
 
             // Check for duplicate generic types.
-            if self.scope().ty(generic_type.text()).is_some() {
+            if self.scope().ty(name.text()).is_some() {
                 self.db.error(
-                    ErrorKind::DuplicateType(generic_type.text().to_string()),
-                    generic_type.text_range(),
+                    ErrorKind::DuplicateType(name.text().to_string()),
+                    name.text_range(),
                 );
             }
 
             // Add the generic type to the scope and define the token for the generic type.
-            self.scope_mut()
-                .define_type(generic_type.to_string(), type_id);
+            self.scope_mut().define_type(name.to_string(), type_id);
 
-            self.db.insert_type_token(type_id, generic_type);
+            self.db.insert_type_token(type_id, name);
 
             // Add the generic type to the list so it can be added to the function type.
             generic_types.push(type_id);
         }
 
         let mut param_types = Vec::new();
-        let mut rest = Rest::Nil;
+        let mut param_names = Vec::new();
+        let mut nil_terminated = true;
 
         let params = function_item.params();
         let len = params.len();
@@ -65,19 +65,12 @@ impl Compiler<'_> {
             // Otherwise, it's a parser error.
             let type_id = param
                 .ty()
-                .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+                .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
             // Add the parameter type to the list and update the parameter symbol.
             param_types.push(type_id);
 
-            *self.db.symbol_mut(symbol_id) = Symbol::Parameter(if param.optional().is_some() {
-                // If the parameter is optional, wrap the type in a possibly undefined type.
-                // This prevents referencing the parameter until it's checked for undefined.
-                self.db.alloc_type(Type::Optional(type_id))
-            } else {
-                // Otherwise, just use the type.
-                type_id
-            });
+            *self.db.symbol_mut(symbol_id) = Symbol::Parameter(type_id);
 
             // Add the parameter to the scope and define the token for the parameter.
             if let Some(name) = param.name() {
@@ -88,34 +81,25 @@ impl Compiler<'_> {
                     );
                 }
 
+                param_names.push(name.to_string());
                 self.scope_mut().define_symbol(name.to_string(), symbol_id);
                 self.db.insert_symbol_token(symbol_id, name);
+            } else {
+                param_names.push(format!("#{i}"));
             }
 
             // Check if it's a spread or optional parameter.
             let last = i + 1 == len;
             let spread = param.spread().is_some();
-            let optional = param.optional().is_some();
 
-            if spread && optional {
-                self.db.error(
-                    ErrorKind::OptionalParameterSpread,
-                    param.syntax().text_range(),
-                );
-            } else if spread && !last {
-                self.db.error(
-                    ErrorKind::InvalidSpreadParameter,
-                    param.syntax().text_range(),
-                );
-            } else if optional && !last {
-                self.db.error(
-                    ErrorKind::InvalidOptionalParameter,
-                    param.syntax().text_range(),
-                );
-            } else if spread {
-                rest = Rest::Spread;
-            } else if optional {
-                rest = Rest::Optional;
+            if spread {
+                if !last {
+                    self.db.error(
+                        ErrorKind::InvalidSpreadParameter,
+                        param.syntax().text_range(),
+                    );
+                }
+                nil_terminated = false;
             }
 
             self.symbol_stack.pop().unwrap();
@@ -125,7 +109,7 @@ impl Compiler<'_> {
         // Otherwise, it's a parser error.
         let return_type = function_item
             .return_type()
-            .map_or(self.builtins.unknown, |ty| self.compile_type(ty));
+            .map_or(self.ty.std().unknown, |ty| self.compile_type(ty));
 
         self.scope_stack.pop().unwrap();
 
@@ -133,25 +117,31 @@ impl Compiler<'_> {
         let hir_id = self.db.alloc_hir(Hir::Unknown);
 
         // Create the function's type.
-        let ty = FunctionType {
-            generic_types,
-            param_types,
-            rest,
+        let type_id = self.ty.alloc(Type::Unknown);
+
+        *self.ty.get_mut(type_id) = Type::Callable(Callable {
+            original_type_id: type_id,
+            parameter_names: param_names.into_iter().collect(),
+            parameters: construct_items(self.ty, param_types.into_iter(), nil_terminated),
             return_type,
-        };
+            nil_terminated,
+            generic_types,
+        });
 
         // Update the symbol with the function.
         if function_item.inline().is_some() {
             *self.db.symbol_mut(symbol_id) = Symbol::InlineFunction(Function {
                 scope_id,
                 hir_id,
-                ty,
+                type_id,
+                nil_terminated,
             });
         } else {
             *self.db.symbol_mut(symbol_id) = Symbol::Function(Function {
                 scope_id,
                 hir_id,
-                ty,
+                type_id,
+                nil_terminated,
             });
         }
 
@@ -173,26 +163,36 @@ impl Compiler<'_> {
         };
 
         // Get the function's scope and type.
-        let (Symbol::Function(Function { scope_id, ty, .. })
-        | Symbol::InlineFunction(Function { scope_id, ty, .. })) =
-            self.db.symbol(symbol_id).clone()
+        let (Symbol::Function(Function {
+            scope_id, type_id, ..
+        })
+        | Symbol::InlineFunction(Function {
+            scope_id, type_id, ..
+        })) = self.db.symbol(symbol_id).clone()
         else {
             unreachable!();
         };
 
+        let return_type = self
+            .ty
+            .get_callable(type_id)
+            .map(|callable| callable.return_type);
+
         // We don't care about explicit returns in this context.
         self.scope_stack.push(scope_id);
         self.allow_generic_inference_stack.push(false);
-        let value = self.compile_block(&body, Some(ty.return_type)).value;
+        let value = self.compile_block(&body, return_type).value;
         self.allow_generic_inference_stack.pop().unwrap();
         self.scope_stack.pop().unwrap();
 
         // Ensure that the body is assignable to the return type.
-        self.type_check(
-            value.type_id,
-            ty.return_type,
-            function.body().unwrap().syntax().text_range(),
-        );
+        if let Some(return_type) = return_type {
+            self.type_check(
+                value.type_id,
+                return_type,
+                function.body().unwrap().syntax().text_range(),
+            );
+        }
 
         // Update the function's HIR with the body's HIR, for code generation purposes.
         let (Symbol::Function(Function { hir_id, .. })

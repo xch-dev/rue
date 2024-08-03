@@ -1,6 +1,6 @@
 [const_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference constant. (8:5)"]
+compiler_errors = ["Error: Cannot recursively reference constant (8:5)"]
 
 [recursive_function]
 bytes = 95
@@ -18,7 +18,7 @@ hash = "3e851b5ad6b5c395bd46219991d2c7bb113e91918a065c705cc9068445bcc2a7"
 
 [inline_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively call inline function. (10:5)"]
+compiler_errors = ["Error: Cannot recursively call inline function (10:5)"]
 
 [const_reference]
 bytes = 31
@@ -29,7 +29,7 @@ hash = "e3429ee993cedb79fa5b67ebd52635a294daf9c69b1c1d1a967f884fb4c3f1d1"
 
 [inline_const_inline_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively call inline function. (5:27)"]
+compiler_errors = ["Error: Cannot recursively call inline function (5:27)"]
 
 [mixed_consts]
 bytes = 39
@@ -40,27 +40,27 @@ hash = "14870051d753aa4295466e166782fb5da7f18ad450a0ed0af9d7ccb83a82bed9"
 
 [inline_const_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference inline constant. (8:5)"]
+compiler_errors = ["Error: Cannot recursively reference inline constant (8:5)"]
 
 [inline_const_self]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference inline constant. (1:27)"]
+compiler_errors = ["Error: Cannot recursively reference inline constant (1:27)"]
 
 [recursive_inline_function]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively call inline function. (6:5)"]
+compiler_errors = ["Error: Cannot recursively call inline function (6:5)"]
 
 [const_inline_function_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively call inline function. (5:20)"]
+compiler_errors = ["Error: Cannot recursively call inline function (5:20)"]
 
 [const_self]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference constant. (1:20)"]
+compiler_errors = ["Error: Cannot recursively reference constant (1:20)"]
 
 [const_cycle]
 parser_errors = []
-compiler_errors = ["Error: Cannot recursively reference constant. (2:16)"]
+compiler_errors = ["Error: Cannot recursively reference constant (2:16)"]
 
 [inline_const_reference]
 bytes = 3
@@ -185,7 +185,7 @@ hash = "8172dac13078e7c4ce8a6062bb5dd117bb39d45b7e9ca3b9970dfef4be188ac8"
 
 [block_return]
 parser_errors = []
-compiler_errors = ["Error: Explicit return is not allowed within expressions. (2:5)"]
+compiler_errors = ["Error: Explicit return is not allowed within expressions (2:5)"]
 
 [block_function]
 bytes = 57
@@ -203,7 +203,7 @@ hash = "6636275e009c26ccaba0bde1f76d4e1451f57462b1d2528a3a5df0a3202c1f78"
 
 [block_nested_return]
 parser_errors = []
-compiler_errors = ["Error: Explicit return is not allowed within expressions. (2:10)"]
+compiler_errors = ["Error: Explicit return is not allowed within expressions (2:10)"]
 
 [enum_discriminant]
 bytes = 199
@@ -213,11 +213,11 @@ output = "()"
 hash = "1a9674474efa85b2616b28fc2ae4f1b6a199273973e482ea74498fcc507141cf"
 
 [enum_fields]
-bytes = 35
-cost = 636
+bytes = 65
+cost = 1004
 input = "()"
 output = "1000"
-hash = "9cccd0bde90e1e21f335c88acd5af8788b190c7bcfe652995564064ff2f34e28"
+hash = "6f486106a324ee36d5b3e63bd65d7e69c8a95278d4f405307492e0c4960b08f2"
 
 [enum_numeric]
 bytes = 103
@@ -243,39 +243,25 @@ hash = "600c2c11a7ceb22fd3f5d2559d22120f9ad7e8d47e0966ddcfbcce20e02f373f"
 [function_call]
 parser_errors = []
 compiler_errors = [
-    "Error: Expected 0 arguments, but found 1. (3:11)",
-    "Error: Expected either 0 or 1 arguments, but found 2. (7:11)",
-    "Error: This function does not support the spread operator on its last argument. (8:25)",
-    "Error: Expected either 0 or 1 arguments, but found 2. (9:11)",
-    "Error: This function does not support the spread operator on its last argument. (9:28)",
-    "Error: Expected either 1 or 2 arguments, but found 0. (11:11)",
-    "Error: Expected either 1 or 2 arguments, but found 3. (14:11)",
-    "Error: Expected either 1 or 2 arguments, but found 4. (15:11)",
-    "Error: This function does not support the spread operator on its last argument. (16:25)",
-    "Error: This function does not support the spread operator on its last argument. (17:28)",
-    "Error: Expected either 1 or 2 arguments, but found 3. (18:11)",
-    "Error: This function does not support the spread operator on its last argument. (18:31)",
-    "Error: Expected either 1 or 2 arguments, but found 4. (19:11)",
-    "Error: This function does not support the spread operator on its last argument. (19:34)",
-    "Error: This function does not support the spread operator on its last argument. (20:28)",
-    "Error: Expected type `Int[]`, but found `Int`. (26:28)",
-    "Error: Expected type `Int[]`, but found `Int`. (27:31)",
-    "Error: Expected at least 2 arguments, but found 0. (31:11)",
-    "Error: Expected type `Int[]`, but found `Int`. (36:31)",
-    "Error: Expected 1 argument, but found 0. (40:11)",
-    "Error: This function requires the spread operator on its last argument. (41:27)",
-    "Error: Expected 1 argument, but found 2. (42:11)",
-    "Error: This function requires the spread operator on its last argument. (42:27)",
-    "Error: Expected 1 argument, but found 2. (44:11)",
-    "Error: Expected type `Int`, but found `Int[]`. (45:27)",
-    "Error: Expected 1 argument, but found 2. (46:11)",
-    "Error: Expected type `Int`, but found `Int[]`. (46:30)",
-    "Error: Expected 2 arguments, but found 0. (48:11)",
-    "Error: Expected 2 arguments, but found 1. (49:11)",
-    "Error: This function requires the spread operator on its last argument. (50:30)",
-    "Error: Expected 2 arguments, but found 1. (51:11)",
-    "Error: Expected 2 arguments, but found 1. (53:11)",
-    "Error: Expected type `Int`, but found `Int[]`. (54:30)",
+    "Error: Expected 0 arguments, but found 1 (3:11)",
+    "Error: Expected type `(Int, {recursive} | Nil) | Nil`, but found `Int` (9:28)",
+    "Error: Expected type `(Int, {recursive} | Nil) | Nil`, but found `Int` (10:31)",
+    "Error: Expected at least 2 arguments, but found 0 (14:11)",
+    "Error: Expected type `(Int, {recursive} | Nil) | Nil`, but found `Int` (19:31)",
+    "Error: Expected 1 argument, but found 0 (23:11)",
+    "Error: This function requires the spread operator on its last argument (24:27)",
+    "Error: Expected 1 argument, but found 2 (25:11)",
+    "Error: This function requires the spread operator on its last argument (25:27)",
+    "Error: Expected 1 argument, but found 2 (27:11)",
+    "Error: Expected type `Int`, but found `(Int, (Int, Nil))` (28:27)",
+    "Error: Expected 1 argument, but found 2 (29:11)",
+    "Error: Expected type `Int`, but found `(Int, Nil)` (29:30)",
+    "Error: Expected 2 arguments, but found 0 (31:11)",
+    "Error: Expected 2 arguments, but found 1 (32:11)",
+    "Error: This function requires the spread operator on its last argument (33:30)",
+    "Error: Expected 2 arguments, but found 1 (34:11)",
+    "Error: Expected 2 arguments, but found 1 (36:11)",
+    "Error: Expected type `Int`, but found `(Int, Nil)` (37:30)",
 ]
 
 [struct_empty]
@@ -309,10 +295,10 @@ hash = "e1bb38bc03b979e06bcfc2341001b12647928e29d682637eee425adf5b1bf212"
 [infer_lambda_params]
 parser_errors = []
 compiler_errors = [
-    "Error: Lambda parameter type could not be inferred. (2:24)",
-    "Error: Unused let binding `no_infer`. (2:9)",
-    "Error: Unused let binding `infer`. (3:9)",
-    "Error: Unused let binding `explicit`. (4:9)",
+    "Error: Lambda parameter type could not be inferred (2:24)",
+    "Error: Unused let binding `no_infer` (2:9)",
+    "Error: Unused let binding `infer` (3:9)",
+    "Error: Unused let binding `explicit` (4:9)",
 ]
 
 [infer_list]
@@ -486,10 +472,10 @@ hash = "e977dca31ec8aba231dd0e858a3235d2dea5ed36aefed5f12c48ec02bf450b77"
 [enum_duplicate_variants]
 parser_errors = []
 compiler_errors = [
-    "Error: Duplicate enum variant `SameName` specified. (3:5)",
-    "Error: Duplicate enum discriminant `1` specified. (4:29)",
-    "Error: Unused enum variant `SameName`. (2:5)",
-    "Error: Unused enum variant `DuplicateDiscriminant`. (4:5)",
+    "Error: Duplicate enum variant `SameName` specified (3:5)",
+    "Error: Duplicate enum discriminant `1` specified (4:29)",
+    "Error: Unused enum variant `SameName` (2:5)",
+    "Error: Unused enum variant `DuplicateDiscriminant` (4:5)",
 ]
 
 [p2_fusion]
@@ -549,25 +535,26 @@ output = "((g1_multiply 0xc00000000000000000000000000000000000000000000000000000
 hash = "21f96d7bb1b15b83ce81dff3525d4c98793f906f6cc7ebba52a76524a7db6943"
 
 [singleton]
-bytes = 1395
-cost = 52110
+bytes = 1531
+cost = 54718
 input = "((0x42840c6aebec47ce2e01629ce381b461c19695264281a7b1aab5d4ff54506775 0x4696e7a2b7682e2df01ab47e6e002d0dca895f99c6172e4a55a3e033499532b7 0x291e4594b43d58e833cab95e4b165c5fac6b4d8391c81ebfd20efdd8d58b92d8) 1 (0x9b1c580707ca8282534c02c1a055427e0954818b6195a29f4442ac3e7ea8e8ee () 1) 1 ((51 0x173385b87af5d8940767c328026fe5f8e76bc238d2a3aaddf4f55e844f400fca 1)))"
 output = "((73 1) (71 0xf92f0ebbd0e5ecb1334331d98c1f3b3e41cfce2c15f1053ffd1e2151b361e909) (g1_negate 0x07d534114dd68436cb7a4026abade359cd9c9f28b253c60e305535c781bbc7ed 1))"
-hash = "28a3c50a049c12c4ce49c6098618957b4c6791c563c70c895fa59bf47d93366c"
+hash = "3d8892dcdac1a32aab1034fa9489b7b7dc3b6aabf512f38e73d54574b1f6b62c"
 
 [enum_type_guard]
-bytes = 131
-cost = 1710
+bytes = 101
+cost = 1090
 input = "()"
 output = "()"
-hash = "e3153c4596c3b27d1f1cea81cf4c475e2d8f617330a82684bd97f6fae2bacf50"
+hash = "146182f765c52c144e4fa6d44fd3073bb3cbed6fac2bf1ca15393fc244c7d2b8"
 
 [cat]
-bytes = 2107
-cost = 359978
+bytes = 2323
+cost = 0
 input = "(0x00f43ce9fcc63d5019e209c103e6b0aaf56bbe7fc7fafae5af7f5ee6887a8719 0xd622c62a7292ffee5cf2537a90360ca0b7337b76d7014ec042930c0a87592213 (q (g1_negate () -113 (a (q 2 (i 47 (q 8) (q 2 (i (= 45 2) () (q 8)) 1)) 1) (c (q . 0x895eb35a355941ba7f6a8679a73bb9b8b62cae2b04ef5351eda42583c0f2d861) 1)) ()) (g1_negate 0xb8705f94744e7fc30300ac9b12d306b283f5a702937ee99beabf665be6023001 1 (0xb8705f94744e7fc30300ac9b12d306b283f5a702937ee99beabf665be6023001))) () () 0x615236766bed52d7abaa41d270407f3ec852981852334b213bd8515924459a5d (0x895eb35a355941ba7f6a8679a73bb9b8b62cae2b04ef5351eda42583c0f2d861 0x1ecb863db5d2ae6c71e9a8b0741acb3e034e8164b8ca0e564d5fad8b9dc875d5 1) (0x895eb35a355941ba7f6a8679a73bb9b8b62cae2b04ef5351eda42583c0f2d861 0x130deb20b44082a68293974f8cab9c51e21f9a9f3005000168eb77e49e0fc378 1) () ())"
-output = "((70 0x615236766bed52d7abaa41d270407f3ec852981852334b213bd8515924459a5d) (60 0xcb7f53b5de05b4afe58ab663b952aa785fd9ad911564709bd8eacbf4c58ba1e589) (61 0x389f1ea7b9fab7a9294104eb3a181d662f2dbe9c43fbe52802ba9b7eef357e77) (g1_negate 0xc9644528436f44cd9b33282684b4964f55d5551cb3a970ab9cf8f536e0d72ad1 1 (0xb8705f94744e7fc30300ac9b12d306b283f5a702937ee99beabf665be6023001)))"
-hash = "00f43ce9fcc63d5019e209c103e6b0aaf56bbe7fc7fafae5af7f5ee6887a8719"
+output = "()"
+hash = "5db0d2b8b2ea766c75afdfee8127d704f41e849a781fda6655e305199d4c5e23"
+error = "()"
 
 [external_function]
 bytes = 7
@@ -584,8 +571,8 @@ output = "1500"
 hash = "c9370ff4457a61a860e99fbbcf92aec2630e45a9447428174a1c5036a0768aad"
 
 [block_let_function]
-bytes = 281
-cost = 9394
+bytes = 283
+cost = 9356
 input = "()"
 output = "1"
-hash = "a1d71c94c9e64a24f50f4aee3496e833aa8bb263457b4cb4459f851f0f3d575b"
+hash = "488ceea9106d9d45a4380644bdb88d7f440a901d08c1281a5b94ba92a2ae418d"

@@ -1,17 +1,18 @@
 #![allow(clippy::map_unwrap_or)]
 
-use std::collections::HashMap;
+use rue_typing::{HashMap, TypePath};
 
 pub(crate) use builtins::Builtins;
-use indexmap::IndexSet;
+
 use rowan::TextRange;
+use rue_typing::{Comparison, TypeId, TypeSystem};
 use symbol_table::SymbolTable;
 
 use crate::{
-    database::{Database, HirId, ScopeId, SymbolId, TypeId},
+    database::{Database, HirId, ScopeId, SymbolId},
     hir::{Hir, Op},
     scope::Scope,
-    value::{GuardPath, Mutation, PairType, Type, TypeOverride, Value},
+    value::{GuardPath, Value},
     ErrorKind,
 };
 
@@ -25,8 +26,6 @@ mod stmt;
 mod symbol_table;
 mod ty;
 
-#[cfg(test)]
-pub use builtins::*;
 pub use context::*;
 
 /// Responsible for lowering the AST into the HIR.
@@ -34,6 +33,9 @@ pub use context::*;
 pub struct Compiler<'a> {
     // The database is mutable because we need to allocate new symbols and types.
     db: &'a mut Database,
+
+    // The type system is responsible for type checking and type inference.
+    ty: &'a mut TypeSystem,
 
     // The scope stack is used to keep track of the current scope.
     scope_stack: Vec<ScopeId>,
@@ -45,7 +47,7 @@ pub struct Compiler<'a> {
     type_definition_stack: Vec<TypeId>,
 
     // The type guard stack is used for overriding types in certain contexts.
-    type_guard_stack: Vec<HashMap<GuardPath, TypeOverride>>,
+    type_guard_stack: Vec<HashMap<GuardPath, TypeId>>,
 
     // The generic type stack is used for overriding generic types that are being checked against.
     generic_type_stack: Vec<HashMap<TypeId, TypeId>>,
@@ -65,9 +67,10 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(db: &'a mut Database, builtins: Builtins) -> Self {
+    pub fn new(db: &'a mut Database, ty: &'a mut TypeSystem, builtins: Builtins) -> Self {
         Self {
             db,
+            ty,
             scope_stack: vec![builtins.scope_id],
             symbol_stack: Vec::new(),
             type_definition_stack: Vec::new(),
@@ -85,15 +88,14 @@ impl<'a> Compiler<'a> {
         self.sym
     }
 
-    fn compile_index(&mut self, value: HirId, index: usize, rest: bool) -> HirId {
-        let mut result = value;
-        for _ in 0..index {
-            result = self.db.alloc_hir(Hir::Op(Op::Rest, result));
+    fn hir_path(&mut self, mut value: HirId, path_items: &[TypePath]) -> HirId {
+        for path in path_items {
+            match path {
+                TypePath::First => value = self.db.alloc_hir(Hir::Op(Op::First, value)),
+                TypePath::Rest => value = self.db.alloc_hir(Hir::Op(Op::Rest, value)),
+            }
         }
-        if !rest {
-            result = self.db.alloc_hir(Hir::Op(Op::First, result));
-        }
-        result
+        value
     }
 
     fn type_reference(&mut self, referenced_type_id: TypeId) {
@@ -117,123 +119,29 @@ impl<'a> Compiler<'a> {
         None
     }
 
-    fn type_name(&self, ty: TypeId) -> String {
-        self.type_name_visitor(ty, &mut IndexSet::new())
-    }
+    fn type_name(&self, type_id: TypeId) -> String {
+        let mut names = HashMap::new();
 
-    fn type_name_visitor(&self, ty: TypeId, stack: &mut IndexSet<TypeId>) -> String {
-        for &scope_id in self.scope_stack.iter().rev() {
-            if let Some(name) = self.db.scope(scope_id).type_name(ty) {
-                return name.to_string();
+        for &scope_id in &self.scope_stack {
+            for type_id in self.db.scope(scope_id).local_types() {
+                if let Some(name) = self.db.scope(scope_id).type_name(type_id) {
+                    names.insert(type_id, name.to_string());
+                }
             }
         }
 
-        if stack.contains(&ty) {
-            return "<recursive>".to_string();
-        }
-
-        stack.insert(ty);
-
-        let name = match self.db.ty(ty) {
-            Type::Unknown => "{unknown}".to_string(),
-            Type::Generic => "{generic}".to_string(),
-            Type::Nil => "Nil".to_string(),
-            Type::Any => "Any".to_string(),
-            Type::Int => "Int".to_string(),
-            Type::Bool => "Bool".to_string(),
-            Type::Bytes => "Bytes".to_string(),
-            Type::Bytes32 => "Bytes32".to_string(),
-            Type::PublicKey => "PublicKey".to_string(),
-            Type::List(items) => {
-                let inner = self.type_name_visitor(*items, stack);
-                format!("{inner}[]")
-            }
-            Type::Pair(PairType { first, rest }) => {
-                let first = self.type_name_visitor(*first, stack);
-                let rest = self.type_name_visitor(*rest, stack);
-                format!("({first}, {rest})")
-            }
-            Type::Struct(struct_type) => {
-                if struct_type.original_type_id == ty {
-                    let fields: Vec<String> = struct_type
-                        .fields
-                        .iter()
-                        .map(|(name, ty)| {
-                            format!("{}: {}", name, self.type_name_visitor(*ty, stack))
-                        })
-                        .collect();
-
-                    format!("{{{}}}", fields.join(", "))
-                } else {
-                    self.type_name_visitor(struct_type.original_type_id, stack)
-                }
-            }
-            Type::Enum { .. } => "<unnamed enum>".to_string(),
-            Type::EnumVariant(enum_variant) => {
-                let enum_name = self.type_name_visitor(enum_variant.enum_type, stack);
-
-                let fields: Option<Vec<String>> = enum_variant.fields.as_ref().map(|fields| {
-                    fields
-                        .iter()
-                        .map(|(name, ty)| {
-                            format!("{}: {}", name, self.type_name_visitor(*ty, stack))
-                        })
-                        .collect()
-                });
-
-                let variant_name = match self.db.ty(enum_variant.enum_type) {
-                    Type::Enum(enum_type) => enum_type
-                        .variants
-                        .iter()
-                        .find(|item| *item.1 == enum_variant.original_type_id)
-                        .expect("enum type is missing variant")
-                        .0
-                        .clone(),
-                    _ => unreachable!(),
-                };
-
-                if let Some(fields) = fields {
-                    format!("{enum_name}::{variant_name} {{{}}}", fields.join(", "))
-                } else {
-                    format!("{enum_name}::{variant_name}")
-                }
-            }
-            Type::Function(function_type) => {
-                let params: Vec<String> = function_type
-                    .param_types
-                    .iter()
-                    .map(|&ty| self.type_name_visitor(ty, stack))
-                    .collect();
-
-                let ret = self.type_name_visitor(function_type.return_type, stack);
-
-                format!("fun({}) -> {}", params.join(", "), ret)
-            }
-            Type::Alias(..) => unreachable!(),
-            Type::Nullable(ty) => {
-                let inner = self.type_name_visitor(*ty, stack);
-                format!("{inner}?")
-            }
-            Type::Optional(ty) => {
-                let inner = self.type_name_visitor(*ty, stack);
-                format!("optional {inner}")
-            }
-        };
-
-        stack.pop().unwrap();
-
-        name
+        self.ty.stringify_named(type_id, names)
     }
 
     fn type_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
         let comparison = if self.allow_generic_inference_stack.last().copied().unwrap() {
-            self.db
-                .compare_type_with_generics(from, to, &mut self.generic_type_stack)
+            self.ty
+                .compare_with_generics(from, to, &mut self.generic_type_stack, true)
         } else {
-            self.db.compare_type(from, to)
+            self.ty.compare(from, to)
         };
 
-        if !comparison.is_assignable() {
+        if comparison > Comparison::Assignable {
             self.db.error(
                 ErrorKind::TypeMismatch(self.type_name(from), self.type_name(to)),
                 range,
@@ -243,13 +151,13 @@ impl<'a> Compiler<'a> {
 
     fn cast_check(&mut self, from: TypeId, to: TypeId, range: TextRange) {
         let comparison = if self.allow_generic_inference_stack.last().copied().unwrap() {
-            self.db
-                .compare_type_with_generics(from, to, &mut self.generic_type_stack)
+            self.ty
+                .compare_with_generics(from, to, &mut self.generic_type_stack, true)
         } else {
-            self.db.compare_type(from, to)
+            self.ty.compare(from, to)
         };
 
-        if !comparison.is_castable() {
+        if comparison > Comparison::Castable {
             self.db.error(
                 ErrorKind::CastMismatch(self.type_name(from), self.type_name(to)),
                 range,
@@ -258,23 +166,16 @@ impl<'a> Compiler<'a> {
     }
 
     fn unknown(&self) -> Value {
-        Value::new(self.builtins.unknown_hir, self.builtins.unknown)
+        Value::new(self.builtins.unknown, self.ty.std().unknown)
     }
 
-    fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeOverride> {
+    fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeId> {
         for guards in self.type_guard_stack.iter().rev() {
             if let Some(guard) = guards.get(guard_path) {
                 return Some(*guard);
             }
         }
         None
-    }
-
-    fn apply_mutation(&mut self, hir_id: HirId, mutation: Mutation) -> HirId {
-        match mutation {
-            Mutation::None => hir_id,
-            Mutation::UnwrapOptional => self.db.alloc_hir(Hir::Op(Op::First, hir_id)),
-        }
     }
 
     fn scope(&self) -> &Scope {

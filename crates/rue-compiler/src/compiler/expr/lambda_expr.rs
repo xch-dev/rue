@@ -1,14 +1,16 @@
-use std::collections::HashMap;
+use rue_typing::HashMap;
 
+use indexmap::IndexSet;
 use rue_parser::{AstNode, LambdaExpr};
+use rue_typing::{construct_items, deconstruct_items, Callable, Type, TypeId};
 
 use crate::{
     compiler::Compiler,
     hir::Hir,
     scope::Scope,
     symbol::{Function, Symbol},
-    value::{FunctionType, Rest, Type, Value},
-    ErrorKind, TypeId,
+    value::Value,
+    ErrorKind,
 };
 
 impl Compiler<'_> {
@@ -25,9 +27,14 @@ impl Compiler<'_> {
         }
 
         // Determine the expected type of the lambda expression.
-        let expected = expected_type.and_then(|ty| match self.db.ty(ty) {
-            Type::Function(function) => Some(function.clone()),
-            _ => None,
+        let expected = expected_type.and_then(|ty| self.ty.get_callable(ty).cloned());
+        let expected_params = expected.as_ref().and_then(|callable| {
+            deconstruct_items(
+                self.ty,
+                callable.parameters,
+                callable.parameter_names.len(),
+                callable.nil_terminated,
+            )
         });
 
         // Add the scope so you can track generic types.
@@ -38,12 +45,12 @@ impl Compiler<'_> {
 
         // Add the generic types to the scope.
         for generic_type in lambda_expr
-            .generic_types()
-            .map(|generics| generics.idents())
+            .generic_params()
+            .map(|generics| generics.names())
             .unwrap_or_default()
         {
             // Create the generic type id.
-            let type_id = self.db.alloc_type(Type::Generic);
+            let type_id = self.ty.alloc(Type::Generic);
 
             // Check for duplicate generic types.
             if self.scope().ty(generic_type.text()).is_some() {
@@ -64,7 +71,8 @@ impl Compiler<'_> {
         }
 
         let mut param_types = Vec::new();
-        let mut rest = Rest::Nil;
+        let mut param_names = IndexSet::new();
+        let mut nil_terminated = true;
 
         let len = lambda_expr.params().len();
 
@@ -73,57 +81,40 @@ impl Compiler<'_> {
             let type_id = param
                 .ty()
                 .map(|ty| self.compile_type(ty))
-                .or(expected
+                .or(expected_params
                     .as_ref()
-                    .and_then(|expected| expected.param_types.get(i).copied()))
+                    .and_then(|expected| expected.get(i).copied()))
                 .unwrap_or_else(|| {
                     self.db
                         .error(ErrorKind::CannotInferType, param.syntax().text_range());
-                    self.builtins.unknown
+                    self.ty.std().unknown
                 });
 
             // Substitute generic types in the parameter type.
-            let type_id = self.db.substitute_type(type_id, &substitutions);
+            let type_id = self.ty.substitute(type_id, substitutions.clone());
 
             param_types.push(type_id);
 
             if let Some(name) = param.name() {
-                let param_type_id = if param.optional().is_some() {
-                    // If the parameter is optional, wrap the type in a possibly undefined type.
-                    // This prevents referencing the parameter until it's checked for undefined.
-                    self.db.alloc_type(Type::Optional(type_id))
-                } else {
-                    type_id
-                };
-
-                let symbol_id = self.db.alloc_symbol(Symbol::Parameter(param_type_id));
+                let symbol_id = self.db.alloc_symbol(Symbol::Parameter(type_id));
                 self.scope_mut().define_symbol(name.to_string(), symbol_id);
+                param_names.insert(name.to_string());
                 self.db.insert_symbol_token(symbol_id, name);
+            } else {
+                param_names.insert(format!("#{i}"));
             };
 
             let last = i + 1 == len;
             let spread = param.spread().is_some();
-            let optional = param.optional().is_some();
 
-            if spread && optional {
-                self.db.error(
-                    ErrorKind::OptionalParameterSpread,
-                    param.syntax().text_range(),
-                );
-            } else if spread && !last {
-                self.db.error(
-                    ErrorKind::InvalidSpreadParameter,
-                    param.syntax().text_range(),
-                );
-            } else if optional && !last {
-                self.db.error(
-                    ErrorKind::InvalidOptionalParameter,
-                    param.syntax().text_range(),
-                );
-            } else if spread {
-                rest = Rest::Spread;
-            } else if optional {
-                rest = Rest::Optional;
+            if spread {
+                if !last {
+                    self.db.error(
+                        ErrorKind::InvalidSpreadParameter,
+                        param.syntax().text_range(),
+                    );
+                }
+                nil_terminated = false;
             }
         }
 
@@ -150,23 +141,29 @@ impl Compiler<'_> {
             lambda_expr.body().unwrap().syntax().text_range(),
         );
 
-        let ty = FunctionType {
-            param_types: param_types.clone(),
-            rest,
+        let type_id = self.ty.alloc(Type::Unknown);
+        let parameters = construct_items(self.ty, param_types.into_iter(), nil_terminated);
+
+        *self.ty.get_mut(type_id) = Type::Callable(Callable {
+            original_type_id: type_id,
+            parameter_names: param_names,
+            parameters,
+            nil_terminated,
             return_type,
             generic_types: Vec::new(),
-        };
+        });
 
         let symbol_id = self.db.alloc_symbol(Symbol::Function(Function {
             scope_id,
             hir_id: body.hir_id,
-            ty: ty.clone(),
+            type_id,
+            nil_terminated,
         }));
 
         Value::new(
             self.db
                 .alloc_hir(Hir::Reference(symbol_id, lambda_expr.syntax().text_range())),
-            self.db.alloc_type(Type::Function(ty)),
+            type_id,
         )
     }
 }

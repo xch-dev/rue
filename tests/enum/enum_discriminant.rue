@@ -7,7 +7,7 @@ enum Num {
     Six = 6,
 }
 
-fun main() -> Nil {
+fun main() -> nil {
     assert Num::Zero as Int == 0;
     assert Num::One as Int == 1;
     assert Num::Two as Int == 2;

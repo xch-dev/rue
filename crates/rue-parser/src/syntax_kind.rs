@@ -112,16 +112,15 @@ pub enum SyntaxKind {
     FunctionCallExpr,
     FunctionCallArg,
     FieldAccessExpr,
-    IndexAccessExpr,
-    ExistsExpr,
+    LiteralType,
     PathType,
-    ListType,
-    ListTypeItem,
     PairType,
     FunctionType,
     FunctionTypeParam,
-    NullableType,
-    GenericTypes,
+    UnionType,
+    GenericArgs,
+    GenericParams,
+    PathItem,
 }
 
 impl fmt::Display for SyntaxKind {
@@ -235,17 +234,15 @@ impl fmt::Display for SyntaxKind {
                 Self::FunctionCallExpr => "function call expression",
                 Self::FunctionCallArg => "function call argument",
                 Self::FieldAccessExpr => "field access expression",
-                Self::IndexAccessExpr => "index access expression",
-                Self::ExistsExpr => "exists expression",
+                Self::LiteralType => "literal type",
                 Self::PathType => "path type",
-                Self::ListType => "list type",
-                Self::ListTypeItem => "list type item",
                 Self::PairType => "pair type",
                 Self::FunctionType => "function type",
                 Self::FunctionTypeParam => "function type parameter",
-                Self::NullableType => "nullable type",
-
-                Self::GenericTypes => "generic types",
+                Self::UnionType => "union type",
+                Self::GenericArgs => "generic args",
+                Self::GenericParams => "generic params",
+                Self::PathItem => "path item",
             }
         )
     }

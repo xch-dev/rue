@@ -2,7 +2,7 @@ enum Enum {
     Empty {},
 }
 
-fun main() -> Nil {
+fun main() -> nil {
     assert tree_hash(Enum::Empty {}) == tree_hash([0]);
     nil
 }

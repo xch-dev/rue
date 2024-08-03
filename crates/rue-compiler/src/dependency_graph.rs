@@ -5,7 +5,6 @@ use crate::{
     environment::Environment,
     hir::Hir,
     symbol::{Function, Module, Symbol},
-    value::Rest,
     Database, EnvironmentId, ErrorKind, HirId, ScopeId, SymbolId,
 };
 
@@ -134,10 +133,9 @@ impl<'a> GraphBuilder<'a> {
             .filter(|&symbol_id| matches!(self.db.symbol(symbol_id), Symbol::Parameter(_)))
             .collect();
 
-        let environment_id = self.db.alloc_env(Environment::function(
-            parameters,
-            function.ty.rest != Rest::Nil,
-        ));
+        let environment_id = self
+            .db
+            .alloc_env(Environment::function(parameters, !function.nil_terminated));
 
         self.graph
             .environments

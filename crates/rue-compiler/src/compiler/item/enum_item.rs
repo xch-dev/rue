@@ -1,16 +1,12 @@
-use std::collections::HashSet;
+use rue_typing::HashSet;
 
 use indexmap::IndexMap;
 use num_bigint::BigInt;
 use num_traits::Zero;
 use rue_parser::EnumItem;
+use rue_typing::{construct_items, Enum, Type, TypeId, Variant};
 
-use crate::{
-    compiler::Compiler,
-    hir::Hir,
-    value::{EnumType, EnumVariantType, Type},
-    ErrorKind, TypeId,
-};
+use crate::{compiler::Compiler, ErrorKind};
 
 impl Compiler<'_> {
     pub fn declare_enum_item(&mut self, enum_item: &EnumItem) -> TypeId {
@@ -41,30 +37,38 @@ impl Compiler<'_> {
 
             // Allocate a new type for the variant.
             // It has to be `Unknown` for now, since field types may not be declared yet.
-            let type_id = self.db.alloc_type(Type::Unknown);
+            let variant_type_id = self.ty.alloc(Type::Unknown);
 
             // Add the variant to the enum and define the token for the variant.
-            variants.insert(name.to_string(), type_id);
-            self.db.insert_type_token(type_id, name);
+            variants.insert(name.to_string(), variant_type_id);
+            self.db.insert_type_token(variant_type_id, name);
         }
 
         // Allocate a new type for the enum.
-        let type_id = self.db.alloc_type(Type::Enum(EnumType {
+        let enum_structure = self
+            .ty
+            .alloc(Type::Union(variants.values().copied().collect()));
+
+        let enum_type_id = self.ty.alloc(Type::Unknown);
+
+        *self.ty.get_mut(enum_type_id) = Type::Enum(Enum {
+            original_type_id: enum_type_id,
+            type_id: enum_structure,
             has_fields,
             variants,
-        }));
+        });
 
         // Add the enum to the scope and define the token for the enum.
         if let Some(name) = enum_item.name() {
-            self.scope_mut().define_type(name.to_string(), type_id);
-            self.db.insert_type_token(type_id, name);
+            self.scope_mut().define_type(name.to_string(), enum_type_id);
+            self.db.insert_type_token(enum_type_id, name);
         }
 
-        type_id
+        enum_type_id
     }
 
     pub fn compile_enum_item(&mut self, enum_item: &EnumItem, enum_type_id: TypeId) {
-        let Type::Enum(enum_type) = self.db.ty(enum_type_id).clone() else {
+        let Type::Enum(enum_type) = self.ty.get(enum_type_id).clone() else {
             unreachable!();
         };
 
@@ -95,7 +99,7 @@ impl Compiler<'_> {
             self.type_definition_stack.push(variant_type_id);
 
             // Compile the fields of the variant.
-            let (fields, rest) = variant
+            let (fields, nil_terminated) = variant
                 .fields()
                 .map(|ast| self.compile_struct_fields(ast.fields()))
                 .unwrap_or_default();
@@ -132,29 +136,33 @@ impl Compiler<'_> {
                 BigInt::zero()
             };
 
-            let atom = Self::bigint_to_bytes(discriminant).unwrap_or_else(|| {
-                self.db.error(
-                    ErrorKind::EnumDiscriminantTooLarge,
-                    variant
-                        .discriminant()
-                        .map_or(name.text_range(), |token| token.text_range()),
-                );
-                Vec::new()
-            });
-
-            let discriminant = self.db.alloc_hir(Hir::Atom(atom));
-
             // Update the variant to use the real `EnumVariant` type.
-            *self.db.ty_mut(variant_type_id) = Type::EnumVariant(EnumVariantType {
-                enum_type: enum_type_id,
+            let discriminant_type = self.ty.alloc(Type::Value(discriminant.clone()));
+
+            let type_id = if enum_type.has_fields {
+                construct_items(
+                    self.ty,
+                    [discriminant_type]
+                        .into_iter()
+                        .chain(fields.values().copied()),
+                    nil_terminated,
+                )
+            } else {
+                discriminant_type
+            };
+
+            *self.ty.get_mut(variant_type_id) = Type::Variant(Variant {
                 original_type_id: variant_type_id,
-                fields: if variant.fields().is_some() {
-                    Some(fields)
+                original_enum_type_id: enum_type_id,
+                field_names: if variant.fields().is_some() {
+                    Some(fields.keys().cloned().collect())
                 } else {
                     None
                 },
-                rest,
+                type_id,
+                nil_terminated,
                 discriminant,
+                generic_types: Vec::new(),
             });
 
             self.type_definition_stack.pop().unwrap();

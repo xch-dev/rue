@@ -97,8 +97,6 @@ ast_enum!(
     IfExpr,
     FunctionCallExpr,
     FieldAccessExpr,
-    IndexAccessExpr,
-    ExistsExpr
 );
 ast_node!(PathExpr);
 ast_node!(InitializerExpr);
@@ -116,27 +114,24 @@ ast_node!(IfExpr);
 ast_node!(FunctionCallExpr);
 ast_node!(FunctionCallArg);
 ast_node!(FieldAccessExpr);
-ast_node!(IndexAccessExpr);
-ast_node!(ExistsExpr);
 
 ast_node!(LambdaExpr);
 ast_node!(LambdaParam);
 
 ast_enum!(
     Type,
+    LiteralType,
     PathType,
-    ListType,
     PairType,
     FunctionType,
-    NullableType
+    UnionType
 );
+ast_node!(LiteralType);
 ast_node!(PathType);
-ast_node!(ListType);
-ast_node!(ListTypeItem);
 ast_node!(PairType);
 ast_node!(FunctionType);
 ast_node!(FunctionTypeParam);
-ast_node!(NullableType);
+ast_node!(UnionType);
 
 ast_enum!(Stmt, LetStmt, IfStmt, ReturnStmt, RaiseStmt, AssertStmt, AssumeStmt);
 ast_node!(LetStmt);
@@ -146,7 +141,9 @@ ast_node!(RaiseStmt);
 ast_node!(AssertStmt);
 ast_node!(AssumeStmt);
 
-ast_node!(GenericTypes);
+ast_node!(GenericArgs);
+ast_node!(GenericParams);
+ast_node!(PathItem);
 
 impl Root {
     pub fn items(&self) -> Vec<Item> {
@@ -196,8 +193,8 @@ impl FunctionItem {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn generic_types(&self) -> Option<GenericTypes> {
-        self.syntax().children().find_map(GenericTypes::cast)
+    pub fn generic_params(&self) -> Option<GenericParams> {
+        self.syntax().children().find_map(GenericParams::cast)
     }
 
     pub fn params(&self) -> Vec<FunctionParam> {
@@ -238,13 +235,6 @@ impl FunctionParam {
             .find(|token| token.kind() == SyntaxKind::Spread)
     }
 
-    pub fn optional(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Question)
-    }
-
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -263,6 +253,10 @@ impl TypeAliasItem {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_params(&self) -> Option<GenericParams> {
+        self.syntax().children().find_map(GenericParams::cast)
     }
 
     pub fn ty(&self) -> Option<Type> {
@@ -306,13 +300,6 @@ impl StructField {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Spread)
-    }
-
-    pub fn optional(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Question)
     }
 
     pub fn name(&self) -> Option<SyntaxToken> {
@@ -512,11 +499,10 @@ impl AssumeStmt {
 }
 
 impl PathExpr {
-    pub fn idents(&self) -> Vec<SyntaxToken> {
+    pub fn items(&self) -> Vec<PathItem> {
         self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .children()
+            .filter_map(PathItem::cast)
             .collect()
     }
 }
@@ -722,8 +708,8 @@ impl PairExpr {
 }
 
 impl LambdaExpr {
-    pub fn generic_types(&self) -> Option<GenericTypes> {
-        self.syntax().children().find_map(GenericTypes::cast)
+    pub fn generic_params(&self) -> Option<GenericParams> {
+        self.syntax().children().find_map(GenericParams::cast)
     }
 
     pub fn params(&self) -> Vec<LambdaParam> {
@@ -757,13 +743,6 @@ impl LambdaParam {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn optional(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Question)
-    }
-
     pub fn ty(&self) -> Option<Type> {
         self.syntax().children().find_map(Type::cast)
     }
@@ -784,6 +763,10 @@ impl IfExpr {
 }
 
 impl FunctionCallExpr {
+    pub fn generic_args(&self) -> Option<GenericArgs> {
+        self.syntax().children().find_map(GenericArgs::cast)
+    }
+
     pub fn callee(&self) -> Option<Expr> {
         self.syntax().children().find_map(Expr::cast)
     }
@@ -822,51 +805,20 @@ impl FieldAccessExpr {
     }
 }
 
-impl IndexAccessExpr {
-    pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
-    }
-
-    pub fn index(&self) -> Option<SyntaxToken> {
+impl LiteralType {
+    pub fn value(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Int)
-    }
-}
-
-impl ExistsExpr {
-    pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
+            .find_map(SyntaxElement::into_token)
     }
 }
 
 impl PathType {
-    pub fn idents(&self) -> Vec<SyntaxToken> {
+    pub fn items(&self) -> Vec<PathItem> {
         self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .children()
+            .filter_map(PathItem::cast)
             .collect()
-    }
-}
-
-impl ListType {
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
-    }
-}
-
-impl ListTypeItem {
-    pub fn spread(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Spread)
-    }
-
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
     }
 }
 
@@ -901,13 +853,6 @@ impl FunctionTypeParam {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn optional(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Question)
-    }
-
     pub fn spread(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -920,18 +865,37 @@ impl FunctionTypeParam {
     }
 }
 
-impl NullableType {
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
+impl UnionType {
+    pub fn types(&self) -> Vec<Type> {
+        self.syntax().children().filter_map(Type::cast).collect()
     }
 }
 
-impl GenericTypes {
-    pub fn idents(&self) -> Vec<SyntaxToken> {
+impl GenericParams {
+    pub fn names(&self) -> Vec<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .filter(|token| token.kind() == SyntaxKind::Ident)
             .collect()
+    }
+}
+
+impl GenericArgs {
+    pub fn types(&self) -> Vec<Type> {
+        self.syntax().children().filter_map(Type::cast).collect()
+    }
+}
+
+impl PathItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_args(&self) -> Option<GenericArgs> {
+        self.syntax().children().find_map(GenericArgs::cast)
     }
 }

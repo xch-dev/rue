@@ -5,7 +5,7 @@ struct Payout {
     share: Int,
 }
 
-fun main(payouts: Payout[], total_shares: Int, my_amount: Int) -> Condition[] {
+fun main(payouts: List<Payout>, total_shares: Int, my_amount: Int) -> List<Condition> {
     let announcement = Condition::CreateCoinAnnouncement { message: '$' };
     let assert_amount = Condition::AssertMyAmount { amount: my_amount };
 
@@ -14,13 +14,13 @@ fun main(payouts: Payout[], total_shares: Int, my_amount: Int) -> Condition[] {
 }
 
 fun calculate_amount_and_split(
-    payouts: Payout[],
+    payouts: List<Payout>,
     total_amount: Int,
     total_shares: Int,
     shares_sum: Int,
     remaining_amount: Int,
-) -> Condition[] {
-    if payouts is (Payout, Payout[]) {
+) -> List<Condition> {
+    if payouts is (Payout, List<Payout>) {
         let amount = get_amount(payouts.first, total_amount, total_shares);
         return split_amount_and_create_coins(payouts, amount, total_amount, total_shares, shares_sum, remaining_amount);
     }
@@ -29,18 +29,18 @@ fun calculate_amount_and_split(
 }
 
 fun split_amount_and_create_coins(
-    payouts: (Payout, Payout[]),
+    payouts: (Payout, List<Payout>),
     this_amount: Int,
     total_amount: Int,
     total_shares: Int,
     shares_sum: Int,
     remaining_amount: Int,
-) -> Condition[] {
+) -> List<Condition> {
     let payout = payouts.first;
     let create_coin = Condition::CreateCoin {
         puzzle_hash: payout.puzzle_hash,
         amount: if payout.share > 0 { this_amount } else { remaining_amount },
-        memos: [payout.puzzle_hash],
+        memos: ([payout.puzzle_hash], nil),
     };
     let rest = calculate_amount_and_split(payouts.rest, total_amount, total_shares, shares_sum + payout.share, remaining_amount - this_amount);
     [create_coin, ...rest]

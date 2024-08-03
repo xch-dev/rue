@@ -4,7 +4,7 @@ enum Mode {
     Open,
 }
 
-fun main() -> Nil {
+fun main() -> nil {
     let open: Mode = Mode::Open;
     assert open is Mode::Open;
 
