@@ -1,6 +1,7 @@
 use num_bigint::BigInt;
 use num_traits::One;
 use rue_clvm::{first_path, rest_path};
+use rue_typing::bigint_to_bytes;
 
 use crate::{
     database::{Database, LirId, SymbolId},
@@ -187,12 +188,21 @@ impl<'a> Optimizer<'a> {
 
     fn opt_listp(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        self.db.alloc_lir(Lir::Listp(lir_id))
+        match self.db.lir(lir_id) {
+            Lir::Pair(..) => self.db.alloc_lir(Lir::Atom(vec![1])),
+            Lir::Atom(..) => self.db.alloc_lir(Lir::Atom(Vec::new())),
+            _ => self.db.alloc_lir(Lir::Listp(lir_id)),
+        }
     }
 
     fn opt_strlen(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        self.db.alloc_lir(Lir::Strlen(lir_id))
+        match self.db.lir(lir_id) {
+            Lir::Atom(atom) => self
+                .db
+                .alloc_lir(Lir::Atom(bigint_to_bytes(BigInt::from(atom.len())))),
+            _ => self.db.alloc_lir(Lir::Strlen(lir_id)),
+        }
     }
 
     fn opt_pubkey_for_exp(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
@@ -415,7 +425,10 @@ impl<'a> Optimizer<'a> {
 
     fn opt_not(&mut self, env_id: EnvironmentId, value: MirId) -> LirId {
         let value = self.opt_mir(env_id, value);
-        self.db.alloc_lir(Lir::Not(value))
+        match self.db.lir(value) {
+            Lir::Not(value) => *value,
+            _ => self.db.alloc_lir(Lir::Not(value)),
+        }
     }
 
     fn opt_divmod(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
