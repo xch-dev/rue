@@ -2,7 +2,7 @@ use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 use num_bigint::BigInt;
 
-use crate::{lir::Lir, LirId};
+use crate::{lir::Lir, ops::Ops, LirId};
 
 #[derive(Debug)]
 pub struct Codegen<'a> {
@@ -11,76 +11,9 @@ pub struct Codegen<'a> {
     ops: Ops,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Ops {
-    q: NodePtr,
-    a: NodePtr,
-    i: NodePtr,
-    c: NodePtr,
-    f: NodePtr,
-    r: NodePtr,
-    l: NodePtr,
-    x: NodePtr,
-    eq: NodePtr,
-    gt_bytes: NodePtr,
-    sha256: NodePtr,
-    substr: NodePtr,
-    strlen: NodePtr,
-    concat: NodePtr,
-    add: NodePtr,
-    sub: NodePtr,
-    mul: NodePtr,
-    div: NodePtr,
-    divmod: NodePtr,
-    gt: NodePtr,
-    ash: NodePtr,
-    logand: NodePtr,
-    logior: NodePtr,
-    logxor: NodePtr,
-    lognot: NodePtr,
-    point_add: NodePtr,
-    pubkey_for_exp: NodePtr,
-    not: NodePtr,
-    any: NodePtr,
-    all: NodePtr,
-    rem: NodePtr,
-}
-
 impl<'a> Codegen<'a> {
     pub fn new(arena: Arena<Lir>, allocator: &'a mut Allocator) -> Self {
-        let ops = Ops {
-            q: allocator.one(),
-            a: allocator.new_small_number(2).unwrap(),
-            i: allocator.new_small_number(3).unwrap(),
-            c: allocator.new_small_number(4).unwrap(),
-            f: allocator.new_small_number(5).unwrap(),
-            r: allocator.new_small_number(6).unwrap(),
-            l: allocator.new_small_number(7).unwrap(),
-            x: allocator.new_small_number(8).unwrap(),
-            eq: allocator.new_small_number(9).unwrap(),
-            gt_bytes: allocator.new_small_number(10).unwrap(),
-            sha256: allocator.new_small_number(11).unwrap(),
-            substr: allocator.new_small_number(12).unwrap(),
-            strlen: allocator.new_small_number(13).unwrap(),
-            concat: allocator.new_small_number(14).unwrap(),
-            add: allocator.new_small_number(16).unwrap(),
-            sub: allocator.new_small_number(17).unwrap(),
-            mul: allocator.new_small_number(18).unwrap(),
-            div: allocator.new_small_number(19).unwrap(),
-            divmod: allocator.new_small_number(20).unwrap(),
-            gt: allocator.new_small_number(21).unwrap(),
-            ash: allocator.new_small_number(22).unwrap(),
-            logand: allocator.new_small_number(24).unwrap(),
-            logior: allocator.new_small_number(25).unwrap(),
-            logxor: allocator.new_small_number(26).unwrap(),
-            lognot: allocator.new_small_number(27).unwrap(),
-            point_add: allocator.new_small_number(29).unwrap(),
-            pubkey_for_exp: allocator.new_small_number(30).unwrap(),
-            not: allocator.new_small_number(32).unwrap(),
-            any: allocator.new_small_number(33).unwrap(),
-            all: allocator.new_small_number(34).unwrap(),
-            rem: allocator.new_small_number(61).unwrap(),
-        };
+        let ops = Ops::alloc(allocator);
         Self {
             arena,
             allocator,
