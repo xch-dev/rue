@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Instal cargo-workspaces
-        run: cargo install cargo-workspaces --locked
+        run: cargo install cargo-workspaces
 
       - name: Run tests
         run: cargo test --all-features --workspace
