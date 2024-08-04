@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Instal cargo-workspaces
-        run: cargo install cargo-workspaces --locked -y
+        run: cargo install cargo-workspaces --locked
 
       - name: Run tests
         run: cargo test --all-features --workspace
@@ -28,7 +28,7 @@ jobs:
 
       - name: Unused dependencies
         run: |
-          cargo install cargo-machete --locked -y
+          cargo install cargo-machete --locked
           cargo machete
 
       - name: Fmt
