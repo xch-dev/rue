@@ -1,12 +1,7 @@
 use rue_parser::{FieldAccessExpr, SyntaxToken};
 use rue_typing::{deconstruct_items, index_to_path, Struct, Type, TypeId, TypePath, Variant};
 
-use crate::{
-    compiler::Compiler,
-    hir::{Hir, Op},
-    value::Value,
-    ErrorKind,
-};
+use crate::{Compiler, ErrorKind, Hir, Op, Value};
 
 impl Compiler<'_> {
     /// Compiles a field access expression, or special properties for certain types.

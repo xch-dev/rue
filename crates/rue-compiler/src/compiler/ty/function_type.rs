@@ -2,7 +2,7 @@ use indexmap::IndexSet;
 use rue_parser::{AstNode, FunctionType as Ast};
 use rue_typing::{construct_items, Callable, Type, TypeId};
 
-use crate::{compiler::Compiler, ErrorKind};
+use crate::{Compiler, ErrorKind};
 
 impl Compiler<'_> {
     pub fn compile_function_type(&mut self, function: &Ast) -> TypeId {

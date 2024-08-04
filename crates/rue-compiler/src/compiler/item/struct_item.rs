@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 use rue_parser::{AstNode, StructField, StructItem};
 use rue_typing::{construct_items, Struct, Type, TypeId};
 
-use crate::{compiler::Compiler, ErrorKind};
+use crate::{Compiler, ErrorKind};
 
 impl Compiler<'_> {
     /// Define a type for a struct in the current scope, but leave it as unknown for now.

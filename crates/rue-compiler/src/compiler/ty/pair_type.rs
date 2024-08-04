@@ -1,7 +1,7 @@
 use rue_parser::PairType;
 use rue_typing::{Type, TypeId};
 
-use crate::compiler::Compiler;
+use crate::Compiler;
 
 impl Compiler<'_> {
     pub fn compile_pair_type(&mut self, pair_type: &PairType) -> TypeId {

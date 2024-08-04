@@ -6,7 +6,7 @@ use num_traits::Zero;
 use rue_parser::EnumItem;
 use rue_typing::{construct_items, Enum, Type, TypeId, Variant};
 
-use crate::{compiler::Compiler, ErrorKind};
+use crate::{Compiler, ErrorKind};
 
 impl Compiler<'_> {
     pub fn declare_enum_item(&mut self, enum_item: &EnumItem) -> TypeId {

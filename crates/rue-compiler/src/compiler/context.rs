@@ -6,13 +6,7 @@ use rue_parser::{parse, Root};
 use rue_typing::{Type, TypeSystem};
 
 use crate::{
-    codegen::Codegen,
-    dependency_graph::DependencyGraph,
-    lowerer::Lowerer,
-    optimizer::Optimizer,
-    scope::Scope,
-    symbol::{Module, Symbol},
-    Database, SymbolId,
+    Codegen, Database, DependencyGraph, Lowerer, Module, Optimizer, Scope, Symbol, SymbolId,
 };
 
 use super::{builtins::builtins, item::Declarations, symbol_table::SymbolTable, Compiler};

@@ -1,13 +1,7 @@
 use rue_parser::{AstNode, FunctionItem};
 use rue_typing::{construct_items, Callable, Type};
 
-use crate::{
-    compiler::Compiler,
-    hir::Hir,
-    scope::Scope,
-    symbol::{Function, Symbol},
-    ErrorKind, SymbolId,
-};
+use crate::{Compiler, ErrorKind, Function, Hir, Scope, Symbol, SymbolId};
 
 impl Compiler<'_> {
     pub fn declare_function_item(&mut self, function_item: &FunctionItem) -> SymbolId {

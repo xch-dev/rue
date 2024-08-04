@@ -3,12 +3,7 @@ use rue_typing::HashMap;
 use rue_parser::{AstNode, IfStmt};
 use rue_typing::TypeId;
 
-use crate::{
-    compiler::{block::BlockTerminator, Compiler},
-    scope::Scope,
-    value::GuardPath,
-    ErrorKind, HirId,
-};
+use crate::{compiler::block::BlockTerminator, Compiler, ErrorKind, GuardPath, HirId, Scope};
 
 impl Compiler<'_> {
     /// Compiles an if statement, returning the condition HIR, then block HIR, and else block guards.

@@ -1,12 +1,7 @@
 use rue_parser::{AstNode, Block};
 use rue_typing::TypeId;
 
-use crate::{
-    compiler::{block::BlockTerminator, Compiler},
-    scope::Scope,
-    value::Value,
-    ErrorKind,
-};
+use crate::{compiler::block::BlockTerminator, Compiler, ErrorKind, Scope, Value};
 
 impl Compiler<'_> {
     pub fn compile_block_expr(&mut self, block: &Block, expected_type: Option<TypeId>) -> Value {

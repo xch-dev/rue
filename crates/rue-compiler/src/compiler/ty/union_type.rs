@@ -1,7 +1,7 @@
 use rue_parser::UnionType;
 use rue_typing::{Type, TypeId};
 
-use crate::compiler::Compiler;
+use crate::Compiler;
 
 impl Compiler<'_> {
     pub fn compile_union_type(&mut self, union: &UnionType) -> TypeId {

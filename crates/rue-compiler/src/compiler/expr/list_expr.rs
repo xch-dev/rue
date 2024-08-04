@@ -1,7 +1,7 @@
 use rue_parser::ListExpr;
 use rue_typing::construct_items;
 
-use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
+use crate::{Compiler, ErrorKind, Hir, Value};
 
 impl Compiler<'_> {
     pub fn compile_list_expr(&mut self, list_expr: &ListExpr) -> Value {

@@ -2,12 +2,7 @@ use rowan::TextRange;
 use rue_parser::{AstNode, BinaryExpr, BinaryOp, Expr};
 use rue_typing::{Comparison, Type, TypeId};
 
-use crate::{
-    compiler::Compiler,
-    hir::{BinOp, Hir, Op},
-    value::{Guard, Value},
-    ErrorKind, HirId,
-};
+use crate::{BinOp, Compiler, ErrorKind, Guard, Hir, HirId, Op, Value};
 
 impl Compiler<'_> {
     pub fn compile_binary_expr(&mut self, binary: &BinaryExpr) -> Value {

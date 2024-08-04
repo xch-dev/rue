@@ -1,7 +1,4 @@
-use crate::{
-    hir::{BinOp, Op},
-    EnvironmentId, MirId, SymbolId,
-};
+use crate::{BinOp, EnvironmentId, MirId, Op, SymbolId};
 
 #[derive(Debug, Clone)]
 pub enum Mir {

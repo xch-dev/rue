@@ -1,12 +1,7 @@
 use indexmap::IndexSet;
 use rue_parser::{ModuleItem, Root};
 
-use crate::{
-    compiler::Compiler,
-    scope::Scope,
-    symbol::{Module, Symbol},
-    SymbolId,
-};
+use crate::{Compiler, Module, Scope, Symbol, SymbolId};
 
 use super::Declarations;
 

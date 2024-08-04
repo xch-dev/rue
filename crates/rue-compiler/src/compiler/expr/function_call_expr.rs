@@ -4,7 +4,7 @@ use rowan::TextRange;
 use rue_parser::{AstNode, FunctionCallExpr};
 use rue_typing::{deconstruct_items, unwrap_list, Callable, TypeId};
 
-use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind};
+use crate::{Compiler, ErrorKind, Hir, Value};
 
 impl Compiler<'_> {
     pub fn compile_function_call_expr(&mut self, call: &FunctionCallExpr) -> Value {

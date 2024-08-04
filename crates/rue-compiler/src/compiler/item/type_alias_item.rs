@@ -1,7 +1,7 @@
 use rue_parser::TypeAliasItem;
 use rue_typing::{Alias, Type, TypeId};
 
-use crate::{compiler::Compiler, scope::Scope, ErrorKind, ScopeId};
+use crate::{Compiler, ErrorKind, Scope, ScopeId};
 
 impl Compiler<'_> {
     /// Define a type for an alias in the current scope, but leave it as unknown for now.

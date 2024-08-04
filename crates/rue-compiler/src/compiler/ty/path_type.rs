@@ -3,11 +3,8 @@ use rue_parser::PathItem;
 use rue_typing::TypeId;
 
 use crate::{
-    compiler::{
-        path::{Path, PathKind},
-        Compiler,
-    },
-    ErrorKind,
+    compiler::path::{Path, PathKind},
+    Compiler, ErrorKind,
 };
 
 impl Compiler<'_> {

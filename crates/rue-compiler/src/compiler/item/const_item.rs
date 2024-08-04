@@ -1,6 +1,6 @@
 use rue_parser::{AstNode, ConstItem};
 
-use crate::{compiler::Compiler, hir::Hir, symbol::Symbol, value::Value, SymbolId};
+use crate::{Compiler, Hir, Symbol, SymbolId, Value};
 
 impl Compiler<'_> {
     /// Define a constant in the current scope, but don't lower its body.

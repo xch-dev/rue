@@ -4,14 +4,7 @@ use indexmap::IndexSet;
 use rue_parser::{AstNode, LambdaExpr};
 use rue_typing::{construct_items, deconstruct_items, Callable, Type, TypeId};
 
-use crate::{
-    compiler::Compiler,
-    hir::Hir,
-    scope::Scope,
-    symbol::{Function, Symbol},
-    value::Value,
-    ErrorKind,
-};
+use crate::{Compiler, ErrorKind, Function, Hir, Scope, Symbol, Value};
 
 impl Compiler<'_> {
     pub fn compile_lambda_expr(

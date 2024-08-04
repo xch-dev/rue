@@ -1,12 +1,7 @@
 use rue_parser::{AstNode, GuardExpr};
 use rue_typing::{bigint_to_bytes, Check, TypeId};
 
-use crate::{
-    compiler::Compiler,
-    hir::{BinOp, Hir, Op},
-    value::{Guard, Value},
-    ErrorKind, HirId, WarningKind,
-};
+use crate::{BinOp, Compiler, ErrorKind, Guard, Hir, HirId, Op, Value, WarningKind};
 
 impl Compiler<'_> {
     pub fn compile_guard_expr(

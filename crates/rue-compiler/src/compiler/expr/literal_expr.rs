@@ -1,7 +1,7 @@
 use rue_parser::{LiteralExpr, SyntaxKind, SyntaxToken};
 use rue_typing::bigint_to_bytes;
 
-use crate::{compiler::Compiler, hir::Hir, value::Value};
+use crate::{Compiler, Hir, Value};
 
 impl Compiler<'_> {
     pub fn compile_literal_expr(&mut self, literal: &LiteralExpr) -> Value {

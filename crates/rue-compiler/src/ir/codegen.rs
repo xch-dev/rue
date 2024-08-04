@@ -1,10 +1,9 @@
 use clvmr::{Allocator, NodePtr};
 use num_bigint::BigInt;
 
-use crate::{
-    database::{Database, LirId},
-    lir::Lir,
-};
+use crate::{Database, LirId};
+
+use super::Lir;
 
 pub struct Codegen<'a> {
     db: &'a mut Database,

@@ -5,7 +5,7 @@ use rowan::TextRange;
 use rue_parser::{AstNode, GenericArgs, PathItem};
 use rue_typing::{Lazy, Type, TypeId};
 
-use crate::{symbol::Symbol, ErrorKind, SymbolId};
+use crate::{ErrorKind, Symbol, SymbolId};
 
 use super::Compiler;
 

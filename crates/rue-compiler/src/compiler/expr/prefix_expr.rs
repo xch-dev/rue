@@ -1,10 +1,6 @@
 use rue_parser::{AstNode, PrefixExpr, PrefixOp};
 
-use crate::{
-    compiler::Compiler,
-    hir::{BinOp, Hir, Op},
-    value::Value,
-};
+use crate::{BinOp, Compiler, Hir, Op, Value};
 
 impl Compiler<'_> {
     pub fn compile_prefix_expr(&mut self, prefix_expr: &PrefixExpr) -> Value {

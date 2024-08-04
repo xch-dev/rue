@@ -1,6 +1,6 @@
 use id_arena::Id;
 
-use crate::{environment::Environment, hir::Hir, lir::Lir, mir::Mir, scope::Scope, symbol::Symbol};
+use crate::{Environment, Hir, Lir, Mir, Scope, Symbol};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolId(pub(super) Id<Symbol>);

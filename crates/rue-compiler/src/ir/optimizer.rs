@@ -3,13 +3,7 @@ use num_traits::One;
 use rue_clvm::{first_path, rest_path};
 use rue_typing::bigint_to_bytes;
 
-use crate::{
-    database::{Database, LirId, SymbolId},
-    hir::{BinOp, Op},
-    lir::Lir,
-    mir::Mir,
-    EnvironmentId, MirId,
-};
+use crate::{BinOp, Database, EnvironmentId, Lir, LirId, Mir, MirId, Op, SymbolId};
 
 #[derive(Debug)]
 pub struct Optimizer<'a> {

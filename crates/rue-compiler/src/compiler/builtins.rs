@@ -2,12 +2,7 @@ use indexmap::indexset;
 use rowan::TextRange;
 use rue_typing::{Callable, Type, TypeSystem};
 
-use crate::{
-    hir::{BinOp, Hir, Op},
-    scope::Scope,
-    symbol::{Function, Symbol},
-    Database, HirId, ScopeId, SymbolId,
-};
+use crate::{BinOp, Database, Function, Hir, HirId, Op, Scope, ScopeId, Symbol, SymbolId};
 
 /// These are the built-in types and most commonly used HIR nodes.
 pub struct Builtins {

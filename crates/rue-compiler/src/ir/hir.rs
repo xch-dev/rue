@@ -1,9 +1,6 @@
 use rowan::TextRange;
 
-use crate::{
-    database::{HirId, SymbolId},
-    ScopeId,
-};
+use crate::{HirId, ScopeId, SymbolId};
 
 #[derive(Debug, Clone)]
 pub enum Hir {

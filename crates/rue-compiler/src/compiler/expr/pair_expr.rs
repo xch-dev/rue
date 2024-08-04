@@ -1,7 +1,7 @@
 use rue_parser::{AstNode, PairExpr};
 use rue_typing::{Type, TypeId};
 
-use crate::{compiler::Compiler, hir::Hir, value::Value};
+use crate::{Compiler, Hir, Value};
 
 impl Compiler<'_> {
     pub fn compile_pair_expr(&mut self, pair: &PairExpr, expected_type: Option<TypeId>) -> Value {

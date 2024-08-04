@@ -5,7 +5,7 @@ use rowan::TextRange;
 use rue_parser::{AstNode, InitializerExpr, InitializerField};
 use rue_typing::{bigint_to_bytes, deconstruct_items, Type, TypeId};
 
-use crate::{compiler::Compiler, hir::Hir, value::Value, ErrorKind, HirId};
+use crate::{Compiler, ErrorKind, Hir, HirId, Value};
 
 impl Compiler<'_> {
     pub fn compile_initializer_expr(&mut self, initializer: &InitializerExpr) -> Value {

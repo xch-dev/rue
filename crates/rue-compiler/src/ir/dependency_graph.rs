@@ -2,10 +2,8 @@ use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 
 use crate::{
-    environment::Environment,
-    hir::Hir,
-    symbol::{Function, Module, Symbol},
-    Database, EnvironmentId, ErrorKind, HirId, ScopeId, SymbolId,
+    Database, Environment, EnvironmentId, ErrorKind, Function, Hir, HirId, Module, ScopeId, Symbol,
+    SymbolId,
 };
 
 #[derive(Debug, Default, Clone)]

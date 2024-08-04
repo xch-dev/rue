@@ -3,14 +3,8 @@ use rue_parser::PathItem;
 use rue_typing::{bigint_to_bytes, Type};
 
 use crate::{
-    compiler::{
-        path::{Path, PathKind},
-        Compiler,
-    },
-    hir::Hir,
-    symbol::Symbol,
-    value::{GuardPath, Value},
-    ErrorKind,
+    compiler::path::{Path, PathKind},
+    Compiler, ErrorKind, GuardPath, Hir, Symbol, Value,
 };
 
 impl Compiler<'_> {

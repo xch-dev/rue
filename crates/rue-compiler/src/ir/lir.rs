@@ -1,6 +1,6 @@
 use num_bigint::BigInt;
 
-use crate::database::LirId;
+use crate::LirId;
 
 #[derive(Debug, Clone)]
 pub enum Lir {

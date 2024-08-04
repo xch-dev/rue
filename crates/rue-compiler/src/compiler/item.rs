@@ -3,7 +3,7 @@ use rue_typing::HashSet;
 use rue_parser::Item;
 use rue_typing::{Type, TypeId};
 
-use crate::{symbol::Symbol, ErrorKind, ScopeId, SymbolId};
+use crate::{ErrorKind, ScopeId, Symbol, SymbolId};
 
 use super::Compiler;
 

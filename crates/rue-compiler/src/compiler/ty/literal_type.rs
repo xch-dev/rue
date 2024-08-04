@@ -1,7 +1,7 @@
 use rue_parser::{LiteralType, SyntaxKind, SyntaxToken};
 use rue_typing::{Type, TypeId};
 
-use crate::compiler::Compiler;
+use crate::Compiler;
 
 impl Compiler<'_> {
     pub fn compile_literal_type(&mut self, literal: &LiteralType) -> TypeId {

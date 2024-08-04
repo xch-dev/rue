@@ -1,11 +1,7 @@
 use rue_parser::{AstNode, Block, Stmt};
 use rue_typing::TypeId;
 
-use crate::{
-    hir::{Hir, Op},
-    value::Value,
-    ErrorKind,
-};
+use crate::{ErrorKind, Hir, Op, Value};
 
 use super::{stmt::Statement, Compiler};
 

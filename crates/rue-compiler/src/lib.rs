@@ -1,27 +1,22 @@
-mod codegen;
 mod compiler;
 mod database;
-mod dependency_graph;
-mod environment;
 mod error;
-mod hir;
-mod lir;
-mod lowerer;
-mod mir;
-mod optimizer;
+mod ir;
 mod scope;
 mod symbol;
 mod value;
 
-use clvmr::{Allocator, NodePtr};
-use compiler::{
-    build_graph, codegen, compile_modules, load_module, load_standard_library, setup_compiler,
-    try_export_main,
-};
-use rue_parser::Root;
-
 pub use database::*;
 pub use error::*;
+
+pub(crate) use compiler::*;
+pub(crate) use ir::*;
+pub(crate) use scope::*;
+pub(crate) use symbol::*;
+pub(crate) use value::*;
+
+use clvmr::{Allocator, NodePtr};
+use rue_parser::Root;
 use rue_typing::TypeSystem;
 
 #[derive(Debug)]

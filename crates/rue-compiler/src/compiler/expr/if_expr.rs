@@ -1,7 +1,7 @@
 use rue_parser::{AstNode, IfExpr};
 use rue_typing::TypeId;
 
-use crate::{compiler::Compiler, hir::Hir, value::Value};
+use crate::{Compiler, Hir, Value};
 
 impl Compiler<'_> {
     pub fn compile_if_expr(&mut self, if_expr: &IfExpr, expected_type: Option<TypeId>) -> Value {

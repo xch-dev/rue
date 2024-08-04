@@ -9,12 +9,8 @@ use rue_typing::{Comparison, TypeId, TypeSystem};
 use symbol_table::SymbolTable;
 
 use crate::{
-    database::{Database, HirId, ScopeId, SymbolId},
-    hir::{Hir, Op},
-    scope::Scope,
-    symbol::{Function, Symbol},
-    value::{GuardPath, Value},
-    ErrorKind,
+    Database, ErrorKind, Function, GuardPath, Hir, HirId, Op, Scope, ScopeId, Symbol, SymbolId,
+    Value,
 };
 
 mod block;

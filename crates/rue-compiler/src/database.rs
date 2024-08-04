@@ -11,13 +11,8 @@ pub use ids::*;
 use rue_typing::TypeId;
 
 use crate::{
-    environment::Environment,
-    hir::{Hir, Op},
-    lir::Lir,
-    mir::Mir,
-    scope::Scope,
-    symbol::Symbol,
-    Diagnostic, DiagnosticKind, ErrorKind, WarningKind,
+    Diagnostic, DiagnosticKind, Environment, ErrorKind, Hir, Lir, Mir, Op, Scope, Symbol,
+    WarningKind,
 };
 
 #[derive(Debug, Default)]

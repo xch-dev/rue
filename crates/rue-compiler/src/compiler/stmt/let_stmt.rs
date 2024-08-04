@@ -1,6 +1,6 @@
 use rue_parser::{AstNode, LetStmt};
 
-use crate::{compiler::Compiler, scope::Scope, symbol::Symbol, ScopeId};
+use crate::{Compiler, Scope, ScopeId, Symbol};
 
 impl Compiler<'_> {
     /// Compiles a let statement and returns its new scope id.

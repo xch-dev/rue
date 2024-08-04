@@ -3,7 +3,7 @@ use rue_typing::HashSet;
 use indexmap::{IndexMap, IndexSet};
 use rue_typing::{Type, TypeId, TypeSystem};
 
-use crate::{dependency_graph::DependencyGraph, symbol::Symbol, Database, SymbolId, WarningKind};
+use crate::{Database, DependencyGraph, Symbol, SymbolId, WarningKind};
 
 #[derive(Debug, Default)]
 pub struct SymbolTable {

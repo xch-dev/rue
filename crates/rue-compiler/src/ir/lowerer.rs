@@ -3,12 +3,8 @@ use rue_typing::HashMap;
 use indexmap::IndexSet;
 
 use crate::{
-    dependency_graph::DependencyGraph,
-    environment::Environment,
-    hir::Hir,
-    mir::Mir,
-    symbol::{Function, Symbol},
-    Database, EnvironmentId, HirId, MirId, ScopeId, SymbolId,
+    Database, DependencyGraph, Environment, EnvironmentId, Function, Hir, HirId, Mir, MirId,
+    ScopeId, Symbol, SymbolId,
 };
 
 #[derive(Debug)]
