@@ -15,17 +15,17 @@ use crate::{
 #[derive(Debug)]
 pub struct Optimizer<'a> {
     db: &'a mut Database,
-    arena: &'a mut Arena<Lir>,
+    lir: &'a mut Arena<Lir>,
 }
 
 impl<'a> Optimizer<'a> {
-    pub fn new(db: &'a mut Database, arena: &'a mut Arena<Lir>) -> Self {
-        Self { db, arena }
+    pub fn new(db: &'a mut Database, lir: &'a mut Arena<Lir>) -> Self {
+        Self { db, lir }
     }
 
     pub fn opt_mir(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         match self.db.mir(mir_id).clone() {
-            Mir::Atom(atom) => self.arena.alloc(Lir::Atom(atom.clone())),
+            Mir::Atom(atom) => self.lir.alloc(Lir::Atom(atom.clone())),
             Mir::Pair(first, rest) => self.opt_pair(env_id, first, rest),
             Mir::Reference(symbol_id) => self.opt_path(env_id, symbol_id),
             Mir::Op(Op::First, value) => self.opt_first(env_id, value),
@@ -73,7 +73,7 @@ impl<'a> Optimizer<'a> {
                 let value = self.opt_mir(env_id, value);
                 let start = self.opt_mir(env_id, start);
                 let end = self.opt_mir(env_id, end);
-                self.arena.alloc(Lir::Substr(value, start, end))
+                self.lir.alloc(Lir::Substr(value, start, end))
             }
             Mir::If(condition, then_block, else_block) => {
                 self.opt_if(env_id, condition, then_block, else_block)
@@ -92,7 +92,7 @@ impl<'a> Optimizer<'a> {
             .into_iter()
             .map(|arg| self.opt_mir(env_id, arg))
             .collect();
-        self.arena.alloc(Lir::Closure(body, args))
+        self.lir.alloc(Lir::Closure(body, args))
     }
 
     fn opt_curry(&mut self, env_id: EnvironmentId, body: MirId, args: Vec<MirId>) -> LirId {
@@ -101,18 +101,18 @@ impl<'a> Optimizer<'a> {
             .into_iter()
             .map(|arg| self.opt_mir(env_id, arg))
             .collect();
-        self.arena.alloc(Lir::Curry(body, args))
+        self.lir.alloc(Lir::Curry(body, args))
     }
 
     fn opt_run(&mut self, env_id: EnvironmentId, body: MirId, args: MirId) -> LirId {
         let body = self.opt_mir(env_id, body);
         let args = self.opt_mir(env_id, args);
-        self.arena.alloc(Lir::Run(body, Some(args)))
+        self.lir.alloc(Lir::Run(body, Some(args)))
     }
 
     fn opt_quote(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let value = self.opt_mir(env_id, mir_id);
-        self.arena.alloc(Lir::Quote(value))
+        self.lir.alloc(Lir::Quote(value))
     }
 
     fn opt_path(&mut self, mut env_id: EnvironmentId, symbol_id: SymbolId) -> LirId {
@@ -153,152 +153,152 @@ impl<'a> Optimizer<'a> {
             path += 1;
         }
 
-        self.arena.alloc(Lir::Path(path))
+        self.lir.alloc(Lir::Path(path))
     }
 
     fn opt_pair(&mut self, env_id: EnvironmentId, first: MirId, rest: MirId) -> LirId {
         let first = self.opt_mir(env_id, first);
         let rest = self.opt_mir(env_id, rest);
-        self.arena.alloc(Lir::Pair(first, rest))
+        self.lir.alloc(Lir::Pair(first, rest))
     }
 
     fn opt_first(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        match &self.arena[lir_id] {
-            Lir::Path(path) => self.arena.alloc(Lir::Path(first_path(path.clone()))),
+        match &self.lir[lir_id] {
+            Lir::Path(path) => self.lir.alloc(Lir::Path(first_path(path.clone()))),
             Lir::Pair(first, _) => *first,
-            _ => self.arena.alloc(Lir::First(lir_id)),
+            _ => self.lir.alloc(Lir::First(lir_id)),
         }
     }
 
     fn opt_rest(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        match &self.arena[lir_id] {
-            Lir::Path(path) => self.arena.alloc(Lir::Path(rest_path(path.clone()))),
+        match &self.lir[lir_id] {
+            Lir::Path(path) => self.lir.alloc(Lir::Path(rest_path(path.clone()))),
             Lir::Pair(_, rest) => *rest,
-            _ => self.arena.alloc(Lir::Rest(lir_id)),
+            _ => self.lir.alloc(Lir::Rest(lir_id)),
         }
     }
 
     fn opt_sha256(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        if let Lir::Concat(args) = self.arena[lir_id].clone() {
-            return self.arena.alloc(Lir::Sha256(args));
+        if let Lir::Concat(args) = self.lir[lir_id].clone() {
+            return self.lir.alloc(Lir::Sha256(args));
         }
-        self.arena.alloc(Lir::Sha256(vec![lir_id]))
+        self.lir.alloc(Lir::Sha256(vec![lir_id]))
     }
 
     fn opt_listp(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        match self.arena[lir_id] {
-            Lir::Pair(..) => self.arena.alloc(Lir::Atom(vec![1])),
-            Lir::Atom(..) => self.arena.alloc(Lir::Atom(Vec::new())),
-            _ => self.arena.alloc(Lir::Listp(lir_id)),
+        match self.lir[lir_id] {
+            Lir::Pair(..) => self.lir.alloc(Lir::Atom(vec![1])),
+            Lir::Atom(..) => self.lir.alloc(Lir::Atom(Vec::new())),
+            _ => self.lir.alloc(Lir::Listp(lir_id)),
         }
     }
 
     fn opt_strlen(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        match &self.arena[lir_id] {
+        match &self.lir[lir_id] {
             Lir::Atom(atom) => self
-                .arena
+                .lir
                 .alloc(Lir::Atom(bigint_to_bytes(BigInt::from(atom.len())))),
-            _ => self.arena.alloc(Lir::Strlen(lir_id)),
+            _ => self.lir.alloc(Lir::Strlen(lir_id)),
         }
     }
 
     fn opt_pubkey_for_exp(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        self.arena.alloc(Lir::PubkeyForExp(lir_id))
+        self.lir.alloc(Lir::PubkeyForExp(lir_id))
     }
 
     fn opt_bitwise_not(&mut self, env_id: EnvironmentId, mir_id: MirId) -> LirId {
         let lir_id = self.opt_mir(env_id, mir_id);
-        self.arena.alloc(Lir::LogNot(lir_id))
+        self.lir.alloc(Lir::LogNot(lir_id))
     }
 
     fn opt_bitwise_and(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::LogAnd(vec![lhs, rhs]))
+        self.lir.alloc(Lir::LogAnd(vec![lhs, rhs]))
     }
 
     fn opt_bitwise_or(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::LogIor(vec![lhs, rhs]))
+        self.lir.alloc(Lir::LogIor(vec![lhs, rhs]))
     }
 
     fn opt_bitwise_xor(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::LogXor(vec![lhs, rhs]))
+        self.lir.alloc(Lir::LogXor(vec![lhs, rhs]))
     }
 
     fn opt_right_arith_shift(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        let nil = self.arena.alloc(Lir::Atom(Vec::new()));
-        let neg_rhs = self.arena.alloc(Lir::Sub(vec![nil, rhs]));
-        self.arena.alloc(Lir::Ash(lhs, neg_rhs))
+        let nil = self.lir.alloc(Lir::Atom(Vec::new()));
+        let neg_rhs = self.lir.alloc(Lir::Sub(vec![nil, rhs]));
+        self.lir.alloc(Lir::Ash(lhs, neg_rhs))
     }
 
     fn opt_left_arith_shift(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::Ash(lhs, rhs))
+        self.lir.alloc(Lir::Ash(lhs, rhs))
     }
 
     fn opt_add(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
         let mut args = Vec::new();
-        if let Lir::Add(lhs) = &self.arena[lhs] {
+        if let Lir::Add(lhs) = &self.lir[lhs] {
             args.extend(lhs);
         } else {
             args.push(lhs);
         }
-        if let Lir::Add(rhs) = &self.arena[rhs] {
+        if let Lir::Add(rhs) = &self.lir[rhs] {
             args.extend(rhs);
         } else {
             args.push(rhs);
         }
-        self.arena.alloc(Lir::Add(args))
+        self.lir.alloc(Lir::Add(args))
     }
 
     fn opt_subtract(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::Sub(vec![lhs, rhs]))
+        self.lir.alloc(Lir::Sub(vec![lhs, rhs]))
     }
 
     fn opt_multiply(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
         let mut args = Vec::new();
-        if let Lir::Mul(lhs) = &self.arena[lhs] {
+        if let Lir::Mul(lhs) = &self.lir[lhs] {
             args.extend(lhs);
         } else {
             args.push(lhs);
         }
-        if let Lir::Mul(rhs) = &self.arena[rhs] {
+        if let Lir::Mul(rhs) = &self.lir[rhs] {
             args.extend(rhs);
         } else {
             args.push(rhs);
         }
-        self.arena.alloc(Lir::Mul(args))
+        self.lir.alloc(Lir::Mul(args))
     }
 
     fn opt_divide(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::Div(lhs, rhs))
+        self.lir.alloc(Lir::Div(lhs, rhs))
     }
 
     fn opt_remainder(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::Rem(lhs, rhs))
+        self.lir.alloc(Lir::Rem(lhs, rhs))
     }
 
     fn opt_lt(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
@@ -308,20 +308,20 @@ impl<'a> Optimizer<'a> {
     fn opt_gt(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::Gt(lhs, rhs))
+        self.lir.alloc(Lir::Gt(lhs, rhs))
     }
 
     fn opt_lteq(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let gt = self.opt_gt(env_id, lhs, rhs);
-        self.arena.alloc(Lir::Not(gt))
+        self.lir.alloc(Lir::Not(gt))
     }
 
     fn opt_gteq(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        let eq = self.arena.alloc(Lir::Eq(lhs, rhs));
-        let gt = self.arena.alloc(Lir::Gt(lhs, rhs));
-        self.arena.alloc(Lir::Any(vec![eq, gt]))
+        let eq = self.lir.alloc(Lir::Eq(lhs, rhs));
+        let gt = self.lir.alloc(Lir::Gt(lhs, rhs));
+        self.lir.alloc(Lir::Any(vec![eq, gt]))
     }
 
     fn opt_lt_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
@@ -331,54 +331,54 @@ impl<'a> Optimizer<'a> {
     fn opt_gt_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::GtBytes(lhs, rhs))
+        self.lir.alloc(Lir::GtBytes(lhs, rhs))
     }
 
     fn opt_lteq_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let gt = self.opt_gt_bytes(env_id, lhs, rhs);
-        self.arena.alloc(Lir::Not(gt))
+        self.lir.alloc(Lir::Not(gt))
     }
 
     fn opt_gteq_bytes(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        let eq = self.arena.alloc(Lir::Eq(lhs, rhs));
-        let gt = self.arena.alloc(Lir::GtBytes(lhs, rhs));
-        self.arena.alloc(Lir::Any(vec![eq, gt]))
+        let eq = self.lir.alloc(Lir::Eq(lhs, rhs));
+        let gt = self.lir.alloc(Lir::GtBytes(lhs, rhs));
+        self.lir.alloc(Lir::Any(vec![eq, gt]))
     }
 
     fn opt_eq(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::Eq(lhs, rhs))
+        self.lir.alloc(Lir::Eq(lhs, rhs))
     }
 
     fn opt_neq(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let eq = self.opt_eq(env_id, lhs, rhs);
-        self.arena.alloc(Lir::Not(eq))
+        self.lir.alloc(Lir::Not(eq))
     }
 
     fn opt_concat(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
         let mut args = Vec::new();
-        if let Lir::Concat(lhs) = &self.arena[lhs] {
+        if let Lir::Concat(lhs) = &self.lir[lhs] {
             args.extend(lhs);
         } else {
             args.push(lhs);
         }
-        if let Lir::Concat(rhs) = &self.arena[rhs] {
+        if let Lir::Concat(rhs) = &self.lir[rhs] {
             args.extend(rhs);
         } else {
             args.push(rhs);
         }
-        self.arena.alloc(Lir::Concat(args))
+        self.lir.alloc(Lir::Concat(args))
     }
 
     fn opt_point_add(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::PointAdd(vec![lhs, rhs]))
+        self.lir.alloc(Lir::PointAdd(vec![lhs, rhs]))
     }
 
     fn opt_logical_and(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
@@ -395,53 +395,53 @@ impl<'a> Optimizer<'a> {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
         let mut args = Vec::new();
-        if let Lir::Any(lhs) = &self.arena[lhs] {
+        if let Lir::Any(lhs) = &self.lir[lhs] {
             args.extend(lhs);
         } else {
             args.push(lhs);
         }
-        if let Lir::Any(rhs) = &self.arena[rhs] {
+        if let Lir::Any(rhs) = &self.lir[rhs] {
             args.extend(rhs);
         } else {
             args.push(rhs);
         }
-        self.arena.alloc(Lir::Any(args))
+        self.lir.alloc(Lir::Any(args))
     }
 
     fn opt_all(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
         let mut args = Vec::new();
-        if let Lir::All(lhs) = &self.arena[lhs] {
+        if let Lir::All(lhs) = &self.lir[lhs] {
             args.extend(lhs);
         } else {
             args.push(lhs);
         }
-        if let Lir::All(rhs) = &self.arena[rhs] {
+        if let Lir::All(rhs) = &self.lir[rhs] {
             args.extend(rhs);
         } else {
             args.push(rhs);
         }
-        self.arena.alloc(Lir::All(args))
+        self.lir.alloc(Lir::All(args))
     }
 
     fn opt_not(&mut self, env_id: EnvironmentId, value: MirId) -> LirId {
         let value = self.opt_mir(env_id, value);
-        match self.arena[value] {
+        match self.lir[value] {
             Lir::Not(value) => value,
-            _ => self.arena.alloc(Lir::Not(value)),
+            _ => self.lir.alloc(Lir::Not(value)),
         }
     }
 
     fn opt_divmod(&mut self, env_id: EnvironmentId, lhs: MirId, rhs: MirId) -> LirId {
         let lhs = self.opt_mir(env_id, lhs);
         let rhs = self.opt_mir(env_id, rhs);
-        self.arena.alloc(Lir::Divmod(lhs, rhs))
+        self.lir.alloc(Lir::Divmod(lhs, rhs))
     }
 
     fn opt_raise(&mut self, env_id: EnvironmentId, value: Option<MirId>) -> LirId {
         let value = value.map(|value| self.opt_mir(env_id, value));
-        self.arena.alloc(Lir::Raise(value))
+        self.lir.alloc(Lir::Raise(value))
     }
 
     fn opt_if(
@@ -455,12 +455,10 @@ impl<'a> Optimizer<'a> {
         let then_branch = self.opt_mir(env_id, then_block);
         let else_branch = self.opt_mir(env_id, else_block);
 
-        let then_branch = self.arena.alloc(Lir::Quote(then_branch));
-        let else_branch = self.arena.alloc(Lir::Quote(else_branch));
-        let if_expr = self
-            .arena
-            .alloc(Lir::If(condition, then_branch, else_branch));
+        let then_branch = self.lir.alloc(Lir::Quote(then_branch));
+        let else_branch = self.lir.alloc(Lir::Quote(else_branch));
+        let if_expr = self.lir.alloc(Lir::If(condition, then_branch, else_branch));
 
-        self.arena.alloc(Lir::Run(if_expr, None))
+        self.lir.alloc(Lir::Run(if_expr, None))
     }
 }

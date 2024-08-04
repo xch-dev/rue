@@ -6,23 +6,23 @@ use crate::{lir::Lir, ops::Ops, LirId};
 
 #[derive(Debug)]
 pub struct Codegen<'a> {
-    arena: Arena<Lir>,
+    lir: Arena<Lir>,
     allocator: &'a mut Allocator,
     ops: Ops,
 }
 
 impl<'a> Codegen<'a> {
-    pub fn new(arena: Arena<Lir>, allocator: &'a mut Allocator) -> Self {
+    pub fn new(lir: Arena<Lir>, allocator: &'a mut Allocator) -> Self {
         let ops = Ops::alloc(allocator);
         Self {
-            arena,
+            lir,
             allocator,
             ops,
         }
     }
 
     pub fn gen_lir(&mut self, lir_id: LirId) -> NodePtr {
-        match self.arena[lir_id].clone() {
+        match self.lir[lir_id].clone() {
             Lir::Atom(atom) => self.gen_atom(&atom),
             Lir::Pair(first, rest) => self.gen_pair(first, rest),
             Lir::Quote(value) => self.gen_quote(value),
