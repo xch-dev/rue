@@ -10,7 +10,8 @@ impl Compiler<'_> {
             .map(|condition| self.compile_expr(&condition, Some(self.ty.std().bool)));
 
         if let Some(condition) = condition.as_ref() {
-            self.type_guard_stack.push(condition.then_guards());
+            let overrides = self.build_overrides(condition.then_guards());
+            self.type_overrides.push(overrides);
         }
 
         let then_block = if_expr
@@ -18,11 +19,12 @@ impl Compiler<'_> {
             .map(|then_block| self.compile_block_expr(&then_block, expected_type));
 
         if condition.is_some() {
-            self.type_guard_stack.pop().unwrap();
+            self.type_overrides.pop().unwrap();
         }
 
         if let Some(condition) = condition.as_ref() {
-            self.type_guard_stack.push(condition.else_guards());
+            let overrides = self.build_overrides(condition.else_guards());
+            self.type_overrides.push(overrides);
         }
 
         let expected_type =
@@ -33,7 +35,7 @@ impl Compiler<'_> {
             .map(|else_block| self.compile_block_expr(&else_block, expected_type));
 
         if condition.is_some() {
-            self.type_guard_stack.pop().unwrap();
+            self.type_overrides.pop().unwrap();
         }
 
         if let Some(condition_type) = condition.as_ref().map(|condition| condition.type_id) {

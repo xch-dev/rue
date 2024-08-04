@@ -35,7 +35,8 @@ impl Compiler<'_> {
             let scope_id = self.db.alloc_scope(Scope::default());
 
             // We can apply any type guards from the condition.
-            self.type_guard_stack.push(condition.then_guards());
+            let overrides = self.build_overrides(condition.then_guards());
+            self.type_overrides.push(overrides);
 
             // Compile the then block.
             self.scope_stack.push(scope_id);
@@ -43,7 +44,7 @@ impl Compiler<'_> {
             self.scope_stack.pop().unwrap();
 
             // Pop the type guards, since we've left the scope.
-            self.type_guard_stack.pop().unwrap();
+            self.type_overrides.pop().unwrap();
 
             // If there's an implicit return, we want to raise an error.
             // This could technically work but makes the intent of the code unclear.

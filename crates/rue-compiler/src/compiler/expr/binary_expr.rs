@@ -172,7 +172,7 @@ impl Compiler<'_> {
                 let else_type = self.ty.difference(rhs.type_id, self.ty.std().nil);
                 value
                     .guards
-                    .insert(guard_path, Guard::new(then_type, else_type));
+                    .insert(guard_path, Guard::new(Some(then_type), Some(else_type)));
             }
         }
 
@@ -182,7 +182,7 @@ impl Compiler<'_> {
                 let else_type = self.ty.difference(lhs.type_id, self.ty.std().nil);
                 value
                     .guards
-                    .insert(guard_path, Guard::new(then_type, else_type));
+                    .insert(guard_path, Guard::new(Some(then_type), Some(else_type)));
             }
         }
 
@@ -250,13 +250,14 @@ impl Compiler<'_> {
     }
 
     fn op_and(&mut self, lhs: Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
-        self.type_guard_stack.push(lhs.then_guards());
+        let overrides = self.build_overrides(lhs.then_guards());
+        self.type_overrides.push(overrides);
 
         let rhs = rhs
             .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bool)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_guard_stack.pop().unwrap();
+        self.type_overrides.pop().unwrap();
 
         self.type_check(lhs.type_id, self.ty.std().bool, text_range);
         self.type_check(rhs.type_id, self.ty.std().bool, text_range);
@@ -267,19 +268,28 @@ impl Compiler<'_> {
             rhs.hir_id,
             self.ty.std().bool,
         );
-        value.guards.extend(lhs.guards);
-        value.guards.extend(rhs.guards);
+        value.guards.extend(
+            lhs.guards
+                .into_iter()
+                .map(|(path, guard)| (path, Guard::new(guard.then_type, None))),
+        );
+        value.guards.extend(
+            rhs.guards
+                .into_iter()
+                .map(|(path, guard)| (path, Guard::new(guard.then_type, None))),
+        );
         value
     }
 
     fn op_or(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
-        self.type_guard_stack.push(lhs.then_guards());
+        let overrides = self.build_overrides(lhs.then_guards());
+        self.type_overrides.push(overrides);
 
         let rhs = rhs
             .map(|rhs| self.compile_expr(rhs, Some(self.ty.std().bool)))
             .unwrap_or_else(|| self.unknown());
 
-        self.type_guard_stack.pop().unwrap();
+        self.type_overrides.pop().unwrap();
 
         self.type_check(lhs.type_id, self.ty.std().bool, text_range);
         self.type_check(rhs.type_id, self.ty.std().bool, text_range);

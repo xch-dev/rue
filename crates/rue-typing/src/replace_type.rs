@@ -11,10 +11,19 @@ pub(crate) fn replace_type(
     }
 
     match types.get(type_id) {
-        Type::Pair(first, rest) => match path[0] {
-            TypePath::First => replace_type(types, *first, replace_type_id, &path[1..]),
-            TypePath::Rest => replace_type(types, *rest, replace_type_id, &path[1..]),
-        },
+        Type::Pair(first, rest) => {
+            let (first, rest) = (*first, *rest);
+            match path[0] {
+                TypePath::First => {
+                    let first = replace_type(types, first, replace_type_id, &path[1..]);
+                    types.alloc(Type::Pair(first, rest))
+                }
+                TypePath::Rest => {
+                    let rest = replace_type(types, rest, replace_type_id, &path[1..]);
+                    types.alloc(Type::Pair(first, rest))
+                }
+            }
+        }
         Type::Alias(alias) => {
             let alias = alias.clone();
             let new_type_id = replace_type(types, alias.type_id, replace_type_id, path);

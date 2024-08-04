@@ -62,7 +62,9 @@ impl Compiler<'_> {
 
         if let Some(guard_path) = expr.guard_path {
             let difference = self.ty.difference(expr.type_id, rhs);
-            value.guards.insert(guard_path, Guard::new(rhs, difference));
+            value
+                .guards
+                .insert(guard_path, Guard::new(Some(rhs), Some(difference)));
         }
 
         value

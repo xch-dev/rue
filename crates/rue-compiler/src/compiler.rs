@@ -12,6 +12,7 @@ use crate::{
     database::{Database, HirId, ScopeId, SymbolId},
     hir::{Hir, Op},
     scope::Scope,
+    symbol::{Function, Symbol},
     value::{GuardPath, Value},
     ErrorKind,
 };
@@ -46,8 +47,8 @@ pub struct Compiler<'a> {
     // The type definition stack is used for calculating types referenced in types.
     type_definition_stack: Vec<TypeId>,
 
-    // The type guard stack is used for overriding types in certain contexts.
-    type_guard_stack: Vec<HashMap<GuardPath, TypeId>>,
+    // Overridden symbol types due to type guards.
+    type_overrides: Vec<HashMap<SymbolId, TypeId>>,
 
     // The generic type stack is used for overriding generic types that are being checked against.
     generic_type_stack: Vec<HashMap<TypeId, TypeId>>,
@@ -74,7 +75,7 @@ impl<'a> Compiler<'a> {
             scope_stack: vec![builtins.scope_id],
             symbol_stack: Vec::new(),
             type_definition_stack: Vec::new(),
-            type_guard_stack: Vec::new(),
+            type_overrides: Vec::new(),
             generic_type_stack: Vec::new(),
             allow_generic_inference_stack: vec![false],
             is_callee: false,
@@ -169,13 +170,50 @@ impl<'a> Compiler<'a> {
         Value::new(self.builtins.unknown, self.ty.std().unknown)
     }
 
-    fn symbol_type(&self, guard_path: &GuardPath) -> Option<TypeId> {
-        for guards in self.type_guard_stack.iter().rev() {
-            if let Some(guard) = guards.get(guard_path) {
-                return Some(*guard);
+    fn build_overrides(&mut self, guards: HashMap<GuardPath, TypeId>) -> HashMap<SymbolId, TypeId> {
+        type GuardItem = (Vec<TypePath>, TypeId);
+
+        let mut symbol_guards: HashMap<SymbolId, Vec<GuardItem>> = HashMap::new();
+
+        for (guard_path, type_id) in guards {
+            symbol_guards
+                .entry(guard_path.symbol_id)
+                .or_default()
+                .push((guard_path.items, type_id));
+        }
+
+        let mut overrides = HashMap::new();
+
+        for (symbol_id, mut items) in symbol_guards {
+            // Order by length.
+            items.sort_by_key(|(items, _)| items.len());
+
+            let mut type_id = self.symbol_type(symbol_id);
+
+            for (path_items, new_type_id) in items {
+                type_id = self.ty.replace(type_id, new_type_id, &path_items);
+            }
+
+            overrides.insert(symbol_id, type_id);
+        }
+
+        overrides
+    }
+
+    fn symbol_type(&self, symbol_id: SymbolId) -> TypeId {
+        for guards in self.type_overrides.iter().rev() {
+            if let Some(type_id) = guards.get(&symbol_id) {
+                return *type_id;
             }
         }
-        None
+
+        match self.db.symbol(symbol_id) {
+            Symbol::Unknown | Symbol::Module(..) => unreachable!(),
+            Symbol::Function(Function { type_id, .. })
+            | Symbol::InlineFunction(Function { type_id, .. })
+            | Symbol::Parameter(type_id) => *type_id,
+            Symbol::Let(value) | Symbol::Const(value) | Symbol::InlineConst(value) => value.type_id,
+        }
     }
 
     fn scope(&self) -> &Scope {

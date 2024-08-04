@@ -109,6 +109,13 @@ impl TypeSystem {
         }
     }
 
+    pub fn get_unaliased(&self, type_id: TypeId) -> &Type {
+        match self.get(type_id) {
+            Type::Alias(ty) => self.get_unaliased(ty.type_id),
+            ty => ty,
+        }
+    }
+
     pub fn get(&self, type_id: TypeId) -> &Type {
         match &self.arena[type_id] {
             Type::Ref(type_id) => self.get(*type_id),
