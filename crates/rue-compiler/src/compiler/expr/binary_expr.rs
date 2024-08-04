@@ -282,7 +282,7 @@ impl Compiler<'_> {
     }
 
     fn op_or(&mut self, lhs: &Value, rhs: Option<&Expr>, text_range: TextRange) -> Value {
-        let overrides = self.build_overrides(lhs.then_guards());
+        let overrides = self.build_overrides(lhs.else_guards());
         self.type_overrides.push(overrides);
 
         let rhs = rhs
