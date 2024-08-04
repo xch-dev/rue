@@ -8,7 +8,7 @@ use crate::{
         Compiler,
     },
     hir::Hir,
-    symbol::{Function, Symbol},
+    symbol::Symbol,
     value::{GuardPath, Value},
     ErrorKind,
 };
@@ -75,18 +75,16 @@ impl Compiler<'_> {
             return self.unknown();
         }
 
-        let type_override = self.symbol_type(&GuardPath::new(symbol_id));
+        let type_id = self.symbol_type(symbol_id);
         let reference = self.db.alloc_hir(Hir::Reference(symbol_id, text_range));
 
         let mut value = match self.db.symbol(symbol_id).clone() {
             Symbol::Unknown | Symbol::Module(..) => unreachable!(),
-            Symbol::Function(Function { type_id, .. })
-            | Symbol::InlineFunction(Function { type_id, .. })
-            | Symbol::Parameter(type_id) => Value::new(reference, type_override.unwrap_or(type_id)),
+            Symbol::Function(..) | Symbol::InlineFunction(..) | Symbol::Parameter(..) => {
+                Value::new(reference, type_id)
+            }
             Symbol::Let(mut value) | Symbol::Const(mut value) | Symbol::InlineConst(mut value) => {
-                if let Some(type_id) = type_override {
-                    value.type_id = type_id;
-                }
+                value.type_id = type_id;
                 value.hir_id = reference;
                 value
             }

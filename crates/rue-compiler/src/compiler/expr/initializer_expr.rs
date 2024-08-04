@@ -13,7 +13,7 @@ impl Compiler<'_> {
             .path()
             .map(|path| self.compile_path_type(&path.items(), path.syntax().text_range()));
 
-        match ty.map(|ty| self.ty.get(ty)).cloned() {
+        match ty.map(|ty| self.ty.get_unaliased(ty)).cloned() {
             Some(Type::Struct(struct_type)) => {
                 let fields = deconstruct_items(
                     self.ty,
@@ -85,7 +85,7 @@ impl Compiler<'_> {
                     self.unknown()
                 }
             }
-            Some(_) => {
+            Some(..) => {
                 self.db.error(
                     ErrorKind::UninitializableType(self.type_name(ty.unwrap())),
                     initializer.path().unwrap().syntax().text_range(),

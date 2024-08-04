@@ -50,7 +50,8 @@ impl Compiler<'_> {
 
                     // Push the type guards onto the stack.
                     // This will be popped in reverse order later after all statements have been lowered.
-                    self.type_guard_stack.push(else_guards);
+                    let overrides = self.build_overrides(else_guards);
+                    self.type_overrides.push(overrides);
 
                     statements.push(Statement::If(condition_hir, then_hir));
                 }
@@ -103,8 +104,8 @@ impl Compiler<'_> {
                     // If the condition is false, we raise an error.
                     // So we can assume that the condition is true from this point on.
                     // This will be popped in reverse order later after all statements have been lowered.
-
-                    self.type_guard_stack.push(condition.then_guards());
+                    let overrides = self.build_overrides(condition.then_guards());
+                    self.type_overrides.push(overrides);
 
                     let not_condition = self.db.alloc_hir(Hir::Op(Op::Not, condition.hir_id));
                     let raise = self.db.alloc_hir(Hir::Raise(None));
@@ -126,7 +127,8 @@ impl Compiler<'_> {
                         assume_stmt.syntax().text_range(),
                     );
 
-                    self.type_guard_stack.push(expr.then_guards());
+                    let overrides = self.build_overrides(expr.then_guards());
+                    self.type_overrides.push(overrides);
                     statements.push(Statement::Assume);
                 }
             }
@@ -158,7 +160,7 @@ impl Compiler<'_> {
                     body = value;
                 }
                 Statement::If(condition, then_block) => {
-                    self.type_guard_stack.pop().unwrap();
+                    self.type_overrides.pop().unwrap();
 
                     body = Value::new(
                         self.db
@@ -167,7 +169,7 @@ impl Compiler<'_> {
                     );
                 }
                 Statement::Assume => {
-                    self.type_guard_stack.pop().unwrap();
+                    self.type_overrides.pop().unwrap();
                 }
             }
         }

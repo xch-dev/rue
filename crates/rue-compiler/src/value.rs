@@ -29,26 +29,26 @@ impl Value {
     pub fn then_guards(&self) -> HashMap<GuardPath, TypeId> {
         self.guards
             .iter()
-            .map(|(guard_path, guard)| (guard_path.clone(), guard.then_type))
+            .filter_map(|(guard_path, guard)| Some((guard_path.clone(), guard.then_type?)))
             .collect()
     }
 
     pub fn else_guards(&self) -> HashMap<GuardPath, TypeId> {
         self.guards
             .iter()
-            .map(|(guard_path, guard)| (guard_path.clone(), guard.else_type))
+            .filter_map(|(guard_path, guard)| Some((guard_path.clone(), guard.else_type?)))
             .collect()
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Guard {
-    pub then_type: TypeId,
-    pub else_type: TypeId,
+    pub then_type: Option<TypeId>,
+    pub else_type: Option<TypeId>,
 }
 
 impl Guard {
-    pub fn new(then_type: TypeId, else_type: TypeId) -> Self {
+    pub fn new(then_type: Option<TypeId>, else_type: Option<TypeId>) -> Self {
         Self {
             then_type,
             else_type,

@@ -62,8 +62,21 @@ pub(crate) fn stringify_type(
             name + &generics
         }
         Type::Alias(alias) => stringify_type(types, alias.type_id, names, visited),
-        Type::Struct(Struct { type_id, .. }) | Type::Variant(Variant { type_id, .. }) => {
-            stringify_type(types, *type_id, names, visited)
+        Type::Struct(Struct {
+            type_id,
+            original_type_id,
+            ..
+        })
+        | Type::Variant(Variant {
+            type_id,
+            original_type_id,
+            ..
+        }) => {
+            if type_id == original_type_id {
+                stringify_type(types, *type_id, names, visited)
+            } else {
+                stringify_type(types, *original_type_id, names, visited)
+            }
         }
         Type::Enum(Enum { type_id, .. }) => stringify_type(types, *type_id, names, visited),
         Type::Callable(Callable {

@@ -22,8 +22,8 @@ impl Compiler<'_> {
             return self.unknown();
         };
 
-        let mut new_value = match self.ty.get(old_value.type_id).clone() {
-            Type::Unknown => return self.unknown(),
+        match self.ty.get(old_value.type_id).clone() {
+            Type::Unknown => self.unknown(),
             Type::Struct(ty) => {
                 let Some(value) = self.compile_struct_field_access(old_value, &ty, &name) else {
                     return self.unknown();
@@ -55,17 +55,9 @@ impl Compiler<'_> {
                     ),
                     name.text_range(),
                 );
-                return self.unknown();
-            }
-        };
-
-        if let Some(guard_path) = new_value.guard_path.as_ref() {
-            if let Some(type_override) = self.symbol_type(guard_path) {
-                new_value.type_id = type_override;
+                self.unknown()
             }
         }
-
-        new_value
     }
 
     fn compile_pair_field_access(
@@ -113,7 +105,7 @@ impl Compiler<'_> {
     ) -> Option<Value> {
         let fields =
             deconstruct_items(self.ty, ty.type_id, ty.field_names.len(), ty.nil_terminated)
-                .expect("invalid struct type");
+                .unwrap();
 
         let Some(index) = ty.field_names.get_index_of(name.text()) else {
             self.db
@@ -157,7 +149,7 @@ impl Compiler<'_> {
                 .as_ref()
                 .map(|field_names| {
                     deconstruct_items(self.ty, type_id, field_names.len(), ty.nil_terminated)
-                        .expect("invalid struct type")
+                        .unwrap()
                 })
                 .unwrap_or_default()
         } else {
