@@ -1,3 +1,5 @@
+use id_arena::Arena;
+use rue_codegen::Codegen;
 use rue_typing::HashSet;
 
 use clvmr::{Allocator, NodePtr};
@@ -6,7 +8,6 @@ use rue_parser::{parse, Root};
 use rue_typing::{Type, TypeSystem};
 
 use crate::{
-    codegen::Codegen,
     dependency_graph::DependencyGraph,
     lowerer::Lowerer,
     optimizer::Optimizer,
@@ -139,9 +140,10 @@ pub fn codegen(
 ) -> NodePtr {
     let mut lowerer = Lowerer::new(db, graph);
     let (env_id, mir_id) = lowerer.lower_main(entrypoint);
-    let mut optimizer = Optimizer::new(db);
+    let mut arena = Arena::new();
+    let mut optimizer = Optimizer::new(db, &mut arena);
     let lir_id = optimizer.opt_mir(env_id, mir_id);
-    let mut codegen = Codegen::new(db, allocator);
+    let mut codegen = Codegen::new(arena, allocator);
     codegen.gen_lir(lir_id)
 }
 

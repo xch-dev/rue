@@ -18,6 +18,7 @@ workspace = true
 rue-parser = { workspace = true }
 rue-clvm = { workspace = true }
 rue-typing = { workspace = true }
+rue-codegen = { workspace = true }
 clvmr = { workspace = true }
 id-arena = { workspace = true }
 indexmap = { workspace = true }

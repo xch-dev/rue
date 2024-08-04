@@ -13,7 +13,6 @@ use rue_typing::TypeId;
 use crate::{
     environment::Environment,
     hir::{Hir, Op},
-    lir::Lir,
     mir::Mir,
     scope::Scope,
     symbol::Symbol,
@@ -27,7 +26,6 @@ pub struct Database {
     symbols: Arena<Symbol>,
     hir: Arena<Hir>,
     mir: Arena<Mir>,
-    lir: Arena<Lir>,
     environments: Arena<Environment>,
     symbol_tokens: IndexMap<SymbolId, SyntaxToken>,
     type_tokens: IndexMap<TypeId, SyntaxToken>,
@@ -55,10 +53,6 @@ impl Database {
         MirId(self.mir.alloc(mir))
     }
 
-    pub(crate) fn alloc_lir(&mut self, lir: Lir) -> LirId {
-        LirId(self.lir.alloc(lir))
-    }
-
     pub(crate) fn alloc_env(&mut self, environment: Environment) -> EnvironmentId {
         EnvironmentId(self.environments.alloc(environment))
     }
@@ -77,10 +71,6 @@ impl Database {
 
     pub fn mir(&self, id: MirId) -> &Mir {
         &self.mir[id.0]
-    }
-
-    pub fn lir(&self, id: LirId) -> &Lir {
-        &self.lir[id.0]
     }
 
     pub fn env(&self, id: EnvironmentId) -> &Environment {

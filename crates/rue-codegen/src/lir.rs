@@ -1,6 +1,7 @@
+use id_arena::Id;
 use num_bigint::BigInt;
 
-use crate::database::LirId;
+pub type LirId = Id<Lir>;
 
 #[derive(Debug, Clone)]
 pub enum Lir {

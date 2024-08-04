@@ -1419,6 +1419,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rue-codegen"
+version = "0.2.0"
+dependencies = [
+ "clvmr 0.6.1",
+ "id-arena",
+ "num-bigint",
+]
+
+[[package]]
 name = "rue-compiler"
 version = "0.2.0"
 dependencies = [
@@ -1432,6 +1441,7 @@ dependencies = [
  "num-traits",
  "rowan",
  "rue-clvm",
+ "rue-codegen",
  "rue-parser",
  "rue-typing",
 ]

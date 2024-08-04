@@ -1,0 +1,20 @@
+[package]
+name = "rue-codegen"
+version = "0.2.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Provides a low level IR that can be converted to CLVM."
+authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
+homepage = "https://github.com/rigidity/rue"
+repository = "https://github.com/rigidity/rue"
+readme = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[lints]
+workspace = true
+
+[dependencies]
+num-bigint = { workspace = true }
+id-arena = { workspace = true }
+clvmr = { workspace = true }

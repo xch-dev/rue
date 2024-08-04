@@ -1,17 +1,17 @@
 use clvmr::{Allocator, NodePtr};
+use id_arena::Arena;
 use num_bigint::BigInt;
 
-use crate::{
-    database::{Database, LirId},
-    lir::Lir,
-};
+use crate::{lir::Lir, LirId};
 
+#[derive(Debug)]
 pub struct Codegen<'a> {
-    db: &'a mut Database,
+    arena: Arena<Lir>,
     allocator: &'a mut Allocator,
     ops: Ops,
 }
 
+#[derive(Debug, Clone, Copy)]
 struct Ops {
     q: NodePtr,
     a: NodePtr,
@@ -47,7 +47,7 @@ struct Ops {
 }
 
 impl<'a> Codegen<'a> {
-    pub fn new(db: &'a mut Database, allocator: &'a mut Allocator) -> Self {
+    pub fn new(arena: Arena<Lir>, allocator: &'a mut Allocator) -> Self {
         let ops = Ops {
             q: allocator.one(),
             a: allocator.new_small_number(2).unwrap(),
@@ -81,11 +81,15 @@ impl<'a> Codegen<'a> {
             all: allocator.new_small_number(34).unwrap(),
             rem: allocator.new_small_number(61).unwrap(),
         };
-        Self { db, allocator, ops }
+        Self {
+            arena,
+            allocator,
+            ops,
+        }
     }
 
     pub fn gen_lir(&mut self, lir_id: LirId) -> NodePtr {
-        match self.db.lir(lir_id).clone() {
+        match self.arena[lir_id].clone() {
             Lir::Atom(atom) => self.gen_atom(&atom),
             Lir::Pair(first, rest) => self.gen_pair(first, rest),
             Lir::Quote(value) => self.gen_quote(value),
