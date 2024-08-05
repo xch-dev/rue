@@ -27,3 +27,4 @@ num-bigint = { workspace = true }
 log = { workspace = true }
 hex = { workspace = true }
 indoc = { workspace = true }
+ahash = { workspace = true }

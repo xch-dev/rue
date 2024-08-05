@@ -129,8 +129,12 @@ impl<'a> Optimizer<'a> {
             .position(|&id| id == symbol_id)
             .unwrap_or_else(|| {
                 panic!(
-                    "Symbol `{}` not found in environment.",
-                    self.db.dbg_symbol(symbol_id)
+                    "Symbol \"{}\" not found in environment {:?}.",
+                    self.db.dbg_symbol(symbol_id),
+                    environment
+                        .iter()
+                        .map(|&id| self.db.dbg_symbol(id))
+                        .collect::<Vec<_>>(),
                 );
             });
 

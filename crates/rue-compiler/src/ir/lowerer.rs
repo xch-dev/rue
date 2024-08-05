@@ -229,7 +229,7 @@ impl<'a> Lowerer<'a> {
             | Symbol::Parameter(..)
             | Symbol::Let(..)
             | Symbol::InlineFunction(..)
-            | Symbol::InlineConst(..) => unreachable!(),
+            | Symbol::InlineConst(..) => unreachable!("{}", self.db.dbg_symbol(symbol_id)),
         }
     }
 
@@ -310,9 +310,14 @@ impl<'a> Lowerer<'a> {
         args: &[HirId],
         varargs: bool,
     ) -> MirId {
-        let function_env_id = self.graph.environment_id(function.scope_id);
-
-        let params = self.db.env(function_env_id).parameters();
+        let params: Vec<SymbolId> = self
+            .db
+            .scope(function.scope_id)
+            .local_symbols()
+            .iter()
+            .copied()
+            .filter(|symbol_id| matches!(self.db.symbol(*symbol_id), Symbol::Parameter(..)))
+            .collect();
 
         let mut param_map = HashMap::new();
 

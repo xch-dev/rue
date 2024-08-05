@@ -11,8 +11,8 @@ pub use ids::*;
 use rue_typing::TypeId;
 
 use crate::{
-    Diagnostic, DiagnosticKind, Environment, ErrorKind, Hir, Lir, Mir, Op, Scope, Symbol,
-    WarningKind,
+    DependencyGraph, Diagnostic, DiagnosticKind, Environment, ErrorKind, Hir, Lir, Mir, Scope,
+    Symbol, WarningKind,
 };
 
 #[derive(Debug, Default)]
@@ -122,6 +122,10 @@ impl Database {
         self.type_tokens.keys().copied().collect()
     }
 
+    pub fn scopes(&self) -> Vec<ScopeId> {
+        self.scopes.iter().map(|(id, _)| ScopeId(id)).collect()
+    }
+
     pub fn dbg_hir(&self, id: HirId) -> String {
         match self.hir(id) {
             Hir::Unknown => "<unknown hir>".to_string(),
@@ -129,16 +133,9 @@ impl Database {
             Hir::BinaryOp(op, lhs, rhs) => {
                 format!("{op:?}({}, {})", self.dbg_hir(*lhs), self.dbg_hir(*rhs))
             }
-            Hir::Op(op, hir_id) => match op {
-                Op::First => format!("First({})", self.dbg_hir(*hir_id)),
-                Op::Rest => format!("Rest({})", self.dbg_hir(*hir_id)),
-                Op::Sha256 => format!("Sha256({})", self.dbg_hir(*hir_id)),
-                Op::Listp => format!("Listp({})", self.dbg_hir(*hir_id)),
-                Op::Not => format!("Not({})", self.dbg_hir(*hir_id)),
-                Op::Strlen => format!("Strlen({})", self.dbg_hir(*hir_id)),
-                Op::PubkeyForExp => format!("PubkeyForExp({})", self.dbg_hir(*hir_id)),
-                Op::BitwiseNot => format!("BitwiseNot({})", self.dbg_hir(*hir_id)),
-            },
+            Hir::Op(op, hir_id) => {
+                format!("{op:?}({})", self.dbg_hir(*hir_id))
+            }
             Hir::Substr(start, end, string) => format!(
                 "Substr({}, {}, {})",
                 self.dbg_hir(*start),
@@ -178,9 +175,122 @@ impl Database {
         }
     }
 
+    pub fn dbg_mir(&self, graph: Option<&DependencyGraph>, mir_id: MirId) -> String {
+        match self.mir(mir_id) {
+            Mir::Atom(bytes) => format!("Atom({})", hex::encode(bytes)),
+            Mir::BinaryOp(op, lhs, rhs) => {
+                format!(
+                    "{op:?}({}, {})",
+                    self.dbg_mir(graph, *lhs),
+                    self.dbg_mir(graph, *rhs)
+                )
+            }
+            Mir::Op(op, mir_id) => {
+                format!("{op:?}({})", self.dbg_mir(graph, *mir_id))
+            }
+            Mir::Reference(symbol_id) => format!("Reference({})", self.dbg_symbol(*symbol_id)),
+            Mir::Environment(env_id, mir_id) => {
+                format!(
+                    "Environment({}, {})",
+                    self.dbg_env(graph, *env_id),
+                    self.dbg_mir(graph, *mir_id)
+                )
+            }
+            Mir::Substr(mir_id, start, end) => format!(
+                "Substr({}, {}, {})",
+                self.dbg_mir(graph, *mir_id),
+                self.dbg_mir(graph, *start),
+                self.dbg_mir(graph, *end)
+            ),
+            Mir::Raise(mir_id) => format!(
+                "Raise({})",
+                mir_id
+                    .map(|mir_id| self.dbg_mir(graph, mir_id))
+                    .unwrap_or_default()
+            ),
+            Mir::Pair(first, rest) => {
+                format!(
+                    "Pair({}, {})",
+                    self.dbg_mir(graph, *first),
+                    self.dbg_mir(graph, *rest)
+                )
+            }
+            Mir::Run(mir_id, args) => {
+                format!(
+                    "Run({}, {})",
+                    self.dbg_mir(graph, *mir_id),
+                    self.dbg_mir(graph, *args)
+                )
+            }
+            Mir::Closure(mir_id, args) => {
+                format!(
+                    "Closure({}, [{}])",
+                    self.dbg_mir(graph, *mir_id),
+                    args.iter()
+                        .map(|arg| self.dbg_mir(graph, *arg))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            Mir::Curry(mir_id, args) => {
+                format!(
+                    "Curry({}, [{}])",
+                    self.dbg_mir(graph, *mir_id),
+                    args.iter()
+                        .map(|arg| self.dbg_mir(graph, *arg))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            Mir::Quote(mir_id) => format!("Quote({})", self.dbg_mir(graph, *mir_id)),
+            Mir::If(condition, then_block, else_block) => format!(
+                "If({}, {}, {})",
+                self.dbg_mir(graph, *condition),
+                self.dbg_mir(graph, *then_block),
+                self.dbg_mir(graph, *else_block)
+            ),
+        }
+    }
+
+    pub fn dbg_env(&self, graph: Option<&DependencyGraph>, env_id: EnvironmentId) -> String {
+        format!(
+            "Env({:?} {}, Parameters = [{}], Definitions = [{}], Captures = [{}], Parent = {})",
+            graph
+                .and_then(|graph| graph
+                    .scopes()
+                    .iter()
+                    .find(|scope_id| graph.environment_id(**scope_id) == env_id)
+                    .copied())
+                .map(|scope_id| self.scope_token(scope_id).map(ToString::to_string)),
+            env_id.0.index(),
+            self.env(env_id)
+                .parameters()
+                .iter()
+                .map(|symbol_id| self.dbg_symbol(*symbol_id))
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.env(env_id)
+                .definitions()
+                .iter()
+                .map(|symbol_id| self.dbg_symbol(*symbol_id))
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.env(env_id)
+                .captures()
+                .iter()
+                .map(|symbol_id| self.dbg_symbol(*symbol_id))
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.env(env_id).parent().map_or_else(
+                || "None".to_string(),
+                |parent_id| self.dbg_env(graph, parent_id)
+            )
+        )
+    }
+
     pub fn dbg_symbol(&self, symbol_id: SymbolId) -> String {
         if let Some(symbol_token) = self.symbol_token(symbol_id) {
-            return symbol_token.to_string();
+            return format!("{symbol_token}({})", symbol_id.0.index());
         }
 
         match self.symbol(symbol_id) {

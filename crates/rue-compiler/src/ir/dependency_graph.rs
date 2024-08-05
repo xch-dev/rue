@@ -1,3 +1,6 @@
+use std::hash::{Hash, Hasher};
+
+use ahash::AHasher;
 use indexmap::{IndexMap, IndexSet};
 use rowan::TextRange;
 
@@ -9,6 +12,7 @@ use crate::{
 #[derive(Debug, Default, Clone)]
 pub struct DependencyGraph {
     environments: IndexMap<ScopeId, EnvironmentId>,
+    other_visited_scopes: IndexSet<ScopeId>,
     parent_scopes: IndexMap<ScopeId, IndexSet<ScopeId>>,
     symbol_references: IndexMap<SymbolId, usize>,
     references: IndexMap<SymbolId, IndexSet<SymbolId>>,
@@ -16,7 +20,11 @@ pub struct DependencyGraph {
 
 impl DependencyGraph {
     pub fn scopes(&self) -> Vec<ScopeId> {
-        self.environments.keys().copied().collect()
+        self.environments
+            .keys()
+            .copied()
+            .chain(self.other_visited_scopes.iter().copied())
+            .collect()
     }
 
     pub fn symbol_references(&self, symbol_id: SymbolId) -> usize {
@@ -58,6 +66,7 @@ impl DependencyGraph {
             graph: Self::default(),
             symbol_stack: IndexSet::new(),
             visited: IndexSet::new(),
+            inline_parameter_stack: Vec::new(),
         };
         builder.walk_module(entrypoint);
         assert!(builder.symbol_stack.is_empty(), "symbol stack is not empty");
@@ -71,10 +80,30 @@ struct GraphBuilder<'a> {
     db: &'a mut Database,
     graph: DependencyGraph,
     symbol_stack: IndexSet<SymbolId>,
-    visited: IndexSet<(ScopeId, HirId)>,
+    visited: IndexSet<(ScopeId, HirId, u64)>,
+    inline_parameter_stack: Vec<IndexMap<SymbolId, Vec<HirId>>>,
 }
 
 impl<'a> GraphBuilder<'a> {
+    fn hash_param_map(&self) -> u64 {
+        let mut hasher = AHasher::default();
+        let mut sum = IndexMap::new();
+        for map in &self.inline_parameter_stack {
+            for (symbol_id, args) in map {
+                sum.insert(*symbol_id, args.clone());
+            }
+        }
+        sum.sort_by_cached_key(|k, _| *k);
+        for (symbol_id, mut args) in sum {
+            symbol_id.hash(&mut hasher);
+            args.sort();
+            for arg in args {
+                arg.hash(&mut hasher);
+            }
+        }
+        hasher.finish()
+    }
+
     fn walk_module(&mut self, module: &Module) {
         if self.graph.environments.contains_key(&module.scope_id) {
             log::debug!(
@@ -100,13 +129,16 @@ impl<'a> GraphBuilder<'a> {
             Symbol::Module(module) => {
                 self.walk_module(&module);
             }
-            Symbol::Function(function) | Symbol::InlineFunction(function) => {
+            Symbol::Function(function) => {
                 self.graph
                     .parent_scopes
                     .entry(function.scope_id)
                     .or_default();
 
                 self.walk_function(&function);
+            }
+            Symbol::InlineFunction(function) => {
+                self.graph.other_visited_scopes.insert(function.scope_id);
             }
             Symbol::Const(constant) | Symbol::InlineConst(constant) => {
                 self.walk_hir(scope_id, constant.hir_id);
@@ -143,7 +175,10 @@ impl<'a> GraphBuilder<'a> {
     }
 
     fn walk_hir(&mut self, scope_id: ScopeId, hir_id: HirId) {
-        if !self.visited.insert((scope_id, hir_id)) {
+        if !self
+            .visited
+            .insert((scope_id, hir_id, self.hash_param_map()))
+        {
             return;
         }
 
@@ -162,10 +197,7 @@ impl<'a> GraphBuilder<'a> {
                 self.walk_hir(scope_id, rest);
             }
             Hir::FunctionCall(callee, args, _varargs) => {
-                self.walk_hir(scope_id, callee);
-                for arg in args {
-                    self.walk_hir(scope_id, arg);
-                }
+                self.walk_function_call(scope_id, callee, args);
             }
             Hir::If(condition, then_block, else_block) => {
                 self.walk_hir(scope_id, condition);
@@ -188,6 +220,58 @@ impl<'a> GraphBuilder<'a> {
                 self.walk_reference(scope_id, symbol_id, text_range);
             }
         }
+    }
+
+    fn walk_function_call(&mut self, scope_id: ScopeId, callee: HirId, args: Vec<HirId>) {
+        if let Hir::Reference(symbol_id, text_range) = self.db.hir(callee) {
+            if let Symbol::InlineFunction(function) = self.db.symbol(*symbol_id).clone() {
+                let symbol_id = *symbol_id;
+                if !self.symbol_stack.insert(symbol_id) {
+                    self.db
+                        .error(ErrorKind::RecursiveInlineFunctionCall, *text_range);
+                }
+                self.walk_inline_function_call(scope_id, &function, &args);
+                self.symbol_stack.shift_remove(&symbol_id);
+                return;
+            }
+        }
+
+        self.walk_hir(scope_id, callee);
+        for arg in args {
+            self.walk_hir(scope_id, arg);
+        }
+    }
+
+    fn walk_inline_function_call(
+        &mut self,
+        scope_id: ScopeId,
+        function: &Function,
+        args: &[HirId],
+    ) {
+        self.graph.other_visited_scopes.insert(function.scope_id);
+
+        let params: Vec<SymbolId> = self
+            .db
+            .scope(function.scope_id)
+            .local_symbols()
+            .iter()
+            .copied()
+            .filter(|symbol_id| matches!(self.db.symbol(*symbol_id), Symbol::Parameter(..)))
+            .collect();
+
+        let mut param_map = IndexMap::new();
+
+        for (i, &symbol_id) in params.iter().enumerate() {
+            if i + 1 != params.len() || function.nil_terminated {
+                param_map.insert(symbol_id, vec![args[i]]);
+                continue;
+            }
+            param_map.insert(symbol_id, args[i..].to_vec());
+        }
+
+        self.inline_parameter_stack.push(param_map);
+        self.walk_hir(scope_id, function.hir_id);
+        self.inline_parameter_stack.pop().unwrap();
     }
 
     fn walk_definition(
@@ -217,6 +301,15 @@ impl<'a> GraphBuilder<'a> {
     }
 
     fn walk_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId, text_range: TextRange) {
+        for map in self.inline_parameter_stack.iter().rev() {
+            if let Some(args) = map.get(&symbol_id).cloned() {
+                for arg in args {
+                    self.walk_hir(scope_id, arg);
+                }
+                return;
+            }
+        }
+
         let symbol = self.db.symbol(symbol_id).clone();
 
         for &key in &self.symbol_stack {
@@ -231,7 +324,6 @@ impl<'a> GraphBuilder<'a> {
             let error = match symbol {
                 Symbol::Const(..) => Some(ErrorKind::RecursiveConstantReference),
                 Symbol::InlineConst(..) => Some(ErrorKind::RecursiveInlineConstantReference),
-                Symbol::InlineFunction(..) => Some(ErrorKind::RecursiveInlineFunctionCall),
                 _ => None,
             };
 
@@ -242,8 +334,8 @@ impl<'a> GraphBuilder<'a> {
         }
 
         match symbol {
-            Symbol::Unknown | Symbol::Module(..) => unreachable!(),
-            Symbol::Function(function) | Symbol::InlineFunction(function) => {
+            Symbol::Unknown | Symbol::Module(..) | Symbol::InlineFunction(..) => unreachable!(),
+            Symbol::Function(function) => {
                 self.graph
                     .parent_scopes
                     .entry(function.scope_id)
@@ -319,6 +411,8 @@ impl<'a> GraphBuilder<'a> {
                 self.propagate_capture(parent_scope_id, symbol_id, visited_scopes);
             }
         }
+
+        visited_scopes.pop().unwrap();
     }
 
     fn ref_module(&mut self, module: &Module) {
@@ -329,11 +423,11 @@ impl<'a> GraphBuilder<'a> {
 
     fn ref_symbol(&mut self, scope_id: ScopeId, symbol_id: SymbolId) {
         match self.db.symbol(symbol_id).clone() {
-            Symbol::Unknown => unreachable!(),
+            Symbol::Unknown | Symbol::InlineFunction(..) => unreachable!(),
             Symbol::Module(module) => {
                 self.ref_module(&module);
             }
-            Symbol::Function(function) | Symbol::InlineFunction(function) => {
+            Symbol::Function(function) => {
                 self.ref_hir(function.scope_id, function.hir_id);
             }
             Symbol::Parameter(..) => {}
@@ -344,7 +438,10 @@ impl<'a> GraphBuilder<'a> {
     }
 
     fn ref_hir(&mut self, scope_id: ScopeId, hir_id: HirId) {
-        if !self.visited.insert((scope_id, hir_id)) {
+        if !self
+            .visited
+            .insert((scope_id, hir_id, self.hash_param_map()))
+        {
             return;
         }
 
@@ -363,10 +460,7 @@ impl<'a> GraphBuilder<'a> {
                 self.ref_hir(scope_id, rest);
             }
             Hir::FunctionCall(callee, args, _varargs) => {
-                self.ref_hir(scope_id, callee);
-                for arg in args {
-                    self.ref_hir(scope_id, arg);
-                }
+                self.ref_function_call(scope_id, callee, args);
             }
             Hir::If(condition, then_block, else_block) => {
                 self.ref_hir(scope_id, condition);
@@ -392,6 +486,22 @@ impl<'a> GraphBuilder<'a> {
     }
 
     fn resolve_reference(&mut self, scope_id: ScopeId, symbol_id: SymbolId) {
+        for map in self.inline_parameter_stack.iter().rev() {
+            if let Some(args) = map.get(&symbol_id).cloned() {
+                self.graph
+                    .symbol_references
+                    .entry(symbol_id)
+                    .and_modify(|usages| *usages += 1)
+                    .or_insert(1);
+
+                for arg in args {
+                    self.ref_hir(scope_id, arg);
+                }
+
+                return;
+            }
+        }
+
         let symbol = self.db.symbol(symbol_id).clone();
 
         if self.db.symbol(symbol_id).is_constant() && !self.symbol_stack.insert(symbol_id) {
@@ -407,7 +517,7 @@ impl<'a> GraphBuilder<'a> {
         self.propagate_capture(scope_id, symbol_id, &mut IndexSet::new());
 
         match symbol {
-            Symbol::Unknown | Symbol::Module(..) => {
+            Symbol::Unknown | Symbol::Module(..) | Symbol::InlineFunction(..) => {
                 unreachable!()
             }
             Symbol::Let(value) | Symbol::Const(value) | Symbol::InlineConst(value) => {
@@ -416,36 +526,60 @@ impl<'a> GraphBuilder<'a> {
             Symbol::Function(function) => {
                 self.ref_hir(function.scope_id, function.hir_id);
             }
-            Symbol::InlineFunction(function) => {
-                self.ref_inline_function(scope_id, &function);
-            }
             Symbol::Parameter(..) => {}
         }
 
         self.symbol_stack.shift_remove(&symbol_id);
     }
 
-    fn ref_inline_function(&mut self, scope_id: ScopeId, function: &Function) {
-        let env_id = self.graph.environments[&scope_id];
-        self.ref_hir(function.scope_id, function.hir_id);
+    fn ref_function_call(&mut self, scope_id: ScopeId, callee: HirId, args: Vec<HirId>) {
+        if let Hir::Reference(symbol_id, ..) = self.db.hir(callee) {
+            if let Symbol::InlineFunction(function) = self.db.symbol(*symbol_id).clone() {
+                self.ref_inline_function_call(scope_id, *symbol_id, &function, &args);
+                return;
+            }
+        }
 
-        let env = self
+        self.ref_hir(scope_id, callee);
+        for arg in args {
+            self.ref_hir(scope_id, arg);
+        }
+    }
+
+    fn ref_inline_function_call(
+        &mut self,
+        scope_id: ScopeId,
+        symbol_id: SymbolId,
+        function: &Function,
+        args: &[HirId],
+    ) {
+        self.graph
+            .symbol_references
+            .entry(symbol_id)
+            .and_modify(|usages| *usages += 1)
+            .or_insert(1);
+
+        let params: Vec<SymbolId> = self
             .db
-            .env(self.graph.environments[&function.scope_id])
-            .clone();
+            .scope(function.scope_id)
+            .local_symbols()
+            .iter()
+            .copied()
+            .filter(|symbol_id| matches!(self.db.symbol(*symbol_id), Symbol::Parameter(..)))
+            .collect();
 
-        for symbol_id in env.definitions() {
-            if matches!(self.db.symbol(symbol_id), Symbol::Parameter(..)) {
+        let mut param_map = IndexMap::new();
+
+        for (i, &symbol_id) in params.iter().enumerate() {
+            if i + 1 != params.len() || function.nil_terminated {
+                param_map.insert(symbol_id, vec![args[i]]);
                 continue;
             }
-            self.db.env_mut(env_id).define(symbol_id);
+            param_map.insert(symbol_id, args[i..].to_vec());
         }
 
-        for symbol_id in env.captures() {
-            if matches!(self.db.symbol(symbol_id), Symbol::Parameter(..)) {
-                continue;
-            }
-            self.db.env_mut(env_id).capture(symbol_id);
-        }
+        self.inline_parameter_stack.push(param_map);
+        self.ref_hir(scope_id, function.hir_id);
+        self.inline_parameter_stack.pop().unwrap();
     }
 }
