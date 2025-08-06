@@ -17,6 +17,52 @@ pub enum TokenKind {
     Whitespace,
     LineComment,
     BlockComment { is_terminated: bool },
+
+    // Literals
+    String { is_terminated: bool },
+    Bytes { is_terminated: bool },
+    Integer,
+    Ident,
+
+    // Keywords
+    Nil,
+    True,
+    False,
+
+    // Grouping
+    OpenParen,
+    CloseParen,
+    OpenBrace,
+    CloseBrace,
+    OpenBracket,
+    CloseBracket,
+
+    // Arithmetic operators
+    Plus,
+    Minus,
+    Star,
     Slash,
+    Percent,
+
+    // Comparison operators
+    Equals,
+    LessThan,
+    GreaterThan,
+
+    // Logical operators
+    Not,
+    And,
+    Or,
+
+    // Bitwise operators
+    Negate,
+    Xor,
+
+    // Punctuation
+    Dot,
+    Comma,
+    Colon,
+    Semicolon,
+
     Unknown,
 }

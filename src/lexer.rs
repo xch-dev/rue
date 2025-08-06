@@ -43,6 +43,19 @@ impl<'a> Lexer<'a> {
         TokenKind::Whitespace
     }
 
+    fn eat_ident(&mut self, start: usize) -> TokenKind {
+        while matches!(self.peek(), 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') {
+            self.bump();
+        }
+
+        match &self.source[start..self.pos] {
+            "nil" => TokenKind::Nil,
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
+            _ => TokenKind::Ident,
+        }
+    }
+
     fn eat_line_comment(&mut self) -> TokenKind {
         while self.peek() != '\n' {
             self.bump();
@@ -78,6 +91,47 @@ impl<'a> Lexer<'a> {
 
         TokenKind::BlockComment { is_terminated }
     }
+
+    fn eat_string(&mut self) -> TokenKind {
+        let is_terminated = loop {
+            match self.peek() {
+                '"' => {
+                    self.bump();
+                    break true;
+                }
+                '\0' => {
+                    break false;
+                }
+                _ => {
+                    self.bump();
+                }
+            }
+        };
+
+        TokenKind::String { is_terminated }
+    }
+
+    fn eat_bytes(&mut self) -> TokenKind {
+        // Skip the initial `x`
+        self.bump();
+
+        let mut is_terminated = false;
+
+        while matches!(self.peek(), '0'..='9' | 'a'..='f' | 'A'..='F' | '_') {
+            self.bump();
+            is_terminated = true;
+        }
+
+        TokenKind::Bytes { is_terminated }
+    }
+
+    fn eat_integer(&mut self) -> TokenKind {
+        while matches!(self.peek(), '0'..='9' | '_') {
+            self.bump();
+        }
+
+        TokenKind::Integer
+    }
 }
 
 fn is_whitespace(c: char) -> bool {
@@ -96,11 +150,37 @@ impl<'a> Iterator for Lexer<'a> {
 
         let kind = match self.bump() {
             c if is_whitespace(c) => self.eat_whitespace(),
+            'a'..='z' | 'A'..='Z' | '_' => self.eat_ident(start),
+            '"' => self.eat_string(),
+            '0' if self.peek() == 'x' => self.eat_bytes(),
+            '0'..='9' => self.eat_integer(),
+            '(' => TokenKind::OpenParen,
+            ')' => TokenKind::CloseParen,
+            '{' => TokenKind::OpenBrace,
+            '}' => TokenKind::CloseBrace,
+            '[' => TokenKind::OpenBracket,
+            ']' => TokenKind::CloseBracket,
+            '+' => TokenKind::Plus,
+            '-' => TokenKind::Minus,
+            '*' => TokenKind::Star,
             '/' => match self.peek() {
                 '/' => self.eat_line_comment(),
                 '*' => self.eat_block_comment(),
                 _ => TokenKind::Slash,
             },
+            '%' => TokenKind::Percent,
+            '=' => TokenKind::Equals,
+            '<' => TokenKind::LessThan,
+            '>' => TokenKind::GreaterThan,
+            '!' => TokenKind::Not,
+            '&' => TokenKind::And,
+            '|' => TokenKind::Or,
+            '~' => TokenKind::Negate,
+            '^' => TokenKind::Xor,
+            '.' => TokenKind::Dot,
+            ',' => TokenKind::Comma,
+            ':' => TokenKind::Colon,
+            ';' => TokenKind::Semicolon,
             _ => TokenKind::Unknown,
         };
 
@@ -219,6 +299,207 @@ mod tests {
             "/* outer /* inner */ unterminated",
             expect![[r#"
                 BlockComment { is_terminated: false }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_string() {
+        check(
+            "\"hello world\"",
+            expect![[r#"
+                String { is_terminated: true }
+            "#]],
+        );
+
+        check(
+            "\"hello world",
+            expect![[r#"
+                String { is_terminated: false }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_bytes() {
+        check(
+            "0x",
+            expect![[r#"
+                Bytes { is_terminated: false }
+            "#]],
+        );
+
+        check(
+            "0x 42",
+            expect![[r#"
+                Bytes { is_terminated: false }
+                Whitespace
+                Integer
+            "#]],
+        );
+
+        check(
+            "0xFACEF00D",
+            expect![[r#"
+                Bytes { is_terminated: true }
+            "#]],
+        );
+
+        check(
+            "0xfacef00d",
+            expect![[r#"
+                Bytes { is_terminated: true }
+            "#]],
+        );
+
+        check(
+            "0xabc_def___",
+            expect![[r#"
+                Bytes { is_terminated: true }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_integer() {
+        check(
+            "0",
+            expect![[r#"
+                Integer
+            "#]],
+        );
+
+        check(
+            "1234567890",
+            expect![[r#"
+                Integer
+            "#]],
+        );
+
+        check(
+            "1__23456_7890__",
+            expect![[r#"
+                Integer
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_keyword() {
+        check(
+            "nil_",
+            expect![[r#"
+            Ident
+        "#]],
+        );
+
+        check(
+            "nil",
+            expect![[r#"
+                Nil
+            "#]],
+        );
+
+        check(
+            "true",
+            expect![[r#"
+                True
+            "#]],
+        );
+
+        check(
+            "false",
+            expect![[r#"
+                False
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_grouping() {
+        check(
+            "()",
+            expect![[r#"
+                OpenParen
+                CloseParen
+            "#]],
+        );
+
+        check(
+            "{}",
+            expect![[r#"
+                OpenBrace
+                CloseBrace
+            "#]],
+        );
+
+        check(
+            "[]",
+            expect![[r#"
+                OpenBracket
+                CloseBracket
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_arithmetic() {
+        check(
+            "+-*/%",
+            expect![[r#"
+                Plus
+                Minus
+                Star
+                Slash
+                Percent
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_comparison() {
+        check(
+            "=<>",
+            expect![[r#"
+                Equals
+                LessThan
+                GreaterThan
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_logical() {
+        check(
+            "!&|",
+            expect![[r#"
+                Not
+                And
+                Or
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_bitwise() {
+        check(
+            "~^",
+            expect![[r#"
+                Negate
+                Xor
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_punctuation() {
+        check(
+            ".,:;",
+            expect![[r#"
+                Dot
+                Comma
+                Colon
+                Semicolon
             "#]],
         );
     }
