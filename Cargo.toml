@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 expect-test = "1.5.1"
+num-derive = "0.4.2"
+num-traits = "0.2.19"
+rowan = "0.16.1"
+thiserror = "2.0.12"

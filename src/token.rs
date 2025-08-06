@@ -55,7 +55,7 @@ pub enum TokenKind {
     Or,
 
     // Bitwise operators
-    Negate,
+    Tilde,
     Xor,
 
     // Punctuation

@@ -175,7 +175,7 @@ impl<'a> Iterator for Lexer<'a> {
             '!' => TokenKind::Not,
             '&' => TokenKind::And,
             '|' => TokenKind::Or,
-            '~' => TokenKind::Negate,
+            '~' => TokenKind::Tilde,
             '^' => TokenKind::Xor,
             '.' => TokenKind::Dot,
             ',' => TokenKind::Comma,
