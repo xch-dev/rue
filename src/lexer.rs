@@ -485,7 +485,7 @@ mod tests {
         check(
             "~^",
             expect![[r#"
-                Negate
+                Tilde
                 Xor
             "#]],
         );
