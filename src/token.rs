@@ -30,6 +30,7 @@ pub enum TokenKind {
     False,
     Fn,
     Const,
+    Type,
     Let,
     If,
     Else,

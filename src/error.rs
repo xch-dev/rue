@@ -49,6 +49,9 @@ pub enum ErrorKind {
 
     #[error("Duplicate symbol `{0}` found in scope")]
     DuplicateSymbol(String),
+
+    #[error("Duplicate type `{0}` found in scope")]
+    DuplicateType(String),
 }
 
 fn list_of(kinds: &[SyntaxKind]) -> String {

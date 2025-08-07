@@ -5,14 +5,16 @@ use crate::{
 
 pub fn item(p: &mut Parser<'_>) {
     if p.at(T![fn]) {
-        function(p);
+        function_item(p);
+    } else if p.at(T![type]) {
+        type_alias_item(p);
     } else {
         p.skip();
     }
 }
 
-fn function(p: &mut Parser<'_>) {
-    p.start(SyntaxKind::Function);
+fn function_item(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::FunctionItem);
     p.expect(T![fn]);
     p.expect(SyntaxKind::Ident);
     if p.at(T![<]) {
@@ -37,6 +39,19 @@ fn function_parameter(p: &mut Parser<'_>) {
     p.expect(SyntaxKind::Ident);
     p.expect(T![:]);
     ty(p);
+    p.finish();
+}
+
+fn type_alias_item(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::TypeAliasItem);
+    p.expect(T![type]);
+    p.expect(SyntaxKind::Ident);
+    if p.at(T![<]) {
+        generic_parameters(p);
+    }
+    p.expect(T![=]);
+    ty(p);
+    p.expect(T![;]);
     p.finish();
 }
 
@@ -67,7 +82,7 @@ mod tests {
             item,
             "fn main() -> Int {}",
             expect![[r#"
-                Function@0..19
+                FunctionItem@0..19
                   Fn@0..2 "fn"
                   Whitespace@2..3 " "
                   Ident@3..7 "main"
@@ -90,7 +105,7 @@ mod tests {
             item,
             "fn main<T>() -> T {}",
             expect![[r#"
-                Function@0..20
+                FunctionItem@0..20
                   Fn@0..2 "fn"
                   Whitespace@2..3 " "
                   Ident@3..7 "main"
@@ -117,7 +132,7 @@ mod tests {
             item,
             "fn main(value: Int) -> Int { value + 42 }",
             expect![[r#"
-                Function@0..41
+                FunctionItem@0..41
                   Fn@0..2 "fn"
                   Whitespace@2..3 " "
                   Ident@3..7 "main"
@@ -148,6 +163,27 @@ mod tests {
                         Integer@37..39 "42"
                         Whitespace@39..40 " "
                     CloseBrace@40..41 "}"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_type_alias_item() {
+        check(
+            item,
+            "type Hello = World;",
+            expect![[r#"
+                TypeAliasItem@0..19
+                  Type@0..4 "type"
+                  Whitespace@4..5 " "
+                  Ident@5..10 "Hello"
+                  Whitespace@10..11 " "
+                  Assign@11..12 "="
+                  LiteralType@12..18
+                    Whitespace@12..13 " "
+                    Ident@13..18 "World"
+                  Semicolon@18..19 ";"
             "#]],
             expect![""],
         );

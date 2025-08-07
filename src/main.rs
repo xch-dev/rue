@@ -24,8 +24,8 @@ fn main() -> Result<()> {
     let mut ctx = Context::new();
 
     let scope = ctx.alloc_scope(Scope::new());
-    declare_document(&mut ctx, scope, &ast);
-    compile_document(&mut ctx, scope, &ast);
+    let declarations = declare_document(&mut ctx, scope, &ast);
+    compile_document(&mut ctx, scope, &ast, declarations);
 
     println!("{:#?}", ctx.scope(scope));
 

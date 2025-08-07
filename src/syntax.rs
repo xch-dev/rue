@@ -46,6 +46,9 @@ pub enum SyntaxKind {
     #[display("`const`")]
     Const,
 
+    #[display("`type`")]
+    Type,
+
     #[display("`let`")]
     Let,
 
@@ -162,10 +165,13 @@ pub enum SyntaxKind {
     Document,
 
     #[display("function")]
-    Function,
+    FunctionItem,
 
     #[display("function parameter")]
     FunctionParameter,
+
+    #[display("type alias")]
+    TypeAliasItem,
 
     #[display("generic parameters")]
     GenericParameters,
@@ -227,6 +233,7 @@ macro_rules! T {
     [false] => { SyntaxKind::False };
     [fn] => { SyntaxKind::Fn };
     [const] => { SyntaxKind::Const };
+    [type] => { SyntaxKind::Type };
     [let] => { SyntaxKind::Let };
     [if] => { SyntaxKind::If };
     [else] => { SyntaxKind::Else };
@@ -317,6 +324,7 @@ impl SyntaxKind {
             T![false] => &[T![false]],
             T![fn] => &[T![fn]],
             T![const] => &[T![const]],
+            T![type] => &[T![type]],
             T![let] => &[T![let]],
             T![if] => &[T![if]],
             T![else] => &[T![else]],
@@ -353,8 +361,9 @@ impl SyntaxKind {
             T![;] => &[T![;]],
             T![->] => &[T![-], T![>]],
             SyntaxKind::Document => &[SyntaxKind::Document],
-            SyntaxKind::Function => &[SyntaxKind::Function],
+            SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],
             SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],
+            SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
             SyntaxKind::GenericParameters => &[SyntaxKind::GenericParameters],
             SyntaxKind::LiteralType => &[SyntaxKind::LiteralType],
             SyntaxKind::Block => &[SyntaxKind::Block],

@@ -7,5 +7,5 @@ pub enum Symbol {
 
 #[derive(Debug, Clone)]
 pub struct FunctionSymbol {
-    pub name: SyntaxToken,
+    pub name: Option<SyntaxToken>,
 }

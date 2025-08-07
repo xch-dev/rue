@@ -56,8 +56,9 @@ macro_rules! ast_enum {
 
 ast_nodes!(
     Document,
-    Function,
+    FunctionItem,
     FunctionParameter,
+    TypeAliasItem,
     GenericParameters,
     LiteralType,
     Block,
@@ -68,7 +69,9 @@ ast_nodes!(
     BinaryExpr
 );
 
-ast_enum!(Item, Function);
+ast_enum!(Item, TypeItem, SymbolItem);
+ast_enum!(TypeItem, TypeAliasItem);
+ast_enum!(SymbolItem, FunctionItem);
 ast_enum!(Stmt, LetStmt, Expr);
 ast_enum!(Expr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
 ast_enum!(Type, LiteralType);
@@ -79,7 +82,7 @@ impl AstDocument {
     }
 }
 
-impl AstFunction {
+impl AstFunctionItem {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -105,6 +108,25 @@ impl AstFunction {
 
     pub fn body(&self) -> Option<AstBlock> {
         self.syntax().children().find_map(AstBlock::cast)
+    }
+}
+
+impl AstTypeAliasItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_parameters(&self) -> Option<AstGenericParameters> {
+        self.syntax()
+            .children()
+            .find_map(AstGenericParameters::cast)
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
     }
 }
 
