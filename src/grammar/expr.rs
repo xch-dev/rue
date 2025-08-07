@@ -212,6 +212,31 @@ mod tests {
     }
 
     #[test]
+    fn test_binary_expr() {
+        check(
+            expr,
+            "1 + 2 * 3 > 4",
+            expect![[r#"
+                BinaryExpr@0..7
+                  BinaryExpr@0..5
+                    LiteralExpr@0..1
+                      Integer@0..1 "1"
+                    Plus@1..2 "+"
+                    BinaryExpr@2..5
+                      LiteralExpr@2..3
+                        Integer@2..3 "2"
+                      Star@3..4 "*"
+                      LiteralExpr@4..5
+                        Integer@4..5 "3"
+                  GreaterThan@5..6 ">"
+                  LiteralExpr@6..7
+                    Integer@6..7 "4"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
     fn test_block_expr() {
         check(
             expr,
