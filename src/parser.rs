@@ -1,18 +1,30 @@
-use std::ops::Range;
+use std::{mem, ops::Range};
 
-use crate::{Error, ErrorKind, SyntaxKind, T, Token, TokenKind};
+use indexmap::IndexSet;
+use rowan::{GreenNodeBuilder, Language};
 
-#[derive(Debug, Clone)]
+use crate::{Error, ErrorKind, RueLang, SyntaxKind, SyntaxNode, T, Token, TokenKind};
+
+#[derive(Debug)]
 struct ParseToken {
     span: Range<usize>,
     kind: SyntaxKind,
 }
 
 #[derive(Debug, Clone)]
+pub struct ParseResult {
+    pub errors: Vec<Error>,
+    pub node: SyntaxNode,
+}
+
+#[derive(Debug)]
 pub struct Parser<'a> {
     source: &'a str,
     parse_tokens: Vec<ParseToken>,
+    pos: usize,
+    expected: IndexSet<SyntaxKind>,
     errors: Vec<Error>,
+    builder: GreenNodeBuilder<'static>,
 }
 
 impl<'a> Parser<'a> {
@@ -42,11 +54,11 @@ impl<'a> Parser<'a> {
                     }
                     SyntaxKind::String
                 }
-                TokenKind::Bytes { is_terminated } => {
+                TokenKind::Hex { is_terminated } => {
                     if !is_terminated {
-                        errors.push(Error::new(token.span.clone(), ErrorKind::UnterminatedBytes));
+                        errors.push(Error::new(token.span.clone(), ErrorKind::UnterminatedHex));
                     }
-                    SyntaxKind::Bytes
+                    SyntaxKind::Hex
                 }
                 TokenKind::Integer => SyntaxKind::Integer,
                 TokenKind::Ident => SyntaxKind::Ident,
@@ -94,7 +106,77 @@ impl<'a> Parser<'a> {
         Self {
             source,
             parse_tokens,
+            pos: 0,
+            expected: IndexSet::new(),
             errors,
+            builder: GreenNodeBuilder::new(),
         }
+    }
+
+    pub fn build(self) -> ParseResult {
+        ParseResult {
+            errors: self.errors,
+            node: SyntaxNode::new_root(self.builder.finish()),
+        }
+    }
+
+    pub fn start(&mut self, kind: SyntaxKind) {
+        self.builder.start_node(RueLang::kind_to_raw(kind));
+    }
+
+    pub fn finish(&mut self) {
+        self.eat_trivia();
+        self.builder.finish_node();
+    }
+
+    pub fn expect(&mut self, kind: SyntaxKind) -> bool {
+        self.expected.insert(kind);
+
+        self.eat_trivia();
+
+        let split = kind.split();
+
+        for (i, kind) in split.iter().enumerate() {
+            if self.nth(i) != *kind {
+                self.recover();
+                return false;
+            }
+        }
+
+        self.bump(kind);
+
+        true
+    }
+
+    fn nth(&self, n: usize) -> SyntaxKind {
+        self.parse_tokens
+            .get(self.pos + n)
+            .map_or(SyntaxKind::Eof, |token| token.kind)
+    }
+
+    fn eat_trivia(&mut self) {
+        while self.nth(0).is_trivia() {
+            self.pos += 1;
+        }
+    }
+
+    fn recover(&mut self) {
+        let expected = mem::take(&mut self.expected);
+        //TODO: X
+        self.pos += 1;
+    }
+
+    fn bump(&mut self, kind: SyntaxKind) {
+        self.expected.clear();
+
+        let len = kind.split().len();
+
+        let span =
+            self.parse_tokens[self.pos].span.start..self.parse_tokens[self.pos + len - 1].span.end;
+
+        self.builder
+            .token(RueLang::kind_to_raw(kind), &self.source[span]);
+
+        self.pos += len;
     }
 }

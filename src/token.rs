@@ -20,7 +20,7 @@ pub enum TokenKind {
 
     // Literals
     String { is_terminated: bool },
-    Bytes { is_terminated: bool },
+    Hex { is_terminated: bool },
     Integer,
     Ident,
 

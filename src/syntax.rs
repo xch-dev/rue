@@ -1,68 +1,150 @@
+use derive_more::Display;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use rowan::Language;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive,
+)]
 pub enum SyntaxKind {
+    // Trivia
+    #[display("whitespace")]
     Whitespace,
+
+    #[display("line comment")]
     LineComment,
+
+    #[display("block comment")]
     BlockComment,
 
     // Literals
+    #[display("string literal")]
     String,
-    Bytes,
+
+    #[display("hex literal")]
+    Hex,
+
+    #[display("integer literal")]
     Integer,
+
+    #[display("identifier")]
     Ident,
 
     // Keywords
+    #[display("`nil`")]
     Nil,
+
+    #[display("`true`")]
     True,
+
+    #[display("`false`")]
     False,
 
     // Grouping
+    #[display("`(`")]
     OpenParen,
+
+    #[display("`)`")]
     CloseParen,
+
+    #[display("`{{`")]
     OpenBrace,
+
+    #[display("`}}`")]
     CloseBrace,
+
+    #[display("`[`")]
     OpenBracket,
+
+    #[display("`]`")]
     CloseBracket,
 
     // Arithmetic operators
+    #[display("`+`")]
     Plus,
+
+    #[display("`-`")]
     Minus,
+
+    #[display("`*`")]
     Star,
+
+    #[display("`/`")]
     Slash,
+
+    #[display("`%`")]
     Percent,
 
     // Comparison operators
+    #[display("`==`")]
     Equals,
+
+    #[display("`!=`")]
     NotEquals,
+
+    #[display("`<`")]
     LessThan,
+
+    #[display("`>`")]
     GreaterThan,
+
+    #[display("`<=`")]
     LessThanEquals,
+
+    #[display("`>=`")]
     GreaterThanEquals,
 
     // Logical operators
+    #[display("`!`")]
     Not,
+
+    #[display("`&&`")]
     And,
+
+    #[display("`||`")]
     Or,
 
     // Bitwise operators
+    #[display("`~`")]
     BitwiseNot,
+
+    #[display("`&`")]
     BitwiseAnd,
+
+    #[display("`|`")]
     BitwiseOr,
+
+    #[display("`^`")]
     BitwiseXor,
+
+    #[display("`<<`")]
     LeftShift,
+
+    #[display("`>>`")]
     RightShift,
 
     // Punctuation
+    #[display("`=`")]
     Assign,
+
+    #[display("`.`")]
     Dot,
+
+    #[display("`,`")]
     Comma,
+
+    #[display("`:`")]
     Colon,
+
+    #[display("`;`")]
     Semicolon,
 
+    // Unexpected cases
+    #[display("error")]
     Error,
+
+    #[display("eof")]
+    Eof,
 }
 
 pub type SyntaxNode = rowan::SyntaxNode<RueLang>;
@@ -122,4 +204,61 @@ macro_rules! T {
     [,] => { SyntaxKind::Comma };
     [:] => { SyntaxKind::Colon };
     [;] => { SyntaxKind::Semicolon };
+}
+
+impl SyntaxKind {
+    pub fn is_trivia(&self) -> bool {
+        matches!(
+            self,
+            Self::Whitespace | Self::LineComment | Self::BlockComment | Self::Error
+        )
+    }
+
+    pub fn split(&self) -> &'static [Self] {
+        match self {
+            SyntaxKind::Whitespace => &[Self::Whitespace],
+            SyntaxKind::LineComment => &[Self::LineComment],
+            SyntaxKind::BlockComment => &[Self::BlockComment],
+            SyntaxKind::String => &[Self::String],
+            SyntaxKind::Hex => &[Self::Hex],
+            SyntaxKind::Integer => &[Self::Integer],
+            SyntaxKind::Ident => &[Self::Ident],
+            T![nil] => &[T![nil]],
+            T![true] => &[T![true]],
+            T![false] => &[T![false]],
+            T!['('] => &[T!['(']],
+            T![')'] => &[T![')']],
+            T!['{'] => &[T!['{']],
+            T!['}'] => &[T!['}']],
+            T!['['] => &[T!['[']],
+            T![']'] => &[T![']']],
+            T![+] => &[T![+]],
+            T![-] => &[T![-]],
+            T![*] => &[T![*]],
+            T![/] => &[T![/]],
+            T![%] => &[T![%]],
+            T![==] => &[T![==]],
+            T![!=] => &[T![!], T![=]],
+            T![<] => &[T![<]],
+            T![>] => &[T![>]],
+            T![<=] => &[T![<], T![=]],
+            T![>=] => &[T![>], T![=]],
+            T![!] => &[T![!]],
+            T![&&] => &[T![&], T![&]],
+            T![||] => &[T![|], T![|]],
+            T![~] => &[T![~]],
+            T![&] => &[T![&]],
+            T![|] => &[T![|]],
+            T![^] => &[T![^]],
+            T![<<] => &[T![<], T![<]],
+            T![>>] => &[T![>], T![>]],
+            T![=] => &[T![=]],
+            T![.] => &[T![.]],
+            T![,] => &[T![,]],
+            T![:] => &[T![:]],
+            T![;] => &[T![;]],
+            SyntaxKind::Error => &[Self::Error],
+            SyntaxKind::Eof => &[Self::Eof],
+        }
+    }
 }

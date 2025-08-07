@@ -111,7 +111,7 @@ impl<'a> Lexer<'a> {
         TokenKind::String { is_terminated }
     }
 
-    fn eat_bytes(&mut self) -> TokenKind {
+    fn eat_hex(&mut self) -> TokenKind {
         // Skip the initial `x`
         self.bump();
 
@@ -122,7 +122,7 @@ impl<'a> Lexer<'a> {
             is_terminated = true;
         }
 
-        TokenKind::Bytes { is_terminated }
+        TokenKind::Hex { is_terminated }
     }
 
     fn eat_integer(&mut self) -> TokenKind {
@@ -152,7 +152,7 @@ impl<'a> Iterator for Lexer<'a> {
             c if is_whitespace(c) => self.eat_whitespace(),
             'a'..='z' | 'A'..='Z' | '_' => self.eat_ident(start),
             '"' => self.eat_string(),
-            '0' if self.peek() == 'x' => self.eat_bytes(),
+            '0' if self.peek() == 'x' => self.eat_hex(),
             '0'..='9' => self.eat_integer(),
             '(' => TokenKind::OpenParen,
             ')' => TokenKind::CloseParen,
