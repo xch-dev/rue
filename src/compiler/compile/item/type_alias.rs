@@ -59,3 +59,15 @@ pub fn compile_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem, ty: 
 
     *body = resolved_body;
 }
+
+#[cfg(test)]
+mod tests {
+    use expect_test::expect;
+
+    use crate::compiler::compile::tests::check;
+
+    #[test]
+    fn test_type_alias() {
+        check("type Alias = Int;", expect!["Undeclared type `Int` at 1:14"]);
+    }
+}

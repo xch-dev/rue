@@ -25,7 +25,10 @@ mod tests {
 
         let mut error_output = String::new();
 
-        for error in result.errors {
+        for (i, error) in result.errors.into_iter().enumerate() {
+            if i != 0 {
+                error_output.push('\n');
+            }
             error_output.push_str(&error.message(source));
         }
 
