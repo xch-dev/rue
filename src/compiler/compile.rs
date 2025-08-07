@@ -1,7 +1,7 @@
-use crate::{AstDocument, AstFunction, AstItem, Context};
+use crate::{AstDocument, AstFunction, AstItem, Context, ScopeId};
 
-pub fn compile_document(ctx: &mut Context, document: &AstDocument) {
-    ctx.push_scope();
+pub fn compile_document(ctx: &mut Context, scope: ScopeId, document: &AstDocument) {
+    ctx.push_scope(scope);
 
     for item in document.items() {
         compile_item(ctx, &item);

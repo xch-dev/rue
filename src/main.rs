@@ -2,7 +2,8 @@ use std::fs;
 
 use anyhow::Result;
 use rue::{
-    AstDocument, AstNode, Context, Lexer, Parser, compile_document, declare_document, document,
+    AstDocument, AstNode, Context, Lexer, Parser, Scope, compile_document, declare_document,
+    document,
 };
 
 fn main() -> Result<()> {
@@ -22,10 +23,11 @@ fn main() -> Result<()> {
 
     let mut ctx = Context::new();
 
-    declare_document(&mut ctx, &ast);
-    compile_document(&mut ctx, &ast);
+    let scope = ctx.alloc_scope(Scope::new());
+    declare_document(&mut ctx, scope, &ast);
+    compile_document(&mut ctx, scope, &ast);
 
-    println!("{ctx:#?}");
+    println!("{:#?}", ctx.scope(scope));
 
     Ok(())
 }
