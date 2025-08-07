@@ -12,7 +12,7 @@ pub fn declare_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem) -> T
         vec![]
     };
 
-    let body = ctx.alloc_type(Type::Unresolved);
+    let body = ctx.builtins().unresolved;
 
     let ty = ctx.alloc_type(Type::Binding(BindingType {
         name: type_alias.name(),
