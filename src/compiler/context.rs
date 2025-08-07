@@ -3,7 +3,7 @@ use std::ops::Range;
 use id_arena::{Arena, Id};
 use rowan::TextRange;
 
-use crate::{Error, ErrorKind, Scope, Symbol, SyntaxNode, SyntaxToken, Type, UnresolvedType};
+use crate::{Diagnostic, DiagnosticKind, Scope, Symbol, SyntaxNode, SyntaxToken, Type};
 
 pub type ScopeId = Id<Scope>;
 pub type SymbolId = Id<Symbol>;
@@ -16,7 +16,7 @@ pub struct Builtins {
 
 #[derive(Debug, Clone)]
 pub struct Context {
-    errors: Vec<Error>,
+    errors: Vec<Diagnostic>,
     scopes: Arena<Scope>,
     symbols: Arena<Symbol>,
     types: Arena<Type>,
@@ -30,7 +30,7 @@ impl Default for Context {
         let scope = scopes.alloc(Scope::new());
 
         let mut types = Arena::new();
-        let unresolved = types.alloc(Type::Unresolved(UnresolvedType { name: None }));
+        let unresolved = types.alloc(Type::Unresolved);
 
         let builtins = Builtins { unresolved };
 
@@ -50,10 +50,10 @@ impl Context {
         Self::default()
     }
 
-    pub fn error(&mut self, node: &impl GetTextRange, kind: ErrorKind) {
+    pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
         let range = node.text_range();
         let span: Range<usize> = range.start().into()..range.end().into();
-        self.errors.push(Error::new(span, kind));
+        self.errors.push(Diagnostic::new(span, kind));
     }
 
     pub fn push_scope(&mut self, scope: ScopeId) {
@@ -116,6 +116,10 @@ impl Context {
 
     pub fn ty(&self, id: TypeId) -> &Type {
         self.types.get(id).unwrap()
+    }
+
+    pub fn ty_mut(&mut self, id: TypeId) -> &mut Type {
+        self.types.get_mut(id).unwrap()
     }
 
     pub fn builtins(&self) -> &Builtins {

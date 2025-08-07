@@ -4,7 +4,7 @@ use indexmap::IndexSet;
 use itertools::Itertools;
 use rowan::{Checkpoint, GreenNodeBuilder, Language};
 
-use crate::{Error, ErrorKind, RueLang, SyntaxKind, SyntaxNode, T, Token, TokenKind};
+use crate::{Diagnostic, DiagnosticKind, RueLang, SyntaxKind, SyntaxNode, T, Token, TokenKind};
 
 #[derive(Debug)]
 struct ParseToken {
@@ -14,7 +14,7 @@ struct ParseToken {
 
 #[derive(Debug, Clone)]
 pub struct ParseResult {
-    pub errors: Vec<Error>,
+    pub errors: Vec<Diagnostic>,
     pub node: SyntaxNode,
 }
 
@@ -24,7 +24,7 @@ pub struct Parser<'a> {
     parse_tokens: Vec<ParseToken>,
     pos: usize,
     expected: IndexSet<SyntaxKind>,
-    errors: Vec<Error>,
+    errors: Vec<Diagnostic>,
     builder: GreenNodeBuilder<'static>,
 }
 
@@ -39,25 +39,28 @@ impl<'a> Parser<'a> {
                 TokenKind::LineComment => SyntaxKind::LineComment,
                 TokenKind::BlockComment { is_terminated } => {
                     if !is_terminated {
-                        errors.push(Error::new(
+                        errors.push(Diagnostic::new(
                             token.span.clone(),
-                            ErrorKind::UnterminatedBlockComment,
+                            DiagnosticKind::UnterminatedBlockComment,
                         ));
                     }
                     SyntaxKind::BlockComment
                 }
                 TokenKind::String { is_terminated } => {
                     if !is_terminated {
-                        errors.push(Error::new(
+                        errors.push(Diagnostic::new(
                             token.span.clone(),
-                            ErrorKind::UnterminatedString,
+                            DiagnosticKind::UnterminatedString,
                         ));
                     }
                     SyntaxKind::String
                 }
                 TokenKind::Hex { is_terminated } => {
                     if !is_terminated {
-                        errors.push(Error::new(token.span.clone(), ErrorKind::UnterminatedHex));
+                        errors.push(Diagnostic::new(
+                            token.span.clone(),
+                            DiagnosticKind::UnterminatedHex,
+                        ));
                     }
                     SyntaxKind::Hex
                 }
@@ -96,9 +99,9 @@ impl<'a> Parser<'a> {
                 TokenKind::Colon => T![:],
                 TokenKind::Semicolon => T![;],
                 TokenKind::Unknown => {
-                    errors.push(Error::new(
+                    errors.push(Diagnostic::new(
                         token.span.clone(),
-                        ErrorKind::UnknownToken(source[token.span.clone()].to_string()),
+                        DiagnosticKind::UnknownToken(source[token.span.clone()].to_string()),
                     ));
                     SyntaxKind::Error
                 }
@@ -209,9 +212,9 @@ impl<'a> Parser<'a> {
                 token.span.clone()
             });
 
-        self.errors.push(Error::new(
+        self.errors.push(Diagnostic::new(
             span,
-            ErrorKind::UnexpectedToken(self.nth(0), expected.into_iter().collect()),
+            DiagnosticKind::UnexpectedToken(self.nth(0), expected.into_iter().collect()),
         ));
 
         if self.pos < self.parse_tokens.len() {

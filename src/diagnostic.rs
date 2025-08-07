@@ -5,13 +5,13 @@ use thiserror::Error;
 use crate::SyntaxKind;
 
 #[derive(Debug, Clone)]
-pub struct Error {
+pub struct Diagnostic {
     pub span: Range<usize>,
-    pub kind: ErrorKind,
+    pub kind: DiagnosticKind,
 }
 
-impl Error {
-    pub fn new(span: Range<usize>, kind: ErrorKind) -> Self {
+impl Diagnostic {
+    pub fn new(span: Range<usize>, kind: DiagnosticKind) -> Self {
         Self { span, kind }
     }
 
@@ -31,7 +31,7 @@ impl Error {
 }
 
 #[derive(Debug, Clone, Error)]
-pub enum ErrorKind {
+pub enum DiagnosticKind {
     #[error("Unknown token `{0}`")]
     UnknownToken(String),
 
@@ -58,6 +58,26 @@ pub enum ErrorKind {
 
     #[error("Undeclared type `{0}`")]
     UndeclaredType(String),
+
+    #[error("Unnecessary empty generic parameter list specified")]
+    EmptyGenericParameters,
+}
+
+impl DiagnosticKind {
+    pub fn severity(&self) -> DiagnosticSeverity {
+        match self {
+            Self::UnknownToken(..)
+            | Self::UnexpectedToken(..)
+            | Self::UnterminatedBlockComment
+            | Self::UnterminatedString
+            | Self::UnterminatedHex
+            | Self::DuplicateSymbol(..)
+            | Self::DuplicateType(..)
+            | Self::UndeclaredSymbol(..)
+            | Self::UndeclaredType(..) => DiagnosticSeverity::Error,
+            Self::EmptyGenericParameters => DiagnosticSeverity::Warning,
+        }
+    }
 }
 
 fn list_of(kinds: &[SyntaxKind]) -> String {
@@ -73,6 +93,12 @@ fn list_of(kinds: &[SyntaxKind]) -> String {
                 .join(", ")
         ),
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum DiagnosticSeverity {
+    Error,
+    Warning,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

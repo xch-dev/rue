@@ -1,20 +1,16 @@
-use crate::{SyntaxToken, TypeId};
+use crate::{ScopeId, SyntaxToken, TypeId};
 
 #[derive(Debug, Clone)]
 pub enum Type {
-    Unresolved(UnresolvedType),
-    Generic(GenericType),
+    Unresolved,
+    Binding(BindingType),
     Var(VarType),
 }
 
 #[derive(Debug, Clone)]
-pub struct UnresolvedType {
+pub struct BindingType {
     pub name: Option<SyntaxToken>,
-}
-
-#[derive(Debug, Clone)]
-pub struct GenericType {
-    pub name: Option<SyntaxToken>,
+    pub scope: ScopeId,
     pub vars: Vec<TypeId>,
     pub body: TypeId,
 }

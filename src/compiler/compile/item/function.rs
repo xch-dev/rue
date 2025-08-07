@@ -1,6 +1,6 @@
 use crate::{
-    AstFunctionItem, BindingSymbol, Context, ErrorKind, FunctionSymbol, Scope, Symbol, SymbolId,
-    compile_type,
+    AstFunctionItem, BindingSymbol, Context, DiagnosticKind, FunctionSymbol, Scope, Symbol,
+    SymbolId, compile_generic_parameters, compile_type,
 };
 
 pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> SymbolId {
@@ -12,9 +12,11 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
         ctx.builtins().unresolved
     };
 
-    let mut vars = Vec::new();
-
-    if let Some(generic_parameters) = function.generic_parameters() {}
+    let vars = if let Some(generic_parameters) = function.generic_parameters() {
+        compile_generic_parameters(ctx, scope, &generic_parameters)
+    } else {
+        vec![]
+    };
 
     let mut parameters = Vec::new();
 
@@ -32,7 +34,10 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
 
         if let Some(name) = parameter.name() {
             if ctx.scope(scope).symbol(name.text()).is_some() {
-                ctx.error(&name, ErrorKind::DuplicateSymbol(name.text().to_string()));
+                ctx.diagnostic(
+                    &name,
+                    DiagnosticKind::DuplicateSymbol(name.text().to_string()),
+                );
             }
 
             ctx.scope_mut(scope)
@@ -52,7 +57,10 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
 
     if let Some(name) = function.name() {
         if ctx.last_scope().symbol(name.text()).is_some() {
-            ctx.error(&name, ErrorKind::DuplicateSymbol(name.text().to_string()));
+            ctx.diagnostic(
+                &name,
+                DiagnosticKind::DuplicateSymbol(name.text().to_string()),
+            );
         }
 
         ctx.last_scope_mut()
