@@ -108,3 +108,122 @@ fn binding_power(op: BinaryOp) -> (u8, u8) {
         BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Remainder => (19, 20),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use expect_test::expect;
+
+    use crate::grammar::tests::check;
+
+    use super::*;
+
+    #[test]
+    fn test_literal_expr() {
+        check(
+            expr,
+            "hello",
+            expect![[r#"
+                LiteralExpr@0..5
+                  Ident@0..5 "hello"
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
+            "42",
+            expect![[r#"
+                LiteralExpr@0..2
+                  Integer@0..2 "42"
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
+            "0x42",
+            expect![[r#"
+                LiteralExpr@0..4
+                  Hex@0..4 "0x42"
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
+            "\"hello\"",
+            expect![[r#"
+                LiteralExpr@0..7
+                  String@0..7 "\"hello\""
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
+            "true",
+            expect![[r#"
+                LiteralExpr@0..4
+                  True@0..4 "true"
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
+            "false",
+            expect![[r#"
+                LiteralExpr@0..5
+                  False@0..5 "false"
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
+            "nil",
+            expect![[r#"
+                LiteralExpr@0..3
+                  Nil@0..3 "nil"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_prefix_expr() {
+        check(
+            expr,
+            "!~+-42",
+            expect![[r#"
+                PrefixExpr@0..6
+                  Not@0..1 "!"
+                  PrefixExpr@1..6
+                    BitwiseNot@1..2 "~"
+                    PrefixExpr@2..6
+                      Plus@2..3 "+"
+                      PrefixExpr@3..6
+                        Minus@3..4 "-"
+                        LiteralExpr@4..6
+                          Integer@4..6 "42"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_block_expr() {
+        check(
+            expr,
+            "{42}",
+            expect![[r#"
+                Block@0..4
+                  OpenBrace@0..1 "{"
+                  LiteralExpr@1..3
+                    Integer@1..3 "42"
+                  CloseBrace@3..4 "}"
+            "#]],
+            expect![],
+        );
+    }
+}
