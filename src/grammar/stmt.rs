@@ -14,8 +14,13 @@ pub fn stmt(p: &mut Parser<'_>) -> StatementKind {
     if p.at(T![let]) {
         let_stmt(p);
     } else {
+        let cp = p.checkpoint();
         expr(p);
-        if !p.try_eat(T![;]) {
+        if p.at(T![;]) {
+            p.start_at(cp, SyntaxKind::ExprStmt);
+            p.expect(T![;]);
+            p.finish();
+        } else {
             return StatementKind::End;
         }
     }
@@ -104,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn test_expr_stmt() {
+    fn test_expr_stmt_without_semicolon() {
         check_stmt(
             StatementKind::End,
             "(42 + 3)",
@@ -120,6 +125,30 @@ mod tests {
                     LiteralExpr@6..7
                       Integer@6..7 "3"
                   CloseParen@7..8 ")"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_expr_stmt_with_semicolon() {
+        check_stmt(
+            StatementKind::Normal,
+            "(42 + 3);",
+            expect![[r#"
+                ExprStmt@0..9
+                  GroupExpr@0..8
+                    OpenParen@0..1 "("
+                    BinaryExpr@1..7
+                      LiteralExpr@1..4
+                        Integer@1..3 "42"
+                        Whitespace@3..4 " "
+                      Plus@4..5 "+"
+                      Whitespace@5..6 " "
+                      LiteralExpr@6..7
+                        Integer@6..7 "3"
+                    CloseParen@7..8 ")"
+                  Semicolon@8..9 ";"
             "#]],
             expect![],
         );

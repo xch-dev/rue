@@ -63,6 +63,7 @@ ast_nodes!(
     LiteralType,
     Block,
     LetStmt,
+    ExprStmt,
     LiteralExpr,
     GroupExpr,
     PrefixExpr,
@@ -72,7 +73,7 @@ ast_nodes!(
 ast_enum!(Item, TypeItem, SymbolItem);
 ast_enum!(TypeItem, TypeAliasItem);
 ast_enum!(SymbolItem, FunctionItem);
-ast_enum!(Stmt, LetStmt, Expr);
+ast_enum!(Stmt, LetStmt, ExprStmt, Expr);
 ast_enum!(Expr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
 ast_enum!(Type, LiteralType);
 
@@ -102,7 +103,7 @@ impl AstFunctionItem {
             .filter_map(AstFunctionParameter::cast)
     }
 
-    pub fn ty(&self) -> Option<AstType> {
+    pub fn return_type(&self) -> Option<AstType> {
         self.syntax().children().find_map(AstType::cast)
     }
 
@@ -171,6 +172,12 @@ impl AstLetStmt {
     }
 
     pub fn value(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstExprStmt {
+    pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
     }
 }

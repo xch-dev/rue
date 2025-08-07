@@ -3,11 +3,16 @@ use std::ops::Range;
 use id_arena::{Arena, Id};
 use rowan::TextRange;
 
-use crate::{Error, ErrorKind, Scope, Symbol, SyntaxNode, SyntaxToken, Type};
+use crate::{Error, ErrorKind, Scope, Symbol, SyntaxNode, SyntaxToken, Type, UnresolvedType};
 
 pub type ScopeId = Id<Scope>;
 pub type SymbolId = Id<Symbol>;
 pub type TypeId = Id<Type>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Builtins {
+    pub unresolved: TypeId,
+}
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -16,6 +21,7 @@ pub struct Context {
     symbols: Arena<Symbol>,
     types: Arena<Type>,
     scope_stack: Vec<ScopeId>,
+    builtins: Builtins,
 }
 
 impl Default for Context {
@@ -23,12 +29,18 @@ impl Default for Context {
         let mut scopes = Arena::new();
         let scope = scopes.alloc(Scope::new());
 
+        let mut types = Arena::new();
+        let unresolved = types.alloc(Type::Unresolved(UnresolvedType { name: None }));
+
+        let builtins = Builtins { unresolved };
+
         Self {
             errors: Vec::new(),
             scopes,
             symbols: Arena::new(),
-            types: Arena::new(),
+            types,
             scope_stack: vec![scope],
+            builtins,
         }
     }
 }
@@ -60,6 +72,24 @@ impl Context {
         self.scope_mut(*self.scope_stack.last().unwrap())
     }
 
+    pub fn resolve_symbol(&self, name: &str) -> Option<SymbolId> {
+        for scope in self.scope_stack.iter().rev() {
+            if let Some(symbol) = self.scope(*scope).symbol(name) {
+                return Some(symbol);
+            }
+        }
+        None
+    }
+
+    pub fn resolve_type(&self, name: &str) -> Option<TypeId> {
+        for scope in self.scope_stack.iter().rev() {
+            if let Some(ty) = self.scope(*scope).ty(name) {
+                return Some(ty);
+            }
+        }
+        None
+    }
+
     pub fn alloc_scope(&mut self, scope: Scope) -> ScopeId {
         self.scopes.alloc(scope)
     }
@@ -86,6 +116,10 @@ impl Context {
 
     pub fn ty(&self, id: TypeId) -> &Type {
         self.types.get(id).unwrap()
+    }
+
+    pub fn builtins(&self) -> &Builtins {
+        &self.builtins
     }
 }
 

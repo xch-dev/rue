@@ -185,6 +185,9 @@ pub enum SyntaxKind {
     #[display("let statement")]
     LetStmt,
 
+    #[display("expression statement")]
+    ExprStmt,
+
     #[display("literal expression")]
     LiteralExpr,
 
@@ -368,6 +371,7 @@ impl SyntaxKind {
             SyntaxKind::LiteralType => &[SyntaxKind::LiteralType],
             SyntaxKind::Block => &[SyntaxKind::Block],
             SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],
+            SyntaxKind::ExprStmt => &[SyntaxKind::ExprStmt],
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],
             SyntaxKind::GroupExpr => &[SyntaxKind::GroupExpr],
             SyntaxKind::PrefixExpr => &[SyntaxKind::PrefixExpr],

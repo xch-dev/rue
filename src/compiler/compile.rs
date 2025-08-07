@@ -1,6 +1,7 @@
 use crate::{
-    AstDocument, AstFunctionItem, AstItem, AstSymbolItem, AstTypeAliasItem, AstTypeItem, Context,
-    ErrorKind, FunctionSymbol, ScopeId, Symbol, SymbolId, Type, TypeId, UnresolvedType,
+    AstDocument, AstFunctionItem, AstItem, AstLiteralType, AstSymbolItem, AstType,
+    AstTypeAliasItem, AstTypeItem, BindingSymbol, Context, ErrorKind, FunctionSymbol, Scope,
+    ScopeId, Symbol, SymbolId, Type, TypeId, UnresolvedType,
 };
 
 #[derive(Debug, Default)]
@@ -50,8 +51,45 @@ fn declare_symbol_item(ctx: &mut Context, item: &AstSymbolItem) -> SymbolId {
 }
 
 fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> SymbolId {
+    let scope = ctx.alloc_scope(Scope::new());
+
+    let return_type = if let Some(return_type) = function.return_type() {
+        compile_type(ctx, &return_type)
+    } else {
+        ctx.builtins().unresolved
+    };
+
+    let mut parameters = Vec::new();
+
+    for parameter in function.parameters() {
+        let ty = if let Some(ty) = parameter.ty() {
+            compile_type(ctx, &ty)
+        } else {
+            ctx.builtins().unresolved
+        };
+
+        let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
+            name: parameter.name(),
+            ty,
+        }));
+
+        if let Some(name) = parameter.name() {
+            if ctx.scope(scope).symbol(name.text()).is_some() {
+                ctx.error(&name, ErrorKind::DuplicateSymbol(name.text().to_string()));
+            }
+
+            ctx.scope_mut(scope)
+                .insert_symbol(name.text().to_string(), symbol);
+        }
+
+        parameters.push(symbol);
+    }
+
     let symbol = ctx.alloc_symbol(Symbol::Function(FunctionSymbol {
         name: function.name(),
+        scope,
+        parameters,
+        return_type,
     }));
 
     if let Some(name) = function.name() {
@@ -125,3 +163,20 @@ fn compile_symbol_item(ctx: &mut Context, item: &AstSymbolItem, symbol: SymbolId
 fn compile_function(ctx: &mut Context, function: &AstFunctionItem, symbol: SymbolId) {}
 
 fn compile_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem, ty: TypeId) {}
+
+fn compile_type(ctx: &mut Context, ty: &AstType) -> TypeId {
+    match ty {
+        AstType::LiteralType(literal) => compile_literal_type(ctx, literal),
+    }
+}
+
+fn compile_literal_type(ctx: &mut Context, literal: &AstLiteralType) -> TypeId {
+    let Some(value) = literal.value() else {
+        return ctx.builtins().unresolved;
+    };
+    let Some(ty) = ctx.resolve_type(value.text()) else {
+        ctx.error(&value, ErrorKind::UndeclaredType(value.text().to_string()));
+        return ctx.builtins().unresolved;
+    };
+    ty
+}

@@ -52,6 +52,12 @@ pub enum ErrorKind {
 
     #[error("Duplicate type `{0}` found in scope")]
     DuplicateType(String),
+
+    #[error("Undeclared symbol `{0}`")]
+    UndeclaredSymbol(String),
+
+    #[error("Undeclared type `{0}`")]
+    UndeclaredType(String),
 }
 
 fn list_of(kinds: &[SyntaxKind]) -> String {
