@@ -24,6 +24,12 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
         p.start(SyntaxKind::LiteralExpr);
         p.expect(kind);
         p.finish();
+    } else if p.at(T!['(']) {
+        p.start(SyntaxKind::GroupExpr);
+        p.expect(T!['(']);
+        expr(p);
+        p.expect(T![')']);
+        p.finish();
     } else if p.at(T!['{']) {
         block(p);
     } else {
@@ -157,6 +163,30 @@ mod tests {
             expect![[r#"
                 LiteralExpr@0..3
                   Nil@0..3 "nil"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_group_expr() {
+        check(
+            expr,
+            "(32 + 6) * 8",
+            expect![[r#"
+                BinaryExpr@0..8
+                  GroupExpr@0..6
+                    OpenParen@0..1 "("
+                    BinaryExpr@1..5
+                      LiteralExpr@1..3
+                        Integer@1..3 "32"
+                      Plus@3..4 "+"
+                      LiteralExpr@4..5
+                        Integer@4..5 "6"
+                    CloseParen@5..6 ")"
+                  Star@6..7 "*"
+                  LiteralExpr@7..8
+                    Integer@7..8 "8"
             "#]],
             expect![],
         );

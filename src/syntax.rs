@@ -179,6 +179,9 @@ pub enum SyntaxKind {
     #[display("literal expression")]
     LiteralExpr,
 
+    #[display("group expression")]
+    GroupExpr,
+
     #[display("prefix expression")]
     PrefixExpr,
 
@@ -321,6 +324,7 @@ impl SyntaxKind {
             SyntaxKind::Block => &[SyntaxKind::Block],
             SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],
+            SyntaxKind::GroupExpr => &[SyntaxKind::GroupExpr],
             SyntaxKind::PrefixExpr => &[SyntaxKind::PrefixExpr],
             SyntaxKind::BinaryExpr => &[SyntaxKind::BinaryExpr],
             SyntaxKind::Error => &[SyntaxKind::Error],
