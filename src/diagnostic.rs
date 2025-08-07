@@ -32,10 +32,10 @@ impl Diagnostic {
 
 #[derive(Debug, Clone, Error)]
 pub enum DiagnosticKind {
-    #[error("Unknown token `{0}`")]
+    #[error("Unknown `{0}`")]
     UnknownToken(String),
 
-    #[error("Unexpected token {}, expected {}", .0, list_of(.1))]
+    #[error("Expected {}, found {}", list_of(.1), .0)]
     UnexpectedToken(SyntaxKind, Vec<SyntaxKind>),
 
     #[error("Unterminated block comment")]

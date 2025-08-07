@@ -163,6 +163,8 @@ impl<'a> Parser<'a> {
     pub fn at(&mut self, kind: SyntaxKind) -> bool {
         self.eat_trivia();
 
+        self.expected.insert(kind);
+
         let split = kind.split();
 
         for (i, kind) in split.iter().enumerate() {
