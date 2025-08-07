@@ -88,6 +88,33 @@ mod tests {
 
         check(
             item,
+            "fn main<T>() -> T {}",
+            expect![[r#"
+                Function@0..20
+                  Fn@0..2 "fn"
+                  Whitespace@2..3 " "
+                  Ident@3..7 "main"
+                  GenericParameters@7..10
+                    LessThan@7..8 "<"
+                    Ident@8..9 "T"
+                    GreaterThan@9..10 ">"
+                  OpenParen@10..11 "("
+                  CloseParen@11..12 ")"
+                  Whitespace@12..13 " "
+                  Arrow@13..15 "->"
+                  LiteralType@15..18
+                    Whitespace@15..16 " "
+                    Ident@16..17 "T"
+                    Whitespace@17..18 " "
+                  Block@18..20
+                    OpenBrace@18..19 "{"
+                    CloseBrace@19..20 "}"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            item,
             "fn main(value: Int) -> Int { value + 42 }",
             expect![[r#"
                 Function@0..41
