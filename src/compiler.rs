@@ -1,9 +1,13 @@
+mod compile;
 mod context;
-mod database;
+mod declare;
 mod scope;
+mod symbol;
 mod types;
 
+pub use compile::*;
 pub use context::*;
-pub use database::*;
+pub use declare::*;
 pub use scope::*;
+pub use symbol::*;
 pub use types::*;

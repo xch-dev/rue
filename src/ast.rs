@@ -1,5 +1,7 @@
 use crate::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 
+use paste::paste;
+
 pub trait AstNode {
     fn cast(node: SyntaxNode) -> Option<Self>
     where
@@ -9,11 +11,11 @@ pub trait AstNode {
 }
 
 macro_rules! ast_nodes {
-    ($( $kind:ident),+ $(,)?) => { $(
+    ($( $kind:ident),+ $(,)?) => { paste! { $(
         #[derive(Debug, Clone)]
-        pub struct $kind(SyntaxNode);
+        pub struct [< Ast $kind >](SyntaxNode);
 
-        impl AstNode for $kind {
+        impl AstNode for [< Ast $kind >] {
             fn cast(node: SyntaxNode) -> Option<Self> {
                 match node.kind() {
                     SyntaxKind::$kind => Some(Self(node)),
@@ -25,19 +27,19 @@ macro_rules! ast_nodes {
                 &self.0
             }
         }
-    )+ };
+    )+ } };
 }
 
 macro_rules! ast_enum {
-    ($name:ident, $( $kind:ident ),+ $(,)? ) => {
+    ($name:ident, $( $kind:ident ),+ $(,)? ) => { paste! {
         #[derive(Debug, Clone)]
-        pub enum $name {
-            $( $kind($kind), )+
+        pub enum [< Ast $name >] {
+            $( $kind([< Ast $kind >]), )+
         }
 
-        impl AstNode for $name {
+        impl AstNode for [< Ast $name >] {
             fn cast(node: SyntaxNode) -> Option<Self> {
-                $( if let Some(node) = $kind::cast(node.clone()) {
+                $( if let Some(node) = [< Ast $kind >]::cast(node.clone()) {
                     return Some(Self::$kind(node));
                 } )+
                 None
@@ -49,7 +51,7 @@ macro_rules! ast_enum {
                 }
             }
         }
-    };
+    } };
 }
 
 ast_nodes!(
@@ -66,18 +68,18 @@ ast_nodes!(
     BinaryExpr
 );
 
-ast_enum!(AstItem, Function);
-ast_enum!(AstStmt, LetStmt, AstExpr);
-ast_enum!(AstExpr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
-ast_enum!(AstType, LiteralType);
+ast_enum!(Item, Function);
+ast_enum!(Stmt, LetStmt, Expr);
+ast_enum!(Expr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
+ast_enum!(Type, LiteralType);
 
-impl Document {
+impl AstDocument {
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
         self.syntax().children().filter_map(AstItem::cast)
     }
 }
 
-impl Function {
+impl AstFunction {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -85,24 +87,28 @@ impl Function {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn generic_parameters(&self) -> Option<GenericParameters> {
-        self.syntax().children().find_map(GenericParameters::cast)
+    pub fn generic_parameters(&self) -> Option<AstGenericParameters> {
+        self.syntax()
+            .children()
+            .find_map(AstGenericParameters::cast)
     }
 
-    pub fn parameters(&self) -> impl Iterator<Item = FunctionParameter> {
-        self.syntax().children().filter_map(FunctionParameter::cast)
+    pub fn parameters(&self) -> impl Iterator<Item = AstFunctionParameter> {
+        self.syntax()
+            .children()
+            .filter_map(AstFunctionParameter::cast)
     }
 
     pub fn ty(&self) -> Option<AstType> {
         self.syntax().children().find_map(AstType::cast)
     }
 
-    pub fn body(&self) -> Option<Block> {
-        self.syntax().children().find_map(Block::cast)
+    pub fn body(&self) -> Option<AstBlock> {
+        self.syntax().children().find_map(AstBlock::cast)
     }
 }
 
-impl FunctionParameter {
+impl AstFunctionParameter {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -115,7 +121,7 @@ impl FunctionParameter {
     }
 }
 
-impl GenericParameters {
+impl AstGenericParameters {
     pub fn names(&self) -> impl Iterator<Item = SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -124,13 +130,13 @@ impl GenericParameters {
     }
 }
 
-impl Block {
+impl AstBlock {
     pub fn stmts(&self) -> impl Iterator<Item = AstStmt> {
         self.syntax().children().filter_map(AstStmt::cast)
     }
 }
 
-impl LetStmt {
+impl AstLetStmt {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -147,7 +153,7 @@ impl LetStmt {
     }
 }
 
-impl LiteralExpr {
+impl AstLiteralExpr {
     pub fn value(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -156,13 +162,13 @@ impl LiteralExpr {
     }
 }
 
-impl GroupExpr {
+impl AstGroupExpr {
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
     }
 }
 
-impl PrefixExpr {
+impl AstPrefixExpr {
     pub fn op(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -175,7 +181,7 @@ impl PrefixExpr {
     }
 }
 
-impl BinaryExpr {
+impl AstBinaryExpr {
     pub fn op(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -192,7 +198,7 @@ impl BinaryExpr {
     }
 }
 
-impl LiteralType {
+impl AstLiteralType {
     pub fn value(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()

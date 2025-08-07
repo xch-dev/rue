@@ -46,6 +46,9 @@ pub enum ErrorKind {
 
     #[error("Unterminated hex literal")]
     UnterminatedHex,
+
+    #[error("Duplicate symbol `{0}` found in scope")]
+    DuplicateSymbol(String),
 }
 
 fn list_of(kinds: &[SyntaxKind]) -> String {

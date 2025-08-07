@@ -1,3 +1,31 @@
-fn main() {
-    println!("Hello, world!");
+use std::fs;
+
+use anyhow::Result;
+use rue::{
+    AstDocument, AstNode, Context, Lexer, Parser, compile_document, declare_document, document,
+};
+
+fn main() -> Result<()> {
+    let source = fs::read_to_string("main.rue")?;
+    let tokens = Lexer::new(&source).collect::<Vec<_>>();
+    let mut parser = Parser::new(&source, tokens);
+    document(&mut parser);
+    let result = parser.build();
+
+    for error in result.errors {
+        println!("{}", error.message(&source));
+    }
+
+    println!("\n{:#?}", result.node);
+
+    let ast = AstDocument::cast(result.node).unwrap();
+
+    let mut ctx = Context::new();
+
+    declare_document(&mut ctx, &ast);
+    compile_document(&mut ctx, &ast);
+
+    println!("{ctx:#?}");
+
+    Ok(())
 }
