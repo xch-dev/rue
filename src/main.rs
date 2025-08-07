@@ -27,7 +27,6 @@ fn main() -> Result<()> {
     declare_document(&mut ctx, scope, &ast);
     compile_document(&mut ctx, scope, &ast);
 
-    // Print the scope
     println!("{:#?}", ctx.scope(scope));
 
     Ok(())
