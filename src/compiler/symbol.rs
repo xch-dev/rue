@@ -10,6 +10,7 @@ pub enum Symbol {
 pub struct FunctionSymbol {
     pub name: Option<SyntaxToken>,
     pub scope: ScopeId,
+    pub vars: Vec<TypeId>,
     pub parameters: Vec<SymbolId>,
     pub return_type: TypeId,
 }
