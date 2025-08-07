@@ -45,18 +45,26 @@ pub fn compile_document(
 ) {
     ctx.push_scope(scope);
 
-    for (index, item) in document.items().enumerate() {
+    let mut index = 0;
+
+    for item in document.items() {
         match item {
-            AstItem::TypeItem(item) => compile_type_item(ctx, &item, declarations.types[index]),
+            AstItem::TypeItem(item) => {
+                compile_type_item(ctx, &item, declarations.types[index]);
+                index += 1;
+            }
             AstItem::SymbolItem(_) => {}
         }
     }
 
-    for (index, item) in document.items().enumerate() {
+    let mut index = 0;
+
+    for item in document.items() {
         match item {
             AstItem::TypeItem(_) => {}
             AstItem::SymbolItem(item) => {
-                compile_symbol_item(ctx, &item, declarations.symbols[index])
+                compile_symbol_item(ctx, &item, declarations.symbols[index]);
+                index += 1;
             }
         }
     }

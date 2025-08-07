@@ -50,6 +50,10 @@ impl Context {
         Self::default()
     }
 
+    pub fn errors(&self) -> &[Diagnostic] {
+        &self.errors
+    }
+
     pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
         let range = node.text_range();
         let span: Range<usize> = range.start().into()..range.end().into();

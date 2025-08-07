@@ -17,8 +17,6 @@ fn main() -> Result<()> {
         println!("{}", error.message(&source));
     }
 
-    println!("\n{:#?}", result.node);
-
     let ast = AstDocument::cast(result.node).unwrap();
 
     let mut ctx = Context::new();
@@ -27,7 +25,9 @@ fn main() -> Result<()> {
     let declarations = declare_document(&mut ctx, scope, &ast);
     compile_document(&mut ctx, scope, &ast, declarations);
 
-    println!("{:#?}", ctx.scope(scope));
+    for error in ctx.errors() {
+        println!("{}", error.message(&source));
+    }
 
     Ok(())
 }
