@@ -174,19 +174,23 @@ mod tests {
             expr,
             "(32 + 6) * 8",
             expect![[r#"
-                BinaryExpr@0..8
-                  GroupExpr@0..6
+                BinaryExpr@0..12
+                  GroupExpr@0..9
                     OpenParen@0..1 "("
-                    BinaryExpr@1..5
-                      LiteralExpr@1..3
+                    BinaryExpr@1..7
+                      LiteralExpr@1..4
                         Integer@1..3 "32"
-                      Plus@3..4 "+"
-                      LiteralExpr@4..5
-                        Integer@4..5 "6"
-                    CloseParen@5..6 ")"
-                  Star@6..7 "*"
-                  LiteralExpr@7..8
-                    Integer@7..8 "8"
+                        Whitespace@3..4 " "
+                      Plus@4..5 "+"
+                      Whitespace@5..6 " "
+                      LiteralExpr@6..7
+                        Integer@6..7 "6"
+                    CloseParen@7..8 ")"
+                    Whitespace@8..9 " "
+                  Star@9..10 "*"
+                  Whitespace@10..11 " "
+                  LiteralExpr@11..12
+                    Integer@11..12 "8"
             "#]],
             expect![],
         );
@@ -219,20 +223,26 @@ mod tests {
             expr,
             "1 + 2 * 3 > 4",
             expect![[r#"
-                BinaryExpr@0..7
-                  BinaryExpr@0..5
-                    LiteralExpr@0..1
+                BinaryExpr@0..13
+                  BinaryExpr@0..10
+                    LiteralExpr@0..2
                       Integer@0..1 "1"
-                    Plus@1..2 "+"
-                    BinaryExpr@2..5
-                      LiteralExpr@2..3
-                        Integer@2..3 "2"
-                      Star@3..4 "*"
-                      LiteralExpr@4..5
-                        Integer@4..5 "3"
-                  GreaterThan@5..6 ">"
-                  LiteralExpr@6..7
-                    Integer@6..7 "4"
+                      Whitespace@1..2 " "
+                    Plus@2..3 "+"
+                    BinaryExpr@3..10
+                      Whitespace@3..4 " "
+                      LiteralExpr@4..6
+                        Integer@4..5 "2"
+                        Whitespace@5..6 " "
+                      Star@6..7 "*"
+                      Whitespace@7..8 " "
+                      LiteralExpr@8..10
+                        Integer@8..9 "3"
+                        Whitespace@9..10 " "
+                  GreaterThan@10..11 ">"
+                  Whitespace@11..12 " "
+                  LiteralExpr@12..13
+                    Integer@12..13 "4"
             "#]],
             expect![],
         );

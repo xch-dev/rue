@@ -29,16 +29,19 @@ mod tests {
             block,
             "{let x = 5;}",
             expect![[r#"
-                Block@0..9
+                Block@0..12
                   OpenBrace@0..1 "{"
-                  LetStmt@1..8
+                  LetStmt@1..11
                     Let@1..4 "let"
-                    Ident@4..5 "x"
-                    Assign@5..6 "="
-                    LiteralExpr@6..7
-                      Integer@6..7 "5"
-                    Semicolon@7..8 ";"
-                  CloseBrace@8..9 "}"
+                    Whitespace@4..5 " "
+                    Ident@5..6 "x"
+                    Whitespace@6..7 " "
+                    Assign@7..8 "="
+                    Whitespace@8..9 " "
+                    LiteralExpr@9..10
+                      Integer@9..10 "5"
+                    Semicolon@10..11 ";"
+                  CloseBrace@11..12 "}"
             "#]],
             expect![],
         );
@@ -60,18 +63,22 @@ mod tests {
             block,
             "{let x = 5; 42}",
             expect![[r#"
-                Block@0..11
+                Block@0..15
                   OpenBrace@0..1 "{"
-                  LetStmt@1..8
+                  LetStmt@1..12
                     Let@1..4 "let"
-                    Ident@4..5 "x"
-                    Assign@5..6 "="
-                    LiteralExpr@6..7
-                      Integer@6..7 "5"
-                    Semicolon@7..8 ";"
-                  LiteralExpr@8..10
-                    Integer@8..10 "42"
-                  CloseBrace@10..11 "}"
+                    Whitespace@4..5 " "
+                    Ident@5..6 "x"
+                    Whitespace@6..7 " "
+                    Assign@7..8 "="
+                    Whitespace@8..9 " "
+                    LiteralExpr@9..10
+                      Integer@9..10 "5"
+                    Semicolon@10..11 ";"
+                    Whitespace@11..12 " "
+                  LiteralExpr@12..14
+                    Integer@12..14 "42"
+                  CloseBrace@14..15 "}"
             "#]],
             expect![],
         );

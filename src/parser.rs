@@ -194,7 +194,7 @@ impl<'a> Parser<'a> {
 
     fn eat_trivia(&mut self) {
         while self.nth(0).is_trivia() {
-            self.pos += 1;
+            self.bump(self.nth(0));
         }
     }
 

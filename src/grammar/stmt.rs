@@ -60,13 +60,16 @@ mod tests {
             StatementKind::Normal,
             "let x = 5;",
             expect![[r#"
-                LetStmt@0..7
+                LetStmt@0..10
                   Let@0..3 "let"
-                  Ident@3..4 "x"
-                  Assign@4..5 "="
-                  LiteralExpr@5..6
-                    Integer@5..6 "5"
-                  Semicolon@6..7 ";"
+                  Whitespace@3..4 " "
+                  Ident@4..5 "x"
+                  Whitespace@5..6 " "
+                  Assign@6..7 "="
+                  Whitespace@7..8 " "
+                  LiteralExpr@8..9
+                    Integer@8..9 "5"
+                  Semicolon@9..10 ";"
             "#]],
             expect![],
         );
@@ -75,20 +78,26 @@ mod tests {
             StatementKind::Normal,
             "let thing: Int = 42 + 3;",
             expect![[r#"
-                LetStmt@0..18
+                LetStmt@0..24
                   Let@0..3 "let"
-                  Ident@3..8 "thing"
-                  Colon@8..9 ":"
-                  LiteralType@9..12
-                    Ident@9..12 "Int"
-                  Assign@12..13 "="
-                  BinaryExpr@13..17
-                    LiteralExpr@13..15
-                      Integer@13..15 "42"
-                    Plus@15..16 "+"
-                    LiteralExpr@16..17
-                      Integer@16..17 "3"
-                  Semicolon@17..18 ";"
+                  Whitespace@3..4 " "
+                  Ident@4..9 "thing"
+                  Colon@9..10 ":"
+                  LiteralType@10..15
+                    Whitespace@10..11 " "
+                    Ident@11..14 "Int"
+                    Whitespace@14..15 " "
+                  Assign@15..16 "="
+                  BinaryExpr@16..23
+                    Whitespace@16..17 " "
+                    LiteralExpr@17..20
+                      Integer@17..19 "42"
+                      Whitespace@19..20 " "
+                    Plus@20..21 "+"
+                    Whitespace@21..22 " "
+                    LiteralExpr@22..23
+                      Integer@22..23 "3"
+                  Semicolon@23..24 ";"
             "#]],
             expect![],
         );
@@ -100,15 +109,17 @@ mod tests {
             StatementKind::End,
             "(42 + 3)",
             expect![[r#"
-                GroupExpr@0..6
+                GroupExpr@0..8
                   OpenParen@0..1 "("
-                  BinaryExpr@1..5
-                    LiteralExpr@1..3
+                  BinaryExpr@1..7
+                    LiteralExpr@1..4
                       Integer@1..3 "42"
-                    Plus@3..4 "+"
-                    LiteralExpr@4..5
-                      Integer@4..5 "3"
-                  CloseParen@5..6 ")"
+                      Whitespace@3..4 " "
+                    Plus@4..5 "+"
+                    Whitespace@5..6 " "
+                    LiteralExpr@6..7
+                      Integer@6..7 "3"
+                  CloseParen@7..8 ")"
             "#]],
             expect![],
         );
