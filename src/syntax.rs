@@ -154,6 +154,9 @@ pub enum SyntaxKind {
     #[display("`;`")]
     Semicolon,
 
+    #[display("`->`")]
+    Arrow,
+
     // AST
     #[display("document")]
     Document,
@@ -258,6 +261,7 @@ macro_rules! T {
     [,] => { SyntaxKind::Comma };
     [:] => { SyntaxKind::Colon };
     [;] => { SyntaxKind::Semicolon };
+    [->] => { SyntaxKind::Arrow };
 }
 
 impl SyntaxKind {
@@ -316,6 +320,7 @@ impl SyntaxKind {
             T![,] => &[T![,]],
             T![:] => &[T![:]],
             T![;] => &[T![;]],
+            T![->] => &[T![-], T![>]],
             SyntaxKind::Document => &[SyntaxKind::Document],
             SyntaxKind::Function => &[SyntaxKind::Function],
             SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],

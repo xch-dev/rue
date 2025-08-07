@@ -26,7 +26,7 @@ fn function(p: &mut Parser<'_>) {
         }
     }
     p.expect(T![')']);
-    p.expect(T![:]);
+    p.expect(T![->]);
     ty(p);
     block(p);
     p.finish();
@@ -51,4 +51,78 @@ fn generic_parameters(p: &mut Parser<'_>) {
     }
     p.expect(T![>]);
     p.finish();
+}
+
+#[cfg(test)]
+mod tests {
+    use expect_test::expect;
+
+    use crate::grammar::tests::check;
+
+    use super::*;
+
+    #[test]
+    fn test_function_item() {
+        check(
+            item,
+            "fn main() -> Int {}",
+            expect![[r#"
+                Function@0..19
+                  Fn@0..2 "fn"
+                  Whitespace@2..3 " "
+                  Ident@3..7 "main"
+                  OpenParen@7..8 "("
+                  CloseParen@8..9 ")"
+                  Whitespace@9..10 " "
+                  Arrow@10..12 "->"
+                  LiteralType@12..17
+                    Whitespace@12..13 " "
+                    Ident@13..16 "Int"
+                    Whitespace@16..17 " "
+                  Block@17..19
+                    OpenBrace@17..18 "{"
+                    CloseBrace@18..19 "}"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            item,
+            "fn main(value: Int) -> Int { value + 42 }",
+            expect![[r#"
+                Function@0..41
+                  Fn@0..2 "fn"
+                  Whitespace@2..3 " "
+                  Ident@3..7 "main"
+                  OpenParen@7..8 "("
+                  FunctionParameter@8..18
+                    Ident@8..13 "value"
+                    Colon@13..14 ":"
+                    LiteralType@14..18
+                      Whitespace@14..15 " "
+                      Ident@15..18 "Int"
+                  CloseParen@18..19 ")"
+                  Whitespace@19..20 " "
+                  Arrow@20..22 "->"
+                  LiteralType@22..27
+                    Whitespace@22..23 " "
+                    Ident@23..26 "Int"
+                    Whitespace@26..27 " "
+                  Block@27..41
+                    OpenBrace@27..28 "{"
+                    Whitespace@28..29 " "
+                    BinaryExpr@29..40
+                      LiteralExpr@29..35
+                        Ident@29..34 "value"
+                        Whitespace@34..35 " "
+                      Plus@35..36 "+"
+                      Whitespace@36..37 " "
+                      LiteralExpr@37..40
+                        Integer@37..39 "42"
+                        Whitespace@39..40 " "
+                    CloseBrace@40..41 "}"
+            "#]],
+            expect![""],
+        );
+    }
 }
