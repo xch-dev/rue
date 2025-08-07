@@ -1,4 +1,5 @@
 mod ast;
+mod compiler;
 mod error;
 mod grammar;
 mod lexer;
@@ -7,6 +8,7 @@ mod syntax;
 mod token;
 
 pub use ast::*;
+pub use compiler::*;
 pub use error::*;
 pub use grammar::*;
 pub use lexer::*;

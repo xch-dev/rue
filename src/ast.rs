@@ -66,14 +66,14 @@ ast_nodes!(
     BinaryExpr
 );
 
-ast_enum!(Item, Function);
-ast_enum!(Stmt, LetStmt, Expr);
-ast_enum!(Expr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
-ast_enum!(Type, LiteralType);
+ast_enum!(AstItem, Function);
+ast_enum!(AstStmt, LetStmt, AstExpr);
+ast_enum!(AstExpr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
+ast_enum!(AstType, LiteralType);
 
 impl Document {
-    pub fn items(&self) -> impl Iterator<Item = Item> {
-        self.syntax().children().filter_map(Item::cast)
+    pub fn items(&self) -> impl Iterator<Item = AstItem> {
+        self.syntax().children().filter_map(AstItem::cast)
     }
 }
 
@@ -93,8 +93,8 @@ impl Function {
         self.syntax().children().filter_map(FunctionParameter::cast)
     }
 
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
     }
 
     pub fn body(&self) -> Option<Block> {
@@ -110,8 +110,8 @@ impl FunctionParameter {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
     }
 }
 
@@ -125,8 +125,8 @@ impl GenericParameters {
 }
 
 impl Block {
-    pub fn stmts(&self) -> impl Iterator<Item = Stmt> {
-        self.syntax().children().filter_map(Stmt::cast)
+    pub fn stmts(&self) -> impl Iterator<Item = AstStmt> {
+        self.syntax().children().filter_map(AstStmt::cast)
     }
 }
 
@@ -138,12 +138,12 @@ impl LetStmt {
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
-    pub fn ty(&self) -> Option<Type> {
-        self.syntax().children().find_map(Type::cast)
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
     }
 
-    pub fn value(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
+    pub fn value(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 
@@ -157,8 +157,8 @@ impl LiteralExpr {
 }
 
 impl GroupExpr {
-    pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 
@@ -170,8 +170,8 @@ impl PrefixExpr {
             .find(|token| SyntaxKind::PREFIX_OPS.contains(&token.kind()))
     }
 
-    pub fn expr(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 
@@ -183,12 +183,12 @@ impl BinaryExpr {
             .find(|token| SyntaxKind::BINARY_OPS.contains(&token.kind()))
     }
 
-    pub fn left(&self) -> Option<Expr> {
-        self.syntax().children().find_map(Expr::cast)
+    pub fn left(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 
-    pub fn right(&self) -> Option<Expr> {
-        self.syntax().children().filter_map(Expr::cast).nth(1)
+    pub fn right(&self) -> Option<AstExpr> {
+        self.syntax().children().filter_map(AstExpr::cast).nth(1)
     }
 }
 
