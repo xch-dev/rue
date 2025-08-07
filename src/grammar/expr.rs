@@ -7,20 +7,12 @@ pub fn expr(p: &mut Parser<'_>) {
 fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
     let checkpoint = p.checkpoint();
 
-    if let Some(kind) = p.at_any(&[T![!], T![-], T![+], T![~]]) {
+    if let Some(kind) = p.at_any(SyntaxKind::PREFIX_OPS) {
         p.start_at(checkpoint, SyntaxKind::PrefixExpr);
         p.expect(kind);
         expr_binding_power(p, 255);
         p.finish();
-    } else if let Some(kind) = p.at_any(&[
-        SyntaxKind::String,
-        SyntaxKind::Hex,
-        SyntaxKind::Integer,
-        SyntaxKind::Ident,
-        T![nil],
-        T![true],
-        T![false],
-    ]) {
+    } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL_KINDS) {
         p.start(SyntaxKind::LiteralExpr);
         p.expect(kind);
         p.finish();
@@ -38,26 +30,7 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
     }
 
     loop {
-        let Some(op) = p.at_any(&[
-            T![+],
-            T![-],
-            T![*],
-            T![/],
-            T![%],
-            T![<],
-            T![>],
-            T![<=],
-            T![>=],
-            T![==],
-            T![!=],
-            T![&&],
-            T![||],
-            T![&],
-            T![|],
-            T![^],
-            T![<<],
-            T![>>],
-        ]) else {
+        let Some(op) = p.at_any(SyntaxKind::BINARY_OPS) else {
             return;
         };
 

@@ -265,6 +265,37 @@ macro_rules! T {
 }
 
 impl SyntaxKind {
+    pub const LITERAL_KINDS: &[Self] = &[
+        SyntaxKind::String,
+        SyntaxKind::Hex,
+        SyntaxKind::Integer,
+        SyntaxKind::Ident,
+        T![nil],
+        T![true],
+        T![false],
+    ];
+    pub const PREFIX_OPS: &[Self] = &[T![!], T![-], T![+], T![~]];
+    pub const BINARY_OPS: &[Self] = &[
+        T![+],
+        T![-],
+        T![*],
+        T![/],
+        T![%],
+        T![<],
+        T![>],
+        T![<=],
+        T![>=],
+        T![==],
+        T![!=],
+        T![&&],
+        T![||],
+        T![&],
+        T![|],
+        T![^],
+        T![<<],
+        T![>>],
+    ];
+
     pub fn is_trivia(&self) -> bool {
         matches!(
             self,
