@@ -162,7 +162,19 @@ impl<'a> Parser<'a> {
 
     fn recover(&mut self) {
         let expected = mem::take(&mut self.expected);
-        //TODO: X
+
+        let span = self
+            .parse_tokens
+            .get(self.pos)
+            .map_or(self.source.len()..self.source.len(), |token| {
+                token.span.clone()
+            });
+
+        self.errors.push(Error::new(
+            span,
+            ErrorKind::UnexpectedToken(self.nth(0), expected.into_iter().collect()),
+        ));
+
         self.pos += 1;
     }
 
