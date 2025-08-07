@@ -28,6 +28,11 @@ pub enum TokenKind {
     Nil,
     True,
     False,
+    Fn,
+    Const,
+    Let,
+    If,
+    Else,
 
     // Grouping
     OpenParen,

@@ -1,7 +1,8 @@
-use std::{mem, ops::Range};
+use std::{cmp::Reverse, mem, ops::Range};
 
 use indexmap::IndexSet;
-use rowan::{GreenNodeBuilder, Language};
+use itertools::Itertools;
+use rowan::{Checkpoint, GreenNodeBuilder, Language};
 
 use crate::{Error, ErrorKind, RueLang, SyntaxKind, SyntaxNode, T, Token, TokenKind};
 
@@ -62,9 +63,14 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Integer => SyntaxKind::Integer,
                 TokenKind::Ident => SyntaxKind::Ident,
-                TokenKind::Nil => SyntaxKind::Nil,
-                TokenKind::True => SyntaxKind::True,
-                TokenKind::False => SyntaxKind::False,
+                TokenKind::Nil => T![nil],
+                TokenKind::True => T![true],
+                TokenKind::False => T![false],
+                TokenKind::Fn => T![fn],
+                TokenKind::Const => T![const],
+                TokenKind::Let => T![let],
+                TokenKind::If => T![if],
+                TokenKind::Else => T![else],
                 TokenKind::OpenParen => T!['('],
                 TokenKind::CloseParen => T![')'],
                 TokenKind::OpenBrace => T!['{'],
@@ -120,8 +126,17 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn checkpoint(&mut self) -> Checkpoint {
+        self.builder.checkpoint()
+    }
+
     pub fn start(&mut self, kind: SyntaxKind) {
         self.builder.start_node(RueLang::kind_to_raw(kind));
+    }
+
+    pub fn start_at(&mut self, checkpoint: Checkpoint, kind: SyntaxKind) {
+        self.builder
+            .start_node_at(checkpoint, RueLang::kind_to_raw(kind));
     }
 
     pub fn finish(&mut self) {
@@ -129,23 +144,46 @@ impl<'a> Parser<'a> {
         self.builder.finish_node();
     }
 
-    pub fn expect(&mut self, kind: SyntaxKind) -> bool {
-        self.expected.insert(kind);
+    pub fn at_any(&mut self, kinds: &[SyntaxKind]) -> Option<SyntaxKind> {
+        for kind in kinds
+            .iter()
+            .sorted_by_key(|kind| Reverse(kind.split().len()))
+        {
+            if self.at(*kind) {
+                return Some(*kind);
+            }
+        }
+        None
+    }
 
+    pub fn at(&mut self, kind: SyntaxKind) -> bool {
         self.eat_trivia();
 
         let split = kind.split();
 
         for (i, kind) in split.iter().enumerate() {
             if self.nth(i) != *kind {
-                self.recover();
                 return false;
             }
         }
 
-        self.bump(kind);
-
         true
+    }
+
+    pub fn try_eat(&mut self, kind: SyntaxKind) -> bool {
+        if self.at(kind) {
+            self.bump(kind);
+            true
+        } else {
+            false
+        }
+    }
+    pub fn expect(&mut self, kind: SyntaxKind) {
+        if self.at(kind) {
+            self.bump(kind);
+        } else {
+            self.skip();
+        }
     }
 
     fn nth(&self, n: usize) -> SyntaxKind {
@@ -160,7 +198,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn recover(&mut self) {
+    pub fn skip(&mut self) {
         let expected = mem::take(&mut self.expected);
 
         let span = self
@@ -175,7 +213,9 @@ impl<'a> Parser<'a> {
             ErrorKind::UnexpectedToken(self.nth(0), expected.into_iter().collect()),
         ));
 
-        self.pos += 1;
+        if self.pos < self.parse_tokens.len() {
+            self.pos += 1;
+        }
     }
 
     fn bump(&mut self, kind: SyntaxKind) {

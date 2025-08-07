@@ -52,6 +52,11 @@ impl<'a> Lexer<'a> {
             "nil" => TokenKind::Nil,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
+            "fn" => TokenKind::Fn,
+            "const" => TokenKind::Const,
+            "let" => TokenKind::Let,
+            "if" => TokenKind::If,
+            "else" => TokenKind::Else,
             _ => TokenKind::Ident,
         }
     }
@@ -325,14 +330,14 @@ mod tests {
         check(
             "0x",
             expect![[r#"
-                Bytes { is_terminated: false }
+                Hex { is_terminated: false }
             "#]],
         );
 
         check(
             "0x 42",
             expect![[r#"
-                Bytes { is_terminated: false }
+                Hex { is_terminated: false }
                 Whitespace
                 Integer
             "#]],
@@ -341,21 +346,21 @@ mod tests {
         check(
             "0xFACEF00D",
             expect![[r#"
-                Bytes { is_terminated: true }
+                Hex { is_terminated: true }
             "#]],
         );
 
         check(
             "0xfacef00d",
             expect![[r#"
-                Bytes { is_terminated: true }
+                Hex { is_terminated: true }
             "#]],
         );
 
         check(
             "0xabc_def___",
             expect![[r#"
-                Bytes { is_terminated: true }
+                Hex { is_terminated: true }
             "#]],
         );
     }
@@ -411,6 +416,41 @@ mod tests {
             "false",
             expect![[r#"
                 False
+            "#]],
+        );
+
+        check(
+            "fn",
+            expect![[r#"
+                Fn
+            "#]],
+        );
+
+        check(
+            "const",
+            expect![[r#"
+                Const
+            "#]],
+        );
+
+        check(
+            "let",
+            expect![[r#"
+                Let
+            "#]],
+        );
+
+        check(
+            "if",
+            expect![[r#"
+                If
+            "#]],
+        );
+
+        check(
+            "else",
+            expect![[r#"
+                Else
             "#]],
         );
     }

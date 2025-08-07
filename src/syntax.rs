@@ -40,6 +40,21 @@ pub enum SyntaxKind {
     #[display("`false`")]
     False,
 
+    #[display("`fn`")]
+    Fn,
+
+    #[display("`const`")]
+    Const,
+
+    #[display("`let`")]
+    Let,
+
+    #[display("`if`")]
+    If,
+
+    #[display("`else`")]
+    Else,
+
     // Grouping
     #[display("`(`")]
     OpenParen,
@@ -139,6 +154,37 @@ pub enum SyntaxKind {
     #[display("`;`")]
     Semicolon,
 
+    // AST
+    #[display("document")]
+    Document,
+
+    #[display("function")]
+    Function,
+
+    #[display("function parameter")]
+    FunctionParameter,
+
+    #[display("generic parameters")]
+    GenericParameters,
+
+    #[display("literal type")]
+    LiteralType,
+
+    #[display("block")]
+    Block,
+
+    #[display("let statement")]
+    LetStmt,
+
+    #[display("literal expression")]
+    LiteralExpr,
+
+    #[display("prefix expression")]
+    PrefixExpr,
+
+    #[display("binary expression")]
+    BinaryExpr,
+
     // Unexpected cases
     #[display("error")]
     Error,
@@ -173,6 +219,11 @@ macro_rules! T {
     [nil] => { SyntaxKind::Nil };
     [true] => { SyntaxKind::True };
     [false] => { SyntaxKind::False };
+    [fn] => { SyntaxKind::Fn };
+    [const] => { SyntaxKind::Const };
+    [let] => { SyntaxKind::Let };
+    [if] => { SyntaxKind::If };
+    [else] => { SyntaxKind::Else };
     ['('] => { SyntaxKind::OpenParen };
     [')'] => { SyntaxKind::CloseParen };
     ['{'] => { SyntaxKind::OpenBrace };
@@ -226,6 +277,11 @@ impl SyntaxKind {
             T![nil] => &[T![nil]],
             T![true] => &[T![true]],
             T![false] => &[T![false]],
+            T![fn] => &[T![fn]],
+            T![const] => &[T![const]],
+            T![let] => &[T![let]],
+            T![if] => &[T![if]],
+            T![else] => &[T![else]],
             T!['('] => &[T!['(']],
             T![')'] => &[T![')']],
             T!['{'] => &[T!['{']],
@@ -257,8 +313,18 @@ impl SyntaxKind {
             T![,] => &[T![,]],
             T![:] => &[T![:]],
             T![;] => &[T![;]],
-            SyntaxKind::Error => &[Self::Error],
-            SyntaxKind::Eof => &[Self::Eof],
+            SyntaxKind::Document => &[SyntaxKind::Document],
+            SyntaxKind::Function => &[SyntaxKind::Function],
+            SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],
+            SyntaxKind::GenericParameters => &[SyntaxKind::GenericParameters],
+            SyntaxKind::LiteralType => &[SyntaxKind::LiteralType],
+            SyntaxKind::Block => &[SyntaxKind::Block],
+            SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],
+            SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],
+            SyntaxKind::PrefixExpr => &[SyntaxKind::PrefixExpr],
+            SyntaxKind::BinaryExpr => &[SyntaxKind::BinaryExpr],
+            SyntaxKind::Error => &[SyntaxKind::Error],
+            SyntaxKind::Eof => &[SyntaxKind::Eof],
         }
     }
 }
