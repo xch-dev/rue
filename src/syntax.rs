@@ -182,11 +182,23 @@ pub enum SyntaxKind {
     #[display("subtype")]
     SubtypeItem,
 
+    #[display("subtype generic parameters")]
+    SubtypeGenericParameters,
+
+    #[display("subtype generic parameter")]
+    SubtypeGenericParameter,
+
     #[display("subtype parameter")]
     SubtypeParameter,
 
     #[display("subtype constraint")]
     SubtypeConstraint,
+
+    #[display("subtype fields")]
+    SubtypeFields,
+
+    #[display("subtype field")]
+    SubtypeField,
 
     #[display("generic parameters")]
     GenericParameters,
@@ -399,8 +411,12 @@ impl SyntaxKind {
             SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],
             SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
             SyntaxKind::SubtypeItem => &[SyntaxKind::SubtypeItem],
+            SyntaxKind::SubtypeGenericParameters => &[SyntaxKind::SubtypeGenericParameters],
+            SyntaxKind::SubtypeGenericParameter => &[SyntaxKind::SubtypeGenericParameter],
             SyntaxKind::SubtypeParameter => &[SyntaxKind::SubtypeParameter],
             SyntaxKind::SubtypeConstraint => &[SyntaxKind::SubtypeConstraint],
+            SyntaxKind::SubtypeFields => &[SyntaxKind::SubtypeFields],
+            SyntaxKind::SubtypeField => &[SyntaxKind::SubtypeField],
             SyntaxKind::GenericParameters => &[SyntaxKind::GenericParameters],
             SyntaxKind::GenericArguments => &[SyntaxKind::GenericArguments],
             SyntaxKind::PathType => &[SyntaxKind::PathType],

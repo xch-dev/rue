@@ -59,6 +59,13 @@ ast_nodes!(
     FunctionItem,
     FunctionParameter,
     TypeAliasItem,
+    SubtypeItem,
+    SubtypeGenericParameters,
+    SubtypeGenericParameter,
+    SubtypeParameter,
+    SubtypeConstraint,
+    SubtypeFields,
+    SubtypeField,
     GenericParameters,
     GenericArguments,
     PathType,
@@ -70,15 +77,23 @@ ast_nodes!(
     LiteralExpr,
     GroupExpr,
     PrefixExpr,
-    BinaryExpr
+    BinaryExpr,
+    FunctionCallExpr,
 );
 
 ast_enum!(Item, TypeItem, SymbolItem);
-ast_enum!(TypeItem, TypeAliasItem);
+ast_enum!(TypeItem, TypeAliasItem, SubtypeItem);
 ast_enum!(SymbolItem, FunctionItem);
 ast_enum!(Stmt, LetStmt, ExprStmt);
 ast_enum!(StmtOrExpr, Stmt, Expr);
-ast_enum!(Expr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
+ast_enum!(
+    Expr,
+    LiteralExpr,
+    GroupExpr,
+    PrefixExpr,
+    BinaryExpr,
+    FunctionCallExpr
+);
 ast_enum!(Type, PathType, UnionType);
 
 impl AstDocument {
@@ -132,6 +147,98 @@ impl AstTypeAliasItem {
 
     pub fn ty(&self) -> Option<AstType> {
         self.syntax().children().find_map(AstType::cast)
+    }
+}
+
+impl AstSubtypeItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_parameters(&self) -> Option<AstSubtypeGenericParameters> {
+        self.syntax()
+            .children()
+            .find_map(AstSubtypeGenericParameters::cast)
+    }
+
+    pub fn parameter(&self) -> Option<AstSubtypeParameter> {
+        self.syntax().children().find_map(AstSubtypeParameter::cast)
+    }
+
+    pub fn constraint(&self) -> Option<AstSubtypeConstraint> {
+        self.syntax()
+            .children()
+            .find_map(AstSubtypeConstraint::cast)
+    }
+
+    pub fn fields(&self) -> Option<AstSubtypeFields> {
+        self.syntax().children().find_map(AstSubtypeFields::cast)
+    }
+}
+
+impl AstSubtypeGenericParameters {
+    pub fn parameters(&self) -> impl Iterator<Item = AstSubtypeGenericParameter> {
+        self.syntax()
+            .children()
+            .filter_map(AstSubtypeGenericParameter::cast)
+    }
+}
+
+impl AstSubtypeGenericParameter {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn field(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .nth(1)
+    }
+}
+
+impl AstSubtypeParameter {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+}
+
+impl AstSubtypeConstraint {
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstSubtypeFields {
+    pub fn fields(&self) -> impl Iterator<Item = AstSubtypeField> {
+        self.syntax().children().filter_map(AstSubtypeField::cast)
+    }
+}
+
+impl AstSubtypeField {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 
@@ -234,6 +341,16 @@ impl AstBinaryExpr {
 
     pub fn right(&self) -> Option<AstExpr> {
         self.syntax().children().filter_map(AstExpr::cast).nth(1)
+    }
+}
+
+impl AstFunctionCallExpr {
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn args(&self) -> impl Iterator<Item = AstExpr> {
+        self.syntax().children().filter_map(AstExpr::cast).skip(1)
     }
 }
 
