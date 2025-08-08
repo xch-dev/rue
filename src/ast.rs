@@ -1,4 +1,4 @@
-use crate::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
+use crate::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken, T};
 
 use paste::paste;
 
@@ -60,7 +60,9 @@ ast_nodes!(
     FunctionParameter,
     TypeAliasItem,
     GenericParameters,
-    LiteralType,
+    GenericArguments,
+    PathType,
+    PathTypeSegment,
     UnionType,
     Block,
     LetStmt,
@@ -77,7 +79,7 @@ ast_enum!(SymbolItem, FunctionItem);
 ast_enum!(Stmt, LetStmt, ExprStmt);
 ast_enum!(StmtOrExpr, Stmt, Expr);
 ast_enum!(Expr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
-ast_enum!(Type, LiteralType, UnionType);
+ast_enum!(Type, PathType, UnionType);
 
 impl AstDocument {
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
@@ -155,6 +157,12 @@ impl AstGenericParameters {
     }
 }
 
+impl AstGenericArguments {
+    pub fn types(&self) -> impl Iterator<Item = AstType> {
+        self.syntax().children().filter_map(AstType::cast)
+    }
+}
+
 impl AstBlock {
     pub fn items(&self) -> impl Iterator<Item = AstStmtOrExpr> {
         self.syntax().children().filter_map(AstStmtOrExpr::cast)
@@ -229,12 +237,31 @@ impl AstBinaryExpr {
     }
 }
 
-impl AstLiteralType {
-    pub fn value(&self) -> Option<SyntaxToken> {
+impl AstPathType {
+    pub fn segments(&self) -> impl Iterator<Item = AstPathTypeSegment> {
+        self.syntax()
+            .children()
+            .filter_map(AstPathTypeSegment::cast)
+    }
+}
+
+impl AstPathTypeSegment {
+    pub fn separator(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| SyntaxKind::LITERAL_TYPE.contains(&token.kind()))
+            .find(|token| token.kind() == T![::])
+    }
+
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_arguments(&self) -> Option<AstGenericArguments> {
+        self.syntax().children().find_map(AstGenericArguments::cast)
     }
 }
 

@@ -1,4 +1,7 @@
-use crate::{AstGenericParameters, AstNode, Context, DiagnosticKind, ScopeId, Type, TypeId, Var};
+use crate::{
+    AstGenericArguments, AstGenericParameters, AstNode, Context, DiagnosticKind, ScopeId, Type,
+    TypeId, Var, compile_type,
+};
 
 pub fn compile_generic_parameters(
     ctx: &mut Context,
@@ -37,4 +40,27 @@ pub fn compile_generic_parameters(
     }
 
     vars
+}
+
+pub fn compile_generic_arguments(
+    ctx: &mut Context,
+    generic_arguments: &AstGenericArguments,
+) -> Vec<TypeId> {
+    let mut args = Vec::new();
+
+    let mut is_empty = true;
+
+    for generic_argument in generic_arguments.types() {
+        is_empty = false;
+        args.push(compile_type(ctx, &generic_argument));
+    }
+
+    if is_empty {
+        ctx.diagnostic(
+            generic_arguments.syntax(),
+            DiagnosticKind::EmptyGenericArguments,
+        );
+    }
+
+    args
 }

@@ -1,7 +1,7 @@
 mod block;
 mod document;
 mod expr;
-mod generic_parameters;
+mod generics;
 mod item;
 mod stmt;
 mod ty;
@@ -9,7 +9,7 @@ mod ty;
 pub use block::*;
 pub use document::*;
 pub use expr::*;
-pub use generic_parameters::*;
+pub use generics::*;
 pub use item::*;
 pub use stmt::*;
 pub use ty::*;

@@ -61,6 +61,12 @@ pub enum DiagnosticKind {
 
     #[error("Unnecessary empty generic parameter list specified")]
     EmptyGenericParameters,
+
+    #[error("Unnecessary empty generic argument list specified")]
+    EmptyGenericArguments,
+
+    #[error("Expected {0} generic arguments, but found {1}")]
+    ExpectedGenericArguments(usize, usize),
 }
 
 impl DiagnosticKind {
@@ -74,8 +80,11 @@ impl DiagnosticKind {
             | Self::DuplicateSymbol(..)
             | Self::DuplicateType(..)
             | Self::UndeclaredSymbol(..)
-            | Self::UndeclaredType(..) => DiagnosticSeverity::Error,
-            Self::EmptyGenericParameters => DiagnosticSeverity::Warning,
+            | Self::UndeclaredType(..)
+            | Self::ExpectedGenericArguments(..) => DiagnosticSeverity::Error,
+            Self::EmptyGenericParameters | Self::EmptyGenericArguments => {
+                DiagnosticSeverity::Warning
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Parser, SyntaxKind, T};
+use crate::{Parser, SyntaxKind, T, grammar::generics::generic_arguments};
 
 pub fn ty(p: &mut Parser<'_>) {
     ty_inner(p, true);
@@ -7,10 +7,8 @@ pub fn ty(p: &mut Parser<'_>) {
 fn ty_inner(p: &mut Parser<'_>, allow_union: bool) {
     let cp = p.checkpoint();
 
-    if let Some(kind) = p.at_any(SyntaxKind::LITERAL_TYPE) {
-        p.start(SyntaxKind::LiteralType);
-        p.expect(kind);
-        p.finish();
+    if p.at(SyntaxKind::Ident) || p.at(T![::]) {
+        path_type(p);
     } else {
         p.skip();
         return;
@@ -23,6 +21,29 @@ fn ty_inner(p: &mut Parser<'_>, allow_union: bool) {
         }
         p.finish();
     }
+}
+
+fn path_type(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::PathType);
+    path_type_segment(p, true);
+    while p.at(T![::]) {
+        path_type_segment(p, false);
+    }
+    p.finish();
+}
+
+fn path_type_segment(p: &mut Parser<'_>, first: bool) {
+    p.start(SyntaxKind::PathTypeSegment);
+    if first {
+        p.try_eat(T![::]);
+    } else {
+        p.expect(T![::]);
+    }
+    p.expect(SyntaxKind::Ident);
+    if p.at(T![<]) {
+        generic_arguments(p);
+    }
+    p.finish();
 }
 
 #[cfg(test)]

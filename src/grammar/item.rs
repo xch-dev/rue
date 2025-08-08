@@ -1,6 +1,6 @@
 use crate::{
     Parser, SyntaxKind, T,
-    grammar::{block::block, ty::ty},
+    grammar::{block::block, generics::generic_parameters, ty::ty},
 };
 
 pub fn item(p: &mut Parser<'_>) {
@@ -52,19 +52,6 @@ fn type_alias_item(p: &mut Parser<'_>) {
     p.expect(T![=]);
     ty(p);
     p.expect(T![;]);
-    p.finish();
-}
-
-fn generic_parameters(p: &mut Parser<'_>) {
-    p.start(SyntaxKind::GenericParameters);
-    p.expect(T![<]);
-    while !p.at(T![>]) {
-        p.expect(SyntaxKind::Ident);
-        if !p.try_eat(T![,]) {
-            break;
-        }
-    }
-    p.expect(T![>]);
     p.finish();
 }
 

@@ -160,6 +160,9 @@ pub enum SyntaxKind {
     #[display("`->`")]
     Arrow,
 
+    #[display("`::`")]
+    PathSeparator,
+
     // AST
     #[display("document")]
     Document,
@@ -176,8 +179,14 @@ pub enum SyntaxKind {
     #[display("generic parameters")]
     GenericParameters,
 
-    #[display("literal type")]
-    LiteralType,
+    #[display("generic arguments")]
+    GenericArguments,
+
+    #[display("path type")]
+    PathType,
+
+    #[display("path type segment")]
+    PathTypeSegment,
 
     #[display("union type")]
     UnionType,
@@ -275,6 +284,7 @@ macro_rules! T {
     [:] => { SyntaxKind::Colon };
     [;] => { SyntaxKind::Semicolon };
     [->] => { SyntaxKind::Arrow };
+    [::] => { SyntaxKind::PathSeparator };
 }
 
 impl SyntaxKind {
@@ -287,7 +297,6 @@ impl SyntaxKind {
         T![true],
         T![false],
     ];
-    pub const LITERAL_TYPE: &[Self] = &[SyntaxKind::Ident];
     pub const PREFIX_OPS: &[Self] = &[T![!], T![-], T![+], T![~]];
     pub const BINARY_OPS: &[Self] = &[
         T![+],
@@ -367,12 +376,15 @@ impl SyntaxKind {
             T![:] => &[T![:]],
             T![;] => &[T![;]],
             T![->] => &[T![-], T![>]],
+            T![::] => &[T![:], T![:]],
             SyntaxKind::Document => &[SyntaxKind::Document],
             SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],
             SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],
             SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
             SyntaxKind::GenericParameters => &[SyntaxKind::GenericParameters],
-            SyntaxKind::LiteralType => &[SyntaxKind::LiteralType],
+            SyntaxKind::GenericArguments => &[SyntaxKind::GenericArguments],
+            SyntaxKind::PathType => &[SyntaxKind::PathType],
+            SyntaxKind::PathTypeSegment => &[SyntaxKind::PathTypeSegment],
             SyntaxKind::UnionType => &[SyntaxKind::UnionType],
             SyntaxKind::Block => &[SyntaxKind::Block],
             SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],

@@ -1,6 +1,7 @@
 mod block;
 mod document;
 mod expr;
+mod generics;
 mod item;
 mod stmt;
 mod ty;

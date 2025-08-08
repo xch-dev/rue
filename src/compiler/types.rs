@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{HirId, ScopeId, SymbolId, SyntaxToken, TypeId};
 
 #[derive(Debug, Clone)]
@@ -7,6 +9,7 @@ pub enum Type {
     Alias(Alias),
     Subtype(Subtype),
     Union(Vec<TypeId>),
+    Apply(TypeId, HashMap<TypeId, TypeId>),
 }
 
 #[derive(Debug, Clone)]
