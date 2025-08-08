@@ -1,5 +1,5 @@
 use crate::{
-    AstTypeAliasItem, BindingType, Context, DiagnosticKind, Scope, Type, TypeId,
+    Alias, AstTypeAliasItem, Context, DiagnosticKind, Scope, Type, TypeId,
     compile_generic_parameters, compile_type,
 };
 
@@ -12,15 +12,13 @@ pub fn declare_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem) -> T
         vec![]
     };
 
-    let parent = ctx.builtins().unresolved.ty;
+    let inner = ctx.builtins().unresolved.ty;
 
-    let ty = ctx.alloc_type(Type::Binding(BindingType {
+    let ty = ctx.alloc_type(Type::Alias(Alias {
         name: type_alias.name(),
         scope,
         vars,
-        parent,
-        is_transparent: true,
-        has_constraint: false,
+        inner,
     }));
 
     if let Some(name) = type_alias.name() {
@@ -39,7 +37,7 @@ pub fn declare_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem) -> T
 }
 
 pub fn compile_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem, ty: TypeId) {
-    let scope = if let Type::Binding(BindingType { scope, .. }) = ctx.ty(ty) {
+    let scope = if let Type::Alias(Alias { scope, .. }) = ctx.ty(ty) {
         *scope
     } else {
         unreachable!();
@@ -47,19 +45,19 @@ pub fn compile_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem, ty: 
 
     ctx.push_scope(scope);
 
-    let resolved_parent = if let Some(parent) = type_alias.ty() {
-        compile_type(ctx, &parent)
+    let resolved_inner = if let Some(inner) = type_alias.ty() {
+        compile_type(ctx, &inner)
     } else {
         ctx.builtins().unresolved.ty
     };
 
     ctx.pop_scope();
 
-    let Type::Binding(BindingType { parent, .. }) = ctx.ty_mut(ty) else {
+    let Type::Alias(Alias { inner, .. }) = ctx.ty_mut(ty) else {
         unreachable!()
     };
 
-    *parent = resolved_parent;
+    *inner = resolved_inner;
 }
 
 #[cfg(test)]

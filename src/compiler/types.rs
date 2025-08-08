@@ -1,23 +1,44 @@
-use crate::{ScopeId, SyntaxToken, TypeId};
+use crate::{HirId, ScopeId, SymbolId, SyntaxToken, TypeId};
 
 #[derive(Debug, Clone)]
 pub enum Type {
     Unresolved,
-    Binding(BindingType),
-    Var(VarType),
+    Var(Var),
+    Alias(Alias),
+    Subtype(Subtype),
 }
 
 #[derive(Debug, Clone)]
-pub struct BindingType {
+pub struct Var {
+    pub name: Option<SyntaxToken>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Alias {
     pub name: Option<SyntaxToken>,
     pub scope: ScopeId,
     pub vars: Vec<TypeId>,
-    pub parent: TypeId,
-    pub is_transparent: bool,
-    pub has_constraint: bool,
+    pub inner: TypeId,
 }
 
 #[derive(Debug, Clone)]
-pub struct VarType {
+pub struct Subtype {
     pub name: Option<SyntaxToken>,
+    pub scope: ScopeId,
+    pub vars: Vec<SubtypeVar>,
+    pub parent: SubtypeParent,
+    pub constraint: Option<HirId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubtypeParent {
+    pub symbol: SymbolId,
+    pub ty: TypeId,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubtypeVar {
+    pub symbol: SymbolId,
+    pub ty: TypeId,
+    pub accessor: HirId,
 }

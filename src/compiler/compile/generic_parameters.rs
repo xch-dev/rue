@@ -1,6 +1,4 @@
-use crate::{
-    AstGenericParameters, AstNode, Context, DiagnosticKind, ScopeId, Type, TypeId, VarType,
-};
+use crate::{AstGenericParameters, AstNode, Context, DiagnosticKind, ScopeId, Type, TypeId, Var};
 
 pub fn compile_generic_parameters(
     ctx: &mut Context,
@@ -14,7 +12,7 @@ pub fn compile_generic_parameters(
     for generic_parameter in generic_parameters.names() {
         is_empty = false;
 
-        let ty = ctx.alloc_type(Type::Var(VarType {
+        let ty = ctx.alloc_type(Type::Var(Var {
             name: Some(generic_parameter.clone()),
         }));
 
