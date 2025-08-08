@@ -30,6 +30,23 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
     }
 
     loop {
+        if p.at(T!['(']) {
+            p.start_at(checkpoint, SyntaxKind::FunctionCallExpr);
+            p.expect(T!['(']);
+            while !p.at(T![')']) {
+                expr(p);
+                if !p.try_eat(T![,]) {
+                    break;
+                }
+            }
+            p.expect(T![')']);
+            p.finish();
+        } else {
+            break;
+        }
+    }
+
+    loop {
         let Some(op) = p.at_any(SyntaxKind::BINARY_OPS) else {
             return;
         };
@@ -232,6 +249,59 @@ mod tests {
                   LiteralExpr@1..3
                     Integer@1..3 "42"
                   CloseBrace@3..4 "}"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_function_call_expr() {
+        check(
+            expr,
+            "hello(42)",
+            expect![[r#"
+                FunctionCallExpr@0..9
+                  LiteralExpr@0..5
+                    Ident@0..5 "hello"
+                  OpenParen@5..6 "("
+                  LiteralExpr@6..8
+                    Integer@6..8 "42"
+                  CloseParen@8..9 ")"
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
+            "hello(42,)",
+            expect![[r#"
+                FunctionCallExpr@0..10
+                  LiteralExpr@0..5
+                    Ident@0..5 "hello"
+                  OpenParen@5..6 "("
+                  LiteralExpr@6..8
+                    Integer@6..8 "42"
+                  Comma@8..9 ","
+                  CloseParen@9..10 ")"
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
+            "hello(42, 13)",
+            expect![[r#"
+                FunctionCallExpr@0..13
+                  LiteralExpr@0..5
+                    Ident@0..5 "hello"
+                  OpenParen@5..6 "("
+                  LiteralExpr@6..8
+                    Integer@6..8 "42"
+                  Comma@8..9 ","
+                  Whitespace@9..10 " "
+                  LiteralExpr@10..12
+                    Integer@10..12 "13"
+                  CloseParen@12..13 ")"
             "#]],
             expect![],
         );

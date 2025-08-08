@@ -49,6 +49,9 @@ pub enum SyntaxKind {
     #[display("`type`")]
     Type,
 
+    #[display("`subtype`")]
+    Subtype,
+
     #[display("`let`")]
     Let,
 
@@ -176,6 +179,15 @@ pub enum SyntaxKind {
     #[display("type alias")]
     TypeAliasItem,
 
+    #[display("subtype")]
+    SubtypeItem,
+
+    #[display("subtype parameter")]
+    SubtypeParameter,
+
+    #[display("subtype constraint")]
+    SubtypeConstraint,
+
     #[display("generic parameters")]
     GenericParameters,
 
@@ -211,6 +223,9 @@ pub enum SyntaxKind {
 
     #[display("binary expression")]
     BinaryExpr,
+
+    #[display("function call expression")]
+    FunctionCallExpr,
 
     // Unexpected cases
     #[display("error")]
@@ -249,6 +264,7 @@ macro_rules! T {
     [fn] => { SyntaxKind::Fn };
     [const] => { SyntaxKind::Const };
     [type] => { SyntaxKind::Type };
+    [subtype] => { SyntaxKind::Subtype };
     [let] => { SyntaxKind::Let };
     [if] => { SyntaxKind::If };
     [else] => { SyntaxKind::Else };
@@ -341,6 +357,7 @@ impl SyntaxKind {
             T![fn] => &[T![fn]],
             T![const] => &[T![const]],
             T![type] => &[T![type]],
+            T![subtype] => &[T![subtype]],
             T![let] => &[T![let]],
             T![if] => &[T![if]],
             T![else] => &[T![else]],
@@ -381,6 +398,9 @@ impl SyntaxKind {
             SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],
             SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],
             SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
+            SyntaxKind::SubtypeItem => &[SyntaxKind::SubtypeItem],
+            SyntaxKind::SubtypeParameter => &[SyntaxKind::SubtypeParameter],
+            SyntaxKind::SubtypeConstraint => &[SyntaxKind::SubtypeConstraint],
             SyntaxKind::GenericParameters => &[SyntaxKind::GenericParameters],
             SyntaxKind::GenericArguments => &[SyntaxKind::GenericArguments],
             SyntaxKind::PathType => &[SyntaxKind::PathType],
@@ -393,6 +413,7 @@ impl SyntaxKind {
             SyntaxKind::GroupExpr => &[SyntaxKind::GroupExpr],
             SyntaxKind::PrefixExpr => &[SyntaxKind::PrefixExpr],
             SyntaxKind::BinaryExpr => &[SyntaxKind::BinaryExpr],
+            SyntaxKind::FunctionCallExpr => &[SyntaxKind::FunctionCallExpr],
             SyntaxKind::Error => &[SyntaxKind::Error],
             SyntaxKind::Eof => &[SyntaxKind::Eof],
         }

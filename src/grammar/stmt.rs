@@ -89,9 +89,10 @@ mod tests {
                   Ident@4..9 "thing"
                   Colon@9..10 ":"
                   Whitespace@10..11 " "
-                  LiteralType@11..15
-                    Ident@11..14 "Int"
-                    Whitespace@14..15 " "
+                  PathType@11..15
+                    PathTypeSegment@11..15
+                      Ident@11..14 "Int"
+                      Whitespace@14..15 " "
                   Assign@15..16 "="
                   BinaryExpr@16..23
                     Whitespace@16..17 " "

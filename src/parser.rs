@@ -72,6 +72,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Fn => T![fn],
                 TokenKind::Const => T![const],
                 TokenKind::Type => T![type],
+                TokenKind::Subtype => T![subtype],
                 TokenKind::Let => T![let],
                 TokenKind::If => T![if],
                 TokenKind::Else => T![else],

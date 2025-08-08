@@ -31,6 +31,7 @@ pub enum TokenKind {
     Fn,
     Const,
     Type,
+    Subtype,
     Let,
     If,
     Else,
