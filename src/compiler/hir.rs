@@ -3,14 +3,9 @@ use crate::{HirId, SymbolId, Value};
 #[derive(Debug, Clone)]
 pub enum Hir {
     Unresolved,
-    Atom(Atom),
+    Atom(Vec<u8>),
     Unary(UnaryOp, HirId),
     Block(Block),
-}
-
-#[derive(Debug, Clone)]
-pub enum Atom {
-    String(String),
 }
 
 #[derive(Debug, Clone)]

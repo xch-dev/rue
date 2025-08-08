@@ -1,4 +1,4 @@
-use crate::{AstLiteralExpr, Atom, Context, Hir, SyntaxKind, T, Value};
+use crate::{AstLiteralExpr, Context, Hir, SyntaxKind, T, Value};
 
 pub fn compile_literal_expr(ctx: &mut Context, expr: &AstLiteralExpr) -> Value {
     let Some(value) = expr.value() else {
@@ -18,7 +18,7 @@ pub fn compile_literal_expr(ctx: &mut Context, expr: &AstLiteralExpr) -> Value {
             }
 
             Value::new(
-                ctx.alloc_hir(Hir::Atom(Atom::String(text.to_string()))),
+                ctx.alloc_hir(Hir::Atom(text.as_bytes().to_vec())),
                 ctx.builtins().bytes,
             )
         }
