@@ -3,17 +3,17 @@ use std::ops::Range;
 use id_arena::{Arena, Id};
 use rowan::TextRange;
 
-use crate::{Diagnostic, DiagnosticKind, Hir, Scope, Symbol, SyntaxNode, SyntaxToken, Type};
+use crate::{Diagnostic, DiagnosticKind, Hir, Scope, Symbol, SyntaxNode, SyntaxToken, Type, Value};
 
 pub type ScopeId = Id<Scope>;
 pub type SymbolId = Id<Symbol>;
 pub type TypeId = Id<Type>;
 pub type HirId = Id<Hir>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Builtins {
-    pub unresolved_type: TypeId,
-    pub unresolved_hir: HirId,
+    pub unresolved: Value,
+    pub bytes: TypeId,
 }
 
 #[derive(Debug, Clone)]
@@ -36,14 +36,14 @@ impl Default for Context {
         let unresolved_hir = hir.alloc(Hir::Unresolved);
 
         let builtins = Builtins {
-            unresolved_type,
-            unresolved_hir,
+            unresolved: Value::new(unresolved_hir, unresolved_type),
+            bytes: unresolved_type,
         };
 
         let mut scopes = Arena::new();
         let mut scope = Scope::new();
 
-        scope.insert_type("Wip".to_string(), unresolved_type);
+        scope.insert_type("Bytes".to_string(), builtins.bytes);
 
         let scope = scopes.alloc(scope);
 

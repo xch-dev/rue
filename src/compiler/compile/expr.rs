@@ -8,9 +8,9 @@ pub use group::*;
 pub use literal::*;
 pub use prefix::*;
 
-use crate::{AstExpr, Context, HirId};
+use crate::{AstExpr, Context, Value};
 
-pub fn compile_expr(ctx: &mut Context, expr: &AstExpr) -> HirId {
+pub fn compile_expr(ctx: &mut Context, expr: &AstExpr) -> Value {
     match expr {
         AstExpr::LiteralExpr(expr) => compile_literal_expr(ctx, expr),
         AstExpr::GroupExpr(expr) => compile_group_expr(ctx, expr),

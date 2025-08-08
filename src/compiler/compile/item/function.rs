@@ -9,7 +9,7 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
     let return_type = if let Some(return_type) = function.return_type() {
         compile_type(ctx, &return_type)
     } else {
-        ctx.builtins().unresolved_type
+        ctx.builtins().unresolved.ty
     };
 
     let vars = if let Some(generic_parameters) = function.generic_parameters() {
@@ -24,7 +24,7 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
         let ty = if let Some(ty) = parameter.ty() {
             compile_type(ctx, &ty)
         } else {
-            ctx.builtins().unresolved_type
+            ctx.builtins().unresolved.ty
         };
 
         let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol {
@@ -47,7 +47,7 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
         parameters.push(symbol);
     }
 
-    let body = ctx.builtins().unresolved_hir;
+    let body = ctx.builtins().unresolved.hir;
 
     let symbol = ctx.alloc_symbol(Symbol::Function(FunctionSymbol {
         name: function.name(),
@@ -85,7 +85,7 @@ pub fn compile_function(ctx: &mut Context, function: &AstFunctionItem, symbol: S
     let resolved_body = if let Some(body) = function.body() {
         compile_block(ctx, &body)
     } else {
-        ctx.builtins().unresolved_hir
+        ctx.builtins().unresolved.hir
     };
 
     ctx.pop_scope();

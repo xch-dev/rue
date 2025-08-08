@@ -1,19 +1,32 @@
-use crate::{HirId, SymbolId};
+use crate::{HirId, SymbolId, Value};
 
 #[derive(Debug, Clone)]
 pub enum Hir {
     Unresolved,
+    Atom(Atom),
+    Unary(UnaryOp, HirId),
     Block(Block),
+}
+
+#[derive(Debug, Clone)]
+pub enum Atom {
+    String(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum UnaryOp {
+    Listp,
+    Not,
 }
 
 #[derive(Debug, Clone)]
 pub struct Block {
     pub statements: Vec<Statement>,
-    pub body: Option<HirId>,
+    pub body: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Statement {
     Let(SymbolId),
-    Expr(HirId),
+    Expr(Value),
 }
