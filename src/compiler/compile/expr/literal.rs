@@ -24,7 +24,7 @@ pub fn compile_literal_expr(ctx: &mut Context, expr: &AstLiteralExpr) -> Value {
         }
         SyntaxKind::Hex => todo!(),
         SyntaxKind::Integer => todo!(),
-        SyntaxKind::Ident => todo!(),
+        SyntaxKind::Ident => ctx.builtins().unresolved.clone(),
         T![nil] => todo!(),
         T![true] => todo!(),
         T![false] => todo!(),

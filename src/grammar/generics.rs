@@ -31,7 +31,7 @@ pub fn subtype_generic_parameters(p: &mut Parser<'_>) {
 }
 
 pub fn generic_arguments(p: &mut Parser<'_>) {
-    p.start(SyntaxKind::GenericParameters);
+    p.start(SyntaxKind::GenericArguments);
     p.expect(T![<]);
     while !p.at(T![>]) {
         ty(p);

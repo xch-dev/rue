@@ -69,21 +69,29 @@ fn subtype_item(p: &mut Parser<'_>) {
     if p.at(T![<]) {
         subtype_generic_parameters(p);
     }
-    subtype_parameter(p);
+    if p.at(T!['(']) {
+        subtype_parameter(p);
+    }
     if p.at(T![if]) {
         subtype_constraint(p);
     }
     if p.try_eat(T!['{']) {
-        while !p.at(T!['}']) {
-            subtype_field(p);
-            if !p.try_eat(T![,]) {
-                break;
-            }
-        }
-        p.expect(T!['}']);
+        subtype_fields(p);
     } else {
         p.expect(T![;]);
     }
+    p.finish();
+}
+
+fn subtype_fields(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::SubtypeFields);
+    while !p.at(T!['}']) {
+        subtype_field(p);
+        if !p.try_eat(T![,]) {
+            break;
+        }
+    }
+    p.expect(T!['}']);
     p.finish();
 }
 
@@ -322,33 +330,34 @@ mod tests {
                       CloseParen@60..61 ")"
                       Whitespace@61..62 " "
                   OpenBrace@62..63 "{"
-                  Whitespace@63..64 " "
-                  SubtypeField@64..83
-                    Ident@64..69 "first"
-                    Colon@69..70 ":"
-                    FunctionCallExpr@70..83
-                      Whitespace@70..71 " "
-                      LiteralExpr@71..76
-                        Ident@71..76 "first"
-                      OpenParen@76..77 "("
-                      LiteralExpr@77..82
-                        Ident@77..82 "value"
-                      CloseParen@82..83 ")"
-                  Comma@83..84 ","
-                  Whitespace@84..85 " "
-                  SubtypeField@85..103
-                    Ident@85..89 "rest"
-                    Colon@89..90 ":"
-                    FunctionCallExpr@90..103
-                      Whitespace@90..91 " "
-                      LiteralExpr@91..95
-                        Ident@91..95 "rest"
-                      OpenParen@95..96 "("
-                      LiteralExpr@96..101
-                        Ident@96..101 "value"
-                      CloseParen@101..102 ")"
-                      Whitespace@102..103 " "
-                  CloseBrace@103..104 "}"
+                  SubtypeFields@63..104
+                    Whitespace@63..64 " "
+                    SubtypeField@64..83
+                      Ident@64..69 "first"
+                      Colon@69..70 ":"
+                      FunctionCallExpr@70..83
+                        Whitespace@70..71 " "
+                        LiteralExpr@71..76
+                          Ident@71..76 "first"
+                        OpenParen@76..77 "("
+                        LiteralExpr@77..82
+                          Ident@77..82 "value"
+                        CloseParen@82..83 ")"
+                    Comma@83..84 ","
+                    Whitespace@84..85 " "
+                    SubtypeField@85..103
+                      Ident@85..89 "rest"
+                      Colon@89..90 ":"
+                      FunctionCallExpr@90..103
+                        Whitespace@90..91 " "
+                        LiteralExpr@91..95
+                          Ident@91..95 "rest"
+                        OpenParen@95..96 "("
+                        LiteralExpr@96..101
+                          Ident@96..101 "value"
+                        CloseParen@101..102 ")"
+                        Whitespace@102..103 " "
+                    CloseBrace@103..104 "}"
             "#]],
             expect![""],
         );

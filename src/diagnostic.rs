@@ -65,6 +65,15 @@ pub enum DiagnosticKind {
     #[error("Unnecessary empty generic argument list specified")]
     EmptyGenericArguments,
 
+    #[error("Unnecessary empty subtype fields specified")]
+    EmptySubtypeFields,
+
+    #[error("Duplicate field `{0}` specified")]
+    DuplicateField(String),
+
+    #[error("Undeclared field `{0}` used in generic parameter")]
+    UndeclaredSubtypeField(String),
+
     #[error("Expected {0} generic arguments, but found {1}")]
     ExpectedGenericArguments(usize, usize),
 }
@@ -81,10 +90,12 @@ impl DiagnosticKind {
             | Self::DuplicateType(..)
             | Self::UndeclaredSymbol(..)
             | Self::UndeclaredType(..)
-            | Self::ExpectedGenericArguments(..) => DiagnosticSeverity::Error,
-            Self::EmptyGenericParameters | Self::EmptyGenericArguments => {
-                DiagnosticSeverity::Warning
-            }
+            | Self::ExpectedGenericArguments(..)
+            | Self::DuplicateField(..)
+            | Self::UndeclaredSubtypeField(..) => DiagnosticSeverity::Error,
+            Self::EmptyGenericParameters
+            | Self::EmptyGenericArguments
+            | Self::EmptySubtypeFields => DiagnosticSeverity::Warning,
         }
     }
 }

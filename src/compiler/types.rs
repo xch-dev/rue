@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
+
 use crate::{HirId, ScopeId, SymbolId, SyntaxToken, TypeId};
 
 #[derive(Debug, Clone)]
@@ -30,8 +32,15 @@ pub struct Subtype {
     pub name: Option<SyntaxToken>,
     pub scope: ScopeId,
     pub vars: Vec<SubtypeVar>,
-    pub parent: SubtypeParent,
+    pub parent: Option<SubtypeParent>,
+    pub fields: IndexMap<String, SubtypeField>,
     pub constraint: Option<HirId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubtypeVar {
+    pub ty: TypeId,
+    pub field: String,
 }
 
 #[derive(Debug, Clone)]
@@ -41,8 +50,8 @@ pub struct SubtypeParent {
 }
 
 #[derive(Debug, Clone)]
-pub struct SubtypeVar {
-    pub symbol: SymbolId,
+pub struct SubtypeField {
+    pub name: SyntaxToken,
     pub ty: TypeId,
     pub accessor: HirId,
 }
