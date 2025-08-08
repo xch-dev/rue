@@ -1,9 +1,11 @@
 use std::fs;
 
 use anyhow::Result;
+use clvm_tools_rs::classic::clvm_tools::binutils::disassemble;
+use clvmr::Allocator;
 use rue::{
-    AstDocument, AstNode, Context, Lexer, Parser, Scope, compile_document, declare_document,
-    document,
+    AstDocument, AstNode, Context, Lexer, Parser, Scope, codegen, compile_document,
+    declare_document, document, lower_reference,
 };
 
 fn main() -> Result<()> {
@@ -28,6 +30,14 @@ fn main() -> Result<()> {
     for error in ctx.errors() {
         println!("{}", error.message(&source));
     }
+
+    let symbol = ctx.scope(scope).symbol("main").unwrap();
+    let mir = lower_reference(&mut ctx, symbol);
+
+    let mut allocator = Allocator::new();
+    let ptr = codegen(&mut ctx, &mut allocator, mir);
+
+    println!("{}", disassemble(&allocator, ptr, None));
 
     Ok(())
 }

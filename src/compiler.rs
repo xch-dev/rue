@@ -1,14 +1,20 @@
+mod codegen;
 mod compile;
 mod context;
 mod hir;
+mod lower;
+mod mir;
 mod scope;
 mod symbol;
 mod types;
 mod value;
 
+pub use codegen::*;
 pub use compile::*;
 pub use context::*;
 pub use hir::*;
+pub use lower::*;
+pub use mir::*;
 pub use scope::*;
 pub use symbol::*;
 pub use types::*;

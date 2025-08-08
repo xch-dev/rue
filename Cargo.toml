@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.98"
+clvm-traits = "0.28.1"
+clvm_tools_rs = "0.4.0"
+clvmr = "0.16.0"
 derive_more = { version = "2.0.1", features = ["display"] }
 expect-test = "1.5.1"
 id-arena = "2.2.1"

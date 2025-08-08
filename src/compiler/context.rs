@@ -3,16 +3,20 @@ use std::ops::Range;
 use id_arena::{Arena, Id};
 use rowan::TextRange;
 
-use crate::{Diagnostic, DiagnosticKind, Hir, Scope, Symbol, SyntaxNode, SyntaxToken, Type, Value};
+use crate::{
+    Diagnostic, DiagnosticKind, Hir, Mir, Scope, Symbol, SyntaxNode, SyntaxToken, Type, Value,
+};
 
 pub type ScopeId = Id<Scope>;
 pub type SymbolId = Id<Symbol>;
 pub type TypeId = Id<Type>;
 pub type HirId = Id<Hir>;
+pub type MirId = Id<Mir>;
 
 #[derive(Debug, Clone)]
 pub struct Builtins {
     pub unresolved: Value,
+    pub unresolved_mir: MirId,
     pub bytes: TypeId,
 }
 
@@ -23,6 +27,7 @@ pub struct Context {
     symbols: Arena<Symbol>,
     types: Arena<Type>,
     hir: Arena<Hir>,
+    mir: Arena<Mir>,
     scope_stack: Vec<ScopeId>,
     builtins: Builtins,
 }
@@ -35,8 +40,12 @@ impl Default for Context {
         let mut hir = Arena::new();
         let unresolved_hir = hir.alloc(Hir::Unresolved);
 
+        let mut mir = Arena::new();
+        let unresolved_mir = mir.alloc(Mir::Unresolved);
+
         let builtins = Builtins {
             unresolved: Value::new(unresolved_hir, unresolved_type),
+            unresolved_mir,
             bytes: unresolved_type,
         };
 
@@ -53,6 +62,7 @@ impl Default for Context {
             symbols: Arena::new(),
             types,
             hir,
+            mir,
             scope_stack: vec![scope],
             builtins,
         }
@@ -124,6 +134,10 @@ impl Context {
         self.hir.alloc(hir)
     }
 
+    pub fn alloc_mir(&mut self, mir: Mir) -> MirId {
+        self.mir.alloc(mir)
+    }
+
     pub fn scope(&self, id: ScopeId) -> &Scope {
         self.scopes.get(id).unwrap()
     }
@@ -154,6 +168,10 @@ impl Context {
 
     pub fn hir_mut(&mut self, id: HirId) -> &mut Hir {
         self.hir.get_mut(id).unwrap()
+    }
+
+    pub fn mir(&self, id: MirId) -> &Mir {
+        self.mir.get(id).unwrap()
     }
 
     pub fn builtins(&self) -> &Builtins {
