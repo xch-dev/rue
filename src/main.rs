@@ -2,7 +2,7 @@ use std::fs;
 
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::disassemble;
-use clvmr::Allocator;
+use clvmr::{Allocator, ChiaDialect, NodePtr, run_program};
 use rue::{
     AstDocument, AstNode, Context, Lexer, Parser, Scope, codegen, compile_document,
     declare_document, document, lower_reference,
@@ -37,7 +37,19 @@ fn main() -> Result<()> {
     let mut allocator = Allocator::new();
     let ptr = codegen(&mut ctx, &mut allocator, mir);
 
-    println!("{}", disassemble(&allocator, ptr, None));
+    println!("Program: {}", disassemble(&allocator, ptr, None));
+
+    let output = run_program(
+        &mut allocator,
+        &ChiaDialect::new(0),
+        ptr,
+        NodePtr::NIL,
+        u64::MAX,
+    )
+    .unwrap()
+    .1;
+
+    println!("Output: {}", disassemble(&allocator, output, None));
 
     Ok(())
 }
