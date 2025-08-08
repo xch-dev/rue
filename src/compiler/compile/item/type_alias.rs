@@ -12,13 +12,15 @@ pub fn declare_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem) -> T
         vec![]
     };
 
-    let body = ctx.builtins().unresolved;
+    let parent = ctx.builtins().unresolved;
 
     let ty = ctx.alloc_type(Type::Binding(BindingType {
         name: type_alias.name(),
         scope,
         vars,
-        body,
+        parent,
+        is_transparent: true,
+        has_constraint: false,
     }));
 
     if let Some(name) = type_alias.name() {
@@ -45,19 +47,19 @@ pub fn compile_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem, ty: 
 
     ctx.push_scope(scope);
 
-    let resolved_body = if let Some(body) = type_alias.ty() {
-        compile_type(ctx, &body)
+    let resolved_parent = if let Some(parent) = type_alias.ty() {
+        compile_type(ctx, &parent)
     } else {
         ctx.builtins().unresolved
     };
 
     ctx.pop_scope();
 
-    let Type::Binding(BindingType { body, .. }) = ctx.ty_mut(ty) else {
+    let Type::Binding(BindingType { parent, .. }) = ctx.ty_mut(ty) else {
         unreachable!()
     };
 
-    *body = resolved_body;
+    *parent = resolved_parent;
 }
 
 #[cfg(test)]
@@ -68,6 +70,9 @@ mod tests {
 
     #[test]
     fn test_type_alias() {
-        check("type Alias = Int;", expect!["Undeclared type `Int` at 1:14"]);
+        check(
+            "type Alias = Int;",
+            expect!["Undeclared type `Int` at 1:14"],
+        );
     }
 }

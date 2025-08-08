@@ -12,7 +12,9 @@ pub struct BindingType {
     pub name: Option<SyntaxToken>,
     pub scope: ScopeId,
     pub vars: Vec<TypeId>,
-    pub body: TypeId,
+    pub parent: TypeId,
+    pub is_transparent: bool,
+    pub has_constraint: bool,
 }
 
 #[derive(Debug, Clone)]
