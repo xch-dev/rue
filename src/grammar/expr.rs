@@ -12,7 +12,7 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
         p.expect(kind);
         expr_binding_power(p, 255);
         p.finish();
-    } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL_KINDS) {
+    } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL_EXPR) {
         p.start(SyntaxKind::LiteralExpr);
         p.expect(kind);
         p.finish();

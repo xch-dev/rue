@@ -90,8 +90,8 @@ mod tests {
                   CloseParen@8..9 ")"
                   Whitespace@9..10 " "
                   Arrow@10..12 "->"
-                  LiteralType@12..17
-                    Whitespace@12..13 " "
+                  Whitespace@12..13 " "
+                  LiteralType@13..17
                     Ident@13..16 "Int"
                     Whitespace@16..17 " "
                   Block@17..19
@@ -117,8 +117,8 @@ mod tests {
                   CloseParen@11..12 ")"
                   Whitespace@12..13 " "
                   Arrow@13..15 "->"
-                  LiteralType@15..18
-                    Whitespace@15..16 " "
+                  Whitespace@15..16 " "
+                  LiteralType@16..18
                     Ident@16..17 "T"
                     Whitespace@17..18 " "
                   Block@18..20
@@ -140,14 +140,14 @@ mod tests {
                   FunctionParameter@8..18
                     Ident@8..13 "value"
                     Colon@13..14 ":"
-                    LiteralType@14..18
-                      Whitespace@14..15 " "
+                    Whitespace@14..15 " "
+                    LiteralType@15..18
                       Ident@15..18 "Int"
                   CloseParen@18..19 ")"
                   Whitespace@19..20 " "
                   Arrow@20..22 "->"
-                  LiteralType@22..27
-                    Whitespace@22..23 " "
+                  Whitespace@22..23 " "
+                  LiteralType@23..27
                     Ident@23..26 "Int"
                     Whitespace@26..27 " "
                   Block@27..41
@@ -180,8 +180,8 @@ mod tests {
                   Ident@5..10 "Hello"
                   Whitespace@10..11 " "
                   Assign@11..12 "="
-                  LiteralType@12..18
-                    Whitespace@12..13 " "
+                  Whitespace@12..13 " "
+                  LiteralType@13..18
                     Ident@13..18 "World"
                   Semicolon@18..19 ";"
             "#]],

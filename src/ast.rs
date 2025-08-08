@@ -61,6 +61,7 @@ ast_nodes!(
     TypeAliasItem,
     GenericParameters,
     LiteralType,
+    UnionType,
     Block,
     LetStmt,
     ExprStmt,
@@ -76,7 +77,7 @@ ast_enum!(SymbolItem, FunctionItem);
 ast_enum!(Stmt, LetStmt, ExprStmt);
 ast_enum!(StmtOrExpr, Stmt, Expr);
 ast_enum!(Expr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
-ast_enum!(Type, LiteralType);
+ast_enum!(Type, LiteralType, UnionType);
 
 impl AstDocument {
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
@@ -188,7 +189,7 @@ impl AstLiteralExpr {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| SyntaxKind::LITERAL_KINDS.contains(&token.kind()))
+            .find(|token| SyntaxKind::LITERAL_EXPR.contains(&token.kind()))
     }
 }
 
@@ -233,6 +234,12 @@ impl AstLiteralType {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| SyntaxKind::LITERAL_KINDS.contains(&token.kind()))
+            .find(|token| SyntaxKind::LITERAL_TYPE.contains(&token.kind()))
+    }
+}
+
+impl AstUnionType {
+    pub fn types(&self) -> impl Iterator<Item = AstType> {
+        self.syntax().children().filter_map(AstType::cast)
     }
 }

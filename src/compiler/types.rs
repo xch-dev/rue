@@ -6,6 +6,7 @@ pub enum Type {
     Var(Var),
     Alias(Alias),
     Subtype(Subtype),
+    Union(Vec<TypeId>),
 }
 
 #[derive(Debug, Clone)]

@@ -88,8 +88,8 @@ mod tests {
                   Whitespace@3..4 " "
                   Ident@4..9 "thing"
                   Colon@9..10 ":"
-                  LiteralType@10..15
-                    Whitespace@10..11 " "
+                  Whitespace@10..11 " "
+                  LiteralType@11..15
                     Ident@11..14 "Int"
                     Whitespace@14..15 " "
                   Assign@15..16 "="

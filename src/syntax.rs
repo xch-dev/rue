@@ -179,6 +179,9 @@ pub enum SyntaxKind {
     #[display("literal type")]
     LiteralType,
 
+    #[display("union type")]
+    UnionType,
+
     #[display("block")]
     Block,
 
@@ -275,7 +278,7 @@ macro_rules! T {
 }
 
 impl SyntaxKind {
-    pub const LITERAL_KINDS: &[Self] = &[
+    pub const LITERAL_EXPR: &[Self] = &[
         SyntaxKind::String,
         SyntaxKind::Hex,
         SyntaxKind::Integer,
@@ -284,6 +287,7 @@ impl SyntaxKind {
         T![true],
         T![false],
     ];
+    pub const LITERAL_TYPE: &[Self] = &[SyntaxKind::Ident];
     pub const PREFIX_OPS: &[Self] = &[T![!], T![-], T![+], T![~]];
     pub const BINARY_OPS: &[Self] = &[
         T![+],
@@ -369,6 +373,7 @@ impl SyntaxKind {
             SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
             SyntaxKind::GenericParameters => &[SyntaxKind::GenericParameters],
             SyntaxKind::LiteralType => &[SyntaxKind::LiteralType],
+            SyntaxKind::UnionType => &[SyntaxKind::UnionType],
             SyntaxKind::Block => &[SyntaxKind::Block],
             SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],
             SyntaxKind::ExprStmt => &[SyntaxKind::ExprStmt],
