@@ -1,8 +1,9 @@
-use crate::{ScopeId, SymbolId, SyntaxToken, TypeId};
+use crate::{HirId, ScopeId, SymbolId, SyntaxToken, TypeId};
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
     Function(FunctionSymbol),
+    Parameter(ParameterSymbol),
     Binding(BindingSymbol),
 }
 
@@ -13,10 +14,18 @@ pub struct FunctionSymbol {
     pub vars: Vec<TypeId>,
     pub parameters: Vec<SymbolId>,
     pub return_type: TypeId,
+    pub body: HirId,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParameterSymbol {
+    pub name: Option<SyntaxToken>,
+    pub ty: TypeId,
 }
 
 #[derive(Debug, Clone)]
 pub struct BindingSymbol {
     pub name: Option<SyntaxToken>,
     pub ty: TypeId,
+    pub value: HirId,
 }

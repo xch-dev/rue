@@ -1,6 +1,6 @@
 use crate::{
-    AstFunctionItem, BindingSymbol, Context, DiagnosticKind, FunctionSymbol, Scope, Symbol,
-    SymbolId, compile_generic_parameters, compile_type,
+    AstFunctionItem, Context, DiagnosticKind, FunctionSymbol, ParameterSymbol, Scope, Symbol,
+    SymbolId, compile_block, compile_generic_parameters, compile_type,
 };
 
 pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> SymbolId {
@@ -9,7 +9,7 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
     let return_type = if let Some(return_type) = function.return_type() {
         compile_type(ctx, &return_type)
     } else {
-        ctx.builtins().unresolved
+        ctx.builtins().unresolved_type
     };
 
     let vars = if let Some(generic_parameters) = function.generic_parameters() {
@@ -24,10 +24,10 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
         let ty = if let Some(ty) = parameter.ty() {
             compile_type(ctx, &ty)
         } else {
-            ctx.builtins().unresolved
+            ctx.builtins().unresolved_type
         };
 
-        let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
+        let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol {
             name: parameter.name(),
             ty,
         }));
@@ -47,12 +47,15 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
         parameters.push(symbol);
     }
 
+    let body = ctx.builtins().unresolved_hir;
+
     let symbol = ctx.alloc_symbol(Symbol::Function(FunctionSymbol {
         name: function.name(),
         scope,
         vars,
         parameters,
         return_type,
+        body,
     }));
 
     if let Some(name) = function.name() {
@@ -70,4 +73,26 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
     symbol
 }
 
-pub fn compile_function(ctx: &mut Context, function: &AstFunctionItem, symbol: SymbolId) {}
+pub fn compile_function(ctx: &mut Context, function: &AstFunctionItem, symbol: SymbolId) {
+    let scope = if let Symbol::Function(FunctionSymbol { scope, .. }) = ctx.symbol(symbol) {
+        *scope
+    } else {
+        unreachable!();
+    };
+
+    ctx.push_scope(scope);
+
+    let resolved_body = if let Some(body) = function.body() {
+        compile_block(ctx, &body)
+    } else {
+        ctx.builtins().unresolved_hir
+    };
+
+    ctx.pop_scope();
+
+    let Symbol::Function(FunctionSymbol { body, .. }) = ctx.symbol_mut(symbol) else {
+        unreachable!()
+    };
+
+    *body = resolved_body;
+}

@@ -1,10 +1,14 @@
+mod block;
 mod document;
+mod expr;
 mod generic_parameters;
 mod item;
 mod stmt;
 mod ty;
 
+pub use block::*;
 pub use document::*;
+pub use expr::*;
 pub use generic_parameters::*;
 pub use item::*;
 pub use stmt::*;

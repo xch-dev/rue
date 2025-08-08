@@ -3,15 +3,17 @@ use std::ops::Range;
 use id_arena::{Arena, Id};
 use rowan::TextRange;
 
-use crate::{Diagnostic, DiagnosticKind, Scope, Symbol, SyntaxNode, SyntaxToken, Type};
+use crate::{Diagnostic, DiagnosticKind, Hir, Scope, Symbol, SyntaxNode, SyntaxToken, Type};
 
 pub type ScopeId = Id<Scope>;
 pub type SymbolId = Id<Symbol>;
 pub type TypeId = Id<Type>;
+pub type HirId = Id<Hir>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Builtins {
-    pub unresolved: TypeId,
+    pub unresolved_type: TypeId,
+    pub unresolved_hir: HirId,
 }
 
 #[derive(Debug, Clone)]
@@ -20,25 +22,37 @@ pub struct Context {
     scopes: Arena<Scope>,
     symbols: Arena<Symbol>,
     types: Arena<Type>,
+    hir: Arena<Hir>,
     scope_stack: Vec<ScopeId>,
     builtins: Builtins,
 }
 
 impl Default for Context {
     fn default() -> Self {
-        let mut scopes = Arena::new();
-        let scope = scopes.alloc(Scope::new());
-
         let mut types = Arena::new();
-        let unresolved = types.alloc(Type::Unresolved);
+        let unresolved_type = types.alloc(Type::Unresolved);
 
-        let builtins = Builtins { unresolved };
+        let mut hir = Arena::new();
+        let unresolved_hir = hir.alloc(Hir::Unresolved);
+
+        let builtins = Builtins {
+            unresolved_type,
+            unresolved_hir,
+        };
+
+        let mut scopes = Arena::new();
+        let mut scope = Scope::new();
+
+        scope.insert_type("Wip".to_string(), unresolved_type);
+
+        let scope = scopes.alloc(scope);
 
         Self {
             errors: Vec::new(),
             scopes,
             symbols: Arena::new(),
             types,
+            hir,
             scope_stack: vec![scope],
             builtins,
         }
@@ -106,6 +120,10 @@ impl Context {
         self.types.alloc(ty)
     }
 
+    pub fn alloc_hir(&mut self, hir: Hir) -> HirId {
+        self.hir.alloc(hir)
+    }
+
     pub fn scope(&self, id: ScopeId) -> &Scope {
         self.scopes.get(id).unwrap()
     }
@@ -118,12 +136,24 @@ impl Context {
         self.symbols.get(id).unwrap()
     }
 
+    pub fn symbol_mut(&mut self, id: SymbolId) -> &mut Symbol {
+        self.symbols.get_mut(id).unwrap()
+    }
+
     pub fn ty(&self, id: TypeId) -> &Type {
         self.types.get(id).unwrap()
     }
 
     pub fn ty_mut(&mut self, id: TypeId) -> &mut Type {
         self.types.get_mut(id).unwrap()
+    }
+
+    pub fn hir(&self, id: HirId) -> &Hir {
+        self.hir.get(id).unwrap()
+    }
+
+    pub fn hir_mut(&mut self, id: HirId) -> &mut Hir {
+        self.hir.get_mut(id).unwrap()
     }
 
     pub fn builtins(&self) -> &Builtins {

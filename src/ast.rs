@@ -73,7 +73,8 @@ ast_nodes!(
 ast_enum!(Item, TypeItem, SymbolItem);
 ast_enum!(TypeItem, TypeAliasItem);
 ast_enum!(SymbolItem, FunctionItem);
-ast_enum!(Stmt, LetStmt, ExprStmt, Expr);
+ast_enum!(Stmt, LetStmt, ExprStmt);
+ast_enum!(StmtOrExpr, Stmt, Expr);
 ast_enum!(Expr, LiteralExpr, GroupExpr, PrefixExpr, BinaryExpr);
 ast_enum!(Type, LiteralType);
 
@@ -154,8 +155,8 @@ impl AstGenericParameters {
 }
 
 impl AstBlock {
-    pub fn stmts(&self) -> impl Iterator<Item = AstStmt> {
-        self.syntax().children().filter_map(AstStmt::cast)
+    pub fn items(&self) -> impl Iterator<Item = AstStmtOrExpr> {
+        self.syntax().children().filter_map(AstStmtOrExpr::cast)
     }
 }
 

@@ -12,7 +12,7 @@ pub fn declare_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem) -> T
         vec![]
     };
 
-    let parent = ctx.builtins().unresolved;
+    let parent = ctx.builtins().unresolved_type;
 
     let ty = ctx.alloc_type(Type::Binding(BindingType {
         name: type_alias.name(),
@@ -50,7 +50,7 @@ pub fn compile_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem, ty: 
     let resolved_parent = if let Some(parent) = type_alias.ty() {
         compile_type(ctx, &parent)
     } else {
-        ctx.builtins().unresolved
+        ctx.builtins().unresolved_type
     };
 
     ctx.pop_scope();
