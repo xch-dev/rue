@@ -1,4 +1,4 @@
-use clvm_traits::{ToClvm, clvm_list, clvm_quote};
+use clvm_traits::{ToClvm, clvm_list, clvm_quote, clvm_tuple};
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 
@@ -12,17 +12,45 @@ const OP_R: u8 = 6;
 const OP_L: u8 = 7;
 const OP_X: u8 = 8;
 const OP_EQ: u8 = 9;
+const OP_GT_BYTES: u8 = 10;
+const OP_SHA256: u8 = 11;
+const OP_SUBSTR: u8 = 12;
+const OP_STRLEN: u8 = 13;
+const OP_CONCAT: u8 = 14;
 const OP_ADD: u8 = 16;
 const OP_SUB: u8 = 17;
 const OP_MUL: u8 = 18;
 const OP_DIV: u8 = 19;
 const OP_DIVMOD: u8 = 20;
 const OP_GT: u8 = 21;
+const OP_ASH: u8 = 22;
+const OP_LSH: u8 = 23;
+const OP_LOGAND: u8 = 24;
+const OP_LOGIOR: u8 = 25;
+const OP_LOGXOR: u8 = 26;
+const OP_LOGNOT: u8 = 27;
 const OP_NOT: u8 = 32;
 const OP_ANY: u8 = 33;
 const OP_ALL: u8 = 34;
 const OP_MODPOW: u8 = 60;
 const OP_MOD: u8 = 61;
+const OP_G1_ADD: u8 = 29;
+const OP_PUBKEY_FOR_EXP: u8 = 30;
+const OP_G1_SUBTRACT: u8 = 49;
+const OP_G1_MULTIPLY: u8 = 50;
+const OP_G1_NEGATE: u8 = 51;
+const OP_G2_ADD: u8 = 52;
+const OP_G2_SUBTRACT: u8 = 53;
+const OP_G2_MULTIPLY: u8 = 54;
+const OP_G2_NEGATE: u8 = 55;
+const OP_G1_MAP: u8 = 56;
+const OP_G2_MAP: u8 = 57;
+const OP_BLS_PAIRING_IDENTITY: u8 = 58;
+const OP_BLS_VERIFY: u8 = 59;
+const OP_COIN_ID: u8 = 48;
+const OP_K1_VERIFY: &[u8] = &[0x13, 0xd6, 0x1f, 0x00];
+const OP_R1_VERIFY: &[u8] = &[0x1c, 0x3a, 0x8f, 0x00];
+const OP_KECCAK256: u8 = 62;
 
 pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Result<NodePtr> {
     match &arena[lir] {
@@ -102,6 +130,11 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let second = codegen(arena, allocator, *second)?;
             Ok(clvm_list!(OP_GT, first, second).to_clvm(allocator)?)
         }
+        Lir::GtBytes(first, second) => {
+            let first = codegen(arena, allocator, *first)?;
+            let second = codegen(arena, allocator, *second)?;
+            Ok(clvm_list!(OP_GT_BYTES, first, second).to_clvm(allocator)?)
+        }
         Lir::Not(arg) => {
             let arg = codegen(arena, allocator, *arg)?;
             Ok(clvm_list!(OP_NOT, arg).to_clvm(allocator)?)
@@ -137,6 +170,177 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
                 .map(|arg| codegen(arena, allocator, *arg))
                 .collect::<Result<Vec<_>>>()?;
             Ok((OP_X, args).to_clvm(allocator)?)
+        }
+        Lir::Concat(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_CONCAT, args).to_clvm(allocator)?)
+        }
+        Lir::Strlen(arg) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            Ok(clvm_list!(OP_STRLEN, arg).to_clvm(allocator)?)
+        }
+        Lir::Substr(arg, start, end) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            let start = codegen(arena, allocator, *start)?;
+            let end = end.map(|end| codegen(arena, allocator, end)).transpose()?;
+            if let Some(end) = end {
+                Ok(clvm_list!(OP_SUBSTR, arg, start, end).to_clvm(allocator)?)
+            } else {
+                Ok(clvm_list!(OP_SUBSTR, arg, start).to_clvm(allocator)?)
+            }
+        }
+        Lir::Logand(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_LOGAND, args).to_clvm(allocator)?)
+        }
+        Lir::Logior(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_LOGIOR, args).to_clvm(allocator)?)
+        }
+        Lir::Logxor(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_LOGXOR, args).to_clvm(allocator)?)
+        }
+        Lir::Lognot(arg) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            Ok(clvm_list!(OP_LOGNOT, arg).to_clvm(allocator)?)
+        }
+        Lir::Ash(arg, shift) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            let shift = codegen(arena, allocator, *shift)?;
+            Ok(clvm_list!(OP_ASH, arg, shift).to_clvm(allocator)?)
+        }
+        Lir::Lsh(arg, shift) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            let shift = codegen(arena, allocator, *shift)?;
+            Ok(clvm_list!(OP_LSH, arg, shift).to_clvm(allocator)?)
+        }
+        Lir::PubkeyForExp(arg) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            Ok(clvm_list!(OP_PUBKEY_FOR_EXP, arg).to_clvm(allocator)?)
+        }
+        Lir::G1Add(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_G1_ADD, args).to_clvm(allocator)?)
+        }
+        Lir::G1Subtract(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_G1_SUBTRACT, args).to_clvm(allocator)?)
+        }
+        Lir::G1Multiply(first, second) => {
+            let first = codegen(arena, allocator, *first)?;
+            let second = codegen(arena, allocator, *second)?;
+            Ok(clvm_list!(OP_G1_MULTIPLY, first, second).to_clvm(allocator)?)
+        }
+        Lir::G1Negate(arg) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            Ok(clvm_list!(OP_G1_NEGATE, arg).to_clvm(allocator)?)
+        }
+        Lir::G1Map(value, dst) => {
+            let value = codegen(arena, allocator, *value)?;
+            let dst = dst.map(|dst| codegen(arena, allocator, dst)).transpose()?;
+            if let Some(dst) = dst {
+                Ok(clvm_list!(OP_G1_MAP, value, dst).to_clvm(allocator)?)
+            } else {
+                Ok(clvm_list!(OP_G1_MAP, value).to_clvm(allocator)?)
+            }
+        }
+        Lir::G2Add(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_G2_ADD, args).to_clvm(allocator)?)
+        }
+        Lir::G2Subtract(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_G2_SUBTRACT, args).to_clvm(allocator)?)
+        }
+        Lir::G2Multiply(first, second) => {
+            let first = codegen(arena, allocator, *first)?;
+            let second = codegen(arena, allocator, *second)?;
+            Ok(clvm_list!(OP_G2_MULTIPLY, first, second).to_clvm(allocator)?)
+        }
+        Lir::G2Negate(arg) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            Ok(clvm_list!(OP_G2_NEGATE, arg).to_clvm(allocator)?)
+        }
+        Lir::G2Map(value, dst) => {
+            let value = codegen(arena, allocator, *value)?;
+            let dst = dst.map(|dst| codegen(arena, allocator, dst)).transpose()?;
+            if let Some(dst) = dst {
+                Ok(clvm_list!(OP_G2_MAP, value, dst).to_clvm(allocator)?)
+            } else {
+                Ok(clvm_list!(OP_G2_MAP, value).to_clvm(allocator)?)
+            }
+        }
+        Lir::BlsPairingIdentity(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_BLS_PAIRING_IDENTITY, args).to_clvm(allocator)?)
+        }
+        Lir::BlsVerify(arg, args) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok(clvm_tuple!(OP_BLS_VERIFY, arg, args).to_clvm(allocator)?)
+        }
+        Lir::Sha256(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_SHA256, args).to_clvm(allocator)?)
+        }
+        Lir::Keccak256(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((OP_KECCAK256, args).to_clvm(allocator)?)
+        }
+        Lir::CoinId(parent, puzzle, amount) => {
+            let parent = codegen(arena, allocator, *parent)?;
+            let puzzle = codegen(arena, allocator, *puzzle)?;
+            let amount = codegen(arena, allocator, *amount)?;
+            Ok(clvm_tuple!(OP_COIN_ID, parent, puzzle, amount).to_clvm(allocator)?)
+        }
+        Lir::K1Verify(pubkey, message, signature) => {
+            let pubkey = codegen(arena, allocator, *pubkey)?;
+            let message = codegen(arena, allocator, *message)?;
+            let signature = codegen(arena, allocator, *signature)?;
+            Ok(clvm_tuple!(OP_K1_VERIFY, pubkey, message, signature).to_clvm(allocator)?)
+        }
+        Lir::R1Verify(pubkey, message, signature) => {
+            let pubkey = codegen(arena, allocator, *pubkey)?;
+            let message = codegen(arena, allocator, *message)?;
+            let signature = codegen(arena, allocator, *signature)?;
+            Ok(clvm_tuple!(OP_R1_VERIFY, pubkey, message, signature).to_clvm(allocator)?)
         }
     }
 }
@@ -329,7 +533,11 @@ mod tests {
         let then = arena.alloc(Lir::Atom(vec![0x02]));
         let else_ = arena.alloc(Lir::Atom(vec![0x03]));
         let lir = arena.alloc(Lir::If(cond, then, else_));
-        check(&arena, lir, expect!["(a (i (q . 1) (q 1 . 2) (q 1 . 3)) 1)"]);
+        check(
+            &arena,
+            lir,
+            expect!["(a (i (q . 1) (q 1 . 2) (q 1 . 3)) 1)"],
+        );
     }
 
     #[test]
