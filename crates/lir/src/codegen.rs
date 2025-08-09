@@ -328,19 +328,21 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let parent = codegen(arena, allocator, *parent)?;
             let puzzle = codegen(arena, allocator, *puzzle)?;
             let amount = codegen(arena, allocator, *amount)?;
-            Ok(clvm_tuple!(OP_COIN_ID, parent, puzzle, amount).to_clvm(allocator)?)
+            Ok(clvm_list!(OP_COIN_ID, parent, puzzle, amount).to_clvm(allocator)?)
         }
         Lir::K1Verify(pubkey, message, signature) => {
             let pubkey = codegen(arena, allocator, *pubkey)?;
             let message = codegen(arena, allocator, *message)?;
             let signature = codegen(arena, allocator, *signature)?;
-            Ok(clvm_tuple!(OP_K1_VERIFY, pubkey, message, signature).to_clvm(allocator)?)
+            let op = allocator.new_atom(OP_K1_VERIFY)?;
+            Ok(clvm_list!(op, pubkey, message, signature).to_clvm(allocator)?)
         }
         Lir::R1Verify(pubkey, message, signature) => {
             let pubkey = codegen(arena, allocator, *pubkey)?;
             let message = codegen(arena, allocator, *message)?;
             let signature = codegen(arena, allocator, *signature)?;
-            Ok(clvm_tuple!(OP_R1_VERIFY, pubkey, message, signature).to_clvm(allocator)?)
+            let op = allocator.new_atom(OP_R1_VERIFY)?;
+            Ok(clvm_list!(op, pubkey, message, signature).to_clvm(allocator)?)
         }
     }
 }
@@ -546,5 +548,213 @@ mod tests {
         let a = arena.alloc(Lir::Atom(vec![0x01]));
         let lir = arena.alloc(Lir::Raise(vec![a]));
         check(&arena, lir, expect!["(x (q . 1))"]);
+    }
+
+    #[test]
+    fn test_gt_bytes() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(b"abc".to_vec()));
+        let b = arena.alloc(Lir::Atom(b"def".to_vec()));
+        let lir = arena.alloc(Lir::GtBytes(a, b));
+        check(&arena, lir, expect![[r#"(>s (q . "abc") (q . "def"))"#]]);
+    }
+
+    #[test]
+    fn test_concat() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(b"hello ".to_vec()));
+        let b = arena.alloc(Lir::Atom(b"world".to_vec()));
+        let lir = arena.alloc(Lir::Concat(vec![a, b]));
+        check(
+            &arena,
+            lir,
+            expect![[r#"(concat (q . "hello ") (q . "world"))"#]],
+        );
+    }
+
+    #[test]
+    fn test_strlen() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(b"hello".to_vec()));
+        let lir = arena.alloc(Lir::Strlen(a));
+        check(&arena, lir, expect![[r#"(strlen (q . "hello"))"#]]);
+    }
+
+    #[test]
+    fn test_substr() {
+        let mut arena = Arena::new();
+        let str = arena.alloc(Lir::Atom(b"hello world".to_vec()));
+        let start = arena.alloc(Lir::Atom(vec![]));
+        let end = arena.alloc(Lir::Atom(vec![0x05]));
+        let lir = arena.alloc(Lir::Substr(str, start, Some(end)));
+        check(
+            &arena,
+            lir,
+            expect![[r#"(substr (q . "hello world") () (q . 5))"#]],
+        );
+
+        // Test without end parameter
+        let lir = arena.alloc(Lir::Substr(str, start, None));
+        check(&arena, lir, expect![[r#"(substr (q . "hello world") ())"#]]);
+    }
+
+    #[test]
+    fn test_bitwise_ops() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(vec![0x0F]));
+        let b = arena.alloc(Lir::Atom(vec![0xF0]));
+
+        let logand = arena.alloc(Lir::Logand(vec![a, b]));
+        check(&arena, logand, expect!["(logand (q . 15) (q . -16))"]);
+
+        let logior = arena.alloc(Lir::Logior(vec![a, b]));
+        check(&arena, logior, expect!["(logior (q . 15) (q . -16))"]);
+
+        let logxor = arena.alloc(Lir::Logxor(vec![a, b]));
+        check(&arena, logxor, expect!["(logxor (q . 15) (q . -16))"]);
+
+        let lognot = arena.alloc(Lir::Lognot(a));
+        check(&arena, lognot, expect!["(lognot (q . 15))"]);
+    }
+
+    #[test]
+    fn test_shifts() {
+        let mut arena = Arena::new();
+        let value = arena.alloc(Lir::Atom(vec![0x0F]));
+        let shift = arena.alloc(Lir::Atom(vec![0x02]));
+
+        let ash = arena.alloc(Lir::Ash(value, shift));
+        check(&arena, ash, expect!["(ash (q . 15) (q . 2))"]);
+
+        let lsh = arena.alloc(Lir::Lsh(value, shift));
+        check(&arena, lsh, expect!["(lsh (q . 15) (q . 2))"]);
+    }
+
+    #[test]
+    fn test_pubkey_for_exp() {
+        let mut arena = Arena::new();
+        let exp = arena.alloc(Lir::Atom(vec![0x01]));
+        let lir = arena.alloc(Lir::PubkeyForExp(exp));
+        check(&arena, lir, expect!["(pubkey_for_exp (q . 1))"]);
+    }
+
+    #[test]
+    fn test_g1_ops() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(vec![0x01]));
+        let b = arena.alloc(Lir::Atom(vec![0x02]));
+
+        let add = arena.alloc(Lir::G1Add(vec![a, b]));
+        check(&arena, add, expect!["(point_add (q . 1) (q . 2))"]);
+
+        let sub = arena.alloc(Lir::G1Subtract(vec![a, b]));
+        check(&arena, sub, expect!["(g1_subtract (q . 1) (q . 2))"]);
+
+        let mul = arena.alloc(Lir::G1Multiply(a, b));
+        check(&arena, mul, expect!["(g1_multiply (q . 1) (q . 2))"]);
+
+        let neg = arena.alloc(Lir::G1Negate(a));
+        check(&arena, neg, expect!["(g1_negate (q . 1))"]);
+
+        let map = arena.alloc(Lir::G1Map(a, Some(b)));
+        check(&arena, map, expect!["(g1_map (q . 1) (q . 2))"]);
+
+        let map_no_dst = arena.alloc(Lir::G1Map(a, None));
+        check(&arena, map_no_dst, expect!["(g1_map (q . 1))"]);
+    }
+
+    #[test]
+    fn test_g2_ops() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(vec![0x01]));
+        let b = arena.alloc(Lir::Atom(vec![0x02]));
+
+        let add = arena.alloc(Lir::G2Add(vec![a, b]));
+        check(&arena, add, expect!["(g2_add (q . 1) (q . 2))"]);
+
+        let sub = arena.alloc(Lir::G2Subtract(vec![a, b]));
+        check(&arena, sub, expect!["(g2_subtract (q . 1) (q . 2))"]);
+
+        let mul = arena.alloc(Lir::G2Multiply(a, b));
+        check(&arena, mul, expect!["(g2_multiply (q . 1) (q . 2))"]);
+
+        let neg = arena.alloc(Lir::G2Negate(a));
+        check(&arena, neg, expect!["(g2_negate (q . 1))"]);
+
+        let map = arena.alloc(Lir::G2Map(a, Some(b)));
+        check(&arena, map, expect!["(g2_map (q . 1) (q . 2))"]);
+
+        let map_no_dst = arena.alloc(Lir::G2Map(a, None));
+        check(&arena, map_no_dst, expect!["(g2_map (q . 1))"]);
+    }
+
+    #[test]
+    fn test_bls_ops() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(vec![0x01]));
+        let b = arena.alloc(Lir::Atom(vec![0x02]));
+
+        let identity = arena.alloc(Lir::BlsPairingIdentity(vec![a, b]));
+        check(
+            &arena,
+            identity,
+            expect!["(bls_pairing_identity (q . 1) (q . 2))"],
+        );
+
+        let verify = arena.alloc(Lir::BlsVerify(a, vec![b]));
+        check(&arena, verify, expect!["(bls_verify (q . 1) (q . 2))"]);
+    }
+
+    #[test]
+    fn test_hash_functions() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(b"hello".to_vec()));
+        let b = arena.alloc(Lir::Atom(b"world".to_vec()));
+
+        let sha256 = arena.alloc(Lir::Sha256(vec![a, b]));
+        check(
+            &arena,
+            sha256,
+            expect![[r#"(sha256 (q . "hello") (q . "world"))"#]],
+        );
+
+        let keccak256 = arena.alloc(Lir::Keccak256(vec![a, b]));
+        check(
+            &arena,
+            keccak256,
+            expect![[r#"(keccak256 (q . "hello") (q . "world"))"#]],
+        );
+    }
+
+    #[test]
+    fn test_coin_id() {
+        let mut arena = Arena::new();
+        let parent = arena.alloc(Lir::Atom(vec![0x01]));
+        let puzzle = arena.alloc(Lir::Atom(vec![0x02]));
+        let amount = arena.alloc(Lir::Atom(vec![0x03]));
+        let lir = arena.alloc(Lir::CoinId(parent, puzzle, amount));
+        check(&arena, lir, expect!["(coinid (q . 1) (q . 2) (q . 3))"]);
+    }
+
+    #[test]
+    fn test_signature_verification() {
+        let mut arena = Arena::new();
+        let pubkey = arena.alloc(Lir::Atom(vec![0x01]));
+        let message = arena.alloc(Lir::Atom(vec![0x02]));
+        let signature = arena.alloc(Lir::Atom(vec![0x03]));
+
+        let k1_verify = arena.alloc(Lir::K1Verify(pubkey, message, signature));
+        check(
+            &arena,
+            k1_verify,
+            expect!["(0x13d61f00 (q . 1) (q . 2) (q . 3))"],
+        );
+
+        let r1_verify = arena.alloc(Lir::R1Verify(pubkey, message, signature));
+        check(
+            &arena,
+            r1_verify,
+            expect!["(0x1c3a8f00 (q . 1) (q . 2) (q . 3))"],
+        );
     }
 }
