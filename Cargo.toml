@@ -3,6 +3,15 @@ name = "rue"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+clvmr = { workspace = true }
+clvm_tools_rs = { workspace = true }
+anyhow = { workspace = true }
+rue-lexer = { workspace = true }
+rue-parser = { workspace = true }
+rue-ast = { workspace = true }
+rue-compiler = { workspace = true }
+
 [workspace]
 resolver = "3"
 members = ["crates/*"]
@@ -12,6 +21,7 @@ rue-lexer = { path = "crates/lexer" }
 rue-parser = { path = "crates/parser" }
 rue-diagnostic = { path = "crates/diagnostic" }
 rue-ast = { path = "crates/ast" }
+rue-compiler = { path = "crates/compiler" }
 anyhow = "1.0.98"
 clvm-traits = "0.28.1"
 clvm_tools_rs = "0.4.0"

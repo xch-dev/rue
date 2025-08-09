@@ -3,17 +3,19 @@ use std::{env, fs};
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::{Allocator, ChiaDialect, run_program};
-use rue::{
-    AstDocument, AstNode, Context, Graph, Lexer, Parser, Scope, codegen, compile_document,
-    declare_document, document, graph_symbol, lower_reference,
+use rue_ast::{AstDocument, AstNode};
+use rue_compiler::{
+    Context, Graph, Scope, codegen, compile_document, declare_document, graph_symbol,
+    lower_reference,
 };
+use rue_lexer::Lexer;
+use rue_parser::Parser;
 
 fn main() -> Result<()> {
     let source = fs::read_to_string("main.rue")?;
     let tokens = Lexer::new(&source).collect::<Vec<_>>();
     let mut parser = Parser::new(&source, tokens);
-    document(&mut parser);
-    let result = parser.build();
+    let result = parser.parse();
 
     // println!("{:#?}", result.node);
 
