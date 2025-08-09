@@ -8,6 +8,11 @@ pub fn lower_hir(ctx: &mut Context, hir: HirId) -> MirId {
             let mir = lower_hir(ctx, hir);
             ctx.alloc_mir(Mir::Unary(op, mir))
         }
+        Hir::Binary(op, left, right) => {
+            let left = lower_hir(ctx, left);
+            let right = lower_hir(ctx, right);
+            ctx.alloc_mir(Mir::Binary(op, left, right))
+        }
         Hir::Block(block) => {
             assert!(block.statements.is_empty());
             let hir = block.body.unwrap().hir;

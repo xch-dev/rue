@@ -1,8 +1,8 @@
-use std::fs;
+use std::{env, fs};
 
 use anyhow::Result;
-use clvm_tools_rs::classic::clvm_tools::binutils::disassemble;
-use clvmr::{Allocator, ChiaDialect, NodePtr, run_program};
+use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
+use clvmr::{Allocator, ChiaDialect, run_program};
 use rue::{
     AstDocument, AstNode, Context, Lexer, Parser, Scope, codegen, compile_document,
     declare_document, document, lower_reference,
@@ -14,6 +14,8 @@ fn main() -> Result<()> {
     let mut parser = Parser::new(&source, tokens);
     document(&mut parser);
     let result = parser.build();
+
+    // println!("{:#?}", result.node);
 
     for error in result.errors {
         println!("{}", error.message(&source));
@@ -39,15 +41,14 @@ fn main() -> Result<()> {
 
     println!("Program: {}", disassemble(&allocator, ptr, None));
 
-    let output = run_program(
-        &mut allocator,
-        &ChiaDialect::new(0),
-        ptr,
-        NodePtr::NIL,
-        u64::MAX,
-    )
-    .unwrap()
-    .1;
+    let env = env::args().nth(1).unwrap_or_default();
+    let env = assemble(&mut allocator, &env).unwrap();
+
+    println!("Solution: {}", disassemble(&allocator, env, None));
+
+    let output = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, u64::MAX)
+        .unwrap()
+        .1;
 
     println!("Output: {}", disassemble(&allocator, output, None));
 
