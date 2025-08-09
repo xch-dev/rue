@@ -4,8 +4,8 @@ use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::{Allocator, ChiaDialect, run_program};
 use rue::{
-    AstDocument, AstNode, Context, Lexer, Parser, Scope, codegen, compile_document,
-    declare_document, document, lower_reference,
+    AstDocument, AstNode, Context, Graph, Lexer, Parser, Scope, codegen, compile_document,
+    declare_document, document, graph_symbol, lower_reference,
 };
 
 fn main() -> Result<()> {
@@ -34,10 +34,12 @@ fn main() -> Result<()> {
     }
 
     let symbol = ctx.scope(scope).symbol("main").unwrap();
+    let mut graph = Graph::new();
+    graph_symbol(&ctx, &mut graph, symbol);
     let mir = lower_reference(&mut ctx, symbol);
 
     let mut allocator = Allocator::new();
-    let ptr = codegen(&mut ctx, &mut allocator, mir);
+    let ptr = codegen(&mut ctx, &graph, &mut allocator, mir);
 
     println!("Program: {}", disassemble(&allocator, ptr, None));
 

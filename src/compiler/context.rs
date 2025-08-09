@@ -4,7 +4,7 @@ use id_arena::{Arena, Id};
 use rowan::TextRange;
 
 use crate::{
-    Diagnostic, DiagnosticKind, Hir, Mir, Scope, Symbol, SyntaxNode, SyntaxToken, Type, Value,
+    Diagnostic, DiagnosticKind, Hir, Lir, Mir, Scope, Symbol, SyntaxNode, SyntaxToken, Type, Value,
 };
 
 pub type ScopeId = Id<Scope>;
@@ -12,6 +12,7 @@ pub type SymbolId = Id<Symbol>;
 pub type TypeId = Id<Type>;
 pub type HirId = Id<Hir>;
 pub type MirId = Id<Mir>;
+pub type LirId = Id<Lir>;
 
 #[derive(Debug, Clone)]
 pub struct Builtins {
@@ -28,6 +29,7 @@ pub struct Context {
     types: Arena<Type>,
     hir: Arena<Hir>,
     mir: Arena<Mir>,
+    lir: Arena<Lir>,
     scope_stack: Vec<ScopeId>,
     builtins: Builtins,
 }
@@ -63,6 +65,7 @@ impl Default for Context {
             types,
             hir,
             mir,
+            lir: Arena::new(),
             scope_stack: vec![scope],
             builtins,
         }
@@ -138,6 +141,10 @@ impl Context {
         self.mir.alloc(mir)
     }
 
+    pub fn alloc_lir(&mut self, lir: Lir) -> LirId {
+        self.lir.alloc(lir)
+    }
+
     pub fn scope(&self, id: ScopeId) -> &Scope {
         self.scopes.get(id).unwrap()
     }
@@ -172,6 +179,10 @@ impl Context {
 
     pub fn mir(&self, id: MirId) -> &Mir {
         self.mir.get(id).unwrap()
+    }
+
+    pub fn lir(&self, id: LirId) -> &Lir {
+        self.lir.get(id).unwrap()
     }
 
     pub fn builtins(&self) -> &Builtins {
