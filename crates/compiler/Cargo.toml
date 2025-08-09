@@ -7,6 +7,7 @@ edition = "2024"
 rue-parser = { workspace = true }
 rue-ast = { workspace = true }
 rue-diagnostic = { workspace = true }
+rue-lir = { workspace = true }
 clvmr = { workspace = true }
 clvm-traits = { workspace = true }
 id-arena = { workspace = true }

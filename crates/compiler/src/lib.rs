@@ -1,8 +1,6 @@
-mod codegen;
 mod compile;
 mod context;
 mod hir;
-mod lir;
 mod lower;
 mod mir;
 mod optimize;
@@ -11,11 +9,9 @@ mod symbol;
 mod types;
 mod value;
 
-pub use codegen::*;
 pub use compile::*;
 pub use context::*;
 pub use hir::*;
-pub use lir::*;
 pub use lower::*;
 pub use mir::*;
 pub use optimize::*;

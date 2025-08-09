@@ -1007,9 +1007,11 @@ dependencies = [
  "anyhow",
  "clvm_tools_rs",
  "clvmr",
+ "id-arena",
  "rue-ast",
  "rue-compiler",
  "rue-lexer",
+ "rue-lir",
  "rue-parser",
 ]
 
@@ -1034,6 +1036,7 @@ dependencies = [
  "rue-ast",
  "rue-diagnostic",
  "rue-lexer",
+ "rue-lir",
  "rue-parser",
 ]
 

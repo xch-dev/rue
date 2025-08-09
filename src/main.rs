@@ -3,18 +3,20 @@ use std::{env, fs};
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::{Allocator, ChiaDialect, run_program};
+use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
 use rue_compiler::{
-    Context, Graph, Scope, codegen, compile_document, declare_document, graph_symbol,
-    lower_reference,
+    Context, Graph, Scope, compile_document, declare_document, graph_symbol, lower_reference,
+    optimize,
 };
 use rue_lexer::Lexer;
+use rue_lir::codegen;
 use rue_parser::Parser;
 
 fn main() -> Result<()> {
     let source = fs::read_to_string("main.rue")?;
     let tokens = Lexer::new(&source).collect::<Vec<_>>();
-    let mut parser = Parser::new(&source, tokens);
+    let parser = Parser::new(&source, tokens);
     let result = parser.parse();
 
     // println!("{:#?}", result.node);
@@ -41,7 +43,9 @@ fn main() -> Result<()> {
     let mir = lower_reference(&mut ctx, symbol);
 
     let mut allocator = Allocator::new();
-    let ptr = codegen(&mut ctx, &graph, &mut allocator, mir);
+    let mut arena = Arena::new();
+    let lir = optimize(&mut ctx, &mut arena, mir);
+    let ptr = codegen(&arena, &mut allocator, lir)?;
 
     println!("Program: {}", disassemble(&allocator, ptr, None));
 
