@@ -1052,6 +1052,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rue-lir"
+version = "0.1.0"
+dependencies = [
+ "clvm-traits",
+ "clvm_tools_rs",
+ "clvmr",
+ "expect-test",
+ "id-arena",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "rue-parser"
 version = "0.1.0"
 dependencies = [
