@@ -1,0 +1,17 @@
+[package]
+name = "rue-parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rue-lexer = { workspace = true }
+rue-diagnostic = { workspace = true }
+rowan = { workspace = true }
+derive_more = { workspace = true, features = ["display"] }
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+indexmap = { workspace = true }
+itertools = { workspace = true }
+
+[dev-dependencies]
+expect-test = { workspace = true }
