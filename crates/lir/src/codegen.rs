@@ -61,6 +61,7 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let atom = allocator.new_atom(atom)?;
             Ok(clvm_quote!(atom).to_clvm(allocator)?)
         }
+        Lir::Path(path) => Ok(allocator.new_number((*path).into())?),
         Lir::First(arg) => {
             let arg = codegen(arena, allocator, *arg)?;
             Ok(clvm_list!(OP_F, arg).to_clvm(allocator)?)
@@ -373,6 +374,13 @@ mod tests {
         let mut arena = Arena::new();
         let lir = arena.alloc(Lir::Atom(Vec::new()));
         check(&arena, lir, expect!["()"]);
+    }
+
+    #[test]
+    fn test_path() {
+        let mut arena = Arena::new();
+        let lir = arena.alloc(Lir::Path(1));
+        check(&arena, lir, expect!["1"]);
     }
 
     #[test]

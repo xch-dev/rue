@@ -5,6 +5,7 @@ pub type LirId = Id<Lir>;
 #[derive(Debug, Clone)]
 pub enum Lir {
     Atom(Vec<u8>),
+    Path(u32),
     First(LirId),
     Rest(LirId),
     Cons(LirId, LirId),
