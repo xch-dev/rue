@@ -210,9 +210,10 @@ mod tests {
                     OpenBrace@27..28 "{"
                     Whitespace@28..29 " "
                     BinaryExpr@29..40
-                      LiteralExpr@29..35
-                        Ident@29..34 "value"
-                        Whitespace@34..35 " "
+                      PathExpr@29..35
+                        PathExprSegment@29..35
+                          Ident@29..34 "value"
+                          Whitespace@34..35 " "
                       Plus@35..36 "+"
                       Whitespace@36..37 " "
                       LiteralExpr@37..40
@@ -252,34 +253,36 @@ mod tests {
             item,
             "subtype Atom(value: Any) if !listp(value);",
             expect![[r#"
-            SubtypeItem@0..42
-              Subtype@0..7 "subtype"
-              Whitespace@7..8 " "
-              Ident@8..12 "Atom"
-              SubtypeParameter@12..25
-                OpenParen@12..13 "("
-                Ident@13..18 "value"
-                Colon@18..19 ":"
-                Whitespace@19..20 " "
-                PathType@20..23
-                  PathTypeSegment@20..23
-                    Ident@20..23 "Any"
-                CloseParen@23..24 ")"
-                Whitespace@24..25 " "
-              SubtypeConstraint@25..41
-                If@25..27 "if"
-                PrefixExpr@27..41
-                  Whitespace@27..28 " "
-                  Not@28..29 "!"
-                  FunctionCallExpr@29..41
-                    LiteralExpr@29..34
-                      Ident@29..34 "listp"
-                    OpenParen@34..35 "("
-                    LiteralExpr@35..40
-                      Ident@35..40 "value"
-                    CloseParen@40..41 ")"
-              Semicolon@41..42 ";"
-        "#]],
+                SubtypeItem@0..42
+                  Subtype@0..7 "subtype"
+                  Whitespace@7..8 " "
+                  Ident@8..12 "Atom"
+                  SubtypeParameter@12..25
+                    OpenParen@12..13 "("
+                    Ident@13..18 "value"
+                    Colon@18..19 ":"
+                    Whitespace@19..20 " "
+                    PathType@20..23
+                      PathTypeSegment@20..23
+                        Ident@20..23 "Any"
+                    CloseParen@23..24 ")"
+                    Whitespace@24..25 " "
+                  SubtypeConstraint@25..41
+                    If@25..27 "if"
+                    PrefixExpr@27..41
+                      Whitespace@27..28 " "
+                      Not@28..29 "!"
+                      FunctionCallExpr@29..41
+                        PathExpr@29..34
+                          PathExprSegment@29..34
+                            Ident@29..34 "listp"
+                        OpenParen@34..35 "("
+                        PathExpr@35..40
+                          PathExprSegment@35..40
+                            Ident@35..40 "value"
+                        CloseParen@40..41 ")"
+                  Semicolon@41..42 ";"
+            "#]],
             expect![""],
         );
 
@@ -321,12 +324,14 @@ mod tests {
                   SubtypeConstraint@46..62
                     If@46..48 "if"
                     FunctionCallExpr@48..62
-                      Whitespace@48..49 " "
-                      LiteralExpr@49..54
-                        Ident@49..54 "listp"
+                      PathExpr@48..54
+                        Whitespace@48..49 " "
+                        PathExprSegment@49..54
+                          Ident@49..54 "listp"
                       OpenParen@54..55 "("
-                      LiteralExpr@55..60
-                        Ident@55..60 "value"
+                      PathExpr@55..60
+                        PathExprSegment@55..60
+                          Ident@55..60 "value"
                       CloseParen@60..61 ")"
                       Whitespace@61..62 " "
                   OpenBrace@62..63 "{"
@@ -336,12 +341,14 @@ mod tests {
                       Ident@64..69 "first"
                       Colon@69..70 ":"
                       FunctionCallExpr@70..83
-                        Whitespace@70..71 " "
-                        LiteralExpr@71..76
-                          Ident@71..76 "first"
+                        PathExpr@70..76
+                          Whitespace@70..71 " "
+                          PathExprSegment@71..76
+                            Ident@71..76 "first"
                         OpenParen@76..77 "("
-                        LiteralExpr@77..82
-                          Ident@77..82 "value"
+                        PathExpr@77..82
+                          PathExprSegment@77..82
+                            Ident@77..82 "value"
                         CloseParen@82..83 ")"
                     Comma@83..84 ","
                     Whitespace@84..85 " "
@@ -349,12 +356,14 @@ mod tests {
                       Ident@85..89 "rest"
                       Colon@89..90 ":"
                       FunctionCallExpr@90..103
-                        Whitespace@90..91 " "
-                        LiteralExpr@91..95
-                          Ident@91..95 "rest"
+                        PathExpr@90..95
+                          Whitespace@90..91 " "
+                          PathExprSegment@91..95
+                            Ident@91..95 "rest"
                         OpenParen@95..96 "("
-                        LiteralExpr@96..101
-                          Ident@96..101 "value"
+                        PathExpr@96..101
+                          PathExprSegment@96..101
+                            Ident@96..101 "value"
                         CloseParen@101..102 ")"
                         Whitespace@102..103 " "
                     CloseBrace@103..104 "}"

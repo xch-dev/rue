@@ -4,6 +4,7 @@ use crate::{HirId, SymbolId, Value};
 pub enum Hir {
     Unresolved,
     Atom(Vec<u8>),
+    Reference(SymbolId),
     Unary(UnaryOp, HirId),
     Binary(BinaryOp, HirId, HirId),
     Block(Block),

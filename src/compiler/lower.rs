@@ -4,6 +4,7 @@ pub fn lower_hir(ctx: &mut Context, hir: HirId) -> MirId {
     match ctx.hir(hir).clone() {
         Hir::Unresolved => ctx.builtins().unresolved_mir,
         Hir::Atom(atom) => ctx.alloc_mir(Mir::Atom(atom)),
+        Hir::Reference(symbol) => lower_reference(ctx, symbol),
         Hir::Unary(op, hir) => {
             let mir = lower_hir(ctx, hir);
             ctx.alloc_mir(Mir::Unary(op, mir))
@@ -24,6 +25,9 @@ pub fn lower_hir(ctx: &mut Context, hir: HirId) -> MirId {
 pub fn lower_reference(ctx: &mut Context, symbol: SymbolId) -> MirId {
     match ctx.symbol(symbol).clone() {
         Symbol::Function(function) => lower_hir(ctx, function.body),
+        Symbol::Parameter(parameter) => {
+            todo!();
+        }
         _ => todo!(),
     }
 }

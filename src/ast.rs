@@ -74,6 +74,8 @@ ast_nodes!(
     Block,
     LetStmt,
     ExprStmt,
+    PathExpr,
+    PathExprSegment,
     LiteralExpr,
     GroupExpr,
     PrefixExpr,
@@ -88,6 +90,7 @@ ast_enum!(Stmt, LetStmt, ExprStmt);
 ast_enum!(StmtOrExpr, Stmt, Expr);
 ast_enum!(
     Expr,
+    PathExpr,
     LiteralExpr,
     GroupExpr,
     PrefixExpr,
@@ -296,6 +299,34 @@ impl AstLetStmt {
 impl AstExprStmt {
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstPathExpr {
+    pub fn segments(&self) -> impl Iterator<Item = AstPathExprSegment> {
+        self.syntax()
+            .children()
+            .filter_map(AstPathExprSegment::cast)
+    }
+}
+
+impl AstPathExprSegment {
+    pub fn separator(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![::])
+    }
+
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_arguments(&self) -> Option<AstGenericArguments> {
+        self.syntax().children().find_map(AstGenericArguments::cast)
     }
 }
 

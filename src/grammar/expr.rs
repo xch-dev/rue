@@ -1,4 +1,7 @@
-use crate::{Parser, SyntaxKind, T, grammar::block::block};
+use crate::{
+    Parser, SyntaxKind, T,
+    grammar::{block::block, generics::generic_arguments},
+};
 
 pub fn expr(p: &mut Parser<'_>) {
     expr_binding_power(p, 0);
@@ -11,6 +14,13 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
         p.start_at(checkpoint, SyntaxKind::PrefixExpr);
         p.expect(kind);
         expr_binding_power(p, 255);
+        p.finish();
+    } else if p.at(T![::]) || p.at(SyntaxKind::Ident) {
+        p.start_at(checkpoint, SyntaxKind::PathExpr);
+        let mut separated = path_expr_segment(p, true);
+        while separated || p.at(T![::]) {
+            separated = path_expr_segment(p, false);
+        }
         p.finish();
     } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL_EXPR) {
         p.start(SyntaxKind::LiteralExpr);
@@ -77,6 +87,23 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
     }
 }
 
+fn path_expr_segment(p: &mut Parser<'_>, first: bool) -> bool {
+    p.start(SyntaxKind::PathExprSegment);
+    if first {
+        p.try_eat(T![::]);
+    } else {
+        p.expect(T![::]);
+    }
+    p.expect(SyntaxKind::Ident);
+    let mut separated = p.try_eat(T![::]);
+    if separated && p.at(T![<]) {
+        generic_arguments(p);
+        separated = false;
+    }
+    p.finish();
+    separated
+}
+
 #[cfg(test)]
 mod tests {
     use expect_test::expect;
@@ -91,8 +118,9 @@ mod tests {
             expr,
             "hello",
             expect![[r#"
-                LiteralExpr@0..5
-                  Ident@0..5 "hello"
+                PathExpr@0..5
+                  PathExprSegment@0..5
+                    Ident@0..5 "hello"
             "#]],
             expect![],
         );
@@ -261,8 +289,9 @@ mod tests {
             "hello(42)",
             expect![[r#"
                 FunctionCallExpr@0..9
-                  LiteralExpr@0..5
-                    Ident@0..5 "hello"
+                  PathExpr@0..5
+                    PathExprSegment@0..5
+                      Ident@0..5 "hello"
                   OpenParen@5..6 "("
                   LiteralExpr@6..8
                     Integer@6..8 "42"
@@ -276,8 +305,9 @@ mod tests {
             "hello(42,)",
             expect![[r#"
                 FunctionCallExpr@0..10
-                  LiteralExpr@0..5
-                    Ident@0..5 "hello"
+                  PathExpr@0..5
+                    PathExprSegment@0..5
+                      Ident@0..5 "hello"
                   OpenParen@5..6 "("
                   LiteralExpr@6..8
                     Integer@6..8 "42"
@@ -292,8 +322,9 @@ mod tests {
             "hello(42, 13)",
             expect![[r#"
                 FunctionCallExpr@0..13
-                  LiteralExpr@0..5
-                    Ident@0..5 "hello"
+                  PathExpr@0..5
+                    PathExprSegment@0..5
+                      Ident@0..5 "hello"
                   OpenParen@5..6 "("
                   LiteralExpr@6..8
                     Integer@6..8 "42"

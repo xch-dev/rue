@@ -224,6 +224,12 @@ pub enum SyntaxKind {
     #[display("expression statement")]
     ExprStmt,
 
+    #[display("path expression")]
+    PathExpr,
+
+    #[display("path expression segment")]
+    PathExprSegment,
+
     #[display("literal expression")]
     LiteralExpr,
 
@@ -320,7 +326,6 @@ impl SyntaxKind {
         SyntaxKind::String,
         SyntaxKind::Hex,
         SyntaxKind::Integer,
-        SyntaxKind::Ident,
         T![nil],
         T![true],
         T![false],
@@ -425,6 +430,8 @@ impl SyntaxKind {
             SyntaxKind::Block => &[SyntaxKind::Block],
             SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],
             SyntaxKind::ExprStmt => &[SyntaxKind::ExprStmt],
+            SyntaxKind::PathExpr => &[SyntaxKind::PathExpr],
+            SyntaxKind::PathExprSegment => &[SyntaxKind::PathExprSegment],
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],
             SyntaxKind::GroupExpr => &[SyntaxKind::GroupExpr],
             SyntaxKind::PrefixExpr => &[SyntaxKind::PrefixExpr],
