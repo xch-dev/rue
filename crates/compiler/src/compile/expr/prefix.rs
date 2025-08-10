@@ -1,5 +1,5 @@
 use rue_ast::AstPrefixExpr;
-use rue_hir::{Hir, Value};
+use rue_hir::{Hir, UnaryOp, Value};
 use rue_parser::T;
 
 use crate::{Context, compile_expr};

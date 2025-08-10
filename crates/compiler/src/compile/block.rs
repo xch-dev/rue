@@ -1,5 +1,5 @@
 use rue_ast::{AstBlock, AstStmtOrExpr};
-use rue_hir::{Hir, HirId};
+use rue_hir::{Block, Hir, HirId};
 
 use crate::{Context, compile_expr, compile_stmt};
 
@@ -13,7 +13,8 @@ pub fn compile_block(ctx: &mut Context, block: &AstBlock) -> HirId {
                 statements.push(compile_stmt(ctx, &stmt));
             }
             AstStmtOrExpr::Expr(expr) => {
-                body = Some(compile_expr(ctx, &expr));
+                // TODO: Preserve value
+                body = Some(compile_expr(ctx, &expr).hir);
             }
         }
     }

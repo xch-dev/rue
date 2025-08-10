@@ -127,13 +127,15 @@ pub fn declare_subtype(ctx: &mut Context, subtype: &AstSubtypeItem) -> TypeId {
         None
     };
 
+    let constraint = subtype.constraint().map(|_| ctx.builtins().unresolved.hir);
+
     let ty = ctx.alloc_type(Type::Subtype(Subtype {
         name: subtype.name(),
         scope,
         vars,
         parent,
         fields,
-        constraint: subtype.constraint().map(|_| ctx.builtins().unresolved.hir),
+        constraint,
     }));
 
     if let Some(name) = subtype.name() {

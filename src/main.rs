@@ -5,10 +5,7 @@ use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::{Allocator, ChiaDialect, run_program};
 use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
-use rue_compiler::{
-    Context, Graph, Scope, compile_document, declare_document, graph_symbol, lower_reference,
-    optimize,
-};
+use rue_compiler::{Context, compile_document, declare_document};
 use rue_lexer::Lexer;
 use rue_lir::codegen;
 use rue_parser::Parser;

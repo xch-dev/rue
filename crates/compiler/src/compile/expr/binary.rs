@@ -1,5 +1,5 @@
 use rue_ast::AstBinaryExpr;
-use rue_hir::{Hir, Value};
+use rue_hir::{BinaryOp, Hir, Value};
 use rue_parser::T;
 
 use crate::{Context, compile_expr};

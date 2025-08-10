@@ -27,7 +27,7 @@ mod tests {
     pub fn check(source: &str, errors: Expect) -> (Context, ScopeId) {
         let tokens = Lexer::new(source).collect::<Vec<_>>();
 
-        let mut parser = Parser::new(source, tokens);
+        let parser = Parser::new(source, tokens);
 
         let result = parser.parse();
 
