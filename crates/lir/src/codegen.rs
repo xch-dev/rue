@@ -4,6 +4,7 @@ use id_arena::Arena;
 
 use crate::{Lir, LirId, Result};
 
+const OP_Q: u8 = 1;
 const OP_A: u8 = 2;
 const OP_I: u8 = 3;
 const OP_C: u8 = 4;
@@ -61,7 +62,59 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let atom = allocator.new_atom(atom)?;
             Ok(clvm_quote!(atom).to_clvm(allocator)?)
         }
+        Lir::Quote(arg) => {
+            let arg = codegen(arena, allocator, *arg)?;
+            Ok(clvm_quote!(arg).to_clvm(allocator)?)
+        }
         Lir::Path(path) => Ok(allocator.new_number((*path).into())?),
+        Lir::Run(callee, args) => {
+            let callee = codegen(arena, allocator, *callee)?;
+            let mut environment = NodePtr::NIL;
+            for arg in args.iter().rev() {
+                let arg = codegen(arena, allocator, *arg)?;
+                environment = clvm_list!(OP_C, arg, environment).to_clvm(allocator)?;
+            }
+            Ok(clvm_list!(OP_A, callee, environment).to_clvm(allocator)?)
+        }
+        Lir::Bind(callee, args) => {
+            let callee = codegen(arena, allocator, *callee)?;
+            let mut environment = allocator.one();
+            for arg in args.iter().rev() {
+                let arg = codegen(arena, allocator, *arg)?;
+                environment = clvm_list!(OP_C, arg, environment).to_clvm(allocator)?;
+            }
+            Ok(clvm_list!(OP_A, clvm_quote!(callee), environment).to_clvm(allocator)?)
+        }
+        Lir::Closure(function, captures) => {
+            let function = codegen(arena, allocator, *function)?;
+
+            let mut args = clvm_quote!(1).to_clvm(allocator)?;
+
+            for capture in captures.iter().rev() {
+                let capture = codegen(arena, allocator, *capture)?;
+                args = clvm_list!(
+                    OP_C,
+                    clvm_quote!(OP_C),
+                    clvm_list!(
+                        OP_C,
+                        clvm_list!(OP_C, clvm_quote!(OP_Q), capture),
+                        clvm_list!(OP_C, args, ())
+                    )
+                )
+                .to_clvm(allocator)?;
+            }
+
+            Ok(clvm_list!(
+                OP_C,
+                clvm_quote!(OP_A),
+                clvm_list!(
+                    OP_C,
+                    clvm_list!(OP_C, clvm_quote!(OP_Q), function),
+                    clvm_list!(OP_C, args, ())
+                )
+            )
+            .to_clvm(allocator)?)
+        }
         Lir::First(arg) => {
             let arg = codegen(arena, allocator, *arg)?;
             Ok(clvm_list!(OP_F, arg).to_clvm(allocator)?)
@@ -381,6 +434,59 @@ mod tests {
         let mut arena = Arena::new();
         let lir = arena.alloc(Lir::Path(1));
         check(&arena, lir, expect!["1"]);
+    }
+
+    #[test]
+    fn test_quote() {
+        let mut arena = Arena::new();
+        let lir = arena.alloc(Lir::Atom(b"hello".to_vec()));
+        let quote = arena.alloc(Lir::Quote(lir));
+        check(&arena, quote, expect![[r#"(q 1 . "hello")"#]]);
+    }
+
+    #[test]
+    fn test_run() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(b"a".to_vec()));
+        let b = arena.alloc(Lir::Atom(b"b".to_vec()));
+        let c = arena.alloc(Lir::Atom(b"c".to_vec()));
+        let lir = arena.alloc(Lir::Run(a, vec![b, c]));
+        check(
+            &arena,
+            lir,
+            expect!["(a (q . 97) (c (q . 98) (c (q . 99) ())))"],
+        );
+    }
+
+    #[test]
+    fn test_bind() {
+        let mut arena = Arena::new();
+        let a = arena.alloc(Lir::Atom(b"a".to_vec()));
+        let b = arena.alloc(Lir::Atom(b"b".to_vec()));
+        let c = arena.alloc(Lir::Atom(b"c".to_vec()));
+        let lir = arena.alloc(Lir::Bind(a, vec![b, c]));
+        check(
+            &arena,
+            lir,
+            expect!["(a (q 1 . 97) (c (q . 98) (c (q . 99) 1)))"],
+        );
+    }
+
+    #[test]
+    fn test_closure() {
+        let mut arena = Arena::new();
+        let path = arena.alloc(Lir::Path(2));
+        let add = arena.alloc(Lir::Add(vec![path, path]));
+        let function = arena.alloc(Lir::Quote(add));
+        let capture = arena.alloc(Lir::Atom(vec![0x10]));
+        let closure = arena.alloc(Lir::Closure(function, vec![capture]));
+        check(
+            &arena,
+            closure,
+            expect![
+                "(c (q . 2) (c (c (q . 1) (q 16 2 2)) (c (c (q . 4) (c (c (q . 1) (q . 16)) (c (q . 1) ()))) ())))"
+            ],
+        );
     }
 
     #[test]

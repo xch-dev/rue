@@ -6,6 +6,10 @@ pub type LirId = Id<Lir>;
 pub enum Lir {
     Atom(Vec<u8>),
     Path(u32),
+    Quote(LirId),
+    Run(LirId, Vec<LirId>),
+    Bind(LirId, Vec<LirId>),
+    Closure(LirId, Vec<LirId>),
     First(LirId),
     Rest(LirId),
     Cons(LirId, LirId),
