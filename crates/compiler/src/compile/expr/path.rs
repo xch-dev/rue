@@ -1,7 +1,8 @@
 use rue_ast::AstPathExpr;
 use rue_diagnostic::DiagnosticKind;
+use rue_hir::{Hir, Value};
 
-use crate::{Context, Hir, Value, compile_generic_arguments};
+use crate::{Context, compile_generic_arguments};
 
 pub fn compile_path_expr(ctx: &mut Context, path: &AstPathExpr) -> Value {
     let mut value = None;

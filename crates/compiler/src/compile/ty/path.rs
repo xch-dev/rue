@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use rue_ast::AstPathType;
 use rue_diagnostic::DiagnosticKind;
+use rue_hir::{Type, TypeId};
 
-use crate::{Context, Type, TypeId, compile_generic_arguments};
+use crate::{Context, compile_generic_arguments};
 
 pub fn compile_path_type(ctx: &mut Context, path: &AstPathType) -> TypeId {
     let mut ty = None;

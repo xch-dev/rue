@@ -1,7 +1,8 @@
 use rue_ast::AstTypeAliasItem;
 use rue_diagnostic::DiagnosticKind;
+use rue_hir::{Alias, Scope, Type, TypeId};
 
-use crate::{Alias, Context, Scope, Type, TypeId, compile_generic_parameters, compile_type};
+use crate::{Context, compile_generic_parameters, compile_type};
 
 pub fn declare_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem) -> TypeId {
     let scope = ctx.alloc_scope(Scope::new());

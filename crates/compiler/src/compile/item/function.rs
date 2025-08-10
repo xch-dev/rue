@@ -1,10 +1,8 @@
 use rue_ast::AstFunctionItem;
 use rue_diagnostic::DiagnosticKind;
+use rue_hir::{FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId};
 
-use crate::{
-    Context, FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId, compile_block,
-    compile_generic_parameters, compile_type,
-};
+use crate::{Context, compile_block, compile_generic_parameters, compile_type};
 
 pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> SymbolId {
     let scope = ctx.alloc_scope(Scope::new());

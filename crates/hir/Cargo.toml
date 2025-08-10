@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+rue-parser = { workspace = true }
 rue-mir = { workspace = true }
 id-arena = { workspace = true }
+indexmap = { workspace = true }

@@ -1,6 +1,7 @@
 use rue_ast::AstFunctionCallExpr;
+use rue_hir::Value;
 
-use crate::{Context, Value, compile_expr};
+use crate::{Context, compile_expr};
 
 pub fn compile_function_call_expr(ctx: &mut Context, call: &AstFunctionCallExpr) -> Value {
     let Some(expr) = call.expr() else {

@@ -1,6 +1,9 @@
+use id_arena::Id;
 use rue_parser::SyntaxToken;
 
-use crate::{HirId, ScopeId, SymbolId, TypeId};
+use crate::{HirId, ScopeId, TypeId};
+
+pub type SymbolId = Id<Symbol>;
 
 #[derive(Debug, Clone)]
 pub enum Symbol {

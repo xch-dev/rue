@@ -11,9 +11,11 @@ pub use group::*;
 pub use literal::*;
 pub use path::*;
 pub use prefix::*;
-use rue_ast::AstExpr;
 
-use crate::{Context, Value};
+use rue_ast::AstExpr;
+use rue_hir::Value;
+
+use crate::Context;
 
 pub fn compile_expr(ctx: &mut Context, expr: &AstExpr) -> Value {
     match expr {

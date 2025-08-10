@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
+use id_arena::Id;
 use indexmap::IndexMap;
 use rue_parser::SyntaxToken;
 
-use crate::{HirId, ScopeId, SymbolId, TypeId};
+use crate::{HirId, ScopeId, SymbolId};
+
+pub type TypeId = Id<Type>;
 
 #[derive(Debug, Clone)]
 pub enum Type {

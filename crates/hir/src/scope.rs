@@ -1,6 +1,9 @@
+use id_arena::Id;
 use indexmap::IndexMap;
 
 use crate::{SymbolId, TypeId};
+
+pub type ScopeId = Id<Scope>;
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope {

@@ -1,8 +1,8 @@
 use rue_ast::{AstDocument, AstItem};
+use rue_hir::{ScopeId, SymbolId, TypeId};
 
 use crate::{
-    Context, ScopeId, SymbolId, TypeId, compile_symbol_item, compile_type_item,
-    declare_symbol_item, declare_type_item,
+    Context, compile_symbol_item, compile_type_item, declare_symbol_item, declare_type_item,
 };
 
 #[derive(Debug, Default)]

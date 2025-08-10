@@ -1,68 +1,59 @@
-use std::ops::Range;
+use std::ops::{Deref, DerefMut, Range};
 
-use id_arena::{Arena, Id};
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
+use rue_hir::{Database, Hir, Scope, ScopeId, SymbolId, Type, TypeId, Value};
 use rue_parser::{SyntaxNode, SyntaxToken};
-
-use crate::{Hir, Mir, Scope, Symbol, Type, Value};
-
-pub type ScopeId = Id<Scope>;
-pub type SymbolId = Id<Symbol>;
-pub type TypeId = Id<Type>;
-pub type HirId = Id<Hir>;
-pub type MirId = Id<Mir>;
 
 #[derive(Debug, Clone)]
 pub struct Builtins {
     pub unresolved: Value,
-    pub unresolved_mir: MirId,
     pub bytes: TypeId,
 }
 
 #[derive(Debug, Clone)]
 pub struct Context {
     errors: Vec<Diagnostic>,
-    scopes: Arena<Scope>,
-    symbols: Arena<Symbol>,
-    types: Arena<Type>,
-    hir: Arena<Hir>,
-    mir: Arena<Mir>,
+    db: Database,
     scope_stack: Vec<ScopeId>,
     builtins: Builtins,
 }
 
+impl Deref for Context {
+    type Target = Database;
+
+    fn deref(&self) -> &Self::Target {
+        &self.db
+    }
+}
+
+impl DerefMut for Context {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.db
+    }
+}
+
 impl Default for Context {
     fn default() -> Self {
-        let mut types = Arena::new();
-        let unresolved_type = types.alloc(Type::Unresolved);
+        let mut db = Database::new();
 
-        let mut hir = Arena::new();
-        let unresolved_hir = hir.alloc(Hir::Unresolved);
-
-        let mut mir = Arena::new();
-        let unresolved_mir = mir.alloc(Mir::Unresolved);
+        let unresolved_type = db.alloc_type(Type::Unresolved);
+        let unresolved_hir = db.alloc_hir(Hir::Unresolved);
 
         let builtins = Builtins {
             unresolved: Value::new(unresolved_hir, unresolved_type),
-            unresolved_mir,
             bytes: unresolved_type,
         };
 
-        let mut scopes = Arena::new();
         let mut scope = Scope::new();
 
         scope.insert_type("Bytes".to_string(), builtins.bytes);
 
-        let scope = scopes.alloc(scope);
+        let scope = db.alloc_scope(scope);
 
         Self {
             errors: Vec::new(),
-            scopes,
-            symbols: Arena::new(),
-            types,
-            hir,
-            mir,
+            db,
             scope_stack: vec![scope],
             builtins,
         }
@@ -93,11 +84,13 @@ impl Context {
     }
 
     pub fn last_scope(&self) -> &Scope {
-        self.scope(*self.scope_stack.last().unwrap())
+        let scope = *self.scope_stack.last().unwrap();
+        self.scope(scope)
     }
 
     pub fn last_scope_mut(&mut self) -> &mut Scope {
-        self.scope_mut(*self.scope_stack.last().unwrap())
+        let scope = *self.scope_stack.last().unwrap();
+        self.scope_mut(scope)
     }
 
     pub fn resolve_symbol(&self, name: &str) -> Option<SymbolId> {
@@ -116,62 +109,6 @@ impl Context {
             }
         }
         None
-    }
-
-    pub fn alloc_scope(&mut self, scope: Scope) -> ScopeId {
-        self.scopes.alloc(scope)
-    }
-
-    pub fn alloc_symbol(&mut self, symbol: Symbol) -> SymbolId {
-        self.symbols.alloc(symbol)
-    }
-
-    pub fn alloc_type(&mut self, ty: Type) -> TypeId {
-        self.types.alloc(ty)
-    }
-
-    pub fn alloc_hir(&mut self, hir: Hir) -> HirId {
-        self.hir.alloc(hir)
-    }
-
-    pub fn alloc_mir(&mut self, mir: Mir) -> MirId {
-        self.mir.alloc(mir)
-    }
-
-    pub fn scope(&self, id: ScopeId) -> &Scope {
-        self.scopes.get(id).unwrap()
-    }
-
-    pub fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
-        self.scopes.get_mut(id).unwrap()
-    }
-
-    pub fn symbol(&self, id: SymbolId) -> &Symbol {
-        self.symbols.get(id).unwrap()
-    }
-
-    pub fn symbol_mut(&mut self, id: SymbolId) -> &mut Symbol {
-        self.symbols.get_mut(id).unwrap()
-    }
-
-    pub fn ty(&self, id: TypeId) -> &Type {
-        self.types.get(id).unwrap()
-    }
-
-    pub fn ty_mut(&mut self, id: TypeId) -> &mut Type {
-        self.types.get_mut(id).unwrap()
-    }
-
-    pub fn hir(&self, id: HirId) -> &Hir {
-        self.hir.get(id).unwrap()
-    }
-
-    pub fn hir_mut(&mut self, id: HirId) -> &mut Hir {
-        self.hir.get_mut(id).unwrap()
-    }
-
-    pub fn mir(&self, id: MirId) -> &Mir {
-        self.mir.get(id).unwrap()
     }
 
     pub fn builtins(&self) -> &Builtins {

@@ -6,7 +6,9 @@ pub use function::*;
 pub use subtype::*;
 pub use type_alias::*;
 
-use crate::{Context, SymbolId, TypeId};
+use rue_hir::{SymbolId, TypeId};
+
+use crate::Context;
 
 use rue_ast::{AstSymbolItem, AstTypeItem};
 

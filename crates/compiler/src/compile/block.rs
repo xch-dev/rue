@@ -1,6 +1,7 @@
 use rue_ast::{AstBlock, AstStmtOrExpr};
+use rue_hir::{Hir, HirId};
 
-use crate::{Block, Context, Hir, HirId, compile_expr, compile_stmt};
+use crate::{Context, compile_expr, compile_stmt};
 
 pub fn compile_block(ctx: &mut Context, block: &AstBlock) -> HirId {
     let mut statements = Vec::new();

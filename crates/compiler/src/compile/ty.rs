@@ -4,9 +4,10 @@ mod union;
 pub use path::*;
 pub use union::*;
 
-use crate::{Context, TypeId};
-
 use rue_ast::AstType;
+use rue_hir::TypeId;
+
+use crate::Context;
 
 pub fn compile_type(ctx: &mut Context, ty: &AstType) -> TypeId {
     match ty {

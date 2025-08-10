@@ -1,6 +1,7 @@
 use rue_ast::AstGroupExpr;
+use rue_hir::Value;
 
-use crate::{Context, Value, compile_expr};
+use crate::{Context, compile_expr};
 
 pub fn compile_group_expr(ctx: &mut Context, group: &AstGroupExpr) -> Value {
     let Some(expr) = group.expr() else {

@@ -1,21 +1,5 @@
 mod compile;
 mod context;
-mod hir;
-mod lower;
-mod mir;
-mod optimize;
-mod scope;
-mod symbol;
-mod types;
-mod value;
 
 pub use compile::*;
 pub use context::*;
-pub use hir::*;
-pub use lower::*;
-pub use mir::*;
-pub use optimize::*;
-pub use scope::*;
-pub use symbol::*;
-pub use types::*;
-pub use value::*;

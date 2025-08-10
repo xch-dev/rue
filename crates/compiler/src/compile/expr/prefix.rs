@@ -1,7 +1,8 @@
 use rue_ast::AstPrefixExpr;
+use rue_hir::{Hir, Value};
 use rue_parser::T;
 
-use crate::{Context, Hir, UnaryOp, Value, compile_expr};
+use crate::{Context, compile_expr};
 
 pub fn compile_prefix_expr(ctx: &mut Context, prefix: &AstPrefixExpr) -> Value {
     let Some(expr) = prefix.expr() else {

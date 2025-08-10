@@ -1,7 +1,8 @@
 use rue_ast::{AstGenericArguments, AstGenericParameters, AstNode};
 use rue_diagnostic::DiagnosticKind;
+use rue_hir::{ScopeId, Type, TypeId, Var};
 
-use crate::{Context, ScopeId, Type, TypeId, Var, compile_type};
+use crate::{Context, compile_type};
 
 pub fn compile_generic_parameters(
     ctx: &mut Context,

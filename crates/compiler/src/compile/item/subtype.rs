@@ -1,11 +1,12 @@
 use indexmap::IndexMap;
 use rue_ast::{AstNode, AstSubtypeItem};
 use rue_diagnostic::DiagnosticKind;
-
-use crate::{
-    Context, ParameterSymbol, Scope, Subtype, SubtypeField, SubtypeParent, SubtypeVar, Symbol,
-    Type, TypeId, Var, compile_expr, compile_type,
+use rue_hir::{
+    ParameterSymbol, Scope, Subtype, SubtypeField, SubtypeParent, SubtypeVar, Symbol, Type, TypeId,
+    Var,
 };
+
+use crate::{Context, compile_expr, compile_type};
 
 pub fn declare_subtype(ctx: &mut Context, subtype: &AstSubtypeItem) -> TypeId {
     let mut fields = IndexMap::new();

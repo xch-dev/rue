@@ -1035,8 +1035,8 @@ dependencies = [
  "rowan",
  "rue-ast",
  "rue-diagnostic",
+ "rue-hir",
  "rue-lexer",
- "rue-lir",
  "rue-parser",
 ]
 
@@ -1052,7 +1052,9 @@ name = "rue-hir"
 version = "0.1.0"
 dependencies = [
  "id-arena",
+ "indexmap",
  "rue-mir",
+ "rue-parser",
 ]
 
 [[package]]

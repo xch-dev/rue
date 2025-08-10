@@ -18,10 +18,11 @@ pub use ty::*;
 mod tests {
     use expect_test::Expect;
     use rue_ast::{AstDocument, AstNode};
+    use rue_hir::{Scope, ScopeId};
     use rue_lexer::Lexer;
     use rue_parser::Parser;
 
-    use crate::{Context, Scope, ScopeId, compile_document, declare_document};
+    use crate::{Context, compile_document, declare_document};
 
     pub fn check(source: &str, errors: Expect) -> (Context, ScopeId) {
         let tokens = Lexer::new(source).collect::<Vec<_>>();

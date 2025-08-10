@@ -1,7 +1,8 @@
 use rue_ast::AstLiteralExpr;
+use rue_hir::{Hir, Value};
 use rue_parser::{SyntaxKind, T};
 
-use crate::{Context, Hir, Value};
+use crate::Context;
 
 pub fn compile_literal_expr(ctx: &mut Context, expr: &AstLiteralExpr) -> Value {
     let Some(value) = expr.value() else {
