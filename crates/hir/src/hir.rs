@@ -1,4 +1,5 @@
 use id_arena::Id;
+use rue_mir::{BinaryOp, UnaryOp};
 
 use crate::SymbolId;
 
@@ -23,18 +24,4 @@ pub struct Block {
 #[derive(Debug, Clone)]
 pub enum Statement {
     Expr(HirId),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnaryOp {
-    Listp,
-    Not,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
 }

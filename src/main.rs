@@ -6,8 +6,10 @@ use clvmr::{Allocator, ChiaDialect, run_program};
 use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
 use rue_compiler::{Context, compile_document, declare_document};
+use rue_hir::{DependencyGraph, Scope, lower_main};
 use rue_lexer::Lexer;
 use rue_lir::codegen;
+use rue_mir::lower_mir;
 use rue_parser::Parser;
 
 fn main() -> Result<()> {
@@ -35,13 +37,13 @@ fn main() -> Result<()> {
     }
 
     let symbol = ctx.scope(scope).symbol("main").unwrap();
-    let mut graph = Graph::new();
-    graph_symbol(&ctx, &mut graph, symbol);
-    let mir = lower_reference(&mut ctx, symbol);
+    let graph = DependencyGraph::build(&ctx, symbol);
+    let mut mir_arena = Arena::new();
+    let mir = lower_main(&ctx, &mut mir_arena, &graph, symbol);
 
     let mut allocator = Allocator::new();
     let mut arena = Arena::new();
-    let lir = optimize(&mut ctx, &mut arena, mir);
+    let lir = lower_mir(&mir_arena, &mut arena, mir, None);
     let ptr = codegen(&arena, &mut allocator, lir)?;
 
     println!("Program: {}", disassemble(&allocator, ptr, None));

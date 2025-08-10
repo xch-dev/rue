@@ -13,6 +13,8 @@ rue-parser = { workspace = true }
 rue-ast = { workspace = true }
 rue-compiler = { workspace = true }
 rue-lir = { workspace = true }
+rue-hir = { workspace = true }
+rue-mir = { workspace = true }
 
 [workspace]
 resolver = "3"

@@ -83,7 +83,7 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
                 let arg = codegen(arena, allocator, *arg)?;
                 environment = clvm_list!(OP_C, arg, environment).to_clvm(allocator)?;
             }
-            Ok(clvm_list!(OP_A, clvm_quote!(callee), environment).to_clvm(allocator)?)
+            Ok(clvm_list!(OP_A, callee, environment).to_clvm(allocator)?)
         }
         Lir::Closure(function, captures) => {
             let function = codegen(arena, allocator, *function)?;
@@ -468,7 +468,7 @@ mod tests {
         check(
             &arena,
             lir,
-            expect!["(a (q 1 . 97) (c (q . 98) (c (q . 99) 1)))"],
+            expect!["(a (q . 97) (c (q . 98) (c (q . 99) 1)))"],
         );
     }
 

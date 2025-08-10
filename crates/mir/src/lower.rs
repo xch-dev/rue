@@ -1,7 +1,7 @@
 use id_arena::Arena;
 use rue_lir::{Lir, LirId, first_path, rest_path};
 
-use crate::{Mir, MirId};
+use crate::{BinaryOp, Mir, MirId, UnaryOp};
 
 #[derive(Debug, Clone)]
 pub struct MirContext {
@@ -73,6 +73,31 @@ pub fn lower_mir(
                 .map(|capture| lower_mir(input, arena, capture, context))
                 .collect();
             arena.alloc(Lir::Closure(body, captures))
+        }
+        Mir::Curry { body, args } => {
+            let body = lower_mir(input, arena, body, context);
+            let args = args
+                .into_iter()
+                .map(|capture| lower_mir(input, arena, capture, context))
+                .collect();
+            arena.alloc(Lir::Bind(body, args))
+        }
+        Mir::Unary(op, mir) => {
+            let lir = lower_mir(input, arena, mir, context);
+            match op {
+                UnaryOp::Listp => arena.alloc(Lir::Listp(lir)),
+                UnaryOp::Not => arena.alloc(Lir::Not(lir)),
+            }
+        }
+        Mir::Binary(op, left, right) => {
+            let left = lower_mir(input, arena, left, context);
+            let right = lower_mir(input, arena, right, context);
+            match op {
+                BinaryOp::Add => arena.alloc(Lir::Add(vec![left, right])),
+                BinaryOp::Sub => arena.alloc(Lir::Sub(vec![left, right])),
+                BinaryOp::Mul => arena.alloc(Lir::Mul(vec![left, right])),
+                BinaryOp::Div => arena.alloc(Lir::Div(left, right)),
+            }
         }
     }
 }

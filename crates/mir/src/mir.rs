@@ -1,5 +1,7 @@
 use id_arena::Id;
 
+use crate::{BinaryOp, UnaryOp};
+
 pub type MirId = Id<Mir>;
 
 #[derive(Debug, Clone)]
@@ -18,7 +20,10 @@ pub enum Mir {
 
     /// Attaches a list of bindings to the current environment, and automatically
     /// adjusts paths into the environment based on the number of bindings.
-    Bind { bindings: Vec<MirId>, body: MirId },
+    Bind {
+        bindings: Vec<MirId>,
+        body: MirId,
+    },
 
     /// References a binding in the current environment. This starts from the
     /// beginning of the environment and ends at the start of the capture list.
@@ -36,5 +41,17 @@ pub enum Mir {
     /// need to be specified by the caller. This will make the function callable
     /// with a signature that matches its parameters rather than needing additional
     /// context.
-    Closure { body: MirId, captures: Vec<MirId> },
+    Closure {
+        body: MirId,
+        captures: Vec<MirId>,
+    },
+
+    /// Curries definitions into a function.
+    Curry {
+        body: MirId,
+        args: Vec<MirId>,
+    },
+
+    Unary(UnaryOp, MirId),
+    Binary(BinaryOp, MirId, MirId),
 }

@@ -1010,8 +1010,10 @@ dependencies = [
  "id-arena",
  "rue-ast",
  "rue-compiler",
+ "rue-hir",
  "rue-lexer",
  "rue-lir",
+ "rue-mir",
  "rue-parser",
 ]
 
