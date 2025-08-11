@@ -6,3 +6,7 @@ subtype Pair<F = first, R = rest>(value: Any) if listp(value) {
     first: first(value),
     rest: rest(value),
 }
+
+fn main() -> Atom {
+    "Hello, world!"
+}

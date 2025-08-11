@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::{Allocator, ChiaDialect, run_program};
 use id_arena::Arena;
@@ -23,8 +23,6 @@ struct TestCase {
 }
 
 fn main() -> Result<()> {
-    let std = load_document(&fs::read_to_string("std.rue")?)?;
-
     for entry in WalkDir::new("tests") {
         let entry = entry?;
 
@@ -66,10 +64,6 @@ fn main() -> Result<()> {
         let mut ctx = Context::new();
 
         let scope = ctx.alloc_scope(Scope::new());
-
-        let declarations = declare_document(&mut ctx, scope, &std);
-        compile_document(&mut ctx, scope, &std, declarations);
-
         let declarations = declare_document(&mut ctx, scope, &ast);
         compile_document(&mut ctx, scope, &ast, declarations);
 
@@ -104,11 +98,4 @@ fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn load_document(source: &str) -> Result<AstDocument> {
-    let tokens = Lexer::new(source).collect::<Vec<_>>();
-    let parser = Parser::new(source, tokens);
-    let result = parser.parse();
-    AstDocument::cast(result.node).ok_or(anyhow!("Failed to parse document"))
 }
