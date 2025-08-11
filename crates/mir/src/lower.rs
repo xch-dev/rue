@@ -88,6 +88,7 @@ pub fn lower_mir(
                 UnaryOp::Listp => arena.alloc(Lir::Listp(lir)),
                 UnaryOp::First => arena.alloc(Lir::First(lir)),
                 UnaryOp::Rest => arena.alloc(Lir::Rest(lir)),
+                UnaryOp::Strlen => arena.alloc(Lir::Strlen(lir)),
                 UnaryOp::Not => arena.alloc(Lir::Not(lir)),
             }
         }
@@ -99,6 +100,19 @@ pub fn lower_mir(
                 BinaryOp::Sub => arena.alloc(Lir::Sub(vec![left, right])),
                 BinaryOp::Mul => arena.alloc(Lir::Mul(vec![left, right])),
                 BinaryOp::Div => arena.alloc(Lir::Div(left, right)),
+                BinaryOp::Eq => arena.alloc(Lir::Eq(left, right)),
+                BinaryOp::And => {
+                    let true_atom = arena.alloc(Lir::Atom(vec![1]));
+                    let false_atom = arena.alloc(Lir::Atom(vec![]));
+                    let right = arena.alloc(Lir::If(right, true_atom, false_atom));
+                    arena.alloc(Lir::If(left, right, false_atom))
+                }
+                BinaryOp::Or => {
+                    let true_atom = arena.alloc(Lir::Atom(vec![1]));
+                    let false_atom = arena.alloc(Lir::Atom(vec![]));
+                    let right = arena.alloc(Lir::If(right, true_atom, false_atom));
+                    arena.alloc(Lir::If(left, true_atom, right))
+                }
             }
         }
     }

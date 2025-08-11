@@ -1066,8 +1066,10 @@ dependencies = [
 name = "rue-hir"
 version = "0.1.0"
 dependencies = [
+ "clvmr",
  "id-arena",
  "indexmap",
+ "num-bigint",
  "rue-mir",
  "rue-parser",
 ]

@@ -3,6 +3,7 @@ pub enum UnaryOp {
     Listp,
     First,
     Rest,
+    Strlen,
     Not,
 }
 
@@ -12,4 +13,7 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    Eq,
+    And,
+    Or,
 }

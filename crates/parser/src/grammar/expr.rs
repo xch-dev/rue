@@ -264,6 +264,28 @@ mod tests {
             "#]],
             expect![],
         );
+
+        check(
+            expr,
+            "1 && 2 && 3",
+            expect![[r#"
+                BinaryExpr@0..11
+                  BinaryExpr@0..7
+                    LiteralExpr@0..2
+                      Integer@0..1 "1"
+                      Whitespace@1..2 " "
+                    And@2..4 "&&"
+                    Whitespace@4..5 " "
+                    LiteralExpr@5..7
+                      Integer@5..6 "2"
+                      Whitespace@6..7 " "
+                  And@7..9 "&&"
+                  Whitespace@9..10 " "
+                  LiteralExpr@10..11
+                    Integer@10..11 "3"
+            "#]],
+            expect![],
+        );
     }
 
     #[test]

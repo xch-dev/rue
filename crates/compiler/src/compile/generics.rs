@@ -1,6 +1,6 @@
 use rue_ast::{AstGenericArguments, AstGenericParameters, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{ScopeId, Type, TypeId, Var};
+use rue_hir::{Generic, ScopeId, Type, TypeId};
 
 use crate::{Context, compile_type};
 
@@ -16,7 +16,7 @@ pub fn compile_generic_parameters(
     for generic_parameter in generic_parameters.names() {
         is_empty = false;
 
-        let ty = ctx.alloc_type(Type::Var(Var {
+        let ty = ctx.alloc_type(Type::Generic(Generic {
             name: Some(generic_parameter.clone()),
         }));
 

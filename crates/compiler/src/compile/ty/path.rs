@@ -38,9 +38,12 @@ pub fn compile_path_type(ctx: &mut Context, path: &AstPathType) -> TypeId {
 
         let params = match ctx.ty(resolved) {
             Type::Unresolved => continue,
-            Type::Var(..) | Type::Union(..) | Type::Apply(..) => vec![],
+            Type::Atom(..)
+            | Type::Pair(..)
+            | Type::Generic(..)
+            | Type::Union(..)
+            | Type::Apply(..) => vec![],
             Type::Alias(alias) => alias.vars.clone(),
-            Type::Subtype(subtype) => subtype.vars.iter().map(|v| v.ty).collect(),
         };
 
         if params.len() != args.len() {
