@@ -94,6 +94,9 @@ pub enum DiagnosticKind {
 
     #[error("Cannot use `{0}` operator with `{1}` and `{2}`")]
     IncompatibleBinaryOp(String, String, String),
+
+    #[error("Cannot use `{0}` operator with `{1}`")]
+    IncompatibleUnaryOp(String, String),
 }
 
 impl DiagnosticKind {
@@ -115,7 +118,8 @@ impl DiagnosticKind {
             | Self::UnassignableType(..)
             | Self::IncompatibleCast(..)
             | Self::UnconstrainableComparison(..)
-            | Self::IncompatibleBinaryOp(..) => DiagnosticSeverity::Error,
+            | Self::IncompatibleBinaryOp(..)
+            | Self::IncompatibleUnaryOp(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields

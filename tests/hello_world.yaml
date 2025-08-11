@@ -1,4 +1,4 @@
-program: (a (q 1 . 40) 1)
+program: (a (q 32 (q . 1)) 1)
 solution: ()
-output: '40'
+output: ()
 errors: []

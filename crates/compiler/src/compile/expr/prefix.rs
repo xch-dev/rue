@@ -1,4 +1,5 @@
-use rue_ast::AstPrefixExpr;
+use rue_ast::{AstNode, AstPrefixExpr};
+use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, UnaryOp, Value};
 use rue_parser::T;
 
@@ -17,9 +18,17 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
 
     match op.kind() {
         T![!] => {
-            let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Not, value.hir));
-            Value::new(hir, ctx.builtins().unresolved.ty)
+            if ctx.is_assignable(value.ty, ctx.builtins().bool) {
+                let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Not, value.hir));
+                return Value::new(hir, ctx.builtins().bool);
+            }
         }
-        _ => todo!(),
+        _ => {}
     }
+
+    ctx.diagnostic(
+        prefix.syntax(),
+        DiagnosticKind::IncompatibleUnaryOp(op.text().to_string(), ctx.type_name(value.ty)),
+    );
+    ctx.builtins().unresolved.clone()
 }
