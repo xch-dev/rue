@@ -13,6 +13,7 @@ clvm-traits = { workspace = true }
 id-arena = { workspace = true }
 rowan = { workspace = true }
 indexmap = { workspace = true }
+num-bigint = { workspace = true }
 
 [dev-dependencies]
 rue-lexer = { workspace = true }

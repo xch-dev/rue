@@ -193,6 +193,21 @@ impl Compiler {
         }
     }
 
+    pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {
+        let hir = self.builtins.unresolved.hir;
+
+        let comparison = compare_types(
+            self,
+            hir,
+            &HashMap::new(),
+            from,
+            &HashMap::new(),
+            to,
+            &mut HashMap::new(),
+        );
+        matches!(comparison, Comparison::Assignable)
+    }
+
     pub fn assign_type(&mut self, node: &impl GetTextRange, hir: HirId, from: TypeId, to: TypeId) {
         self.compare_type(node, hir, from, to, false);
     }

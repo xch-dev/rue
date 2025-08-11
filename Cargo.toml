@@ -11,6 +11,7 @@ rue-compiler = { workspace = true }
 rue-lir = { workspace = true }
 rue-hir = { workspace = true }
 rue-mir = { workspace = true }
+rue-diagnostic = { workspace = true }
 clvmr = { workspace = true }
 clvm_tools_rs = { workspace = true }
 anyhow = { workspace = true }

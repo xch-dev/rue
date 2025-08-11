@@ -1,4 +1,5 @@
-use rue_ast::AstBinaryExpr;
+use rue_ast::{AstBinaryExpr, AstNode};
+use rue_diagnostic::DiagnosticKind;
 use rue_hir::{BinaryOp, Hir, Value};
 use rue_parser::T;
 
@@ -23,9 +24,39 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
 
     match op.kind() {
         T![+] => {
-            let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Add, left.hir, right.hir));
-            Value::new(hir, ctx.builtins().unresolved.ty)
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Add, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
         }
-        _ => todo!(),
+        T![-] => {
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Sub, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+        }
+        T![*] => {
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Mul, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+        }
+        T![/] => {
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Div, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+        }
+        _ => {}
     }
+
+    ctx.diagnostic(
+        binary.syntax(),
+        DiagnosticKind::IncompatibleBinaryOp(
+            op.text().to_string(),
+            ctx.type_name(left.ty),
+            ctx.type_name(right.ty),
+        ),
+    );
+    ctx.builtins().unresolved.clone()
 }

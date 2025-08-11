@@ -6,6 +6,7 @@ use clvmr::{Allocator, ChiaDialect, run_program};
 use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
 use rue_compiler::{Compiler, compile_document, declare_document};
+use rue_diagnostic::DiagnosticSeverity;
 use rue_hir::{DependencyGraph, Scope, lower_main};
 use rue_lexer::Lexer;
 use rue_lir::codegen;
@@ -54,9 +55,14 @@ fn main() -> Result<()> {
         let result = parser.parse();
 
         let mut errors = Vec::new();
+        let mut fatal = false;
 
         for error in result.errors {
             errors.push(error.message(&source));
+
+            if error.kind.severity() == DiagnosticSeverity::Error {
+                fatal = true;
+            }
         }
 
         let ast = AstDocument::cast(result.node).unwrap();
@@ -69,26 +75,36 @@ fn main() -> Result<()> {
 
         for error in ctx.errors() {
             errors.push(error.message(&source));
+
+            if error.kind.severity() == DiagnosticSeverity::Error {
+                fatal = true;
+            }
         }
 
-        let symbol = ctx.scope(scope).symbol("main").unwrap();
-        let graph = DependencyGraph::build(&ctx, symbol);
-        let mut mir_arena = Arena::new();
-        let mir = lower_main(&ctx, &mut mir_arena, &graph, symbol);
+        if !fatal {
+            let symbol = ctx.scope(scope).symbol("main").unwrap();
+            let graph = DependencyGraph::build(&ctx, symbol);
+            let mut mir_arena = Arena::new();
+            let mir = lower_main(&ctx, &mut mir_arena, &graph, symbol);
 
-        let mut allocator = Allocator::new();
-        let mut arena = Arena::new();
-        let lir = lower_mir(&mir_arena, &mut arena, mir, None);
-        let ptr = codegen(&arena, &mut allocator, lir)?;
+            let mut allocator = Allocator::new();
+            let mut arena = Arena::new();
+            let lir = lower_mir(&mir_arena, &mut arena, mir, None);
+            let ptr = codegen(&arena, &mut allocator, lir)?;
 
-        let env = assemble(&mut allocator, test_case.solution.as_ref().unwrap()).unwrap();
+            let env = assemble(&mut allocator, test_case.solution.as_ref().unwrap()).unwrap();
 
-        let output = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, u64::MAX)
-            .unwrap()
-            .1;
+            let output = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, u64::MAX)
+                .unwrap()
+                .1;
 
-        test_case.program = Some(disassemble(&allocator, ptr, None));
-        test_case.output = Some(disassemble(&allocator, output, None));
+            test_case.program = Some(disassemble(&allocator, ptr, None));
+            test_case.output = Some(disassemble(&allocator, output, None));
+        } else {
+            test_case.program = None;
+            test_case.output = None;
+        }
+
         test_case.errors = errors;
 
         if test_case != original {

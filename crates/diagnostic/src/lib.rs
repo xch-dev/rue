@@ -91,6 +91,9 @@ pub enum DiagnosticKind {
         "Cannot compare `{0}` to `{1}` without a type guard, since the runtime value must be constrained"
     )]
     UnconstrainableComparison(String, String),
+
+    #[error("Cannot use `{0}` operator with `{1}` and `{2}`")]
+    IncompatibleBinaryOp(String, String, String),
 }
 
 impl DiagnosticKind {
@@ -111,7 +114,8 @@ impl DiagnosticKind {
             | Self::IncompatibleType(..)
             | Self::UnassignableType(..)
             | Self::IncompatibleCast(..)
-            | Self::UnconstrainableComparison(..) => DiagnosticSeverity::Error,
+            | Self::UnconstrainableComparison(..)
+            | Self::IncompatibleBinaryOp(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields

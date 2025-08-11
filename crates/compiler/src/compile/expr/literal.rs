@@ -1,3 +1,7 @@
+use std::str::FromStr;
+
+use clvmr::Allocator;
+use num_bigint::BigInt;
 use rue_ast::AstLiteralExpr;
 use rue_hir::{Atom, Hir, Type, Value};
 use rue_parser::{SyntaxKind, T};
@@ -27,7 +31,14 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
             Value::new(ctx.alloc_hir(Hir::Atom(bytes)), ty)
         }
         SyntaxKind::Hex => todo!(),
-        SyntaxKind::Integer => todo!(),
+        SyntaxKind::Integer => {
+            let text = value.text().replace("_", "");
+
+            let num = BigInt::from_str(&text).unwrap();
+            let ty = ctx.alloc_type(Type::Atom(Atom::IntValue(num.clone())));
+
+            Value::new(ctx.alloc_hir(Hir::Atom(bigint_atom(num))), ty)
+        }
         SyntaxKind::Ident => ctx.builtins().unresolved.clone(),
         T![nil] => {
             let ty = ctx.builtins().nil;
@@ -43,4 +54,10 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
         }
         _ => unreachable!(),
     }
+}
+
+fn bigint_atom(value: BigInt) -> Vec<u8> {
+    let mut allocator = Allocator::new();
+    let atom = allocator.new_number(value).unwrap();
+    allocator.atom(atom).to_vec()
 }

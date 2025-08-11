@@ -1020,6 +1020,7 @@ dependencies = [
  "id-arena",
  "rue-ast",
  "rue-compiler",
+ "rue-diagnostic",
  "rue-hir",
  "rue-lexer",
  "rue-lir",
@@ -1047,6 +1048,7 @@ dependencies = [
  "expect-test",
  "id-arena",
  "indexmap",
+ "num-bigint",
  "rowan",
  "rue-ast",
  "rue-diagnostic",
@@ -1098,6 +1100,7 @@ dependencies = [
 name = "rue-mir"
 version = "0.1.0"
 dependencies = [
+ "derive_more",
  "id-arena",
  "rue-lir",
 ]
