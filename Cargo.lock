@@ -1046,6 +1046,7 @@ dependencies = [
  "clvm-traits",
  "clvmr",
  "expect-test",
+ "hex",
  "id-arena",
  "indexmap",
  "num-bigint",

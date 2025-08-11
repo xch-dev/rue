@@ -30,7 +30,24 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
 
             Value::new(ctx.alloc_hir(Hir::Atom(bytes)), ty)
         }
-        SyntaxKind::Hex => todo!(),
+        SyntaxKind::Hex => {
+            let mut text = value.text();
+
+            if let Some(stripped) = text.strip_prefix("0x") {
+                text = stripped;
+            }
+
+            let text = text.replace("_", "");
+
+            let bytes = hex::decode(text).unwrap();
+            let ty = ctx.alloc_type(Type::Atom(if bytes.is_empty() {
+                Atom::Nil
+            } else {
+                Atom::BytesValue(bytes.clone(), false)
+            }));
+
+            Value::new(ctx.alloc_hir(Hir::Atom(bytes)), ty)
+        }
         SyntaxKind::Integer => {
             let text = value.text().replace("_", "");
 
@@ -39,7 +56,6 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
 
             Value::new(ctx.alloc_hir(Hir::Atom(bigint_atom(num))), ty)
         }
-        SyntaxKind::Ident => ctx.builtins().unresolved.clone(),
         T![nil] => {
             let ty = ctx.builtins().nil;
             Value::new(ctx.alloc_hir(Hir::Atom(vec![])), ty)

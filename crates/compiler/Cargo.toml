@@ -14,6 +14,7 @@ id-arena = { workspace = true }
 rowan = { workspace = true }
 indexmap = { workspace = true }
 num-bigint = { workspace = true }
+hex = { workspace = true }
 
 [dev-dependencies]
 rue-lexer = { workspace = true }
