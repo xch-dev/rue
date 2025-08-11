@@ -1,9 +1,9 @@
 use rue_ast::{AstBlock, AstStmtOrExpr};
 use rue_hir::{Block, Hir, HirId};
 
-use crate::{Context, compile_expr, compile_stmt};
+use crate::{Compiler, compile_expr, compile_stmt};
 
-pub fn compile_block(ctx: &mut Context, block: &AstBlock) -> HirId {
+pub fn compile_block(ctx: &mut Compiler, block: &AstBlock) -> HirId {
     let mut statements = Vec::new();
     let mut body = None;
 

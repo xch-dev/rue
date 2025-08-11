@@ -2,7 +2,7 @@ use rue_ast::{AstDocument, AstItem};
 use rue_hir::{ScopeId, SymbolId, TypeId};
 
 use crate::{
-    Context, compile_symbol_item, compile_type_item, declare_symbol_item, declare_type_item,
+    Compiler, compile_symbol_item, compile_type_item, declare_symbol_item, declare_type_item,
 };
 
 #[derive(Debug, Default)]
@@ -12,7 +12,7 @@ pub struct DocumentDeclarations {
 }
 
 pub fn declare_document(
-    ctx: &mut Context,
+    ctx: &mut Compiler,
     scope: ScopeId,
     document: &AstDocument,
 ) -> DocumentDeclarations {
@@ -40,7 +40,7 @@ pub fn declare_document(
 }
 
 pub fn compile_document(
-    ctx: &mut Context,
+    ctx: &mut Compiler,
     scope: ScopeId,
     document: &AstDocument,
     declarations: DocumentDeclarations,

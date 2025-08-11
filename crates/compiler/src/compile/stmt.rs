@@ -1,8 +1,8 @@
 use rue_ast::AstStmt;
 use rue_hir::Statement;
 
-use crate::Context;
+use crate::Compiler;
 
-pub fn compile_stmt(_ctx: &mut Context, _stmt: &AstStmt) -> Statement {
+pub fn compile_stmt(_ctx: &mut Compiler, _stmt: &AstStmt) -> Statement {
     todo!()
 }

@@ -2,9 +2,9 @@ use rue_ast::AstFunctionItem;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId};
 
-use crate::{Context, compile_block, compile_generic_parameters, compile_type};
+use crate::{Compiler, compile_block, compile_generic_parameters, compile_type};
 
-pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> SymbolId {
+pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> SymbolId {
     let scope = ctx.alloc_scope(Scope::new());
 
     let return_type = if let Some(return_type) = function.return_type() {
@@ -74,7 +74,7 @@ pub fn declare_function(ctx: &mut Context, function: &AstFunctionItem) -> Symbol
     symbol
 }
 
-pub fn compile_function(ctx: &mut Context, function: &AstFunctionItem, symbol: SymbolId) {
+pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: SymbolId) {
     let scope = if let Symbol::Function(FunctionSymbol { scope, .. }) = ctx.symbol(symbol) {
         *scope
     } else {

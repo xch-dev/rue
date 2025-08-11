@@ -2,9 +2,9 @@ use rue_ast::AstTypeAliasItem;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Alias, Scope, Type, TypeId};
 
-use crate::{Context, compile_generic_parameters, compile_type};
+use crate::{Compiler, compile_generic_parameters, compile_type};
 
-pub fn declare_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem) -> TypeId {
+pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> TypeId {
     let scope = ctx.alloc_scope(Scope::new());
 
     let vars = if let Some(generic_parameters) = type_alias.generic_parameters() {
@@ -37,7 +37,7 @@ pub fn declare_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem) -> T
     ty
 }
 
-pub fn compile_type_alias(ctx: &mut Context, type_alias: &AstTypeAliasItem, ty: TypeId) {
+pub fn compile_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem, ty: TypeId) {
     let scope = if let Type::Alias(Alias { scope, .. }) = ctx.ty(ty) {
         *scope
     } else {

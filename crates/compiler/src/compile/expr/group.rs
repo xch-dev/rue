@@ -1,9 +1,9 @@
 use rue_ast::AstGroupExpr;
 use rue_hir::Value;
 
-use crate::{Context, compile_expr};
+use crate::{Compiler, compile_expr};
 
-pub fn compile_group_expr(ctx: &mut Context, group: &AstGroupExpr) -> Value {
+pub fn compile_group_expr(ctx: &mut Compiler, group: &AstGroupExpr) -> Value {
     let Some(expr) = group.expr() else {
         return ctx.builtins().unresolved.clone();
     };

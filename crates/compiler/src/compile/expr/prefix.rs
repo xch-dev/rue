@@ -2,9 +2,9 @@ use rue_ast::AstPrefixExpr;
 use rue_hir::{Hir, UnaryOp, Value};
 use rue_parser::T;
 
-use crate::{Context, compile_expr};
+use crate::{Compiler, compile_expr};
 
-pub fn compile_prefix_expr(ctx: &mut Context, prefix: &AstPrefixExpr) -> Value {
+pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value {
     let Some(expr) = prefix.expr() else {
         return ctx.builtins().unresolved.clone();
     };

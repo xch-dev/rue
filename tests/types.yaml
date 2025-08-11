@@ -1,4 +1,0 @@
-program: (a (q 1 . "Hello, world!") 1)
-solution: ()
-output: '"Hello, world!"'
-errors: []

@@ -1,9 +1,9 @@
 use rue_ast::AstUnionType;
 use rue_hir::{Type, TypeId};
 
-use crate::{Context, compile_type};
+use crate::{Compiler, compile_type};
 
-pub fn compile_union_type(ctx: &mut Context, union: &AstUnionType) -> TypeId {
+pub fn compile_union_type(ctx: &mut Compiler, union: &AstUnionType) -> TypeId {
     let mut types = Vec::new();
 
     for ty in union.types() {

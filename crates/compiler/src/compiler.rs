@@ -15,14 +15,14 @@ pub struct Builtins {
 }
 
 #[derive(Debug, Clone)]
-pub struct Context {
+pub struct Compiler {
     errors: Vec<Diagnostic>,
     db: Database,
     scope_stack: Vec<ScopeId>,
     builtins: Builtins,
 }
 
-impl Deref for Context {
+impl Deref for Compiler {
     type Target = Database;
 
     fn deref(&self) -> &Self::Target {
@@ -30,13 +30,13 @@ impl Deref for Context {
     }
 }
 
-impl DerefMut for Context {
+impl DerefMut for Compiler {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.db
     }
 }
 
-impl Default for Context {
+impl Default for Compiler {
     fn default() -> Self {
         let mut db = Database::new();
 
@@ -121,7 +121,7 @@ impl Default for Context {
     }
 }
 
-impl Context {
+impl Compiler {
     pub fn new() -> Self {
         Self::default()
     }

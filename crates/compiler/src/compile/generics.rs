@@ -2,10 +2,10 @@ use rue_ast::{AstGenericArguments, AstGenericParameters, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Generic, ScopeId, Type, TypeId};
 
-use crate::{Context, compile_type};
+use crate::{Compiler, compile_type};
 
 pub fn compile_generic_parameters(
-    ctx: &mut Context,
+    ctx: &mut Compiler,
     scope: ScopeId,
     generic_parameters: &AstGenericParameters,
 ) -> Vec<TypeId> {
@@ -44,7 +44,7 @@ pub fn compile_generic_parameters(
 }
 
 pub fn compile_generic_arguments(
-    ctx: &mut Context,
+    ctx: &mut Compiler,
     generic_arguments: &AstGenericArguments,
 ) -> Vec<TypeId> {
     let mut args = Vec::new();

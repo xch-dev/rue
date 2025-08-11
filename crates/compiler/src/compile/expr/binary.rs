@@ -2,9 +2,9 @@ use rue_ast::AstBinaryExpr;
 use rue_hir::{BinaryOp, Hir, Value};
 use rue_parser::T;
 
-use crate::{Context, compile_expr};
+use crate::{Compiler, compile_expr};
 
-pub fn compile_binary_expr(ctx: &mut Context, binary: &AstBinaryExpr) -> Value {
+pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value {
     let left = if let Some(left) = binary.left() {
         compile_expr(ctx, &left)
     } else {

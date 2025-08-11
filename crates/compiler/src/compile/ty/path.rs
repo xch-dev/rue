@@ -4,9 +4,9 @@ use rue_ast::AstPathType;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Type, TypeId};
 
-use crate::{Context, compile_generic_arguments};
+use crate::{Compiler, compile_generic_arguments};
 
-pub fn compile_path_type(ctx: &mut Context, path: &AstPathType) -> TypeId {
+pub fn compile_path_type(ctx: &mut Compiler, path: &AstPathType) -> TypeId {
     let mut ty = None;
 
     for segment in path.segments() {

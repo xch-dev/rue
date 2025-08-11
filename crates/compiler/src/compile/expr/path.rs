@@ -2,9 +2,9 @@ use rue_ast::AstPathExpr;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, Value};
 
-use crate::{Context, compile_generic_arguments};
+use crate::{Compiler, compile_generic_arguments};
 
-pub fn compile_path_expr(ctx: &mut Context, path: &AstPathExpr) -> Value {
+pub fn compile_path_expr(ctx: &mut Compiler, path: &AstPathExpr) -> Value {
     let mut value = None;
 
     for segment in path.segments() {

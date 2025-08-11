@@ -15,9 +15,9 @@ pub use prefix::*;
 use rue_ast::AstExpr;
 use rue_hir::Value;
 
-use crate::Context;
+use crate::Compiler;
 
-pub fn compile_expr(ctx: &mut Context, expr: &AstExpr) -> Value {
+pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr) -> Value {
     match expr {
         AstExpr::PathExpr(expr) => compile_path_expr(ctx, expr),
         AstExpr::LiteralExpr(expr) => compile_literal_expr(ctx, expr),

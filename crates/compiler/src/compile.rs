@@ -22,9 +22,9 @@ mod tests {
     use rue_lexer::Lexer;
     use rue_parser::Parser;
 
-    use crate::{Context, compile_document, declare_document};
+    use crate::{Compiler, compile_document, declare_document};
 
-    pub fn check(source: &str, errors: Expect) -> (Context, ScopeId) {
+    pub fn check(source: &str, errors: Expect) -> (Compiler, ScopeId) {
         let tokens = Lexer::new(source).collect::<Vec<_>>();
 
         let parser = Parser::new(source, tokens);
@@ -33,7 +33,7 @@ mod tests {
 
         let ast = AstDocument::cast(result.node).unwrap();
 
-        let mut ctx = Context::new();
+        let mut ctx = Compiler::new();
 
         let scope = ctx.alloc_scope(Scope::new());
         let declarations = declare_document(&mut ctx, scope, &ast);

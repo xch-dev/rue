@@ -5,7 +5,7 @@ use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::{Allocator, ChiaDialect, run_program};
 use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
-use rue_compiler::{Context, compile_document, declare_document};
+use rue_compiler::{Compiler, compile_document, declare_document};
 use rue_hir::{DependencyGraph, Scope, lower_main};
 use rue_lexer::Lexer;
 use rue_lir::codegen;
@@ -61,7 +61,7 @@ fn main() -> Result<()> {
 
         let ast = AstDocument::cast(result.node).unwrap();
 
-        let mut ctx = Context::new();
+        let mut ctx = Compiler::new();
 
         let scope = ctx.alloc_scope(Scope::new());
         let declarations = declare_document(&mut ctx, scope, &ast);
