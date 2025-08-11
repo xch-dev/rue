@@ -2,7 +2,10 @@ use std::ops::{Deref, DerefMut, Range};
 
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
-use rue_hir::{Database, Hir, Scope, ScopeId, SymbolId, Type, TypeId, Value};
+use rue_hir::{
+    Database, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId, Type, TypeId,
+    UnaryOp, Value,
+};
 use rue_parser::{SyntaxNode, SyntaxToken};
 
 #[derive(Debug, Clone)]
@@ -48,6 +51,64 @@ impl Default for Context {
         let mut scope = Scope::new();
 
         scope.insert_type("Bytes".to_string(), builtins.bytes);
+
+        let listp = {
+            let scope = db.alloc_scope(Scope::new());
+            let param = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+                name: None,
+                ty: unresolved_type,
+            }));
+            let param_hir = db.alloc_hir(Hir::Reference(param));
+            let body = db.alloc_hir(Hir::Unary(UnaryOp::Listp, param_hir));
+            db.alloc_symbol(Symbol::Function(FunctionSymbol {
+                name: None,
+                scope,
+                vars: vec![],
+                parameters: vec![param],
+                return_type: unresolved_type,
+                body,
+            }))
+        };
+
+        let first = {
+            let scope = db.alloc_scope(Scope::new());
+            let param = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+                name: None,
+                ty: unresolved_type,
+            }));
+            let param_hir = db.alloc_hir(Hir::Reference(param));
+            let body = db.alloc_hir(Hir::Unary(UnaryOp::First, param_hir));
+            db.alloc_symbol(Symbol::Function(FunctionSymbol {
+                name: None,
+                scope,
+                vars: vec![],
+                parameters: vec![param],
+                return_type: unresolved_type,
+                body,
+            }))
+        };
+
+        let rest = {
+            let scope = db.alloc_scope(Scope::new());
+            let param = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+                name: None,
+                ty: unresolved_type,
+            }));
+            let param_hir = db.alloc_hir(Hir::Reference(param));
+            let body = db.alloc_hir(Hir::Unary(UnaryOp::Rest, param_hir));
+            db.alloc_symbol(Symbol::Function(FunctionSymbol {
+                name: None,
+                scope,
+                vars: vec![],
+                parameters: vec![param],
+                return_type: unresolved_type,
+                body,
+            }))
+        };
+
+        scope.insert_symbol("listp".to_string(), listp);
+        scope.insert_symbol("first".to_string(), first);
+        scope.insert_symbol("rest".to_string(), rest);
 
         let scope = db.alloc_scope(scope);
 

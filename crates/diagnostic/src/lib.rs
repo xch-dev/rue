@@ -24,7 +24,7 @@ impl Diagnostic {
     pub fn message(&self, source: &str) -> String {
         let start = self.start(source);
 
-        format!("{} at {}:{}", self.kind, start.line + 1, start.col + 1,)
+        format!("{} at {}:{}", self.kind, start.line + 1, start.col + 1)
     }
 }
 

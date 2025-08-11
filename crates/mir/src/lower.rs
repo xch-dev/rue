@@ -86,6 +86,8 @@ pub fn lower_mir(
             let lir = lower_mir(input, arena, mir, context);
             match op {
                 UnaryOp::Listp => arena.alloc(Lir::Listp(lir)),
+                UnaryOp::First => arena.alloc(Lir::First(lir)),
+                UnaryOp::Rest => arena.alloc(Lir::Rest(lir)),
                 UnaryOp::Not => arena.alloc(Lir::Not(lir)),
             }
         }
