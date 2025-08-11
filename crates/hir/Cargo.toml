@@ -10,3 +10,4 @@ id-arena = { workspace = true }
 indexmap = { workspace = true }
 num-bigint = { workspace = true }
 clvmr = { workspace = true }
+hex = { workspace = true }

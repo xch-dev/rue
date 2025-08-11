@@ -1,5 +1,5 @@
 use rue_ast::AstLiteralExpr;
-use rue_hir::{Hir, Value};
+use rue_hir::{Atom, Hir, Type, Value};
 use rue_parser::{SyntaxKind, T};
 
 use crate::Compiler;
@@ -21,17 +21,26 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
                 text = stripped;
             }
 
-            Value::new(
-                ctx.alloc_hir(Hir::Atom(text.as_bytes().to_vec())),
-                ctx.builtins().bytes,
-            )
+            let bytes = text.as_bytes().to_vec();
+            let ty = ctx.alloc_type(Type::Atom(Atom::BytesValue(bytes.clone(), true)));
+
+            Value::new(ctx.alloc_hir(Hir::Atom(bytes)), ty)
         }
         SyntaxKind::Hex => todo!(),
         SyntaxKind::Integer => todo!(),
         SyntaxKind::Ident => ctx.builtins().unresolved.clone(),
-        T![nil] => todo!(),
-        T![true] => todo!(),
-        T![false] => todo!(),
+        T![nil] => {
+            let ty = ctx.builtins().nil;
+            Value::new(ctx.alloc_hir(Hir::Atom(vec![])), ty)
+        }
+        T![true] => {
+            let ty = ctx.builtins().true_type;
+            Value::new(ctx.alloc_hir(Hir::Atom(vec![1])), ty)
+        }
+        T![false] => {
+            let ty = ctx.builtins().false_type;
+            Value::new(ctx.alloc_hir(Hir::Atom(vec![])), ty)
+        }
         _ => unreachable!(),
     }
 }

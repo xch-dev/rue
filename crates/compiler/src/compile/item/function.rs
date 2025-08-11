@@ -1,4 +1,4 @@
-use rue_ast::AstFunctionItem;
+use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId};
 
@@ -75,8 +75,11 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 }
 
 pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: SymbolId) {
-    let scope = if let Symbol::Function(FunctionSymbol { scope, .. }) = ctx.symbol(symbol) {
-        *scope
+    let (scope, return_type) = if let Symbol::Function(FunctionSymbol {
+        scope, return_type, ..
+    }) = ctx.symbol(symbol)
+    {
+        (*scope, *return_type)
     } else {
         unreachable!();
     };
@@ -84,9 +87,11 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
     ctx.push_scope(scope);
 
     let resolved_body = if let Some(body) = function.body() {
-        compile_block(ctx, &body)
+        let value = compile_block(ctx, &body);
+        ctx.assign_type(body.syntax(), value.hir, value.ty, return_type);
+        value
     } else {
-        ctx.builtins().unresolved.hir
+        ctx.builtins().unresolved.clone()
     };
 
     ctx.pop_scope();
@@ -95,5 +100,5 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
         unreachable!()
     };
 
-    *body = resolved_body;
+    *body = resolved_body.hir;
 }

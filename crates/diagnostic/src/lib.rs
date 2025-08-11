@@ -74,6 +74,23 @@ pub enum DiagnosticKind {
 
     #[error("Expected {0} generic arguments, but found {1}")]
     ExpectedGenericArguments(usize, usize),
+
+    #[error("Cannot assign `{0}` to `{1}`, since they are incompatible")]
+    IncompatibleType(String, String),
+
+    #[error("Cannot assign `{0}` to `{1}` without a cast, since they are semantically different")]
+    UnassignableType(String, String),
+
+    #[error("Cannot cast `{0}` to `{1}`, since they have different runtime representations")]
+    IncompatibleCast(String, String),
+
+    #[error("Unnecessary cast from `{0}` to `{1}`, since they are directly assignable")]
+    UnnecessaryCast(String, String),
+
+    #[error(
+        "Cannot compare `{0}` to `{1}` without a type guard, since the runtime value must be constrained"
+    )]
+    UnconstrainableComparison(String, String),
 }
 
 impl DiagnosticKind {
@@ -90,10 +107,15 @@ impl DiagnosticKind {
             | Self::UndeclaredType(..)
             | Self::ExpectedGenericArguments(..)
             | Self::DuplicateField(..)
-            | Self::UndeclaredSubtypeField(..) => DiagnosticSeverity::Error,
+            | Self::UndeclaredSubtypeField(..)
+            | Self::IncompatibleType(..)
+            | Self::UnassignableType(..)
+            | Self::IncompatibleCast(..)
+            | Self::UnconstrainableComparison(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
-            | Self::EmptySubtypeFields => DiagnosticSeverity::Warning,
+            | Self::EmptySubtypeFields
+            | Self::UnnecessaryCast(..) => DiagnosticSeverity::Warning,
         }
     }
 }

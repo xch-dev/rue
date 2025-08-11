@@ -1,10 +1,13 @@
-use std::ops::{Deref, DerefMut, Range};
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut, Range},
+};
 
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
 use rue_hir::{
-    Database, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId, Type, TypeId,
-    UnaryOp, Value,
+    Atom, Comparison, Database, Hir, HirId, Scope, ScopeId, SymbolId, Type, TypeId, Value,
+    compare_types,
 };
 use rue_parser::{SyntaxNode, SyntaxToken};
 
@@ -12,6 +15,13 @@ use rue_parser::{SyntaxNode, SyntaxToken};
 pub struct Builtins {
     pub unresolved: Value,
     pub bytes: TypeId,
+    pub bytes32: TypeId,
+    pub public_key: TypeId,
+    pub int: TypeId,
+    pub bool: TypeId,
+    pub nil: TypeId,
+    pub true_type: TypeId,
+    pub false_type: TypeId,
 }
 
 #[derive(Debug, Clone)]
@@ -43,72 +53,34 @@ impl Default for Compiler {
         let unresolved_type = db.alloc_type(Type::Unresolved);
         let unresolved_hir = db.alloc_hir(Hir::Unresolved);
 
+        let bytes = db.alloc_type(Type::Atom(Atom::Bytes));
+        let bytes32 = db.alloc_type(Type::Atom(Atom::Bytes32));
+        let public_key = db.alloc_type(Type::Atom(Atom::PublicKey));
+        let int = db.alloc_type(Type::Atom(Atom::Int));
+        let bool = db.alloc_type(Type::Atom(Atom::Bool));
+        let nil = db.alloc_type(Type::Atom(Atom::Nil));
+        let true_type = db.alloc_type(Type::Atom(Atom::BoolValue(true)));
+        let false_type = db.alloc_type(Type::Atom(Atom::BoolValue(false)));
+
         let builtins = Builtins {
             unresolved: Value::new(unresolved_hir, unresolved_type),
-            bytes: unresolved_type,
+            bytes,
+            bytes32,
+            public_key,
+            int,
+            bool,
+            nil,
+            true_type,
+            false_type,
         };
 
         let mut scope = Scope::new();
 
-        scope.insert_type("Bytes".to_string(), builtins.bytes);
-
-        let listp = {
-            let scope = db.alloc_scope(Scope::new());
-            let param = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
-                name: None,
-                ty: unresolved_type,
-            }));
-            let param_hir = db.alloc_hir(Hir::Reference(param));
-            let body = db.alloc_hir(Hir::Unary(UnaryOp::Listp, param_hir));
-            db.alloc_symbol(Symbol::Function(FunctionSymbol {
-                name: None,
-                scope,
-                vars: vec![],
-                parameters: vec![param],
-                return_type: unresolved_type,
-                body,
-            }))
-        };
-
-        let first = {
-            let scope = db.alloc_scope(Scope::new());
-            let param = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
-                name: None,
-                ty: unresolved_type,
-            }));
-            let param_hir = db.alloc_hir(Hir::Reference(param));
-            let body = db.alloc_hir(Hir::Unary(UnaryOp::First, param_hir));
-            db.alloc_symbol(Symbol::Function(FunctionSymbol {
-                name: None,
-                scope,
-                vars: vec![],
-                parameters: vec![param],
-                return_type: unresolved_type,
-                body,
-            }))
-        };
-
-        let rest = {
-            let scope = db.alloc_scope(Scope::new());
-            let param = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
-                name: None,
-                ty: unresolved_type,
-            }));
-            let param_hir = db.alloc_hir(Hir::Reference(param));
-            let body = db.alloc_hir(Hir::Unary(UnaryOp::Rest, param_hir));
-            db.alloc_symbol(Symbol::Function(FunctionSymbol {
-                name: None,
-                scope,
-                vars: vec![],
-                parameters: vec![param],
-                return_type: unresolved_type,
-                body,
-            }))
-        };
-
-        scope.insert_symbol("listp".to_string(), listp);
-        scope.insert_symbol("first".to_string(), first);
-        scope.insert_symbol("rest".to_string(), rest);
+        scope.insert_type("Bytes".to_string(), bytes);
+        scope.insert_type("Bytes32".to_string(), bytes32);
+        scope.insert_type("PublicKey".to_string(), public_key);
+        scope.insert_type("Int".to_string(), int);
+        scope.insert_type("Bool".to_string(), bool);
 
         let scope = db.alloc_scope(scope);
 
@@ -128,6 +100,10 @@ impl Compiler {
 
     pub fn errors(&self) -> &[Diagnostic] {
         &self.errors
+    }
+
+    pub fn builtins(&self) -> &Builtins {
+        &self.builtins
     }
 
     pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
@@ -172,8 +148,117 @@ impl Compiler {
         None
     }
 
-    pub fn builtins(&self) -> &Builtins {
-        &self.builtins
+    pub fn type_name(&self, ty: TypeId) -> String {
+        self.type_name_impl(ty, &HashMap::new())
+    }
+
+    fn type_name_impl(&self, ty: TypeId, map: &HashMap<TypeId, TypeId>) -> String {
+        if let Some(ty) = map.get(&ty) {
+            return self.type_name_impl(*ty, map);
+        }
+
+        for scope in self.scope_stack.iter().rev() {
+            if let Some(name) = self.scope(*scope).type_name(ty) {
+                return name.to_string();
+            }
+        }
+
+        match self.ty(ty) {
+            Type::Unresolved => "{unknown}".to_string(),
+            Type::Atom(atom) => atom.to_string(),
+            Type::Pair(first, rest) => {
+                let first = self.type_name_impl(*first, map);
+                let rest = self.type_name_impl(*rest, map);
+                format!("({first}, {rest})")
+            }
+            Type::Generic(generic) => generic
+                .name
+                .as_ref()
+                .map_or("{generic}".to_string(), |name| name.text().to_string()),
+            Type::Alias(alias) => {
+                if let Some(name) = alias.name.as_ref() {
+                    name.text().to_string()
+                } else {
+                    self.type_name_impl(alias.inner, map)
+                }
+            }
+            Type::Apply(inner, map) => self.type_name_impl(*inner, map),
+            Type::Union(types) => {
+                let types = types
+                    .iter()
+                    .map(|ty| self.type_name_impl(*ty, map))
+                    .collect::<Vec<_>>();
+                types.join(" | ")
+            }
+        }
+    }
+
+    pub fn assign_type(&mut self, node: &impl GetTextRange, hir: HirId, from: TypeId, to: TypeId) {
+        self.compare_type(node, hir, from, to, false);
+    }
+
+    pub fn cast_type(&mut self, node: &impl GetTextRange, hir: HirId, from: TypeId, to: TypeId) {
+        self.compare_type(node, hir, from, to, true);
+    }
+
+    fn compare_type(
+        &mut self,
+        node: &impl GetTextRange,
+        hir: HirId,
+        from: TypeId,
+        to: TypeId,
+        is_cast: bool,
+    ) {
+        let comparison = compare_types(
+            self,
+            hir,
+            &HashMap::new(),
+            from,
+            &HashMap::new(),
+            to,
+            &mut HashMap::new(),
+        );
+
+        match comparison {
+            Comparison::Assignable => {
+                if is_cast {
+                    self.diagnostic(
+                        node,
+                        DiagnosticKind::UnnecessaryCast(self.type_name(from), self.type_name(to)),
+                    );
+                }
+            }
+            Comparison::Castable => {
+                if !is_cast {
+                    self.diagnostic(
+                        node,
+                        DiagnosticKind::UnassignableType(self.type_name(from), self.type_name(to)),
+                    );
+                }
+            }
+            Comparison::Incompatible => {
+                if is_cast {
+                    self.diagnostic(
+                        node,
+                        DiagnosticKind::IncompatibleCast(self.type_name(from), self.type_name(to)),
+                    );
+                } else {
+                    self.diagnostic(
+                        node,
+                        DiagnosticKind::IncompatibleType(self.type_name(from), self.type_name(to)),
+                    );
+                }
+            }
+            Comparison::Constrainable(..) => {
+                self.diagnostic(
+                    node,
+                    DiagnosticKind::UnconstrainableComparison(
+                        self.type_name(from),
+                        self.type_name(to),
+                    ),
+                );
+            }
+        }
     }
 }
 

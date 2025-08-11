@@ -1,9 +1,9 @@
 use rue_ast::{AstBlock, AstStmtOrExpr};
-use rue_hir::{Block, Hir, HirId};
+use rue_hir::{Block, Hir, Value};
 
 use crate::{Compiler, compile_expr, compile_stmt};
 
-pub fn compile_block(ctx: &mut Compiler, block: &AstBlock) -> HirId {
+pub fn compile_block(ctx: &mut Compiler, block: &AstBlock) -> Value {
     let mut statements = Vec::new();
     let mut body = None;
 
@@ -13,11 +13,18 @@ pub fn compile_block(ctx: &mut Compiler, block: &AstBlock) -> HirId {
                 statements.push(compile_stmt(ctx, &stmt));
             }
             AstStmtOrExpr::Expr(expr) => {
-                // TODO: Preserve value
-                body = Some(compile_expr(ctx, &expr).hir);
+                body = Some(compile_expr(ctx, &expr));
             }
         }
     }
 
-    ctx.alloc_hir(Hir::Block(Block { statements, body }))
+    // TODO: Handle early return blocks
+    let body = body.unwrap();
+
+    let hir = ctx.alloc_hir(Hir::Block(Block {
+        statements,
+        body: Some(body.hir),
+    }));
+
+    Value::new(hir, body.ty)
 }

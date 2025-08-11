@@ -1067,6 +1067,7 @@ name = "rue-hir"
 version = "0.1.0"
 dependencies = [
  "clvmr",
+ "hex",
  "id-arena",
  "indexmap",
  "num-bigint",

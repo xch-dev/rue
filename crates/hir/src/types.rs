@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use clvmr::Allocator;
 use id_arena::Id;
@@ -24,7 +24,7 @@ pub enum Type {
 #[derive(Debug, Clone)]
 pub enum Atom {
     Bytes,
-    BytesValue(Vec<u8>),
+    BytesValue(Vec<u8>, bool),
     Bytes32,
     PublicKey,
     Int,
@@ -32,6 +32,28 @@ pub enum Atom {
     Nil,
     Bool,
     BoolValue(bool),
+}
+
+impl fmt::Display for Atom {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bytes => write!(f, "Bytes"),
+            Self::BytesValue(value, is_string) => {
+                if *is_string {
+                    write!(f, "\"{}\"", String::from_utf8_lossy(value))
+                } else {
+                    write!(f, "0x{}", hex::encode(value))
+                }
+            }
+            Self::Bytes32 => write!(f, "Bytes32"),
+            Self::PublicKey => write!(f, "PublicKey"),
+            Self::Int => write!(f, "Int"),
+            Self::IntValue(value) => write!(f, "{value}"),
+            Self::Nil => write!(f, "nil"),
+            Self::Bool => write!(f, "Bool"),
+            Self::BoolValue(value) => write!(f, "{value}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -240,12 +262,12 @@ pub fn compare_types(
                 let or = db.alloc_hir(Hir::Binary(BinaryOp::Or, eq_true, eq_false));
                 Comparison::Constrainable(or)
             }
-            (Atom::Bytes | Atom::Int, Atom::BytesValue(value)) => {
+            (Atom::Bytes | Atom::Int, Atom::BytesValue(value, _)) => {
                 let atom = db.alloc_hir(Hir::Atom(value.clone()));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(eq)
             }
-            (Atom::Bool, Atom::BytesValue(value)) => {
+            (Atom::Bool, Atom::BytesValue(value, _)) => {
                 if value.is_empty() || value == [1] {
                     let atom = db.alloc_hir(Hir::Atom(value.clone()));
                     let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
@@ -279,7 +301,7 @@ pub fn compare_types(
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(eq)
             }
-            (Atom::BytesValue(from), Atom::BytesValue(to)) => {
+            (Atom::BytesValue(from, _), Atom::BytesValue(to, _)) => {
                 if from == to {
                     Comparison::Assignable
                 } else {
@@ -300,7 +322,7 @@ pub fn compare_types(
                     Comparison::Incompatible
                 }
             }
-            (Atom::BytesValue(from), Atom::Bytes32) => {
+            (Atom::BytesValue(from, _), Atom::Bytes32) => {
                 if from.len() == 32 {
                     Comparison::Assignable
                 } else {
@@ -314,7 +336,7 @@ pub fn compare_types(
                     Comparison::Incompatible
                 }
             }
-            (Atom::BytesValue(from), Atom::PublicKey) => {
+            (Atom::BytesValue(from, _), Atom::PublicKey) => {
                 if from.len() == 48 {
                     Comparison::Assignable
                 } else {
@@ -328,7 +350,7 @@ pub fn compare_types(
                     Comparison::Incompatible
                 }
             }
-            (Atom::BytesValue(bytes), Atom::Nil) | (Atom::Nil, Atom::BytesValue(bytes)) => {
+            (Atom::BytesValue(bytes, _), Atom::Nil) | (Atom::Nil, Atom::BytesValue(bytes, _)) => {
                 if bytes.is_empty() {
                     Comparison::Assignable
                 } else {
@@ -342,7 +364,7 @@ pub fn compare_types(
                     Comparison::Incompatible
                 }
             }
-            (Atom::BytesValue(from), Atom::Bool) => {
+            (Atom::BytesValue(from, _), Atom::Bool) => {
                 if from.is_empty() || from == [1] {
                     Comparison::Castable
                 } else {
@@ -357,8 +379,8 @@ pub fn compare_types(
                     Comparison::Incompatible
                 }
             }
-            (Atom::BytesValue(from), Atom::BoolValue(value))
-            | (Atom::BoolValue(value), Atom::BytesValue(from)) => {
+            (Atom::BytesValue(from, _), Atom::BoolValue(value))
+            | (Atom::BoolValue(value), Atom::BytesValue(from, _)) => {
                 if (from.is_empty() && !value) || (from == [1] && value) {
                     Comparison::Castable
                 } else {
@@ -374,15 +396,15 @@ pub fn compare_types(
                     Comparison::Incompatible
                 }
             }
-            (Atom::BytesValue(bytes), Atom::IntValue(int))
-            | (Atom::IntValue(int), Atom::BytesValue(bytes)) => {
+            (Atom::BytesValue(bytes, _), Atom::IntValue(int))
+            | (Atom::IntValue(int), Atom::BytesValue(bytes, _)) => {
                 if bigint_atom(int.clone()) == bytes {
                     Comparison::Castable
                 } else {
                     Comparison::Incompatible
                 }
             }
-            (Atom::Bytes32, Atom::BytesValue(bytes)) => {
+            (Atom::Bytes32, Atom::BytesValue(bytes, _)) => {
                 if bytes.len() == 32 {
                     let atom = db.alloc_hir(Hir::Atom(bytes.clone()));
                     let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
@@ -391,7 +413,7 @@ pub fn compare_types(
                     Comparison::Incompatible
                 }
             }
-            (Atom::PublicKey, Atom::BytesValue(bytes)) => {
+            (Atom::PublicKey, Atom::BytesValue(bytes, _)) => {
                 if bytes.len() == 48 {
                     let atom = db.alloc_hir(Hir::Atom(bytes.clone()));
                     let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
