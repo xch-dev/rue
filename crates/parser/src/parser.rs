@@ -134,6 +134,14 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn parse_raw(self) -> ParseResult {
+        ParseResult {
+            errors: self.errors,
+            node: SyntaxNode::new_root(self.builder.finish()),
+        }
+    }
+
     pub(crate) fn checkpoint(&mut self) -> Checkpoint {
         self.builder.checkpoint()
     }

@@ -21,7 +21,7 @@ mod tests {
         let mut parser = Parser::new(source, tokens);
         f(&mut parser);
 
-        let result = parser.parse();
+        let result = parser.parse_raw();
 
         let output = format!("{:#?}", result.node);
 

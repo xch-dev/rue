@@ -36,7 +36,7 @@ pub struct Subtype {
     pub name: Option<SyntaxToken>,
     pub scope: ScopeId,
     pub vars: Vec<SubtypeVar>,
-    pub parent: Option<SubtypeParent>,
+    pub parent: SubtypeParent,
     pub fields: IndexMap<String, SubtypeField>,
     pub constraint: Option<HirId>,
 }

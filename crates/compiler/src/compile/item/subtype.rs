@@ -122,9 +122,13 @@ pub fn declare_subtype(ctx: &mut Context, subtype: &AstSubtypeItem) -> TypeId {
                 .insert_symbol(name.text().to_string(), symbol);
         }
 
-        Some(SubtypeParent { symbol, ty })
+        SubtypeParent { symbol, ty }
     } else {
-        None
+        let ty = ctx.builtins().unresolved.ty;
+
+        let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }));
+
+        SubtypeParent { symbol, ty }
     };
 
     let constraint = subtype.constraint().map(|_| ctx.builtins().unresolved.hir);
@@ -207,9 +211,7 @@ pub fn compile_subtype(ctx: &mut Context, subtype: &AstSubtypeItem, ty: TypeId) 
         unreachable!()
     };
 
-    if let Some(parent) = parent {
-        parent.ty = resolved_parent;
-    }
+    parent.ty = resolved_parent;
 
     // TODO: Check the constraint return type to make sure it's a boolean
     *constraint = resolved_constraint.map(|value| value.hir);

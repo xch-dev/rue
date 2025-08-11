@@ -69,9 +69,7 @@ fn subtype_item(p: &mut Parser<'_>) {
     if p.at(T![<]) {
         subtype_generic_parameters(p);
     }
-    if p.at(T!['(']) {
-        subtype_parameter(p);
-    }
+    subtype_parameter(p);
     if p.at(T![if]) {
         subtype_constraint(p);
     }
