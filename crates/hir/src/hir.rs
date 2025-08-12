@@ -24,4 +24,5 @@ pub struct Block {
 #[derive(Debug, Clone)]
 pub enum Statement {
     Expr(HirId),
+    Let(SymbolId),
 }

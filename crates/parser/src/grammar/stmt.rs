@@ -34,8 +34,9 @@ fn let_stmt(p: &mut Parser<'_>) {
     if p.try_eat(T![:]) {
         ty(p);
     }
-    p.expect(T![=]);
-    expr(p);
+    if p.try_eat(T![=]) {
+        expr(p);
+    }
     p.expect(T![;]);
     p.finish();
 }

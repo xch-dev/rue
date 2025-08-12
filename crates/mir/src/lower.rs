@@ -1,5 +1,5 @@
 use id_arena::Arena;
-use rue_lir::{Lir, LirId, first_path, rest_path};
+use rue_lir::{Lir, LirId};
 
 use crate::{BinaryOp, Mir, MirId, UnaryOp};
 
@@ -80,7 +80,7 @@ pub fn lower_mir(
                 .into_iter()
                 .map(|capture| lower_mir(input, arena, capture, context))
                 .collect();
-            arena.alloc(Lir::Bind(body, args))
+            arena.alloc(Lir::Curry(body, args))
         }
         Mir::Unary(op, mir) => {
             let lir = lower_mir(input, arena, mir, context);
@@ -130,18 +130,21 @@ fn calculate_path(context: &MirContext, kind: PathKind, index: usize) -> u32 {
 
     if kind > PathKind::Binding {
         for _ in 0..context.bindings {
-            path = first_path(rest_path(path));
+            path *= 2;
+            path += 1;
         }
     }
 
     if kind > PathKind::Capture {
         for _ in 0..context.captures {
-            path = first_path(rest_path(path));
+            path *= 2;
+            path += 1;
         }
     }
 
     for _ in 0..index {
-        path = first_path(rest_path(path));
+        path *= 2;
+        path += 1;
     }
 
     path

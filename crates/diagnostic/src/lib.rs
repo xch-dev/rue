@@ -97,6 +97,12 @@ pub enum DiagnosticKind {
 
     #[error("Cannot use `{0}` operator with `{1}`")]
     IncompatibleUnaryOp(String, String),
+
+    #[error("Expression statements are not allowed, end a block with an expression instead")]
+    InvalidExpressionStatement,
+
+    #[error("Let bindings must have a value, since they cannot be reassigned")]
+    MissingLetValue,
 }
 
 impl DiagnosticKind {
@@ -119,7 +125,9 @@ impl DiagnosticKind {
             | Self::IncompatibleCast(..)
             | Self::UnconstrainableComparison(..)
             | Self::IncompatibleBinaryOp(..)
-            | Self::IncompatibleUnaryOp(..) => DiagnosticSeverity::Error,
+            | Self::IncompatibleUnaryOp(..)
+            | Self::InvalidExpressionStatement
+            | Self::MissingLetValue => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields

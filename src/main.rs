@@ -20,6 +20,8 @@ struct TestCase {
     program: Option<String>,
     solution: Option<String>,
     output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    clvm_error: Option<String>,
     errors: Vec<String>,
 }
 
@@ -94,15 +96,24 @@ fn main() -> Result<()> {
 
             let env = assemble(&mut allocator, test_case.solution.as_ref().unwrap()).unwrap();
 
-            let output = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, u64::MAX)
-                .unwrap()
-                .1;
-
             test_case.program = Some(disassemble(&allocator, ptr, None));
-            test_case.output = Some(disassemble(&allocator, output, None));
+
+            let response = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, u64::MAX);
+
+            match response {
+                Ok(output) => {
+                    test_case.output = Some(disassemble(&allocator, output.1, None));
+                    test_case.clvm_error = None;
+                }
+                Err(error) => {
+                    test_case.clvm_error = Some(error.to_string());
+                    test_case.output = None;
+                }
+            }
         } else {
             test_case.program = None;
             test_case.output = None;
+            test_case.clvm_error = None;
         }
 
         test_case.errors = errors;

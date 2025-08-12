@@ -2,7 +2,7 @@ use id_arena::Arena;
 use indexmap::IndexSet;
 use rue_mir::{Mir, MirId};
 
-use crate::{Database, DependencyGraph, Hir, HirId, Symbol, SymbolId};
+use crate::{Database, DependencyGraph, Hir, HirId, Statement, Symbol, SymbolId};
 
 #[derive(Debug, Default, Clone)]
 struct FunctionContext {
@@ -92,9 +92,88 @@ fn lower_hir(
                 arena.alloc(Mir::Capture(context.captures.insert_full(symbol).0))
             }
         }
-        Hir::Block(block) => {
-            // TODO: Properly implement blocks
-            lower_hir(db, arena, graph, context, block.body.unwrap())
+        Hir::Block(mut block) => {
+            // TODO: Implement statement only blocks
+
+            let mut binding_groups = Vec::new();
+
+            while !block.statements.is_empty() {
+                let mut remaining_bindings = IndexSet::new();
+
+                while let Some(stmt) = block.statements.last()
+                    && let Statement::Let(symbol) = stmt
+                {
+                    remaining_bindings.insert(*symbol);
+                    block.statements.pop();
+                }
+
+                while !remaining_bindings.is_empty() {
+                    let mut symbols = IndexSet::new();
+
+                    for &symbol in &remaining_bindings {
+                        if graph
+                            .dependencies(symbol)
+                            .iter()
+                            .all(|symbol| !remaining_bindings.contains(symbol))
+                        {
+                            symbols.insert(symbol);
+                        }
+                    }
+
+                    let mut bindings = Vec::new();
+
+                    for &symbol in &symbols {
+                        remaining_bindings.shift_remove(&symbol);
+                        bindings.push(symbol);
+                    }
+
+                    binding_groups.push(bindings);
+                }
+
+                while let Some(stmt) = block.statements.last() {
+                    match stmt {
+                        Statement::Expr(_) => {
+                            block.statements.pop().unwrap();
+                        }
+                        Statement::Let(_) => {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let all_bindings: IndexSet<SymbolId> =
+                binding_groups.iter().flatten().copied().collect();
+
+            let mut block_context = context.clone();
+            block_context.bindings.extend(all_bindings);
+
+            let mut expr = lower_hir(db, arena, graph, &mut block_context, block.body.unwrap());
+
+            context.captures.extend(block_context.captures);
+
+            for (i, group) in binding_groups.iter().enumerate().rev() {
+                let mut bindings = Vec::new();
+
+                let mut bind_context = context.clone();
+
+                for existing_group in binding_groups.iter().take(i) {
+                    bind_context.bindings.extend(existing_group.iter().copied());
+                }
+
+                for &symbol in group {
+                    bindings.push(lower_symbol(db, arena, graph, &mut bind_context, symbol));
+                }
+
+                context.captures.extend(bind_context.captures);
+
+                expr = arena.alloc(Mir::Bind {
+                    bindings,
+                    body: expr,
+                });
+            }
+
+            expr
         }
         Hir::Unary(op, hir) => {
             let mir = lower_hir(db, arena, graph, context, hir);
@@ -106,4 +185,18 @@ fn lower_hir(
             arena.alloc(Mir::Binary(op, left, right))
         }
     }
+}
+
+fn lower_symbol(
+    db: &Database,
+    arena: &mut Arena<Mir>,
+    graph: &DependencyGraph,
+    context: &mut FunctionContext,
+    symbol: SymbolId,
+) -> MirId {
+    let Symbol::Binding(binding) = db.symbol(symbol) else {
+        unreachable!()
+    };
+
+    lower_hir(db, arena, graph, context, binding.value)
 }
