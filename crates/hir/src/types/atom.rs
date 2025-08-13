@@ -504,4 +504,14 @@ mod tests {
         );
         check(Bytes32, StringValue("hello".to_string()), expect!["fail"]);
     }
+
+    #[test]
+    fn test_int() {
+        check(Bytes, Int, expect!["cast"]);
+        check(Int, Bytes, expect!["cast"]);
+        check(Int, Bytes32, expect!["((strlen Id { idx: 0 }) == 32)"]);
+        check(Bytes32, Int, expect!["cast"]);
+        check(IntValue(BigInt::from(1)), Int, expect!["assign"]);
+        check(Int, IntValue(BigInt::from(1)), expect!["(Id { idx: 0 } == 1)"]);
+    }
 }
