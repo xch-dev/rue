@@ -21,6 +21,9 @@ pub enum TokenKind {
     Let,
     If,
     Else,
+    Return,
+    Assert,
+    Raise,
 
     // Grouping
     OpenParen,

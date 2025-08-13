@@ -1,6 +1,9 @@
 use crate::{
     Parser, SyntaxKind, T,
-    grammar::{expr::expr, ty::ty},
+    grammar::{
+        expr::{expr, expr_or_stmt},
+        ty::ty,
+    },
 };
 
 #[must_use]
@@ -13,9 +16,17 @@ pub enum StatementKind {
 pub fn stmt(p: &mut Parser<'_>) -> StatementKind {
     if p.at(T![let]) {
         let_stmt(p);
+    } else if p.at(T![return]) {
+        return_stmt(p);
+    } else if p.at(T![assert]) {
+        assert_stmt(p);
+    } else if p.at(T![raise]) {
+        raise_stmt(p);
     } else {
         let cp = p.checkpoint();
-        expr(p);
+        if expr_or_stmt(p) {
+            return StatementKind::Normal;
+        }
         if p.at(T![;]) {
             p.start_at(cp, SyntaxKind::ExprStmt);
             p.expect(T![;]);
@@ -37,6 +48,30 @@ fn let_stmt(p: &mut Parser<'_>) {
     if p.try_eat(T![=]) {
         expr(p);
     }
+    p.expect(T![;]);
+    p.finish();
+}
+
+fn return_stmt(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::ReturnStmt);
+    p.expect(T![return]);
+    expr(p);
+    p.expect(T![;]);
+    p.finish();
+}
+
+fn assert_stmt(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::AssertStmt);
+    p.expect(T![assert]);
+    expr(p);
+    p.expect(T![;]);
+    p.finish();
+}
+
+fn raise_stmt(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::RaiseStmt);
+    p.expect(T![raise]);
+    expr(p);
     p.expect(T![;]);
     p.finish();
 }
@@ -151,6 +186,81 @@ mod tests {
                         Integer@6..7 "3"
                     CloseParen@7..8 ")"
                   Semicolon@8..9 ";"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_if_stmt() {
+        check_stmt(
+            StatementKind::Normal,
+            "if true { 42 }",
+            expect![[r#"
+                IfStmt@0..14
+                  If@0..2 "if"
+                  Whitespace@2..3 " "
+                  LiteralExpr@3..8
+                    True@3..7 "true"
+                    Whitespace@7..8 " "
+                  Block@8..14
+                    OpenBrace@8..9 "{"
+                    Whitespace@9..10 " "
+                    LiteralExpr@10..13
+                      Integer@10..12 "42"
+                      Whitespace@12..13 " "
+                    CloseBrace@13..14 "}"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_return_stmt() {
+        check_stmt(
+            StatementKind::Normal,
+            "return 42;",
+            expect![[r#"
+                ReturnStmt@0..10
+                  Return@0..6 "return"
+                  Whitespace@6..7 " "
+                  LiteralExpr@7..9
+                    Integer@7..9 "42"
+                  Semicolon@9..10 ";"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_assert_stmt() {
+        check_stmt(
+            StatementKind::Normal,
+            "return 42;",
+            expect![[r#"
+                ReturnStmt@0..10
+                  Return@0..6 "return"
+                  Whitespace@6..7 " "
+                  LiteralExpr@7..9
+                    Integer@7..9 "42"
+                  Semicolon@9..10 ";"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_raise_stmt() {
+        check_stmt(
+            StatementKind::Normal,
+            "return 42;",
+            expect![[r#"
+                ReturnStmt@0..10
+                  Return@0..6 "return"
+                  Whitespace@6..7 " "
+                  LiteralExpr@7..9
+                    Integer@7..9 "42"
+                  Semicolon@9..10 ";"
             "#]],
             expect![],
         );

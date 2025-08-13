@@ -1,19 +1,29 @@
+use rowan::Checkpoint;
+
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{block::block, generics::generic_arguments},
 };
 
 pub fn expr(p: &mut Parser<'_>) {
-    expr_binding_power(p, 0);
+    expr_binding_power(p, 0, false);
 }
 
-fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
+pub fn expr_or_stmt(p: &mut Parser<'_>) -> bool {
+    expr_binding_power(p, 0, true)
+}
+
+fn expr_binding_power(
+    p: &mut Parser<'_>,
+    minimum_binding_power: u8,
+    allow_statement: bool,
+) -> bool {
     let checkpoint = p.checkpoint();
 
     if let Some(kind) = p.at_any(SyntaxKind::PREFIX_OPS) {
         p.start_at(checkpoint, SyntaxKind::PrefixExpr);
         p.expect(kind);
-        expr_binding_power(p, 255);
+        expr_binding_power(p, 255, false);
         p.finish();
     } else if p.at(T![::]) || p.at(SyntaxKind::Ident) {
         p.start_at(checkpoint, SyntaxKind::PathExpr);
@@ -34,9 +44,13 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
         p.finish();
     } else if p.at(T!['{']) {
         block(p);
+    } else if p.at(T![if]) {
+        if if_expr(p, checkpoint, allow_statement) {
+            return true;
+        }
     } else {
         p.skip();
-        return;
+        return false;
     }
 
     loop {
@@ -58,7 +72,7 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
 
     loop {
         let Some(op) = p.at_any(SyntaxKind::BINARY_OPS) else {
-            return;
+            return false;
         };
 
         let (left_binding_power, right_binding_power) = match op {
@@ -76,13 +90,13 @@ fn expr_binding_power(p: &mut Parser<'_>, minimum_binding_power: u8) {
         };
 
         if left_binding_power < minimum_binding_power {
-            return;
+            return false;
         }
 
         p.expect(op);
 
         p.start_at(checkpoint, SyntaxKind::BinaryExpr);
-        expr_binding_power(p, right_binding_power);
+        expr_binding_power(p, right_binding_power, false);
         p.finish();
     }
 }
@@ -102,6 +116,28 @@ fn path_expr_segment(p: &mut Parser<'_>, first: bool) -> bool {
     }
     p.finish();
     separated
+}
+
+fn if_expr(p: &mut Parser<'_>, checkpoint: Checkpoint, allow_statement: bool) -> bool {
+    p.expect(T![if]);
+    expr(p);
+    block(p);
+    if allow_statement && !p.at(T![else]) {
+        p.start_at(checkpoint, SyntaxKind::IfStmt);
+        p.finish();
+        true
+    } else {
+        p.start_at(checkpoint, SyntaxKind::IfExpr);
+        p.expect(T![else]);
+        if p.at(T![if]) {
+            let checkpoint = p.checkpoint();
+            if_expr(p, checkpoint, false);
+        } else {
+            block(p);
+        }
+        p.finish();
+        false
+    }
 }
 
 #[cfg(test)]
@@ -357,6 +393,87 @@ mod tests {
                   CloseParen@12..13 ")"
             "#]],
             expect![],
+        );
+    }
+
+    #[test]
+    fn test_if_expr() {
+        check(
+            expr,
+            "if true { 42 } else { 84 }",
+            expect![[r#"
+            IfExpr@0..26
+              If@0..2 "if"
+              Whitespace@2..3 " "
+              LiteralExpr@3..8
+                True@3..7 "true"
+                Whitespace@7..8 " "
+              Block@8..15
+                OpenBrace@8..9 "{"
+                Whitespace@9..10 " "
+                LiteralExpr@10..13
+                  Integer@10..12 "42"
+                  Whitespace@12..13 " "
+                CloseBrace@13..14 "}"
+                Whitespace@14..15 " "
+              Else@15..19 "else"
+              Whitespace@19..20 " "
+              Block@20..26
+                OpenBrace@20..21 "{"
+                Whitespace@21..22 " "
+                LiteralExpr@22..25
+                  Integer@22..24 "84"
+                  Whitespace@24..25 " "
+                CloseBrace@25..26 "}"
+        "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "if true { 42 } else if false { 84 } else { 91 }",
+            expect![[r#"
+                IfExpr@0..47
+                  If@0..2 "if"
+                  Whitespace@2..3 " "
+                  LiteralExpr@3..8
+                    True@3..7 "true"
+                    Whitespace@7..8 " "
+                  Block@8..15
+                    OpenBrace@8..9 "{"
+                    Whitespace@9..10 " "
+                    LiteralExpr@10..13
+                      Integer@10..12 "42"
+                      Whitespace@12..13 " "
+                    CloseBrace@13..14 "}"
+                    Whitespace@14..15 " "
+                  Else@15..19 "else"
+                  Whitespace@19..20 " "
+                  IfExpr@20..47
+                    If@20..22 "if"
+                    Whitespace@22..23 " "
+                    LiteralExpr@23..29
+                      False@23..28 "false"
+                      Whitespace@28..29 " "
+                    Block@29..36
+                      OpenBrace@29..30 "{"
+                      Whitespace@30..31 " "
+                      LiteralExpr@31..34
+                        Integer@31..33 "84"
+                        Whitespace@33..34 " "
+                      CloseBrace@34..35 "}"
+                      Whitespace@35..36 " "
+                    Else@36..40 "else"
+                    Whitespace@40..41 " "
+                    Block@41..47
+                      OpenBrace@41..42 "{"
+                      Whitespace@42..43 " "
+                      LiteralExpr@43..46
+                        Integer@43..45 "91"
+                        Whitespace@45..46 " "
+                      CloseBrace@46..47 "}"
+            "#]],
+            expect![""],
         );
     }
 }

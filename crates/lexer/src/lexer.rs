@@ -59,6 +59,9 @@ impl<'a> Lexer<'a> {
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
+            "return" => TokenKind::Return,
+            "assert" => TokenKind::Assert,
+            "raise" => TokenKind::Raise,
             _ => TokenKind::Ident,
         }
     }
@@ -467,6 +470,27 @@ mod tests {
             "else",
             expect![[r#"
                 Else
+            "#]],
+        );
+
+        check(
+            "return",
+            expect![[r#"
+                Return
+            "#]],
+        );
+
+        check(
+            "assert",
+            expect![[r#"
+                Assert
+            "#]],
+        );
+
+        check(
+            "raise",
+            expect![[r#"
+                Raise
             "#]],
         );
     }

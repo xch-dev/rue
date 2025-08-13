@@ -59,6 +59,15 @@ pub enum SyntaxKind {
     #[display("`else`")]
     Else,
 
+    #[display("`return`")]
+    Return,
+
+    #[display("`assert`")]
+    Assert,
+
+    #[display("`raise`")]
+    Raise,
+
     // Grouping
     #[display("`(`")]
     OpenParen,
@@ -201,6 +210,18 @@ pub enum SyntaxKind {
     #[display("expression statement")]
     ExprStmt,
 
+    #[display("if statement")]
+    IfStmt,
+
+    #[display("return statement")]
+    ReturnStmt,
+
+    #[display("assert statement")]
+    AssertStmt,
+
+    #[display("raise statement")]
+    RaiseStmt,
+
     #[display("path expression")]
     PathExpr,
 
@@ -222,6 +243,9 @@ pub enum SyntaxKind {
     #[display("function call expression")]
     FunctionCallExpr,
 
+    #[display("if expression")]
+    IfExpr,
+
     // Unexpected cases
     #[display("error")]
     Error,
@@ -242,6 +266,9 @@ macro_rules! T {
     [let] => { $crate::SyntaxKind::Let };
     [if] => { $crate::SyntaxKind::If };
     [else] => { $crate::SyntaxKind::Else };
+    [return] => { $crate::SyntaxKind::Return };
+    [assert] => { $crate::SyntaxKind::Assert };
+    [raise] => { $crate::SyntaxKind::Raise };
     ['('] => { $crate::SyntaxKind::OpenParen };
     [')'] => { $crate::SyntaxKind::CloseParen };
     ['{'] => { $crate::SyntaxKind::OpenBrace };
@@ -334,6 +361,9 @@ impl SyntaxKind {
             T![let] => &[T![let]],
             T![if] => &[T![if]],
             T![else] => &[T![else]],
+            T![return] => &[T![return]],
+            T![assert] => &[T![assert]],
+            T![raise] => &[T![raise]],
             T!['('] => &[T!['(']],
             T![')'] => &[T![')']],
             T!['{'] => &[T!['{']],
@@ -379,6 +409,10 @@ impl SyntaxKind {
             SyntaxKind::Block => &[SyntaxKind::Block],
             SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],
             SyntaxKind::ExprStmt => &[SyntaxKind::ExprStmt],
+            SyntaxKind::IfStmt => &[SyntaxKind::IfStmt],
+            SyntaxKind::ReturnStmt => &[SyntaxKind::ReturnStmt],
+            SyntaxKind::AssertStmt => &[SyntaxKind::AssertStmt],
+            SyntaxKind::RaiseStmt => &[SyntaxKind::RaiseStmt],
             SyntaxKind::PathExpr => &[SyntaxKind::PathExpr],
             SyntaxKind::PathExprSegment => &[SyntaxKind::PathExprSegment],
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],
@@ -386,6 +420,7 @@ impl SyntaxKind {
             SyntaxKind::PrefixExpr => &[SyntaxKind::PrefixExpr],
             SyntaxKind::BinaryExpr => &[SyntaxKind::BinaryExpr],
             SyntaxKind::FunctionCallExpr => &[SyntaxKind::FunctionCallExpr],
+            SyntaxKind::IfExpr => &[SyntaxKind::IfExpr],
             SyntaxKind::Error => &[SyntaxKind::Error],
             SyntaxKind::Eof => &[SyntaxKind::Eof],
         }

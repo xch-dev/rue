@@ -66,6 +66,10 @@ ast_nodes!(
     Block,
     LetStmt,
     ExprStmt,
+    IfStmt,
+    ReturnStmt,
+    AssertStmt,
+    RaiseStmt,
     PathExpr,
     PathExprSegment,
     LiteralExpr,
@@ -73,12 +77,15 @@ ast_nodes!(
     PrefixExpr,
     BinaryExpr,
     FunctionCallExpr,
+    IfExpr,
 );
 
 ast_enum!(Item, TypeItem, SymbolItem);
 ast_enum!(TypeItem, TypeAliasItem);
 ast_enum!(SymbolItem, FunctionItem);
-ast_enum!(Stmt, LetStmt, ExprStmt);
+ast_enum!(
+    Stmt, LetStmt, ExprStmt, IfStmt, ReturnStmt, AssertStmt, RaiseStmt
+);
 ast_enum!(StmtOrExpr, Stmt, Expr);
 ast_enum!(
     Expr,
@@ -87,7 +94,9 @@ ast_enum!(
     GroupExpr,
     PrefixExpr,
     BinaryExpr,
-    FunctionCallExpr
+    FunctionCallExpr,
+    Block,
+    IfExpr,
 );
 ast_enum!(Type, PathType, UnionType);
 
@@ -202,6 +211,34 @@ impl AstExprStmt {
     }
 }
 
+impl AstIfStmt {
+    pub fn condition(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn then_block(&self) -> Option<AstBlock> {
+        self.syntax().children().filter_map(AstBlock::cast).nth(1)
+    }
+}
+
+impl AstReturnStmt {
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstAssertStmt {
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstRaiseStmt {
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
 impl AstPathExpr {
     pub fn segments(&self) -> impl Iterator<Item = AstPathExprSegment> {
         self.syntax()
@@ -282,6 +319,20 @@ impl AstFunctionCallExpr {
 
     pub fn args(&self) -> impl Iterator<Item = AstExpr> {
         self.syntax().children().filter_map(AstExpr::cast).skip(1)
+    }
+}
+
+impl AstIfExpr {
+    pub fn condition(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn then_expr(&self) -> Option<AstExpr> {
+        self.syntax().children().filter_map(AstExpr::cast).nth(1)
+    }
+
+    pub fn else_expr(&self) -> Option<AstExpr> {
+        self.syntax().children().filter_map(AstExpr::cast).nth(2)
     }
 }
 
