@@ -142,6 +142,18 @@ fn lower_hir(
                         Statement::Let(_) => {
                             break;
                         }
+                        Statement::If(_, _) => {
+                            todo!()
+                        }
+                        Statement::Return(_) => {
+                            todo!()
+                        }
+                        Statement::Assert(_) => {
+                            todo!()
+                        }
+                        Statement::Raise(_) => {
+                            todo!()
+                        }
                     }
                 }
             }

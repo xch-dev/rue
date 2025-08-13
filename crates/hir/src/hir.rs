@@ -30,6 +30,10 @@ pub struct Block {
 pub enum Statement {
     Expr(HirId),
     Let(SymbolId),
+    If(HirId, HirId),
+    Return(HirId),
+    Assert(HirId),
+    Raise(HirId),
 }
 
 #[cfg(test)]
