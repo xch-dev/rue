@@ -1,3 +1,4 @@
+mod builtins;
 mod database;
 mod dependency_graph;
 mod hir;
@@ -7,6 +8,7 @@ mod symbol;
 mod types;
 mod value;
 
+pub use builtins::*;
 pub use database::*;
 pub use dependency_graph::*;
 pub use hir::*;
