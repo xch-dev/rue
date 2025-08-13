@@ -31,3 +31,40 @@ pub enum Statement {
     Expr(HirId),
     Let(SymbolId),
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use crate::Database;
+
+    use super::*;
+
+    pub(crate) fn debug_hir(db: &Database, hir: HirId) -> String {
+        match db.hir(hir) {
+            Hir::Unresolved => "{unknown}".to_string(),
+            Hir::Nil => "nil".to_string(),
+            Hir::String(value) => format!("\"{value}\""),
+            Hir::Int(value) => format!("{value}"),
+            Hir::Bytes(value) => {
+                if value.is_empty() {
+                    "nil".to_string()
+                } else {
+                    format!("0x{}", hex::encode(value))
+                }
+            }
+            Hir::Bool(value) => format!("{value}"),
+            Hir::Reference(symbol) => format!("{symbol:?}"),
+            Hir::Block(block) => block
+                .body
+                .map_or("{empty}".to_string(), |body| debug_hir(db, body)),
+            Hir::Unary(op, hir) => format!("({op} {})", debug_hir(db, *hir)),
+            Hir::Binary(op, left, right) => {
+                format!(
+                    "({} {} {})",
+                    debug_hir(db, *left),
+                    op,
+                    debug_hir(db, *right)
+                )
+            }
+        }
+    }
+}
