@@ -8,8 +8,6 @@ rue-parser = { workspace = true }
 rue-ast = { workspace = true }
 rue-diagnostic = { workspace = true }
 rue-hir = { workspace = true }
-clvmr = { workspace = true }
-clvm-traits = { workspace = true }
 id-arena = { workspace = true }
 rowan = { workspace = true }
 indexmap = { workspace = true }

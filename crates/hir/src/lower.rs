@@ -2,7 +2,7 @@ use id_arena::Arena;
 use indexmap::IndexSet;
 use rue_mir::{Mir, MirId};
 
-use crate::{Database, DependencyGraph, Hir, HirId, Statement, Symbol, SymbolId};
+use crate::{Database, DependencyGraph, Hir, HirId, Statement, Symbol, SymbolId, bigint_atom};
 
 #[derive(Debug, Default, Clone)]
 struct FunctionContext {
@@ -82,7 +82,11 @@ fn lower_hir(
 ) -> MirId {
     match db.hir(hir).clone() {
         Hir::Unresolved => unreachable!(),
-        Hir::Atom(atom) => arena.alloc(Mir::Atom(atom)),
+        Hir::Nil => arena.alloc(Mir::Atom(vec![])),
+        Hir::String(value) => arena.alloc(Mir::Atom(value.as_bytes().to_vec())),
+        Hir::Int(value) => arena.alloc(Mir::Atom(bigint_atom(value.clone()))),
+        Hir::Bool(value) => arena.alloc(Mir::Atom(if value { vec![1] } else { vec![] })),
+        Hir::Bytes(atom) => arena.alloc(Mir::Atom(atom)),
         Hir::Reference(symbol) => {
             if let Some(index) = context.bindings.get_index_of(&symbol) {
                 arena.alloc(Mir::Binding(index))

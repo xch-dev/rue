@@ -6,7 +6,8 @@ use std::{
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
 use rue_hir::{
-    Builtins, Comparison, Database, HirId, Scope, ScopeId, SymbolId, Type, TypeId, compare_types,
+    Builtins, Comparison, ComparisonContext, Database, HirId, Scope, ScopeId, SymbolId, Type,
+    TypeId, compare_types,
 };
 use rue_parser::{SyntaxNode, SyntaxToken};
 
@@ -150,15 +151,9 @@ impl Compiler {
     pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {
         let hir = self.builtins.unresolved.hir;
 
-        let comparison = compare_types(
-            self,
-            hir,
-            &HashMap::new(),
-            from,
-            &HashMap::new(),
-            to,
-            &mut HashMap::new(),
-        );
+        let mut ctx = ComparisonContext::new(hir, HashMap::new());
+        let comparison = compare_types(&mut self.db, &mut ctx, &self.builtins, from, to);
+
         matches!(comparison, Comparison::Assignable)
     }
 
@@ -178,15 +173,8 @@ impl Compiler {
         to: TypeId,
         is_cast: bool,
     ) {
-        let comparison = compare_types(
-            self,
-            hir,
-            &HashMap::new(),
-            from,
-            &HashMap::new(),
-            to,
-            &mut HashMap::new(),
-        );
+        let mut ctx = ComparisonContext::new(hir, HashMap::new());
+        let comparison = compare_types(&mut self.db, &mut ctx, &self.builtins, from, to);
 
         match comparison {
             Comparison::Assignable => {

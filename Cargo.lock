@@ -1043,8 +1043,6 @@ dependencies = [
 name = "rue-compiler"
 version = "0.1.0"
 dependencies = [
- "clvm-traits",
- "clvmr",
  "expect-test",
  "hex",
  "id-arena",

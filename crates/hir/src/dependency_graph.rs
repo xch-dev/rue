@@ -62,7 +62,12 @@ impl DependencyGraph {
 
 fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
     match db.hir(hir) {
-        Hir::Unresolved | Hir::Atom(_) => {}
+        Hir::Unresolved
+        | Hir::Nil
+        | Hir::String(_)
+        | Hir::Int(_)
+        | Hir::Bytes(_)
+        | Hir::Bool(_) => {}
         Hir::Reference(symbol) => {
             visit_symbol_reference(db, graph, *symbol);
         }

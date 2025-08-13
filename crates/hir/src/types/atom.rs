@@ -4,7 +4,7 @@ use clvmr::Allocator;
 use num_bigint::BigInt;
 use rue_mir::{BinaryOp, UnaryOp};
 
-use crate::{Comparison, Database, Hir, HirId};
+use crate::{Builtins, Comparison, Database, Hir, HirId};
 
 #[derive(Debug, Clone)]
 pub enum Atom {
@@ -41,7 +41,13 @@ impl fmt::Display for Atom {
     }
 }
 
-pub fn compare_atoms(db: &mut Database, hir: HirId, from: Atom, to: Atom) -> Comparison {
+pub fn compare_atoms(
+    db: &mut Database,
+    builtins: &Builtins,
+    hir: HirId,
+    from: Atom,
+    to: Atom,
+) -> Comparison {
     match (from, to) {
         (Atom::Bytes, Atom::Bytes) => Comparison::Assignable,
         (Atom::Bytes, Atom::Int) => Comparison::Castable,
@@ -83,32 +89,30 @@ pub fn compare_atoms(db: &mut Database, hir: HirId, from: Atom, to: Atom) -> Com
         (Atom::Nil, Atom::Bool) => Comparison::Castable,
         (Atom::Bytes | Atom::Int, Atom::Bytes32) => {
             let strlen = db.alloc_hir(Hir::Unary(UnaryOp::Strlen, hir));
-            let len = db.alloc_hir(Hir::Atom(bigint_atom(BigInt::from(32))));
+            let len = db.alloc_hir(Hir::Int(BigInt::from(32)));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, strlen, len));
             Comparison::Constrainable(eq)
         }
         (Atom::Bytes | Atom::Int, Atom::PublicKey) => {
             let strlen = db.alloc_hir(Hir::Unary(UnaryOp::Strlen, hir));
-            let len = db.alloc_hir(Hir::Atom(bigint_atom(BigInt::from(48))));
+            let len = db.alloc_hir(Hir::Int(BigInt::from(48)));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, strlen, len));
             Comparison::Constrainable(eq)
         }
         (Atom::Bytes | Atom::Int, Atom::Bool) => {
-            let true_atom = db.alloc_hir(Hir::Atom(vec![1]));
-            let false_atom = db.alloc_hir(Hir::Atom(vec![]));
-            let eq_true = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, true_atom));
-            let eq_false = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, false_atom));
+            let eq_true = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, builtins.true_value.hir));
+            let eq_false = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, builtins.false_value.hir));
             let or = db.alloc_hir(Hir::Binary(BinaryOp::Or, eq_true, eq_false));
             Comparison::Constrainable(or)
         }
         (Atom::Bytes | Atom::Int, Atom::BytesValue(value, _)) => {
-            let atom = db.alloc_hir(Hir::Atom(value.clone()));
+            let atom = db.alloc_hir(Hir::Bytes(value.clone()));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
             Comparison::Constrainable(eq)
         }
         (Atom::Bool, Atom::BytesValue(value, _)) => {
             if value.is_empty() || value == [1] {
-                let atom = db.alloc_hir(Hir::Atom(value.clone()));
+                let atom = db.alloc_hir(Hir::Bytes(value.clone()));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(eq)
             } else {
@@ -118,7 +122,7 @@ pub fn compare_atoms(db: &mut Database, hir: HirId, from: Atom, to: Atom) -> Com
         (Atom::Bool, Atom::IntValue(value)) => {
             let atom = bigint_atom(value.clone());
             if atom.is_empty() || atom == [1] {
-                let atom = db.alloc_hir(Hir::Atom(atom));
+                let atom = db.alloc_hir(Hir::Bytes(atom));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(eq)
             } else {
@@ -126,17 +130,17 @@ pub fn compare_atoms(db: &mut Database, hir: HirId, from: Atom, to: Atom) -> Com
             }
         }
         (Atom::Bytes | Atom::Int, Atom::IntValue(value)) => {
-            let atom = db.alloc_hir(Hir::Atom(bigint_atom(value.clone())));
+            let atom = db.alloc_hir(Hir::Int(value.clone()));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
             Comparison::Constrainable(eq)
         }
         (Atom::Bytes | Atom::Int | Atom::Bool, Atom::BoolValue(value)) => {
-            let atom = db.alloc_hir(Hir::Atom(if value { vec![1] } else { vec![] }));
+            let atom = db.alloc_hir(Hir::Bool(value));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
             Comparison::Constrainable(eq)
         }
         (Atom::Bytes | Atom::Int | Atom::Bool, Atom::Nil) => {
-            let atom = db.alloc_hir(Hir::Atom(Vec::new()));
+            let atom = db.alloc_hir(Hir::Nil);
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
             Comparison::Constrainable(eq)
         }
@@ -245,7 +249,7 @@ pub fn compare_atoms(db: &mut Database, hir: HirId, from: Atom, to: Atom) -> Com
         }
         (Atom::Bytes32, Atom::BytesValue(bytes, _)) => {
             if bytes.len() == 32 {
-                let atom = db.alloc_hir(Hir::Atom(bytes.clone()));
+                let atom = db.alloc_hir(Hir::Bytes(bytes.clone()));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(eq)
             } else {
@@ -254,7 +258,7 @@ pub fn compare_atoms(db: &mut Database, hir: HirId, from: Atom, to: Atom) -> Com
         }
         (Atom::PublicKey, Atom::BytesValue(bytes, _)) => {
             if bytes.len() == 48 {
-                let atom = db.alloc_hir(Hir::Atom(bytes.clone()));
+                let atom = db.alloc_hir(Hir::Bytes(bytes.clone()));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(eq)
             } else {
@@ -264,7 +268,7 @@ pub fn compare_atoms(db: &mut Database, hir: HirId, from: Atom, to: Atom) -> Com
         (Atom::Bytes32, Atom::IntValue(int)) => {
             let atom = bigint_atom(int.clone());
             if atom.len() == 32 {
-                let atom = db.alloc_hir(Hir::Atom(atom));
+                let atom = db.alloc_hir(Hir::Bytes(atom));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(eq)
             } else {
@@ -274,7 +278,7 @@ pub fn compare_atoms(db: &mut Database, hir: HirId, from: Atom, to: Atom) -> Com
         (Atom::PublicKey, Atom::IntValue(int)) => {
             let atom = bigint_atom(int.clone());
             if atom.len() == 48 {
-                let atom = db.alloc_hir(Hir::Atom(atom));
+                let atom = db.alloc_hir(Hir::Bytes(atom));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(eq)
             } else {
@@ -291,7 +295,7 @@ pub fn compare_atoms(db: &mut Database, hir: HirId, from: Atom, to: Atom) -> Com
     }
 }
 
-fn bigint_atom(value: BigInt) -> Vec<u8> {
+pub fn bigint_atom(value: BigInt) -> Vec<u8> {
     let mut allocator = Allocator::new();
     let atom = allocator.new_number(value).unwrap();
     allocator.atom(atom).to_vec()

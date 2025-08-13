@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use rue_mir::{BinaryOp, UnaryOp};
 
-use crate::{Database, Hir, HirId, Type, TypeId, compare_atoms};
+use crate::{Builtins, ComparisonContext, Database, Hir, HirId, Type, TypeId, compare_atoms};
 
 #[derive(Debug, Clone)]
 pub enum Comparison {
@@ -14,54 +12,54 @@ pub enum Comparison {
 
 pub fn compare_types(
     db: &mut Database,
-    hir: HirId,
-    from_map: &HashMap<TypeId, TypeId>,
-    from_id: TypeId,
-    to_map: &HashMap<TypeId, TypeId>,
-    to_id: TypeId,
-    inferred: &mut HashMap<TypeId, TypeId>,
+    ctx: &mut ComparisonContext,
+    builtins: &Builtins,
+    mut from_id: TypeId,
+    mut to_id: TypeId,
 ) -> Comparison {
-    if let Some(from_id) = from_map.get(&from_id) {
-        return compare_types(db, hir, from_map, *from_id, to_map, to_id, inferred);
+    while let Some(new_from_id) = ctx.from(from_id) {
+        from_id = new_from_id;
     }
 
-    if let Some(to_id) = to_map.get(&to_id) {
-        return compare_types(db, hir, from_map, from_id, to_map, *to_id, inferred);
+    while let Some(new_to_id) = ctx.to(to_id) {
+        to_id = new_to_id;
     }
 
-    if let Some(from_id) = inferred.get(&from_id) {
-        return compare_types(db, hir, from_map, *from_id, to_map, to_id, inferred);
+    if let Some(new_from_id) = ctx.inferred(from_id) {
+        from_id = new_from_id;
     }
 
-    if let Some(to_id) = inferred.get(&to_id) {
-        return compare_types(db, hir, from_map, from_id, to_map, *to_id, inferred);
+    if let Some(new_to_id) = ctx.inferred(to_id) {
+        to_id = new_to_id;
     }
 
     match (db.ty(from_id).clone(), db.ty(to_id).clone()) {
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assignable,
         (Type::Generic(_), _) => Comparison::Incompatible,
         (_, Type::Generic(_)) => {
-            inferred.insert(to_id, from_id);
+            ctx.infer(to_id, from_id);
             Comparison::Assignable
         }
         (Type::Apply(from_id, from_map), _) => {
-            compare_types(db, hir, &from_map, from_id, to_map, to_id, inferred)
+            ctx.push_from_map(from_map);
+            let result = compare_types(db, ctx, builtins, from_id, to_id);
+            ctx.pop_from_map();
+            result
         }
         (_, Type::Apply(to_id, to_map)) => {
-            compare_types(db, hir, from_map, from_id, &to_map, to_id, inferred)
+            ctx.push_to_map(to_map);
+            let result = compare_types(db, ctx, builtins, from_id, to_id);
+            ctx.pop_to_map();
+            result
         }
-        (Type::Alias(from), _) => {
-            compare_types(db, hir, from_map, from.inner, to_map, to_id, inferred)
-        }
-        (_, Type::Alias(to)) => {
-            compare_types(db, hir, from_map, from_id, to_map, to.inner, inferred)
-        }
+        (Type::Alias(from), _) => compare_types(db, ctx, builtins, from.inner, to_id),
+        (_, Type::Alias(to)) => compare_types(db, ctx, builtins, from_id, to.inner),
         (Type::Union(..), _) => todo!(),
         (_, Type::Union(to_ids)) => {
             let mut result = Comparison::Incompatible;
 
             for to_id in to_ids {
-                let comparison = compare_types(db, hir, from_map, from_id, to_map, to_id, inferred);
+                let comparison = compare_types(db, ctx, builtins, from_id, to_id);
 
                 match (&mut result, comparison) {
                     (Comparison::Incompatible, comparison) => {
@@ -103,12 +101,17 @@ pub fn compare_types(
             Comparison::Incompatible
         }
         (Type::Pair(from_first, from_rest), Type::Pair(to_first, to_rest)) => {
-            let first_hir = db.alloc_hir(Hir::Unary(UnaryOp::First, hir));
-            let rest_hir = db.alloc_hir(Hir::Unary(UnaryOp::Rest, hir));
-            let first = compare_types(
-                db, first_hir, from_map, from_first, to_map, to_first, inferred,
-            );
-            let rest = compare_types(db, rest_hir, from_map, from_rest, to_map, to_rest, inferred);
+            let first_hir = db.alloc_hir(Hir::Unary(UnaryOp::First, ctx.hir()));
+            let rest_hir = db.alloc_hir(Hir::Unary(UnaryOp::Rest, ctx.hir()));
+
+            ctx.push_hir(first_hir);
+            let first = compare_types(db, ctx, builtins, from_first, to_first);
+            ctx.pop_hir();
+
+            ctx.push_hir(rest_hir);
+            let rest = compare_types(db, ctx, builtins, from_rest, to_rest);
+            ctx.pop_hir();
+
             match (first, rest) {
                 (Comparison::Assignable, Comparison::Assignable) => Comparison::Assignable,
                 (Comparison::Castable, Comparison::Castable) => Comparison::Castable,
@@ -138,6 +141,6 @@ pub fn compare_types(
                 }
             }
         }
-        (Type::Atom(from), Type::Atom(to)) => compare_atoms(db, hir, from, to),
+        (Type::Atom(from), Type::Atom(to)) => compare_atoms(db, builtins, ctx.hir(), from, to),
     }
 }

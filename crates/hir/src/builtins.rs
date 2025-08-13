@@ -9,9 +9,9 @@ pub struct Builtins {
     pub public_key: TypeId,
     pub int: TypeId,
     pub bool: TypeId,
-    pub nil: TypeId,
-    pub true_type: TypeId,
-    pub false_type: TypeId,
+    pub nil: Value,
+    pub true_value: Value,
+    pub false_value: Value,
 }
 
 impl Builtins {
@@ -24,7 +24,12 @@ impl Builtins {
         let public_key = db.alloc_type(Type::Atom(Atom::PublicKey));
         let int = db.alloc_type(Type::Atom(Atom::Int));
         let bool = db.alloc_type(Type::Atom(Atom::Bool));
-        let nil = db.alloc_type(Type::Atom(Atom::Nil));
+
+        let nil_hir = db.alloc_hir(Hir::Nil);
+        let true_hir = db.alloc_hir(Hir::Bool(true));
+        let false_hir = db.alloc_hir(Hir::Bool(false));
+
+        let nil_type = db.alloc_type(Type::Atom(Atom::Nil));
         let true_type = db.alloc_type(Type::Atom(Atom::BoolValue(true)));
         let false_type = db.alloc_type(Type::Atom(Atom::BoolValue(false)));
 
@@ -46,9 +51,9 @@ impl Builtins {
             public_key,
             int,
             bool,
-            nil,
-            true_type,
-            false_type,
+            nil: Value::new(nil_hir, nil_type),
+            true_value: Value::new(true_hir, true_type),
+            false_value: Value::new(false_hir, false_type),
         }
     }
 }

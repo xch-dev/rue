@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use clvmr::Allocator;
 use num_bigint::BigInt;
 use rue_ast::AstLiteralExpr;
 use rue_hir::{Atom, Hir, Type, Value};
@@ -28,7 +27,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
             let bytes = text.as_bytes().to_vec();
             let ty = ctx.alloc_type(Type::Atom(Atom::BytesValue(bytes.clone(), true)));
 
-            Value::new(ctx.alloc_hir(Hir::Atom(bytes)), ty)
+            Value::new(ctx.alloc_hir(Hir::String(text.to_string())), ty)
         }
         SyntaxKind::Hex => {
             let mut text = value.text();
@@ -46,7 +45,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
                 Atom::BytesValue(bytes.clone(), false)
             }));
 
-            Value::new(ctx.alloc_hir(Hir::Atom(bytes)), ty)
+            Value::new(ctx.alloc_hir(Hir::Bytes(bytes)), ty)
         }
         SyntaxKind::Integer => {
             let text = value.text().replace("_", "");
@@ -54,26 +53,11 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
             let num = BigInt::from_str(&text).unwrap();
             let ty = ctx.alloc_type(Type::Atom(Atom::IntValue(num.clone())));
 
-            Value::new(ctx.alloc_hir(Hir::Atom(bigint_atom(num))), ty)
+            Value::new(ctx.alloc_hir(Hir::Int(num)), ty)
         }
-        T![nil] => {
-            let ty = ctx.builtins().nil;
-            Value::new(ctx.alloc_hir(Hir::Atom(vec![])), ty)
-        }
-        T![true] => {
-            let ty = ctx.builtins().true_type;
-            Value::new(ctx.alloc_hir(Hir::Atom(vec![1])), ty)
-        }
-        T![false] => {
-            let ty = ctx.builtins().false_type;
-            Value::new(ctx.alloc_hir(Hir::Atom(vec![])), ty)
-        }
+        T![nil] => ctx.builtins().nil.clone(),
+        T![true] => ctx.builtins().true_value.clone(),
+        T![false] => ctx.builtins().false_value.clone(),
         _ => unreachable!(),
     }
-}
-
-fn bigint_atom(value: BigInt) -> Vec<u8> {
-    let mut allocator = Allocator::new();
-    let atom = allocator.new_number(value).unwrap();
-    allocator.atom(atom).to_vec()
 }
