@@ -24,10 +24,9 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
                 text = stripped;
             }
 
-            let bytes = text.as_bytes().to_vec();
-            let ty = ctx.alloc_type(Type::Atom(Atom::BytesValue(bytes.clone(), true)));
-
-            Value::new(ctx.alloc_hir(Hir::String(text.to_string())), ty)
+            let hir = ctx.alloc_hir(Hir::String(text.to_string()));
+            let ty = ctx.alloc_type(Type::Atom(Atom::StringValue(text.to_string())));
+            Value::new(hir, ty)
         }
         SyntaxKind::Hex => {
             let mut text = value.text();
@@ -42,7 +41,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
             let ty = ctx.alloc_type(Type::Atom(if bytes.is_empty() {
                 Atom::Nil
             } else {
-                Atom::BytesValue(bytes.clone(), false)
+                Atom::BytesValue(bytes.clone())
             }));
 
             Value::new(ctx.alloc_hir(Hir::Bytes(bytes)), ty)

@@ -10,6 +10,25 @@ pub enum Comparison {
     Incompatible,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ComparisonKind {
+    Assignable,
+    Castable,
+    Constrainable,
+    Incompatible,
+}
+
+impl Comparison {
+    pub fn kind(&self) -> ComparisonKind {
+        match self {
+            Comparison::Assignable => ComparisonKind::Assignable,
+            Comparison::Castable => ComparisonKind::Castable,
+            Comparison::Constrainable(_) => ComparisonKind::Constrainable,
+            Comparison::Incompatible => ComparisonKind::Incompatible,
+        }
+    }
+}
+
 pub fn compare_types(
     db: &mut Database,
     ctx: &mut ComparisonContext,
