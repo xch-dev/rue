@@ -1,5 +1,0 @@
-fn main() -> Int {
-    let aa = 42;
-    let bb = 13;
-    aa * bb
-}

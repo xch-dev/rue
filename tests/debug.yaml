@@ -1,4 +1,0 @@
-program: (a (q 18 2 5) (c (q . 42) (c (q . 13) 1)))
-solution: ()
-output: '546'
-cost: 1438
