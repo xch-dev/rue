@@ -7,7 +7,7 @@ use crate::{
 pub enum Comparison {
     Assignable,
     Castable,
-    Constrainable(HirId),
+    Constrainable(Constraint),
     Incompatible,
 }
 
@@ -24,9 +24,21 @@ impl Comparison {
         match self {
             Comparison::Assignable => ComparisonKind::Assignable,
             Comparison::Castable => ComparisonKind::Castable,
-            Comparison::Constrainable(_) => ComparisonKind::Constrainable,
+            Comparison::Constrainable(..) => ComparisonKind::Constrainable,
             Comparison::Incompatible => ComparisonKind::Incompatible,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Constraint {
+    pub hir: HirId,
+    pub else_map: Option<TypeId>,
+}
+
+impl Constraint {
+    pub fn new(hir: HirId, else_map: Option<TypeId>) -> Self {
+        Self { hir, else_map }
     }
 }
 
