@@ -1,0 +1,6 @@
+fn main() -> Int {
+    if true {
+        13
+    }
+    42
+}

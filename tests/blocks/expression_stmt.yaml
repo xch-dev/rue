@@ -1,0 +1,5 @@
+program: null
+solution: ()
+output: null
+errors:
+- Expression statements are not allowed, end a block with an expression instead at 2:5
