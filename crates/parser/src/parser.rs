@@ -16,7 +16,7 @@ struct ParseToken {
 
 #[derive(Debug, Clone)]
 pub struct ParseResult {
-    pub errors: Vec<Diagnostic>,
+    pub diagnostics: Vec<Diagnostic>,
     pub node: SyntaxNode,
 }
 
@@ -26,14 +26,14 @@ pub struct Parser<'a> {
     parse_tokens: Vec<ParseToken>,
     pos: usize,
     expected: IndexSet<SyntaxKind>,
-    errors: Vec<Diagnostic>,
+    diagnostics: Vec<Diagnostic>,
     builder: GreenNodeBuilder<'static>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(source: &'a str, tokens: Vec<Token>) -> Self {
         let mut parse_tokens = Vec::with_capacity(tokens.len());
-        let mut errors = Vec::new();
+        let mut diagnostics = Vec::new();
 
         for token in tokens {
             let kind = match token.kind {
@@ -41,7 +41,7 @@ impl<'a> Parser<'a> {
                 TokenKind::LineComment => SyntaxKind::LineComment,
                 TokenKind::BlockComment { is_terminated } => {
                     if !is_terminated {
-                        errors.push(Diagnostic::new(
+                        diagnostics.push(Diagnostic::new(
                             token.span.clone(),
                             DiagnosticKind::UnterminatedBlockComment,
                         ));
@@ -50,7 +50,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::String { is_terminated } => {
                     if !is_terminated {
-                        errors.push(Diagnostic::new(
+                        diagnostics.push(Diagnostic::new(
                             token.span.clone(),
                             DiagnosticKind::UnterminatedString,
                         ));
@@ -59,7 +59,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Hex { is_terminated } => {
                     if !is_terminated {
-                        errors.push(Diagnostic::new(
+                        diagnostics.push(Diagnostic::new(
                             token.span.clone(),
                             DiagnosticKind::UnterminatedHex,
                         ));
@@ -105,7 +105,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Colon => T![:],
                 TokenKind::Semicolon => T![;],
                 TokenKind::Unknown => {
-                    errors.push(Diagnostic::new(
+                    diagnostics.push(Diagnostic::new(
                         token.span.clone(),
                         DiagnosticKind::UnknownToken(source[token.span.clone()].to_string()),
                     ));
@@ -124,7 +124,7 @@ impl<'a> Parser<'a> {
             parse_tokens,
             pos: 0,
             expected: IndexSet::new(),
-            errors,
+            diagnostics,
             builder: GreenNodeBuilder::new(),
         }
     }
@@ -132,7 +132,7 @@ impl<'a> Parser<'a> {
     pub fn parse(mut self) -> ParseResult {
         document(&mut self);
         ParseResult {
-            errors: self.errors,
+            diagnostics: self.diagnostics,
             node: SyntaxNode::new_root(self.builder.finish()),
         }
     }
@@ -140,7 +140,7 @@ impl<'a> Parser<'a> {
     #[cfg(test)]
     pub(crate) fn parse_raw(self) -> ParseResult {
         ParseResult {
-            errors: self.errors,
+            diagnostics: self.diagnostics,
             node: SyntaxNode::new_root(self.builder.finish()),
         }
     }
@@ -230,7 +230,7 @@ impl<'a> Parser<'a> {
                 token.span.clone()
             });
 
-        self.errors.push(Diagnostic::new(
+        self.diagnostics.push(Diagnostic::new(
             span,
             DiagnosticKind::UnexpectedToken(
                 self.nth(0).to_string(),

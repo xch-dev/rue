@@ -13,7 +13,7 @@ use rue_parser::{SyntaxNode, SyntaxToken};
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
-    errors: Vec<Diagnostic>,
+    diagnostics: Vec<Diagnostic>,
     db: Database,
     scope_stack: Vec<ScopeId>,
     builtins: Builtins,
@@ -40,7 +40,7 @@ impl Default for Compiler {
         let builtins = Builtins::new(&mut db);
 
         Self {
-            errors: Vec::new(),
+            diagnostics: Vec::new(),
             db,
             scope_stack: vec![builtins.scope],
             builtins,
@@ -53,8 +53,8 @@ impl Compiler {
         Self::default()
     }
 
-    pub fn errors(&self) -> &[Diagnostic] {
-        &self.errors
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
     }
 
     pub fn builtins(&self) -> &Builtins {
@@ -64,7 +64,7 @@ impl Compiler {
     pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
         let range = node.text_range();
         let span: Range<usize> = range.start().into()..range.end().into();
-        self.errors.push(Diagnostic::new(span, kind));
+        self.diagnostics.push(Diagnostic::new(span, kind));
     }
 
     pub fn push_scope(&mut self, scope: ScopeId) {

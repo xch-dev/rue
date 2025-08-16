@@ -3,14 +3,7 @@ use std::fs;
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
-use id_arena::Arena;
-use rue_ast::{AstDocument, AstNode};
-use rue_compiler::{Compiler, compile_document, declare_document};
-use rue_diagnostic::DiagnosticSeverity;
-use rue_hir::{DependencyGraph, Environment, Scope, lower_symbol};
-use rue_lexer::Lexer;
-use rue_lir::{codegen, optimize};
-use rue_parser::Parser;
+use rue_compiler::compile_file;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
@@ -32,7 +25,7 @@ struct TestCase {
     clvm_error: Option<String>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    errors: Vec<String>,
+    diagnostics: Vec<String>,
 }
 
 fn main() -> Result<()> {
@@ -62,47 +55,16 @@ fn main() -> Result<()> {
         let source =
             fs::read_to_string(entry.path().parent().unwrap().join(format!("{name}.rue")))?;
 
-        let tokens = Lexer::new(&source).collect::<Vec<_>>();
-        let parser = Parser::new(&source, tokens);
-        let result = parser.parse();
+        let mut allocator = Allocator::new();
+        let result = compile_file(&mut allocator, &source)?;
 
-        let mut errors = Vec::new();
-        let mut fatal = false;
+        let mut diagnostics = Vec::new();
 
-        for error in result.errors {
-            errors.push(error.message(&source));
-
-            if error.kind.severity() == DiagnosticSeverity::Error {
-                fatal = true;
-            }
+        for diagnostic in result.diagnostics {
+            diagnostics.push(diagnostic.message(&source));
         }
 
-        let ast = AstDocument::cast(result.node).unwrap();
-
-        let mut ctx = Compiler::new();
-
-        let scope = ctx.alloc_scope(Scope::new());
-        let declarations = declare_document(&mut ctx, scope, &ast);
-        compile_document(&mut ctx, scope, &ast, declarations);
-
-        for error in ctx.errors() {
-            errors.push(error.message(&source));
-
-            if error.kind.severity() == DiagnosticSeverity::Error {
-                fatal = true;
-            }
-        }
-
-        if !fatal {
-            let symbol = ctx.scope(scope).symbol("main").unwrap();
-            let graph = DependencyGraph::build(&ctx, symbol);
-            let mut arena = Arena::new();
-            let lir = lower_symbol(&ctx, &mut arena, &graph, &Environment::default(), symbol);
-            let lir = optimize(&mut arena, lir);
-
-            let mut allocator = Allocator::new();
-            let ptr = codegen(&arena, &mut allocator, lir)?;
-
+        if let Some(ptr) = result.program {
             let env = assemble(&mut allocator, test_case.solution.as_ref().unwrap()).unwrap();
 
             test_case.program = Some(disassemble(&allocator, ptr, None));
@@ -129,7 +91,7 @@ fn main() -> Result<()> {
             test_case.cost = None;
         }
 
-        test_case.errors = errors;
+        test_case.diagnostics = diagnostics;
 
         if test_case != original {
             println!("{name} failed, updated test case");

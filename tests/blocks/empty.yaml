@@ -1,2 +1,2 @@
-errors:
+diagnostics:
 - Block does not return a value at 1:18

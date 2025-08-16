@@ -1,2 +1,2 @@
-errors:
+diagnostics:
 - Expected statement block to end in `return` or `raise`, not an expression at 3:9

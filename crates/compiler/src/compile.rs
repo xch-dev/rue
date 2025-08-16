@@ -42,7 +42,7 @@ mod tests {
         let mut error_output = String::new();
         let mut first = true;
 
-        for error in result.errors {
+        for error in result.diagnostics {
             if !first {
                 error_output.push('\n');
             }
@@ -50,7 +50,7 @@ mod tests {
             first = false;
         }
 
-        for error in ctx.errors() {
+        for error in ctx.diagnostics() {
             if !first {
                 error_output.push('\n');
             }
