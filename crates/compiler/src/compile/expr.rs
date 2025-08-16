@@ -1,14 +1,18 @@
 mod binary;
+mod cast;
 mod function_call;
 mod group;
+mod guard;
 mod if_expr;
 mod literal;
 mod path;
 mod prefix;
 
 pub use binary::*;
+pub use cast::*;
 pub use function_call::*;
 pub use group::*;
+pub use guard::*;
 pub use if_expr::*;
 pub use literal::*;
 pub use path::*;
@@ -28,6 +32,8 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr) -> Value {
         AstExpr::BinaryExpr(expr) => compile_binary_expr(ctx, expr),
         AstExpr::FunctionCallExpr(expr) => compile_function_call_expr(ctx, expr),
         AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr),
+        AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
+        AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
         AstExpr::Block(block) => compile_block(ctx, block, true),
     }
 }

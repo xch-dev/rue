@@ -2,7 +2,7 @@ use rowan::Checkpoint;
 
 use crate::{
     Parser, SyntaxKind, T,
-    grammar::{block::block, generics::generic_arguments},
+    grammar::{block::block, generics::generic_arguments, ty::ty},
 };
 
 pub fn expr(p: &mut Parser<'_>) {
@@ -64,6 +64,16 @@ fn expr_binding_power(
                 }
             }
             p.expect(T![')']);
+            p.finish();
+        } else if p.at(T![is]) {
+            p.start_at(checkpoint, SyntaxKind::GuardExpr);
+            p.expect(T![is]);
+            ty(p);
+            p.finish();
+        } else if p.at(T![as]) {
+            p.start_at(checkpoint, SyntaxKind::CastExpr);
+            p.expect(T![as]);
+            ty(p);
             p.finish();
         } else {
             break;

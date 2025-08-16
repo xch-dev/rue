@@ -78,6 +78,8 @@ ast_nodes!(
     BinaryExpr,
     FunctionCallExpr,
     IfExpr,
+    GuardExpr,
+    CastExpr,
 );
 
 ast_enum!(Item, TypeItem, SymbolItem);
@@ -97,6 +99,8 @@ ast_enum!(
     FunctionCallExpr,
     Block,
     IfExpr,
+    GuardExpr,
+    CastExpr,
 );
 ast_enum!(Type, PathType, UnionType);
 
@@ -337,6 +341,26 @@ impl AstIfExpr {
 
     pub fn else_expr(&self) -> Option<AstExpr> {
         self.syntax().children().filter_map(AstExpr::cast).nth(2)
+    }
+}
+
+impl AstGuardExpr {
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+}
+
+impl AstCastExpr {
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
     }
 }
 

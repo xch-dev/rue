@@ -55,13 +55,14 @@ impl<'a> Lexer<'a> {
             "fn" => TokenKind::Fn,
             "const" => TokenKind::Const,
             "type" => TokenKind::Type,
-            "subtype" => TokenKind::Subtype,
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "return" => TokenKind::Return,
             "assert" => TokenKind::Assert,
             "raise" => TokenKind::Raise,
+            "is" => TokenKind::Is,
+            "as" => TokenKind::As,
             _ => TokenKind::Ident,
         }
     }
@@ -446,13 +447,6 @@ mod tests {
         );
 
         check(
-            "subtype",
-            expect![[r#"
-                Subtype
-            "#]],
-        );
-
-        check(
             "let",
             expect![[r#"
                 Let
@@ -491,6 +485,20 @@ mod tests {
             "raise",
             expect![[r#"
                 Raise
+            "#]],
+        );
+
+        check(
+            "is",
+            expect![[r#"
+                Is
+            "#]],
+        );
+
+        check(
+            "as",
+            expect![[r#"
+                As
             "#]],
         );
     }

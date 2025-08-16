@@ -17,13 +17,14 @@ pub enum TokenKind {
     Fn,
     Const,
     Type,
-    Subtype,
     Let,
     If,
     Else,
     Return,
     Assert,
     Raise,
+    Is,
+    As,
 
     // Grouping
     OpenParen,

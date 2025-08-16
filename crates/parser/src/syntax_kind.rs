@@ -47,9 +47,6 @@ pub enum SyntaxKind {
     #[display("`type`")]
     Type,
 
-    #[display("`subtype`")]
-    Subtype,
-
     #[display("`let`")]
     Let,
 
@@ -67,6 +64,12 @@ pub enum SyntaxKind {
 
     #[display("`raise`")]
     Raise,
+
+    #[display("`is`")]
+    Is,
+
+    #[display("`as`")]
+    As,
 
     // Grouping
     #[display("`(`")]
@@ -246,6 +249,12 @@ pub enum SyntaxKind {
     #[display("if expression")]
     IfExpr,
 
+    #[display("guard expression")]
+    GuardExpr,
+
+    #[display("cast expression")]
+    CastExpr,
+
     // Unexpected cases
     #[display("error")]
     Error,
@@ -262,13 +271,14 @@ macro_rules! T {
     [fn] => { $crate::SyntaxKind::Fn };
     [const] => { $crate::SyntaxKind::Const };
     [type] => { $crate::SyntaxKind::Type };
-    [subtype] => { $crate::SyntaxKind::Subtype };
     [let] => { $crate::SyntaxKind::Let };
     [if] => { $crate::SyntaxKind::If };
     [else] => { $crate::SyntaxKind::Else };
     [return] => { $crate::SyntaxKind::Return };
     [assert] => { $crate::SyntaxKind::Assert };
     [raise] => { $crate::SyntaxKind::Raise };
+    [is] => { $crate::SyntaxKind::Is };
+    [as] => { $crate::SyntaxKind::As };
     ['('] => { $crate::SyntaxKind::OpenParen };
     [')'] => { $crate::SyntaxKind::CloseParen };
     ['{'] => { $crate::SyntaxKind::OpenBrace };
@@ -357,13 +367,14 @@ impl SyntaxKind {
             T![fn] => &[T![fn]],
             T![const] => &[T![const]],
             T![type] => &[T![type]],
-            T![subtype] => &[T![subtype]],
             T![let] => &[T![let]],
             T![if] => &[T![if]],
             T![else] => &[T![else]],
             T![return] => &[T![return]],
             T![assert] => &[T![assert]],
             T![raise] => &[T![raise]],
+            T![is] => &[T![is]],
+            T![as] => &[T![as]],
             T!['('] => &[T!['(']],
             T![')'] => &[T![')']],
             T!['{'] => &[T!['{']],
@@ -421,6 +432,8 @@ impl SyntaxKind {
             SyntaxKind::BinaryExpr => &[SyntaxKind::BinaryExpr],
             SyntaxKind::FunctionCallExpr => &[SyntaxKind::FunctionCallExpr],
             SyntaxKind::IfExpr => &[SyntaxKind::IfExpr],
+            SyntaxKind::GuardExpr => &[SyntaxKind::GuardExpr],
+            SyntaxKind::CastExpr => &[SyntaxKind::CastExpr],
             SyntaxKind::Error => &[SyntaxKind::Error],
             SyntaxKind::Eof => &[SyntaxKind::Eof],
         }

@@ -1,0 +1,4 @@
+program: (q . 42)
+solution: ()
+output: '42'
+cost: 23
