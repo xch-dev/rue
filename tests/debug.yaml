@@ -1,4 +1,4 @@
-program: (a (q 2 (q 18 2 5) (c (q . 42) (c (q . 13) 1))) 1)
+program: (a (q 18 2 5) (c (q . 42) (c (q . 13) 1)))
 solution: ()
 output: '546'
-cost: 1601
+cost: 1438

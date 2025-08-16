@@ -1,4 +1,4 @@
-program: (a (q 2 (i (> (q . 42) (q . 10)) (q 1 . 100) (q 8)) 1) 1)
+program: (a (i (> (q . 42) (q . 10)) (q 1 . 100) (q 8)) 1)
 solution: ()
 output: '100'
-cost: 968
+cost: 805

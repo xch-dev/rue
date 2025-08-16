@@ -1,3 +1,3 @@
-program: (a (q 8 (q . "Hello, world!")) 1)
+program: (x (q . "Hello, world!"))
 solution: ()
 clvm_error: clvm raise
