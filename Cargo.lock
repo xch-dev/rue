@@ -1019,6 +1019,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rue-cli"
+version = "0.1.0"
+
+[[package]]
 name = "rue-compiler"
 version = "0.1.0"
 dependencies = [
@@ -1026,7 +1030,6 @@ dependencies = [
  "expect-test",
  "hex",
  "id-arena",
- "indexmap",
  "num-bigint",
  "rowan",
  "rue-ast",
@@ -1100,14 +1103,7 @@ dependencies = [
  "anyhow",
  "clvm_tools_rs",
  "clvmr",
- "id-arena",
- "rue-ast",
  "rue-compiler",
- "rue-diagnostic",
- "rue-hir",
- "rue-lexer",
- "rue-lir",
- "rue-parser",
  "serde",
  "serde_yml",
  "walkdir",
