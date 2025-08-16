@@ -1,24 +1,3 @@
-[package]
-name = "rue"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-rue-lexer = { workspace = true }
-rue-parser = { workspace = true }
-rue-ast = { workspace = true }
-rue-compiler = { workspace = true }
-rue-lir = { workspace = true }
-rue-hir = { workspace = true }
-rue-diagnostic = { workspace = true }
-clvmr = { workspace = true }
-clvm_tools_rs = { workspace = true }
-anyhow = { workspace = true }
-serde = { workspace = true }
-id-arena = { workspace = true }
-walkdir = { workspace = true }
-serde_yml = { workspace = true }
-
 [workspace]
 resolver = "3"
 members = ["crates/*"]

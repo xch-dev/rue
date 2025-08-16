@@ -1011,26 +1011,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rue"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clvm_tools_rs",
- "clvmr",
- "id-arena",
- "rue-ast",
- "rue-compiler",
- "rue-diagnostic",
- "rue-hir",
- "rue-lexer",
- "rue-lir",
- "rue-parser",
- "serde",
- "serde_yml",
- "walkdir",
-]
-
-[[package]]
 name = "rue-ast"
 version = "0.1.0"
 dependencies = [
@@ -1109,6 +1089,26 @@ dependencies = [
  "rowan",
  "rue-diagnostic",
  "rue-lexer",
+]
+
+[[package]]
+name = "rue-test-runner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clvm_tools_rs",
+ "clvmr",
+ "id-arena",
+ "rue-ast",
+ "rue-compiler",
+ "rue-diagnostic",
+ "rue-hir",
+ "rue-lexer",
+ "rue-lir",
+ "rue-parser",
+ "serde",
+ "serde_yml",
+ "walkdir",
 ]
 
 [[package]]
