@@ -1,4 +1,5 @@
 use std::{
+    cmp::Reverse,
     collections::HashMap,
     ops::{Deref, DerefMut, Range},
 };
@@ -6,8 +7,8 @@ use std::{
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
 use rue_hir::{
-    Builtins, Comparison, ComparisonContext, Constraint, Database, HirId, Scope, ScopeId, SymbolId,
-    Type, TypeId, compare_types,
+    Builtins, Comparison, ComparisonContext, Constraint, Database, HirId, Scope, ScopeId, Symbol,
+    SymbolId, Type, TypeId, TypePath, compare_types, replace_type,
 };
 use rue_parser::{SyntaxNode, SyntaxToken};
 
@@ -23,7 +24,7 @@ pub struct Compiler {
     diagnostics: Vec<Diagnostic>,
     db: Database,
     scope_stack: Vec<ScopeId>,
-    mapping_stack: Vec<HashMap<TypeId, TypeId>>,
+    mapping_stack: Vec<HashMap<SymbolId, TypeId>>,
     builtins: Builtins,
 }
 
@@ -157,9 +158,41 @@ impl Compiler {
         }
     }
 
-    pub fn push_mappings(&mut self, mappings: HashMap<TypeId, TypeId>) -> usize {
+    pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {
+        for map in self.mapping_stack.iter().rev() {
+            if let Some(ty) = map.get(&symbol) {
+                return *ty;
+            }
+        }
+
+        match self.symbol(symbol) {
+            Symbol::Binding(binding) => binding.ty,
+            Symbol::Function(_) => todo!(),
+            Symbol::Parameter(parameter) => parameter.ty,
+        }
+    }
+
+    pub fn push_mappings(
+        &mut self,
+        mappings: HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>,
+    ) -> usize {
+        let mut result = HashMap::new();
+
+        for (symbol, paths) in mappings {
+            let mut ty = self.symbol_type(symbol);
+
+            let mut paths = paths.into_iter().collect::<Vec<_>>();
+            paths.sort_by_key(|(path, _)| (Reverse(path.len()), path.last().copied()));
+
+            for (path, replacement) in paths {
+                ty = replace_type(&mut self.db, ty, replacement, &path);
+            }
+
+            result.insert(symbol, ty);
+        }
+
         let index = self.mapping_stack.len();
-        self.mapping_stack.push(mappings);
+        self.mapping_stack.push(result);
         index
     }
 
@@ -171,20 +204,10 @@ impl Compiler {
         self.mapping_stack.truncate(index);
     }
 
-    pub fn mappings(&self) -> HashMap<TypeId, TypeId> {
-        let mut mappings = HashMap::new();
-        for mapping in &self.mapping_stack {
-            mappings.extend(mapping.iter().map(|(k, v)| (*k, *v)));
-        }
-        mappings
-    }
-
     pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {
         let hir = self.builtins.unresolved.hir;
 
-        let inferred = self.mappings();
-
-        let mut ctx = ComparisonContext::new(hir, inferred);
+        let mut ctx = ComparisonContext::new(hir, HashMap::new());
         let comparison = compare_types(&mut self.db, &mut ctx, &self.builtins, from, to);
 
         matches!(comparison, Comparison::Assignable)
@@ -216,11 +239,9 @@ impl Compiler {
         to: TypeId,
         kind: ComparisonKind,
     ) -> Constraint {
-        let inferred = self.mappings();
-
         let comparison = compare_types(
             &mut self.db,
-            &mut ComparisonContext::new(hir, inferred),
+            &mut ComparisonContext::new(hir, HashMap::new()),
             &self.builtins,
             from,
             to,

@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use crate::{HirId, TypeId};
+use crate::{HirId, TypeId, TypePath};
 
 #[derive(Debug, Clone)]
 pub struct ComparisonContext {
     hir: Vec<HirId>,
+    path: Vec<TypePath>,
     from_map: Vec<HashMap<TypeId, TypeId>>,
     to_map: Vec<HashMap<TypeId, TypeId>>,
     inferred: HashMap<TypeId, TypeId>,
@@ -14,6 +15,7 @@ impl ComparisonContext {
     pub fn new(hir: HirId, inferred: HashMap<TypeId, TypeId>) -> Self {
         Self {
             hir: vec![hir],
+            path: vec![],
             from_map: vec![HashMap::new()],
             to_map: vec![HashMap::new()],
             inferred,
@@ -24,12 +26,23 @@ impl ComparisonContext {
         *self.hir.last().unwrap()
     }
 
-    pub fn push_hir(&mut self, hir: HirId) {
+    pub fn push_first(&mut self, hir: HirId) {
         self.hir.push(hir);
+        self.path.push(TypePath::First);
+    }
+
+    pub fn push_rest(&mut self, hir: HirId) {
+        self.hir.push(hir);
+        self.path.push(TypePath::Rest);
     }
 
     pub fn pop_hir(&mut self) {
         self.hir.pop().unwrap();
+        self.path.pop().unwrap();
+    }
+
+    pub fn path(&self) -> Vec<TypePath> {
+        self.path.clone()
     }
 
     pub fn into_inferred(self) -> HashMap<TypeId, TypeId> {

@@ -20,12 +20,10 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
         T![!] => {
             if ctx.is_assignable(value.ty, ctx.builtins().bool) {
                 let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Not, value.hir));
-                return Value::with_mappings(
-                    hir,
-                    ctx.builtins().bool,
-                    value.else_map,
-                    value.then_map,
-                );
+                return value
+                    .flip_mappings()
+                    .with_hir(hir)
+                    .with_type(ctx.builtins().bool);
             }
         }
         _ => {}

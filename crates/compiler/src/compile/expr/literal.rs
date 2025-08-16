@@ -26,7 +26,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
 
             let hir = ctx.alloc_hir(Hir::String(text.to_string()));
             let ty = ctx.alloc_type(Type::Atom(Atom::StringValue(text.to_string())));
-            Value::unmapped(hir, ty)
+            Value::new(hir, ty)
         }
         SyntaxKind::Hex => {
             let mut text = value.text();
@@ -44,7 +44,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
                 Atom::BytesValue(bytes.clone())
             }));
 
-            Value::unmapped(ctx.alloc_hir(Hir::Bytes(bytes)), ty)
+            Value::new(ctx.alloc_hir(Hir::Bytes(bytes)), ty)
         }
         SyntaxKind::Integer => {
             let text = value.text().replace("_", "");
@@ -52,7 +52,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
             let num = BigInt::from_str(&text).unwrap();
             let ty = ctx.alloc_type(Type::Atom(Atom::IntValue(num.clone())));
 
-            Value::unmapped(ctx.alloc_hir(Hir::Int(num)), ty)
+            Value::new(ctx.alloc_hir(Hir::Int(num)), ty)
         }
         T![nil] => ctx.builtins().nil.clone(),
         T![true] => ctx.builtins().true_value.clone(),

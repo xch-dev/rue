@@ -3,7 +3,9 @@ use std::fmt;
 use clvmr::Allocator;
 use num_bigint::BigInt;
 
-use crate::{BinaryOp, Builtins, Comparison, Constraint, Database, Hir, HirId, TypeId, UnaryOp};
+use crate::{
+    BinaryOp, Builtins, Comparison, Constraint, Database, Hir, HirId, TypeId, TypePath, UnaryOp,
+};
 
 #[derive(Debug, Clone)]
 pub enum Atom {
@@ -46,7 +48,7 @@ pub fn compare_atoms(
     db: &mut Database,
     builtins: &Builtins,
     hir: HirId,
-    from_id: TypeId,
+    path: Vec<TypePath>,
     to_id: TypeId,
     from: Atom,
     to: Atom,
@@ -94,24 +96,24 @@ pub fn compare_atoms(
             let strlen = db.alloc_hir(Hir::Unary(UnaryOp::Strlen, hir));
             let len = db.alloc_hir(Hir::Int(BigInt::from(32)));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, strlen, len));
-            Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+            Comparison::Constrainable(Constraint::to(eq, path, to_id))
         }
         (Atom::Bytes | Atom::Int, Atom::PublicKey) => {
             let strlen = db.alloc_hir(Hir::Unary(UnaryOp::Strlen, hir));
             let len = db.alloc_hir(Hir::Int(BigInt::from(48)));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, strlen, len));
-            Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+            Comparison::Constrainable(Constraint::to(eq, path, to_id))
         }
         (Atom::Bytes | Atom::Int, Atom::Bool) => {
             let eq_true = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, builtins.true_value.hir));
             let eq_false = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, builtins.false_value.hir));
             let or = db.alloc_hir(Hir::Binary(BinaryOp::Or, eq_true, eq_false));
-            Comparison::Constrainable(Constraint::to(or, from_id, to_id))
+            Comparison::Constrainable(Constraint::to(or, path, to_id))
         }
         (Atom::Bytes | Atom::Int, Atom::BytesValue(value)) => {
             let atom = db.alloc_hir(Hir::Bytes(value.clone()));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-            Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+            Comparison::Constrainable(Constraint::to(eq, path, to_id))
         }
         (Atom::Bool, Atom::BytesValue(value)) => {
             if value.is_empty() || value == [1] {
@@ -119,7 +121,7 @@ pub fn compare_atoms(
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(Constraint::if_else(
                     eq,
-                    from_id,
+                    path,
                     to_id,
                     if value.is_empty() {
                         builtins.true_value.ty
@@ -134,7 +136,7 @@ pub fn compare_atoms(
         (Atom::Bytes | Atom::Int, Atom::StringValue(value)) => {
             let atom = db.alloc_hir(Hir::String(value.clone()));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-            Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+            Comparison::Constrainable(Constraint::to(eq, path, to_id))
         }
         (Atom::Bool, Atom::StringValue(value)) => {
             let bytes = value.as_bytes().to_vec();
@@ -143,7 +145,7 @@ pub fn compare_atoms(
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(Constraint::if_else(
                     eq,
-                    from_id,
+                    path,
                     to_id,
                     if bytes.is_empty() {
                         builtins.true_value.ty
@@ -162,7 +164,7 @@ pub fn compare_atoms(
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
                 Comparison::Constrainable(Constraint::if_else(
                     eq,
-                    from_id,
+                    path,
                     to_id,
                     if bytes.is_empty() {
                         builtins.true_value.ty
@@ -177,19 +179,19 @@ pub fn compare_atoms(
         (Atom::Bytes | Atom::Int, Atom::IntValue(value)) => {
             let atom = db.alloc_hir(Hir::Int(value.clone()));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-            Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+            Comparison::Constrainable(Constraint::to(eq, path, to_id))
         }
         (Atom::Bytes | Atom::Int, Atom::BoolValue(value)) => {
             let atom = db.alloc_hir(Hir::Bool(value));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-            Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+            Comparison::Constrainable(Constraint::to(eq, path, to_id))
         }
         (Atom::Bool, Atom::BoolValue(value)) => {
             let atom = db.alloc_hir(Hir::Bool(value));
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
             Comparison::Constrainable(Constraint::if_else(
                 eq,
-                from_id,
+                path,
                 to_id,
                 if value {
                     builtins.false_value.ty
@@ -201,17 +203,12 @@ pub fn compare_atoms(
         (Atom::Bytes | Atom::Int, Atom::Nil) => {
             let atom = db.alloc_hir(Hir::Nil);
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-            Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+            Comparison::Constrainable(Constraint::to(eq, path, to_id))
         }
         (Atom::Bool, Atom::Nil) => {
             let atom = db.alloc_hir(Hir::Nil);
             let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-            Comparison::Constrainable(Constraint::if_else(
-                eq,
-                from_id,
-                to_id,
-                builtins.true_value.ty,
-            ))
+            Comparison::Constrainable(Constraint::if_else(eq, path, to_id, builtins.true_value.ty))
         }
         (Atom::BytesValue(from), Atom::BytesValue(to)) => {
             if from == to {
@@ -371,7 +368,7 @@ pub fn compare_atoms(
             if bytes.len() == 32 {
                 let atom = db.alloc_hir(Hir::Bytes(bytes.clone()));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-                Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+                Comparison::Constrainable(Constraint::to(eq, path, to_id))
             } else {
                 Comparison::Incompatible
             }
@@ -380,7 +377,7 @@ pub fn compare_atoms(
             if string.len() == 32 {
                 let atom = db.alloc_hir(Hir::String(string));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-                Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+                Comparison::Constrainable(Constraint::to(eq, path, to_id))
             } else {
                 Comparison::Incompatible
             }
@@ -389,7 +386,7 @@ pub fn compare_atoms(
             if bytes.len() == 48 {
                 let atom = db.alloc_hir(Hir::Bytes(bytes.clone()));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-                Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+                Comparison::Constrainable(Constraint::to(eq, path, to_id))
             } else {
                 Comparison::Incompatible
             }
@@ -398,7 +395,7 @@ pub fn compare_atoms(
             if value.len() == 48 {
                 let atom = db.alloc_hir(Hir::String(value));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-                Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+                Comparison::Constrainable(Constraint::to(eq, path, to_id))
             } else {
                 Comparison::Incompatible
             }
@@ -408,7 +405,7 @@ pub fn compare_atoms(
             if atom.len() == 32 {
                 let atom = db.alloc_hir(Hir::Int(int.clone()));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-                Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+                Comparison::Constrainable(Constraint::to(eq, path, to_id))
             } else {
                 Comparison::Incompatible
             }
@@ -418,7 +415,7 @@ pub fn compare_atoms(
             if atom.len() == 48 {
                 let atom = db.alloc_hir(Hir::Int(int.clone()));
                 let eq = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, atom));
-                Comparison::Constrainable(Constraint::to(eq, from_id, to_id))
+                Comparison::Constrainable(Constraint::to(eq, path, to_id))
             } else {
                 Comparison::Incompatible
             }
@@ -469,10 +466,9 @@ mod tests {
 
         let hir = db.alloc_hir(Hir::Reference(symbol));
 
-        let from_id = db.alloc_type(Type::Atom(from.clone()));
         let to_id = db.alloc_type(Type::Atom(to.clone()));
 
-        let comparison = compare_atoms(&mut db, &builtins, hir, from_id, to_id, from, to);
+        let comparison = compare_atoms(&mut db, &builtins, hir, vec![], to_id, from, to);
 
         let value = match comparison {
             Comparison::Assignable => "assign".to_string(),

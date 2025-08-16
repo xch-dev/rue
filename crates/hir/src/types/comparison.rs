@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    BinaryOp, Builtins, ComparisonContext, Database, Hir, HirId, Type, TypeId, UnaryOp,
+    BinaryOp, Builtins, ComparisonContext, Constraint, Database, Hir, Type, TypeId, UnaryOp,
     compare_atoms,
 };
 
@@ -28,49 +28,6 @@ impl Comparison {
             Comparison::Castable => ComparisonKind::Castable,
             Comparison::Constrainable(..) => ComparisonKind::Constrainable,
             Comparison::Incompatible => ComparisonKind::Incompatible,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Constraint {
-    pub hir: HirId,
-    pub then_map: HashMap<TypeId, TypeId>,
-    pub else_map: HashMap<TypeId, TypeId>,
-}
-
-impl Constraint {
-    pub fn new(
-        hir: HirId,
-        then_map: HashMap<TypeId, TypeId>,
-        else_map: HashMap<TypeId, TypeId>,
-    ) -> Self {
-        Self {
-            hir,
-            then_map,
-            else_map,
-        }
-    }
-
-    pub fn to(hir: HirId, from: TypeId, to: TypeId) -> Self {
-        let mut then_map = HashMap::new();
-        then_map.insert(from, to);
-        Self {
-            hir,
-            then_map,
-            else_map: HashMap::new(),
-        }
-    }
-
-    pub fn if_else(hir: HirId, from: TypeId, to: TypeId, otherwise: TypeId) -> Self {
-        let mut then_map = HashMap::new();
-        then_map.insert(from, to);
-        let mut else_map = HashMap::new();
-        else_map.insert(from, otherwise);
-        Self {
-            hir,
-            then_map,
-            else_map,
         }
     }
 }
@@ -170,11 +127,11 @@ pub fn compare_types(
             let first_hir = db.alloc_hir(Hir::Unary(UnaryOp::First, ctx.hir()));
             let rest_hir = db.alloc_hir(Hir::Unary(UnaryOp::Rest, ctx.hir()));
 
-            ctx.push_hir(first_hir);
+            ctx.push_first(first_hir);
             let first = compare_types(db, ctx, builtins, from_first, to_first);
             ctx.pop_hir();
 
-            ctx.push_hir(rest_hir);
+            ctx.push_rest(rest_hir);
             let rest = compare_types(db, ctx, builtins, from_rest, to_rest);
             ctx.pop_hir();
 
@@ -205,7 +162,7 @@ pub fn compare_types(
             }
         }
         (Type::Atom(from), Type::Atom(to)) => {
-            compare_atoms(db, builtins, ctx.hir(), from_id, to_id, from, to)
+            compare_atoms(db, builtins, ctx.hir(), ctx.path(), to_id, from, to)
         }
     }
 }

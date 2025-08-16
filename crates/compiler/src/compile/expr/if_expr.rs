@@ -33,5 +33,5 @@ pub fn compile_if_expr(ctx: &mut Compiler, expr: &AstIfExpr) -> Value {
     let ty = ctx.alloc_type(Type::Union(vec![then_expr.ty, else_expr.ty]));
     let hir = ctx.alloc_hir(Hir::If(condition.hir, then_expr.hir, else_expr.hir));
 
-    Value::unmapped(hir, ty)
+    Value::new(hir, ty)
 }

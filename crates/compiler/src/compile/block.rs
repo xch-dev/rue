@@ -53,8 +53,8 @@ pub fn compile_block(ctx: &mut Compiler, block: &AstBlock, is_expr: bool) -> Val
     }));
 
     if let Some(body) = body {
-        Value::with_mappings(hir, body.ty, body.then_map, body.else_map)
+        body.with_hir(hir)
     } else {
-        Value::unmapped(hir, ctx.builtins().unresolved.ty)
+        Value::new(hir, ctx.builtins().unresolved.ty)
     }
 }
