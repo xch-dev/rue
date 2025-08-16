@@ -1,5 +1,2 @@
-program: null
-solution: ()
-output: null
 errors:
 - Block does not return a value at 1:18

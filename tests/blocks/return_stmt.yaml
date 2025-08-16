@@ -1,5 +1,6 @@
 program: (a (q 1 . 42) 1)
 solution: ()
 output: '42'
+cost: 186
 errors:
 - Unnecessary `return` statement, end the function with an expression instead at 2:5

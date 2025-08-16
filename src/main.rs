@@ -2,7 +2,7 @@ use std::fs;
 
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
-use clvmr::{Allocator, ChiaDialect, run_program};
+use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
 use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
 use rue_compiler::{Compiler, compile_document, declare_document};
@@ -16,11 +16,22 @@ use walkdir::WalkDir;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct TestCase {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     program: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     solution: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     output: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cost: Option<u64>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     clvm_error: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     errors: Vec<String>,
 }
 
@@ -100,10 +111,13 @@ fn main() -> Result<()> {
             match response {
                 Ok(output) => {
                     test_case.output = Some(disassemble(&allocator, output.1, None));
+                    let bytes = node_to_bytes(&allocator, ptr)?.len();
+                    test_case.cost = Some(output.0 + bytes as u64);
                     test_case.clvm_error = None;
                 }
                 Err(error) => {
                     test_case.clvm_error = Some(error.to_string());
+                    test_case.cost = None;
                     test_case.output = None;
                 }
             }
@@ -111,14 +125,16 @@ fn main() -> Result<()> {
             test_case.program = None;
             test_case.output = None;
             test_case.clvm_error = None;
+            test_case.cost = None;
         }
 
         test_case.errors = errors;
 
         if test_case != original {
             println!("{name} failed, updated test case");
-            fs::write(entry.path(), serde_yml::to_string(&test_case)?)?;
         }
+
+        fs::write(entry.path(), serde_yml::to_string(&test_case)?)?;
     }
 
     Ok(())

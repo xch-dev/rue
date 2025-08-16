@@ -1,5 +1,3 @@
 program: (a (q 8 (q . "Hello, world!")) 1)
 solution: ()
-output: null
 clvm_error: clvm raise
-errors: []
