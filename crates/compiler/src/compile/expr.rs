@@ -28,6 +28,6 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr) -> Value {
         AstExpr::BinaryExpr(expr) => compile_binary_expr(ctx, expr),
         AstExpr::FunctionCallExpr(expr) => compile_function_call_expr(ctx, expr),
         AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr),
-        AstExpr::Block(block) => compile_block(ctx, block),
+        AstExpr::Block(block) => compile_block(ctx, block, true),
     }
 }

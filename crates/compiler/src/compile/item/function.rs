@@ -87,7 +87,7 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
     ctx.push_scope(scope);
 
     let resolved_body = if let Some(body) = function.body() {
-        let value = compile_block(ctx, &body);
+        let value = compile_block(ctx, &body, true);
         ctx.assign_type(body.syntax(), value.hir, value.ty, return_type);
         value
     } else {

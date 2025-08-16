@@ -103,6 +103,15 @@ pub enum DiagnosticKind {
 
     #[error("Let bindings must have a value, since they cannot be reassigned")]
     MissingLetValue,
+
+    #[error("Expected statement block to end in `return` or `raise`, not an expression")]
+    UnexpectedImplicitReturn,
+
+    #[error("Unnecessary `return` statement, end the function with an expression instead")]
+    UnnecessaryExplicitReturn,
+
+    #[error("Block does not return a value")]
+    MissingReturn,
 }
 
 impl DiagnosticKind {
@@ -127,11 +136,14 @@ impl DiagnosticKind {
             | Self::IncompatibleBinaryOp(..)
             | Self::IncompatibleUnaryOp(..)
             | Self::InvalidExpressionStatement
-            | Self::MissingLetValue => DiagnosticSeverity::Error,
+            | Self::MissingLetValue
+            | Self::UnexpectedImplicitReturn
+            | Self::MissingReturn => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields
-            | Self::UnnecessaryCast(..) => DiagnosticSeverity::Warning,
+            | Self::UnnecessaryCast(..)
+            | Self::UnnecessaryExplicitReturn => DiagnosticSeverity::Warning,
         }
     }
 }

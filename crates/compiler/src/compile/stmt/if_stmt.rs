@@ -11,7 +11,7 @@ pub fn compile_if_stmt(ctx: &mut Compiler, stmt: &AstIfStmt) -> Statement {
     };
 
     let then_block = if let Some(then_block) = stmt.then_block() {
-        compile_block(ctx, &then_block)
+        compile_block(ctx, &then_block, false)
     } else {
         ctx.builtins().unresolved.clone()
     };

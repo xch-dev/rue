@@ -1,4 +1,5 @@
-program: (a (q) 1)
+program: null
 solution: ()
-output: ()
-errors: []
+output: null
+errors:
+- Block does not return a value at 1:18
