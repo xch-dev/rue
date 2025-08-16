@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     BinaryOp, Builtins, ComparisonContext, Constraint, Database, Hir, Type, TypeId, UnaryOp,
-    compare_atoms,
+    compare_atoms, compare_to_union,
 };
 
 #[derive(Debug, Clone)]
@@ -77,49 +77,7 @@ pub fn compare_types(
         (Type::Alias(from), _) => compare_types(db, ctx, builtins, from.inner, to_id),
         (_, Type::Alias(to)) => compare_types(db, ctx, builtins, from_id, to.inner),
         (Type::Union(..), _) => todo!(),
-        (_, Type::Union(to_ids)) => {
-            let mut result = Comparison::Incompatible;
-
-            for to_id in to_ids {
-                let comparison = compare_types(db, ctx, builtins, from_id, to_id);
-
-                match (&mut result, comparison) {
-                    (Comparison::Incompatible, comparison) => {
-                        result = comparison;
-                    }
-                    (_, Comparison::Assignable) => {
-                        result = Comparison::Assignable;
-                        break;
-                    }
-                    (Comparison::Assignable, _) => {
-                        result = Comparison::Assignable;
-                        break;
-                    }
-                    (Comparison::Castable, Comparison::Castable) => {}
-                    (Comparison::Constrainable(..), Comparison::Castable) => {
-                        result = Comparison::Castable;
-                    }
-                    (
-                        Comparison::Constrainable(_existing_constraints),
-                        Comparison::Constrainable(_new_constraints),
-                    ) => {
-                        // let or = db.alloc_hir(Hir::Binary(
-                        //     BinaryOp::Or,
-                        //     *existing_constraints,
-                        //     new_constraints,
-                        // ));
-                        // result = Comparison::Constrainable(or);
-                        todo!()
-                    }
-                    (Comparison::Castable, comparison @ Comparison::Constrainable(..)) => {
-                        result = comparison;
-                    }
-                    (_, Comparison::Incompatible) => {}
-                };
-            }
-
-            result
-        }
+        (_, Type::Union(ids)) => compare_to_union(db, ctx, builtins, from_id, to_id, ids),
         (Type::Atom(..), Type::Pair(..)) | (Type::Pair(..), Type::Atom(..)) => {
             Comparison::Incompatible
         }
