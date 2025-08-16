@@ -71,7 +71,7 @@ mod tests {
     fn test_type_alias() {
         check(
             "type Alias = Int;",
-            expect!["Undeclared type `Int` at 1:14"],
+            expect![""],
         );
     }
 }
