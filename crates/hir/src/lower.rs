@@ -72,6 +72,12 @@ fn lower_hir(
         Hir::Bytes(atom) => arena.alloc(Lir::Atom(atom)),
         Hir::Reference(symbol) => arena.alloc(Lir::Path(env.path(symbol))),
         Hir::Block(block) => lower_block(db, arena, graph, env, block.statements, block.body),
+        Hir::If(condition, then, else_) => {
+            let condition = lower_hir(db, arena, graph, env, condition);
+            let then = lower_hir(db, arena, graph, env, then);
+            let else_ = lower_hir(db, arena, graph, env, else_);
+            arena.alloc(Lir::If(condition, then, else_))
+        }
         Hir::Unary(op, hir) => {
             let lir = lower_hir(db, arena, graph, env, hir);
             match op {

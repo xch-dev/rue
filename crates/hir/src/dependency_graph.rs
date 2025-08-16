@@ -81,6 +81,11 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
                 visit_hir(db, graph, body);
             }
         }
+        Hir::If(condition, then, else_) => {
+            visit_hir(db, graph, *condition);
+            visit_hir(db, graph, *then);
+            visit_hir(db, graph, *else_);
+        }
         Hir::Unary(_op, arg) => {
             visit_hir(db, graph, *arg);
         }

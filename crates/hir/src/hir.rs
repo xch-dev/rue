@@ -15,6 +15,7 @@ pub enum Hir {
     Bool(bool),
     Reference(SymbolId),
     Block(Block),
+    If(HirId, HirId, HirId),
     Unary(UnaryOp, HirId),
     Binary(BinaryOp, HirId, HirId),
 }
@@ -59,6 +60,12 @@ pub(crate) mod tests {
             Hir::Block(block) => block
                 .body
                 .map_or("{empty}".to_string(), |body| debug_hir(db, body)),
+            Hir::If(condition, then, else_) => format!(
+                "if {} {{ {} }} else {{ {} }}",
+                debug_hir(db, *condition),
+                debug_hir(db, *then),
+                debug_hir(db, *else_)
+            ),
             Hir::Unary(op, hir) => format!("({op} {})", debug_hir(db, *hir)),
             Hir::Binary(op, left, right) => {
                 format!(

@@ -1,8 +1,31 @@
-use rue_ast::AstIfExpr;
-use rue_hir::Value;
+use rue_ast::{AstIfExpr, AstNode};
+use rue_hir::{Hir, Type, Value};
 
-use crate::Compiler;
+use crate::{Compiler, compile_expr};
 
-pub fn compile_if_expr(_ctx: &mut Compiler, _expr: &AstIfExpr) -> Value {
-    todo!()
+pub fn compile_if_expr(ctx: &mut Compiler, expr: &AstIfExpr) -> Value {
+    let condition = if let Some(condition) = expr.condition() {
+        let value = compile_expr(ctx, &condition);
+        ctx.assign_type(condition.syntax(), value.hir, value.ty, ctx.builtins().bool);
+        value
+    } else {
+        ctx.builtins().unresolved.clone()
+    };
+
+    let then_expr = if let Some(then_expr) = expr.then_expr() {
+        compile_expr(ctx, &then_expr)
+    } else {
+        ctx.builtins().unresolved.clone()
+    };
+
+    let else_expr = if let Some(else_expr) = expr.else_expr() {
+        compile_expr(ctx, &else_expr)
+    } else {
+        ctx.builtins().unresolved.clone()
+    };
+
+    let ty = ctx.alloc_type(Type::Union(vec![then_expr.ty, else_expr.ty]));
+    let hir = ctx.alloc_hir(Hir::If(condition.hir, then_expr.hir, else_expr.hir));
+
+    Value::new(hir, ty)
 }
