@@ -216,8 +216,12 @@ impl AstIfStmt {
         self.syntax().children().find_map(AstExpr::cast)
     }
 
-    pub fn then_block(&self) -> Option<AstExpr> {
-        self.syntax().children().filter_map(AstExpr::cast).nth(1)
+    pub fn then_block(&self) -> Option<AstBlock> {
+        self.syntax()
+            .children()
+            .filter(|node| AstExpr::cast(node.clone()).is_some())
+            .nth(1)
+            .and_then(AstBlock::cast)
     }
 }
 

@@ -1,7 +1,7 @@
 use rue_ast::AstIfStmt;
 use rue_hir::Statement;
 
-use crate::{Compiler, compile_expr};
+use crate::{Compiler, compile_block, compile_expr};
 
 pub fn compile_if_stmt(ctx: &mut Compiler, stmt: &AstIfStmt) -> Statement {
     let condition = if let Some(condition) = stmt.condition() {
@@ -11,7 +11,7 @@ pub fn compile_if_stmt(ctx: &mut Compiler, stmt: &AstIfStmt) -> Statement {
     };
 
     let then_block = if let Some(then_block) = stmt.then_block() {
-        compile_expr(ctx, &then_block)
+        compile_block(ctx, &then_block)
     } else {
         ctx.builtins().unresolved.clone()
     };
