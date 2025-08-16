@@ -6,8 +6,8 @@ use std::{
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
 use rue_hir::{
-    Builtins, Comparison, ComparisonContext, Database, HirId, Scope, ScopeId, SymbolId, Type,
-    TypeId, compare_types,
+    Builtins, Comparison, ComparisonContext, Constraint, Database, HirId, Scope, ScopeId, SymbolId,
+    Type, TypeId, compare_types,
 };
 use rue_parser::{SyntaxNode, SyntaxToken};
 
@@ -204,7 +204,7 @@ impl Compiler {
         hir: HirId,
         from: TypeId,
         to: TypeId,
-    ) -> HirId {
+    ) -> Constraint {
         self.compare_type(node, hir, from, to, ComparisonKind::Guard)
     }
 
@@ -215,7 +215,7 @@ impl Compiler {
         from: TypeId,
         to: TypeId,
         kind: ComparisonKind,
-    ) -> HirId {
+    ) -> Constraint {
         let inferred = self.mappings();
 
         let comparison = compare_types(
@@ -249,7 +249,7 @@ impl Compiler {
                         );
                     }
                 }
-                self.builtins.true_value.hir
+                Constraint::new(self.builtins.true_value.hir, HashMap::new(), HashMap::new())
             }
             Comparison::Castable => {
                 match kind {
@@ -273,7 +273,7 @@ impl Compiler {
                         );
                     }
                 }
-                self.builtins.true_value.hir
+                Constraint::new(self.builtins.true_value.hir, HashMap::new(), HashMap::new())
             }
             Comparison::Incompatible => {
                 match kind {
@@ -305,9 +305,13 @@ impl Compiler {
                         );
                     }
                 }
-                self.builtins.false_value.hir
+                Constraint::new(
+                    self.builtins.false_value.hir,
+                    HashMap::new(),
+                    HashMap::new(),
+                )
             }
-            Comparison::Constrainable(hir) => {
+            Comparison::Constrainable(constraint) => {
                 if kind != ComparisonKind::Guard {
                     self.diagnostic(
                         node,
@@ -317,7 +321,7 @@ impl Compiler {
                         ),
                     );
                 }
-                hir
+                constraint
             }
         }
     }

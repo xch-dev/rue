@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     BinaryOp, Builtins, ComparisonContext, Database, Hir, HirId, Type, TypeId, UnaryOp,
     compare_atoms,
@@ -33,12 +35,43 @@ impl Comparison {
 #[derive(Debug, Clone)]
 pub struct Constraint {
     pub hir: HirId,
-    pub else_map: Option<TypeId>,
+    pub then_map: HashMap<TypeId, TypeId>,
+    pub else_map: HashMap<TypeId, TypeId>,
 }
 
 impl Constraint {
-    pub fn new(hir: HirId, else_map: Option<TypeId>) -> Self {
-        Self { hir, else_map }
+    pub fn new(
+        hir: HirId,
+        then_map: HashMap<TypeId, TypeId>,
+        else_map: HashMap<TypeId, TypeId>,
+    ) -> Self {
+        Self {
+            hir,
+            then_map,
+            else_map,
+        }
+    }
+
+    pub fn to(hir: HirId, from: TypeId, to: TypeId) -> Self {
+        let mut then_map = HashMap::new();
+        then_map.insert(from, to);
+        Self {
+            hir,
+            then_map,
+            else_map: HashMap::new(),
+        }
+    }
+
+    pub fn if_else(hir: HirId, from: TypeId, to: TypeId, otherwise: TypeId) -> Self {
+        let mut then_map = HashMap::new();
+        then_map.insert(from, to);
+        let mut else_map = HashMap::new();
+        else_map.insert(from, otherwise);
+        Self {
+            hir,
+            then_map,
+            else_map,
+        }
     }
 }
 
@@ -110,15 +143,16 @@ pub fn compare_types(
                         result = Comparison::Castable;
                     }
                     (
-                        Comparison::Constrainable(existing_constraints),
-                        Comparison::Constrainable(new_constraints),
+                        Comparison::Constrainable(_existing_constraints),
+                        Comparison::Constrainable(_new_constraints),
                     ) => {
-                        let or = db.alloc_hir(Hir::Binary(
-                            BinaryOp::Or,
-                            *existing_constraints,
-                            new_constraints,
-                        ));
-                        result = Comparison::Constrainable(or);
+                        // let or = db.alloc_hir(Hir::Binary(
+                        //     BinaryOp::Or,
+                        //     *existing_constraints,
+                        //     new_constraints,
+                        // ));
+                        // result = Comparison::Constrainable(or);
+                        todo!()
                     }
                     (Comparison::Castable, comparison @ Comparison::Constrainable(..)) => {
                         result = comparison;
@@ -147,32 +181,31 @@ pub fn compare_types(
             match (first, rest) {
                 (Comparison::Assignable, Comparison::Assignable) => Comparison::Assignable,
                 (Comparison::Castable, Comparison::Castable) => Comparison::Castable,
-                (
-                    Comparison::Constrainable(first_constraints),
-                    Comparison::Constrainable(rest_constraints),
-                ) => {
-                    let and = db.alloc_hir(Hir::Binary(
-                        BinaryOp::And,
-                        first_constraints,
-                        rest_constraints,
-                    ));
-                    Comparison::Constrainable(and)
+                (Comparison::Constrainable(f), Comparison::Constrainable(r)) => {
+                    // TODO: Else map?
+                    let and = db.alloc_hir(Hir::Binary(BinaryOp::And, f.hir, r.hir));
+                    let mut then_map = HashMap::new();
+                    then_map.extend(f.then_map);
+                    then_map.extend(r.then_map);
+                    Comparison::Constrainable(Constraint::new(and, then_map, HashMap::new()))
                 }
                 (Comparison::Assignable, Comparison::Castable)
                 | (Comparison::Castable, Comparison::Assignable) => Comparison::Castable,
                 (
                     Comparison::Assignable | Comparison::Castable,
-                    Comparison::Constrainable(constraints),
+                    Comparison::Constrainable(constraint),
                 )
                 | (
-                    Comparison::Constrainable(constraints),
+                    Comparison::Constrainable(constraint),
                     Comparison::Assignable | Comparison::Castable,
-                ) => Comparison::Constrainable(constraints),
+                ) => Comparison::Constrainable(constraint),
                 (Comparison::Incompatible, _) | (_, Comparison::Incompatible) => {
                     Comparison::Incompatible
                 }
             }
         }
-        (Type::Atom(from), Type::Atom(to)) => compare_atoms(db, builtins, ctx.hir(), from, to),
+        (Type::Atom(from), Type::Atom(to)) => {
+            compare_atoms(db, builtins, ctx.hir(), from_id, to_id, from, to)
+        }
     }
 }

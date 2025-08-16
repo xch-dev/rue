@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use rue_ast::{AstGuardExpr, AstNode};
 use rue_hir::Value;
 
@@ -18,11 +16,12 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
         ctx.builtins().unresolved.ty
     };
 
-    let hir = ctx.guard_type(guard.syntax(), expr.hir, expr.ty, ty);
+    let constraint = ctx.guard_type(guard.syntax(), expr.hir, expr.ty, ty);
 
-    let mut then_map = HashMap::new();
-    then_map.insert(expr.ty, ty);
-
-    // TODO: Else map
-    Value::with_mappings(hir, ctx.builtins().bool, then_map, HashMap::new())
+    Value::with_mappings(
+        constraint.hir,
+        ctx.builtins().bool,
+        constraint.then_map,
+        constraint.else_map,
+    )
 }
