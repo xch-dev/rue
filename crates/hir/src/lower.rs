@@ -120,37 +120,16 @@ fn lower_block(
     let mut binding_groups = Vec::new();
 
     while !block.statements.is_empty() {
-        let mut remaining_bindings = IndexSet::new();
+        let mut symbols = IndexSet::new();
 
         while let Some(stmt) = block.statements.last()
             && let Statement::Let(symbol) = stmt
         {
-            remaining_bindings.insert(*symbol);
+            symbols.insert(*symbol);
             block.statements.pop();
         }
 
-        while !remaining_bindings.is_empty() {
-            let mut symbols = IndexSet::new();
-
-            for &symbol in &remaining_bindings {
-                if graph
-                    .dependencies(symbol, false)
-                    .iter()
-                    .all(|symbol| !remaining_bindings.contains(symbol))
-                {
-                    symbols.insert(symbol);
-                }
-            }
-
-            let mut bindings = Vec::new();
-
-            for &symbol in &symbols {
-                remaining_bindings.shift_remove(&symbol);
-                bindings.push(symbol);
-            }
-
-            binding_groups.push(bindings);
-        }
+        binding_groups.extend(group_symbols(symbols, graph));
 
         while let Some(stmt) = block.statements.last() {
             match stmt {
@@ -201,4 +180,31 @@ fn lower_block(
     }
 
     expr
+}
+
+fn group_symbols(mut symbols: IndexSet<SymbolId>, graph: &DependencyGraph) -> Vec<Vec<SymbolId>> {
+    let mut groups = Vec::new();
+
+    while !symbols.is_empty() {
+        let mut group = Vec::new();
+
+        let remaining = symbols.clone();
+
+        symbols.retain(|&symbol| {
+            if graph
+                .dependencies(symbol, false)
+                .iter()
+                .all(|symbol| !remaining.contains(symbol))
+            {
+                group.push(symbol);
+                false
+            } else {
+                true
+            }
+        });
+
+        groups.push(group);
+    }
+
+    groups
 }
