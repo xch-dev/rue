@@ -1,0 +1,6 @@
+fn main() -> Int {
+    if 42 > 10 {
+        return 123;
+    }
+    100
+}

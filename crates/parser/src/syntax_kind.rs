@@ -280,10 +280,10 @@ macro_rules! T {
     [*] => { $crate::SyntaxKind::Star };
     [/] => { $crate::SyntaxKind::Slash };
     [%] => { $crate::SyntaxKind::Percent };
-    [==] => { SyntaxKind::Equals };
-    [!=] => { SyntaxKind::NotEquals };
-    [<] => { SyntaxKind::LessThan };
-    [>] => { SyntaxKind::GreaterThan };
+    [==] => { $crate::SyntaxKind::Equals };
+    [!=] => { $crate::SyntaxKind::NotEquals };
+    [<] => { $crate::SyntaxKind::LessThan };
+    [>] => { $crate::SyntaxKind::GreaterThan };
     [<=] => { $crate::SyntaxKind::LessThanEquals };
     [>=] => { $crate::SyntaxKind::GreaterThanEquals };
     [!] => { $crate::SyntaxKind::Not };

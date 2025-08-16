@@ -1,0 +1,4 @@
+fn main() -> Int {
+    assert 42 > 10;
+    100
+}

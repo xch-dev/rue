@@ -1,0 +1,4 @@
+program: (a (q 2 (i (> (q . 42) (q . 10)) (q 1 . 123) (q 1 . 100)) 1) 1)
+solution: ()
+output: '123'
+errors: []

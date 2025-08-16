@@ -32,8 +32,23 @@ pub enum BinaryOp {
     #[display("/")]
     Div,
 
+    #[display(">")]
+    Gt,
+
+    #[display("<")]
+    Lt,
+
+    #[display(">=")]
+    Gte,
+
+    #[display("<=")]
+    Lte,
+
     #[display("==")]
     Eq,
+
+    #[display("!=")]
+    Ne,
 
     #[display("&&")]
     And,

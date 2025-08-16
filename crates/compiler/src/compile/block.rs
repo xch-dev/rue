@@ -18,13 +18,10 @@ pub fn compile_block(ctx: &mut Compiler, block: &AstBlock) -> Value {
         }
     }
 
-    // TODO: Handle early return blocks
-    let body = body.unwrap();
+    let body_ty = body.as_ref().map(|body| body.ty);
+    let body = body.map(|body| body.hir);
 
-    let hir = ctx.alloc_hir(Hir::Block(Block {
-        statements,
-        body: Some(body.hir),
-    }));
+    let hir = ctx.alloc_hir(Hir::Block(Block { statements, body }));
 
-    Value::new(hir, body.ty)
+    Value::new(hir, body_ty.unwrap_or(ctx.builtins().unresolved.ty))
 }

@@ -90,7 +90,23 @@ fn lower_hir(
                 BinaryOp::Sub => arena.alloc(Lir::Sub(vec![left, right])),
                 BinaryOp::Mul => arena.alloc(Lir::Mul(vec![left, right])),
                 BinaryOp::Div => arena.alloc(Lir::Div(left, right)),
+                BinaryOp::Gt => arena.alloc(Lir::Gt(left, right)),
+                BinaryOp::Lt => arena.alloc(Lir::Gt(right, left)),
+                BinaryOp::Gte => {
+                    let gt = arena.alloc(Lir::Gt(left, right));
+                    let eq = arena.alloc(Lir::Eq(left, right));
+                    arena.alloc(Lir::Any(vec![gt, eq]))
+                }
+                BinaryOp::Lte => {
+                    let lt = arena.alloc(Lir::Gt(right, left));
+                    let eq = arena.alloc(Lir::Eq(left, right));
+                    arena.alloc(Lir::Any(vec![lt, eq]))
+                }
                 BinaryOp::Eq => arena.alloc(Lir::Eq(left, right)),
+                BinaryOp::Ne => {
+                    let eq = arena.alloc(Lir::Eq(left, right));
+                    arena.alloc(Lir::Not(eq))
+                }
                 BinaryOp::And => {
                     let true_atom = arena.alloc(Lir::Atom(vec![1]));
                     let false_atom = arena.alloc(Lir::Atom(vec![]));
@@ -187,10 +203,11 @@ fn lower_assert(
     arena: &mut Arena<Lir>,
     graph: &DependencyGraph,
     env: &Environment,
-    stmts: Vec<Statement>,
+    mut stmts: Vec<Statement>,
     condition: HirId,
     body: Option<HirId>,
 ) -> LirId {
+    stmts.remove(0);
     let condition = lower_hir(db, arena, graph, env, condition);
     let then_branch = lower_block(db, arena, graph, env, stmts, body);
     let else_branch = arena.alloc(Lir::Raise(vec![]));
@@ -214,11 +231,12 @@ fn lower_if(
     arena: &mut Arena<Lir>,
     graph: &DependencyGraph,
     env: &Environment,
-    stmts: Vec<Statement>,
+    mut stmts: Vec<Statement>,
     condition: HirId,
     then: HirId,
     body: Option<HirId>,
 ) -> LirId {
+    stmts.remove(0);
     let condition = lower_hir(db, arena, graph, env, condition);
     let then_branch = lower_hir(db, arena, graph, env, then);
     let else_branch = lower_block(db, arena, graph, env, stmts, body);
