@@ -176,7 +176,7 @@ fn lower_block(
         }
     }
 
-    let all_bindings: Vec<SymbolId> = binding_groups.iter().flatten().copied().collect();
+    let all_bindings: Vec<SymbolId> = binding_groups.iter().rev().flatten().copied().collect();
 
     let body_env = env.with_bindings(&all_bindings);
 
