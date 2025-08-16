@@ -1,8 +1,7 @@
 use id_arena::Id;
 use num_bigint::BigInt;
-use rue_mir::{BinaryOp, UnaryOp};
 
-use crate::SymbolId;
+use crate::{BinaryOp, SymbolId, UnaryOp};
 
 pub type HirId = Id<Hir>;
 

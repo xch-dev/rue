@@ -1,4 +1,5 @@
-program: (a (q 2 (q 18 5 2) (c (q . 13) (c (q . 42) 1))) 1)
+program: (a (a (* 5 2) (c (q . 13) (c (q . 42) 1))) 1)
 solution: ()
-output: '546'
+output: null
+clvm_error: path into atom
 errors: []

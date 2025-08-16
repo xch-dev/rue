@@ -2,61 +2,56 @@ use std::collections::HashMap;
 
 use indexmap::IndexSet;
 
-use crate::{Database, Hir, HirId, Symbol, SymbolId};
+use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
 
 #[derive(Debug, Default, Clone)]
 pub struct DependencyGraph {
+    // Keeps track of the direct dependencies of a symbol
     dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
+
+    // Keeps track of the locals of a symbol
+    locals: HashMap<SymbolId, IndexSet<SymbolId>>,
+
+    // Keeps track of the number of times a symbol is referenced
     references: HashMap<SymbolId, usize>,
+
+    // Keeps track of the current stack of symbols being visited
     stack: IndexSet<SymbolId>,
+
+    // Keeps track of the symbols that have been visited to avoid infinite loops
     visited: IndexSet<SymbolId>,
 }
 
 impl DependencyGraph {
     pub fn build(db: &Database, main: SymbolId) -> Self {
         let mut graph = Self::default();
-        // TODO: Is this the correct way to build the dependency graph from the entrypoint?
         visit_symbol_reference(db, &mut graph, main);
         graph
     }
 
-    pub fn direct_dependencies(&self, symbol: SymbolId) -> impl Iterator<Item = SymbolId> {
-        self.dependencies
-            .get(&symbol)
-            .into_iter()
-            .flat_map(|deps| deps.iter().copied())
-    }
-
-    pub fn dependencies(&self, symbol: SymbolId) -> IndexSet<SymbolId> {
+    pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {
         let mut visited = IndexSet::new();
-        let mut stack = vec![symbol];
-        let mut has_self_reference = false;
+        let mut result = IndexSet::new();
+        let mut locals = IndexSet::new();
+        let mut stack = vec![(symbol, false)];
 
-        // First pass: collect all dependencies and check for self-reference
-        while let Some(current) = stack.pop() {
+        while let Some((current, is_result)) = stack.pop() {
             if !visited.insert(current) {
                 continue;
             }
 
-            // Check if this symbol directly references the original symbol
-            if let Some(deps) = self.dependencies.get(&current) {
-                if current == symbol && deps.contains(&symbol) {
-                    has_self_reference = true;
-                }
-                stack.extend(deps.iter().copied());
+            if is_result {
+                result.insert(current);
+            }
+
+            locals.extend(self.locals.get(&current).cloned().unwrap_or_default());
+
+            for dependency in self.dependencies.get(&current).cloned().unwrap_or_default() {
+                stack.push((dependency, !captures_only || !locals.contains(&dependency)));
             }
         }
 
-        // If there's no self-reference, remove the original symbol
-        if !has_self_reference {
-            visited.swap_remove(&symbol);
-        }
-
-        visited
-    }
-
-    pub fn references(&self, symbol: SymbolId) -> usize {
-        *self.references.get(&symbol).unwrap_or(&0)
+        result
     }
 }
 
@@ -72,7 +67,16 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
             visit_symbol_reference(db, graph, *symbol);
         }
         Hir::Block(block) => {
-            // TODO: Properly implement blocks
+            for stmt in &block.statements {
+                if let Statement::Let(stmt) = stmt {
+                    visit_symbol(db, graph, *stmt);
+
+                    if let Some(last) = graph.stack.last() {
+                        graph.locals.entry(*last).or_default().insert(*stmt);
+                    }
+                }
+            }
+
             if let Some(body) = block.body {
                 visit_hir(db, graph, body);
             }
@@ -87,13 +91,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
     }
 }
 
-fn visit_symbol_reference(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
-    // We should add the symbol to the dependencies of the symbol we're currently
-    if let Some(last) = graph.stack.last() {
-        graph.dependencies.entry(*last).or_default().insert(symbol);
-        *graph.references.entry(symbol).or_insert(0) += 1;
-    }
-
+fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     // We've already visited this symbol, so we don't need to track its dependencies again
     if !graph.visited.insert(symbol) {
         return;
@@ -103,6 +101,12 @@ fn visit_symbol_reference(db: &Database, graph: &mut DependencyGraph, symbol: Sy
 
     match db.symbol(symbol) {
         Symbol::Function(function) => {
+            graph
+                .locals
+                .entry(symbol)
+                .or_default()
+                .extend(function.parameters.iter().copied());
+
             visit_hir(db, graph, function.body);
         }
         Symbol::Parameter(_) => {}
@@ -112,4 +116,14 @@ fn visit_symbol_reference(db: &Database, graph: &mut DependencyGraph, symbol: Sy
     }
 
     graph.stack.pop().unwrap();
+}
+
+fn visit_symbol_reference(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
+    // We should add the symbol to the dependencies of the symbol we're currently visiting
+    if let Some(last) = graph.stack.last() {
+        graph.dependencies.entry(*last).or_default().insert(symbol);
+        *graph.references.entry(symbol).or_insert(0) += 1;
+    }
+
+    visit_symbol(db, graph, symbol);
 }

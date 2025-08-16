@@ -10,7 +10,6 @@ rue-ast = { workspace = true }
 rue-compiler = { workspace = true }
 rue-lir = { workspace = true }
 rue-hir = { workspace = true }
-rue-mir = { workspace = true }
 rue-diagnostic = { workspace = true }
 clvmr = { workspace = true }
 clvm_tools_rs = { workspace = true }
@@ -31,7 +30,6 @@ rue-diagnostic = { path = "crates/diagnostic" }
 rue-ast = { path = "crates/ast" }
 rue-compiler = { path = "crates/compiler" }
 rue-lir = { path = "crates/lir" }
-rue-mir = { path = "crates/mir" }
 rue-hir = { path = "crates/hir" }
 anyhow = "1.0.98"
 clvm-traits = "0.28.1"

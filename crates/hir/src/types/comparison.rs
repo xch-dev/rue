@@ -1,6 +1,7 @@
-use rue_mir::{BinaryOp, UnaryOp};
-
-use crate::{Builtins, ComparisonContext, Database, Hir, HirId, Type, TypeId, compare_atoms};
+use crate::{
+    BinaryOp, Builtins, ComparisonContext, Database, Hir, HirId, Type, TypeId, UnaryOp,
+    compare_atoms,
+};
 
 #[derive(Debug, Clone)]
 pub enum Comparison {

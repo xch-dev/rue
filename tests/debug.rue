@@ -1,5 +1,5 @@
 fn main() -> Int {
-    let a = 42;
-    let b = 13;
-    a * b
+    let aa = 42;
+    let bb = 13;
+    aa * bb
 }

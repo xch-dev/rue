@@ -5,12 +5,13 @@ edition = "2024"
 
 [dependencies]
 rue-parser = { workspace = true }
-rue-mir = { workspace = true }
+rue-lir = { workspace = true }
 id-arena = { workspace = true }
 indexmap = { workspace = true }
 num-bigint = { workspace = true }
 clvmr = { workspace = true }
 hex = { workspace = true }
+derive_more = { workspace = true }
 
 [dev-dependencies]
 expect-test = { workspace = true }

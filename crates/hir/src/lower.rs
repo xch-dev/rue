@@ -1,218 +1,200 @@
 use id_arena::Arena;
 use indexmap::IndexSet;
-use rue_mir::{Mir, MirId};
+use rue_lir::{Lir, LirId};
 
-use crate::{Database, DependencyGraph, Hir, HirId, Statement, Symbol, SymbolId, bigint_atom};
+use crate::{
+    BinaryOp, BindingSymbol, Block, Database, DependencyGraph, Environment, FunctionSymbol, Hir,
+    HirId, Statement, Symbol, SymbolId, UnaryOp, bigint_atom,
+};
 
-#[derive(Debug, Default, Clone)]
-struct FunctionContext {
-    bindings: IndexSet<SymbolId>,
-    captures: IndexSet<SymbolId>,
-    parameters: IndexSet<SymbolId>,
+pub fn lower_symbol(
+    db: &Database,
+    arena: &mut Arena<Lir>,
+    graph: &DependencyGraph,
+    env: &Environment,
+    symbol: SymbolId,
+) -> LirId {
+    match db.symbol(symbol).clone() {
+        Symbol::Function(function) => lower_function(db, arena, graph, env, symbol, function),
+        Symbol::Parameter(_) => unreachable!(),
+        Symbol::Binding(binding) => lower_binding(db, arena, graph, env, binding),
+    }
 }
 
-pub fn lower_main(
+fn lower_function(
     db: &Database,
-    arena: &mut Arena<Mir>,
+    arena: &mut Arena<Lir>,
     graph: &DependencyGraph,
-    main: SymbolId,
-) -> MirId {
-    let Symbol::Function(function) = db.symbol(main) else {
-        panic!("main is not a function");
-    };
+    parent_env: &Environment,
+    symbol: SymbolId,
+    function: FunctionSymbol,
+) -> LirId {
+    let captures: Vec<SymbolId> = graph.dependencies(symbol, true).into_iter().collect();
+    let function_env = Environment::new(&captures, &function.parameters);
 
-    let captures: IndexSet<SymbolId> = graph
-        .dependencies(main)
-        .into_iter()
-        .filter(|symbol| matches!(db.symbol(*symbol), Symbol::Function(_)))
-        .collect();
-
-    let mut main_context = FunctionContext {
-        bindings: IndexSet::new(),
-        captures: captures.clone(),
-        parameters: function.parameters.iter().copied().collect(),
-    };
-
-    let body = lower_hir(db, arena, graph, &mut main_context, function.body);
-
-    let function = arena.alloc(Mir::Function {
-        body,
-        captures: captures.len(),
-        parameters: function.parameters.len(),
-    });
+    let body = lower_hir(db, arena, graph, &function_env, function.body);
 
     let mut definitions = Vec::new();
 
     for symbol in captures {
-        match db.symbol(symbol) {
-            Symbol::Function(function) => {
-                let mut function_context = FunctionContext {
-                    bindings: IndexSet::new(),
-                    captures: IndexSet::new(),
-                    parameters: function.parameters.iter().copied().collect(),
-                };
-
-                let body = lower_hir(db, arena, graph, &mut function_context, function.body);
-
-                let function = arena.alloc(Mir::Function {
-                    body,
-                    captures: function_context.captures.len(),
-                    parameters: function.parameters.len(),
-                });
-
-                definitions.push(function);
-            }
-            _ => unreachable!(),
-        }
+        let lir = lower_symbol(db, arena, graph, parent_env, symbol);
+        definitions.push(lir);
     }
 
-    arena.alloc(Mir::Curry {
-        body: function,
-        args: definitions,
-    })
+    arena.alloc(Lir::Curry(body, definitions))
 }
 
-#[allow(clippy::only_used_in_recursion)]
+fn lower_binding(
+    db: &Database,
+    arena: &mut Arena<Lir>,
+    graph: &DependencyGraph,
+    env: &Environment,
+    binding: BindingSymbol,
+) -> LirId {
+    lower_hir(db, arena, graph, env, binding.value)
+}
+
 fn lower_hir(
     db: &Database,
-    arena: &mut Arena<Mir>,
+    arena: &mut Arena<Lir>,
     graph: &DependencyGraph,
-    context: &mut FunctionContext,
+    env: &Environment,
     hir: HirId,
-) -> MirId {
+) -> LirId {
     match db.hir(hir).clone() {
         Hir::Unresolved => unreachable!(),
-        Hir::Nil => arena.alloc(Mir::Atom(vec![])),
-        Hir::String(value) => arena.alloc(Mir::Atom(value.as_bytes().to_vec())),
-        Hir::Int(value) => arena.alloc(Mir::Atom(bigint_atom(value.clone()))),
-        Hir::Bool(value) => arena.alloc(Mir::Atom(if value { vec![1] } else { vec![] })),
-        Hir::Bytes(atom) => arena.alloc(Mir::Atom(atom)),
-        Hir::Reference(symbol) => {
-            if let Some(index) = context.bindings.get_index_of(&symbol) {
-                arena.alloc(Mir::Binding(index))
-            } else if let Some(index) = context.parameters.get_index_of(&symbol) {
-                arena.alloc(Mir::Parameter(index))
-            } else {
-                arena.alloc(Mir::Capture(context.captures.insert_full(symbol).0))
-            }
-        }
-        Hir::Block(mut block) => {
-            // TODO: Implement statement only blocks
-
-            let mut binding_groups = Vec::new();
-
-            while !block.statements.is_empty() {
-                let mut remaining_bindings = IndexSet::new();
-
-                while let Some(stmt) = block.statements.last()
-                    && let Statement::Let(symbol) = stmt
-                {
-                    remaining_bindings.insert(*symbol);
-                    block.statements.pop();
-                }
-
-                while !remaining_bindings.is_empty() {
-                    let mut symbols = IndexSet::new();
-
-                    for &symbol in &remaining_bindings {
-                        if graph
-                            .dependencies(symbol)
-                            .iter()
-                            .all(|symbol| !remaining_bindings.contains(symbol))
-                        {
-                            symbols.insert(symbol);
-                        }
-                    }
-
-                    let mut bindings = Vec::new();
-
-                    for &symbol in &symbols {
-                        remaining_bindings.shift_remove(&symbol);
-                        bindings.push(symbol);
-                    }
-
-                    binding_groups.push(bindings);
-                }
-
-                while let Some(stmt) = block.statements.last() {
-                    match stmt {
-                        Statement::Expr(_) => {
-                            block.statements.pop().unwrap();
-                        }
-                        Statement::Let(_) => {
-                            break;
-                        }
-                        Statement::If(_, _) => {
-                            todo!()
-                        }
-                        Statement::Return(_) => {
-                            todo!()
-                        }
-                        Statement::Assert(_) => {
-                            todo!()
-                        }
-                        Statement::Raise(_) => {
-                            todo!()
-                        }
-                    }
-                }
-            }
-
-            let all_bindings: IndexSet<SymbolId> =
-                binding_groups.iter().flatten().copied().collect();
-
-            let mut block_context = context.clone();
-            block_context.bindings.extend(all_bindings);
-
-            let mut expr = lower_hir(db, arena, graph, &mut block_context, block.body.unwrap());
-
-            context.captures.extend(block_context.captures);
-
-            for (i, group) in binding_groups.iter().enumerate().rev() {
-                let mut bindings = Vec::new();
-
-                let mut bind_context = context.clone();
-
-                for existing_group in binding_groups.iter().take(i) {
-                    bind_context.bindings.extend(existing_group.iter().copied());
-                }
-
-                for &symbol in group {
-                    bindings.push(lower_symbol(db, arena, graph, &mut bind_context, symbol));
-                }
-
-                context.captures.extend(bind_context.captures);
-
-                expr = arena.alloc(Mir::Bind {
-                    bindings,
-                    body: expr,
-                });
-            }
-
-            expr
-        }
+        Hir::Nil => arena.alloc(Lir::Atom(vec![])),
+        Hir::String(value) => arena.alloc(Lir::Atom(value.as_bytes().to_vec())),
+        Hir::Int(value) => arena.alloc(Lir::Atom(bigint_atom(value.clone()))),
+        Hir::Bool(value) => arena.alloc(Lir::Atom(if value { vec![1] } else { vec![] })),
+        Hir::Bytes(atom) => arena.alloc(Lir::Atom(atom)),
+        Hir::Reference(symbol) => arena.alloc(Lir::Path(env.path(symbol))),
+        Hir::Block(block) => lower_block(db, arena, graph, env, block),
         Hir::Unary(op, hir) => {
-            let mir = lower_hir(db, arena, graph, context, hir);
-            arena.alloc(Mir::Unary(op, mir))
+            let lir = lower_hir(db, arena, graph, env, hir);
+            match op {
+                UnaryOp::Listp => arena.alloc(Lir::Listp(lir)),
+                UnaryOp::First => arena.alloc(Lir::First(lir)),
+                UnaryOp::Rest => arena.alloc(Lir::Rest(lir)),
+                UnaryOp::Strlen => arena.alloc(Lir::Strlen(lir)),
+                UnaryOp::Not => arena.alloc(Lir::Not(lir)),
+            }
         }
         Hir::Binary(op, left, right) => {
-            let left = lower_hir(db, arena, graph, context, left);
-            let right = lower_hir(db, arena, graph, context, right);
-            arena.alloc(Mir::Binary(op, left, right))
+            let left = lower_hir(db, arena, graph, env, left);
+            let right = lower_hir(db, arena, graph, env, right);
+            match op {
+                BinaryOp::Add => arena.alloc(Lir::Add(vec![left, right])),
+                BinaryOp::Sub => arena.alloc(Lir::Sub(vec![left, right])),
+                BinaryOp::Mul => arena.alloc(Lir::Mul(vec![left, right])),
+                BinaryOp::Div => arena.alloc(Lir::Div(left, right)),
+                BinaryOp::Eq => arena.alloc(Lir::Eq(left, right)),
+                BinaryOp::And => {
+                    let true_atom = arena.alloc(Lir::Atom(vec![1]));
+                    let false_atom = arena.alloc(Lir::Atom(vec![]));
+                    let right = arena.alloc(Lir::If(right, true_atom, false_atom));
+                    arena.alloc(Lir::If(left, right, false_atom))
+                }
+                BinaryOp::Or => {
+                    let true_atom = arena.alloc(Lir::Atom(vec![1]));
+                    let false_atom = arena.alloc(Lir::Atom(vec![]));
+                    let right = arena.alloc(Lir::If(right, true_atom, false_atom));
+                    arena.alloc(Lir::If(left, true_atom, right))
+                }
+            }
         }
     }
 }
 
-fn lower_symbol(
+fn lower_block(
     db: &Database,
-    arena: &mut Arena<Mir>,
+    arena: &mut Arena<Lir>,
     graph: &DependencyGraph,
-    context: &mut FunctionContext,
-    symbol: SymbolId,
-) -> MirId {
-    let Symbol::Binding(binding) = db.symbol(symbol) else {
-        unreachable!()
-    };
+    env: &Environment,
+    mut block: Block,
+) -> LirId {
+    // TODO: Implement statement only blocks
 
-    lower_hir(db, arena, graph, context, binding.value)
+    let mut binding_groups = Vec::new();
+
+    while !block.statements.is_empty() {
+        let mut remaining_bindings = IndexSet::new();
+
+        while let Some(stmt) = block.statements.last()
+            && let Statement::Let(symbol) = stmt
+        {
+            remaining_bindings.insert(*symbol);
+            block.statements.pop();
+        }
+
+        while !remaining_bindings.is_empty() {
+            let mut symbols = IndexSet::new();
+
+            for &symbol in &remaining_bindings {
+                if graph
+                    .dependencies(symbol, false)
+                    .iter()
+                    .all(|symbol| !remaining_bindings.contains(symbol))
+                {
+                    symbols.insert(symbol);
+                }
+            }
+
+            let mut bindings = Vec::new();
+
+            for &symbol in &symbols {
+                remaining_bindings.shift_remove(&symbol);
+                bindings.push(symbol);
+            }
+
+            binding_groups.push(bindings);
+        }
+
+        while let Some(stmt) = block.statements.last() {
+            match stmt {
+                Statement::Expr(_) => {
+                    block.statements.pop().unwrap();
+                }
+                Statement::Let(_) => {
+                    break;
+                }
+                Statement::If(_, _) => {
+                    todo!()
+                }
+                Statement::Return(_) => {
+                    todo!()
+                }
+                Statement::Assert(_) => {
+                    todo!()
+                }
+                Statement::Raise(_) => {
+                    todo!()
+                }
+            }
+        }
+    }
+
+    let all_bindings: Vec<SymbolId> = binding_groups.iter().flatten().copied().collect();
+
+    let body_env = env.with_bindings(&all_bindings);
+
+    let mut expr = lower_hir(db, arena, graph, &body_env, block.body.unwrap());
+
+    for (i, group) in binding_groups.iter().enumerate().rev() {
+        let mut bindings = Vec::new();
+
+        let mut bind_env = env.clone();
+
+        for existing_group in binding_groups.iter().take(i) {
+            bind_env = bind_env.with_bindings(existing_group);
+        }
+
+        for &symbol in group {
+            bindings.push(lower_symbol(db, arena, graph, &bind_env, symbol));
+        }
+
+        expr = arena.alloc(Lir::Curry(expr, bindings));
+    }
+
+    expr
 }

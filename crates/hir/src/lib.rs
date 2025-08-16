@@ -1,8 +1,10 @@
 mod builtins;
 mod database;
 mod dependency_graph;
+mod environment;
 mod hir;
 mod lower;
+mod ops;
 mod scope;
 mod symbol;
 mod types;
@@ -11,11 +13,11 @@ mod value;
 pub use builtins::*;
 pub use database::*;
 pub use dependency_graph::*;
+pub use environment::*;
 pub use hir::*;
 pub use lower::*;
+pub use ops::*;
 pub use scope::*;
 pub use symbol::*;
 pub use types::*;
 pub use value::*;
-
-pub use rue_mir::{BinaryOp, UnaryOp};

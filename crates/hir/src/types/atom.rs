@@ -2,9 +2,8 @@ use std::fmt;
 
 use clvmr::Allocator;
 use num_bigint::BigInt;
-use rue_mir::{BinaryOp, UnaryOp};
 
-use crate::{Builtins, Comparison, Database, Hir, HirId};
+use crate::{BinaryOp, Builtins, Comparison, Database, Hir, HirId, UnaryOp};
 
 #[derive(Debug, Clone)]
 pub enum Atom {

@@ -1024,7 +1024,6 @@ dependencies = [
  "rue-hir",
  "rue-lexer",
  "rue-lir",
- "rue-mir",
  "rue-parser",
  "serde",
  "serde_yml",
@@ -1068,12 +1067,13 @@ name = "rue-hir"
 version = "0.1.0"
 dependencies = [
  "clvmr",
+ "derive_more",
  "expect-test",
  "hex",
  "id-arena",
  "indexmap",
  "num-bigint",
- "rue-mir",
+ "rue-lir",
  "rue-parser",
 ]
 
@@ -1094,15 +1094,6 @@ dependencies = [
  "expect-test",
  "id-arena",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "rue-mir"
-version = "0.1.0"
-dependencies = [
- "derive_more",
- "id-arena",
- "rue-lir",
 ]
 
 [[package]]

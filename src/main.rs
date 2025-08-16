@@ -7,10 +7,9 @@ use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
 use rue_compiler::{Compiler, compile_document, declare_document};
 use rue_diagnostic::DiagnosticSeverity;
-use rue_hir::{DependencyGraph, Scope, lower_main};
+use rue_hir::{DependencyGraph, Environment, Scope, lower_symbol};
 use rue_lexer::Lexer;
 use rue_lir::codegen;
-use rue_mir::lower_mir;
 use rue_parser::Parser;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
@@ -86,12 +85,10 @@ fn main() -> Result<()> {
         if !fatal {
             let symbol = ctx.scope(scope).symbol("main").unwrap();
             let graph = DependencyGraph::build(&ctx, symbol);
-            let mut mir_arena = Arena::new();
-            let mir = lower_main(&ctx, &mut mir_arena, &graph, symbol);
+            let mut arena = Arena::new();
+            let lir = lower_symbol(&ctx, &mut arena, &graph, &Environment::default(), symbol);
 
             let mut allocator = Allocator::new();
-            let mut arena = Arena::new();
-            let lir = lower_mir(&mir_arena, &mut arena, mir, None);
             let ptr = codegen(&arena, &mut allocator, lir)?;
 
             let env = assemble(&mut allocator, test_case.solution.as_ref().unwrap()).unwrap();
