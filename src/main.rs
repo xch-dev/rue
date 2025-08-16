@@ -9,7 +9,7 @@ use rue_compiler::{Compiler, compile_document, declare_document};
 use rue_diagnostic::DiagnosticSeverity;
 use rue_hir::{DependencyGraph, Environment, Scope, lower_symbol};
 use rue_lexer::Lexer;
-use rue_lir::codegen;
+use rue_lir::{codegen, optimize};
 use rue_parser::Parser;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
@@ -98,6 +98,7 @@ fn main() -> Result<()> {
             let graph = DependencyGraph::build(&ctx, symbol);
             let mut arena = Arena::new();
             let lir = lower_symbol(&ctx, &mut arena, &graph, &Environment::default(), symbol);
+            let lir = optimize(&mut arena, lir);
 
             let mut allocator = Allocator::new();
             let ptr = codegen(&arena, &mut allocator, lir)?;

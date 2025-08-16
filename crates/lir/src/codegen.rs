@@ -77,11 +77,6 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             Ok(clvm_list!(OP_A, callee, environment).to_clvm(allocator)?)
         }
         Lir::Curry(callee, args) => {
-            if let Lir::Quote(callee) = &arena[*callee]
-                && args.is_empty()
-            {
-                return codegen(arena, allocator, *callee);
-            }
             let callee = codegen(arena, allocator, *callee)?;
             let mut environment = allocator.one();
             for arg in args.iter().rev() {
