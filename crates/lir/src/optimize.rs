@@ -1,6 +1,6 @@
 use id_arena::Arena;
 
-use crate::{Lir, LirId};
+use crate::{Lir, LirId, first_path, rest_path};
 
 pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
     match arena[lir].clone() {
@@ -31,10 +31,16 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             arena.alloc(Lir::Closure(callee, args))
         }
         Lir::First(value) => {
+            if let Lir::Path(path) = arena[value].clone() {
+                return arena.alloc(Lir::Path(first_path(path)));
+            }
             let value = optimize(arena, value);
             arena.alloc(Lir::First(value))
         }
         Lir::Rest(value) => {
+            if let Lir::Path(path) = arena[value].clone() {
+                return arena.alloc(Lir::Path(rest_path(path)));
+            }
             let value = optimize(arena, value);
             arena.alloc(Lir::Rest(value))
         }
