@@ -87,6 +87,12 @@ pub enum DiagnosticKind {
     #[error("Unnecessary cast from `{0}` to `{1}`, since they are directly assignable")]
     UnnecessaryCast(String, String),
 
+    #[error("Cannot type guard from `{0}` to `{1}`, since they do not overlap")]
+    IncompatibleGuard(String, String),
+
+    #[error("Unnecessary type guard from `{0}` to `{1}`, since they are already compatible types")]
+    UnnecessaryGuard(String, String),
+
     #[error(
         "Cannot compare `{0}` to `{1}` without a type guard, since the runtime value must be constrained"
     )]
@@ -132,6 +138,7 @@ impl DiagnosticKind {
             | Self::IncompatibleType(..)
             | Self::UnassignableType(..)
             | Self::IncompatibleCast(..)
+            | Self::IncompatibleGuard(..)
             | Self::UnconstrainableComparison(..)
             | Self::IncompatibleBinaryOp(..)
             | Self::IncompatibleUnaryOp(..)
@@ -143,6 +150,7 @@ impl DiagnosticKind {
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields
             | Self::UnnecessaryCast(..)
+            | Self::UnnecessaryGuard(..)
             | Self::UnnecessaryExplicitReturn => DiagnosticSeverity::Warning,
         }
     }

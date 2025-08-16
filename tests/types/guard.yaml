@@ -1,0 +1,3 @@
+solution: ()
+diagnostics:
+- Cannot compare `Bytes` to `Bytes32` without a type guard, since the runtime value must be constrained at 1:34

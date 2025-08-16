@@ -11,6 +11,13 @@ use rue_hir::{
 };
 use rue_parser::{SyntaxNode, SyntaxToken};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ComparisonKind {
+    Assign,
+    Cast,
+    Guard,
+}
+
 #[derive(Debug, Clone)]
 pub struct Compiler {
     diagnostics: Vec<Diagnostic>,
@@ -158,11 +165,21 @@ impl Compiler {
     }
 
     pub fn assign_type(&mut self, node: &impl GetTextRange, hir: HirId, from: TypeId, to: TypeId) {
-        self.compare_type(node, hir, from, to, false);
+        self.compare_type(node, hir, from, to, ComparisonKind::Assign);
     }
 
     pub fn cast_type(&mut self, node: &impl GetTextRange, hir: HirId, from: TypeId, to: TypeId) {
-        self.compare_type(node, hir, from, to, true);
+        self.compare_type(node, hir, from, to, ComparisonKind::Cast);
+    }
+
+    pub fn guard_type(
+        &mut self,
+        node: &impl GetTextRange,
+        hir: HirId,
+        from: TypeId,
+        to: TypeId,
+    ) -> HirId {
+        self.compare_type(node, hir, from, to, ComparisonKind::Guard)
     }
 
     fn compare_type(
@@ -171,49 +188,108 @@ impl Compiler {
         hir: HirId,
         from: TypeId,
         to: TypeId,
-        is_cast: bool,
-    ) {
-        let mut ctx = ComparisonContext::new(hir, HashMap::new());
-        let comparison = compare_types(&mut self.db, &mut ctx, &self.builtins, from, to);
+        kind: ComparisonKind,
+    ) -> HirId {
+        let comparison = compare_types(
+            &mut self.db,
+            &mut ComparisonContext::new(hir, HashMap::new()),
+            &self.builtins,
+            from,
+            to,
+        );
 
         match comparison {
             Comparison::Assignable => {
-                if is_cast {
-                    self.diagnostic(
-                        node,
-                        DiagnosticKind::UnnecessaryCast(self.type_name(from), self.type_name(to)),
-                    );
+                match kind {
+                    ComparisonKind::Assign => {}
+                    ComparisonKind::Cast => {
+                        self.diagnostic(
+                            node,
+                            DiagnosticKind::UnnecessaryCast(
+                                self.type_name(from),
+                                self.type_name(to),
+                            ),
+                        );
+                    }
+                    ComparisonKind::Guard => {
+                        self.diagnostic(
+                            node,
+                            DiagnosticKind::UnnecessaryGuard(
+                                self.type_name(from),
+                                self.type_name(to),
+                            ),
+                        );
+                    }
                 }
+                self.builtins.true_value.hir
             }
             Comparison::Castable => {
-                if !is_cast {
-                    self.diagnostic(
-                        node,
-                        DiagnosticKind::UnassignableType(self.type_name(from), self.type_name(to)),
-                    );
+                match kind {
+                    ComparisonKind::Assign => {
+                        self.diagnostic(
+                            node,
+                            DiagnosticKind::UnassignableType(
+                                self.type_name(from),
+                                self.type_name(to),
+                            ),
+                        );
+                    }
+                    ComparisonKind::Cast => {}
+                    ComparisonKind::Guard => {
+                        self.diagnostic(
+                            node,
+                            DiagnosticKind::UnnecessaryGuard(
+                                self.type_name(from),
+                                self.type_name(to),
+                            ),
+                        );
+                    }
                 }
+                self.builtins.true_value.hir
             }
             Comparison::Incompatible => {
-                if is_cast {
+                match kind {
+                    ComparisonKind::Assign => {
+                        self.diagnostic(
+                            node,
+                            DiagnosticKind::IncompatibleType(
+                                self.type_name(from),
+                                self.type_name(to),
+                            ),
+                        );
+                    }
+                    ComparisonKind::Cast => {
+                        self.diagnostic(
+                            node,
+                            DiagnosticKind::IncompatibleCast(
+                                self.type_name(from),
+                                self.type_name(to),
+                            ),
+                        );
+                    }
+                    ComparisonKind::Guard => {
+                        self.diagnostic(
+                            node,
+                            DiagnosticKind::IncompatibleGuard(
+                                self.type_name(from),
+                                self.type_name(to),
+                            ),
+                        );
+                    }
+                }
+                self.builtins.false_value.hir
+            }
+            Comparison::Constrainable(hir) => {
+                if kind != ComparisonKind::Guard {
                     self.diagnostic(
                         node,
-                        DiagnosticKind::IncompatibleCast(self.type_name(from), self.type_name(to)),
-                    );
-                } else {
-                    self.diagnostic(
-                        node,
-                        DiagnosticKind::IncompatibleType(self.type_name(from), self.type_name(to)),
+                        DiagnosticKind::UnconstrainableComparison(
+                            self.type_name(from),
+                            self.type_name(to),
+                        ),
                     );
                 }
-            }
-            Comparison::Constrainable(..) => {
-                self.diagnostic(
-                    node,
-                    DiagnosticKind::UnconstrainableComparison(
-                        self.type_name(from),
-                        self.type_name(to),
-                    ),
-                );
+                hir
             }
         }
     }
