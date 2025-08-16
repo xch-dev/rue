@@ -41,6 +41,8 @@ fn lower_function(
         definitions.push(lir);
     }
 
+    let body = arena.alloc(Lir::Quote(body));
+
     arena.alloc(Lir::Curry(body, definitions))
 }
 
@@ -181,13 +183,15 @@ fn lower_block(
     let mut expr = lower_hir(db, arena, graph, &body_env, block.body.unwrap());
 
     for (i, group) in binding_groups.iter().enumerate().rev() {
-        let mut bindings = Vec::new();
+        expr = arena.alloc(Lir::Quote(expr));
 
         let mut bind_env = env.clone();
 
         for existing_group in binding_groups.iter().take(i) {
             bind_env = bind_env.with_bindings(existing_group);
         }
+
+        let mut bindings = Vec::new();
 
         for &symbol in group {
             bindings.push(lower_symbol(db, arena, graph, &bind_env, symbol));
