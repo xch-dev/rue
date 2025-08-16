@@ -1,4 +1,0 @@
-program: (q . "Hello, world!")
-solution: ()
-output: '"Hello, world!"'
-cost: 36
