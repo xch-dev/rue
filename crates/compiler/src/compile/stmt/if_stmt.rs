@@ -11,10 +11,15 @@ pub fn compile_if_stmt(ctx: &mut Compiler, stmt: &AstIfStmt) -> Statement {
     };
 
     let then_block = if let Some(then_block) = stmt.then_block() {
-        compile_block(ctx, &then_block, false)
+        let index = ctx.push_mappings(condition.then_map.clone());
+        let value = compile_block(ctx, &then_block, false);
+        ctx.revert_mappings(index);
+        value
     } else {
         ctx.builtins().unresolved.clone()
     };
+
+    ctx.push_mappings(condition.else_map);
 
     Statement::If(condition.hir, then_block.hir)
 }

@@ -23,6 +23,7 @@ pub struct Compiler {
     diagnostics: Vec<Diagnostic>,
     db: Database,
     scope_stack: Vec<ScopeId>,
+    mapping_stack: Vec<HashMap<TypeId, TypeId>>,
     builtins: Builtins,
 }
 
@@ -50,6 +51,7 @@ impl Default for Compiler {
             diagnostics: Vec::new(),
             db,
             scope_stack: vec![builtins.scope],
+            mapping_stack: vec![HashMap::new()],
             builtins,
         }
     }
@@ -155,10 +157,34 @@ impl Compiler {
         }
     }
 
+    pub fn push_mappings(&mut self, mappings: HashMap<TypeId, TypeId>) -> usize {
+        let index = self.mapping_stack.len();
+        self.mapping_stack.push(mappings);
+        index
+    }
+
+    pub fn mapping_checkpoint(&self) -> usize {
+        self.mapping_stack.len()
+    }
+
+    pub fn revert_mappings(&mut self, index: usize) {
+        self.mapping_stack.truncate(index);
+    }
+
+    pub fn mappings(&self) -> HashMap<TypeId, TypeId> {
+        let mut mappings = HashMap::new();
+        for mapping in &self.mapping_stack {
+            mappings.extend(mapping.iter().map(|(k, v)| (*k, *v)));
+        }
+        mappings
+    }
+
     pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {
         let hir = self.builtins.unresolved.hir;
 
-        let mut ctx = ComparisonContext::new(hir, HashMap::new());
+        let inferred = self.mappings();
+
+        let mut ctx = ComparisonContext::new(hir, inferred);
         let comparison = compare_types(&mut self.db, &mut ctx, &self.builtins, from, to);
 
         matches!(comparison, Comparison::Assignable)
@@ -190,9 +216,11 @@ impl Compiler {
         to: TypeId,
         kind: ComparisonKind,
     ) -> HirId {
+        let inferred = self.mappings();
+
         let comparison = compare_types(
             &mut self.db,
-            &mut ComparisonContext::new(hir, HashMap::new()),
+            &mut ComparisonContext::new(hir, inferred),
             &self.builtins,
             from,
             to,

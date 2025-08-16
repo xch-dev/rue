@@ -42,7 +42,7 @@ pub fn compile_path_expr(ctx: &mut Compiler, path: &AstPathExpr) -> Value {
             Symbol::Parameter(parameter) => parameter.ty,
         };
 
-        value = Some(Value::new(ctx.alloc_hir(Hir::Reference(resolved)), ty));
+        value = Some(Value::unmapped(ctx.alloc_hir(Hir::Reference(resolved)), ty));
     }
 
     value.unwrap_or(ctx.builtins().unresolved.clone())

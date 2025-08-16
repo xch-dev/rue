@@ -13,13 +13,19 @@ pub fn compile_if_expr(ctx: &mut Compiler, expr: &AstIfExpr) -> Value {
     };
 
     let then_expr = if let Some(then_expr) = expr.then_expr() {
-        compile_expr(ctx, &then_expr)
+        let index = ctx.push_mappings(condition.then_map.clone());
+        let value = compile_expr(ctx, &then_expr);
+        ctx.revert_mappings(index);
+        value
     } else {
         ctx.builtins().unresolved.clone()
     };
 
     let else_expr = if let Some(else_expr) = expr.else_expr() {
-        compile_expr(ctx, &else_expr)
+        let index = ctx.push_mappings(condition.else_map.clone());
+        let value = compile_expr(ctx, &else_expr);
+        ctx.revert_mappings(index);
+        value
     } else {
         ctx.builtins().unresolved.clone()
     };
@@ -27,5 +33,5 @@ pub fn compile_if_expr(ctx: &mut Compiler, expr: &AstIfExpr) -> Value {
     let ty = ctx.alloc_type(Type::Union(vec![then_expr.ty, else_expr.ty]));
     let hir = ctx.alloc_hir(Hir::If(condition.hir, then_expr.hir, else_expr.hir));
 
-    Value::new(hir, ty)
+    Value::unmapped(hir, ty)
 }

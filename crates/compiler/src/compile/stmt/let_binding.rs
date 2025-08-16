@@ -29,13 +29,6 @@ pub fn compile_let_binding(ctx: &mut Compiler, stmt: &AstLetStmt) -> Statement {
     }));
 
     if let Some(name) = stmt.name() {
-        if ctx.last_scope().symbol(name.text()).is_some() {
-            ctx.diagnostic(
-                &name,
-                DiagnosticKind::DuplicateSymbol(name.text().to_string()),
-            );
-        }
-
         ctx.last_scope_mut()
             .insert_symbol(name.text().to_string(), symbol);
     }

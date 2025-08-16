@@ -18,5 +18,5 @@ pub fn compile_cast_expr(ctx: &mut Compiler, cast: &AstCastExpr) -> Value {
 
     ctx.cast_type(cast.syntax(), expr.hir, expr.ty, ty);
 
-    Value::new(expr.hir, ty)
+    Value::unmapped(expr.hir, ty)
 }

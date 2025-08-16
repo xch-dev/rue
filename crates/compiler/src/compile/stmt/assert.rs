@@ -10,5 +10,7 @@ pub fn compile_assert_stmt(ctx: &mut Compiler, stmt: &AstAssertStmt) -> Statemen
         ctx.builtins().unresolved.clone()
     };
 
+    ctx.push_mappings(value.then_map);
+
     Statement::Assert(value.hir)
 }

@@ -47,10 +47,14 @@ pub fn compile_block(ctx: &mut Compiler, block: &AstBlock, is_expr: bool) -> Val
         ctx.diagnostic(block.syntax(), DiagnosticKind::MissingReturn);
     }
 
-    let body_ty = body.as_ref().map(|body| body.ty);
-    let body = body.map(|body| body.hir);
+    let hir = ctx.alloc_hir(Hir::Block(Block {
+        statements,
+        body: body.as_ref().map(|value| value.hir),
+    }));
 
-    let hir = ctx.alloc_hir(Hir::Block(Block { statements, body }));
-
-    Value::new(hir, body_ty.unwrap_or(ctx.builtins().unresolved.ty))
+    if let Some(body) = body {
+        Value::with_mappings(hir, body.ty, body.then_map, body.else_map)
+    } else {
+        Value::unmapped(hir, ctx.builtins().unresolved.ty)
+    }
 }

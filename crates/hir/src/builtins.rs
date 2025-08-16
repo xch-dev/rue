@@ -45,15 +45,15 @@ impl Builtins {
 
         Self {
             scope,
-            unresolved: Value::new(unresolved_hir, unresolved_type),
+            unresolved: Value::unmapped(unresolved_hir, unresolved_type),
             bytes,
             bytes32,
             public_key,
             int,
             bool,
-            nil: Value::new(nil_hir, nil_type),
-            true_value: Value::new(true_hir, true_type),
-            false_value: Value::new(false_hir, false_type),
+            nil: Value::unmapped(nil_hir, nil_type),
+            true_value: Value::unmapped(true_hir, true_type),
+            false_value: Value::unmapped(false_hir, false_type),
         }
     }
 }

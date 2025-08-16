@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rue_ast::{AstGuardExpr, AstNode};
 use rue_hir::Value;
 
@@ -18,5 +20,9 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
 
     let hir = ctx.guard_type(guard.syntax(), expr.hir, expr.ty, ty);
 
-    Value::new(hir, ctx.builtins().bool)
+    let mut then_map = HashMap::new();
+    then_map.insert(expr.ty, ty);
+
+    // TODO: Else map
+    Value::with_mappings(hir, ctx.builtins().bool, then_map, HashMap::new())
 }
