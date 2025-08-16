@@ -204,6 +204,12 @@ pub enum SyntaxKind {
     #[display("union type")]
     UnionType,
 
+    #[display("group type")]
+    GroupType,
+
+    #[display("pair type")]
+    PairType,
+
     #[display("block")]
     Block,
 
@@ -236,6 +242,9 @@ pub enum SyntaxKind {
 
     #[display("group expression")]
     GroupExpr,
+
+    #[display("pair expression")]
+    PairExpr,
 
     #[display("prefix expression")]
     PrefixExpr,
@@ -417,6 +426,8 @@ impl SyntaxKind {
             SyntaxKind::PathType => &[SyntaxKind::PathType],
             SyntaxKind::PathTypeSegment => &[SyntaxKind::PathTypeSegment],
             SyntaxKind::UnionType => &[SyntaxKind::UnionType],
+            SyntaxKind::GroupType => &[SyntaxKind::GroupType],
+            SyntaxKind::PairType => &[SyntaxKind::PairType],
             SyntaxKind::Block => &[SyntaxKind::Block],
             SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],
             SyntaxKind::ExprStmt => &[SyntaxKind::ExprStmt],
@@ -428,6 +439,7 @@ impl SyntaxKind {
             SyntaxKind::PathExprSegment => &[SyntaxKind::PathExprSegment],
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],
             SyntaxKind::GroupExpr => &[SyntaxKind::GroupExpr],
+            SyntaxKind::PairExpr => &[SyntaxKind::PairExpr],
             SyntaxKind::PrefixExpr => &[SyntaxKind::PrefixExpr],
             SyntaxKind::BinaryExpr => &[SyntaxKind::BinaryExpr],
             SyntaxKind::FunctionCallExpr => &[SyntaxKind::FunctionCallExpr],

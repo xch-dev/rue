@@ -37,9 +37,15 @@ fn expr_binding_power(
         p.expect(kind);
         p.finish();
     } else if p.at(T!['(']) {
-        p.start(SyntaxKind::GroupExpr);
         p.expect(T!['(']);
         expr(p);
+        if p.try_eat(T![,]) {
+            p.start_at(checkpoint, SyntaxKind::PairExpr);
+            expr(p);
+            p.try_eat(T![,]);
+        } else {
+            p.start_at(checkpoint, SyntaxKind::GroupExpr);
+        }
         p.expect(T![')']);
         p.finish();
     } else if p.at(T!['{']) {

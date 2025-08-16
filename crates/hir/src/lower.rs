@@ -70,6 +70,11 @@ fn lower_hir(
         Hir::Int(value) => arena.alloc(Lir::Atom(bigint_atom(value.clone()))),
         Hir::Bool(value) => arena.alloc(Lir::Atom(if value { vec![1] } else { vec![] })),
         Hir::Bytes(atom) => arena.alloc(Lir::Atom(atom)),
+        Hir::Pair(first, rest) => {
+            let first = lower_hir(db, arena, graph, env, first);
+            let rest = lower_hir(db, arena, graph, env, rest);
+            arena.alloc(Lir::Cons(first, rest))
+        }
         Hir::Reference(symbol) => arena.alloc(Lir::Path(env.path(symbol))),
         Hir::Block(block) => lower_block(db, arena, graph, env, block.statements, block.body),
         Hir::If(condition, then, else_) => {

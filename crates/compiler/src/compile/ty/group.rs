@@ -1,0 +1,11 @@
+use rue_ast::AstGroupType;
+use rue_hir::TypeId;
+
+use crate::{Compiler, compile_type};
+
+pub fn compile_group_type(ctx: &mut Compiler, group: &AstGroupType) -> TypeId {
+    let Some(ty) = group.ty() else {
+        return ctx.builtins().unresolved.ty;
+    };
+    compile_type(ctx, &ty)
+}

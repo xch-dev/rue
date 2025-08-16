@@ -13,6 +13,7 @@ pub enum Hir {
     Int(BigInt),
     Bytes(Vec<u8>),
     Bool(bool),
+    Pair(HirId, HirId),
     Reference(SymbolId),
     Block(Block),
     If(HirId, HirId, HirId),
@@ -56,6 +57,9 @@ pub(crate) mod tests {
                 }
             }
             Hir::Bool(value) => format!("{value}"),
+            Hir::Pair(first, rest) => {
+                format!("({}, {})", debug_hir(db, *first), debug_hir(db, *rest))
+            }
             Hir::Reference(symbol) => format!("{symbol:?}"),
             Hir::Block(block) => block
                 .body

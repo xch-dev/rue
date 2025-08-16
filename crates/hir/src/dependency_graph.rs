@@ -63,6 +63,10 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
         | Hir::Int(_)
         | Hir::Bytes(_)
         | Hir::Bool(_) => {}
+        Hir::Pair(first, rest) => {
+            visit_hir(db, graph, *first);
+            visit_hir(db, graph, *rest);
+        }
         Hir::Reference(symbol) => {
             visit_symbol_reference(db, graph, *symbol);
         }

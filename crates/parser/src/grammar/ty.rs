@@ -9,6 +9,18 @@ fn ty_inner(p: &mut Parser<'_>, allow_union: bool) {
 
     if p.at(SyntaxKind::Ident) || p.at(T![::]) {
         path_type(p);
+    } else if p.at(T!['(']) {
+        p.expect(T!['(']);
+        ty(p);
+        if p.try_eat(T![,]) {
+            p.start_at(cp, SyntaxKind::PairType);
+            ty(p);
+            p.expect(T![,]);
+            p.expect(T![')']);
+        } else {
+            p.start_at(cp, SyntaxKind::GroupType);
+        }
+        p.finish()
     } else {
         p.skip();
         return;

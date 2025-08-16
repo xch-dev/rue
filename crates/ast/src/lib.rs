@@ -63,6 +63,8 @@ ast_nodes!(
     PathType,
     PathTypeSegment,
     UnionType,
+    GroupType,
+    PairType,
     Block,
     LetStmt,
     ExprStmt,
@@ -74,6 +76,7 @@ ast_nodes!(
     PathExprSegment,
     LiteralExpr,
     GroupExpr,
+    PairExpr,
     PrefixExpr,
     BinaryExpr,
     FunctionCallExpr,
@@ -94,6 +97,7 @@ ast_enum!(
     PathExpr,
     LiteralExpr,
     GroupExpr,
+    PairExpr,
     PrefixExpr,
     BinaryExpr,
     FunctionCallExpr,
@@ -102,7 +106,7 @@ ast_enum!(
     GuardExpr,
     CastExpr,
 );
-ast_enum!(Type, PathType, UnionType);
+ast_enum!(Type, PathType, UnionType, GroupType, PairType);
 
 impl AstDocument {
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
@@ -290,6 +294,16 @@ impl AstGroupExpr {
     }
 }
 
+impl AstPairExpr {
+    pub fn first(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn rest(&self) -> Option<AstExpr> {
+        self.syntax().children().filter_map(AstExpr::cast).nth(1)
+    }
+}
+
 impl AstPrefixExpr {
     pub fn op(&self) -> Option<SyntaxToken> {
         self.syntax()
@@ -395,5 +409,21 @@ impl AstPathTypeSegment {
 impl AstUnionType {
     pub fn types(&self) -> impl Iterator<Item = AstType> {
         self.syntax().children().filter_map(AstType::cast)
+    }
+}
+
+impl AstGroupType {
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+}
+
+impl AstPairType {
+    pub fn first(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+
+    pub fn rest(&self) -> Option<AstType> {
+        self.syntax().children().filter_map(AstType::cast).nth(1)
     }
 }
