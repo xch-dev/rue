@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     BinaryOp, Builtins, ComparisonContext, Constraint, Database, Hir, Type, TypeId, UnaryOp,
-    compare_atoms, compare_to_union,
+    compare_atoms, compare_to_union, constrain_union, unwrap_type,
 };
 
 #[derive(Debug, Clone)]
@@ -36,48 +36,22 @@ pub fn compare_types(
     db: &mut Database,
     ctx: &mut ComparisonContext,
     builtins: &Builtins,
-    mut from_id: TypeId,
-    mut to_id: TypeId,
+    from_id: TypeId,
+    to_id: TypeId,
 ) -> Comparison {
-    while let Some(new_from_id) = ctx.from(from_id) {
-        from_id = new_from_id;
-    }
-
-    while let Some(new_to_id) = ctx.to(to_id) {
-        to_id = new_to_id;
-    }
-
-    if let Some(new_from_id) = ctx.inferred(from_id) {
-        from_id = new_from_id;
-    }
-
-    if let Some(new_to_id) = ctx.inferred(to_id) {
-        to_id = new_to_id;
-    }
+    let from_id = unwrap_type(db, ctx, from_id);
+    let to_id = unwrap_type(db, ctx, to_id);
 
     match (db.ty(from_id).clone(), db.ty(to_id).clone()) {
+        (Type::Alias(_), _) | (_, Type::Alias(_)) => unreachable!(),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assignable,
         (Type::Generic(_), _) => Comparison::Incompatible,
         (_, Type::Generic(_)) => {
             ctx.infer(to_id, from_id);
             Comparison::Assignable
         }
-        (Type::Apply(from_id, from_map), _) => {
-            ctx.push_from_map(from_map);
-            let result = compare_types(db, ctx, builtins, from_id, to_id);
-            ctx.pop_from_map();
-            result
-        }
-        (_, Type::Apply(to_id, to_map)) => {
-            ctx.push_to_map(to_map);
-            let result = compare_types(db, ctx, builtins, from_id, to_id);
-            ctx.pop_to_map();
-            result
-        }
-        (Type::Alias(from), _) => compare_types(db, ctx, builtins, from.inner, to_id),
-        (_, Type::Alias(to)) => compare_types(db, ctx, builtins, from_id, to.inner),
-        (Type::Union(..), _) => todo!(),
         (_, Type::Union(ids)) => compare_to_union(db, ctx, builtins, from_id, to_id, ids),
+        (Type::Union(ids), _) => constrain_union(db, ctx, builtins, to_id, ids),
         (Type::Atom(..), Type::Pair(..)) | (Type::Pair(..), Type::Atom(..)) => {
             Comparison::Incompatible
         }

@@ -38,11 +38,7 @@ pub fn compile_path_type(ctx: &mut Compiler, path: &AstPathType) -> TypeId {
 
         let params = match ctx.ty(resolved) {
             Type::Unresolved => continue,
-            Type::Atom(..)
-            | Type::Pair(..)
-            | Type::Generic(..)
-            | Type::Union(..)
-            | Type::Apply(..) => vec![],
+            Type::Atom(..) | Type::Pair(..) | Type::Generic(..) | Type::Union(..) => vec![],
             Type::Alias(alias) => alias.vars.clone(),
         };
 
@@ -59,7 +55,8 @@ pub fn compile_path_type(ctx: &mut Compiler, path: &AstPathType) -> TypeId {
                 let arg = args.get(i).copied().unwrap_or(ctx.builtins().unresolved.ty);
                 map.insert(param, arg);
             }
-            resolved = ctx.alloc_type(Type::Apply(resolved, map));
+            // resolved = ctx.alloc_type(Type::Apply(resolved, map));
+            todo!()
         }
 
         ty = Some(resolved);

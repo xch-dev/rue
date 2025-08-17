@@ -5,6 +5,7 @@ mod constraint;
 mod replace;
 mod ty;
 mod unions;
+mod unwrap;
 
 pub use atom::*;
 pub use comparison::*;
@@ -13,3 +14,4 @@ pub use constraint::*;
 pub use replace::*;
 pub use ty::*;
 pub use unions::*;
+pub use unwrap::*;

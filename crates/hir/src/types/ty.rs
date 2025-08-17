@@ -15,7 +15,6 @@ pub enum Type {
     Generic(Generic),
     Alias(Alias),
     Union(Vec<TypeId>),
-    Apply(TypeId, HashMap<TypeId, TypeId>),
 }
 
 #[derive(Debug, Clone)]

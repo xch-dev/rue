@@ -15,11 +15,11 @@ fn ty_inner(p: &mut Parser<'_>, allow_union: bool) {
         if p.try_eat(T![,]) {
             p.start_at(cp, SyntaxKind::PairType);
             ty(p);
-            p.expect(T![,]);
-            p.expect(T![')']);
+            p.try_eat(T![,]);
         } else {
             p.start_at(cp, SyntaxKind::GroupType);
         }
+        p.expect(T![')']);
         p.finish()
     } else {
         p.skip();

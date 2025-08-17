@@ -7,10 +7,6 @@ pub fn replace_type(db: &mut Database, from: TypeId, to: TypeId, path: &[TypePat
 
     match db.ty(from).clone() {
         Type::Unresolved | Type::Atom(..) | Type::Generic(..) => from,
-        Type::Apply(inner, map) => {
-            let inner = replace_type(db, inner, to, path);
-            db.alloc_type(Type::Apply(inner, map))
-        }
         Type::Alias(alias) => {
             let inner = replace_type(db, alias.inner, to, path);
             db.alloc_type(Type::Alias(Alias {

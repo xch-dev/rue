@@ -6,8 +6,6 @@ use crate::{HirId, TypeId, TypePath};
 pub struct ComparisonContext {
     hir: Vec<HirId>,
     path: Vec<TypePath>,
-    from_map: Vec<HashMap<TypeId, TypeId>>,
-    to_map: Vec<HashMap<TypeId, TypeId>>,
     inferred: HashMap<TypeId, TypeId>,
 }
 
@@ -16,8 +14,6 @@ impl ComparisonContext {
         Self {
             hir: vec![hir],
             path: vec![],
-            from_map: vec![HashMap::new()],
-            to_map: vec![HashMap::new()],
             inferred,
         }
     }
@@ -49,32 +45,8 @@ impl ComparisonContext {
         self.inferred
     }
 
-    pub fn from(&self, from_id: TypeId) -> Option<TypeId> {
-        self.from_map.last().unwrap().get(&from_id).copied()
-    }
-
-    pub fn to(&self, to_id: TypeId) -> Option<TypeId> {
-        self.to_map.last().unwrap().get(&to_id).copied()
-    }
-
     pub fn inferred(&self, id: TypeId) -> Option<TypeId> {
         self.inferred.get(&id).copied()
-    }
-
-    pub fn push_from_map(&mut self, map: HashMap<TypeId, TypeId>) {
-        self.from_map.push(map);
-    }
-
-    pub fn pop_from_map(&mut self) {
-        self.from_map.pop().unwrap();
-    }
-
-    pub fn push_to_map(&mut self, map: HashMap<TypeId, TypeId>) {
-        self.to_map.push(map);
-    }
-
-    pub fn pop_to_map(&mut self) {
-        self.to_map.pop().unwrap();
     }
 
     pub fn infer(&mut self, generic: TypeId, concrete: TypeId) {

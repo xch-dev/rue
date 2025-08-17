@@ -147,7 +147,6 @@ impl Compiler {
                     self.type_name_impl(alias.inner, map)
                 }
             }
-            Type::Apply(inner, map) => self.type_name_impl(*inner, map),
             Type::Union(types) => {
                 let types = types
                     .iter()
