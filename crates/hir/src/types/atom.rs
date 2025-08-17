@@ -499,11 +499,7 @@ mod tests {
         check(Bool, PublicKey, expect!["fail"]);
         check(Bool, Nil, expect!["(<0> == nil)"]);
         check(Nil, Bool, expect!["cast"]);
-        check(
-            Int,
-            Bool,
-            expect!["((<0> == true) || (<0> == false))"],
-        );
+        check(Int, Bool, expect!["((<0> == true) || (<0> == false))"]);
         check(BoolValue(true), Bool, expect!["assign"]);
         check(BoolValue(false), Bool, expect!["assign"]);
         check(Bool, BoolValue(true), expect!["(<0> == true)"]);
@@ -534,10 +530,6 @@ mod tests {
         check(Int, Bytes32, expect!["((strlen <0>) == 32)"]);
         check(Bytes32, Int, expect!["cast"]);
         check(IntValue(BigInt::from(1)), Int, expect!["assign"]);
-        check(
-            Int,
-            IntValue(BigInt::from(1)),
-            expect!["(<0> == 1)"],
-        );
+        check(Int, IntValue(BigInt::from(1)), expect!["(<0> == 1)"]);
     }
 }
