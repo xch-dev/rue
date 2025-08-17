@@ -16,6 +16,12 @@ pub enum UnaryOp {
 
     #[display("!")]
     Not,
+
+    #[display("-")]
+    Neg,
+
+    #[display("~")]
+    BitwiseNot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
@@ -76,6 +82,15 @@ pub enum BinaryOp {
 
     #[display("|")]
     Any,
+
+    #[display("&")]
+    BitwiseAnd,
+
+    #[display("|")]
+    BitwiseOr,
+
+    #[display("^")]
+    BitwiseXor,
 
     #[display("<<")]
     LeftShift,

@@ -26,6 +26,24 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
                     .with_type(ctx.builtins().bool);
             }
         }
+        T![+] => {
+            if ctx.is_assignable(value.ty, ctx.builtins().int) {
+                ctx.diagnostic(prefix.syntax(), DiagnosticKind::UnnecessaryPlus);
+                return Value::new(value.hir, ctx.builtins().int);
+            }
+        }
+        T![-] => {
+            if ctx.is_assignable(value.ty, ctx.builtins().bool) {
+                let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Neg, value.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+        }
+        T![~] => {
+            if ctx.is_assignable(value.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::BitwiseNot, value.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+        }
         _ => {}
     }
 

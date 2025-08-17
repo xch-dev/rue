@@ -121,6 +121,9 @@ pub enum DiagnosticKind {
 
     #[error("Unknown field `{0}` on type `{1}`")]
     UnknownField(String, String),
+
+    #[error("Unnecessary `+` operator, since it has no effect")]
+    UnnecessaryPlus,
 }
 
 impl DiagnosticKind {
@@ -155,7 +158,8 @@ impl DiagnosticKind {
             | Self::EmptySubtypeFields
             | Self::UnnecessaryCast(..)
             | Self::UnnecessaryGuard(..)
-            | Self::UnnecessaryExplicitReturn => DiagnosticSeverity::Warning,
+            | Self::UnnecessaryExplicitReturn
+            | Self::UnnecessaryPlus => DiagnosticSeverity::Warning,
         }
     }
 }

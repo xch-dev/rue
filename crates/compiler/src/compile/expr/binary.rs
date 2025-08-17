@@ -216,6 +216,11 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
                 );
             }
 
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::BitwiseAnd, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+
             (left, right)
         }
         T![|] => {
@@ -224,7 +229,26 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
 
             if ctx.is_assignable(left.ty, ctx.builtins().bool) {
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Any, left.hir, right.hir));
-                return Value::new(hir, ctx.builtins().bool);
+                return Value::new(hir, ctx.builtins().bool).with_mappings(
+                    HashMap::new(),
+                    merge_mappings(&left.then_map, &right.then_map),
+                );
+            }
+
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::BitwiseOr, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+
+            (left, right)
+        }
+        T![^] => {
+            let left = left(ctx);
+            let right = right(ctx);
+
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::BitwiseXor, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
             }
 
             (left, right)
