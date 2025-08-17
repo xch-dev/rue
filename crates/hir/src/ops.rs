@@ -32,6 +32,9 @@ pub enum BinaryOp {
     #[display("/")]
     Div,
 
+    #[display("%")]
+    Mod,
+
     #[display(">")]
     Gt,
 
@@ -73,4 +76,10 @@ pub enum BinaryOp {
 
     #[display("|")]
     Any,
+
+    #[display("<<")]
+    LeftShift,
+
+    #[display(">>")]
+    RightShift,
 }

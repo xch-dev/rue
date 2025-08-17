@@ -117,6 +117,13 @@ fn lower_hir(
                 BinaryOp::Sub => arena.alloc(Lir::Sub(vec![left, right])),
                 BinaryOp::Mul => arena.alloc(Lir::Mul(vec![left, right])),
                 BinaryOp::Div => arena.alloc(Lir::Div(left, right)),
+                BinaryOp::Mod => arena.alloc(Lir::Mod(left, right)),
+                BinaryOp::LeftShift => {
+                    let zero = arena.alloc(Lir::Atom(vec![]));
+                    let neg = arena.alloc(Lir::Sub(vec![zero, right]));
+                    arena.alloc(Lir::Ash(left, neg))
+                }
+                BinaryOp::RightShift => arena.alloc(Lir::Ash(left, right)),
                 BinaryOp::Gt => arena.alloc(Lir::Gt(left, right)),
                 BinaryOp::Lt => arena.alloc(Lir::Gt(right, left)),
                 BinaryOp::Gte => {

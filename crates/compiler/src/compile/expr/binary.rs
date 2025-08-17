@@ -73,6 +73,39 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
 
             (left, right)
         }
+        T![%] => {
+            let left = left(ctx);
+            let right = right(ctx);
+
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Mod, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+
+            (left, right)
+        }
+        T![<<] => {
+            let left = left(ctx);
+            let right = right(ctx);
+
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::LeftShift, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+
+            (left, right)
+        }
+        T![>>] => {
+            let left = left(ctx);
+            let right = right(ctx);
+
+            if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::RightShift, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().int);
+            }
+
+            (left, right)
+        }
         T![>] => {
             let left = left(ctx);
             let right = right(ctx);
@@ -192,6 +225,32 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             if ctx.is_assignable(left.ty, ctx.builtins().bool) {
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Any, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool);
+            }
+
+            (left, right)
+        }
+        T![==] | T![!=] => {
+            // TODO: Guard?
+
+            let left = left(ctx);
+            let right = right(ctx);
+
+            if ctx.is_castable(left.ty, ctx.builtins().bytes)
+                && ctx.is_assignable(right.ty, left.ty)
+            {
+                let hir = if op.kind() == T![==] {
+                    ctx.alloc_hir(Hir::Binary(BinaryOp::Eq, left.hir, right.hir))
+                } else {
+                    ctx.alloc_hir(Hir::Binary(BinaryOp::Ne, left.hir, right.hir))
+                };
+
+                let mut value = Value::new(hir, ctx.builtins().bool);
+
+                if op.kind() == T![!=] {
+                    value = value.flip_mappings();
+                }
+
+                return value;
             }
 
             (left, right)

@@ -221,6 +221,15 @@ impl Compiler {
         matches!(comparison, Comparison::Assignable)
     }
 
+    pub fn is_castable(&mut self, from: TypeId, to: TypeId) -> bool {
+        let hir = self.builtins.unresolved.hir;
+
+        let mut ctx = ComparisonContext::new(hir, HashMap::new());
+        let comparison = compare_types(&mut self.db, &mut ctx, &self.builtins, from, to);
+
+        matches!(comparison, Comparison::Assignable | Comparison::Castable)
+    }
+
     pub fn unwrap_type(&mut self, ty: TypeId) -> TypeId {
         // TODO: Should we use unresolved here?
         unwrap_type(
