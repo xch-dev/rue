@@ -1,6 +1,6 @@
 use crate::{
-    Atom, BinaryOp, Builtins, Comparison, ComparisonContext, Constraint, Database, Hir, Type,
-    TypeId, UnaryOp, compare_types, unwrap_type,
+    Atom, BinaryOp, Builtins, Comparison, ComparisonContext, Constraint, Database, Hir, HirId,
+    Type, TypeId, TypePath, UnaryOp, bigint_atom, compare_types, unwrap_type,
 };
 
 #[derive(Debug, Clone)]
@@ -22,6 +22,7 @@ impl ShapeType {
 pub fn constrain_union(
     db: &mut Database,
     ctx: &mut ComparisonContext,
+    builtins: &Builtins,
     to_id: TypeId,
     mut wrapped: Vec<TypeId>,
 ) -> Comparison {
@@ -77,13 +78,13 @@ pub fn constrain_union(
         let first_ids = pairs.iter().map(|(_, first, _)| *first).collect::<Vec<_>>();
         let first_hir = db.alloc_hir(Hir::Unary(UnaryOp::First, ctx.hir()));
         ctx.push_first(first_hir);
-        let first_comparison = constrain_union(db, ctx, first, first_ids);
+        let first_comparison = constrain_union(db, ctx, builtins, first, first_ids);
         ctx.pop_hir();
 
         let rest_ids = pairs.iter().map(|(_, _, rest)| *rest).collect::<Vec<_>>();
         let rest_hir = db.alloc_hir(Hir::Unary(UnaryOp::Rest, ctx.hir()));
         ctx.push_rest(rest_hir);
-        let rest_comparison = constrain_union(db, ctx, rest, rest_ids);
+        let rest_comparison = constrain_union(db, ctx, builtins, rest, rest_ids);
         ctx.pop_hir();
 
         let atom_ids = atoms.iter().map(|(id, _)| *id).collect::<Vec<_>>();
@@ -96,14 +97,7 @@ pub fn constrain_union(
                 Comparison::Assignable | Comparison::Castable,
                 Comparison::Assignable | Comparison::Castable,
             ) => {
-                let otherwise_id = db.alloc_type(Type::Union(atom_ids));
-
-                return Comparison::Constrainable(Constraint::if_else(
-                    shape_check,
-                    ctx.path(),
-                    to_id,
-                    otherwise_id,
-                ));
+                return make_constraint(db, shape_check, ctx.path(), to_id, atom_ids);
             }
             (
                 Comparison::Constrainable(_constraint),
@@ -132,42 +126,141 @@ pub fn constrain_union(
 
         let pair_ids = pairs.iter().map(|(id, _, _)| *id).collect::<Vec<_>>();
 
-        match atom {
+        let mut otherwise = pair_ids;
+
+        return match atom {
             Atom::Bytes | Atom::Int => {
-                let otherwise_id = db.alloc_type(Type::Union(pair_ids));
-
-                return Comparison::Constrainable(Constraint::if_else(
-                    shape_check,
-                    ctx.path(),
-                    to_id,
-                    otherwise_id,
-                ));
+                make_constraint(db, shape_check, ctx.path(), to_id, otherwise)
             }
-            Atom::Nil => {
-                let mut otherwise = pair_ids;
-
-                for (id, item) in atoms {
-                    if matches!(item, Atom::Nil) {
-                        continue;
+            Atom::Nil | Atom::BoolValue(false) => {
+                for (_, atom) in atoms {
+                    if let Some(atom) = atom.subtract_value(vec![]) {
+                        otherwise.push(db.alloc_type(Type::Atom(atom)));
                     }
-
-                    otherwise.push(id);
                 }
 
-                let otherwise_id = db.alloc_type(Type::Union(otherwise));
+                let hir = db.alloc_hir(Hir::Binary(BinaryOp::Eq, ctx.hir(), builtins.nil.hir));
+                let check = db.alloc_hir(Hir::Binary(BinaryOp::And, shape_check, hir));
 
-                return Comparison::Constrainable(Constraint::if_else(
-                    shape_check,
-                    ctx.path(),
-                    to_id,
-                    otherwise_id,
-                ));
+                make_constraint(db, check, ctx.path(), to_id, otherwise)
             }
-            _ => todo!(),
-        }
+            Atom::BoolValue(true) => {
+                for (_, atom) in atoms {
+                    if let Some(atom) = atom.subtract_value(vec![1]) {
+                        otherwise.push(db.alloc_type(Type::Atom(atom)));
+                    }
+                }
+
+                let hir = db.alloc_hir(Hir::Binary(
+                    BinaryOp::Eq,
+                    ctx.hir(),
+                    builtins.true_value.hir,
+                ));
+                let check = db.alloc_hir(Hir::Binary(BinaryOp::And, shape_check, hir));
+
+                make_constraint(db, check, ctx.path(), to_id, otherwise)
+            }
+            Atom::Bool => {
+                for (_, atom) in atoms {
+                    if let Some(atom) = atom.subtract_value(vec![])
+                        && let Some(atom) = atom.subtract_value(vec![1])
+                    {
+                        otherwise.push(db.alloc_type(Type::Atom(atom)));
+                    }
+                }
+
+                let eq_true = db.alloc_hir(Hir::Binary(
+                    BinaryOp::Eq,
+                    ctx.hir(),
+                    builtins.true_value.hir,
+                ));
+                let eq_false = db.alloc_hir(Hir::Binary(
+                    BinaryOp::Eq,
+                    ctx.hir(),
+                    builtins.false_value.hir,
+                ));
+                let any = db.alloc_hir(Hir::Binary(BinaryOp::Any, eq_true, eq_false));
+                let check = db.alloc_hir(Hir::Binary(BinaryOp::And, shape_check, any));
+
+                make_constraint(db, check, ctx.path(), to_id, otherwise)
+            }
+            Atom::BytesValue(bytes) => {
+                for (_, atom) in atoms {
+                    if let Some(atom) = atom.subtract_value(bytes.clone()) {
+                        otherwise.push(db.alloc_type(Type::Atom(atom)));
+                    }
+                }
+
+                let value = db.alloc_hir(Hir::Bytes(bytes));
+                let hir = db.alloc_hir(Hir::Binary(BinaryOp::Eq, ctx.hir(), value));
+                let check = db.alloc_hir(Hir::Binary(BinaryOp::And, shape_check, hir));
+
+                make_constraint(db, check, ctx.path(), to_id, otherwise)
+            }
+            Atom::StringValue(string) => {
+                for (_, atom) in atoms {
+                    if let Some(atom) = atom.subtract_value(string.as_bytes().to_vec()) {
+                        otherwise.push(db.alloc_type(Type::Atom(atom)));
+                    }
+                }
+
+                let value = db.alloc_hir(Hir::String(string));
+                let hir = db.alloc_hir(Hir::Binary(BinaryOp::Eq, ctx.hir(), value));
+                let check = db.alloc_hir(Hir::Binary(BinaryOp::And, shape_check, hir));
+
+                make_constraint(db, check, ctx.path(), to_id, otherwise)
+            }
+            Atom::IntValue(int) => {
+                for (_, atom) in atoms {
+                    if let Some(atom) = atom.subtract_value(bigint_atom(int.clone())) {
+                        otherwise.push(db.alloc_type(Type::Atom(atom)));
+                    }
+                }
+
+                let value = db.alloc_hir(Hir::Int(int));
+                let hir = db.alloc_hir(Hir::Binary(BinaryOp::Eq, ctx.hir(), value));
+                let check = db.alloc_hir(Hir::Binary(BinaryOp::And, shape_check, hir));
+
+                make_constraint(db, check, ctx.path(), to_id, otherwise)
+            }
+            Atom::Bytes32 | Atom::PublicKey => {
+                let length = if matches!(atom, Atom::Bytes32) {
+                    32
+                } else {
+                    48
+                };
+
+                for (_, atom) in atoms {
+                    if let Some(atom) = atom.subtract_length(length) {
+                        otherwise.push(db.alloc_type(Type::Atom(atom)));
+                    }
+                }
+
+                let hir_length = db.alloc_hir(Hir::Unary(UnaryOp::Strlen, ctx.hir()));
+                let length_value = db.alloc_hir(Hir::Int(length.into()));
+                let hir = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir_length, length_value));
+                let check = db.alloc_hir(Hir::Binary(BinaryOp::And, shape_check, hir));
+
+                make_constraint(db, check, ctx.path(), to_id, otherwise)
+            }
+        };
     }
 
     Comparison::Assignable
+}
+
+fn make_constraint(
+    db: &mut Database,
+    check: HirId,
+    path: Vec<TypePath>,
+    to_id: TypeId,
+    otherwise: Vec<TypeId>,
+) -> Comparison {
+    Comparison::Constrainable(match otherwise.len() {
+        0 => Constraint::to(check, path, to_id),
+        1 => Constraint::if_else(check, path, to_id, otherwise[0]),
+        _ => Constraint::if_else(check, path, to_id, db.alloc_type(Type::Union(otherwise))),
+    })
 }
 
 pub fn compare_to_union(

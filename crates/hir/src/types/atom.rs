@@ -21,6 +21,126 @@ pub enum Atom {
     BoolValue(bool),
 }
 
+impl Atom {
+    pub fn subtract_value(&self, value: Vec<u8>) -> Option<Self> {
+        match self {
+            Self::Bytes | Self::Int | Self::Bytes32 | Self::PublicKey => Some(self.clone()),
+            Self::BytesValue(bytes) => {
+                if bytes == &value {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::StringValue(string) => {
+                if string.as_bytes() == &value {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::IntValue(int) => {
+                if bigint_atom(int.clone()) == value {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::BoolValue(is_true) => {
+                let bytes = if *is_true { vec![1] } else { vec![] };
+
+                if bytes == value {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::Nil => {
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::Bool => {
+                if value.is_empty() {
+                    Some(Self::BoolValue(true))
+                } else if value == [1] {
+                    Some(Self::BoolValue(false))
+                } else {
+                    Some(self.clone())
+                }
+            }
+        }
+    }
+
+    pub fn subtract_length(&self, length: usize) -> Option<Self> {
+        match self {
+            Self::Bytes | Self::Int => Some(self.clone()),
+            Self::Bytes32 => {
+                if length == 32 {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::PublicKey => {
+                if length == 48 {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::BytesValue(bytes) => {
+                if bytes.len() == length {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::StringValue(string) => {
+                if string.as_bytes().len() == length {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::IntValue(int) => {
+                if bigint_atom(int.clone()).len() == length {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::BoolValue(is_true) => {
+                let bytes = if *is_true { vec![1] } else { vec![] };
+
+                if bytes.len() == length {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::Nil => {
+                if length == 0 {
+                    None
+                } else {
+                    Some(self.clone())
+                }
+            }
+            Self::Bool => {
+                if length == 0 {
+                    Some(Self::BoolValue(true))
+                } else if length == 1 {
+                    Some(Self::BoolValue(false))
+                } else {
+                    Some(self.clone())
+                }
+            }
+        }
+    }
+}
+
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -107,7 +227,7 @@ pub fn compare_atoms(
         (Atom::Bytes | Atom::Int, Atom::Bool) => {
             let eq_true = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, builtins.true_value.hir));
             let eq_false = db.alloc_hir(Hir::Binary(BinaryOp::Eq, hir, builtins.false_value.hir));
-            let or = db.alloc_hir(Hir::Binary(BinaryOp::Or, eq_true, eq_false));
+            let or = db.alloc_hir(Hir::Binary(BinaryOp::Any, eq_true, eq_false));
             Comparison::Constrainable(Constraint::to(or, path, to_id))
         }
         (Atom::Bytes | Atom::Int, Atom::BytesValue(value)) => {
