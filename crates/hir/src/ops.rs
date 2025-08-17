@@ -44,6 +44,18 @@ pub enum BinaryOp {
     #[display("<=")]
     Lte,
 
+    #[display(">")]
+    GtBytes,
+
+    #[display("<")]
+    LtBytes,
+
+    #[display(">=")]
+    GteBytes,
+
+    #[display("<=")]
+    LteBytes,
+
     #[display("==")]
     Eq,
 
@@ -55,4 +67,10 @@ pub enum BinaryOp {
 
     #[display("||")]
     Or,
+
+    #[display("&")]
+    All,
+
+    #[display("|")]
+    Any,
 }

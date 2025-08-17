@@ -129,6 +129,18 @@ fn lower_hir(
                     let eq = arena.alloc(Lir::Eq(left, right));
                     arena.alloc(Lir::Any(vec![lt, eq]))
                 }
+                BinaryOp::GtBytes => arena.alloc(Lir::GtBytes(left, right)),
+                BinaryOp::LtBytes => arena.alloc(Lir::GtBytes(right, left)),
+                BinaryOp::GteBytes => {
+                    let gt = arena.alloc(Lir::GtBytes(left, right));
+                    let eq = arena.alloc(Lir::Eq(left, right));
+                    arena.alloc(Lir::Any(vec![gt, eq]))
+                }
+                BinaryOp::LteBytes => {
+                    let lt = arena.alloc(Lir::GtBytes(right, left));
+                    let eq = arena.alloc(Lir::Eq(left, right));
+                    arena.alloc(Lir::Any(vec![lt, eq]))
+                }
                 BinaryOp::Eq => arena.alloc(Lir::Eq(left, right)),
                 BinaryOp::Ne => {
                     let eq = arena.alloc(Lir::Eq(left, right));
@@ -146,6 +158,8 @@ fn lower_hir(
                     let right = arena.alloc(Lir::If(right, true_atom, false_atom));
                     arena.alloc(Lir::If(left, true_atom, right))
                 }
+                BinaryOp::All => arena.alloc(Lir::All(vec![left, right])),
+                BinaryOp::Any => arena.alloc(Lir::Any(vec![left, right])),
             }
         }
     }

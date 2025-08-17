@@ -2,13 +2,15 @@ use std::collections::HashMap;
 
 use crate::{HirId, SymbolId, TypeId, TypePath};
 
+pub type Mappings = HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>;
+
 #[derive(Debug, Clone)]
 pub struct Value {
     pub hir: HirId,
     pub ty: TypeId,
     pub symbol: Option<SymbolId>,
-    pub then_map: HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>,
-    pub else_map: HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>,
+    pub then_map: Mappings,
+    pub else_map: Mappings,
 }
 
 impl Value {
@@ -17,8 +19,8 @@ impl Value {
             hir,
             ty,
             symbol: None,
-            then_map: HashMap::new(),
-            else_map: HashMap::new(),
+            then_map: Mappings::new(),
+            else_map: Mappings::new(),
         }
     }
 
@@ -37,11 +39,7 @@ impl Value {
         }
     }
 
-    pub fn with_mappings(
-        self,
-        then_map: HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>,
-        else_map: HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>,
-    ) -> Self {
+    pub fn with_mappings(self, then_map: Mappings, else_map: Mappings) -> Self {
         Self {
             then_map,
             else_map,
@@ -56,4 +54,16 @@ impl Value {
             ..self
         }
     }
+}
+
+pub fn merge_mappings(a: &Mappings, b: &Mappings) -> Mappings {
+    let mut map = Mappings::new();
+
+    for (&symbol, mappings) in a.iter().chain(b.iter()) {
+        for (path, &ty) in mappings {
+            map.entry(symbol).or_default().insert(path.clone(), ty);
+        }
+    }
+
+    map
 }
