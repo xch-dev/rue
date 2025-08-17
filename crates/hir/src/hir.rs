@@ -17,6 +17,7 @@ pub enum Hir {
     Reference(SymbolId),
     Block(Block),
     If(HirId, HirId, HirId),
+    FunctionCall(HirId, Vec<HirId>),
     Unary(UnaryOp, HirId),
     Binary(BinaryOp, HirId, HirId),
 }
@@ -69,6 +70,14 @@ pub(crate) mod tests {
                 debug_hir(db, *condition),
                 debug_hir(db, *then),
                 debug_hir(db, *else_)
+            ),
+            Hir::FunctionCall(function, args) => format!(
+                "{}({})",
+                debug_hir(db, *function),
+                args.iter()
+                    .map(|arg| debug_hir(db, *arg))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             Hir::Unary(op, hir) => format!("({op} {})", debug_hir(db, *hir)),
             Hir::Binary(op, left, right) => {

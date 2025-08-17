@@ -1,5 +1,6 @@
 mod binary;
 mod cast;
+mod field_access;
 mod function_call;
 mod group;
 mod guard;
@@ -11,6 +12,7 @@ mod prefix;
 
 pub use binary::*;
 pub use cast::*;
+pub use field_access::*;
 pub use function_call::*;
 pub use group::*;
 pub use guard::*;
@@ -37,6 +39,7 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr) -> Value {
         AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr),
         AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
+        AstExpr::FieldAccessExpr(expr) => compile_field_access_expr(ctx, expr),
         AstExpr::Block(block) => compile_block(ctx, block, true),
     }
 }

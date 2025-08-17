@@ -118,6 +118,9 @@ pub enum DiagnosticKind {
 
     #[error("Block does not return a value")]
     MissingReturn,
+
+    #[error("Unknown field `{0}` on type `{1}`")]
+    UnknownField(String, String),
 }
 
 impl DiagnosticKind {
@@ -145,7 +148,8 @@ impl DiagnosticKind {
             | Self::InvalidExpressionStatement
             | Self::MissingLetValue
             | Self::UnexpectedImplicitReturn
-            | Self::MissingReturn => DiagnosticSeverity::Error,
+            | Self::MissingReturn
+            | Self::UnknownField(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields

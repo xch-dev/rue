@@ -1,6 +1,6 @@
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId};
+use rue_hir::{FunctionSymbol, FunctionType, ParameterSymbol, Scope, Symbol, SymbolId, Type};
 
 use crate::{Compiler, compile_block, compile_generic_parameters, compile_type};
 
@@ -20,6 +20,9 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
     };
 
     let mut parameters = Vec::new();
+    let mut param_types = Vec::new();
+
+    ctx.push_scope(scope);
 
     for parameter in function.parameters() {
         let ty = if let Some(ty) = parameter.ty() {
@@ -45,13 +48,22 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
                 .insert_symbol(name.text().to_string(), symbol);
         }
 
+        param_types.push(ty);
         parameters.push(symbol);
     }
 
+    ctx.pop_scope();
+
     let body = ctx.builtins().unresolved.hir;
+
+    let ty = ctx.alloc_type(Type::Fn(FunctionType {
+        params: param_types,
+        ret: return_type,
+    }));
 
     let symbol = ctx.alloc_symbol(Symbol::Function(FunctionSymbol {
         name: function.name(),
+        ty,
         scope,
         vars,
         parameters,

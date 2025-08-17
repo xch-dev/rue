@@ -1,0 +1,5 @@
+solution: ()
+diagnostics:
+- Cannot assign `fn(List) -> Int` to `Int`, since they are incompatible at 3:33
+- Unnecessary type guard from `List` to `nil`, since they are already compatible types at 8:7
+- Cannot use `+` operator with `fn(List) -> Int` and `1` at 11:9

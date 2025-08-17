@@ -90,6 +90,12 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
             visit_hir(db, graph, *then);
             visit_hir(db, graph, *else_);
         }
+        Hir::FunctionCall(function, args) => {
+            visit_hir(db, graph, *function);
+            for arg in args {
+                visit_hir(db, graph, *arg);
+            }
+        }
         Hir::Unary(_op, arg) => {
             visit_hir(db, graph, *arg);
         }

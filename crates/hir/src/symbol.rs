@@ -15,6 +15,7 @@ pub enum Symbol {
 #[derive(Debug, Clone)]
 pub struct FunctionSymbol {
     pub name: Option<SyntaxToken>,
+    pub ty: TypeId,
     pub scope: ScopeId,
     pub vars: Vec<TypeId>,
     pub parameters: Vec<SymbolId>,

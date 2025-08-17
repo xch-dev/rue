@@ -60,6 +60,7 @@ ast_nodes!(
     TypeAliasItem,
     GenericParameters,
     GenericArguments,
+    LiteralType,
     PathType,
     PathTypeSegment,
     UnionType,
@@ -83,6 +84,7 @@ ast_nodes!(
     IfExpr,
     GuardExpr,
     CastExpr,
+    FieldAccessExpr,
 );
 
 ast_enum!(Item, TypeItem, SymbolItem);
@@ -105,8 +107,9 @@ ast_enum!(
     IfExpr,
     GuardExpr,
     CastExpr,
+    FieldAccessExpr,
 );
-ast_enum!(Type, PathType, UnionType, GroupType, PairType);
+ast_enum!(Type, LiteralType, PathType, UnionType, GroupType, PairType);
 
 impl AstDocument {
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
@@ -284,7 +287,7 @@ impl AstLiteralExpr {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| SyntaxKind::LITERAL_EXPR.contains(&token.kind()))
+            .find(|token| SyntaxKind::LITERAL.contains(&token.kind()))
     }
 }
 
@@ -375,6 +378,28 @@ impl AstCastExpr {
 
     pub fn ty(&self) -> Option<AstType> {
         self.syntax().children().find_map(AstType::cast)
+    }
+}
+
+impl AstFieldAccessExpr {
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn field(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+}
+
+impl AstLiteralType {
+    pub fn value(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| SyntaxKind::LITERAL.contains(&token.kind()))
     }
 }
 

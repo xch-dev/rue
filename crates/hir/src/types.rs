@@ -1,3 +1,4 @@
+mod apply_generics;
 mod atom;
 mod comparison;
 mod comparison_context;
@@ -7,6 +8,7 @@ mod ty;
 mod unions;
 mod unwrap;
 
+pub use apply_generics::*;
 pub use atom::*;
 pub use comparison::*;
 pub use comparison_context::*;

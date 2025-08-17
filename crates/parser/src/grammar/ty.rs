@@ -9,6 +9,10 @@ fn ty_inner(p: &mut Parser<'_>, allow_union: bool) {
 
     if p.at(SyntaxKind::Ident) || p.at(T![::]) {
         path_type(p);
+    } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL) {
+        p.start(SyntaxKind::LiteralType);
+        p.expect(kind);
+        p.finish();
     } else if p.at(T!['(']) {
         p.expect(T!['(']);
         ty(p);
@@ -67,7 +71,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_literal_type() {
+    fn test_path_type() {
         check(
             ty,
             "String",

@@ -32,7 +32,7 @@ fn expr_binding_power(
             separated = path_expr_segment(p, false);
         }
         p.finish();
-    } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL_EXPR) {
+    } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL) {
         p.start(SyntaxKind::LiteralExpr);
         p.expect(kind);
         p.finish();
@@ -80,6 +80,11 @@ fn expr_binding_power(
             p.start_at(checkpoint, SyntaxKind::CastExpr);
             p.expect(T![as]);
             ty(p);
+            p.finish();
+        } else if p.at(T![.]) {
+            p.start_at(checkpoint, SyntaxKind::FieldAccessExpr);
+            p.expect(T![.]);
+            p.expect(SyntaxKind::Ident);
             p.finish();
         } else {
             break;

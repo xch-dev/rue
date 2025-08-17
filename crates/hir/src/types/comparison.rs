@@ -50,6 +50,33 @@ pub fn compare_types(
             ctx.infer(to_id, from_id);
             Comparison::Assignable
         }
+        (Type::Fn(from), Type::Fn(to)) => {
+            if from.params.len() != to.params.len() {
+                return Comparison::Incompatible;
+            }
+
+            let mut result = compare_types(db, ctx, builtins, from.ret, to.ret);
+
+            for (from_param, to_param) in from.params.into_iter().zip(to.params.into_iter()) {
+                let comparison = compare_types(db, ctx, builtins, from_param, to_param);
+
+                result = match (result, comparison) {
+                    (Comparison::Assignable, Comparison::Assignable) => Comparison::Assignable,
+                    (Comparison::Castable, Comparison::Castable) => Comparison::Castable,
+                    (Comparison::Constrainable(..), _) | (_, Comparison::Constrainable(..)) => {
+                        Comparison::Incompatible
+                    }
+                    (Comparison::Assignable, Comparison::Castable)
+                    | (Comparison::Castable, Comparison::Assignable) => Comparison::Castable,
+                    (Comparison::Incompatible, _) | (_, Comparison::Incompatible) => {
+                        Comparison::Incompatible
+                    }
+                };
+            }
+
+            result
+        }
+        (Type::Fn(..), _) | (_, Type::Fn(..)) => Comparison::Incompatible,
         (_, Type::Union(ids)) => compare_to_union(db, ctx, builtins, from_id, to_id, ids),
         (Type::Union(ids), _) => constrain_union(db, ctx, to_id, ids),
         (Type::Atom(..), Type::Pair(..)) | (Type::Pair(..), Type::Atom(..)) => {

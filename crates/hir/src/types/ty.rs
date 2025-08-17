@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use id_arena::Id;
 use rue_parser::SyntaxToken;
 
@@ -15,6 +13,7 @@ pub enum Type {
     Generic(Generic),
     Alias(Alias),
     Union(Vec<TypeId>),
+    Fn(FunctionType),
 }
 
 #[derive(Debug, Clone)]
@@ -28,4 +27,10 @@ pub struct Alias {
     pub scope: ScopeId,
     pub vars: Vec<TypeId>,
     pub inner: TypeId,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionType {
+    pub params: Vec<TypeId>,
+    pub ret: TypeId,
 }

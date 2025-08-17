@@ -43,10 +43,9 @@ pub fn constrain_union(
     for id in unwrapped_ids {
         match db.ty(id).clone() {
             Type::Alias(_) | Type::Union(_) => unreachable!(),
-            // TODO: Handle unresolved types
-            Type::Unresolved => todo!(),
+            Type::Unresolved => {}
             // TODO: Handle generic types
-            Type::Generic(_) => return Comparison::Incompatible,
+            Type::Generic(_) | Type::Fn(_) => return Comparison::Incompatible,
             Type::Atom(atom) => atoms.push((id, atom)),
             Type::Pair(first, rest) => pairs.push((id, first, rest)),
         }
@@ -54,6 +53,7 @@ pub fn constrain_union(
 
     let shape = match db.ty(to_id).clone() {
         Type::Unresolved | Type::Generic(_) | Type::Alias(_) | Type::Union(_) => unreachable!(),
+        Type::Fn(..) => return Comparison::Incompatible,
         Type::Atom(atom) => ShapeType::Atom(atom),
         Type::Pair(first, rest) => ShapeType::Pair(first, rest),
     };

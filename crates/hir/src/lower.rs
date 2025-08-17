@@ -83,6 +83,14 @@ fn lower_hir(
             let else_ = lower_hir(db, arena, graph, env, else_);
             arena.alloc(Lir::If(condition, then, else_))
         }
+        Hir::FunctionCall(function, args) => {
+            let function = lower_hir(db, arena, graph, env, function);
+            let args = args
+                .iter()
+                .map(|arg| lower_hir(db, arena, graph, env, *arg))
+                .collect();
+            arena.alloc(Lir::Run(function, args))
+        }
         Hir::Unary(op, hir) => {
             let lir = lower_hir(db, arena, graph, env, hir);
             match op {

@@ -195,6 +195,9 @@ pub enum SyntaxKind {
     #[display("generic arguments")]
     GenericArguments,
 
+    #[display("literal type")]
+    LiteralType,
+
     #[display("path type")]
     PathType,
 
@@ -264,6 +267,9 @@ pub enum SyntaxKind {
     #[display("cast expression")]
     CastExpr,
 
+    #[display("field access expression")]
+    FieldAccessExpr,
+
     // Unexpected cases
     #[display("error")]
     Error,
@@ -324,7 +330,7 @@ macro_rules! T {
 }
 
 impl SyntaxKind {
-    pub const LITERAL_EXPR: &[Self] = &[
+    pub const LITERAL: &[Self] = &[
         SyntaxKind::String,
         SyntaxKind::Hex,
         SyntaxKind::Integer,
@@ -423,6 +429,7 @@ impl SyntaxKind {
             SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
             SyntaxKind::GenericParameters => &[SyntaxKind::GenericParameters],
             SyntaxKind::GenericArguments => &[SyntaxKind::GenericArguments],
+            SyntaxKind::LiteralType => &[SyntaxKind::LiteralType],
             SyntaxKind::PathType => &[SyntaxKind::PathType],
             SyntaxKind::PathTypeSegment => &[SyntaxKind::PathTypeSegment],
             SyntaxKind::UnionType => &[SyntaxKind::UnionType],
@@ -446,6 +453,7 @@ impl SyntaxKind {
             SyntaxKind::IfExpr => &[SyntaxKind::IfExpr],
             SyntaxKind::GuardExpr => &[SyntaxKind::GuardExpr],
             SyntaxKind::CastExpr => &[SyntaxKind::CastExpr],
+            SyntaxKind::FieldAccessExpr => &[SyntaxKind::FieldAccessExpr],
             SyntaxKind::Error => &[SyntaxKind::Error],
             SyntaxKind::Eof => &[SyntaxKind::Eof],
         }

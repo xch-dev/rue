@@ -8,7 +8,7 @@ use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
 use rue_hir::{
     Builtins, Comparison, ComparisonContext, Constraint, Database, HirId, Scope, ScopeId, Symbol,
-    SymbolId, Type, TypeId, TypePath, compare_types, replace_type,
+    SymbolId, Type, TypeId, TypePath, compare_types, replace_type, unwrap_type,
 };
 use rue_parser::{SyntaxNode, SyntaxToken};
 
@@ -154,6 +154,15 @@ impl Compiler {
                     .collect::<Vec<_>>();
                 types.join(" | ")
             }
+            Type::Fn(function) => {
+                let params = function
+                    .params
+                    .iter()
+                    .map(|ty| self.type_name_impl(*ty, map))
+                    .collect::<Vec<_>>();
+                let ret = self.type_name_impl(function.ret, map);
+                format!("fn({}) -> {}", params.join(", "), ret)
+            }
         }
     }
 
@@ -166,7 +175,7 @@ impl Compiler {
 
         match self.symbol(symbol) {
             Symbol::Binding(binding) => binding.ty,
-            Symbol::Function(_) => todo!(),
+            Symbol::Function(function) => function.ty,
             Symbol::Parameter(parameter) => parameter.ty,
         }
     }
@@ -210,6 +219,15 @@ impl Compiler {
         let comparison = compare_types(&mut self.db, &mut ctx, &self.builtins, from, to);
 
         matches!(comparison, Comparison::Assignable)
+    }
+
+    pub fn unwrap_type(&mut self, ty: TypeId) -> TypeId {
+        // TODO: Should we use unresolved here?
+        unwrap_type(
+            &self.db,
+            &mut ComparisonContext::new(self.builtins.unresolved.hir, HashMap::new()),
+            ty,
+        )
     }
 
     pub fn assign_type(&mut self, node: &impl GetTextRange, hir: HirId, from: TypeId, to: TypeId) {
