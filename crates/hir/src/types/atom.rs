@@ -485,8 +485,8 @@ mod tests {
         check(Nil, Nil, expect!["assign"]);
         check(Nil, Bytes, expect!["assign"]);
         check(Nil, Int, expect!["cast"]);
-        check(Int, Nil, expect!["(Id { idx: 0 } == nil)"]);
-        check(Bytes, Nil, expect!["(Id { idx: 0 } == nil)"]);
+        check(Int, Nil, expect!["(<0> == nil)"]);
+        check(Bytes, Nil, expect!["(<0> == nil)"]);
         check(Bytes32, Nil, expect!["fail"]);
     }
 
@@ -497,17 +497,17 @@ mod tests {
         check(Bool, Int, expect!["cast"]);
         check(Bool, Bytes32, expect!["fail"]);
         check(Bool, PublicKey, expect!["fail"]);
-        check(Bool, Nil, expect!["(Id { idx: 0 } == nil)"]);
+        check(Bool, Nil, expect!["(<0> == nil)"]);
         check(Nil, Bool, expect!["cast"]);
         check(
             Int,
             Bool,
-            expect!["((Id { idx: 0 } == true) || (Id { idx: 0 } == false))"],
+            expect!["((<0> == true) || (<0> == false))"],
         );
         check(BoolValue(true), Bool, expect!["assign"]);
         check(BoolValue(false), Bool, expect!["assign"]);
-        check(Bool, BoolValue(true), expect!["(Id { idx: 0 } == true)"]);
-        check(Bool, BoolValue(false), expect!["(Id { idx: 0 } == false)"]);
+        check(Bool, BoolValue(true), expect!["(<0> == true)"]);
+        check(Bool, BoolValue(false), expect!["(<0> == false)"]);
         check(BoolValue(true), Int, expect!["cast"]);
     }
 
@@ -515,14 +515,14 @@ mod tests {
     fn test_bytes() {
         check(Bytes, Bytes, expect!["assign"]);
         check(Bytes32, Bytes, expect!["assign"]);
-        check(Bytes, Bytes32, expect!["((strlen Id { idx: 0 }) == 32)"]);
+        check(Bytes, Bytes32, expect!["((strlen <0>) == 32)"]);
         check(Bytes32, Bytes32, expect!["assign"]);
         check(StringValue(String::new()), Bytes, expect!["assign"]);
-        check(Bytes, BytesValue(vec![]), expect!["(Id { idx: 0 } == nil)"]);
+        check(Bytes, BytesValue(vec![]), expect!["(<0> == nil)"]);
         check(
             Bytes,
             StringValue("hello".to_string()),
-            expect![[r#"(Id { idx: 0 } == "hello")"#]],
+            expect![[r#"(<0> == "hello")"#]],
         );
         check(Bytes32, StringValue("hello".to_string()), expect!["fail"]);
     }
@@ -531,13 +531,13 @@ mod tests {
     fn test_int() {
         check(Bytes, Int, expect!["cast"]);
         check(Int, Bytes, expect!["cast"]);
-        check(Int, Bytes32, expect!["((strlen Id { idx: 0 }) == 32)"]);
+        check(Int, Bytes32, expect!["((strlen <0>) == 32)"]);
         check(Bytes32, Int, expect!["cast"]);
         check(IntValue(BigInt::from(1)), Int, expect!["assign"]);
         check(
             Int,
             IntValue(BigInt::from(1)),
-            expect!["(Id { idx: 0 } == 1)"],
+            expect!["(<0> == 1)"],
         );
     }
 }
