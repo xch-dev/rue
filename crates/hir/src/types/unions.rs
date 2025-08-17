@@ -22,7 +22,6 @@ impl ShapeType {
 pub fn constrain_union(
     db: &mut Database,
     ctx: &mut ComparisonContext,
-    builtins: &Builtins,
     to_id: TypeId,
     mut wrapped: Vec<TypeId>,
 ) -> Comparison {
@@ -78,13 +77,13 @@ pub fn constrain_union(
         let first_ids = pairs.iter().map(|(_, first, _)| *first).collect::<Vec<_>>();
         let first_hir = db.alloc_hir(Hir::Unary(UnaryOp::First, ctx.hir()));
         ctx.push_first(first_hir);
-        let first_comparison = constrain_union(db, ctx, builtins, first, first_ids);
+        let first_comparison = constrain_union(db, ctx, first, first_ids);
         ctx.pop_hir();
 
         let rest_ids = pairs.iter().map(|(_, _, rest)| *rest).collect::<Vec<_>>();
         let rest_hir = db.alloc_hir(Hir::Unary(UnaryOp::Rest, ctx.hir()));
         ctx.push_rest(rest_hir);
-        let rest_comparison = constrain_union(db, ctx, builtins, rest, rest_ids);
+        let rest_comparison = constrain_union(db, ctx, rest, rest_ids);
         ctx.pop_hir();
 
         let atom_ids = atoms.iter().map(|(id, _)| *id).collect::<Vec<_>>();

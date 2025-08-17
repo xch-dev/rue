@@ -51,7 +51,7 @@ pub fn compare_types(
             Comparison::Assignable
         }
         (_, Type::Union(ids)) => compare_to_union(db, ctx, builtins, from_id, to_id, ids),
-        (Type::Union(ids), _) => constrain_union(db, ctx, builtins, to_id, ids),
+        (Type::Union(ids), _) => constrain_union(db, ctx, to_id, ids),
         (Type::Atom(..), Type::Pair(..)) | (Type::Pair(..), Type::Atom(..)) => {
             Comparison::Incompatible
         }
