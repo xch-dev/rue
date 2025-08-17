@@ -106,18 +106,18 @@ pub fn constrain_union(
                 ));
             }
             (
-                Comparison::Constrainable(constraint),
+                Comparison::Constrainable(_constraint),
                 Comparison::Assignable | Comparison::Castable,
             ) => {
                 todo!()
             }
             (
                 Comparison::Assignable | Comparison::Castable,
-                Comparison::Constrainable(constraint),
+                Comparison::Constrainable(_constraint),
             ) => {
                 todo!()
             }
-            (Comparison::Constrainable(first), Comparison::Constrainable(rest)) => {
+            (Comparison::Constrainable(_first), Comparison::Constrainable(_rest)) => {
                 todo!()
             }
         }
@@ -135,6 +135,26 @@ pub fn constrain_union(
         match atom {
             Atom::Bytes | Atom::Int => {
                 let otherwise_id = db.alloc_type(Type::Union(pair_ids));
+
+                return Comparison::Constrainable(Constraint::if_else(
+                    shape_check,
+                    ctx.path(),
+                    to_id,
+                    otherwise_id,
+                ));
+            }
+            Atom::Nil => {
+                let mut otherwise = pair_ids;
+
+                for (id, item) in atoms {
+                    if matches!(item, Atom::Nil) {
+                        continue;
+                    }
+
+                    otherwise.push(id);
+                }
+
+                let otherwise_id = db.alloc_type(Type::Union(otherwise));
 
                 return Comparison::Constrainable(Constraint::if_else(
                     shape_check,

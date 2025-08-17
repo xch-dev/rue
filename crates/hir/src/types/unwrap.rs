@@ -7,6 +7,7 @@ pub fn unwrap_type(db: &Database, ctx: &mut ComparisonContext, mut ty: TypeId) -
 
     match db.ty(ty).clone() {
         Type::Alias(alias) => unwrap_type(db, ctx, alias.inner),
+        Type::Union(ids) if ids.len() == 1 => unwrap_type(db, ctx, ids[0]),
         _ => ty,
     }
 }

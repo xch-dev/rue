@@ -36,7 +36,7 @@ impl DependencyGraph {
         let mut stack = vec![(symbol, false)];
 
         while let Some((current, is_result)) = stack.pop() {
-            if !visited.insert(current) {
+            if !visited.insert((current, is_result)) {
                 continue;
             }
 

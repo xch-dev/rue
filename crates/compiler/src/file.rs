@@ -49,7 +49,14 @@ pub fn compile_file(allocator: &mut Allocator, file: &str) -> Result<Compilation
     let graph = DependencyGraph::build(&ctx, symbol);
 
     let mut arena = Arena::new();
-    let lir = lower_symbol(&ctx, &mut arena, &graph, &Environment::default(), symbol);
+    let lir = lower_symbol(
+        &ctx,
+        &mut arena,
+        &graph,
+        &Environment::default(),
+        symbol,
+        true,
+    );
     let lir = optimize(&mut arena, lir);
     let ptr = codegen(&arena, allocator, lir)?;
 

@@ -1,5 +1,4 @@
-solution: ()
-diagnostics:
-- Cannot assign `fn(List) -> Int` to `Int`, since they are incompatible at 3:33
-- Unnecessary type guard from `List` to `nil`, since they are already compatible types at 8:7
-- Cannot use `+` operator with `fn(List) -> Int` and `1` at 11:9
+program: (a (q 2 (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 5 ())) (c (q 2 (i (not (l 5)) (q) (q 16 (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 13 ())) (q . 1))) 1) 1))
+solution: ((100 200 300))
+output: '3'
+cost: 9350

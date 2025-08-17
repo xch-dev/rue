@@ -62,4 +62,69 @@ impl Database {
     pub fn ty_mut(&mut self, id: TypeId) -> &mut Type {
         &mut self.types[id]
     }
+
+    pub fn debug_symbol(&self, id: SymbolId) -> String {
+        let name = match self.symbol(id) {
+            Symbol::Binding(binding) => binding.name.as_ref().map(|name| name.text().to_string()),
+            Symbol::Function(function) => {
+                function.name.as_ref().map(|name| name.text().to_string())
+            }
+            Symbol::Parameter(parameter) => {
+                parameter.name.as_ref().map(|name| name.text().to_string())
+            }
+        };
+
+        if let Some(name) = name {
+            format!("{}<{}>", name.replace('"', ""), id.index())
+        } else {
+            format!("<{}>", id.index())
+        }
+    }
+
+    pub fn debug_hir(&self, id: HirId) -> String {
+        match self.hir(id) {
+            Hir::Unresolved => "{unknown}".to_string(),
+            Hir::Nil => "nil".to_string(),
+            Hir::String(value) => format!("\"{value}\""),
+            Hir::Int(value) => format!("{value}"),
+            Hir::Bytes(value) => {
+                if value.is_empty() {
+                    "nil".to_string()
+                } else {
+                    format!("0x{}", hex::encode(value))
+                }
+            }
+            Hir::Bool(value) => format!("{value}"),
+            Hir::Pair(first, rest) => {
+                format!("({}, {})", self.debug_hir(*first), self.debug_hir(*rest))
+            }
+            Hir::Reference(symbol) => self.debug_symbol(*symbol),
+            Hir::Block(block) => block
+                .body
+                .map_or("{empty}".to_string(), |body| self.debug_hir(body)),
+            Hir::If(condition, then, else_) => format!(
+                "if {} {{ {} }} else {{ {} }}",
+                self.debug_hir(*condition),
+                self.debug_hir(*then),
+                self.debug_hir(*else_)
+            ),
+            Hir::FunctionCall(function, args) => format!(
+                "{}({})",
+                self.debug_hir(*function),
+                args.iter()
+                    .map(|arg| self.debug_hir(*arg))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Hir::Unary(op, hir) => format!("({op} {})", self.debug_hir(*hir)),
+            Hir::Binary(op, left, right) => {
+                format!(
+                    "({} {} {})",
+                    self.debug_hir(*left),
+                    op,
+                    self.debug_hir(*right)
+                )
+            }
+        }
+    }
 }

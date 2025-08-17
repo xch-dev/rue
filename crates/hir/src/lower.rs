@@ -13,9 +13,12 @@ pub fn lower_symbol(
     graph: &DependencyGraph,
     env: &Environment,
     symbol: SymbolId,
+    is_main: bool,
 ) -> LirId {
     match db.symbol(symbol).clone() {
-        Symbol::Function(function) => lower_function(db, arena, graph, env, symbol, function),
+        Symbol::Function(function) => {
+            lower_function(db, arena, graph, env, symbol, function, is_main)
+        }
         Symbol::Parameter(_) => unreachable!(),
         Symbol::Binding(binding) => lower_binding(db, arena, graph, env, binding),
     }
@@ -28,22 +31,27 @@ fn lower_function(
     parent_env: &Environment,
     symbol: SymbolId,
     function: FunctionSymbol,
+    is_main: bool,
 ) -> LirId {
     let captures: Vec<SymbolId> = graph.dependencies(symbol, true).into_iter().collect();
     let function_env = Environment::new(&captures, &function.parameters);
 
     let body = lower_hir(db, arena, graph, &function_env, function.body);
 
-    let mut definitions = Vec::new();
+    if is_main {
+        let mut definitions = Vec::new();
 
-    for symbol in captures {
-        let lir = lower_symbol(db, arena, graph, parent_env, symbol);
-        definitions.push(lir);
+        for symbol in captures {
+            let lir = lower_symbol(db, arena, graph, parent_env, symbol, false);
+            definitions.push(arena.alloc(Lir::Quote(lir)));
+        }
+
+        let body = arena.alloc(Lir::Quote(body));
+
+        arena.alloc(Lir::Curry(body, definitions))
+    } else {
+        body
     }
-
-    let body = arena.alloc(Lir::Quote(body));
-
-    arena.alloc(Lir::Curry(body, definitions))
 }
 
 fn lower_binding(
@@ -75,7 +83,7 @@ fn lower_hir(
             let rest = lower_hir(db, arena, graph, env, rest);
             arena.alloc(Lir::Cons(first, rest))
         }
-        Hir::Reference(symbol) => arena.alloc(Lir::Path(env.path(symbol))),
+        Hir::Reference(symbol) => lower_reference(db, arena, graph, env, symbol),
         Hir::Block(block) => lower_block(db, arena, graph, env, block.statements, block.body),
         Hir::If(condition, then, else_) => {
             let condition = lower_hir(db, arena, graph, env, condition);
@@ -143,6 +151,30 @@ fn lower_hir(
     }
 }
 
+fn lower_reference(
+    db: &Database,
+    arena: &mut Arena<Lir>,
+    graph: &DependencyGraph,
+    env: &Environment,
+    symbol: SymbolId,
+) -> LirId {
+    if matches!(db.symbol(symbol).clone(), Symbol::Function(_)) {
+        let captures: Vec<SymbolId> = graph.dependencies(symbol, true).into_iter().collect();
+
+        let mut refs = Vec::new();
+
+        for capture in captures {
+            refs.push(arena.alloc(Lir::Path(env.path(capture))));
+        }
+
+        let reference = arena.alloc(Lir::Path(env.path(symbol)));
+
+        return arena.alloc(Lir::Closure(reference, refs));
+    }
+
+    arena.alloc(Lir::Path(env.path(symbol)))
+}
+
 fn lower_block(
     db: &Database,
     arena: &mut Arena<Lir>,
@@ -208,7 +240,7 @@ fn lower_let_stmts(
         let mut bindings = Vec::new();
 
         for &symbol in group {
-            bindings.push(lower_symbol(db, arena, graph, &bind_env, symbol));
+            bindings.push(lower_symbol(db, arena, graph, &bind_env, symbol, false));
         }
 
         expr = arena.alloc(Lir::Curry(expr, bindings));

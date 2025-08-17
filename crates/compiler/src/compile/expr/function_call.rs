@@ -13,7 +13,8 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     let mut args = Vec::new();
 
     for arg in call.args() {
-        args.push(compile_expr(ctx, &arg).hir);
+        let value = compile_expr(ctx, &arg);
+        args.push(value.hir);
     }
 
     let hir = ctx.alloc_hir(Hir::FunctionCall(expr.hir, args));

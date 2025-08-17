@@ -13,7 +13,7 @@ pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> 
         vec![]
     };
 
-    let inner = ctx.builtins().unresolved.ty;
+    let inner = ctx.alloc_type(Type::Unresolved);
 
     let ty = ctx.alloc_type(Type::Alias(Alias {
         name: type_alias.name(),
@@ -54,11 +54,14 @@ pub fn compile_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem, ty:
 
     ctx.pop_scope();
 
-    let Type::Alias(Alias { inner, .. }) = ctx.ty_mut(ty) else {
+    let Type::Alias(Alias { inner, .. }) = ctx.ty(ty) else {
         unreachable!()
     };
 
-    *inner = resolved_inner;
+    let resolved_inner = ctx.ty(resolved_inner).clone();
+    let inner = *inner;
+
+    *ctx.ty_mut(inner) = resolved_inner;
 }
 
 #[cfg(test)]
@@ -69,9 +72,6 @@ mod tests {
 
     #[test]
     fn test_type_alias() {
-        check(
-            "type Alias = Int;",
-            expect![""],
-        );
+        check("type Alias = Int;", expect![""]);
     }
 }

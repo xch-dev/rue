@@ -24,18 +24,18 @@ impl Environment {
         }
     }
 
-    pub fn path(&self, symbol_id: SymbolId) -> u32 {
+    pub fn try_path(&self, symbol_id: SymbolId) -> Option<u32> {
         let mut path = 2;
 
-        for _ in 0..self
-            .symbols
-            .get_index_of(&symbol_id)
-            .expect("symbol not found")
-        {
+        for _ in 0..self.symbols.get_index_of(&symbol_id)? {
             path *= 2;
             path += 1;
         }
 
-        path
+        Some(path)
+    }
+
+    pub fn path(&self, symbol_id: SymbolId) -> u32 {
+        self.try_path(symbol_id).expect("symbol not found")
     }
 }

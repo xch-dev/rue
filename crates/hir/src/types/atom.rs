@@ -448,7 +448,7 @@ pub fn bigint_atom(value: BigInt) -> Vec<u8> {
 mod tests {
     use expect_test::{Expect, expect};
 
-    use crate::{BindingSymbol, Symbol, Type, tests::debug_hir};
+    use crate::{BindingSymbol, Symbol, Type};
 
     use super::*;
 
@@ -473,7 +473,7 @@ mod tests {
         let value = match comparison {
             Comparison::Assignable => "assign".to_string(),
             Comparison::Castable => "cast".to_string(),
-            Comparison::Constrainable(constraint) => debug_hir(&db, constraint.hir),
+            Comparison::Constrainable(constraint) => db.debug_hir(constraint.hir),
             Comparison::Incompatible => "fail".to_string(),
         };
 
