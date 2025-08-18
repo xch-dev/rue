@@ -1,4 +1,4 @@
-type Hello = (100, "Hello, world!");
+/*type Hello = (100, "Hello, world!");
 type Bye = (200, "Bye, world!");
 
 fn main(value: Hello | Bye) -> Int {
@@ -7,4 +7,7 @@ fn main(value: Hello | Bye) -> Int {
     } else {
         value.first
     }
+}*/
+fn main() -> Int {
+    0
 }
