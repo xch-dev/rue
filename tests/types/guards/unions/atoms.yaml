@@ -1,3 +1,4 @@
+program: (a (i (not (= 2 ())) (q 2 (i (not (= (strlen 2) (q . 48))) (q 2 (i (not (= (strlen 2) (q . 32))) (q 2 (i (not (= 2 (q . 42))) (q 2 (q . 2) (c 2 1)) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)
 solution: (100)
-diagnostics:
-- Cannot assign `Bytes | Bytes32 | PublicKey | 42 | nil` to `Bytes` without a cast, since they are semantically different at 2:19
+output: '100'
+cost: 3236

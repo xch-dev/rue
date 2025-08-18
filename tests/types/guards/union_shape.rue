@@ -1,4 +1,0 @@
-fn main(value: Int | (Int, Int)) -> Int {
-    assert value is Int;
-    value * value
-}

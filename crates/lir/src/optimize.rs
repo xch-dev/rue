@@ -16,12 +16,12 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             arena.alloc(Lir::Run(callee, args))
         }
         Lir::Curry(callee, args) => {
+            let callee = optimize(arena, callee);
             if let Lir::Quote(value) = arena[callee].clone()
                 && args.is_empty()
             {
                 return value;
             }
-            let callee = optimize(arena, callee);
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
             arena.alloc(Lir::Curry(callee, args))
         }
@@ -31,17 +31,17 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             arena.alloc(Lir::Closure(callee, args))
         }
         Lir::First(value) => {
+            let value = optimize(arena, value);
             if let Lir::Path(path) = arena[value].clone() {
                 return arena.alloc(Lir::Path(first_path(path)));
             }
-            let value = optimize(arena, value);
             arena.alloc(Lir::First(value))
         }
         Lir::Rest(value) => {
+            let value = optimize(arena, value);
             if let Lir::Path(path) = arena[value].clone() {
                 return arena.alloc(Lir::Path(rest_path(path)));
             }
-            let value = optimize(arena, value);
             arena.alloc(Lir::Rest(value))
         }
         Lir::Cons(first, rest) => {

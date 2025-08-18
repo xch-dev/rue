@@ -1,4 +1,0 @@
-program: (a (i (not (l 2)) (q 18 2 2) (q 8)) 1)
-solution: (42)
-output: '1764'
-cost: 1619

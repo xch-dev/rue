@@ -1,5 +1,8 @@
 fn main(value: Bytes | Bytes32 | PublicKey | 42 | nil) -> Int {
-    let _: Bytes = value;
-
-    0
+    assert !(value is nil);
+    assert !(value is PublicKey);
+    assert !(value is Bytes32);
+    assert !(value is 42);
+    let bytes: Bytes = value;
+    bytes as Int
 }
