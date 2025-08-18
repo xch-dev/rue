@@ -1,0 +1,5 @@
+fn main(value: Bytes | Bytes32 | PublicKey | 42 | nil) -> Int {
+    let _: Bytes = value;
+
+    0
+}

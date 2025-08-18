@@ -1,0 +1,3 @@
+solution: (100)
+diagnostics:
+- Cannot assign `Bytes | Bytes32 | PublicKey | 42 | nil` to `Bytes` without a cast, since they are semantically different at 2:19

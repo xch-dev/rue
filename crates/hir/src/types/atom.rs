@@ -33,7 +33,7 @@ impl Atom {
                 }
             }
             Self::StringValue(string) => {
-                if string.as_bytes() == &value {
+                if string.as_bytes() == value {
                     None
                 } else {
                     Some(self.clone())
@@ -99,7 +99,7 @@ impl Atom {
                 }
             }
             Self::StringValue(string) => {
-                if string.as_bytes().len() == length {
+                if string.len() == length {
                     None
                 } else {
                     Some(self.clone())
