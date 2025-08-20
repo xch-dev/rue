@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use crate::{HirId, TypeId};
+use crate::{Check, TypeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TypePath {
@@ -10,43 +8,22 @@ pub enum TypePath {
 
 #[derive(Debug, Clone)]
 pub struct Constraint {
-    pub hir: HirId,
-    pub then_map: HashMap<Vec<TypePath>, TypeId>,
-    pub else_map: HashMap<Vec<TypePath>, TypeId>,
+    pub check: Check,
+    pub else_id: Option<TypeId>,
 }
 
 impl Constraint {
-    pub fn new(
-        hir: HirId,
-        then_map: HashMap<Vec<TypePath>, TypeId>,
-        else_map: HashMap<Vec<TypePath>, TypeId>,
-    ) -> Self {
+    pub fn new(check: Check) -> Self {
         Self {
-            hir,
-            then_map,
-            else_map,
+            check,
+            else_id: None,
         }
     }
 
-    pub fn to(hir: HirId, from: Vec<TypePath>, to: TypeId) -> Self {
-        let mut then_map = HashMap::new();
-        then_map.insert(from, to);
+    pub fn with_else(self, else_id: TypeId) -> Self {
         Self {
-            hir,
-            then_map,
-            else_map: HashMap::new(),
-        }
-    }
-
-    pub fn if_else(hir: HirId, from: Vec<TypePath>, to: TypeId, otherwise: TypeId) -> Self {
-        let mut then_map = HashMap::new();
-        then_map.insert(from.clone(), to);
-        let mut else_map = HashMap::new();
-        else_map.insert(from, otherwise);
-        Self {
-            hir,
-            then_map,
-            else_map,
+            else_id: Some(else_id),
+            ..self
         }
     }
 }

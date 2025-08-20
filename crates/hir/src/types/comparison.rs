@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use crate::{
-    BinaryOp, Builtins, ComparisonContext, Constraint, Database, Hir, Type, TypeId, UnaryOp,
-    compare_atoms, compare_to_union, constrain_union, unwrap_type,
+    Check, ComparisonContext, Constraint, Database, Type, TypeId, TypePath, compare_atoms,
+    compare_to_union, unwrap_type,
 };
 
 #[derive(Debug, Clone)]
@@ -10,7 +8,7 @@ pub enum Comparison {
     Assignable,
     Castable,
     Constrainable(Constraint),
-    Incompatible,
+    Incompatible(Check),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -27,7 +25,7 @@ impl Comparison {
             Comparison::Assignable => ComparisonKind::Assignable,
             Comparison::Castable => ComparisonKind::Castable,
             Comparison::Constrainable(..) => ComparisonKind::Constrainable,
-            Comparison::Incompatible => ComparisonKind::Incompatible,
+            Comparison::Incompatible(..) => ComparisonKind::Incompatible,
         }
     }
 }
@@ -35,7 +33,6 @@ impl Comparison {
 pub fn compare_types(
     db: &mut Database,
     ctx: &mut ComparisonContext,
-    builtins: &Builtins,
     from_id: TypeId,
     to_id: TypeId,
 ) -> Comparison {
@@ -45,83 +42,97 @@ pub fn compare_types(
     match (db.ty(from_id).clone(), db.ty(to_id).clone()) {
         (Type::Alias(_), _) | (_, Type::Alias(_)) => unreachable!(),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assignable,
-        (Type::Generic(_), _) => Comparison::Incompatible,
+        (Type::Generic(_), _) => Comparison::Incompatible(Check::Impossible),
         (_, Type::Generic(_)) => {
             ctx.infer(to_id, from_id);
             Comparison::Assignable
         }
         (Type::Fn(from), Type::Fn(to)) => {
             if from.params.len() != to.params.len() {
-                return Comparison::Incompatible;
+                return Comparison::Incompatible(Check::Impossible);
             }
 
-            let mut result = compare_types(db, ctx, builtins, from.ret, to.ret);
+            let mut result = compare_types(db, ctx, from.ret, to.ret);
 
             for (from_param, to_param) in from.params.into_iter().zip(to.params.into_iter()) {
-                let comparison = compare_types(db, ctx, builtins, from_param, to_param);
+                let comparison = compare_types(db, ctx, from_param, to_param);
 
                 result = match (result, comparison) {
                     (Comparison::Assignable, Comparison::Assignable) => Comparison::Assignable,
                     (Comparison::Castable, Comparison::Castable) => Comparison::Castable,
                     (Comparison::Constrainable(..), _) | (_, Comparison::Constrainable(..)) => {
-                        Comparison::Incompatible
+                        Comparison::Incompatible(Check::Impossible)
                     }
                     (Comparison::Assignable, Comparison::Castable)
                     | (Comparison::Castable, Comparison::Assignable) => Comparison::Castable,
-                    (Comparison::Incompatible, _) | (_, Comparison::Incompatible) => {
-                        Comparison::Incompatible
+                    (Comparison::Incompatible(..), _) | (_, Comparison::Incompatible(..)) => {
+                        Comparison::Incompatible(Check::Impossible)
                     }
                 };
             }
 
             result
         }
-        (Type::Fn(..), _) | (_, Type::Fn(..)) => Comparison::Incompatible,
-        (_, Type::Union(ids)) => compare_to_union(db, ctx, builtins, from_id, to_id, ids),
-        (Type::Union(ids), _) => constrain_union(db, ctx, builtins, to_id, ids),
-        (Type::Atom(..), Type::Pair(..)) | (Type::Pair(..), Type::Atom(..)) => {
-            Comparison::Incompatible
-        }
+        (Type::Fn(..), _) | (_, Type::Fn(..)) => Comparison::Incompatible(Check::Impossible),
+        (_, Type::Union(ids)) => compare_to_union(db, ctx, from_id, ids),
+        (Type::Union(_ids), _) => Comparison::Incompatible(Check::Impossible), // TODO: Implement this
+        (Type::Atom(..), Type::Pair(..)) => Comparison::Incompatible(Check::IsPair),
+        (Type::Pair(..), Type::Atom(..)) => Comparison::Incompatible(Check::IsAtom),
         (Type::Pair(from_first, from_rest), Type::Pair(to_first, to_rest)) => {
-            let first_hir = db.alloc_hir(Hir::Unary(UnaryOp::First, ctx.hir()));
-            let rest_hir = db.alloc_hir(Hir::Unary(UnaryOp::Rest, ctx.hir()));
+            ctx.push(TypePath::First);
+            let first = compare_types(db, ctx, from_first, to_first);
+            ctx.pop();
 
-            ctx.push_first(first_hir);
-            let first = compare_types(db, ctx, builtins, from_first, to_first);
-            ctx.pop_hir();
-
-            ctx.push_rest(rest_hir);
-            let rest = compare_types(db, ctx, builtins, from_rest, to_rest);
-            ctx.pop_hir();
+            ctx.push(TypePath::Rest);
+            let rest = compare_types(db, ctx, from_rest, to_rest);
+            ctx.pop();
 
             match (first, rest) {
                 (Comparison::Assignable, Comparison::Assignable) => Comparison::Assignable,
                 (Comparison::Castable, Comparison::Castable) => Comparison::Castable,
-                (Comparison::Constrainable(f), Comparison::Constrainable(r)) => {
-                    // TODO: Else map?
-                    let and = db.alloc_hir(Hir::Binary(BinaryOp::And, f.hir, r.hir));
-                    let mut then_map = HashMap::new();
-                    then_map.extend(f.then_map);
-                    then_map.extend(r.then_map);
-                    Comparison::Constrainable(Constraint::new(and, then_map, HashMap::new()))
-                }
                 (Comparison::Assignable, Comparison::Castable)
                 | (Comparison::Castable, Comparison::Assignable) => Comparison::Castable,
+                (Comparison::Constrainable(first), Comparison::Constrainable(rest)) => {
+                    // TODO: Else?
+                    Comparison::Constrainable(Constraint::new(Check::Pair(
+                        Some(Box::new(first.check)),
+                        Some(Box::new(rest.check)),
+                    )))
+                }
+                (
+                    Comparison::Constrainable(constraint),
+                    Comparison::Assignable | Comparison::Castable,
+                ) => {
+                    let check = constraint.check.clone();
+                    Comparison::Constrainable(Constraint::new(Check::Pair(
+                        Some(Box::new(check)),
+                        None,
+                    )))
+                }
                 (
                     Comparison::Assignable | Comparison::Castable,
                     Comparison::Constrainable(constraint),
-                )
-                | (
-                    Comparison::Constrainable(constraint),
-                    Comparison::Assignable | Comparison::Castable,
-                ) => Comparison::Constrainable(constraint),
-                (Comparison::Incompatible, _) | (_, Comparison::Incompatible) => {
-                    Comparison::Incompatible
+                ) => {
+                    let check = constraint.check.clone();
+                    Comparison::Constrainable(Constraint::new(Check::Pair(
+                        None,
+                        Some(Box::new(check)),
+                    )))
+                }
+                (Comparison::Incompatible(first), Comparison::Incompatible(rest)) => {
+                    Comparison::Incompatible(Check::Pair(
+                        Some(Box::new(first)),
+                        Some(Box::new(rest)),
+                    ))
+                }
+                (Comparison::Incompatible(kind), _) => {
+                    Comparison::Incompatible(Check::Pair(Some(Box::new(kind)), None))
+                }
+                (_, Comparison::Incompatible(kind)) => {
+                    Comparison::Incompatible(Check::Pair(None, Some(Box::new(kind))))
                 }
             }
         }
-        (Type::Atom(from), Type::Atom(to)) => {
-            compare_atoms(db, builtins, ctx.hir(), ctx.path(), to_id, from, to)
-        }
+        (Type::Atom(from), Type::Atom(to)) => compare_atoms(from, to),
     }
 }

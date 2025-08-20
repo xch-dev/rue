@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rue_ast::{AstGuardExpr, AstNode};
-use rue_hir::Value;
+use rue_hir::{Value, generate_check_hir};
 
 use crate::{Compiler, compile_expr, compile_type};
 
@@ -18,16 +18,24 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
         ctx.builtins().unresolved.ty
     };
 
-    let constraint = ctx.guard_type(guard.syntax(), expr.hir, expr.ty, ty);
+    let constraint = ctx.guard_type(guard.syntax(), expr.ty, ty);
+    let builtins = ctx.builtins().clone();
+    let check_hir = generate_check_hir(ctx, &builtins, constraint.check, expr.hir);
 
-    let mut value = Value::new(constraint.hir, ctx.builtins().bool);
+    let mut value = Value::new(check_hir, ctx.builtins().bool);
 
-    if let Some(symbol) = expr.symbol {
+    if let Some(reference) = expr.reference {
         let mut then_map = HashMap::new();
-        then_map.insert(symbol, constraint.then_map);
+        let mut symbol_map = HashMap::new();
+        symbol_map.insert(reference.path.clone(), ty);
+        then_map.insert(reference.symbol, symbol_map);
 
         let mut else_map = HashMap::new();
-        else_map.insert(symbol, constraint.else_map);
+        if let Some(else_id) = constraint.else_id {
+            let mut symbol_map = HashMap::new();
+            symbol_map.insert(reference.path.clone(), else_id);
+            else_map.insert(reference.symbol, symbol_map);
+        }
 
         value = value.with_mappings(then_map, else_map);
     }

@@ -1,6 +1,6 @@
 use rue_ast::AstPathExpr;
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Hir, Value};
+use rue_hir::{Hir, SymbolPath, Value};
 
 use crate::{Compiler, compile_generic_arguments};
 
@@ -38,7 +38,12 @@ pub fn compile_path_expr(ctx: &mut Compiler, path: &AstPathExpr) -> Value {
 
         let ty = ctx.symbol_type(resolved);
 
-        value = Some(Value::new(ctx.alloc_hir(Hir::Reference(resolved)), ty).with_symbol(resolved));
+        value = Some(
+            Value::new(ctx.alloc_hir(Hir::Reference(resolved)), ty).with_reference(SymbolPath {
+                symbol: resolved,
+                path: vec![],
+            }),
+        );
     }
 
     value.unwrap_or(ctx.builtins().unresolved.clone())

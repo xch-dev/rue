@@ -8,7 +8,7 @@ pub type Mappings = HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>;
 pub struct Value {
     pub hir: HirId,
     pub ty: TypeId,
-    pub symbol: Option<SymbolId>,
+    pub reference: Option<SymbolPath>,
     pub then_map: Mappings,
     pub else_map: Mappings,
 }
@@ -18,7 +18,7 @@ impl Value {
         Self {
             hir,
             ty,
-            symbol: None,
+            reference: None,
             then_map: Mappings::new(),
             else_map: Mappings::new(),
         }
@@ -32,9 +32,9 @@ impl Value {
         Self { ty, ..self }
     }
 
-    pub fn with_symbol(self, symbol: SymbolId) -> Self {
+    pub fn with_reference(self, reference: SymbolPath) -> Self {
         Self {
-            symbol: Some(symbol),
+            reference: Some(reference),
             ..self
         }
     }
@@ -54,6 +54,12 @@ impl Value {
             ..self
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct SymbolPath {
+    pub symbol: SymbolId,
+    pub path: Vec<TypePath>,
 }
 
 pub fn merge_mappings(a: &Mappings, b: &Mappings) -> Mappings {

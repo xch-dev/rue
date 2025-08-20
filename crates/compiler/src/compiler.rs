@@ -7,7 +7,7 @@ use std::{
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
 use rue_hir::{
-    Builtins, Comparison, ComparisonContext, Constraint, Database, HirId, Scope, ScopeId, Symbol,
+    Builtins, Check, Comparison, ComparisonContext, Constraint, Database, Scope, ScopeId, Symbol,
     SymbolId, Type, TypeId, TypePath, compare_types, replace_type, unwrap_type,
 };
 use rue_parser::{SyntaxNode, SyntaxToken};
@@ -213,62 +213,45 @@ impl Compiler {
     }
 
     pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {
-        let hir = self.builtins.unresolved.hir;
-
-        let mut ctx = ComparisonContext::new(hir, HashMap::new());
-        let comparison = compare_types(&mut self.db, &mut ctx, &self.builtins, from, to);
+        let mut ctx = ComparisonContext::new(HashMap::new());
+        let comparison = compare_types(&mut self.db, &mut ctx, from, to);
 
         matches!(comparison, Comparison::Assignable)
     }
 
     pub fn is_castable(&mut self, from: TypeId, to: TypeId) -> bool {
-        let hir = self.builtins.unresolved.hir;
-
-        let mut ctx = ComparisonContext::new(hir, HashMap::new());
-        let comparison = compare_types(&mut self.db, &mut ctx, &self.builtins, from, to);
+        let mut ctx = ComparisonContext::new(HashMap::new());
+        let comparison = compare_types(&mut self.db, &mut ctx, from, to);
 
         matches!(comparison, Comparison::Assignable | Comparison::Castable)
     }
 
     pub fn unwrap_type(&mut self, ty: TypeId) -> TypeId {
-        // TODO: Should we use unresolved here?
-        unwrap_type(
-            &self.db,
-            &mut ComparisonContext::new(self.builtins.unresolved.hir, HashMap::new()),
-            ty,
-        )
+        unwrap_type(&self.db, &mut ComparisonContext::new(HashMap::new()), ty)
     }
 
-    pub fn assign_type(&mut self, node: &impl GetTextRange, hir: HirId, from: TypeId, to: TypeId) {
-        self.compare_type(node, hir, from, to, ComparisonKind::Assign);
+    pub fn assign_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
+        self.compare_type(node, from, to, ComparisonKind::Assign);
     }
 
-    pub fn cast_type(&mut self, node: &impl GetTextRange, hir: HirId, from: TypeId, to: TypeId) {
-        self.compare_type(node, hir, from, to, ComparisonKind::Cast);
+    pub fn cast_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
+        self.compare_type(node, from, to, ComparisonKind::Cast);
     }
 
-    pub fn guard_type(
-        &mut self,
-        node: &impl GetTextRange,
-        hir: HirId,
-        from: TypeId,
-        to: TypeId,
-    ) -> Constraint {
-        self.compare_type(node, hir, from, to, ComparisonKind::Guard)
+    pub fn guard_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) -> Constraint {
+        self.compare_type(node, from, to, ComparisonKind::Guard)
     }
 
     fn compare_type(
         &mut self,
         node: &impl GetTextRange,
-        hir: HirId,
         from: TypeId,
         to: TypeId,
         kind: ComparisonKind,
     ) -> Constraint {
         let comparison = compare_types(
             &mut self.db,
-            &mut ComparisonContext::new(hir, HashMap::new()),
-            &self.builtins,
+            &mut ComparisonContext::new(HashMap::new()),
             from,
             to,
         );
@@ -296,7 +279,7 @@ impl Compiler {
                         );
                     }
                 }
-                Constraint::new(self.builtins.true_value.hir, HashMap::new(), HashMap::new())
+                Constraint::new(Check::None)
             }
             Comparison::Castable => {
                 match kind {
@@ -320,9 +303,9 @@ impl Compiler {
                         );
                     }
                 }
-                Constraint::new(self.builtins.true_value.hir, HashMap::new(), HashMap::new())
+                Constraint::new(Check::None)
             }
-            Comparison::Incompatible => {
+            Comparison::Incompatible(check) => {
                 match kind {
                     ComparisonKind::Assign => {
                         self.diagnostic(
@@ -352,11 +335,7 @@ impl Compiler {
                         );
                     }
                 }
-                Constraint::new(
-                    self.builtins.false_value.hir,
-                    HashMap::new(),
-                    HashMap::new(),
-                )
+                Constraint::new(check)
             }
             Comparison::Constrainable(constraint) => {
                 if kind != ComparisonKind::Guard {

@@ -1,5 +1,6 @@
 mod apply_generics;
 mod atom;
+mod check;
 mod comparison;
 mod comparison_context;
 mod constraint;
@@ -10,6 +11,7 @@ mod unwrap;
 
 pub use apply_generics::*;
 pub use atom::*;
+pub use check::*;
 pub use comparison::*;
 pub use comparison_context::*;
 pub use constraint::*;

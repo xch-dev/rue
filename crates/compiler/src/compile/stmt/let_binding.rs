@@ -15,7 +15,7 @@ pub fn compile_let_binding(ctx: &mut Compiler, stmt: &AstLetStmt) -> Statement {
     let ty = if let Some(ty) = stmt.ty() {
         let ty = compile_type(ctx, &ty);
         if let Some(expr) = stmt.value() {
-            ctx.assign_type(expr.syntax(), value.hir, value.ty, ty);
+            ctx.assign_type(expr.syntax(), value.ty, ty);
         }
         ty
     } else {

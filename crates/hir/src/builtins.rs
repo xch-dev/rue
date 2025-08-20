@@ -19,19 +19,18 @@ impl Builtins {
         let unresolved_type = db.alloc_type(Type::Unresolved);
         let unresolved_hir = db.alloc_hir(Hir::Unresolved);
 
+        let nil_type = db.alloc_type(Type::Atom(Atom::Nil));
+        let true_type = db.alloc_type(Type::Atom(Atom::BoolValue(true)));
+        let false_type = db.alloc_type(Type::Atom(Atom::BoolValue(false)));
         let bytes = db.alloc_type(Type::Atom(Atom::Bytes));
         let bytes32 = db.alloc_type(Type::Atom(Atom::Bytes32));
         let public_key = db.alloc_type(Type::Atom(Atom::PublicKey));
         let int = db.alloc_type(Type::Atom(Atom::Int));
-        let bool = db.alloc_type(Type::Atom(Atom::Bool));
+        let bool = db.alloc_type(Type::Union(vec![true_type, false_type]));
 
         let nil_hir = db.alloc_hir(Hir::Nil);
         let true_hir = db.alloc_hir(Hir::Bool(true));
         let false_hir = db.alloc_hir(Hir::Bool(false));
-
-        let nil_type = db.alloc_type(Type::Atom(Atom::Nil));
-        let true_type = db.alloc_type(Type::Atom(Atom::BoolValue(true)));
-        let false_type = db.alloc_type(Type::Atom(Atom::BoolValue(false)));
 
         let mut scope = Scope::new();
 
