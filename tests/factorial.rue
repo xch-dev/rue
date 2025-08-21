@@ -1,0 +1,11 @@
+fn main(num: Int) -> Int {
+    factorial(num)
+}
+
+fn factorial(num: Int) -> Int {
+    if num > 1 {
+        num * factorial(num - 1)
+    } else {
+        1
+    }
+}
