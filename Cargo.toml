@@ -3,13 +3,13 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.dependencies]
-rue-lexer = { path = "crates/lexer" }
-rue-parser = { path = "crates/parser" }
-rue-diagnostic = { path = "crates/diagnostic" }
-rue-ast = { path = "crates/ast" }
-rue-compiler = { path = "crates/compiler" }
-rue-lir = { path = "crates/lir" }
-rue-hir = { path = "crates/hir" }
+rue-lexer = { path = "crates/rue-lexer" }
+rue-parser = { path = "crates/rue-parser" }
+rue-diagnostic = { path = "crates/rue-diagnostic" }
+rue-ast = { path = "crates/rue-ast" }
+rue-compiler = { path = "crates/rue-compiler" }
+rue-lir = { path = "crates/rue-lir" }
+rue-hir = { path = "crates/rue-hir" }
 anyhow = "1.0.98"
 clvm-traits = "0.28.1"
 clvm_tools_rs = "0.4.0"

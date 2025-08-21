@@ -1218,7 +1218,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rue-test-runner"
+name = "rue-tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
