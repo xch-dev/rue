@@ -1,6 +1,6 @@
 use crate::{
     Check, ComparisonContext, Constraint, Database, Type, TypeId, TypePath, compare_atoms,
-    compare_to_union, unwrap_type,
+    compare_to_union, constrain_union, unwrap_type,
 };
 
 #[derive(Debug, Clone)]
@@ -74,8 +74,8 @@ pub fn compare_types(
             result
         }
         (Type::Fn(..), _) | (_, Type::Fn(..)) => Comparison::Incompatible(Check::Impossible),
+        (Type::Union(ids), _) => constrain_union(db, ctx, ids, to_id),
         (_, Type::Union(ids)) => compare_to_union(db, ctx, from_id, ids),
-        (Type::Union(_ids), _) => Comparison::Incompatible(Check::Impossible), // TODO: Implement this
         (Type::Atom(..), Type::Pair(..)) => Comparison::Incompatible(Check::IsPair),
         (Type::Pair(..), Type::Atom(..)) => Comparison::Incompatible(Check::IsAtom),
         (Type::Pair(from_first, from_rest), Type::Pair(to_first, to_rest)) => {

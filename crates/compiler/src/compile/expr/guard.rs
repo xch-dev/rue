@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rue_ast::{AstGuardExpr, AstNode};
-use rue_hir::{Value, generate_check_hir};
+use rue_hir::{Value, generate_check_hir, simplify_check};
 
 use crate::{Compiler, compile_expr, compile_type};
 
@@ -20,7 +20,7 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
 
     let constraint = ctx.guard_type(guard.syntax(), expr.ty, ty);
     let builtins = ctx.builtins().clone();
-    let check_hir = generate_check_hir(ctx, &builtins, constraint.check, expr.hir);
+    let check_hir = generate_check_hir(ctx, &builtins, simplify_check(constraint.check), expr.hir);
 
     let mut value = Value::new(check_hir, ctx.builtins().bool);
 
