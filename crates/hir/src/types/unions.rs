@@ -12,8 +12,8 @@ pub fn constrain_union(
     let mut has_assignable = false;
     let mut has_castable = false;
 
-    for from_id in &from {
-        let comparison = compare_types(db, ctx, *from_id, to);
+    for &from_id in &from {
+        let comparison = compare_types(db, ctx, from_id, to);
 
         match comparison {
             Comparison::Assignable => {
@@ -24,11 +24,11 @@ pub fn constrain_union(
             }
             Comparison::Constrainable(constraint) => {
                 has_constrainable = true;
-                incompatible_types.push(*from_id);
+                incompatible_types.push(from_id);
                 checks.push(constraint.check);
             }
             Comparison::Incompatible(check) => {
-                incompatible_types.push(*from_id);
+                incompatible_types.push(from_id);
                 checks.push(check);
             }
         }
@@ -40,7 +40,7 @@ pub fn constrain_union(
 
     if !checks.is_empty() {
         let mut constraint = Constraint::new(Check::And(checks));
-        if !incompatible_types.is_empty() {
+        if incompatible_types.len() < from.len() {
             constraint = constraint.with_else(if incompatible_types.len() == 1 {
                 incompatible_types[0]
             } else {

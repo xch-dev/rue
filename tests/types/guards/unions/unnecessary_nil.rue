@@ -1,0 +1,4 @@
+fn main(value: Int | nil) -> nil {
+    assert !(value is Int);
+    value
+}

@@ -1,0 +1,4 @@
+solution: (42)
+diagnostics:
+- Unnecessary type guard from `Int | nil` to `Int`, since they are already compatible types at 2:14
+- Cannot compare `Int | nil` to `nil` without a type guard, since the runtime value must be constrained at 1:34
