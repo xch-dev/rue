@@ -1,4 +1,3 @@
-program: ()
-solution: (100)
-output: ()
-cost: 45
+program: (a (i (all (= 4 (q . 100)) (= 6 (q . "Hello, world!"))) (q . 4) (q . 4)) 1)
+solution: ((100 "Hello, world!"))
+clvm_error: 'InvalidOperatorArg: = used on list'
