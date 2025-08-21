@@ -39,7 +39,11 @@ pub fn compare_types(
     let from_id = unwrap_type(db, ctx, from_id);
     let to_id = unwrap_type(db, ctx, to_id);
 
-    match (db.ty(from_id).clone(), db.ty(to_id).clone()) {
+    if !ctx.insert_comparison(from_id, to_id) {
+        return Comparison::Assignable;
+    }
+
+    let result = match (db.ty(from_id).clone(), db.ty(to_id).clone()) {
         (Type::Alias(_), _) | (_, Type::Alias(_)) => unreachable!(),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assignable,
         (Type::Generic(_), _) => Comparison::Incompatible(Check::Impossible),
@@ -49,29 +53,29 @@ pub fn compare_types(
         }
         (Type::Fn(from), Type::Fn(to)) => {
             if from.params.len() != to.params.len() {
-                return Comparison::Incompatible(Check::Impossible);
+                Comparison::Incompatible(Check::Impossible)
+            } else {
+                let mut result = compare_types(db, ctx, from.ret, to.ret);
+
+                for (from_param, to_param) in from.params.into_iter().zip(to.params.into_iter()) {
+                    let comparison = compare_types(db, ctx, from_param, to_param);
+
+                    result = match (result, comparison) {
+                        (Comparison::Assignable, Comparison::Assignable) => Comparison::Assignable,
+                        (Comparison::Castable, Comparison::Castable) => Comparison::Castable,
+                        (Comparison::Constrainable(..), _) | (_, Comparison::Constrainable(..)) => {
+                            Comparison::Incompatible(Check::Impossible)
+                        }
+                        (Comparison::Assignable, Comparison::Castable)
+                        | (Comparison::Castable, Comparison::Assignable) => Comparison::Castable,
+                        (Comparison::Incompatible(..), _) | (_, Comparison::Incompatible(..)) => {
+                            Comparison::Incompatible(Check::Impossible)
+                        }
+                    };
+                }
+
+                result
             }
-
-            let mut result = compare_types(db, ctx, from.ret, to.ret);
-
-            for (from_param, to_param) in from.params.into_iter().zip(to.params.into_iter()) {
-                let comparison = compare_types(db, ctx, from_param, to_param);
-
-                result = match (result, comparison) {
-                    (Comparison::Assignable, Comparison::Assignable) => Comparison::Assignable,
-                    (Comparison::Castable, Comparison::Castable) => Comparison::Castable,
-                    (Comparison::Constrainable(..), _) | (_, Comparison::Constrainable(..)) => {
-                        Comparison::Incompatible(Check::Impossible)
-                    }
-                    (Comparison::Assignable, Comparison::Castable)
-                    | (Comparison::Castable, Comparison::Assignable) => Comparison::Castable,
-                    (Comparison::Incompatible(..), _) | (_, Comparison::Incompatible(..)) => {
-                        Comparison::Incompatible(Check::Impossible)
-                    }
-                };
-            }
-
-            result
         }
         (Type::Fn(..), _) | (_, Type::Fn(..)) => Comparison::Incompatible(Check::Impossible),
         (Type::Union(ids), _) => constrain_union(db, ctx, ids, to_id),
@@ -134,5 +138,9 @@ pub fn compare_types(
             }
         }
         (Type::Atom(from), Type::Atom(to)) => compare_atoms(from, to),
-    }
+    };
+
+    ctx.pop_comparison();
+
+    result
 }

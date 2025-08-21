@@ -1,0 +1,13 @@
+fn main(num: Int) -> Bytes {
+    if num > 100 {
+        "Very big"
+    } else if num > 50 {
+        "Big"
+    } else if num > 25 {
+        "Medium"
+    } else if num > 10 {
+        "Small"
+    } else {
+        "Tiny"
+    }
+}

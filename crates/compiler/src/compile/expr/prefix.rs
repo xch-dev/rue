@@ -33,7 +33,7 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
             }
         }
         T![-] => {
-            if ctx.is_assignable(value.ty, ctx.builtins().bool) {
+            if ctx.is_assignable(value.ty, ctx.builtins().int) {
                 let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Neg, value.hir));
                 return Value::new(hir, ctx.builtins().int);
             }

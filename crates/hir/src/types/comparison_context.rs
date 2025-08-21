@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
+use indexmap::IndexSet;
+
 use crate::{TypeId, TypePath};
 
 #[derive(Debug, Clone)]
 pub struct ComparisonContext {
     path: Vec<TypePath>,
     inferred: HashMap<TypeId, TypeId>,
+    stack: IndexSet<(TypeId, TypeId)>,
 }
 
 impl ComparisonContext {
@@ -13,7 +16,16 @@ impl ComparisonContext {
         Self {
             path: vec![],
             inferred,
+            stack: IndexSet::new(),
         }
+    }
+
+    pub fn insert_comparison(&mut self, from: TypeId, to: TypeId) -> bool {
+        self.stack.insert((from, to))
+    }
+
+    pub fn pop_comparison(&mut self) {
+        self.stack.pop().unwrap();
     }
 
     pub fn push(&mut self, path: TypePath) {

@@ -76,16 +76,16 @@ pub fn compare_to_union(
             (Comparison::Incompatible(old), Comparison::Incompatible(new)) => {
                 result = Comparison::Incompatible(Check::Or(vec![old, new]));
             }
-            (Comparison::Incompatible(_), comparison) => {
-                result = comparison;
+            (Comparison::Assignable, _) => {
+                result = Comparison::Assignable;
+                break;
             }
             (_, Comparison::Assignable) => {
                 result = Comparison::Assignable;
                 break;
             }
-            (Comparison::Assignable, _) => {
-                result = Comparison::Assignable;
-                break;
+            (Comparison::Incompatible(_), comparison) => {
+                result = comparison;
             }
             (_, Comparison::Castable) => {
                 result = Comparison::Castable;

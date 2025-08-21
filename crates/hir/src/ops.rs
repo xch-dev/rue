@@ -41,6 +41,9 @@ pub enum BinaryOp {
     #[display("%")]
     Mod,
 
+    #[display("+")]
+    Concat,
+
     #[display(">")]
     Gt,
 

@@ -127,4 +127,43 @@ impl Database {
             }
         }
     }
+
+    pub fn debug_type(&self, ty: TypeId) -> String {
+        match self.ty(ty) {
+            Type::Unresolved => "{unknown}".to_string(),
+            Type::Atom(atom) => atom.to_string(),
+            Type::Pair(first, rest) => {
+                let first = self.debug_type(*first);
+                let rest = self.debug_type(*rest);
+                format!("({first}, {rest})")
+            }
+            Type::Generic(generic) => generic
+                .name
+                .as_ref()
+                .map_or("{generic}".to_string(), |name| name.text().to_string()),
+            Type::Alias(alias) => {
+                if let Some(name) = alias.name.as_ref() {
+                    name.text().to_string()
+                } else {
+                    self.debug_type(alias.inner)
+                }
+            }
+            Type::Union(types) => {
+                let types = types
+                    .iter()
+                    .map(|ty| self.debug_type(*ty))
+                    .collect::<Vec<_>>();
+                types.join(" | ")
+            }
+            Type::Fn(function) => {
+                let params = function
+                    .params
+                    .iter()
+                    .map(|ty| self.debug_type(*ty))
+                    .collect::<Vec<_>>();
+                let ret = self.debug_type(function.ret);
+                format!("fn({}) -> {}", params.join(", "), ret)
+            }
+        }
+    }
 }

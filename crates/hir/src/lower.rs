@@ -123,6 +123,7 @@ fn lower_hir(
                 BinaryOp::Mul => arena.alloc(Lir::Mul(vec![left, right])),
                 BinaryOp::Div => arena.alloc(Lir::Div(left, right)),
                 BinaryOp::Mod => arena.alloc(Lir::Mod(left, right)),
+                BinaryOp::Concat => arena.alloc(Lir::Concat(vec![left, right])),
                 BinaryOp::BitwiseAnd => arena.alloc(Lir::Logand(vec![left, right])),
                 BinaryOp::BitwiseOr => arena.alloc(Lir::Logior(vec![left, right])),
                 BinaryOp::BitwiseXor => arena.alloc(Lir::Logxor(vec![left, right])),

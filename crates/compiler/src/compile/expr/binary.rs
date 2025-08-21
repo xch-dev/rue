@@ -34,8 +34,15 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Add, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
+            }
+
+            if ctx.is_assignable(left.ty, ctx.builtins().bytes) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().bytes);
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Concat, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().bytes);
             }
 
             (left, right)
@@ -45,6 +52,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Sub, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
             }
@@ -56,6 +64,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Mul, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
             }
@@ -67,6 +76,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Div, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
             }
@@ -78,6 +88,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Mod, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
             }
@@ -89,6 +100,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::LeftShift, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
             }
@@ -100,6 +112,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::RightShift, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
             }
@@ -111,11 +124,13 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Gt, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool);
             }
 
             if ctx.is_assignable(left.ty, ctx.builtins().bytes) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().bytes);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::GtBytes, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool);
             }
@@ -127,11 +142,13 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Lt, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool);
             }
 
             if ctx.is_assignable(left.ty, ctx.builtins().bytes) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().bytes);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::LtBytes, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool);
             }
@@ -143,11 +160,13 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Gte, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool);
             }
 
             if ctx.is_assignable(left.ty, ctx.builtins().bytes) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().bytes);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::GteBytes, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool);
             }
@@ -159,11 +178,13 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Lte, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool);
             }
 
             if ctx.is_assignable(left.ty, ctx.builtins().bytes) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().bytes);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::LteBytes, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool);
             }
@@ -178,6 +199,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             ctx.revert_mappings(index);
 
             if ctx.is_assignable(left.ty, ctx.builtins().bool) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().bool);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::And, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool).with_mappings(
                     merge_mappings(&left.then_map, &right.then_map),
@@ -195,6 +217,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             ctx.revert_mappings(index);
 
             if ctx.is_assignable(left.ty, ctx.builtins().bool) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().bool);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Or, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool).with_mappings(
                     HashMap::new(),
@@ -209,6 +232,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().bool) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().bool);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::All, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool).with_mappings(
                     merge_mappings(&left.then_map, &right.then_map),
@@ -217,6 +241,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             }
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::BitwiseAnd, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
             }
@@ -228,6 +253,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().bool) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().bool);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Any, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().bool).with_mappings(
                     HashMap::new(),
@@ -236,6 +262,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             }
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::BitwiseOr, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
             }
@@ -247,6 +274,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let right = right(ctx);
 
             if ctx.is_assignable(left.ty, ctx.builtins().int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::BitwiseXor, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().int);
             }
