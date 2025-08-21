@@ -1,0 +1,12 @@
+[package]
+name = "rue-types"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+id-arena = { workspace = true }
+indexmap = { workspace = true }
+clvmr = { workspace = true }
+hex = { workspace = true }
+thiserror = { workspace = true }
+rstest = { workspace = true }

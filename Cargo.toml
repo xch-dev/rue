@@ -10,6 +10,7 @@ rue-ast = { path = "crates/rue-ast" }
 rue-compiler = { path = "crates/rue-compiler" }
 rue-lir = { path = "crates/rue-lir" }
 rue-hir = { path = "crates/rue-hir" }
+rue-types = { path = "crates/rue-types" }
 anyhow = "1.0.98"
 clvm-traits = "0.28.1"
 clvm_tools_rs = "0.4.0"
@@ -30,3 +31,4 @@ walkdir = "2.5.0"
 serde_yml = "0.0.12"
 hex = "0.4.3"
 clap = "4.5.45"
+rstest = "0.26.1"
