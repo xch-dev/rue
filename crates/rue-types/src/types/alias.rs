@@ -4,3 +4,9 @@ use crate::TypeId;
 pub struct Alias {
     pub inner: TypeId,
 }
+
+impl Alias {
+    pub fn new(inner: TypeId) -> Self {
+        Self { inner }
+    }
+}
