@@ -67,7 +67,7 @@ mod tests {
 
     use rstest::rstest;
 
-    use crate::Atom;
+    use crate::{Atom, AtomKind};
 
     use super::*;
 
@@ -121,6 +121,8 @@ mod tests {
     #[case(Atom::INT, Atom::BYTES_32, Comparison::Check(Check::Length(32)))]
     #[case(Atom::INT, Atom::PUBLIC_KEY, Comparison::Check(Check::Length(48)))]
     #[case(Atom::INT, Atom::INT, Comparison::Assign)]
+    #[case(Atom::new(AtomKind::Int, Some(AtomRestriction::Value(Cow::Borrowed(&[1])))), Atom::INT, Comparison::Assign)]
+    #[case(Atom::new(AtomKind::Int, Some(AtomRestriction::Value(Cow::Borrowed(&[1])))), Atom::BYTES, Comparison::Cast)]
     fn test_atoms(#[case] lhs: Atom, #[case] rhs: Atom, #[case] expected: Comparison) {
         let mut arena = Arena::new();
         let lhs_id = arena.alloc(Type::Atom(lhs.clone()));
