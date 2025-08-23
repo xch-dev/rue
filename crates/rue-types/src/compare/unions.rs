@@ -3,7 +3,7 @@ use std::ops::Not;
 use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 
-use crate::{AtomRestriction, Check, Comparison, Type, TypeId, Union, compare};
+use crate::{AtomRestriction, Check, Comparison, Pair, Type, TypeId, Union, compare};
 
 pub(crate) fn compare_from_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
     if lhs.types.is_empty() {
@@ -36,7 +36,7 @@ pub(crate) fn compare_from_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -
         return result;
     }
 
-    refine_union(arena, lhs, rhs)
+    refine_union(arena, lhs, rhs).map_or(Comparison::Invalid, Comparison::Check)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,11 +152,31 @@ fn atom_restrictions_of(arena: &Arena<Type>, id: TypeId) -> AtomRestrictions {
     }
 }
 
-fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
+fn pairs_of(arena: &Arena<Type>, id: TypeId) -> Vec<Pair> {
+    match arena[id].clone() {
+        Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
+        Type::Alias(alias) => pairs_of(arena, alias.inner),
+        Type::Struct(ty) => pairs_of(arena, ty.inner),
+        Type::Atom(_) => vec![],
+        Type::Pair(pair) => vec![pair],
+        Type::Union(ty) => {
+            let mut pairs = vec![];
+
+            for &id in &ty.types {
+                let inner = pairs_of(arena, id);
+                pairs.extend(inner);
+            }
+
+            pairs
+        }
+    }
+}
+
+fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: Union) -> Option<Check> {
     let target_shape = shape_of(arena, rhs);
 
     if !target_shape.atom && !target_shape.pair {
-        return Comparison::Invalid;
+        return None;
     }
 
     let mut remaining = lhs.types;
@@ -184,7 +204,7 @@ fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
     }
 
     if remaining.is_empty() {
-        return Comparison::Invalid;
+        return None;
     }
 
     let mut atom_restriction_check = None;
@@ -222,7 +242,7 @@ fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
                 Check::Or(target_restrictions.into_iter().map(Check::Atom).collect())
             });
         } else if overlap.is_empty() {
-            return Comparison::Invalid;
+            return None;
         } else {
             atom_restriction_check = Some(if overlap.len() == 1 {
                 Check::Atom(overlap.into_iter().next().unwrap())
@@ -233,7 +253,13 @@ fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
     }
 
     if remaining.is_empty() {
-        return Comparison::Invalid;
+        return None;
+    }
+
+    let mut pair_check = None;
+
+    if target_shape.pair {
+        let target_pairs = pairs_of(arena, rhs);
     }
 
     let check = match (shape_check, atom_restriction_check) {
@@ -251,7 +277,7 @@ fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
         (None, None) => Check::None,
     };
 
-    Comparison::Check(check)
+    Some(check)
 }
 
 pub(crate) fn compare_to_union(arena: &Arena<Type>, lhs: TypeId, rhs: Union) -> Comparison {
@@ -288,7 +314,7 @@ pub(crate) fn compare_to_union(arena: &Arena<Type>, lhs: TypeId, rhs: Union) -> 
 mod tests {
     use std::borrow::Cow;
 
-    use crate::{Atom, Pair};
+    use crate::{Atom, AtomKind, Pair};
 
     use super::*;
 
@@ -381,6 +407,27 @@ mod tests {
         assert_eq!(
             compare(&arena, lhs, rhs),
             Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[]))))
+        );
+    }
+
+    #[test]
+    fn test_union_restrict_pair_first() {
+        let mut arena = Arena::new();
+        let int_51 = arena.alloc(Type::Atom(Atom::new(
+            AtomKind::Int,
+            Some(AtomRestriction::Value(Cow::Borrowed(&[51]))),
+        )));
+        let int_52 = arena.alloc(Type::Atom(Atom::new(
+            AtomKind::Int,
+            Some(AtomRestriction::Value(Cow::Borrowed(&[52]))),
+        )));
+        let nil = arena.alloc(Type::Atom(Atom::NIL));
+        let create_coin = arena.alloc(Type::Pair(Pair::new(int_51, nil)));
+        let reserve_fee = arena.alloc(Type::Pair(Pair::new(int_52, nil)));
+        let lhs = arena.alloc(Type::Union(Union::new(vec![create_coin, reserve_fee])));
+        assert_eq!(
+            compare(&arena, lhs, create_coin),
+            Comparison::Check(Check::IsPair)
         );
     }
 
