@@ -32,13 +32,12 @@ pub(crate) fn compare_atom(lhs: Atom, rhs: Atom) -> Comparison {
         }
         (Some(AtomRestriction::Length(lhs)), Some(AtomRestriction::Value(rhs))) => {
             if lhs == rhs.len() {
-                Comparison::Check(Check::Value(rhs))
+                Comparison::Check(Check::Atom(AtomRestriction::Value(rhs)))
             } else {
                 Comparison::Invalid
             }
         }
-        (None, Some(AtomRestriction::Value(value))) => Comparison::Check(Check::Value(value)),
-        (None, Some(AtomRestriction::Length(value))) => Comparison::Check(Check::Length(value)),
+        (None, Some(restriction)) => Comparison::Check(Check::Atom(restriction)),
     }
 }
 
@@ -75,12 +74,20 @@ mod tests {
     #[case(Atom::TRUE, Atom::BYTES_32, Comparison::Invalid)]
     #[case(Atom::TRUE, Atom::PUBLIC_KEY, Comparison::Invalid)]
     #[case(Atom::TRUE, Atom::INT, Comparison::Cast)]
-    #[case(Atom::BYTES, Atom::NIL, Comparison::Check(Check::Value(Cow::Borrowed(&[]))))]
-    #[case(Atom::BYTES, Atom::FALSE, Comparison::Check(Check::Value(Cow::Borrowed(&[]))))]
-    #[case(Atom::BYTES, Atom::TRUE, Comparison::Check(Check::Value(Cow::Borrowed(&[1]))))]
+    #[case(Atom::BYTES, Atom::NIL, Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))))]
+    #[case(Atom::BYTES, Atom::FALSE, Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))))]
+    #[case(Atom::BYTES, Atom::TRUE, Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[1])))))]
     #[case(Atom::BYTES, Atom::BYTES, Comparison::Assign)]
-    #[case(Atom::BYTES, Atom::BYTES_32, Comparison::Check(Check::Length(32)))]
-    #[case(Atom::BYTES, Atom::PUBLIC_KEY, Comparison::Check(Check::Length(48)))]
+    #[case(
+        Atom::BYTES,
+        Atom::BYTES_32,
+        Comparison::Check(Check::Atom(AtomRestriction::Length(32)))
+    )]
+    #[case(
+        Atom::BYTES,
+        Atom::PUBLIC_KEY,
+        Comparison::Check(Check::Atom(AtomRestriction::Length(48)))
+    )]
     #[case(Atom::BYTES, Atom::INT, Comparison::Cast)]
     #[case(Atom::BYTES_32, Atom::NIL, Comparison::Invalid)]
     #[case(Atom::BYTES_32, Atom::FALSE, Comparison::Invalid)]
@@ -96,12 +103,20 @@ mod tests {
     #[case(Atom::PUBLIC_KEY, Atom::BYTES_32, Comparison::Invalid)]
     #[case(Atom::PUBLIC_KEY, Atom::PUBLIC_KEY, Comparison::Assign)]
     #[case(Atom::PUBLIC_KEY, Atom::INT, Comparison::Cast)]
-    #[case(Atom::INT, Atom::NIL, Comparison::Check(Check::Value(Cow::Borrowed(&[]))))]
-    #[case(Atom::INT, Atom::FALSE, Comparison::Check(Check::Value(Cow::Borrowed(&[]))))]
-    #[case(Atom::INT, Atom::TRUE, Comparison::Check(Check::Value(Cow::Borrowed(&[1]))))]
+    #[case(Atom::INT, Atom::NIL, Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))))]
+    #[case(Atom::INT, Atom::FALSE, Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))))]
+    #[case(Atom::INT, Atom::TRUE, Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[1])))))]
     #[case(Atom::INT, Atom::BYTES, Comparison::Cast)]
-    #[case(Atom::INT, Atom::BYTES_32, Comparison::Check(Check::Length(32)))]
-    #[case(Atom::INT, Atom::PUBLIC_KEY, Comparison::Check(Check::Length(48)))]
+    #[case(
+        Atom::INT,
+        Atom::BYTES_32,
+        Comparison::Check(Check::Atom(AtomRestriction::Length(32)))
+    )]
+    #[case(
+        Atom::INT,
+        Atom::PUBLIC_KEY,
+        Comparison::Check(Check::Atom(AtomRestriction::Length(48)))
+    )]
     #[case(Atom::INT, Atom::INT, Comparison::Assign)]
     #[case(Atom::new(AtomKind::Int, Some(AtomRestriction::Value(Cow::Borrowed(&[1])))), Atom::INT, Comparison::Assign)]
     #[case(Atom::new(AtomKind::Int, Some(AtomRestriction::Value(Cow::Borrowed(&[1])))), Atom::BYTES, Comparison::Cast)]

@@ -10,7 +10,7 @@ pub enum AtomKind {
     Bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AtomRestriction {
     Value(Cow<'static, [u8]>),
     Length(usize),

@@ -1,8 +1,11 @@
+use std::ops::Not;
+
 use id_arena::Arena;
+use indexmap::{IndexSet, indexset};
 
-use crate::{Comparison, Type, TypeId, Union, compare};
+use crate::{AtomRestriction, Check, Comparison, Type, TypeId, Union, compare};
 
-pub(crate) fn compare_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
+pub(crate) fn compare_from_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
     if lhs.types.is_empty() {
         return Comparison::Invalid;
     }
@@ -22,7 +25,7 @@ pub(crate) fn compare_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Com
             Comparison::Cast => {
                 result = Some(Comparison::Cast);
             }
-            _ => {
+            Comparison::Check(_) | Comparison::Invalid => {
                 result = None;
                 break;
             }
@@ -33,12 +36,259 @@ pub(crate) fn compare_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Com
         return result;
     }
 
-    Comparison::Invalid
+    refine_union(arena, lhs, rhs)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Shape {
+    atom: bool,
+    pair: bool,
+}
+
+impl Shape {
+    pub const NONE: Self = Self {
+        atom: false,
+        pair: false,
+    };
+
+    pub const ATOM: Self = Self {
+        atom: true,
+        pair: false,
+    };
+
+    pub const PAIR: Self = Self {
+        atom: false,
+        pair: true,
+    };
+}
+
+impl Not for Shape {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        Self {
+            atom: !self.atom,
+            pair: !self.pair,
+        }
+    }
+}
+
+fn shape_of(arena: &Arena<Type>, id: TypeId) -> Shape {
+    match arena[id].clone() {
+        Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
+        Type::Alias(alias) => shape_of(arena, alias.inner),
+        Type::Struct(ty) => shape_of(arena, ty.inner),
+        Type::Atom(_) => Shape::ATOM,
+        Type::Pair(_) => Shape::PAIR,
+        Type::Union(ty) => {
+            let mut shape = Shape::NONE;
+
+            for &id in &ty.types {
+                let inner = shape_of(arena, id);
+                shape.atom |= inner.atom;
+                shape.pair |= inner.pair;
+            }
+
+            shape
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum AtomRestrictions {
+    Unrestricted,
+    Either(IndexSet<AtomRestriction>),
+    NotAtom,
+}
+
+fn atom_restrictions_of(arena: &Arena<Type>, id: TypeId) -> AtomRestrictions {
+    match arena[id].clone() {
+        Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
+        Type::Alias(alias) => atom_restrictions_of(arena, alias.inner),
+        Type::Struct(ty) => atom_restrictions_of(arena, ty.inner),
+        Type::Atom(atom) => atom
+            .restriction
+            .map_or(AtomRestrictions::Unrestricted, |restriction| {
+                AtomRestrictions::Either(indexset![restriction])
+            }),
+        Type::Pair(_) => AtomRestrictions::NotAtom,
+        Type::Union(ty) => {
+            let mut restrictions = IndexSet::new();
+            let mut has_atom = false;
+
+            for &id in &ty.types {
+                match atom_restrictions_of(arena, id) {
+                    AtomRestrictions::Unrestricted => return AtomRestrictions::Unrestricted,
+                    AtomRestrictions::Either(inner) => {
+                        for restriction in inner {
+                            match &restriction {
+                                AtomRestriction::Value(value) => {
+                                    if restrictions.contains(&AtomRestriction::Length(value.len()))
+                                    {
+                                        continue;
+                                    }
+                                }
+                                AtomRestriction::Length(length) => {
+                                    restrictions.retain(|restriction| match restriction {
+                                        AtomRestriction::Value(value) => value.len() != *length,
+                                        AtomRestriction::Length(_) => true,
+                                    });
+                                }
+                            }
+                            restrictions.insert(restriction);
+                        }
+                        has_atom = true;
+                    }
+                    AtomRestrictions::NotAtom => {}
+                }
+            }
+
+            if has_atom {
+                AtomRestrictions::Either(restrictions)
+            } else {
+                AtomRestrictions::NotAtom
+            }
+        }
+    }
+}
+
+fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
+    let target_shape = shape_of(arena, rhs);
+
+    if !target_shape.atom && !target_shape.pair {
+        return Comparison::Invalid;
+    }
+
+    let mut remaining = lhs.types;
+
+    let mut shape_check = None;
+
+    if !(target_shape.atom && target_shape.pair) {
+        let mut check = false;
+
+        remaining.retain(|&id| {
+            if shape_of(arena, id) != target_shape {
+                check = true;
+                return false;
+            }
+            true
+        });
+
+        if check {
+            shape_check = Some(if target_shape.atom {
+                Check::IsAtom
+            } else {
+                Check::IsPair
+            });
+        }
+    }
+
+    if remaining.is_empty() {
+        return Comparison::Invalid;
+    }
+
+    let mut atom_restriction_check = None;
+
+    if target_shape.atom
+        && let AtomRestrictions::Either(target_restrictions) = atom_restrictions_of(arena, rhs)
+    {
+        let mut overlap = IndexSet::new();
+        let mut unrestricted = false;
+
+        remaining.retain(|&id| match atom_restrictions_of(arena, id) {
+            AtomRestrictions::Unrestricted => {
+                unrestricted = true;
+                true
+            }
+            AtomRestrictions::Either(restrictions) => {
+                let mut has_overlap = false;
+
+                for restriction in restrictions {
+                    if target_restrictions.contains(&restriction) {
+                        overlap.insert(restriction);
+                        has_overlap = true;
+                    }
+                }
+
+                has_overlap
+            }
+            AtomRestrictions::NotAtom => true,
+        });
+
+        if unrestricted {
+            atom_restriction_check = Some(if target_restrictions.len() == 1 {
+                Check::Atom(target_restrictions.into_iter().next().unwrap())
+            } else {
+                Check::Or(target_restrictions.into_iter().map(Check::Atom).collect())
+            });
+        } else if overlap.is_empty() {
+            return Comparison::Invalid;
+        } else {
+            atom_restriction_check = Some(if overlap.len() == 1 {
+                Check::Atom(overlap.into_iter().next().unwrap())
+            } else {
+                Check::Or(overlap.into_iter().map(Check::Atom).collect())
+            });
+        }
+    }
+
+    if remaining.is_empty() {
+        return Comparison::Invalid;
+    }
+
+    let check = match (shape_check, atom_restriction_check) {
+        (Some(shape_check), Some(atom_restriction_check)) => {
+            Check::And(vec![shape_check, atom_restriction_check])
+        }
+        (Some(shape_check), None) => shape_check,
+        (None, Some(atom_restriction_check)) => {
+            if target_shape.pair {
+                Check::Or(vec![Check::IsPair, atom_restriction_check])
+            } else {
+                atom_restriction_check
+            }
+        }
+        (None, None) => Check::None,
+    };
+
+    Comparison::Check(check)
+}
+
+pub(crate) fn compare_to_union(arena: &Arena<Type>, lhs: TypeId, rhs: Union) -> Comparison {
+    let mut result = Comparison::Invalid;
+
+    for &id in &rhs.types {
+        let comparison = compare(arena, lhs, id);
+
+        match (&mut result, &comparison) {
+            (Comparison::Unresolved, _) | (_, Comparison::Unresolved) => {
+                return Comparison::Unresolved;
+            }
+            (Comparison::Invalid, _) => {
+                result = comparison;
+            }
+            (_, Comparison::Assign) => {
+                result = Comparison::Assign;
+            }
+            (Comparison::Assign | Comparison::Cast, Comparison::Cast | Comparison::Check(_)) => {}
+            (Comparison::Check(_), Comparison::Cast) => {
+                result = Comparison::Cast;
+            }
+            (Comparison::Check(old), Comparison::Check(new)) => {
+                *old = Check::Or(vec![old.clone(), new.clone()]);
+            }
+            (_, Comparison::Invalid) => {}
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::Atom;
+    use std::borrow::Cow;
+
+    use crate::{Atom, Pair};
 
     use super::*;
 
@@ -60,5 +310,113 @@ mod tests {
         let lhs = arena.alloc(Type::Union(Union::new(vec![int, nil])));
         let rhs = arena.alloc(Type::Atom(Atom::BYTES));
         assert_eq!(compare(&arena, lhs, rhs), Comparison::Cast);
+    }
+
+    #[test]
+    fn test_union_shape_check_atom() {
+        let mut arena = Arena::new();
+        let atom = arena.alloc(Type::Atom(Atom::INT));
+        let pair = arena.alloc(Type::Pair(Pair::new(atom, atom)));
+        let lhs = arena.alloc(Type::Union(Union::new(vec![atom, pair])));
+        assert_eq!(compare(&arena, lhs, atom), Comparison::Check(Check::IsAtom));
+    }
+
+    #[test]
+    fn test_union_shape_check_pair() {
+        let mut arena = Arena::new();
+        let int = arena.alloc(Type::Atom(Atom::INT));
+        let pair = arena.alloc(Type::Pair(Pair::new(int, int)));
+        let lhs = arena.alloc(Type::Union(Union::new(vec![int, pair])));
+        assert_eq!(compare(&arena, lhs, pair), Comparison::Check(Check::IsPair));
+    }
+
+    #[test]
+    fn test_union_shape_restrict_length() {
+        let mut arena = Arena::new();
+        let int = arena.alloc(Type::Atom(Atom::INT));
+        let pair = arena.alloc(Type::Pair(Pair::new(int, int)));
+        let lhs = arena.alloc(Type::Union(Union::new(vec![int, pair])));
+        let rhs = arena.alloc(Type::Atom(Atom::BYTES_32));
+        assert_eq!(
+            compare(&arena, lhs, rhs),
+            Comparison::Check(Check::And(vec![
+                Check::IsAtom,
+                Check::Atom(AtomRestriction::Length(32))
+            ]))
+        );
+    }
+
+    #[test]
+    fn test_union_shape_restrict_value() {
+        let mut arena = Arena::new();
+        let int = arena.alloc(Type::Atom(Atom::INT));
+        let pair = arena.alloc(Type::Pair(Pair::new(int, int)));
+        let lhs = arena.alloc(Type::Union(Union::new(vec![int, pair])));
+        let rhs = arena.alloc(Type::Atom(Atom::NIL));
+        assert_eq!(
+            compare(&arena, lhs, rhs),
+            Comparison::Check(Check::And(vec![
+                Check::IsAtom,
+                Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))
+            ]))
+        );
+    }
+
+    #[test]
+    fn test_union_restrict_length() {
+        let mut arena = Arena::new();
+        let lhs = arena.alloc(Type::Atom(Atom::INT));
+        let rhs = arena.alloc(Type::Atom(Atom::BYTES_32));
+        assert_eq!(
+            compare(&arena, lhs, rhs),
+            Comparison::Check(Check::Atom(AtomRestriction::Length(32)))
+        );
+    }
+
+    #[test]
+    fn test_union_restrict_value() {
+        let mut arena = Arena::new();
+        let lhs = arena.alloc(Type::Atom(Atom::INT));
+        let rhs = arena.alloc(Type::Atom(Atom::NIL));
+        assert_eq!(
+            compare(&arena, lhs, rhs),
+            Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[]))))
+        );
+    }
+
+    #[test]
+    fn test_assign_union() {
+        let mut arena = Arena::new();
+        let nil = arena.alloc(Type::Atom(Atom::NIL));
+        let bytes_32 = arena.alloc(Type::Atom(Atom::BYTES_32));
+        let rhs = arena.alloc(Type::Union(Union::new(vec![nil, bytes_32])));
+        assert_eq!(compare(&arena, nil, rhs), Comparison::Assign);
+        assert_eq!(compare(&arena, bytes_32, rhs), Comparison::Assign);
+    }
+
+    #[test]
+    fn test_cast_union() {
+        let mut arena = Arena::new();
+        let false_value = arena.alloc(Type::Atom(Atom::FALSE));
+        let nil = arena.alloc(Type::Atom(Atom::NIL));
+        let bytes_32 = arena.alloc(Type::Atom(Atom::BYTES_32));
+        let rhs = arena.alloc(Type::Union(Union::new(vec![nil, bytes_32])));
+        assert_eq!(compare(&arena, false_value, rhs), Comparison::Cast);
+    }
+
+    #[test]
+    fn test_check_union() {
+        let mut arena = Arena::new();
+        let int = arena.alloc(Type::Atom(Atom::INT));
+        let nil = arena.alloc(Type::Atom(Atom::NIL));
+        let bytes_32 = arena.alloc(Type::Atom(Atom::BYTES_32));
+        let rhs = arena.alloc(Type::Union(Union::new(vec![nil, bytes_32])));
+        assert_eq!(
+            compare(&arena, int, rhs),
+            Comparison::Check(Check::Or(vec![
+                Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[]))),
+                Check::Atom(AtomRestriction::Length(32)),
+            ]))
+        );
     }
 }

@@ -68,7 +68,7 @@ mod tests {
         assert_eq!(
             compare(&arena, lhs, rhs),
             Comparison::Check(Check::Pair(
-                Box::new(Check::Length(32)),
+                Box::new(Check::Atom(AtomRestriction::Length(32))),
                 Box::new(Check::None)
             ))
         );
