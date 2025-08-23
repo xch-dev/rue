@@ -91,6 +91,7 @@ impl Not for Shape {
 fn shape_of(arena: &Arena<Type>, ty: Type) -> Shape {
     match ty {
         Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
+        Type::Ref(id) => shape_of(arena, arena[id].clone()),
         Type::Alias(alias) => shape_of(arena, arena[alias.inner].clone()),
         Type::Struct(ty) => shape_of(arena, arena[ty.inner].clone()),
         Type::Atom(_) => Shape::ATOM,
@@ -119,6 +120,7 @@ enum AtomRestrictions {
 fn atom_restrictions_of(arena: &Arena<Type>, ty: Type) -> AtomRestrictions {
     match ty {
         Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
+        Type::Ref(id) => atom_restrictions_of(arena, arena[id].clone()),
         Type::Alias(alias) => atom_restrictions_of(arena, arena[alias.inner].clone()),
         Type::Struct(ty) => atom_restrictions_of(arena, arena[ty.inner].clone()),
         Type::Atom(atom) => atom
@@ -177,6 +179,7 @@ struct PairInfo {
 fn pairs_of(arena: &Arena<Type>, id: Option<TypeId>, ty: Type) -> Vec<PairInfo> {
     match ty {
         Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
+        Type::Ref(id) => pairs_of(arena, Some(id), arena[id].clone()),
         Type::Alias(alias) => pairs_of(arena, Some(alias.inner), arena[alias.inner].clone()),
         Type::Struct(ty) => pairs_of(arena, Some(ty.inner), arena[ty.inner].clone()),
         Type::Atom(_) => vec![],

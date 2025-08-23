@@ -46,6 +46,8 @@ pub(crate) fn compare_with_context(
     }
 
     let result = match (arena[lhs].clone(), arena[rhs].clone()) {
+        (Type::Ref(lhs), _) => compare_with_context(arena, ctx, lhs, rhs),
+        (_, Type::Ref(rhs)) => compare_with_context(arena, ctx, lhs, rhs),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Unresolved,
         (Type::Generic, _) => Comparison::Invalid,
         (_, Type::Generic) => todo!(),
