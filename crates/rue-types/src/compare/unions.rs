@@ -49,6 +49,7 @@ pub(crate) fn compare_from_union(
         ctx,
         lhs.types.into_iter().enumerate().collect(),
         Union::new(vec![rhs]),
+        &mut IndexSet::new(),
     )
     .0
     .map_or(Comparison::Invalid, Comparison::Check)
@@ -206,7 +207,14 @@ fn refine_union(
     ctx: &mut ComparisonContext,
     mut lhs: Vec<(usize, TypeId)>,
     rhs: Union,
+    stack: &mut IndexSet<(Vec<TypeId>, Vec<TypeId>)>,
 ) -> (Option<Check>, Vec<(usize, TypeId)>) {
+    let key = (lhs.iter().map(|(_, id)| *id).collect(), rhs.types.clone());
+
+    if !stack.insert(key) {
+        return (None, lhs);
+    }
+
     let target_shape = shape_of(arena, Type::Union(rhs.clone()));
 
     if !target_shape.atom && !target_shape.pair {
@@ -326,6 +334,7 @@ fn refine_union(
             ctx,
             pairs.iter().map(|pair| pair.first).enumerate().collect(),
             Union::new(target_firsts),
+            stack,
         );
 
         let Some(first_check) = first_check else {
@@ -361,6 +370,7 @@ fn refine_union(
                 ctx,
                 pairs.iter().map(|pair| pair.rest).enumerate().collect(),
                 Union::new(target_rests),
+                stack,
             )
             .0
             else {
@@ -404,6 +414,8 @@ fn refine_union(
         ]),
         (None, None, None) => Check::None,
     };
+
+    stack.pop().unwrap();
 
     (Some(check), lhs)
 }

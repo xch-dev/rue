@@ -118,6 +118,8 @@ mod tests {
 
         let int = arena.alloc(Type::Atom(Atom::INT));
         let bytes = arena.alloc(Type::Atom(Atom::BYTES));
+        let nil = arena.alloc(Type::Atom(Atom::NIL));
+
         let int_list = arena.alloc(Type::Apply(Apply::new(
             list,
             HashMap::from_iter([(generic, int)]),
@@ -126,12 +128,19 @@ mod tests {
             list,
             HashMap::from_iter([(generic, bytes)]),
         )));
+        let nil_list = arena.alloc(Type::Apply(Apply::new(
+            list,
+            HashMap::from_iter([(generic, nil)]),
+        )));
 
         let int_list = substitute(&mut arena, int_list);
         let bytes_list = substitute(&mut arena, bytes_list);
+        let nil_list = substitute(&mut arena, nil_list);
 
         assert_eq!(compare(&arena, int_list, int_list), Comparison::Assign);
         assert_eq!(compare(&arena, int_list, bytes_list), Comparison::Cast);
         assert_eq!(compare(&arena, bytes_list, int_list), Comparison::Cast);
+        assert_eq!(compare(&arena, nil_list, int_list), Comparison::Cast);
+        assert_eq!(compare(&arena, int_list, nil_list), Comparison::Invalid);
     }
 }
