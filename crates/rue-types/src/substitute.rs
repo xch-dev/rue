@@ -34,7 +34,7 @@ fn substitute_impl(
     };
 
     let result = match arena[old_id].clone() {
-        Type::Unresolved | Type::Generic | Type::Atom(_) => return old_id,
+        Type::Unresolved | Type::Generic | Type::Atom(_) | Type::Function(_) => return old_id,
         Type::Ref(id) => substitute_impl(arena, id, map, visited),
         Type::Apply(apply) => substitute_impl(arena, apply.inner, &apply.generics, visited),
         Type::Pair(pair) => {
@@ -48,7 +48,7 @@ fn substitute_impl(
         }
         Type::Alias(alias) => {
             let inner = substitute_impl(arena, alias.inner, map, visited);
-            arena.alloc(Type::Alias(Alias { inner }))
+            arena.alloc(Type::Alias(Alias { inner, ..alias }))
         }
         Type::Union(union) => {
             let types = union

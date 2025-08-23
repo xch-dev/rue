@@ -1,7 +1,8 @@
 use id_arena::Id;
 use rue_parser::SyntaxToken;
+use rue_types::TypeId;
 
-use crate::{HirId, ScopeId, TypeId};
+use crate::{HirId, ScopeId};
 
 pub type SymbolId = Id<Symbol>;
 

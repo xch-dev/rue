@@ -1,8 +1,10 @@
 mod atom;
+mod function;
 mod pair;
 mod unions;
 
 use atom::*;
+use function::*;
 use pair::*;
 use unions::*;
 
@@ -53,6 +55,8 @@ pub(crate) fn compare_with_context(
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Unresolved,
         (Type::Generic, _) => Comparison::Invalid,
         (_, Type::Generic) => todo!(),
+        (Type::Function(lhs), Type::Function(rhs)) => compare_function(arena, ctx, lhs, rhs),
+        (Type::Function(_), _) | (_, Type::Function(_)) => Comparison::Invalid,
         (Type::Atom(lhs), Type::Atom(rhs)) => compare_atom(lhs, rhs),
         (Type::Pair(lhs), Type::Pair(rhs)) => compare_pair(arena, ctx, lhs, rhs),
         (Type::Pair(_), Type::Atom(_)) => Comparison::Invalid,

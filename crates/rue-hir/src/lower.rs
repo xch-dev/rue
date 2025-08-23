@@ -1,10 +1,10 @@
 use id_arena::Arena;
 use indexmap::IndexSet;
-use rue_lir::{Lir, LirId};
+use rue_lir::{Lir, LirId, bigint_atom};
 
 use crate::{
     BinaryOp, BindingSymbol, Database, DependencyGraph, Environment, FunctionSymbol, Hir, HirId,
-    Statement, Symbol, SymbolId, UnaryOp, bigint_atom,
+    Statement, Symbol, SymbolId, UnaryOp,
 };
 
 pub fn lower_symbol(

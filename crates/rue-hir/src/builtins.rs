@@ -1,4 +1,6 @@
-use crate::{Atom, Database, Hir, Scope, ScopeId, Type, TypeId, Value};
+use rue_types::{Atom, Type, TypeId, Union};
+
+use crate::{Database, Hir, Scope, ScopeId, Value};
 
 #[derive(Debug, Clone)]
 pub struct Builtins {
@@ -19,14 +21,14 @@ impl Builtins {
         let unresolved_type = db.alloc_type(Type::Unresolved);
         let unresolved_hir = db.alloc_hir(Hir::Unresolved);
 
-        let nil_type = db.alloc_type(Type::Atom(Atom::Nil));
-        let true_type = db.alloc_type(Type::Atom(Atom::BoolValue(true)));
-        let false_type = db.alloc_type(Type::Atom(Atom::BoolValue(false)));
-        let bytes = db.alloc_type(Type::Atom(Atom::Bytes));
-        let bytes32 = db.alloc_type(Type::Atom(Atom::Bytes32));
-        let public_key = db.alloc_type(Type::Atom(Atom::PublicKey));
-        let int = db.alloc_type(Type::Atom(Atom::Int));
-        let bool = db.alloc_type(Type::Union(vec![true_type, false_type]));
+        let nil_type = db.alloc_type(Type::Atom(Atom::NIL));
+        let true_type = db.alloc_type(Type::Atom(Atom::TRUE));
+        let false_type = db.alloc_type(Type::Atom(Atom::FALSE));
+        let bytes = db.alloc_type(Type::Atom(Atom::BYTES));
+        let bytes32 = db.alloc_type(Type::Atom(Atom::BYTES_32));
+        let public_key = db.alloc_type(Type::Atom(Atom::PUBLIC_KEY));
+        let int = db.alloc_type(Type::Atom(Atom::INT));
+        let bool = db.alloc_type(Type::Union(Union::new(vec![true_type, false_type])));
 
         let nil_hir = db.alloc_hir(Hir::Nil);
         let true_hir = db.alloc_hir(Hir::Bool(true));

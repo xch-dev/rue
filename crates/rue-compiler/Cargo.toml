@@ -10,6 +10,7 @@ rue-ast = { workspace = true }
 rue-diagnostic = { workspace = true }
 rue-hir = { workspace = true }
 rue-lir = { workspace = true }
+rue-types = { workspace = true }
 id-arena = { workspace = true }
 rowan = { workspace = true }
 num-bigint = { workspace = true }

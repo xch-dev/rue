@@ -15,7 +15,7 @@ pub fn pairs_of(arena: &Arena<Type>, id: Option<TypeId>, ty: Type) -> Vec<PairIn
         Type::Ref(id) => pairs_of(arena, Some(id), arena[id].clone()),
         Type::Alias(alias) => pairs_of(arena, Some(alias.inner), arena[alias.inner].clone()),
         Type::Struct(ty) => pairs_of(arena, Some(ty.inner), arena[ty.inner].clone()),
-        Type::Atom(_) => vec![],
+        Type::Atom(_) | Type::Function(_) => vec![],
         Type::Pair(pair) => vec![PairInfo {
             id,
             first: pair.first,

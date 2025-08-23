@@ -1,12 +1,10 @@
+use rue_parser::SyntaxToken;
+
 use crate::TypeId;
 
 #[derive(Debug, Clone)]
 pub struct Alias {
     pub inner: TypeId,
-}
-
-impl Alias {
-    pub fn new(inner: TypeId) -> Self {
-        Self { inner }
-    }
+    pub token: Option<SyntaxToken>,
+    pub generics: Vec<TypeId>,
 }

@@ -1,5 +1,5 @@
 use rue_ast::AstPairType;
-use rue_hir::{Type, TypeId};
+use rue_types::{Pair, Type, TypeId};
 
 use crate::{Compiler, compile_type};
 
@@ -16,5 +16,5 @@ pub fn compile_pair_type(ctx: &mut Compiler, pair: &AstPairType) -> TypeId {
         ctx.builtins().unresolved.ty
     };
 
-    ctx.alloc_type(Type::Pair(first, rest))
+    ctx.alloc_type(Type::Pair(Pair::new(first, rest)))
 }

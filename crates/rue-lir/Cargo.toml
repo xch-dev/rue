@@ -8,6 +8,7 @@ id-arena = { workspace = true }
 clvmr = { workspace = true }
 clvm-traits = { workspace = true }
 thiserror = { workspace = true }
+num-bigint = { workspace = true }
 
 [dev-dependencies]
 expect-test = { workspace = true }

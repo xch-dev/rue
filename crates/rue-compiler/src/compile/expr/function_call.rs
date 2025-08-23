@@ -1,5 +1,6 @@
 use rue_ast::AstFunctionCallExpr;
-use rue_hir::{Hir, Type, Value};
+use rue_hir::{Hir, Value};
+use rue_types::Type;
 
 use crate::{Compiler, compile_expr};
 

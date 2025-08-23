@@ -45,6 +45,16 @@ fn stringify_impl(arena: &Arena<Type>, id: TypeId, stack: &mut IndexMap<TypeId, 
                 .join(", ");
             format!("{inner}<{generics}>")
         }
+        Type::Function(function) => {
+            let params = function
+                .params
+                .iter()
+                .map(|id| stringify_impl(arena, *id, stack))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let ret = stringify_impl(arena, function.ret, stack);
+            format!("fn({params}) -> {ret}")
+        }
         Type::Union(union) => union
             .types
             .iter()

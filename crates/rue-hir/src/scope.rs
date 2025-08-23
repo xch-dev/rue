@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use id_arena::Id;
 use indexmap::IndexMap;
+use rue_types::TypeId;
 
-use crate::{SymbolId, TypeId};
+use crate::SymbolId;
 
 pub type ScopeId = Id<Scope>;
 

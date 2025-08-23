@@ -1,6 +1,6 @@
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{FunctionSymbol, FunctionType, ParameterSymbol, Scope, Symbol, SymbolId, Type};
+use rue_hir::{FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId};
 
 use crate::{Compiler, compile_block, compile_generic_parameters, compile_type};
 

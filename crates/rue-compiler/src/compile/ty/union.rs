@@ -1,5 +1,5 @@
 use rue_ast::AstUnionType;
-use rue_hir::{Type, TypeId};
+use rue_types::{Type, TypeId, Union};
 
 use crate::{Compiler, compile_type};
 
@@ -14,5 +14,5 @@ pub fn compile_union_type(ctx: &mut Compiler, union: &AstUnionType) -> TypeId {
         return ctx.builtins().unresolved.ty;
     }
 
-    ctx.alloc_type(Type::Union(types))
+    ctx.alloc_type(Type::Union(Union::new(types)))
 }

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 rue-parser = { workspace = true }
 rue-lir = { workspace = true }
+rue-types = { workspace = true }
 id-arena = { workspace = true }
 indexmap = { workspace = true }
 num-bigint = { workspace = true }

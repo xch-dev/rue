@@ -1,6 +1,7 @@
 mod alias;
 mod apply;
 mod atom;
+mod function;
 mod pair;
 mod structs;
 mod unions;
@@ -8,6 +9,7 @@ mod unions;
 pub use alias::*;
 pub use apply::*;
 pub use atom::*;
+pub use function::*;
 pub use pair::*;
 pub use structs::*;
 pub use unions::*;
@@ -25,6 +27,7 @@ pub enum Type {
     Pair(Pair),
     Alias(Alias),
     Struct(Struct),
+    Function(FunctionType),
     Apply(Apply),
     Union(Union),
 }

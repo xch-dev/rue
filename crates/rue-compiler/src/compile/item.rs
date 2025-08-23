@@ -4,7 +4,8 @@ mod type_alias;
 pub use function::*;
 pub use type_alias::*;
 
-use rue_hir::{SymbolId, TypeId};
+use rue_hir::SymbolId;
+use rue_types::TypeId;
 
 use crate::Compiler;
 

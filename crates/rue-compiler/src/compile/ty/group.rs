@@ -1,5 +1,5 @@
 use rue_ast::AstGroupType;
-use rue_hir::TypeId;
+use rue_types::TypeId;
 
 use crate::{Compiler, compile_type};
 

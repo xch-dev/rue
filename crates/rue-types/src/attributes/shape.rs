@@ -16,6 +16,11 @@ impl Shape {
         pair: false,
     };
 
+    pub const BOTH: Self = Self {
+        atom: true,
+        pair: true,
+    };
+
     pub const ATOM: Self = Self {
         atom: true,
         pair: false,
@@ -46,6 +51,7 @@ pub fn shape_of(arena: &Arena<Type>, ty: Type) -> Shape {
         Type::Struct(ty) => shape_of(arena, arena[ty.inner].clone()),
         Type::Atom(_) => Shape::ATOM,
         Type::Pair(_) => Shape::PAIR,
+        Type::Function(_) => Shape::BOTH,
         Type::Union(ty) => {
             let mut shape = Shape::NONE;
 

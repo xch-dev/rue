@@ -7,10 +7,10 @@ use std::{
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
 use rue_hir::{
-    Builtins, Check, Comparison, ComparisonContext, Constraint, Database, Scope, ScopeId, Symbol,
-    SymbolId, Type, TypeId, TypePath, compare_types, replace_type, unwrap_type,
+    Builtins, Constraint, Database, Scope, ScopeId, Symbol, SymbolId, TypePath, replace_type,
 };
 use rue_parser::{SyntaxNode, SyntaxToken};
+use rue_types::{Check, Comparison, TypeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ComparisonKind {
@@ -128,42 +128,7 @@ impl Compiler {
             }
         }
 
-        match self.ty(ty) {
-            Type::Unresolved => "{unknown}".to_string(),
-            Type::Atom(atom) => atom.to_string(),
-            Type::Pair(first, rest) => {
-                let first = self.type_name_impl(*first, map);
-                let rest = self.type_name_impl(*rest, map);
-                format!("({first}, {rest})")
-            }
-            Type::Generic(generic) => generic
-                .name
-                .as_ref()
-                .map_or("{generic}".to_string(), |name| name.text().to_string()),
-            Type::Alias(alias) => {
-                if let Some(name) = alias.name.as_ref() {
-                    name.text().to_string()
-                } else {
-                    self.type_name_impl(alias.inner, map)
-                }
-            }
-            Type::Union(types) => {
-                let types = types
-                    .iter()
-                    .map(|ty| self.type_name_impl(*ty, map))
-                    .collect::<Vec<_>>();
-                types.join(" | ")
-            }
-            Type::Fn(function) => {
-                let params = function
-                    .params
-                    .iter()
-                    .map(|ty| self.type_name_impl(*ty, map))
-                    .collect::<Vec<_>>();
-                let ret = self.type_name_impl(function.ret, map);
-                format!("fn({}) -> {}", params.join(", "), ret)
-            }
-        }
+        rue_types::stringify(self.db.types(), ty)
     }
 
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {
@@ -213,21 +178,13 @@ impl Compiler {
     }
 
     pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {
-        let mut ctx = ComparisonContext::new(HashMap::new());
-        let comparison = compare_types(&mut self.db, &mut ctx, from, to);
-
-        matches!(comparison, Comparison::Assignable)
+        let comparison = rue_types::compare(self.db.types(), from, to);
+        comparison == Comparison::Assign
     }
 
     pub fn is_castable(&mut self, from: TypeId, to: TypeId) -> bool {
-        let mut ctx = ComparisonContext::new(HashMap::new());
-        let comparison = compare_types(&mut self.db, &mut ctx, from, to);
-
-        matches!(comparison, Comparison::Assignable | Comparison::Castable)
-    }
-
-    pub fn unwrap_type(&mut self, ty: TypeId) -> TypeId {
-        unwrap_type(&self.db, &mut ComparisonContext::new(HashMap::new()), ty)
+        let comparison = rue_types::compare(self.db.types(), from, to);
+        matches!(comparison, Comparison::Assign | Comparison::Cast)
     }
 
     pub fn assign_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
@@ -249,15 +206,11 @@ impl Compiler {
         to: TypeId,
         kind: ComparisonKind,
     ) -> Constraint {
-        let comparison = compare_types(
-            &mut self.db,
-            &mut ComparisonContext::new(HashMap::new()),
-            from,
-            to,
-        );
+        let comparison = rue_types::compare(self.db.types(), from, to);
 
         match comparison {
-            Comparison::Assignable => {
+            Comparison::Unresolved => Constraint::new(Check::None),
+            Comparison::Assign => {
                 match kind {
                     ComparisonKind::Assign => {}
                     ComparisonKind::Cast => {
@@ -281,7 +234,7 @@ impl Compiler {
                 }
                 Constraint::new(Check::None)
             }
-            Comparison::Castable => {
+            Comparison::Cast => {
                 match kind {
                     ComparisonKind::Assign => {
                         self.diagnostic(
@@ -305,7 +258,7 @@ impl Compiler {
                 }
                 Constraint::new(Check::None)
             }
-            Comparison::Incompatible(check) => {
+            Comparison::Invalid => {
                 match kind {
                     ComparisonKind::Assign => {
                         self.diagnostic(
@@ -335,9 +288,9 @@ impl Compiler {
                         );
                     }
                 }
-                Constraint::new(check)
+                Constraint::new(Check::Impossible)
             }
-            Comparison::Constrainable(constraint) => {
+            Comparison::Check(check) => {
                 if kind != ComparisonKind::Guard {
                     self.diagnostic(
                         node,
@@ -347,6 +300,12 @@ impl Compiler {
                         ),
                     );
                 }
+                let mut constraint = Constraint::new(check);
+
+                if let Some(else_id) = rue_types::subtract(self.db.types_mut(), from, to) {
+                    constraint = constraint.with_else(else_id);
+                }
+
                 constraint
             }
         }

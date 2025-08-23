@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rue_ast::AstPathType;
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Type, TypeId, apply_generics};
+use rue_types::{Type, TypeId};
 
 use crate::{Compiler, compile_generic_arguments};
 
@@ -38,12 +38,10 @@ pub fn compile_path_type(ctx: &mut Compiler, path: &AstPathType) -> TypeId {
 
         let params = match ctx.ty(resolved) {
             Type::Unresolved => continue,
-            Type::Atom(..)
-            | Type::Pair(..)
-            | Type::Generic(..)
-            | Type::Union(..)
-            | Type::Fn(..) => vec![],
-            Type::Alias(alias) => alias.vars.clone(),
+            Type::Ref(..) | Type::Atom(..) | Type::Pair(..) | Type::Generic | Type::Union(..) => {
+                vec![]
+            }
+            Type::Alias(alias) => alias.generics.clone(),
         };
 
         if params.len() != args.len() {

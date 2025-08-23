@@ -6,17 +6,18 @@ pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Opti
     match (arena[lhs_id].clone(), arena[rhs_id].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Some(lhs_id),
+        (Type::Function(_), _) | (_, Type::Function(_)) => Some(lhs_id),
         (Type::Generic, _) => Some(lhs_id),
         (_, Type::Generic) => None,
         (Type::Ref(lhs), _) => subtract(arena, lhs, rhs_id),
         (_, Type::Ref(rhs)) => subtract(arena, lhs_id, rhs),
         (Type::Alias(lhs), _) => {
             let inner = subtract(arena, lhs.inner, rhs_id)?;
-            Some(arena.alloc(Type::Alias(Alias { inner })))
+            Some(arena.alloc(Type::Alias(Alias { inner, ..lhs })))
         }
         (_, Type::Alias(rhs)) => {
             let inner = subtract(arena, lhs_id, rhs.inner)?;
-            Some(arena.alloc(Type::Alias(Alias { inner })))
+            Some(arena.alloc(Type::Alias(Alias { inner, ..rhs })))
         }
         (Type::Struct(lhs), _) => {
             let inner = subtract(arena, lhs.inner, rhs_id)?;

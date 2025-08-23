@@ -1,4 +1,4 @@
-use crate::{Check, TypeId};
+use rue_types::{Check, TypeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TypePath {

@@ -1,5 +1,6 @@
 use rue_ast::{AstDocument, AstItem};
-use rue_hir::{ScopeId, SymbolId, TypeId};
+use rue_hir::{ScopeId, SymbolId};
+use rue_types::TypeId;
 
 use crate::{
     Compiler, compile_symbol_item, compile_type_item, declare_symbol_item, declare_type_item,

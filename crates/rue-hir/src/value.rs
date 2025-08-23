@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{HirId, SymbolId, TypeId, TypePath};
+use rue_types::TypeId;
+
+use crate::{HirId, SymbolId, TypePath};
 
 pub type Mappings = HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>;
 

@@ -11,7 +11,7 @@ pub use path::*;
 pub use union::*;
 
 use rue_ast::AstType;
-use rue_hir::TypeId;
+use rue_types::TypeId;
 
 use crate::Compiler;
 
