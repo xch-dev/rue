@@ -1,10 +1,16 @@
 use id_arena::Arena;
 
-use crate::{Check, Comparison, Pair, Type, compare};
+use crate::{Check, Comparison, ComparisonContext, Pair, Type, compare_with_context};
 
-pub(crate) fn compare_pair(arena: &Arena<Type>, lhs: Pair, rhs: Pair) -> Comparison {
-    let first = compare(arena, lhs.first, rhs.first);
-    let rest = compare(arena, lhs.rest, rhs.rest);
+pub(crate) fn compare_pair(
+    arena: &Arena<Type>,
+    ctx: &mut ComparisonContext,
+    lhs: Pair,
+    rhs: Pair,
+) -> Comparison {
+    let first = compare_with_context(arena, ctx, lhs.first, rhs.first);
+
+    let rest = compare_with_context(arena, ctx, lhs.rest, rhs.rest);
 
     match (first, rest) {
         (Comparison::Unresolved, _) | (_, Comparison::Unresolved) => Comparison::Unresolved,

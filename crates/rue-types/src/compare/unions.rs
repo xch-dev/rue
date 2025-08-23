@@ -671,11 +671,11 @@ mod tests {
     #[test]
     fn test_cast_union() {
         let mut arena = Arena::new();
-        let false_value = arena.alloc(Type::Atom(Atom::FALSE));
         let nil = arena.alloc(Type::Atom(Atom::NIL));
         let bytes_32 = arena.alloc(Type::Atom(Atom::BYTES_32));
+        let lhs = arena.alloc(Type::Atom(Atom::FALSE));
         let rhs = arena.alloc(Type::Union(Union::new(vec![nil, bytes_32])));
-        assert_eq!(compare(&arena, false_value, rhs), Comparison::Cast);
+        assert_eq!(compare(&arena, lhs, rhs), Comparison::Cast);
     }
 
     #[test]

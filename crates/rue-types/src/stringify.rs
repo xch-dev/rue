@@ -56,7 +56,11 @@ fn stringify_impl(arena: &Arena<Type>, id: TypeId, stack: &mut IndexMap<TypeId, 
     let recursed = stack.pop().unwrap().1;
 
     if recursed {
-        format!("{} @ ({})", len, result)
+        if result.starts_with("(") {
+            format!("{} @ {}", len, result)
+        } else {
+            format!("{} @ ({})", len, result)
+        }
     } else {
         result
     }
