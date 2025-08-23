@@ -334,7 +334,7 @@ fn group_symbols(mut symbols: IndexSet<SymbolId>, graph: &DependencyGraph) -> Ve
 
         symbols.retain(|&symbol| {
             if graph
-                .dependencies(symbol, false)
+                .dependencies(symbol, true)
                 .iter()
                 .all(|symbol| !remaining.contains(symbol))
             {

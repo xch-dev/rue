@@ -49,6 +49,8 @@ fn main() -> Result<()> {
             continue;
         };
 
+        println!("Running {name}");
+
         let mut test_case: TestCase = serde_yml::from_str(&fs::read_to_string(entry.path())?)?;
         let original = test_case.clone();
 
@@ -94,7 +96,7 @@ fn main() -> Result<()> {
         test_case.diagnostics = diagnostics;
 
         if test_case != original {
-            println!("{name} failed, updated test case");
+            println!("Failed, updated test case");
         }
 
         fs::write(entry.path(), serde_yml::to_string(&test_case)?)?;
