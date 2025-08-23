@@ -22,7 +22,8 @@ pub enum Comparison {
 
 #[derive(Debug, Default)]
 pub struct ComparisonContext {
-    stack: IndexSet<(TypeId, TypeId)>,
+    comparison_stack: IndexSet<(TypeId, TypeId)>,
+    refinement_stack: IndexSet<(Vec<TypeId>, Vec<TypeId>)>,
 }
 
 impl ComparisonContext {
@@ -41,7 +42,7 @@ pub(crate) fn compare_with_context(
     lhs: TypeId,
     rhs: TypeId,
 ) -> Comparison {
-    if !ctx.stack.insert((lhs, rhs)) {
+    if !ctx.comparison_stack.insert((lhs, rhs)) {
         return Comparison::Assign;
     }
 
@@ -76,7 +77,7 @@ pub(crate) fn compare_with_context(
         (_, Type::Union(rhs)) => compare_to_union(arena, ctx, lhs, rhs),
     };
 
-    ctx.stack.pop().unwrap();
+    ctx.comparison_stack.pop().unwrap();
 
     result
 }
