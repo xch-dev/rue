@@ -48,7 +48,7 @@ mod tests {
         let nil = arena.alloc(Type::Atom(Atom::NIL));
         let lhs = arena.alloc(Type::Pair(Pair::new(nil, nil)));
         let rhs = arena.alloc(Type::Pair(Pair::new(nil, nil)));
-        assert_eq!(compare(&arena, lhs, rhs), Comparison::Assign);
+        assert_eq!(compare(&mut arena, lhs, rhs), Comparison::Assign);
     }
 
     #[test]
@@ -61,7 +61,7 @@ mod tests {
         )));
         let lhs = arena.alloc(Type::Pair(Pair::new(nil, num)));
         let rhs = arena.alloc(Type::Pair(Pair::new(num, nil)));
-        assert_eq!(compare(&arena, lhs, rhs), Comparison::Cast);
+        assert_eq!(compare(&mut arena, lhs, rhs), Comparison::Cast);
     }
 
     #[test]
@@ -72,7 +72,7 @@ mod tests {
         let lhs = arena.alloc(Type::Pair(Pair::new(bytes, bytes)));
         let rhs = arena.alloc(Type::Pair(Pair::new(bytes32, bytes)));
         assert_eq!(
-            compare(&arena, lhs, rhs),
+            compare(&mut arena, lhs, rhs),
             Comparison::Check(Check::Pair(
                 Box::new(Check::Atom(AtomRestriction::Length(32))),
                 Box::new(Check::None)
@@ -87,6 +87,6 @@ mod tests {
         let incompatible = arena.alloc(Type::Atom(Atom::TRUE));
         let lhs = arena.alloc(Type::Pair(Pair::new(nil, incompatible)));
         let rhs = arena.alloc(Type::Pair(Pair::new(nil, nil)));
-        assert_eq!(compare(&arena, lhs, rhs), Comparison::Invalid);
+        assert_eq!(compare(&mut arena, lhs, rhs), Comparison::Invalid);
     }
 }

@@ -6,7 +6,7 @@ mod substitute;
 mod subtract;
 mod types;
 
-pub use attributes::*;
+pub(crate) use attributes::*;
 pub use check::*;
 pub use compare::*;
 pub use stringify::*;

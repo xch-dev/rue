@@ -1,9 +1,10 @@
 use id_arena::Arena;
 use indexmap::IndexMap;
 
-use crate::{Type, TypeId};
+use crate::{Type, TypeId, substitute};
 
-pub fn stringify(arena: &Arena<Type>, id: TypeId) -> String {
+pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
+    let id = substitute(arena, id);
     stringify_impl(arena, id, &mut IndexMap::new())
 }
 

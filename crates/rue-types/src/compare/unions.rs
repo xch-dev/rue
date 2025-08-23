@@ -318,7 +318,7 @@ mod tests {
         let nil = arena.alloc(Type::Atom(Atom::NIL));
         let lhs = arena.alloc(Type::Union(Union::new(vec![bytes_32, nil])));
         let rhs = arena.alloc(Type::Atom(Atom::BYTES));
-        assert_eq!(compare(&arena, lhs, rhs), Comparison::Assign);
+        assert_eq!(compare(&mut arena, lhs, rhs), Comparison::Assign);
     }
 
     #[test]
@@ -328,7 +328,7 @@ mod tests {
         let nil = arena.alloc(Type::Atom(Atom::NIL));
         let lhs = arena.alloc(Type::Union(Union::new(vec![int, nil])));
         let rhs = arena.alloc(Type::Atom(Atom::BYTES));
-        assert_eq!(compare(&arena, lhs, rhs), Comparison::Cast);
+        assert_eq!(compare(&mut arena, lhs, rhs), Comparison::Cast);
     }
 
     #[test]
@@ -337,7 +337,10 @@ mod tests {
         let atom = arena.alloc(Type::Atom(Atom::INT));
         let pair = arena.alloc(Type::Pair(Pair::new(atom, atom)));
         let lhs = arena.alloc(Type::Union(Union::new(vec![atom, pair])));
-        assert_eq!(compare(&arena, lhs, atom), Comparison::Check(Check::IsAtom));
+        assert_eq!(
+            compare(&mut arena, lhs, atom),
+            Comparison::Check(Check::IsAtom)
+        );
     }
 
     #[test]
@@ -346,7 +349,10 @@ mod tests {
         let int = arena.alloc(Type::Atom(Atom::INT));
         let pair = arena.alloc(Type::Pair(Pair::new(int, int)));
         let lhs = arena.alloc(Type::Union(Union::new(vec![int, pair])));
-        assert_eq!(compare(&arena, lhs, pair), Comparison::Check(Check::IsPair));
+        assert_eq!(
+            compare(&mut arena, lhs, pair),
+            Comparison::Check(Check::IsPair)
+        );
     }
 
     #[test]
@@ -357,7 +363,7 @@ mod tests {
         let lhs = arena.alloc(Type::Union(Union::new(vec![int, pair])));
         let rhs = arena.alloc(Type::Atom(Atom::BYTES_32));
         assert_eq!(
-            compare(&arena, lhs, rhs),
+            compare(&mut arena, lhs, rhs),
             Comparison::Check(Check::And(vec![
                 Check::IsAtom,
                 Check::Atom(AtomRestriction::Length(32))
@@ -373,7 +379,7 @@ mod tests {
         let lhs = arena.alloc(Type::Union(Union::new(vec![int, pair])));
         let rhs = arena.alloc(Type::Atom(Atom::NIL));
         assert_eq!(
-            compare(&arena, lhs, rhs),
+            compare(&mut arena, lhs, rhs),
             Comparison::Check(Check::And(vec![
                 Check::IsAtom,
                 Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))
@@ -387,7 +393,7 @@ mod tests {
         let lhs = arena.alloc(Type::Atom(Atom::INT));
         let rhs = arena.alloc(Type::Atom(Atom::BYTES_32));
         assert_eq!(
-            compare(&arena, lhs, rhs),
+            compare(&mut arena, lhs, rhs),
             Comparison::Check(Check::Atom(AtomRestriction::Length(32)))
         );
     }
@@ -398,7 +404,7 @@ mod tests {
         let lhs = arena.alloc(Type::Atom(Atom::INT));
         let rhs = arena.alloc(Type::Atom(Atom::NIL));
         assert_eq!(
-            compare(&arena, lhs, rhs),
+            compare(&mut arena, lhs, rhs),
             Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[]))))
         );
     }
@@ -407,7 +413,7 @@ mod tests {
     fn test_union_unnecessary_restrict() {
         let mut arena = Arena::new();
         let nil = arena.alloc(Type::Atom(Atom::NIL));
-        assert_eq!(compare(&arena, nil, nil), Comparison::Assign);
+        assert_eq!(compare(&mut arena, nil, nil), Comparison::Assign);
     }
 
     #[test]
@@ -426,14 +432,14 @@ mod tests {
         let reserve_fee = arena.alloc(Type::Pair(Pair::new(int_52, nil)));
         let lhs = arena.alloc(Type::Union(Union::new(vec![create_coin, reserve_fee])));
         assert_eq!(
-            compare(&arena, lhs, create_coin),
+            compare(&mut arena, lhs, create_coin),
             Comparison::Check(Check::Pair(
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[51])))),
                 Box::new(Check::None)
             ))
         );
         assert_eq!(
-            compare(&arena, lhs, reserve_fee),
+            compare(&mut arena, lhs, reserve_fee),
             Comparison::Check(Check::Pair(
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[52])))),
                 Box::new(Check::None)
@@ -451,14 +457,14 @@ mod tests {
         let false_pair = arena.alloc(Type::Pair(Pair::new(nil, false_bool)));
         let lhs = arena.alloc(Type::Union(Union::new(vec![true_pair, false_pair])));
         assert_eq!(
-            compare(&arena, lhs, true_pair),
+            compare(&mut arena, lhs, true_pair),
             Comparison::Check(Check::Pair(
                 Box::new(Check::None),
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[1])))),
             ))
         );
         assert_eq!(
-            compare(&arena, lhs, false_pair),
+            compare(&mut arena, lhs, false_pair),
             Comparison::Check(Check::Pair(
                 Box::new(Check::None),
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))),
@@ -475,14 +481,14 @@ mod tests {
         let pair_2 = arena.alloc(Type::Pair(Pair::new(true_bool, false_bool)));
         let lhs = arena.alloc(Type::Union(Union::new(vec![pair_1, pair_2])));
         assert_eq!(
-            compare(&arena, lhs, pair_1),
+            compare(&mut arena, lhs, pair_1),
             Comparison::Check(Check::Pair(
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))),
                 Box::new(Check::None),
             ))
         );
         assert_eq!(
-            compare(&arena, lhs, pair_2),
+            compare(&mut arena, lhs, pair_2),
             Comparison::Check(Check::Pair(
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[1])))),
                 Box::new(Check::None),
@@ -503,14 +509,14 @@ mod tests {
             pair_1, pair_2, pair_3, pair_4,
         ])));
         assert_eq!(
-            compare(&arena, lhs, pair_1),
+            compare(&mut arena, lhs, pair_1),
             Comparison::Check(Check::Pair(
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))),
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[1])))),
             ))
         );
         assert_eq!(
-            compare(&arena, lhs, pair_2),
+            compare(&mut arena, lhs, pair_2),
             Comparison::Check(Check::Pair(
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[1])))),
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))),
@@ -524,8 +530,8 @@ mod tests {
         let nil = arena.alloc(Type::Atom(Atom::NIL));
         let bytes_32 = arena.alloc(Type::Atom(Atom::BYTES_32));
         let rhs = arena.alloc(Type::Union(Union::new(vec![nil, bytes_32])));
-        assert_eq!(compare(&arena, nil, rhs), Comparison::Assign);
-        assert_eq!(compare(&arena, bytes_32, rhs), Comparison::Assign);
+        assert_eq!(compare(&mut arena, nil, rhs), Comparison::Assign);
+        assert_eq!(compare(&mut arena, bytes_32, rhs), Comparison::Assign);
     }
 
     #[test]
@@ -535,7 +541,7 @@ mod tests {
         let bytes_32 = arena.alloc(Type::Atom(Atom::BYTES_32));
         let lhs = arena.alloc(Type::Atom(Atom::FALSE));
         let rhs = arena.alloc(Type::Union(Union::new(vec![nil, bytes_32])));
-        assert_eq!(compare(&arena, lhs, rhs), Comparison::Cast);
+        assert_eq!(compare(&mut arena, lhs, rhs), Comparison::Cast);
     }
 
     #[test]
@@ -546,7 +552,7 @@ mod tests {
         let bytes_32 = arena.alloc(Type::Atom(Atom::BYTES_32));
         let rhs = arena.alloc(Type::Union(Union::new(vec![nil, bytes_32])));
         assert_eq!(
-            compare(&arena, int, rhs),
+            compare(&mut arena, int, rhs),
             Comparison::Check(Check::Or(vec![
                 Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[]))),
                 Check::Atom(AtomRestriction::Length(32)),

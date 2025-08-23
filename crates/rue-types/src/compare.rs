@@ -11,7 +11,7 @@ use unions::*;
 use id_arena::Arena;
 use indexmap::IndexSet;
 
-use crate::{Check, Type, TypeId};
+use crate::{Check, Type, TypeId, substitute};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Comparison {
@@ -34,7 +34,9 @@ impl ComparisonContext {
     }
 }
 
-pub fn compare(arena: &Arena<Type>, lhs: TypeId, rhs: TypeId) -> Comparison {
+pub fn compare(arena: &mut Arena<Type>, lhs: TypeId, rhs: TypeId) -> Comparison {
+    let lhs = substitute(arena, lhs);
+    let rhs = substitute(arena, rhs);
     compare_with_context(arena, &mut ComparisonContext::new(), lhs, rhs)
 }
 

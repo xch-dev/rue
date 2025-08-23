@@ -125,7 +125,7 @@ mod tests {
         let lhs_id = arena.alloc(Type::Atom(lhs.clone()));
         let rhs_id = arena.alloc(Type::Atom(rhs.clone()));
         assert_eq!(
-            compare(&arena, lhs_id, rhs_id),
+            compare(&mut arena, lhs_id, rhs_id),
             expected,
             "{} -> {}",
             lhs,

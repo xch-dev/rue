@@ -1,30 +1,36 @@
 use id_arena::Arena;
 
-use crate::{Alias, AtomRestriction, Pair, Struct, Type, TypeId, Union};
+use crate::{Alias, AtomRestriction, Pair, Struct, Type, TypeId, Union, substitute};
 
 pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Option<TypeId> {
+    let lhs_id = substitute(arena, lhs_id);
+    let rhs_id = substitute(arena, rhs_id);
+    subtract_impl(arena, lhs_id, rhs_id)
+}
+
+fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Option<TypeId> {
     match (arena[lhs_id].clone(), arena[rhs_id].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Some(lhs_id),
         (Type::Function(_), _) | (_, Type::Function(_)) => Some(lhs_id),
         (Type::Generic, _) => Some(lhs_id),
         (_, Type::Generic) => None,
-        (Type::Ref(lhs), _) => subtract(arena, lhs, rhs_id),
-        (_, Type::Ref(rhs)) => subtract(arena, lhs_id, rhs),
+        (Type::Ref(lhs), _) => subtract_impl(arena, lhs, rhs_id),
+        (_, Type::Ref(rhs)) => subtract_impl(arena, lhs_id, rhs),
         (Type::Alias(lhs), _) => {
-            let inner = subtract(arena, lhs.inner, rhs_id)?;
+            let inner = subtract_impl(arena, lhs.inner, rhs_id)?;
             Some(arena.alloc(Type::Alias(Alias { inner, ..lhs })))
         }
         (_, Type::Alias(rhs)) => {
-            let inner = subtract(arena, lhs_id, rhs.inner)?;
+            let inner = subtract_impl(arena, lhs_id, rhs.inner)?;
             Some(arena.alloc(Type::Alias(Alias { inner, ..rhs })))
         }
         (Type::Struct(lhs), _) => {
-            let inner = subtract(arena, lhs.inner, rhs_id)?;
+            let inner = subtract_impl(arena, lhs.inner, rhs_id)?;
             Some(arena.alloc(Type::Struct(Struct { inner, ..lhs })))
         }
         (_, Type::Struct(rhs)) => {
-            let inner = subtract(arena, lhs_id, rhs.inner)?;
+            let inner = subtract_impl(arena, lhs_id, rhs.inner)?;
             Some(arena.alloc(Type::Struct(Struct { inner, ..rhs })))
         }
         (Type::Atom(lhs), Type::Atom(rhs)) => {
@@ -65,7 +71,7 @@ pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Opti
             let mut result = lhs_id;
 
             for &id in &ty.types {
-                result = subtract(arena, result, id)?;
+                result = subtract_impl(arena, result, id)?;
             }
 
             Some(result)
@@ -74,7 +80,7 @@ pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Opti
             let mut ids = Vec::new();
 
             for &id in &ty.types {
-                let Some(inner) = subtract(arena, id, rhs_id) else {
+                let Some(inner) = subtract_impl(arena, id, rhs_id) else {
                     continue;
                 };
 
@@ -90,8 +96,8 @@ pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Opti
             }
         }
         (Type::Pair(lhs), Type::Pair(rhs)) => {
-            let first = subtract(arena, lhs.first, rhs.first);
-            let rest = subtract(arena, lhs.rest, rhs.rest);
+            let first = subtract_impl(arena, lhs.first, rhs.first);
+            let rest = subtract_impl(arena, lhs.rest, rhs.rest);
 
             match (first, rest) {
                 (Some(first), Some(rest)) => {

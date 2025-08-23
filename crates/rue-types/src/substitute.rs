@@ -75,8 +75,7 @@ mod tests {
     fn test_substitute_atom() {
         let mut arena = Arena::new();
         let int = arena.alloc(Type::Atom(Atom::INT));
-        let result = substitute(&mut arena, int);
-        assert_eq!(compare(&arena, result, int), Comparison::Assign);
+        assert_eq!(compare(&mut arena, int, int), Comparison::Assign);
     }
 
     #[test]
@@ -84,13 +83,12 @@ mod tests {
         let mut arena = Arena::new();
         let generic = arena.alloc(Type::Generic);
         let int = arena.alloc(Type::Atom(Atom::INT));
-        assert_eq!(compare(&arena, generic, int), Comparison::Invalid);
+        assert_eq!(compare(&mut arena, generic, int), Comparison::Invalid);
         let apply = arena.alloc(Type::Apply(Apply::new(
             generic,
             HashMap::from_iter([(generic, int)]),
         )));
-        let result = substitute(&mut arena, apply);
-        assert_eq!(compare(&arena, result, int), Comparison::Assign);
+        assert_eq!(compare(&mut arena, apply, int), Comparison::Assign);
     }
 
     #[test]
@@ -100,13 +98,15 @@ mod tests {
         let int = arena.alloc(Type::Atom(Atom::INT));
         let generic_pair = arena.alloc(Type::Pair(Pair::new(generic, int)));
         let int_pair = arena.alloc(Type::Pair(Pair::new(int, int)));
-        assert_eq!(compare(&arena, generic_pair, int_pair), Comparison::Invalid);
+        assert_eq!(
+            compare(&mut arena, generic_pair, int_pair),
+            Comparison::Invalid
+        );
         let apply = arena.alloc(Type::Apply(Apply::new(
             generic_pair,
             HashMap::from_iter([(generic, int)]),
         )));
-        let result = substitute(&mut arena, apply);
-        assert_eq!(compare(&arena, result, int_pair), Comparison::Assign);
+        assert_eq!(compare(&mut arena, apply, int_pair), Comparison::Assign);
     }
 
     #[test]
@@ -140,14 +140,10 @@ mod tests {
             HashMap::from_iter([(generic, nil)]),
         )));
 
-        let int_list = substitute(&mut arena, int_list);
-        let bytes_list = substitute(&mut arena, bytes_list);
-        let nil_list = substitute(&mut arena, nil_list);
-
-        assert_eq!(compare(&arena, int_list, int_list), Comparison::Assign);
-        assert_eq!(compare(&arena, int_list, bytes_list), Comparison::Cast);
-        assert_eq!(compare(&arena, bytes_list, int_list), Comparison::Cast);
-        assert_eq!(compare(&arena, nil_list, int_list), Comparison::Cast);
-        assert_eq!(compare(&arena, int_list, nil_list), Comparison::Invalid);
+        assert_eq!(compare(&mut arena, int_list, int_list), Comparison::Assign);
+        assert_eq!(compare(&mut arena, int_list, bytes_list), Comparison::Cast);
+        assert_eq!(compare(&mut arena, bytes_list, int_list), Comparison::Cast);
+        assert_eq!(compare(&mut arena, nil_list, int_list), Comparison::Cast);
+        assert_eq!(compare(&mut arena, int_list, nil_list), Comparison::Invalid);
     }
 }
