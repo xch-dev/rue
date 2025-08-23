@@ -1,4 +1,4 @@
-use indexmap::IndexMap;
+use indexmap::IndexSet;
 
 use crate::TypeId;
 
@@ -6,5 +6,5 @@ use crate::TypeId;
 pub struct Struct {
     pub semantic: TypeId,
     pub inner: TypeId,
-    pub fields: IndexMap<String, TypeId>,
+    pub fields: IndexSet<String>,
 }

@@ -3,9 +3,17 @@ use std::ops::Not;
 use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 
-use crate::{AtomRestriction, Check, Comparison, Type, TypeId, Union, compare};
+use crate::{
+    AtomRestriction, Check, Comparison, ComparisonContext, Type, TypeId, Union,
+    compare_with_context,
+};
 
-pub(crate) fn compare_from_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
+pub(crate) fn compare_from_union(
+    arena: &Arena<Type>,
+    ctx: &mut ComparisonContext,
+    lhs: Union,
+    rhs: TypeId,
+) -> Comparison {
     if lhs.types.is_empty() {
         return Comparison::Invalid;
     }
@@ -13,7 +21,7 @@ pub(crate) fn compare_from_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -
     let mut result = None;
 
     for &id in &lhs.types {
-        match compare(arena, id, rhs) {
+        match compare_with_context(arena, ctx, id, rhs) {
             Comparison::Unresolved => {
                 return Comparison::Unresolved;
             }
@@ -38,6 +46,7 @@ pub(crate) fn compare_from_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -
 
     refine_union(
         arena,
+        ctx,
         lhs.types.into_iter().enumerate().collect(),
         Union::new(vec![rhs]),
     )
@@ -191,6 +200,7 @@ fn pairs_of(arena: &Arena<Type>, id: Option<TypeId>, ty: Type) -> Vec<PairInfo> 
 
 fn refine_union(
     arena: &Arena<Type>,
+    ctx: &mut ComparisonContext,
     mut lhs: Vec<(usize, TypeId)>,
     rhs: Union,
 ) -> (Option<Check>, Vec<(usize, TypeId)>) {
@@ -310,6 +320,7 @@ fn refine_union(
 
         let (first_check, first_remaining) = refine_union(
             arena,
+            ctx,
             pairs.iter().map(|pair| pair.first).enumerate().collect(),
             Union::new(target_firsts),
         );
@@ -329,7 +340,7 @@ fn refine_union(
             let mut rest_needed = false;
 
             for pair_id in pair_ids {
-                match compare_to_union(arena, pair_id, rhs.clone()) {
+                match compare_to_union(arena, ctx, pair_id, rhs.clone()) {
                     Comparison::Unresolved | Comparison::Assign | Comparison::Cast => {}
                     Comparison::Check(_) | Comparison::Invalid => {
                         rest_needed = true;
@@ -344,6 +355,7 @@ fn refine_union(
         let rest_check = if rest_needed {
             let Some(rest_check) = refine_union(
                 arena,
+                ctx,
                 pairs.iter().map(|pair| pair.rest).enumerate().collect(),
                 Union::new(target_rests),
             )
@@ -393,11 +405,16 @@ fn refine_union(
     (Some(check), lhs)
 }
 
-pub(crate) fn compare_to_union(arena: &Arena<Type>, lhs: TypeId, rhs: Union) -> Comparison {
+pub(crate) fn compare_to_union(
+    arena: &Arena<Type>,
+    ctx: &mut ComparisonContext,
+    lhs: TypeId,
+    rhs: Union,
+) -> Comparison {
     let mut result = Comparison::Invalid;
 
     for &id in &rhs.types {
-        let comparison = compare(arena, lhs, id);
+        let comparison = compare_with_context(arena, ctx, lhs, id);
 
         match (&mut result, &comparison) {
             (Comparison::Unresolved, _) | (_, Comparison::Unresolved) => {
@@ -427,7 +444,7 @@ pub(crate) fn compare_to_union(arena: &Arena<Type>, lhs: TypeId, rhs: Union) -> 
 mod tests {
     use std::borrow::Cow;
 
-    use crate::{Atom, AtomKind, Pair};
+    use crate::{Atom, AtomKind, Pair, compare};
 
     use super::*;
 
