@@ -3,7 +3,7 @@ use std::ops::Not;
 use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 
-use crate::{AtomRestriction, Check, Comparison, Pair, Type, TypeId, Union, compare};
+use crate::{AtomRestriction, Check, Comparison, Type, TypeId, Union, compare};
 
 pub(crate) fn compare_from_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -> Comparison {
     if lhs.types.is_empty() {
@@ -36,7 +36,13 @@ pub(crate) fn compare_from_union(arena: &Arena<Type>, lhs: Union, rhs: TypeId) -
         return result;
     }
 
-    refine_union(arena, lhs, Union::new(vec![rhs])).map_or(Comparison::Invalid, Comparison::Check)
+    refine_union(
+        arena,
+        lhs.types.into_iter().enumerate().collect(),
+        Union::new(vec![rhs]),
+    )
+    .0
+    .map_or(Comparison::Invalid, Comparison::Check)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,18 +158,29 @@ fn atom_restrictions_of(arena: &Arena<Type>, ty: Type) -> AtomRestrictions {
     }
 }
 
-fn pairs_of(arena: &Arena<Type>, ty: Type) -> Vec<Pair> {
+#[derive(Debug, Clone, Copy)]
+struct PairInfo {
+    id: Option<TypeId>,
+    first: TypeId,
+    rest: TypeId,
+}
+
+fn pairs_of(arena: &Arena<Type>, id: Option<TypeId>, ty: Type) -> Vec<PairInfo> {
     match ty {
         Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
-        Type::Alias(alias) => pairs_of(arena, arena[alias.inner].clone()),
-        Type::Struct(ty) => pairs_of(arena, arena[ty.inner].clone()),
+        Type::Alias(alias) => pairs_of(arena, Some(alias.inner), arena[alias.inner].clone()),
+        Type::Struct(ty) => pairs_of(arena, Some(ty.inner), arena[ty.inner].clone()),
         Type::Atom(_) => vec![],
-        Type::Pair(pair) => vec![pair],
+        Type::Pair(pair) => vec![PairInfo {
+            id,
+            first: pair.first,
+            rest: pair.rest,
+        }],
         Type::Union(ty) => {
             let mut pairs = vec![];
 
             for &id in &ty.types {
-                let inner = pairs_of(arena, arena[id].clone());
+                let inner = pairs_of(arena, Some(id), arena[id].clone());
                 pairs.extend(inner);
             }
 
@@ -172,21 +189,23 @@ fn pairs_of(arena: &Arena<Type>, ty: Type) -> Vec<Pair> {
     }
 }
 
-fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: Union) -> Option<Check> {
+fn refine_union(
+    arena: &Arena<Type>,
+    mut lhs: Vec<(usize, TypeId)>,
+    rhs: Union,
+) -> (Option<Check>, Vec<(usize, TypeId)>) {
     let target_shape = shape_of(arena, Type::Union(rhs.clone()));
 
     if !target_shape.atom && !target_shape.pair {
-        return None;
+        return (None, lhs);
     }
-
-    let mut remaining = lhs.types;
 
     let mut shape_check = None;
 
     if !(target_shape.atom && target_shape.pair) {
         let mut check = false;
 
-        remaining.retain(|&id| {
+        lhs.retain(|&(_, id)| {
             if shape_of(arena, arena[id].clone()) != target_shape {
                 check = true;
                 return false;
@@ -203,8 +222,8 @@ fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: Union) -> Option<Check> {
         }
     }
 
-    if remaining.is_empty() {
-        return None;
+    if lhs.is_empty() {
+        return (None, lhs);
     }
 
     let mut atom_restriction_check = None;
@@ -217,32 +236,34 @@ fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: Union) -> Option<Check> {
         let mut exceeds_overlap = false;
         let mut unrestricted = false;
 
-        remaining.retain(|&id| match atom_restrictions_of(arena, arena[id].clone()) {
-            AtomRestrictions::Unrestricted => {
-                unrestricted = true;
-                true
-            }
-            AtomRestrictions::Either(restrictions) => {
-                let mut has_overlap = false;
-
-                for restriction in restrictions {
-                    if target_restrictions.contains(&restriction) {
-                        overlap.insert(restriction);
-                        has_overlap = true;
-                    } else if let AtomRestriction::Value(value) = restriction
-                        && target_restrictions.contains(&AtomRestriction::Length(value.len()))
-                    {
-                        overlap.insert(AtomRestriction::Length(value.len()));
-                        has_overlap = true;
-                    } else {
-                        exceeds_overlap = true;
-                    }
+        lhs.retain(
+            |&(_, id)| match atom_restrictions_of(arena, arena[id].clone()) {
+                AtomRestrictions::Unrestricted => {
+                    unrestricted = true;
+                    true
                 }
+                AtomRestrictions::Either(restrictions) => {
+                    let mut has_overlap = false;
 
-                has_overlap
-            }
-            AtomRestrictions::NotAtom => true,
-        });
+                    for restriction in restrictions {
+                        if target_restrictions.contains(&restriction) {
+                            overlap.insert(restriction);
+                            has_overlap = true;
+                        } else if let AtomRestriction::Value(value) = restriction
+                            && target_restrictions.contains(&AtomRestriction::Length(value.len()))
+                        {
+                            overlap.insert(AtomRestriction::Length(value.len()));
+                            has_overlap = true;
+                        } else {
+                            exceeds_overlap = true;
+                        }
+                    }
+
+                    has_overlap
+                }
+                AtomRestrictions::NotAtom => true,
+            },
+        );
 
         if unrestricted {
             atom_restriction_check = Some(if target_restrictions.len() == 1 {
@@ -251,7 +272,7 @@ fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: Union) -> Option<Check> {
                 Check::Or(target_restrictions.into_iter().map(Check::Atom).collect())
             });
         } else if overlap.is_empty() {
-            return None;
+            return (None, lhs);
         } else if exceeds_overlap {
             atom_restriction_check = Some(if overlap.len() == 1 {
                 Check::Atom(overlap.into_iter().next().unwrap())
@@ -261,41 +282,84 @@ fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: Union) -> Option<Check> {
         }
     }
 
-    if remaining.is_empty() {
-        return None;
+    if lhs.is_empty() {
+        return (None, lhs);
     }
 
     let mut pair_check = None;
 
     if target_shape.pair {
-        let target_pairs = pairs_of(arena, Type::Union(rhs.clone()));
+        let target_pairs = pairs_of(arena, None, Type::Union(rhs.clone()));
+
         let target_firsts = target_pairs
             .iter()
             .map(|pair| pair.first)
             .collect::<Vec<_>>();
+
         let target_rests = target_pairs
             .iter()
             .map(|pair| pair.rest)
             .collect::<Vec<_>>();
 
-        let mut all_firsts = Vec::new();
-        let mut all_rests = Vec::new();
+        let mut pairs = Vec::new();
 
-        for &id in &remaining {
-            let pairs = pairs_of(arena, arena[id].clone());
-
-            for pair in pairs {
-                all_firsts.push(pair.first);
-                all_rests.push(pair.rest);
-            }
+        for &(_, id) in &lhs {
+            let inner = pairs_of(arena, Some(id), arena[id].clone());
+            pairs.extend(inner);
         }
 
-        let first = refine_union(arena, Union::new(all_firsts), Union::new(target_firsts))?;
-        let rest = refine_union(arena, Union::new(all_rests), Union::new(target_rests))?;
+        let (first_check, first_remaining) = refine_union(
+            arena,
+            pairs.iter().map(|pair| pair.first).enumerate().collect(),
+            Union::new(target_firsts),
+        );
 
-        pair_check = match (&first, &rest) {
+        let Some(first_check) = first_check else {
+            return (None, lhs);
+        };
+
+        let rest_needed = if first_check == Check::None {
+            true
+        } else {
+            let pair_ids: Vec<TypeId> = first_remaining
+                .into_iter()
+                .map(|(i, _)| pairs[i].id.unwrap())
+                .collect();
+
+            let mut rest_needed = false;
+
+            for pair_id in pair_ids {
+                match compare_to_union(arena, pair_id, rhs.clone()) {
+                    Comparison::Unresolved | Comparison::Assign | Comparison::Cast => {}
+                    Comparison::Check(_) | Comparison::Invalid => {
+                        rest_needed = true;
+                        break;
+                    }
+                }
+            }
+
+            rest_needed
+        };
+
+        let rest_check = if rest_needed {
+            let Some(rest_check) = refine_union(
+                arena,
+                pairs.iter().map(|pair| pair.rest).enumerate().collect(),
+                Union::new(target_rests),
+            )
+            .0
+            else {
+                return (None, lhs);
+            };
+
+            rest_check
+        } else {
+            Check::None
+        };
+
+        pair_check = match (&first_check, &rest_check) {
             (Check::None, Check::None) => None,
-            _ => Some(Check::Pair(Box::new(first), Box::new(rest))),
+            _ => Some(Check::Pair(Box::new(first_check), Box::new(rest_check))),
         };
     }
 
@@ -326,7 +390,7 @@ fn refine_union(arena: &Arena<Type>, lhs: Union, rhs: Union) -> Option<Check> {
         (None, None, None) => Check::None,
     };
 
-    Some(check)
+    (Some(check), lhs)
 }
 
 pub(crate) fn compare_to_union(arena: &Arena<Type>, lhs: TypeId, rhs: Union) -> Comparison {
