@@ -587,7 +587,7 @@ mod tests {
     }
 
     #[test]
-    fn test_union_restrict_pair_both() {
+    fn test_union_restrict_pair_both_unnecessary_rest() {
         let mut arena = Arena::new();
         let true_bool = arena.alloc(Type::Atom(Atom::TRUE));
         let false_bool = arena.alloc(Type::Atom(Atom::FALSE));
@@ -606,6 +606,34 @@ mod tests {
             Comparison::Check(Check::Pair(
                 Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[1])))),
                 Box::new(Check::None),
+            ))
+        );
+    }
+
+    #[test]
+    fn test_union_restrict_pair_both_necessary_rest() {
+        let mut arena = Arena::new();
+        let true_bool = arena.alloc(Type::Atom(Atom::TRUE));
+        let false_bool = arena.alloc(Type::Atom(Atom::FALSE));
+        let pair_1 = arena.alloc(Type::Pair(Pair::new(false_bool, true_bool)));
+        let pair_2 = arena.alloc(Type::Pair(Pair::new(true_bool, false_bool)));
+        let pair_3 = arena.alloc(Type::Pair(Pair::new(false_bool, false_bool)));
+        let pair_4 = arena.alloc(Type::Pair(Pair::new(true_bool, true_bool)));
+        let lhs = arena.alloc(Type::Union(Union::new(vec![
+            pair_1, pair_2, pair_3, pair_4,
+        ])));
+        assert_eq!(
+            compare(&arena, lhs, pair_1),
+            Comparison::Check(Check::Pair(
+                Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))),
+                Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[1])))),
+            ))
+        );
+        assert_eq!(
+            compare(&arena, lhs, pair_2),
+            Comparison::Check(Check::Pair(
+                Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[1])))),
+                Box::new(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[])))),
             ))
         );
     }
