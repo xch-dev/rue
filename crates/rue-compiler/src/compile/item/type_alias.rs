@@ -1,13 +1,14 @@
 use rue_ast::AstTypeAliasItem;
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Alias, Scope, Type, TypeId};
+use rue_hir::{Scope, ScopeId};
+use rue_types::{Alias, Type, TypeId};
 
 use crate::{Compiler, compile_generic_parameters, compile_type};
 
-pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> TypeId {
+pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> (TypeId, ScopeId) {
     let scope = ctx.alloc_scope(Scope::new());
 
-    let vars = if let Some(generic_parameters) = type_alias.generic_parameters() {
+    let generics = if let Some(generic_parameters) = type_alias.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)
     } else {
         vec![]
@@ -17,8 +18,7 @@ pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> 
 
     let ty = ctx.alloc_type(Type::Alias(Alias {
         name: type_alias.name(),
-        scope,
-        vars,
+        generics,
         inner,
     }));
 
@@ -34,16 +34,15 @@ pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> 
             .insert_type(name.text().to_string(), ty);
     }
 
-    ty
+    (ty, scope)
 }
 
-pub fn compile_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem, ty: TypeId) {
-    let scope = if let Type::Alias(Alias { scope, .. }) = ctx.ty(ty) {
-        *scope
-    } else {
-        unreachable!();
-    };
-
+pub fn compile_type_alias(
+    ctx: &mut Compiler,
+    type_alias: &AstTypeAliasItem,
+    ty: TypeId,
+    scope: ScopeId,
+) {
     ctx.push_scope(scope);
 
     let resolved_inner = if let Some(inner) = type_alias.ty() {

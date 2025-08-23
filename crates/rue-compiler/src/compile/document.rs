@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Debug, Default)]
 pub struct DocumentDeclarations {
-    types: Vec<TypeId>,
+    types: Vec<(TypeId, ScopeId)>,
     symbols: Vec<SymbolId>,
 }
 
@@ -53,7 +53,8 @@ pub fn compile_document(
     for item in document.items() {
         match item {
             AstItem::TypeItem(item) => {
-                compile_type_item(ctx, &item, declarations.types[index]);
+                let (ty, scope) = declarations.types[index];
+                compile_type_item(ctx, &item, ty, scope);
                 index += 1;
             }
             AstItem::SymbolItem(_) => {}

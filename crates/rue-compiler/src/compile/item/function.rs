@@ -1,6 +1,7 @@
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId};
+use rue_types::{FunctionType, Type};
 
 use crate::{Compiler, compile_block, compile_generic_parameters, compile_type};
 
@@ -56,7 +57,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 
     let body = ctx.builtins().unresolved.hir;
 
-    let ty = ctx.alloc_type(Type::Fn(FunctionType {
+    let ty = ctx.alloc_type(Type::Function(FunctionType {
         params: param_types,
         ret: return_type,
     }));

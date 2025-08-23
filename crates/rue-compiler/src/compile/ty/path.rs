@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rue_ast::AstPathType;
 use rue_diagnostic::DiagnosticKind;
-use rue_types::{Type, TypeId};
+use rue_types::{Apply, Type, TypeId};
 
 use crate::{Compiler, compile_generic_arguments};
 
@@ -36,12 +36,21 @@ pub fn compile_path_type(ctx: &mut Compiler, path: &AstPathType) -> TypeId {
             vec![]
         };
 
-        let params = match ctx.ty(resolved) {
+        let semantic = rue_types::unwrap_semantic(ctx.types_mut(), resolved, false);
+
+        let params = match ctx.ty(semantic) {
+            Type::Apply(_) => unreachable!(),
             Type::Unresolved => continue,
-            Type::Ref(..) | Type::Atom(..) | Type::Pair(..) | Type::Generic | Type::Union(..) => {
+            Type::Ref(..)
+            | Type::Atom(..)
+            | Type::Pair(..)
+            | Type::Function(..)
+            | Type::Generic
+            | Type::Union(..) => {
                 vec![]
             }
             Type::Alias(alias) => alias.generics.clone(),
+            Type::Struct(ty) => ty.generics.clone(),
         };
 
         if params.len() != args.len() {
@@ -57,7 +66,7 @@ pub fn compile_path_type(ctx: &mut Compiler, path: &AstPathType) -> TypeId {
                 let arg = args.get(i).copied().unwrap_or(ctx.builtins().unresolved.ty);
                 map.insert(param, arg);
             }
-            resolved = apply_generics(ctx, resolved, &map);
+            resolved = ctx.alloc_type(Type::Apply(Apply::new(resolved, map)));
         }
 
         ty = Some(resolved);

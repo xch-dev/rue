@@ -315,13 +315,12 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
     };
 
+    let left_name = ctx.type_name(left.ty);
+    let right_name = ctx.type_name(right.ty);
+
     ctx.diagnostic(
         binary.syntax(),
-        DiagnosticKind::IncompatibleBinaryOp(
-            op.text().to_string(),
-            ctx.type_name(left.ty),
-            ctx.type_name(right.ty),
-        ),
+        DiagnosticKind::IncompatibleBinaryOp(op.text().to_string(), left_name, right_name),
     );
     ctx.builtins().unresolved.clone()
 }

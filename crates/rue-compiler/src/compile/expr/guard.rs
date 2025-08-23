@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use rue_ast::{AstGuardExpr, AstNode};
-use rue_hir::{Value, generate_check_hir, simplify_check};
+use rue_hir::{Value, generate_check_hir};
+use rue_types::simplify_check;
 
 use crate::{Compiler, compile_expr, compile_type};
 

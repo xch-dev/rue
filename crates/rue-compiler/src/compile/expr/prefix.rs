@@ -47,9 +47,10 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
         _ => {}
     }
 
+    let type_name = ctx.type_name(value.ty);
     ctx.diagnostic(
         prefix.syntax(),
-        DiagnosticKind::IncompatibleUnaryOp(op.text().to_string(), ctx.type_name(value.ty)),
+        DiagnosticKind::IncompatibleUnaryOp(op.text().to_string(), type_name),
     );
     ctx.builtins().unresolved.clone()
 }

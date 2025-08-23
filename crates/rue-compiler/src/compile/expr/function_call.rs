@@ -22,7 +22,7 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
 
     // TODO: Finish
     let ty = match ctx.ty(expr.ty).clone() {
-        Type::Fn(function) => function.ret,
+        Type::Function(function) => function.ret,
         _ => todo!(),
     };
 
