@@ -1,11 +1,9 @@
-use std::ops::Not;
-
 use id_arena::Arena;
-use indexmap::{IndexSet, indexset};
+use indexmap::IndexSet;
 
 use crate::{
-    AtomRestriction, Check, Comparison, ComparisonContext, Type, TypeId, Union,
-    compare_with_context,
+    AtomRestriction, AtomRestrictions, Check, Comparison, ComparisonContext, Type, TypeId, Union,
+    atom_restrictions_of, compare_with_context, pairs_of, shape_of,
 };
 
 pub(crate) fn compare_from_union(
@@ -52,153 +50,6 @@ pub(crate) fn compare_from_union(
     )
     .0
     .map_or(Comparison::Invalid, Comparison::Check)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Shape {
-    atom: bool,
-    pair: bool,
-}
-
-impl Shape {
-    pub const NONE: Self = Self {
-        atom: false,
-        pair: false,
-    };
-
-    pub const ATOM: Self = Self {
-        atom: true,
-        pair: false,
-    };
-
-    pub const PAIR: Self = Self {
-        atom: false,
-        pair: true,
-    };
-}
-
-impl Not for Shape {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        Self {
-            atom: !self.atom,
-            pair: !self.pair,
-        }
-    }
-}
-
-fn shape_of(arena: &Arena<Type>, ty: Type) -> Shape {
-    match ty {
-        Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
-        Type::Ref(id) => shape_of(arena, arena[id].clone()),
-        Type::Alias(alias) => shape_of(arena, arena[alias.inner].clone()),
-        Type::Struct(ty) => shape_of(arena, arena[ty.inner].clone()),
-        Type::Atom(_) => Shape::ATOM,
-        Type::Pair(_) => Shape::PAIR,
-        Type::Union(ty) => {
-            let mut shape = Shape::NONE;
-
-            for &id in &ty.types {
-                let inner = shape_of(arena, arena[id].clone());
-                shape.atom |= inner.atom;
-                shape.pair |= inner.pair;
-            }
-
-            shape
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum AtomRestrictions {
-    Unrestricted,
-    Either(IndexSet<AtomRestriction>),
-    NotAtom,
-}
-
-fn atom_restrictions_of(arena: &Arena<Type>, ty: Type) -> AtomRestrictions {
-    match ty {
-        Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
-        Type::Ref(id) => atom_restrictions_of(arena, arena[id].clone()),
-        Type::Alias(alias) => atom_restrictions_of(arena, arena[alias.inner].clone()),
-        Type::Struct(ty) => atom_restrictions_of(arena, arena[ty.inner].clone()),
-        Type::Atom(atom) => atom
-            .restriction
-            .map_or(AtomRestrictions::Unrestricted, |restriction| {
-                AtomRestrictions::Either(indexset![restriction])
-            }),
-        Type::Pair(_) => AtomRestrictions::NotAtom,
-        Type::Union(ty) => {
-            let mut restrictions = IndexSet::new();
-            let mut has_atom = false;
-
-            for &id in &ty.types {
-                match atom_restrictions_of(arena, arena[id].clone()) {
-                    AtomRestrictions::Unrestricted => return AtomRestrictions::Unrestricted,
-                    AtomRestrictions::Either(inner) => {
-                        for restriction in inner {
-                            match &restriction {
-                                AtomRestriction::Value(value) => {
-                                    if restrictions.contains(&AtomRestriction::Length(value.len()))
-                                    {
-                                        continue;
-                                    }
-                                }
-                                AtomRestriction::Length(length) => {
-                                    restrictions.retain(|restriction| match restriction {
-                                        AtomRestriction::Value(value) => value.len() != *length,
-                                        AtomRestriction::Length(_) => true,
-                                    });
-                                }
-                            }
-                            restrictions.insert(restriction);
-                        }
-                        has_atom = true;
-                    }
-                    AtomRestrictions::NotAtom => {}
-                }
-            }
-
-            if has_atom {
-                AtomRestrictions::Either(restrictions)
-            } else {
-                AtomRestrictions::NotAtom
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct PairInfo {
-    id: Option<TypeId>,
-    first: TypeId,
-    rest: TypeId,
-}
-
-fn pairs_of(arena: &Arena<Type>, id: Option<TypeId>, ty: Type) -> Vec<PairInfo> {
-    match ty {
-        Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
-        Type::Ref(id) => pairs_of(arena, Some(id), arena[id].clone()),
-        Type::Alias(alias) => pairs_of(arena, Some(alias.inner), arena[alias.inner].clone()),
-        Type::Struct(ty) => pairs_of(arena, Some(ty.inner), arena[ty.inner].clone()),
-        Type::Atom(_) => vec![],
-        Type::Pair(pair) => vec![PairInfo {
-            id,
-            first: pair.first,
-            rest: pair.rest,
-        }],
-        Type::Union(ty) => {
-            let mut pairs = vec![];
-
-            for &id in &ty.types {
-                let inner = pairs_of(arena, Some(id), arena[id].clone());
-                pairs.extend(inner);
-            }
-
-            pairs
-        }
-    }
 }
 
 fn refine_union(
