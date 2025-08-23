@@ -22,14 +22,21 @@ fn substitute_impl(
         return *id;
     }
 
-    let new_id = arena.alloc(Type::Unresolved);
-    visited.insert(old_id, new_id);
+    let new_id = if !matches!(
+        arena[old_id],
+        Type::Unresolved | Type::Generic | Type::Atom(_)
+    ) {
+        let new_id = arena.alloc(Type::Unresolved);
+        visited.insert(old_id, new_id);
+        new_id
+    } else {
+        old_id
+    };
 
     let result = match arena[old_id].clone() {
-        Type::Unresolved | Type::Generic => old_id,
+        Type::Unresolved | Type::Generic | Type::Atom(_) => return old_id,
         Type::Ref(id) => substitute_impl(arena, id, map, visited),
         Type::Apply(apply) => substitute_impl(arena, apply.inner, &apply.generics, visited),
-        Type::Atom(_) => old_id,
         Type::Pair(pair) => {
             let first = substitute_impl(arena, pair.first, map, visited);
             let rest = substitute_impl(arena, pair.rest, map, visited);
