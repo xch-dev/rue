@@ -50,6 +50,7 @@ impl Builtins {
             "calculate_coin_id".to_string(),
             calculate_coin_id(db, bytes, bytes32, int),
         );
+        scope.insert_symbol("substr".to_string(), substr(db, bytes, int));
 
         let scope = db.alloc_scope(scope);
 
@@ -147,6 +148,55 @@ fn calculate_coin_id(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: Typ
         parameters: vec![parent, puzzle, amount],
         nil_terminated: true,
         return_type: bytes32,
+        body,
+        inline: true,
+    }))
+}
+
+fn substr(db: &mut Database, bytes: TypeId, int: TypeId) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new());
+
+    let input = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: bytes,
+    }));
+
+    let from = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: int,
+    }));
+
+    let to = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: int,
+    }));
+
+    db.scope_mut(scope)
+        .insert_symbol("input".to_string(), input);
+
+    db.scope_mut(scope).insert_symbol("from".to_string(), from);
+
+    db.scope_mut(scope).insert_symbol("to".to_string(), to);
+
+    let input_ref = db.alloc_hir(Hir::Reference(input));
+    let from_ref = db.alloc_hir(Hir::Reference(from));
+    let to_ref = db.alloc_hir(Hir::Reference(to));
+    let body = db.alloc_hir(Hir::Substr(input_ref, from_ref, Some(to_ref)));
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        params: vec![bytes, int, int],
+        nil_terminated: true,
+        ret: bytes,
+    }));
+
+    db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: None,
+        ty,
+        scope,
+        vars: vec![],
+        parameters: vec![input, from, to],
+        nil_terminated: true,
+        return_type: bytes,
         body,
         inline: true,
     }))

@@ -113,6 +113,13 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
             visit_hir(db, graph, *puzzle);
             visit_hir(db, graph, *amount);
         }
+        Hir::Substr(hir, start, end) => {
+            visit_hir(db, graph, *hir);
+            visit_hir(db, graph, *start);
+            if let Some(end) = end {
+                visit_hir(db, graph, *end);
+            }
+        }
     }
 }
 

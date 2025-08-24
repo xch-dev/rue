@@ -31,12 +31,12 @@ type Tail = fn(
     parent_is_cat: Bool,
     lineage_proof: LineageProof | nil,
     extra_delta: Int,
-    conditions: List<Condition>,
+    conditions: List<CatCondition>,
     tail_solution: List<Any>,
-) -> List<Condition>;
+) -> List<CatCondition>;
 
 // Information about the TAIL reveal.
-// This is revealed with `RunTailCondition`.
+// This is revealed with `RunTail`.
 struct TailInfo {
     tail_puzzle: Tail,
     tail_solution: List<Any>,
@@ -44,13 +44,15 @@ struct TailInfo {
 
 // A custom condition `(51 () -113 tail_puzzle tail_solution)`.
 // We can check `CreateCoin` then cast to this type instead.
-struct RunTailCondition {
+struct RunTail {
     opcode: 51,
     puzzle_hash: nil,
     amount: Int,
     tail_puzzle: Tail,
     tail_solution: List<Any>,
 }
+
+type CatCondition = Condition | RunTail;
 
 // Information about the current coin.
 struct Coin {
@@ -90,7 +92,7 @@ inline fn cat_puzzle_hash(cat_info: CatInfo, inner_puzzle_hash: Bytes32) -> Byte
 fn main(
     mod_hash: Bytes32,
     asset_id: Bytes32,
-    inner_puzzle: fn(...solution: Any) -> List<Condition>,
+    inner_puzzle: fn(...solution: Any) -> List<CatCondition>,
     inner_solution: Any,
     lineage_proof: LineageProof | nil,
     prev_coin_id: Bytes32,
@@ -98,7 +100,7 @@ fn main(
     next_coin_proof: CoinProof,
     prev_subtotal: Int,
     extra_delta: Int,
-) -> List<Condition> {
+) -> List<CatCondition> {
     // For simplicity, we'll pack these values into a struct.
     let cat_info = CatInfo {
         mod_hash: mod_hash,
@@ -144,7 +146,7 @@ fn main(
     // Prepend the ring conditions to the morphed conditions.
     // This ensures that the previous and next CATs are linked.
     // When they form a ring like this, you can be sure the supply isn't changed.
-    let conditions: List<Condition> = [
+    let conditions: List<CatCondition> = [
         CreateCoinAnnouncement {
             message: RING_MORPH_BYTE + tree_hash([prev_coin_id, prev_subtotal] as List<Any>),
         },
@@ -191,7 +193,7 @@ fn main(
 
 struct Morph {
     // The morphed conditions.
-    conditions: List<Condition>,
+    conditions: List<CatCondition>,
 
     // The total amount of coins created.
     sum: Int,
@@ -202,7 +204,7 @@ struct Morph {
 
 // Morph all of the conditions and extract the TAIL info.
 fn morph_conditions(
-    conditions: List<Condition>,
+    conditions: List<CatCondition>,
     cat_info: CatInfo,
     tail_info: TailInfo | nil,
 ) -> Morph {
@@ -217,7 +219,7 @@ fn morph_conditions(
 
     let condition = conditions.first;
 
-    if condition is RunTailCondition {
+    if condition is RunTail {
         let rest = morph_conditions(conditions.rest, cat_info, TailInfo {
             tail_puzzle: condition.tail_puzzle,
             tail_solution: condition.tail_solution,
@@ -263,4 +265,12 @@ fn morph_conditions(
         sum: rest.sum,
         tail_info: rest.tail_info,
     }
+}
+
+// TODO: Finish implementing generics
+fn concat(a: List<CatCondition>, b: List<CatCondition>) -> List<CatCondition> {
+    if a is (CatCondition, List<CatCondition>) {
+        return [a.first, ...concat(a.rest, b)];
+    }
+    b
 }

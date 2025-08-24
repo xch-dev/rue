@@ -156,6 +156,22 @@ impl Database {
                     self.debug_hir(*amount)
                 )
             }
+            Hir::Substr(hir, start, end) => {
+                if let Some(end) = end {
+                    format!(
+                        "substr({}, {}, {})",
+                        self.debug_hir(*hir),
+                        self.debug_hir(*start),
+                        self.debug_hir(*end)
+                    )
+                } else {
+                    format!(
+                        "substr({}, {})",
+                        self.debug_hir(*hir),
+                        self.debug_hir(*start)
+                    )
+                }
+            }
         }
     }
 }

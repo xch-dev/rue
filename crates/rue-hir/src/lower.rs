@@ -211,6 +211,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let amount = self.lower_hir(env, amount);
                 self.arena.alloc(Lir::CoinId(parent, puzzle, amount))
             }
+            Hir::Substr(hir, start, end) => {
+                let hir = self.lower_hir(env, hir);
+                let start = self.lower_hir(env, start);
+                let end = end.map(|end| self.lower_hir(env, end));
+                self.arena.alloc(Lir::Substr(hir, start, end))
+            }
         }
     }
 

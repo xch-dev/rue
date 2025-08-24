@@ -1,6 +1,6 @@
 use rue_ast::AstFieldAccessExpr;
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Hir, UnaryOp, Value};
+use rue_hir::{Hir, TypePath, UnaryOp, Value};
 use rue_types::{Type, Union};
 
 use crate::{Compiler, compile_expr};
@@ -21,7 +21,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
     match ctx.ty(ty).clone() {
         Type::Apply(_) | Type::Alias(_) | Type::Ref(_) => unreachable!(),
         Type::Unresolved => ctx.builtins().unresolved.clone(),
-        Type::Generic | Type::Atom(_) | Type::Union(_) | Type::Function(_) => {
+        Type::Generic | Type::Union(_) | Type::Function(_) => {
             let type_name = ctx.type_name(expr.ty);
             ctx.diagnostic(
                 &name,
@@ -29,14 +29,37 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
             );
             ctx.builtins().unresolved.clone()
         }
+        Type::Atom(_) => {
+            if name.text() == "length" {
+                let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Strlen, expr.hir));
+                Value::new(hir, ctx.builtins().int)
+            } else {
+                let type_name = ctx.type_name(expr.ty);
+                ctx.diagnostic(
+                    &name,
+                    DiagnosticKind::UnknownField(name.text().to_string(), type_name),
+                );
+                ctx.builtins().unresolved.clone()
+            }
+        }
         Type::Pair(pair) => match name.text() {
             "first" => {
                 let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, expr.hir));
-                Value::new(hir, pair.first)
+                let mut value = Value::new(hir, pair.first);
+                if let Some(mut reference) = expr.reference {
+                    reference.path.push(TypePath::First);
+                    value = value.with_reference(reference);
+                }
+                value
             }
             "rest" => {
                 let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, expr.hir));
-                Value::new(hir, pair.rest)
+                let mut value = Value::new(hir, pair.rest);
+                if let Some(mut reference) = expr.reference {
+                    reference.path.push(TypePath::Rest);
+                    value = value.with_reference(reference);
+                }
+                value
             }
             _ => {
                 let type_name = ctx.type_name(expr.ty);
@@ -59,6 +82,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
 
             let mut hir = expr.hir;
             let mut field_type = ty.inner;
+            let mut reference = expr.reference;
 
             let needs_first = index + 1 < ty.fields.len() || ty.nil_terminated;
 
@@ -83,6 +107,10 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
                         pairs.into_iter().map(|pair| pair.rest).collect(),
                     )))
                 };
+
+                if let Some(reference) = reference.as_mut() {
+                    reference.path.push(TypePath::Rest);
+                }
             }
 
             if needs_first {
@@ -106,9 +134,19 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
                         pairs.into_iter().map(|pair| pair.first).collect(),
                     )))
                 };
+
+                if let Some(reference) = reference.as_mut() {
+                    reference.path.push(TypePath::First);
+                }
             }
 
-            Value::new(hir, field_type)
+            let mut value = Value::new(hir, field_type);
+
+            if let Some(reference) = reference {
+                value = value.with_reference(reference);
+            }
+
+            value
         }
     }
 }

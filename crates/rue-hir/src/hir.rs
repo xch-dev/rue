@@ -22,6 +22,7 @@ pub enum Hir {
     Unary(UnaryOp, HirId),
     Binary(BinaryOp, HirId, HirId),
     CoinId(HirId, HirId, HirId),
+    Substr(HirId, HirId, Option<HirId>),
 }
 
 #[derive(Debug, Clone)]
