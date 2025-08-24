@@ -16,3 +16,36 @@ inline fn tree_hash_atom(value: Bytes) -> Bytes32 {
 inline fn tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
     sha256(2 as Bytes + first + rest)
 }
+
+inline fn quote_hash(value: Bytes32) -> Bytes32 {
+    tree_hash_pair(tree_hash_atom(1 as Bytes), value)
+}
+
+inline fn two_item_list_hash(first: Bytes32, rest: Bytes32) -> Bytes32 {
+    tree_hash_pair(first, tree_hash_pair(rest, tree_hash_atom(nil)))
+}
+
+inline fn apply_hash(mod_hash: Bytes32, environment_hash: Bytes32) -> Bytes32 {
+    sha256(2 as Bytes + tree_hash_atom(2 as Bytes) + two_item_list_hash(quote_hash(mod_hash), environment_hash))
+}
+
+inline fn update_hash_with_parameter(
+    parameter_hash: Bytes32,
+    environment_hash: Bytes32
+) -> Bytes32 {
+    sha256(2 as Bytes + tree_hash_atom(4 as Bytes) + two_item_list_hash(quote_hash(parameter_hash), environment_hash))
+}
+
+fn curried_params_hash(parameters: List<Bytes32>) -> Bytes32 {
+    if parameters is nil {
+        return tree_hash_atom(1 as Bytes);
+    }
+    update_hash_with_parameter(parameters.first, curried_params_hash(parameters.rest))
+}
+
+inline fn curry_tree_hash(
+    mod_hash: Bytes32,
+    ...parameters: List<Bytes32>
+) -> Bytes32 {
+    apply_hash(mod_hash, curried_params_hash(parameters))
+}
