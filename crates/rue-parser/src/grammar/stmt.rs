@@ -14,7 +14,7 @@ pub enum StatementKind {
 }
 
 pub fn stmt(p: &mut Parser<'_>) -> StatementKind {
-    if p.at(T![let]) {
+    if p.at(T![let]) || p.at(T![inline]) {
         let_stmt(p);
     } else if p.at(T![return]) {
         return_stmt(p);
@@ -47,6 +47,7 @@ pub fn stmt(p: &mut Parser<'_>) -> StatementKind {
 
 fn let_stmt(p: &mut Parser<'_>) {
     p.start(SyntaxKind::LetStmt);
+    p.try_eat(T![inline]);
     p.expect(T![let]);
     p.expect(SyntaxKind::Ident);
     if p.try_eat(T![:]) {

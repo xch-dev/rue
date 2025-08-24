@@ -26,7 +26,7 @@ pub fn compile_let_binding(ctx: &mut Compiler, stmt: &AstLetStmt) -> Statement {
         name: stmt.name(),
         ty,
         value: value.hir,
-        inline: false,
+        inline: stmt.inline().is_some(),
     }));
 
     if let Some(name) = stmt.name() {

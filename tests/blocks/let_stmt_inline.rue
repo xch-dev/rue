@@ -1,0 +1,8 @@
+fn main() -> Int {
+    inline let a = 42;
+    inline let b = 13;
+    inline let c = a + b + 2;
+    inline let d = a * b - 8;
+    inline let e = c + d;
+    a * e + d
+}
