@@ -489,10 +489,7 @@ impl AstFunctionCallExpr {
     }
 
     pub fn args(&self) -> impl Iterator<Item = AstListItem> {
-        self.syntax()
-            .children()
-            .filter_map(AstListItem::cast)
-            .skip(1)
+        self.syntax().children().filter_map(AstListItem::cast)
     }
 }
 

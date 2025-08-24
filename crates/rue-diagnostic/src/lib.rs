@@ -150,6 +150,15 @@ pub enum DiagnosticKind {
 
     #[error("Cannot call non-function value with type `{0}`")]
     InvalidFunctionCall(String),
+
+    #[error("Expected {0} arguments, but found {1}")]
+    ExpectedArgumentsExact(usize, usize),
+
+    #[error("Expected at least {0} arguments, but found {1}")]
+    ExpectedArgumentsBeforeSpread(usize, usize),
+
+    #[error("Can only spread the last element in a list")]
+    NonFinalSpread,
 }
 
 impl DiagnosticKind {
@@ -186,7 +195,10 @@ impl DiagnosticKind {
             | Self::MissingRequiredFields(..)
             | Self::CannotInferParameterType(..)
             | Self::CannotDisambiguateFunctionTypes(..)
-            | Self::InvalidFunctionCall(..) => DiagnosticSeverity::Error,
+            | Self::InvalidFunctionCall(..)
+            | Self::ExpectedArgumentsExact(..)
+            | Self::ExpectedArgumentsBeforeSpread(..)
+            | Self::NonFinalSpread => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields

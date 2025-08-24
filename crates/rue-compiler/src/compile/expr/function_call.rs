@@ -55,12 +55,29 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
         args.push(value.hir);
     }
 
-    let hir = ctx.alloc_hir(Hir::FunctionCall(expr.hir, args));
-
     let ty = if expected_functions.is_empty() {
         ctx.builtins().unresolved.ty
     } else if expected_functions.len() == 1 {
-        expected_functions[0].ret
+        let function = expected_functions[0].clone();
+
+        if function.nil_terminated {
+            if args.len() < function.params.len().saturating_sub(1) {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArgumentsBeforeSpread(
+                        function.params.len(),
+                        args.len(),
+                    ),
+                );
+            }
+        } else if args.len() != function.params.len() {
+            ctx.diagnostic(
+                call.syntax(),
+                DiagnosticKind::ExpectedArgumentsExact(function.params.len(), args.len()),
+            );
+        }
+
+        function.ret
     } else {
         ctx.alloc_type(Type::Union(Union::new(
             expected_functions
@@ -69,6 +86,8 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
                 .collect(),
         )))
     };
+
+    let hir = ctx.alloc_hir(Hir::FunctionCall(expr.hir, args));
 
     Value::new(hir, ty)
 }

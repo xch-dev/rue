@@ -1,4 +1,5 @@
 use rue_ast::AstListExpr;
+use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, Value};
 use rue_types::{Pair, Type, TypeId, Union};
 
@@ -10,9 +11,26 @@ pub fn compile_list_expr(
     mut expected_type: Option<TypeId>,
 ) -> Value {
     let mut values = Vec::new();
+    let mut nil_terminated = true;
 
-    for item in list.items() {
-        let item_type = if let Some(ty) = expected_type
+    let len = list.items().count();
+
+    for (i, item) in list.items().enumerate() {
+        let is_spread = if let Some(spread) = item.spread() {
+            if i == len - 1 {
+                true
+            } else {
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                false
+            }
+        } else {
+            false
+        };
+
+        let item_type = if is_spread {
+            nil_terminated = false;
+            expected_type
+        } else if let Some(ty) = expected_type
             && let pairs = rue_types::extract_pairs(ctx.types_mut(), ty)
             && !pairs.is_empty()
         {
@@ -51,7 +69,12 @@ pub fn compile_list_expr(
     let mut hir = ctx.builtins().nil.hir;
     let mut ty = ctx.builtins().nil.ty;
 
-    for value in values.into_iter().rev() {
+    for (i, value) in values.into_iter().rev().enumerate() {
+        if !nil_terminated && i == 0 {
+            hir = value.hir;
+            ty = value.ty;
+            continue;
+        }
         hir = ctx.alloc_hir(Hir::Pair(value.hir, hir));
         ty = ctx.alloc_type(Type::Pair(Pair::new(value.ty, ty)));
     }
