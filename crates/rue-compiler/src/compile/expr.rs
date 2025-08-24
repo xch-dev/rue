@@ -5,6 +5,7 @@ mod function_call;
 mod group;
 mod guard;
 mod if_expr;
+mod list;
 mod literal;
 mod pair;
 mod path;
@@ -17,6 +18,7 @@ pub use function_call::*;
 pub use group::*;
 pub use guard::*;
 pub use if_expr::*;
+pub use list::*;
 pub use literal::*;
 pub use pair::*;
 pub use path::*;
@@ -33,6 +35,7 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr) -> Value {
         AstExpr::LiteralExpr(expr) => compile_literal_expr(ctx, expr),
         AstExpr::GroupExpr(expr) => compile_group_expr(ctx, expr),
         AstExpr::PairExpr(expr) => compile_pair_expr(ctx, expr),
+        AstExpr::ListExpr(expr) => compile_list_expr(ctx, expr),
         AstExpr::PrefixExpr(expr) => compile_prefix_expr(ctx, expr),
         AstExpr::BinaryExpr(expr) => compile_binary_expr(ctx, expr),
         AstExpr::FunctionCallExpr(expr) => compile_function_call_expr(ctx, expr),

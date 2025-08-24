@@ -14,5 +14,5 @@ type Condition = CreateCoin | ReserveFee;
 type List<T> = nil | (T, List<T>);
 
 fn main() -> List<Condition> {
-    ((52, (100, nil)) as ReserveFee, nil)
+    ([52, 100] as ReserveFee, nil)
 }

@@ -48,6 +48,17 @@ fn expr_binding_power(
         }
         p.expect(T![')']);
         p.finish();
+    } else if p.at(T!['[']) {
+        p.start_at(checkpoint, SyntaxKind::ListExpr);
+        p.expect(T!['[']);
+        while !p.at(T![']']) {
+            expr(p);
+            if !p.try_eat(T![,]) {
+                break;
+            }
+        }
+        p.expect(T![']']);
+        p.finish();
     } else if p.at(T!['{']) {
         block(p);
     } else if p.at(T![if]) {

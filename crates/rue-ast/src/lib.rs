@@ -80,6 +80,7 @@ ast_nodes!(
     LiteralExpr,
     GroupExpr,
     PairExpr,
+    ListExpr,
     PrefixExpr,
     BinaryExpr,
     FunctionCallExpr,
@@ -102,6 +103,7 @@ ast_enum!(
     LiteralExpr,
     GroupExpr,
     PairExpr,
+    ListExpr,
     PrefixExpr,
     BinaryExpr,
     FunctionCallExpr,
@@ -338,6 +340,12 @@ impl AstPairExpr {
 
     pub fn rest(&self) -> Option<AstExpr> {
         self.syntax().children().filter_map(AstExpr::cast).nth(1)
+    }
+}
+
+impl AstListExpr {
+    pub fn exprs(&self) -> impl Iterator<Item = AstExpr> {
+        self.syntax().children().filter_map(AstExpr::cast)
     }
 }
 

@@ -258,6 +258,9 @@ pub enum SyntaxKind {
     #[display("pair expression")]
     PairExpr,
 
+    #[display("list expression")]
+    ListExpr,
+
     #[display("prefix expression")]
     PrefixExpr,
 
@@ -460,6 +463,7 @@ impl SyntaxKind {
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],
             SyntaxKind::GroupExpr => &[SyntaxKind::GroupExpr],
             SyntaxKind::PairExpr => &[SyntaxKind::PairExpr],
+            SyntaxKind::ListExpr => &[SyntaxKind::ListExpr],
             SyntaxKind::PrefixExpr => &[SyntaxKind::PrefixExpr],
             SyntaxKind::BinaryExpr => &[SyntaxKind::BinaryExpr],
             SyntaxKind::FunctionCallExpr => &[SyntaxKind::FunctionCallExpr],
