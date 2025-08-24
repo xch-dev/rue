@@ -2,60 +2,60 @@ type List<T> = nil | (T, List<T>);
 type Any = Bytes | (Any, Any);
 
 struct Remark {
-    opcode: 1,
+    opcode = 1,
     ...rest: Any,
 }
 
 struct AggSigParent {
-    opcode: 43,
+    opcode = 43,
     public_key: PublicKey,
     message: Bytes,
 }
 
 struct AggSigPuzzle {
-    opcode: 44,
+    opcode = 44,
     public_key: PublicKey,
     message: Bytes,
 }
 
 struct AggSigAmount {
-    opcode: 45,
+    opcode = 45,
     public_key: PublicKey,
     message: Bytes,
 }
 
 struct AggSigPuzzleAmount {
-    opcode: 46,
+    opcode = 46,
     public_key: PublicKey,
     message: Bytes,
 }
 
 struct AggSigParentAmount {
-    opcode: 47,
+    opcode = 47,
     public_key: PublicKey,
     message: Bytes,
 }
 
 struct AggSigParentPuzzle {
-    opcode: 48,
+    opcode = 48,
     public_key: PublicKey,
     message: Bytes,
 }
 
 struct AggSigUnsafe {
-    opcode: 49,
+    opcode = 49,
     public_key: PublicKey,
     message: Bytes,
 }
 
 struct AggSigMe {
-    opcode: 50,
+    opcode = 50,
     public_key: PublicKey,
     message: Bytes,
 }
 
 struct CreateCoin {
-    opcode: 51,
+    opcode = 51,
     puzzle_hash: Bytes32,
     amount: Int,
     ...memos: Memos | nil,
@@ -66,130 +66,130 @@ struct Memos {
 }
 
 struct ReserveFee {
-    opcode: 52,
+    opcode = 52,
     amount: Int,
 }
 
 struct CreateCoinAnnouncement {
-    opcode: 60,
+    opcode = 60,
     message: Bytes,
 }
 
 struct AssertCoinAnnouncement {
-    opcode: 61,
+    opcode = 61,
     id: Bytes32,
 }
 
 struct CreatePuzzleAnnouncement {
-    opcode: 62,
+    opcode = 62,
     message: Bytes,
 }
 
 struct AssertPuzzleAnnouncement {
-    opcode: 63,
+    opcode = 63,
     id: Bytes32,
 }
 
 struct AssertConcurrentSpend {
-    opcode: 64,
+    opcode = 64,
     coin_id: Bytes32,
 }
 
 struct AssertConcurrentPuzzle {
-    opcode: 65,
+    opcode = 65,
     puzzle_hash: Bytes32,
 }
 
 struct SendMessage {
-    opcode: 66,
+    opcode = 66,
     mode: Int,
     message: Bytes,
     ...receiver: (Bytes | Int)[],
 }
 
 struct ReceiveMessage {
-    opcode: 67,
+    opcode = 67,
     mode: Int,
     message: Bytes,
     ...sender: (Bytes | Int)[],
 }
 
 struct AssertMyCoinId {
-    opcode: 70,
+    opcode = 70,
     coin_id: Bytes32,
 }
 
 struct AssertMyParentId {
-    opcode: 71,
+    opcode = 71,
     parent_id: Bytes32,
 }
 
 struct AssertMyPuzzleHash {
-    opcode: 72,
+    opcode = 72,
     puzzle_hash: Bytes32,
 }
 
 struct AssertMyAmount {
-    opcode: 73,
+    opcode = 73,
     amount: Int,
 }
 
 struct AssertMyBirthSeconds {
-    opcode: 74,
+    opcode = 74,
     seconds: Int,
 }
 
 struct AssertMyBirthHeight {
-    opcode: 75,
+    opcode = 75,
     height: Int,
 }
 
 struct AssertEphemeral {
-    opcode: 76,
+    opcode = 76,
 }
 
 struct AssertSecondsRelative {
-    opcode: 80,
+    opcode = 80,
     seconds: Int,
 }
 
 struct AssertSecondsAbsolute {
-    opcode: 81,
+    opcode = 81,
     seconds: Int,
 }
 
 struct AssertHeightRelative {
-    opcode: 82,
+    opcode = 82,
     height: Int,
 }
 
 struct AssertHeightAbsolute {
-    opcode: 83,
+    opcode = 83,
     height: Int,
 }
 
 struct AssertBeforeSecondsRelative {
-    opcode: 84,
+    opcode = 84,
     seconds: Int,
 }
 
 struct AssertBeforeSecondsAbsolute {
-    opcode: 85,
+    opcode = 85,
     seconds: Int,
 }
 
 struct AssertBeforeHeightRelative {
-    opcode: 86,
+    opcode = 86,
     height: Int,
 }
 
 struct AssertBeforeHeightAbsolute {
-    opcode: 87,
+    opcode = 87,
     height: Int,
 }
 
 struct Softfork {
-    opcode: 90,
+    opcode = 90,
     cost: Int,
     ...args: List<Any>,
 }

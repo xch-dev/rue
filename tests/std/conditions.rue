@@ -1,6 +1,5 @@
 fn main() -> List<Condition> {
     [ReserveFee {
-        opcode: 52,
         amount: 100,
     }]
 }
