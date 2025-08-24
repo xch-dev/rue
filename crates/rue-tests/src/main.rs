@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 
 use anyhow::Result;
@@ -39,6 +40,9 @@ struct TestCase {
 }
 
 fn main() -> Result<()> {
+    let args: Vec<String> = env::args().collect();
+    let filter_arg = args.get(1).cloned();
+
     for entry in WalkDir::new("tests") {
         let entry = entry?;
 
@@ -58,6 +62,13 @@ fn main() -> Result<()> {
         let Some(name) = entry.file_name().to_str().unwrap().strip_suffix(".yaml") else {
             continue;
         };
+
+        // If a filter argument is provided, skip tests that don't contain it
+        if let Some(ref filter) = filter_arg
+            && !name.contains(filter)
+        {
+            continue;
+        }
 
         println!("Running {name}");
 

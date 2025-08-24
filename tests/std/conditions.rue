@@ -1,5 +1,24 @@
-fn main() -> List<Condition> {
-    [ReserveFee {
-        amount: 100,
-    }]
+fn main(conditions: List<Condition>) -> List<Condition> {
+    let reserve_fee = ReserveFee { amount: 100 };
+    [reserve_fee, ...double_create_coins(conditions)]
+}
+
+fn double_create_coins(conditions: List<Condition>) -> List<Condition> {
+    if conditions is nil {
+        return nil;
+    }
+
+    let condition = conditions.first;
+
+    if !(condition is CreateCoin) {
+        return [condition, ...double_create_coins(conditions.rest)];
+    }
+
+    let condition = CreateCoin {
+        puzzle_hash: condition.puzzle_hash,
+        amount: condition.amount * 2,
+        memos: condition.memos,
+    };
+
+    [condition, ...double_create_coins(conditions.rest)]
 }

@@ -1,7 +1,7 @@
 use rue_ast::AstFieldAccessExpr;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, UnaryOp, Value};
-use rue_types::Type;
+use rue_types::{Type, Union};
 
 use crate::{Compiler, compile_expr};
 
@@ -47,6 +47,68 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
                 ctx.builtins().unresolved.clone()
             }
         },
-        Type::Struct(_) => todo!(),
+        Type::Struct(ty) => {
+            let Some(index) = ty.fields.get_index_of(name.text()) else {
+                let type_name = ctx.type_name(expr.ty);
+                ctx.diagnostic(
+                    &name,
+                    DiagnosticKind::MissingField(name.text().to_string(), type_name),
+                );
+                return ctx.builtins().unresolved.clone();
+            };
+
+            let mut hir = expr.hir;
+            let mut field_type = ty.inner;
+
+            let needs_first = index + 1 < ty.fields.len() || ty.nil_terminated;
+
+            for i in 0..index {
+                hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, hir));
+
+                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type);
+
+                if pairs.is_empty() || (pairs.len() > 1 && (i + 1 < index || needs_first)) {
+                    let type_name = ctx.type_name(expr.ty);
+                    ctx.diagnostic(
+                        &name,
+                        DiagnosticKind::MissingField(name.text().to_string(), type_name),
+                    );
+                    return ctx.builtins().unresolved.clone();
+                }
+
+                field_type = if pairs.len() == 1 {
+                    pairs[0].rest
+                } else {
+                    ctx.alloc_type(Type::Union(Union::new(
+                        pairs.into_iter().map(|pair| pair.rest).collect(),
+                    )))
+                };
+            }
+
+            if needs_first {
+                hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, hir));
+
+                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type);
+
+                if pairs.is_empty() {
+                    let type_name = ctx.type_name(expr.ty);
+                    ctx.diagnostic(
+                        &name,
+                        DiagnosticKind::MissingField(name.text().to_string(), type_name),
+                    );
+                    return ctx.builtins().unresolved.clone();
+                }
+
+                field_type = if pairs.len() == 1 {
+                    pairs[0].first
+                } else {
+                    ctx.alloc_type(Type::Union(Union::new(
+                        pairs.into_iter().map(|pair| pair.first).collect(),
+                    )))
+                };
+            }
+
+            Value::new(hir, field_type)
+        }
     }
 }

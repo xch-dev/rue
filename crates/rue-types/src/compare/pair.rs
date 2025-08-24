@@ -9,7 +9,6 @@ pub(crate) fn compare_pair(
     rhs: Pair,
 ) -> Comparison {
     let first = compare_with_context(arena, ctx, lhs.first, rhs.first);
-
     let rest = compare_with_context(arena, ctx, lhs.rest, rhs.rest);
 
     match (first, rest) {

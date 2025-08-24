@@ -1,4 +1,5 @@
 use id_arena::Arena;
+use indexmap::IndexSet;
 
 use crate::{Alias, AtomRestriction, Pair, Struct, Type, TypeId, Union, substitute};
 
@@ -24,33 +25,42 @@ impl Subtraction {
 pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Subtraction {
     let lhs_id = substitute(arena, lhs_id);
     let rhs_id = substitute(arena, rhs_id);
-    subtract_impl(arena, lhs_id, rhs_id)
+    subtract_impl(arena, lhs_id, rhs_id, &mut IndexSet::new())
 }
 
-fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Subtraction {
-    match (arena[lhs_id].clone(), arena[rhs_id].clone()) {
+fn subtract_impl(
+    arena: &mut Arena<Type>,
+    lhs_id: TypeId,
+    rhs_id: TypeId,
+    stack: &mut IndexSet<(TypeId, TypeId)>,
+) -> Subtraction {
+    if !stack.insert((lhs_id, rhs_id)) {
+        return Subtraction::Empty;
+    }
+
+    let result = match (arena[lhs_id].clone(), arena[rhs_id].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Subtraction::Old,
         (Type::Function(_), _) | (_, Type::Function(_)) => Subtraction::Old,
         (Type::Generic, _) => Subtraction::Old,
         (_, Type::Generic) => Subtraction::Empty,
-        (Type::Ref(lhs), _) => subtract_impl(arena, lhs, rhs_id),
-        (_, Type::Ref(rhs)) => subtract_impl(arena, lhs_id, rhs),
-        (Type::Alias(lhs), _) => subtract_impl(arena, lhs.inner, rhs_id)
+        (Type::Ref(lhs), _) => subtract_impl(arena, lhs, rhs_id, stack),
+        (_, Type::Ref(rhs)) => subtract_impl(arena, lhs_id, rhs, stack),
+        (Type::Alias(lhs), _) => subtract_impl(arena, lhs.inner, rhs_id, stack)
             .map(|inner| arena.alloc(Type::Alias(Alias { inner, ..lhs }))),
-        (_, Type::Alias(rhs)) => subtract_impl(arena, lhs_id, rhs.inner)
+        (_, Type::Alias(rhs)) => subtract_impl(arena, lhs_id, rhs.inner, stack)
             .map(|inner| arena.alloc(Type::Alias(Alias { inner, ..rhs }))),
-        (Type::Struct(lhs), _) => subtract_impl(arena, lhs.inner, rhs_id)
+        (Type::Struct(lhs), _) => subtract_impl(arena, lhs.inner, rhs_id, stack)
             .map(|inner| arena.alloc(Type::Struct(Struct { inner, ..lhs }))),
-        (_, Type::Struct(rhs)) => subtract_impl(arena, lhs_id, rhs.inner)
+        (_, Type::Struct(rhs)) => subtract_impl(arena, lhs_id, rhs.inner, stack)
             .map(|inner| arena.alloc(Type::Struct(Struct { inner, ..rhs }))),
-        (Type::Atom(lhs), Type::Atom(rhs)) => {
+        (Type::Atom(lhs), Type::Atom(rhs)) => 'result: {
             let Some(rhs) = rhs.restriction else {
-                return Subtraction::Empty;
+                break 'result Subtraction::Empty;
             };
 
             let Some(lhs) = lhs.restriction else {
-                return Subtraction::Old;
+                break 'result Subtraction::Old;
             };
 
             match (lhs, rhs) {
@@ -80,13 +90,13 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Sub
         }
         (Type::Atom(_), Type::Pair(_)) => Subtraction::Old,
         (Type::Pair(_), Type::Atom(_)) => Subtraction::Old,
-        (_, Type::Union(ty)) => {
+        (_, Type::Union(ty)) => 'result: {
             let mut result = lhs_id;
             let mut is_new = false;
 
             for &id in &ty.types {
-                match subtract_impl(arena, result, id) {
-                    Subtraction::Empty => return Subtraction::Empty,
+                match subtract_impl(arena, result, id, stack) {
+                    Subtraction::Empty => break 'result Subtraction::Empty,
                     Subtraction::Old => {}
                     Subtraction::New(id) => {
                         result = id;
@@ -105,7 +115,7 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Sub
             let mut ids = Vec::new();
 
             for &id in &ty.types {
-                match subtract_impl(arena, id, rhs_id) {
+                match subtract_impl(arena, id, rhs_id, stack) {
                     Subtraction::Empty => {}
                     Subtraction::Old => ids.push(id),
                     Subtraction::New(id) => ids.push(id),
@@ -121,8 +131,8 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Sub
             }
         }
         (Type::Pair(lhs), Type::Pair(rhs)) => {
-            let first = subtract_impl(arena, lhs.first, rhs.first);
-            let rest = subtract_impl(arena, lhs.rest, rhs.rest);
+            let first = subtract_impl(arena, lhs.first, rhs.first, stack);
+            let rest = subtract_impl(arena, lhs.rest, rhs.rest, stack);
 
             match (first, rest) {
                 (Subtraction::New(first), Subtraction::New(rest)) => {
@@ -144,5 +154,9 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Sub
                 (Subtraction::Empty, Subtraction::Empty) => Subtraction::Empty,
             }
         }
-    }
+    };
+
+    stack.pop().unwrap();
+
+    result
 }

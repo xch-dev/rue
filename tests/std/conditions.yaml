@@ -1,7 +1,7 @@
-program: (c (c (q . 52) (c (q . 100) ())) ())
-debug_program: (c (c (q . 52) (c (q . 100) ())) ())
-solution: ()
-output: ((g2_add 100))
-runtime_cost: 281
-byte_cost: 276000
-total_cost: 276281
+program: (a (q 4 (c (q . 52) (c (q . 100) ())) (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 5 ()))) (c (q 2 (i (not (l 5)) (q) (q 2 (q 2 (i (not (= 4 (q . 51))) (q 4 2 (a (c (q . 2) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) (c 27 ()))) (q 4 (c (q . 51) (c 10 (c (* 22 (q . 2)) 30))) (a (c (q . 2) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) (c 27 ())))) 1) (c 9 1))) 1) 1))
+debug_program: (a (q 2 (q 4 2 (a (c (q . 2) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) (c 11 ()))) (c (c (q . 52) (c (q . 100) ())) 1)) (c (q 2 (i (not (l 5)) (q) (q 2 (q 2 (i (not (= (f 2) (q . 51))) (q 4 2 (a (c (q . 2) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) (c (r 11) ()))) (q 2 (q 4 2 (a (c (q . 2) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 11) (c (q . 1) ()))) ()))) (c (r 23) ()))) (c (c (q . 51) (c (f (r 2)) (c (* (f (r (r 2))) (q . 2)) (r (r (r 2)))))) 1))) 1) (c (f 5) 1))) 1) 1))
+solution: (((51 0x718e6218f392d41274e6f56be2177016500bfd60269fe73080979dbfb7cea5ed 100)))
+output: ((g2_add 100) (g1_negate 0x718e6218f392d41274e6f56be2177016500bfd60269fe73080979dbfb7cea5ed 200))
+runtime_cost: 6093
+byte_cost: 4308000
+total_cost: 4314093

@@ -164,6 +164,9 @@ pub enum DiagnosticKind {
         "Spread operator cannot be used on function that does not accept a variable number of arguments"
     )]
     InvalidSpread,
+
+    #[error("Field `{0}` exists on struct `{1}`, but it's not present in the underlying type")]
+    MissingField(String, String),
 }
 
 impl DiagnosticKind {
@@ -204,7 +207,8 @@ impl DiagnosticKind {
             | Self::ExpectedArgumentsExact(..)
             | Self::ExpectedArgumentsBeforeSpread(..)
             | Self::NonFinalSpread
-            | Self::InvalidSpread => DiagnosticSeverity::Error,
+            | Self::InvalidSpread
+            | Self::MissingField(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields
