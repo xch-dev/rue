@@ -31,6 +31,7 @@ fn ty_inner(p: &mut Parser<'_>, allow_union: bool) {
         p.expect(T!['(']);
         while !p.at(T![')']) {
             p.start(SyntaxKind::LambdaParameter);
+            p.try_eat(T![...]);
             ty(p);
             p.finish();
             if !p.try_eat(T![,]) {

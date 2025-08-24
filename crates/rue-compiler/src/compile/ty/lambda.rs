@@ -22,5 +22,9 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
         ctx.builtins().unresolved.ty
     };
 
-    ctx.alloc_type(Type::Function(FunctionType { params, ret }))
+    ctx.alloc_type(Type::Function(FunctionType {
+        params,
+        nil_terminated: true,
+        ret,
+    }))
 }

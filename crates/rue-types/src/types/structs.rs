@@ -10,4 +10,5 @@ pub struct Struct {
     pub name: Option<SyntaxToken>,
     pub generics: Vec<TypeId>,
     pub fields: IndexSet<String>,
+    pub nil_terminated: bool,
 }

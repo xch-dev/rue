@@ -45,6 +45,7 @@ fn function_item(p: &mut Parser<'_>, cp: Checkpoint) {
 
 fn function_parameter(p: &mut Parser<'_>) {
     p.start(SyntaxKind::FunctionParameter);
+    p.try_eat(T![...]);
     p.expect(SyntaxKind::Ident);
     p.expect(T![:]);
     ty(p);
@@ -96,6 +97,7 @@ fn struct_item(p: &mut Parser<'_>) {
 
 fn struct_field(p: &mut Parser<'_>) {
     p.start(SyntaxKind::StructField);
+    p.try_eat(T![...]);
     p.expect(SyntaxKind::Ident);
     p.expect(T![:]);
     ty(p);

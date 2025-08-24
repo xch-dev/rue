@@ -46,7 +46,12 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
             None
         };
 
-        let value = compile_expr(ctx, &arg, expected_type);
+        let value = if let Some(expr) = arg.expr() {
+            compile_expr(ctx, &expr, expected_type)
+        } else {
+            ctx.builtins().unresolved.clone()
+        };
+
         args.push(value.hir);
     }
 

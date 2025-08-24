@@ -83,6 +83,7 @@ pub fn compile_lambda_expr(
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
         params,
+        nil_terminated: true,
         ret: return_type,
     }));
 

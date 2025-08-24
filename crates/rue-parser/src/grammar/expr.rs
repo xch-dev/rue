@@ -85,7 +85,10 @@ pub fn expr_with(p: &mut Parser<'_>, options: ExprOptions) -> bool {
         p.start_at(checkpoint, SyntaxKind::ListExpr);
         p.expect(T!['[']);
         while !p.at(T![']']) {
+            p.start(SyntaxKind::ListItem);
+            p.try_eat(T![...]);
             expr(p);
+            p.finish();
             if !p.try_eat(T![,]) {
                 break;
             }
@@ -104,6 +107,7 @@ pub fn expr_with(p: &mut Parser<'_>, options: ExprOptions) -> bool {
         p.expect(T!['(']);
         while !p.at(T![')']) {
             p.start(SyntaxKind::FunctionParameter);
+            p.try_eat(T![...]);
             p.expect(SyntaxKind::Ident);
             if p.try_eat(T![:]) {
                 ty(p);
@@ -130,7 +134,10 @@ pub fn expr_with(p: &mut Parser<'_>, options: ExprOptions) -> bool {
             p.start_at(checkpoint, SyntaxKind::FunctionCallExpr);
             p.expect(T!['(']);
             while !p.at(T![')']) {
+                p.start(SyntaxKind::ListItem);
+                p.try_eat(T![...]);
                 expr(p);
+                p.finish();
                 if !p.try_eat(T![,]) {
                     break;
                 }

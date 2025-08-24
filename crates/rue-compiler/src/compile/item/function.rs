@@ -59,6 +59,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
         params: param_types,
+        nil_terminated: true,
         ret: return_type,
     }));
 

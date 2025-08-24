@@ -11,7 +11,7 @@ pub fn compile_list_expr(
 ) -> Value {
     let mut values = Vec::new();
 
-    for expr in list.exprs() {
+    for item in list.items() {
         let item_type = if let Some(ty) = expected_type
             && let pairs = rue_types::extract_pairs(ctx.types_mut(), ty)
             && !pairs.is_empty()
@@ -39,7 +39,13 @@ pub fn compile_list_expr(
             None
         };
 
-        values.push(compile_expr(ctx, &expr, item_type));
+        let value = if let Some(expr) = item.expr() {
+            compile_expr(ctx, &expr, item_type)
+        } else {
+            ctx.builtins().unresolved.clone()
+        };
+
+        values.push(value);
     }
 
     let mut hir = ctx.builtins().nil.hir;

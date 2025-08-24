@@ -185,6 +185,9 @@ pub enum SyntaxKind {
     #[display("`::`")]
     PathSeparator,
 
+    #[display("`...`")]
+    Spread,
+
     // AST
     #[display("document")]
     Document,
@@ -279,6 +282,9 @@ pub enum SyntaxKind {
     #[display("list expression")]
     ListExpr,
 
+    #[display("list item")]
+    ListItem,
+
     #[display("prefix expression")]
     PrefixExpr,
 
@@ -363,6 +369,7 @@ macro_rules! T {
     [->] => { $crate::SyntaxKind::Arrow };
     [=>] => { $crate::SyntaxKind::FatArrow };
     [::] => { $crate::SyntaxKind::PathSeparator };
+    [...] => { $crate::SyntaxKind::Spread };
 }
 
 impl SyntaxKind {
@@ -462,6 +469,7 @@ impl SyntaxKind {
             T![->] => &[T![-], T![>]],
             T![=>] => &[T![=], T![>]],
             T![::] => &[T![:], T![:]],
+            T![...] => &[T![.], T![.], T![.]],
             SyntaxKind::Document => &[SyntaxKind::Document],
             SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],
             SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],
@@ -493,6 +501,7 @@ impl SyntaxKind {
             SyntaxKind::GroupExpr => &[SyntaxKind::GroupExpr],
             SyntaxKind::PairExpr => &[SyntaxKind::PairExpr],
             SyntaxKind::ListExpr => &[SyntaxKind::ListExpr],
+            SyntaxKind::ListItem => &[SyntaxKind::ListItem],
             SyntaxKind::PrefixExpr => &[SyntaxKind::PrefixExpr],
             SyntaxKind::BinaryExpr => &[SyntaxKind::BinaryExpr],
             SyntaxKind::FunctionCallExpr => &[SyntaxKind::FunctionCallExpr],

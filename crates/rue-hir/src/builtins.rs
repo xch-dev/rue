@@ -80,6 +80,7 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
 
     let ty = db.alloc_type(Type::Function(FunctionType {
         params: vec![bytes],
+        nil_terminated: true,
         ret: bytes32,
     }));
 

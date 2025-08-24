@@ -85,6 +85,7 @@ ast_nodes!(
     GroupExpr,
     PairExpr,
     ListExpr,
+    ListItem,
     PrefixExpr,
     BinaryExpr,
     FunctionCallExpr,
@@ -235,6 +236,13 @@ impl AstStructItem {
 }
 
 impl AstStructField {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![...])
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -248,6 +256,13 @@ impl AstStructField {
 }
 
 impl AstFunctionParameter {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![...])
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -420,8 +435,21 @@ impl AstPairExpr {
 }
 
 impl AstListExpr {
-    pub fn exprs(&self) -> impl Iterator<Item = AstExpr> {
-        self.syntax().children().filter_map(AstExpr::cast)
+    pub fn items(&self) -> impl Iterator<Item = AstListItem> {
+        self.syntax().children().filter_map(AstListItem::cast)
+    }
+}
+
+impl AstListItem {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![...])
+    }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 
@@ -460,8 +488,11 @@ impl AstFunctionCallExpr {
         self.syntax().children().find_map(AstExpr::cast)
     }
 
-    pub fn args(&self) -> impl Iterator<Item = AstExpr> {
-        self.syntax().children().filter_map(AstExpr::cast).skip(1)
+    pub fn args(&self) -> impl Iterator<Item = AstListItem> {
+        self.syntax()
+            .children()
+            .filter_map(AstListItem::cast)
+            .skip(1)
     }
 }
 
@@ -578,6 +609,13 @@ impl AstLambdaType {
 }
 
 impl AstLambdaParameter {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![...])
+    }
+
     pub fn ty(&self) -> Option<AstType> {
         self.syntax().children().find_map(AstType::cast)
     }
