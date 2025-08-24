@@ -1,0 +1,7 @@
+fn main(num: Int) -> Int {
+    square(num + 10)
+}
+
+inline fn square(num: Int) -> Int {
+    num * num
+}

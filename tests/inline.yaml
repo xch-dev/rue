@@ -1,0 +1,6 @@
+program: (* (+ 2 (q . 10)) (+ 2 (q . 10)))
+solution: (42)
+output: '2704'
+runtime_cost: 2658
+byte_cost: 276000
+total_cost: 278658
