@@ -1,6 +1,6 @@
-program: (* (+ 2 (q . 10)) (+ 2 (q . 10)))
+program: (a (q 18 (+ (+ (+ 5 (q . 8)) 2) 2) (+ (+ (+ 5 (q . 8)) 2) 2)) (c (q . 1) 1))
 solution: (42)
 output: '2704'
-runtime_cost: 2658
-byte_cost: 276000
-total_cost: 278658
+runtime_cost: 6108
+byte_cost: 756000
+total_cost: 762108

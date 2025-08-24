@@ -70,14 +70,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             let mut bindings = Vec::new();
 
             for &symbol in group {
-                let lir = self.lower_symbol(&bind_env, symbol, false);
-                bindings.push(self.arena.alloc(Lir::Quote(lir)));
+                bindings.push(self.lower_symbol(&bind_env, symbol, false));
             }
 
             expr = self.arena.alloc(Lir::Curry(expr, bindings));
         }
 
-        expr
+        if is_main {
+            expr
+        } else {
+            self.arena.alloc(Lir::Quote(expr))
+        }
     }
 
     fn lower_constant(&mut self, env: &Environment, constant: ConstantSymbol) -> LirId {
