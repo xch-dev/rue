@@ -22,6 +22,7 @@ pub struct FunctionSymbol {
     pub parameters: Vec<SymbolId>,
     pub return_type: TypeId,
     pub body: HirId,
+    pub inline: bool,
 }
 
 #[derive(Debug, Clone)]

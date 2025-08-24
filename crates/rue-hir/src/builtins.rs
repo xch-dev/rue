@@ -91,5 +91,6 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
         parameters: vec![parameter],
         return_type: bytes32,
         body,
+        inline: true,
     }))
 }
