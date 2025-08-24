@@ -5,25 +5,41 @@ use crate::{
     grammar::{block::block, generics::generic_arguments, ty::ty},
 };
 
+#[derive(Debug, Clone, Copy)]
+pub struct ExprOptions {
+    pub minimum_binding_power: u8,
+    pub allow_statement: bool,
+    pub allow_struct_initializer: bool,
+}
+
+impl Default for ExprOptions {
+    fn default() -> Self {
+        Self {
+            minimum_binding_power: 0,
+            allow_statement: false,
+            allow_struct_initializer: true,
+        }
+    }
+}
+
 pub fn expr(p: &mut Parser<'_>) {
-    expr_binding_power(p, 0, false);
+    expr_with(p, ExprOptions::default());
 }
 
-pub fn expr_or_stmt(p: &mut Parser<'_>) -> bool {
-    expr_binding_power(p, 0, true)
-}
-
-fn expr_binding_power(
-    p: &mut Parser<'_>,
-    minimum_binding_power: u8,
-    allow_statement: bool,
-) -> bool {
+pub fn expr_with(p: &mut Parser<'_>, options: ExprOptions) -> bool {
     let checkpoint = p.checkpoint();
 
     if let Some(kind) = p.at_any(SyntaxKind::PREFIX_OPS) {
         p.start_at(checkpoint, SyntaxKind::PrefixExpr);
         p.expect(kind);
-        expr_binding_power(p, 255, false);
+        expr_with(
+            p,
+            ExprOptions {
+                minimum_binding_power: 255,
+                allow_statement: false,
+                allow_struct_initializer: options.allow_struct_initializer,
+            },
+        );
         p.finish();
     } else if p.at(T![::]) || p.at(SyntaxKind::Ident) {
         p.start_at(checkpoint, SyntaxKind::PathExpr);
@@ -32,6 +48,23 @@ fn expr_binding_power(
             separated = path_expr_segment(p, false);
         }
         p.finish();
+
+        if p.at(T!['{']) && options.allow_struct_initializer {
+            p.start_at(checkpoint, SyntaxKind::StructInitializerExpr);
+            p.expect(T!['{']);
+            while !p.at(T!['}']) {
+                p.start(SyntaxKind::StructInitializerField);
+                p.expect(SyntaxKind::Ident);
+                p.expect(T![:]);
+                expr(p);
+                p.finish();
+                if !p.try_eat(T![,]) {
+                    break;
+                }
+            }
+            p.expect(T!['}']);
+            p.finish();
+        }
     } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL) {
         p.start(SyntaxKind::LiteralExpr);
         p.expect(kind);
@@ -62,7 +95,7 @@ fn expr_binding_power(
     } else if p.at(T!['{']) {
         block(p);
     } else if p.at(T![if]) {
-        if if_expr(p, checkpoint, allow_statement) {
+        if if_expr(p, checkpoint, options.allow_statement) {
             return true;
         }
     } else {
@@ -121,20 +154,27 @@ fn expr_binding_power(
             _ => unreachable!(),
         };
 
-        if left_binding_power < minimum_binding_power {
+        if left_binding_power < options.minimum_binding_power {
             return false;
         }
 
         p.expect(op);
 
         p.start_at(checkpoint, SyntaxKind::BinaryExpr);
-        expr_binding_power(p, right_binding_power, false);
+        expr_with(
+            p,
+            ExprOptions {
+                minimum_binding_power: right_binding_power,
+                allow_statement: false,
+                allow_struct_initializer: options.allow_struct_initializer,
+            },
+        );
         p.finish();
     }
 }
 
 fn path_expr_segment(p: &mut Parser<'_>, first: bool) -> bool {
-    p.start(SyntaxKind::PathExprSegment);
+    p.start(SyntaxKind::PathSegment);
     if first {
         p.try_eat(T![::]);
     } else {
@@ -152,7 +192,14 @@ fn path_expr_segment(p: &mut Parser<'_>, first: bool) -> bool {
 
 fn if_expr(p: &mut Parser<'_>, checkpoint: Checkpoint, allow_statement: bool) -> bool {
     p.expect(T![if]);
-    expr(p);
+    expr_with(
+        p,
+        ExprOptions {
+            minimum_binding_power: 0,
+            allow_statement: false,
+            allow_struct_initializer: false,
+        },
+    );
     block(p);
     if allow_statement && !p.at(T![else]) {
         p.start_at(checkpoint, SyntaxKind::IfStmt);

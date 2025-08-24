@@ -210,9 +210,6 @@ pub enum SyntaxKind {
     #[display("path type")]
     PathType,
 
-    #[display("path type segment")]
-    PathTypeSegment,
-
     #[display("union type")]
     UnionType,
 
@@ -246,8 +243,14 @@ pub enum SyntaxKind {
     #[display("path expression")]
     PathExpr,
 
-    #[display("path expression segment")]
-    PathExprSegment,
+    #[display("path segment")]
+    PathSegment,
+
+    #[display("struct initializer expression")]
+    StructInitializerExpr,
+
+    #[display("struct initializer field")]
+    StructInitializerField,
 
     #[display("literal expression")]
     LiteralExpr,
@@ -447,7 +450,6 @@ impl SyntaxKind {
             SyntaxKind::GenericArguments => &[SyntaxKind::GenericArguments],
             SyntaxKind::LiteralType => &[SyntaxKind::LiteralType],
             SyntaxKind::PathType => &[SyntaxKind::PathType],
-            SyntaxKind::PathTypeSegment => &[SyntaxKind::PathTypeSegment],
             SyntaxKind::UnionType => &[SyntaxKind::UnionType],
             SyntaxKind::GroupType => &[SyntaxKind::GroupType],
             SyntaxKind::PairType => &[SyntaxKind::PairType],
@@ -459,7 +461,9 @@ impl SyntaxKind {
             SyntaxKind::AssertStmt => &[SyntaxKind::AssertStmt],
             SyntaxKind::RaiseStmt => &[SyntaxKind::RaiseStmt],
             SyntaxKind::PathExpr => &[SyntaxKind::PathExpr],
-            SyntaxKind::PathExprSegment => &[SyntaxKind::PathExprSegment],
+            SyntaxKind::PathSegment => &[SyntaxKind::PathSegment],
+            SyntaxKind::StructInitializerExpr => &[SyntaxKind::StructInitializerExpr],
+            SyntaxKind::StructInitializerField => &[SyntaxKind::StructInitializerField],
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],
             SyntaxKind::GroupExpr => &[SyntaxKind::GroupExpr],
             SyntaxKind::PairExpr => &[SyntaxKind::PairExpr],

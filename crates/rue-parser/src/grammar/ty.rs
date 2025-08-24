@@ -49,7 +49,7 @@ fn path_type(p: &mut Parser<'_>) {
 }
 
 fn path_type_segment(p: &mut Parser<'_>, first: bool) {
-    p.start(SyntaxKind::PathTypeSegment);
+    p.start(SyntaxKind::PathSegment);
     if first {
         p.try_eat(T![::]);
     } else {

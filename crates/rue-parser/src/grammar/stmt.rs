@@ -1,7 +1,7 @@
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
-        expr::{expr, expr_or_stmt},
+        expr::{ExprOptions, expr, expr_with},
         ty::ty,
     },
 };
@@ -24,7 +24,14 @@ pub fn stmt(p: &mut Parser<'_>) -> StatementKind {
         raise_stmt(p);
     } else {
         let cp = p.checkpoint();
-        if expr_or_stmt(p) {
+        if expr_with(
+            p,
+            ExprOptions {
+                minimum_binding_power: 0,
+                allow_statement: true,
+                allow_struct_initializer: true,
+            },
+        ) {
             return StatementKind::Normal;
         }
         if p.at(T![;]) {

@@ -26,7 +26,7 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
         {
             ctx.diagnostic(
                 &name,
-                DiagnosticKind::DuplicateStructField(name.text().to_string()),
+                DiagnosticKind::DuplicateField(name.text().to_string()),
             );
         }
     }

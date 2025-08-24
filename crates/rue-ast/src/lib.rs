@@ -64,7 +64,6 @@ ast_nodes!(
     GenericArguments,
     LiteralType,
     PathType,
-    PathTypeSegment,
     UnionType,
     GroupType,
     PairType,
@@ -76,7 +75,9 @@ ast_nodes!(
     AssertStmt,
     RaiseStmt,
     PathExpr,
-    PathExprSegment,
+    PathSegment,
+    StructInitializerExpr,
+    StructInitializerField,
     LiteralExpr,
     GroupExpr,
     PairExpr,
@@ -100,6 +101,7 @@ ast_enum!(StmtOrExpr, Stmt, Expr);
 ast_enum!(
     Expr,
     PathExpr,
+    StructInitializerExpr,
     LiteralExpr,
     GroupExpr,
     PairExpr,
@@ -291,14 +293,12 @@ impl AstRaiseStmt {
 }
 
 impl AstPathExpr {
-    pub fn segments(&self) -> impl Iterator<Item = AstPathExprSegment> {
-        self.syntax()
-            .children()
-            .filter_map(AstPathExprSegment::cast)
+    pub fn segments(&self) -> impl Iterator<Item = AstPathSegment> {
+        self.syntax().children().filter_map(AstPathSegment::cast)
     }
 }
 
-impl AstPathExprSegment {
+impl AstPathSegment {
     pub fn separator(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -315,6 +315,31 @@ impl AstPathExprSegment {
 
     pub fn generic_arguments(&self) -> Option<AstGenericArguments> {
         self.syntax().children().find_map(AstGenericArguments::cast)
+    }
+}
+
+impl AstStructInitializerExpr {
+    pub fn path(&self) -> Option<AstPathExpr> {
+        self.syntax().children().find_map(AstPathExpr::cast)
+    }
+
+    pub fn fields(&self) -> impl Iterator<Item = AstStructInitializerField> {
+        self.syntax()
+            .children()
+            .filter_map(AstStructInitializerField::cast)
+    }
+}
+
+impl AstStructInitializerField {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 
@@ -446,30 +471,8 @@ impl AstLiteralType {
 }
 
 impl AstPathType {
-    pub fn segments(&self) -> impl Iterator<Item = AstPathTypeSegment> {
-        self.syntax()
-            .children()
-            .filter_map(AstPathTypeSegment::cast)
-    }
-}
-
-impl AstPathTypeSegment {
-    pub fn separator(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == T![::])
-    }
-
-    pub fn name(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Ident)
-    }
-
-    pub fn generic_arguments(&self) -> Option<AstGenericArguments> {
-        self.syntax().children().find_map(AstGenericArguments::cast)
+    pub fn segments(&self) -> impl Iterator<Item = AstPathSegment> {
+        self.syntax().children().filter_map(AstPathSegment::cast)
     }
 }
 

@@ -10,6 +10,7 @@ mod literal;
 mod pair;
 mod path;
 mod prefix;
+mod struct_initializer;
 
 pub use binary::*;
 pub use cast::*;
@@ -23,6 +24,7 @@ pub use literal::*;
 pub use pair::*;
 pub use path::*;
 pub use prefix::*;
+pub use struct_initializer::*;
 
 use rue_ast::AstExpr;
 use rue_hir::Value;
@@ -32,6 +34,7 @@ use crate::{Compiler, compile_block};
 pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr) -> Value {
     match expr {
         AstExpr::PathExpr(expr) => compile_path_expr(ctx, expr),
+        AstExpr::StructInitializerExpr(expr) => compile_struct_initializer_expr(ctx, expr),
         AstExpr::LiteralExpr(expr) => compile_literal_expr(ctx, expr),
         AstExpr::GroupExpr(expr) => compile_group_expr(ctx, expr),
         AstExpr::PairExpr(expr) => compile_pair_expr(ctx, expr),

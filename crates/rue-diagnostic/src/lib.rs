@@ -125,8 +125,20 @@ pub enum DiagnosticKind {
     #[error("Unnecessary `+` operator, since it has no effect")]
     UnnecessaryPlus,
 
-    #[error("Duplicate field `{0}` specified in struct")]
-    DuplicateStructField(String),
+    #[error("Path separator `::` is not allowed in the first segment")]
+    PathSeparatorInFirstSegment,
+
+    #[error("Subpaths are not supported")]
+    SubpathNotSupported,
+
+    #[error("Generic arguments are not permitted on symbol references")]
+    GenericArgumentsOnSymbolReference,
+
+    #[error("Cannot initialize non-struct type `{0}`")]
+    NonStructInitializer(String),
+
+    #[error("Struct `{0}` is missing required fields: {1}")]
+    MissingRequiredFields(String, String),
 }
 
 impl DiagnosticKind {
@@ -156,7 +168,11 @@ impl DiagnosticKind {
             | Self::UnexpectedImplicitReturn
             | Self::MissingReturn
             | Self::UnknownField(..)
-            | Self::DuplicateStructField(..) => DiagnosticSeverity::Error,
+            | Self::PathSeparatorInFirstSegment
+            | Self::SubpathNotSupported
+            | Self::GenericArgumentsOnSymbolReference
+            | Self::NonStructInitializer(..)
+            | Self::MissingRequiredFields(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields
