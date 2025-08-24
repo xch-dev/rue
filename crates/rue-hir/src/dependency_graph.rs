@@ -108,6 +108,11 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
             visit_hir(db, graph, *lhs);
             visit_hir(db, graph, *rhs);
         }
+        Hir::CoinId(parent, puzzle, amount) => {
+            visit_hir(db, graph, *parent);
+            visit_hir(db, graph, *puzzle);
+            visit_hir(db, graph, *amount);
+        }
     }
 }
 

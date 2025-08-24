@@ -21,7 +21,8 @@ pub fn atom_restrictions_of(arena: &Arena<Type>, ty: Type) -> AtomRestrictions {
             .map_or(AtomRestrictions::Unrestricted, |restriction| {
                 AtomRestrictions::Either(indexset![restriction])
             }),
-        Type::Pair(_) | Type::Function(_) => AtomRestrictions::NotAtom,
+        Type::Pair(_) => AtomRestrictions::NotAtom,
+        Type::Function(_) => AtomRestrictions::Unrestricted,
         Type::Union(ty) => {
             let mut restrictions = IndexSet::new();
             let mut has_atom = false;

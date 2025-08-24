@@ -205,6 +205,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     BinaryOp::Any => self.arena.alloc(Lir::Any(vec![left, right])),
                 }
             }
+            Hir::CoinId(parent, puzzle, amount) => {
+                let parent = self.lower_hir(env, parent);
+                let puzzle = self.lower_hir(env, puzzle);
+                let amount = self.lower_hir(env, amount);
+                self.arena.alloc(Lir::CoinId(parent, puzzle, amount))
+            }
         }
     }
 

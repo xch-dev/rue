@@ -2,6 +2,6 @@ fn main(num: Int) -> Int {
     adder(num)(adder(num)(num) * 42)
 }
 
-fn adder(a: Int) -> fn(Int) -> Int {
+fn adder(a: Int) -> fn(num: Int) -> Int {
     fn(b) => a + b
 }

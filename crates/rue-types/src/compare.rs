@@ -11,7 +11,7 @@ use unions::*;
 use id_arena::Arena;
 use indexmap::IndexSet;
 
-use crate::{Check, Type, TypeId, substitute};
+use crate::{Check, Type, TypeId, Union, substitute};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Comparison {
@@ -58,7 +58,8 @@ pub(crate) fn compare_with_context(
         (Type::Generic, _) => Comparison::Invalid,
         (_, Type::Generic) => todo!(),
         (Type::Function(lhs), Type::Function(rhs)) => compare_function(arena, ctx, lhs, rhs),
-        (Type::Function(_), _) | (_, Type::Function(_)) => Comparison::Invalid,
+        (Type::Function(_), _) => compare_from_union(arena, ctx, Union::new(vec![lhs]), rhs),
+        (_, Type::Function(_)) => Comparison::Invalid,
         (Type::Atom(lhs), Type::Atom(rhs)) => compare_atom(lhs, rhs),
         (Type::Pair(lhs), Type::Pair(rhs)) => compare_pair(arena, ctx, lhs, rhs),
         (Type::Pair(_), Type::Atom(_)) => Comparison::Invalid,

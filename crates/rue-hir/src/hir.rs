@@ -21,6 +21,7 @@ pub enum Hir {
     FunctionCall(FunctionCall),
     Unary(UnaryOp, HirId),
     Binary(BinaryOp, HirId, HirId),
+    CoinId(HirId, HirId, HirId),
 }
 
 #[derive(Debug, Clone)]

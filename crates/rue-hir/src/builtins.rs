@@ -46,6 +46,10 @@ impl Builtins {
         scope.insert_type("Bool".to_string(), bool);
 
         scope.insert_symbol("sha256".to_string(), sha256(db, bytes, bytes32));
+        scope.insert_symbol(
+            "calculate_coin_id".to_string(),
+            calculate_coin_id(db, bytes, bytes32, int),
+        );
 
         let scope = db.alloc_scope(scope);
 
@@ -90,6 +94,57 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
         scope,
         vars: vec![],
         parameters: vec![parameter],
+        nil_terminated: true,
+        return_type: bytes32,
+        body,
+        inline: true,
+    }))
+}
+
+fn calculate_coin_id(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: TypeId) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new());
+
+    let parent = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: bytes,
+    }));
+
+    let puzzle = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: bytes,
+    }));
+
+    let amount = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: int,
+    }));
+
+    db.scope_mut(scope)
+        .insert_symbol("parent".to_string(), parent);
+
+    db.scope_mut(scope)
+        .insert_symbol("puzzle".to_string(), puzzle);
+
+    db.scope_mut(scope)
+        .insert_symbol("amount".to_string(), amount);
+
+    let parent_ref = db.alloc_hir(Hir::Reference(parent));
+    let puzzle_ref = db.alloc_hir(Hir::Reference(puzzle));
+    let amount_ref = db.alloc_hir(Hir::Reference(amount));
+    let body = db.alloc_hir(Hir::CoinId(parent_ref, puzzle_ref, amount_ref));
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        params: vec![bytes, bytes, int],
+        nil_terminated: true,
+        ret: bytes32,
+    }));
+
+    db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: None,
+        ty,
+        scope,
+        vars: vec![],
+        parameters: vec![parent, puzzle, amount],
         nil_terminated: true,
         return_type: bytes32,
         body,
