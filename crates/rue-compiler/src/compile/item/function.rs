@@ -70,7 +70,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         parameters,
         return_type,
         body,
-        inline: false,
+        inline: function.inline().is_some(),
     }));
 
     if let Some(name) = function.name() {

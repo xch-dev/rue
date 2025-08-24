@@ -17,7 +17,7 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
         name: constant.name(),
         ty,
         value,
-        inline: false,
+        inline: constant.inline().is_some(),
     }));
 
     if let Some(name) = constant.name() {

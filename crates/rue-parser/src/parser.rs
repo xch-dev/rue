@@ -71,6 +71,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Nil => T![nil],
                 TokenKind::True => T![true],
                 TokenKind::False => T![false],
+                TokenKind::Inline => T![inline],
                 TokenKind::Fn => T![fn],
                 TokenKind::Const => T![const],
                 TokenKind::Type => T![type],

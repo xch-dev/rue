@@ -125,6 +125,13 @@ impl AstDocument {
 }
 
 impl AstFunctionItem {
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![inline])
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -154,6 +161,13 @@ impl AstFunctionItem {
 }
 
 impl AstConstantItem {
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![inline])
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()

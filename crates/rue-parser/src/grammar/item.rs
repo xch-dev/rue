@@ -1,24 +1,29 @@
+use rowan::Checkpoint;
+
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{block::block, expr::expr, generics::generic_parameters, ty::ty},
 };
 
 pub fn item(p: &mut Parser<'_>) {
+    let cp = p.checkpoint();
+    let inline = p.try_eat(T![inline]);
+
     if p.at(T![fn]) {
-        function_item(p);
+        function_item(p, cp);
     } else if p.at(T![const]) {
-        constant_item(p);
-    } else if p.at(T![type]) {
+        constant_item(p, cp);
+    } else if p.at(T![type]) && !inline {
         type_alias_item(p);
-    } else if p.at(T![struct]) {
+    } else if p.at(T![struct]) && !inline {
         struct_item(p);
-    } else {
+    } else if !inline {
         p.skip();
     }
 }
 
-fn function_item(p: &mut Parser<'_>) {
-    p.start(SyntaxKind::FunctionItem);
+fn function_item(p: &mut Parser<'_>, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::FunctionItem);
     p.expect(T![fn]);
     p.expect(SyntaxKind::Ident);
     if p.at(T![<]) {
@@ -46,8 +51,8 @@ fn function_parameter(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn constant_item(p: &mut Parser<'_>) {
-    p.start(SyntaxKind::ConstantItem);
+fn constant_item(p: &mut Parser<'_>, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::ConstantItem);
     p.expect(T![const]);
     p.expect(SyntaxKind::Ident);
     p.expect(T![:]);

@@ -52,6 +52,7 @@ impl<'a> Lexer<'a> {
             "nil" => TokenKind::Nil,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
+            "inline" => TokenKind::Inline,
             "fn" => TokenKind::Fn,
             "const" => TokenKind::Const,
             "type" => TokenKind::Type,
@@ -423,6 +424,13 @@ mod tests {
             "false",
             expect![[r#"
                 False
+            "#]],
+        );
+
+        check(
+            "inline",
+            expect![[r#"
+                Inline
             "#]],
         );
 
