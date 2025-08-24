@@ -9,6 +9,7 @@ use rue_diagnostic::{Diagnostic, DiagnosticKind};
 use rue_hir::{
     Builtins, Constraint, Database, Scope, ScopeId, Symbol, SymbolId, TypePath, replace_type,
 };
+use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, Comparison, Subtraction, TypeId};
 
@@ -21,6 +22,7 @@ enum ComparisonKind {
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
+    _options: CompilerOptions,
     diagnostics: Vec<Diagnostic>,
     db: Database,
     scope_stack: Vec<ScopeId>,
@@ -42,25 +44,20 @@ impl DerefMut for Compiler {
     }
 }
 
-impl Default for Compiler {
-    fn default() -> Self {
+impl Compiler {
+    pub fn new(options: CompilerOptions) -> Self {
         let mut db = Database::new();
 
         let builtins = Builtins::new(&mut db);
 
         Self {
+            _options: options,
             diagnostics: Vec::new(),
             db,
             scope_stack: vec![builtins.scope],
             mapping_stack: vec![HashMap::new()],
             builtins,
         }
-    }
-}
-
-impl Compiler {
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub fn diagnostics(&self) -> &[Diagnostic] {

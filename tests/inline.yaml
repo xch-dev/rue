@@ -1,4 +1,5 @@
 program: (a (q 18 (+ (+ (+ 5 (q . 8)) 2) 2) (+ (+ (+ 5 (q . 8)) 2) 2)) (c (q . 1) 1))
+debug_program: (a (q 18 (+ (+ (+ 5 (q . 8)) 2) 2) (+ (+ (+ 5 (q . 8)) 2) 2)) (c (q . 1) 1))
 solution: (42)
 output: '2704'
 runtime_cost: 6108

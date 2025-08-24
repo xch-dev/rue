@@ -8,6 +8,7 @@ rue-parser = { path = "crates/rue-parser" }
 rue-diagnostic = { path = "crates/rue-diagnostic" }
 rue-ast = { path = "crates/rue-ast" }
 rue-compiler = { path = "crates/rue-compiler" }
+rue-options = { path = "crates/rue-options" }
 rue-lir = { path = "crates/rue-lir" }
 rue-hir = { path = "crates/rue-hir" }
 rue-types = { path = "crates/rue-types" }

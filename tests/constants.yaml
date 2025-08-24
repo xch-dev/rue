@@ -1,4 +1,5 @@
 program: (q . "Hello, world! How are you doing?")
+debug_program: (a (q 2 (q 2 (q . 2) (c (concat 2 (q . " How are you doing?")) 1)) (c (a (c (q . 2) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c (q . 1) ()))) ()))) (c 2 ())) 1)) (c (q . "world") (c (q 14 (concat (concat 2 (q . 11296)) 5) (q . 33)) (c (q . "Hello") 1))))
 solution: ()
 output: '"Hello, world! How are you doing?"'
 runtime_cost: 20

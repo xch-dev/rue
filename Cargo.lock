@@ -1240,6 +1240,7 @@ dependencies = [
  "clvm_tools_rs",
  "clvmr",
  "rue-compiler",
+ "rue-options",
 ]
 
 [[package]]
@@ -1258,6 +1259,7 @@ dependencies = [
  "rue-hir",
  "rue-lexer",
  "rue-lir",
+ "rue-options",
  "rue-parser",
  "rue-types",
 ]
@@ -1281,6 +1283,7 @@ dependencies = [
  "indexmap",
  "num-bigint",
  "rue-lir",
+ "rue-options",
  "rue-parser",
  "rue-types",
 ]
@@ -1306,6 +1309,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rue-options"
+version = "0.1.0"
+
+[[package]]
 name = "rue-parser"
 version = "0.1.0"
 dependencies = [
@@ -1328,6 +1335,7 @@ dependencies = [
  "clvm_tools_rs",
  "clvmr",
  "rue-compiler",
+ "rue-options",
  "serde",
  "serde_yml",
  "walkdir",

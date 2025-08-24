@@ -1,4 +1,5 @@
 program: (a (q 2 (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q . "Hello, world!") ())) (c (q 2 (i (not (l 5)) (q 11 (concat (q . 1) 5)) (q 11 (concat (q . 2) (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 9 ())) (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 13 ()))))) 1) 1))
+debug_program: (a (q 2 (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q . "Hello, world!") ())) (c (q 2 (i (not (l 5)) (q 11 (concat (q . 1) 5)) (q 11 (concat (concat (q . 2) (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (f 5) ()))) (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (r 5) ()))))) 1) 1))
 solution: ()
 output: '0xac9b16a5ee4d65aa433611da7a278a44977de399a293d5689b504bdaa161fb6f'
 runtime_cost: 3069

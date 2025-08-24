@@ -1,4 +1,5 @@
 program: (c (q . 100) (c (q . 200) (c (q . 300) ())))
+debug_program: (c (q . 100) (c (q . 200) (c (q . 300) ())))
 solution: ()
 output: (100 200 300)
 runtime_cost: 257

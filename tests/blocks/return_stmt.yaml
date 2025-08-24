@@ -1,4 +1,5 @@
 program: (q . 42)
+debug_program: (q . 42)
 solution: ()
 output: '42'
 runtime_cost: 20

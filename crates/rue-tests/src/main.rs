@@ -4,6 +4,7 @@ use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
 use rue_compiler::compile_file;
+use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
@@ -11,6 +12,9 @@ use walkdir::WalkDir;
 struct TestCase {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     program: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    debug_program: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     solution: Option<String>,
@@ -64,7 +68,7 @@ fn main() -> Result<()> {
             fs::read_to_string(entry.path().parent().unwrap().join(format!("{name}.rue")))?;
 
         let mut allocator = Allocator::new();
-        let result = compile_file(&mut allocator, &source)?;
+        let result = compile_file(&mut allocator, &source, CompilerOptions::default())?;
 
         let mut diagnostics = Vec::new();
 
@@ -76,6 +80,12 @@ fn main() -> Result<()> {
             let env = assemble(&mut allocator, test_case.solution.as_ref().unwrap()).unwrap();
 
             test_case.program = Some(disassemble(&allocator, ptr, None));
+
+            let debug_ptr = compile_file(&mut allocator, &source, CompilerOptions::debug())?
+                .program
+                .unwrap();
+
+            test_case.debug_program = Some(disassemble(&allocator, debug_ptr, None));
 
             let response = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, u64::MAX);
 
@@ -98,6 +108,7 @@ fn main() -> Result<()> {
             }
         } else {
             test_case.program = None;
+            test_case.debug_program = None;
             test_case.output = None;
             test_case.clvm_error = None;
             test_case.runtime_cost = None;

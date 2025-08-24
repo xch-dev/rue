@@ -1,4 +1,5 @@
 program: (a (i (= 4 (q . 100)) (q . 4) (q . 4)) 1)
+debug_program: (a (i (= (f 2) (q . 100)) (q 5 2) (q 5 2)) 1)
 solution: ((100 "Hello, world!"))
 output: '100'
 runtime_cost: 453

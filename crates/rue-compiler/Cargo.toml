@@ -8,6 +8,7 @@ rue-parser = { workspace = true }
 rue-lexer = { workspace = true }
 rue-ast = { workspace = true }
 rue-diagnostic = { workspace = true }
+rue-options = { workspace = true }
 rue-hir = { workspace = true }
 rue-lir = { workspace = true }
 rue-types = { workspace = true }

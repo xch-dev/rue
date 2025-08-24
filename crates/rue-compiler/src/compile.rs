@@ -22,6 +22,7 @@ mod tests {
     use rue_ast::{AstDocument, AstNode};
     use rue_hir::{Scope, ScopeId};
     use rue_lexer::Lexer;
+    use rue_options::CompilerOptions;
     use rue_parser::Parser;
 
     use crate::{Compiler, compile_document, declare_document};
@@ -35,7 +36,7 @@ mod tests {
 
         let ast = AstDocument::cast(result.node).unwrap();
 
-        let mut ctx = Compiler::new();
+        let mut ctx = Compiler::new(CompilerOptions::default());
 
         let scope = ctx.alloc_scope(Scope::new());
         let declarations = declare_document(&mut ctx, scope, &ast);

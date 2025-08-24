@@ -5,6 +5,7 @@ use rue_diagnostic::{Diagnostic, DiagnosticSeverity};
 use rue_hir::{DependencyGraph, Environment, Lowerer, Scope, ScopeId};
 use rue_lexer::Lexer;
 use rue_lir::{Error, codegen, optimize};
+use rue_options::CompilerOptions;
 use rue_parser::Parser;
 
 use crate::{Compiler, compile_document, declare_document};
@@ -21,8 +22,12 @@ struct PartialCompilation {
     scope: ScopeId,
 }
 
-pub fn compile_file(allocator: &mut Allocator, file: &str) -> Result<Compilation, Error> {
-    let mut ctx = Compiler::new();
+pub fn compile_file(
+    allocator: &mut Allocator,
+    file: &str,
+    options: CompilerOptions,
+) -> Result<Compilation, Error> {
+    let mut ctx = Compiler::new(options.clone());
     let std = compile_file_partial(&mut ctx, include_str!("../../../std.rue"));
     ctx.push_scope(std.scope);
     let file = compile_file_partial(&mut ctx, file);
@@ -44,9 +49,13 @@ pub fn compile_file(allocator: &mut Allocator, file: &str) -> Result<Compilation
     let graph = DependencyGraph::build(&ctx, symbol);
 
     let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(&ctx, &mut arena, &graph);
-    let lir = lowerer.lower_symbol(&Environment::default(), symbol, true);
-    let lir = optimize(&mut arena, lir);
+    let mut lowerer = Lowerer::new(&ctx, &mut arena, &graph, options.clone());
+    let mut lir = lowerer.lower_symbol(&Environment::default(), symbol, true);
+
+    if options.optimize_lir {
+        lir = optimize(&mut arena, lir);
+    }
+
     let ptr = codegen(&arena, allocator, lir)?;
 
     compilation.program = Some(ptr);

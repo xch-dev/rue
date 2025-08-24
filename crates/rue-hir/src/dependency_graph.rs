@@ -29,7 +29,7 @@ impl DependencyGraph {
         graph
     }
 
-    fn references(&self, symbol: SymbolId) -> usize {
+    pub fn references(&self, symbol: SymbolId) -> usize {
         *self.references.get(&symbol).unwrap_or(&0)
     }
 
@@ -56,53 +56,6 @@ impl DependencyGraph {
         }
 
         result
-    }
-}
-
-pub fn should_inline(db: &Database, graph: &DependencyGraph, symbol: SymbolId) -> bool {
-    let references = graph.references(symbol);
-
-    match db.symbol(symbol) {
-        Symbol::Function(function) => {
-            if graph.dependencies(symbol, false).contains(&symbol) {
-                return false;
-            }
-
-            if function.inline {
-                return true;
-            }
-
-            for &parameter in &function.parameters {
-                if graph.references(parameter) > 1 {
-                    return false;
-                }
-            }
-
-            references <= 1
-        }
-        Symbol::Parameter(_) => false,
-        Symbol::Constant(constant) => {
-            if graph.dependencies(symbol, false).contains(&symbol) {
-                return false;
-            }
-
-            if constant.inline {
-                return true;
-            }
-
-            references <= 1
-        }
-        Symbol::Binding(binding) => {
-            if graph.dependencies(symbol, false).contains(&symbol) {
-                return false;
-            }
-
-            if binding.inline {
-                return true;
-            }
-
-            references <= 1
-        }
     }
 }
 

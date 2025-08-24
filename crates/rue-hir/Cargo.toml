@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+rue-options = { workspace = true }
 rue-parser = { workspace = true }
 rue-lir = { workspace = true }
 rue-types = { workspace = true }

@@ -1,4 +1,5 @@
 program: (q . "Hello, world!")
+debug_program: (q . "Hello, world!")
 solution: ()
 output: '"Hello, world!"'
 runtime_cost: 20

@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 use rue_lir::{Lir, LirId, bigint_atom};
+use rue_options::CompilerOptions;
 
 use crate::{
     BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment,
-    FunctionSymbol, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp, should_inline,
+    FunctionSymbol, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
 };
 
 pub struct Lowerer<'d, 'a, 'g> {
@@ -14,15 +15,22 @@ pub struct Lowerer<'d, 'a, 'g> {
     arena: &'a mut Arena<Lir>,
     graph: &'g DependencyGraph,
     inline_symbols: Vec<HashMap<SymbolId, LirId>>,
+    options: CompilerOptions,
 }
 
 impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
-    pub fn new(db: &'d Database, arena: &'a mut Arena<Lir>, graph: &'g DependencyGraph) -> Self {
+    pub fn new(
+        db: &'d Database,
+        arena: &'a mut Arena<Lir>,
+        graph: &'g DependencyGraph,
+        options: CompilerOptions,
+    ) -> Self {
         Self {
             db,
             arena,
             graph,
             inline_symbols: Vec::new(),
+            options,
         }
     }
 
@@ -46,7 +54,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .graph
             .dependencies(symbol, true)
             .into_iter()
-            .filter(|&symbol| !should_inline(self.db, self.graph, symbol))
+            .filter(|&symbol| !self.should_inline(symbol))
             .collect();
         let function_env = Environment::new(&captures, &function.parameters);
 
@@ -206,7 +214,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         args: Vec<HirId>,
     ) -> LirId {
         if let Hir::Reference(symbol) = self.db.hir(function)
-            && should_inline(self.db, self.graph, *symbol)
+            && self.should_inline(*symbol)
             && let Symbol::Function(function) = self.db.symbol(*symbol)
         {
             assert_eq!(function.parameters.len(), args.len());
@@ -236,7 +244,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
         }
 
-        let mut reference = if should_inline(self.db, self.graph, symbol) || is_lambda {
+        let mut reference = if self.should_inline(symbol) || is_lambda {
             self.lower_symbol(env, symbol, false)
         } else {
             self.arena.alloc(Lir::Path(env.path(symbol)))
@@ -247,7 +255,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 .graph
                 .dependencies(symbol, true)
                 .into_iter()
-                .filter(|&symbol| !should_inline(self.db, self.graph, symbol))
+                .filter(|&symbol| !self.should_inline(symbol))
                 .collect();
 
             let mut refs = Vec::new();
@@ -382,7 +390,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     .all(|symbol| !remaining.contains(symbol))
                     || matches!(self.db.symbol(symbol), Symbol::Function(_))
                 {
-                    if !should_inline(self.db, self.graph, symbol) {
+                    if !self.should_inline(symbol) {
                         group.push(symbol);
                     }
                     false
@@ -399,5 +407,52 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         groups
+    }
+
+    fn should_inline(&self, symbol: SymbolId) -> bool {
+        let references = self.graph.references(symbol);
+
+        match self.db.symbol(symbol) {
+            Symbol::Function(function) => {
+                if self.graph.dependencies(symbol, false).contains(&symbol) {
+                    return false;
+                }
+
+                if function.inline {
+                    return true;
+                }
+
+                for &parameter in &function.parameters {
+                    if self.graph.references(parameter) > 1 {
+                        return false;
+                    }
+                }
+
+                references <= 1 && self.options.auto_inline
+            }
+            Symbol::Parameter(_) => false,
+            Symbol::Constant(constant) => {
+                if self.graph.dependencies(symbol, false).contains(&symbol) {
+                    return false;
+                }
+
+                if constant.inline {
+                    return true;
+                }
+
+                references <= 1 && self.options.auto_inline
+            }
+            Symbol::Binding(binding) => {
+                if self.graph.dependencies(symbol, false).contains(&symbol) {
+                    return false;
+                }
+
+                if binding.inline {
+                    return true;
+                }
+
+                references <= 1 && self.options.auto_inline
+            }
+        }
     }
 }

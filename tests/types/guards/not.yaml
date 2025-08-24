@@ -1,4 +1,5 @@
 program: (a (i (not (= (strlen 2) (q . 32))) (q 1 . 100) (q . 2)) 1)
+debug_program: (a (i (not (= (strlen 2) (q . 32))) (q 1 . 100) (q 2 (q . 2) (c 2 1))) 1)
 solution: (42)
 output: '100'
 runtime_cost: 803

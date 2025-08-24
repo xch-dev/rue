@@ -1,4 +1,5 @@
 program: (a (q 2 (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 5 ())) (c (q 2 (i (not (l 5)) (q) (q 16 (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 13 ())) (q . 1))) 1) 1))
+debug_program: (a (q 2 (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c 5 ())) (c (q 2 (i (not (l 5)) (q) (q 16 (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (r 5) ())) (q . 1))) 1) 1))
 solution: ((100 200 300))
 output: '3'
 runtime_cost: 9159

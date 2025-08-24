@@ -1,4 +1,5 @@
 program: (c (c (q . 52) (c (q . 100) ())) ())
+debug_program: (c (c (q . 52) (c (q . 100) ())) ())
 solution: ()
 output: ((g2_add 100))
 runtime_cost: 281

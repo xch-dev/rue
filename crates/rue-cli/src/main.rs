@@ -5,6 +5,7 @@ use clap::Parser;
 use clvm_tools_rs::classic::clvm_tools::binutils::disassemble;
 use clvmr::Allocator;
 use rue_compiler::compile_file;
+use rue_options::CompilerOptions;
 
 #[derive(Debug, Parser)]
 pub enum Command {
@@ -29,7 +30,7 @@ fn build(cmd: BuildCommand) -> Result<()> {
 
     let mut allocator = Allocator::new();
 
-    let result = compile_file(&mut allocator, &source)?;
+    let result = compile_file(&mut allocator, &source, CompilerOptions::default())?;
 
     for diagnostic in result.diagnostics {
         eprintln!("{}", diagnostic.message(&source));
