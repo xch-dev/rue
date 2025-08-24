@@ -68,6 +68,8 @@ ast_nodes!(
     UnionType,
     GroupType,
     PairType,
+    LambdaType,
+    LambdaParameter,
     Block,
     LetStmt,
     ExprStmt,
@@ -90,6 +92,7 @@ ast_nodes!(
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
+    LambdaExpr,
 );
 
 ast_enum!(Item, TypeItem, SymbolItem);
@@ -115,8 +118,17 @@ ast_enum!(
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
+    LambdaExpr,
 );
-ast_enum!(Type, LiteralType, PathType, UnionType, GroupType, PairType);
+ast_enum!(
+    Type,
+    LiteralType,
+    PathType,
+    UnionType,
+    GroupType,
+    PairType,
+    LambdaType,
+);
 
 impl AstDocument {
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
@@ -500,6 +512,22 @@ impl AstFieldAccessExpr {
     }
 }
 
+impl AstLambdaExpr {
+    pub fn parameters(&self) -> impl Iterator<Item = AstFunctionParameter> {
+        self.syntax()
+            .children()
+            .filter_map(AstFunctionParameter::cast)
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+
+    pub fn body(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
 impl AstLiteralType {
     pub fn value(&self) -> Option<SyntaxToken> {
         self.syntax()
@@ -534,5 +562,23 @@ impl AstPairType {
 
     pub fn rest(&self) -> Option<AstType> {
         self.syntax().children().filter_map(AstType::cast).nth(1)
+    }
+}
+
+impl AstLambdaType {
+    pub fn parameters(&self) -> impl Iterator<Item = AstLambdaParameter> {
+        self.syntax()
+            .children()
+            .filter_map(AstLambdaParameter::cast)
+    }
+
+    pub fn return_type(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+}
+
+impl AstLambdaParameter {
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
     }
 }

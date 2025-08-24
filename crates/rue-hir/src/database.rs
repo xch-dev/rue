@@ -114,6 +114,7 @@ impl Database {
             Hir::Block(block) => block
                 .body
                 .map_or("{empty}".to_string(), |body| self.debug_hir(body)),
+            Hir::Lambda(lambda) => self.debug_symbol(*lambda),
             Hir::If(condition, then, else_) => format!(
                 "if {} {{ {} }} else {{ {} }}",
                 self.debug_hir(*condition),

@@ -106,8 +106,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let rest = self.lower_hir(env, rest);
                 self.arena.alloc(Lir::Cons(first, rest))
             }
-            Hir::Reference(symbol) => self.lower_reference(env, symbol),
+            Hir::Reference(symbol) => self.lower_reference(env, symbol, false),
             Hir::Block(block) => self.lower_block(env, block.statements, block.body),
+            Hir::Lambda(lambda) => self.lower_reference(env, lambda, true),
             Hir::If(condition, then, else_) => {
                 let condition = self.lower_hir(env, condition);
                 let then = self.lower_hir(env, then);
@@ -228,14 +229,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         self.arena.alloc(Lir::Run(function, args))
     }
 
-    fn lower_reference(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
+    fn lower_reference(&mut self, env: &Environment, symbol: SymbolId, is_lambda: bool) -> LirId {
         for inline_symbols in self.inline_symbols.iter().rev() {
             if let Some(lir) = inline_symbols.get(&symbol) {
                 return *lir;
             }
         }
 
-        let mut reference = if should_inline(self.db, self.graph, symbol) {
+        let mut reference = if should_inline(self.db, self.graph, symbol) || is_lambda {
             self.lower_symbol(env, symbol, false)
         } else {
             self.arena.alloc(Lir::Path(env.path(symbol)))

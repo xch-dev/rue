@@ -98,6 +98,26 @@ pub fn expr_with(p: &mut Parser<'_>, options: ExprOptions) -> bool {
         if if_expr(p, checkpoint, options.allow_statement) {
             return true;
         }
+    } else if p.at(T![fn]) {
+        p.start_at(checkpoint, SyntaxKind::LambdaExpr);
+        p.expect(T![fn]);
+        p.expect(T!['(']);
+        while !p.at(T![')']) {
+            p.start(SyntaxKind::FunctionParameter);
+            p.expect(SyntaxKind::Ident);
+            p.expect(T![:]);
+            ty(p);
+            p.finish();
+            if !p.try_eat(T![,]) {
+                break;
+            }
+        }
+        p.expect(T![')']);
+        p.expect(T![:]);
+        ty(p);
+        p.expect(T![=>]);
+        expr(p);
+        p.finish();
     } else {
         p.skip();
         return false;

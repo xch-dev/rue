@@ -16,6 +16,7 @@ pub enum Hir {
     Pair(HirId, HirId),
     Reference(SymbolId),
     Block(Block),
+    Lambda(SymbolId),
     If(HirId, HirId, HirId),
     FunctionCall(HirId, Vec<HirId>),
     Unary(UnaryOp, HirId),

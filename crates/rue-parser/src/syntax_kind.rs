@@ -179,6 +179,9 @@ pub enum SyntaxKind {
     #[display("`->`")]
     Arrow,
 
+    #[display("`=>`")]
+    FatArrow,
+
     #[display("`::`")]
     PathSeparator,
 
@@ -224,6 +227,12 @@ pub enum SyntaxKind {
 
     #[display("pair type")]
     PairType,
+
+    #[display("lambda type")]
+    LambdaType,
+
+    #[display("lambda parameter")]
+    LambdaParameter,
 
     #[display("block")]
     Block,
@@ -291,6 +300,9 @@ pub enum SyntaxKind {
     #[display("field access expression")]
     FieldAccessExpr,
 
+    #[display("lambda expression")]
+    LambdaExpr,
+
     // Unexpected cases
     #[display("error")]
     Error,
@@ -349,6 +361,7 @@ macro_rules! T {
     [:] => { $crate::SyntaxKind::Colon };
     [;] => { $crate::SyntaxKind::Semicolon };
     [->] => { $crate::SyntaxKind::Arrow };
+    [=>] => { $crate::SyntaxKind::FatArrow };
     [::] => { $crate::SyntaxKind::PathSeparator };
 }
 
@@ -447,6 +460,7 @@ impl SyntaxKind {
             T![:] => &[T![:]],
             T![;] => &[T![;]],
             T![->] => &[T![-], T![>]],
+            T![=>] => &[T![=], T![>]],
             T![::] => &[T![:], T![:]],
             SyntaxKind::Document => &[SyntaxKind::Document],
             SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],
@@ -462,6 +476,8 @@ impl SyntaxKind {
             SyntaxKind::UnionType => &[SyntaxKind::UnionType],
             SyntaxKind::GroupType => &[SyntaxKind::GroupType],
             SyntaxKind::PairType => &[SyntaxKind::PairType],
+            SyntaxKind::LambdaType => &[SyntaxKind::LambdaType],
+            SyntaxKind::LambdaParameter => &[SyntaxKind::LambdaParameter],
             SyntaxKind::Block => &[SyntaxKind::Block],
             SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],
             SyntaxKind::ExprStmt => &[SyntaxKind::ExprStmt],
@@ -484,6 +500,7 @@ impl SyntaxKind {
             SyntaxKind::GuardExpr => &[SyntaxKind::GuardExpr],
             SyntaxKind::CastExpr => &[SyntaxKind::CastExpr],
             SyntaxKind::FieldAccessExpr => &[SyntaxKind::FieldAccessExpr],
+            SyntaxKind::LambdaExpr => &[SyntaxKind::LambdaExpr],
             SyntaxKind::Error => &[SyntaxKind::Error],
             SyntaxKind::Eof => &[SyntaxKind::Eof],
         }

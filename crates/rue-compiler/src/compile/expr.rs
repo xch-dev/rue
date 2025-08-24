@@ -5,6 +5,7 @@ mod function_call;
 mod group;
 mod guard;
 mod if_expr;
+mod lambda;
 mod list;
 mod literal;
 mod pair;
@@ -19,6 +20,7 @@ pub use function_call::*;
 pub use group::*;
 pub use guard::*;
 pub use if_expr::*;
+pub use lambda::*;
 pub use list::*;
 pub use literal::*;
 pub use pair::*;
@@ -46,6 +48,7 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr) -> Value {
         AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
         AstExpr::FieldAccessExpr(expr) => compile_field_access_expr(ctx, expr),
+        AstExpr::LambdaExpr(expr) => compile_lambda_expr(ctx, expr),
         AstExpr::Block(block) => compile_block(ctx, block, true),
     }
 }
