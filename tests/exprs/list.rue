@@ -1,0 +1,5 @@
+type List<T> = nil | (T, List<T>);
+
+fn main() -> List<Int> {
+    [100, 200, 300]
+}

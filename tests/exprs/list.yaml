@@ -1,0 +1,4 @@
+program: (c (q . 100) (c (q . 200) (c (q . 300) ())))
+solution: ()
+output: (100 200 300)
+cost: 286

@@ -49,10 +49,6 @@ fn main() -> Result<()> {
             continue;
         };
 
-        if name != "conditions" {
-            continue;
-        }
-
         println!("Running {name}");
 
         let mut test_case: TestCase = serde_yml::from_str(&fs::read_to_string(entry.path())?)?;
