@@ -1,4 +1,6 @@
-program: (a (i (= (strlen 2) (q . 32)) (q 2 (q 1 . 100) (c 2 1)) (q 1 . 200)) 1)
+program: (a (i (= (strlen 2) (q . 32)) (q 1 . 100) (q 1 . 200)) 1)
 solution: (42)
 output: '200'
-cost: 653
+runtime_cost: 602
+byte_cost: 444000
+total_cost: 444602

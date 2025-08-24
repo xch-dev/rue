@@ -1,4 +1,6 @@
 program: (a (i (= (strlen 2) (q . 32)) (q . 2) (q 8)) 1)
 solution: (0x2847213288f0988543a76512fab09684131809d98baa8b93c2cd8a03a0e31d41)
 output: '0x2847213288f0988543a76512fab09684131809d98baa8b93c2cd8a03a0e31d41'
-cost: 694
+runtime_cost: 661
+byte_cost: 396000
+total_cost: 396661

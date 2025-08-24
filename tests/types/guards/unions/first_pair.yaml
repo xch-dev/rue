@@ -1,4 +1,6 @@
 program: (a (i (= 4 (q . 100)) (q . 4) (q . 4)) 1)
 solution: ((100 "Hello, world!"))
 output: '100'
-cost: 480
+runtime_cost: 453
+byte_cost: 324000
+total_cost: 324453

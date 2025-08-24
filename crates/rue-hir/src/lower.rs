@@ -4,7 +4,7 @@ use rue_lir::{Lir, LirId, bigint_atom};
 
 use crate::{
     BinaryOp, BindingSymbol, Database, DependencyGraph, Environment, FunctionSymbol, Hir, HirId,
-    Statement, Symbol, SymbolId, UnaryOp,
+    Statement, Symbol, SymbolId, UnaryOp, should_inline,
 };
 
 pub fn lower_symbol(
@@ -33,7 +33,11 @@ fn lower_function(
     function: FunctionSymbol,
     is_main: bool,
 ) -> LirId {
-    let captures: Vec<SymbolId> = graph.dependencies(symbol, true).into_iter().collect();
+    let captures: Vec<SymbolId> = graph
+        .dependencies(symbol, true)
+        .into_iter()
+        .filter(|&symbol| !should_inline(db, graph, symbol))
+        .collect();
     let function_env = Environment::new(&captures, &function.parameters);
 
     let body = lower_hir(db, arena, graph, &function_env, function.body);
@@ -189,6 +193,12 @@ fn lower_reference(
     env: &Environment,
     symbol: SymbolId,
 ) -> LirId {
+    let mut reference = if should_inline(db, graph, symbol) {
+        lower_symbol(db, arena, graph, env, symbol, false)
+    } else {
+        arena.alloc(Lir::Path(env.path(symbol)))
+    };
+
     if matches!(db.symbol(symbol).clone(), Symbol::Function(_)) {
         let captures: Vec<SymbolId> = graph.dependencies(symbol, true).into_iter().collect();
 
@@ -198,12 +208,10 @@ fn lower_reference(
             refs.push(arena.alloc(Lir::Path(env.path(capture))));
         }
 
-        let reference = arena.alloc(Lir::Path(env.path(symbol)));
-
-        return arena.alloc(Lir::Closure(reference, refs));
+        reference = arena.alloc(Lir::Closure(reference, refs));
     }
 
-    arena.alloc(Lir::Path(env.path(symbol)))
+    reference
 }
 
 fn lower_block(
@@ -251,7 +259,7 @@ fn lower_let_stmts(
         stmts.remove(0);
     }
 
-    let binding_groups = group_symbols(symbols, graph);
+    let binding_groups = group_symbols(db, symbols, graph);
 
     let all_bindings: Vec<SymbolId> = binding_groups.iter().rev().flatten().copied().collect();
 
@@ -325,7 +333,11 @@ fn lower_if(
     arena.alloc(Lir::If(condition, then_branch, else_branch))
 }
 
-fn group_symbols(mut symbols: IndexSet<SymbolId>, graph: &DependencyGraph) -> Vec<Vec<SymbolId>> {
+fn group_symbols(
+    db: &Database,
+    mut symbols: IndexSet<SymbolId>,
+    graph: &DependencyGraph,
+) -> Vec<Vec<SymbolId>> {
     let mut groups = Vec::new();
 
     while !symbols.is_empty() {
@@ -339,12 +351,18 @@ fn group_symbols(mut symbols: IndexSet<SymbolId>, graph: &DependencyGraph) -> Ve
                 .iter()
                 .all(|symbol| !remaining.contains(symbol))
             {
-                group.push(symbol);
+                if !should_inline(db, graph, symbol) {
+                    group.push(symbol);
+                }
                 false
             } else {
                 true
             }
         });
+
+        if group.is_empty() {
+            continue;
+        }
 
         groups.push(group);
     }

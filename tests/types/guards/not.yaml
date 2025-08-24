@@ -1,4 +1,6 @@
-program: (a (i (not (= (strlen 2) (q . 32))) (q 1 . 100) (q 2 (q . 2) (c 2 1))) 1)
+program: (a (i (not (= (strlen 2) (q . 32))) (q 1 . 100) (q . 2)) 1)
 solution: (42)
 output: '100'
-cost: 854
+runtime_cost: 803
+byte_cost: 444000
+total_cost: 444803

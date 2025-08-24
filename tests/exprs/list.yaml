@@ -1,4 +1,6 @@
 program: (c (q . 100) (c (q . 200) (c (q . 300) ())))
 solution: ()
 output: (100 200 300)
-cost: 286
+runtime_cost: 257
+byte_cost: 348000
+total_cost: 348257

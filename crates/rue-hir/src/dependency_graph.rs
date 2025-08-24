@@ -29,6 +29,10 @@ impl DependencyGraph {
         graph
     }
 
+    fn references(&self, symbol: SymbolId) -> usize {
+        *self.references.get(&symbol).unwrap_or(&0)
+    }
+
     pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {
         let mut visited = IndexSet::new();
         let mut result = IndexSet::new();
@@ -52,6 +56,30 @@ impl DependencyGraph {
         }
 
         result
+    }
+}
+
+pub fn should_inline(db: &Database, graph: &DependencyGraph, symbol: SymbolId) -> bool {
+    let references = graph.references(symbol);
+
+    match db.symbol(symbol) {
+        Symbol::Binding(_) => references <= 1,
+        Symbol::Parameter(_) => false,
+        Symbol::Function(function) => {
+            for &parameter in &function.parameters {
+                if graph.references(parameter) > 1 {
+                    return false;
+                }
+            }
+
+            if graph.dependencies(symbol, false).contains(&symbol) {
+                return false;
+            }
+
+            // references <= 1
+
+            false
+        }
     }
 }
 

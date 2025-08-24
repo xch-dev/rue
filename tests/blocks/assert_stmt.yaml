@@ -1,4 +1,6 @@
 program: (a (i (> (q . 42) (q . 10)) (q 1 . 100) (q 8)) 1)
 solution: ()
 output: '100'
-cost: 805
+runtime_cost: 772
+byte_cost: 396000
+total_cost: 396772

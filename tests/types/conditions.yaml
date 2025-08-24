@@ -1,4 +1,6 @@
 program: (c (c (q . 52) (c (q . 100) ())) ())
 solution: ()
 output: ((g2_add 100))
-cost: 304
+runtime_cost: 281
+byte_cost: 276000
+total_cost: 276281

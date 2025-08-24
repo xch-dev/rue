@@ -19,7 +19,13 @@ struct TestCase {
     output: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    cost: Option<u64>,
+    runtime_cost: Option<u64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    byte_cost: Option<u64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    total_cost: Option<u64>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     clvm_error: Option<String>,
@@ -77,12 +83,16 @@ fn main() -> Result<()> {
                 Ok(output) => {
                     test_case.output = Some(disassemble(&allocator, output.1, None));
                     let bytes = node_to_bytes(&allocator, ptr)?.len();
-                    test_case.cost = Some(output.0 + bytes as u64);
+                    test_case.runtime_cost = Some(output.0);
+                    test_case.byte_cost = Some(bytes as u64 * 12_000);
+                    test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
                     test_case.clvm_error = None;
                 }
                 Err(error) => {
                     test_case.clvm_error = Some(error.to_string());
-                    test_case.cost = None;
+                    test_case.runtime_cost = None;
+                    test_case.byte_cost = None;
+                    test_case.total_cost = None;
                     test_case.output = None;
                 }
             }
@@ -90,7 +100,9 @@ fn main() -> Result<()> {
             test_case.program = None;
             test_case.output = None;
             test_case.clvm_error = None;
-            test_case.cost = None;
+            test_case.runtime_cost = None;
+            test_case.byte_cost = None;
+            test_case.total_cost = None;
         }
 
         test_case.diagnostics = diagnostics;

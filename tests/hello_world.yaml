@@ -1,4 +1,6 @@
 program: (q . "Hello, world!")
 solution: ()
 output: '"Hello, world!"'
-cost: 36
+runtime_cost: 20
+byte_cost: 192000
+total_cost: 192020
