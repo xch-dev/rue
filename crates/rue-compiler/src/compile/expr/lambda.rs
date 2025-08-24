@@ -22,8 +22,26 @@ pub fn compile_lambda_expr(
 
     let mut parameters = Vec::new();
     let mut params = Vec::new();
+    let mut nil_terminated = true;
+
+    let len = expr.parameters().count();
 
     for (i, param) in expr.parameters().enumerate() {
+        let is_spread = if let Some(spread) = param.spread() {
+            if i == len - 1 {
+                true
+            } else {
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                false
+            }
+        } else {
+            false
+        };
+
+        if is_spread {
+            nil_terminated = false;
+        }
+
         let ty = if let Some(ty) = param.ty() {
             compile_type(ctx, &ty)
         } else if !expected_functions.is_empty()
@@ -83,7 +101,7 @@ pub fn compile_lambda_expr(
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
         params,
-        nil_terminated: true,
+        nil_terminated,
         ret: return_type,
     }));
 
@@ -95,7 +113,7 @@ pub fn compile_lambda_expr(
         scope,
         vars: vec![],
         parameters,
-        nil_terminated: true,
+        nil_terminated,
         return_type,
         body: body.hir,
         inline: false,
