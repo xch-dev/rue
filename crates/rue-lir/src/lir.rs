@@ -7,7 +7,7 @@ pub enum Lir {
     Atom(Vec<u8>),
     Path(u32),
     Quote(LirId),
-    Run(LirId, Vec<LirId>),
+    Run(LirId, LirId),
     Curry(LirId, Vec<LirId>),
     Closure(LirId, Vec<LirId>),
     First(LirId),

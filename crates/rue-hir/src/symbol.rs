@@ -21,6 +21,7 @@ pub struct FunctionSymbol {
     pub scope: ScopeId,
     pub vars: Vec<TypeId>,
     pub parameters: Vec<SymbolId>,
+    pub nil_terminated: bool,
     pub return_type: TypeId,
     pub body: HirId,
     pub inline: bool,

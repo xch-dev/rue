@@ -67,14 +67,10 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             Ok(clvm_quote!(arg).to_clvm(allocator)?)
         }
         Lir::Path(path) => Ok(allocator.new_number((*path).into())?),
-        Lir::Run(callee, args) => {
+        Lir::Run(callee, env) => {
             let callee = codegen(arena, allocator, *callee)?;
-            let mut environment = NodePtr::NIL;
-            for arg in args.iter().rev() {
-                let arg = codegen(arena, allocator, *arg)?;
-                environment = clvm_list!(OP_C, arg, environment).to_clvm(allocator)?;
-            }
-            Ok(clvm_list!(OP_A, callee, environment).to_clvm(allocator)?)
+            let env = codegen(arena, allocator, *env)?;
+            Ok(clvm_list!(OP_A, callee, env).to_clvm(allocator)?)
         }
         Lir::Curry(callee, args) => {
             let callee = codegen(arena, allocator, *callee)?;
@@ -450,7 +446,11 @@ mod tests {
         let a = arena.alloc(Lir::Atom(b"a".to_vec()));
         let b = arena.alloc(Lir::Atom(b"b".to_vec()));
         let c = arena.alloc(Lir::Atom(b"c".to_vec()));
-        let lir = arena.alloc(Lir::Run(a, vec![b, c]));
+        let mut env = arena.alloc(Lir::Atom(Vec::new()));
+        for &arg in [b, c].iter().rev() {
+            env = arena.alloc(Lir::Cons(arg, env));
+        }
+        let lir = arena.alloc(Lir::Run(a, env));
         check(
             &arena,
             lir,

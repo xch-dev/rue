@@ -1,6 +1,6 @@
 use rue_ast::{AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Hir, Value};
+use rue_hir::{FunctionCall, Hir, Value};
 use rue_types::{Type, Union};
 
 use crate::{Compiler, compile_expr};
@@ -27,21 +27,70 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
         ctx.diagnostic(call.syntax(), DiagnosticKind::InvalidFunctionCall(name));
     }
 
+    let expected_function = expected_functions.first();
+
     let mut args = Vec::new();
+    let mut nil_terminated = true;
+    let mut next_spreadable_type = None;
+
+    let len = call.args().count();
 
     for (i, arg) in call.args().enumerate() {
-        let expected_type = if !expected_functions.is_empty()
-            && let params = expected_functions
-                .iter()
-                .filter_map(|function| function.params.get(i).copied())
-                .collect::<Vec<_>>()
-            && !params.is_empty()
-        {
-            Some(if params.len() == 1 {
-                params[0]
+        let is_spread = if let Some(spread) = arg.spread() {
+            if i == len - 1 {
+                if let Some(function) = expected_function {
+                    if function.nil_terminated {
+                        ctx.diagnostic(&spread, DiagnosticKind::InvalidSpread);
+                    } else {
+                        nil_terminated = false;
+                    }
+                }
+                true
             } else {
-                ctx.alloc_type(Type::Union(Union::new(params)))
-            })
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                false
+            }
+        } else {
+            false
+        };
+
+        let expected_type = if let Some(function) = expected_function {
+            if function.nil_terminated || i < len - 1 {
+                function.params.get(i).copied()
+            } else {
+                if next_spreadable_type.is_none() {
+                    next_spreadable_type = Some(function.params.last().copied());
+                }
+
+                match next_spreadable_type {
+                    None => unreachable!(),
+                    Some(Some(ty)) if is_spread => {
+                        next_spreadable_type = None;
+                        Some(ty)
+                    }
+                    Some(Some(ty)) => {
+                        let pairs = rue_types::extract_pairs(ctx.types_mut(), ty);
+
+                        if pairs.is_empty() {
+                            next_spreadable_type = None;
+                            None
+                        } else if pairs.len() == 1 {
+                            next_spreadable_type = Some(Some(pairs[0].rest));
+
+                            Some(pairs[0].first)
+                        } else {
+                            next_spreadable_type = Some(Some(ctx.alloc_type(Type::Union(
+                                Union::new(pairs.iter().map(|pair| pair.rest).collect()),
+                            ))));
+
+                            Some(ctx.alloc_type(Type::Union(Union::new(
+                                pairs.iter().map(|pair| pair.first).collect(),
+                            ))))
+                        }
+                    }
+                    Some(None) => None,
+                }
+            }
         } else {
             None
         };
@@ -60,7 +109,7 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     } else if expected_functions.len() == 1 {
         let function = expected_functions[0].clone();
 
-        if function.nil_terminated {
+        if !function.nil_terminated {
             if args.len() < function.params.len().saturating_sub(1) {
                 ctx.diagnostic(
                     call.syntax(),
@@ -87,7 +136,11 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
         )))
     };
 
-    let hir = ctx.alloc_hir(Hir::FunctionCall(expr.hir, args));
+    let hir = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
+        function: expr.hir,
+        args,
+        nil_terminated,
+    }));
 
     Value::new(hir, ty)
 }

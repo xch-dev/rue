@@ -12,10 +12,10 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let value = optimize(arena, value);
             arena.alloc(Lir::Quote(value))
         }
-        Lir::Run(callee, args) => {
+        Lir::Run(callee, env) => {
             let callee = optimize(arena, callee);
-            let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
-            arena.alloc(Lir::Run(callee, args))
+            let env = optimize(arena, env);
+            arena.alloc(Lir::Run(callee, env))
         }
         Lir::Curry(callee, args) => {
             let callee = optimize(arena, callee);

@@ -159,6 +159,11 @@ pub enum DiagnosticKind {
 
     #[error("Can only spread the last element in a list")]
     NonFinalSpread,
+
+    #[error(
+        "Spread operator cannot be used on function that does not accept a variable number of arguments"
+    )]
+    InvalidSpread,
 }
 
 impl DiagnosticKind {
@@ -198,7 +203,8 @@ impl DiagnosticKind {
             | Self::InvalidFunctionCall(..)
             | Self::ExpectedArgumentsExact(..)
             | Self::ExpectedArgumentsBeforeSpread(..)
-            | Self::NonFinalSpread => DiagnosticSeverity::Error,
+            | Self::NonFinalSpread
+            | Self::InvalidSpread => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields

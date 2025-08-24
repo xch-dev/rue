@@ -90,6 +90,7 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
         scope,
         vars: vec![],
         parameters: vec![parameter],
+        nil_terminated: true,
         return_type: bytes32,
         body,
         inline: true,

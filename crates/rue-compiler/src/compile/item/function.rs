@@ -22,10 +22,28 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 
     let mut parameters = Vec::new();
     let mut param_types = Vec::new();
+    let mut nil_terminated = true;
 
     ctx.push_scope(scope);
 
-    for parameter in function.parameters() {
+    let len = function.parameters().count();
+
+    for (i, parameter) in function.parameters().enumerate() {
+        let is_spread = if let Some(spread) = parameter.spread() {
+            if i == len - 1 {
+                true
+            } else {
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                false
+            }
+        } else {
+            false
+        };
+
+        if is_spread {
+            nil_terminated = false;
+        }
+
         let ty = if let Some(ty) = parameter.ty() {
             compile_type(ctx, &ty)
         } else {
@@ -59,7 +77,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
         params: param_types,
-        nil_terminated: true,
+        nil_terminated,
         ret: return_type,
     }));
 
@@ -69,6 +87,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         scope,
         vars,
         parameters,
+        nil_terminated,
         return_type,
         body,
         inline: function.inline().is_some(),

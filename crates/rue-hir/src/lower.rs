@@ -6,7 +6,7 @@ use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
 use crate::{
-    BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment,
+    BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, FunctionCall,
     FunctionSymbol, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
 };
 
@@ -56,7 +56,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .into_iter()
             .filter(|&symbol| !self.should_inline(symbol))
             .collect();
-        let function_env = Environment::new(&captures, &function.parameters);
+        let function_env =
+            Environment::new(&captures, &function.parameters, function.nil_terminated);
 
         let binding_groups = self.group_symbols(if is_main {
             captures.into_iter().collect()
@@ -123,7 +124,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let else_ = self.lower_hir(env, else_);
                 self.arena.alloc(Lir::If(condition, then, else_))
             }
-            Hir::FunctionCall(function, args) => self.lower_function_call(env, function, args),
+            Hir::FunctionCall(call) => self.lower_function_call(env, call),
             Hir::Unary(op, hir) => {
                 let lir = self.lower_hir(env, hir);
                 match op {
@@ -207,21 +208,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
     }
 
-    fn lower_function_call(
-        &mut self,
-        env: &Environment,
-        function: HirId,
-        args: Vec<HirId>,
-    ) -> LirId {
-        if let Hir::Reference(symbol) = self.db.hir(function)
+    fn lower_function_call(&mut self, env: &Environment, call: FunctionCall) -> LirId {
+        if let Hir::Reference(symbol) = self.db.hir(call.function)
             && self.should_inline(*symbol)
             && let Symbol::Function(function) = self.db.symbol(*symbol)
         {
-            assert_eq!(function.parameters.len(), args.len());
+            assert_eq!(function.parameters.len(), call.args.len());
 
             let mut inline_symbols = HashMap::new();
 
-            for (i, arg) in args.iter().enumerate() {
+            for (i, arg) in call.args.iter().enumerate() {
                 inline_symbols.insert(function.parameters[i], self.lower_hir(env, *arg));
             }
 
@@ -232,9 +228,25 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             return result;
         }
 
-        let function = self.lower_hir(env, function);
-        let args = args.iter().map(|arg| self.lower_hir(env, *arg)).collect();
-        self.arena.alloc(Lir::Run(function, args))
+        let function = self.lower_hir(env, call.function);
+
+        let mut args = Vec::new();
+
+        for arg in call.args {
+            args.push(self.lower_hir(env, arg));
+        }
+
+        let mut env = self.arena.alloc(Lir::Atom(Vec::new()));
+
+        for (i, &arg) in args.iter().rev().enumerate() {
+            if i == 0 && !call.nil_terminated {
+                env = arg;
+            } else {
+                env = self.arena.alloc(Lir::Cons(arg, env));
+            }
+        }
+
+        self.arena.alloc(Lir::Run(function, env))
     }
 
     fn lower_reference(&mut self, env: &Environment, symbol: SymbolId, is_lambda: bool) -> LirId {

@@ -12,6 +12,11 @@ pub fn compare_function(
         return Comparison::Invalid;
     }
 
+    if lhs.nil_terminated != rhs.nil_terminated {
+        // TODO: Make this work
+        return Comparison::Invalid;
+    }
+
     let mut cast = false;
 
     for (i, &lhs) in lhs.params.iter().enumerate() {

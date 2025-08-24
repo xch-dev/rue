@@ -121,11 +121,21 @@ impl Database {
                 self.debug_hir(*then),
                 self.debug_hir(*else_)
             ),
-            Hir::FunctionCall(function, args) => format!(
+            Hir::FunctionCall(call) => format!(
                 "{}({})",
-                self.debug_hir(*function),
-                args.iter()
-                    .map(|arg| self.debug_hir(*arg))
+                self.debug_hir(call.function),
+                call.args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, arg)| {
+                        let arg = self.debug_hir(*arg);
+
+                        if i == call.args.len() - 1 && !call.nil_terminated {
+                            format!("...{arg}")
+                        } else {
+                            arg
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

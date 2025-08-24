@@ -95,6 +95,7 @@ pub fn compile_lambda_expr(
         scope,
         vars: vec![],
         parameters,
+        nil_terminated: true,
         return_type,
         body: body.hir,
         inline: false,

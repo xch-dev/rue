@@ -18,7 +18,7 @@ pub enum Hir {
     Block(Block),
     Lambda(SymbolId),
     If(HirId, HirId, HirId),
-    FunctionCall(HirId, Vec<HirId>),
+    FunctionCall(FunctionCall),
     Unary(UnaryOp, HirId),
     Binary(BinaryOp, HirId, HirId),
 }
@@ -37,4 +37,11 @@ pub enum Statement {
     Return(HirId),
     Assert(HirId),
     Raise(HirId),
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionCall {
+    pub function: HirId,
+    pub args: Vec<HirId>,
+    pub nil_terminated: bool,
 }
