@@ -183,13 +183,16 @@ pub enum SyntaxKind {
     #[display("document")]
     Document,
 
-    #[display("function")]
+    #[display("function item")]
     FunctionItem,
 
     #[display("function parameter")]
     FunctionParameter,
 
-    #[display("type alias")]
+    #[display("constant item")]
+    ConstantItem,
+
+    #[display("type alias item")]
     TypeAliasItem,
 
     #[display("struct item")]
@@ -443,6 +446,7 @@ impl SyntaxKind {
             SyntaxKind::Document => &[SyntaxKind::Document],
             SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],
             SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],
+            SyntaxKind::ConstantItem => &[SyntaxKind::ConstantItem],
             SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
             SyntaxKind::StructItem => &[SyntaxKind::StructItem],
             SyntaxKind::StructField => &[SyntaxKind::StructField],

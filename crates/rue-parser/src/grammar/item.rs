@@ -1,11 +1,13 @@
 use crate::{
     Parser, SyntaxKind, T,
-    grammar::{block::block, generics::generic_parameters, ty::ty},
+    grammar::{block::block, expr::expr, generics::generic_parameters, ty::ty},
 };
 
 pub fn item(p: &mut Parser<'_>) {
     if p.at(T![fn]) {
         function_item(p);
+    } else if p.at(T![const]) {
+        constant_item(p);
     } else if p.at(T![type]) {
         type_alias_item(p);
     } else if p.at(T![struct]) {
@@ -41,6 +43,17 @@ fn function_parameter(p: &mut Parser<'_>) {
     p.expect(SyntaxKind::Ident);
     p.expect(T![:]);
     ty(p);
+    p.finish();
+}
+
+fn constant_item(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::ConstantItem);
+    p.expect(T![const]);
+    p.expect(SyntaxKind::Ident);
+    p.expect(T![:]);
+    ty(p);
+    p.expect(T![=]);
+    expr(p);
     p.finish();
 }
 

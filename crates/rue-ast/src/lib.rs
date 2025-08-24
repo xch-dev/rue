@@ -57,6 +57,7 @@ ast_nodes!(
     Document,
     FunctionItem,
     FunctionParameter,
+    ConstantItem,
     TypeAliasItem,
     StructItem,
     StructField,
@@ -93,7 +94,7 @@ ast_nodes!(
 
 ast_enum!(Item, TypeItem, SymbolItem);
 ast_enum!(TypeItem, TypeAliasItem, StructItem);
-ast_enum!(SymbolItem, FunctionItem);
+ast_enum!(SymbolItem, FunctionItem, ConstantItem);
 ast_enum!(
     Stmt, LetStmt, ExprStmt, IfStmt, ReturnStmt, AssertStmt, RaiseStmt
 );
@@ -149,6 +150,23 @@ impl AstFunctionItem {
 
     pub fn body(&self) -> Option<AstBlock> {
         self.syntax().children().find_map(AstBlock::cast)
+    }
+}
+
+impl AstConstantItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+
+    pub fn value(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 

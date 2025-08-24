@@ -139,9 +139,10 @@ impl Compiler {
         }
 
         match self.symbol(symbol) {
-            Symbol::Binding(binding) => binding.ty,
             Symbol::Function(function) => function.ty,
             Symbol::Parameter(parameter) => parameter.ty,
+            Symbol::Constant(constant) => constant.ty,
+            Symbol::Binding(binding) => binding.ty,
         }
     }
 

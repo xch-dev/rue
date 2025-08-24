@@ -10,6 +10,7 @@ pub type SymbolId = Id<Symbol>;
 pub enum Symbol {
     Function(FunctionSymbol),
     Parameter(ParameterSymbol),
+    Constant(ConstantSymbol),
     Binding(BindingSymbol),
 }
 
@@ -32,8 +33,17 @@ pub struct ParameterSymbol {
 }
 
 #[derive(Debug, Clone)]
+pub struct ConstantSymbol {
+    pub name: Option<SyntaxToken>,
+    pub ty: TypeId,
+    pub value: HirId,
+    pub inline: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct BindingSymbol {
     pub name: Option<SyntaxToken>,
     pub ty: TypeId,
     pub value: HirId,
+    pub inline: bool,
 }

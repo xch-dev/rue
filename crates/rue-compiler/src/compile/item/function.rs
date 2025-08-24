@@ -113,7 +113,7 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
     ctx.pop_scope();
 
     let Symbol::Function(FunctionSymbol { body, .. }) = ctx.symbol_mut(symbol) else {
-        unreachable!()
+        unreachable!();
     };
 
     *body = resolved_body.hir;

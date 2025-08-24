@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use id_arena::Arena;
-use indexmap::IndexSet;
+use indexmap::{IndexSet, indexset};
 use rue_lir::{Lir, LirId, bigint_atom};
 
 use crate::{
-    BinaryOp, BindingSymbol, Database, DependencyGraph, Environment, FunctionSymbol, Hir, HirId,
-    Statement, Symbol, SymbolId, UnaryOp, should_inline,
+    BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment,
+    FunctionSymbol, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp, should_inline,
 };
 
 pub struct Lowerer<'d, 'a, 'g> {
@@ -30,6 +30,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         match self.db.symbol(symbol).clone() {
             Symbol::Function(function) => self.lower_function(env, symbol, function, is_main),
             Symbol::Parameter(_) => unreachable!(),
+            Symbol::Constant(constant) => self.lower_constant(env, constant),
             Symbol::Binding(binding) => self.lower_binding(env, binding),
         }
     }
@@ -49,22 +50,38 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .collect();
         let function_env = Environment::new(&captures, &function.parameters);
 
-        let body = self.lower_hir(&function_env, function.body);
+        let binding_groups = self.group_symbols(if is_main {
+            captures.into_iter().collect()
+        } else {
+            indexset![]
+        });
 
-        if is_main {
-            let mut definitions = Vec::new();
+        let mut expr = self.lower_hir(&function_env, function.body);
 
-            for symbol in captures {
-                let lir = self.lower_symbol(parent_env, symbol, false);
-                definitions.push(self.arena.alloc(Lir::Quote(lir)));
+        for (i, group) in binding_groups.iter().enumerate().rev() {
+            expr = self.arena.alloc(Lir::Quote(expr));
+
+            let mut bind_env = parent_env.clone();
+
+            for existing_group in binding_groups.iter().take(i) {
+                bind_env = bind_env.with_bindings(existing_group);
             }
 
-            let body = self.arena.alloc(Lir::Quote(body));
+            let mut bindings = Vec::new();
 
-            self.arena.alloc(Lir::Curry(body, definitions))
-        } else {
-            body
+            for &symbol in group {
+                let lir = self.lower_symbol(&bind_env, symbol, false);
+                bindings.push(self.arena.alloc(Lir::Quote(lir)));
+            }
+
+            expr = self.arena.alloc(Lir::Curry(expr, bindings));
         }
+
+        expr
+    }
+
+    fn lower_constant(&mut self, env: &Environment, constant: ConstantSymbol) -> LirId {
+        self.lower_hir(env, constant.value)
     }
 
     fn lower_binding(&mut self, env: &Environment, binding: BindingSymbol) -> LirId {
@@ -359,6 +376,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     .dependencies(symbol, true)
                     .iter()
                     .all(|symbol| !remaining.contains(symbol))
+                    || matches!(self.db.symbol(symbol), Symbol::Function(_))
                 {
                     if !should_inline(self.db, self.graph, symbol) {
                         group.push(symbol);

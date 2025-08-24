@@ -63,8 +63,6 @@ pub fn should_inline(db: &Database, graph: &DependencyGraph, symbol: SymbolId) -
     let references = graph.references(symbol);
 
     match db.symbol(symbol) {
-        Symbol::Binding(_) => references <= 1,
-        Symbol::Parameter(_) => false,
         Symbol::Function(function) => {
             if graph.dependencies(symbol, false).contains(&symbol) {
                 return false;
@@ -78,6 +76,29 @@ pub fn should_inline(db: &Database, graph: &DependencyGraph, symbol: SymbolId) -
                 if graph.references(parameter) > 1 {
                     return false;
                 }
+            }
+
+            references <= 1
+        }
+        Symbol::Parameter(_) => false,
+        Symbol::Constant(constant) => {
+            if graph.dependencies(symbol, false).contains(&symbol) {
+                return false;
+            }
+
+            if constant.inline {
+                return true;
+            }
+
+            references <= 1
+        }
+        Symbol::Binding(binding) => {
+            if graph.dependencies(symbol, false).contains(&symbol) {
+                return false;
+            }
+
+            if binding.inline {
+                return true;
             }
 
             references <= 1
@@ -155,6 +176,9 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
             visit_hir(db, graph, function.body);
         }
         Symbol::Parameter(_) => {}
+        Symbol::Constant(constant) => {
+            visit_hir(db, graph, constant.value);
+        }
         Symbol::Binding(binding) => {
             visit_hir(db, graph, binding.value);
         }

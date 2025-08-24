@@ -74,13 +74,16 @@ impl Database {
 
     pub fn debug_symbol(&self, id: SymbolId) -> String {
         let name = match self.symbol(id) {
-            Symbol::Binding(binding) => binding.name.as_ref().map(|name| name.text().to_string()),
             Symbol::Function(function) => {
                 function.name.as_ref().map(|name| name.text().to_string())
             }
             Symbol::Parameter(parameter) => {
                 parameter.name.as_ref().map(|name| name.text().to_string())
             }
+            Symbol::Constant(constant) => {
+                constant.name.as_ref().map(|name| name.text().to_string())
+            }
+            Symbol::Binding(binding) => binding.name.as_ref().map(|name| name.text().to_string()),
         };
 
         if let Some(name) = name {
