@@ -1,0 +1,12 @@
+const HELLO: Bytes = "Hello";
+const WORLD: Bytes = "world";
+const GREETING: Bytes = greet(WORLD);
+const MESSAGE: Bytes = GREETING + " How are you doing?";
+
+fn main() -> Bytes {
+    MESSAGE
+}
+
+fn greet(noun: Bytes) -> Bytes {
+    HELLO + ", " + noun + "!"
+}

@@ -54,6 +54,7 @@ fn constant_item(p: &mut Parser<'_>) {
     ty(p);
     p.expect(T![=]);
     expr(p);
+    p.expect(T![;]);
     p.finish();
 }
 

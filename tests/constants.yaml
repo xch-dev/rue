@@ -1,0 +1,6 @@
+program: (concat (concat (concat (concat (q . "Hello") (q . 11296)) (q . "world")) (q . 33)) (q . " How are you doing?"))
+solution: ()
+output: '"Hello, world! How are you doing?"'
+runtime_cost: 2584
+byte_cost: 792000
+total_cost: 794584
