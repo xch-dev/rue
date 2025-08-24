@@ -1,6 +1,24 @@
 type List<T> = nil | (T, List<T>);
 type Any = Bytes | (Any, Any);
 
+struct CreateCoin {
+    op: 51,
+    puzzle_hash: Bytes32,
+    amount: Int,
+    ...memos: Memos | nil,
+}
+
+struct Memos {
+    value: Any,
+}
+
+struct ReserveFee {
+    op: 52,
+    amount: Int,
+}
+
+type Condition = CreateCoin | ReserveFee;
+
 fn tree_hash(value: Any) -> Bytes32 {
     if value is Bytes {
         tree_hash_atom(value)

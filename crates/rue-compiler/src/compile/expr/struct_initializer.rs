@@ -98,7 +98,7 @@ pub fn compile_struct_initializer_expr(
 
     let mut missing_fields = vec![];
 
-    for name in struct_type.fields.into_iter().rev() {
+    for (i, name) in struct_type.fields.into_iter().rev().enumerate() {
         let value = if let Some(value) = fields.remove(&name) {
             value
         } else {
@@ -106,8 +106,13 @@ pub fn compile_struct_initializer_expr(
             ctx.builtins().unresolved.clone()
         };
 
-        hir = ctx.alloc_hir(Hir::Pair(value.hir, hir));
-        list_type = ctx.alloc_type(Type::Pair(Pair::new(value.ty, list_type)));
+        if !struct_type.nil_terminated && i == 0 {
+            hir = value.hir;
+            list_type = value.ty;
+        } else {
+            hir = ctx.alloc_hir(Hir::Pair(value.hir, hir));
+            list_type = ctx.alloc_type(Type::Pair(Pair::new(value.ty, list_type)));
+        }
     }
 
     if !missing_fields.is_empty() {

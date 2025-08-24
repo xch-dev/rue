@@ -1,16 +1,3 @@
-struct CreateCoin {
-    op: 51,
-    puzzle_hash: Bytes32,
-    amount: Int,
-}
-
-struct ReserveFee {
-    op: 52,
-    amount: Int,
-}
-
-type Condition = CreateCoin | ReserveFee;
-
 fn main() -> List<Condition> {
     [ReserveFee {
         op: 52,

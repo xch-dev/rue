@@ -19,8 +19,26 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
     let ty = ctx.alloc_type(Type::Unresolved);
 
     let mut fields = IndexSet::new();
+    let mut nil_terminated = true;
 
-    for field in struct_item.fields() {
+    let len = struct_item.fields().count();
+
+    for (i, field) in struct_item.fields().enumerate() {
+        let is_spread = if let Some(spread) = field.spread() {
+            if i == len - 1 {
+                true
+            } else {
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+                false
+            }
+        } else {
+            false
+        };
+
+        if is_spread {
+            nil_terminated = false;
+        }
+
         if let Some(name) = field.name()
             && !fields.insert(name.text().to_string())
         {
@@ -37,7 +55,7 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
         name: struct_item.name(),
         generics,
         fields,
-        nil_terminated: true,
+        nil_terminated,
     });
 
     if let Some(name) = struct_item.name() {
@@ -61,6 +79,12 @@ pub fn compile_struct_item(
     ty: TypeId,
     scope: ScopeId,
 ) {
+    let nil_terminated = if let Type::Struct(Struct { nil_terminated, .. }) = ctx.ty(ty) {
+        *nil_terminated
+    } else {
+        unreachable!()
+    };
+
     ctx.push_scope(scope);
 
     let mut types = Vec::new();
@@ -86,8 +110,12 @@ pub fn compile_struct_item(
 
     let mut resolved_inner = ctx.builtins().nil.ty;
 
-    for ty in types.into_iter().rev() {
-        resolved_inner = ctx.alloc_type(Type::Pair(Pair::new(ty, resolved_inner)));
+    for (i, ty) in types.into_iter().rev().enumerate() {
+        if !nil_terminated && i == 0 {
+            resolved_inner = ty;
+        } else {
+            resolved_inner = ctx.alloc_type(Type::Pair(Pair::new(ty, resolved_inner)));
+        }
     }
 
     let Type::Struct(Struct { inner, .. }) = ctx.ty(ty) else {
