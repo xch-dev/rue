@@ -58,7 +58,7 @@ struct CreateCoin {
     opcode = 51,
     puzzle_hash: Bytes32,
     amount: Int,
-    ...memos: Memos | nil,
+    ...memos: Memos | nil = nil,
 }
 
 struct Memos {
