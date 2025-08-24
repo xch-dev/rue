@@ -7,7 +7,7 @@ use crate::{Compiler, compile_expr};
 
 pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr) -> Value {
     let expr = if let Some(expr) = access.expr() {
-        compile_expr(ctx, &expr)
+        compile_expr(ctx, &expr, None)
     } else {
         ctx.builtins().unresolved.clone()
     };

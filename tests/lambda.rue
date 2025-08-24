@@ -3,7 +3,5 @@ fn main(num: Int) -> Int {
 }
 
 fn adder(a: Int) -> fn(Int) -> Int {
-    fn(b: Int): Int => {
-        a + b
-    }
+    fn(b) => a + b
 }

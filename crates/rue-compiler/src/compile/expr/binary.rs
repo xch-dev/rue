@@ -10,7 +10,7 @@ use crate::{Compiler, compile_expr};
 pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value {
     let left = |ctx: &mut Compiler| {
         if let Some(left) = binary.left() {
-            compile_expr(ctx, &left)
+            compile_expr(ctx, &left, None)
         } else {
             ctx.builtins().unresolved.clone()
         }
@@ -18,7 +18,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
 
     let right = |ctx: &mut Compiler| {
         if let Some(right) = binary.right() {
-            compile_expr(ctx, &right)
+            compile_expr(ctx, &right, None)
         } else {
             ctx.builtins().unresolved.clone()
         }

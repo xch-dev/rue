@@ -1,18 +1,23 @@
 use rue_ast::AstIfStmt;
 use rue_hir::Statement;
+use rue_types::TypeId;
 
 use crate::{Compiler, compile_block, compile_expr};
 
-pub fn compile_if_stmt(ctx: &mut Compiler, stmt: &AstIfStmt) -> Statement {
+pub fn compile_if_stmt(
+    ctx: &mut Compiler,
+    stmt: &AstIfStmt,
+    expected_type: Option<TypeId>,
+) -> Statement {
     let condition = if let Some(condition) = stmt.condition() {
-        compile_expr(ctx, &condition)
+        compile_expr(ctx, &condition, None)
     } else {
         ctx.builtins().unresolved.clone()
     };
 
     let then_block = if let Some(then_block) = stmt.then_block() {
         let index = ctx.push_mappings(condition.then_map.clone());
-        let value = compile_block(ctx, &then_block, false);
+        let value = compile_block(ctx, &then_block, false, expected_type);
         ctx.revert_mappings(index);
         value
     } else {

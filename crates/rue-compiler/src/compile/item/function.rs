@@ -102,7 +102,7 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
 
     let resolved_body = if let Some(body) = function.body() {
         let index = ctx.mapping_checkpoint();
-        let value = compile_block(ctx, &body, true);
+        let value = compile_block(ctx, &body, true, Some(return_type));
         ctx.assign_type(body.syntax(), value.ty, return_type);
         ctx.revert_mappings(index);
         value

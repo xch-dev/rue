@@ -10,7 +10,7 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
         return ctx.builtins().unresolved.clone();
     };
 
-    let value = compile_expr(ctx, &expr);
+    let value = compile_expr(ctx, &expr, None);
 
     let Some(op) = prefix.op() else {
         return value;

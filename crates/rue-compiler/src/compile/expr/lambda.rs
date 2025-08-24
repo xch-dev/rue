@@ -1,11 +1,21 @@
 use rue_ast::{AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionSymbol, Hir, ParameterSymbol, Scope, Symbol, Value};
-use rue_types::{FunctionType, Type};
+use rue_types::{FunctionType, Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr, compile_type};
 
-pub fn compile_lambda_expr(ctx: &mut Compiler, expr: &AstLambdaExpr) -> Value {
+pub fn compile_lambda_expr(
+    ctx: &mut Compiler,
+    expr: &AstLambdaExpr,
+    expected_type: Option<TypeId>,
+) -> Value {
+    let expected_functions = if let Some(ty) = expected_type {
+        rue_types::extract_functions(ctx.types_mut(), ty)
+    } else {
+        vec![]
+    };
+
     let scope = ctx.alloc_scope(Scope::new());
 
     ctx.push_scope(scope);
@@ -13,10 +23,26 @@ pub fn compile_lambda_expr(ctx: &mut Compiler, expr: &AstLambdaExpr) -> Value {
     let mut parameters = Vec::new();
     let mut params = Vec::new();
 
-    for param in expr.parameters() {
+    for (i, param) in expr.parameters().enumerate() {
         let ty = if let Some(ty) = param.ty() {
             compile_type(ctx, &ty)
+        } else if !expected_functions.is_empty()
+            && let params = expected_functions
+                .iter()
+                .filter_map(|function| function.params.get(i).copied())
+                .collect::<Vec<_>>()
+            && !params.is_empty()
+        {
+            if params.len() == 1 {
+                params[0]
+            } else {
+                ctx.alloc_type(Type::Union(Union::new(params)))
+            }
         } else {
+            ctx.diagnostic(
+                param.syntax(),
+                DiagnosticKind::CannotInferParameterType(param.name().unwrap().text().to_string()),
+            );
             ctx.builtins().unresolved.ty
         };
 
@@ -48,7 +74,7 @@ pub fn compile_lambda_expr(ctx: &mut Compiler, expr: &AstLambdaExpr) -> Value {
     };
 
     let body = if let Some(body) = expr.body() {
-        let result = compile_expr(ctx, &body);
+        let result = compile_expr(ctx, &body, Some(return_type));
         ctx.assign_type(expr.syntax(), result.ty, return_type);
         result
     } else {

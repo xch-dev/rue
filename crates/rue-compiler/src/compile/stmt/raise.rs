@@ -5,7 +5,7 @@ use crate::{Compiler, compile_expr};
 
 pub fn compile_raise_stmt(ctx: &mut Compiler, stmt: &AstRaiseStmt) -> Statement {
     let value = if let Some(expr) = stmt.expr() {
-        compile_expr(ctx, &expr)
+        compile_expr(ctx, &expr, None)
     } else {
         ctx.builtins().unresolved.clone()
     };

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use rue_ast::{AstNode, AstStructInitializerExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, Value};
-use rue_types::{Pair, Type};
+use rue_types::{Pair, Type, Union};
 
 use crate::{Compiler, PathKind, PathResult, compile_expr, compile_path};
 
@@ -27,11 +27,47 @@ pub fn compile_struct_initializer_expr(
         return ctx.builtins().unresolved.clone();
     };
 
+    let mut expected_field_types = HashMap::new();
+    let mut current = struct_type.inner;
+
+    for field in &struct_type.fields {
+        let pairs = rue_types::extract_pairs(ctx.types_mut(), current);
+
+        if pairs.is_empty() {
+            break;
+        }
+
+        let first = if pairs.len() == 1 {
+            pairs[0].first
+        } else {
+            ctx.alloc_type(Type::Union(Union::new(
+                pairs.iter().map(|pair| pair.first).collect(),
+            )))
+        };
+
+        let rest = if pairs.len() == 1 {
+            pairs[0].rest
+        } else {
+            ctx.alloc_type(Type::Union(Union::new(
+                pairs.iter().map(|pair| pair.rest).collect(),
+            )))
+        };
+
+        expected_field_types.insert(field.clone(), first);
+        current = rest;
+    }
+
     let mut fields = HashMap::new();
 
     for field in expr.fields() {
         let value = if let Some(expr) = field.expr() {
-            compile_expr(ctx, &expr)
+            compile_expr(
+                ctx,
+                &expr,
+                field
+                    .name()
+                    .and_then(|name| expected_field_types.get(name.text()).copied()),
+            )
         } else {
             ctx.builtins().unresolved.clone()
         };

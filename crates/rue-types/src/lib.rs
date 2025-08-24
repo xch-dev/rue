@@ -1,6 +1,7 @@
 mod attributes;
 mod check;
 mod compare;
+mod extractors;
 mod stringify;
 mod substitute;
 mod subtract;
@@ -10,6 +11,7 @@ mod unwrap;
 pub(crate) use attributes::*;
 pub use check::*;
 pub use compare::*;
+pub use extractors::*;
 pub use stringify::*;
 pub use substitute::*;
 pub use subtract::*;

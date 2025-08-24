@@ -1,10 +1,16 @@
 use rue_ast::{AstBlock, AstNode, AstStmtOrExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Block, Hir, Statement, Value};
+use rue_types::TypeId;
 
 use crate::{Compiler, compile_expr, compile_stmt};
 
-pub fn compile_block(ctx: &mut Compiler, block: &AstBlock, is_expr: bool) -> Value {
+pub fn compile_block(
+    ctx: &mut Compiler,
+    block: &AstBlock,
+    is_expr: bool,
+    expected_type: Option<TypeId>,
+) -> Value {
     let mut statements = Vec::new();
     let mut body = None;
     let mut has_return = false;
@@ -12,7 +18,7 @@ pub fn compile_block(ctx: &mut Compiler, block: &AstBlock, is_expr: bool) -> Val
     for stmt in block.items() {
         match stmt {
             AstStmtOrExpr::Stmt(stmt) => {
-                let compiled = compile_stmt(ctx, &stmt);
+                let compiled = compile_stmt(ctx, &stmt, expected_type);
                 match &compiled {
                     Statement::Return(_) => {
                         if is_expr {
@@ -37,7 +43,7 @@ pub fn compile_block(ctx: &mut Compiler, block: &AstBlock, is_expr: bool) -> Val
                 if !is_expr {
                     ctx.diagnostic(expr.syntax(), DiagnosticKind::UnexpectedImplicitReturn);
                 }
-                body = Some(compile_expr(ctx, &expr));
+                body = Some(compile_expr(ctx, &expr, expected_type));
                 has_return = true;
             }
         }

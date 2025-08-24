@@ -105,16 +105,18 @@ pub fn expr_with(p: &mut Parser<'_>, options: ExprOptions) -> bool {
         while !p.at(T![')']) {
             p.start(SyntaxKind::FunctionParameter);
             p.expect(SyntaxKind::Ident);
-            p.expect(T![:]);
-            ty(p);
+            if p.try_eat(T![:]) {
+                ty(p);
+            }
             p.finish();
             if !p.try_eat(T![,]) {
                 break;
             }
         }
         p.expect(T![')']);
-        p.expect(T![:]);
-        ty(p);
+        if p.try_eat(T![:]) {
+            ty(p);
+        }
         p.expect(T![=>]);
         expr(p);
         p.finish();

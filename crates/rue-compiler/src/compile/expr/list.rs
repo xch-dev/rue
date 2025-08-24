@@ -1,14 +1,45 @@
 use rue_ast::AstListExpr;
 use rue_hir::{Hir, Value};
-use rue_types::{Pair, Type};
+use rue_types::{Pair, Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr};
 
-pub fn compile_list_expr(ctx: &mut Compiler, list: &AstListExpr) -> Value {
+pub fn compile_list_expr(
+    ctx: &mut Compiler,
+    list: &AstListExpr,
+    mut expected_type: Option<TypeId>,
+) -> Value {
     let mut values = Vec::new();
 
     for expr in list.exprs() {
-        values.push(compile_expr(ctx, &expr));
+        let item_type = if let Some(ty) = expected_type
+            && let pairs = rue_types::extract_pairs(ctx.types_mut(), ty)
+            && !pairs.is_empty()
+        {
+            let first = if pairs.len() == 1 {
+                pairs[0].first
+            } else {
+                ctx.alloc_type(Type::Union(Union::new(
+                    pairs.iter().map(|pair| pair.first).collect(),
+                )))
+            };
+
+            let rest = if pairs.len() == 1 {
+                pairs[0].rest
+            } else {
+                ctx.alloc_type(Type::Union(Union::new(
+                    pairs.iter().map(|pair| pair.rest).collect(),
+                )))
+            };
+
+            expected_type = Some(rest);
+
+            Some(first)
+        } else {
+            None
+        };
+
+        values.push(compile_expr(ctx, &expr, item_type));
     }
 
     let mut hir = ctx.builtins().nil.hir;

@@ -1,12 +1,16 @@
 use rue_ast::{AstIfExpr, AstNode};
 use rue_hir::{Hir, Value};
-use rue_types::{Type, Union};
+use rue_types::{Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr};
 
-pub fn compile_if_expr(ctx: &mut Compiler, expr: &AstIfExpr) -> Value {
+pub fn compile_if_expr(
+    ctx: &mut Compiler,
+    expr: &AstIfExpr,
+    expected_type: Option<TypeId>,
+) -> Value {
     let condition = if let Some(condition) = expr.condition() {
-        let value = compile_expr(ctx, &condition);
+        let value = compile_expr(ctx, &condition, None);
         ctx.assign_type(condition.syntax(), value.ty, ctx.builtins().bool);
         value
     } else {
@@ -15,7 +19,7 @@ pub fn compile_if_expr(ctx: &mut Compiler, expr: &AstIfExpr) -> Value {
 
     let then_expr = if let Some(then_expr) = expr.then_expr() {
         let index = ctx.push_mappings(condition.then_map.clone());
-        let value = compile_expr(ctx, &then_expr);
+        let value = compile_expr(ctx, &then_expr, expected_type);
         ctx.revert_mappings(index);
         value
     } else {
@@ -24,7 +28,7 @@ pub fn compile_if_expr(ctx: &mut Compiler, expr: &AstIfExpr) -> Value {
 
     let else_expr = if let Some(else_expr) = expr.else_expr() {
         let index = ctx.push_mappings(condition.else_map.clone());
-        let value = compile_expr(ctx, &else_expr);
+        let value = compile_expr(ctx, &else_expr, expected_type);
         ctx.revert_mappings(index);
         value
     } else {

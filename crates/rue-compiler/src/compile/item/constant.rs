@@ -43,7 +43,7 @@ pub fn compile_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: 
     };
 
     let resolved_value = if let Some(expr) = constant.value() {
-        let value = compile_expr(ctx, &expr);
+        let value = compile_expr(ctx, &expr, Some(ty));
         ctx.assign_type(expr.syntax(), value.ty, ty);
         value
     } else {
