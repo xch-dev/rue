@@ -58,7 +58,11 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
         }
         Lir::Listp(value) => {
             let value = optimize(arena, value);
-            arena.alloc(Lir::Listp(value))
+            match arena[value].clone() {
+                Lir::Atom(_) => arena.alloc(Lir::Atom(vec![])),
+                Lir::Cons(..) => arena.alloc(Lir::Atom(vec![1])),
+                _ => arena.alloc(Lir::Listp(value)),
+            }
         }
         Lir::Add(args) => {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
