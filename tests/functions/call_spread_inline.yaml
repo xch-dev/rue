@@ -1,0 +1,7 @@
+program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+debug_program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+solution: ()
+output: (q 2 3)
+runtime_cost: 257
+byte_cost: 300000
+total_cost: 300257

@@ -213,12 +213,38 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             && self.should_inline(*symbol)
             && let Symbol::Function(function) = self.db.symbol(*symbol)
         {
-            assert_eq!(function.parameters.len(), call.args.len());
-
             let mut inline_symbols = HashMap::new();
 
-            for (i, arg) in call.args.iter().enumerate() {
-                inline_symbols.insert(function.parameters[i], self.lower_hir(env, *arg));
+            let mut args = Vec::new();
+
+            for arg in call.args {
+                args.push(self.lower_hir(env, arg));
+            }
+
+            if function.nil_terminated {
+                for (i, arg) in args.into_iter().enumerate() {
+                    inline_symbols.insert(function.parameters[i], arg);
+                }
+            } else {
+                let mut arg_iter = args.into_iter().enumerate();
+
+                for (i, arg) in (&mut arg_iter).take(function.parameters.len() - 1) {
+                    inline_symbols.insert(function.parameters[i], arg);
+                }
+
+                let mut last_arg = self.arena.alloc(Lir::Atom(vec![]));
+
+                for (i, (_, arg)) in arg_iter.rev().enumerate() {
+                    if i == 0 && !call.nil_terminated {
+                        last_arg = arg;
+                    } else {
+                        last_arg = self.arena.alloc(Lir::Cons(arg, last_arg));
+                    }
+                }
+
+                if let Some(last_param) = function.parameters.last() {
+                    inline_symbols.insert(*last_param, last_arg);
+                }
             }
 
             self.inline_symbols.push(inline_symbols);
