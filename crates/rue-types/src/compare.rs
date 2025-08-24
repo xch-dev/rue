@@ -71,6 +71,8 @@ pub(crate) fn compare_with_context(
                 comparison => comparison,
             }
         }
+        (Type::Union(lhs), _) => compare_from_union(arena, ctx, lhs, rhs),
+        (_, Type::Union(rhs)) => compare_to_union(arena, ctx, lhs, rhs),
         (Type::Struct(lhs), _) => match compare_with_context(arena, ctx, lhs.inner, rhs) {
             Comparison::Assign => Comparison::Cast,
             comparison => comparison,
@@ -79,8 +81,6 @@ pub(crate) fn compare_with_context(
             Comparison::Assign => Comparison::Cast,
             comparison => comparison,
         },
-        (Type::Union(lhs), _) => compare_from_union(arena, ctx, lhs, rhs),
-        (_, Type::Union(rhs)) => compare_to_union(arena, ctx, lhs, rhs),
     };
 
     ctx.comparison_stack.pop().unwrap();

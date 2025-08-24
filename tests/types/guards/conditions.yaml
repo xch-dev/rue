@@ -1,0 +1,4 @@
+program: (c (c (q . 52) (c (q . 100) ())) ())
+solution: ()
+output: ((g2_add 100))
+cost: 304

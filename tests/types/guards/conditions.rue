@@ -1,0 +1,18 @@
+struct CreateCoin {
+    op: 51,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+struct ReserveFee {
+    op: 52,
+    amount: Int,
+}
+
+type Condition = CreateCoin | ReserveFee;
+
+type List<T> = nil | (T, List<T>);
+
+fn main() -> List<Condition> {
+    ((52, (100, nil)) as ReserveFee, nil)
+}

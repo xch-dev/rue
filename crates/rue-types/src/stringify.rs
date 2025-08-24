@@ -8,7 +8,11 @@ pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
     stringify_impl(arena, id, &mut IndexMap::new())
 }
 
-fn stringify_impl(arena: &Arena<Type>, id: TypeId, stack: &mut IndexMap<TypeId, bool>) -> String {
+pub(crate) fn stringify_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    stack: &mut IndexMap<TypeId, bool>,
+) -> String {
     let len = stack.len();
 
     if stack.contains_key(&id) {
