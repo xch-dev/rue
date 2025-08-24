@@ -8,6 +8,8 @@ pub fn item(p: &mut Parser<'_>) {
         function_item(p);
     } else if p.at(T![type]) {
         type_alias_item(p);
+    } else if p.at(T![struct]) {
+        struct_item(p);
     } else {
         p.skip();
     }
@@ -52,6 +54,32 @@ fn type_alias_item(p: &mut Parser<'_>) {
     p.expect(T![=]);
     ty(p);
     p.expect(T![;]);
+    p.finish();
+}
+
+fn struct_item(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::StructItem);
+    p.expect(T![struct]);
+    p.expect(SyntaxKind::Ident);
+    if p.at(T![<]) {
+        generic_parameters(p);
+    }
+    p.expect(T!['{']);
+    while !p.at(T!['}']) {
+        struct_field(p);
+        if !p.try_eat(T![,]) {
+            break;
+        }
+    }
+    p.expect(T!['}']);
+    p.finish();
+}
+
+fn struct_field(p: &mut Parser<'_>) {
+    p.start(SyntaxKind::StructField);
+    p.expect(SyntaxKind::Ident);
+    p.expect(T![:]);
+    ty(p);
     p.finish();
 }
 

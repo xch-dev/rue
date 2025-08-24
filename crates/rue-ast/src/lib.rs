@@ -58,6 +58,8 @@ ast_nodes!(
     FunctionItem,
     FunctionParameter,
     TypeAliasItem,
+    StructItem,
+    StructField,
     GenericParameters,
     GenericArguments,
     LiteralType,
@@ -88,7 +90,7 @@ ast_nodes!(
 );
 
 ast_enum!(Item, TypeItem, SymbolItem);
-ast_enum!(TypeItem, TypeAliasItem);
+ast_enum!(TypeItem, TypeAliasItem, StructItem);
 ast_enum!(SymbolItem, FunctionItem);
 ast_enum!(
     Stmt, LetStmt, ExprStmt, IfStmt, ReturnStmt, AssertStmt, RaiseStmt
@@ -158,6 +160,38 @@ impl AstTypeAliasItem {
         self.syntax()
             .children()
             .find_map(AstGenericParameters::cast)
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+}
+
+impl AstStructItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn generic_parameters(&self) -> Option<AstGenericParameters> {
+        self.syntax()
+            .children()
+            .find_map(AstGenericParameters::cast)
+    }
+
+    pub fn fields(&self) -> impl Iterator<Item = AstStructField> {
+        self.syntax().children().filter_map(AstStructField::cast)
+    }
+}
+
+impl AstStructField {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
     pub fn ty(&self) -> Option<AstType> {

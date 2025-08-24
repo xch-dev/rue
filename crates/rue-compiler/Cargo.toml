@@ -16,6 +16,7 @@ rowan = { workspace = true }
 num-bigint = { workspace = true }
 hex = { workspace = true }
 clvmr = { workspace = true }
+indexmap = { workspace = true }
 
 [dev-dependencies]
 rue-lexer = { workspace = true }

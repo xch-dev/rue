@@ -7,7 +7,7 @@ use crate::TypeId;
 pub struct Struct {
     pub semantic: TypeId,
     pub inner: TypeId,
-    pub token: Option<SyntaxToken>,
+    pub name: Option<SyntaxToken>,
     pub generics: Vec<TypeId>,
     pub fields: IndexSet<String>,
 }

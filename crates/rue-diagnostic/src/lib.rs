@@ -124,6 +124,9 @@ pub enum DiagnosticKind {
 
     #[error("Unnecessary `+` operator, since it has no effect")]
     UnnecessaryPlus,
+
+    #[error("Duplicate field `{0}` specified in struct")]
+    DuplicateStructField(String),
 }
 
 impl DiagnosticKind {
@@ -152,7 +155,8 @@ impl DiagnosticKind {
             | Self::MissingLetValue
             | Self::UnexpectedImplicitReturn
             | Self::MissingReturn
-            | Self::UnknownField(..) => DiagnosticSeverity::Error,
+            | Self::UnknownField(..)
+            | Self::DuplicateStructField(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields

@@ -55,6 +55,7 @@ impl<'a> Lexer<'a> {
             "fn" => TokenKind::Fn,
             "const" => TokenKind::Const,
             "type" => TokenKind::Type,
+            "struct" => TokenKind::Struct,
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
@@ -443,6 +444,13 @@ mod tests {
             "type",
             expect![[r#"
                 Type
+            "#]],
+        );
+
+        check(
+            "struct",
+            expect![[r#"
+                Struct
             "#]],
         );
 

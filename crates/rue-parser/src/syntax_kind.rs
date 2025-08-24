@@ -47,6 +47,9 @@ pub enum SyntaxKind {
     #[display("`type`")]
     Type,
 
+    #[display("`struct`")]
+    Struct,
+
     #[display("`let`")]
     Let,
 
@@ -189,6 +192,12 @@ pub enum SyntaxKind {
     #[display("type alias")]
     TypeAliasItem,
 
+    #[display("struct item")]
+    StructItem,
+
+    #[display("struct field")]
+    StructField,
+
     #[display("generic parameters")]
     GenericParameters,
 
@@ -286,6 +295,7 @@ macro_rules! T {
     [fn] => { $crate::SyntaxKind::Fn };
     [const] => { $crate::SyntaxKind::Const };
     [type] => { $crate::SyntaxKind::Type };
+    [struct] => { $crate::SyntaxKind::Struct };
     [let] => { $crate::SyntaxKind::Let };
     [if] => { $crate::SyntaxKind::If };
     [else] => { $crate::SyntaxKind::Else };
@@ -382,6 +392,7 @@ impl SyntaxKind {
             T![fn] => &[T![fn]],
             T![const] => &[T![const]],
             T![type] => &[T![type]],
+            T![struct] => &[T![struct]],
             T![let] => &[T![let]],
             T![if] => &[T![if]],
             T![else] => &[T![else]],
@@ -427,6 +438,8 @@ impl SyntaxKind {
             SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],
             SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],
             SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
+            SyntaxKind::StructItem => &[SyntaxKind::StructItem],
+            SyntaxKind::StructField => &[SyntaxKind::StructField],
             SyntaxKind::GenericParameters => &[SyntaxKind::GenericParameters],
             SyntaxKind::GenericArguments => &[SyntaxKind::GenericArguments],
             SyntaxKind::LiteralType => &[SyntaxKind::LiteralType],
