@@ -3,8 +3,16 @@ type Any = Bytes | (Any, Any);
 
 fn tree_hash(value: Any) -> Bytes32 {
     if value is Bytes {
-        sha256(1 as Bytes + value)
+        tree_hash_atom(value)
     } else {
-        sha256(2 as Bytes + tree_hash(value.first) + tree_hash(value.rest))
+        tree_hash_pair(tree_hash(value.first), tree_hash(value.rest))
     }
+}
+
+fn tree_hash_atom(value: Bytes) -> Bytes32 {
+    sha256(1 as Bytes + value)
+}
+
+fn tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
+    sha256(2 as Bytes + first + rest)
 }
