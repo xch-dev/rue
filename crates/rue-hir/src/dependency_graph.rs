@@ -76,9 +76,7 @@ pub fn should_inline(db: &Database, graph: &DependencyGraph, symbol: SymbolId) -
                 return false;
             }
 
-            // references <= 1
-
-            false
+            references <= 1
         }
     }
 }

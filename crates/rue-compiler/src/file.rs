@@ -2,7 +2,7 @@ use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity};
-use rue_hir::{DependencyGraph, Environment, Scope, ScopeId, lower_symbol};
+use rue_hir::{DependencyGraph, Environment, Lowerer, Scope, ScopeId};
 use rue_lexer::Lexer;
 use rue_lir::{Error, codegen, optimize};
 use rue_parser::Parser;
@@ -44,14 +44,8 @@ pub fn compile_file(allocator: &mut Allocator, file: &str) -> Result<Compilation
     let graph = DependencyGraph::build(&ctx, symbol);
 
     let mut arena = Arena::new();
-    let lir = lower_symbol(
-        &ctx,
-        &mut arena,
-        &graph,
-        &Environment::default(),
-        symbol,
-        true,
-    );
+    let mut lowerer = Lowerer::new(&ctx, &mut arena, &graph);
+    let lir = lowerer.lower_symbol(&Environment::default(), symbol, true);
     let lir = optimize(&mut arena, lir);
     let ptr = codegen(&arena, allocator, lir)?;
 
