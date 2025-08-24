@@ -194,7 +194,20 @@ struct Softfork {
     ...args: List<Any>,
 }
 
-type Condition = CreateCoin | ReserveFee;
+type Condition =
+    Remark | AggSigParent | AggSigPuzzle | AggSigAmount
+    | AggSigPuzzleAmount | AggSigParentAmount | AggSigParentPuzzle
+    | AggSigUnsafe | AggSigMe | CreateCoin | ReserveFee
+    | CreateCoinAnnouncement | AssertCoinAnnouncement
+    | CreatePuzzleAnnouncement | AssertPuzzleAnnouncement
+    | AssertConcurrentSpend | AssertConcurrentPuzzle
+    | SendMessage | ReceiveMessage | AssertMyCoinId | AssertMyParentId
+    | AssertMyPuzzleHash | AssertMyAmount | AssertMyBirthSeconds
+    | AssertMyBirthHeight | AssertEphemeral | AssertSecondsRelative
+    | AssertSecondsAbsolute | AssertHeightRelative | AssertHeightAbsolute
+    | AssertBeforeSecondsRelative | AssertBeforeSecondsAbsolute
+    | AssertBeforeHeightRelative | AssertBeforeHeightAbsolute
+    | Softfork;
 
 fn tree_hash(value: Any) -> Bytes32 {
     if value is Bytes {

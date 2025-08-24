@@ -15,7 +15,7 @@ fn substitute_impl(
     visited: &mut HashMap<TypeId, TypeId>,
 ) -> TypeId {
     if let Some(id) = map.get(&old_id) {
-        return *id;
+        return substitute_impl(arena, *id, map, visited);
     }
 
     if let Some(id) = visited.get(&old_id) {
