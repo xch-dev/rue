@@ -7,7 +7,7 @@ use std::{
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind};
 use rue_hir::{
-    Builtins, Constraint, Database, Scope, ScopeId, Symbol, SymbolId, TypePath, replace_type,
+    Builtins, Constraint, Database, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, replace_type,
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
@@ -28,6 +28,7 @@ pub struct Compiler {
     scope_stack: Vec<ScopeId>,
     mapping_stack: Vec<HashMap<SymbolId, TypeId>>,
     builtins: Builtins,
+    defaults: HashMap<TypeId, HashMap<String, Value>>,
 }
 
 impl Deref for Compiler {
@@ -57,6 +58,7 @@ impl Compiler {
             scope_stack: vec![builtins.scope],
             mapping_stack: vec![HashMap::new()],
             builtins,
+            defaults: HashMap::new(),
         }
     }
 
@@ -277,6 +279,16 @@ impl Compiler {
                 constraint
             }
         }
+    }
+
+    pub fn insert_default_field(&mut self, ty: TypeId, name: String, value: Value) {
+        self.defaults.entry(ty).or_default().insert(name, value);
+    }
+
+    pub fn default_field(&self, ty: TypeId, name: &str) -> Option<Value> {
+        self.defaults
+            .get(&ty)
+            .and_then(|map| map.get(name).cloned())
     }
 }
 

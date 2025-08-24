@@ -253,6 +253,10 @@ impl AstStructField {
     pub fn ty(&self) -> Option<AstType> {
         self.syntax().children().find_map(AstType::cast)
     }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
 }
 
 impl AstFunctionParameter {

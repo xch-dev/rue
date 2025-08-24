@@ -99,8 +99,15 @@ fn struct_field(p: &mut Parser<'_>) {
     p.start(SyntaxKind::StructField);
     p.try_eat(T![...]);
     p.expect(SyntaxKind::Ident);
-    p.expect(T![:]);
-    ty(p);
+    if p.try_eat(T![:]) {
+        ty(p);
+        if p.try_eat(T![=]) {
+            expr(p);
+        }
+    } else {
+        p.expect(T![=]);
+        expr(p);
+    }
     p.finish();
 }
 

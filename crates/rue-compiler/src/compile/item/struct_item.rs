@@ -4,7 +4,7 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Scope, ScopeId};
 use rue_types::{Pair, Struct, Type, TypeId};
 
-use crate::{Compiler, compile_generic_parameters, compile_type};
+use crate::{Compiler, compile_expr, compile_generic_parameters, compile_type};
 
 pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (TypeId, ScopeId) {
     let scope = ctx.alloc_scope(Scope::new());
@@ -76,10 +76,10 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
 pub fn compile_struct_item(
     ctx: &mut Compiler,
     struct_item: &AstStructItem,
-    ty: TypeId,
+    struct_type: TypeId,
     scope: ScopeId,
 ) {
-    let nil_terminated = if let Type::Struct(Struct { nil_terminated, .. }) = ctx.ty(ty) {
+    let nil_terminated = if let Type::Struct(Struct { nil_terminated, .. }) = ctx.ty(struct_type) {
         *nil_terminated
     } else {
         unreachable!()
@@ -91,10 +91,18 @@ pub fn compile_struct_item(
     let mut names = IndexSet::new();
 
     for field in struct_item.fields() {
-        let ty = if let Some(ty) = field.ty() {
-            compile_type(ctx, &ty)
+        let expected_type = field.ty().map(|ty| compile_type(ctx, &ty));
+
+        let field_type = if let Some(expr) = field.expr() {
+            let value = compile_expr(ctx, &expr, expected_type);
+
+            if let Some(name) = field.name() {
+                ctx.insert_default_field(struct_type, name.text().to_string(), value.clone());
+            }
+
+            expected_type.unwrap_or(value.ty)
         } else {
-            ctx.builtins().unresolved.ty
+            expected_type.unwrap_or(ctx.builtins().unresolved.ty)
         };
 
         let Some(name) = field.name() else {
@@ -102,7 +110,7 @@ pub fn compile_struct_item(
         };
 
         if names.insert(name.text().to_string()) {
-            types.push(ty);
+            types.push(field_type);
         }
     }
 
@@ -118,7 +126,7 @@ pub fn compile_struct_item(
         }
     }
 
-    let Type::Struct(Struct { inner, .. }) = ctx.ty(ty) else {
+    let Type::Struct(Struct { inner, .. }) = ctx.ty(struct_type) else {
         unreachable!()
     };
 
