@@ -45,7 +45,7 @@ struct TailInfo {
 // A custom condition `(51 () -113 tail_puzzle tail_solution)`.
 // We can check `CreateCoin` then cast to this type instead.
 struct RunTailCondition {
-    opcode: Int,
+    opcode: 51,
     puzzle_hash: nil,
     amount: Int,
     tail_puzzle: Tail,
@@ -217,23 +217,20 @@ fn morph_conditions(
 
     let condition = conditions.first;
 
+    if condition is RunTailCondition {
+        let rest = morph_conditions(conditions.rest, cat_info, TailInfo {
+            tail_puzzle: condition.tail_puzzle,
+            tail_solution: condition.tail_solution,
+        });
+
+        return Morph {
+            conditions: rest.conditions,
+            sum: rest.sum,
+            tail_info: rest.tail_info,
+        };
+    }
+
     if condition is CreateCoin {
-        // If the amount is -113, it's a TAIL reveal.
-        if condition.amount == -113 {
-            let run_tail = cast::<RunTailCondition>(condition);
-
-            let rest = morph_conditions(conditions.rest, cat_info, TailInfo {
-                tail_puzzle: run_tail.tail_puzzle,
-                tail_solution: run_tail.tail_solution,
-            });
-
-            return Morph {
-                conditions: rest.conditions,
-                sum: rest.sum,
-                tail_info: rest.tail_info,
-            };
-        }
-
         // Otherwise, morph the condition by wrapping the puzzle hash in the CAT layer.
         let morphed = CreateCoin {
             puzzle_hash: cat_puzzle_hash(cat_info, condition.puzzle_hash),
