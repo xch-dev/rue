@@ -22,6 +22,9 @@ pub enum UnaryOp {
 
     #[display("~")]
     BitwiseNot,
+
+    #[display("sha256")]
+    Sha256,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]

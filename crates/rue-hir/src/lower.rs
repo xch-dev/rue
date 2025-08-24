@@ -112,6 +112,7 @@ fn lower_hir(
                     arena.alloc(Lir::Sub(vec![zero, lir]))
                 }
                 UnaryOp::BitwiseNot => arena.alloc(Lir::Lognot(lir)),
+                UnaryOp::Sha256 => arena.alloc(Lir::Sha256(vec![lir])),
             }
         }
         Hir::Binary(op, left, right) => {

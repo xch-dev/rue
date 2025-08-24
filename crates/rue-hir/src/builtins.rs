@@ -1,6 +1,9 @@
-use rue_types::{Atom, Type, TypeId, Union};
+use rue_types::{Atom, FunctionType, Type, TypeId, Union};
 
-use crate::{Database, Hir, Scope, ScopeId, Value};
+use crate::{
+    Database, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId, UnaryOp,
+    Value,
+};
 
 #[derive(Debug, Clone)]
 pub struct Builtins {
@@ -42,6 +45,8 @@ impl Builtins {
         scope.insert_type("Int".to_string(), int);
         scope.insert_type("Bool".to_string(), bool);
 
+        scope.insert_symbol("sha256".to_string(), sha256(db, bytes, bytes32));
+
         let scope = db.alloc_scope(scope);
 
         Self {
@@ -57,4 +62,34 @@ impl Builtins {
             false_value: Value::new(false_hir, false_type),
         }
     }
+}
+
+fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new());
+
+    let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: bytes,
+    }));
+
+    db.scope_mut(scope)
+        .insert_symbol("value".to_string(), parameter);
+
+    let reference = db.alloc_hir(Hir::Reference(parameter));
+    let body = db.alloc_hir(Hir::Unary(UnaryOp::Sha256, reference));
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        params: vec![bytes],
+        ret: bytes32,
+    }));
+
+    db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: None,
+        ty,
+        scope,
+        vars: vec![],
+        parameters: vec![parameter],
+        return_type: bytes32,
+        body,
+    }))
 }
