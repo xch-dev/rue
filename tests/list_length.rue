@@ -1,5 +1,3 @@
-type List<T> = nil | (T, List<T>);
-
 fn main(list: List<Int>) -> Int {
     calculate_length(list)
 }

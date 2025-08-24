@@ -1,0 +1,1 @@
+type List<T> = nil | (T, List<T>);

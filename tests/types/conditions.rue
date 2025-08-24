@@ -11,8 +11,6 @@ struct ReserveFee {
 
 type Condition = CreateCoin | ReserveFee;
 
-type List<T> = nil | (T, List<T>);
-
 fn main() -> List<Condition> {
     [ReserveFee {
         op: 52,

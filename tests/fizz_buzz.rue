@@ -1,5 +1,3 @@
-type List<T> = nil | (T, List<T>);
-
 fn main(num: Int) -> List<Bytes> {
     fizz_buzz(1, num)
 }
