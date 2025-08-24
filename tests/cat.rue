@@ -32,14 +32,14 @@ type Tail = fn(
     lineage_proof: LineageProof | nil,
     extra_delta: Int,
     conditions: List<CatCondition>,
-    tail_solution: List<Any>,
+    tail_solution: Any,
 ) -> List<CatCondition>;
 
 // Information about the TAIL reveal.
 // This is revealed with `RunTail`.
 struct TailInfo {
     tail_puzzle: Tail,
-    tail_solution: List<Any>,
+    tail_solution: Any,
 }
 
 // A custom condition `(51 () -113 tail_puzzle tail_solution)`.
@@ -49,7 +49,7 @@ struct RunTail {
     puzzle_hash: nil,
     amount: Int,
     tail_puzzle: Tail,
-    tail_solution: List<Any>,
+    tail_solution: Any,
 }
 
 type CatCondition = Condition | RunTail;
