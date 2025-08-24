@@ -66,14 +66,18 @@ pub fn should_inline(db: &Database, graph: &DependencyGraph, symbol: SymbolId) -
         Symbol::Binding(_) => references <= 1,
         Symbol::Parameter(_) => false,
         Symbol::Function(function) => {
+            if graph.dependencies(symbol, false).contains(&symbol) {
+                return false;
+            }
+
+            if function.inline {
+                return true;
+            }
+
             for &parameter in &function.parameters {
                 if graph.references(parameter) > 1 {
                     return false;
                 }
-            }
-
-            if graph.dependencies(symbol, false).contains(&symbol) {
-                return false;
             }
 
             references <= 1
