@@ -96,7 +96,7 @@ mod tests {
             "String",
             expect![[r#"
                 PathType@0..6
-                  PathTypeSegment@0..6
+                  PathSegment@0..6
                     Ident@0..6 "String"
             "#]],
             expect![],
@@ -111,13 +111,13 @@ mod tests {
             expect![[r#"
                 UnionType@0..12
                   PathType@0..7
-                    PathTypeSegment@0..7
+                    PathSegment@0..7
                       Ident@0..6 "String"
                       Whitespace@6..7 " "
                   BitwiseOr@7..8 "|"
                   Whitespace@8..9 " "
                   PathType@9..12
-                    PathTypeSegment@9..12
+                    PathSegment@9..12
                       Ident@9..12 "Int"
             "#]],
             expect![],
@@ -129,19 +129,19 @@ mod tests {
             expect![[r#"
                 UnionType@0..19
                   PathType@0..7
-                    PathTypeSegment@0..7
+                    PathSegment@0..7
                       Ident@0..6 "String"
                       Whitespace@6..7 " "
                   BitwiseOr@7..8 "|"
                   Whitespace@8..9 " "
                   PathType@9..13
-                    PathTypeSegment@9..13
+                    PathSegment@9..13
                       Ident@9..12 "Int"
                       Whitespace@12..13 " "
                   BitwiseOr@13..14 "|"
                   Whitespace@14..15 " "
                   PathType@15..19
-                    PathTypeSegment@15..19
+                    PathSegment@15..19
                       Ident@15..19 "Bool"
             "#]],
             expect![],

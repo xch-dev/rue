@@ -135,7 +135,7 @@ mod tests {
                   Arrow@10..12 "->"
                   Whitespace@12..13 " "
                   PathType@13..17
-                    PathTypeSegment@13..17
+                    PathSegment@13..17
                       Ident@13..16 "Int"
                       Whitespace@16..17 " "
                   Block@17..19
@@ -163,7 +163,7 @@ mod tests {
                   Arrow@13..15 "->"
                   Whitespace@15..16 " "
                   PathType@16..18
-                    PathTypeSegment@16..18
+                    PathSegment@16..18
                       Ident@16..17 "T"
                       Whitespace@17..18 " "
                   Block@18..20
@@ -187,14 +187,14 @@ mod tests {
                     Colon@13..14 ":"
                     Whitespace@14..15 " "
                     PathType@15..18
-                      PathTypeSegment@15..18
+                      PathSegment@15..18
                         Ident@15..18 "Int"
                   CloseParen@18..19 ")"
                   Whitespace@19..20 " "
                   Arrow@20..22 "->"
                   Whitespace@22..23 " "
                   PathType@23..27
-                    PathTypeSegment@23..27
+                    PathSegment@23..27
                       Ident@23..26 "Int"
                       Whitespace@26..27 " "
                   Block@27..41
@@ -202,7 +202,7 @@ mod tests {
                     Whitespace@28..29 " "
                     BinaryExpr@29..40
                       PathExpr@29..35
-                        PathExprSegment@29..35
+                        PathSegment@29..35
                           Ident@29..34 "value"
                           Whitespace@34..35 " "
                       Plus@35..36 "+"
@@ -230,7 +230,7 @@ mod tests {
                   Assign@11..12 "="
                   Whitespace@12..13 " "
                   PathType@13..18
-                    PathTypeSegment@13..18
+                    PathSegment@13..18
                       Ident@13..18 "World"
                   Semicolon@18..19 ";"
             "#]],

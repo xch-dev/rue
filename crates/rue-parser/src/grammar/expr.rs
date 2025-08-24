@@ -263,7 +263,7 @@ mod tests {
             "hello",
             expect![[r#"
                 PathExpr@0..5
-                  PathExprSegment@0..5
+                  PathSegment@0..5
                     Ident@0..5 "hello"
             "#]],
             expect![],
@@ -456,11 +456,12 @@ mod tests {
             expect![[r#"
                 FunctionCallExpr@0..9
                   PathExpr@0..5
-                    PathExprSegment@0..5
+                    PathSegment@0..5
                       Ident@0..5 "hello"
                   OpenParen@5..6 "("
-                  LiteralExpr@6..8
-                    Integer@6..8 "42"
+                  ListItem@6..8
+                    LiteralExpr@6..8
+                      Integer@6..8 "42"
                   CloseParen@8..9 ")"
             "#]],
             expect![],
@@ -472,11 +473,12 @@ mod tests {
             expect![[r#"
                 FunctionCallExpr@0..10
                   PathExpr@0..5
-                    PathExprSegment@0..5
+                    PathSegment@0..5
                       Ident@0..5 "hello"
                   OpenParen@5..6 "("
-                  LiteralExpr@6..8
-                    Integer@6..8 "42"
+                  ListItem@6..8
+                    LiteralExpr@6..8
+                      Integer@6..8 "42"
                   Comma@8..9 ","
                   CloseParen@9..10 ")"
             "#]],
@@ -489,15 +491,17 @@ mod tests {
             expect![[r#"
                 FunctionCallExpr@0..13
                   PathExpr@0..5
-                    PathExprSegment@0..5
+                    PathSegment@0..5
                       Ident@0..5 "hello"
                   OpenParen@5..6 "("
-                  LiteralExpr@6..8
-                    Integer@6..8 "42"
+                  ListItem@6..8
+                    LiteralExpr@6..8
+                      Integer@6..8 "42"
                   Comma@8..9 ","
                   Whitespace@9..10 " "
-                  LiteralExpr@10..12
-                    Integer@10..12 "13"
+                  ListItem@10..12
+                    LiteralExpr@10..12
+                      Integer@10..12 "13"
                   CloseParen@12..13 ")"
             "#]],
             expect![],

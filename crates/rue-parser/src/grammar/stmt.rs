@@ -134,7 +134,7 @@ mod tests {
                   Colon@9..10 ":"
                   Whitespace@10..11 " "
                   PathType@11..15
-                    PathTypeSegment@11..15
+                    PathSegment@11..15
                       Ident@11..14 "Int"
                       Whitespace@14..15 " "
                   Assign@15..16 "="
