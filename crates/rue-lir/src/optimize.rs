@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use id_arena::Arena;
 
-use crate::{Lir, LirId, first_path, rest_path};
+use crate::{Lir, LirId, bigint_atom, first_path, rest_path};
 
 pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
     match arena[lir].clone() {
@@ -29,22 +29,27 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
         }
         Lir::Closure(callee, args) => {
             let callee = optimize(arena, callee);
+            if args.is_empty() {
+                return callee;
+            }
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
             arena.alloc(Lir::Closure(callee, args))
         }
         Lir::First(value) => {
             let value = optimize(arena, value);
-            if let Lir::Path(path) = arena[value].clone() {
-                return arena.alloc(Lir::Path(first_path(path)));
+            match arena[value].clone() {
+                Lir::Path(path) => arena.alloc(Lir::Path(first_path(path))),
+                Lir::Cons(first, _) => first,
+                _ => arena.alloc(Lir::First(value)),
             }
-            arena.alloc(Lir::First(value))
         }
         Lir::Rest(value) => {
             let value = optimize(arena, value);
-            if let Lir::Path(path) = arena[value].clone() {
-                return arena.alloc(Lir::Path(rest_path(path)));
+            match arena[value].clone() {
+                Lir::Path(path) => arena.alloc(Lir::Path(rest_path(path))),
+                Lir::Cons(_, rest) => rest,
+                _ => arena.alloc(Lir::Rest(value)),
             }
-            arena.alloc(Lir::Rest(value))
         }
         Lir::Cons(first, rest) => {
             let first = optimize(arena, first);
@@ -162,9 +167,14 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
 
             arena.alloc(Lir::Concat(result.into_iter().collect()))
         }
-        Lir::Strlen(string) => {
-            let string = optimize(arena, string);
-            arena.alloc(Lir::Strlen(string))
+        Lir::Strlen(lir) => {
+            let lir = optimize(arena, lir);
+
+            if let Lir::Atom(atom) = &arena[lir] {
+                return arena.alloc(Lir::Atom(bigint_atom(atom.len().into())));
+            }
+
+            arena.alloc(Lir::Strlen(lir))
         }
         Lir::Substr(string, start, end) => {
             let string = optimize(arena, string);
