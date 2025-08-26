@@ -1,32 +1,17 @@
 use id_arena::Arena;
 
-use crate::{Type, TypeId};
+use crate::{Pair, Type, TypeId};
 
-#[derive(Debug, Clone, Copy)]
-pub struct PairInfo {
-    pub id: TypeId,
-    pub first: TypeId,
-    pub rest: TypeId,
-}
-
-pub fn pairs_of(arena: &Arena<Type>, id: TypeId) -> Vec<PairInfo> {
+pub fn pairs_of(arena: &Arena<Type>, id: TypeId) -> Vec<Pair> {
     match arena[id].clone() {
         Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
         Type::Alias(alias) => pairs_of(arena, alias.inner),
         Type::Struct(ty) => pairs_of(arena, ty.inner),
         Type::Never => vec![],
-        Type::Any => vec![PairInfo {
-            id,
-            first: id,
-            rest: id,
-        }],
+        Type::Any => vec![Pair::new(id, id)],
         Type::List(_) => vec![],
         Type::Atom(_) | Type::Function(_) => vec![],
-        Type::Pair(pair) => vec![PairInfo {
-            id,
-            first: pair.first,
-            rest: pair.rest,
-        }],
+        Type::Pair(pair) => vec![pair],
         Type::Union(ty) => {
             let mut pairs = vec![];
 
