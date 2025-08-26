@@ -1,7 +1,7 @@
-program: (a (i (not (= 2 ())) (q 2 (i (not (= (strlen 2) (q . 48))) (q 2 (i (not (= (strlen 2) (q . 32))) (q 2 (i (not (= 2 (q . 42))) (q . 2) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)
-debug_program: (a (i (not (= 2 ())) (q 2 (i (not (= (strlen 2) (q . 48))) (q 2 (i (not (= (strlen 2) (q . 32))) (q 2 (i (not (= 2 (q . 42))) (q 2 (q . 2) (c 2 1)) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)
+program: (a (i (not (= 2 ())) (q 2 (i (not (a (i (not (l 2)) (q 2 (i (= (strlen 2) (q . 48)) (q 1 . 1) (q)) 1) (q)) 1)) (q 2 (i (not (a (i (not (l 2)) (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q)) 1) (q)) 1)) (q 2 (i (not (a (i (not (l 2)) (q 2 (i (= 2 (q . 42)) (q 1 . 1) (q)) 1) (q)) 1)) (q . 2) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)
+debug_program: (a (i (not (= 2 ())) (q 2 (i (not (a (i (not (l 2)) (q 2 (i (= (strlen 2) (q . 48)) (q 1 . 1) (q)) 1) (q)) 1)) (q 2 (i (not (a (i (not (l 2)) (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q)) 1) (q)) 1)) (q 2 (i (not (a (i (not (l 2)) (q 2 (i (= 2 (q . 42)) (q 1 . 1) (q)) 1) (q)) 1)) (q 2 (q . 2) (c 2 1)) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)
 solution: (100)
 output: '100'
-runtime_cost: 2833
-byte_cost: 1620000
-total_cost: 1622833
+runtime_cost: 5026
+byte_cost: 3276000
+total_cost: 3281026

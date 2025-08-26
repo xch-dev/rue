@@ -14,6 +14,8 @@ pub struct Builtins {
     pub public_key: TypeId,
     pub int: TypeId,
     pub bool: TypeId,
+    pub generic_list: TypeId,
+    pub any: TypeId,
     pub nil: Value,
     pub true_value: Value,
     pub false_value: Value,
@@ -32,6 +34,9 @@ impl Builtins {
         let public_key = db.alloc_type(Type::Atom(Atom::PUBLIC_KEY));
         let int = db.alloc_type(Type::Atom(Atom::INT));
         let bool = db.alloc_type(Type::Union(Union::new(vec![true_type, false_type])));
+        let generic = db.alloc_type(Type::Generic);
+        let generic_list = db.alloc_type(Type::List(generic));
+        let any = db.alloc_type(Type::Any);
 
         let nil_hir = db.alloc_hir(Hir::Nil);
         let true_hir = db.alloc_hir(Hir::Bool(true));
@@ -44,6 +49,8 @@ impl Builtins {
         scope.insert_type("PublicKey".to_string(), public_key);
         scope.insert_type("Int".to_string(), int);
         scope.insert_type("Bool".to_string(), bool);
+        scope.insert_type("List".to_string(), generic_list);
+        scope.insert_type("Any".to_string(), any);
 
         scope.insert_symbol("sha256".to_string(), sha256(db, bytes, bytes32));
         scope.insert_symbol(
@@ -62,6 +69,8 @@ impl Builtins {
             public_key,
             int,
             bool,
+            generic_list,
+            any,
             nil: Value::new(nil_hir, nil_type),
             true_value: Value::new(true_hir, true_type),
             false_value: Value::new(false_hir, false_type),

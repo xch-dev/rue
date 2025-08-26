@@ -25,15 +25,29 @@ pub(crate) fn stringify_impl(
     let result = match arena[id].clone() {
         Type::Unresolved => "{unresolved}".to_string(),
         Type::Generic => "{generic}".to_string(),
-        Type::Ref(id) => stringify_impl(arena, id, stack),
+        Type::Never => "Never".to_string(),
+        Type::Any => "Any".to_string(),
+        Type::List(inner) => format!("List<{}>", stringify_impl(arena, inner, stack)),
         Type::Atom(atom) => atom.to_string(),
         Type::Pair(pair) => {
             let first = stringify_impl(arena, pair.first, stack);
             let rest = stringify_impl(arena, pair.rest, stack);
             format!("({first}, {rest})")
         }
-        Type::Struct(ty) => stringify_impl(arena, ty.inner, stack),
-        Type::Alias(alias) => stringify_impl(arena, alias.inner, stack),
+        Type::Struct(ty) => {
+            if let Some(name) = ty.name {
+                name.text().to_string()
+            } else {
+                stringify_impl(arena, ty.inner, stack)
+            }
+        }
+        Type::Alias(alias) => {
+            if let Some(name) = alias.name {
+                name.text().to_string()
+            } else {
+                stringify_impl(arena, alias.inner, stack)
+            }
+        }
         Type::Apply(apply) => {
             let inner = stringify_impl(arena, apply.inner, stack);
             let generics = apply

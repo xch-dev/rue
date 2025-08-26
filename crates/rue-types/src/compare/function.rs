@@ -3,7 +3,7 @@ use id_arena::Arena;
 use crate::{Comparison, ComparisonContext, FunctionType, Type, compare_with_context};
 
 pub fn compare_function(
-    arena: &Arena<Type>,
+    arena: &mut Arena<Type>,
     ctx: &mut ComparisonContext,
     lhs: FunctionType,
     rhs: FunctionType,
@@ -25,7 +25,6 @@ pub fn compare_function(
         let comparison = compare_with_context(arena, ctx, lhs, rhs);
 
         match comparison {
-            Comparison::Unresolved => return Comparison::Unresolved,
             Comparison::Assign => {}
             Comparison::Cast => {
                 cast = true;
@@ -37,7 +36,6 @@ pub fn compare_function(
     let comparison = compare_with_context(arena, ctx, lhs.ret, rhs.ret);
 
     match comparison {
-        Comparison::Unresolved => return Comparison::Unresolved,
         Comparison::Assign => {}
         Comparison::Cast => {
             cast = true;

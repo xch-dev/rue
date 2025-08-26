@@ -2,7 +2,7 @@ use std::ops::Not;
 
 use id_arena::Arena;
 
-use crate::Type;
+use crate::{Type, TypeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shape {
@@ -43,12 +43,14 @@ impl Not for Shape {
     }
 }
 
-pub fn shape_of(arena: &Arena<Type>, ty: Type) -> Shape {
-    match ty {
+pub fn shape_of(arena: &Arena<Type>, id: TypeId) -> Shape {
+    match arena[id].clone() {
         Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
-        Type::Ref(id) => shape_of(arena, arena[id].clone()),
-        Type::Alias(alias) => shape_of(arena, arena[alias.inner].clone()),
-        Type::Struct(ty) => shape_of(arena, arena[ty.inner].clone()),
+        Type::Alias(alias) => shape_of(arena, alias.inner),
+        Type::Struct(ty) => shape_of(arena, ty.inner),
+        Type::Never => Shape::NONE,
+        Type::Any => Shape::BOTH,
+        Type::List(_) => Shape::BOTH,
         Type::Atom(_) => Shape::ATOM,
         Type::Pair(_) => Shape::PAIR,
         Type::Function(_) => Shape::BOTH,
@@ -56,7 +58,7 @@ pub fn shape_of(arena: &Arena<Type>, ty: Type) -> Shape {
             let mut shape = Shape::NONE;
 
             for &id in &ty.types {
-                let inner = shape_of(arena, arena[id].clone());
+                let inner = shape_of(arena, id);
                 shape.atom |= inner.atom;
                 shape.pair |= inner.pair;
             }

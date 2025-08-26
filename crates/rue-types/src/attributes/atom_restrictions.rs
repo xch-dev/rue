@@ -1,7 +1,9 @@
+use std::borrow::Cow;
+
 use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 
-use crate::{AtomRestriction, Type};
+use crate::{AtomRestriction, Type, TypeId};
 
 #[derive(Debug, Clone)]
 pub enum AtomRestrictions {
@@ -10,12 +12,16 @@ pub enum AtomRestrictions {
     NotAtom,
 }
 
-pub fn atom_restrictions_of(arena: &Arena<Type>, ty: Type) -> AtomRestrictions {
-    match ty {
+pub fn atom_restrictions_of(arena: &Arena<Type>, id: TypeId) -> AtomRestrictions {
+    match arena[id].clone() {
         Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
-        Type::Ref(id) => atom_restrictions_of(arena, arena[id].clone()),
-        Type::Alias(alias) => atom_restrictions_of(arena, arena[alias.inner].clone()),
-        Type::Struct(ty) => atom_restrictions_of(arena, arena[ty.inner].clone()),
+        Type::Alias(alias) => atom_restrictions_of(arena, alias.inner),
+        Type::Struct(ty) => atom_restrictions_of(arena, ty.inner),
+        Type::Never => AtomRestrictions::NotAtom,
+        Type::Any => AtomRestrictions::Unrestricted,
+        Type::List(_) => {
+            AtomRestrictions::Either(indexset![AtomRestriction::Value(Cow::Borrowed(&[]))])
+        }
         Type::Atom(atom) => atom
             .restriction
             .map_or(AtomRestrictions::Unrestricted, |restriction| {
@@ -28,7 +34,7 @@ pub fn atom_restrictions_of(arena: &Arena<Type>, ty: Type) -> AtomRestrictions {
             let mut has_atom = false;
 
             for &id in &ty.types {
-                match atom_restrictions_of(arena, arena[id].clone()) {
+                match atom_restrictions_of(arena, id) {
                     AtomRestrictions::Unrestricted => return AtomRestrictions::Unrestricted,
                     AtomRestrictions::Either(inner) => {
                         for restriction in inner {

@@ -4,17 +4,23 @@ use crate::{Type, TypeId};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PairInfo {
-    pub id: Option<TypeId>,
+    pub id: TypeId,
     pub first: TypeId,
     pub rest: TypeId,
 }
 
-pub fn pairs_of(arena: &Arena<Type>, id: Option<TypeId>, ty: Type) -> Vec<PairInfo> {
-    match ty {
+pub fn pairs_of(arena: &Arena<Type>, id: TypeId) -> Vec<PairInfo> {
+    match arena[id].clone() {
         Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
-        Type::Ref(id) => pairs_of(arena, Some(id), arena[id].clone()),
-        Type::Alias(alias) => pairs_of(arena, Some(alias.inner), arena[alias.inner].clone()),
-        Type::Struct(ty) => pairs_of(arena, Some(ty.inner), arena[ty.inner].clone()),
+        Type::Alias(alias) => pairs_of(arena, alias.inner),
+        Type::Struct(ty) => pairs_of(arena, ty.inner),
+        Type::Never => vec![],
+        Type::Any => vec![PairInfo {
+            id,
+            first: id,
+            rest: id,
+        }],
+        Type::List(_) => vec![],
         Type::Atom(_) | Type::Function(_) => vec![],
         Type::Pair(pair) => vec![PairInfo {
             id,
@@ -25,7 +31,7 @@ pub fn pairs_of(arena: &Arena<Type>, id: Option<TypeId>, ty: Type) -> Vec<PairIn
             let mut pairs = vec![];
 
             for &id in &ty.types {
-                let inner = pairs_of(arena, Some(id), arena[id].clone());
+                let inner = pairs_of(arena, id);
                 pairs.extend(inner);
             }
 

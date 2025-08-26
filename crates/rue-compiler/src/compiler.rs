@@ -206,10 +206,15 @@ impl Compiler {
         to: TypeId,
         kind: ComparisonKind,
     ) -> Constraint {
+        println!(
+            "{} -> {}",
+            rue_types::stringify(self.db.types_mut(), from),
+            rue_types::stringify(self.db.types_mut(), to)
+        );
+
         let comparison = rue_types::compare(self.db.types_mut(), from, to);
 
         match comparison {
-            Comparison::Unresolved => Constraint::new(Check::None),
             Comparison::Assign => {
                 match kind {
                     ComparisonKind::Assign => {}

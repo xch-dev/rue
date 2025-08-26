@@ -3,19 +3,19 @@ mod function;
 mod pair;
 mod unions;
 
+use std::borrow::Cow;
+
 use atom::*;
 use function::*;
 use pair::*;
 use unions::*;
 
 use id_arena::Arena;
-use indexmap::IndexSet;
 
-use crate::{Check, Type, TypeId, Union, substitute};
+use crate::{AtomKind, AtomRestriction, Check, Type, TypeId, substitute};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Comparison {
-    Unresolved,
     Assign,
     Cast,
     Check(Check),
@@ -23,10 +23,7 @@ pub enum Comparison {
 }
 
 #[derive(Debug, Default)]
-pub struct ComparisonContext {
-    comparison_stack: IndexSet<(TypeId, TypeId)>,
-    refinement_stack: IndexSet<(Vec<TypeId>, Vec<TypeId>)>,
-}
+pub struct ComparisonContext {}
 
 impl ComparisonContext {
     pub fn new() -> Self {
@@ -41,25 +38,162 @@ pub fn compare(arena: &mut Arena<Type>, lhs: TypeId, rhs: TypeId) -> Comparison 
 }
 
 pub(crate) fn compare_with_context(
-    arena: &Arena<Type>,
+    arena: &mut Arena<Type>,
     ctx: &mut ComparisonContext,
     lhs: TypeId,
     rhs: TypeId,
 ) -> Comparison {
-    if !ctx.comparison_stack.insert((lhs, rhs)) {
-        return Comparison::Assign;
-    }
-
-    let result = match (arena[lhs].clone(), arena[rhs].clone()) {
+    match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
-        (Type::Ref(lhs), _) => compare_with_context(arena, ctx, lhs, rhs),
-        (_, Type::Ref(rhs)) => compare_with_context(arena, ctx, lhs, rhs),
-        (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Unresolved,
+        (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Generic, _) => Comparison::Invalid,
         (_, Type::Generic) => todo!(),
-        (Type::Function(lhs), Type::Function(rhs)) => compare_function(arena, ctx, lhs, rhs),
-        (Type::Function(_), _) => compare_from_union(arena, ctx, Union::new(vec![lhs]), rhs),
-        (_, Type::Function(_)) => Comparison::Invalid,
+        (Type::Never, _) => Comparison::Assign,
+        (_, Type::Never) => Comparison::Invalid,
+        (_, Type::Any) => Comparison::Assign,
+        (Type::Any, Type::Atom(atom)) => {
+            let Some(restriction) = atom.restriction else {
+                return Comparison::Check(Check::IsAtom);
+            };
+            Comparison::Check(Check::And(vec![Check::IsAtom, Check::Atom(restriction)]))
+        }
+        (Type::Any, Type::Pair(pair)) => {
+            let first = compare_with_context(arena, ctx, lhs, pair.first);
+            let rest = compare_with_context(arena, ctx, lhs, pair.rest);
+            match (first, rest) {
+                (Comparison::Invalid, _) | (_, Comparison::Invalid) => Comparison::Invalid,
+                (Comparison::Assign, Comparison::Assign) => Comparison::Assign,
+                (Comparison::Cast, Comparison::Cast) => Comparison::Cast,
+                (Comparison::Assign, Comparison::Cast) => Comparison::Cast,
+                (Comparison::Cast, Comparison::Assign) => Comparison::Cast,
+                (Comparison::Check(first), Comparison::Check(rest)) => {
+                    Comparison::Check(Check::And(vec![
+                        Check::IsPair,
+                        Check::Pair(Box::new(first), Box::new(rest)),
+                    ]))
+                }
+                (Comparison::Check(first), Comparison::Assign | Comparison::Cast) => {
+                    Comparison::Check(Check::And(vec![
+                        Check::IsPair,
+                        Check::Pair(Box::new(first), Box::new(Check::None)),
+                    ]))
+                }
+                (Comparison::Assign | Comparison::Cast, Comparison::Check(rest)) => {
+                    Comparison::Check(Check::And(vec![
+                        Check::IsPair,
+                        Check::Pair(Box::new(Check::None), Box::new(rest)),
+                    ]))
+                }
+            }
+        }
+        (Type::List(lhs), Type::List(rhs)) => compare_with_context(arena, ctx, lhs, rhs),
+        (Type::Atom(atom), Type::List(_)) => {
+            let Some(restriction) = atom.restriction else {
+                return Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[]))));
+            };
+
+            match restriction {
+                AtomRestriction::Length(length) => {
+                    if length == 0 {
+                        if atom.kind == AtomKind::Bytes {
+                            Comparison::Assign
+                        } else {
+                            Comparison::Cast
+                        }
+                    } else {
+                        Comparison::Invalid
+                    }
+                }
+                AtomRestriction::Value(value) => {
+                    if value.is_empty() {
+                        if atom.kind == AtomKind::Bytes {
+                            Comparison::Assign
+                        } else {
+                            Comparison::Cast
+                        }
+                    } else {
+                        Comparison::Invalid
+                    }
+                }
+            }
+        }
+        (Type::List(_), Type::Atom(atom)) => {
+            let Some(restriction) = atom.restriction else {
+                return Comparison::Check(Check::And(vec![
+                    Check::IsAtom,
+                    Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[]))),
+                ]));
+            };
+
+            match restriction {
+                AtomRestriction::Length(length) => {
+                    if length == 0 {
+                        Comparison::Check(Check::IsAtom)
+                    } else {
+                        Comparison::Invalid
+                    }
+                }
+                AtomRestriction::Value(value) => {
+                    if value.is_empty() {
+                        Comparison::Check(Check::IsAtom)
+                    } else {
+                        Comparison::Invalid
+                    }
+                }
+            }
+        }
+        (Type::List(inner), Type::Pair(pair)) => {
+            let first = compare_with_context(arena, ctx, inner, pair.first);
+            let rest = compare_with_context(arena, ctx, lhs, pair.rest);
+
+            match (first, rest) {
+                (Comparison::Invalid, _) | (_, Comparison::Invalid) => Comparison::Invalid,
+                (Comparison::Assign, Comparison::Assign) => Comparison::Assign,
+                (Comparison::Cast, Comparison::Cast) => Comparison::Cast,
+                (Comparison::Assign, Comparison::Cast) => Comparison::Cast,
+                (Comparison::Cast, Comparison::Assign) => Comparison::Cast,
+                (Comparison::Check(first), Comparison::Check(rest)) => {
+                    Comparison::Check(Check::And(vec![
+                        Check::IsPair,
+                        Check::Pair(Box::new(first), Box::new(rest)),
+                    ]))
+                }
+                (Comparison::Check(first), Comparison::Assign | Comparison::Cast) => {
+                    Comparison::Check(Check::And(vec![
+                        Check::IsPair,
+                        Check::Pair(Box::new(first), Box::new(Check::None)),
+                    ]))
+                }
+                (Comparison::Assign | Comparison::Cast, Comparison::Check(rest)) => {
+                    Comparison::Check(Check::And(vec![
+                        Check::IsPair,
+                        Check::Pair(Box::new(Check::None), Box::new(rest)),
+                    ]))
+                }
+            }
+        }
+        (Type::Pair(pair), Type::List(inner)) => {
+            let first = compare_with_context(arena, ctx, pair.first, inner);
+            let rest = compare_with_context(arena, ctx, pair.rest, rhs);
+
+            match (first, rest) {
+                (Comparison::Invalid, _) | (_, Comparison::Invalid) => Comparison::Invalid,
+                (Comparison::Assign, Comparison::Assign) => Comparison::Assign,
+                (Comparison::Cast, Comparison::Cast) => Comparison::Cast,
+                (Comparison::Assign, Comparison::Cast) => Comparison::Cast,
+                (Comparison::Cast, Comparison::Assign) => Comparison::Cast,
+                (Comparison::Check(first), Comparison::Check(rest)) => {
+                    Comparison::Check(Check::Pair(Box::new(first), Box::new(rest)))
+                }
+                (Comparison::Check(first), Comparison::Assign | Comparison::Cast) => {
+                    Comparison::Check(Check::Pair(Box::new(first), Box::new(Check::None)))
+                }
+                (Comparison::Assign | Comparison::Cast, Comparison::Check(rest)) => {
+                    Comparison::Check(Check::Pair(Box::new(Check::None), Box::new(rest)))
+                }
+            }
+        }
+        (Type::Any, Type::List(_)) => Comparison::Invalid,
         (Type::Atom(lhs), Type::Atom(rhs)) => compare_atom(lhs, rhs),
         (Type::Pair(lhs), Type::Pair(rhs)) => compare_pair(arena, ctx, lhs, rhs),
         (Type::Pair(_), Type::Atom(_)) => Comparison::Invalid,
@@ -82,9 +216,7 @@ pub(crate) fn compare_with_context(
             Comparison::Assign => Comparison::Cast,
             comparison => comparison,
         },
-    };
-
-    ctx.comparison_stack.pop().unwrap();
-
-    result
+        (Type::Function(lhs), Type::Function(rhs)) => compare_function(arena, ctx, lhs, rhs),
+        (Type::Function(_), _) | (_, Type::Function(_)) => Comparison::Invalid,
+    }
 }

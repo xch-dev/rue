@@ -5,14 +5,13 @@ use id_arena::Arena;
 use crate::{Alias, FunctionType, Pair, Struct, Type, TypeId, Union};
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
-    substitute_impl(arena, id, &HashMap::new(), &mut HashMap::new())
+    substitute_impl(arena, id, &HashMap::new())
 }
 
 fn substitute_impl(
     arena: &mut Arena<Type>,
     mut old_id: TypeId,
     map: &HashMap<TypeId, TypeId>,
-    visited: &mut HashMap<TypeId, TypeId>,
 ) -> TypeId {
     let mut seen_from_map = HashSet::new();
 
@@ -23,45 +22,33 @@ fn substitute_impl(
         old_id = *id;
     }
 
-    if let Some(id) = visited.get(&old_id) {
-        return *id;
-    }
-
-    let new_id = if !matches!(
-        arena[old_id],
-        Type::Unresolved | Type::Generic | Type::Atom(_)
-    ) {
-        arena.alloc(Type::Unresolved)
-    } else {
-        old_id
-    };
-
-    visited.insert(old_id, new_id);
-
-    let result = match arena[old_id].clone() {
-        Type::Unresolved | Type::Generic | Type::Atom(_) => return old_id,
-        Type::Ref(id) => substitute_impl(arena, id, map, visited),
-        Type::Apply(apply) => substitute_impl(arena, apply.inner, &apply.generics, visited),
+    match arena[old_id].clone() {
+        Type::Apply(apply) => substitute_impl(arena, apply.inner, &apply.generics),
+        Type::Unresolved | Type::Generic | Type::Atom(_) | Type::Never | Type::Any => old_id,
+        Type::List(id) => {
+            let inner = substitute_impl(arena, id, map);
+            arena.alloc(Type::List(inner))
+        }
         Type::Pair(pair) => {
-            let first = substitute_impl(arena, pair.first, map, visited);
-            let rest = substitute_impl(arena, pair.rest, map, visited);
+            let first = substitute_impl(arena, pair.first, map);
+            let rest = substitute_impl(arena, pair.rest, map);
             arena.alloc(Type::Pair(Pair::new(first, rest)))
         }
         Type::Struct(ty) => {
-            let inner = substitute_impl(arena, ty.inner, map, visited);
+            let inner = substitute_impl(arena, ty.inner, map);
             arena.alloc(Type::Struct(Struct { inner, ..ty }))
         }
         Type::Alias(alias) => {
-            let inner = substitute_impl(arena, alias.inner, map, visited);
+            let inner = substitute_impl(arena, alias.inner, map);
             arena.alloc(Type::Alias(Alias { inner, ..alias }))
         }
         Type::Function(function) => {
             let params = function
                 .params
                 .iter()
-                .map(|id| substitute_impl(arena, *id, map, visited))
+                .map(|id| substitute_impl(arena, *id, map))
                 .collect();
-            let ret = substitute_impl(arena, function.ret, map, visited);
+            let ret = substitute_impl(arena, function.ret, map);
             arena.alloc(Type::Function(FunctionType {
                 params,
                 ret,
@@ -72,15 +59,11 @@ fn substitute_impl(
             let types = union
                 .types
                 .iter()
-                .map(|id| substitute_impl(arena, *id, map, visited))
+                .map(|id| substitute_impl(arena, *id, map))
                 .collect();
             arena.alloc(Type::Union(Union::new(types)))
         }
-    };
-
-    *arena.get_mut(new_id).unwrap() = Type::Ref(result);
-
-    new_id
+    }
 }
 
 #[cfg(test)]

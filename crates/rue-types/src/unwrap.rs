@@ -12,12 +12,14 @@ fn unwrap_semantic_impl(arena: &mut Arena<Type>, id: TypeId, resolve_aliases: bo
         Type::Apply(_) => unreachable!(),
         Type::Unresolved
         | Type::Generic
+        | Type::Never
+        | Type::Any
+        | Type::List(_)
         | Type::Atom(_)
-        | Type::Function(_)
         | Type::Pair(_)
+        | Type::Function(_)
         | Type::Struct(_)
         | Type::Union(_) => id,
-        Type::Ref(id) => unwrap_semantic_impl(arena, id, resolve_aliases),
         Type::Alias(alias) => {
             if resolve_aliases {
                 unwrap_semantic_impl(arena, alias.inner, resolve_aliases)

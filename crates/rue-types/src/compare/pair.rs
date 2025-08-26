@@ -3,7 +3,7 @@ use id_arena::Arena;
 use crate::{Check, Comparison, ComparisonContext, Pair, Type, compare_with_context};
 
 pub(crate) fn compare_pair(
-    arena: &Arena<Type>,
+    arena: &mut Arena<Type>,
     ctx: &mut ComparisonContext,
     lhs: Pair,
     rhs: Pair,
@@ -12,7 +12,6 @@ pub(crate) fn compare_pair(
     let rest = compare_with_context(arena, ctx, lhs.rest, rhs.rest);
 
     match (first, rest) {
-        (Comparison::Unresolved, _) | (_, Comparison::Unresolved) => Comparison::Unresolved,
         (Comparison::Invalid, _) | (_, Comparison::Invalid) => Comparison::Invalid,
         (Comparison::Assign, Comparison::Assign) => Comparison::Assign,
         (Comparison::Cast, Comparison::Cast) => Comparison::Cast,

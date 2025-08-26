@@ -91,16 +91,18 @@ pub fn compile_path(
                 let params = match ctx.ty(semantic) {
                     Type::Apply(_) => unreachable!(),
                     Type::Unresolved => return PathResult::Unresolved,
-                    Type::Ref(..)
-                    | Type::Atom(..)
+                    Type::Atom(..)
                     | Type::Pair(..)
                     | Type::Function(..)
                     | Type::Generic
-                    | Type::Union(..) => {
+                    | Type::Union(..)
+                    | Type::Never
+                    | Type::Any => {
                         vec![]
                     }
                     Type::Alias(alias) => alias.generics.clone(),
                     Type::Struct(ty) => ty.generics.clone(),
+                    Type::List(inner) => vec![*inner],
                 };
 
                 if params.len() != args.len() {
