@@ -148,10 +148,10 @@ pub(crate) fn compare_with_context(
 
             match (first, rest) {
                 (Comparison::Invalid, _) | (_, Comparison::Invalid) => Comparison::Invalid,
-                (Comparison::Assign, Comparison::Assign) => Comparison::Assign,
-                (Comparison::Cast, Comparison::Cast) => Comparison::Cast,
-                (Comparison::Assign, Comparison::Cast) => Comparison::Cast,
-                (Comparison::Cast, Comparison::Assign) => Comparison::Cast,
+                (Comparison::Assign, Comparison::Assign) => Comparison::Check(Check::IsPair),
+                (Comparison::Cast, Comparison::Cast) => Comparison::Check(Check::IsPair),
+                (Comparison::Assign, Comparison::Cast) => Comparison::Check(Check::IsPair),
+                (Comparison::Cast, Comparison::Assign) => Comparison::Check(Check::IsPair),
                 (Comparison::Check(first), Comparison::Check(rest)) => {
                     Comparison::Check(Check::And(vec![
                         Check::IsPair,

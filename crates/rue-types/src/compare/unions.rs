@@ -12,13 +12,22 @@ pub(crate) fn compare_from_union(
     lhs: Union,
     rhs: TypeId,
 ) -> Comparison {
-    if lhs.types.is_empty() {
-        return Comparison::Invalid;
+    compare_from_union_impl(arena, ctx, lhs.types.into_iter().enumerate().collect(), rhs).0
+}
+
+fn compare_from_union_impl(
+    arena: &mut Arena<Type>,
+    ctx: &mut ComparisonContext,
+    lhs: Vec<(usize, TypeId)>,
+    rhs: TypeId,
+) -> (Comparison, Vec<(usize, TypeId)>) {
+    if lhs.is_empty() {
+        return (Comparison::Invalid, lhs);
     }
 
     let mut result = None;
 
-    for &id in &lhs.types {
+    for &(_, id) in &lhs {
         match compare_with_context(arena, ctx, id, rhs) {
             Comparison::Assign => {
                 if result.is_none() {
@@ -36,12 +45,14 @@ pub(crate) fn compare_from_union(
     }
 
     if let Some(result) = result {
-        return result;
+        return (result, lhs);
     }
 
-    refine_union(arena, ctx, lhs.types.into_iter().enumerate().collect(), rhs)
-        .0
-        .map_or(Comparison::Invalid, Comparison::Check)
+    let (check, remaining) = refine_union(arena, ctx, lhs, rhs);
+
+    let comparison = check.map_or(Comparison::Invalid, Comparison::Check);
+
+    (comparison, remaining)
 }
 
 fn refine_union(
@@ -144,19 +155,25 @@ fn refine_union(
     if target_shape.pair {
         let target_pairs = pairs_of(arena, rhs);
 
-        let target_firsts = arena.alloc(Type::Union(Union::new(
-            target_pairs
-                .iter()
-                .map(|pair| pair.first)
-                .collect::<Vec<_>>(),
-        )));
+        let target_firsts = target_pairs
+            .iter()
+            .map(|pair| pair.first)
+            .collect::<Vec<_>>();
+        let target_firsts = if target_firsts.len() == 1 {
+            target_firsts[0]
+        } else {
+            arena.alloc(Type::Union(Union::new(target_firsts)))
+        };
 
-        let target_rests = arena.alloc(Type::Union(Union::new(
-            target_pairs
-                .iter()
-                .map(|pair| pair.rest)
-                .collect::<Vec<_>>(),
-        )));
+        let target_rests = target_pairs
+            .iter()
+            .map(|pair| pair.rest)
+            .collect::<Vec<_>>();
+        let target_rests = if target_rests.len() == 1 {
+            target_rests[0]
+        } else {
+            arena.alloc(Type::Union(Union::new(target_rests)))
+        };
 
         let mut pairs = Vec::new();
 
@@ -165,15 +182,17 @@ fn refine_union(
             pairs.extend(inner);
         }
 
-        let (first_check, first_remaining) = refine_union(
+        let (first_comparison, first_remaining) = compare_from_union_impl(
             arena,
             ctx,
             pairs.iter().map(|pair| pair.first).enumerate().collect(),
             target_firsts,
         );
 
-        let Some(first_check) = first_check else {
-            return (None, lhs);
+        let first_check = match first_comparison {
+            Comparison::Invalid => return (None, lhs),
+            Comparison::Assign | Comparison::Cast => Check::None,
+            Comparison::Check(check) => check,
         };
 
         let rest_needed = if first_check == Check::None {
@@ -200,18 +219,18 @@ fn refine_union(
         };
 
         let rest_check = if rest_needed {
-            let Some(rest_check) = refine_union(
+            let (rest_comparison, _rest_remaining) = compare_from_union_impl(
                 arena,
                 ctx,
                 pairs.iter().map(|pair| pair.rest).enumerate().collect(),
                 target_rests,
-            )
-            .0
-            else {
-                return (None, lhs);
-            };
+            );
 
-            rest_check
+            match rest_comparison {
+                Comparison::Invalid => return (None, lhs),
+                Comparison::Assign | Comparison::Cast => Check::None,
+                Comparison::Check(check) => check,
+            }
         } else {
             Check::None
         };

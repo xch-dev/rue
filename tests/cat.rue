@@ -148,10 +148,10 @@ fn main(
     // When they form a ring like this, you can be sure the supply isn't changed.
     let conditions: List<CatCondition> = [
         CreateCoinAnnouncement {
-            message: RING_MORPH_BYTE + tree_hash([prev_coin_id, prev_subtotal] as List<Any>),
+            message: RING_MORPH_BYTE + tree_hash([prev_coin_id, prev_subtotal]),
         },
         AssertCoinAnnouncement {
-            id: sha256(next_coin_id + RING_MORPH_BYTE + tree_hash([my_coin_id, subtotal] as List<Any>)),
+            id: sha256(next_coin_id + RING_MORPH_BYTE + tree_hash([my_coin_id, subtotal])),
         },
         ...morph.conditions,
     ];
