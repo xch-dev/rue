@@ -1,3 +1,3 @@
 solution: ((100 "Hello, world!"))
 diagnostics:
-- Unknown field `first` on type `({never}, 0x48656c6c6f2c20776f726c6421) | (100, {never}) | (200, 0x4279652c20776f726c6421)` at 8:15
+- Unknown field `first` on type `Hello` at 8:15

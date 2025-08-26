@@ -86,7 +86,11 @@ pub(crate) fn compare_with_context(
                 }
             }
         }
-        (Type::List(lhs), Type::List(rhs)) => compare_with_context(arena, ctx, lhs, rhs),
+        (Type::List(lhs), Type::List(rhs)) => match compare_with_context(arena, ctx, lhs, rhs) {
+            Comparison::Assign => Comparison::Assign,
+            Comparison::Cast => Comparison::Cast,
+            _ => Comparison::Invalid,
+        },
         (Type::Atom(atom), Type::List(_)) => {
             let Some(restriction) = atom.restriction else {
                 return Comparison::Check(Check::Atom(AtomRestriction::Value(Cow::Borrowed(&[]))));

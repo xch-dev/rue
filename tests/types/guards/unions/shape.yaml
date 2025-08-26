@@ -1,4 +1,4 @@
 solution: (42)
 diagnostics:
-- Unknown field `first` on type `{never} | (Int, Int)` at 5:15
-- Unknown field `rest` on type `{never} | (Int, Int)` at 5:29
+- Unknown field `first` on type `Never | (Int, Int)` at 5:15
+- Unknown field `rest` on type `Never | (Int, Int)` at 5:29
