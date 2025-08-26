@@ -180,20 +180,15 @@ pub(crate) fn compare_with_context(
             let first = compare_with_context(arena, ctx, pair.first, inner);
             let rest = compare_with_context(arena, ctx, pair.rest, rhs);
 
-            match (first, rest) {
+            match (first.clone(), rest.clone()) {
                 (Comparison::Invalid, _) | (_, Comparison::Invalid) => Comparison::Invalid,
                 (Comparison::Assign, Comparison::Assign) => Comparison::Assign,
                 (Comparison::Cast, Comparison::Cast) => Comparison::Cast,
                 (Comparison::Assign, Comparison::Cast) => Comparison::Cast,
                 (Comparison::Cast, Comparison::Assign) => Comparison::Cast,
-                (Comparison::Check(first), Comparison::Check(rest)) => {
-                    Comparison::Check(Check::Pair(Box::new(first), Box::new(rest)))
-                }
+                (_, Comparison::Check(_)) => Comparison::Invalid,
                 (Comparison::Check(first), Comparison::Assign | Comparison::Cast) => {
                     Comparison::Check(Check::Pair(Box::new(first), Box::new(Check::None)))
-                }
-                (Comparison::Assign | Comparison::Cast, Comparison::Check(rest)) => {
-                    Comparison::Check(Check::Pair(Box::new(Check::None), Box::new(rest)))
                 }
             }
         }
