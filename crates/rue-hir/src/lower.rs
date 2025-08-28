@@ -264,6 +264,38 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             self.inline_symbols.pop().unwrap();
 
             return result;
+        } else if let Hir::Reference(symbol) = self.db.hir(call.function)
+            && let Symbol::Function(_) = self.db.symbol(*symbol)
+        {
+            let function = self.lower_path(env, *symbol);
+
+            let mut args = Vec::new();
+
+            for capture in self
+                .graph
+                .dependencies(*symbol, true)
+                .into_iter()
+                .filter(|&symbol| !self.should_inline(symbol))
+                .collect::<Vec<_>>()
+            {
+                args.push(self.lower_path(env, capture));
+            }
+
+            for arg in call.args {
+                args.push(self.lower_hir(env, arg));
+            }
+
+            let mut env = self.arena.alloc(Lir::Atom(Vec::new()));
+
+            for (i, &arg) in args.iter().rev().enumerate() {
+                if i == 0 && !call.nil_terminated {
+                    env = arg;
+                } else {
+                    env = self.arena.alloc(Lir::Cons(arg, env));
+                }
+            }
+
+            return self.arena.alloc(Lir::Run(function, env));
         }
 
         let function = self.lower_hir(env, call.function);
@@ -297,7 +329,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut reference = if self.should_inline(symbol) || is_lambda {
             self.lower_symbol(env, symbol, false)
         } else {
-            self.arena.alloc(Lir::Path(env.path(symbol)))
+            self.lower_path(env, symbol)
         };
 
         if matches!(self.db.symbol(symbol).clone(), Symbol::Function(_)) {
@@ -311,13 +343,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             let mut refs = Vec::new();
 
             for capture in captures {
-                refs.push(self.arena.alloc(Lir::Path(env.path(capture))));
+                refs.push(self.lower_path(env, capture));
             }
 
             reference = self.arena.alloc(Lir::Closure(reference, refs));
         }
 
         reference
+    }
+
+    fn lower_path(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
+        self.arena.alloc(Lir::Path(env.path(symbol)))
     }
 
     fn lower_block(
