@@ -76,12 +76,28 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
         }
         Hir::Block(block) => {
             for stmt in &block.statements {
-                if let Statement::Let(stmt) = stmt {
-                    visit_symbol(db, graph, *stmt);
+                match stmt {
+                    Statement::Let(stmt) => {
+                        visit_symbol(db, graph, *stmt);
 
-                    if let Some(last) = graph.stack.last() {
-                        graph.locals.entry(*last).or_default().insert(*stmt);
+                        if let Some(last) = graph.stack.last() {
+                            graph.locals.entry(*last).or_default().insert(*stmt);
+                        }
                     }
+                    Statement::Assert(stmt) => {
+                        visit_hir(db, graph, *stmt);
+                    }
+                    Statement::Raise(stmt) => {
+                        visit_hir(db, graph, *stmt);
+                    }
+                    Statement::If(cond, then) => {
+                        visit_hir(db, graph, *cond);
+                        visit_hir(db, graph, *then);
+                    }
+                    Statement::Return(expr) => {
+                        visit_hir(db, graph, *expr);
+                    }
+                    Statement::Expr(_) => {}
                 }
             }
 

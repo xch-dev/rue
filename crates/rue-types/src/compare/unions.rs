@@ -2,8 +2,8 @@ use id_arena::Arena;
 use indexmap::IndexSet;
 
 use crate::{
-    AtomRestriction, AtomRestrictions, Check, Comparison, ComparisonContext, Type, TypeId, Union,
-    atom_restrictions_of, compare_with_context, pairs_of, shape_of,
+    AtomRestriction, AtomRestrictions, Check, Comparison, ComparisonContext, Shape, Type, TypeId,
+    Union, atom_restrictions_of, compare_with_context, pairs_of, shape_of,
 };
 
 pub(crate) fn compare_from_union(
@@ -68,6 +68,14 @@ fn refine_union(
     }
 
     let mut shape_check = None;
+
+    lhs.retain(|&(_, id)| {
+        let shape = shape_of(arena, id);
+        if shape == Shape::NONE {
+            return false;
+        }
+        true
+    });
 
     if !(target_shape.atom && target_shape.pair) {
         let mut check = false;

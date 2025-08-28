@@ -11,7 +11,7 @@ use rue_hir::{
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
-use rue_types::{Check, Comparison, Subtraction, TypeId};
+use rue_types::{Check, Comparison, TypeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ComparisonKind {
@@ -267,15 +267,10 @@ impl Compiler {
                     let to = self.type_name(to);
                     self.diagnostic(node, DiagnosticKind::UnconstrainableComparison(from, to));
                 }
-                let mut constraint = Constraint::new(check);
 
                 let else_id = rue_types::subtract(self.db.types_mut(), from, to);
 
-                if let Subtraction::New(else_id) = else_id {
-                    constraint = constraint.with_else(else_id);
-                }
-
-                constraint
+                Constraint::new(check).with_else(else_id)
             }
         }
     }
