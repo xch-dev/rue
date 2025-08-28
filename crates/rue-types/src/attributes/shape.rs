@@ -45,11 +45,11 @@ impl Not for Shape {
 
 pub fn shape_of(arena: &Arena<Type>, id: TypeId) -> Shape {
     match arena[id].clone() {
-        Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
+        Type::Unresolved | Type::Apply(_) => unreachable!(),
         Type::Alias(alias) => shape_of(arena, alias.inner),
         Type::Struct(ty) => shape_of(arena, ty.inner),
         Type::Never => Shape::NONE,
-        Type::Any => Shape::BOTH,
+        Type::Any | Type::Generic => Shape::BOTH,
         Type::List(_) => Shape::BOTH,
         Type::Atom(_) => Shape::ATOM,
         Type::Pair(_) => Shape::PAIR,

@@ -35,11 +35,11 @@ pub(crate) fn stringify_impl(
             format!("({first}, {rest})")
         }
         Type::Struct(ty) => {
-            if let Some(name) = ty.name {
-                name.text().to_string()
-            } else {
-                stringify_impl(arena, ty.inner, stack)
-            }
+            // if let Some(name) = ty.name {
+            // name.text().to_string()
+            // } else {
+            stringify_impl(arena, ty.inner, stack)
+            // }
         }
         Type::Alias(alias) => {
             if let Some(name) = alias.name {

@@ -188,15 +188,25 @@ impl Compiler {
     }
 
     pub fn assign_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
-        self.compare_type(node, from, to, ComparisonKind::Assign);
+        self.compare_type(node, from, to, ComparisonKind::Assign, None);
     }
 
     pub fn cast_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
-        self.compare_type(node, from, to, ComparisonKind::Cast);
+        self.compare_type(node, from, to, ComparisonKind::Cast, None);
     }
 
     pub fn guard_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) -> Constraint {
-        self.compare_type(node, from, to, ComparisonKind::Guard)
+        self.compare_type(node, from, to, ComparisonKind::Guard, None)
+    }
+
+    pub fn infer_type(
+        &mut self,
+        node: &impl GetTextRange,
+        from: TypeId,
+        to: TypeId,
+        mappings: &mut HashMap<TypeId, TypeId>,
+    ) {
+        self.compare_type(node, from, to, ComparisonKind::Assign, Some(mappings));
     }
 
     fn compare_type(
@@ -205,8 +215,9 @@ impl Compiler {
         from: TypeId,
         to: TypeId,
         kind: ComparisonKind,
+        mappings: Option<&mut HashMap<TypeId, TypeId>>,
     ) -> Constraint {
-        let comparison = rue_types::compare(self.db.types_mut(), from, to);
+        let comparison = rue_types::compare_with_mappings(self.db.types_mut(), from, to, mappings);
 
         match comparison {
             Comparison::Assign => {

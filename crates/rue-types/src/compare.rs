@@ -3,7 +3,7 @@ mod function;
 mod pair;
 mod unions;
 
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 
 use atom::*;
 use function::*;
@@ -22,19 +22,26 @@ pub enum Comparison {
     Invalid,
 }
 
-#[derive(Debug, Default)]
-pub struct ComparisonContext {}
+#[derive(Debug)]
+pub struct ComparisonContext<'a> {
+    mappings: Option<&'a mut HashMap<TypeId, TypeId>>,
+}
 
-impl ComparisonContext {
-    pub fn new() -> Self {
-        Self::default()
-    }
+pub fn compare_with_mappings(
+    arena: &mut Arena<Type>,
+    lhs: TypeId,
+    rhs: TypeId,
+    mappings: Option<&mut HashMap<TypeId, TypeId>>,
+) -> Comparison {
+    let lhs = substitute(arena, lhs);
+    let rhs = substitute(arena, rhs);
+    compare_with_context(arena, &mut ComparisonContext { mappings }, lhs, rhs)
 }
 
 pub fn compare(arena: &mut Arena<Type>, lhs: TypeId, rhs: TypeId) -> Comparison {
     let lhs = substitute(arena, lhs);
     let rhs = substitute(arena, rhs);
-    compare_with_context(arena, &mut ComparisonContext::new(), lhs, rhs)
+    compare_with_context(arena, &mut ComparisonContext { mappings: None }, lhs, rhs)
 }
 
 pub(crate) fn compare_with_context(
@@ -46,19 +53,33 @@ pub(crate) fn compare_with_context(
     match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
-        (Type::Generic, _) => Comparison::Invalid,
-        (_, Type::Generic) => todo!(),
+        (_, Type::Generic) => {
+            if lhs == rhs {
+                return Comparison::Assign;
+            }
+
+            if let Some(mappings) = &mut ctx.mappings {
+                if let Some(lhs) = mappings.get(&lhs).copied() {
+                    return compare_with_context(arena, ctx, lhs, rhs);
+                }
+
+                mappings.insert(rhs, lhs);
+                return Comparison::Assign;
+            }
+
+            Comparison::Invalid
+        }
         (Type::Never, _) => Comparison::Assign,
         (_, Type::Never) => Comparison::Invalid,
         (_, Type::Any) => Comparison::Assign,
-        (Type::Any, Type::Atom(atom)) => {
+        (Type::Any | Type::Generic, Type::Atom(atom)) => {
             if let Some(restriction) = atom.restriction {
                 Comparison::Check(Check::And(vec![Check::IsAtom, Check::Atom(restriction)]))
             } else {
                 Comparison::Check(Check::IsAtom)
             }
         }
-        (Type::Any, Type::Pair(pair)) => {
+        (Type::Any | Type::Generic, Type::Pair(pair)) => {
             let first = compare_with_context(arena, ctx, lhs, pair.first);
             let rest = compare_with_context(arena, ctx, lhs, pair.rest);
             match (first, rest) {
@@ -193,7 +214,7 @@ pub(crate) fn compare_with_context(
                 }
             }
         }
-        (Type::Any, Type::List(_)) => Comparison::Invalid,
+        (Type::Any | Type::Generic, Type::List(_)) => Comparison::Invalid,
         (Type::Atom(lhs), Type::Atom(rhs)) => compare_atom(lhs, rhs),
         (Type::Pair(lhs), Type::Pair(rhs)) => compare_pair(arena, ctx, lhs, rhs),
         (Type::Pair(_), Type::Atom(_)) => Comparison::Invalid,

@@ -15,9 +15,9 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Typ
         (Type::Function(_), _) | (_, Type::Function(_)) => lhs_id,
         (Type::Never, _) => lhs_id,
         (_, Type::Never) => lhs_id,
-        (Type::Generic, _) => lhs_id,
         (_, Type::Generic) => arena.alloc(Type::Never),
         (_, Type::Any) => arena.alloc(Type::Never),
+        (Type::Generic, _) => lhs_id,
         (Type::Any, Type::List(_)) => lhs_id,
         (Type::Any, Type::Atom(atom)) => {
             if atom.restriction.is_none() {

@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use rue_ast::{AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionCall, Hir, Value};
-use rue_types::{Type, Union};
+use rue_types::{Type, Union, substitute_with_mappings};
 
 use crate::{Compiler, compile_expr};
 
@@ -32,6 +34,7 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     let mut args = Vec::new();
     let mut nil_terminated = true;
     let mut next_spreadable_type = None;
+    let mut mappings = HashMap::new();
 
     let len = call.args().count();
 
@@ -55,7 +58,7 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
         };
 
         let expected_type = if let Some(function) = expected_function {
-            if function.nil_terminated || i < len - 1 {
+            if function.nil_terminated || i < function.params.len() - 1 {
                 function.params.get(i).copied()
             } else {
                 if next_spreadable_type.is_none() {
@@ -95,8 +98,18 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
             None
         };
 
+        let expected_type = expected_type.map(|expected_type| {
+            substitute_with_mappings(ctx.types_mut(), expected_type, &mappings)
+        });
+
         let value = if let Some(expr) = arg.expr() {
-            compile_expr(ctx, &expr, expected_type)
+            let value = compile_expr(ctx, &expr, expected_type);
+
+            if let Some(expected_type) = expected_type {
+                ctx.infer_type(arg.syntax(), value.ty, expected_type, &mut mappings);
+            }
+
+            value
         } else {
             ctx.builtins().unresolved.clone()
         };
@@ -135,6 +148,8 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
                 .collect(),
         )))
     };
+
+    let ty = substitute_with_mappings(ctx.types_mut(), ty, &mappings);
 
     let hir = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
         function: expr.hir,

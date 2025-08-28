@@ -14,11 +14,11 @@ pub enum AtomRestrictions {
 
 pub fn atom_restrictions_of(arena: &Arena<Type>, id: TypeId) -> AtomRestrictions {
     match arena[id].clone() {
-        Type::Unresolved | Type::Apply(_) | Type::Generic => unreachable!(),
+        Type::Unresolved | Type::Apply(_) => unreachable!(),
         Type::Alias(alias) => atom_restrictions_of(arena, alias.inner),
         Type::Struct(ty) => atom_restrictions_of(arena, ty.inner),
         Type::Never => AtomRestrictions::NotAtom,
-        Type::Any => AtomRestrictions::Unrestricted,
+        Type::Any | Type::Generic => AtomRestrictions::Unrestricted,
         Type::List(_) => {
             AtomRestrictions::Either(indexset![AtomRestriction::Value(Cow::Borrowed(&[]))])
         }

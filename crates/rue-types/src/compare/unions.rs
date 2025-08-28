@@ -195,7 +195,7 @@ fn refine_union(
         let (first_comparison, first_remaining) =
             compare_from_union_impl(arena, ctx, firsts.clone(), target_firsts);
 
-        for (i, _) in firsts {
+        for (i, _) in firsts.clone() {
             if !first_remaining.iter().any(|(j, _)| *j == i) {
                 lhs.retain(|&(j, _)| j != i);
             }
@@ -241,7 +241,7 @@ fn refine_union(
             let (rest_comparison, rest_remaining) =
                 compare_from_union_impl(arena, ctx, rests.clone(), target_rests);
 
-            for (i, _) in rests {
+            for (i, _) in rests.clone() {
                 if !rest_remaining.iter().any(|(j, _)| *j == i) {
                     lhs.retain(|&(j, _)| j != i);
                 }
@@ -266,7 +266,11 @@ fn refine_union(
         };
     }
 
-    let check = match (shape_check, atom_restriction_check, pair_check) {
+    let check = match (
+        shape_check.clone(),
+        atom_restriction_check.clone(),
+        pair_check.clone(),
+    ) {
         (Some(shape_check), Some(atom_restriction_check), None) => {
             Check::And(vec![shape_check, atom_restriction_check])
         }

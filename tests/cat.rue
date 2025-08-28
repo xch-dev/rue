@@ -100,7 +100,7 @@ fn main(
     next_coin_proof: CoinProof,
     prev_subtotal: Int,
     extra_delta: Int,
-) -> List<CatCondition> {
+) -> List<Condition> {
     // For simplicity, we'll pack these values into a struct.
     let cat_info = CatInfo {
         mod_hash: mod_hash,
@@ -146,7 +146,7 @@ fn main(
     // Prepend the ring conditions to the morphed conditions.
     // This ensures that the previous and next CATs are linked.
     // When they form a ring like this, you can be sure the supply isn't changed.
-    let conditions: List<CatCondition> = [
+    let conditions: List<Condition> = [
         CreateCoinAnnouncement {
             message: RING_MORPH_BYTE + tree_hash([prev_coin_id, prev_subtotal]),
         },
@@ -193,7 +193,7 @@ fn main(
 
 struct Morph {
     // The morphed conditions.
-    conditions: List<CatCondition>,
+    conditions: List<Condition>,
 
     // The total amount of coins created.
     sum: Int,
@@ -267,9 +267,8 @@ fn morph_conditions(
     }
 }
 
-// TODO: Finish implementing generics
-fn concat(a: List<CatCondition>, b: List<CatCondition>) -> List<CatCondition> {
-    if a is (CatCondition, List<CatCondition>) {
+fn concat<T>(a: List<T>, b: List<T>) -> List<T> {
+    if a is (T, List<T>) {
         return [a.first, ...concat(a.rest, b)];
     }
     b

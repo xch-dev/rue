@@ -8,23 +8,23 @@ use crate::{Compiler, compile_block, compile_generic_parameters, compile_type};
 pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> SymbolId {
     let scope = ctx.alloc_scope(Scope::new());
 
-    let return_type = if let Some(return_type) = function.return_type() {
-        compile_type(ctx, &return_type)
-    } else {
-        ctx.builtins().unresolved.ty
-    };
-
     let vars = if let Some(generic_parameters) = function.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)
     } else {
         vec![]
     };
 
+    ctx.push_scope(scope);
+
+    let return_type = if let Some(return_type) = function.return_type() {
+        compile_type(ctx, &return_type)
+    } else {
+        ctx.builtins().unresolved.ty
+    };
+
     let mut parameters = Vec::new();
     let mut param_types = Vec::new();
     let mut nil_terminated = true;
-
-    ctx.push_scope(scope);
 
     let len = function.parameters().count();
 

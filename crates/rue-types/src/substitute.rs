@@ -8,6 +8,14 @@ pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
     substitute_impl(arena, id, &HashMap::new())
 }
 
+pub fn substitute_with_mappings(
+    arena: &mut Arena<Type>,
+    id: TypeId,
+    mappings: &HashMap<TypeId, TypeId>,
+) -> TypeId {
+    substitute_impl(arena, id, mappings)
+}
+
 fn substitute_impl(
     arena: &mut Arena<Type>,
     mut old_id: TypeId,
