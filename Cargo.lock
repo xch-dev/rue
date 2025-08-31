@@ -1346,6 +1346,7 @@ name = "rue-types"
 version = "0.1.0"
 dependencies = [
  "clvmr",
+ "derive_more",
  "hex",
  "id-arena",
  "indexmap",

@@ -1,16 +1,27 @@
 use std::{borrow::Cow, fmt};
 
 use clvmr::Allocator;
+use derive_more::Display;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AtomKind {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
+pub enum AtomSemantic {
+    #[display("Atom")]
+    Any,
+
+    #[display("Bytes")]
     Bytes,
+
+    #[display("Int")]
     Int,
+
+    #[display("PublicKey")]
     PublicKey,
+
+    #[display("Bool")]
     Bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AtomRestriction {
     Value(Cow<'static, [u8]>),
     Length(usize),
@@ -18,81 +29,80 @@ pub enum AtomRestriction {
 
 #[derive(Debug, Clone)]
 pub struct Atom {
-    pub kind: AtomKind,
+    pub semantic: AtomSemantic,
     pub restriction: Option<AtomRestriction>,
 }
 
 impl Atom {
+    pub const ANY: Self = Self::new(AtomSemantic::Any, None);
     pub const NIL: Self = Self::new(
-        AtomKind::Bytes,
+        AtomSemantic::Bytes,
         Some(AtomRestriction::Value(Cow::Borrowed(&[]))),
     );
     pub const FALSE: Self = Self::new(
-        AtomKind::Bool,
+        AtomSemantic::Bool,
         Some(AtomRestriction::Value(Cow::Borrowed(&[]))),
     );
     pub const TRUE: Self = Self::new(
-        AtomKind::Bool,
+        AtomSemantic::Bool,
         Some(AtomRestriction::Value(Cow::Borrowed(&[1]))),
     );
-    pub const BYTES: Self = Self::new(AtomKind::Bytes, None);
-    pub const BYTES_32: Self = Self::new(AtomKind::Bytes, Some(AtomRestriction::Length(32)));
-    pub const PUBLIC_KEY: Self = Self::new(AtomKind::PublicKey, Some(AtomRestriction::Length(48)));
-    pub const INT: Self = Self::new(AtomKind::Int, None);
+    pub const BYTES: Self = Self::new(AtomSemantic::Bytes, None);
+    pub const BYTES_32: Self = Self::new(AtomSemantic::Bytes, Some(AtomRestriction::Length(32)));
+    pub const PUBLIC_KEY: Self =
+        Self::new(AtomSemantic::PublicKey, Some(AtomRestriction::Length(48)));
+    pub const INT: Self = Self::new(AtomSemantic::Int, None);
 
-    pub const fn new(kind: AtomKind, restriction: Option<AtomRestriction>) -> Self {
-        Self { kind, restriction }
+    pub const fn new(semantic: AtomSemantic, restriction: Option<AtomRestriction>) -> Self {
+        Self {
+            semantic,
+            restriction,
+        }
     }
 }
 
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (&self.kind, &self.restriction) {
-            (AtomKind::Bytes, None) => write!(f, "Bytes"),
-            (AtomKind::Bytes, Some(AtomRestriction::Length(length))) => {
-                write!(f, "Bytes{}", length)
-            }
-            (AtomKind::Bytes, Some(AtomRestriction::Value(value))) => {
-                if value.is_empty() {
-                    write!(f, "nil")
+        let name = format!("{}", self.semantic);
+
+        let qualifier = match &self.restriction {
+            None => None,
+            Some(AtomRestriction::Length(length)) => {
+                if self.semantic == AtomSemantic::PublicKey && *length == 48 {
+                    None
                 } else {
-                    write!(f, "0x{}", hex::encode(value))
+                    Some(format!("{length}"))
                 }
             }
-            (AtomKind::Int, None) => write!(f, "Int"),
-            (AtomKind::Int, Some(AtomRestriction::Value(value))) => {
-                let mut allocator = Allocator::new();
-                let ptr = allocator.new_atom(value).unwrap();
-                write!(f, "{}", allocator.number(ptr))
-            }
-            (AtomKind::Int, Some(AtomRestriction::Length(length))) => {
-                write!(f, "Int{}", length)
-            }
-            (AtomKind::PublicKey, None) => write!(f, "PublicKey"),
-            (AtomKind::PublicKey, Some(AtomRestriction::Length(48))) => write!(f, "PublicKey"),
-            (AtomKind::PublicKey, Some(AtomRestriction::Length(length))) => {
-                write!(f, "PublicKey{}", length)
-            }
-            (AtomKind::PublicKey, Some(AtomRestriction::Value(value))) => {
-                if value.is_empty() {
-                    write!(f, "nil")
-                } else {
-                    write!(f, "0x{}", hex::encode(value))
+            Some(AtomRestriction::Value(value)) => match self.semantic {
+                AtomSemantic::Any | AtomSemantic::Bytes | AtomSemantic::PublicKey => {
+                    if value.is_empty() {
+                        return write!(f, "nil");
+                    } else {
+                        return write!(f, "0x{}", hex::encode(value));
+                    }
                 }
-            }
-            (AtomKind::Bool, None) => write!(f, "Bool"),
-            (AtomKind::Bool, Some(AtomRestriction::Value(value))) => {
-                if value.is_empty() {
-                    write!(f, "false")
-                } else if value.as_ref() == [1] {
-                    write!(f, "true")
-                } else {
-                    write!(f, "0x{}", hex::encode(value))
+                AtomSemantic::Int => {
+                    let mut allocator = Allocator::new();
+                    let ptr = allocator.new_atom(value).unwrap();
+                    return write!(f, "{}", allocator.number(ptr));
                 }
-            }
-            (AtomKind::Bool, Some(AtomRestriction::Length(length))) => {
-                write!(f, "Bool{}", length)
-            }
+                AtomSemantic::Bool => {
+                    if value.is_empty() {
+                        return write!(f, "false");
+                    } else if value.as_ref() == [1] {
+                        return write!(f, "true");
+                    } else {
+                        return write!(f, "0x{}", hex::encode(value));
+                    }
+                }
+            },
+        };
+
+        if let Some(qualifier) = qualifier {
+            write!(f, "{name}{qualifier}")
+        } else {
+            write!(f, "{name}")
         }
     }
 }

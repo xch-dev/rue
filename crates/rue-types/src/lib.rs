@@ -1,4 +1,3 @@
-mod attributes;
 mod check;
 mod compare;
 mod extractors;
@@ -8,7 +7,6 @@ mod subtract;
 mod types;
 mod unwrap;
 
-pub(crate) use attributes::*;
 pub use check::*;
 pub use compare::*;
 pub use extractors::*;

@@ -11,14 +11,7 @@ use rue_hir::{
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
-use rue_types::{Check, Comparison, TypeId};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ComparisonKind {
-    Assign,
-    Cast,
-    Guard,
-}
+use rue_types::{Comparison, TypeId};
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
@@ -188,15 +181,15 @@ impl Compiler {
     }
 
     pub fn assign_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
-        self.compare_type(node, from, to, ComparisonKind::Assign, None);
+        self.compare_type(node, from, to, false, None);
     }
 
     pub fn cast_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
-        self.compare_type(node, from, to, ComparisonKind::Cast, None);
+        self.compare_type(node, from, to, true, None);
     }
 
     pub fn guard_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) -> Constraint {
-        self.compare_type(node, from, to, ComparisonKind::Guard, None)
+        todo!()
     }
 
     pub fn infer_type(
@@ -204,9 +197,9 @@ impl Compiler {
         node: &impl GetTextRange,
         from: TypeId,
         to: TypeId,
-        mappings: &mut HashMap<TypeId, TypeId>,
+        infer: &mut HashMap<TypeId, TypeId>,
     ) {
-        self.compare_type(node, from, to, ComparisonKind::Assign, Some(mappings));
+        self.compare_type(node, from, to, false, Some(infer));
     }
 
     fn compare_type(
@@ -214,74 +207,36 @@ impl Compiler {
         node: &impl GetTextRange,
         from: TypeId,
         to: TypeId,
-        kind: ComparisonKind,
-        mappings: Option<&mut HashMap<TypeId, TypeId>>,
-    ) -> Constraint {
-        let comparison = rue_types::compare_with_mappings(self.db.types_mut(), from, to, mappings);
+        cast: bool,
+        infer: Option<&mut HashMap<TypeId, TypeId>>,
+    ) {
+        let comparison = rue_types::compare_with_inference(self.db.types_mut(), from, to, infer);
 
         match comparison {
             Comparison::Assign => {
-                match kind {
-                    ComparisonKind::Assign => {}
-                    ComparisonKind::Cast => {
-                        let from = self.type_name(from);
-                        let to = self.type_name(to);
-                        self.diagnostic(node, DiagnosticKind::UnnecessaryCast(from, to));
-                    }
-                    ComparisonKind::Guard => {
-                        let from = self.type_name(from);
-                        let to = self.type_name(to);
-                        self.diagnostic(node, DiagnosticKind::UnnecessaryGuard(from, to));
-                    }
-                }
-                Constraint::new(Check::None)
-            }
-            Comparison::Cast => {
-                match kind {
-                    ComparisonKind::Assign => {
-                        let from = self.type_name(from);
-                        let to = self.type_name(to);
-                        self.diagnostic(node, DiagnosticKind::UnassignableType(from, to));
-                    }
-                    ComparisonKind::Cast => {}
-                    ComparisonKind::Guard => {
-                        let from = self.type_name(from);
-                        let to = self.type_name(to);
-                        self.diagnostic(node, DiagnosticKind::UnnecessaryGuard(from, to));
-                    }
-                }
-                Constraint::new(Check::None)
-            }
-            Comparison::Invalid => {
-                match kind {
-                    ComparisonKind::Assign => {
-                        let from = self.type_name(from);
-                        let to = self.type_name(to);
-                        self.diagnostic(node, DiagnosticKind::IncompatibleType(from, to));
-                    }
-                    ComparisonKind::Cast => {
-                        let from = self.type_name(from);
-                        let to = self.type_name(to);
-                        self.diagnostic(node, DiagnosticKind::IncompatibleCast(from, to));
-                    }
-                    ComparisonKind::Guard => {
-                        let from = self.type_name(from);
-                        let to = self.type_name(to);
-                        self.diagnostic(node, DiagnosticKind::IncompatibleGuard(from, to));
-                    }
-                }
-                Constraint::new(Check::Impossible)
-            }
-            Comparison::Check(check) => {
-                if kind != ComparisonKind::Guard {
+                if cast {
                     let from = self.type_name(from);
                     let to = self.type_name(to);
-                    self.diagnostic(node, DiagnosticKind::UnconstrainableComparison(from, to));
+                    self.diagnostic(node, DiagnosticKind::UnnecessaryCast(from, to));
                 }
-
-                let else_id = rue_types::subtract(self.db.types_mut(), from, to);
-
-                Constraint::new(check).with_else(else_id)
+            }
+            Comparison::Cast => {
+                if !cast {
+                    let from = self.type_name(from);
+                    let to = self.type_name(to);
+                    self.diagnostic(node, DiagnosticKind::UnassignableType(from, to));
+                }
+            }
+            Comparison::Invalid => {
+                if cast {
+                    let from = self.type_name(from);
+                    let to = self.type_name(to);
+                    self.diagnostic(node, DiagnosticKind::IncompatibleCast(from, to));
+                } else {
+                    let from = self.type_name(from);
+                    let to = self.type_name(to);
+                    self.diagnostic(node, DiagnosticKind::IncompatibleType(from, to));
+                }
             }
         }
     }

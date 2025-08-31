@@ -5,7 +5,7 @@ use rue_ast::AstLiteralExpr;
 use rue_hir::{Hir, Value};
 use rue_lir::bigint_atom;
 use rue_parser::{SyntaxKind, T};
-use rue_types::{Atom, AtomKind, AtomRestriction, Type};
+use rue_types::{Atom, AtomRestriction, AtomSemantic, Type};
 
 use crate::Compiler;
 
@@ -28,7 +28,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
 
             let hir = ctx.alloc_hir(Hir::String(text.to_string()));
             let ty = ctx.alloc_type(Type::Atom(Atom::new(
-                AtomKind::Bytes,
+                AtomSemantic::Bytes,
                 Some(AtomRestriction::Value(Cow::Owned(text.as_bytes().to_vec()))),
             )));
             Value::new(hir, ty)
@@ -47,7 +47,11 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
                 Atom::NIL
             } else {
                 Atom::new(
-                    AtomKind::Bytes,
+                    if bytes.len() == 48 {
+                        AtomSemantic::PublicKey
+                    } else {
+                        AtomSemantic::Bytes
+                    },
                     Some(AtomRestriction::Value(Cow::Owned(bytes.clone()))),
                 )
             }));
@@ -59,7 +63,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
 
             let num = BigInt::from_str(&text).unwrap();
             let ty = ctx.alloc_type(Type::Atom(Atom::new(
-                AtomKind::Int,
+                AtomSemantic::Int,
                 Some(AtomRestriction::Value(Cow::Owned(bigint_atom(num.clone())))),
             )));
 
