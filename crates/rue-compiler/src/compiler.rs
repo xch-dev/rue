@@ -249,7 +249,10 @@ impl Compiler {
             Comparison::Invalid => {
                 let check = match rue_types::check(self.db.types_mut(), from, to) {
                     Ok(check) => check,
-                    Err(CheckError::DepthExceeded) => Check::Impossible,
+                    Err(CheckError::DepthExceeded) => {
+                        self.diagnostic(node, DiagnosticKind::TypeCheckDepthExceeded);
+                        return;
+                    }
                 };
 
                 let from = self.type_name(from);
