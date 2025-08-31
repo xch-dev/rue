@@ -248,8 +248,10 @@ fn check_each(
         }
     });
 
-    let atom_result = target_atoms.map(|_| {
-        if !exceeds_overlap {
+    let atom_result = lhs_has_atom.then(|| {
+        if target_atoms.is_none() {
+            Check::Impossible
+        } else if !exceeds_overlap {
             Check::None
         } else if overlap.is_empty() {
             Check::Impossible
@@ -276,7 +278,7 @@ fn check_each(
         }
     }
 
-    for target_pair in target_pairs {
+    for target_pair in &target_pairs {
         let mut firsts = firsts.clone();
 
         let first = check_each(arena, ctx, &mut firsts, target_pair.first)?;
@@ -316,8 +318,12 @@ fn check_each(
 
     lhs.retain(|&(i, _)| included_indices.contains(&i));
 
-    let pair_result = requires_check.then(|| {
-        if checks.is_empty() {
+    let pair_result = lhs_has_pair.then(|| {
+        if target_pairs.is_empty() {
+            Check::Impossible
+        } else if !requires_check {
+            Check::None
+        } else if checks.is_empty() {
             Check::Impossible
         } else if checks.len() == 1 {
             checks[0].clone()
@@ -326,43 +332,21 @@ fn check_each(
         }
     });
 
-    let atom_check = atom_result.map(|atom| {
-        if lhs_has_pair {
-            if atom == Check::Impossible {
-                Check::Impossible
-            } else if atom == Check::None {
-                Check::IsAtom
-            } else {
-                Check::And(vec![Check::IsAtom, atom])
-            }
-        } else {
-            atom
-        }
-    });
-
-    let pair_check = pair_result.map(|pair| {
-        if lhs_has_atom {
-            if pair == Check::Impossible {
-                Check::Impossible
-            } else if pair == Check::None {
-                Check::IsPair
-            } else {
-                Check::And(vec![Check::IsPair, pair])
-            }
-        } else {
-            pair
-        }
-    });
-
-    let check = match (atom_check, pair_check) {
-        (None, None) => Check::None,
+    let check = match (atom_result, pair_result) {
+        (None, None) => Check::Impossible,
         (Some(atom), None) => atom,
         (None, Some(pair)) => pair,
-        (Some(atom), Some(pair)) => Check::Or(vec![atom, pair]),
-    }
-    .simplify();
+        (Some(atom), Some(Check::Impossible)) => Check::And(vec![Check::IsAtom, atom]),
+        (Some(Check::Impossible), Some(pair)) => Check::And(vec![Check::IsPair, pair]),
+        (Some(atom), Some(Check::None)) => Check::Or(vec![Check::IsPair, atom]),
+        (Some(Check::None), Some(pair)) => Check::Or(vec![Check::IsAtom, pair]),
+        (Some(atom), Some(pair)) => Check::Or(vec![
+            Check::And(vec![Check::IsAtom, atom]),
+            Check::And(vec![Check::IsPair, pair]),
+        ]),
+    };
 
-    Ok(check)
+    Ok(check.simplify())
 }
 
 fn variants_of(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
