@@ -193,7 +193,7 @@ impl Compiler {
             Ok(check) => check,
             Err(CheckError::DepthExceeded) => {
                 self.diagnostic(node, DiagnosticKind::TypeCheckDepthExceeded);
-                Check::Impossible
+                return Constraint::new(Check::Impossible);
             }
         };
 

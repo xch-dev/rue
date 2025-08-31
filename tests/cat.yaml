@@ -4,7 +4,6 @@ diagnostics:
 - Unnecessary type guard from `LineageProof | nil` to `LineageProof`, since they are already compatible types at 136:24
 - Recursion depth exceeded while checking type at 149:38
 - Recursion depth exceeded while checking type at 159:30
-- Cannot type guard from `TailInfo | nil` to `TailInfo`, since they do not overlap at 159:30
 - Recursion depth exceeded while checking type at 161:26
 - Recursion depth exceeded while checking type at 228:15
 - Recursion depth exceeded while checking type at 245:15
