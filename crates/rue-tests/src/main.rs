@@ -40,6 +40,8 @@ struct TestCase {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
+
     let args: Vec<String> = env::args().collect();
     let filter_arg = args.get(1).cloned();
 

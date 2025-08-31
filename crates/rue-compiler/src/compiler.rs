@@ -11,7 +11,7 @@ use rue_hir::{
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
-use rue_types::{Comparison, TypeId};
+use rue_types::{Check, CheckError, Comparison, TypeId};
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
@@ -189,7 +189,26 @@ impl Compiler {
     }
 
     pub fn guard_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) -> Constraint {
-        todo!()
+        let check = match rue_types::check(self.db.types_mut(), from, to) {
+            Ok(check) => check,
+            Err(CheckError::DepthExceeded) => {
+                self.diagnostic(node, DiagnosticKind::TypeCheckDepthExceeded);
+                Check::Impossible
+            }
+        };
+
+        let from_name = self.type_name(from);
+        let to_name = self.type_name(to);
+
+        if check == Check::None {
+            self.diagnostic(node, DiagnosticKind::UnnecessaryGuard(from_name, to_name));
+        } else if check == Check::Impossible {
+            self.diagnostic(node, DiagnosticKind::IncompatibleGuard(from_name, to_name));
+        }
+
+        let else_id = rue_types::subtract(self.db.types_mut(), from, to);
+
+        Constraint::new(check).with_else(else_id)
     }
 
     pub fn infer_type(
@@ -228,13 +247,19 @@ impl Compiler {
                 }
             }
             Comparison::Invalid => {
-                if cast {
-                    let from = self.type_name(from);
-                    let to = self.type_name(to);
+                let check = match rue_types::check(self.db.types_mut(), from, to) {
+                    Ok(check) => check,
+                    Err(CheckError::DepthExceeded) => Check::Impossible,
+                };
+
+                let from = self.type_name(from);
+                let to = self.type_name(to);
+
+                if check != Check::Impossible {
+                    self.diagnostic(node, DiagnosticKind::UnconstrainableComparison(from, to));
+                } else if cast {
                     self.diagnostic(node, DiagnosticKind::IncompatibleCast(from, to));
                 } else {
-                    let from = self.type_name(from);
-                    let to = self.type_name(to);
                     self.diagnostic(node, DiagnosticKind::IncompatibleType(from, to));
                 }
             }

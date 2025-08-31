@@ -12,3 +12,4 @@ hex = { workspace = true }
 thiserror = { workspace = true }
 rstest = { workspace = true }
 derive_more = { workspace = true }
+log = { workspace = true }

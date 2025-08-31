@@ -1,195 +1,97 @@
 use id_arena::Arena;
+use indexmap::IndexMap;
+use log::debug;
 
-use crate::{Alias, Atom, AtomRestriction, Pair, Struct, Type, TypeId, Union, substitute};
+use crate::{
+    Alias, AtomRestriction, Pair, Struct, Type, TypeId, Union, stringify_impl, substitute,
+};
 
 pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> TypeId {
     let lhs_id = substitute(arena, lhs_id);
     let rhs_id = substitute(arena, rhs_id);
-    subtract_impl(arena, lhs_id, rhs_id)
+    let lhs_name = stringify_impl(arena, lhs_id, &mut IndexMap::new());
+    let rhs_name = stringify_impl(arena, rhs_id, &mut IndexMap::new());
+    debug!("Subtracting {lhs_name} from {rhs_name}");
+    let result = subtract_impl(arena, lhs_id, rhs_id, &mut IndexMap::new());
+    let new_name = stringify_impl(arena, result, &mut IndexMap::new());
+    debug!("Subtraction from {lhs_name} to {rhs_name} yielded {new_name}");
+    result
 }
 
-fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> TypeId {
-    match (arena[lhs_id].clone(), arena[rhs_id].clone()) {
+fn subtract_impl(
+    arena: &mut Arena<Type>,
+    lhs_id: TypeId,
+    rhs_id: TypeId,
+    cache: &mut IndexMap<(TypeId, TypeId), TypeId>,
+) -> TypeId {
+    if let Some(id) = cache.get(&(lhs_id, rhs_id)) {
+        return *id;
+    }
+
+    let new_id = arena.alloc(Type::Unresolved);
+    cache.insert((lhs_id, rhs_id), new_id);
+
+    let result = match (arena[lhs_id].clone(), arena[rhs_id].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
+        (Type::Ref(lhs), _) => subtract_impl(arena, lhs, rhs_id, cache),
+        (_, Type::Ref(rhs)) => subtract_impl(arena, lhs_id, rhs, cache),
         (Type::Unresolved, _) | (_, Type::Unresolved) => lhs_id,
         (Type::Function(_), _) | (_, Type::Function(_)) => lhs_id,
         (Type::Never, _) => lhs_id,
         (_, Type::Never) => lhs_id,
         (_, Type::Generic) => arena.alloc(Type::Never),
-        (_, Type::Any) => arena.alloc(Type::Never),
         (Type::Generic, _) => lhs_id,
-        (Type::Any, Type::List(_)) => lhs_id,
-        (Type::Any, Type::Atom(atom)) => {
-            if atom.restriction.is_none() {
-                return arena.alloc(Type::Pair(Pair::new(lhs_id, lhs_id)));
-            }
-            lhs_id
-        }
-        (Type::Any, Type::Pair(pair)) => {
-            let first = subtract_impl(arena, lhs_id, pair.first);
-            let rest = subtract_impl(arena, lhs_id, pair.rest);
-
-            if first == lhs_id && rest == lhs_id {
-                return lhs_id;
-            }
-
-            let bytes = arena.alloc(Type::Atom(Atom::BYTES));
-
-            match (arena[first].clone(), arena[rest].clone()) {
-                (Type::Never, Type::Never) => bytes,
-                _ => {
-                    let pair = arena.alloc(Type::Pair(Pair::new(first, rest)));
-                    arena.alloc(Type::Union(Union::new(vec![bytes, pair])))
-                }
-            }
-        }
-        (Type::List(inner), Type::Pair(pair)) => {
-            let first = subtract_impl(arena, inner, pair.first);
-            let rest = subtract_impl(arena, lhs_id, pair.rest);
-
-            if first == inner && rest == lhs_id {
-                return lhs_id;
-            }
-
-            let nil = arena.alloc(Type::Atom(Atom::NIL));
-
-            match (arena[first].clone(), arena[rest].clone()) {
-                (Type::Never, Type::Never) => nil,
-                _ => {
-                    let pair = arena.alloc(Type::Pair(Pair::new(first, rest)));
-                    arena.alloc(Type::Union(Union::new(vec![nil, pair])))
-                }
-            }
-        }
-        (Type::Pair(pair), Type::List(inner)) => {
-            let first = subtract_impl(arena, pair.first, inner);
-            let rest = subtract_impl(arena, pair.rest, rhs_id);
-
-            if first == pair.first && rest == pair.rest {
-                return lhs_id;
-            }
-
-            match (arena[first].clone(), arena[rest].clone()) {
-                (Type::Never, Type::Never) => arena.alloc(Type::Never),
-                _ => arena.alloc(Type::Pair(Pair::new(first, rest))),
-            }
-        }
-        (Type::List(inner), Type::Atom(atom)) => {
-            let Some(restriction) = atom.restriction else {
-                return arena.alloc(Type::Pair(Pair::new(inner, lhs_id)));
-            };
-
-            match restriction {
-                AtomRestriction::Length(length) => {
-                    if length == 0 {
-                        arena.alloc(Type::Pair(Pair::new(inner, lhs_id)))
-                    } else {
-                        lhs_id
-                    }
-                }
-                AtomRestriction::Value(value) => {
-                    if value.is_empty() {
-                        arena.alloc(Type::Pair(Pair::new(inner, lhs_id)))
-                    } else {
-                        lhs_id
-                    }
-                }
-            }
-        }
-        (Type::Atom(atom), Type::List(_)) => {
-            let Some(restriction) = atom.restriction else {
-                return lhs_id;
-            };
-
-            match restriction {
-                AtomRestriction::Length(length) => {
-                    if length == 0 {
-                        arena.alloc(Type::Never)
-                    } else {
-                        lhs_id
-                    }
-                }
-                AtomRestriction::Value(value) => {
-                    if value.is_empty() {
-                        arena.alloc(Type::Never)
-                    } else {
-                        lhs_id
-                    }
-                }
-            }
-        }
-        (Type::List(lhs), Type::List(rhs)) => {
-            let inner = subtract_impl(arena, lhs, rhs);
-
-            if inner == lhs {
-                return lhs_id;
-            }
-
-            if matches!(arena[inner].clone(), Type::Never) {
-                return arena.alloc(Type::Never);
-            }
-
-            arena.alloc(Type::List(inner))
-        }
         (Type::Alias(lhs), _) => {
-            let inner = subtract_impl(arena, lhs.inner, rhs_id);
+            let inner = subtract_impl(arena, lhs.inner, rhs_id, cache);
 
             if inner == lhs.inner {
-                return lhs_id;
+                lhs_id
+            } else if matches!(arena[inner].clone(), Type::Never) {
+                arena.alloc(Type::Never)
+            } else {
+                arena.alloc(Type::Alias(Alias { inner, ..lhs }))
             }
-
-            if matches!(arena[inner].clone(), Type::Never) {
-                return arena.alloc(Type::Never);
-            }
-
-            arena.alloc(Type::Alias(Alias { inner, ..lhs }))
         }
         (_, Type::Alias(rhs)) => {
-            let inner = subtract_impl(arena, lhs_id, rhs.inner);
+            let inner = subtract_impl(arena, lhs_id, rhs.inner, cache);
 
             if inner == lhs_id {
-                return lhs_id;
+                lhs_id
+            } else if matches!(arena[inner].clone(), Type::Never) {
+                arena.alloc(Type::Never)
+            } else {
+                arena.alloc(Type::Alias(Alias { inner, ..rhs }))
             }
-
-            if matches!(arena[inner].clone(), Type::Never) {
-                return arena.alloc(Type::Never);
-            }
-
-            arena.alloc(Type::Alias(Alias { inner, ..rhs }))
         }
         (Type::Struct(lhs), _) => {
-            let inner = subtract_impl(arena, lhs.inner, rhs_id);
+            let inner = subtract_impl(arena, lhs.inner, rhs_id, cache);
 
             if inner == lhs.inner {
-                return lhs_id;
+                lhs_id
+            } else if matches!(arena[inner].clone(), Type::Never) {
+                arena.alloc(Type::Never)
+            } else {
+                arena.alloc(Type::Struct(Struct { inner, ..lhs }))
             }
-
-            if matches!(arena[inner].clone(), Type::Never) {
-                return arena.alloc(Type::Never);
-            }
-
-            arena.alloc(Type::Struct(Struct { inner, ..lhs }))
         }
         (_, Type::Struct(rhs)) => {
-            let inner = subtract_impl(arena, lhs_id, rhs.inner);
+            let inner = subtract_impl(arena, lhs_id, rhs.inner, cache);
 
             if inner == lhs_id {
-                return lhs_id;
+                lhs_id
+            } else if matches!(arena[inner].clone(), Type::Never) {
+                arena.alloc(Type::Never)
+            } else {
+                arena.alloc(Type::Struct(Struct { inner, ..rhs }))
             }
-
-            if matches!(arena[inner].clone(), Type::Never) {
-                return arena.alloc(Type::Never);
-            }
-
-            arena.alloc(Type::Struct(Struct { inner, ..rhs }))
         }
-        (Type::Atom(lhs), Type::Atom(rhs)) => {
+        (Type::Atom(lhs), Type::Atom(rhs)) => 'result: {
             let Some(rhs) = rhs.restriction else {
-                return arena.alloc(Type::Never);
+                break 'result arena.alloc(Type::Never);
             };
 
             let Some(lhs) = lhs.restriction else {
-                return lhs_id;
+                break 'result lhs_id;
             };
 
             match (lhs, rhs) {
@@ -223,7 +125,7 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Typ
             let mut result = lhs_id;
 
             for &id in &ty.types {
-                result = subtract_impl(arena, result, id);
+                result = subtract_impl(arena, result, id, cache);
             }
 
             result
@@ -233,7 +135,7 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Typ
             let mut changed = false;
 
             for &old_id in &ty.types {
-                let new_id = subtract_impl(arena, old_id, rhs_id);
+                let new_id = subtract_impl(arena, old_id, rhs_id, cache);
 
                 if new_id == old_id {
                     ids.push(old_id);
@@ -250,10 +152,8 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Typ
             }
 
             if !changed {
-                return lhs_id;
-            }
-
-            if ids.is_empty() {
+                lhs_id
+            } else if ids.is_empty() {
                 arena.alloc(Type::Never)
             } else if ids.len() == 1 {
                 ids[0]
@@ -264,8 +164,8 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Typ
         (Type::Pair(lhs), Type::Pair(rhs)) => {
             // TODO: Add other variants?
 
-            let first = subtract_impl(arena, lhs.first, rhs.first);
-            let rest = subtract_impl(arena, lhs.rest, rhs.rest);
+            let first = subtract_impl(arena, lhs.first, rhs.first, cache);
+            let rest = subtract_impl(arena, lhs.rest, rhs.rest, cache);
 
             match (arena[first].clone(), arena[rest].clone()) {
                 (Type::Never, Type::Never) => arena.alloc(Type::Never),
@@ -274,5 +174,11 @@ fn subtract_impl(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Typ
                 _ => lhs_id,
             }
         }
-    }
+    };
+
+    cache.pop().unwrap();
+
+    *arena.get_mut(new_id).unwrap() = Type::Ref(result);
+
+    result
 }

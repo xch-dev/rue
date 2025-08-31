@@ -10,11 +10,10 @@ pub fn unwrap_semantic(arena: &mut Arena<Type>, id: TypeId, resolve_aliases: boo
 fn unwrap_semantic_impl(arena: &mut Arena<Type>, id: TypeId, resolve_aliases: bool) -> TypeId {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
+        Type::Ref(id) => unwrap_semantic_impl(arena, id, resolve_aliases),
         Type::Unresolved
         | Type::Generic
         | Type::Never
-        | Type::Any
-        | Type::List(_)
         | Type::Atom(_)
         | Type::Pair(_)
         | Type::Function(_)

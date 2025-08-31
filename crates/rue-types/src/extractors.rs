@@ -10,13 +10,9 @@ pub fn extract_pairs(arena: &mut Arena<Type>, id: TypeId) -> Vec<Pair> {
 fn extract_pairs_impl(arena: &Arena<Type>, id: TypeId) -> Option<Vec<Pair>> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
+        Type::Ref(id) => extract_pairs_impl(arena, id),
         Type::Unresolved => Some(vec![]),
-        Type::Generic
-        | Type::Never
-        | Type::Atom(_)
-        | Type::Function(_)
-        | Type::Any
-        | Type::List(_) => None,
+        Type::Generic | Type::Never | Type::Atom(_) | Type::Function(_) => None,
         Type::Pair(pair) => Some(vec![pair]),
         Type::Struct(ty) => extract_pairs_impl(arena, ty.inner),
         Type::Alias(alias) => extract_pairs_impl(arena, alias.inner),
@@ -40,10 +36,9 @@ pub fn extract_functions(arena: &mut Arena<Type>, id: TypeId) -> Vec<FunctionTyp
 fn extract_functions_impl(arena: &Arena<Type>, id: TypeId) -> Option<Vec<FunctionType>> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
+        Type::Ref(id) => extract_functions_impl(arena, id),
         Type::Unresolved => Some(vec![]),
-        Type::Generic | Type::Never | Type::Atom(_) | Type::Pair(_) | Type::Any | Type::List(_) => {
-            None
-        }
+        Type::Generic | Type::Never | Type::Atom(_) | Type::Pair(_) => None,
         Type::Function(function) => Some(vec![function]),
         Type::Struct(ty) => extract_functions_impl(arena, ty.inner),
         Type::Alias(alias) => extract_functions_impl(arena, alias.inner),

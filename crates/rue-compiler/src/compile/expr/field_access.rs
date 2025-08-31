@@ -19,14 +19,9 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
     let ty = rue_types::unwrap_semantic(ctx.types_mut(), expr.ty, true);
 
     match ctx.ty(ty).clone() {
-        Type::Apply(_) | Type::Alias(_) => unreachable!(),
+        Type::Apply(_) | Type::Alias(_) | Type::Ref(_) => unreachable!(),
         Type::Unresolved => ctx.builtins().unresolved.clone(),
-        Type::Generic
-        | Type::Union(_)
-        | Type::Function(_)
-        | Type::Never
-        | Type::Any
-        | Type::List(_) => {
+        Type::Generic | Type::Union(_) | Type::Function(_) | Type::Never => {
             let type_name = ctx.type_name(expr.ty);
             ctx.diagnostic(
                 &name,

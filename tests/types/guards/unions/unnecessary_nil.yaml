@@ -1,4 +1,6 @@
+program: (a (i (not (q . 1)) (q . 2) (q 8)) 1)
+debug_program: (a (i (not (q . 1)) (q . 2) (q 8)) 1)
 solution: (42)
+clvm_error: clvm raise
 diagnostics:
 - Unnecessary type guard from `Int | nil` to `Int`, since they are already compatible types at 2:14
-- Cannot compare `Int | nil` to `nil` without a type guard, since the runtime value must be constrained at 1:34

@@ -8,12 +8,8 @@ pub fn replace_type(db: &mut Database, from: TypeId, to: TypeId, path: &[TypePat
     };
 
     match db.ty(from).clone() {
-        Type::Unresolved
-        | Type::Generic
-        | Type::Atom(..)
-        | Type::Function(_)
-        | Type::Any
-        | Type::Never => from,
+        Type::Unresolved | Type::Generic | Type::Atom(..) | Type::Function(_) | Type::Never => from,
+        Type::Ref(id) => replace_type(db, id, to, path),
         Type::Apply(apply) => {
             let inner = replace_type(db, apply.inner, to, path);
             db.alloc_type(Type::Apply(Apply::new(inner, apply.generics)))
@@ -44,9 +40,5 @@ pub fn replace_type(db: &mut Database, from: TypeId, to: TypeId, path: &[TypePat
                 db.alloc_type(Type::Pair(Pair::new(pair.first, rest)))
             }
         },
-        Type::List(inner) => {
-            let inner = replace_type(db, inner, to, path);
-            db.alloc_type(Type::List(inner))
-        }
     }
 }

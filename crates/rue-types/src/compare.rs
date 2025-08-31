@@ -4,8 +4,10 @@ use std::{
 };
 
 use id_arena::Arena;
+use indexmap::{IndexMap, IndexSet};
+use log::debug;
 
-use crate::{AtomRestriction, AtomSemantic, Type, TypeId, substitute};
+use crate::{AtomRestriction, AtomSemantic, Type, TypeId, stringify_impl, substitute};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Comparison {
@@ -15,37 +17,55 @@ pub enum Comparison {
 }
 
 #[derive(Debug)]
-pub struct ComparisonContext<'a> {
-    infer: Option<&'a mut HashMap<TypeId, TypeId>>,
+pub(crate) struct ComparisonContext<'a> {
+    pub(crate) infer: Option<&'a mut HashMap<TypeId, TypeId>>,
+    pub(crate) stack: IndexSet<(TypeId, TypeId)>,
 }
 
 pub fn compare_with_inference(
     arena: &mut Arena<Type>,
-
     lhs: TypeId,
     rhs: TypeId,
     infer: Option<&mut HashMap<TypeId, TypeId>>,
 ) -> Comparison {
     let lhs = substitute(arena, lhs);
     let rhs = substitute(arena, rhs);
-    compare_impl(arena, &mut ComparisonContext { infer }, lhs, rhs)
+    let lhs_name = stringify_impl(arena, lhs, &mut IndexMap::new());
+    let rhs_name = stringify_impl(arena, rhs, &mut IndexMap::new());
+    debug!("Comparing {lhs_name} to {rhs_name}");
+    let result = compare_impl(
+        arena,
+        &mut ComparisonContext {
+            infer,
+            stack: IndexSet::new(),
+        },
+        lhs,
+        rhs,
+    );
+    debug!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
+    result
 }
 
 pub fn compare(arena: &mut Arena<Type>, lhs: TypeId, rhs: TypeId) -> Comparison {
     compare_with_inference(arena, lhs, rhs, None)
 }
 
-fn compare_impl(
+pub(crate) fn compare_impl(
     arena: &Arena<Type>,
     ctx: &mut ComparisonContext,
     lhs: TypeId,
     rhs: TypeId,
 ) -> Comparison {
-    match (arena[lhs].clone(), arena[rhs].clone()) {
+    if !ctx.stack.insert((lhs, rhs)) {
+        return Comparison::Assign;
+    }
+
+    let result = match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
+        (Type::Ref(lhs), _) => compare_impl(arena, ctx, lhs, rhs),
+        (_, Type::Ref(rhs)) => compare_impl(arena, ctx, lhs, rhs),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Never, _) => Comparison::Assign,
-        (_, Type::Any) => Comparison::Assign,
         (Type::Atom(lhs), Type::Atom(rhs)) => {
             let semantic = if lhs.semantic == rhs.semantic || rhs.semantic == AtomSemantic::Any {
                 Comparison::Assign
@@ -91,86 +111,51 @@ fn compare_impl(
         }
         (Type::Atom(_), Type::Pair(_)) => Comparison::Invalid,
         (Type::Pair(_), Type::Atom(_)) => Comparison::Invalid,
-        (Type::List(lhs), Type::List(rhs)) => compare_impl(arena, ctx, lhs, rhs),
-        (Type::Atom(atom), Type::List(_)) => {
-            let semantic = if atom.semantic == AtomSemantic::Bytes {
-                Comparison::Assign
-            } else {
-                Comparison::Cast
-            };
-
-            let restriction = match atom.restriction {
-                None => Comparison::Invalid,
-                Some(AtomRestriction::Length(length)) => {
-                    if length == 0 {
-                        Comparison::Assign
-                    } else {
-                        Comparison::Invalid
-                    }
-                }
-                Some(AtomRestriction::Value(value)) => {
-                    if value.is_empty() {
-                        Comparison::Assign
-                    } else {
-                        Comparison::Invalid
-                    }
-                }
-            };
-
-            max(semantic, restriction)
-        }
-        (Type::List(_), Type::Atom(_)) => Comparison::Invalid,
-        (Type::List(_), Type::Pair(_)) => Comparison::Invalid,
-        (Type::Pair(pair), Type::List(inner)) => {
-            let first = compare_impl(arena, ctx, pair.first, inner);
-            let rest = compare_impl(arena, ctx, pair.rest, rhs);
-            max(first, rest)
-        }
-        (Type::Any, Type::Atom(_)) => Comparison::Invalid,
-        (Type::Any, Type::Pair(_)) => Comparison::Invalid,
-        (Type::Any, Type::List(_)) => Comparison::Invalid,
-        (Type::Any, Type::Function(_)) => Comparison::Invalid,
         (Type::Function(_), Type::Atom(_)) => Comparison::Invalid,
         (Type::Function(_), Type::Pair(_)) => Comparison::Invalid,
-        (Type::Function(_), Type::List(_)) => Comparison::Invalid,
         (Type::Atom(_), Type::Function(_)) => Comparison::Invalid,
         (Type::Pair(_), Type::Function(_)) => Comparison::Invalid,
-        (Type::List(_), Type::Function(_)) => Comparison::Invalid,
         (Type::Function(lhs), Type::Function(rhs)) => {
             // TODO: We could relax the identical parameter requirement
 
-            if lhs.nil_terminated != rhs.nil_terminated {
-                return Comparison::Invalid;
+            if lhs.nil_terminated != rhs.nil_terminated || lhs.params.len() != rhs.params.len() {
+                Comparison::Invalid
+            } else {
+                let mut result = compare_impl(arena, ctx, lhs.ret, rhs.ret);
+
+                for (i, param) in lhs.params.iter().enumerate() {
+                    result = max(result, compare_impl(arena, ctx, *param, rhs.params[i]));
+                }
+
+                result
             }
-
-            if lhs.params.len() != rhs.params.len() {
-                return Comparison::Invalid;
-            }
-
-            let mut result = compare_impl(arena, ctx, lhs.ret, rhs.ret);
-
-            for (i, param) in lhs.params.iter().enumerate() {
-                result = max(result, compare_impl(arena, ctx, *param, rhs.params[i]));
-            }
-
-            result
         }
         (_, Type::Generic) => {
             if lhs == rhs {
-                return Comparison::Assign;
-            }
-
-            if let Some(infer) = &mut ctx.infer {
+                Comparison::Assign
+            } else if let Some(infer) = &mut ctx.infer {
                 if let Some(lhs) = infer.get(&lhs).copied() {
-                    return compare_impl(arena, ctx, lhs, rhs);
+                    compare_impl(arena, ctx, lhs, rhs)
+                } else {
+                    infer.insert(rhs, lhs);
+                    Comparison::Assign
                 }
-
-                infer.insert(rhs, lhs);
-                return Comparison::Assign;
+            } else {
+                Comparison::Invalid
             }
-
-            Comparison::Invalid
         }
+        (Type::Struct(lhs), Type::Struct(rhs)) => max(
+            compare_impl(arena, ctx, lhs.inner, rhs.inner),
+            if lhs.semantic == rhs.semantic {
+                Comparison::Assign
+            } else {
+                Comparison::Cast
+            },
+        ),
+        (Type::Struct(lhs), _) => compare_impl(arena, ctx, lhs.inner, rhs), // TODO: Fix cast requirement
+        (_, Type::Struct(rhs)) => compare_impl(arena, ctx, lhs, rhs.inner), // TODO: Fix cast requirement
+        (Type::Alias(lhs), _) => compare_impl(arena, ctx, lhs.inner, rhs),
+        (_, Type::Alias(rhs)) => compare_impl(arena, ctx, lhs, rhs.inner),
         (Type::Union(lhs), _) => {
             let mut result = Comparison::Assign;
 
@@ -189,21 +174,13 @@ fn compare_impl(
 
             result
         }
-        (Type::Struct(lhs), Type::Struct(rhs)) => max(
-            compare_impl(arena, ctx, lhs.inner, rhs.inner),
-            if lhs.semantic == rhs.semantic {
-                Comparison::Assign
-            } else {
-                Comparison::Cast
-            },
-        ),
-        (Type::Struct(lhs), _) => max(compare_impl(arena, ctx, lhs.inner, rhs), Comparison::Cast),
-        (_, Type::Struct(rhs)) => max(compare_impl(arena, ctx, lhs, rhs.inner), Comparison::Cast),
-        (Type::Alias(lhs), _) => compare_impl(arena, ctx, lhs.inner, rhs),
-        (_, Type::Alias(rhs)) => compare_impl(arena, ctx, lhs, rhs.inner),
         (_, Type::Never) => Comparison::Invalid,
         (Type::Generic, _) => Comparison::Invalid,
-    }
+    };
+
+    ctx.stack.pop().unwrap();
+
+    result
 }
 
 #[cfg(test)]

@@ -21,7 +21,7 @@ pub enum AtomSemantic {
     Bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AtomRestriction {
     Value(Cow<'static, [u8]>),
     Length(usize),

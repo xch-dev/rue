@@ -98,6 +98,9 @@ pub enum DiagnosticKind {
     )]
     UnconstrainableComparison(String, String),
 
+    #[error("Recursion depth exceeded while checking type")]
+    TypeCheckDepthExceeded,
+
     #[error("Cannot use `{0}` operator with `{1}` and `{2}`")]
     IncompatibleBinaryOp(String, String, String),
 
@@ -189,6 +192,7 @@ impl DiagnosticKind {
             | Self::IncompatibleCast(..)
             | Self::IncompatibleGuard(..)
             | Self::UnconstrainableComparison(..)
+            | Self::TypeCheckDepthExceeded
             | Self::IncompatibleBinaryOp(..)
             | Self::IncompatibleUnaryOp(..)
             | Self::InvalidExpressionStatement

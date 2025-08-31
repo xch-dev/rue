@@ -13,3 +13,4 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 walkdir = { workspace = true }
 serde_yml = { workspace = true }
+env_logger = { workspace = true }

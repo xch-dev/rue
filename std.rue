@@ -1,3 +1,6 @@
+type List<T> = nil | (T, List<T>);
+type Any = Atom | (Any, Any);
+
 struct Remark {
     opcode = 1,
     ...rest: Any,
