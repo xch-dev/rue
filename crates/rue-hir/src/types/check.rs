@@ -21,7 +21,7 @@ pub fn generate_check_hir(
                 .then_some(generate_check_hir(db, builtins, *rest, rest_hir));
 
             match (first, rest) {
-                (Some(first), Some(rest)) => db.alloc_hir(Hir::Binary(BinaryOp::All, first, rest)),
+                (Some(first), Some(rest)) => db.alloc_hir(Hir::Binary(BinaryOp::And, first, rest)),
                 (Some(first), None) => first,
                 (None, Some(rest)) => rest,
                 (None, None) => builtins.true_value.hir,
