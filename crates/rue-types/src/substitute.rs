@@ -46,7 +46,15 @@ fn substitute_impl(
     cache.insert(old_id, new_id);
 
     let result = match arena[old_id].clone() {
-        Type::Apply(apply) => substitute_impl(arena, apply.inner, &apply.generics, cache),
+        Type::Apply(apply) => {
+            let mut new_map = apply.generics.clone();
+
+            for arg in new_map.values_mut() {
+                *arg = substitute_impl(arena, *arg, map, cache);
+            }
+
+            substitute_impl(arena, apply.inner, &new_map, cache)
+        }
         Type::Unresolved | Type::Generic | Type::Atom(_) | Type::Never => old_id,
         Type::Ref(id) => substitute_impl(arena, id, map, cache),
         Type::Pair(pair) => {
@@ -87,5 +95,5 @@ fn substitute_impl(
 
     *arena.get_mut(new_id).unwrap() = Type::Ref(result);
 
-    new_id
+    result
 }

@@ -37,8 +37,8 @@ fn extract_functions_impl(arena: &Arena<Type>, id: TypeId) -> Option<Vec<Functio
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => extract_functions_impl(arena, id),
-        Type::Unresolved => Some(vec![]),
-        Type::Generic | Type::Never | Type::Atom(_) | Type::Pair(_) => None,
+        Type::Unresolved | Type::Never => Some(vec![]),
+        Type::Generic | Type::Atom(_) | Type::Pair(_) => None,
         Type::Function(function) => Some(vec![function]),
         Type::Struct(ty) => extract_functions_impl(arena, ty.inner),
         Type::Alias(alias) => extract_functions_impl(arena, alias.inner),

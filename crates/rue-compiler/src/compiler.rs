@@ -49,7 +49,7 @@ impl Compiler {
             diagnostics: Vec::new(),
             db,
             scope_stack: vec![builtins.scope],
-            mapping_stack: vec![HashMap::new()],
+            mapping_stack: vec![],
             builtins,
             defaults: HashMap::new(),
         }
@@ -106,14 +106,6 @@ impl Compiler {
     }
 
     pub fn type_name(&mut self, ty: TypeId) -> String {
-        self.type_name_impl(ty, &HashMap::new())
-    }
-
-    fn type_name_impl(&mut self, ty: TypeId, map: &HashMap<TypeId, TypeId>) -> String {
-        if let Some(ty) = map.get(&ty) {
-            return self.type_name_impl(*ty, map);
-        }
-
         for scope in self.scope_stack.iter().rev() {
             if let Some(name) = self.scope(*scope).type_name(ty) {
                 return name.to_string();
@@ -249,10 +241,7 @@ impl Compiler {
             Comparison::Invalid => {
                 let check = match rue_types::check(self.db.types_mut(), from, to) {
                     Ok(check) => check,
-                    Err(CheckError::DepthExceeded) => {
-                        self.diagnostic(node, DiagnosticKind::TypeCheckDepthExceeded);
-                        return;
-                    }
+                    Err(CheckError::DepthExceeded) => Check::Impossible,
                 };
 
                 let from = self.type_name(from);

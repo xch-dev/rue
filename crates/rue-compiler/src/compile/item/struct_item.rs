@@ -130,10 +130,9 @@ pub fn compile_struct_item(
         unreachable!()
     };
 
-    let resolved_inner = ctx.ty(resolved_inner).clone();
     let inner = *inner;
 
-    *ctx.ty_mut(inner) = resolved_inner;
+    *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
 }
 
 #[cfg(test)]

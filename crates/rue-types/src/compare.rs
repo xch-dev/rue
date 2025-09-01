@@ -134,7 +134,7 @@ pub(crate) fn compare_impl(
             if lhs == rhs {
                 Comparison::Assign
             } else if let Some(infer) = &mut ctx.infer {
-                if let Some(lhs) = infer.get(&lhs).copied() {
+                if let Some(rhs) = infer.get(&rhs).copied() {
                     compare_impl(arena, ctx, lhs, rhs)
                 } else {
                     infer.insert(rhs, lhs);
