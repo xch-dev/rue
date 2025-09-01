@@ -71,6 +71,7 @@ fn substitute_impl(
             arena.alloc(Type::Alias(Alias { inner, ..alias }))
         }
         Type::Function(function) => {
+            let inner = substitute_impl(arena, function.inner, map, cache);
             let params = function
                 .params
                 .iter()
@@ -80,6 +81,7 @@ fn substitute_impl(
             arena.alloc(Type::Function(FunctionType {
                 params,
                 ret,
+                inner,
                 ..function
             }))
         }

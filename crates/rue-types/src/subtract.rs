@@ -36,10 +36,11 @@ fn subtract_impl(
         (Type::Ref(lhs), _) => subtract_impl(arena, lhs, rhs_id, cache),
         (_, Type::Ref(rhs)) => subtract_impl(arena, lhs_id, rhs, cache),
         (Type::Unresolved, _) | (_, Type::Unresolved) => lhs_id,
-        (Type::Function(_), _) | (_, Type::Function(_)) => lhs_id,
+        (Type::Function(_), _) => lhs_id,
         (Type::Never, _) => lhs_id,
         (_, Type::Never) => lhs_id,
         (_, Type::Generic) => arena.alloc(Type::Never),
+        (_, Type::Function(_)) => arena.alloc(Type::Never),
         (Type::Generic, _) => lhs_id,
         (Type::Alias(lhs), _) => {
             let inner = subtract_impl(arena, lhs.inner, rhs_id, cache);

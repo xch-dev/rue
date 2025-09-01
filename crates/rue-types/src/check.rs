@@ -353,12 +353,13 @@ fn variants_of(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => variants_of(arena, id),
-        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Function(_) | Type::Generic => {
+        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic => {
             vec![id]
         }
         Type::Never => vec![],
         Type::Alias(alias) => variants_of(arena, alias.inner),
         Type::Struct(ty) => variants_of(arena, ty.inner),
+        Type::Function(function) => variants_of(arena, function.inner),
         Type::Union(ty) => {
             let mut variants = Vec::new();
 
@@ -382,7 +383,7 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Option<Atoms> {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => atoms_of(arena, id),
         Type::Unresolved | Type::Never | Type::Pair(_) => None,
-        Type::Generic | Type::Function(_) => Some(Atoms::Unrestricted),
+        Type::Generic => Some(Atoms::Unrestricted),
         Type::Atom(atom) => {
             let Some(restriction) = atom.restriction else {
                 return Some(Atoms::Unrestricted);
@@ -391,6 +392,7 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Option<Atoms> {
         }
         Type::Alias(alias) => atoms_of(arena, alias.inner),
         Type::Struct(ty) => atoms_of(arena, ty.inner),
+        Type::Function(function) => atoms_of(arena, function.inner),
         Type::Union(ty) => {
             let mut restrictions = IndexSet::new();
 
@@ -436,9 +438,10 @@ fn pairs_of(arena: &Arena<Type>, id: TypeId) -> Vec<Pair> {
         Type::Ref(id) => pairs_of(arena, id),
         Type::Unresolved | Type::Never | Type::Atom(_) => vec![],
         Type::Pair(pair) => vec![pair],
-        Type::Generic | Type::Function(_) => vec![Pair::new(id, id)], // TODO: Is this correct?
+        Type::Generic => vec![Pair::new(id, id)], // TODO: Is this correct?
         Type::Alias(alias) => pairs_of(arena, alias.inner),
         Type::Struct(ty) => pairs_of(arena, ty.inner),
+        Type::Function(function) => pairs_of(arena, function.inner),
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 

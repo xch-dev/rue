@@ -111,10 +111,6 @@ pub(crate) fn compare_impl(
         }
         (Type::Atom(_), Type::Pair(_)) => Comparison::Invalid,
         (Type::Pair(_), Type::Atom(_)) => Comparison::Invalid,
-        (Type::Function(_), Type::Atom(_)) => Comparison::Invalid,
-        (Type::Function(_), Type::Pair(_)) => Comparison::Invalid,
-        (Type::Atom(_), Type::Function(_)) => Comparison::Invalid,
-        (Type::Pair(_), Type::Function(_)) => Comparison::Invalid,
         (Type::Function(lhs), Type::Function(rhs)) => {
             // TODO: We could relax the identical parameter requirement
 
@@ -176,6 +172,8 @@ pub(crate) fn compare_impl(
         }
         (_, Type::Never) => Comparison::Invalid,
         (Type::Generic, _) => Comparison::Invalid,
+        (Type::Function(lhs), _) => compare_impl(arena, ctx, lhs.inner, rhs),
+        (_, Type::Function(rhs)) => max(compare_impl(arena, ctx, lhs, rhs.inner), Comparison::Cast),
     };
 
     ctx.stack.pop().unwrap();

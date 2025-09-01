@@ -1,4 +1,4 @@
-use rue_types::{Atom, FunctionType, Type, TypeId, Union};
+use rue_types::{Atom, FunctionType, Pair, Type, TypeId, Union};
 
 use crate::{
     Database, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId, UnaryOp,
@@ -15,6 +15,7 @@ pub struct Builtins {
     pub public_key: TypeId,
     pub int: TypeId,
     pub bool: TypeId,
+    pub function_inner: TypeId,
     pub nil: Value,
     pub true_value: Value,
     pub false_value: Value,
@@ -39,6 +40,11 @@ impl Builtins {
         let true_hir = db.alloc_hir(Hir::Bool(true));
         let false_hir = db.alloc_hir(Hir::Bool(false));
 
+        let function_inner = db.alloc_type(Type::Unresolved);
+        let function_inner_pair =
+            db.alloc_type(Type::Pair(Pair::new(function_inner, function_inner)));
+        *db.ty_mut(function_inner_pair) = Type::Union(Union::new(vec![atom, function_inner_pair]));
+
         let mut scope = Scope::new();
 
         scope.insert_type("Atom".to_string(), atom);
@@ -48,12 +54,15 @@ impl Builtins {
         scope.insert_type("Int".to_string(), int);
         scope.insert_type("Bool".to_string(), bool);
 
-        scope.insert_symbol("sha256".to_string(), sha256(db, bytes, bytes32));
+        scope.insert_symbol(
+            "sha256".to_string(),
+            sha256(db, bytes, bytes32, function_inner),
+        );
         scope.insert_symbol(
             "calculate_coin_id".to_string(),
-            calculate_coin_id(db, bytes, bytes32, int),
+            calculate_coin_id(db, bytes, bytes32, int, function_inner),
         );
-        scope.insert_symbol("substr".to_string(), substr(db, bytes, int));
+        scope.insert_symbol("substr".to_string(), substr(db, bytes, int, function_inner));
 
         let scope = db.alloc_scope(scope);
 
@@ -66,6 +75,7 @@ impl Builtins {
             public_key,
             int,
             bool,
+            function_inner,
             nil: Value::new(nil_hir, nil_type),
             true_value: Value::new(true_hir, true_type),
             false_value: Value::new(false_hir, false_type),
@@ -73,7 +83,7 @@ impl Builtins {
     }
 }
 
-fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
+fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId, function_inner: TypeId) -> SymbolId {
     let scope = db.alloc_scope(Scope::new());
 
     let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
@@ -91,6 +101,7 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
         params: vec![bytes],
         nil_terminated: true,
         ret: bytes32,
+        inner: function_inner,
     }));
 
     db.alloc_symbol(Symbol::Function(FunctionSymbol {
@@ -106,7 +117,13 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
     }))
 }
 
-fn calculate_coin_id(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: TypeId) -> SymbolId {
+fn calculate_coin_id(
+    db: &mut Database,
+    bytes: TypeId,
+    bytes32: TypeId,
+    int: TypeId,
+    function_inner: TypeId,
+) -> SymbolId {
     let scope = db.alloc_scope(Scope::new());
 
     let parent = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
@@ -142,6 +159,7 @@ fn calculate_coin_id(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: Typ
         params: vec![bytes, bytes, int],
         nil_terminated: true,
         ret: bytes32,
+        inner: function_inner,
     }));
 
     db.alloc_symbol(Symbol::Function(FunctionSymbol {
@@ -157,7 +175,7 @@ fn calculate_coin_id(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: Typ
     }))
 }
 
-fn substr(db: &mut Database, bytes: TypeId, int: TypeId) -> SymbolId {
+fn substr(db: &mut Database, bytes: TypeId, int: TypeId, function_inner: TypeId) -> SymbolId {
     let scope = db.alloc_scope(Scope::new());
 
     let input = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
@@ -191,6 +209,7 @@ fn substr(db: &mut Database, bytes: TypeId, int: TypeId) -> SymbolId {
         params: vec![bytes, int, int],
         nil_terminated: true,
         ret: bytes,
+        inner: function_inner,
     }));
 
     db.alloc_symbol(Symbol::Function(FunctionSymbol {

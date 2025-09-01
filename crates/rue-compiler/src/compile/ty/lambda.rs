@@ -41,9 +41,12 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
         ctx.builtins().unresolved.ty
     };
 
+    let inner = ctx.builtins().function_inner;
+
     ctx.alloc_type(Type::Function(FunctionType {
         params,
         nil_terminated,
         ret,
+        inner,
     }))
 }

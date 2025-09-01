@@ -99,10 +99,13 @@ pub fn compile_lambda_expr(
         ctx.builtins().unresolved.clone()
     };
 
+    let inner = ctx.builtins().function_inner;
+
     let ty = ctx.alloc_type(Type::Function(FunctionType {
         params,
         nil_terminated,
         ret: return_type,
+        inner,
     }));
 
     ctx.pop_scope();
