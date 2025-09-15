@@ -5,7 +5,7 @@ use std::{
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
-use log::trace;
+use log::{debug, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, Type, TypeId, stringify_impl, substitute,
@@ -146,6 +146,11 @@ pub(crate) fn compare_impl(
                 if let Some(rhs) = infer.get(&rhs).copied() {
                     compare_impl(arena, builtins, ctx, lhs, rhs)
                 } else {
+                    debug!(
+                        "Inferring {} is {}",
+                        stringify_impl(arena, rhs, &mut IndexMap::new()),
+                        stringify_impl(arena, lhs, &mut IndexMap::new())
+                    );
                     infer.insert(rhs, lhs);
                     Comparison::Assign
                 }

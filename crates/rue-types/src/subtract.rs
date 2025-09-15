@@ -53,17 +53,7 @@ fn subtract_impl(
                 arena.alloc(Type::Alias(Alias { inner, ..lhs }))
             }
         }
-        (_, Type::Alias(rhs)) => {
-            let inner = subtract_impl(arena, lhs_id, rhs.inner, cache);
-
-            if inner == lhs_id {
-                lhs_id
-            } else if matches!(arena[inner].clone(), Type::Never) {
-                arena.alloc(Type::Never)
-            } else {
-                arena.alloc(Type::Alias(Alias { inner, ..rhs }))
-            }
-        }
+        (_, Type::Alias(rhs)) => subtract_impl(arena, lhs_id, rhs.inner, cache),
         (Type::Struct(lhs), _) => {
             let inner = subtract_impl(arena, lhs.inner, rhs_id, cache);
 
@@ -75,17 +65,7 @@ fn subtract_impl(
                 arena.alloc(Type::Struct(Struct { inner, ..lhs }))
             }
         }
-        (_, Type::Struct(rhs)) => {
-            let inner = subtract_impl(arena, lhs_id, rhs.inner, cache);
-
-            if inner == lhs_id {
-                lhs_id
-            } else if matches!(arena[inner].clone(), Type::Never) {
-                arena.alloc(Type::Never)
-            } else {
-                arena.alloc(Type::Struct(Struct { inner, ..rhs }))
-            }
-        }
+        (_, Type::Struct(rhs)) => subtract_impl(arena, lhs_id, rhs.inner, cache),
         (Type::Atom(lhs), Type::Atom(rhs)) => 'result: {
             let Some(rhs) = rhs.restriction else {
                 break 'result arena.alloc(Type::Never);
@@ -163,8 +143,6 @@ fn subtract_impl(
             }
         }
         (Type::Pair(lhs), Type::Pair(rhs)) => {
-            // TODO: Add other variants?
-
             let first = subtract_impl(arena, lhs.first, rhs.first, cache);
             let rest = subtract_impl(arena, lhs.rest, rhs.rest, cache);
 
@@ -172,7 +150,13 @@ fn subtract_impl(
                 (Type::Never, Type::Never) => arena.alloc(Type::Never),
                 (Type::Never, _) => arena.alloc(Type::Pair(Pair::new(lhs.first, rest))),
                 (_, Type::Never) => arena.alloc(Type::Pair(Pair::new(first, lhs.rest))),
-                _ => lhs_id,
+                // (_, _) => {
+                //     let new_pair = arena.alloc(Type::Pair(Pair::new(first, rest)));
+                //     let new_first = arena.alloc(Type::Pair(Pair::new(first, lhs.rest)));
+                //     let new_rest = arena.alloc(Type::Pair(Pair::new(lhs.first, rest)));
+                //     arena.alloc(Type::Union(Union::new(vec![new_pair, new_first, new_rest])))
+                // }
+                _ => lhs_id, // TODO: This isn't strictly correct, but it's much faster and simpler
             }
         }
     };
