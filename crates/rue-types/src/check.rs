@@ -359,7 +359,8 @@ fn variants_of(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
         Type::Never => vec![],
         Type::Alias(alias) => variants_of(arena, alias.inner),
         Type::Struct(ty) => variants_of(arena, ty.inner),
-        Type::Function(function) => variants_of(arena, function.inner),
+        // Type::Function(function) => variants_of(arena, function.inner),
+        Type::Function(_) => todo!(),
         Type::Union(ty) => {
             let mut variants = Vec::new();
 
@@ -392,7 +393,8 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Option<Atoms> {
         }
         Type::Alias(alias) => atoms_of(arena, alias.inner),
         Type::Struct(ty) => atoms_of(arena, ty.inner),
-        Type::Function(function) => atoms_of(arena, function.inner),
+        // Type::Function(function) => atoms_of(arena, function.inner),
+        Type::Function(_) => todo!(),
         Type::Union(ty) => {
             let mut restrictions = IndexSet::new();
 
@@ -441,7 +443,8 @@ fn pairs_of(arena: &Arena<Type>, id: TypeId) -> Vec<Pair> {
         Type::Generic => vec![Pair::new(id, id)], // TODO: Is this correct?
         Type::Alias(alias) => pairs_of(arena, alias.inner),
         Type::Struct(ty) => pairs_of(arena, ty.inner),
-        Type::Function(function) => pairs_of(arena, function.inner),
+        // Type::Function(function) => pairs_of(arena, function.inner),
+        Type::Function(_) => todo!(),
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 

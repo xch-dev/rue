@@ -4,7 +4,7 @@ use id_arena::Arena;
 use indexmap::IndexMap;
 use log::debug;
 
-use crate::{Alias, FunctionType, Pair, Struct, Type, TypeId, Union, stringify_impl};
+use crate::{Alias, Pair, Struct, Type, TypeId, Union, stringify_impl};
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
     substitute_with_mappings(arena, id, &HashMap::new())
@@ -70,20 +70,21 @@ fn substitute_impl(
             let inner = substitute_impl(arena, alias.inner, map, cache);
             arena.alloc(Type::Alias(Alias { inner, ..alias }))
         }
-        Type::Function(function) => {
-            let inner = substitute_impl(arena, function.inner, map, cache);
-            let params = function
-                .params
-                .iter()
-                .map(|id| substitute_impl(arena, *id, map, cache))
-                .collect();
-            let ret = substitute_impl(arena, function.ret, map, cache);
-            arena.alloc(Type::Function(FunctionType {
-                params,
-                ret,
-                inner,
-                ..function
-            }))
+        Type::Function(_function) => {
+            // let inner = substitute_impl(arena, function.inner, map, cache);
+            // let params = function
+            //     .params
+            //     .iter()
+            //     .map(|id| substitute_impl(arena, *id, map, cache))
+            //     .collect();
+            // let ret = substitute_impl(arena, function.ret, map, cache);
+            // arena.alloc(Type::Function(FunctionType {
+            //     params,
+            //     ret,
+            //     inner,
+            //     ..function
+            // }))
+            todo!()
         }
         Type::Union(union) => {
             let types = union

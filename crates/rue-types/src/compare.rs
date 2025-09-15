@@ -172,8 +172,10 @@ pub(crate) fn compare_impl(
         }
         (_, Type::Never) => Comparison::Invalid,
         (Type::Generic, _) => Comparison::Invalid,
-        (Type::Function(lhs), _) => compare_impl(arena, ctx, lhs.inner, rhs),
-        (_, Type::Function(rhs)) => max(compare_impl(arena, ctx, lhs, rhs.inner), Comparison::Cast),
+        // (Type::Function(lhs), _) => compare_impl(arena, ctx, lhs.inner, rhs),
+        // (_, Type::Function(rhs)) => max(compare_impl(arena, ctx, lhs, rhs.inner), Comparison::Cast),
+        (Type::Function(_lhs), _) => todo!(),
+        (_, Type::Function(_rhs)) => todo!(),
     };
 
     ctx.stack.pop().unwrap();

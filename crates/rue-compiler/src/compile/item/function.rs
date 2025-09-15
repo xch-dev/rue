@@ -75,13 +75,10 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 
     let body = ctx.builtins().unresolved.hir;
 
-    let inner = ctx.builtins().function_inner;
-
     let ty = ctx.alloc_type(Type::Function(FunctionType {
         params: param_types,
         nil_terminated,
         ret: return_type,
-        inner,
     }));
 
     let symbol = ctx.alloc_symbol(Symbol::Function(FunctionSymbol {
