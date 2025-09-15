@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::AstPairExpr;
 use rue_hir::{Hir, Value};
 use rue_types::{Pair, Type, TypeId, Union};
@@ -37,12 +38,14 @@ pub fn compile_pair_expr(
     let first = if let Some(first) = pair.first() {
         compile_expr(ctx, &first, expected_first)
     } else {
+        debug!("Unresolved pair first");
         ctx.builtins().unresolved.clone()
     };
 
     let rest = if let Some(rest) = pair.rest() {
         compile_expr(ctx, &rest, expected_rest)
     } else {
+        debug!("Unresolved pair rest");
         ctx.builtins().unresolved.clone()
     };
 

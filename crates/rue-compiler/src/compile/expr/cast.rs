@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::{AstCastExpr, AstNode};
 use rue_hir::Value;
 
@@ -7,12 +8,14 @@ pub fn compile_cast_expr(ctx: &mut Compiler, cast: &AstCastExpr) -> Value {
     let ty = if let Some(ty) = cast.ty() {
         compile_type(ctx, &ty)
     } else {
+        debug!("Unresolved cast type");
         ctx.builtins().unresolved.ty
     };
 
     let expr = if let Some(expr) = cast.expr() {
         compile_expr(ctx, &expr, Some(ty))
     } else {
+        debug!("Unresolved cast expr");
         ctx.builtins().unresolved.clone()
     };
 

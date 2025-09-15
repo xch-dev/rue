@@ -2,11 +2,11 @@ use std::cmp::max;
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet, indexset};
-use log::debug;
+use log::trace;
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Comparison, ComparisonContext, Pair, Type, TypeId, compare_impl,
+    AtomRestriction, BuiltinTypes, Comparison, ComparisonContext, Pair, Type, TypeId, compare_impl,
     stringify_impl, substitute,
 };
 
@@ -130,6 +130,9 @@ impl Check {
 pub enum CheckError {
     #[error("Maximum type check depth reached")]
     DepthExceeded,
+
+    #[error("Cannot check if value is of function type at runtime")]
+    FunctionType,
 }
 
 #[derive(Debug)]
@@ -137,29 +140,39 @@ struct CheckContext {
     depth: usize,
 }
 
-pub fn check(arena: &mut Arena<Type>, lhs: TypeId, rhs: TypeId) -> Result<Check, CheckError> {
+pub fn check(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> Result<Check, CheckError> {
     let lhs = substitute(arena, lhs);
     let rhs = substitute(arena, rhs);
     let lhs_name = stringify_impl(arena, lhs, &mut IndexMap::new());
     let rhs_name = stringify_impl(arena, rhs, &mut IndexMap::new());
-    debug!("Checking {lhs_name} to {rhs_name}");
-    let result = check_impl(arena, &mut CheckContext { depth: 0 }, lhs, rhs);
-    debug!("Check from {lhs_name} to {rhs_name} yielded {result:?}");
+    trace!("Checking {lhs_name} to {rhs_name}");
+    let result = check_impl(arena, builtins, &mut CheckContext { depth: 0 }, lhs, rhs);
+    trace!("Check from {lhs_name} to {rhs_name} yielded {result:?}");
     result
 }
 
 fn check_impl(
     arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
     ctx: &mut CheckContext,
     lhs: TypeId,
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
-    let mut variants = variants_of(arena, lhs).into_iter().enumerate().collect();
-    check_each(arena, ctx, &mut variants, rhs)
+    let mut variants = variants_of(arena, builtins, lhs)
+        .into_iter()
+        .enumerate()
+        .collect();
+    check_each(arena, builtins, ctx, &mut variants, rhs)
 }
 
 fn check_each(
     arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
     ctx: &mut CheckContext,
     lhs: &mut Vec<(usize, TypeId)>,
     rhs: TypeId,
@@ -177,6 +190,7 @@ fn check_each(
             result,
             compare_impl(
                 arena,
+                builtins,
                 &mut ComparisonContext {
                     infer: None,
                     stack: IndexSet::new(),
@@ -191,15 +205,26 @@ fn check_each(
         return Ok(Check::None);
     }
 
-    let target_atoms = atoms_of(arena, rhs);
+    let target_atoms = atoms_of(arena, rhs)?;
 
     let mut overlap = IndexSet::new();
     let mut exceeds_overlap = false;
     let mut unrestricted = false;
     let mut lhs_has_atom = false;
+    let mut error = None;
 
     lhs.retain(|&(_, id)| {
-        let atoms = atoms_of(arena, id);
+        if error.is_some() {
+            return true;
+        }
+
+        let atoms = match atoms_of(arena, id) {
+            Ok(atoms) => atoms,
+            Err(err) => {
+                error = Some(err);
+                return true;
+            }
+        };
 
         if atoms.is_some() {
             lhs_has_atom = true;
@@ -248,6 +273,10 @@ fn check_each(
         }
     });
 
+    if let Some(error) = error {
+        return Err(error);
+    }
+
     let atom_result = lhs_has_atom.then(|| {
         if target_atoms.is_none() {
             Check::Impossible
@@ -262,7 +291,7 @@ fn check_each(
         }
     });
 
-    let target_pairs = pairs_of(arena, rhs);
+    let target_pairs = pairs_of(arena, builtins, rhs)?;
 
     let mut checks = Vec::new();
     let mut included_indices = IndexSet::new();
@@ -272,7 +301,7 @@ fn check_each(
     let mut firsts = Vec::new();
 
     for &(i, lhs) in &*lhs {
-        for pair in pairs_of(arena, lhs) {
+        for pair in pairs_of(arena, builtins, lhs)? {
             firsts.push((i, pair.first));
             lhs_has_pair = true;
         }
@@ -281,7 +310,7 @@ fn check_each(
     for target_pair in &target_pairs {
         let mut firsts = firsts.clone();
 
-        let first = check_each(arena, ctx, &mut firsts, target_pair.first)?;
+        let first = check_each(arena, builtins, ctx, &mut firsts, target_pair.first)?;
 
         if first == Check::Impossible {
             requires_check = true;
@@ -291,12 +320,16 @@ fn check_each(
         let mut rests = Vec::new();
 
         for (i, _) in firsts {
-            for pair in pairs_of(arena, lhs.iter().find(|(j, _)| *j == i).unwrap().1) {
+            for pair in pairs_of(
+                arena,
+                builtins,
+                lhs.iter().find(|(j, _)| *j == i).unwrap().1,
+            )? {
                 rests.push((i, pair.rest));
             }
         }
 
-        let rest = check_each(arena, ctx, &mut rests, target_pair.rest)?;
+        let rest = check_each(arena, builtins, ctx, &mut rests, target_pair.rest)?;
 
         if rest == Check::Impossible {
             requires_check = true;
@@ -349,23 +382,22 @@ fn check_each(
     Ok(check.simplify())
 }
 
-fn variants_of(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
+fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => variants_of(arena, id),
+        Type::Ref(id) => variants_of(arena, builtins, id),
         Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic => {
             vec![id]
         }
         Type::Never => vec![],
-        Type::Alias(alias) => variants_of(arena, alias.inner),
-        Type::Struct(ty) => variants_of(arena, ty.inner),
-        // Type::Function(function) => variants_of(arena, function.inner),
-        Type::Function(_) => todo!(),
+        Type::Alias(alias) => variants_of(arena, builtins, alias.inner),
+        Type::Struct(ty) => variants_of(arena, builtins, ty.inner),
+        Type::Function(_) => vec![builtins.atom, builtins.any_pair],
         Type::Union(ty) => {
             let mut variants = Vec::new();
 
             for variant in ty.types {
-                variants.extend(variants_of(arena, variant));
+                variants.extend(variants_of(arena, builtins, variant));
             }
 
             variants
@@ -379,29 +411,28 @@ enum Atoms {
     Restricted(IndexSet<AtomRestriction>),
 }
 
-fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Option<Atoms> {
-    match arena[id].clone() {
+fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Result<Option<Atoms>, CheckError> {
+    Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => atoms_of(arena, id),
+        Type::Ref(id) => atoms_of(arena, id)?,
         Type::Unresolved | Type::Never | Type::Pair(_) => None,
         Type::Generic => Some(Atoms::Unrestricted),
         Type::Atom(atom) => {
             let Some(restriction) = atom.restriction else {
-                return Some(Atoms::Unrestricted);
+                return Ok(Some(Atoms::Unrestricted));
             };
             Some(Atoms::Restricted(indexset![restriction]))
         }
-        Type::Alias(alias) => atoms_of(arena, alias.inner),
-        Type::Struct(ty) => atoms_of(arena, ty.inner),
-        // Type::Function(function) => atoms_of(arena, function.inner),
-        Type::Function(_) => todo!(),
+        Type::Alias(alias) => atoms_of(arena, alias.inner)?,
+        Type::Struct(ty) => atoms_of(arena, ty.inner)?,
+        Type::Function(_) => return Err(CheckError::FunctionType),
         Type::Union(ty) => {
             let mut restrictions = IndexSet::new();
 
             for variant in ty.types {
-                match atoms_of(arena, variant) {
+                match atoms_of(arena, variant)? {
                     None => {}
-                    Some(Atoms::Unrestricted) => return Some(Atoms::Unrestricted),
+                    Some(Atoms::Unrestricted) => return Ok(Some(Atoms::Unrestricted)),
                     Some(Atoms::Restricted(new)) => {
                         for restriction in new {
                             match &restriction {
@@ -431,28 +462,31 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Option<Atoms> {
                 Some(Atoms::Restricted(restrictions))
             }
         }
-    }
+    })
 }
 
-fn pairs_of(arena: &Arena<Type>, id: TypeId) -> Vec<Pair> {
-    match arena[id].clone() {
+fn pairs_of(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    id: TypeId,
+) -> Result<Vec<Pair>, CheckError> {
+    Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => pairs_of(arena, id),
+        Type::Ref(id) => pairs_of(arena, builtins, id)?,
         Type::Unresolved | Type::Never | Type::Atom(_) => vec![],
         Type::Pair(pair) => vec![pair],
-        Type::Generic => vec![Pair::new(id, id)], // TODO: Is this correct?
-        Type::Alias(alias) => pairs_of(arena, alias.inner),
-        Type::Struct(ty) => pairs_of(arena, ty.inner),
-        // Type::Function(function) => pairs_of(arena, function.inner),
-        Type::Function(_) => todo!(),
+        Type::Generic => vec![Pair::new(builtins.any, builtins.any)],
+        Type::Alias(alias) => pairs_of(arena, builtins, alias.inner)?,
+        Type::Struct(ty) => pairs_of(arena, builtins, ty.inner)?,
+        Type::Function(_) => return Err(CheckError::FunctionType),
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 
             for variant in ty.types {
-                pairs.extend(pairs_of(arena, variant));
+                pairs.extend(pairs_of(arena, builtins, variant)?);
             }
 
             pairs
         }
-    }
+    })
 }

@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::AstListExpr;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, Value};
@@ -60,6 +61,7 @@ pub fn compile_list_expr(
         let value = if let Some(expr) = item.expr() {
             compile_expr(ctx, &expr, item_type)
         } else {
+            debug!("Unresolved list item expr");
             ctx.builtins().unresolved.clone()
         };
 

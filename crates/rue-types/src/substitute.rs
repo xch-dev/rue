@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use id_arena::Arena;
 use indexmap::IndexMap;
-use log::debug;
+use log::trace;
 
-use crate::{Alias, Pair, Struct, Type, TypeId, Union, stringify_impl};
+use crate::{Alias, FunctionType, Pair, Struct, Type, TypeId, Union, stringify_impl};
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
     substitute_with_mappings(arena, id, &HashMap::new())
@@ -16,10 +16,10 @@ pub fn substitute_with_mappings(
     mappings: &HashMap<TypeId, TypeId>,
 ) -> TypeId {
     let name = stringify_impl(arena, id, &mut IndexMap::new());
-    debug!("Substituting {name}");
+    trace!("Substituting {name}");
     let result = substitute_impl(arena, id, mappings, &mut HashMap::new());
     let new_name = stringify_impl(arena, result, &mut IndexMap::new());
-    debug!("Substitution from {name} yielded {new_name}");
+    trace!("Substitution from {name} yielded {new_name}");
     result
 }
 
@@ -70,21 +70,18 @@ fn substitute_impl(
             let inner = substitute_impl(arena, alias.inner, map, cache);
             arena.alloc(Type::Alias(Alias { inner, ..alias }))
         }
-        Type::Function(_function) => {
-            // let inner = substitute_impl(arena, function.inner, map, cache);
-            // let params = function
-            //     .params
-            //     .iter()
-            //     .map(|id| substitute_impl(arena, *id, map, cache))
-            //     .collect();
-            // let ret = substitute_impl(arena, function.ret, map, cache);
-            // arena.alloc(Type::Function(FunctionType {
-            //     params,
-            //     ret,
-            //     inner,
-            //     ..function
-            // }))
-            todo!()
+        Type::Function(function) => {
+            let params = function
+                .params
+                .iter()
+                .map(|id| substitute_impl(arena, *id, map, cache))
+                .collect();
+            let ret = substitute_impl(arena, function.ret, map, cache);
+            arena.alloc(Type::Function(FunctionType {
+                params,
+                ret,
+                ..function
+            }))
         }
         Type::Union(union) => {
             let types = union

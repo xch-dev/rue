@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::debug;
 use rue_ast::{AstGuardExpr, AstNode};
 use rue_hir::{Value, generate_check_hir};
 
@@ -9,12 +10,14 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
     let ty = if let Some(ty) = guard.ty() {
         compile_type(ctx, &ty)
     } else {
+        debug!("Unresolved guard type");
         ctx.builtins().unresolved.ty
     };
 
     let expr = if let Some(expr) = guard.expr() {
         compile_expr(ctx, &expr, Some(ty))
     } else {
+        debug!("Unresolved guard expr");
         ctx.builtins().unresolved.clone()
     };
 
@@ -22,7 +25,7 @@ pub fn compile_guard_expr(ctx: &mut Compiler, guard: &AstGuardExpr) -> Value {
     let builtins = ctx.builtins().clone();
     let check_hir = generate_check_hir(ctx, &builtins, constraint.check.simplify(), expr.hir);
 
-    let mut value = Value::new(check_hir, ctx.builtins().bool);
+    let mut value = Value::new(check_hir, ctx.builtins().types.bool);
 
     if let Some(reference) = expr.reference {
         let mut then_map = HashMap::new();

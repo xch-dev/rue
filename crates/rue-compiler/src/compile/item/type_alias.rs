@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::AstTypeAliasItem;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Scope, ScopeId};
@@ -48,6 +49,7 @@ pub fn compile_type_alias(
     let resolved_inner = if let Some(inner) = type_alias.ty() {
         compile_type(ctx, &inner)
     } else {
+        debug!("Unresolved type alias type");
         ctx.builtins().unresolved.ty
     };
 

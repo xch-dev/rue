@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::debug;
 use rue_ast::{AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionCall, Hir, Value};
@@ -9,6 +10,7 @@ use crate::{Compiler, compile_expr};
 
 pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr) -> Value {
     let Some(expr) = call.expr() else {
+        debug!("Unresolved function call expr");
         return ctx.builtins().unresolved.clone();
     };
 
@@ -111,6 +113,7 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
 
             value
         } else {
+            debug!("Unresolved function call arg");
             ctx.builtins().unresolved.clone()
         };
 
@@ -118,6 +121,7 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     }
 
     let ty = if expected_functions.is_empty() {
+        debug!("Unresolved function call return type due to unresolved function type");
         ctx.builtins().unresolved.ty
     } else if expected_functions.len() == 1 {
         let function = expected_functions[0].clone();

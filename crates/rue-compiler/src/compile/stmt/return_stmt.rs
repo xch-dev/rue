@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::AstReturnStmt;
 use rue_hir::Statement;
 use rue_types::TypeId;
@@ -12,6 +13,7 @@ pub fn compile_return_stmt(
     let value = if let Some(expr) = stmt.expr() {
         compile_expr(ctx, &expr, expected_type)
     } else {
+        debug!("Unresolved return stmt expr");
         ctx.builtins().unresolved.clone()
     };
 

@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::{AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionSymbol, Hir, ParameterSymbol, Scope, Symbol, Value};
@@ -57,6 +58,7 @@ pub fn compile_lambda_expr(
                 ctx.alloc_type(Type::Union(Union::new(params)))
             }
         } else {
+            debug!("Unresolved lambda parameter type due to missing inference");
             ctx.diagnostic(
                 param.syntax(),
                 DiagnosticKind::CannotInferParameterType(param.name().unwrap().text().to_string()),
@@ -85,19 +87,20 @@ pub fn compile_lambda_expr(
         params.push(ty);
     }
 
-    let return_type = if let Some(ty) = expr.ty() {
-        compile_type(ctx, &ty)
-    } else {
-        ctx.builtins().unresolved.ty
-    };
+    let return_type = expr.ty().map(|ty| compile_type(ctx, &ty));
 
     let body = if let Some(body) = expr.body() {
-        let result = compile_expr(ctx, &body, Some(return_type));
-        ctx.assign_type(expr.syntax(), result.ty, return_type);
+        let result = compile_expr(ctx, &body, return_type);
+        if let Some(return_type) = return_type {
+            ctx.assign_type(expr.syntax(), result.ty, return_type);
+        }
         result
     } else {
+        debug!("Unresolved lambda body");
         ctx.builtins().unresolved.clone()
     };
+
+    let return_type = return_type.unwrap_or(body.ty);
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
         params,

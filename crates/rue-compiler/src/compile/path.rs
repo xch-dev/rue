@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::debug;
 use rue_ast::AstPathSegment;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::SymbolId;
@@ -113,7 +114,10 @@ pub fn compile_path(
                 if !params.is_empty() {
                     let mut map = HashMap::new();
                     for (i, param) in params.into_iter().enumerate() {
-                        let arg = args.get(i).copied().unwrap_or(ctx.builtins().unresolved.ty);
+                        let arg = args.get(i).copied().unwrap_or_else(|| {
+                            debug!("Unresolved type due to missing generic argument");
+                            ctx.builtins().unresolved.ty
+                        });
                         map.insert(param, arg);
                     }
                     ty = ctx.alloc_type(Type::Apply(Apply::new(ty, map)));

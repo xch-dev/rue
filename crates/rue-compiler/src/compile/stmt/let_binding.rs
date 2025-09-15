@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::{AstLetStmt, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{BindingSymbol, Statement, Symbol};
@@ -10,6 +11,7 @@ pub fn compile_let_binding(ctx: &mut Compiler, stmt: &AstLetStmt) -> Statement {
     let value = if let Some(expr) = stmt.value() {
         compile_expr(ctx, &expr, expected_type)
     } else {
+        debug!("Unresolved let binding value");
         ctx.diagnostic(stmt.syntax(), DiagnosticKind::MissingLetValue);
         ctx.builtins().unresolved.clone()
     };

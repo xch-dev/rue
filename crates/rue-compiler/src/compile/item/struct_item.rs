@@ -1,4 +1,5 @@
 use indexmap::IndexSet;
+use log::debug;
 use rue_ast::AstStructItem;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Scope, ScopeId};
@@ -101,8 +102,11 @@ pub fn compile_struct_item(
             }
 
             expected_type.unwrap_or(value.ty)
+        } else if let Some(ty) = expected_type {
+            ty
         } else {
-            expected_type.unwrap_or(ctx.builtins().unresolved.ty)
+            debug!("Unresolved struct item field expr");
+            ctx.builtins().unresolved.ty
         };
 
         let Some(name) = field.name() else {

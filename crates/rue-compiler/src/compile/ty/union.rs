@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::AstUnionType;
 use rue_types::{Type, TypeId, Union};
 
@@ -11,6 +12,7 @@ pub fn compile_union_type(ctx: &mut Compiler, union: &AstUnionType) -> TypeId {
     }
 
     if types.is_empty() {
+        debug!("Unresolved union type");
         return ctx.builtins().unresolved.ty;
     }
 

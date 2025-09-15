@@ -163,12 +163,12 @@ impl Compiler {
     }
 
     pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {
-        let comparison = rue_types::compare(self.db.types_mut(), from, to);
+        let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
         comparison == Comparison::Assign
     }
 
     pub fn is_castable(&mut self, from: TypeId, to: TypeId) -> bool {
-        let comparison = rue_types::compare(self.db.types_mut(), from, to);
+        let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
         matches!(comparison, Comparison::Assign | Comparison::Cast)
     }
 
@@ -181,10 +181,14 @@ impl Compiler {
     }
 
     pub fn guard_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) -> Constraint {
-        let check = match rue_types::check(self.db.types_mut(), from, to) {
+        let check = match rue_types::check(self.db.types_mut(), &self.builtins.types, from, to) {
             Ok(check) => check,
             Err(CheckError::DepthExceeded) => {
                 self.diagnostic(node, DiagnosticKind::TypeCheckDepthExceeded);
+                return Constraint::new(Check::Impossible);
+            }
+            Err(CheckError::FunctionType) => {
+                self.diagnostic(node, DiagnosticKind::FunctionTypeCheck);
                 return Constraint::new(Check::Impossible);
             }
         };
@@ -221,7 +225,13 @@ impl Compiler {
         cast: bool,
         infer: Option<&mut HashMap<TypeId, TypeId>>,
     ) {
-        let comparison = rue_types::compare_with_inference(self.db.types_mut(), from, to, infer);
+        let comparison = rue_types::compare_with_inference(
+            self.db.types_mut(),
+            &self.builtins.types,
+            from,
+            to,
+            infer,
+        );
 
         match comparison {
             Comparison::Assign => {
@@ -239,10 +249,13 @@ impl Compiler {
                 }
             }
             Comparison::Invalid => {
-                let check = match rue_types::check(self.db.types_mut(), from, to) {
-                    Ok(check) => check,
-                    Err(CheckError::DepthExceeded) => Check::Impossible,
-                };
+                let check =
+                    match rue_types::check(self.db.types_mut(), &self.builtins.types, from, to) {
+                        Ok(check) => check,
+                        Err(CheckError::DepthExceeded | CheckError::FunctionType) => {
+                            Check::Impossible
+                        }
+                    };
 
                 let from = self.type_name(from);
                 let to = self.type_name(to);

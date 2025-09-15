@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::{AstConstantItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{ConstantSymbol, Symbol, SymbolId};
@@ -8,6 +9,7 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
     let ty = if let Some(ty) = constant.ty() {
         compile_type(ctx, &ty)
     } else {
+        debug!("Unresolved constant type");
         ctx.builtins().unresolved.ty
     };
 
@@ -47,6 +49,7 @@ pub fn compile_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: 
         ctx.assign_type(expr.syntax(), value.ty, ty);
         value
     } else {
+        debug!("Unresolved constant value");
         ctx.builtins().unresolved.clone()
     };
 

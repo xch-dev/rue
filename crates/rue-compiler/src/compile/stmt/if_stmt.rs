@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::AstIfStmt;
 use rue_hir::Statement;
 use rue_types::TypeId;
@@ -12,6 +13,7 @@ pub fn compile_if_stmt(
     let condition = if let Some(condition) = stmt.condition() {
         compile_expr(ctx, &condition, None)
     } else {
+        debug!("Unresolved if stmt condition");
         ctx.builtins().unresolved.clone()
     };
 
@@ -21,6 +23,7 @@ pub fn compile_if_stmt(
         ctx.revert_mappings(index);
         value
     } else {
+        debug!("Unresolved if stmt then block");
         ctx.builtins().unresolved.clone()
     };
 

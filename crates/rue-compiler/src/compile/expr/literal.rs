@@ -1,5 +1,6 @@
 use std::{borrow::Cow, str::FromStr};
 
+use log::debug;
 use num_bigint::BigInt;
 use rue_ast::AstLiteralExpr;
 use rue_hir::{Hir, Value};
@@ -11,6 +12,7 @@ use crate::Compiler;
 
 pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value {
     let Some(value) = expr.value() else {
+        debug!("Unresolved literal expr");
         return ctx.builtins().unresolved.clone();
     };
 

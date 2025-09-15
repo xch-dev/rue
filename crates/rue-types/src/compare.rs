@@ -5,9 +5,11 @@ use std::{
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
-use log::debug;
+use log::trace;
 
-use crate::{AtomRestriction, AtomSemantic, Type, TypeId, stringify_impl, substitute};
+use crate::{
+    AtomRestriction, AtomSemantic, BuiltinTypes, Type, TypeId, stringify_impl, substitute,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Comparison {
@@ -24,6 +26,7 @@ pub(crate) struct ComparisonContext<'a> {
 
 pub fn compare_with_inference(
     arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
     lhs: TypeId,
     rhs: TypeId,
     infer: Option<&mut HashMap<TypeId, TypeId>>,
@@ -32,9 +35,10 @@ pub fn compare_with_inference(
     let rhs = substitute(arena, rhs);
     let lhs_name = stringify_impl(arena, lhs, &mut IndexMap::new());
     let rhs_name = stringify_impl(arena, rhs, &mut IndexMap::new());
-    debug!("Comparing {lhs_name} to {rhs_name}");
+    trace!("Comparing {lhs_name} to {rhs_name}");
     let result = compare_impl(
         arena,
+        builtins,
         &mut ComparisonContext {
             infer,
             stack: IndexSet::new(),
@@ -42,16 +46,22 @@ pub fn compare_with_inference(
         lhs,
         rhs,
     );
-    debug!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
+    trace!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
     result
 }
 
-pub fn compare(arena: &mut Arena<Type>, lhs: TypeId, rhs: TypeId) -> Comparison {
-    compare_with_inference(arena, lhs, rhs, None)
+pub fn compare(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> Comparison {
+    compare_with_inference(arena, builtins, lhs, rhs, None)
 }
 
 pub(crate) fn compare_impl(
     arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
     ctx: &mut ComparisonContext,
     lhs: TypeId,
     rhs: TypeId,
@@ -62,8 +72,8 @@ pub(crate) fn compare_impl(
 
     let result = match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
-        (Type::Ref(lhs), _) => compare_impl(arena, ctx, lhs, rhs),
-        (_, Type::Ref(rhs)) => compare_impl(arena, ctx, lhs, rhs),
+        (Type::Ref(lhs), _) => compare_impl(arena, builtins, ctx, lhs, rhs),
+        (_, Type::Ref(rhs)) => compare_impl(arena, builtins, ctx, lhs, rhs),
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Never, _) => Comparison::Assign,
         (Type::Atom(lhs), Type::Atom(rhs)) => {
@@ -105,8 +115,8 @@ pub(crate) fn compare_impl(
             max(semantic, restriction)
         }
         (Type::Pair(lhs), Type::Pair(rhs)) => {
-            let first = compare_impl(arena, ctx, lhs.first, rhs.first);
-            let rest = compare_impl(arena, ctx, lhs.rest, rhs.rest);
+            let first = compare_impl(arena, builtins, ctx, lhs.first, rhs.first);
+            let rest = compare_impl(arena, builtins, ctx, lhs.rest, rhs.rest);
             max(first, rest)
         }
         (Type::Atom(_), Type::Pair(_)) => Comparison::Invalid,
@@ -117,10 +127,13 @@ pub(crate) fn compare_impl(
             if lhs.nil_terminated != rhs.nil_terminated || lhs.params.len() != rhs.params.len() {
                 Comparison::Invalid
             } else {
-                let mut result = compare_impl(arena, ctx, lhs.ret, rhs.ret);
+                let mut result = compare_impl(arena, builtins, ctx, lhs.ret, rhs.ret);
 
                 for (i, param) in lhs.params.iter().enumerate() {
-                    result = max(result, compare_impl(arena, ctx, *param, rhs.params[i]));
+                    result = max(
+                        result,
+                        compare_impl(arena, builtins, ctx, *param, rhs.params[i]),
+                    );
                 }
 
                 result
@@ -131,7 +144,7 @@ pub(crate) fn compare_impl(
                 Comparison::Assign
             } else if let Some(infer) = &mut ctx.infer {
                 if let Some(rhs) = infer.get(&rhs).copied() {
-                    compare_impl(arena, ctx, lhs, rhs)
+                    compare_impl(arena, builtins, ctx, lhs, rhs)
                 } else {
                     infer.insert(rhs, lhs);
                     Comparison::Assign
@@ -141,22 +154,22 @@ pub(crate) fn compare_impl(
             }
         }
         (Type::Struct(lhs), Type::Struct(rhs)) => max(
-            compare_impl(arena, ctx, lhs.inner, rhs.inner),
+            compare_impl(arena, builtins, ctx, lhs.inner, rhs.inner),
             if lhs.semantic == rhs.semantic {
                 Comparison::Assign
             } else {
                 Comparison::Cast
             },
         ),
-        (Type::Struct(lhs), _) => compare_impl(arena, ctx, lhs.inner, rhs), // TODO: Fix cast requirement
-        (_, Type::Struct(rhs)) => compare_impl(arena, ctx, lhs, rhs.inner), // TODO: Fix cast requirement
-        (Type::Alias(lhs), _) => compare_impl(arena, ctx, lhs.inner, rhs),
-        (_, Type::Alias(rhs)) => compare_impl(arena, ctx, lhs, rhs.inner),
+        (Type::Struct(lhs), _) => compare_impl(arena, builtins, ctx, lhs.inner, rhs), // TODO: Fix cast requirement
+        (_, Type::Struct(rhs)) => compare_impl(arena, builtins, ctx, lhs, rhs.inner), // TODO: Fix cast requirement
+        (Type::Alias(lhs), _) => compare_impl(arena, builtins, ctx, lhs.inner, rhs),
+        (_, Type::Alias(rhs)) => compare_impl(arena, builtins, ctx, lhs, rhs.inner),
         (Type::Union(lhs), _) => {
             let mut result = Comparison::Assign;
 
             for &id in &lhs.types {
-                result = max(result, compare_impl(arena, ctx, id, rhs));
+                result = max(result, compare_impl(arena, builtins, ctx, id, rhs));
             }
 
             result
@@ -165,17 +178,15 @@ pub(crate) fn compare_impl(
             let mut result = Comparison::Invalid;
 
             for &id in &rhs.types {
-                result = min(result, compare_impl(arena, ctx, lhs, id));
+                result = min(result, compare_impl(arena, builtins, ctx, lhs, id));
             }
 
             result
         }
         (_, Type::Never) => Comparison::Invalid,
         (Type::Generic, _) => Comparison::Invalid,
-        // (Type::Function(lhs), _) => compare_impl(arena, ctx, lhs.inner, rhs),
-        // (_, Type::Function(rhs)) => max(compare_impl(arena, ctx, lhs, rhs.inner), Comparison::Cast),
-        (Type::Function(_lhs), _) => todo!(),
-        (_, Type::Function(_rhs)) => todo!(),
+        (_, Type::Function(_)) => Comparison::Invalid,
+        (Type::Function(_), _) => compare_impl(arena, builtins, ctx, builtins.any, rhs),
     };
 
     ctx.stack.pop().unwrap();
@@ -248,10 +259,11 @@ mod tests {
     #[case(Atom::new(AtomSemantic::Int, Some(AtomRestriction::Value(Cow::Borrowed(&[1])))), Atom::BYTES, Comparison::Cast)]
     fn test_atoms(#[case] lhs: Atom, #[case] rhs: Atom, #[case] expected: Comparison) {
         let mut arena = Arena::new();
+        let builtins = BuiltinTypes::new(&mut arena);
         let lhs_id = arena.alloc(Type::Atom(lhs.clone()));
         let rhs_id = arena.alloc(Type::Atom(rhs.clone()));
         assert_eq!(
-            compare(&mut arena, lhs_id, rhs_id),
+            compare(&mut arena, &builtins, lhs_id, rhs_id),
             expected,
             "{} -> {}",
             lhs,

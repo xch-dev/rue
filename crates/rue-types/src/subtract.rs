@@ -1,6 +1,6 @@
 use id_arena::Arena;
 use indexmap::IndexMap;
-use log::debug;
+use log::trace;
 
 use crate::{
     Alias, AtomRestriction, Pair, Struct, Type, TypeId, Union, stringify_impl, substitute,
@@ -11,10 +11,10 @@ pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Type
     let rhs_id = substitute(arena, rhs_id);
     let lhs_name = stringify_impl(arena, lhs_id, &mut IndexMap::new());
     let rhs_name = stringify_impl(arena, rhs_id, &mut IndexMap::new());
-    debug!("Subtracting {lhs_name} from {rhs_name}");
+    trace!("Subtracting {lhs_name} from {rhs_name}");
     let result = subtract_impl(arena, lhs_id, rhs_id, &mut IndexMap::new());
     let new_name = stringify_impl(arena, result, &mut IndexMap::new());
-    debug!("Subtraction from {lhs_name} to {rhs_name} yielded {new_name}");
+    trace!("Subtraction from {lhs_name} to {rhs_name} yielded {new_name}");
     result
 }
 

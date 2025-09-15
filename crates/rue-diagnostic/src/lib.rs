@@ -101,6 +101,9 @@ pub enum DiagnosticKind {
     #[error("Recursion depth exceeded while checking type")]
     TypeCheckDepthExceeded,
 
+    #[error("Cannot check if value is of function type at runtime")]
+    FunctionTypeCheck,
+
     #[error("Cannot use `{0}` operator with `{1}` and `{2}`")]
     IncompatibleBinaryOp(String, String, String),
 
@@ -193,6 +196,7 @@ impl DiagnosticKind {
             | Self::IncompatibleGuard(..)
             | Self::UnconstrainableComparison(..)
             | Self::TypeCheckDepthExceeded
+            | Self::FunctionTypeCheck
             | Self::IncompatibleBinaryOp(..)
             | Self::IncompatibleUnaryOp(..)
             | Self::InvalidExpressionStatement

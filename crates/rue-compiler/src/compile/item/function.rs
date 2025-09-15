@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId};
@@ -19,6 +20,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
     let return_type = if let Some(return_type) = function.return_type() {
         compile_type(ctx, &return_type)
     } else {
+        debug!("Unresolved function return type");
         ctx.builtins().unresolved.ty
     };
 
@@ -47,6 +49,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         let ty = if let Some(ty) = parameter.ty() {
             compile_type(ctx, &ty)
         } else {
+            debug!("Unresolved function parameter type");
             ctx.builtins().unresolved.ty
         };
 
@@ -127,6 +130,7 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
         ctx.revert_mappings(index);
         value
     } else {
+        debug!("Unresolved function body");
         ctx.builtins().unresolved.clone()
     };
 

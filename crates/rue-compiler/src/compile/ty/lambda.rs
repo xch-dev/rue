@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::AstLambdaType;
 use rue_diagnostic::DiagnosticKind;
 use rue_types::{FunctionType, Type, TypeId};
@@ -29,6 +30,7 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
         let ty = if let Some(ty) = param.ty() {
             compile_type(ctx, &ty)
         } else {
+            debug!("Unresolved lambda parameter type");
             ctx.builtins().unresolved.ty
         };
 
@@ -38,6 +40,7 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
     let ret = if let Some(ty) = lambda.return_type() {
         compile_type(ctx, &ty)
     } else {
+        debug!("Unresolved lambda return type");
         ctx.builtins().unresolved.ty
     };
 

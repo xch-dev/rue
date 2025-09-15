@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::AstAssertStmt;
 use rue_hir::Statement;
 
@@ -7,6 +8,7 @@ pub fn compile_assert_stmt(ctx: &mut Compiler, stmt: &AstAssertStmt) -> Statemen
     let value = if let Some(expr) = stmt.expr() {
         compile_expr(ctx, &expr, None)
     } else {
+        debug!("Unresolved assert expr");
         ctx.builtins().unresolved.clone()
     };
 

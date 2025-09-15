@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::debug;
 use rue_ast::{AstNode, AstStructInitializerExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, Value};
@@ -16,12 +17,14 @@ pub fn compile_struct_initializer_expr(
     {
         ty
     } else {
+        debug!("Unresolved struct initializer path");
         ctx.builtins().unresolved.ty
     };
 
     let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
 
     let Type::Struct(struct_type) = ctx.ty(semantic).clone() else {
+        debug!("Unresolved struct initializer due to non struct type");
         let name = ctx.type_name(ty);
         ctx.diagnostic(expr.syntax(), DiagnosticKind::NonStructInitializer(name));
         return ctx.builtins().unresolved.clone();
@@ -69,6 +72,7 @@ pub fn compile_struct_initializer_expr(
                     .and_then(|name| expected_field_types.get(name.text()).copied()),
             )
         } else {
+            debug!("Unresolved struct initializer field expr");
             ctx.builtins().unresolved.clone()
         };
 
@@ -104,6 +108,7 @@ pub fn compile_struct_initializer_expr(
         } else if let Some(value) = ctx.default_field(ty, &name) {
             value
         } else {
+            debug!("Unresolved struct initializer field");
             missing_fields.push(name);
             ctx.builtins().unresolved.clone()
         };

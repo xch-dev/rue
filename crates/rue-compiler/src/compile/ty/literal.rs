@@ -1,5 +1,6 @@
 use std::{borrow::Cow, str::FromStr};
 
+use log::debug;
 use num_bigint::BigInt;
 use rue_ast::AstLiteralType;
 use rue_lir::bigint_atom;
@@ -10,6 +11,7 @@ use crate::Compiler;
 
 pub fn compile_literal_type(ctx: &mut Compiler, literal: &AstLiteralType) -> TypeId {
     let Some(value) = literal.value() else {
+        debug!("Unresolved literal type");
         return ctx.builtins().unresolved.ty;
     };
 

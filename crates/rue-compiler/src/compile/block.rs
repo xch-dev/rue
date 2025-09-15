@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::{AstBlock, AstNode, AstStmtOrExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Block, Hir, Statement, Value};
@@ -61,6 +62,9 @@ pub fn compile_block(
     if let Some(body) = body {
         body.with_hir(hir)
     } else {
+        if is_expr {
+            debug!("Unresolved block body");
+        }
         Value::new(hir, ctx.builtins().unresolved.ty)
     }
 }

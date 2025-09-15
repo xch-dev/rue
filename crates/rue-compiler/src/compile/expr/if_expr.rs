@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::{AstIfExpr, AstNode};
 use rue_hir::{Hir, Value};
 use rue_types::{Type, TypeId, Union};
@@ -11,9 +12,10 @@ pub fn compile_if_expr(
 ) -> Value {
     let condition = if let Some(condition) = expr.condition() {
         let value = compile_expr(ctx, &condition, None);
-        ctx.assign_type(condition.syntax(), value.ty, ctx.builtins().bool);
+        ctx.assign_type(condition.syntax(), value.ty, ctx.builtins().types.bool);
         value
     } else {
+        debug!("Unresolved if condition");
         ctx.builtins().unresolved.clone()
     };
 
@@ -23,6 +25,7 @@ pub fn compile_if_expr(
         ctx.revert_mappings(index);
         value
     } else {
+        debug!("Unresolved if then expr");
         ctx.builtins().unresolved.clone()
     };
 
@@ -32,6 +35,7 @@ pub fn compile_if_expr(
         ctx.revert_mappings(index);
         value
     } else {
+        debug!("Unresolved if else expr");
         ctx.builtins().unresolved.clone()
     };
 

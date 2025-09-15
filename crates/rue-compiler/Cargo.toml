@@ -18,6 +18,7 @@ num-bigint = { workspace = true }
 hex = { workspace = true }
 clvmr = { workspace = true }
 indexmap = { workspace = true }
+log = { workspace = true }
 
 [dev-dependencies]
 rue-lexer = { workspace = true }

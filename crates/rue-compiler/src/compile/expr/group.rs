@@ -1,3 +1,4 @@
+use log::debug;
 use rue_ast::AstGroupExpr;
 use rue_hir::Value;
 use rue_types::TypeId;
@@ -10,6 +11,7 @@ pub fn compile_group_expr(
     expected_type: Option<TypeId>,
 ) -> Value {
     let Some(expr) = group.expr() else {
+        debug!("Unresolved group expr");
         return ctx.builtins().unresolved.clone();
     };
     compile_expr(ctx, &expr, expected_type)

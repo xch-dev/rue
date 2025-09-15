@@ -7,14 +7,9 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct Builtins {
+    pub types: BuiltinTypes,
     pub scope: ScopeId,
     pub unresolved: Value,
-    pub atom: TypeId,
-    pub bytes: TypeId,
-    pub bytes32: TypeId,
-    pub public_key: TypeId,
-    pub int: TypeId,
-    pub bool: TypeId,
     pub nil: Value,
     pub true_value: Value,
     pub false_value: Value,
@@ -44,6 +39,8 @@ impl Builtins {
         scope.insert_type("PublicKey".to_string(), types.public_key);
         scope.insert_type("Int".to_string(), types.int);
         scope.insert_type("Bool".to_string(), types.bool);
+        scope.insert_type("Any".to_string(), types.any);
+        scope.insert_type("List".to_string(), types.list);
 
         scope.insert_symbol("sha256".to_string(), sha256(db, types.bytes, types.bytes32));
         scope.insert_symbol(
@@ -55,14 +52,9 @@ impl Builtins {
         let scope = db.alloc_scope(scope);
 
         Self {
+            types,
             scope,
             unresolved: Value::new(unresolved_hir, types.unresolved),
-            atom: types.atom,
-            bytes: types.bytes,
-            bytes32: types.bytes32,
-            public_key: types.public_key,
-            int: types.int,
-            bool: types.bool,
             nil: Value::new(nil_hir, types.nil),
             true_value: Value::new(true_hir, types.bool_true),
             false_value: Value::new(false_hir, types.bool_false),
