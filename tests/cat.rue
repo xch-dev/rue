@@ -156,7 +156,7 @@ fn main(
         ...morph.conditions,
     ];
 
-    let final_conditions = if morph.tail_info is TailInfo {
+    let final_conditions = if !(morph.tail_info is nil) {
         // Make sure the asset id matches the revealed TAIL.
         assert tree_hash(morph.tail_info.tail_puzzle) == asset_id;
 

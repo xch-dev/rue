@@ -113,6 +113,9 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             arena.alloc(Lir::GtBytes(left, right))
         }
         Lir::Not(value) => {
+            if let Lir::Not(value) = arena[value].clone() {
+                return optimize(arena, value);
+            }
             let value = optimize(arena, value);
             arena.alloc(Lir::Not(value))
         }

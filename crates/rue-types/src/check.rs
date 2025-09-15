@@ -302,8 +302,10 @@ fn check_each(
 
     for &(i, lhs) in &*lhs {
         for pair in pairs_of(arena, builtins, lhs)? {
-            firsts.push((i, pair.first));
-            lhs_has_pair = true;
+            for ty in variants_of(arena, builtins, pair.first) {
+                firsts.push((i, ty));
+                lhs_has_pair = true;
+            }
         }
     }
 
@@ -325,7 +327,9 @@ fn check_each(
                 builtins,
                 lhs.iter().find(|(j, _)| *j == i).unwrap().1,
             )? {
-                rests.push((i, pair.rest));
+                for ty in variants_of(arena, builtins, pair.rest) {
+                    rests.push((i, ty));
+                }
             }
         }
 
