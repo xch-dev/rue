@@ -273,8 +273,33 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             arena.alloc(Lir::BlsVerify(sig, args))
         }
         Lir::Sha256(args) => {
-            let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
-            arena.alloc(Lir::Sha256(args))
+            let mut args = VecDeque::from(args);
+            let mut result = Vec::new();
+
+            while let Some(arg) = args.pop_front() {
+                let arg = optimize(arena, arg);
+                match arena[arg].clone() {
+                    Lir::Atom(atom) => {
+                        if let Some(last_id) = result.last_mut()
+                            && let Lir::Atom(last) = arena[*last_id].clone()
+                        {
+                            *last_id = arena.alloc(Lir::Atom([last, atom].concat()));
+                        } else {
+                            result.push(arg);
+                        }
+                    }
+                    Lir::Concat(items) => {
+                        for item in items.into_iter().rev() {
+                            args.push_front(item);
+                        }
+                    }
+                    _ => {
+                        result.push(arg);
+                    }
+                }
+            }
+
+            arena.alloc(Lir::Sha256(result.into_iter().collect()))
         }
         Lir::Keccak256(args) => {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
