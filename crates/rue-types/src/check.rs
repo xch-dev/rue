@@ -1,4 +1,4 @@
-use std::cmp::max;
+use std::{cmp::max, collections::HashSet};
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet, indexset};
@@ -295,6 +295,7 @@ fn check_each(
 
     let mut checks = Vec::new();
     let mut included_indices = IndexSet::new();
+    let mut candidate_pairs = HashSet::new();
     let mut requires_check = false;
     let mut lhs_has_pair = false;
 
@@ -303,6 +304,7 @@ fn check_each(
     for &(i, lhs) in &*lhs {
         for pair in pairs_of(arena, builtins, lhs)? {
             for ty in variants_of(arena, builtins, pair.first) {
+                candidate_pairs.insert(lhs);
                 firsts.push((i, ty));
                 lhs_has_pair = true;
             }
@@ -353,7 +355,9 @@ fn check_each(
         checks.push(Check::Pair(Box::new(first), Box::new(rest)));
     }
 
-    lhs.retain(|&(i, _)| included_indices.contains(&i));
+    lhs.retain(|&(i, type_id)| {
+        !candidate_pairs.contains(&type_id) || included_indices.contains(&i)
+    });
 
     let pair_result = lhs_has_pair.then(|| {
         if target_pairs.is_empty() {
