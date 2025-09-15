@@ -202,7 +202,7 @@ impl Compiler {
             self.diagnostic(node, DiagnosticKind::IncompatibleGuard(from_name, to_name));
         }
 
-        let else_id = rue_types::subtract(self.db.types_mut(), from, to);
+        let else_id = rue_types::subtract(self.db.types_mut(), &self.builtins.types, from, to);
 
         Constraint::new(check).with_else(else_id)
     }

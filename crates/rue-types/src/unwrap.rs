@@ -17,8 +17,14 @@ fn unwrap_semantic_impl(arena: &mut Arena<Type>, id: TypeId, resolve_aliases: bo
         | Type::Atom(_)
         | Type::Pair(_)
         | Type::Function(_)
-        | Type::Struct(_)
-        | Type::Union(_) => id,
+        | Type::Struct(_) => id,
+        Type::Union(ty) => {
+            if ty.types.len() == 1 {
+                ty.types[0]
+            } else {
+                id
+            }
+        }
         Type::Alias(alias) => {
             if resolve_aliases {
                 unwrap_semantic_impl(arena, alias.inner, resolve_aliases)

@@ -3,16 +3,22 @@ use indexmap::IndexMap;
 use log::trace;
 
 use crate::{
-    Alias, AtomRestriction, Pair, Struct, Type, TypeId, Union, stringify_impl, substitute,
+    Alias, BuiltinTypes, Comparison, Struct, Type, TypeId, Union, compare, stringify_impl,
+    substitute,
 };
 
-pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> TypeId {
+pub fn subtract(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs_id: TypeId,
+    rhs_id: TypeId,
+) -> TypeId {
     let lhs_id = substitute(arena, lhs_id);
     let rhs_id = substitute(arena, rhs_id);
     let lhs_name = stringify_impl(arena, lhs_id, &mut IndexMap::new());
     let rhs_name = stringify_impl(arena, rhs_id, &mut IndexMap::new());
     trace!("Subtracting {lhs_name} from {rhs_name}");
-    let result = subtract_impl(arena, lhs_id, rhs_id, &mut IndexMap::new());
+    let result = subtract_impl(arena, builtins, lhs_id, rhs_id);
     let new_name = stringify_impl(arena, result, &mut IndexMap::new());
     trace!("Subtraction from {lhs_name} to {rhs_name} yielded {new_name}");
     result
@@ -20,150 +26,126 @@ pub fn subtract(arena: &mut Arena<Type>, lhs_id: TypeId, rhs_id: TypeId) -> Type
 
 fn subtract_impl(
     arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
     lhs_id: TypeId,
     rhs_id: TypeId,
-    cache: &mut IndexMap<(TypeId, TypeId), TypeId>,
 ) -> TypeId {
-    if let Some(id) = cache.get(&(lhs_id, rhs_id)) {
-        return *id;
+    let mut lhs_variants = variants_of(arena, builtins, lhs_id);
+
+    lhs_variants
+        .retain(|variant| compare(arena, builtins, variant.type_id, rhs_id) > Comparison::Cast);
+
+    repackage(arena, lhs_variants)
+}
+
+fn repackage(arena: &mut Arena<Type>, variants: Vec<Variant>) -> TypeId {
+    let mut collected = vec![];
+    let mut semantic_type_id = None;
+    let mut leftover = vec![];
+
+    for mut variant in variants {
+        if let Some(id) = variant.semantic_type_ids.first().copied() {
+            if let Some(semantic_type_id) = semantic_type_id {
+                if id == semantic_type_id {
+                    variant.semantic_type_ids.pop().unwrap();
+                    collected.push(variant);
+                } else {
+                    leftover.push(variant);
+                }
+            } else {
+                semantic_type_id = Some(id);
+                variant.semantic_type_ids.pop().unwrap();
+                collected.push(variant);
+            }
+        } else {
+            leftover.push(variant);
+        }
     }
 
-    let new_id = arena.alloc(Type::Unresolved);
-    cache.insert((lhs_id, rhs_id), new_id);
+    if collected.is_empty() {
+        let leftover: Vec<TypeId> = leftover
+            .into_iter()
+            .map(|variant| variant.type_id)
+            .collect();
 
-    let result = match (arena[lhs_id].clone(), arena[rhs_id].clone()) {
-        (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
-        (Type::Ref(lhs), _) => subtract_impl(arena, lhs, rhs_id, cache),
-        (_, Type::Ref(rhs)) => subtract_impl(arena, lhs_id, rhs, cache),
-        (Type::Unresolved, _) | (_, Type::Unresolved) => lhs_id,
-        (Type::Function(_), _) => lhs_id,
-        (Type::Never, _) => lhs_id,
-        (_, Type::Never) => lhs_id,
-        (_, Type::Generic) => arena.alloc(Type::Never),
-        (_, Type::Function(_)) => arena.alloc(Type::Never),
-        (Type::Generic, _) => lhs_id,
-        (Type::Alias(lhs), _) => {
-            let inner = subtract_impl(arena, lhs.inner, rhs_id, cache);
-
-            if inner == lhs.inner {
-                lhs_id
-            } else if matches!(arena[inner].clone(), Type::Never) {
-                arena.alloc(Type::Never)
-            } else {
-                arena.alloc(Type::Alias(Alias { inner, ..lhs }))
-            }
+        if leftover.is_empty() {
+            return arena.alloc(Type::Never);
+        } else if leftover.len() == 1 {
+            return leftover[0];
         }
-        (_, Type::Alias(rhs)) => subtract_impl(arena, lhs_id, rhs.inner, cache),
-        (Type::Struct(lhs), _) => {
-            let inner = subtract_impl(arena, lhs.inner, rhs_id, cache);
 
-            if inner == lhs.inner {
-                lhs_id
-            } else if matches!(arena[inner].clone(), Type::Never) {
-                arena.alloc(Type::Never)
-            } else {
-                arena.alloc(Type::Struct(Struct { inner, ..lhs }))
-            }
-        }
-        (_, Type::Struct(rhs)) => subtract_impl(arena, lhs_id, rhs.inner, cache),
-        (Type::Atom(lhs), Type::Atom(rhs)) => 'result: {
-            let Some(rhs) = rhs.restriction else {
-                break 'result arena.alloc(Type::Never);
-            };
+        return arena.alloc(Type::Union(Union::new(leftover)));
+    }
 
-            let Some(lhs) = lhs.restriction else {
-                break 'result lhs_id;
-            };
+    let semantic_type_id = semantic_type_id.unwrap();
 
-            match (lhs, rhs) {
-                (AtomRestriction::Length(lhs), AtomRestriction::Length(rhs)) => {
-                    if lhs == rhs {
-                        arena.alloc(Type::Never)
-                    } else {
-                        lhs_id
-                    }
-                }
-                (AtomRestriction::Length(_), AtomRestriction::Value(_)) => lhs_id,
-                (AtomRestriction::Value(value), AtomRestriction::Length(length)) => {
-                    if value.len() == length {
-                        arena.alloc(Type::Never)
-                    } else {
-                        lhs_id
-                    }
-                }
-                (AtomRestriction::Value(lhs), AtomRestriction::Value(rhs)) => {
-                    if lhs == rhs {
-                        arena.alloc(Type::Never)
-                    } else {
-                        lhs_id
-                    }
-                }
-            }
-        }
-        (Type::Atom(_), Type::Pair(_)) => lhs_id,
-        (Type::Pair(_), Type::Atom(_)) => lhs_id,
-        (_, Type::Union(ty)) => {
-            let mut result = lhs_id;
+    let inner = repackage(arena, collected);
 
-            for &id in &ty.types {
-                result = subtract_impl(arena, result, id, cache);
-            }
-
-            result
-        }
-        (Type::Union(ty), _) => {
-            let mut ids = Vec::new();
-            let mut changed = false;
-
-            for &old_id in &ty.types {
-                let new_id = subtract_impl(arena, old_id, rhs_id, cache);
-
-                if new_id == old_id {
-                    ids.push(old_id);
-                    continue;
-                }
-
-                changed = true;
-
-                if matches!(arena[new_id].clone(), Type::Never) {
-                    continue;
-                }
-
-                ids.push(new_id);
-            }
-
-            if !changed {
-                lhs_id
-            } else if ids.is_empty() {
-                arena.alloc(Type::Never)
-            } else if ids.len() == 1 {
-                ids[0]
-            } else {
-                arena.alloc(Type::Union(Union::new(ids)))
-            }
-        }
-        (Type::Pair(lhs), Type::Pair(rhs)) => {
-            let first = subtract_impl(arena, lhs.first, rhs.first, cache);
-            let rest = subtract_impl(arena, lhs.rest, rhs.rest, cache);
-
-            match (arena[first].clone(), arena[rest].clone()) {
-                (Type::Never, Type::Never) => arena.alloc(Type::Never),
-                (Type::Never, _) => arena.alloc(Type::Pair(Pair::new(lhs.first, rest))),
-                (_, Type::Never) => arena.alloc(Type::Pair(Pair::new(first, lhs.rest))),
-                // (_, _) => {
-                //     let new_pair = arena.alloc(Type::Pair(Pair::new(first, rest)));
-                //     let new_first = arena.alloc(Type::Pair(Pair::new(first, lhs.rest)));
-                //     let new_rest = arena.alloc(Type::Pair(Pair::new(lhs.first, rest)));
-                //     arena.alloc(Type::Union(Union::new(vec![new_pair, new_first, new_rest])))
-                // }
-                _ => lhs_id, // TODO: This isn't strictly correct, but it's much faster and simpler
-            }
-        }
+    let result = match arena[semantic_type_id].clone() {
+        Type::Alias(alias) => arena.alloc(Type::Alias(Alias { inner, ..alias })),
+        Type::Struct(ty) => arena.alloc(Type::Struct(Struct { inner, ..ty })),
+        _ => unreachable!(),
     };
 
-    cache.pop().unwrap();
+    if leftover.is_empty() {
+        return result;
+    }
 
-    *arena.get_mut(new_id).unwrap() = Type::Ref(result);
+    let leftover = repackage(arena, leftover);
 
-    result
+    arena.alloc(Type::Union(Union::new(vec![result, leftover])))
+}
+
+struct Variant {
+    semantic_type_ids: Vec<TypeId>,
+    type_id: TypeId,
+}
+
+fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<Variant> {
+    match arena[id].clone() {
+        Type::Apply(_) => unreachable!(),
+        Type::Ref(id) => variants_of(arena, builtins, id),
+        Type::Unresolved | Type::Atom(_) | Type::Pair(_) => vec![Variant {
+            semantic_type_ids: vec![],
+            type_id: id,
+        }],
+        Type::Never => vec![],
+        Type::Alias(alias) => {
+            let mut variants = variants_of(arena, builtins, alias.inner);
+
+            for variant in variants.iter_mut() {
+                variant.semantic_type_ids.push(id);
+            }
+
+            variants
+        }
+        Type::Struct(ty) => {
+            let mut variants = variants_of(arena, builtins, ty.inner);
+
+            for variant in variants.iter_mut() {
+                variant.semantic_type_ids.push(id);
+            }
+
+            variants
+        }
+        Type::Function(_) | Type::Generic => vec![
+            Variant {
+                semantic_type_ids: vec![],
+                type_id: builtins.atom,
+            },
+            Variant {
+                semantic_type_ids: vec![],
+                type_id: builtins.any_pair,
+            },
+        ],
+        Type::Union(ty) => {
+            let mut variants = Vec::new();
+
+            for variant in ty.types {
+                variants.extend(variants_of(arena, builtins, variant));
+            }
+
+            variants
+        }
+    }
 }
