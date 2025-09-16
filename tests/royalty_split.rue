@@ -1,0 +1,73 @@
+// This puzzle has not been audited or tested, and is for example purposes only.
+
+struct Payout {
+    puzzle_hash: Bytes32,
+    share: Int,
+}
+
+fn main(payouts: List<Payout>, my_amount: Int, total_shares: Int) -> List<Condition> {
+    [
+        CreateCoinAnnouncement { message: nil },
+        AssertMyAmount { amount: my_amount },
+        ...calculate_amount_and_split(payouts, my_amount, total_shares, 0, my_amount),
+    ]
+}
+
+fn calculate_share(total_amount: Int, share: Int, total_shares: Int) -> Int {
+    total_amount * share / total_shares
+}
+
+fn get_amount(payout: Payout, total_amount: Int, total_shares: Int) -> Int {
+    calculate_share(total_amount, payout.share, total_shares)
+}
+
+fn calculate_amount_and_split(
+    payouts: List<Payout>,
+    total_amount: Int,
+    total_shares: Int,
+    shares_sum: Int,
+    remaining_amount: Int,
+) -> List<Condition> {
+    if payouts is nil {
+        if total_shares == shares_sum {
+            return nil;
+        }
+
+        raise "Share sum doesn't match total";
+    }
+
+    split_amount_and_create_coins(
+        payouts,
+        calculate_share(total_amount, payouts.first.share, total_shares),
+        total_amount,
+        total_shares,
+        shares_sum,
+        remaining_amount,
+    )
+}
+
+fn split_amount_and_create_coins(
+    payouts: (Payout, List<Payout>),
+    this_amount: Int,
+    total_amount: Int,
+    total_shares: Int,
+    shares_sum: Int,
+    remaining_amount: Int,
+) -> List<Condition> {
+    let create_coin = CreateCoin {
+        puzzle_hash: payouts.first.puzzle_hash,
+        amount: if !(payouts.rest is nil) { this_amount } else { remaining_amount },
+        memos: Memos { value: [payouts.first.puzzle_hash] },
+    };
+
+    [
+        create_coin,
+        ...calculate_amount_and_split(
+            payouts.rest,
+            total_amount,
+            total_shares,
+            shares_sum + payouts.first.share,
+            remaining_amount - this_amount,
+        ),
+    ]
+}
