@@ -1,2 +1,2 @@
 diagnostics:
-- Let bindings must have a value, since they cannot be reassigned at 2:5
+- Let bindings must have a value, since they cannot be reassigned at test:2:5

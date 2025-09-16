@@ -18,8 +18,11 @@ pub use ty::*;
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use expect_test::Expect;
     use rue_ast::{AstDocument, AstNode};
+    use rue_diagnostic::{Source, SourceKind};
     use rue_hir::{Scope, ScopeId};
     use rue_lexer::Lexer;
     use rue_options::CompilerOptions;
@@ -30,7 +33,10 @@ mod tests {
     pub fn check(source: &str, errors: Expect) -> (Compiler, ScopeId) {
         let tokens = Lexer::new(source).collect::<Vec<_>>();
 
-        let parser = Parser::new(source, tokens);
+        let parser = Parser::new(
+            Source::new(Arc::from(source), SourceKind::File("main.rue".to_string())),
+            tokens,
+        );
 
         let result = parser.parse();
 
@@ -49,7 +55,7 @@ mod tests {
             if !first {
                 error_output.push('\n');
             }
-            error_output.push_str(&error.message(source));
+            error_output.push_str(&error.message());
             first = false;
         }
 
@@ -57,7 +63,7 @@ mod tests {
             if !first {
                 error_output.push('\n');
             }
-            error_output.push_str(&error.message(source));
+            error_output.push_str(&error.message());
             first = false;
         }
 

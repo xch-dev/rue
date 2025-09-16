@@ -3,7 +3,7 @@ use crate::{
     grammar::stmt::{StatementKind, stmt},
 };
 
-pub fn block(p: &mut Parser<'_>) {
+pub fn block(p: &mut Parser) {
     p.start(SyntaxKind::Block);
     p.expect(T!['{']);
     while !p.at(T!['}']) {

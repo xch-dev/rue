@@ -2,10 +2,11 @@ use std::{
     cmp::Reverse,
     collections::HashMap,
     ops::{Deref, DerefMut, Range},
+    sync::Arc,
 };
 
 use rowan::TextRange;
-use rue_diagnostic::{Diagnostic, DiagnosticKind};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SourceKind, SrcLoc};
 use rue_hir::{
     Builtins, Constraint, Database, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, replace_type,
 };
@@ -16,6 +17,7 @@ use rue_types::{Check, CheckError, Comparison, TypeId};
 #[derive(Debug, Clone)]
 pub struct Compiler {
     _options: CompilerOptions,
+    source: Source,
     diagnostics: Vec<Diagnostic>,
     db: Database,
     scope_stack: Vec<ScopeId>,
@@ -46,6 +48,7 @@ impl Compiler {
 
         Self {
             _options: options,
+            source: Source::new(Arc::from(""), SourceKind::Std),
             diagnostics: Vec::new(),
             db,
             scope_stack: vec![builtins.scope],
@@ -63,10 +66,17 @@ impl Compiler {
         &self.builtins
     }
 
+    pub fn set_source(&mut self, source: Source) {
+        self.source = source;
+    }
+
     pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
         let range = node.text_range();
         let span: Range<usize> = range.start().into()..range.end().into();
-        self.diagnostics.push(Diagnostic::new(span, kind));
+        self.diagnostics.push(Diagnostic::new(
+            SrcLoc::new(self.source.clone(), span),
+            kind,
+        ));
     }
 
     pub fn push_scope(&mut self, scope: ScopeId) {

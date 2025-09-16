@@ -13,7 +13,7 @@ pub enum StatementKind {
     End,
 }
 
-pub fn stmt(p: &mut Parser<'_>) -> StatementKind {
+pub fn stmt(p: &mut Parser) -> StatementKind {
     if p.at(T![let]) || p.at(T![inline]) {
         let_stmt(p);
     } else if p.at(T![return]) {
@@ -45,7 +45,7 @@ pub fn stmt(p: &mut Parser<'_>) -> StatementKind {
     StatementKind::Normal
 }
 
-fn let_stmt(p: &mut Parser<'_>) {
+fn let_stmt(p: &mut Parser) {
     p.start(SyntaxKind::LetStmt);
     p.try_eat(T![inline]);
     p.expect(T![let]);
@@ -60,7 +60,7 @@ fn let_stmt(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn return_stmt(p: &mut Parser<'_>) {
+fn return_stmt(p: &mut Parser) {
     p.start(SyntaxKind::ReturnStmt);
     p.expect(T![return]);
     expr(p);
@@ -68,7 +68,7 @@ fn return_stmt(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn assert_stmt(p: &mut Parser<'_>) {
+fn assert_stmt(p: &mut Parser) {
     p.start(SyntaxKind::AssertStmt);
     p.expect(T![assert]);
     expr(p);
@@ -76,7 +76,7 @@ fn assert_stmt(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn raise_stmt(p: &mut Parser<'_>) {
+fn raise_stmt(p: &mut Parser) {
     p.start(SyntaxKind::RaiseStmt);
     p.expect(T![raise]);
     expr(p);

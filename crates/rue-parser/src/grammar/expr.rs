@@ -22,11 +22,11 @@ impl Default for ExprOptions {
     }
 }
 
-pub fn expr(p: &mut Parser<'_>) {
+pub fn expr(p: &mut Parser) {
     expr_with(p, ExprOptions::default());
 }
 
-pub fn expr_with(p: &mut Parser<'_>, options: ExprOptions) -> bool {
+pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
     let checkpoint = p.checkpoint();
 
     if let Some(kind) = p.at_any(SyntaxKind::PREFIX_OPS) {
@@ -202,7 +202,7 @@ pub fn expr_with(p: &mut Parser<'_>, options: ExprOptions) -> bool {
     }
 }
 
-fn path_expr_segment(p: &mut Parser<'_>, first: bool) -> bool {
+fn path_expr_segment(p: &mut Parser, first: bool) -> bool {
     p.start(SyntaxKind::PathSegment);
     if first {
         p.try_eat(T![::]);
@@ -219,7 +219,7 @@ fn path_expr_segment(p: &mut Parser<'_>, first: bool) -> bool {
     separated
 }
 
-fn if_expr(p: &mut Parser<'_>, checkpoint: Checkpoint, allow_statement: bool) -> bool {
+fn if_expr(p: &mut Parser, checkpoint: Checkpoint, allow_statement: bool) -> bool {
     p.expect(T![if]);
     expr_with(
         p,

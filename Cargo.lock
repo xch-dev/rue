@@ -1302,6 +1302,7 @@ dependencies = [
  "clvm_tools_rs",
  "clvmr",
  "rue-compiler",
+ "rue-diagnostic",
  "rue-options",
 ]
 
@@ -1331,6 +1332,7 @@ dependencies = [
 name = "rue-diagnostic"
 version = "0.1.0"
 dependencies = [
+ "derive_more",
  "thiserror 2.0.14",
 ]
 
@@ -1399,6 +1401,7 @@ dependencies = [
  "clvmr",
  "env_logger",
  "rue-compiler",
+ "rue-diagnostic",
  "rue-options",
  "serde",
  "serde_yml",

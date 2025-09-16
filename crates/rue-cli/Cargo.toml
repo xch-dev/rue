@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 rue-compiler = { workspace = true }
 rue-options = { workspace = true }
+rue-diagnostic = { workspace = true }
 clvmr = { workspace = true }
 clvm_tools_rs = { workspace = true }
 clap = { workspace = true, features = ["derive"] }

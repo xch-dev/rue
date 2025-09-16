@@ -5,7 +5,7 @@ use crate::{
     grammar::{block::block, expr::expr, generics::generic_parameters, ty::ty},
 };
 
-pub fn item(p: &mut Parser<'_>) {
+pub fn item(p: &mut Parser) {
     let cp = p.checkpoint();
     let inline = p.try_eat(T![inline]);
 
@@ -22,7 +22,7 @@ pub fn item(p: &mut Parser<'_>) {
     }
 }
 
-fn function_item(p: &mut Parser<'_>, cp: Checkpoint) {
+fn function_item(p: &mut Parser, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::FunctionItem);
     p.expect(T![fn]);
     p.expect(SyntaxKind::Ident);
@@ -43,7 +43,7 @@ fn function_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.finish();
 }
 
-fn function_parameter(p: &mut Parser<'_>) {
+fn function_parameter(p: &mut Parser) {
     p.start(SyntaxKind::FunctionParameter);
     p.try_eat(T![...]);
     p.expect(SyntaxKind::Ident);
@@ -52,7 +52,7 @@ fn function_parameter(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn constant_item(p: &mut Parser<'_>, cp: Checkpoint) {
+fn constant_item(p: &mut Parser, cp: Checkpoint) {
     p.start_at(cp, SyntaxKind::ConstantItem);
     p.expect(T![const]);
     p.expect(SyntaxKind::Ident);
@@ -64,7 +64,7 @@ fn constant_item(p: &mut Parser<'_>, cp: Checkpoint) {
     p.finish();
 }
 
-fn type_alias_item(p: &mut Parser<'_>) {
+fn type_alias_item(p: &mut Parser) {
     p.start(SyntaxKind::TypeAliasItem);
     p.expect(T![type]);
     p.expect(SyntaxKind::Ident);
@@ -77,7 +77,7 @@ fn type_alias_item(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn struct_item(p: &mut Parser<'_>) {
+fn struct_item(p: &mut Parser) {
     p.start(SyntaxKind::StructItem);
     p.expect(T![struct]);
     p.expect(SyntaxKind::Ident);
@@ -95,7 +95,7 @@ fn struct_item(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn struct_field(p: &mut Parser<'_>) {
+fn struct_field(p: &mut Parser) {
     p.start(SyntaxKind::StructField);
     p.try_eat(T![...]);
     p.expect(SyntaxKind::Ident);

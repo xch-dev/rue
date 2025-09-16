@@ -1,6 +1,6 @@
 use crate::{Parser, SyntaxKind, T, grammar::ty::ty};
 
-pub fn generic_parameters(p: &mut Parser<'_>) {
+pub fn generic_parameters(p: &mut Parser) {
     p.start(SyntaxKind::GenericParameters);
     p.expect(T![<]);
     while !p.at(T![>]) {
@@ -13,7 +13,7 @@ pub fn generic_parameters(p: &mut Parser<'_>) {
     p.finish();
 }
 
-pub fn generic_arguments(p: &mut Parser<'_>) {
+pub fn generic_arguments(p: &mut Parser) {
     p.start(SyntaxKind::GenericArguments);
     p.expect(T![<]);
     while !p.at(T![>]) {

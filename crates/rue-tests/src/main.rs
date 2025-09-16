@@ -1,10 +1,13 @@
 use std::env;
 use std::fs;
+use std::sync::Arc;
 
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
 use rue_compiler::compile_file;
+use rue_diagnostic::Source;
+use rue_diagnostic::SourceKind;
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
@@ -80,13 +83,15 @@ fn main() -> Result<()> {
         let source =
             fs::read_to_string(entry.path().parent().unwrap().join(format!("{name}.rue")))?;
 
+        let source = Source::new(Arc::from(source), SourceKind::File("test".to_string()));
+
         let mut allocator = Allocator::new();
-        let result = compile_file(&mut allocator, &source, CompilerOptions::default())?;
+        let result = compile_file(&mut allocator, source.clone(), CompilerOptions::default())?;
 
         let mut diagnostics = Vec::new();
 
         for diagnostic in result.diagnostics {
-            diagnostics.push(diagnostic.message(&source));
+            diagnostics.push(diagnostic.message());
         }
 
         if let Some(ptr) = result.program {
@@ -94,7 +99,7 @@ fn main() -> Result<()> {
 
             test_case.program = Some(disassemble(&allocator, ptr, None));
 
-            let debug_ptr = compile_file(&mut allocator, &source, CompilerOptions::debug())?
+            let debug_ptr = compile_file(&mut allocator, source, CompilerOptions::debug())?
                 .program
                 .unwrap();
 

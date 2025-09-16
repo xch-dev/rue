@@ -6,4 +6,4 @@ runtime_cost: 20
 byte_cost: 36000
 total_cost: 36020
 diagnostics:
-- Unnecessary `return` statement, end the function with an expression instead at 2:5
+- Unnecessary `return` statement, end the function with an expression instead at test:2:5

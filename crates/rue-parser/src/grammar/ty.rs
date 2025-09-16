@@ -1,10 +1,10 @@
 use crate::{Parser, SyntaxKind, T, grammar::generics::generic_arguments};
 
-pub fn ty(p: &mut Parser<'_>) {
+pub fn ty(p: &mut Parser) {
     ty_inner(p, true);
 }
 
-fn ty_inner(p: &mut Parser<'_>, allow_union: bool) {
+fn ty_inner(p: &mut Parser, allow_union: bool) {
     let cp = p.checkpoint();
 
     if p.at(SyntaxKind::Ident) || p.at(T![::]) {
@@ -58,7 +58,7 @@ fn ty_inner(p: &mut Parser<'_>, allow_union: bool) {
     }
 }
 
-fn path_type(p: &mut Parser<'_>) {
+fn path_type(p: &mut Parser) {
     p.start(SyntaxKind::PathType);
     path_type_segment(p, true);
     while p.at(T![::]) {
@@ -67,7 +67,7 @@ fn path_type(p: &mut Parser<'_>) {
     p.finish();
 }
 
-fn path_type_segment(p: &mut Parser<'_>, first: bool) {
+fn path_type_segment(p: &mut Parser, first: bool) {
     p.start(SyntaxKind::PathSegment);
     if first {
         p.try_eat(T![::]);

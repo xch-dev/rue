@@ -3,7 +3,7 @@ use std::{cmp::Reverse, mem, ops::Range};
 use indexmap::IndexSet;
 use itertools::Itertools;
 use rowan::{Checkpoint, GreenNodeBuilder, Language};
-use rue_diagnostic::{Diagnostic, DiagnosticKind};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SrcLoc};
 use rue_lexer::{Token, TokenKind};
 
 use crate::{RueLang, SyntaxKind, SyntaxNode, T, document};
@@ -21,8 +21,8 @@ pub struct ParseResult {
 }
 
 #[derive(Debug)]
-pub struct Parser<'a> {
-    source: &'a str,
+pub struct Parser {
+    source: Source,
     parse_tokens: Vec<ParseToken>,
     pos: usize,
     expected: IndexSet<SyntaxKind>,
@@ -30,8 +30,8 @@ pub struct Parser<'a> {
     builder: GreenNodeBuilder<'static>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(source: &'a str, tokens: Vec<Token>) -> Self {
+impl Parser {
+    pub fn new(source: Source, tokens: Vec<Token>) -> Self {
         let mut parse_tokens = Vec::with_capacity(tokens.len());
         let mut diagnostics = Vec::new();
 
@@ -42,7 +42,7 @@ impl<'a> Parser<'a> {
                 TokenKind::BlockComment { is_terminated } => {
                     if !is_terminated {
                         diagnostics.push(Diagnostic::new(
-                            token.span.clone(),
+                            SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedBlockComment,
                         ));
                     }
@@ -51,7 +51,7 @@ impl<'a> Parser<'a> {
                 TokenKind::String { is_terminated } => {
                     if !is_terminated {
                         diagnostics.push(Diagnostic::new(
-                            token.span.clone(),
+                            SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedString,
                         ));
                     }
@@ -60,7 +60,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Hex { is_terminated } => {
                     if !is_terminated {
                         diagnostics.push(Diagnostic::new(
-                            token.span.clone(),
+                            SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedHex,
                         ));
                     }
@@ -109,8 +109,8 @@ impl<'a> Parser<'a> {
                 TokenKind::Semicolon => T![;],
                 TokenKind::Unknown => {
                     diagnostics.push(Diagnostic::new(
-                        token.span.clone(),
-                        DiagnosticKind::UnknownToken(source[token.span.clone()].to_string()),
+                        SrcLoc::new(source.clone(), token.span.clone()),
+                        DiagnosticKind::UnknownToken(source.text[token.span.clone()].to_string()),
                     ));
                     SyntaxKind::Error
                 }
@@ -226,15 +226,15 @@ impl<'a> Parser<'a> {
     pub(crate) fn skip(&mut self) {
         let expected = mem::take(&mut self.expected);
 
+        let len = self.source.text.len();
+
         let span = self
             .parse_tokens
             .get(self.pos)
-            .map_or(self.source.len()..self.source.len(), |token| {
-                token.span.clone()
-            });
+            .map_or(len..len, |token| token.span.clone());
 
         self.diagnostics.push(Diagnostic::new(
-            span,
+            SrcLoc::new(self.source.clone(), span),
             DiagnosticKind::UnexpectedToken(
                 self.nth(0).to_string(),
                 expected.iter().map(ToString::to_string).collect(),
@@ -255,7 +255,7 @@ impl<'a> Parser<'a> {
             self.parse_tokens[self.pos].span.start..self.parse_tokens[self.pos + len - 1].span.end;
 
         self.builder
-            .token(RueLang::kind_to_raw(kind), &self.source[span]);
+            .token(RueLang::kind_to_raw(kind), &self.source.text[span]);
 
         self.pos += len;
     }

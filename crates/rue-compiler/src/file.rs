@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
-use rue_diagnostic::{Diagnostic, DiagnosticSeverity};
+use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
 use rue_hir::{DependencyGraph, Environment, Lowerer, Scope, ScopeId};
 use rue_lexer::Lexer;
 use rue_lir::{Error, codegen, optimize};
@@ -24,11 +26,14 @@ struct PartialCompilation {
 
 pub fn compile_file(
     allocator: &mut Allocator,
-    file: &str,
+    file: Source,
     options: CompilerOptions,
 ) -> Result<Compilation, Error> {
     let mut ctx = Compiler::new(options.clone());
-    let std = compile_file_partial(&mut ctx, include_str!("../../../std.rue"));
+    let std = compile_file_partial(
+        &mut ctx,
+        Source::new(Arc::from(include_str!("../../../std.rue")), SourceKind::Std),
+    );
     ctx.push_scope(std.scope);
     let file = compile_file_partial(&mut ctx, file);
 
@@ -63,10 +68,12 @@ pub fn compile_file(
     Ok(compilation)
 }
 
-fn compile_file_partial(ctx: &mut Compiler, file: &str) -> PartialCompilation {
-    let tokens = Lexer::new(file).collect::<Vec<_>>();
-    let parser = Parser::new(file, tokens);
+fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilation {
+    let tokens = Lexer::new(&source.text).collect::<Vec<_>>();
+    let parser = Parser::new(source.clone(), tokens);
     let parse_result = parser.parse();
+
+    ctx.set_source(source);
 
     let scope = ctx.alloc_scope(Scope::new());
 
