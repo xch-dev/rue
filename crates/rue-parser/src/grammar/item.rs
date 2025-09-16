@@ -7,6 +7,7 @@ use crate::{
 
 pub fn item(p: &mut Parser) {
     let cp = p.checkpoint();
+    p.try_eat(T![export]);
     let inline = p.try_eat(T![inline]);
 
     if p.at(T![mod]) && !inline {
@@ -16,9 +17,9 @@ pub fn item(p: &mut Parser) {
     } else if p.at(T![const]) {
         constant_item(p, cp);
     } else if p.at(T![type]) && !inline {
-        type_alias_item(p);
+        type_alias_item(p, cp);
     } else if p.at(T![struct]) && !inline {
-        struct_item(p);
+        struct_item(p, cp);
     } else if !inline {
         p.skip();
     }
@@ -78,8 +79,8 @@ fn constant_item(p: &mut Parser, cp: Checkpoint) {
     p.finish();
 }
 
-fn type_alias_item(p: &mut Parser) {
-    p.start(SyntaxKind::TypeAliasItem);
+fn type_alias_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::TypeAliasItem);
     p.expect(T![type]);
     p.expect(SyntaxKind::Ident);
     if p.at(T![<]) {
@@ -91,8 +92,8 @@ fn type_alias_item(p: &mut Parser) {
     p.finish();
 }
 
-fn struct_item(p: &mut Parser) {
-    p.start(SyntaxKind::StructItem);
+fn struct_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::StructItem);
     p.expect(T![struct]);
     p.expect(SyntaxKind::Ident);
     if p.at(T![<]) {

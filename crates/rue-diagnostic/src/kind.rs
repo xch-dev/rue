@@ -111,6 +111,12 @@ pub enum DiagnosticKind {
     #[error("Cannot subpath non-module symbol `{0}`")]
     SubpathNotSupported(String),
 
+    #[error("Cannot reference private symbol `{0}` in module `{1}`")]
+    PrivateSymbol(String, String),
+
+    #[error("Cannot reference private type `{0}` in module `{1}`")]
+    PrivateType(String, String),
+
     #[error("Expected symbol, but found type `{0}`")]
     ExpectedSymbol(String),
 
@@ -186,6 +192,8 @@ impl DiagnosticKind {
             | Self::UnknownField(..)
             | Self::PathSeparatorInFirstSegment
             | Self::SubpathNotSupported(..)
+            | Self::PrivateSymbol(..)
+            | Self::PrivateType(..)
             | Self::ExpectedSymbol(..)
             | Self::ExpectedType(..)
             | Self::GenericArgumentsOnSymbolReference

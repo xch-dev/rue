@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use id_arena::Id;
 use indexmap::IndexMap;
@@ -13,6 +13,8 @@ pub struct Scope {
     symbols: IndexMap<String, SymbolId>,
     types: IndexMap<String, TypeId>,
     type_names: HashMap<TypeId, String>,
+    exported_symbols: HashSet<SymbolId>,
+    exported_types: HashSet<TypeId>,
 }
 
 impl Scope {
@@ -27,6 +29,22 @@ impl Scope {
     pub fn insert_type(&mut self, name: String, ty: TypeId) {
         self.types.insert(name.clone(), ty);
         self.type_names.insert(ty, name);
+    }
+
+    pub fn export_symbol(&mut self, symbol: SymbolId) {
+        self.exported_symbols.insert(symbol);
+    }
+
+    pub fn export_type(&mut self, ty: TypeId) {
+        self.exported_types.insert(ty);
+    }
+
+    pub fn is_symbol_exported(&self, symbol: SymbolId) -> bool {
+        self.exported_symbols.contains(&symbol)
+    }
+
+    pub fn is_type_exported(&self, ty: TypeId) -> bool {
+        self.exported_types.contains(&ty)
     }
 
     pub fn symbol(&self, name: &str) -> Option<SymbolId> {

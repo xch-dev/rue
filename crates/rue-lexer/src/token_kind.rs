@@ -14,6 +14,7 @@ pub enum TokenKind {
     Nil,
     True,
     False,
+    Export,
     Inline,
     Mod,
     Fn,

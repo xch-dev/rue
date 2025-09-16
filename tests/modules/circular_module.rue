@@ -1,5 +1,5 @@
 mod a {
-    fn a(num: Int) -> Int {
+    export fn a(num: Int) -> Int {
         if num > 0 {
             b::b(num)
         } else {
@@ -9,7 +9,7 @@ mod a {
 }
 
 mod b {
-    fn b(num: Int) -> Int {
+    export fn b(num: Int) -> Int {
         2 * a::a(num - 1) + num
     }
 }

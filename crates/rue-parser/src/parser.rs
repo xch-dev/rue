@@ -71,6 +71,7 @@ impl Parser {
                 TokenKind::Nil => T![nil],
                 TokenKind::True => T![true],
                 TokenKind::False => T![false],
+                TokenKind::Export => T![export],
                 TokenKind::Inline => T![inline],
                 TokenKind::Mod => T![mod],
                 TokenKind::Fn => T![fn],

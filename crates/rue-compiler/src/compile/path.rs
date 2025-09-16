@@ -52,8 +52,12 @@ pub fn compile_path(
                 && let Symbol::Module(module) = ctx.symbol(symbol)
             {
                 let scope = ctx.scope(module.scope);
-                let symbol = scope.symbol(name.text());
-                let ty = scope.ty(name.text());
+                let symbol = scope
+                    .symbol(name.text())
+                    .map(|symbol| (symbol, scope.is_symbol_exported(symbol)));
+                let ty = scope
+                    .ty(name.text())
+                    .map(|ty| (ty, scope.is_type_exported(ty)));
                 (symbol, ty)
             } else {
                 ctx.diagnostic(
@@ -63,20 +67,18 @@ pub fn compile_path(
                 return PathResult::Unresolved;
             }
         } else {
-            let symbol = ctx.resolve_symbol(name.text());
-            let ty = ctx.resolve_type(name.text());
+            let symbol = ctx.resolve_symbol(name.text()).map(|symbol| (symbol, true));
+            let ty = ctx.resolve_type(name.text()).map(|ty| (ty, true));
             (symbol, ty)
         };
 
-        previous_name = Some(name.to_string());
-
         let initial = match (symbol, ty) {
-            (Some(symbol), Some(ty)) => match kind {
+            (Some((symbol, _)), Some((ty, _))) => match kind {
                 PathKind::Symbol => PathResult::Symbol(symbol),
                 PathKind::Type => PathResult::Type(ty),
             },
-            (Some(symbol), None) => PathResult::Symbol(symbol),
-            (None, Some(ty)) => PathResult::Type(ty),
+            (Some((symbol, _)), None) => PathResult::Symbol(symbol),
+            (None, Some((ty, _))) => PathResult::Type(ty),
             (None, None) => {
                 match kind {
                     PathKind::Symbol => ctx.diagnostic(
@@ -91,6 +93,32 @@ pub fn compile_path(
                 PathResult::Unresolved
             }
         };
+
+        if matches!(initial, PathResult::Symbol(_))
+            && let Some((_, is_exported)) = symbol
+            && !is_exported
+        {
+            ctx.diagnostic(
+                &name,
+                DiagnosticKind::PrivateSymbol(
+                    name.text().to_string(),
+                    previous_name.clone().unwrap(),
+                ),
+            );
+        }
+
+        if matches!(initial, PathResult::Type(_))
+            && let Some((_, is_exported)) = ty
+            && !is_exported
+        {
+            ctx.diagnostic(
+                &name,
+                DiagnosticKind::PrivateType(
+                    name.text().to_string(),
+                    previous_name.clone().unwrap(),
+                ),
+            );
+        }
 
         match initial {
             PathResult::Unresolved => return PathResult::Unresolved,
@@ -154,6 +182,8 @@ pub fn compile_path(
                 value = Some(PathResult::Type(ty));
             }
         }
+
+        previous_name = Some(name.text().to_string());
     }
 
     let value = value.unwrap_or(PathResult::Unresolved);

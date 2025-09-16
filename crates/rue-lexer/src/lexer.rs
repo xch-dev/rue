@@ -52,6 +52,7 @@ impl<'a> Lexer<'a> {
             "nil" => TokenKind::Nil,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
+            "export" => TokenKind::Export,
             "inline" => TokenKind::Inline,
             "mod" => TokenKind::Mod,
             "fn" => TokenKind::Fn,
@@ -425,6 +426,13 @@ mod tests {
             "false",
             expect![[r#"
                 False
+            "#]],
+        );
+
+        check(
+            "export",
+            expect![[r#"
+                Export
             "#]],
         );
 

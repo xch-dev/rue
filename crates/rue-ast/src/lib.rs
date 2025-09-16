@@ -140,6 +140,13 @@ impl AstDocument {
 }
 
 impl AstModuleItem {
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![export])
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -153,6 +160,13 @@ impl AstModuleItem {
 }
 
 impl AstFunctionItem {
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![export])
+    }
+
     pub fn inline(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -189,6 +203,13 @@ impl AstFunctionItem {
 }
 
 impl AstConstantItem {
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![export])
+    }
+
     pub fn inline(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -213,6 +234,13 @@ impl AstConstantItem {
 }
 
 impl AstTypeAliasItem {
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![export])
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -232,6 +260,13 @@ impl AstTypeAliasItem {
 }
 
 impl AstStructItem {
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![export])
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
