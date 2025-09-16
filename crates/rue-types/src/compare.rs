@@ -170,7 +170,9 @@ pub(crate) fn compare_impl(
         (_, Type::Struct(rhs)) => compare_impl(arena, builtins, ctx, lhs, rhs.inner), // TODO: Fix cast requirement
         (Type::Alias(lhs), _) => compare_impl(arena, builtins, ctx, lhs.inner, rhs),
         (_, Type::Alias(rhs)) => compare_impl(arena, builtins, ctx, lhs, rhs.inner),
-        (Type::Function(_), _) => compare_impl(arena, builtins, ctx, builtins.any, rhs),
+        (Type::Function(_) | Type::Generic, _) => {
+            compare_impl(arena, builtins, ctx, builtins.any, rhs)
+        }
         (Type::Union(lhs), _) => {
             let mut result = Comparison::Assign;
 
@@ -190,7 +192,6 @@ pub(crate) fn compare_impl(
             result
         }
         (_, Type::Never) => Comparison::Invalid,
-        (Type::Generic, _) => Comparison::Invalid,
         (_, Type::Function(_)) => Comparison::Invalid,
     };
 
