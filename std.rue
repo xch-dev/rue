@@ -101,14 +101,14 @@ struct SendMessage {
     opcode = 66,
     mode: Int,
     message: Bytes,
-    ...receiver: (Bytes | Int)[],
+    ...receiver: List<Bytes | Int>,
 }
 
 struct ReceiveMessage {
     opcode = 67,
     mode: Int,
     message: Bytes,
-    ...sender: (Bytes | Int)[],
+    ...sender: List<Bytes | Int>,
 }
 
 struct AssertMyCoinId {
