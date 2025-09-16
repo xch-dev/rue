@@ -1,4 +1,4 @@
-program: (x (q . "Hello, world!"))
+program: (x)
 debug_program: (x (q . "Hello, world!"))
 solution: ()
 clvm_error: clvm raise

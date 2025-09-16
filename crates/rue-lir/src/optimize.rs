@@ -133,10 +133,7 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let otherwise = optimize(arena, otherwise);
             arena.alloc(Lir::If(condition, then, otherwise))
         }
-        Lir::Raise(args) => {
-            let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
-            arena.alloc(Lir::Raise(args))
-        }
+        Lir::Raise(_) => arena.alloc(Lir::Raise(vec![])),
         Lir::Concat(args) => {
             let mut args = VecDeque::from(args);
             let mut result = Vec::new();
