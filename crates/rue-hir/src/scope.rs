@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use id_arena::Id;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use rue_types::TypeId;
 
 use crate::SymbolId;
@@ -13,8 +13,8 @@ pub struct Scope {
     symbols: IndexMap<String, SymbolId>,
     types: IndexMap<String, TypeId>,
     type_names: HashMap<TypeId, String>,
-    exported_symbols: HashSet<SymbolId>,
-    exported_types: HashSet<TypeId>,
+    exported_symbols: IndexSet<SymbolId>,
+    exported_types: IndexSet<TypeId>,
 }
 
 impl Scope {
