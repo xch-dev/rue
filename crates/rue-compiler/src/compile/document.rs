@@ -1,37 +1,40 @@
 use rue_ast::{AstDocument, AstItem};
-use rue_hir::{ScopeId, SymbolId};
-use rue_types::TypeId;
+use rue_hir::{ModuleDeclarations, ScopeId};
 
 use crate::{
     Compiler, compile_symbol_item, compile_type_item, declare_symbol_item, declare_type_item,
 };
 
-#[derive(Debug, Default)]
-pub struct DocumentDeclarations {
-    types: Vec<(TypeId, ScopeId)>,
-    symbols: Vec<SymbolId>,
-}
-
 pub fn declare_document(
     ctx: &mut Compiler,
     scope: ScopeId,
     document: &AstDocument,
-) -> DocumentDeclarations {
-    let mut declarations = DocumentDeclarations::default();
+) -> ModuleDeclarations {
+    declare_items(ctx, scope, document.items())
+}
+
+pub fn declare_items(
+    ctx: &mut Compiler,
+    scope: ScopeId,
+    items: impl Iterator<Item = AstItem>,
+) -> ModuleDeclarations {
+    let items = &items.collect::<Vec<_>>();
+
+    let mut declarations = ModuleDeclarations::default();
 
     ctx.push_scope(scope);
 
-    for item in document.items() {
+    for item in items {
         match item {
-            AstItem::TypeItem(item) => declarations.types.push(declare_type_item(ctx, &item)),
+            AstItem::TypeItem(item) => declarations.types.push(declare_type_item(ctx, item)),
             AstItem::SymbolItem(_) => {}
         }
     }
 
-    for item in document.items() {
+    for item in items {
         match item {
             AstItem::TypeItem(_) => {}
-            AstItem::SymbolItem(item) => declarations.symbols.push(declare_symbol_item(ctx, &item)),
+            AstItem::SymbolItem(item) => declarations.symbols.push(declare_symbol_item(ctx, item)),
         }
     }
 
@@ -44,17 +47,28 @@ pub fn compile_document(
     ctx: &mut Compiler,
     scope: ScopeId,
     document: &AstDocument,
-    declarations: DocumentDeclarations,
+    declarations: ModuleDeclarations,
 ) {
+    compile_items(ctx, scope, document.items(), declarations)
+}
+
+pub fn compile_items(
+    ctx: &mut Compiler,
+    scope: ScopeId,
+    items: impl Iterator<Item = AstItem>,
+    declarations: ModuleDeclarations,
+) {
+    let items = &items.collect::<Vec<_>>();
+
     ctx.push_scope(scope);
 
     let mut index = 0;
 
-    for item in document.items() {
+    for item in items {
         match item {
             AstItem::TypeItem(item) => {
                 let (ty, scope) = declarations.types[index];
-                compile_type_item(ctx, &item, ty, scope);
+                compile_type_item(ctx, item, ty, scope);
                 index += 1;
             }
             AstItem::SymbolItem(_) => {}
@@ -63,11 +77,11 @@ pub fn compile_document(
 
     let mut index = 0;
 
-    for item in document.items() {
+    for item in items {
         match item {
             AstItem::TypeItem(_) => {}
             AstItem::SymbolItem(item) => {
-                compile_symbol_item(ctx, &item, declarations.symbols[index]);
+                compile_symbol_item(ctx, item, declarations.symbols[index]);
                 index += 1;
             }
         }

@@ -13,7 +13,8 @@ pub fn compile_struct_initializer_expr(
     expr: &AstStructInitializerExpr,
 ) -> Value {
     let ty = if let Some(path) = expr.path()
-        && let PathResult::Type(ty) = compile_path(ctx, path.segments(), PathKind::Type)
+        && let PathResult::Type(ty) =
+            compile_path(ctx, path.syntax(), path.segments(), PathKind::Type)
     {
         ty
     } else {

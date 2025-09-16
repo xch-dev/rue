@@ -108,8 +108,14 @@ pub enum DiagnosticKind {
     #[error("Path separator `::` is not allowed in the first segment")]
     PathSeparatorInFirstSegment,
 
-    #[error("Subpaths are not supported")]
-    SubpathNotSupported,
+    #[error("Cannot subpath non-module symbol `{0}`")]
+    SubpathNotSupported(String),
+
+    #[error("Expected symbol, but found type `{0}`")]
+    ExpectedSymbol(String),
+
+    #[error("Expected type, but found symbol `{0}`")]
+    ExpectedType(String),
 
     #[error("Generic arguments are not permitted on symbol references")]
     GenericArgumentsOnSymbolReference,
@@ -179,7 +185,9 @@ impl DiagnosticKind {
             | Self::MissingReturn
             | Self::UnknownField(..)
             | Self::PathSeparatorInFirstSegment
-            | Self::SubpathNotSupported
+            | Self::SubpathNotSupported(..)
+            | Self::ExpectedSymbol(..)
+            | Self::ExpectedType(..)
             | Self::GenericArgumentsOnSymbolReference
             | Self::NonStructInitializer(..)
             | Self::MissingRequiredFields(..)

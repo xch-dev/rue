@@ -1,0 +1,7 @@
+program: (a (q 2 2 (c 5 (c 2 (c (q . 3) ())))) (c (q 2 (i (> 11 ()) (q 2 2 (c 5 (c 2 (c 11 ())))) (q)) 1) (c (q 16 (* (q . 2) (a 2 (c 5 (c 2 (c (- 11 (q . 1)) ()))))) 11) 1)))
+debug_program: (a (q 2 2 (c 5 (c 2 (c (q . 3) ())))) (c (q 2 (i (> 11 ()) (q 2 2 (c 5 (c 2 (c 11 ())))) (q)) 1) (c (q 16 (* (q . 2) (a 2 (c 5 (c 2 (c (- 11 (q . 1)) ()))))) 11) 1)))
+solution: ()
+output: '11'
+runtime_cost: 14782
+byte_cost: 1740000
+total_cost: 1754782

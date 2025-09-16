@@ -55,6 +55,7 @@ macro_rules! ast_enum {
 
 ast_nodes!(
     Document,
+    ModuleItem,
     FunctionItem,
     FunctionParameter,
     ConstantItem,
@@ -79,6 +80,7 @@ ast_nodes!(
     RaiseStmt,
     PathExpr,
     PathSegment,
+    LeadingPathSeparator,
     StructInitializerExpr,
     StructInitializerField,
     LiteralExpr,
@@ -98,7 +100,7 @@ ast_nodes!(
 
 ast_enum!(Item, TypeItem, SymbolItem);
 ast_enum!(TypeItem, TypeAliasItem, StructItem);
-ast_enum!(SymbolItem, FunctionItem, ConstantItem);
+ast_enum!(SymbolItem, ModuleItem, FunctionItem, ConstantItem);
 ast_enum!(
     Stmt, LetStmt, ExprStmt, IfStmt, ReturnStmt, AssertStmt, RaiseStmt
 );
@@ -132,6 +134,19 @@ ast_enum!(
 );
 
 impl AstDocument {
+    pub fn items(&self) -> impl Iterator<Item = AstItem> {
+        self.syntax().children().filter_map(AstItem::cast)
+    }
+}
+
+impl AstModuleItem {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
         self.syntax().children().filter_map(AstItem::cast)
     }
@@ -369,11 +384,10 @@ impl AstPathExpr {
 }
 
 impl AstPathSegment {
-    pub fn separator(&self) -> Option<SyntaxToken> {
+    pub fn initial_separator(&self) -> Option<AstLeadingPathSeparator> {
         self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == T![::])
+            .children()
+            .find_map(AstLeadingPathSeparator::cast)
     }
 
     pub fn name(&self) -> Option<SyntaxToken> {

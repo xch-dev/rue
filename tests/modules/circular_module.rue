@@ -1,0 +1,19 @@
+mod a {
+    fn a(num: Int) -> Int {
+        if num > 0 {
+            b::b(num)
+        } else {
+            0
+        }
+    }
+}
+
+mod b {
+    fn b(num: Int) -> Int {
+        2 * a::a(num - 1) + num
+    }
+}
+
+fn main() -> Int {
+    a::a(3)
+}

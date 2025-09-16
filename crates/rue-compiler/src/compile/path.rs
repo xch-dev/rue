@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use log::debug;
-use rue_ast::AstPathSegment;
+use rue_ast::{AstNode, AstPathSegment};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::SymbolId;
+use rue_hir::{Symbol, SymbolId};
 use rue_types::{Apply, Type, TypeId};
 
-use crate::{Compiler, compile_generic_arguments};
+use crate::{Compiler, GetTextRange, compile_generic_arguments};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathKind {
@@ -23,15 +23,21 @@ pub enum PathResult {
 
 pub fn compile_path(
     ctx: &mut Compiler,
+    range: &impl GetTextRange,
     segments: impl Iterator<Item = AstPathSegment>,
     kind: PathKind,
 ) -> PathResult {
-    let mut value = None;
+    let segments = &segments.collect::<Vec<_>>();
 
-    for (index, segment) in segments.enumerate() {
-        if index == 0 && segment.separator().is_some() {
+    let mut value = None;
+    let mut previous_name = None;
+
+    for (index, segment) in segments.iter().enumerate() {
+        if index == 0
+            && let Some(separator) = segment.initial_separator()
+        {
             ctx.diagnostic(
-                &segment.separator().unwrap(),
+                separator.syntax(),
                 DiagnosticKind::PathSeparatorInFirstSegment,
             );
             return PathResult::Unresolved;
@@ -41,24 +47,54 @@ pub fn compile_path(
             return PathResult::Unresolved;
         };
 
-        if value.is_some() {
-            ctx.diagnostic(
-                &segment.separator().unwrap(),
-                DiagnosticKind::SubpathNotSupported,
-            );
-            return PathResult::Unresolved;
-        }
+        let (symbol, ty) = if let Some(value) = value {
+            if let PathResult::Symbol(symbol) = value
+                && let Symbol::Module(module) = ctx.symbol(symbol)
+            {
+                let scope = ctx.scope(module.scope);
+                let symbol = scope.symbol(name.text());
+                let ty = scope.ty(name.text());
+                (symbol, ty)
+            } else {
+                ctx.diagnostic(
+                    &name,
+                    DiagnosticKind::SubpathNotSupported(previous_name.unwrap()),
+                );
+                return PathResult::Unresolved;
+            }
+        } else {
+            let symbol = ctx.resolve_symbol(name.text());
+            let ty = ctx.resolve_type(name.text());
+            (symbol, ty)
+        };
 
-        match kind {
-            PathKind::Symbol => {
-                let Some(symbol) = ctx.resolve_symbol(name.text()) else {
-                    ctx.diagnostic(
+        previous_name = Some(name.to_string());
+
+        let initial = match (symbol, ty) {
+            (Some(symbol), Some(ty)) => match kind {
+                PathKind::Symbol => PathResult::Symbol(symbol),
+                PathKind::Type => PathResult::Type(ty),
+            },
+            (Some(symbol), None) => PathResult::Symbol(symbol),
+            (None, Some(ty)) => PathResult::Type(ty),
+            (None, None) => {
+                match kind {
+                    PathKind::Symbol => ctx.diagnostic(
                         &name,
                         DiagnosticKind::UndeclaredSymbol(name.text().to_string()),
-                    );
-                    return PathResult::Unresolved;
-                };
+                    ),
+                    PathKind::Type => ctx.diagnostic(
+                        &name,
+                        DiagnosticKind::UndeclaredType(name.text().to_string()),
+                    ),
+                }
+                PathResult::Unresolved
+            }
+        };
 
+        match initial {
+            PathResult::Unresolved => return PathResult::Unresolved,
+            PathResult::Symbol(symbol) => {
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
                     compile_generic_arguments(ctx, &generic_arguments)
                 } else {
@@ -72,15 +108,7 @@ pub fn compile_path(
 
                 value = Some(PathResult::Symbol(symbol));
             }
-            PathKind::Type => {
-                let Some(mut ty) = ctx.resolve_type(name.text()) else {
-                    ctx.diagnostic(
-                        &name,
-                        DiagnosticKind::UndeclaredType(name.text().to_string()),
-                    );
-                    return PathResult::Unresolved;
-                };
-
+            PathResult::Type(mut ty) => {
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
                     compile_generic_arguments(ctx, &generic_arguments)
                 } else {
@@ -128,5 +156,20 @@ pub fn compile_path(
         }
     }
 
-    value.unwrap_or(PathResult::Unresolved)
+    let value = value.unwrap_or(PathResult::Unresolved);
+
+    match (value, kind) {
+        (PathResult::Symbol(_), PathKind::Type) => {
+            ctx.diagnostic(range, DiagnosticKind::ExpectedType(previous_name.unwrap()));
+            PathResult::Unresolved
+        }
+        (PathResult::Type(_), PathKind::Symbol) => {
+            ctx.diagnostic(
+                range,
+                DiagnosticKind::ExpectedSymbol(previous_name.unwrap()),
+            );
+            PathResult::Unresolved
+        }
+        _ => value,
+    }
 }

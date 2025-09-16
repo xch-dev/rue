@@ -1,0 +1,7 @@
+mod inner {
+    const NUM: Int = 42;
+}
+
+fn main() -> Int {
+    inner::NUM
+}

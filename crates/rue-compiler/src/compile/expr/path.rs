@@ -1,11 +1,13 @@
 use log::debug;
-use rue_ast::AstPathExpr;
+use rue_ast::{AstNode, AstPathExpr};
 use rue_hir::{Hir, SymbolPath, Value};
 
 use crate::{Compiler, PathKind, PathResult, compile_path};
 
 pub fn compile_path_expr(ctx: &mut Compiler, path: &AstPathExpr) -> Value {
-    let PathResult::Symbol(symbol) = compile_path(ctx, path.segments(), PathKind::Symbol) else {
+    let PathResult::Symbol(symbol) =
+        compile_path(ctx, path.syntax(), path.segments(), PathKind::Symbol)
+    else {
         debug!("Unresolved path expr");
         return ctx.builtins().unresolved.clone();
     };

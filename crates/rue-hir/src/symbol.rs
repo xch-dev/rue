@@ -19,6 +19,13 @@ pub enum Symbol {
 pub struct ModuleSymbol {
     pub name: Option<SyntaxToken>,
     pub scope: ScopeId,
+    pub declarations: ModuleDeclarations,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ModuleDeclarations {
+    pub types: Vec<(TypeId, ScopeId)>,
+    pub symbols: Vec<SymbolId>,
 }
 
 #[derive(Debug, Clone)]

@@ -9,7 +9,9 @@ pub fn item(p: &mut Parser) {
     let cp = p.checkpoint();
     let inline = p.try_eat(T![inline]);
 
-    if p.at(T![fn]) {
+    if p.at(T![mod]) && !inline {
+        module_item(p, cp);
+    } else if p.at(T![fn]) {
         function_item(p, cp);
     } else if p.at(T![const]) {
         constant_item(p, cp);
@@ -20,6 +22,18 @@ pub fn item(p: &mut Parser) {
     } else if !inline {
         p.skip();
     }
+}
+
+fn module_item(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::ModuleItem);
+    p.expect(T![mod]);
+    p.expect(SyntaxKind::Ident);
+    p.expect(T!['{']);
+    while !p.at(T!['}']) && !p.at(SyntaxKind::Eof) {
+        item(p);
+    }
+    p.expect(T!['}']);
+    p.finish();
 }
 
 fn function_item(p: &mut Parser, cp: Checkpoint) {

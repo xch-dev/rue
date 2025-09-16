@@ -43,9 +43,9 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
         p.finish();
     } else if p.at(T![::]) || p.at(SyntaxKind::Ident) {
         p.start_at(checkpoint, SyntaxKind::PathExpr);
-        let mut separated = path_expr_segment(p, true);
+        let mut separated = path_expr_segment(p, true, false);
         while separated || p.at(T![::]) {
-            separated = path_expr_segment(p, false);
+            separated = path_expr_segment(p, false, separated);
         }
         p.finish();
 
@@ -202,12 +202,18 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
     }
 }
 
-fn path_expr_segment(p: &mut Parser, first: bool) -> bool {
+fn path_expr_segment(p: &mut Parser, first: bool, separated: bool) -> bool {
     p.start(SyntaxKind::PathSegment);
-    if first {
-        p.try_eat(T![::]);
-    } else {
-        p.expect(T![::]);
+    if !separated {
+        if first {
+            if p.at(T![::]) {
+                p.start(SyntaxKind::LeadingPathSeparator);
+                p.expect(T![::]);
+                p.finish();
+            }
+        } else {
+            p.expect(T![::]);
+        }
     }
     p.expect(SyntaxKind::Ident);
     let mut separated = p.try_eat(T![::]);
