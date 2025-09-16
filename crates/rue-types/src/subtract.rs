@@ -44,7 +44,7 @@ fn repackage(arena: &mut Arena<Type>, variants: Vec<Variant>) -> TypeId {
     let mut leftover = vec![];
 
     for mut variant in variants {
-        if let Some(id) = variant.semantic_type_ids.first().copied() {
+        if let Some(id) = variant.semantic_type_ids.last().copied() {
             if let Some(semantic_type_id) = semantic_type_id {
                 if id == semantic_type_id {
                     variant.semantic_type_ids.pop().unwrap();
