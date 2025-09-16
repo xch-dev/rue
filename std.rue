@@ -254,3 +254,10 @@ inline fn curry_tree_hash(
 ) -> Bytes32 {
     apply_hash(mod_hash, curried_params_hash(parameters))
 }
+
+fn merge_list<T>(a: List<T>, b: List<T>) -> List<T> {
+    if a is (T, List<T>) {
+        return [a.first, ...merge_list(a.rest, b)];
+    }
+    b
+}

@@ -172,7 +172,7 @@ fn main(
         );
 
         // Prepend the TAIL's conditions.
-        concat(tail_conditions, conditions)
+        merge_list(tail_conditions, conditions)
     } else {
         // If there's no TAIL, make sure the extra delta is zero.
         // It must have a parent that is also a CAT.
@@ -265,11 +265,4 @@ fn morph_conditions(
         sum: rest.sum,
         tail_info: rest.tail_info,
     }
-}
-
-fn concat<T>(a: List<T>, b: List<T>) -> List<T> {
-    if a is (T, List<T>) {
-        return [a.first, ...concat(a.rest, b)];
-    }
-    b
 }
