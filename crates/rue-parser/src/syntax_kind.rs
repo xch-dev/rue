@@ -41,6 +41,9 @@ pub enum SyntaxKind {
     #[display("`inline`")]
     Inline,
 
+    #[display("`mod`")]
+    Mod,
+
     #[display("`fn`")]
     Fn,
 
@@ -323,6 +326,7 @@ macro_rules! T {
     [true] => { $crate::SyntaxKind::True };
     [false] => { $crate::SyntaxKind::False };
     [inline] => { $crate::SyntaxKind::Inline };
+    [mod] => { $crate::SyntaxKind::Mod };
     [fn] => { $crate::SyntaxKind::Fn };
     [const] => { $crate::SyntaxKind::Const };
     [type] => { $crate::SyntaxKind::Type };
@@ -423,6 +427,7 @@ impl SyntaxKind {
             T![true] => &[T![true]],
             T![false] => &[T![false]],
             T![inline] => &[T![inline]],
+            T![mod] => &[T![mod]],
             T![fn] => &[T![fn]],
             T![const] => &[T![const]],
             T![type] => &[T![type]],

@@ -15,6 +15,7 @@ pub enum TokenKind {
     True,
     False,
     Inline,
+    Mod,
     Fn,
     Const,
     Type,
