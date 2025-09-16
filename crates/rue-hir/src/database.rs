@@ -74,6 +74,7 @@ impl Database {
 
     pub fn debug_symbol(&self, id: SymbolId) -> String {
         let name = match self.symbol(id) {
+            Symbol::Module(module) => module.name.as_ref().map(|name| name.text().to_string()),
             Symbol::Function(function) => {
                 function.name.as_ref().map(|name| name.text().to_string())
             }

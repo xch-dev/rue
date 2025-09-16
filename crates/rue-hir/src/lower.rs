@@ -36,8 +36,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     pub fn lower_symbol(&mut self, env: &Environment, symbol: SymbolId, is_main: bool) -> LirId {
         match self.db.symbol(symbol).clone() {
+            Symbol::Module(_) | Symbol::Parameter(_) => unreachable!(),
             Symbol::Function(function) => self.lower_function(env, symbol, function, is_main),
-            Symbol::Parameter(_) => unreachable!(),
             Symbol::Constant(constant) => self.lower_constant(env, constant),
             Symbol::Binding(binding) => self.lower_binding(env, binding),
         }
@@ -499,6 +499,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let references = self.graph.references(symbol);
 
         match self.db.symbol(symbol) {
+            Symbol::Module(_) | Symbol::Parameter(_) => false,
             Symbol::Function(function) => {
                 if self.graph.dependencies(symbol, false).contains(&symbol) {
                     return false;
@@ -516,7 +517,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
                 references <= 1 && self.options.auto_inline
             }
-            Symbol::Parameter(_) => false,
             Symbol::Constant(constant) => {
                 if self.graph.dependencies(symbol, false).contains(&symbol) {
                     return false;

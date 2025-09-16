@@ -148,6 +148,7 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     graph.stack.insert(symbol);
 
     match db.symbol(symbol) {
+        Symbol::Module(_) | Symbol::Parameter(_) => {}
         Symbol::Function(function) => {
             graph
                 .locals
@@ -157,7 +158,6 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
 
             visit_hir(db, graph, function.body);
         }
-        Symbol::Parameter(_) => {}
         Symbol::Constant(constant) => {
             visit_hir(db, graph, constant.value);
         }

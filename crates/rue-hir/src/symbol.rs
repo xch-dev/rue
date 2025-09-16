@@ -8,10 +8,17 @@ pub type SymbolId = Id<Symbol>;
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
+    Module(ModuleSymbol),
     Function(FunctionSymbol),
     Parameter(ParameterSymbol),
     Constant(ConstantSymbol),
     Binding(BindingSymbol),
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleSymbol {
+    pub name: Option<SyntaxToken>,
+    pub scope: ScopeId,
 }
 
 #[derive(Debug, Clone)]

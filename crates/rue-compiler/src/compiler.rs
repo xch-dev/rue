@@ -133,6 +133,7 @@ impl Compiler {
         }
 
         match self.symbol(symbol) {
+            Symbol::Module(_) => self.builtins().unresolved.ty,
             Symbol::Function(function) => function.ty,
             Symbol::Parameter(parameter) => parameter.ty,
             Symbol::Constant(constant) => constant.ty,
