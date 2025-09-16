@@ -154,6 +154,14 @@ pub(crate) fn compare_impl(
                     infer.insert(rhs, lhs);
                     Comparison::Assign
                 }
+            } else if let Type::Union(lhs) = arena[lhs].clone() {
+                let mut result = Comparison::Assign;
+
+                for &id in &lhs.types {
+                    result = max(result, compare_impl(arena, builtins, ctx, id, rhs));
+                }
+
+                result
             } else {
                 Comparison::Invalid
             }
