@@ -67,7 +67,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
             }
 
             ctx.scope_mut(scope)
-                .insert_symbol(name.text().to_string(), symbol);
+                .insert_symbol(name.text().to_string(), symbol, false);
         }
 
         param_types.push(ty);
@@ -104,12 +104,11 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
             );
         }
 
-        ctx.last_scope_mut()
-            .insert_symbol(name.text().to_string(), symbol);
-
-        if function.export().is_some() {
-            ctx.last_scope_mut().export_symbol(symbol);
-        }
+        ctx.last_scope_mut().insert_symbol(
+            name.text().to_string(),
+            symbol,
+            function.export().is_some(),
+        );
     }
 
     symbol

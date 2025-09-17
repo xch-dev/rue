@@ -33,21 +33,30 @@ impl Builtins {
 
         let mut scope = Scope::new();
 
-        scope.insert_type("Atom".to_string(), types.atom);
-        scope.insert_type("Bytes".to_string(), types.bytes);
-        scope.insert_type("Bytes32".to_string(), types.bytes32);
-        scope.insert_type("PublicKey".to_string(), types.public_key);
-        scope.insert_type("Int".to_string(), types.int);
-        scope.insert_type("Bool".to_string(), types.bool);
-        scope.insert_type("Any".to_string(), types.any);
-        scope.insert_type("List".to_string(), types.list);
+        scope.insert_type("Atom".to_string(), types.atom, false);
+        scope.insert_type("Bytes".to_string(), types.bytes, false);
+        scope.insert_type("Bytes32".to_string(), types.bytes32, false);
+        scope.insert_type("PublicKey".to_string(), types.public_key, false);
+        scope.insert_type("Int".to_string(), types.int, false);
+        scope.insert_type("Bool".to_string(), types.bool, false);
+        scope.insert_type("Any".to_string(), types.any, false);
+        scope.insert_type("List".to_string(), types.list, false);
 
-        scope.insert_symbol("sha256".to_string(), sha256(db, types.bytes, types.bytes32));
+        scope.insert_symbol(
+            "sha256".to_string(),
+            sha256(db, types.bytes, types.bytes32),
+            false,
+        );
         scope.insert_symbol(
             "calculate_coin_id".to_string(),
             calculate_coin_id(db, types.bytes, types.bytes32, types.int),
+            false,
         );
-        scope.insert_symbol("substr".to_string(), substr(db, types.bytes, types.int));
+        scope.insert_symbol(
+            "substr".to_string(),
+            substr(db, types.bytes, types.int),
+            false,
+        );
 
         let scope = db.alloc_scope(scope);
 
@@ -71,7 +80,7 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
     }));
 
     db.scope_mut(scope)
-        .insert_symbol("value".to_string(), parameter);
+        .insert_symbol("value".to_string(), parameter, false);
 
     let reference = db.alloc_hir(Hir::Reference(parameter));
     let body = db.alloc_hir(Hir::Unary(UnaryOp::Sha256, reference));
@@ -114,13 +123,13 @@ fn calculate_coin_id(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: Typ
     }));
 
     db.scope_mut(scope)
-        .insert_symbol("parent".to_string(), parent);
+        .insert_symbol("parent".to_string(), parent, false);
 
     db.scope_mut(scope)
-        .insert_symbol("puzzle".to_string(), puzzle);
+        .insert_symbol("puzzle".to_string(), puzzle, false);
 
     db.scope_mut(scope)
-        .insert_symbol("amount".to_string(), amount);
+        .insert_symbol("amount".to_string(), amount, false);
 
     let parent_ref = db.alloc_hir(Hir::Reference(parent));
     let puzzle_ref = db.alloc_hir(Hir::Reference(puzzle));
@@ -165,11 +174,13 @@ fn substr(db: &mut Database, bytes: TypeId, int: TypeId) -> SymbolId {
     }));
 
     db.scope_mut(scope)
-        .insert_symbol("input".to_string(), input);
+        .insert_symbol("input".to_string(), input, false);
 
-    db.scope_mut(scope).insert_symbol("from".to_string(), from);
+    db.scope_mut(scope)
+        .insert_symbol("from".to_string(), from, false);
 
-    db.scope_mut(scope).insert_symbol("to".to_string(), to);
+    db.scope_mut(scope)
+        .insert_symbol("to".to_string(), to, false);
 
     let input_ref = db.alloc_hir(Hir::Reference(input));
     let from_ref = db.alloc_hir(Hir::Reference(from));

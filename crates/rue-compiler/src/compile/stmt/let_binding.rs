@@ -34,7 +34,7 @@ pub fn compile_let_binding(ctx: &mut Compiler, stmt: &AstLetStmt) -> Statement {
 
     if let Some(name) = stmt.name() {
         ctx.last_scope_mut()
-            .insert_symbol(name.text().to_string(), symbol);
+            .insert_symbol(name.text().to_string(), symbol, false);
     }
 
     Statement::Let(symbol)

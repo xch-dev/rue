@@ -27,7 +27,7 @@ pub fn compile_generic_parameters(
         }
 
         ctx.scope_mut(scope)
-            .insert_type(generic_parameter.text().to_string(), ty);
+            .insert_type(generic_parameter.text().to_string(), ty, false);
 
         vars.push(ty);
     }

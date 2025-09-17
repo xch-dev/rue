@@ -80,7 +80,7 @@ pub fn compile_lambda_expr(
             }
 
             ctx.last_scope_mut()
-                .insert_symbol(name.text().to_string(), symbol);
+                .insert_symbol(name.text().to_string(), symbol, false);
         }
 
         parameters.push(symbol);

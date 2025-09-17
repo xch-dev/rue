@@ -1,197 +1,197 @@
-struct Remark {
+export struct Remark {
     opcode = 1,
     ...rest: Any,
 }
 
-struct AggSigParent {
+export struct AggSigParent {
     opcode = 43,
     public_key: PublicKey,
     message: Bytes,
 }
 
-struct AggSigPuzzle {
+export struct AggSigPuzzle {
     opcode = 44,
     public_key: PublicKey,
     message: Bytes,
 }
 
-struct AggSigAmount {
+export struct AggSigAmount {
     opcode = 45,
     public_key: PublicKey,
     message: Bytes,
 }
 
-struct AggSigPuzzleAmount {
+export struct AggSigPuzzleAmount {
     opcode = 46,
     public_key: PublicKey,
     message: Bytes,
 }
 
-struct AggSigParentAmount {
+export struct AggSigParentAmount {
     opcode = 47,
     public_key: PublicKey,
     message: Bytes,
 }
 
-struct AggSigParentPuzzle {
+export struct AggSigParentPuzzle {
     opcode = 48,
     public_key: PublicKey,
     message: Bytes,
 }
 
-struct AggSigUnsafe {
+export struct AggSigUnsafe {
     opcode = 49,
     public_key: PublicKey,
     message: Bytes,
 }
 
-struct AggSigMe {
+export struct AggSigMe {
     opcode = 50,
     public_key: PublicKey,
     message: Bytes,
 }
 
-struct CreateCoin {
+export struct CreateCoin {
     opcode = 51,
     puzzle_hash: Bytes32,
     amount: Int,
     ...memos: Memos | nil = nil,
 }
 
-struct Memos {
+export struct Memos {
     value: Any,
 }
 
-struct ReserveFee {
+export struct ReserveFee {
     opcode = 52,
     amount: Int,
 }
 
-struct CreateCoinAnnouncement {
+export struct CreateCoinAnnouncement {
     opcode = 60,
     message: Bytes,
 }
 
-struct AssertCoinAnnouncement {
+export struct AssertCoinAnnouncement {
     opcode = 61,
     id: Bytes32,
 }
 
-struct CreatePuzzleAnnouncement {
+export struct CreatePuzzleAnnouncement {
     opcode = 62,
     message: Bytes,
 }
 
-struct AssertPuzzleAnnouncement {
+export struct AssertPuzzleAnnouncement {
     opcode = 63,
     id: Bytes32,
 }
 
-struct AssertConcurrentSpend {
+export struct AssertConcurrentSpend {
     opcode = 64,
     coin_id: Bytes32,
 }
 
-struct AssertConcurrentPuzzle {
+export struct AssertConcurrentPuzzle {
     opcode = 65,
     puzzle_hash: Bytes32,
 }
 
-struct SendMessage {
+export struct SendMessage {
     opcode = 66,
     mode: Int,
     message: Bytes,
     ...receiver: List<Bytes | Int>,
 }
 
-struct ReceiveMessage {
+export struct ReceiveMessage {
     opcode = 67,
     mode: Int,
     message: Bytes,
     ...sender: List<Bytes | Int>,
 }
 
-struct AssertMyCoinId {
+export struct AssertMyCoinId {
     opcode = 70,
     coin_id: Bytes32,
 }
 
-struct AssertMyParentId {
+export struct AssertMyParentId {
     opcode = 71,
     parent_id: Bytes32,
 }
 
-struct AssertMyPuzzleHash {
+export struct AssertMyPuzzleHash {
     opcode = 72,
     puzzle_hash: Bytes32,
 }
 
-struct AssertMyAmount {
+export struct AssertMyAmount {
     opcode = 73,
     amount: Int,
 }
 
-struct AssertMyBirthSeconds {
+export struct AssertMyBirthSeconds {
     opcode = 74,
     seconds: Int,
 }
 
-struct AssertMyBirthHeight {
+export struct AssertMyBirthHeight {
     opcode = 75,
     height: Int,
 }
 
-struct AssertEphemeral {
+export struct AssertEphemeral {
     opcode = 76,
 }
 
-struct AssertSecondsRelative {
+export struct AssertSecondsRelative {
     opcode = 80,
     seconds: Int,
 }
 
-struct AssertSecondsAbsolute {
+export struct AssertSecondsAbsolute {
     opcode = 81,
     seconds: Int,
 }
 
-struct AssertHeightRelative {
+export struct AssertHeightRelative {
     opcode = 82,
     height: Int,
 }
 
-struct AssertHeightAbsolute {
+export struct AssertHeightAbsolute {
     opcode = 83,
     height: Int,
 }
 
-struct AssertBeforeSecondsRelative {
+export struct AssertBeforeSecondsRelative {
     opcode = 84,
     seconds: Int,
 }
 
-struct AssertBeforeSecondsAbsolute {
+export struct AssertBeforeSecondsAbsolute {
     opcode = 85,
     seconds: Int,
 }
 
-struct AssertBeforeHeightRelative {
+export struct AssertBeforeHeightRelative {
     opcode = 86,
     height: Int,
 }
 
-struct AssertBeforeHeightAbsolute {
+export struct AssertBeforeHeightAbsolute {
     opcode = 87,
     height: Int,
 }
 
-struct Softfork {
+export struct Softfork {
     opcode = 90,
     cost: Int,
     ...args: List<Any>,
 }
 
-type Condition =
+export type Condition =
     Remark | AggSigParent | AggSigPuzzle | AggSigAmount
     | AggSigPuzzleAmount | AggSigParentAmount | AggSigParentPuzzle
     | AggSigUnsafe | AggSigMe | CreateCoin | ReserveFee
@@ -206,7 +206,7 @@ type Condition =
     | AssertBeforeHeightRelative | AssertBeforeHeightAbsolute
     | Softfork;
 
-fn tree_hash(value: Any) -> Bytes32 {
+export fn tree_hash(value: Any) -> Bytes32 {
     if value is Bytes {
         tree_hash_atom(value)
     } else {
@@ -214,11 +214,11 @@ fn tree_hash(value: Any) -> Bytes32 {
     }
 }
 
-inline fn tree_hash_atom(value: Bytes) -> Bytes32 {
+export inline fn tree_hash_atom(value: Bytes) -> Bytes32 {
     sha256(1 as Bytes + value)
 }
 
-inline fn tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
+export inline fn tree_hash_pair(first: Bytes32, rest: Bytes32) -> Bytes32 {
     sha256(2 as Bytes + first + rest)
 }
 
@@ -248,21 +248,21 @@ fn curried_params_hash(parameters: List<Bytes32>) -> Bytes32 {
     update_hash_with_parameter(parameters.first, curried_params_hash(parameters.rest))
 }
 
-inline fn curry_tree_hash(
+export inline fn curry_tree_hash(
     mod_hash: Bytes32,
     ...parameters: List<Bytes32>
 ) -> Bytes32 {
     apply_hash(mod_hash, curried_params_hash(parameters))
 }
 
-fn merge_list<T>(a: List<T>, b: List<T>) -> List<T> {
+export fn merge_list<T>(a: List<T>, b: List<T>) -> List<T> {
     if a is (T, List<T>) {
         return [a.first, ...merge_list(a.rest, b)];
     }
     b
 }
 
-fn deep_equal(a: Any, b: Any) -> Bool {
+export fn deep_equal(a: Any, b: Any) -> Bool {
     if a is Atom {
         if b is Atom {
             a == b
@@ -278,7 +278,7 @@ fn deep_equal(a: Any, b: Any) -> Bool {
     }
 }
 
-fn map<T, U>(list: List<T>, f: fn(value: T) -> U) -> List<U> {
+export fn map<T, U>(list: List<T>, f: fn(value: T) -> U) -> List<U> {
     if list is nil {
         nil
     } else {
@@ -286,7 +286,7 @@ fn map<T, U>(list: List<T>, f: fn(value: T) -> U) -> List<U> {
     }
 }
 
-fn filter<T>(list: List<T>, f: fn(value: T) -> Bool) -> List<T> {
+export fn filter<T>(list: List<T>, f: fn(value: T) -> Bool) -> List<T> {
     if list is nil {
         nil
     } else if f(list.first) {
@@ -296,7 +296,7 @@ fn filter<T>(list: List<T>, f: fn(value: T) -> Bool) -> List<T> {
     }
 }
 
-fn reduce<T, U>(list: List<T>, initial: U, f: fn(acc: U, value: T) -> U) -> U {
+export fn reduce<T, U>(list: List<T>, initial: U, f: fn(acc: U, value: T) -> U) -> U {
     if list is nil {
         initial
     } else {
@@ -304,7 +304,7 @@ fn reduce<T, U>(list: List<T>, initial: U, f: fn(acc: U, value: T) -> U) -> U {
     }
 }
 
-fn mapi<T, U>(list: List<T>, f: fn(value: T, index: Int) -> U) -> List<U> {
+export inline fn mapi<T, U>(list: List<T>, f: fn(value: T, index: Int) -> U) -> List<U> {
     mapi_impl(list, f, 0)
 }
 
@@ -316,7 +316,7 @@ fn mapi_impl<T, U>(list: List<T>, f: fn(value: T, index: Int) -> U, index: Int) 
     }
 }
 
-fn filteri<T>(list: List<T>, f: fn(value: T, index: Int) -> Bool) -> List<T> {
+export inline fn filteri<T>(list: List<T>, f: fn(value: T, index: Int) -> Bool) -> List<T> {
     filteri_impl(list, f, 0)
 }
 

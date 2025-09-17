@@ -30,12 +30,11 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
             );
         }
 
-        ctx.last_scope_mut()
-            .insert_symbol(name.text().to_string(), symbol);
-
-        if constant.export().is_some() {
-            ctx.last_scope_mut().export_symbol(symbol);
-        }
+        ctx.last_scope_mut().insert_symbol(
+            name.text().to_string(),
+            symbol,
+            constant.export().is_some(),
+        );
     }
 
     symbol

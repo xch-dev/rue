@@ -67,12 +67,11 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
             );
         }
 
-        ctx.last_scope_mut()
-            .insert_type(name.text().to_string(), ty);
-
-        if struct_item.export().is_some() {
-            ctx.last_scope_mut().export_type(ty);
-        }
+        ctx.last_scope_mut().insert_type(
+            name.text().to_string(),
+            ty,
+            struct_item.export().is_some(),
+        );
     }
 
     (ty, scope)

@@ -11,6 +11,7 @@ pub type ScopeId = Id<Scope>;
 #[derive(Debug, Default, Clone)]
 pub struct Scope {
     symbols: IndexMap<String, SymbolId>,
+    symbol_names: HashMap<SymbolId, String>,
     types: IndexMap<String, TypeId>,
     type_names: HashMap<TypeId, String>,
     exported_symbols: IndexSet<SymbolId>,
@@ -22,21 +23,22 @@ impl Scope {
         Self::default()
     }
 
-    pub fn insert_symbol(&mut self, name: String, symbol: SymbolId) {
-        self.symbols.insert(name, symbol);
+    pub fn insert_symbol(&mut self, name: String, symbol: SymbolId, exported: bool) {
+        self.symbols.insert(name.clone(), symbol);
+        self.symbol_names.insert(symbol, name);
+
+        if exported {
+            self.exported_symbols.insert(symbol);
+        }
     }
 
-    pub fn insert_type(&mut self, name: String, ty: TypeId) {
+    pub fn insert_type(&mut self, name: String, ty: TypeId, exported: bool) {
         self.types.insert(name.clone(), ty);
         self.type_names.insert(ty, name);
-    }
 
-    pub fn export_symbol(&mut self, symbol: SymbolId) {
-        self.exported_symbols.insert(symbol);
-    }
-
-    pub fn export_type(&mut self, ty: TypeId) {
-        self.exported_types.insert(ty);
+        if exported {
+            self.exported_types.insert(ty);
+        }
     }
 
     pub fn is_symbol_exported(&self, symbol: SymbolId) -> bool {
@@ -47,8 +49,24 @@ impl Scope {
         self.exported_types.contains(&ty)
     }
 
+    pub fn exported_symbols(&self) -> impl Iterator<Item = (&str, SymbolId)> {
+        self.exported_symbols
+            .iter()
+            .map(|s| (self.symbol_names.get(s).unwrap().as_str(), *s))
+    }
+
+    pub fn exported_types(&self) -> impl Iterator<Item = (&str, TypeId)> {
+        self.exported_types
+            .iter()
+            .map(|t| (self.type_names.get(t).unwrap().as_str(), *t))
+    }
+
     pub fn symbol(&self, name: &str) -> Option<SymbolId> {
         self.symbols.get(name).copied()
+    }
+
+    pub fn symbol_name(&self, symbol: SymbolId) -> Option<&str> {
+        self.symbol_names.get(&symbol).map(|s| s.as_str())
     }
 
     pub fn ty(&self, name: &str) -> Option<TypeId> {

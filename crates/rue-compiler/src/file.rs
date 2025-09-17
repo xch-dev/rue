@@ -34,7 +34,20 @@ pub fn compile_file(
         &mut ctx,
         Source::new(Arc::from(include_str!("../../../std.rue")), SourceKind::Std),
     );
-    ctx.push_scope(std.scope);
+
+    let mut scope = Scope::new();
+
+    for (name, symbol) in ctx.scope(std.scope).exported_symbols() {
+        scope.insert_symbol(name.to_string(), symbol, false);
+    }
+
+    for (name, ty) in ctx.scope(std.scope).exported_types() {
+        scope.insert_type(name.to_string(), ty, false);
+    }
+
+    let scope = ctx.alloc_scope(scope);
+
+    ctx.push_scope(scope);
     let file = compile_file_partial(&mut ctx, file);
 
     let mut compilation = Compilation {

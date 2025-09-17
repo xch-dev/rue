@@ -31,12 +31,11 @@ pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> 
             );
         }
 
-        ctx.last_scope_mut()
-            .insert_type(name.text().to_string(), ty);
-
-        if type_alias.export().is_some() {
-            ctx.last_scope_mut().export_type(ty);
-        }
+        ctx.last_scope_mut().insert_type(
+            name.text().to_string(),
+            ty,
+            type_alias.export().is_some(),
+        );
     }
 
     (ty, scope)
