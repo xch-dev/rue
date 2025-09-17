@@ -1,7 +1,7 @@
-program: (+ (* (q . 42) (+ (+ (+ (q . 42) (q . 13)) (q . 2)) (- (* (q . 42) (q . 13)) (q . 8)))) (- (* (q . 42) (q . 13)) (q . 8)))
+program: (+ (* (q . 42) (+ (q . 57) (- (* (q . 42) (q . 13)) (q . 8)))) (- (* (q . 42) (q . 13)) (q . 8)))
 debug_program: (+ (* (q . 42) (+ (+ (+ (q . 42) (q . 13)) (q . 2)) (- (* (q . 42) (q . 13)) (q . 8)))) (- (* (q . 42) (q . 13)) (q . 8)))
 solution: ()
 output: '25528'
-runtime_cost: 7827
-byte_cost: 900000
-total_cost: 907827
+runtime_cost: 6275
+byte_cost: 708000
+total_cost: 714275

@@ -1,7 +1,7 @@
-program: (a (q 2 (q 16 (* 5 (+ (+ (+ 5 11) (q . 2)) 2)) 2) (c (- (* 2 5) (q . 8)) 1)) (c (q . 42) (c (q . 13) 1)))
+program: (a (q 2 (q 16 (* 5 (+ 5 11 (q . 2) 2)) 2) (c (- (* 2 5) (q . 8)) 1)) (c (q . 42) (c (q . 13) 1)))
 debug_program: (a (q 2 (q 2 (q 16 (* 23 2) 11) (c (+ 2 5) 1)) (c (+ (+ 2 5) (q . 2)) (c (- (* 2 5) (q . 8)) 1))) (c (q . 42) (c (q . 13) 1)))
 solution: ()
 output: '25528'
-runtime_cost: 6747
-byte_cost: 1020000
-total_cost: 1026747
+runtime_cost: 5881
+byte_cost: 924000
+total_cost: 929881
