@@ -113,10 +113,10 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             arena.alloc(Lir::GtBytes(left, right))
         }
         Lir::Not(value) => {
+            let value = optimize(arena, value);
             if let Lir::Not(value) = arena[value].clone() {
                 return optimize(arena, value);
             }
-            let value = optimize(arena, value);
             arena.alloc(Lir::Not(value))
         }
         Lir::All(args) => {
@@ -131,7 +131,12 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let condition = optimize(arena, condition);
             let then = optimize(arena, then);
             let otherwise = optimize(arena, otherwise);
-            arena.alloc(Lir::If(condition, then, otherwise))
+
+            if let Lir::Not(opposite) = arena[condition].clone() {
+                arena.alloc(Lir::If(opposite, otherwise, then))
+            } else {
+                arena.alloc(Lir::If(condition, then, otherwise))
+            }
         }
         Lir::Raise(_) => arena.alloc(Lir::Raise(vec![])),
         Lir::Concat(args) => {

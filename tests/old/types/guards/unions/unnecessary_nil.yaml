@@ -1,4 +1,4 @@
-program: (a (i (not (q . 1)) (q . 2) (q 8)) 1)
+program: (a (i (q . 1) (q 8) (q . 2)) 1)
 debug_program: (a (i (not (q . 1)) (q . 2) (q 8)) 1)
 solution: (42)
 clvm_error: clvm raise

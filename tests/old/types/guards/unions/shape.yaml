@@ -1,7 +1,7 @@
-program: (a (i (not (l 2)) (q 18 2 2) (q 18 4 6)) 1)
+program: (a (i (l 2) (q 18 4 6) (q 18 2 2)) 1)
 debug_program: (a (i (not (l 2)) (q 18 2 2) (q 18 (f 2) (r 2))) 1)
 solution: (42)
 output: '1764'
-runtime_cost: 1584
-byte_cost: 468000
-total_cost: 469584
+runtime_cost: 1383
+byte_cost: 420000
+total_cost: 421383
