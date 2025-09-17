@@ -1,0 +1,16 @@
+[package]
+name = "rue-wasm"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rue-compiler = { workspace = true }
+rue-options = { workspace = true }
+rue-diagnostic = { workspace = true }
+clvmr = { workspace = true }
+clvm_tools_rs = { workspace = true }
+wasm-bindgen = { workspace = true }
+console_error_panic_hook = { workspace = true }

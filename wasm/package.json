@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "build": "wasm-pack build",
+    "pack": "wasm-pack pack"
+  },
+  "devDependencies": {
+    "@wasm-tool/wasm-pack-plugin": "1.5.0"
+  }
+}

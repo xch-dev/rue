@@ -50,7 +50,10 @@ pub fn compile_file(
         return Ok(compilation);
     }
 
-    let symbol = ctx.scope(file.scope).symbol("main").unwrap();
+    let symbol = ctx
+        .scope(file.scope)
+        .symbol("main")
+        .ok_or(Error::MainNotFound)?;
     let graph = DependencyGraph::build(&ctx, symbol);
 
     let mut arena = Arena::new();
