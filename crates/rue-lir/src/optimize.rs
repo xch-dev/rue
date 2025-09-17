@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use id_arena::Arena;
+use sha2::{Digest, Sha256};
 
 use crate::{Lir, LirId, bigint_atom, first_path, rest_path};
 
@@ -277,35 +278,8 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
             arena.alloc(Lir::BlsVerify(sig, args))
         }
-        Lir::Sha256(args) => {
-            let mut args = VecDeque::from(args);
-            let mut result = Vec::new();
-
-            while let Some(arg) = args.pop_front() {
-                let arg = optimize(arena, arg);
-                match arena[arg].clone() {
-                    Lir::Atom(atom) => {
-                        if let Some(last_id) = result.last_mut()
-                            && let Lir::Atom(last) = arena[*last_id].clone()
-                        {
-                            *last_id = arena.alloc(Lir::Atom([last, atom].concat()));
-                        } else {
-                            result.push(arg);
-                        }
-                    }
-                    Lir::Concat(items) => {
-                        for item in items.into_iter().rev() {
-                            args.push_front(item);
-                        }
-                    }
-                    _ => {
-                        result.push(arg);
-                    }
-                }
-            }
-
-            arena.alloc(Lir::Sha256(result.into_iter().collect()))
-        }
+        Lir::Sha256(args) => optimize_sha256(arena, args, false),
+        Lir::Sha256Inline(args) => optimize_sha256(arena, args, true),
         Lir::Keccak256(args) => {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
             arena.alloc(Lir::Keccak256(args))
@@ -329,4 +303,46 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             arena.alloc(Lir::R1Verify(public_key, message, signature))
         }
     }
+}
+
+fn optimize_sha256(arena: &mut Arena<Lir>, args: Vec<LirId>, inline: bool) -> LirId {
+    let mut args = VecDeque::from(args);
+    let mut result = Vec::new();
+
+    while let Some(arg) = args.pop_front() {
+        let arg = optimize(arena, arg);
+        match arena[arg].clone() {
+            Lir::Atom(atom) => {
+                if let Some(last_id) = result.last_mut()
+                    && let Lir::Atom(last) = arena[*last_id].clone()
+                {
+                    *last_id = arena.alloc(Lir::Atom([last, atom].concat()));
+                } else {
+                    result.push(arg);
+                }
+            }
+            Lir::Concat(items) => {
+                for item in items.into_iter().rev() {
+                    args.push_front(item);
+                }
+            }
+            _ => {
+                result.push(arg);
+            }
+        }
+    }
+
+    if inline
+        && result.len() <= 1
+        && let Lir::Atom(atom) = result
+            .first()
+            .copied()
+            .map(|id| arena[id].clone())
+            .unwrap_or(Lir::Atom(vec![]))
+    {
+        let value: [u8; 32] = Sha256::digest(&atom).into();
+        return arena.alloc(Lir::Atom(value.to_vec()));
+    }
+
+    arena.alloc(Lir::Sha256(result.into_iter().collect()))
 }

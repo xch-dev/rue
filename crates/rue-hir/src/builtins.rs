@@ -44,7 +44,12 @@ impl Builtins {
 
         scope.insert_symbol(
             "sha256".to_string(),
-            sha256(db, types.bytes, types.bytes32),
+            sha256(db, types.bytes, types.bytes32, false),
+            false,
+        );
+        scope.insert_symbol(
+            "sha256_inline".to_string(),
+            sha256(db, types.bytes, types.bytes32, true),
             false,
         );
         scope.insert_symbol(
@@ -71,7 +76,7 @@ impl Builtins {
     }
 }
 
-fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
+fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId, inline: bool) -> SymbolId {
     let scope = db.alloc_scope(Scope::new());
 
     let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
@@ -83,7 +88,14 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId) -> SymbolId {
         .insert_symbol("value".to_string(), parameter, false);
 
     let reference = db.alloc_hir(Hir::Reference(parameter));
-    let body = db.alloc_hir(Hir::Unary(UnaryOp::Sha256, reference));
+    let body = db.alloc_hir(Hir::Unary(
+        if inline {
+            UnaryOp::Sha256Inline
+        } else {
+            UnaryOp::Sha256
+        },
+        reference,
+    ));
 
     let ty = db.alloc_type(Type::Function(FunctionType {
         params: vec![bytes],

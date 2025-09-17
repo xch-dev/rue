@@ -360,7 +360,7 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
                 .collect::<Result<Vec<_>>>()?;
             Ok(clvm_tuple!(OP_BLS_VERIFY, arg, args).to_clvm(allocator)?)
         }
-        Lir::Sha256(args) => {
+        Lir::Sha256(args) | Lir::Sha256Inline(args) => {
             let args = args
                 .iter()
                 .map(|arg| codegen(arena, allocator, *arg))

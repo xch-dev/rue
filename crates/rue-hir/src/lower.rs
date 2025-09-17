@@ -139,6 +139,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     }
                     UnaryOp::BitwiseNot => self.arena.alloc(Lir::Lognot(lir)),
                     UnaryOp::Sha256 => self.arena.alloc(Lir::Sha256(vec![lir])),
+                    UnaryOp::Sha256Inline => self.arena.alloc(Lir::Sha256Inline(vec![lir])),
                 }
             }
             Hir::Binary(op, left, right) => {
