@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use clvmr::Allocator;
 use id_arena::Arena;
 use sha2::{Digest, Sha256};
 
@@ -66,8 +67,47 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             }
         }
         Lir::Add(args) => {
-            let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
-            arena.alloc(Lir::Add(args))
+            let mut args = VecDeque::from(args);
+            let mut result = Vec::new();
+
+            while let Some(arg) = args.pop_front() {
+                let arg = optimize(arena, arg);
+                match arena[arg].clone() {
+                    Lir::Atom(atom) => {
+                        if let Some(last_id) = result
+                            .iter_mut()
+                            .find(|id| matches!(arena[**id], Lir::Atom(..)))
+                            && let Lir::Atom(last) = arena[*last_id].clone()
+                        {
+                            let mut allocator = Allocator::new();
+                            let lhs = allocator.new_atom(&last).unwrap();
+                            let rhs = allocator.new_atom(&atom).unwrap();
+                            let sum = bigint_atom(allocator.number(lhs) + allocator.number(rhs));
+                            *last_id = arena.alloc(Lir::Atom(sum));
+                        } else {
+                            result.push(arg);
+                        }
+                    }
+                    Lir::Add(items) => {
+                        for item in items.into_iter().rev() {
+                            args.push_front(item);
+                        }
+                    }
+                    _ => {
+                        result.push(arg);
+                    }
+                }
+            }
+
+            if result.is_empty() {
+                return arena.alloc(Lir::Atom(vec![]));
+            }
+
+            if result.len() == 1 {
+                return result[0];
+            }
+
+            arena.alloc(Lir::Add(result))
         }
         Lir::Sub(args) => {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
