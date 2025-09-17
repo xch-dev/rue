@@ -1,0 +1,7 @@
+fn main(public_key: PublicKey, conditions: List<Condition>) -> List<Condition> {
+    let agg_sig = AggSigMe {
+        public_key: public_key,
+        message: tree_hash(conditions as Any),
+    };
+    [agg_sig, ...conditions]
+}
