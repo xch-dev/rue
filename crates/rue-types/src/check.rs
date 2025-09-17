@@ -191,12 +191,11 @@ fn check_each(
             compare_impl(
                 arena,
                 builtins,
-                &mut ComparisonContext {
-                    infer: None,
-                    stack: IndexSet::new(),
-                },
+                &mut ComparisonContext::default(),
                 lhs,
                 rhs,
+                None,
+                None,
             ),
         );
     }

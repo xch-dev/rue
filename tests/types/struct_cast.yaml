@@ -1,0 +1,4 @@
+solution: ()
+diagnostics:
+- Cannot assign `B` to `A` without a cast, since they are semantically different at test:13:17
+- Cannot assign `A | B` to `A` without a cast, since they are semantically different at test:15:15

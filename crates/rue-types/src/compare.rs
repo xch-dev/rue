@@ -1,6 +1,6 @@
 use std::{
     cmp::{max, min},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
 };
 
 use id_arena::Arena;
@@ -18,10 +18,10 @@ pub enum Comparison {
     Invalid,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct ComparisonContext<'a> {
-    pub(crate) infer: Option<&'a mut HashMap<TypeId, TypeId>>,
-    pub(crate) stack: IndexSet<(TypeId, TypeId)>,
+    infer: Option<&'a mut HashMap<TypeId, TypeId>>,
+    stack: IndexSet<(TypeId, TypeId)>,
 }
 
 pub fn compare_with_inference(
@@ -41,10 +41,12 @@ pub fn compare_with_inference(
         builtins,
         &mut ComparisonContext {
             infer,
-            stack: IndexSet::new(),
+            ..Default::default()
         },
         lhs,
         rhs,
+        None,
+        None,
     );
     trace!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
     result
@@ -65,6 +67,8 @@ pub(crate) fn compare_impl(
     ctx: &mut ComparisonContext,
     lhs: TypeId,
     rhs: TypeId,
+    lhs_semantic: Option<TypeId>,
+    rhs_semantic: Option<TypeId>,
 ) -> Comparison {
     if !ctx.stack.insert((lhs, rhs)) {
         return Comparison::Assign;
@@ -72,8 +76,12 @@ pub(crate) fn compare_impl(
 
     let result = match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
-        (Type::Ref(lhs), _) => compare_impl(arena, builtins, ctx, lhs, rhs),
-        (_, Type::Ref(rhs)) => compare_impl(arena, builtins, ctx, lhs, rhs),
+        (Type::Ref(lhs), _) => {
+            compare_impl(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+        }
+        (_, Type::Ref(rhs)) => {
+            compare_impl(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+        }
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Never, _) => Comparison::Assign,
         (Type::Atom(lhs), Type::Atom(rhs)) => {
@@ -115,8 +123,8 @@ pub(crate) fn compare_impl(
             max(semantic, restriction)
         }
         (Type::Pair(lhs), Type::Pair(rhs)) => {
-            let first = compare_impl(arena, builtins, ctx, lhs.first, rhs.first);
-            let rest = compare_impl(arena, builtins, ctx, lhs.rest, rhs.rest);
+            let first = compare_impl(arena, builtins, ctx, lhs.first, rhs.first, None, None);
+            let rest = compare_impl(arena, builtins, ctx, lhs.rest, rhs.rest, None, None);
             max(first, rest)
         }
         (Type::Atom(_), Type::Pair(_)) => Comparison::Invalid,
@@ -127,12 +135,12 @@ pub(crate) fn compare_impl(
             if lhs.nil_terminated != rhs.nil_terminated || lhs.params.len() != rhs.params.len() {
                 Comparison::Invalid
             } else {
-                let mut result = compare_impl(arena, builtins, ctx, lhs.ret, rhs.ret);
+                let mut result = compare_impl(arena, builtins, ctx, lhs.ret, rhs.ret, None, None);
 
                 for (i, param) in lhs.params.iter().enumerate() {
                     result = max(
                         result,
-                        compare_impl(arena, builtins, ctx, *param, rhs.params[i]),
+                        compare_impl(arena, builtins, ctx, *param, rhs.params[i], None, None),
                     );
                 }
 
@@ -144,7 +152,7 @@ pub(crate) fn compare_impl(
                 Comparison::Assign
             } else if let Some(infer) = &mut ctx.infer {
                 if let Some(rhs) = infer.get(&rhs).copied() {
-                    compare_impl(arena, builtins, ctx, lhs, rhs)
+                    compare_impl(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
                 } else {
                     debug!(
                         "Inferring {} is {}",
@@ -158,7 +166,10 @@ pub(crate) fn compare_impl(
                 let mut result = Comparison::Assign;
 
                 for &id in &lhs.types {
-                    result = max(result, compare_impl(arena, builtins, ctx, id, rhs));
+                    result = max(
+                        result,
+                        compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
+                    );
                 }
 
                 result
@@ -167,25 +178,88 @@ pub(crate) fn compare_impl(
             }
         }
         (Type::Struct(lhs), Type::Struct(rhs)) => max(
-            compare_impl(arena, builtins, ctx, lhs.inner, rhs.inner),
+            compare_impl(arena, builtins, ctx, lhs.inner, rhs.inner, None, None),
             if lhs.semantic == rhs.semantic {
                 Comparison::Assign
             } else {
                 Comparison::Cast
             },
         ),
-        (Type::Struct(lhs), _) => compare_impl(arena, builtins, ctx, lhs.inner, rhs), // TODO: Fix cast requirement
-        (_, Type::Struct(rhs)) => compare_impl(arena, builtins, ctx, lhs, rhs.inner), // TODO: Fix cast requirement
-        (Type::Alias(lhs), _) => compare_impl(arena, builtins, ctx, lhs.inner, rhs),
-        (_, Type::Alias(rhs)) => compare_impl(arena, builtins, ctx, lhs, rhs.inner),
-        (Type::Function(_) | Type::Generic, _) => {
-            compare_impl(arena, builtins, ctx, builtins.any, rhs)
+        (Type::Struct(lhs), _) => {
+            let inner = compare_impl(
+                arena,
+                builtins,
+                ctx,
+                lhs.inner,
+                rhs,
+                Some(lhs.semantic),
+                rhs_semantic,
+            );
+
+            if rhs_semantic == Some(lhs.semantic)
+                || semantics_of(arena, rhs).contains(&Some(lhs.semantic))
+            {
+                inner
+            } else {
+                max(inner, Comparison::Cast)
+            }
         }
+        (_, Type::Struct(rhs)) => {
+            let inner = compare_impl(
+                arena,
+                builtins,
+                ctx,
+                lhs,
+                rhs.inner,
+                lhs_semantic,
+                Some(rhs.semantic),
+            );
+
+            let semantics = semantics_of(arena, lhs);
+
+            if (semantics.len() != 1 || !semantics.contains(&Some(rhs.semantic)))
+                && lhs_semantic != Some(rhs.semantic)
+            {
+                max(inner, Comparison::Cast)
+            } else {
+                inner
+            }
+        }
+        (Type::Alias(lhs), _) => compare_impl(
+            arena,
+            builtins,
+            ctx,
+            lhs.inner,
+            rhs,
+            lhs_semantic,
+            rhs_semantic,
+        ),
+        (_, Type::Alias(rhs)) => compare_impl(
+            arena,
+            builtins,
+            ctx,
+            lhs,
+            rhs.inner,
+            lhs_semantic,
+            rhs_semantic,
+        ),
+        (Type::Function(_) | Type::Generic, _) => compare_impl(
+            arena,
+            builtins,
+            ctx,
+            builtins.any,
+            rhs,
+            lhs_semantic,
+            rhs_semantic,
+        ),
         (Type::Union(lhs), _) => {
             let mut result = Comparison::Assign;
 
             for &id in &lhs.types {
-                result = max(result, compare_impl(arena, builtins, ctx, id, rhs));
+                result = max(
+                    result,
+                    compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
+                );
             }
 
             result
@@ -194,7 +268,10 @@ pub(crate) fn compare_impl(
             let mut result = Comparison::Invalid;
 
             for &id in &rhs.types {
-                result = min(result, compare_impl(arena, builtins, ctx, lhs, id));
+                result = min(
+                    result,
+                    compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
+                );
             }
 
             result
@@ -206,6 +283,28 @@ pub(crate) fn compare_impl(
     ctx.stack.pop().unwrap();
 
     result
+}
+
+fn semantics_of(arena: &Arena<Type>, id: TypeId) -> HashSet<Option<TypeId>> {
+    match arena[id].clone() {
+        Type::Apply(_) => unreachable!(),
+        Type::Ref(id) => semantics_of(arena, id),
+        Type::Alias(alias) => semantics_of(arena, alias.inner),
+        Type::Never => HashSet::new(),
+        Type::Unresolved | Type::Generic | Type::Atom(_) | Type::Pair(_) | Type::Function(_) => {
+            HashSet::from_iter([None])
+        }
+        Type::Struct(ty) => HashSet::from_iter([Some(ty.semantic)]),
+        Type::Union(ty) => {
+            let mut semantics = HashSet::new();
+
+            for &id in &ty.types {
+                semantics.extend(semantics_of(arena, id));
+            }
+
+            semantics
+        }
+    }
 }
 
 #[cfg(test)]
