@@ -1,7 +1,7 @@
 use log::debug;
 use rue_ast::{AstBlock, AstNode, AstStmtOrExpr};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Block, Hir, Statement, Value};
+use rue_hir::{Block, Hir, Scope, Statement, Value};
 use rue_types::TypeId;
 
 use crate::{Compiler, compile_expr, compile_stmt};
@@ -12,6 +12,9 @@ pub fn compile_block(
     is_expr: bool,
     expected_type: Option<TypeId>,
 ) -> Value {
+    let scope = ctx.alloc_scope(Scope::new());
+    ctx.push_scope(scope);
+
     let mut statements = Vec::new();
     let mut body = None;
     let mut has_return = false;
@@ -58,6 +61,8 @@ pub fn compile_block(
         statements,
         body: body.as_ref().map(|value| value.hir),
     }));
+
+    ctx.pop_scope();
 
     if let Some(body) = body {
         body.with_hir(hir)
