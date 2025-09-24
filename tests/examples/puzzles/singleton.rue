@@ -53,6 +53,10 @@ fn main(
     )
   };
   
+  let assert_amount = AssertMyAmount {
+    amount: my_amount,
+  };
+  
   let assert_parent = verify_lineage_proof(
     singleton,
     parent_id,
@@ -63,7 +67,7 @@ fn main(
   
   let conditions = morph_conditions(singleton, inner_conditions, false);
   
-  [assert_parent, ...conditions]
+  [assert_amount, assert_parent, ...conditions]
 }
 
 fn curry_singleton_hash(
