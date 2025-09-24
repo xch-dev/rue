@@ -7,10 +7,10 @@ use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
 #[derive(Debug, Default, Clone)]
 pub struct DependencyGraph {
     // Keeps track of the direct dependencies of a symbol
-    dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
+    pub dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
 
     // Keeps track of the locals of a symbol
-    locals: HashMap<SymbolId, IndexSet<SymbolId>>,
+    pub locals: HashMap<SymbolId, IndexSet<SymbolId>>,
 
     // Keeps track of the number of times a symbol is referenced
     references: HashMap<SymbolId, usize>,
@@ -78,8 +78,6 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
             for stmt in &block.statements {
                 match stmt {
                     Statement::Let(stmt) => {
-                        visit_symbol(db, graph, *stmt);
-
                         if let Some(last) = graph.stack.last() {
                             graph.locals.entry(*last).or_default().insert(*stmt);
                         }
@@ -105,7 +103,13 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
                 visit_hir(db, graph, body);
             }
         }
-        Hir::Lambda(lambda) => visit_symbol(db, graph, *lambda),
+        Hir::Lambda(lambda) => {
+            if let Some(last) = graph.stack.last() {
+                graph.locals.entry(*last).or_default().insert(*lambda);
+            }
+
+            visit_symbol_reference(db, graph, *lambda)
+        }
         Hir::If(condition, then, else_) => {
             visit_hir(db, graph, *condition);
             visit_hir(db, graph, *then);

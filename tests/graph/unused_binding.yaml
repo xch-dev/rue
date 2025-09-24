@@ -1,0 +1,7 @@
+program: (q . 100)
+debug_program: (a (q 1 . 100) (c (q . 42) 1))
+solution: ()
+output: '100'
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020

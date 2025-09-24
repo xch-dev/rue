@@ -1,0 +1,7 @@
+program: (a (q 16 2 2) (c (* 2 (q . 42)) 1))
+debug_program: (a (q 16 2 2) (c (* 2 (q . 42)) 1))
+solution: (42)
+output: '3528'
+runtime_cost: 2152
+byte_cost: 348000
+total_cost: 350152

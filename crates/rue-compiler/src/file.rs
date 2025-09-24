@@ -70,8 +70,8 @@ pub fn compile_file(
     let graph = DependencyGraph::build(&ctx, symbol);
 
     let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(&ctx, &mut arena, &graph, options.clone());
-    let mut lir = lowerer.lower_symbol(&Environment::default(), symbol, true);
+    let mut lowerer = Lowerer::new(&mut ctx, &mut arena, &graph, options.clone());
+    let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol, true);
 
     if options.optimize_lir {
         lir = optimize(&mut arena, lir);

@@ -43,8 +43,4 @@ impl Environment {
 
         Some(path)
     }
-
-    pub fn path(&self, symbol_id: SymbolId) -> u32 {
-        self.try_path(symbol_id).expect("symbol not found")
-    }
 }
