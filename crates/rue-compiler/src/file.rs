@@ -29,6 +29,23 @@ pub fn compile_file(
     file: Source,
     options: CompilerOptions,
 ) -> Result<Compilation, Error> {
+    compile_file_impl(allocator, file, options, true)
+}
+
+pub fn analyze_file(
+    allocator: &mut Allocator,
+    file: Source,
+    options: CompilerOptions,
+) -> Result<Compilation, Error> {
+    compile_file_impl(allocator, file, options, false)
+}
+
+fn compile_file_impl(
+    allocator: &mut Allocator,
+    file: Source,
+    options: CompilerOptions,
+    do_codegen: bool,
+) -> Result<Compilation, Error> {
     let mut ctx = Compiler::new(options.clone());
     let std = compile_file_partial(
         &mut ctx,
@@ -55,10 +72,11 @@ pub fn compile_file(
         program: None,
     };
 
-    if compilation
-        .diagnostics
-        .iter()
-        .any(|d| d.kind.severity() == DiagnosticSeverity::Error)
+    if !do_codegen
+        || compilation
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.severity() == DiagnosticSeverity::Error)
     {
         return Ok(compilation);
     }
@@ -77,9 +95,7 @@ pub fn compile_file(
         lir = optimize(&mut arena, lir);
     }
 
-    let ptr = codegen(&arena, allocator, lir)?;
-
-    compilation.program = Some(ptr);
+    compilation.program = Some(codegen(&arena, allocator, lir)?);
 
     Ok(compilation)
 }

@@ -40,6 +40,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         is_main: bool,
     ) -> LirId {
+        for inline_symbols in self.inline_symbols.iter().rev() {
+            if let Some(hir) = inline_symbols.get(&symbol) {
+                return self.lower_hir(env, *hir);
+            }
+        }
+
         match self.db.symbol(symbol).clone() {
             Symbol::Module(_) | Symbol::Parameter(_) => unreachable!(),
             Symbol::Function(function) => self.lower_function(env, symbol, function, is_main),
@@ -503,6 +509,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn should_inline(&self, symbol: SymbolId) -> bool {
+        if self
+            .inline_symbols
+            .iter()
+            .any(|symbols| symbols.contains_key(&symbol))
+        {
+            return true;
+        }
+
         let references = self.graph.references(symbol);
 
         match self.db.symbol(symbol) {

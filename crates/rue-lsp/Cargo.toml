@@ -1,0 +1,13 @@
+[package]
+name = "rue-lsp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rue-parser = { workspace = true }
+rue-compiler = { workspace = true }
+rue-diagnostic = { workspace = true }
+rue-options = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tower-lsp = { workspace = true }
+clvmr = { workspace = true }
