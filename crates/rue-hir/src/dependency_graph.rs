@@ -7,10 +7,10 @@ use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
 #[derive(Debug, Default, Clone)]
 pub struct DependencyGraph {
     // Keeps track of the direct dependencies of a symbol
-    pub dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
+    dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
 
     // Keeps track of the locals of a symbol
-    pub locals: HashMap<SymbolId, IndexSet<SymbolId>>,
+    locals: HashMap<SymbolId, IndexSet<SymbolId>>,
 
     // Keeps track of the number of times a symbol is referenced
     references: HashMap<SymbolId, usize>,
