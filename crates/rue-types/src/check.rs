@@ -11,6 +11,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub enum Check {
     None,
     Impossible,
@@ -126,7 +127,7 @@ impl Check {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Copy, Error)]
 pub enum CheckError {
     #[error("Maximum type check depth reached")]
     DepthExceeded,
@@ -231,11 +232,11 @@ fn check_each(
 
         match (atoms, &target_atoms) {
             (Some(_), None) => false,
-            (Some(_), Some(Atoms::Unrestricted)) => true,
+            (Some(_), Some(Atoms::Unrestricted)) | (None, _) => true,
             (Some(Atoms::Unrestricted), Some(Atoms::Restricted(restrictions))) => {
                 exceeds_overlap = true;
                 unrestricted = true;
-                overlap = restrictions.clone();
+                overlap.clone_from(restrictions);
                 true
             }
             (
@@ -268,7 +269,6 @@ fn check_each(
 
                 has_overlap
             }
-            (None, _) => true,
         }
     });
 

@@ -30,6 +30,7 @@ mod tests {
 
     use crate::{Compiler, compile_document, declare_document};
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn check(source: &str, errors: Expect) -> (Compiler, ScopeId) {
         let tokens = Lexer::new(source).collect::<Vec<_>>();
 

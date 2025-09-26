@@ -49,9 +49,10 @@ pub fn compile_document(
     document: &AstDocument,
     declarations: ModuleDeclarations,
 ) {
-    compile_items(ctx, scope, document.items(), declarations)
+    compile_items(ctx, scope, document.items(), declarations);
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub fn compile_items(
     ctx: &mut Compiler,
     scope: ScopeId,

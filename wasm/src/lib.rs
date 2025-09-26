@@ -7,6 +7,7 @@ use rue_diagnostic::{Diagnostic, Source, SourceKind};
 use rue_options::CompilerOptions;
 use wasm_bindgen::prelude::*;
 
+#[derive(Debug)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Compilation {
     pub program: Option<String>,

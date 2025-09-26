@@ -39,7 +39,7 @@ pub fn compile_literal_type(ctx: &mut Compiler, literal: &AstLiteralType) -> Typ
                 text = stripped;
             }
 
-            let text = text.replace("_", "");
+            let text = text.replace('_', "");
             let bytes = hex::decode(text).unwrap();
 
             ctx.alloc_type(Type::Atom(if bytes.is_empty() {
@@ -56,7 +56,7 @@ pub fn compile_literal_type(ctx: &mut Compiler, literal: &AstLiteralType) -> Typ
             }))
         }
         SyntaxKind::Integer => {
-            let text = value.text().replace("_", "");
+            let text = value.text().replace('_', "");
             let num = BigInt::from_str(&text).unwrap();
             ctx.alloc_type(Type::Atom(Atom::new(
                 AtomSemantic::Int,

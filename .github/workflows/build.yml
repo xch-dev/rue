@@ -31,8 +31,14 @@ jobs:
       - name: Fmt
         run: cargo fmt --all -- --files-with-diff --check
 
+      - name: Install cargo-workspaces
+        run: cargo install cargo-workspaces
+
+      - name: Publish (dry run)
+        run: cargo ws publish --publish-as-is --allow-dirty --dry-run
+
       - name: Publish
         if: startsWith(github.event.ref, 'refs/tags')
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --workspace
+        run: cargo ws publish --publish-as-is --allow-dirty

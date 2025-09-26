@@ -2,6 +2,17 @@
 name = "rue-lsp"
 version = "0.3.0"
 edition = "2024"
+license = "Apache-2.0"
+description = "A language server protocol (LSP) implementation for the Rue programming language."
+authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
+homepage = "https://github.com/xch-dev/rue"
+repository = "https://github.com/xch-dev/rue"
+readme = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[lints]
+workspace = true
 
 [dependencies]
 rue-compiler = { workspace = true }

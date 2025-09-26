@@ -2,16 +2,53 @@
 resolver = "3"
 members = ["crates/*", "wasm"]
 
+[workspace.package]
+readme = "README.md"
+keywords = ["chia", "blockchain", "crypto"]
+categories = ["cryptography::cryptocurrencies", "development-tools"]
+
+[workspace.lints.rust]
+rust_2018_idioms = { level = "deny", priority = -1 }
+rust_2021_compatibility = { level = "deny", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
+nonstandard_style = { level = "deny", priority = -1 }
+unsafe_code = "deny"
+non_ascii_idents = "deny"
+unused_extern_crates = "deny"
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+unreachable_code = "warn"
+unreachable_patterns = "deny"
+dead_code = "warn"
+deprecated = "deny"
+deprecated_in_future = "deny"
+missing_debug_implementations = "warn"
+missing_copy_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+multiple_crate_versions = "allow"
+must_use_candidate = "allow"
+too_many_lines = "allow"
+needless_raw_string_hashes = "allow"
+implicit_hasher = "allow"
+match_same_arms = "allow"
+similar_names = "allow"
+
 [workspace.dependencies]
-rue-lexer = { path = "crates/rue-lexer" }
-rue-parser = { path = "crates/rue-parser" }
-rue-diagnostic = { path = "crates/rue-diagnostic" }
-rue-ast = { path = "crates/rue-ast" }
-rue-compiler = { path = "crates/rue-compiler" }
-rue-options = { path = "crates/rue-options" }
-rue-lir = { path = "crates/rue-lir" }
-rue-hir = { path = "crates/rue-hir" }
-rue-types = { path = "crates/rue-types" }
+rue-lexer = { path = "crates/rue-lexer", version = "0.3.0" }
+rue-parser = { path = "crates/rue-parser", version = "0.3.0" }
+rue-diagnostic = { path = "crates/rue-diagnostic", version = "0.3.0" }
+rue-ast = { path = "crates/rue-ast", version = "0.3.0" }
+rue-compiler = { path = "crates/rue-compiler", version = "0.3.0" }
+rue-options = { path = "crates/rue-options", version = "0.3.0" }
+rue-lir = { path = "crates/rue-lir", version = "0.3.0" }
+rue-hir = { path = "crates/rue-hir", version = "0.3.0" }
+rue-types = { path = "crates/rue-types", version = "0.3.0" }
 anyhow = "1.0.98"
 clvm-traits = "0.28.1"
 clvm_tools_rs = "0.4.0"

@@ -573,8 +573,7 @@ fn opt_sha256(arena: &mut Arena<Lir>, args: Vec<LirId>, inline: bool) -> LirId {
         && let Lir::Atom(atom) = result
             .first()
             .copied()
-            .map(|id| arena[id].clone())
-            .unwrap_or(Lir::Atom(vec![]))
+            .map_or(Lir::Atom(vec![]), |id| arena[id].clone())
     {
         let value: [u8; 32] = Sha256::digest(&atom).into();
         return arena.alloc(Lir::Atom(value.to_vec()));

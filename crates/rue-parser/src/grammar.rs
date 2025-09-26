@@ -18,6 +18,7 @@ mod tests {
 
     use crate::Parser;
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn check(f: impl FnOnce(&mut Parser), source: &str, expect: Expect, errors: Expect) {
         let source = Source::new(Arc::from(source), SourceKind::File("main.rue".to_string()));
 

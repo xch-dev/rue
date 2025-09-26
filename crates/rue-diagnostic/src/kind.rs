@@ -226,7 +226,7 @@ fn list_of(kinds: &[String]) -> String {
             "one of {}",
             kinds
                 .iter()
-                .map(|k| k.to_string())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(", ")
         ),

@@ -7,6 +7,7 @@ use crate::{HirId, SymbolId, TypePath};
 pub type Mappings = HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>;
 
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct Value {
     pub hir: HirId,
     pub ty: TypeId,

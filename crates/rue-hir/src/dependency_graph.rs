@@ -108,7 +108,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
                 graph.locals.entry(*last).or_default().insert(*lambda);
             }
 
-            visit_symbol_reference(db, graph, *lambda)
+            visit_symbol_reference(db, graph, *lambda);
         }
         Hir::If(condition, then, else_) => {
             visit_hir(db, graph, *condition);

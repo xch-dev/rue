@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value)]
+
 use std::collections::HashMap;
 
 use id_arena::Arena;
@@ -10,6 +12,7 @@ use crate::{
     FunctionSymbol, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
 };
 
+#[derive(Debug)]
 pub struct Lowerer<'d, 'a, 'g> {
     db: &'d mut Database,
     arena: &'a mut Arena<Lir>,
@@ -383,7 +386,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             };
         };
 
-        match stmt.clone() {
+        match *stmt {
             Statement::Let(_) => self.lower_let_stmts(env, stmts, body),
             Statement::Return(hir) => self.lower_block(env, vec![], Some(hir)),
             Statement::Assert(condition) => self.lower_assert(env, stmts, condition, body),

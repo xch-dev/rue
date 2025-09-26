@@ -113,7 +113,7 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
         Type::Alias(alias) => {
             let mut variants = variants_of(arena, builtins, alias.inner);
 
-            for variant in variants.iter_mut() {
+            for variant in &mut variants {
                 variant.semantic_type_ids.push(id);
             }
 
@@ -122,7 +122,7 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
         Type::Struct(ty) => {
             let mut variants = variants_of(arena, builtins, ty.inner);
 
-            for variant in variants.iter_mut() {
+            for variant in &mut variants {
                 variant.semantic_type_ids.push(id);
             }
 

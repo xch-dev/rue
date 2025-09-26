@@ -100,7 +100,7 @@ mod tests {
             source,
             expect,
             errors,
-        )
+        );
     }
 
     #[test]

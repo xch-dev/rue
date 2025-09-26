@@ -46,7 +46,7 @@ fn compile_file_impl(
     options: CompilerOptions,
     do_codegen: bool,
 ) -> Result<Compilation, Error> {
-    let mut ctx = Compiler::new(options.clone());
+    let mut ctx = Compiler::new(options);
     let std = compile_file_partial(
         &mut ctx,
         Source::new(Arc::from(include_str!("../../../std.rue")), SourceKind::Std),
@@ -88,7 +88,7 @@ fn compile_file_impl(
     let graph = DependencyGraph::build(&ctx, symbol);
 
     let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(&mut ctx, &mut arena, &graph, options.clone());
+    let mut lowerer = Lowerer::new(&mut ctx, &mut arena, &graph, options);
     let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol, true);
 
     if options.optimize_lir {

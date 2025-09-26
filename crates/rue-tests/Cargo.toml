@@ -3,6 +3,17 @@ name = "rue-tests"
 version = "0.3.0"
 edition = "2024"
 publish = false
+license = "Apache-2.0"
+description = "A collection of tests for the Rue programming language."
+authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
+homepage = "https://github.com/xch-dev/rue"
+repository = "https://github.com/xch-dev/rue"
+readme = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[lints]
+workspace = true
 
 [dependencies]
 rue-compiler = { workspace = true }

@@ -11,7 +11,7 @@ use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, Type, TypeId, stringify_impl, substitute,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Comparison {
     Assign,
     Cast,
@@ -64,7 +64,7 @@ pub fn compare(
 pub(crate) fn compare_impl(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
-    ctx: &mut ComparisonContext,
+    ctx: &mut ComparisonContext<'_>,
     lhs: TypeId,
     rhs: TypeId,
     lhs_semantic: Option<TypeId>,
@@ -378,9 +378,7 @@ mod tests {
         assert_eq!(
             compare(&mut arena, &builtins, lhs_id, rhs_id),
             expected,
-            "{} -> {}",
-            lhs,
-            rhs
+            "{lhs} -> {rhs}"
         );
     }
 }
