@@ -62,7 +62,7 @@ fn main() -> Result<()> {
                 println!("Skipping {name} because it doesn't have a test case");
             }
             continue;
-        };
+        }
 
         let Some(name) = entry.file_name().to_str().unwrap().strip_suffix(".yaml") else {
             continue;

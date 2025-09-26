@@ -42,7 +42,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
                 text = stripped;
             }
 
-            let text = text.replace("_", "");
+            let text = text.replace('_', "");
 
             let bytes = hex::decode(text).unwrap();
             let ty = ctx.alloc_type(Type::Atom(if bytes.is_empty() {
@@ -61,7 +61,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
             Value::new(ctx.alloc_hir(Hir::Bytes(bytes)), ty)
         }
         SyntaxKind::Integer => {
-            let text = value.text().replace("_", "");
+            let text = value.text().replace('_', "");
 
             let num = BigInt::from_str(&text).unwrap();
             let ty = ctx.alloc_type(Type::Atom(Atom::new(

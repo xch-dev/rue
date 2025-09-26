@@ -404,6 +404,7 @@ mod tests {
 
     use super::*;
 
+    #[allow(clippy::needless_pass_by_value)]
     fn check(arena: &Arena<Lir>, lir: LirId, expect: Expect) {
         let mut allocator = Allocator::new();
         let ptr = codegen(arena, &mut allocator, lir).unwrap();

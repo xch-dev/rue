@@ -1,7 +1,18 @@
 [package]
 name = "rue-parser"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
+license = "Apache-2.0"
+description = "A parser for the Rue programming language."
+authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
+homepage = "https://github.com/xch-dev/rue"
+repository = "https://github.com/xch-dev/rue"
+readme = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[lints]
+workspace = true
 
 [dependencies]
 rue-lexer = { workspace = true }

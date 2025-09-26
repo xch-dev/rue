@@ -31,7 +31,7 @@ pub struct Block {
     pub body: Option<HirId>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Statement {
     Expr(HirId),
     Let(SymbolId),

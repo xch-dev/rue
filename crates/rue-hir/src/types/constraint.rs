@@ -7,6 +7,7 @@ pub enum TypePath {
 }
 
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct Constraint {
     pub check: Check,
     pub else_id: Option<TypeId>,

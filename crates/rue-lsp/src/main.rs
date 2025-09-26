@@ -80,11 +80,7 @@ impl Backend {
         )
         .unwrap();
 
-        let diagnostics: Vec<Diagnostic> = compilation
-            .diagnostics
-            .into_iter()
-            .map(diagnostic)
-            .collect();
+        let diagnostics: Vec<Diagnostic> = compilation.diagnostics.iter().map(diagnostic).collect();
 
         self.client
             .publish_diagnostics(uri, diagnostics, None)
@@ -92,7 +88,7 @@ impl Backend {
     }
 }
 
-fn diagnostic(diagnostic: rue_diagnostic::Diagnostic) -> Diagnostic {
+fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
     let start = diagnostic.start();
     let end = diagnostic.end();
 

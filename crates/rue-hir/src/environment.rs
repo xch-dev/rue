@@ -3,6 +3,7 @@ use indexmap::IndexSet;
 use crate::SymbolId;
 
 #[derive(Debug, Default, Clone)]
+#[must_use]
 pub struct Environment {
     symbols: IndexSet<SymbolId>,
     nil_terminated: bool,

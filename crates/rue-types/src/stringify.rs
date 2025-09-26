@@ -18,9 +18,9 @@ pub(crate) fn stringify_impl(
     if stack.contains_key(&id) {
         stack.insert(id, true);
         return format!("<{}>", stack.get_index_of(&id).unwrap());
-    } else {
-        stack.insert(id, false);
     }
+
+    stack.insert(id, false);
 
     let result = match arena[id].clone() {
         Type::Ref(id) => stringify_impl(arena, id, stack),
@@ -84,10 +84,10 @@ pub(crate) fn stringify_impl(
     let recursed = stack.pop().unwrap().1;
 
     if recursed {
-        if result.starts_with("(") {
-            format!("{} @ {}", len, result)
+        if result.starts_with('(') {
+            format!("{len} @ {result}")
         } else {
-            format!("{} @ ({})", len, result)
+            format!("{len} @ ({result})")
         }
     } else {
         result

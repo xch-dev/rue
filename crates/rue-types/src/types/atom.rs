@@ -78,9 +78,9 @@ impl fmt::Display for Atom {
                 AtomSemantic::Any | AtomSemantic::Bytes | AtomSemantic::PublicKey => {
                     if value.is_empty() {
                         return write!(f, "nil");
-                    } else {
-                        return write!(f, "0x{}", hex::encode(value));
                     }
+
+                    return write!(f, "0x{}", hex::encode(value));
                 }
                 AtomSemantic::Int => {
                     let mut allocator = Allocator::new();
@@ -92,9 +92,9 @@ impl fmt::Display for Atom {
                         return write!(f, "false");
                     } else if value.as_ref() == [1] {
                         return write!(f, "true");
-                    } else {
-                        return write!(f, "0x{}", hex::encode(value));
                     }
+
+                    return write!(f, "0x{}", hex::encode(value));
                 }
             },
         };

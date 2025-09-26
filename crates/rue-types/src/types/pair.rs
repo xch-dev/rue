@@ -1,6 +1,6 @@
 use crate::TypeId;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Pair {
     pub first: TypeId,
     pub rest: TypeId,

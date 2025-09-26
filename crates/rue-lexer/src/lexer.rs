@@ -153,7 +153,7 @@ fn is_whitespace(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\r' | '\n')
 }
 
-impl<'a> Iterator for Lexer<'a> {
+impl Iterator for Lexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -209,10 +209,12 @@ mod tests {
 
     use super::*;
 
+    #[allow(clippy::needless_pass_by_value)]
     fn check(source: &str, expect: Expect) {
         let mut output = String::new();
 
         for token in Lexer::new(source) {
+            #[allow(clippy::format_push_string)]
             output.push_str(&format!("{:?}\n", token.kind));
         }
 

@@ -24,7 +24,7 @@ fn ty_inner(p: &mut Parser, allow_union: bool) {
             p.start_at(cp, SyntaxKind::GroupType);
         }
         p.expect(T![')']);
-        p.finish()
+        p.finish();
     } else if p.at(T![fn]) {
         p.start(SyntaxKind::LambdaType);
         p.expect(T![fn]);

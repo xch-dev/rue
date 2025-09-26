@@ -66,7 +66,7 @@ impl Scope {
     }
 
     pub fn symbol_name(&self, symbol: SymbolId) -> Option<&str> {
-        self.symbol_names.get(&symbol).map(|s| s.as_str())
+        self.symbol_names.get(&symbol).map(String::as_str)
     }
 
     pub fn ty(&self, name: &str) -> Option<TypeId> {
@@ -74,6 +74,6 @@ impl Scope {
     }
 
     pub fn type_name(&self, ty: TypeId) -> Option<&str> {
-        self.type_names.get(&ty).map(|s| s.as_str())
+        self.type_names.get(&ty).map(String::as_str)
     }
 }

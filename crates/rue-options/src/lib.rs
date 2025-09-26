@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct CompilerOptions {
     /// Whether symbols which are only referenced once (including any parameters they have)
     /// should be inlined automatically (even if they are not marked as `inline`).
