@@ -17,6 +17,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+
       - name: Run tests
         run: cargo test --all-features --workspace
 
@@ -25,17 +28,16 @@ jobs:
 
       - name: Unused dependencies
         run: |
-          cargo install cargo-machete --locked
+          cargo binstall cargo-machete --locked
           cargo machete
 
       - name: Fmt
         run: cargo fmt --all -- --files-with-diff --check
 
-      - name: Install cargo-workspaces
-        run: cargo install cargo-workspaces
-
       - name: Publish (dry run)
-        run: cargo ws publish --publish-as-is --allow-dirty --dry-run
+        run: |
+          cargo binstall cargo-workspaces
+          cargo ws publish --publish-as-is --allow-dirty --dry-run
 
       - name: Publish
         if: startsWith(github.event.ref, 'refs/tags')
