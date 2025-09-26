@@ -49,7 +49,7 @@ fn compile_file_impl(
     let mut ctx = Compiler::new(options);
     let std = compile_file_partial(
         &mut ctx,
-        Source::new(Arc::from(include_str!("../../../std.rue")), SourceKind::Std),
+        Source::new(Arc::from(include_str!("./std.rue")), SourceKind::Std),
     );
 
     let mut scope = Scope::new();
