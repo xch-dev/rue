@@ -1742,7 +1742,6 @@ dependencies = [
 name = "rue-hir"
 version = "0.1.0"
 dependencies = [
- "clvmr",
  "derive_more",
  "expect-test",
  "hex",
@@ -1784,7 +1783,6 @@ dependencies = [
  "rue-compiler",
  "rue-diagnostic",
  "rue-options",
- "rue-parser",
  "tokio",
  "tower-lsp",
 ]
