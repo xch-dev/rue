@@ -1,6 +1,6 @@
 use id_arena::Arena;
 
-use crate::{Lir, LirId};
+use crate::{Lir, LirId, optimize::optimize};
 
 pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Result<bool, LirId> {
     match arena[value].clone() {
@@ -26,6 +26,25 @@ pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Result<bool, LirId> {
                 {
                     return Err(left);
                 }
+            }
+
+            Err(value)
+        }
+        Lir::Eq(left, right) => {
+            if let Lir::Atom(left) = arena[left].clone()
+                && left.is_empty()
+            {
+                let not = arena.alloc(Lir::Not(right));
+                let not = optimize(arena, not);
+                return opt_truthy(arena, not);
+            }
+
+            if let Lir::Atom(right) = arena[right].clone()
+                && right.is_empty()
+            {
+                let not = arena.alloc(Lir::Not(left));
+                let not = optimize(arena, not);
+                return opt_truthy(arena, not);
             }
 
             Err(value)

@@ -326,14 +326,14 @@ pub fn opt_gtbytes(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
 // If it resolves to true or false, we know the result
 // If the value is a raise, we can return it directly
 pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
-    if let Lir::Not(value) = arena[value].clone() {
-        return value;
-    }
-
     match opt_truthy(arena, value) {
         Ok(true) => arena.alloc(Lir::Atom(vec![])),
         Ok(false) => arena.alloc(Lir::Atom(vec![1])),
         Err(value) => {
+            if let Lir::Not(value) = arena[value].clone() {
+                return value;
+            }
+
             if matches!(arena[value], Lir::Raise(_)) {
                 return value;
             }
