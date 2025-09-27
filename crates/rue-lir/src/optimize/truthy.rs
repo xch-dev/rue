@@ -13,6 +13,23 @@ pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Result<bool, LirId> {
                 opt_truthy(arena, inner)
             }
         }
+        Lir::Not(inner) => {
+            if let Lir::Eq(left, right) = arena[inner].clone() {
+                if let Lir::Atom(left) = arena[left].clone()
+                    && left.is_empty()
+                {
+                    return Err(right);
+                }
+
+                if let Lir::Atom(right) = arena[right].clone()
+                    && right.is_empty()
+                {
+                    return Err(left);
+                }
+            }
+
+            Err(value)
+        }
         _ => Err(value),
     }
 }
