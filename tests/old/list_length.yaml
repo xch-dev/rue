@@ -1,7 +1,7 @@
-program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i (l 5) (q 16 (a 2 (c 2 (c 13 ()))) (q . 1)) (q)) 1) 1))
+program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i 5 (q 16 (a 2 (c 2 (c 13 ()))) (q . 1)) (q)) 1) 1))
 debug_program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i (not (l 5)) (q) (q 16 (a 2 (c 2 (c (r 5) ()))) (q . 1))) 1) 1))
 solution: ((100 200 300))
 output: '3'
-runtime_cost: 5271
-byte_cost: 996000
-total_cost: 1001271
+runtime_cost: 5191
+byte_cost: 948000
+total_cost: 953191

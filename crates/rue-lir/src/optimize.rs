@@ -42,9 +42,9 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let rest = optimize(arena, rest);
             opt_cons(arena, first, rest)
         }
-        Lir::Listp(value) => {
+        Lir::Listp(value, can_be_truthy) => {
             let value = optimize(arena, value);
-            opt_listp(arena, value)
+            opt_listp(arena, value, can_be_truthy)
         }
         Lir::Add(args) => {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
@@ -246,25 +246,41 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
     }
 }
 
+// There's no way to optimize an atom
 fn opt_atom(arena: &mut Arena<Lir>, atom: Vec<u8>) -> LirId {
     arena.alloc(Lir::Atom(atom))
 }
 
+// There's no way to optimize a path
 fn opt_path(arena: &mut Arena<Lir>, path: u32) -> LirId {
     arena.alloc(Lir::Path(path))
 }
 
+// There's no way to optimize a quoted value, since nil is optimized by codegen already
 fn opt_quote(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     arena.alloc(Lir::Quote(value))
 }
 
+// If the program is quoted, and the environment is the same as the parent,
+// we can skip both quoting and running the program, and just use it directly
+// We can also skip quoting if the program has no path, since it's not going to rely on the environment
 fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
+    if let Lir::Quote(value) = arena[callee].clone()
+        && let Lir::Path(path) = arena[env].clone()
+        && (path == 1 || !has_path(arena, value))
+    {
+        return value;
+    }
+
     arena.alloc(Lir::Run(callee, env))
 }
 
+// If the callee is quoted, and the arguments are empty,
+// we can skip both quoting and currying, and just use it directly
+// We can also skip quoting if the program has no path, since it's not going to rely on the environment
 fn opt_curry(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId {
     if let Lir::Quote(value) = arena[callee].clone()
-        && args.is_empty()
+        && (args.is_empty() || !has_path(arena, value))
     {
         return value;
     }
@@ -272,14 +288,18 @@ fn opt_curry(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Curry(callee, args))
 }
 
+// If there are no captures, we don't need to create a closure
+// We can also skip the closure if the program has no path, since it's not going to rely on the captures
 fn opt_closure(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId {
-    if args.is_empty() {
+    if args.is_empty() || !has_path_quotable(arena, callee) {
         return callee;
     }
 
     arena.alloc(Lir::Closure(callee, args))
 }
 
+// If the value is a path, we can optimize it to a first path
+// If the value is a cons, we can extract the first element out of it
 fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) => arena.alloc(Lir::Path(first_path(path))),
@@ -288,6 +308,8 @@ fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     }
 }
 
+// If the value is a path, we can optimize it to a rest path
+// If the value is a cons, we can extract the rest element out of it
 fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) => arena.alloc(Lir::Path(rest_path(path))),
@@ -296,15 +318,27 @@ fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     }
 }
 
+// If the first or rest is a raise, we can return it directly
 fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
+    if matches!(arena[first], Lir::Raise(_)) {
+        return first;
+    }
+
+    if matches!(arena[rest], Lir::Raise(_)) {
+        return rest;
+    }
+
     arena.alloc(Lir::Cons(first, rest))
 }
 
-fn opt_listp(arena: &mut Arena<Lir>, value: LirId) -> LirId {
+// If the value is an atom or pair, we know the result
+// If the value is a raise, we can return it directly
+fn opt_listp(arena: &mut Arena<Lir>, value: LirId, can_be_truthy: bool) -> LirId {
     match arena[value].clone() {
         Lir::Atom(_) => arena.alloc(Lir::Atom(vec![])),
         Lir::Cons(..) => arena.alloc(Lir::Atom(vec![1])),
-        _ => arena.alloc(Lir::Listp(value)),
+        Lir::Raise(_) => value,
+        _ => arena.alloc(Lir::Listp(value, can_be_truthy)),
     }
 }
 
@@ -387,32 +421,101 @@ fn opt_gtbytes(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
     arena.alloc(Lir::GtBytes(left, right))
 }
 
+// If the value is another not, we can unwrap both
+// If it resolves to true or false, we know the result
+// If the value is a raise, we can return it directly
 fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     if let Lir::Not(value) = arena[value].clone() {
         return value;
     }
 
-    arena.alloc(Lir::Not(value))
+    match opt_truthy(arena, value) {
+        Ok(true) => arena.alloc(Lir::Atom(vec![])),
+        Ok(false) => arena.alloc(Lir::Atom(vec![1])),
+        Err(value) => {
+            if matches!(arena[value], Lir::Raise(_)) {
+                return value;
+            }
+
+            arena.alloc(Lir::Not(value))
+        }
+    }
 }
 
+// If one of the arguments is true, we can ignore it
+// If one of the arguments is false, we know the result is false
+// If one of the arguments is a raise, we can return it directly
+// TODO: Collapse nested alls
 fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    arena.alloc(Lir::All(args))
+    let mut result = Vec::new();
+
+    for arg in args {
+        match opt_truthy(arena, arg) {
+            Ok(true) => {}
+            Ok(false) => return arena.alloc(Lir::Atom(vec![])),
+            Err(arg) => {
+                if matches!(arena[arg], Lir::Raise(_)) {
+                    return arg;
+                }
+
+                result.push(arg);
+            }
+        }
+    }
+
+    arena.alloc(Lir::All(result))
 }
 
+// If one of the arguments is false, we can ignore it
+// If one of the arguments is true, we know the result is true
+// If one of the arguments is a raise, we can return it directly
+// TODO: Collapse nested anys
 fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    arena.alloc(Lir::Any(args))
+    let mut result = Vec::new();
+
+    for arg in args {
+        match opt_truthy(arena, arg) {
+            Ok(false) => {}
+            Ok(true) => return arena.alloc(Lir::Atom(vec![1])),
+            Err(arg) => {
+                if matches!(arena[arg], Lir::Raise(_)) {
+                    return arg;
+                }
+
+                result.push(arg);
+            }
+        }
+    }
+
+    arena.alloc(Lir::Any(result))
 }
 
+// If the condition is true, we can return the then branch
+// If the condition is false, we can return the else branch
+// If the condition is a raise, we can return it directly
+// If the condition is a not, we can flip the then and else branches
 fn opt_if(arena: &mut Arena<Lir>, condition: LirId, then: LirId, otherwise: LirId) -> LirId {
-    let (condition, then, otherwise) = if let Lir::Not(opposite) = arena[condition].clone() {
-        (opposite, otherwise, then)
-    } else {
-        (condition, then, otherwise)
-    };
+    match opt_truthy(arena, condition) {
+        Ok(true) => then,
+        Ok(false) => otherwise,
+        Err(condition) => {
+            if matches!(arena[condition], Lir::Raise(_)) {
+                return condition;
+            }
 
-    arena.alloc(Lir::If(condition, then, otherwise))
+            let (condition, then, otherwise) = if let Lir::Not(opposite) = arena[condition].clone()
+            {
+                (opposite, otherwise, then)
+            } else {
+                (condition, then, otherwise)
+            };
+
+            arena.alloc(Lir::If(condition, then, otherwise))
+        }
+    }
 }
 
+// We can remove all arguments from raise, since the program fails either way
 fn opt_raise(arena: &mut Arena<Lir>, _args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Raise(vec![]))
 }
@@ -454,15 +557,32 @@ fn opt_concat(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Concat(result.into_iter().collect()))
 }
 
+// If the value is an atom, we know the result
+// If the value is a raise, we can return it directly
 fn opt_strlen(arena: &mut Arena<Lir>, value: LirId) -> LirId {
-    if let Lir::Atom(atom) = &arena[value] {
-        return arena.alloc(Lir::Atom(bigint_atom(atom.len().into())));
+    match arena[value].clone() {
+        Lir::Atom(atom) => arena.alloc(Lir::Atom(bigint_atom(atom.len().into()))),
+        Lir::Raise(_) => value,
+        _ => arena.alloc(Lir::Strlen(value)),
     }
-
-    arena.alloc(Lir::Strlen(value))
 }
 
+// If the string, start, or end is a raise, we can return it directly
 fn opt_substr(arena: &mut Arena<Lir>, string: LirId, start: LirId, end: Option<LirId>) -> LirId {
+    if matches!(arena[string], Lir::Raise(_)) {
+        return string;
+    }
+
+    if matches!(arena[start], Lir::Raise(_)) {
+        return start;
+    }
+
+    if let Some(end) = end
+        && matches!(arena[end], Lir::Raise(_))
+    {
+        return end;
+    }
+
     arena.alloc(Lir::Substr(string, start, end))
 }
 
@@ -611,4 +731,112 @@ fn opt_r1_verify(
     signature: LirId,
 ) -> LirId {
     arena.alloc(Lir::R1Verify(public_key, message, signature))
+}
+
+fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Result<bool, LirId> {
+    match arena[value].clone() {
+        Lir::Atom(atom) => Ok(!atom.is_empty()),
+        Lir::Cons(..) => Ok(true),
+        Lir::Listp(inner, atom_can_be_truthy) => {
+            if atom_can_be_truthy {
+                Err(value)
+            } else {
+                opt_truthy(arena, inner)
+            }
+        }
+        _ => Err(value),
+    }
+}
+
+fn has_path_quotable(arena: &Arena<Lir>, value: LirId) -> bool {
+    if let Lir::Quote(value) = arena[value].clone() {
+        has_path(arena, value)
+    } else {
+        has_path(arena, value)
+    }
+}
+
+// TODO: Is this safe in all cases?
+fn has_path(arena: &Arena<Lir>, value: LirId) -> bool {
+    match arena[value].clone() {
+        Lir::Atom(_) => false,
+        Lir::Path(_) => true,
+        Lir::Quote(_) => false,
+        Lir::Run(callee, env) => has_path_quotable(arena, callee) || has_path(arena, env),
+        Lir::Curry(callee, args) => {
+            has_path_quotable(arena, callee) || args.iter().any(|arg| has_path(arena, *arg))
+        }
+        Lir::Closure(callee, args) => {
+            has_path_quotable(arena, callee) || args.iter().any(|arg| has_path(arena, *arg))
+        }
+        Lir::First(value) => has_path(arena, value),
+        Lir::Rest(value) => has_path(arena, value),
+        Lir::Cons(first, rest) => has_path(arena, first) || has_path(arena, rest),
+        Lir::Listp(value, _) => has_path(arena, value),
+        Lir::Add(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Sub(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Mul(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Div(left, right) => has_path(arena, left) || has_path(arena, right),
+        Lir::Divmod(left, right) => has_path(arena, left) || has_path(arena, right),
+        Lir::Mod(left, right) => has_path(arena, left) || has_path(arena, right),
+        Lir::Modpow(base, exponent, modulus) => {
+            has_path(arena, base) || has_path(arena, exponent) || has_path(arena, modulus)
+        }
+        Lir::Eq(left, right) => has_path(arena, left) || has_path(arena, right),
+        Lir::Gt(left, right) => has_path(arena, left) || has_path(arena, right),
+        Lir::GtBytes(left, right) => has_path(arena, left) || has_path(arena, right),
+        Lir::Not(value) => has_path(arena, value),
+        Lir::All(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Any(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::If(condition, then, otherwise) => {
+            has_path(arena, condition) || has_path(arena, then) || has_path(arena, otherwise)
+        }
+        Lir::Raise(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Concat(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Strlen(value) => has_path(arena, value),
+        Lir::Substr(string, start, end) => {
+            has_path(arena, string)
+                || has_path(arena, start)
+                || end.is_some_and(|end| has_path(arena, end))
+        }
+        Lir::Logand(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Logior(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Logxor(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Lognot(value) => has_path(arena, value),
+        Lir::Ash(value, shift) => has_path(arena, value) || has_path(arena, shift),
+        Lir::Lsh(value, shift) => has_path(arena, value) || has_path(arena, shift),
+        Lir::PubkeyForExp(value) => has_path(arena, value),
+        Lir::G1Add(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::G1Subtract(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::G1Multiply(left, right) => has_path(arena, left) || has_path(arena, right),
+        Lir::G1Negate(value) => has_path(arena, value),
+        Lir::G1Map(value, map) => {
+            has_path(arena, value) || map.is_some_and(|map| has_path(arena, map))
+        }
+        Lir::G2Add(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::G2Subtract(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::G2Multiply(left, right) => has_path(arena, left) || has_path(arena, right),
+        Lir::G2Negate(value) => has_path(arena, value),
+        Lir::G2Map(value, map) => {
+            has_path(arena, value) || map.is_some_and(|map| has_path(arena, map))
+        }
+        Lir::BlsPairingIdentity(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::BlsVerify(sig, args) => {
+            has_path(arena, sig) || args.iter().any(|arg| has_path(arena, *arg))
+        }
+        Lir::Sha256(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Sha256Inline(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::Keccak256(args) => args.iter().any(|arg| has_path(arena, *arg)),
+        Lir::CoinId(parent_coin_info, puzzle_hash, amount) => {
+            has_path(arena, parent_coin_info)
+                || has_path(arena, puzzle_hash)
+                || has_path(arena, amount)
+        }
+        Lir::K1Verify(public_key, message, signature) => {
+            has_path(arena, public_key) || has_path(arena, message) || has_path(arena, signature)
+        }
+        Lir::R1Verify(public_key, message, signature) => {
+            has_path(arena, public_key) || has_path(arena, message) || has_path(arena, signature)
+        }
+    }
 }

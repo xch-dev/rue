@@ -124,7 +124,7 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let rest = codegen(arena, allocator, *rest)?;
             Ok(clvm_list!(OP_C, first, rest).to_clvm(allocator)?)
         }
-        Lir::Listp(arg) => {
+        Lir::Listp(arg, _) => {
             let arg = codegen(arena, allocator, *arg)?;
             Ok(clvm_list!(OP_L, arg).to_clvm(allocator)?)
         }
@@ -531,7 +531,7 @@ mod tests {
     fn test_listp() {
         let mut arena = Arena::new();
         let value = arena.alloc(Lir::Atom(b"value".to_vec()));
-        let lir = arena.alloc(Lir::Listp(value));
+        let lir = arena.alloc(Lir::Listp(value, true));
         check(&arena, lir, expect![[r#"(l (q . "value"))"#]]);
     }
 

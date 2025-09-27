@@ -1,7 +1,7 @@
-program: (a (q 11 (q . 2) (sha256 (q . 258)) (sha256 (q . 2) (sha256 (q . 2) (sha256 (q . 257)) (sha256 ())) (sha256 (q . 2) (a 2 (c 2 (c (c (sha256 (q . 1)) (c (sha256 (q . 2)) ())) ()))) (sha256 (q . 1))))) (c (q 2 (i (l 5) (q 11 (q . 2) (sha256 (q . 260)) (sha256 (q . 2) (sha256 (q . 2) (sha256 (q . 257)) 9) (sha256 (q . 2) (a 2 (c 2 (c 13 ()))) (sha256 (q . 1))))) (q 11 (q . 257))) 1) 1))
+program: (a (q 11 (q . 2) (sha256 (q . 258)) (sha256 (q . 2) (sha256 (q . 2) (sha256 (q . 257)) (sha256 ())) (sha256 (q . 2) (a 2 (c 2 (c (c (sha256 (q . 1)) (c (sha256 (q . 2)) ())) ()))) (sha256 (q . 1))))) (c (q 2 (i 5 (q 11 (q . 2) (sha256 (q . 260)) (sha256 (q . 2) (sha256 (q . 2) (sha256 (q . 257)) 9) (sha256 (q . 2) (a 2 (c 2 (c 13 ()))) (sha256 (q . 1))))) (q 11 (q . 257))) 1) 1))
 debug_program: (a (q 2 (q 11 (concat (concat (q . 2) (sha256 (concat (q . 1) (q . 2)))) (sha256 (concat (concat (q . 2) (sha256 (concat (concat (q . 2) (sha256 (concat (q . 1) (q . 1)))) 2))) (sha256 (concat (concat (q . 2) (a 23 (c 23 (c (c 5 (c 11 ())) ())))) (sha256 (concat (q . 1) ())))))))) (c (sha256 ()) (c (sha256 (q . 1)) (c (sha256 (q . 2)) 1)))) (c (q 2 (i (not (l 5)) (q 11 (concat (q . 1) (q . 1))) (q 11 (concat (concat (q . 2) (sha256 (concat (q . 1) (q . 4)))) (sha256 (concat (concat (q . 2) (sha256 (concat (concat (q . 2) (sha256 (concat (q . 1) (q . 1)))) (f 5)))) (sha256 (concat (concat (q . 2) (a 2 (c 2 (c (r 5) ())))) (sha256 (concat (q . 1) ()))))))))) 1) 1))
 solution: ()
 output: '0x718e6218f392d41274e6f56be2177016500bfd60269fe73080979dbfb7cea5ed'
-runtime_cost: 21326
-byte_cost: 2820000
-total_cost: 2841326
+runtime_cost: 21266
+byte_cost: 2772000
+total_cost: 2793266
