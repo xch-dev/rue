@@ -1,12 +1,10 @@
-use std::collections::VecDeque;
-
 use clvmr::Allocator;
 use id_arena::Arena;
 use sha2::{Digest, Sha256};
 
 use crate::{
     Lir, LirId, bigint_atom, first_path,
-    optimize::{has_path, has_path_quotable, opt_truthy},
+    optimize::{arg_list::ArgList, has_path, has_path_quotable, opt_truthy},
     rest_path,
 };
 
@@ -116,10 +114,10 @@ pub fn opt_listp(arena: &mut Arena<Lir>, value: LirId, can_be_truthy: bool) -> L
 }
 
 pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    let mut args = VecDeque::from(args);
+    let mut args = ArgList::new(args);
     let mut result = Vec::new();
 
-    while let Some(arg) = args.pop_front() {
+    while let Some(arg) = args.next() {
         match arena[arg].clone() {
             Lir::Atom(atom) => {
                 if let Some(last_id) = result
@@ -137,9 +135,7 @@ pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
                 }
             }
             Lir::Add(items) => {
-                for item in items.into_iter().rev() {
-                    args.push_front(item);
-                }
+                args.prepend(items);
             }
             _ => {
                 result.push(arg);
@@ -294,10 +290,10 @@ pub fn opt_raise(arena: &mut Arena<Lir>, _args: Vec<LirId>) -> LirId {
 }
 
 pub fn opt_concat(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    let mut args = VecDeque::from(args);
+    let mut args = ArgList::new(args);
     let mut result = Vec::new();
 
-    while let Some(arg) = args.pop_front() {
+    while let Some(arg) = args.next() {
         match arena[arg].clone() {
             Lir::Atom(atom) => {
                 if let Some(last_id) = result.last_mut()
@@ -309,9 +305,7 @@ pub fn opt_concat(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
                 }
             }
             Lir::Concat(items) => {
-                for item in items.into_iter().rev() {
-                    args.push_front(item);
-                }
+                args.prepend(items);
             }
             _ => {
                 result.push(arg);
@@ -441,10 +435,10 @@ pub fn opt_bls_verify(arena: &mut Arena<Lir>, sig: LirId, args: Vec<LirId>) -> L
 }
 
 pub fn opt_sha256(arena: &mut Arena<Lir>, args: Vec<LirId>, inline: bool) -> LirId {
-    let mut args = VecDeque::from(args);
+    let mut args = ArgList::new(args);
     let mut result = Vec::new();
 
-    while let Some(arg) = args.pop_front() {
+    while let Some(arg) = args.next() {
         match arena[arg].clone() {
             Lir::Atom(atom) => {
                 if let Some(last_id) = result.last_mut()
@@ -456,9 +450,7 @@ pub fn opt_sha256(arena: &mut Arena<Lir>, args: Vec<LirId>, inline: bool) -> Lir
                 }
             }
             Lir::Concat(items) => {
-                for item in items.into_iter().rev() {
-                    args.push_front(item);
-                }
+                args.prepend(items);
             }
             _ => {
                 result.push(arg);
