@@ -300,25 +300,34 @@ fn opt_closure(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId
 
 // If the value is a path, we can optimize it to a first path
 // If the value is a cons, we can extract the first element out of it
+// If the value is a divmod, we can optimize it to a div since that's the first output
+// If the value is a raise, we can return it directly
 fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) => arena.alloc(Lir::Path(first_path(path))),
         Lir::Cons(first, _) => first,
+        Lir::Divmod(left, right) => opt_div(arena, left, right),
+        Lir::Raise(_) => value,
         _ => arena.alloc(Lir::First(value)),
     }
 }
 
 // If the value is a path, we can optimize it to a rest path
 // If the value is a cons, we can extract the rest element out of it
+// If the value is a divmod, we can optimize it to a remainder since that's the rest output
+// If the value is a raise, we can return it directly
 fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) => arena.alloc(Lir::Path(rest_path(path))),
         Lir::Cons(_, rest) => rest,
+        Lir::Divmod(left, right) => opt_mod(arena, left, right),
+        Lir::Raise(_) => value,
         _ => arena.alloc(Lir::Rest(value)),
     }
 }
 
 // If the first or rest is a raise, we can return it directly
+// TODO: Optimize pair of div and mod into divmod
 fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
     if matches!(arena[first], Lir::Raise(_)) {
         return first;
