@@ -4,149 +4,10 @@ import "ace-builds/src-noconflict/ext-language_tools";
 import "ace-builds/src-noconflict/mode-rust";
 import "ace-builds/src-noconflict/theme-monokai";
 import { useEffect, useState } from "react";
-import { compile, type Compilation } from "rue-wasm";
+import { compile, getExamples, type Compilation } from "rue-wasm";
 import { useLocalStorage } from "usehooks-ts";
 
-const examples = [
-  {
-    name: "Hello World",
-    code: `fn main() -> Bytes {
-  "Hello, world!"
-}`,
-  },
-  {
-    name: "Factorial",
-    code: `fn main(num: Int) -> Int {
-    factorial(num)
-}
-
-fn factorial(num: Int) -> Int {
-    if num > 1 {
-        num * factorial(num - 1)
-    } else {
-        1
-    }
-}`,
-  },
-  {
-    name: "Fizz Buzz",
-    code: `fn main(num: Int) -> List<Bytes> {
-    fizz_buzz(1, num)
-}
-
-fn fizz_buzz(num: Int, limit: Int) -> List<Bytes> {
-    let rest = if num == limit {
-        nil
-    } else {
-        fizz_buzz(num + 1, limit)
-    };
-    (fizz_buzz_value(num), rest)
-}
-
-fn fizz_buzz_value(num: Int) -> Bytes {
-    if num % 3 == 0 && num % 5 == 0 {
-        "FizzBuzz"
-    } else if num % 3 == 0 {
-        "Fizz"
-    } else if num % 5 == 0 {
-        "Buzz"
-    } else {
-        integer_to_string(num)
-    }
-}
-
-fn integer_to_string(num: Int) -> Bytes {
-    if num < 0 {
-        "-" + integer_to_string(-num)
-    } else if num < 10 {
-        single_digit_to_string(num)
-    } else {
-        integer_to_string(num / 10) + single_digit_to_string(num % 10)
-    }
-}
-
-fn single_digit_to_string(digit: Int) -> Bytes {
-    ("0" as Int + digit) as Bytes
-}
-`,
-  },
-  {
-    name: "Royalty Split Puzzle",
-    code: `// This puzzle has not been audited or tested, and is for example purposes only.
-
-struct Payout {
-    puzzle_hash: Bytes32,
-    share: Int,
-}
-
-fn main(payouts: List<Payout>, my_amount: Int, total_shares: Int) -> List<Condition> {
-    [
-        CreateCoinAnnouncement { message: nil },
-        AssertMyAmount { amount: my_amount },
-        ...calculate_amount_and_split(payouts, my_amount, total_shares, 0, my_amount),
-    ]
-}
-
-fn calculate_share(total_amount: Int, share: Int, total_shares: Int) -> Int {
-    total_amount * share / total_shares
-}
-
-fn get_amount(payout: Payout, total_amount: Int, total_shares: Int) -> Int {
-    calculate_share(total_amount, payout.share, total_shares)
-}
-
-fn calculate_amount_and_split(
-    payouts: List<Payout>,
-    total_amount: Int,
-    total_shares: Int,
-    shares_sum: Int,
-    remaining_amount: Int,
-) -> List<Condition> {
-    if payouts is nil {
-        if total_shares == shares_sum {
-            return nil;
-        }
-
-        raise "Share sum doesn't match total";
-    }
-
-    split_amount_and_create_coins(
-        payouts,
-        calculate_share(total_amount, payouts.first.share, total_shares),
-        total_amount,
-        total_shares,
-        shares_sum,
-        remaining_amount,
-    )
-}
-
-fn split_amount_and_create_coins(
-    payouts: (Payout, List<Payout>),
-    this_amount: Int,
-    total_amount: Int,
-    total_shares: Int,
-    shares_sum: Int,
-    remaining_amount: Int,
-) -> List<Condition> {
-    let create_coin = CreateCoin {
-        puzzle_hash: payouts.first.puzzle_hash,
-        amount: if !(payouts.rest is nil) { this_amount } else { remaining_amount },
-        memos: Memos { value: [payouts.first.puzzle_hash] },
-    };
-
-    [
-        create_coin,
-        ...calculate_amount_and_split(
-            payouts.rest,
-            total_amount,
-            total_shares,
-            shares_sum + payouts.first.share,
-            remaining_amount - this_amount,
-        ),
-    ]
-}`,
-  },
-];
+const examples = getExamples();
 
 export default function App() {
   const [compilation, setCompilation] = useState<Compilation | null>(null);
@@ -191,9 +52,9 @@ export default function App() {
               if (selected) {
                 const example = examples.find((ex) => ex.name === selected);
                 if (example) {
-                  setSource(example.code);
+                  setSource(example.content);
                   try {
-                    const compiled = compile(example.code);
+                    const compiled = compile(example.content);
                     setCompilation(compiled);
                   } catch (error: unknown) {
                     console.error(error);
