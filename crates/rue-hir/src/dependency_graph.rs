@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexSet;
 
-use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
+use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId, Verification};
 
 #[derive(Debug, Default, Clone)]
 pub struct DependencyGraph {
@@ -95,6 +95,29 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
                     Statement::Return(expr) => {
                         visit_hir(db, graph, *expr);
                     }
+                    Statement::Verification(verification) => match verification {
+                        Verification::BlsPairingIdentity(args) => {
+                            for arg in args {
+                                visit_hir(db, graph, *arg);
+                            }
+                        }
+                        Verification::BlsVerify(sig, args) => {
+                            visit_hir(db, graph, *sig);
+                            for arg in args {
+                                visit_hir(db, graph, *arg);
+                            }
+                        }
+                        Verification::Secp256K1Verify(sig, pk, msg) => {
+                            visit_hir(db, graph, *sig);
+                            visit_hir(db, graph, *pk);
+                            visit_hir(db, graph, *msg);
+                        }
+                        Verification::Secp256R1Verify(sig, pk, msg) => {
+                            visit_hir(db, graph, *sig);
+                            visit_hir(db, graph, *pk);
+                            visit_hir(db, graph, *msg);
+                        }
+                    },
                     Statement::Expr(_) => {}
                 }
             }

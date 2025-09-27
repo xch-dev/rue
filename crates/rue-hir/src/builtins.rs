@@ -80,22 +80,22 @@ impl Builtins {
         );
         scope.insert_symbol(
             "g1_map".to_string(),
-            g1_or_g2_map(db, types.bytes, types.public_key, false, false),
+            g1_or_g2_map(db, types.atom, types.public_key, false, false),
             false,
         );
         scope.insert_symbol(
             "g1_map_dst".to_string(),
-            g1_or_g2_map(db, types.bytes, types.public_key, true, false),
+            g1_or_g2_map(db, types.atom, types.public_key, true, false),
             false,
         );
         scope.insert_symbol(
             "g2_map".to_string(),
-            g1_or_g2_map(db, types.bytes, types.signature, false, true),
+            g1_or_g2_map(db, types.atom, types.signature, false, true),
             false,
         );
         scope.insert_symbol(
             "g2_map_dst".to_string(),
-            g1_or_g2_map(db, types.bytes, types.signature, true, true),
+            g1_or_g2_map(db, types.atom, types.signature, true, true),
             false,
         );
         scope.insert_symbol(
@@ -302,7 +302,7 @@ fn modpow(db: &mut Database, int: TypeId) -> SymbolId {
 
 fn g1_or_g2_map(
     db: &mut Database,
-    bytes: TypeId,
+    atom: TypeId,
     ret: TypeId,
     include_dst: bool,
     is_g2: bool,
@@ -311,12 +311,12 @@ fn g1_or_g2_map(
 
     let data = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
         name: None,
-        ty: bytes,
+        ty: atom,
     }));
 
     let dst = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
         name: None,
-        ty: bytes,
+        ty: atom,
     }));
 
     db.scope_mut(scope)
@@ -337,9 +337,9 @@ fn g1_or_g2_map(
 
     let ty = db.alloc_type(Type::Function(FunctionType {
         params: if include_dst {
-            vec![bytes, bytes]
+            vec![atom, atom]
         } else {
-            vec![bytes]
+            vec![atom]
         },
         nil_terminated: true,
         ret,

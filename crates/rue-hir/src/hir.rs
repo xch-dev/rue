@@ -34,7 +34,7 @@ pub struct Block {
     pub body: Option<HirId>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Expr(HirId),
     Let(SymbolId),
@@ -42,6 +42,15 @@ pub enum Statement {
     Return(HirId),
     Assert(HirId),
     Raise(HirId),
+    Verification(Verification),
+}
+
+#[derive(Debug, Clone)]
+pub enum Verification {
+    BlsPairingIdentity(Vec<HirId>),
+    BlsVerify(HirId, Vec<HirId>),
+    Secp256K1Verify(HirId, HirId, HirId),
+    Secp256R1Verify(HirId, HirId, HirId),
 }
 
 #[derive(Debug, Clone)]
