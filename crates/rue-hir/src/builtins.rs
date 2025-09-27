@@ -37,6 +37,7 @@ impl Builtins {
         scope.insert_type("Bytes".to_string(), types.bytes, false);
         scope.insert_type("Bytes32".to_string(), types.bytes32, false);
         scope.insert_type("PublicKey".to_string(), types.public_key, false);
+        scope.insert_type("Signature".to_string(), types.signature, false);
         scope.insert_type("Int".to_string(), types.int, false);
         scope.insert_type("Bool".to_string(), types.bool, false);
         scope.insert_type("Any".to_string(), types.any, false);
@@ -50,6 +51,16 @@ impl Builtins {
         scope.insert_symbol(
             "sha256_inline".to_string(),
             sha256(db, types.bytes, types.bytes32, true),
+            false,
+        );
+        scope.insert_symbol(
+            "keccak256".to_string(),
+            keccak256(db, types.bytes, types.bytes32, false),
+            false,
+        );
+        scope.insert_symbol(
+            "keccak256_inline".to_string(),
+            keccak256(db, types.bytes, types.bytes32, true),
             false,
         );
         scope.insert_symbol(
@@ -93,6 +104,46 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId, inline: bool) -> Sy
             UnaryOp::Sha256Inline
         } else {
             UnaryOp::Sha256
+        },
+        reference,
+    ));
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        params: vec![bytes],
+        nil_terminated: true,
+        ret: bytes32,
+    }));
+
+    db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: None,
+        ty,
+        scope,
+        vars: vec![],
+        parameters: vec![parameter],
+        nil_terminated: true,
+        return_type: bytes32,
+        body,
+        inline: true,
+    }))
+}
+
+fn keccak256(db: &mut Database, bytes: TypeId, bytes32: TypeId, inline: bool) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new());
+
+    let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: bytes,
+    }));
+
+    db.scope_mut(scope)
+        .insert_symbol("value".to_string(), parameter, false);
+
+    let reference = db.alloc_hir(Hir::Reference(parameter));
+    let body = db.alloc_hir(Hir::Unary(
+        if inline {
+            UnaryOp::Keccak256Inline
+        } else {
+            UnaryOp::Keccak256
         },
         reference,
     ));

@@ -58,6 +58,16 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
                 let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Neg, value.hir));
                 return Value::new(hir, ty);
             }
+
+            if ctx.is_assignable(value.ty, ctx.builtins().types.public_key) {
+                let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::G1Negate, value.hir));
+                return Value::new(hir, ctx.builtins().types.public_key);
+            }
+
+            if ctx.is_assignable(value.ty, ctx.builtins().types.signature) {
+                let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::G2Negate, value.hir));
+                return Value::new(hir, ctx.builtins().types.signature);
+            }
         }
         T![~] => {
             if ctx.is_assignable(value.ty, ctx.builtins().types.int) {

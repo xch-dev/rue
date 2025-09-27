@@ -49,6 +49,18 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
                 return Value::new(hir, ctx.builtins().types.bytes);
             }
 
+            if ctx.is_assignable(left.ty, ctx.builtins().types.public_key) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().types.public_key);
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::G1Add, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().types.public_key);
+            }
+
+            if ctx.is_assignable(left.ty, ctx.builtins().types.signature) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().types.signature);
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::G2Add, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().types.signature);
+            }
+
             (left, right)
         }
         T![-] => {
@@ -61,6 +73,18 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
                 return Value::new(hir, ctx.builtins().types.int);
             }
 
+            if ctx.is_assignable(left.ty, ctx.builtins().types.public_key) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().types.public_key);
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::G1Subtract, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().types.public_key);
+            }
+
+            if ctx.is_assignable(left.ty, ctx.builtins().types.signature) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().types.signature);
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::G2Subtract, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().types.signature);
+            }
+
             (left, right)
         }
         T![*] => {
@@ -71,6 +95,18 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Mul, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().types.int);
+            }
+
+            if ctx.is_assignable(left.ty, ctx.builtins().types.public_key) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().types.public_key);
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::G1Multiply, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().types.public_key);
+            }
+
+            if ctx.is_assignable(left.ty, ctx.builtins().types.signature) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().types.signature);
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::G2Multiply, left.hir, right.hir));
+                return Value::new(hir, ctx.builtins().types.signature);
             }
 
             (left, right)

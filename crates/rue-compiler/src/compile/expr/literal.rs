@@ -51,6 +51,8 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
                 Atom::new(
                     if bytes.len() == 48 {
                         AtomSemantic::PublicKey
+                    } else if bytes.len() == 96 {
+                        AtomSemantic::Signature
                     } else {
                         AtomSemantic::Bytes
                     },

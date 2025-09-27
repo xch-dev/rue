@@ -54,6 +54,7 @@ pub enum Lir {
     Sha256(Vec<LirId>),
     Sha256Inline(Vec<LirId>),
     Keccak256(Vec<LirId>),
+    Keccak256Inline(Vec<LirId>),
     CoinId(LirId, LirId, LirId),
     K1Verify(LirId, LirId, LirId),
     R1Verify(LirId, LirId, LirId),

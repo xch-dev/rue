@@ -23,11 +23,23 @@ pub enum UnaryOp {
     #[display("~")]
     BitwiseNot,
 
+    #[display("-")]
+    G1Negate,
+
+    #[display("-")]
+    G2Negate,
+
     #[display("sha256")]
     Sha256,
 
     #[display("sha256")]
     Sha256Inline,
+
+    #[display("keccak256")]
+    Keccak256,
+
+    #[display("keccak256")]
+    Keccak256Inline,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
@@ -49,6 +61,24 @@ pub enum BinaryOp {
 
     #[display("+")]
     Concat,
+
+    #[display("+")]
+    G1Add,
+
+    #[display("-")]
+    G1Subtract,
+
+    #[display("*")]
+    G1Multiply,
+
+    #[display("+")]
+    G2Add,
+
+    #[display("-")]
+    G2Subtract,
+
+    #[display("*")]
+    G2Multiply,
 
     #[display(">")]
     Gt,

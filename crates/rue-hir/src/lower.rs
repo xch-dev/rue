@@ -154,8 +154,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                         self.arena.alloc(Lir::Sub(vec![zero, lir]))
                     }
                     UnaryOp::BitwiseNot => self.arena.alloc(Lir::Lognot(lir)),
+                    UnaryOp::G1Negate => self.arena.alloc(Lir::G1Negate(lir)),
+                    UnaryOp::G2Negate => self.arena.alloc(Lir::G2Negate(lir)),
                     UnaryOp::Sha256 => self.arena.alloc(Lir::Sha256(vec![lir])),
                     UnaryOp::Sha256Inline => self.arena.alloc(Lir::Sha256Inline(vec![lir])),
+                    UnaryOp::Keccak256 => self.arena.alloc(Lir::Keccak256(vec![lir])),
+                    UnaryOp::Keccak256Inline => self.arena.alloc(Lir::Keccak256Inline(vec![lir])),
                 }
             }
             Hir::Binary(op, left, right) => {
@@ -168,6 +172,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     BinaryOp::Div => self.arena.alloc(Lir::Div(left, right)),
                     BinaryOp::Mod => self.arena.alloc(Lir::Mod(left, right)),
                     BinaryOp::Concat => self.arena.alloc(Lir::Concat(vec![left, right])),
+                    BinaryOp::G1Add => self.arena.alloc(Lir::G1Add(vec![left, right])),
+                    BinaryOp::G1Subtract => self.arena.alloc(Lir::G1Subtract(vec![left, right])),
+                    BinaryOp::G1Multiply => self.arena.alloc(Lir::G1Multiply(left, right)),
+                    BinaryOp::G2Add => self.arena.alloc(Lir::G2Add(vec![left, right])),
+                    BinaryOp::G2Subtract => self.arena.alloc(Lir::G2Subtract(vec![left, right])),
+                    BinaryOp::G2Multiply => self.arena.alloc(Lir::G2Multiply(left, right)),
                     BinaryOp::BitwiseAnd => self.arena.alloc(Lir::Logand(vec![left, right])),
                     BinaryOp::BitwiseOr => self.arena.alloc(Lir::Logior(vec![left, right])),
                     BinaryOp::BitwiseXor => self.arena.alloc(Lir::Logxor(vec![left, right])),

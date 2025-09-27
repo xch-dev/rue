@@ -2,6 +2,7 @@ use id_arena::Arena;
 use num_bigint::{BigInt, Sign};
 use num_integer::Integer;
 use sha2::{Digest, Sha256};
+use sha3::Keccak256;
 
 use crate::{
     Lir, LirId, atom_bigint, bigint_atom, first_path,
@@ -602,8 +603,42 @@ pub fn opt_sha256(arena: &mut Arena<Lir>, args: Vec<LirId>, inline: bool) -> Lir
     arena.alloc(Lir::Sha256(result.into_iter().collect()))
 }
 
-pub fn opt_keccak256(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    arena.alloc(Lir::Keccak256(args))
+pub fn opt_keccak256(arena: &mut Arena<Lir>, args: Vec<LirId>, inline: bool) -> LirId {
+    let mut args = ArgList::new(args);
+    let mut result = Vec::new();
+
+    while let Some(arg) = args.next() {
+        match arena[arg].clone() {
+            Lir::Atom(atom) => {
+                if let Some(last_id) = result.last_mut()
+                    && let Lir::Atom(last) = arena[*last_id].clone()
+                {
+                    *last_id = arena.alloc(Lir::Atom([last, atom].concat()));
+                } else {
+                    result.push(arg);
+                }
+            }
+            Lir::Concat(items) => {
+                args.prepend(items);
+            }
+            _ => {
+                result.push(arg);
+            }
+        }
+    }
+
+    if inline
+        && result.len() <= 1
+        && let Lir::Atom(atom) = result
+            .first()
+            .copied()
+            .map_or(Lir::Atom(vec![]), |id| arena[id].clone())
+    {
+        let value: [u8; 32] = Keccak256::digest(&atom).into();
+        return arena.alloc(Lir::Atom(value.to_vec()));
+    }
+
+    arena.alloc(Lir::Keccak256(result.into_iter().collect()))
 }
 
 pub fn opt_coin_id(

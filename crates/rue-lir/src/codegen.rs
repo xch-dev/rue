@@ -367,7 +367,7 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
                 .collect::<Result<Vec<_>>>()?;
             Ok((OP_SHA256, args).to_clvm(allocator)?)
         }
-        Lir::Keccak256(args) => {
+        Lir::Keccak256(args) | Lir::Keccak256Inline(args) => {
             let args = args
                 .iter()
                 .map(|arg| codegen(arena, allocator, *arg))
