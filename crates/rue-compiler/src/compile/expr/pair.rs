@@ -11,7 +11,7 @@ pub fn compile_pair_expr(
     expected_type: Option<TypeId>,
 ) -> Value {
     let (expected_first, expected_rest) = if let Some(ty) = expected_type
-        && let pairs = rue_types::extract_pairs(ctx.types_mut(), ty)
+        && let pairs = rue_types::extract_pairs(ctx.types_mut(), ty, false)
         && !pairs.is_empty()
     {
         let first = if pairs.len() == 1 {

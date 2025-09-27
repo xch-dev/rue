@@ -2,25 +2,31 @@ use id_arena::Arena;
 
 use crate::{FunctionType, Pair, Type, TypeId, substitute};
 
-pub fn extract_pairs(arena: &mut Arena<Type>, id: TypeId) -> Vec<Pair> {
+pub fn extract_pairs(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Vec<Pair> {
     let id = substitute(arena, id);
-    extract_pairs_impl(arena, id).unwrap_or_default()
+    extract_pairs_impl(arena, id, strict).unwrap_or_default()
 }
 
-fn extract_pairs_impl(arena: &Arena<Type>, id: TypeId) -> Option<Vec<Pair>> {
+fn extract_pairs_impl(arena: &Arena<Type>, id: TypeId, strict: bool) -> Option<Vec<Pair>> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => extract_pairs_impl(arena, id),
+        Type::Ref(id) => extract_pairs_impl(arena, id, strict),
         Type::Unresolved => Some(vec![]),
         Type::Generic(_) | Type::Never | Type::Atom(_) | Type::Function(_) => None,
         Type::Pair(pair) => Some(vec![pair]),
-        Type::Struct(ty) => extract_pairs_impl(arena, ty.inner),
-        Type::Alias(alias) => extract_pairs_impl(arena, alias.inner),
+        Type::Struct(ty) => extract_pairs_impl(arena, ty.inner, strict),
+        Type::Alias(alias) => extract_pairs_impl(arena, alias.inner, strict),
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 
             for ty in ty.types {
-                pairs.extend(extract_pairs_impl(arena, ty)?);
+                let inner = extract_pairs_impl(arena, ty, strict);
+
+                if strict {
+                    pairs.extend(inner?);
+                } else {
+                    pairs.extend(inner.unwrap_or_default());
+                }
             }
 
             Some(pairs)

@@ -32,7 +32,7 @@ pub fn compile_list_expr(
             nil_terminated = false;
             expected_type
         } else if let Some(ty) = expected_type
-            && let pairs = rue_types::extract_pairs(ctx.types_mut(), ty)
+            && let pairs = rue_types::extract_pairs(ctx.types_mut(), ty, false)
             && !pairs.is_empty()
         {
             let first = if pairs.len() == 1 {

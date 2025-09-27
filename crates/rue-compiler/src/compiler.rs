@@ -328,6 +328,12 @@ pub trait GetTextRange {
     fn text_range(&self) -> TextRange;
 }
 
+impl GetTextRange for TextRange {
+    fn text_range(&self) -> TextRange {
+        *self
+    }
+}
+
 impl GetTextRange for SyntaxNode {
     fn text_range(&self) -> TextRange {
         self.text_range()

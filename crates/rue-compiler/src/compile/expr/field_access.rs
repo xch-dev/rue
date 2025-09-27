@@ -51,7 +51,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
             }
         }
         Type::Pair(_) | Type::Union(_) => {
-            let pairs = rue_types::extract_pairs(ctx.types_mut(), ty);
+            let pairs = rue_types::extract_pairs(ctx.types_mut(), ty, true);
 
             match name.text() {
                 "first" if !pairs.is_empty() => {
@@ -125,7 +125,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
             for i in 0..index {
                 hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, hir));
 
-                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type);
+                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
 
                 if pairs.is_empty() || (pairs.len() > 1 && (i + 1 < index || needs_first)) {
                     debug!("Unresolved field access due to unknown field");
@@ -153,7 +153,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
             if needs_first {
                 hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, hir));
 
-                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type);
+                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
 
                 if pairs.is_empty() {
                     debug!("Unresolved field access due to unknown field");

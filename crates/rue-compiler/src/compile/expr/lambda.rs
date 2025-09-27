@@ -59,10 +59,12 @@ pub fn compile_lambda_expr(
             }
         } else {
             debug!("Unresolved lambda parameter type due to missing inference");
-            ctx.diagnostic(
-                param.syntax(),
-                DiagnosticKind::CannotInferParameterType(param.name().unwrap().text().to_string()),
-            );
+            if let Some(name) = param.name() {
+                ctx.diagnostic(
+                    param.syntax(),
+                    DiagnosticKind::CannotInferParameterType(name.text().to_string()),
+                );
+            }
             ctx.builtins().unresolved.ty
         };
 

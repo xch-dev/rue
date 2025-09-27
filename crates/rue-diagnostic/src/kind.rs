@@ -147,7 +147,10 @@ pub enum DiagnosticKind {
     ExpectedArgumentsExact(usize, usize),
 
     #[error("Expected at least {0} arguments, but found {1}")]
-    ExpectedArgumentsBeforeSpread(usize, usize),
+    ExpectedArgumentsMinimum(usize, usize),
+
+    #[error("Cannot destructure non-pair parameter with type `{0}`")]
+    CannotDestructureParameter(String),
 
     #[error("Can only spread the last element in a list")]
     NonFinalSpread,
@@ -224,7 +227,8 @@ impl DiagnosticKind {
             | Self::CannotDisambiguateFunctionTypes(..)
             | Self::InvalidFunctionCall(..)
             | Self::ExpectedArgumentsExact(..)
-            | Self::ExpectedArgumentsBeforeSpread(..)
+            | Self::ExpectedArgumentsMinimum(..)
+            | Self::CannotDestructureParameter(..)
             | Self::NonFinalSpread
             | Self::InvalidSpread
             | Self::MissingField(..) => DiagnosticSeverity::Error,
