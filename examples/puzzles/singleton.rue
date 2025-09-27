@@ -60,17 +60,17 @@ fn main(
   let assert_parent = verify_lineage_proof(
     singleton,
     parent_id,
-    proof is LineageProof,
+    ...proof is LineageProof,
   );
   
   let inner_conditions = inner_puzzle(...inner_solution);
   
-  let conditions = morph_conditions(singleton, inner_conditions, false);
+  let conditions = morph_conditions(singleton, inner_conditions, ...false);
   
   [assert_amount, assert_parent, ...conditions]
 }
 
-fn curry_singleton_hash(
+inline fn curry_singleton_hash(
   singleton: Singleton,
   inner_puzzle_hash: Bytes32,
 ) -> Bytes32 {
@@ -84,7 +84,7 @@ fn curry_singleton_hash(
 fn verify_lineage_proof(
   singleton: Singleton,
   parent_id: Bytes32,
-  is_not_launcher: Bool,
+  ...is_not_launcher: Bool,
 ) -> AssertMyParentId {
   assert is_not_launcher || parent_id == singleton.launcher_id;
 
@@ -96,7 +96,7 @@ fn verify_lineage_proof(
 fn morph_conditions(
   singleton: Singleton,
   conditions: List<SingletonCondition>,
-  found_odd_output: Bool,
+  ...found_odd_output: Bool,
 ) -> List<Condition> {
   if conditions is nil {
     assert found_odd_output;
@@ -109,21 +109,21 @@ fn morph_conditions(
     assert !found_odd_output;
     
     if condition is Melt {
-      return morph_conditions(singleton, conditions.rest, true);
+      return morph_conditions(singleton, conditions.rest, ...true);
     }
     
-    let condition = morph_condition(condition, singleton);
-    let rest = morph_conditions(singleton, conditions.rest, true);
+    let condition = morph_condition(condition, ...singleton);
+    let rest = morph_conditions(singleton, conditions.rest, ...true);
     
     return [condition, ...rest];
   }
   
-  let rest = morph_conditions(singleton, conditions.rest, found_odd_output);
+  let rest = morph_conditions(singleton, conditions.rest, ...found_odd_output);
 
   [condition, ...rest]
 }
 
-fn morph_condition(condition: CreateCoin, singleton: Singleton) -> CreateCoin {
+inline fn morph_condition(condition: CreateCoin, ...singleton: Singleton) -> CreateCoin {
   let puzzle_hash = curry_singleton_hash(singleton, condition.puzzle_hash);
 
   CreateCoin {
