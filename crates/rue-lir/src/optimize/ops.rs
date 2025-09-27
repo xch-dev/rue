@@ -145,6 +145,9 @@ pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Add(result))
 }
 
+// If the value is an atom, we can add it to a sum to subtract from
+// We can collapse nested subs
+// If the value is a raise, we can return it directly
 pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut args = ArgList::new(args);
     let mut result = Vec::new();
@@ -196,8 +199,36 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Sub(result))
 }
 
+// If the value is an atom, we can add it to a product
+// We can collapse nested muls
+// If the value is a raise, we can return it directly
 pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    arena.alloc(Lir::Mul(args))
+    let mut args = ArgList::new(args);
+    let mut result = Vec::new();
+    let mut product = BigInt::from(1);
+
+    while let Some(arg) = args.next() {
+        match arena[arg].clone() {
+            Lir::Atom(atom) => product *= atom_bigint(atom),
+            Lir::Mul(items) => args.prepend(items),
+            Lir::Raise(_) => return arg,
+            _ => result.push(arg),
+        }
+    }
+
+    if product != BigInt::from(1) {
+        result.push(arena.alloc(Lir::Atom(bigint_atom(product))));
+    }
+
+    if result.is_empty() {
+        return arena.alloc(Lir::Atom(vec![1]));
+    }
+
+    if result.len() == 1 {
+        return result[0];
+    }
+
+    arena.alloc(Lir::Mul(result))
 }
 
 pub fn opt_div(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
