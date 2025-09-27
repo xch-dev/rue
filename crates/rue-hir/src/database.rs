@@ -198,7 +198,7 @@ impl Database {
             }
             Hir::CoinId(parent, puzzle, amount) => {
                 format!(
-                    "calculate_coin_id({}, {}, {})",
+                    "coinid({}, {}, {})",
                     self.debug_hir(*parent),
                     self.debug_hir(*puzzle),
                     self.debug_hir(*amount)

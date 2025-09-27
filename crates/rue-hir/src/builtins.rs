@@ -64,8 +64,8 @@ impl Builtins {
             false,
         );
         scope.insert_symbol(
-            "calculate_coin_id".to_string(),
-            calculate_coin_id(db, types.bytes, types.bytes32, types.int),
+            "coinid".to_string(),
+            coinid(db, types.bytes, types.bytes32, types.int),
             false,
         );
         scope.insert_symbol(
@@ -198,7 +198,7 @@ fn keccak256(db: &mut Database, bytes: TypeId, bytes32: TypeId, inline: bool) ->
     }))
 }
 
-fn calculate_coin_id(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: TypeId) -> SymbolId {
+fn coinid(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: TypeId) -> SymbolId {
     let scope = db.alloc_scope(Scope::new());
 
     let parent = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {

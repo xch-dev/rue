@@ -327,7 +327,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             let left = left(ctx);
             let right = right(ctx);
 
-            if ctx.is_castable(left.ty, ctx.builtins().types.bytes)
+            if ctx.is_castable(left.ty, ctx.builtins().types.atom)
                 && ctx.is_assignable(right.ty, left.ty)
             {
                 let hir = if op.kind() == T![==] {

@@ -37,13 +37,13 @@ fn main(
   assert my_amount % 2 == 1;
   
   let parent_id = if proof is EveProof {
-    calculate_coin_id(
+    coinid(
       proof.parent_parent_coin_id,
       singleton.launcher_puzzle_hash,
       proof.parent_amount,
     )
   } else {
-    calculate_coin_id(
+    coinid(
       proof.parent_parent_coin_id,
       curry_singleton_hash(
         singleton,

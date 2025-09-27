@@ -113,8 +113,8 @@ fn main(
     let inner_puzzle_hash = tree_hash(inner_puzzle);
     
     // Calculate coin ids.
-    let my_coin_id = calculate_coin_id(my_coin.parent_coin_info, my_coin.puzzle_hash, my_coin.amount);
-    let next_coin_id = calculate_coin_id(
+    let my_coin_id = coinid(my_coin.parent_coin_info, my_coin.puzzle_hash, my_coin.amount);
+    let next_coin_id = coinid(
         next_coin_proof.parent_coin_info,
         cat_puzzle_hash(cat_info, next_coin_proof.inner_puzzle_hash),
         next_coin_proof.amount,
@@ -133,7 +133,7 @@ fn main(
     };
 
     // Check whether the parent is a CAT or not.
-    let parent_is_cat = lineage_proof is LineageProof && my_coin.parent_coin_info == calculate_coin_id(
+    let parent_is_cat = lineage_proof is LineageProof && my_coin.parent_coin_info == coinid(
         lineage_proof.parent_parent_coin_info,
         cat_puzzle_hash(cat_info, lineage_proof.parent_inner_puzzle_hash),
         lineage_proof.parent_amount,
