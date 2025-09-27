@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     Lir, LirId, bigint_atom, first_path,
-    optimize::{arg_list::ArgList, has_path, has_path_quotable, opt_truthy},
+    optimize::{ArgList, has_path, has_path_quotable, opt_truthy},
     rest_path,
 };
 
