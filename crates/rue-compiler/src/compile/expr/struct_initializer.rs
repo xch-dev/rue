@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstNode, AstStructInitializerExpr};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Hir, Value};
+use rue_hir::{Declaration, Hir, Value};
 use rue_types::{Pair, Type, Union};
 
 use crate::{Compiler, PathKind, PathResult, compile_expr, compile_path};
@@ -21,6 +21,8 @@ pub fn compile_struct_initializer_expr(
         debug!("Unresolved struct initializer path");
         ctx.builtins().unresolved.ty
     };
+
+    ctx.reference(Declaration::Type(ty));
 
     let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
 
