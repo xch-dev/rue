@@ -1,4 +1,4 @@
-program: (a (q 16 (q . 42) 2) (c (q . 100) ()))
+program: (a (q 16 2 (q . 42)) (c (q . 100) ()))
 debug_program: (a (q 2 (q 2 2 (c (q . 100) ())) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q . 42) 1))
 solution: ()
 output: '142'

@@ -1,9 +1,9 @@
-use clvmr::Allocator;
 use id_arena::Arena;
+use num_bigint::BigInt;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    Lir, LirId, bigint_atom, first_path,
+    Lir, LirId, atom_bigint, bigint_atom, first_path,
     optimize::{ArgList, has_path, has_path_quotable, opt_truthy},
     rest_path,
 };
@@ -113,34 +113,25 @@ pub fn opt_listp(arena: &mut Arena<Lir>, value: LirId, can_be_truthy: bool) -> L
     }
 }
 
+// If the value is an atom, we can add it to a sum
+// We can collapse nested adds
+// If the value is a raise, we can return it directly
 pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut args = ArgList::new(args);
     let mut result = Vec::new();
+    let mut sum = BigInt::from(0);
 
     while let Some(arg) = args.next() {
         match arena[arg].clone() {
-            Lir::Atom(atom) => {
-                if let Some(last_id) = result
-                    .iter_mut()
-                    .find(|id| matches!(arena[**id], Lir::Atom(..)))
-                    && let Lir::Atom(last) = arena[*last_id].clone()
-                {
-                    let mut allocator = Allocator::new();
-                    let lhs = allocator.new_atom(&last).unwrap();
-                    let rhs = allocator.new_atom(&atom).unwrap();
-                    let sum = bigint_atom(allocator.number(lhs) + allocator.number(rhs));
-                    *last_id = arena.alloc(Lir::Atom(sum));
-                } else {
-                    result.push(arg);
-                }
-            }
-            Lir::Add(items) => {
-                args.prepend(items);
-            }
-            _ => {
-                result.push(arg);
-            }
+            Lir::Atom(atom) => sum += atom_bigint(atom),
+            Lir::Add(items) => args.prepend(items),
+            Lir::Raise(_) => return arg,
+            _ => result.push(arg),
         }
+    }
+
+    if sum != BigInt::from(0) {
+        result.push(arena.alloc(Lir::Atom(bigint_atom(sum))));
     }
 
     if result.is_empty() {
@@ -155,7 +146,54 @@ pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 }
 
 pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    arena.alloc(Lir::Sub(args))
+    let mut args = ArgList::new(args);
+    let mut result = Vec::new();
+    let mut first = None;
+    let mut sum = BigInt::from(0);
+
+    while let Some(arg) = args.next() {
+        match arena[arg].clone() {
+            Lir::Atom(atom) => {
+                if first.is_none() {
+                    first = Some(arg);
+                    continue;
+                }
+                sum += atom_bigint(atom);
+            }
+            Lir::Sub(items) => {
+                if first.is_none() {
+                    first = Some(arena.alloc(Lir::Atom(vec![])));
+                }
+                args.prepend(items);
+            }
+            Lir::Raise(_) => return arg,
+            _ => {
+                if first.is_none() {
+                    first = Some(arg);
+                    continue;
+                }
+                result.push(arg);
+            }
+        }
+    }
+
+    if let Some(first) = first {
+        result.insert(0, first);
+    }
+
+    if sum != BigInt::from(0) {
+        result.push(arena.alloc(Lir::Atom(bigint_atom(sum))));
+    }
+
+    if result.is_empty() {
+        return arena.alloc(Lir::Atom(vec![]));
+    }
+
+    if result.len() == 1 {
+        return result[0];
+    }
+
+    arena.alloc(Lir::Sub(result))
 }
 
 pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
