@@ -1,0 +1,15 @@
+const A_REF: Int = 42;
+
+struct A {
+    value: Int = A_REF,
+}
+
+const B_REF: Int = 42;
+
+struct B {
+    value: Int = B_REF,
+}
+
+fn main() -> Int {
+    B {}.value
+}

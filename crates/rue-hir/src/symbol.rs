@@ -8,6 +8,7 @@ pub type SymbolId = Id<Symbol>;
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
+    Unresolved,
     Module(ModuleSymbol),
     Function(FunctionSymbol),
     Parameter(ParameterSymbol),

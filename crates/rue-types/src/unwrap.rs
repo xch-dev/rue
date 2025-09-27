@@ -12,7 +12,7 @@ fn unwrap_semantic_impl(arena: &mut Arena<Type>, id: TypeId, resolve_aliases: bo
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => unwrap_semantic_impl(arena, id, resolve_aliases),
         Type::Unresolved
-        | Type::Generic
+        | Type::Generic(_)
         | Type::Never
         | Type::Atom(_)
         | Type::Pair(_)

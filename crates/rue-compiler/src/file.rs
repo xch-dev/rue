@@ -10,7 +10,7 @@ use rue_lir::{Error, codegen, optimize};
 use rue_options::CompilerOptions;
 use rue_parser::Parser;
 
-use crate::{Compiler, compile_document, declare_document};
+use crate::{Compiler, check_unused, compile_document, declare_document};
 
 #[derive(Debug, Clone)]
 pub struct Compilation {
@@ -32,12 +32,8 @@ pub fn compile_file(
     compile_file_impl(allocator, file, options, true)
 }
 
-pub fn analyze_file(
-    allocator: &mut Allocator,
-    file: Source,
-    options: CompilerOptions,
-) -> Result<Compilation, Error> {
-    compile_file_impl(allocator, file, options, false)
+pub fn analyze_file(file: Source, options: CompilerOptions) -> Result<Compilation, Error> {
+    compile_file_impl(&mut Allocator::new(), file, options, false)
 }
 
 fn compile_file_impl(
@@ -72,6 +68,15 @@ fn compile_file_impl(
         program: None,
     };
 
+    let Some(symbol) = ctx.scope(file.scope).symbol("main") else {
+        return Ok(compilation);
+    };
+    let graph = DependencyGraph::build(&ctx, symbol);
+
+    check_unused(&mut ctx, &graph, symbol);
+
+    compilation.diagnostics.extend(ctx.take_diagnostics());
+
     if !do_codegen
         || compilation
             .diagnostics
@@ -80,12 +85,6 @@ fn compile_file_impl(
     {
         return Ok(compilation);
     }
-
-    let symbol = ctx
-        .scope(file.scope)
-        .symbol("main")
-        .ok_or(Error::MainNotFound)?;
-    let graph = DependencyGraph::build(&ctx, symbol);
 
     let mut arena = Arena::new();
     let mut lowerer = Lowerer::new(&mut ctx, &mut arena, &graph, options);
@@ -121,7 +120,7 @@ fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilatio
     let declarations = declare_document(ctx, scope, &ast);
     compile_document(ctx, scope, &ast, declarations);
 
-    compilation.diagnostics.extend_from_slice(ctx.diagnostics());
+    compilation.diagnostics.extend(ctx.take_diagnostics());
 
     compilation
 }

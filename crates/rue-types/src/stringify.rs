@@ -25,7 +25,13 @@ pub(crate) fn stringify_impl(
     let result = match arena[id].clone() {
         Type::Ref(id) => stringify_impl(arena, id, stack),
         Type::Unresolved => "{unresolved}".to_string(),
-        Type::Generic => format!("{{generic {}}}", id.index()),
+        Type::Generic(generic) => {
+            if let Some(name) = generic.name {
+                name.text().to_string()
+            } else {
+                format!("{{generic {}}}", id.index())
+            }
+        }
         Type::Never => "Never".to_string(),
         Type::Atom(atom) => atom.to_string(),
         Type::Pair(pair) => {

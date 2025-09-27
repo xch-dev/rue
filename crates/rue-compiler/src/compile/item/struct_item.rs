@@ -2,12 +2,16 @@ use indexmap::IndexSet;
 use log::debug;
 use rue_ast::AstStructItem;
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Scope, ScopeId};
+use rue_hir::{Declaration, Scope, ScopeId};
 use rue_types::{Pair, Struct, Type, TypeId};
 
 use crate::{Compiler, compile_expr, compile_generic_parameters, compile_type};
 
 pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (TypeId, ScopeId) {
+    let ty = ctx.alloc_type(Type::Unresolved);
+
+    ctx.push_declaration(Declaration::Type(ty));
+
     let scope = ctx.alloc_scope(Scope::new());
 
     let generics = if let Some(generic_parameters) = struct_item.generic_parameters() {
@@ -17,7 +21,6 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
     };
 
     let inner = ctx.alloc_type(Type::Unresolved);
-    let ty = ctx.alloc_type(Type::Unresolved);
 
     let mut fields = IndexSet::new();
     let mut nil_terminated = true;
@@ -74,6 +77,8 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
         );
     }
 
+    ctx.pop_declaration();
+
     (ty, scope)
 }
 
@@ -83,6 +88,8 @@ pub fn compile_struct_item(
     struct_type: TypeId,
     scope: ScopeId,
 ) {
+    ctx.push_declaration(Declaration::Type(struct_type));
+
     let nil_terminated = if let Type::Struct(Struct { nil_terminated, .. }) = ctx.ty(struct_type) {
         *nil_terminated
     } else {
@@ -140,6 +147,8 @@ pub fn compile_struct_item(
     let inner = *inner;
 
     *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
+
+    ctx.pop_declaration();
 }
 
 #[cfg(test)]

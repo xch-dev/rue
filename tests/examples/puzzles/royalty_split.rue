@@ -17,10 +17,6 @@ fn calculate_share(total_amount: Int, share: Int, total_shares: Int) -> Int {
     total_amount * share / total_shares
 }
 
-fn get_amount(payout: Payout, total_amount: Int, total_shares: Int) -> Int {
-    calculate_share(total_amount, payout.share, total_shares)
-}
-
 fn calculate_amount_and_split(
     payouts: List<Payout>,
     total_amount: Int,

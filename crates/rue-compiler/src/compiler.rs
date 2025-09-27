@@ -1,6 +1,7 @@
 use std::{
     cmp::Reverse,
     collections::HashMap,
+    mem,
     ops::{Deref, DerefMut, Range},
     sync::Arc,
 };
@@ -8,7 +9,8 @@ use std::{
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SourceKind, SrcLoc};
 use rue_hir::{
-    Builtins, Constraint, Database, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, replace_type,
+    Builtins, Constraint, Database, Declaration, Scope, ScopeId, Symbol, SymbolId, TypePath, Value,
+    replace_type,
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
@@ -24,6 +26,7 @@ pub struct Compiler {
     mapping_stack: Vec<HashMap<SymbolId, TypeId>>,
     builtins: Builtins,
     defaults: HashMap<TypeId, HashMap<String, Value>>,
+    declaration_stack: Vec<Declaration>,
 }
 
 impl Deref for Compiler {
@@ -55,19 +58,24 @@ impl Compiler {
             mapping_stack: vec![],
             builtins,
             defaults: HashMap::new(),
+            declaration_stack: Vec::new(),
         }
     }
 
-    pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.diagnostics
-    }
-
-    pub fn builtins(&self) -> &Builtins {
-        &self.builtins
+    pub fn source(&self) -> &Source {
+        &self.source
     }
 
     pub fn set_source(&mut self, source: Source) {
         self.source = source;
+    }
+
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        mem::take(&mut self.diagnostics)
+    }
+
+    pub fn builtins(&self) -> &Builtins {
+        &self.builtins
     }
 
     pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
@@ -133,6 +141,7 @@ impl Compiler {
         }
 
         match self.symbol(symbol) {
+            Symbol::Unresolved => self.builtins().unresolved.ty,
             Symbol::Module(_) => self.builtins().unresolved.ty,
             Symbol::Function(function) => function.ty,
             Symbol::Parameter(parameter) => parameter.ty,
@@ -290,6 +299,28 @@ impl Compiler {
         self.defaults
             .get(&ty)
             .and_then(|map| map.get(name).cloned())
+    }
+
+    pub fn push_declaration(&mut self, declaration: Declaration) {
+        if let Some(last) = self.declaration_stack.last() {
+            self.db.add_declaration(*last, declaration);
+        }
+
+        self.declaration_stack.push(declaration);
+
+        if self.source.kind.check_unused() {
+            self.db.add_relevant_declaration(declaration);
+        }
+    }
+
+    pub fn pop_declaration(&mut self) {
+        self.declaration_stack.pop().unwrap();
+    }
+
+    pub fn reference(&mut self, reference: Declaration) {
+        if let Some(last) = self.declaration_stack.last() {
+            self.db.add_reference(*last, reference);
+        }
     }
 }
 

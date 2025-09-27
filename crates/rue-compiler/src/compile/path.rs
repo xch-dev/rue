@@ -151,7 +151,7 @@ pub fn compile_path(
                     Type::Atom(..)
                     | Type::Pair(..)
                     | Type::Function(..)
-                    | Type::Generic
+                    | Type::Generic(_)
                     | Type::Union(..)
                     | Type::Never => {
                         vec![]

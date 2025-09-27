@@ -147,7 +147,7 @@ pub(crate) fn compare_impl(
                 result
             }
         }
-        (_, Type::Generic) => {
+        (_, Type::Generic(_)) => {
             if lhs == rhs {
                 Comparison::Assign
             } else if let Some(infer) = &mut ctx.infer {
@@ -243,7 +243,7 @@ pub(crate) fn compare_impl(
             lhs_semantic,
             rhs_semantic,
         ),
-        (Type::Function(_) | Type::Generic, _) => compare_impl(
+        (Type::Function(_) | Type::Generic(_), _) => compare_impl(
             arena,
             builtins,
             ctx,
@@ -291,7 +291,7 @@ fn semantics_of(arena: &Arena<Type>, id: TypeId) -> HashSet<Option<TypeId>> {
         Type::Ref(id) => semantics_of(arena, id),
         Type::Alias(alias) => semantics_of(arena, alias.inner),
         Type::Never => HashSet::new(),
-        Type::Unresolved | Type::Generic | Type::Atom(_) | Type::Pair(_) | Type::Function(_) => {
+        Type::Unresolved | Type::Generic(_) | Type::Atom(_) | Type::Pair(_) | Type::Function(_) => {
             HashSet::from_iter([None])
         }
         Type::Struct(ty) => HashSet::from_iter([Some(ty.semantic)]),

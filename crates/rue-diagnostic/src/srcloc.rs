@@ -23,6 +23,15 @@ pub enum SourceKind {
     File(String),
 }
 
+impl SourceKind {
+    pub fn check_unused(&self) -> bool {
+        match self {
+            Self::Std => false,
+            Self::File(_) => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SrcLoc {
     pub source: Source,

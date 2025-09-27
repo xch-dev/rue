@@ -159,6 +159,27 @@ pub enum DiagnosticKind {
 
     #[error("Field `{0}` exists on struct `{1}`, but it's not present in the underlying type")]
     MissingField(String, String),
+
+    #[error("Unused function `{0}`")]
+    UnusedFunction(String),
+
+    #[error("Unused constant `{0}`")]
+    UnusedConstant(String),
+
+    #[error("Unused binding `{0}`")]
+    UnusedBinding(String),
+
+    #[error("Unused parameter `{0}`")]
+    UnusedParameter(String),
+
+    #[error("Unused struct `{0}`")]
+    UnusedStruct(String),
+
+    #[error("Unused type alias `{0}`")]
+    UnusedTypeAlias(String),
+
+    #[error("Unused generic type `{0}`")]
+    UnusedGenericType(String),
 }
 
 impl DiagnosticKind {
@@ -213,7 +234,14 @@ impl DiagnosticKind {
             | Self::UnnecessaryCast(..)
             | Self::UnnecessaryGuard(..)
             | Self::UnnecessaryExplicitReturn
-            | Self::UnnecessaryPlus => DiagnosticSeverity::Warning,
+            | Self::UnnecessaryPlus
+            | Self::UnusedFunction(..)
+            | Self::UnusedConstant(..)
+            | Self::UnusedBinding(..)
+            | Self::UnusedParameter(..)
+            | Self::UnusedStruct(..)
+            | Self::UnusedTypeAlias(..)
+            | Self::UnusedGenericType(..) => DiagnosticSeverity::Warning,
         }
     }
 }
