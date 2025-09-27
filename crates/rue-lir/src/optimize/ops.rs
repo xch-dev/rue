@@ -68,7 +68,6 @@ pub fn opt_closure(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> L
 pub fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) => arena.alloc(Lir::Path(first_path(path))),
-        Lir::Cons(first, _) => first,
         Lir::Divmod(left, right) => opt_div(arena, left, right),
         Lir::Raise(_) => value,
         _ => arena.alloc(Lir::First(value)),
@@ -82,7 +81,6 @@ pub fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 pub fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) => arena.alloc(Lir::Path(rest_path(path))),
-        Lir::Cons(_, rest) => rest,
         Lir::Divmod(left, right) => opt_mod(arena, left, right),
         Lir::Raise(_) => value,
         _ => arena.alloc(Lir::Rest(value)),
