@@ -241,18 +241,18 @@ inline fn update_hash_with_parameter(
     sha256(2 as Bytes + tree_hash_atom(4 as Bytes) + two_item_list_hash(quote_hash(parameter_hash), environment_hash))
 }
 
-fn curried_params_hash(parameters: List<Bytes32>) -> Bytes32 {
+fn curried_params_hash(...parameters: List<Bytes32>) -> Bytes32 {
     if parameters is nil {
         return tree_hash_atom(1 as Bytes);
     }
-    update_hash_with_parameter(parameters.first, curried_params_hash(parameters.rest))
+    update_hash_with_parameter(parameters.first, curried_params_hash(...parameters.rest))
 }
 
 export inline fn curry_tree_hash(
     mod_hash: Bytes32,
     ...parameters: List<Bytes32>
 ) -> Bytes32 {
-    apply_hash(mod_hash, curried_params_hash(parameters))
+    apply_hash(mod_hash, curried_params_hash(...parameters))
 }
 
 export fn merge_list<T>(a: List<T>, b: List<T>) -> List<T> {
