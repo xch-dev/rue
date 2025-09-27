@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use clvmr::Allocator;
 use rue_compiler::analyze_file;
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
@@ -63,7 +62,6 @@ impl LanguageServer for Backend {
 impl Backend {
     async fn on_change(&self, uri: Url, text: String, _version: i32) {
         let compilation = analyze_file(
-            &mut Allocator::new(),
             Source::new(
                 Arc::from(text.as_str()),
                 SourceKind::File(

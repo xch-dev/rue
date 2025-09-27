@@ -1,11 +1,15 @@
 use log::debug;
 use rue_ast::{AstConstantItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{ConstantSymbol, Symbol, SymbolId};
+use rue_hir::{ConstantSymbol, Declaration, Symbol, SymbolId};
 
 use crate::{Compiler, compile_expr, compile_type};
 
 pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> SymbolId {
+    let symbol = ctx.alloc_symbol(Symbol::Unresolved);
+
+    ctx.push_declaration(Declaration::Symbol(symbol));
+
     let ty = if let Some(ty) = constant.ty() {
         compile_type(ctx, &ty)
     } else {
@@ -15,12 +19,12 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
 
     let value = ctx.builtins().unresolved.hir;
 
-    let symbol = ctx.alloc_symbol(Symbol::Constant(ConstantSymbol {
+    *ctx.symbol_mut(symbol) = Symbol::Constant(ConstantSymbol {
         name: constant.name(),
         ty,
         value,
         inline: constant.inline().is_some(),
-    }));
+    });
 
     if let Some(name) = constant.name() {
         if ctx.last_scope().symbol(name.text()).is_some() {
@@ -37,10 +41,14 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
         );
     }
 
+    ctx.pop_declaration();
+
     symbol
 }
 
 pub fn compile_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: SymbolId) {
+    ctx.push_declaration(Declaration::Symbol(symbol));
+
     let ty = if let Symbol::Constant(ConstantSymbol { ty, .. }) = ctx.symbol(symbol) {
         *ty
     } else {
@@ -61,4 +69,6 @@ pub fn compile_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: 
     };
 
     *value = resolved_value.hir;
+
+    ctx.pop_declaration();
 }

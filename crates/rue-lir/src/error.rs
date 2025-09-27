@@ -9,9 +9,6 @@ pub enum Error {
 
     #[error("Conversion error: {0}")]
     Conversion(#[from] ToClvmError),
-
-    #[error("Main not found")]
-    MainNotFound,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

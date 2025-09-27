@@ -1,7 +1,16 @@
+use std::collections::{HashMap, HashSet};
+
 use id_arena::Arena;
+use indexmap::IndexSet;
 use rue_types::{Type, TypeId};
 
 use crate::{Hir, HirId, Scope, ScopeId, Symbol, SymbolId};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Declaration {
+    Symbol(SymbolId),
+    Type(TypeId),
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct Database {
@@ -9,6 +18,9 @@ pub struct Database {
     scopes: Arena<Scope>,
     symbols: Arena<Symbol>,
     types: Arena<Type>,
+    relevant_declarations: IndexSet<Declaration>,
+    declared_by: HashMap<Declaration, HashSet<Declaration>>,
+    referenced_by: HashMap<Declaration, HashSet<Declaration>>,
 }
 
 impl Database {
@@ -72,8 +84,43 @@ impl Database {
         &mut self.types
     }
 
+    pub fn add_relevant_declaration(&mut self, declaration: Declaration) {
+        self.relevant_declarations.insert(declaration);
+    }
+
+    pub fn relevant_declarations(&self) -> impl Iterator<Item = Declaration> {
+        self.relevant_declarations.iter().copied()
+    }
+
+    pub fn add_reference(&mut self, outer: Declaration, inner: Declaration) {
+        self.referenced_by.entry(inner).or_default().insert(outer);
+    }
+
+    pub fn add_declaration(&mut self, outer: Declaration, inner: Declaration) {
+        self.declared_by.entry(inner).or_default().insert(outer);
+    }
+
+    pub fn reference_parents(&self, declaration: Declaration) -> Vec<Declaration> {
+        self.referenced_by
+            .get(&declaration)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect()
+    }
+
+    pub fn declaration_parents(&self, declaration: Declaration) -> Vec<Declaration> {
+        self.declared_by
+            .get(&declaration)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect()
+    }
+
     pub fn debug_symbol(&self, id: SymbolId) -> String {
         let name = match self.symbol(id) {
+            Symbol::Unresolved => None,
             Symbol::Module(module) => module.name.as_ref().map(|name| name.text().to_string()),
             Symbol::Function(function) => {
                 function.name.as_ref().map(|name| name.text().to_string())

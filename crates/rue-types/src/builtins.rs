@@ -1,6 +1,6 @@
 use id_arena::Arena;
 
-use crate::{Alias, Atom, Pair, Type, TypeId, Union};
+use crate::{Alias, Atom, Generic, Pair, Type, TypeId, Union};
 
 #[derive(Debug, Clone, Copy)]
 pub struct BuiltinTypes {
@@ -39,7 +39,7 @@ impl BuiltinTypes {
         *arena.get_mut(any).unwrap() = Type::Union(Union::new(vec![atom, any_pair]));
 
         let list = arena.alloc(Type::Unresolved);
-        let list_generic = arena.alloc(Type::Generic);
+        let list_generic = arena.alloc(Type::Generic(Generic { name: None }));
         let list_pair = arena.alloc(Type::Pair(Pair::new(list_generic, list)));
         let list_union = arena.alloc(Type::Union(Union::new(vec![nil, list_pair])));
         *arena.get_mut(list).unwrap() = Type::Alias(Alias {

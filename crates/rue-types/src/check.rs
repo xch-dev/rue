@@ -393,7 +393,7 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => variants_of(arena, builtins, id),
-        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic => {
+        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) => {
             vec![id]
         }
         Type::Never => vec![],
@@ -423,7 +423,7 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Result<Option<Atoms>, CheckError
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => atoms_of(arena, id)?,
         Type::Unresolved | Type::Never | Type::Pair(_) => None,
-        Type::Generic => Some(Atoms::Unrestricted),
+        Type::Generic(_) => Some(Atoms::Unrestricted),
         Type::Atom(atom) => {
             let Some(restriction) = atom.restriction else {
                 return Ok(Some(Atoms::Unrestricted));
@@ -482,7 +482,7 @@ fn pairs_of(
         Type::Ref(id) => pairs_of(arena, builtins, id)?,
         Type::Unresolved | Type::Never | Type::Atom(_) => vec![],
         Type::Pair(pair) => vec![pair],
-        Type::Generic => vec![Pair::new(builtins.any, builtins.any)],
+        Type::Generic(_) => vec![Pair::new(builtins.any, builtins.any)],
         Type::Alias(alias) => pairs_of(arena, builtins, alias.inner)?,
         Type::Struct(ty) => pairs_of(arena, builtins, ty.inner)?,
         Type::Function(_) => return Err(CheckError::FunctionType),

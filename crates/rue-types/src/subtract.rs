@@ -128,7 +128,7 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
 
             variants
         }
-        Type::Function(_) | Type::Generic => vec![
+        Type::Function(_) | Type::Generic(_) => vec![
             Variant {
                 semantic_type_ids: vec![],
                 type_id: builtins.atom,

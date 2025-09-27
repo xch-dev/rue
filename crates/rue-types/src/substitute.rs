@@ -50,7 +50,7 @@ fn substitute_impl(
 
             substitute_impl(arena, apply.inner, &new_map, stack)
         }
-        Type::Unresolved | Type::Generic | Type::Atom(_) | Type::Never => old_id,
+        Type::Unresolved | Type::Generic(_) | Type::Atom(_) | Type::Never => old_id,
         Type::Ref(id) => substitute_impl(arena, id, map, stack),
         Type::Pair(pair) => {
             let first = substitute_impl(arena, pair.first, map, stack);

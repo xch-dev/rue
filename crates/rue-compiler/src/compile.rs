@@ -60,7 +60,7 @@ mod tests {
             first = false;
         }
 
-        for error in ctx.diagnostics() {
+        for error in ctx.take_diagnostics() {
             if !first {
                 error_output.push('\n');
             }

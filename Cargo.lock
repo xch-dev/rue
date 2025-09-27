@@ -1779,7 +1779,6 @@ dependencies = [
 name = "rue-lsp"
 version = "0.3.0"
 dependencies = [
- "clvmr",
  "rue-compiler",
  "rue-diagnostic",
  "rue-options",

@@ -2,6 +2,7 @@ mod alias;
 mod apply;
 mod atom;
 mod function;
+mod generic;
 mod pair;
 mod structs;
 mod unions;
@@ -10,6 +11,7 @@ pub use alias::*;
 pub use apply::*;
 pub use atom::*;
 pub use function::*;
+pub use generic::*;
 pub use pair::*;
 pub use structs::*;
 pub use unions::*;
@@ -21,7 +23,7 @@ pub type TypeId = Id<Type>;
 #[derive(Debug, Clone)]
 pub enum Type {
     Unresolved,
-    Generic,
+    Generic(Generic),
     Never,
     Ref(TypeId),
     Atom(Atom),
