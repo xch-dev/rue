@@ -220,6 +220,36 @@ impl Database {
                     )
                 }
             }
+            Hir::G1Map(data, dst) => {
+                if let Some(dst) = dst {
+                    format!(
+                        "g1_map({}, {})",
+                        self.debug_hir(*data),
+                        self.debug_hir(*dst)
+                    )
+                } else {
+                    format!("g1_map({})", self.debug_hir(*data))
+                }
+            }
+            Hir::G2Map(data, dst) => {
+                if let Some(dst) = dst {
+                    format!(
+                        "g2_map({}, {})",
+                        self.debug_hir(*data),
+                        self.debug_hir(*dst)
+                    )
+                } else {
+                    format!("g2_map({})", self.debug_hir(*data))
+                }
+            }
+            Hir::Modpow(base, exponent, modulus) => {
+                format!(
+                    "modpow({}, {}, {})",
+                    self.debug_hir(*base),
+                    self.debug_hir(*exponent),
+                    self.debug_hir(*modulus)
+                )
+            }
         }
     }
 }

@@ -160,6 +160,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     UnaryOp::Sha256Inline => self.arena.alloc(Lir::Sha256Inline(vec![lir])),
                     UnaryOp::Keccak256 => self.arena.alloc(Lir::Keccak256(vec![lir])),
                     UnaryOp::Keccak256Inline => self.arena.alloc(Lir::Keccak256Inline(vec![lir])),
+                    UnaryOp::PubkeyForExp => self.arena.alloc(Lir::PubkeyForExp(lir)),
                 }
             }
             Hir::Binary(op, left, right) => {
@@ -243,6 +244,22 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let start = self.lower_hir(env, start);
                 let end = end.map(|end| self.lower_hir(env, end));
                 self.arena.alloc(Lir::Substr(hir, start, end))
+            }
+            Hir::G1Map(data, dst) => {
+                let data = self.lower_hir(env, data);
+                let dst = dst.map(|dst| self.lower_hir(env, dst));
+                self.arena.alloc(Lir::G1Map(data, dst))
+            }
+            Hir::G2Map(data, dst) => {
+                let data = self.lower_hir(env, data);
+                let dst = dst.map(|dst| self.lower_hir(env, dst));
+                self.arena.alloc(Lir::G2Map(data, dst))
+            }
+            Hir::Modpow(base, exponent, modulus) => {
+                let base = self.lower_hir(env, base);
+                let exponent = self.lower_hir(env, exponent);
+                let modulus = self.lower_hir(env, modulus);
+                self.arena.alloc(Lir::Modpow(base, exponent, modulus))
             }
         }
     }

@@ -140,6 +140,23 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
                 visit_hir(db, graph, *end);
             }
         }
+        Hir::G1Map(data, dst) => {
+            visit_hir(db, graph, *data);
+            if let Some(dst) = dst {
+                visit_hir(db, graph, *dst);
+            }
+        }
+        Hir::G2Map(data, dst) => {
+            visit_hir(db, graph, *data);
+            if let Some(dst) = dst {
+                visit_hir(db, graph, *dst);
+            }
+        }
+        Hir::Modpow(base, exponent, modulus) => {
+            visit_hir(db, graph, *base);
+            visit_hir(db, graph, *exponent);
+            visit_hir(db, graph, *modulus);
+        }
     }
 }
 

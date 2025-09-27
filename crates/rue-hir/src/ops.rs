@@ -40,6 +40,9 @@ pub enum UnaryOp {
 
     #[display("keccak256")]
     Keccak256Inline,
+
+    #[display("pubkey_for_exp")]
+    PubkeyForExp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]

@@ -23,6 +23,9 @@ pub enum Hir {
     Binary(BinaryOp, HirId, HirId),
     CoinId(HirId, HirId, HirId),
     Substr(HirId, HirId, Option<HirId>),
+    G1Map(HirId, Option<HirId>),
+    G2Map(HirId, Option<HirId>),
+    Modpow(HirId, HirId, HirId),
 }
 
 #[derive(Debug, Clone)]
