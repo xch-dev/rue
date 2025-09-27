@@ -4,6 +4,7 @@ mod if_stmt;
 mod let_binding;
 mod raise;
 mod return_stmt;
+mod verification;
 
 pub use assert::*;
 pub use expr::*;
@@ -11,6 +12,7 @@ pub use if_stmt::*;
 pub use let_binding::*;
 pub use raise::*;
 pub use return_stmt::*;
+pub use verification::*;
 
 use rue_ast::AstStmt;
 use rue_hir::Statement;
@@ -30,5 +32,8 @@ pub fn compile_stmt(
         AstStmt::ReturnStmt(return_stmt) => compile_return_stmt(ctx, return_stmt, expected_type),
         AstStmt::AssertStmt(assert_stmt) => compile_assert_stmt(ctx, assert_stmt),
         AstStmt::RaiseStmt(raise_stmt) => compile_raise_stmt(ctx, raise_stmt),
+        AstStmt::VerificationStmt(verification_stmt) => {
+            compile_verification_stmt(ctx, verification_stmt)
+        }
     }
 }

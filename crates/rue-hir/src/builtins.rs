@@ -37,6 +37,7 @@ impl Builtins {
         scope.insert_type("Bytes".to_string(), types.bytes, false);
         scope.insert_type("Bytes32".to_string(), types.bytes32, false);
         scope.insert_type("PublicKey".to_string(), types.public_key, false);
+        scope.insert_type("Signature".to_string(), types.signature, false);
         scope.insert_type("Int".to_string(), types.int, false);
         scope.insert_type("Bool".to_string(), types.bool, false);
         scope.insert_type("Any".to_string(), types.any, false);
@@ -53,15 +54,56 @@ impl Builtins {
             false,
         );
         scope.insert_symbol(
-            "calculate_coin_id".to_string(),
-            calculate_coin_id(db, types.bytes, types.bytes32, types.int),
+            "keccak256".to_string(),
+            keccak256(db, types.bytes, types.bytes32, false),
+            false,
+        );
+        scope.insert_symbol(
+            "keccak256_inline".to_string(),
+            keccak256(db, types.bytes, types.bytes32, true),
+            false,
+        );
+        scope.insert_symbol(
+            "coinid".to_string(),
+            coinid(db, types.bytes, types.bytes32, types.int),
             false,
         );
         scope.insert_symbol(
             "substr".to_string(),
-            substr(db, types.bytes, types.int),
+            substr(db, types.bytes, types.int, true),
             false,
         );
+        scope.insert_symbol(
+            "substr_start".to_string(),
+            substr(db, types.bytes, types.int, false),
+            false,
+        );
+        scope.insert_symbol(
+            "g1_map".to_string(),
+            g1_or_g2_map(db, types.atom, types.public_key, false, false),
+            false,
+        );
+        scope.insert_symbol(
+            "g1_map_dst".to_string(),
+            g1_or_g2_map(db, types.atom, types.public_key, true, false),
+            false,
+        );
+        scope.insert_symbol(
+            "g2_map".to_string(),
+            g1_or_g2_map(db, types.atom, types.signature, false, true),
+            false,
+        );
+        scope.insert_symbol(
+            "g2_map_dst".to_string(),
+            g1_or_g2_map(db, types.atom, types.signature, true, true),
+            false,
+        );
+        scope.insert_symbol(
+            "pubkey_for_exp".to_string(),
+            pubkey_for_exp(db, types.bytes, types.public_key),
+            false,
+        );
+        scope.insert_symbol("modpow".to_string(), modpow(db, types.int), false);
 
         let scope = db.alloc_scope(scope);
 
@@ -116,7 +158,47 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId, inline: bool) -> Sy
     }))
 }
 
-fn calculate_coin_id(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: TypeId) -> SymbolId {
+fn keccak256(db: &mut Database, bytes: TypeId, bytes32: TypeId, inline: bool) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new());
+
+    let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: bytes,
+    }));
+
+    db.scope_mut(scope)
+        .insert_symbol("value".to_string(), parameter, false);
+
+    let reference = db.alloc_hir(Hir::Reference(parameter));
+    let body = db.alloc_hir(Hir::Unary(
+        if inline {
+            UnaryOp::Keccak256Inline
+        } else {
+            UnaryOp::Keccak256
+        },
+        reference,
+    ));
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        params: vec![bytes],
+        nil_terminated: true,
+        ret: bytes32,
+    }));
+
+    db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: None,
+        ty,
+        scope,
+        vars: vec![],
+        parameters: vec![parameter],
+        nil_terminated: true,
+        return_type: bytes32,
+        body,
+        inline: true,
+    }))
+}
+
+fn coinid(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: TypeId) -> SymbolId {
     let scope = db.alloc_scope(Scope::new());
 
     let parent = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
@@ -167,7 +249,153 @@ fn calculate_coin_id(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: Typ
     }))
 }
 
-fn substr(db: &mut Database, bytes: TypeId, int: TypeId) -> SymbolId {
+fn modpow(db: &mut Database, int: TypeId) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new());
+
+    let base = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: int,
+    }));
+
+    let exponent = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: int,
+    }));
+
+    let modulus = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: int,
+    }));
+
+    db.scope_mut(scope)
+        .insert_symbol("base".to_string(), base, false);
+
+    db.scope_mut(scope)
+        .insert_symbol("exponent".to_string(), exponent, false);
+
+    db.scope_mut(scope)
+        .insert_symbol("modulus".to_string(), modulus, false);
+
+    let base_ref = db.alloc_hir(Hir::Reference(base));
+    let exponent_ref = db.alloc_hir(Hir::Reference(exponent));
+    let modulus_ref = db.alloc_hir(Hir::Reference(modulus));
+    let body = db.alloc_hir(Hir::Modpow(base_ref, exponent_ref, modulus_ref));
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        params: vec![int, int, int],
+        nil_terminated: true,
+        ret: int,
+    }));
+
+    db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: None,
+        ty,
+        scope,
+        vars: vec![],
+        parameters: vec![base, exponent, modulus],
+        nil_terminated: true,
+        return_type: int,
+        body,
+        inline: true,
+    }))
+}
+
+fn g1_or_g2_map(
+    db: &mut Database,
+    atom: TypeId,
+    ret: TypeId,
+    include_dst: bool,
+    is_g2: bool,
+) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new());
+
+    let data = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: atom,
+    }));
+
+    let dst = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: atom,
+    }));
+
+    db.scope_mut(scope)
+        .insert_symbol("data".to_string(), data, false);
+
+    if include_dst {
+        db.scope_mut(scope)
+            .insert_symbol("dst".to_string(), dst, false);
+    }
+
+    let data_ref = db.alloc_hir(Hir::Reference(data));
+    let dst_ref = db.alloc_hir(Hir::Reference(dst));
+    let body = db.alloc_hir(if is_g2 {
+        Hir::G2Map(data_ref, include_dst.then_some(dst_ref))
+    } else {
+        Hir::G1Map(data_ref, include_dst.then_some(dst_ref))
+    });
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        params: if include_dst {
+            vec![atom, atom]
+        } else {
+            vec![atom]
+        },
+        nil_terminated: true,
+        ret,
+    }));
+
+    db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: None,
+        ty,
+        scope,
+        vars: vec![],
+        parameters: if include_dst {
+            vec![data, dst]
+        } else {
+            vec![data]
+        },
+        nil_terminated: true,
+        return_type: ret,
+        body,
+        inline: true,
+    }))
+}
+
+fn pubkey_for_exp(db: &mut Database, bytes: TypeId, public_key: TypeId) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new());
+
+    let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: bytes,
+    }));
+
+    db.scope_mut(scope)
+        .insert_symbol("secret_key".to_string(), parameter, false);
+
+    let reference = db.alloc_hir(Hir::Reference(parameter));
+    let body = db.alloc_hir(Hir::Unary(UnaryOp::PubkeyForExp, reference));
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        params: vec![bytes],
+        nil_terminated: true,
+        ret: public_key,
+    }));
+
+    db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: None,
+        ty,
+        scope,
+        vars: vec![],
+        parameters: vec![parameter],
+        nil_terminated: true,
+        return_type: public_key,
+        body,
+        inline: true,
+    }))
+}
+
+fn substr(db: &mut Database, bytes: TypeId, int: TypeId, include_to: bool) -> SymbolId {
     let scope = db.alloc_scope(Scope::new());
 
     let input = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
@@ -191,16 +419,26 @@ fn substr(db: &mut Database, bytes: TypeId, int: TypeId) -> SymbolId {
     db.scope_mut(scope)
         .insert_symbol("from".to_string(), from, false);
 
-    db.scope_mut(scope)
-        .insert_symbol("to".to_string(), to, false);
+    if include_to {
+        db.scope_mut(scope)
+            .insert_symbol("to".to_string(), to, false);
+    }
 
     let input_ref = db.alloc_hir(Hir::Reference(input));
     let from_ref = db.alloc_hir(Hir::Reference(from));
     let to_ref = db.alloc_hir(Hir::Reference(to));
-    let body = db.alloc_hir(Hir::Substr(input_ref, from_ref, Some(to_ref)));
+    let body = db.alloc_hir(Hir::Substr(
+        input_ref,
+        from_ref,
+        include_to.then_some(to_ref),
+    ));
 
     let ty = db.alloc_type(Type::Function(FunctionType {
-        params: vec![bytes, int, int],
+        params: if include_to {
+            vec![bytes, int, int]
+        } else {
+            vec![bytes, int]
+        },
         nil_terminated: true,
         ret: bytes,
     }));
@@ -210,7 +448,11 @@ fn substr(db: &mut Database, bytes: TypeId, int: TypeId) -> SymbolId {
         ty,
         scope,
         vars: vec![],
-        parameters: vec![input, from, to],
+        parameters: if include_to {
+            vec![input, from, to]
+        } else {
+            vec![input, from]
+        },
         nil_terminated: true,
         return_type: bytes,
         body,

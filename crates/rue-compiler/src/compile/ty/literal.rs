@@ -48,6 +48,8 @@ pub fn compile_literal_type(ctx: &mut Compiler, literal: &AstLiteralType) -> Typ
                 Atom::new(
                     if bytes.len() == 48 {
                         AtomSemantic::PublicKey
+                    } else if bytes.len() == 96 {
+                        AtomSemantic::Signature
                     } else {
                         AtomSemantic::Bytes
                     },

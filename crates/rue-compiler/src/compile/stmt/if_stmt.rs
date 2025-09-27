@@ -1,5 +1,5 @@
 use log::debug;
-use rue_ast::AstIfStmt;
+use rue_ast::{AstIfStmt, AstNode};
 use rue_hir::Statement;
 use rue_types::TypeId;
 
@@ -11,7 +11,9 @@ pub fn compile_if_stmt(
     expected_type: Option<TypeId>,
 ) -> Statement {
     let condition = if let Some(condition) = stmt.condition() {
-        compile_expr(ctx, &condition, None)
+        let value = compile_expr(ctx, &condition, None);
+        ctx.check_condition(condition.syntax(), value.ty);
+        value
     } else {
         debug!("Unresolved if stmt condition");
         ctx.builtins().unresolved.clone()

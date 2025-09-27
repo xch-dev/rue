@@ -84,7 +84,7 @@ pub enum DiagnosticKind {
     #[error("Cannot use `{0}` operator with `{1}`")]
     IncompatibleUnaryOp(String, String),
 
-    #[error("Expression statements are not allowed, end a block with an expression instead")]
+    #[error("Expression statements are not allowed")]
     InvalidExpressionStatement,
 
     #[error("Let bindings must have a value, since they cannot be reassigned")]
@@ -183,6 +183,12 @@ pub enum DiagnosticKind {
 
     #[error("Unused generic type `{0}`")]
     UnusedGenericType(String),
+
+    #[error("Condition always evaluates to `false`")]
+    AlwaysFalseCondition,
+
+    #[error("Condition always evaluates to `true`")]
+    AlwaysTrueCondition,
 }
 
 impl DiagnosticKind {
@@ -245,7 +251,9 @@ impl DiagnosticKind {
             | Self::UnusedParameter(..)
             | Self::UnusedStruct(..)
             | Self::UnusedTypeAlias(..)
-            | Self::UnusedGenericType(..) => DiagnosticSeverity::Warning,
+            | Self::UnusedGenericType(..)
+            | Self::AlwaysFalseCondition
+            | Self::AlwaysTrueCondition => DiagnosticSeverity::Warning,
         }
     }
 }

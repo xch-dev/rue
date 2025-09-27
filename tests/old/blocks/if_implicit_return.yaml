@@ -1,2 +1,3 @@
 diagnostics:
+- Condition always evaluates to `true` at test:2:8
 - Expected statement block to end in `return` or `raise`, not an expression at test:3:9

@@ -17,6 +17,9 @@ pub enum AtomSemantic {
     #[display("PublicKey")]
     PublicKey,
 
+    #[display("Signature")]
+    Signature,
+
     #[display("Bool")]
     Bool,
 }
@@ -51,6 +54,8 @@ impl Atom {
     pub const BYTES_32: Self = Self::new(AtomSemantic::Bytes, Some(AtomRestriction::Length(32)));
     pub const PUBLIC_KEY: Self =
         Self::new(AtomSemantic::PublicKey, Some(AtomRestriction::Length(48)));
+    pub const SIGNATURE: Self =
+        Self::new(AtomSemantic::Signature, Some(AtomRestriction::Length(96)));
     pub const INT: Self = Self::new(AtomSemantic::Int, None);
 
     pub const fn new(semantic: AtomSemantic, restriction: Option<AtomRestriction>) -> Self {
@@ -68,14 +73,19 @@ impl fmt::Display for Atom {
         let qualifier = match &self.restriction {
             None => None,
             Some(AtomRestriction::Length(length)) => {
-                if self.semantic == AtomSemantic::PublicKey && *length == 48 {
+                if (self.semantic == AtomSemantic::PublicKey && *length == 48)
+                    || (self.semantic == AtomSemantic::Signature && *length == 96)
+                {
                     None
                 } else {
                     Some(format!("{length}"))
                 }
             }
             Some(AtomRestriction::Value(value)) => match self.semantic {
-                AtomSemantic::Any | AtomSemantic::Bytes | AtomSemantic::PublicKey => {
+                AtomSemantic::Any
+                | AtomSemantic::Bytes
+                | AtomSemantic::PublicKey
+                | AtomSemantic::Signature => {
                     if value.is_empty() {
                         return write!(f, "nil");
                     }

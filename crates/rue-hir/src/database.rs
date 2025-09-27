@@ -198,7 +198,7 @@ impl Database {
             }
             Hir::CoinId(parent, puzzle, amount) => {
                 format!(
-                    "calculate_coin_id({}, {}, {})",
+                    "coinid({}, {}, {})",
                     self.debug_hir(*parent),
                     self.debug_hir(*puzzle),
                     self.debug_hir(*amount)
@@ -219,6 +219,36 @@ impl Database {
                         self.debug_hir(*start)
                     )
                 }
+            }
+            Hir::G1Map(data, dst) => {
+                if let Some(dst) = dst {
+                    format!(
+                        "g1_map({}, {})",
+                        self.debug_hir(*data),
+                        self.debug_hir(*dst)
+                    )
+                } else {
+                    format!("g1_map({})", self.debug_hir(*data))
+                }
+            }
+            Hir::G2Map(data, dst) => {
+                if let Some(dst) = dst {
+                    format!(
+                        "g2_map({}, {})",
+                        self.debug_hir(*data),
+                        self.debug_hir(*dst)
+                    )
+                } else {
+                    format!("g2_map({})", self.debug_hir(*data))
+                }
+            }
+            Hir::Modpow(base, exponent, modulus) => {
+                format!(
+                    "modpow({}, {}, {})",
+                    self.debug_hir(*base),
+                    self.debug_hir(*exponent),
+                    self.debug_hir(*modulus)
+                )
             }
         }
     }

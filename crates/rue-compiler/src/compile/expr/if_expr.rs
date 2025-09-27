@@ -12,7 +12,7 @@ pub fn compile_if_expr(
 ) -> Value {
     let condition = if let Some(condition) = expr.condition() {
         let value = compile_expr(ctx, &condition, None);
-        ctx.assign_type(condition.syntax(), value.ty, ctx.builtins().types.bool);
+        ctx.check_condition(condition.syntax(), value.ty);
         value
     } else {
         debug!("Unresolved if condition");

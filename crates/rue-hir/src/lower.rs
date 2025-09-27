@@ -1,6 +1,6 @@
 #![allow(clippy::needless_pass_by_value)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
@@ -9,7 +9,7 @@ use rue_options::CompilerOptions;
 
 use crate::{
     BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, FunctionCall,
-    FunctionSymbol, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
+    FunctionSymbol, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp, Verification,
 };
 
 #[derive(Debug)]
@@ -154,8 +154,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                         self.arena.alloc(Lir::Sub(vec![zero, lir]))
                     }
                     UnaryOp::BitwiseNot => self.arena.alloc(Lir::Lognot(lir)),
+                    UnaryOp::G1Negate => self.arena.alloc(Lir::G1Negate(lir)),
+                    UnaryOp::G2Negate => self.arena.alloc(Lir::G2Negate(lir)),
                     UnaryOp::Sha256 => self.arena.alloc(Lir::Sha256(vec![lir])),
                     UnaryOp::Sha256Inline => self.arena.alloc(Lir::Sha256Inline(vec![lir])),
+                    UnaryOp::Keccak256 => self.arena.alloc(Lir::Keccak256(vec![lir])),
+                    UnaryOp::Keccak256Inline => self.arena.alloc(Lir::Keccak256Inline(vec![lir])),
+                    UnaryOp::PubkeyForExp => self.arena.alloc(Lir::PubkeyForExp(lir)),
                 }
             }
             Hir::Binary(op, left, right) => {
@@ -168,6 +173,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     BinaryOp::Div => self.arena.alloc(Lir::Div(left, right)),
                     BinaryOp::Mod => self.arena.alloc(Lir::Mod(left, right)),
                     BinaryOp::Concat => self.arena.alloc(Lir::Concat(vec![left, right])),
+                    BinaryOp::G1Add => self.arena.alloc(Lir::G1Add(vec![left, right])),
+                    BinaryOp::G1Subtract => self.arena.alloc(Lir::G1Subtract(vec![left, right])),
+                    BinaryOp::G1Multiply => self.arena.alloc(Lir::G1Multiply(left, right)),
+                    BinaryOp::G2Add => self.arena.alloc(Lir::G2Add(vec![left, right])),
+                    BinaryOp::G2Subtract => self.arena.alloc(Lir::G2Subtract(vec![left, right])),
+                    BinaryOp::G2Multiply => self.arena.alloc(Lir::G2Multiply(left, right)),
                     BinaryOp::BitwiseAnd => self.arena.alloc(Lir::Logand(vec![left, right])),
                     BinaryOp::BitwiseOr => self.arena.alloc(Lir::Logior(vec![left, right])),
                     BinaryOp::BitwiseXor => self.arena.alloc(Lir::Logxor(vec![left, right])),
@@ -233,6 +244,22 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let start = self.lower_hir(env, start);
                 let end = end.map(|end| self.lower_hir(env, end));
                 self.arena.alloc(Lir::Substr(hir, start, end))
+            }
+            Hir::G1Map(data, dst) => {
+                let data = self.lower_hir(env, data);
+                let dst = dst.map(|dst| self.lower_hir(env, dst));
+                self.arena.alloc(Lir::G1Map(data, dst))
+            }
+            Hir::G2Map(data, dst) => {
+                let data = self.lower_hir(env, data);
+                let dst = dst.map(|dst| self.lower_hir(env, dst));
+                self.arena.alloc(Lir::G2Map(data, dst))
+            }
+            Hir::Modpow(base, exponent, modulus) => {
+                let base = self.lower_hir(env, base);
+                let exponent = self.lower_hir(env, exponent);
+                let modulus = self.lower_hir(env, modulus);
+                self.arena.alloc(Lir::Modpow(base, exponent, modulus))
             }
         }
     }
@@ -388,13 +415,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             };
         };
 
-        match *stmt {
+        match stmt.clone() {
             Statement::Let(_) => self.lower_let_stmts(env, stmts, body),
             Statement::Return(hir) => self.lower_block(env, vec![], Some(hir)),
             Statement::Assert(condition) => self.lower_assert(env, stmts, condition, body),
             Statement::Expr(hir) => self.lower_block(env, stmts, body.or(Some(hir))),
             Statement::Raise(hir) => self.lower_raise(env, hir),
             Statement::If(condition, then) => self.lower_if(env, stmts, condition, then, body),
+            Statement::Verification(_) => self.lower_verification(env, stmts, body),
         }
     }
 
@@ -476,6 +504,67 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let else_branch = self.lower_block(env, stmts, body);
         self.arena
             .alloc(Lir::If(condition, then_branch, else_branch))
+    }
+
+    fn lower_verification(
+        &mut self,
+        env: &Environment,
+        mut stmts: Vec<Statement>,
+        body: Option<HirId>,
+    ) -> LirId {
+        let mut verifications = Vec::new();
+
+        while let Some(stmt) = stmts.first().cloned()
+            && let Statement::Verification(verification) = stmt
+        {
+            let lir = match verification {
+                Verification::BlsPairingIdentity(args) => Lir::BlsPairingIdentity(
+                    args.into_iter()
+                        .map(|arg| self.lower_hir(env, arg))
+                        .collect(),
+                ),
+                Verification::BlsVerify(value, args) => Lir::BlsVerify(
+                    self.lower_hir(env, value),
+                    args.into_iter()
+                        .map(|arg| self.lower_hir(env, arg))
+                        .collect(),
+                ),
+                Verification::Secp256K1Verify(value, message, signature) => Lir::K1Verify(
+                    self.lower_hir(env, value),
+                    self.lower_hir(env, message),
+                    self.lower_hir(env, signature),
+                ),
+                Verification::Secp256R1Verify(value, message, signature) => Lir::R1Verify(
+                    self.lower_hir(env, value),
+                    self.lower_hir(env, message),
+                    self.lower_hir(env, signature),
+                ),
+            };
+            verifications.push(self.arena.alloc(lir));
+            stmts.remove(0);
+        }
+
+        let expr = self.lower_block(env, stmts, body);
+
+        if verifications.is_empty() {
+            return expr;
+        }
+
+        let nil_count = count_nil_in_env(self.arena, expr);
+
+        if nil_count == 0 {
+            let verifications = if verifications.len() == 1 {
+                verifications[0]
+            } else {
+                self.arena.alloc(Lir::All(verifications))
+            };
+
+            let pair = self.arena.alloc(Lir::Cons(verifications, expr));
+            self.arena.alloc(Lir::Rest(pair))
+        } else {
+            let length = verifications.len();
+            replace_nil_in_env(self.arena, expr, &mut (verifications, nil_count < length))
+        }
     }
 
     fn group_symbols(&mut self, mut symbols: IndexSet<SymbolId>) -> Vec<Vec<SymbolId>> {
@@ -565,6 +654,421 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
                 references <= 1 && self.options.auto_inline
             }
+        }
+    }
+}
+
+fn count_nil_in_env(arena: &Arena<Lir>, id: LirId) -> usize {
+    match arena[id].clone() {
+        Lir::Atom(atom) => usize::from(atom.is_empty()),
+        Lir::Path(_) | Lir::Quote(_) => 0,
+        Lir::Run(_, env) => count_nil_in_env(arena, env),
+        Lir::Curry(_, env) => env.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Closure(_, env) => env.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::First(arg) => count_nil_in_env(arena, arg),
+        Lir::Rest(arg) => count_nil_in_env(arena, arg),
+        Lir::Cons(first, rest) => count_nil_in_env(arena, first) + count_nil_in_env(arena, rest),
+        Lir::Listp(arg, _) => count_nil_in_env(arena, arg),
+        Lir::Add(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Sub(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Mul(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Div(left, right) => count_nil_in_env(arena, left) + count_nil_in_env(arena, right),
+        Lir::Divmod(left, right) => count_nil_in_env(arena, left) + count_nil_in_env(arena, right),
+        Lir::Mod(left, right) => count_nil_in_env(arena, left) + count_nil_in_env(arena, right),
+        Lir::Modpow(base, exponent, modulus) => {
+            count_nil_in_env(arena, base)
+                + count_nil_in_env(arena, exponent)
+                + count_nil_in_env(arena, modulus)
+        }
+        Lir::Eq(left, right) => count_nil_in_env(arena, left) + count_nil_in_env(arena, right),
+        Lir::Gt(left, right) => count_nil_in_env(arena, left) + count_nil_in_env(arena, right),
+        Lir::GtBytes(left, right) => count_nil_in_env(arena, left) + count_nil_in_env(arena, right),
+        Lir::Not(arg) => count_nil_in_env(arena, arg),
+        Lir::All(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Any(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::If(condition, _, _) => count_nil_in_env(arena, condition),
+        Lir::Raise(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Concat(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Strlen(arg) => count_nil_in_env(arena, arg),
+        Lir::Substr(value, from, to) => {
+            count_nil_in_env(arena, value)
+                + count_nil_in_env(arena, from)
+                + to.map_or(0, |to| count_nil_in_env(arena, to))
+        }
+        Lir::Logand(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Logior(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Logxor(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Lognot(arg) => count_nil_in_env(arena, arg),
+        Lir::Ash(value, shift) => count_nil_in_env(arena, value) + count_nil_in_env(arena, shift),
+        Lir::Lsh(value, shift) => count_nil_in_env(arena, value) + count_nil_in_env(arena, shift),
+        Lir::PubkeyForExp(arg) => count_nil_in_env(arena, arg),
+        Lir::G1Add(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::G1Subtract(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::G1Multiply(left, right) => {
+            count_nil_in_env(arena, left) + count_nil_in_env(arena, right)
+        }
+        Lir::G1Negate(arg) => count_nil_in_env(arena, arg),
+        Lir::G1Map(data, dst) => {
+            count_nil_in_env(arena, data) + dst.map_or(0, |dst| count_nil_in_env(arena, dst))
+        }
+        Lir::G2Add(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::G2Subtract(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::G2Multiply(left, right) => {
+            count_nil_in_env(arena, left) + count_nil_in_env(arena, right)
+        }
+        Lir::G2Negate(arg) => count_nil_in_env(arena, arg),
+        Lir::G2Map(data, dst) => {
+            count_nil_in_env(arena, data) + dst.map_or(0, |dst| count_nil_in_env(arena, dst))
+        }
+        Lir::BlsPairingIdentity(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::BlsVerify(value, args) => {
+            count_nil_in_env(arena, value)
+                + args
+                    .iter()
+                    .map(|arg| count_nil_in_env(arena, *arg))
+                    .sum::<usize>()
+        }
+        Lir::Sha256(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Sha256Inline(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Keccak256(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Keccak256Inline(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::CoinId(parent, puzzle, amount) => {
+            count_nil_in_env(arena, parent)
+                + count_nil_in_env(arena, puzzle)
+                + count_nil_in_env(arena, amount)
+        }
+        Lir::K1Verify(public_key, message, signature) => {
+            count_nil_in_env(arena, public_key)
+                + count_nil_in_env(arena, message)
+                + count_nil_in_env(arena, signature)
+        }
+        Lir::R1Verify(public_key, message, signature) => {
+            count_nil_in_env(arena, public_key)
+                + count_nil_in_env(arena, message)
+                + count_nil_in_env(arena, signature)
+        }
+    }
+}
+
+fn replace_nil_in_env(
+    arena: &mut Arena<Lir>,
+    id: LirId,
+    verifications: &mut (Vec<LirId>, bool),
+) -> LirId {
+    if verifications.0.is_empty() {
+        return id;
+    }
+
+    match arena[id].clone() {
+        Lir::Atom(atom) => {
+            if atom.is_empty() {
+                if verifications.1 {
+                    if verifications.0.len() == 1 {
+                        verifications.0.remove(0)
+                    } else {
+                        arena.alloc(Lir::All(mem::take(&mut verifications.0)))
+                    }
+                } else {
+                    verifications.0.remove(0)
+                }
+            } else {
+                id
+            }
+        }
+        Lir::Path(_) | Lir::Quote(_) => id,
+        Lir::Run(callee, env) => {
+            let env = replace_nil_in_env(arena, env, verifications);
+            arena.alloc(Lir::Run(callee, env))
+        }
+        Lir::Curry(callee, env) => {
+            let mut result = Vec::new();
+            for arg in env {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Curry(callee, result))
+        }
+        Lir::Closure(callee, env) => {
+            let mut result = Vec::new();
+            for arg in env {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Closure(callee, result))
+        }
+        Lir::First(arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::First(arg))
+        }
+        Lir::Rest(arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::Rest(arg))
+        }
+        Lir::Cons(first, rest) => {
+            let first = replace_nil_in_env(arena, first, verifications);
+            let rest = replace_nil_in_env(arena, rest, verifications);
+            arena.alloc(Lir::Cons(first, rest))
+        }
+        Lir::Listp(arg, can_be_truthy) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::Listp(arg, can_be_truthy))
+        }
+        Lir::Add(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Add(result))
+        }
+        Lir::Sub(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Sub(result))
+        }
+        Lir::Mul(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Mul(result))
+        }
+        Lir::Div(left, right) => {
+            let left = replace_nil_in_env(arena, left, verifications);
+            let right = replace_nil_in_env(arena, right, verifications);
+            arena.alloc(Lir::Div(left, right))
+        }
+        Lir::Divmod(left, right) => {
+            let left = replace_nil_in_env(arena, left, verifications);
+            let right = replace_nil_in_env(arena, right, verifications);
+            arena.alloc(Lir::Divmod(left, right))
+        }
+        Lir::Mod(left, right) => {
+            let left = replace_nil_in_env(arena, left, verifications);
+            let right = replace_nil_in_env(arena, right, verifications);
+            arena.alloc(Lir::Mod(left, right))
+        }
+        Lir::Modpow(base, exponent, modulus) => {
+            let base = replace_nil_in_env(arena, base, verifications);
+            let exponent = replace_nil_in_env(arena, exponent, verifications);
+            let modulus = replace_nil_in_env(arena, modulus, verifications);
+            arena.alloc(Lir::Modpow(base, exponent, modulus))
+        }
+        Lir::Eq(left, right) => {
+            let left = replace_nil_in_env(arena, left, verifications);
+            let right = replace_nil_in_env(arena, right, verifications);
+            arena.alloc(Lir::Eq(left, right))
+        }
+        Lir::Gt(left, right) => {
+            let left = replace_nil_in_env(arena, left, verifications);
+            let right = replace_nil_in_env(arena, right, verifications);
+            arena.alloc(Lir::Gt(left, right))
+        }
+        Lir::GtBytes(left, right) => {
+            let left = replace_nil_in_env(arena, left, verifications);
+            let right = replace_nil_in_env(arena, right, verifications);
+            arena.alloc(Lir::GtBytes(left, right))
+        }
+        Lir::Not(arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::Not(arg))
+        }
+        Lir::All(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::All(result))
+        }
+        Lir::Any(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Any(result))
+        }
+        Lir::If(condition, then, otherwise) => {
+            let condition = replace_nil_in_env(arena, condition, verifications);
+            arena.alloc(Lir::If(condition, then, otherwise))
+        }
+        Lir::Raise(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Raise(result))
+        }
+        Lir::Concat(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Concat(result))
+        }
+        Lir::Strlen(arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::Strlen(arg))
+        }
+        Lir::Substr(value, from, to) => {
+            let value = replace_nil_in_env(arena, value, verifications);
+            let from = replace_nil_in_env(arena, from, verifications);
+            let to = to.map(|to| replace_nil_in_env(arena, to, verifications));
+            arena.alloc(Lir::Substr(value, from, to))
+        }
+        Lir::Logand(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Logand(result))
+        }
+        Lir::Logior(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Logior(result))
+        }
+        Lir::Logxor(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Logxor(result))
+        }
+        Lir::Lognot(arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::Lognot(arg))
+        }
+        Lir::Ash(value, shift) => {
+            let value = replace_nil_in_env(arena, value, verifications);
+            let shift = replace_nil_in_env(arena, shift, verifications);
+            arena.alloc(Lir::Ash(value, shift))
+        }
+        Lir::Lsh(value, shift) => {
+            let value = replace_nil_in_env(arena, value, verifications);
+            let shift = replace_nil_in_env(arena, shift, verifications);
+            arena.alloc(Lir::Lsh(value, shift))
+        }
+        Lir::PubkeyForExp(arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::PubkeyForExp(arg))
+        }
+        Lir::G1Add(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::G1Add(result))
+        }
+        Lir::G1Subtract(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::G1Subtract(result))
+        }
+        Lir::G1Multiply(left, right) => {
+            let left = replace_nil_in_env(arena, left, verifications);
+            let right = replace_nil_in_env(arena, right, verifications);
+            arena.alloc(Lir::G1Multiply(left, right))
+        }
+        Lir::G1Negate(arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::G1Negate(arg))
+        }
+        Lir::G1Map(data, dst) => {
+            let data = replace_nil_in_env(arena, data, verifications);
+            let dst = dst.map(|dst| replace_nil_in_env(arena, dst, verifications));
+            arena.alloc(Lir::G1Map(data, dst))
+        }
+        Lir::G2Add(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::G2Add(result))
+        }
+        Lir::G2Subtract(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::G2Subtract(result))
+        }
+        Lir::G2Multiply(left, right) => {
+            let left = replace_nil_in_env(arena, left, verifications);
+            let right = replace_nil_in_env(arena, right, verifications);
+            arena.alloc(Lir::G2Multiply(left, right))
+        }
+        Lir::G2Negate(arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::G2Negate(arg))
+        }
+        Lir::G2Map(data, dst) => {
+            let data = replace_nil_in_env(arena, data, verifications);
+            let dst = dst.map(|dst| replace_nil_in_env(arena, dst, verifications));
+            arena.alloc(Lir::G2Map(data, dst))
+        }
+        Lir::BlsPairingIdentity(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::BlsPairingIdentity(result))
+        }
+        Lir::BlsVerify(value, args) => {
+            let value = replace_nil_in_env(arena, value, verifications);
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::BlsVerify(value, result))
+        }
+        Lir::Sha256(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Sha256(result))
+        }
+        Lir::Sha256Inline(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Sha256Inline(result))
+        }
+        Lir::Keccak256(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Keccak256(result))
+        }
+        Lir::Keccak256Inline(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::Keccak256Inline(result))
+        }
+        Lir::CoinId(parent, puzzle, amount) => {
+            let parent = replace_nil_in_env(arena, parent, verifications);
+            let puzzle = replace_nil_in_env(arena, puzzle, verifications);
+            let amount = replace_nil_in_env(arena, amount, verifications);
+            arena.alloc(Lir::CoinId(parent, puzzle, amount))
+        }
+        Lir::K1Verify(public_key, message, signature) => {
+            let public_key = replace_nil_in_env(arena, public_key, verifications);
+            let message = replace_nil_in_env(arena, message, verifications);
+            let signature = replace_nil_in_env(arena, signature, verifications);
+            arena.alloc(Lir::K1Verify(public_key, message, signature))
+        }
+        Lir::R1Verify(public_key, message, signature) => {
+            let public_key = replace_nil_in_env(arena, public_key, verifications);
+            let message = replace_nil_in_env(arena, message, verifications);
+            let signature = replace_nil_in_env(arena, signature, verifications);
+            arena.alloc(Lir::R1Verify(public_key, message, signature))
         }
     }
 }

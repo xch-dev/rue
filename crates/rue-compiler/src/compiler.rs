@@ -227,6 +227,16 @@ impl Compiler {
         Constraint::new(check).with_else(else_id)
     }
 
+    pub fn check_condition(&mut self, node: &impl GetTextRange, ty: TypeId) {
+        if self.is_castable(ty, self.builtins().types.bool_true) {
+            self.diagnostic(node, DiagnosticKind::AlwaysTrueCondition);
+        } else if self.is_castable(ty, self.builtins().types.bool_false) {
+            self.diagnostic(node, DiagnosticKind::AlwaysFalseCondition);
+        } else {
+            self.assign_type(node, ty, self.builtins().types.bool);
+        }
+    }
+
     pub fn infer_type(
         &mut self,
         node: &impl GetTextRange,

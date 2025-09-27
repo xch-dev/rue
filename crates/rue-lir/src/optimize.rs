@@ -229,7 +229,11 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
         }
         Lir::Keccak256(args) => {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
-            opt_keccak256(arena, args)
+            opt_keccak256(arena, args, false)
+        }
+        Lir::Keccak256Inline(args) => {
+            let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
+            opt_keccak256(arena, args, true)
         }
         Lir::CoinId(parent_coin_info, puzzle_hash, amount) => {
             let parent_coin_info = optimize(arena, parent_coin_info);
