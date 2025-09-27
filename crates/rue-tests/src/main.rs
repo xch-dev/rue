@@ -48,7 +48,10 @@ fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let filter_arg = args.get(1).cloned();
 
-    for entry in WalkDir::new("tests") {
+    for entry in WalkDir::new("tests")
+        .into_iter()
+        .chain(WalkDir::new("examples").into_iter())
+    {
         let entry = entry?;
 
         if let Some(name) = entry.file_name().to_str().unwrap().strip_suffix(".rue") {
