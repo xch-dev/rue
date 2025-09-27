@@ -6,8 +6,8 @@ use log::trace;
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, BuiltinTypes, Comparison, ComparisonContext, Pair, Type, TypeId, compare_impl,
-    stringify_impl, substitute,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Pair, Type, TypeId,
+    compare_impl, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -435,12 +435,6 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
             variants
         }
     }
-}
-
-#[derive(Debug, Clone)]
-enum Atoms {
-    Unrestricted,
-    Restricted(IndexSet<AtomRestriction>),
 }
 
 fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Result<Option<Atoms>, CheckError> {

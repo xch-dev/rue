@@ -45,9 +45,9 @@ struct TailInfo {
 // A custom condition `(51 () -113 tail_puzzle tail_solution)`.
 // We can check `CreateCoin` then cast to this type instead.
 struct RunTail {
-    opcode: 51,
-    puzzle_hash: nil,
-    amount: Int,
+    opcode = 51,
+    puzzle_hash = nil,
+    amount = -113,
     tail_puzzle: Tail,
     tail_solution: Any,
 }
