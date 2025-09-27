@@ -1,5 +1,6 @@
 use id_arena::Arena;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
+use num_integer::Integer;
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -231,15 +232,77 @@ pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Mul(result))
 }
 
+// If both values are atoms, we can perform the division (as long as the right value is not zero)
+// If either value is a raise, we can return it directly
 pub fn opt_div(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if matches!(arena[left], Lir::Raise(_)) {
+        return left;
+    }
+
+    if matches!(arena[right], Lir::Raise(_)) {
+        return right;
+    }
+
+    if let Lir::Atom(left) = arena[left].clone()
+        && let Lir::Atom(right) = arena[right].clone()
+        && let left = atom_bigint(left)
+        && let right = atom_bigint(right)
+        && right.sign() != Sign::NoSign
+    {
+        return arena.alloc(Lir::Atom(bigint_atom(left.div_floor(&right))));
+    }
+
     arena.alloc(Lir::Div(left, right))
 }
 
+// If both values are atoms, we can perform the division and remainder (as long as the right value is not zero)
+// If either value is a raise, we can return it directly
 pub fn opt_divmod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if matches!(arena[left], Lir::Raise(_)) {
+        return left;
+    }
+
+    if matches!(arena[right], Lir::Raise(_)) {
+        return right;
+    }
+
+    if let Lir::Atom(left) = arena[left].clone()
+        && let Lir::Atom(right) = arena[right].clone()
+        && let left = atom_bigint(left)
+        && let right = atom_bigint(right)
+        && right.sign() != Sign::NoSign
+    {
+        let (quotient, remainder) = left.div_mod_floor(&right);
+
+        let quotient = arena.alloc(Lir::Atom(bigint_atom(quotient)));
+        let remainder = arena.alloc(Lir::Atom(bigint_atom(remainder)));
+
+        return arena.alloc(Lir::Cons(quotient, remainder));
+    }
+
     arena.alloc(Lir::Divmod(left, right))
 }
 
+// If both values are atoms, we can perform the remainder (as long as the right value is not zero)
+// If either value is a raise, we can return it directly
 pub fn opt_mod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if matches!(arena[left], Lir::Raise(_)) {
+        return left;
+    }
+
+    if matches!(arena[right], Lir::Raise(_)) {
+        return right;
+    }
+
+    if let Lir::Atom(left) = arena[left].clone()
+        && let Lir::Atom(right) = arena[right].clone()
+        && let left = atom_bigint(left)
+        && let right = atom_bigint(right)
+        && right.sign() != Sign::NoSign
+    {
+        return arena.alloc(Lir::Atom(bigint_atom(left.mod_floor(&right))));
+    }
+
     arena.alloc(Lir::Mod(left, right))
 }
 

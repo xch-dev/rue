@@ -1771,6 +1771,7 @@ dependencies = [
  "expect-test",
  "id-arena",
  "num-bigint",
+ "num-integer",
  "sha2 0.10.9",
  "thiserror 2.0.14",
 ]
