@@ -109,7 +109,7 @@ fn main(
     };
 
     // Calculate the inner puzzle hash and conditions.
-    let morph = morph_conditions(inner_puzzle(...inner_solution), cat_info, nil);
+    let morph = morph_conditions(inner_puzzle(...inner_solution), cat_info, ...nil);
     let inner_puzzle_hash = tree_hash(inner_puzzle);
     
     // Calculate coin ids.
@@ -199,14 +199,14 @@ struct Morph {
     sum: Int,
 
     // Information about the TAIL, revealed in the conditions.
-    tail_info: TailInfo | nil,
+    ...tail_info: TailInfo | nil,
 }
 
 // Morph all of the conditions and extract the TAIL info.
 fn morph_conditions(
     conditions: List<CatCondition>,
     cat_info: CatInfo,
-    tail_info: TailInfo | nil,
+    ...tail_info: TailInfo | nil,
 ) -> Morph {
     // If there are no conditions, return an empty morph.
     if conditions is nil {
@@ -220,7 +220,7 @@ fn morph_conditions(
     let condition = conditions.first;
 
     if condition is RunTail {
-        let rest = morph_conditions(conditions.rest, cat_info, TailInfo {
+        let rest = morph_conditions(conditions.rest, cat_info, ...TailInfo {
             tail_puzzle: condition.tail_puzzle,
             tail_solution: condition.tail_solution,
         });
@@ -232,37 +232,33 @@ fn morph_conditions(
         };
     }
 
-    if condition is CreateCoin {
-        // Otherwise, morph the condition by wrapping the puzzle hash in the CAT layer.
+    let morphed = if condition is CreateCoin {
+        // Morph the condition by wrapping the puzzle hash in the CAT layer.
         let morphed = CreateCoin {
             puzzle_hash: cat_puzzle_hash(cat_info, condition.puzzle_hash),
             amount: condition.amount,
             memos: condition.memos,
         };
 
-        let rest = morph_conditions(conditions.rest, cat_info, tail_info);
+        (morphed, condition.amount)
+    } else {
+        // If the condition is a coin announcement,
+        // make sure it's not pretending to be part of the ring.
+        if condition is CreateCoinAnnouncement
+            && condition.message.length == 33
+            && substr(condition.message, 0, 1) == RING_MORPH_BYTE
+        {
+            raise "Created coin announcements must not have the ring morph byte";
+        }
 
-        return Morph {
-            conditions: [morphed, ...rest.conditions],
-            sum: condition.amount + rest.sum,
-            tail_info: rest.tail_info,
-        };
-    }
+        (condition, 0)
+    };
 
-    // If the condition is a coin announcement,
-    // make sure it's not pretending to be part of the ring.
-    if condition is CreateCoinAnnouncement
-        && condition.message.length == 33
-        && substr(condition.message, 0, 1) == RING_MORPH_BYTE
-    {
-        raise "Created coin announcements must not have the ring morph byte";
-    }
-
-    let rest = morph_conditions(conditions.rest, cat_info, tail_info);
+    let rest = morph_conditions(conditions.rest, cat_info, ...tail_info);
 
     Morph {
-        conditions: [condition, ...rest.conditions],
-        sum: rest.sum,
+        conditions: [morphed.first, ...rest.conditions],
+        sum: rest.sum + morphed.rest,
         tail_info: rest.tail_info,
     }
 }

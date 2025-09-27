@@ -13,7 +13,7 @@ pub enum Lir {
     First(LirId),
     Rest(LirId),
     Cons(LirId, LirId),
-    Listp(LirId),
+    Listp(LirId, bool),
     Add(Vec<LirId>),
     Sub(Vec<LirId>),
     Mul(Vec<LirId>),

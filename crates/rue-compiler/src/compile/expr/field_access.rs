@@ -27,7 +27,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
             debug!("Unresolved field access due to unresolved type");
             ctx.builtins().unresolved.clone()
         }
-        Type::Generic(_) | Type::Union(_) | Type::Function(_) | Type::Never => {
+        Type::Generic(_) | Type::Function(_) | Type::Never => {
             debug!("Unresolved field access due to unknown field");
             let type_name = ctx.type_name(expr.ty);
             ctx.diagnostic(
@@ -50,35 +50,61 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
                 ctx.builtins().unresolved.clone()
             }
         }
-        Type::Pair(pair) => match name.text() {
-            "first" => {
-                let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, expr.hir));
-                let mut value = Value::new(hir, pair.first);
-                if let Some(mut reference) = expr.reference {
-                    reference.path.push(TypePath::First);
-                    value = value.with_reference(reference);
+        Type::Pair(_) | Type::Union(_) => {
+            let pairs = rue_types::extract_pairs(ctx.types_mut(), ty, true);
+
+            match name.text() {
+                "first" if !pairs.is_empty() => {
+                    let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, expr.hir));
+
+                    let first = if pairs.len() == 1 {
+                        pairs[0].first
+                    } else {
+                        ctx.alloc_type(Type::Union(Union::new(
+                            pairs.iter().map(|pair| pair.first).collect(),
+                        )))
+                    };
+
+                    let mut value = Value::new(hir, first);
+
+                    if let Some(mut reference) = expr.reference {
+                        reference.path.push(TypePath::First);
+                        value = value.with_reference(reference);
+                    }
+
+                    value
                 }
-                value
-            }
-            "rest" => {
-                let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, expr.hir));
-                let mut value = Value::new(hir, pair.rest);
-                if let Some(mut reference) = expr.reference {
-                    reference.path.push(TypePath::Rest);
-                    value = value.with_reference(reference);
+                "rest" if !pairs.is_empty() => {
+                    let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, expr.hir));
+
+                    let rest = if pairs.len() == 1 {
+                        pairs[0].rest
+                    } else {
+                        ctx.alloc_type(Type::Union(Union::new(
+                            pairs.iter().map(|pair| pair.rest).collect(),
+                        )))
+                    };
+
+                    let mut value = Value::new(hir, rest);
+
+                    if let Some(mut reference) = expr.reference {
+                        reference.path.push(TypePath::Rest);
+                        value = value.with_reference(reference);
+                    }
+
+                    value
                 }
-                value
+                _ => {
+                    debug!("Unresolved field access due to unknown field");
+                    let type_name = ctx.type_name(expr.ty);
+                    ctx.diagnostic(
+                        &name,
+                        DiagnosticKind::UnknownField(name.text().to_string(), type_name),
+                    );
+                    ctx.builtins().unresolved.clone()
+                }
             }
-            _ => {
-                debug!("Unresolved field access due to unknown field");
-                let type_name = ctx.type_name(expr.ty);
-                ctx.diagnostic(
-                    &name,
-                    DiagnosticKind::UnknownField(name.text().to_string(), type_name),
-                );
-                ctx.builtins().unresolved.clone()
-            }
-        },
+        }
         Type::Struct(ty) => {
             let Some(index) = ty.fields.get_index_of(name.text()) else {
                 debug!("Unresolved field access due to unknown field");
@@ -99,7 +125,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
             for i in 0..index {
                 hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, hir));
 
-                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type);
+                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
 
                 if pairs.is_empty() || (pairs.len() > 1 && (i + 1 < index || needs_first)) {
                     debug!("Unresolved field access due to unknown field");
@@ -127,7 +153,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
             if needs_first {
                 hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, hir));
 
-                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type);
+                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
 
                 if pairs.is_empty() {
                     debug!("Unresolved field access due to unknown field");

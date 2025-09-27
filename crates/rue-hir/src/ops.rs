@@ -3,7 +3,7 @@ use derive_more::Display;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum UnaryOp {
     #[display("listp")]
-    Listp,
+    Listp { can_be_truthy: bool },
 
     #[display("first")]
     First,

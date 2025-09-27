@@ -1,0 +1,6 @@
+solution: ()
+diagnostics:
+- Expected 2 arguments, but found 0 at test:3:12
+- Expected 2 arguments, but found 1 at test:4:12
+- Expected 2 arguments, but found 3 at test:5:12
+- Cannot assign `3` to `(Int, nil)`, since they are incompatible at test:6:23

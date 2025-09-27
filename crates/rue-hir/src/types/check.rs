@@ -27,11 +27,13 @@ pub fn generate_check_hir(
                 (None, None) => builtins.true_value.hir,
             }
         }
-        Check::IsAtom => {
-            let listp = db.alloc_hir(Hir::Unary(UnaryOp::Listp, hir));
+        Check::IsAtom { can_be_truthy } => {
+            let listp = db.alloc_hir(Hir::Unary(UnaryOp::Listp { can_be_truthy }, hir));
             db.alloc_hir(Hir::Unary(UnaryOp::Not, listp))
         }
-        Check::IsPair => db.alloc_hir(Hir::Unary(UnaryOp::Listp, hir)),
+        Check::IsPair { can_be_truthy } => {
+            db.alloc_hir(Hir::Unary(UnaryOp::Listp { can_be_truthy }, hir))
+        }
         Check::Atom(AtomRestriction::Length(length)) => {
             let strlen = db.alloc_hir(Hir::Unary(UnaryOp::Strlen, hir));
             let length = db.alloc_hir(Hir::Int(length.into()));

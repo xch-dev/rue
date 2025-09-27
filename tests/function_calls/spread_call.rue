@@ -1,0 +1,14 @@
+fn main() -> Int {
+    let a = add(1, ...2);
+    let b = add(1);
+    let c = add(1, 2);
+    let d = add(1, 2, 3);
+    let e = add(...1, ...2);
+    let f = add(1, 2, ...3);
+    let g = add();
+    a + b + c + d + e + f + g
+}
+
+fn add(a: Int, ...b: Int) -> Int {
+    a + b
+}

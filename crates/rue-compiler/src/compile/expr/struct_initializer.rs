@@ -37,7 +37,7 @@ pub fn compile_struct_initializer_expr(
     let mut current = struct_type.inner;
 
     for field in &struct_type.fields {
-        let pairs = rue_types::extract_pairs(ctx.types_mut(), current);
+        let pairs = rue_types::extract_pairs(ctx.types_mut(), current, false);
 
         if pairs.is_empty() {
             break;

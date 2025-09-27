@@ -15,8 +15,8 @@ use crate::{
 pub enum Check {
     None,
     Impossible,
-    IsAtom,
-    IsPair,
+    IsAtom { can_be_truthy: bool },
+    IsPair { can_be_truthy: bool },
     Pair(Box<Check>, Box<Check>),
     Atom(AtomRestriction),
     And(Vec<Check>),
@@ -33,8 +33,8 @@ impl Check {
                 let rest = rest.simplify();
                 Check::Pair(Box::new(first), Box::new(rest))
             }
-            Check::IsAtom => Check::IsAtom,
-            Check::IsPair => Check::IsPair,
+            Check::IsAtom { can_be_truthy } => Check::IsAtom { can_be_truthy },
+            Check::IsPair { can_be_truthy } => Check::IsPair { can_be_truthy },
             Check::Atom(restriction) => Check::Atom(restriction),
             Check::And(checks) => {
                 let mut flattened = Vec::new();
@@ -62,17 +62,17 @@ impl Check {
                 for check in flattened {
                     match check {
                         Check::None | Check::Impossible | Check::And(_) => unreachable!(),
-                        Check::IsAtom => {
-                            if listp == Some(true) {
+                        Check::IsAtom { can_be_truthy } => {
+                            if matches!(listp, Some(Check::IsPair { .. })) {
                                 return Check::Impossible;
                             }
-                            listp = Some(false);
+                            listp = Some(Check::IsAtom { can_be_truthy });
                         }
-                        Check::IsPair => {
-                            if listp == Some(false) {
+                        Check::IsPair { can_be_truthy } => {
+                            if matches!(listp, Some(Check::IsAtom { .. })) {
                                 return Check::Impossible;
                             }
-                            listp = Some(true);
+                            listp = Some(Check::IsPair { can_be_truthy });
                         }
                         Check::Atom(AtomRestriction::Length(check)) => {
                             if length.is_some_and(|length| length != check) {
@@ -108,10 +108,8 @@ impl Check {
                     (None, None) => {}
                 }
 
-                match listp {
-                    Some(true) => result.insert(0, Check::IsPair),
-                    Some(false) => result.insert(0, Check::IsAtom),
-                    None => {}
+                if let Some(listp) = listp {
+                    result.insert(0, listp);
                 }
 
                 if result.is_empty() {
@@ -211,6 +209,7 @@ fn check_each(
     let mut exceeds_overlap = false;
     let mut unrestricted = false;
     let mut lhs_has_atom = false;
+    let mut can_be_truthy = false;
     let mut error = None;
 
     lhs.retain(|&(_, id)| {
@@ -226,8 +225,30 @@ fn check_each(
             }
         };
 
-        if atoms.is_some() {
+        if let Some(atoms) = &atoms {
             lhs_has_atom = true;
+
+            match atoms {
+                Atoms::Unrestricted => {
+                    can_be_truthy = true;
+                }
+                Atoms::Restricted(restrictions) => {
+                    for restriction in restrictions {
+                        match restriction {
+                            AtomRestriction::Value(value) => {
+                                if !value.is_empty() {
+                                    can_be_truthy = true;
+                                }
+                            }
+                            AtomRestriction::Length(length) => {
+                                if *length > 0 {
+                                    can_be_truthy = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         match (atoms, &target_atoms) {
@@ -376,13 +397,17 @@ fn check_each(
         (None, None) => Check::Impossible,
         (Some(atom), None) => atom,
         (None, Some(pair)) => pair,
-        (Some(atom), Some(Check::Impossible)) => Check::And(vec![Check::IsAtom, atom]),
-        (Some(Check::Impossible), Some(pair)) => Check::And(vec![Check::IsPair, pair]),
-        (Some(atom), Some(Check::None)) => Check::Or(vec![Check::IsPair, atom]),
-        (Some(Check::None), Some(pair)) => Check::Or(vec![Check::IsAtom, pair]),
+        (Some(atom), Some(Check::Impossible)) => {
+            Check::And(vec![Check::IsAtom { can_be_truthy }, atom])
+        }
+        (Some(Check::Impossible), Some(pair)) => {
+            Check::And(vec![Check::IsPair { can_be_truthy }, pair])
+        }
+        (Some(atom), Some(Check::None)) => Check::Or(vec![Check::IsPair { can_be_truthy }, atom]),
+        (Some(Check::None), Some(pair)) => Check::Or(vec![Check::IsAtom { can_be_truthy }, pair]),
         (Some(atom), Some(pair)) => Check::Or(vec![
-            Check::And(vec![Check::IsAtom, atom]),
-            Check::And(vec![Check::IsPair, pair]),
+            Check::And(vec![Check::IsAtom { can_be_truthy }, atom]),
+            Check::And(vec![Check::IsPair { can_be_truthy }, pair]),
         ]),
     };
 
