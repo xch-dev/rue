@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     Lir, LirId, atom_bigint, bigint_atom, first_path,
-    optimize::{ArgList, has_path, has_path_quotable, opt_truthy},
+    optimize::{ArgList, opt_truthy},
     rest_path,
 };
 
@@ -30,7 +30,7 @@ pub fn opt_quote(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
     if let Lir::Quote(value) = arena[callee].clone()
         && let Lir::Path(path) = arena[env].clone()
-        && (path == 1 || !has_path(arena, value))
+        && path == 1
     {
         return value;
     }
@@ -43,7 +43,7 @@ pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
 // We can also skip quoting if the program has no path, since it's not going to rely on the environment
 pub fn opt_curry(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId {
     if let Lir::Quote(value) = arena[callee].clone()
-        && (args.is_empty() || !has_path(arena, value))
+        && args.is_empty()
     {
         return value;
     }
@@ -54,7 +54,7 @@ pub fn opt_curry(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> Lir
 // If there are no captures, we don't need to create a closure
 // We can also skip the closure if the program has no path, since it's not going to rely on the captures
 pub fn opt_closure(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId {
-    if args.is_empty() || !has_path_quotable(arena, callee) {
+    if args.is_empty() {
         return callee;
     }
 
