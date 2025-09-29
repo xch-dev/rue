@@ -203,16 +203,21 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
                 .collect::<Result<Vec<_>>>()?;
             Ok((OP_ANY, args).to_clvm(allocator)?)
         }
-        Lir::If(cond, then_lir, else_lir) => {
+        Lir::If(cond, then_lir, else_lir, inline) => {
             let cond = codegen(arena, allocator, *cond)?;
             let then_ptr = codegen(arena, allocator, *then_lir)?;
             let else_ptr = codegen(arena, allocator, *else_lir)?;
-            Ok(clvm_list!(
-                OP_A,
-                clvm_list!(OP_I, cond, clvm_quote!(then_ptr), clvm_quote!(else_ptr)),
-                1
-            )
-            .to_clvm(allocator)?)
+
+            if *inline {
+                Ok(clvm_list!(OP_I, cond, then_ptr, else_ptr).to_clvm(allocator)?)
+            } else {
+                Ok(clvm_list!(
+                    OP_A,
+                    clvm_list!(OP_I, cond, clvm_quote!(then_ptr), clvm_quote!(else_ptr)),
+                    1
+                )
+                .to_clvm(allocator)?)
+            }
         }
         Lir::Raise(args) => {
             let args = args
@@ -649,7 +654,7 @@ mod tests {
         let cond = arena.alloc(Lir::Atom(vec![0x01]));
         let then = arena.alloc(Lir::Atom(vec![0x02]));
         let else_ = arena.alloc(Lir::Atom(vec![0x03]));
-        let lir = arena.alloc(Lir::If(cond, then, else_));
+        let lir = arena.alloc(Lir::If(cond, then, else_, false));
         check(
             &arena,
             lir,

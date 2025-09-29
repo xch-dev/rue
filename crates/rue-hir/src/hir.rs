@@ -17,7 +17,7 @@ pub enum Hir {
     Reference(SymbolId),
     Block(Block),
     Lambda(SymbolId),
-    If(HirId, HirId, HirId),
+    If(HirId, HirId, HirId, bool),
     FunctionCall(FunctionCall),
     Unary(UnaryOp, HirId),
     Binary(BinaryOp, HirId, HirId),

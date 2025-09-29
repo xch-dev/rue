@@ -1,4 +1,4 @@
-use rue_types::{BuiltinTypes, FunctionType, Pair, Type, TypeId, Union};
+use rue_types::{BuiltinTypes, FunctionType, Generic, Pair, Type, TypeId, Union};
 
 use crate::{
     Database, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId, UnaryOp,
@@ -43,6 +43,13 @@ impl Builtins {
         scope.insert_type("Any".to_string(), types.any, false);
         scope.insert_type("List".to_string(), types.list, false);
 
+        let unchecked_cast_generic = db.alloc_type(Type::Generic(Generic { name: None }));
+
+        scope.insert_symbol(
+            "unchecked_cast".to_string(),
+            unchecked_cast(db, unchecked_cast_generic, types.any),
+            false,
+        );
         scope.insert_symbol(
             "sha256".to_string(),
             sha256(db, types.bytes, types.bytes32, false),
@@ -145,6 +152,38 @@ impl Builtins {
             false_value: Value::new(false_hir, types.bool_false),
         }
     }
+}
+
+fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
+    let scope = db.alloc_scope(Scope::new());
+
+    let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+        name: None,
+        ty: any,
+    }));
+
+    db.scope_mut(scope)
+        .insert_symbol("value".to_string(), parameter, false);
+
+    let reference = db.alloc_hir(Hir::Reference(parameter));
+
+    let ty = db.alloc_type(Type::Function(FunctionType {
+        params: vec![any],
+        nil_terminated: true,
+        ret: generic,
+    }));
+
+    db.alloc_symbol(Symbol::Function(FunctionSymbol {
+        name: None,
+        ty,
+        scope,
+        vars: vec![generic],
+        parameters: vec![parameter],
+        nil_terminated: true,
+        return_type: generic,
+        body: reference,
+        inline: true,
+    }))
 }
 
 fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId, inline: bool) -> SymbolId {

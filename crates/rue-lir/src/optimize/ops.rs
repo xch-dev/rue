@@ -196,6 +196,15 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         return result[0];
     }
 
+    if result.len() == 2
+        && let Lir::Atom(first) = arena[result[0]].clone()
+        && let Lir::Atom(second) = arena[result[1]].clone()
+    {
+        return arena.alloc(Lir::Atom(bigint_atom(
+            atom_bigint(first) - atom_bigint(second),
+        )));
+    }
+
     arena.alloc(Lir::Sub(result))
 }
 
@@ -394,10 +403,25 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 // If the condition is false, we can return the else branch
 // If the condition is a raise, we can return it directly
 // If the condition is a not, we can flip the then and else branches
-pub fn opt_if(arena: &mut Arena<Lir>, condition: LirId, then: LirId, otherwise: LirId) -> LirId {
+pub fn opt_if(
+    arena: &mut Arena<Lir>,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+    inline: bool,
+) -> LirId {
     match opt_truthy(arena, condition) {
-        Ok(true) => then,
-        Ok(false) => otherwise,
+        Ok(true) if !inline => then,
+        Ok(false) if !inline => otherwise,
+        Ok(condition) => {
+            let nil = arena.alloc(Lir::Atom(vec![]));
+
+            if condition {
+                arena.alloc(Lir::If(nil, otherwise, then, inline))
+            } else {
+                arena.alloc(Lir::If(nil, then, otherwise, inline))
+            }
+        }
         Err(condition) => {
             if matches!(arena[condition], Lir::Raise(_)) {
                 return condition;
@@ -410,7 +434,7 @@ pub fn opt_if(arena: &mut Arena<Lir>, condition: LirId, then: LirId, otherwise: 
                 (condition, then, otherwise)
             };
 
-            arena.alloc(Lir::If(condition, then, otherwise))
+            arena.alloc(Lir::If(condition, then, otherwise, inline))
         }
     }
 }

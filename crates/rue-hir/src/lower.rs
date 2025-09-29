@@ -135,11 +135,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Hir::Reference(symbol) => self.lower_symbol(env, symbol, false),
             Hir::Block(block) => self.lower_block(env, block.statements, block.body),
             Hir::Lambda(lambda) => self.lower_symbol(env, lambda, true),
-            Hir::If(condition, then, else_) => {
+            Hir::If(condition, then, else_, inline) => {
                 let condition = self.lower_hir(env, condition);
                 let then = self.lower_hir(env, then);
                 let else_ = self.lower_hir(env, else_);
-                self.arena.alloc(Lir::If(condition, then, else_))
+                self.arena.alloc(Lir::If(condition, then, else_, inline))
             }
             Hir::FunctionCall(call) => self.lower_function_call(env, call),
             Hir::Unary(op, hir) => {
@@ -223,14 +223,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     BinaryOp::And => {
                         let true_atom = self.arena.alloc(Lir::Atom(vec![1]));
                         let false_atom = self.arena.alloc(Lir::Atom(vec![]));
-                        let right = self.arena.alloc(Lir::If(right, true_atom, false_atom));
-                        self.arena.alloc(Lir::If(left, right, false_atom))
+                        let right = self
+                            .arena
+                            .alloc(Lir::If(right, true_atom, false_atom, false));
+                        self.arena.alloc(Lir::If(left, right, false_atom, false))
                     }
                     BinaryOp::Or => {
                         let true_atom = self.arena.alloc(Lir::Atom(vec![1]));
                         let false_atom = self.arena.alloc(Lir::Atom(vec![]));
-                        let right = self.arena.alloc(Lir::If(right, true_atom, false_atom));
-                        self.arena.alloc(Lir::If(left, true_atom, right))
+                        let right = self
+                            .arena
+                            .alloc(Lir::If(right, true_atom, false_atom, false));
+                        self.arena.alloc(Lir::If(left, true_atom, right, false))
                     }
                     BinaryOp::All => self.arena.alloc(Lir::All(vec![left, right])),
                     BinaryOp::Any => self.arena.alloc(Lir::Any(vec![left, right])),
@@ -511,7 +515,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let then_branch = self.lower_block(env, stmts, body);
         let else_branch = self.arena.alloc(Lir::Raise(vec![]));
         self.arena
-            .alloc(Lir::If(condition, then_branch, else_branch))
+            .alloc(Lir::If(condition, then_branch, else_branch, false))
     }
 
     fn lower_raise(&mut self, env: &Environment, hir: HirId) -> LirId {
@@ -532,7 +536,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let then_branch = self.lower_hir(env, then);
         let else_branch = self.lower_block(env, stmts, body);
         self.arena
-            .alloc(Lir::If(condition, then_branch, else_branch))
+            .alloc(Lir::If(condition, then_branch, else_branch, false))
     }
 
     fn lower_expr_stmts(
@@ -716,7 +720,14 @@ fn count_nil_in_env(arena: &Arena<Lir>, id: LirId) -> usize {
         Lir::Not(arg) => count_nil_in_env(arena, arg),
         Lir::All(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
         Lir::Any(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
-        Lir::If(condition, _, _) => count_nil_in_env(arena, condition),
+        Lir::If(condition, then, otherwise, inline) => {
+            let mut result = count_nil_in_env(arena, condition);
+            if inline {
+                result += count_nil_in_env(arena, then);
+                result += count_nil_in_env(arena, otherwise);
+            }
+            result
+        }
         Lir::Raise(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
         Lir::Concat(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
         Lir::Strlen(arg) => count_nil_in_env(arena, arg),
@@ -925,9 +936,19 @@ fn replace_nil_in_env(
             }
             arena.alloc(Lir::Any(result))
         }
-        Lir::If(condition, then, otherwise) => {
+        Lir::If(condition, then, otherwise, inline) => {
             let condition = replace_nil_in_env(arena, condition, verifications);
-            arena.alloc(Lir::If(condition, then, otherwise))
+            let then = if inline {
+                replace_nil_in_env(arena, then, verifications)
+            } else {
+                then
+            };
+            let otherwise = if inline {
+                replace_nil_in_env(arena, otherwise, verifications)
+            } else {
+                otherwise
+            };
+            arena.alloc(Lir::If(condition, then, otherwise, inline))
         }
         Lir::Raise(args) => {
             let mut result = Vec::new();

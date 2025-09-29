@@ -112,7 +112,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
 
             visit_symbol_reference(db, graph, *lambda);
         }
-        Hir::If(condition, then, else_) => {
+        Hir::If(condition, then, else_, _inline) => {
             visit_hir(db, graph, *condition);
             visit_hir(db, graph, *then);
             visit_hir(db, graph, *else_);

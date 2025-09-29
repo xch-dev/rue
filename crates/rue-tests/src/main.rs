@@ -114,19 +114,19 @@ fn main() -> Result<()> {
 
             let response = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, u64::MAX);
 
+            let bytes = node_to_bytes(&allocator, ptr)?.len();
+            test_case.byte_cost = Some(bytes as u64 * 12_000);
+
             match response {
                 Ok(output) => {
                     test_case.output = Some(disassemble(&allocator, output.1, None));
-                    let bytes = node_to_bytes(&allocator, ptr)?.len();
                     test_case.runtime_cost = Some(output.0);
-                    test_case.byte_cost = Some(bytes as u64 * 12_000);
                     test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
                     test_case.clvm_error = None;
                 }
                 Err(error) => {
                     test_case.clvm_error = Some(error.to_string());
                     test_case.runtime_cost = None;
-                    test_case.byte_cost = None;
                     test_case.total_cost = None;
                     test_case.output = None;
                 }
