@@ -11,6 +11,7 @@ pub enum Symbol {
     Unresolved,
     Module(ModuleSymbol),
     Function(FunctionSymbol),
+    VerificationFunction(VerificationFunctionSymbol),
     Parameter(ParameterSymbol),
     Constant(ConstantSymbol),
     Binding(BindingSymbol),
@@ -40,6 +41,14 @@ pub struct FunctionSymbol {
     pub return_type: TypeId,
     pub body: HirId,
     pub inline: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VerificationFunctionSymbol {
+    BlsPairingIdentity,
+    BlsVerify,
+    Secp256K1Verify,
+    Secp256R1Verify,
 }
 
 #[derive(Debug, Clone)]

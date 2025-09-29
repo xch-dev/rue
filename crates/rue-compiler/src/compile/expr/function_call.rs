@@ -7,7 +7,7 @@ use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{FunctionCall, Hir, HirId, Value};
+use rue_hir::{FunctionCall, Hir, HirId, Symbol, Value, VerificationFunctionSymbol};
 use rue_types::{Pair, Type, TypeId, Union, substitute_with_mappings};
 
 use crate::{Compiler, compile_expr};
@@ -19,6 +19,12 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     };
 
     let expr = compile_expr(ctx, &expr, None);
+
+    if let Hir::Reference(symbol) = ctx.hir(expr.hir).clone()
+        && let Symbol::VerificationFunction(verification) = ctx.symbol(symbol).clone()
+    {
+        return compile_verification_function_call(ctx, call, verification);
+    }
 
     let expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty);
 
@@ -221,4 +227,64 @@ fn resolve_call(
     }
 
     (results, mappings)
+}
+
+fn compile_verification_function_call(
+    ctx: &mut Compiler,
+    call: &AstFunctionCallExpr,
+    verification: VerificationFunctionSymbol,
+) -> Value {
+    let mut args = Vec::new();
+
+    for arg in call.args() {
+        if arg.spread().is_some() {
+            ctx.diagnostic(arg.syntax(), DiagnosticKind::InvalidSpread);
+        }
+
+        let Some(expr) = arg.expr() else {
+            continue;
+        };
+
+        let value = compile_expr(ctx, &expr, Some(ctx.builtins().types.atom));
+        ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.atom);
+        args.push(value.hir);
+    }
+
+    let hir = match verification {
+        VerificationFunctionSymbol::BlsPairingIdentity => Hir::BlsPairingIdentity(args),
+        VerificationFunctionSymbol::BlsVerify => {
+            if args.is_empty() {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArgumentsMinimum(1, 0),
+                );
+                return ctx.builtins().unresolved.clone();
+            }
+            Hir::BlsVerify(args[0], args[1..].to_vec())
+        }
+        VerificationFunctionSymbol::Secp256K1Verify => {
+            if args.len() != 3 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArgumentsExact(3, args.len()),
+                );
+                return ctx.builtins().unresolved.clone();
+            }
+            Hir::Secp256K1Verify(args[0], args[1], args[2])
+        }
+        VerificationFunctionSymbol::Secp256R1Verify => {
+            if args.len() != 3 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArgumentsExact(3, args.len()),
+                );
+                return ctx.builtins().unresolved.clone();
+            }
+            Hir::Secp256R1Verify(args[0], args[1], args[2])
+        }
+    };
+
+    let hir = ctx.alloc_hir(hir);
+
+    Value::new(hir, ctx.builtins().types.nil)
 }

@@ -2,7 +2,7 @@ use rue_types::{BuiltinTypes, FunctionType, Pair, Type, TypeId, Union};
 
 use crate::{
     Database, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId, UnaryOp,
-    Value,
+    Value, VerificationFunctionSymbol,
 };
 
 #[derive(Debug, Clone)]
@@ -104,6 +104,35 @@ impl Builtins {
             false,
         );
         scope.insert_symbol("modpow".to_string(), modpow(db, types.int), false);
+
+        scope.insert_symbol(
+            "bls_pairing_identity".to_string(),
+            db.alloc_symbol(Symbol::VerificationFunction(
+                VerificationFunctionSymbol::BlsPairingIdentity,
+            )),
+            false,
+        );
+        scope.insert_symbol(
+            "bls_verify".to_string(),
+            db.alloc_symbol(Symbol::VerificationFunction(
+                VerificationFunctionSymbol::BlsVerify,
+            )),
+            false,
+        );
+        scope.insert_symbol(
+            "secp256k1_verify".to_string(),
+            db.alloc_symbol(Symbol::VerificationFunction(
+                VerificationFunctionSymbol::Secp256K1Verify,
+            )),
+            false,
+        );
+        scope.insert_symbol(
+            "secp256r1_verify".to_string(),
+            db.alloc_symbol(Symbol::VerificationFunction(
+                VerificationFunctionSymbol::Secp256R1Verify,
+            )),
+            false,
+        );
 
         let scope = db.alloc_scope(scope);
 

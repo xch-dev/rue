@@ -74,7 +74,6 @@ ast_nodes!(
     Block,
     LetStmt,
     ExprStmt,
-    VerificationStmt,
     IfStmt,
     ReturnStmt,
     AssertStmt,
@@ -103,14 +102,7 @@ ast_enum!(Item, TypeItem, SymbolItem);
 ast_enum!(TypeItem, TypeAliasItem, StructItem);
 ast_enum!(SymbolItem, ModuleItem, FunctionItem, ConstantItem);
 ast_enum!(
-    Stmt,
-    LetStmt,
-    ExprStmt,
-    VerificationStmt,
-    IfStmt,
-    ReturnStmt,
-    AssertStmt,
-    RaiseStmt
+    Stmt, LetStmt, ExprStmt, IfStmt, ReturnStmt, AssertStmt, RaiseStmt
 );
 ast_enum!(StmtOrExpr, Stmt, Expr);
 ast_enum!(
@@ -385,19 +377,6 @@ impl AstLetStmt {
 impl AstExprStmt {
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
-    }
-}
-
-impl AstVerificationStmt {
-    pub fn builtin(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| SyntaxKind::VERIFICATION_BUILTINS.contains(&token.kind()))
-    }
-
-    pub fn args(&self) -> impl Iterator<Item = AstExpr> {
-        self.syntax().children().filter_map(AstExpr::cast)
     }
 }
 

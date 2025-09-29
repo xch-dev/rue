@@ -29,10 +29,6 @@ pub enum TokenKind {
     Raise,
     Is,
     As,
-    BlsPairingIdentity,
-    BlsVerify,
-    Secp256K1Verify,
-    Secp256R1Verify,
 
     // Grouping
     OpenParen,

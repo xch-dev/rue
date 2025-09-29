@@ -98,7 +98,11 @@ fn main() -> Result<()> {
         }
 
         if let Some(ptr) = result.program {
-            let env = assemble(&mut allocator, test_case.solution.as_ref().unwrap()).unwrap();
+            let env = assemble(
+                &mut allocator,
+                test_case.solution.as_ref().expect("missing solution"),
+            )
+            .expect("failed to assemble env");
 
             test_case.program = Some(disassemble(&allocator, ptr, None));
 

@@ -67,10 +67,6 @@ impl<'a> Lexer<'a> {
             "raise" => TokenKind::Raise,
             "is" => TokenKind::Is,
             "as" => TokenKind::As,
-            "bls_pairing_identity" => TokenKind::BlsPairingIdentity,
-            "bls_verify" => TokenKind::BlsVerify,
-            "secp256k1_verify" => TokenKind::Secp256K1Verify,
-            "secp256r1_verify" => TokenKind::Secp256R1Verify,
             _ => TokenKind::Ident,
         }
     }
@@ -537,34 +533,6 @@ mod tests {
             "as",
             expect![[r#"
                 As
-            "#]],
-        );
-
-        check(
-            "bls_pairing_identity",
-            expect![[r#"
-                BlsPairingIdentity
-            "#]],
-        );
-
-        check(
-            "bls_verify",
-            expect![[r#"
-                BlsVerify
-            "#]],
-        );
-
-        check(
-            "secp256k1_verify",
-            expect![[r#"
-                Secp256K1Verify
-            "#]],
-        );
-
-        check(
-            "secp256r1_verify",
-            expect![[r#"
-                Secp256R1Verify
             "#]],
         );
     }

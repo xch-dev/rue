@@ -84,8 +84,8 @@ pub enum DiagnosticKind {
     #[error("Cannot use `{0}` operator with `{1}`")]
     IncompatibleUnaryOp(String, String),
 
-    #[error("Expression statements are not allowed")]
-    InvalidExpressionStatement,
+    #[error("Value returned by statement is unused")]
+    UnusedStatementValue,
 
     #[error("Let bindings must have a value, since they cannot be reassigned")]
     MissingLetValue,
@@ -215,7 +215,6 @@ impl DiagnosticKind {
             | Self::FunctionTypeCheck
             | Self::IncompatibleBinaryOp(..)
             | Self::IncompatibleUnaryOp(..)
-            | Self::InvalidExpressionStatement
             | Self::MissingLetValue
             | Self::UnexpectedImplicitReturn
             | Self::MissingReturn
@@ -253,7 +252,8 @@ impl DiagnosticKind {
             | Self::UnusedTypeAlias(..)
             | Self::UnusedGenericType(..)
             | Self::AlwaysFalseCondition
-            | Self::AlwaysTrueCondition => DiagnosticSeverity::Warning,
+            | Self::AlwaysTrueCondition
+            | Self::UnusedStatementValue => DiagnosticSeverity::Warning,
         }
     }
 }

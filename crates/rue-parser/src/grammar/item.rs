@@ -52,8 +52,9 @@ fn function_item(p: &mut Parser, cp: Checkpoint) {
         }
     }
     p.expect(T![')']);
-    p.expect(T![->]);
-    ty(p);
+    if p.try_eat(T![->]) {
+        ty(p);
+    }
     block(p);
     p.finish();
 }
