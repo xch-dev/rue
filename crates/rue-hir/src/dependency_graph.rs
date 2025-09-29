@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexSet;
 
-use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId, Verification};
+use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
 
 #[derive(Debug, Default, Clone)]
 pub struct DependencyGraph {
@@ -88,37 +88,16 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
                     Statement::Raise(stmt) => {
                         visit_hir(db, graph, *stmt);
                     }
-                    Statement::If(cond, then) => {
-                        visit_hir(db, graph, *cond);
-                        visit_hir(db, graph, *then);
+                    Statement::If(stmt) => {
+                        visit_hir(db, graph, stmt.condition);
+                        visit_hir(db, graph, stmt.then);
                     }
                     Statement::Return(expr) => {
                         visit_hir(db, graph, *expr);
                     }
-                    Statement::Verification(verification) => match verification {
-                        Verification::BlsPairingIdentity(args) => {
-                            for arg in args {
-                                visit_hir(db, graph, *arg);
-                            }
-                        }
-                        Verification::BlsVerify(sig, args) => {
-                            visit_hir(db, graph, *sig);
-                            for arg in args {
-                                visit_hir(db, graph, *arg);
-                            }
-                        }
-                        Verification::Secp256K1Verify(sig, pk, msg) => {
-                            visit_hir(db, graph, *sig);
-                            visit_hir(db, graph, *pk);
-                            visit_hir(db, graph, *msg);
-                        }
-                        Verification::Secp256R1Verify(sig, pk, msg) => {
-                            visit_hir(db, graph, *sig);
-                            visit_hir(db, graph, *pk);
-                            visit_hir(db, graph, *msg);
-                        }
-                    },
-                    Statement::Expr(_) => {}
+                    Statement::Expr(expr) => {
+                        visit_hir(db, graph, expr.hir);
+                    }
                 }
             }
 
@@ -133,7 +112,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
 
             visit_symbol_reference(db, graph, *lambda);
         }
-        Hir::If(condition, then, else_) => {
+        Hir::If(condition, then, else_, _inline) => {
             visit_hir(db, graph, *condition);
             visit_hir(db, graph, *then);
             visit_hir(db, graph, *else_);
@@ -180,6 +159,27 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
             visit_hir(db, graph, *exponent);
             visit_hir(db, graph, *modulus);
         }
+        Hir::BlsPairingIdentity(args) => {
+            for arg in args {
+                visit_hir(db, graph, *arg);
+            }
+        }
+        Hir::BlsVerify(sig, args) => {
+            visit_hir(db, graph, *sig);
+            for arg in args {
+                visit_hir(db, graph, *arg);
+            }
+        }
+        Hir::Secp256K1Verify(sig, pk, msg) => {
+            visit_hir(db, graph, *sig);
+            visit_hir(db, graph, *pk);
+            visit_hir(db, graph, *msg);
+        }
+        Hir::Secp256R1Verify(sig, pk, msg) => {
+            visit_hir(db, graph, *sig);
+            visit_hir(db, graph, *pk);
+            visit_hir(db, graph, *msg);
+        }
     }
 }
 
@@ -192,7 +192,10 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     graph.stack.insert(symbol);
 
     match db.symbol(symbol) {
-        Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) => {}
+        Symbol::Unresolved
+        | Symbol::Module(_)
+        | Symbol::Parameter(_)
+        | Symbol::VerificationFunction(_) => {}
         Symbol::Function(function) => {
             graph
                 .locals

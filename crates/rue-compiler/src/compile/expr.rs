@@ -50,6 +50,6 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
         AstExpr::FieldAccessExpr(expr) => compile_field_access_expr(ctx, expr),
         AstExpr::LambdaExpr(expr) => compile_lambda_expr(ctx, expr, expected_type),
-        AstExpr::Block(block) => compile_block(ctx, block, true, expected_type),
+        AstExpr::Block(block) => compile_block(ctx, block, true, expected_type, true),
     }
 }

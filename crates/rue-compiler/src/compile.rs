@@ -4,7 +4,6 @@ mod expr;
 mod generics;
 mod item;
 mod path;
-mod stmt;
 mod ty;
 
 pub use block::*;
@@ -13,7 +12,6 @@ pub use expr::*;
 pub use generics::*;
 pub use item::*;
 pub use path::*;
-pub use stmt::*;
 pub use ty::*;
 
 #[cfg(test)]

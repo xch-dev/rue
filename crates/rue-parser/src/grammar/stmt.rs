@@ -22,8 +22,6 @@ pub fn stmt(p: &mut Parser) -> StatementKind {
         assert_stmt(p);
     } else if p.at(T![raise]) {
         raise_stmt(p);
-    } else if let Some(builtin) = p.at_any(SyntaxKind::VERIFICATION_BUILTINS) {
-        verification_stmt(p, builtin);
     } else {
         let cp = p.checkpoint();
         if expr_with(
@@ -82,21 +80,6 @@ fn raise_stmt(p: &mut Parser) {
     p.start(SyntaxKind::RaiseStmt);
     p.expect(T![raise]);
     expr(p);
-    p.expect(T![;]);
-    p.finish();
-}
-
-fn verification_stmt(p: &mut Parser, builtin: SyntaxKind) {
-    p.start(SyntaxKind::VerificationStmt);
-    p.expect(builtin);
-    p.expect(T!['(']);
-    while !p.at(T![')']) {
-        expr(p);
-        if !p.try_eat(T![,]) {
-            break;
-        }
-    }
-    p.expect(T![')']);
     p.expect(T![;]);
     p.finish();
 }

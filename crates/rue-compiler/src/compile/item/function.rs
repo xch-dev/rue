@@ -24,8 +24,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
     let return_type = if let Some(return_type) = function.return_type() {
         compile_type(ctx, &return_type)
     } else {
-        debug!("Unresolved function return type");
-        ctx.builtins().unresolved.ty
+        ctx.builtins().nil.ty
     };
 
     let mut parameters = Vec::new();
@@ -142,7 +141,13 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
 
     let resolved_body = if let Some(body) = function.body() {
         let index = ctx.mapping_checkpoint();
-        let value = compile_block(ctx, &body, true, Some(return_type));
+        let value = compile_block(
+            ctx,
+            &body,
+            true,
+            Some(return_type),
+            function.return_type().is_some(),
+        );
         ctx.assign_type(body.syntax(), value.ty, return_type);
         ctx.revert_mappings(index);
         value

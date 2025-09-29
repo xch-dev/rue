@@ -112,11 +112,11 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
             opt_any(arena, args)
         }
-        Lir::If(condition, then, otherwise) => {
+        Lir::If(condition, then, otherwise, inline) => {
             let condition = optimize(arena, condition);
             let then = optimize(arena, then);
             let otherwise = optimize(arena, otherwise);
-            opt_if(arena, condition, then, otherwise)
+            opt_if(arena, condition, then, otherwise, inline)
         }
         Lir::Raise(args) => {
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();

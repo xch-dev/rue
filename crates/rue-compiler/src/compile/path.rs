@@ -17,7 +17,7 @@ pub enum PathKind {
 #[derive(Debug, Clone, Copy)]
 pub enum PathResult {
     Unresolved,
-    Symbol(SymbolId),
+    Symbol(SymbolId, Option<TypeId>),
     Type(TypeId),
 }
 
@@ -48,7 +48,7 @@ pub fn compile_path(
         };
 
         let (symbol, ty) = if let Some(value) = value {
-            if let PathResult::Symbol(symbol) = value
+            if let PathResult::Symbol(symbol, _) = value
                 && let Symbol::Module(module) = ctx.symbol(symbol)
             {
                 let scope = ctx.scope(module.scope);
@@ -74,10 +74,10 @@ pub fn compile_path(
 
         let initial = match (symbol, ty) {
             (Some((symbol, _)), Some((ty, _))) => match kind {
-                PathKind::Symbol => PathResult::Symbol(symbol),
+                PathKind::Symbol => PathResult::Symbol(symbol, None),
                 PathKind::Type => PathResult::Type(ty),
             },
-            (Some((symbol, _)), None) => PathResult::Symbol(symbol),
+            (Some((symbol, _)), None) => PathResult::Symbol(symbol, None),
             (None, Some((ty, _))) => PathResult::Type(ty),
             (None, None) => {
                 match kind {
@@ -94,7 +94,7 @@ pub fn compile_path(
             }
         };
 
-        if matches!(initial, PathResult::Symbol(_))
+        if matches!(initial, PathResult::Symbol(_, _))
             && let Some((_, is_exported)) = symbol
             && !is_exported
         {
@@ -122,19 +122,45 @@ pub fn compile_path(
 
         match initial {
             PathResult::Unresolved => return PathResult::Unresolved,
-            PathResult::Symbol(symbol) => {
+            PathResult::Symbol(symbol, mut override_type) => {
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
                     compile_generic_arguments(ctx, &generic_arguments)
                 } else {
                     vec![]
                 };
 
+                let ty = ctx.symbol_type(symbol);
+
                 if !args.is_empty() {
-                    ctx.diagnostic(&name, DiagnosticKind::GenericArgumentsOnSymbolReference);
-                    return PathResult::Unresolved;
+                    if let Symbol::Function(function) = ctx.symbol(symbol).clone() {
+                        if function.vars.len() != args.len() {
+                            ctx.diagnostic(
+                                &name,
+                                DiagnosticKind::ExpectedGenericArguments(
+                                    function.vars.len(),
+                                    args.len(),
+                                ),
+                            );
+                        }
+
+                        let mut map = HashMap::new();
+
+                        for (i, arg) in args.iter().enumerate() {
+                            if i >= function.vars.len() {
+                                break;
+                            }
+
+                            map.insert(function.vars[i], *arg);
+                        }
+
+                        override_type = Some(ctx.alloc_type(Type::Apply(Apply::new(ty, map))));
+                    } else {
+                        ctx.diagnostic(&name, DiagnosticKind::GenericArgumentsOnSymbolReference);
+                        return PathResult::Unresolved;
+                    }
                 }
 
-                value = Some(PathResult::Symbol(symbol));
+                value = Some(PathResult::Symbol(symbol, override_type));
             }
             PathResult::Type(mut ty) => {
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
@@ -189,7 +215,7 @@ pub fn compile_path(
     let value = value.unwrap_or(PathResult::Unresolved);
 
     match (value, kind) {
-        (PathResult::Symbol(_), PathKind::Type) => {
+        (PathResult::Symbol(_, _), PathKind::Type) => {
             ctx.diagnostic(range, DiagnosticKind::ExpectedType(previous_name.unwrap()));
             PathResult::Unresolved
         }

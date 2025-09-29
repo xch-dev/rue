@@ -15,6 +15,7 @@ pub struct BuiltinTypes {
     pub bool_false: TypeId,
     pub bool: TypeId,
     pub nil: TypeId,
+    pub never: TypeId,
     pub any: TypeId,
     pub any_pair: TypeId,
     pub list: TypeId,
@@ -34,6 +35,7 @@ impl BuiltinTypes {
         let bool_true = arena.alloc(Type::Atom(Atom::TRUE));
         let bool_false = arena.alloc(Type::Atom(Atom::FALSE));
         let bool = arena.alloc(Type::Union(Union::new(vec![bool_true, bool_false])));
+        let never = arena.alloc(Type::Never);
         let nil = arena.alloc(Type::Atom(Atom::NIL));
 
         let any = arena.alloc(Type::Unresolved);
@@ -62,6 +64,7 @@ impl BuiltinTypes {
             bool_false,
             bool,
             nil,
+            never,
             any,
             any_pair,
             list,

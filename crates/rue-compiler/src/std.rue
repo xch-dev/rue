@@ -1,58 +1,94 @@
+export inline const REMARK: 1 = 1;
+export inline const AGG_SIG_PARENT: 43 = 43;
+export inline const AGG_SIG_PUZZLE: 44 = 44;
+export inline const AGG_SIG_AMOUNT: 45 = 45;
+export inline const AGG_SIG_PUZZLE_AMOUNT: 46 = 46;
+export inline const AGG_SIG_PARENT_AMOUNT: 47 = 47;
+export inline const AGG_SIG_PARENT_PUZZLE: 48 = 48;
+export inline const AGG_SIG_UNSAFE: 49 = 49;
+export inline const AGG_SIG_ME: 50 = 50;
+export inline const CREATE_COIN: 51 = 51;
+export inline const RESERVE_FEE: 52 = 52;
+export inline const CREATE_COIN_ANNOUNCEMENT: 60 = 60;
+export inline const ASSERT_COIN_ANNOUNCEMENT: 61 = 61;
+export inline const CREATE_PUZZLE_ANNOUNCEMENT: 62 = 62;
+export inline const ASSERT_PUZZLE_ANNOUNCEMENT: 63 = 63;
+export inline const ASSERT_CONCURRENT_SPEND: 64 = 64;
+export inline const ASSERT_CONCURRENT_PUZZLE: 65 = 65;
+export inline const SEND_MESSAGE: 66 = 66;
+export inline const RECEIVE_MESSAGE: 67 = 67;
+export inline const ASSERT_MY_COIN_ID: 70 = 70;
+export inline const ASSERT_MY_PARENT_ID: 71 = 71;
+export inline const ASSERT_MY_PUZZLE_HASH: 72 = 72;
+export inline const ASSERT_MY_AMOUNT: 73 = 73;
+export inline const ASSERT_MY_BIRTH_SECONDS: 74 = 74;
+export inline const ASSERT_MY_BIRTH_HEIGHT: 75 = 75;
+export inline const ASSERT_EPHEMERAL: 76 = 76;
+export inline const ASSERT_SECONDS_RELATIVE: 80 = 80;
+export inline const ASSERT_SECONDS_ABSOLUTE: 81 = 81;
+export inline const ASSERT_HEIGHT_RELATIVE: 82 = 82;
+export inline const ASSERT_HEIGHT_ABSOLUTE: 83 = 83;
+export inline const ASSERT_BEFORE_SECONDS_RELATIVE: 84 = 84;
+export inline const ASSERT_BEFORE_SECONDS_ABSOLUTE: 85 = 85;
+export inline const ASSERT_BEFORE_HEIGHT_RELATIVE: 86 = 86;
+export inline const ASSERT_BEFORE_HEIGHT_ABSOLUTE: 87 = 87;
+export inline const SOFTFORK: 90 = 90;
+
 export struct Remark {
-    opcode = 1,
+    opcode = REMARK,
     ...rest: Any,
 }
 
 export struct AggSigParent {
-    opcode = 43,
+    opcode = AGG_SIG_PARENT,
     public_key: PublicKey,
     message: Bytes,
 }
 
 export struct AggSigPuzzle {
-    opcode = 44,
+    opcode = AGG_SIG_PUZZLE,
     public_key: PublicKey,
     message: Bytes,
 }
 
 export struct AggSigAmount {
-    opcode = 45,
+    opcode = AGG_SIG_AMOUNT,
     public_key: PublicKey,
     message: Bytes,
 }
 
 export struct AggSigPuzzleAmount {
-    opcode = 46,
+    opcode = AGG_SIG_PUZZLE_AMOUNT,
     public_key: PublicKey,
     message: Bytes,
 }
 
 export struct AggSigParentAmount {
-    opcode = 47,
+    opcode = AGG_SIG_PARENT_AMOUNT,
     public_key: PublicKey,
     message: Bytes,
 }
 
 export struct AggSigParentPuzzle {
-    opcode = 48,
+    opcode = AGG_SIG_PARENT_PUZZLE,
     public_key: PublicKey,
     message: Bytes,
 }
 
 export struct AggSigUnsafe {
-    opcode = 49,
+    opcode = AGG_SIG_UNSAFE,
     public_key: PublicKey,
     message: Bytes,
 }
 
 export struct AggSigMe {
-    opcode = 50,
+    opcode = AGG_SIG_ME,
     public_key: PublicKey,
     message: Bytes,
 }
 
 export struct CreateCoin {
-    opcode = 51,
+    opcode = CREATE_COIN,
     puzzle_hash: Bytes32,
     amount: Int,
     ...memos: Memos | nil = nil,
@@ -63,130 +99,130 @@ export struct Memos {
 }
 
 export struct ReserveFee {
-    opcode = 52,
+    opcode = RESERVE_FEE,
     amount: Int,
 }
 
 export struct CreateCoinAnnouncement {
-    opcode = 60,
+    opcode = CREATE_COIN_ANNOUNCEMENT,
     message: Bytes,
 }
 
 export struct AssertCoinAnnouncement {
-    opcode = 61,
+    opcode = ASSERT_COIN_ANNOUNCEMENT,
     id: Bytes32,
 }
 
 export struct CreatePuzzleAnnouncement {
-    opcode = 62,
+    opcode = CREATE_PUZZLE_ANNOUNCEMENT,
     message: Bytes,
 }
 
 export struct AssertPuzzleAnnouncement {
-    opcode = 63,
+    opcode = ASSERT_PUZZLE_ANNOUNCEMENT,
     id: Bytes32,
 }
 
 export struct AssertConcurrentSpend {
-    opcode = 64,
+    opcode = ASSERT_CONCURRENT_SPEND,
     coin_id: Bytes32,
 }
 
 export struct AssertConcurrentPuzzle {
-    opcode = 65,
+    opcode = ASSERT_CONCURRENT_PUZZLE,
     puzzle_hash: Bytes32,
 }
 
 export struct SendMessage {
-    opcode = 66,
+    opcode = SEND_MESSAGE,
     mode: Int,
     message: Bytes,
     ...receiver: List<Bytes | Int>,
 }
 
 export struct ReceiveMessage {
-    opcode = 67,
+    opcode = RECEIVE_MESSAGE,
     mode: Int,
     message: Bytes,
     ...sender: List<Bytes | Int>,
 }
 
 export struct AssertMyCoinId {
-    opcode = 70,
+    opcode = ASSERT_MY_COIN_ID,
     coin_id: Bytes32,
 }
 
 export struct AssertMyParentId {
-    opcode = 71,
+    opcode = ASSERT_MY_PARENT_ID,
     parent_id: Bytes32,
 }
 
 export struct AssertMyPuzzleHash {
-    opcode = 72,
+    opcode = ASSERT_MY_PUZZLE_HASH,
     puzzle_hash: Bytes32,
 }
 
 export struct AssertMyAmount {
-    opcode = 73,
+    opcode = ASSERT_MY_AMOUNT,
     amount: Int,
 }
 
 export struct AssertMyBirthSeconds {
-    opcode = 74,
+    opcode = ASSERT_MY_BIRTH_SECONDS,
     seconds: Int,
 }
 
 export struct AssertMyBirthHeight {
-    opcode = 75,
+    opcode = ASSERT_MY_BIRTH_HEIGHT,
     height: Int,
 }
 
 export struct AssertEphemeral {
-    opcode = 76,
+    opcode = ASSERT_EPHEMERAL,
 }
 
 export struct AssertSecondsRelative {
-    opcode = 80,
+    opcode = ASSERT_SECONDS_RELATIVE,
     seconds: Int,
 }
 
 export struct AssertSecondsAbsolute {
-    opcode = 81,
+    opcode = ASSERT_SECONDS_ABSOLUTE,
     seconds: Int,
 }
 
 export struct AssertHeightRelative {
-    opcode = 82,
+    opcode = ASSERT_HEIGHT_RELATIVE,
     height: Int,
 }
 
 export struct AssertHeightAbsolute {
-    opcode = 83,
+    opcode = ASSERT_HEIGHT_ABSOLUTE,
     height: Int,
 }
 
 export struct AssertBeforeSecondsRelative {
-    opcode = 84,
+    opcode = ASSERT_BEFORE_SECONDS_RELATIVE,
     seconds: Int,
 }
 
 export struct AssertBeforeSecondsAbsolute {
-    opcode = 85,
+    opcode = ASSERT_BEFORE_SECONDS_ABSOLUTE,
     seconds: Int,
 }
 
 export struct AssertBeforeHeightRelative {
-    opcode = 86,
+    opcode = ASSERT_BEFORE_HEIGHT_RELATIVE,
     height: Int,
 }
 
 export struct AssertBeforeHeightAbsolute {
-    opcode = 87,
+    opcode = ASSERT_BEFORE_HEIGHT_ABSOLUTE,
     height: Int,
 }
 
 export struct Softfork {
-    opcode = 90,
+    opcode = SOFTFORK,
     cost: Int,
     ...args: List<Any>,
 }

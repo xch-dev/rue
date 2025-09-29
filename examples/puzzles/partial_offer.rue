@@ -1,0 +1,88 @@
+// This puzzle has not been audited or tested, and is for example purposes only.
+
+struct Precisions {
+    price_precision: Int,
+    ...precision: Int,
+}
+
+struct CoinProof {
+    parent_coin_id: Bytes32,
+    inner_puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+struct CreateCoinRest {
+    puzzle_hash: Bytes32,
+    amount: Int,
+    ...memos: Memos | nil,
+}
+
+type CatMaker = fn(inner_puzzle_hash: Bytes32, ...inner_solution: Any) -> Bytes32;
+
+fn main(
+    cat_maker: CatMaker,
+    other_asset_offer_mod: Bytes32,
+    receiver_puzzle_hash: Bytes32,
+    inner_puzzle: fn(...inner_solution: Any) -> List<Condition>,
+    min_other_asset_amount_minus_one: Int,
+    precisions: Precisions,
+    proof: CoinProof,
+    other_asset_amount: Int,
+    create_coin_rest: CreateCoinRest | nil,
+    cat_maker_solution: Any,
+    ...inner_puzzle_solution: Any,
+) -> List<Condition> {
+    let assert_puzzle_announcement = AssertPuzzleAnnouncement {
+        id: sha256(other_asset_offer_mod + tree_hash([
+            proof.parent_coin_id,
+            [
+                receiver_puzzle_hash,
+                if other_asset_amount > min_other_asset_amount_minus_one {
+                    other_asset_amount
+                } else {
+                    raise "Other asset amount is too small";
+                },
+                [receiver_puzzle_hash],
+            ]
+        ])),
+    };
+
+    let assert_my_coin_id = AssertMyCoinId {
+        coin_id: coinid(
+            proof.parent_coin_id,
+            cat_maker(proof.inner_puzzle_hash, ...cat_maker_solution),
+            proof.amount,
+        ),
+    };
+
+    let new_amount = proof.amount - other_asset_amount * precisions.price_precision / precisions.precision;
+
+    let recreate = inline if new_amount > 0 {
+        CreateCoin {
+            puzzle_hash: proof.inner_puzzle_hash,
+            amount: new_amount,
+            memos: Memos {
+                value: [proof.inner_puzzle_hash],
+            },
+        }
+    } else {
+        Remark {
+            rest: nil,
+        }
+    };
+
+    let inner_conditions = inner_puzzle(...inner_puzzle_solution);
+
+    let rest = inline if !(create_coin_rest is nil) && create_coin_rest.amount > -1 {
+        [unchecked_cast::<CreateCoin>((CREATE_COIN, create_coin_rest) as Any), ...inner_conditions]
+    } else {
+        inner_conditions
+    };
+
+    [
+        assert_puzzle_announcement,
+        assert_my_coin_id,
+        recreate,
+        ...rest,
+    ]
+}

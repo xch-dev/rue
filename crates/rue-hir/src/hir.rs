@@ -17,7 +17,7 @@ pub enum Hir {
     Reference(SymbolId),
     Block(Block),
     Lambda(SymbolId),
-    If(HirId, HirId, HirId),
+    If(HirId, HirId, HirId, bool),
     FunctionCall(FunctionCall),
     Unary(UnaryOp, HirId),
     Binary(BinaryOp, HirId, HirId),
@@ -26,6 +26,10 @@ pub enum Hir {
     G1Map(HirId, Option<HirId>),
     G2Map(HirId, Option<HirId>),
     Modpow(HirId, HirId, HirId),
+    BlsPairingIdentity(Vec<HirId>),
+    BlsVerify(HirId, Vec<HirId>),
+    Secp256K1Verify(HirId, HirId, HirId),
+    Secp256R1Verify(HirId, HirId, HirId),
 }
 
 #[derive(Debug, Clone)]
@@ -34,23 +38,27 @@ pub struct Block {
     pub body: Option<HirId>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Statement {
-    Expr(HirId),
+    Expr(ExprStatement),
     Let(SymbolId),
-    If(HirId, HirId),
+    If(IfStatement),
     Return(HirId),
     Assert(HirId),
     Raise(HirId),
-    Verification(Verification),
 }
 
-#[derive(Debug, Clone)]
-pub enum Verification {
-    BlsPairingIdentity(Vec<HirId>),
-    BlsVerify(HirId, Vec<HirId>),
-    Secp256K1Verify(HirId, HirId, HirId),
-    Secp256R1Verify(HirId, HirId, HirId),
+#[derive(Debug, Clone, Copy)]
+pub struct ExprStatement {
+    pub hir: HirId,
+    pub always_nil: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IfStatement {
+    pub condition: HirId,
+    pub then: HirId,
+    pub inline: bool,
 }
 
 #[derive(Debug, Clone)]

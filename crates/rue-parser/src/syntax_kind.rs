@@ -83,18 +83,6 @@ pub enum SyntaxKind {
     #[display("`as`")]
     As,
 
-    #[display("`bls_pairing_identity`")]
-    BlsPairingIdentity,
-
-    #[display("`bls_verify`")]
-    BlsVerify,
-
-    #[display("`secp256k1_verify`")]
-    Secp256K1Verify,
-
-    #[display("`secp256r1_verify`")]
-    Secp256R1Verify,
-
     // Grouping
     #[display("`(`")]
     OpenParen,
@@ -267,9 +255,6 @@ pub enum SyntaxKind {
     #[display("expression statement")]
     ExprStmt,
 
-    #[display("verification statement")]
-    VerificationStmt,
-
     #[display("if statement")]
     IfStmt,
 
@@ -364,10 +349,6 @@ macro_rules! T {
     [raise] => { $crate::SyntaxKind::Raise };
     [is] => { $crate::SyntaxKind::Is };
     [as] => { $crate::SyntaxKind::As };
-    [bls_pairing_identity] => { $crate::SyntaxKind::BlsPairingIdentity };
-    [bls_verify] => { $crate::SyntaxKind::BlsVerify };
-    [secp256k1_verify] => { $crate::SyntaxKind::Secp256K1Verify };
-    [secp256r1_verify] => { $crate::SyntaxKind::Secp256R1Verify };
     ['('] => { $crate::SyntaxKind::OpenParen };
     [')'] => { $crate::SyntaxKind::CloseParen };
     ['{'] => { $crate::SyntaxKind::OpenBrace };
@@ -435,12 +416,6 @@ impl SyntaxKind {
         T![<<],
         T![>>],
     ];
-    pub const VERIFICATION_BUILTINS: &[Self] = &[
-        T![bls_pairing_identity],
-        T![bls_verify],
-        T![secp256k1_verify],
-        T![secp256r1_verify],
-    ];
 
     pub fn is_trivia(&self) -> bool {
         matches!(
@@ -476,10 +451,6 @@ impl SyntaxKind {
             T![raise] => &[T![raise]],
             T![is] => &[T![is]],
             T![as] => &[T![as]],
-            T![bls_pairing_identity] => &[T![bls_pairing_identity]],
-            T![bls_verify] => &[T![bls_verify]],
-            T![secp256k1_verify] => &[T![secp256k1_verify]],
-            T![secp256r1_verify] => &[T![secp256r1_verify]],
             T!['('] => &[T!['(']],
             T![')'] => &[T![')']],
             T!['{'] => &[T!['{']],
@@ -535,7 +506,6 @@ impl SyntaxKind {
             SyntaxKind::Block => &[SyntaxKind::Block],
             SyntaxKind::LetStmt => &[SyntaxKind::LetStmt],
             SyntaxKind::ExprStmt => &[SyntaxKind::ExprStmt],
-            SyntaxKind::VerificationStmt => &[SyntaxKind::VerificationStmt],
             SyntaxKind::IfStmt => &[SyntaxKind::IfStmt],
             SyntaxKind::ReturnStmt => &[SyntaxKind::ReturnStmt],
             SyntaxKind::AssertStmt => &[SyntaxKind::AssertStmt],

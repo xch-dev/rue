@@ -1,2 +1,9 @@
+program: (r (c (q . 13) (q . 42)))
+debug_program: (r (c (q . 13) (q . 42)))
+solution: ()
+output: '42'
+runtime_cost: 122
+byte_cost: 180000
+total_cost: 180122
 diagnostics:
-- Expression statements are not allowed at test:2:5
+- Value returned by statement is unused at test:2:5

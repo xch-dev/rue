@@ -2,7 +2,7 @@ use clvm_traits::{ToClvm, clvm_list, clvm_quote, clvm_tuple};
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 
-use crate::{Lir, LirId, Result};
+use crate::{Lir, LirId, Result, bigint_atom};
 
 const OP_Q: u8 = 1;
 const OP_A: u8 = 2;
@@ -66,7 +66,13 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let arg = codegen(arena, allocator, *arg)?;
             Ok(clvm_quote!(arg).to_clvm(allocator)?)
         }
-        Lir::Path(path) => Ok(allocator.new_number((*path).into())?),
+        Lir::Path(path) => {
+            let mut atom = bigint_atom((*path).into());
+            while !atom.is_empty() && atom[0] == 0 {
+                atom = atom[1..].to_vec();
+            }
+            Ok(allocator.new_atom(&atom)?)
+        }
         Lir::Run(callee, env) => {
             let callee = codegen(arena, allocator, *callee)?;
             let env = codegen(arena, allocator, *env)?;
@@ -203,16 +209,21 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
                 .collect::<Result<Vec<_>>>()?;
             Ok((OP_ANY, args).to_clvm(allocator)?)
         }
-        Lir::If(cond, then_lir, else_lir) => {
+        Lir::If(cond, then_lir, else_lir, inline) => {
             let cond = codegen(arena, allocator, *cond)?;
             let then_ptr = codegen(arena, allocator, *then_lir)?;
             let else_ptr = codegen(arena, allocator, *else_lir)?;
-            Ok(clvm_list!(
-                OP_A,
-                clvm_list!(OP_I, cond, clvm_quote!(then_ptr), clvm_quote!(else_ptr)),
-                1
-            )
-            .to_clvm(allocator)?)
+
+            if *inline {
+                Ok(clvm_list!(OP_I, cond, then_ptr, else_ptr).to_clvm(allocator)?)
+            } else {
+                Ok(clvm_list!(
+                    OP_A,
+                    clvm_list!(OP_I, cond, clvm_quote!(then_ptr), clvm_quote!(else_ptr)),
+                    1
+                )
+                .to_clvm(allocator)?)
+            }
         }
         Lir::Raise(args) => {
             let args = args
@@ -649,7 +660,7 @@ mod tests {
         let cond = arena.alloc(Lir::Atom(vec![0x01]));
         let then = arena.alloc(Lir::Atom(vec![0x02]));
         let else_ = arena.alloc(Lir::Atom(vec![0x03]));
-        let lir = arena.alloc(Lir::If(cond, then, else_));
+        let lir = arena.alloc(Lir::If(cond, then, else_, false));
         check(
             &arena,
             lir,

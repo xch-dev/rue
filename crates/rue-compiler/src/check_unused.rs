@@ -80,7 +80,7 @@ pub fn check_unused(ctx: &mut Compiler, graph: &DependencyGraph, main: SymbolId)
         }
 
         match ctx.symbol(symbol).clone() {
-            Symbol::Unresolved | Symbol::Module(_) => {}
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::VerificationFunction(_) => {}
             Symbol::Function(FunctionSymbol { name, .. }) => {
                 if let Some(name) = name {
                     ctx.diagnostic(

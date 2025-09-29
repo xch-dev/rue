@@ -97,7 +97,7 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
         p.finish();
     } else if p.at(T!['{']) {
         block(p);
-    } else if p.at(T![if]) {
+    } else if p.at(T![if]) || p.at(T![inline]) {
         if if_expr(p, checkpoint, options.allow_statement) {
             return true;
         }
@@ -226,6 +226,7 @@ fn path_expr_segment(p: &mut Parser, first: bool, separated: bool) -> bool {
 }
 
 fn if_expr(p: &mut Parser, checkpoint: Checkpoint, allow_statement: bool) -> bool {
+    p.try_eat(T![inline]);
     p.expect(T![if]);
     expr_with(
         p,

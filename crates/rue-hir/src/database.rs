@@ -125,6 +125,7 @@ impl Database {
             Symbol::Function(function) => {
                 function.name.as_ref().map(|name| name.text().to_string())
             }
+            Symbol::VerificationFunction(function) => Some(format!("{function:?}")),
             Symbol::Parameter(parameter) => {
                 parameter.name.as_ref().map(|name| name.text().to_string())
             }
@@ -163,8 +164,9 @@ impl Database {
                 .body
                 .map_or("{empty}".to_string(), |body| self.debug_hir(body)),
             Hir::Lambda(lambda) => self.debug_symbol(*lambda),
-            Hir::If(condition, then, else_) => format!(
-                "if {} {{ {} }} else {{ {} }}",
+            Hir::If(condition, then, else_, inline) => format!(
+                "{}if {} {{ {} }} else {{ {} }}",
+                if *inline { "inline " } else { "" },
                 self.debug_hir(*condition),
                 self.debug_hir(*then),
                 self.debug_hir(*else_)
@@ -248,6 +250,41 @@ impl Database {
                     self.debug_hir(*base),
                     self.debug_hir(*exponent),
                     self.debug_hir(*modulus)
+                )
+            }
+            Hir::BlsPairingIdentity(args) => {
+                format!(
+                    "bls_pairing_identity({})",
+                    args.iter()
+                        .map(|arg| self.debug_hir(*arg))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            Hir::BlsVerify(sig, args) => {
+                format!(
+                    "bls_verify({}, {})",
+                    self.debug_hir(*sig),
+                    args.iter()
+                        .map(|arg| self.debug_hir(*arg))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            Hir::Secp256K1Verify(sig, pk, msg) => {
+                format!(
+                    "secp256k1_verify({}, {}, {})",
+                    self.debug_hir(*sig),
+                    self.debug_hir(*pk),
+                    self.debug_hir(*msg)
+                )
+            }
+            Hir::Secp256R1Verify(sig, pk, msg) => {
+                format!(
+                    "secp256r1_verify({}, {}, {})",
+                    self.debug_hir(*sig),
+                    self.debug_hir(*pk),
+                    self.debug_hir(*msg)
                 )
             }
         }
