@@ -2,7 +2,7 @@ use clvm_traits::{ToClvm, clvm_list, clvm_quote, clvm_tuple};
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 
-use crate::{Lir, LirId, Result};
+use crate::{Lir, LirId, Result, bigint_atom};
 
 const OP_Q: u8 = 1;
 const OP_A: u8 = 2;
@@ -66,7 +66,13 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let arg = codegen(arena, allocator, *arg)?;
             Ok(clvm_quote!(arg).to_clvm(allocator)?)
         }
-        Lir::Path(path) => Ok(allocator.new_number((*path).into())?),
+        Lir::Path(path) => {
+            let mut atom = bigint_atom((*path).into());
+            while !atom.is_empty() && atom[0] == 0 {
+                atom = atom[1..].to_vec();
+            }
+            Ok(allocator.new_atom(&atom)?)
+        }
         Lir::Run(callee, env) => {
             let callee = codegen(arena, allocator, *callee)?;
             let env = codegen(arena, allocator, *env)?;
