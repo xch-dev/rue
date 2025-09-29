@@ -74,7 +74,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|&symbol| !self.should_inline(symbol))
             .collect();
         let function_env =
-            Environment::new(&captures, &function.parameters, function.nil_terminated);
+            Environment::function(&captures, &function.parameters, function.nil_terminated);
 
         let binding_groups = self.group_symbols(if is_main {
             captures.into_iter().collect()
@@ -430,7 +430,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     fn lower_path(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
         self.arena
-            .alloc(Lir::Path(env.try_path(symbol).unwrap_or_else(|| {
+            .alloc(Lir::Path(env.get(symbol).unwrap_or_else(|| {
                 panic!("symbol not found: {}", self.db.debug_symbol(symbol))
             })))
     }
