@@ -2,7 +2,8 @@ use log::debug;
 use rue_ast::{AstBlock, AstNode, AstStmt, AstStmtOrExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    BindingSymbol, Block, Declaration, ExprStatement, Hir, Scope, Statement, Symbol, Value,
+    BindingSymbol, Block, Declaration, ExprStatement, Hir, IfStatement, Scope, Statement, Symbol,
+    Value,
 };
 use rue_types::TypeId;
 
@@ -110,18 +111,28 @@ pub fn compile_block(
                 };
 
                 let then_block = if let Some(then_block) = stmt.then_block() {
-                    let index = ctx.push_mappings(condition.then_map.clone());
-                    let value = compile_block(ctx, &then_block, false, expected_type, true);
-                    ctx.revert_mappings(index);
-                    value
+                    if stmt.inline().is_some() {
+                        compile_block(ctx, &then_block, false, expected_type, true)
+                    } else {
+                        let index = ctx.push_mappings(condition.then_map.clone());
+                        let value = compile_block(ctx, &then_block, false, expected_type, true);
+                        ctx.revert_mappings(index);
+                        value
+                    }
                 } else {
                     debug!("Unresolved if stmt then block");
                     ctx.builtins().unresolved.clone()
                 };
 
-                ctx.push_mappings(condition.else_map);
+                if stmt.inline().is_none() {
+                    ctx.push_mappings(condition.else_map);
+                }
 
-                Statement::If(condition.hir, then_block.hir)
+                Statement::If(IfStatement {
+                    condition: condition.hir,
+                    then: then_block.hir,
+                    inline: stmt.inline().is_some(),
+                })
             }
             AstStmt::ReturnStmt(stmt) => {
                 let value = if let Some(expr) = stmt.expr() {

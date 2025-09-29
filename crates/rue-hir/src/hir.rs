@@ -42,7 +42,7 @@ pub struct Block {
 pub enum Statement {
     Expr(ExprStatement),
     Let(SymbolId),
-    If(HirId, HirId),
+    If(IfStatement),
     Return(HirId),
     Assert(HirId),
     Raise(HirId),
@@ -52,6 +52,13 @@ pub enum Statement {
 pub struct ExprStatement {
     pub hir: HirId,
     pub always_nil: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IfStatement {
+    pub condition: HirId,
+    pub then: HirId,
+    pub inline: bool,
 }
 
 #[derive(Debug, Clone)]

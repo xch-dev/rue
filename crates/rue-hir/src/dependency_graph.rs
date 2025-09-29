@@ -88,9 +88,9 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
                     Statement::Raise(stmt) => {
                         visit_hir(db, graph, *stmt);
                     }
-                    Statement::If(cond, then) => {
-                        visit_hir(db, graph, *cond);
-                        visit_hir(db, graph, *then);
+                    Statement::If(stmt) => {
+                        visit_hir(db, graph, stmt.condition);
+                        visit_hir(db, graph, stmt.then);
                     }
                     Statement::Return(expr) => {
                         visit_hir(db, graph, *expr);

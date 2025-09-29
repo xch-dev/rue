@@ -9,7 +9,7 @@ use rue_options::CompilerOptions;
 
 use crate::{
     BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, FunctionCall,
-    FunctionSymbol, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
+    FunctionSymbol, Hir, HirId, IfStatement, Statement, Symbol, SymbolId, UnaryOp,
 };
 
 #[derive(Debug)]
@@ -455,7 +455,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Statement::Assert(condition) => self.lower_assert(env, stmts, condition, body),
             Statement::Expr(_) => self.lower_expr_stmts(env, stmts, body),
             Statement::Raise(hir) => self.lower_raise(env, hir),
-            Statement::If(condition, then) => self.lower_if(env, stmts, condition, then, body),
+            Statement::If(stmt) => self.lower_if(env, stmts, stmt, body),
         }
     }
 
@@ -527,16 +527,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         &mut self,
         env: &Environment,
         mut stmts: Vec<Statement>,
-        condition: HirId,
-        then: HirId,
+        stmt: IfStatement,
         body: Option<HirId>,
     ) -> LirId {
         stmts.remove(0);
-        let condition = self.lower_hir(env, condition);
-        let then_branch = self.lower_hir(env, then);
+        let condition = self.lower_hir(env, stmt.condition);
+        let then_branch = self.lower_hir(env, stmt.then);
         let else_branch = self.lower_block(env, stmts, body);
         self.arena
-            .alloc(Lir::If(condition, then_branch, else_branch, false))
+            .alloc(Lir::If(condition, then_branch, else_branch, stmt.inline))
     }
 
     fn lower_expr_stmts(
