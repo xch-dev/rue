@@ -8,7 +8,6 @@ pub enum Lir {
     Path(u32),
     Quote(LirId),
     Run(LirId, LirId),
-    Curry(LirId, Vec<LirId>),
     Closure(LirId, Vec<LirId>),
     First(LirId),
     Rest(LirId),

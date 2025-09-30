@@ -378,6 +378,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "clvm-utils"
+version = "0.28.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce13549ac22902a1db76fe63e1a6417072f5242a8298fe5dcecc88f5cd13c997"
+dependencies = [
+ "chia-sha2 0.28.2",
+ "clvm-traits",
+ "clvmr",
+ "hex",
+ "hex-literal",
+]
+
+[[package]]
 name = "clvm_tools_rs"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1812,6 +1825,7 @@ name = "rue-tests"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "clvm-utils",
  "clvm_tools_rs",
  "clvmr",
  "env_logger",

@@ -87,8 +87,8 @@ fn compile_file_impl(
     }
 
     let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(&mut ctx, &mut arena, &graph, options);
-    let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol, true);
+    let mut lowerer = Lowerer::new(&mut ctx, &mut arena, &graph, options, symbol);
+    let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
 
     if options.optimize_lir {
         lir = optimize(&mut arena, lir);

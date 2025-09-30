@@ -1,7 +1,7 @@
-program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i (> 5 (q . 1)) (q 18 5 (a 2 (c 2 (c (- 5 (q . 1)) ())))) (q 1 . 1)) 1) 1))
-debug_program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i (> 5 (q . 1)) (q 18 5 (a 2 (c 2 (c (- 5 (q . 1)) ())))) (q 1 . 1)) 1) 1))
+program: (a (q 2 2 (c 2 5)) (c (q 2 (i (> 3 (q . 1)) (q 18 3 (a 2 (c 2 (- 3 (q . 1))))) (q 1 . 1)) 1) 1))
+debug_program: (a (q 2 2 (c 2 5)) (c (q 2 (i (> 3 (q . 1)) (q 18 3 (a 2 (c 2 (- 3 (q . 1))))) (q 1 . 1)) 1) 1))
 solution: (5)
 output: '120'
-runtime_cost: 13403
-byte_cost: 1140000
-total_cost: 1153403
+runtime_cost: 12876
+byte_cost: 996000
+total_cost: 1008876
