@@ -9,7 +9,7 @@ use rue_options::CompilerOptions;
 
 use crate::{
     BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, FunctionCall,
-    FunctionSymbol, Hir, HirId, IfStatement, Statement, Symbol, SymbolId, UnaryOp,
+    FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, Statement, Symbol, SymbolId, UnaryOp,
 };
 
 #[derive(Debug)]
@@ -73,8 +73,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .into_iter()
             .filter(|&symbol| !self.should_inline(symbol))
             .collect();
-        let function_env =
-            Environment::function(&captures, &function.parameters, function.nil_terminated);
+
+        let function_env = Environment::sequential(
+            &[captures.clone(), function.parameters.clone()].concat(),
+            function.nil_terminated,
+        );
 
         let binding_groups = self.group_symbols(if is_main {
             captures.into_iter().collect()
@@ -90,7 +93,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             let mut bind_env = parent_env.clone();
 
             for existing_group in binding_groups.iter().take(i) {
-                bind_env = bind_env.with_bindings(existing_group);
+                for symbol in existing_group.iter().rev() {
+                    bind_env =
+                        Environment::Pair(Box::new(Environment::Leaf(*symbol)), Box::new(bind_env));
+                }
             }
 
             let mut bindings = Vec::new();
@@ -436,7 +442,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     fn lower_path(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
         self.arena
-            .alloc(Lir::Path(env.get(symbol).unwrap_or_else(|| {
+            .alloc(Lir::Path(env.path(symbol).unwrap_or_else(|| {
                 panic!("symbol not found: {}", self.db.debug_symbol(symbol))
             })))
     }
@@ -524,7 +530,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     fn lower_symbol_tree(&mut self, env: &Environment, tree: &Environment) -> LirId {
         match tree {
-            Environment::Empty => self.arena.alloc(Lir::Atom(vec![])),
+            Environment::Nil => self.arena.alloc(Lir::Atom(vec![])),
             Environment::Leaf(symbol) => self.lower_symbol_value(env, *symbol, false),
             Environment::Pair(first, rest) => {
                 let first = self.lower_symbol_tree(env, first);
@@ -684,7 +690,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return false;
                 }
 
-                if function.inline {
+                if function.kind == FunctionKind::Inline {
                     return true;
                 }
 

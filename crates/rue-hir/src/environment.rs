@@ -2,42 +2,21 @@ use indexmap::IndexMap;
 
 use crate::SymbolId;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone)]
 #[must_use]
 pub enum Environment {
     #[default]
-    Empty,
+    Nil,
     Leaf(SymbolId),
     Pair(Box<Environment>, Box<Environment>),
 }
 
 impl Environment {
-    pub fn function(captures: &[SymbolId], parameters: &[SymbolId], nil_terminated: bool) -> Self {
-        Self::list(
-            &captures
-                .iter()
-                .chain(parameters)
-                .copied()
-                .collect::<Vec<_>>(),
-            nil_terminated,
-        )
-    }
-
-    pub fn with_bindings(&self, bindings: &[SymbolId]) -> Self {
-        let mut result = self.clone();
-
-        for &symbol in bindings.iter().rev() {
-            result = Self::Pair(Box::new(Self::Leaf(symbol)), Box::new(result));
-        }
-
-        result
-    }
-
-    pub fn list(symbols: &[SymbolId], nil_terminated: bool) -> Self {
-        let mut result = Self::Empty;
+    pub fn sequential(symbols: &[SymbolId], nil_terminated: bool) -> Self {
+        let mut result = Self::Nil;
 
         for &symbol in symbols.iter().rev() {
-            if result == Self::Empty && !nil_terminated {
+            if matches!(result, Self::Nil) && !nil_terminated {
                 result = Self::Leaf(symbol);
                 continue;
             }
@@ -50,7 +29,7 @@ impl Environment {
 
     pub fn tree(referenced_symbols: IndexMap<SymbolId, usize>) -> Self {
         if referenced_symbols.is_empty() {
-            return Self::Empty;
+            return Self::Nil;
         }
 
         if referenced_symbols.len() == 1 {
@@ -106,7 +85,7 @@ impl Environment {
         )
     }
 
-    pub fn get(&self, symbol_id: SymbolId) -> Option<u32> {
+    pub fn path(&self, symbol_id: SymbolId) -> Option<u32> {
         let ops = self.get_pair_ops(symbol_id)?;
         let mut path = 1;
         for op in ops.into_iter().rev() {
@@ -120,7 +99,7 @@ impl Environment {
 
     fn get_pair_ops(&self, symbol_id: SymbolId) -> Option<Vec<PairOp>> {
         match self {
-            Self::Empty => None,
+            Self::Nil => None,
             Self::Leaf(leaf) => {
                 if *leaf == symbol_id {
                     Some(vec![])

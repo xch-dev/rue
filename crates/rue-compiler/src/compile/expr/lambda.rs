@@ -1,7 +1,7 @@
 use log::debug;
 use rue_ast::{AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{FunctionSymbol, Hir, ParameterSymbol, Scope, Symbol, Value};
+use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, Symbol, Value};
 use rue_types::{FunctionType, Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr, compile_type};
@@ -121,7 +121,7 @@ pub fn compile_lambda_expr(
         nil_terminated,
         return_type,
         body: body.hir,
-        inline: false,
+        kind: FunctionKind::Sequential,
     }));
 
     let hir = ctx.alloc_hir(Hir::Lambda(symbol));

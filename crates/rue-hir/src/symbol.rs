@@ -40,7 +40,14 @@ pub struct FunctionSymbol {
     pub nil_terminated: bool,
     pub return_type: TypeId,
     pub body: HirId,
-    pub inline: bool,
+    pub kind: FunctionKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FunctionKind {
+    BinaryTree,
+    Sequential,
+    Inline,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

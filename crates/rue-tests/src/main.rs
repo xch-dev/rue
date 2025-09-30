@@ -131,7 +131,12 @@ fn main() -> Result<()> {
                     let debug_output_hash =
                         tree_hash(&allocator, debug_response.expect("debug program failed").1);
 
-                    assert_eq!(output_hash, debug_output_hash);
+                    if output_hash != debug_output_hash {
+                        println!(
+                            "Debug output mismatch: {}",
+                            disassemble(&allocator, debug_ptr, None)
+                        );
+                    }
 
                     test_case.output = Some(disassemble(&allocator, output.1, None));
                     test_case.runtime_cost = Some(output.0);

@@ -1,8 +1,8 @@
 use rue_types::{BuiltinTypes, FunctionType, Generic, Pair, Type, TypeId, Union};
 
 use crate::{
-    Database, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId, UnaryOp,
-    Value, VerificationFunctionSymbol,
+    Database, FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId,
+    UnaryOp, Value, VerificationFunctionSymbol,
 };
 
 #[derive(Debug, Clone)]
@@ -182,7 +182,7 @@ fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
         nil_terminated: true,
         return_type: generic,
         body: reference,
-        inline: true,
+        kind: FunctionKind::Inline,
     }))
 }
 
@@ -222,7 +222,7 @@ fn sha256(db: &mut Database, bytes: TypeId, bytes32: TypeId, inline: bool) -> Sy
         nil_terminated: true,
         return_type: bytes32,
         body,
-        inline: true,
+        kind: FunctionKind::Inline,
     }))
 }
 
@@ -262,7 +262,7 @@ fn keccak256(db: &mut Database, bytes: TypeId, bytes32: TypeId, inline: bool) ->
         nil_terminated: true,
         return_type: bytes32,
         body,
-        inline: true,
+        kind: FunctionKind::Inline,
     }))
 }
 
@@ -313,7 +313,7 @@ fn coinid(db: &mut Database, bytes: TypeId, bytes32: TypeId, int: TypeId) -> Sym
         nil_terminated: true,
         return_type: bytes32,
         body,
-        inline: true,
+        kind: FunctionKind::Inline,
     }))
 }
 
@@ -364,7 +364,7 @@ fn modpow(db: &mut Database, int: TypeId) -> SymbolId {
         nil_terminated: true,
         return_type: int,
         body,
-        inline: true,
+        kind: FunctionKind::Inline,
     }))
 }
 
@@ -426,7 +426,7 @@ fn g1_or_g2_map(
         nil_terminated: true,
         return_type: ret,
         body,
-        inline: true,
+        kind: FunctionKind::Inline,
     }))
 }
 
@@ -459,7 +459,7 @@ fn pubkey_for_exp(db: &mut Database, bytes: TypeId, public_key: TypeId) -> Symbo
         nil_terminated: true,
         return_type: public_key,
         body,
-        inline: true,
+        kind: FunctionKind::Inline,
     }))
 }
 
@@ -524,6 +524,6 @@ fn substr(db: &mut Database, bytes: TypeId, int: TypeId, include_to: bool) -> Sy
         nil_terminated: true,
         return_type: bytes,
         body,
-        inline: true,
+        kind: FunctionKind::Inline,
     }))
 }

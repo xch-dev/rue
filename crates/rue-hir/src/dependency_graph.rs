@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexSet;
 
@@ -14,6 +14,9 @@ pub struct DependencyGraph {
 
     // Keeps track of the number of times a symbol is referenced
     references: HashMap<SymbolId, usize>,
+
+    // Keeps track of whether a symbol is ever used as a closure
+    closures: HashSet<SymbolId>,
 
     // Keeps track of the current stack of symbols being visited
     stack: IndexSet<SymbolId>,
@@ -31,6 +34,10 @@ impl DependencyGraph {
 
     pub fn references(&self, symbol: SymbolId) -> usize {
         *self.references.get(&symbol).unwrap_or(&0)
+    }
+
+    pub fn is_closure(&self, symbol: SymbolId) -> bool {
+        self.closures.contains(&symbol)
     }
 
     pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {
@@ -59,7 +66,7 @@ impl DependencyGraph {
     }
 }
 
-fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
+fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bool) {
     match db.hir(hir) {
         Hir::Unresolved
         | Hir::Nil
@@ -68,10 +75,13 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
         | Hir::Bytes(_)
         | Hir::Bool(_) => {}
         Hir::Pair(first, rest) => {
-            visit_hir(db, graph, *first);
-            visit_hir(db, graph, *rest);
+            visit_hir(db, graph, *first, false);
+            visit_hir(db, graph, *rest, false);
         }
         Hir::Reference(symbol) => {
+            if !is_call {
+                graph.closures.insert(*symbol);
+            }
             visit_symbol_reference(db, graph, *symbol);
         }
         Hir::Block(block) => {
@@ -83,26 +93,26 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
                         }
                     }
                     Statement::Assert(stmt) => {
-                        visit_hir(db, graph, *stmt);
+                        visit_hir(db, graph, *stmt, false);
                     }
                     Statement::Raise(stmt) => {
-                        visit_hir(db, graph, *stmt);
+                        visit_hir(db, graph, *stmt, false);
                     }
                     Statement::If(stmt) => {
-                        visit_hir(db, graph, stmt.condition);
-                        visit_hir(db, graph, stmt.then);
+                        visit_hir(db, graph, stmt.condition, false);
+                        visit_hir(db, graph, stmt.then, false);
                     }
                     Statement::Return(expr) => {
-                        visit_hir(db, graph, *expr);
+                        visit_hir(db, graph, *expr, false);
                     }
                     Statement::Expr(expr) => {
-                        visit_hir(db, graph, expr.hir);
+                        visit_hir(db, graph, expr.hir, false);
                     }
                 }
             }
 
             if let Some(body) = block.body {
-                visit_hir(db, graph, body);
+                visit_hir(db, graph, body, false);
             }
         }
         Hir::Lambda(lambda) => {
@@ -113,72 +123,72 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId) {
             visit_symbol_reference(db, graph, *lambda);
         }
         Hir::If(condition, then, else_, _inline) => {
-            visit_hir(db, graph, *condition);
-            visit_hir(db, graph, *then);
-            visit_hir(db, graph, *else_);
+            visit_hir(db, graph, *condition, false);
+            visit_hir(db, graph, *then, false);
+            visit_hir(db, graph, *else_, false);
         }
         Hir::FunctionCall(call) => {
-            visit_hir(db, graph, call.function);
+            visit_hir(db, graph, call.function, true);
             for &arg in &call.args {
-                visit_hir(db, graph, arg);
+                visit_hir(db, graph, arg, false);
             }
         }
         Hir::Unary(_op, arg) => {
-            visit_hir(db, graph, *arg);
+            visit_hir(db, graph, *arg, false);
         }
         Hir::Binary(_op, lhs, rhs) => {
-            visit_hir(db, graph, *lhs);
-            visit_hir(db, graph, *rhs);
+            visit_hir(db, graph, *lhs, false);
+            visit_hir(db, graph, *rhs, false);
         }
         Hir::CoinId(parent, puzzle, amount) => {
-            visit_hir(db, graph, *parent);
-            visit_hir(db, graph, *puzzle);
-            visit_hir(db, graph, *amount);
+            visit_hir(db, graph, *parent, false);
+            visit_hir(db, graph, *puzzle, false);
+            visit_hir(db, graph, *amount, false);
         }
         Hir::Substr(hir, start, end) => {
-            visit_hir(db, graph, *hir);
-            visit_hir(db, graph, *start);
+            visit_hir(db, graph, *hir, false);
+            visit_hir(db, graph, *start, false);
             if let Some(end) = end {
-                visit_hir(db, graph, *end);
+                visit_hir(db, graph, *end, false);
             }
         }
         Hir::G1Map(data, dst) => {
-            visit_hir(db, graph, *data);
+            visit_hir(db, graph, *data, false);
             if let Some(dst) = dst {
-                visit_hir(db, graph, *dst);
+                visit_hir(db, graph, *dst, false);
             }
         }
         Hir::G2Map(data, dst) => {
-            visit_hir(db, graph, *data);
+            visit_hir(db, graph, *data, false);
             if let Some(dst) = dst {
-                visit_hir(db, graph, *dst);
+                visit_hir(db, graph, *dst, false);
             }
         }
         Hir::Modpow(base, exponent, modulus) => {
-            visit_hir(db, graph, *base);
-            visit_hir(db, graph, *exponent);
-            visit_hir(db, graph, *modulus);
+            visit_hir(db, graph, *base, false);
+            visit_hir(db, graph, *exponent, false);
+            visit_hir(db, graph, *modulus, false);
         }
         Hir::BlsPairingIdentity(args) => {
             for arg in args {
-                visit_hir(db, graph, *arg);
+                visit_hir(db, graph, *arg, false);
             }
         }
         Hir::BlsVerify(sig, args) => {
-            visit_hir(db, graph, *sig);
+            visit_hir(db, graph, *sig, false);
             for arg in args {
-                visit_hir(db, graph, *arg);
+                visit_hir(db, graph, *arg, false);
             }
         }
         Hir::Secp256K1Verify(sig, pk, msg) => {
-            visit_hir(db, graph, *sig);
-            visit_hir(db, graph, *pk);
-            visit_hir(db, graph, *msg);
+            visit_hir(db, graph, *sig, false);
+            visit_hir(db, graph, *pk, false);
+            visit_hir(db, graph, *msg, false);
         }
         Hir::Secp256R1Verify(sig, pk, msg) => {
-            visit_hir(db, graph, *sig);
-            visit_hir(db, graph, *pk);
-            visit_hir(db, graph, *msg);
+            visit_hir(db, graph, *sig, false);
+            visit_hir(db, graph, *pk, false);
+            visit_hir(db, graph, *msg, false);
         }
     }
 }
@@ -203,13 +213,13 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
                 .or_default()
                 .extend(function.parameters.iter().copied());
 
-            visit_hir(db, graph, function.body);
+            visit_hir(db, graph, function.body, false);
         }
         Symbol::Constant(constant) => {
-            visit_hir(db, graph, constant.value);
+            visit_hir(db, graph, constant.value, false);
         }
         Symbol::Binding(binding) => {
-            visit_hir(db, graph, binding.value);
+            visit_hir(db, graph, binding.value, false);
         }
     }
 

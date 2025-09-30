@@ -1,7 +1,9 @@
 use log::debug;
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId};
+use rue_hir::{
+    Declaration, FunctionKind, FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId,
+};
 use rue_types::{FunctionType, Type};
 
 use crate::{Compiler, compile_block, compile_generic_parameters, compile_type};
@@ -102,7 +104,11 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         nil_terminated,
         return_type,
         body,
-        inline: function.inline().is_some(),
+        kind: if function.inline().is_some() {
+            FunctionKind::Inline
+        } else {
+            FunctionKind::Sequential
+        },
     });
 
     if let Some(name) = function.name() {
