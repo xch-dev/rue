@@ -39,19 +39,6 @@ pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
     arena.alloc(Lir::Run(callee, env))
 }
 
-// If the callee is quoted, and the arguments are empty,
-// we can skip both quoting and currying, and just use it directly
-// We can also skip quoting if the program has no path, since it's not going to rely on the environment
-pub fn opt_curry(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId {
-    if let Lir::Quote(value) = arena[callee].clone()
-        && args.is_empty()
-    {
-        return value;
-    }
-
-    arena.alloc(Lir::Curry(callee, args))
-}
-
 // If there are no captures, we don't need to create a closure
 // We can also skip the closure if the program has no path, since it's not going to rely on the captures
 pub fn opt_closure(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId {

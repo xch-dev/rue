@@ -3,7 +3,7 @@
 use std::{collections::HashMap, mem};
 
 use id_arena::Arena;
-use indexmap::{IndexSet, indexset};
+use indexmap::{IndexMap, IndexSet, indexset};
 use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
@@ -99,7 +99,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 bindings.push(self.lower_symbol_value(&bind_env, symbol, false));
             }
 
-            expr = self.arena.alloc(Lir::Curry(expr, bindings));
+            let mut env = self.arena.alloc(Lir::Path(1));
+
+            for &binding in bindings.iter().rev() {
+                env = self.arena.alloc(Lir::Cons(binding, env));
+            }
+
+            expr = self.arena.alloc(Lir::Run(expr, env));
         }
 
         if is_main {
@@ -475,32 +481,57 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         let binding_groups = self.group_symbols(symbols);
+        let binding_environments = binding_groups
+            .into_iter()
+            .map(|group| {
+                let mut referenced_symbols = IndexMap::new();
 
-        let all_bindings: Vec<SymbolId> = binding_groups.iter().rev().flatten().copied().collect();
+                for symbol in group {
+                    referenced_symbols.insert(symbol, self.graph.references(symbol));
+                }
 
-        let body_env = env.with_bindings(&all_bindings);
+                Environment::tree(referenced_symbols)
+            })
+            .collect::<Vec<_>>();
+
+        let mut body_env = env.clone();
+
+        for group_env in &binding_environments {
+            body_env = Environment::Pair(Box::new(group_env.clone()), Box::new(body_env));
+        }
 
         let mut expr = self.lower_block(&body_env, stmts, body);
 
-        for (i, group) in binding_groups.iter().enumerate().rev() {
+        for (i, group_env) in binding_environments.iter().enumerate().rev() {
             expr = self.arena.alloc(Lir::Quote(expr));
 
             let mut bind_env = env.clone();
 
-            for existing_group in binding_groups.iter().take(i) {
-                bind_env = bind_env.with_bindings(existing_group);
+            for existing_env in binding_environments.iter().take(i) {
+                bind_env = Environment::Pair(Box::new(existing_env.clone()), Box::new(bind_env));
             }
 
-            let mut bindings = Vec::new();
+            let tree = self.lower_symbol_tree(&bind_env, group_env);
 
-            for &symbol in group {
-                bindings.push(self.lower_symbol_value(&bind_env, symbol, false));
-            }
+            let rest = self.arena.alloc(Lir::Path(1));
+            let env = self.arena.alloc(Lir::Cons(tree, rest));
 
-            expr = self.arena.alloc(Lir::Curry(expr, bindings));
+            expr = self.arena.alloc(Lir::Run(expr, env));
         }
 
         expr
+    }
+
+    fn lower_symbol_tree(&mut self, env: &Environment, tree: &Environment) -> LirId {
+        match tree {
+            Environment::Empty => self.arena.alloc(Lir::Atom(vec![])),
+            Environment::Leaf(symbol) => self.lower_symbol_value(env, *symbol, false),
+            Environment::Pair(first, rest) => {
+                let first = self.lower_symbol_tree(env, first);
+                let rest = self.lower_symbol_tree(env, rest);
+                self.arena.alloc(Lir::Cons(first, rest))
+            }
+        }
     }
 
     fn lower_assert(
@@ -696,7 +727,6 @@ fn count_nil_in_env(arena: &Arena<Lir>, id: LirId) -> usize {
         Lir::Atom(atom) => usize::from(atom.is_empty()),
         Lir::Path(_) | Lir::Quote(_) => 0,
         Lir::Run(_, env) => count_nil_in_env(arena, env),
-        Lir::Curry(_, env) => env.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
         Lir::Closure(_, env) => env.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
         Lir::First(arg) => count_nil_in_env(arena, arg),
         Lir::Rest(arg) => count_nil_in_env(arena, arg),
@@ -828,13 +858,6 @@ fn replace_nil_in_env(
         Lir::Run(callee, env) => {
             let env = replace_nil_in_env(arena, env, verifications);
             arena.alloc(Lir::Run(callee, env))
-        }
-        Lir::Curry(callee, env) => {
-            let mut result = Vec::new();
-            for arg in env {
-                result.push(replace_nil_in_env(arena, arg, verifications));
-            }
-            arena.alloc(Lir::Curry(callee, result))
         }
         Lir::Closure(callee, env) => {
             let mut result = Vec::new();

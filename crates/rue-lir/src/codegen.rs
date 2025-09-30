@@ -78,15 +78,6 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let env = codegen(arena, allocator, *env)?;
             Ok(clvm_list!(OP_A, callee, env).to_clvm(allocator)?)
         }
-        Lir::Curry(callee, args) => {
-            let callee = codegen(arena, allocator, *callee)?;
-            let mut environment = allocator.one();
-            for arg in args.iter().rev() {
-                let arg = codegen(arena, allocator, *arg)?;
-                environment = clvm_list!(OP_C, arg, environment).to_clvm(allocator)?;
-            }
-            Ok(clvm_list!(OP_A, callee, environment).to_clvm(allocator)?)
-        }
         Lir::Closure(function, captures) => {
             let function = codegen(arena, allocator, *function)?;
 
@@ -467,20 +458,6 @@ mod tests {
             &arena,
             lir,
             expect!["(a (q . 97) (c (q . 98) (c (q . 99) ())))"],
-        );
-    }
-
-    #[test]
-    fn test_curry() {
-        let mut arena = Arena::new();
-        let a = arena.alloc(Lir::Atom(b"a".to_vec()));
-        let b = arena.alloc(Lir::Atom(b"b".to_vec()));
-        let c = arena.alloc(Lir::Atom(b"c".to_vec()));
-        let lir = arena.alloc(Lir::Curry(a, vec![b, c]));
-        check(
-            &arena,
-            lir,
-            expect!["(a (q . 97) (c (q . 98) (c (q . 99) 1)))"],
         );
     }
 

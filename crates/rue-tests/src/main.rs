@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
+use clvm_utils::tree_hash;
 use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
 use rue_compiler::compile_file;
 use rue_diagnostic::Source;
@@ -113,18 +114,33 @@ fn main() -> Result<()> {
             test_case.debug_program = Some(disassemble(&allocator, debug_ptr, None));
 
             let response = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, u64::MAX);
+            let debug_response = run_program(
+                &mut allocator,
+                &ChiaDialect::new(0),
+                debug_ptr,
+                env,
+                u64::MAX,
+            );
 
             let bytes = node_to_bytes(&allocator, ptr)?.len();
             test_case.byte_cost = Some(bytes as u64 * 12_000);
 
             match response {
                 Ok(output) => {
+                    let output_hash = tree_hash(&allocator, output.1);
+                    let debug_output_hash =
+                        tree_hash(&allocator, debug_response.expect("debug program failed").1);
+
+                    assert_eq!(output_hash, debug_output_hash);
+
                     test_case.output = Some(disassemble(&allocator, output.1, None));
                     test_case.runtime_cost = Some(output.0);
                     test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
                     test_case.clvm_error = None;
                 }
                 Err(error) => {
+                    debug_response.expect_err("debug program succeeded unexpectedly");
+
                     test_case.clvm_error = Some(error.to_string());
                     test_case.runtime_cost = None;
                     test_case.total_cost = None;

@@ -48,7 +48,7 @@ impl Environment {
         result
     }
 
-    pub fn tree(referenced_symbols: IndexMap<SymbolId, u32>) -> Self {
+    pub fn tree(referenced_symbols: IndexMap<SymbolId, usize>) -> Self {
         if referenced_symbols.is_empty() {
             return Self::Empty;
         }
@@ -68,14 +68,14 @@ impl Environment {
         let mut min_diff = i64::MAX;
 
         for i in 1..symbols.len() {
-            let mut new_first_sum = 0u64;
-            let mut new_rest_sum = 0u64;
+            let mut new_first_sum = 0usize;
+            let mut new_rest_sum = 0usize;
 
             for (j, (_, count)) in symbols.iter().enumerate() {
                 if j < i {
-                    new_first_sum += u64::from(*count);
+                    new_first_sum += *count;
                 } else {
-                    new_rest_sum += u64::from(*count);
+                    new_rest_sum += *count;
                 }
             }
 
