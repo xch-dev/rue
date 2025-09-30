@@ -3,7 +3,7 @@
 use std::{collections::HashMap, mem};
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet, indexset};
+use indexmap::{IndexMap, IndexSet};
 use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
@@ -12,6 +12,12 @@ use crate::{
     FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, Statement, Symbol, SymbolId, UnaryOp,
 };
 
+#[derive(Debug, Clone)]
+enum SymbolGroup {
+    Sequential(Vec<SymbolId>),
+    Tree(Environment),
+}
+
 #[derive(Debug)]
 pub struct Lowerer<'d, 'a, 'g> {
     db: &'d mut Database,
@@ -19,6 +25,7 @@ pub struct Lowerer<'d, 'a, 'g> {
     graph: &'g DependencyGraph,
     inline_symbols: Vec<HashMap<SymbolId, HirId>>,
     options: CompilerOptions,
+    main: SymbolId,
 }
 
 impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
@@ -27,6 +34,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         arena: &'a mut Arena<Lir>,
         graph: &'g DependencyGraph,
         options: CompilerOptions,
+        main: SymbolId,
     ) -> Self {
         Self {
             db,
@@ -34,15 +42,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             graph,
             inline_symbols: Vec::new(),
             options,
+            main,
         }
     }
 
-    pub fn lower_symbol_value(
-        &mut self,
-        env: &Environment,
-        symbol: SymbolId,
-        is_main: bool,
-    ) -> LirId {
+    pub fn lower_symbol_value(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
         for inline_symbols in self.inline_symbols.iter().rev() {
             if let Some(hir) = inline_symbols.get(&symbol) {
                 return self.lower_hir(env, *hir);
@@ -54,19 +58,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             | Symbol::Module(_)
             | Symbol::Parameter(_)
             | Symbol::VerificationFunction(_) => unreachable!(),
-            Symbol::Function(function) => self.lower_function(env, symbol, function, is_main),
+            Symbol::Function(function) => self.lower_function(env, symbol, function),
             Symbol::Constant(constant) => self.lower_constant(env, constant),
             Symbol::Binding(binding) => self.lower_binding(env, binding),
         }
     }
 
-    fn lower_function(
+    fn function_groups(
         &mut self,
-        parent_env: &Environment,
         symbol: SymbolId,
-        function: FunctionSymbol,
-        is_main: bool,
-    ) -> LirId {
+        function: &FunctionSymbol,
+    ) -> (Vec<SymbolGroup>, SymbolGroup) {
         let captures: Vec<SymbolId> = self
             .graph
             .dependencies(symbol, true)
@@ -74,47 +76,53 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|&symbol| !self.should_inline(symbol))
             .collect();
 
-        let function_env = Environment::sequential(
-            &[captures.clone(), function.parameters.clone()].concat(),
-            function.nil_terminated,
+        let capture_groups =
+            self.group_symbols(captures.into_iter().collect(), symbol != self.main);
+
+        let param_group = self.create_group(
+            function.parameters.clone(),
+            function.kind == FunctionKind::BinaryTree
+                && !self.graph.is_closure(symbol)
+                && symbol != self.main,
         );
 
-        let binding_groups = self.group_symbols(if is_main {
-            captures.into_iter().collect()
-        } else {
-            indexset![]
-        });
+        (capture_groups, param_group)
+    }
+
+    fn lower_function(
+        &mut self,
+        parent_env: &Environment,
+        symbol: SymbolId,
+        function: FunctionSymbol,
+    ) -> LirId {
+        let (capture_groups, param_group) = self.function_groups(symbol, &function);
+
+        let mut function_env =
+            Self::apply_group(Environment::Nil, &param_group, function.nil_terminated);
+
+        for group in &capture_groups {
+            function_env = Self::apply_group(function_env, group, true);
+        }
 
         let mut expr = self.lower_hir(&function_env, function.body);
 
-        for (i, group) in binding_groups.iter().enumerate().rev() {
-            expr = self.arena.alloc(Lir::Quote(expr));
+        if symbol == self.main {
+            for (i, group) in capture_groups.iter().enumerate().rev() {
+                expr = self.arena.alloc(Lir::Quote(expr));
 
-            let mut bind_env = parent_env.clone();
+                let mut bind_env = parent_env.clone();
 
-            for existing_group in binding_groups.iter().take(i) {
-                for symbol in existing_group.iter().rev() {
-                    bind_env =
-                        Environment::Pair(Box::new(Environment::Leaf(*symbol)), Box::new(bind_env));
+                for existing_group in capture_groups.iter().take(i) {
+                    bind_env = Self::apply_group(bind_env, existing_group, true);
                 }
+
+                let rest = self.arena.alloc(Lir::Path(1));
+                let group_env =
+                    self.lower_group_environment(&bind_env, group, rest, false, None, true);
+
+                expr = self.arena.alloc(Lir::Run(expr, group_env));
             }
 
-            let mut bindings = Vec::new();
-
-            for &symbol in group {
-                bindings.push(self.lower_symbol_value(&bind_env, symbol, false));
-            }
-
-            let mut env = self.arena.alloc(Lir::Path(1));
-
-            for &binding in bindings.iter().rev() {
-                env = self.arena.alloc(Lir::Cons(binding, env));
-            }
-
-            expr = self.arena.alloc(Lir::Run(expr, env));
-        }
-
-        if is_main {
             expr
         } else {
             self.arena.alloc(Lir::Quote(expr))
@@ -312,20 +320,19 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     fn lower_function_call(&mut self, env: &Environment, call: FunctionCall) -> LirId {
         if let Hir::Reference(symbol) = self.db.hir(call.function).clone()
-            && self.should_inline(symbol)
             && let Symbol::Function(function) = self.db.symbol(symbol).clone()
         {
-            let mut inline_symbols = HashMap::new();
+            let mut args = HashMap::new();
 
             if function.nil_terminated {
                 for (i, arg) in call.args.into_iter().enumerate() {
-                    inline_symbols.insert(function.parameters[i], arg);
+                    args.insert(function.parameters[i], arg);
                 }
             } else {
                 let mut arg_iter = call.args.into_iter().enumerate();
 
                 for (i, arg) in (&mut arg_iter).take(function.parameters.len() - 1) {
-                    inline_symbols.insert(function.parameters[i], arg);
+                    args.insert(function.parameters[i], arg);
                 }
 
                 let mut last_arg = self.db.alloc_hir(Hir::Nil);
@@ -339,47 +346,37 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 }
 
                 if let Some(last_param) = function.parameters.last() {
-                    inline_symbols.insert(*last_param, last_arg);
+                    args.insert(*last_param, last_arg);
                 }
             }
 
-            self.inline_symbols.push(inline_symbols);
-            let result = self.lower_hir(env, function.body);
-            self.inline_symbols.pop().unwrap();
-
-            return result;
-        } else if let Hir::Reference(symbol) = self.db.hir(call.function).clone()
-            && let Symbol::Function(_) = self.db.symbol(symbol).clone()
-        {
-            let function = self.lower_symbol_reference(env, symbol);
-
-            let mut args = Vec::new();
-
-            for capture in self
-                .graph
-                .dependencies(symbol, true)
-                .into_iter()
-                .filter(|&symbol| !self.should_inline(symbol))
-                .collect::<Vec<_>>()
-            {
-                args.push(self.lower_symbol_reference(env, capture));
+            if self.should_inline(symbol) {
+                self.inline_symbols.push(args);
+                let result = self.lower_hir(env, function.body);
+                self.inline_symbols.pop().unwrap();
+                return result;
             }
 
-            for arg in call.args {
-                args.push(self.lower_hir(env, arg));
+            let (capture_groups, param_group) = self.function_groups(symbol, &function);
+
+            let function_lir = self.lower_symbol_reference(env, symbol);
+
+            let rest = self.arena.alloc(Lir::Atom(vec![]));
+
+            let mut arg_env = self.lower_group_environment(
+                env,
+                &param_group,
+                rest,
+                false,
+                Some(&args),
+                function.nil_terminated,
+            );
+
+            for group in &capture_groups {
+                arg_env = self.lower_group_environment(env, group, arg_env, true, None, true);
             }
 
-            let mut env = self.arena.alloc(Lir::Atom(Vec::new()));
-
-            for (i, &arg) in args.iter().rev().enumerate() {
-                if i == 0 && !call.nil_terminated {
-                    env = arg;
-                } else {
-                    env = self.arena.alloc(Lir::Cons(arg, env));
-                }
-            }
-
-            return self.arena.alloc(Lir::Run(function, env));
+            return self.arena.alloc(Lir::Run(function_lir, arg_env));
         }
 
         let function = self.lower_hir(env, call.function);
@@ -415,7 +412,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     fn lower_symbol(&mut self, env: &Environment, symbol: SymbolId, is_lambda: bool) -> LirId {
         let mut reference = if self.should_inline(symbol) || is_lambda {
-            self.lower_symbol_value(env, symbol, false)
+            self.lower_symbol_value(env, symbol)
         } else {
             self.lower_symbol_reference(env, symbol)
         };
@@ -486,55 +483,96 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             stmts.remove(0);
         }
 
-        let binding_groups = self.group_symbols(symbols);
-        let binding_environments = binding_groups
-            .into_iter()
-            .map(|group| {
-                let mut referenced_symbols = IndexMap::new();
-
-                for symbol in group {
-                    referenced_symbols.insert(symbol, self.graph.references(symbol));
-                }
-
-                Environment::tree(referenced_symbols)
-            })
-            .collect::<Vec<_>>();
+        let binding_groups = self.group_symbols(symbols, false);
 
         let mut body_env = env.clone();
 
-        for group_env in &binding_environments {
-            body_env = Environment::Pair(Box::new(group_env.clone()), Box::new(body_env));
+        for group in &binding_groups {
+            body_env = Self::apply_group(body_env, group, true);
         }
 
         let mut expr = self.lower_block(&body_env, stmts, body);
 
-        for (i, group_env) in binding_environments.iter().enumerate().rev() {
+        for (i, group) in binding_groups.iter().enumerate().rev() {
             expr = self.arena.alloc(Lir::Quote(expr));
 
             let mut bind_env = env.clone();
 
-            for existing_env in binding_environments.iter().take(i) {
-                bind_env = Environment::Pair(Box::new(existing_env.clone()), Box::new(bind_env));
+            for group in binding_groups.iter().take(i) {
+                bind_env = Self::apply_group(bind_env, group, true);
             }
 
-            let tree = self.lower_symbol_tree(&bind_env, group_env);
-
             let rest = self.arena.alloc(Lir::Path(1));
-            let env = self.arena.alloc(Lir::Cons(tree, rest));
+            let group_env = self.lower_group_environment(&bind_env, group, rest, false, None, true);
 
-            expr = self.arena.alloc(Lir::Run(expr, env));
+            expr = self.arena.alloc(Lir::Run(expr, group_env));
         }
 
         expr
     }
 
-    fn lower_symbol_tree(&mut self, env: &Environment, tree: &Environment) -> LirId {
+    fn lower_group_environment(
+        &mut self,
+        env: &Environment,
+        group: &SymbolGroup,
+        rest: LirId,
+        by_reference: bool,
+        map: Option<&HashMap<SymbolId, HirId>>,
+        include_rest: bool,
+    ) -> LirId {
+        match group {
+            SymbolGroup::Sequential(symbols) => {
+                let mut result = rest;
+
+                for (i, &symbol) in symbols.iter().rev().enumerate() {
+                    let value = if let Some(hir) = map.and_then(|map| map.get(&symbol)) {
+                        self.lower_hir(env, *hir)
+                    } else if by_reference {
+                        self.lower_symbol_reference(env, symbol)
+                    } else {
+                        self.lower_symbol_value(env, symbol)
+                    };
+                    if !include_rest && i == 0 {
+                        result = value;
+                    } else {
+                        result = self.arena.alloc(Lir::Cons(value, result));
+                    }
+                }
+
+                result
+            }
+            SymbolGroup::Tree(tree) => {
+                let tree = self.lower_tree(env, tree, by_reference, map);
+                if include_rest {
+                    self.arena.alloc(Lir::Cons(tree, rest))
+                } else {
+                    tree
+                }
+            }
+        }
+    }
+
+    fn lower_tree(
+        &mut self,
+        env: &Environment,
+        tree: &Environment,
+        by_reference: bool,
+        map: Option<&HashMap<SymbolId, HirId>>,
+    ) -> LirId {
         match tree {
             Environment::Nil => self.arena.alloc(Lir::Atom(vec![])),
-            Environment::Leaf(symbol) => self.lower_symbol_value(env, *symbol, false),
+            Environment::Leaf(symbol) => {
+                if let Some(hir) = map.and_then(|map| map.get(symbol)) {
+                    self.lower_hir(env, *hir)
+                } else if by_reference {
+                    self.lower_symbol_reference(env, *symbol)
+                } else {
+                    self.lower_symbol_value(env, *symbol)
+                }
+            }
             Environment::Pair(first, rest) => {
-                let first = self.lower_symbol_tree(env, first);
-                let rest = self.lower_symbol_tree(env, rest);
+                let first = self.lower_tree(env, first, by_reference, map);
+                let rest = self.lower_tree(env, rest, by_reference, map);
                 self.arena.alloc(Lir::Cons(first, rest))
             }
         }
@@ -634,7 +672,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
     }
 
-    fn group_symbols(&mut self, mut symbols: IndexSet<SymbolId>) -> Vec<Vec<SymbolId>> {
+    fn group_symbols(
+        &mut self,
+        mut symbols: IndexSet<SymbolId>,
+        by_reference: bool,
+    ) -> Vec<SymbolGroup> {
         let mut groups = Vec::new();
 
         while !symbols.is_empty() {
@@ -649,6 +691,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     .iter()
                     .all(|symbol| !remaining.contains(symbol))
                     || matches!(self.db.symbol(symbol), Symbol::Function(_))
+                    || by_reference
                 {
                     if !self.should_inline(symbol) {
                         group.push(symbol);
@@ -663,10 +706,47 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 continue;
             }
 
-            groups.push(group);
+            groups.push(self.create_group(group, true));
         }
 
         groups
+    }
+
+    fn create_group(&self, symbols: Vec<SymbolId>, is_tree: bool) -> SymbolGroup {
+        if is_tree {
+            let mut referenced_symbols = IndexMap::new();
+
+            for symbol in symbols {
+                referenced_symbols.insert(symbol, self.graph.references(symbol));
+            }
+
+            SymbolGroup::Tree(Environment::tree(referenced_symbols))
+        } else {
+            SymbolGroup::Sequential(symbols)
+        }
+    }
+
+    fn apply_group(mut env: Environment, group: &SymbolGroup, include_rest: bool) -> Environment {
+        match group {
+            SymbolGroup::Sequential(symbols) => {
+                for (i, &symbol) in symbols.iter().rev().enumerate() {
+                    if i == 0 && !include_rest {
+                        env = Environment::Leaf(symbol);
+                    } else {
+                        env = Environment::Pair(Box::new(Environment::Leaf(symbol)), Box::new(env));
+                    }
+                }
+
+                env
+            }
+            SymbolGroup::Tree(tree) => {
+                if include_rest {
+                    Environment::Pair(Box::new(tree.clone()), Box::new(env))
+                } else {
+                    tree.clone()
+                }
+            }
+        }
     }
 
     fn should_inline(&self, symbol: SymbolId) -> bool {

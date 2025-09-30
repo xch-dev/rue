@@ -113,13 +113,13 @@ fn main() -> Result<()> {
 
             test_case.debug_program = Some(disassemble(&allocator, debug_ptr, None));
 
-            let response = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, u64::MAX);
+            let response = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, 100_000_000);
             let debug_response = run_program(
                 &mut allocator,
                 &ChiaDialect::new(0),
                 debug_ptr,
                 env,
-                u64::MAX,
+                100_000_000,
             );
 
             let bytes = node_to_bytes(&allocator, ptr)?.len();
