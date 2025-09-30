@@ -1,7 +1,7 @@
-program: (a (q 4 (c (q . 52) (c (q . 100) ())) (a 2 (c 2 (c 5 ())))) (c (q 2 (i 5 (q 2 (q 2 (i (= 4 (q . 51)) (q 4 (c (q . 51) (c 10 (c (* 22 (q . 2)) 30))) (a 5 (c 5 (c 27 ())))) (q 4 2 (a 5 (c 5 (c 27 ()))))) 1) (c 9 1)) (q)) 1) 1))
-debug_program: (a (q 2 (q 4 2 (a 5 (c 5 (c 11 ())))) (c (c (q . 52) (c (q . 100) ())) 1)) (c (q 2 (i (not (l 5)) (q) (q 2 (q 2 (i (not (= (f 2) (q . 51))) (q 4 2 (a 5 (c 5 (c (r 11) ())))) (q 2 (q 4 2 (a 11 (c 11 (c (r 23) ())))) (c (c (q . 51) (c (f (r 2)) (c (* (f (r (r 2))) (q . 2)) (r (r (r 2)))))) 1))) 1) (c (f 5) 1))) 1) 1))
+program: (a (q 4 (c (q . 52) (c (q . 100) ())) (a 2 (c 2 5))) (c (q 2 (i 3 (q 2 (q 2 (i (= 4 (q . 51)) (q 4 (c (q . 51) (c 10 (c (* 22 (q . 2)) 30))) (a 5 (c 5 15))) (q 4 2 (a 5 (c 5 15)))) 1) (c 5 1)) (q)) 1) 1))
+debug_program: (a (q 2 (q 4 2 (a 5 (c 5 11))) (c (c (q . 52) (c (q . 100) ())) 1)) (c (q 2 (i (not (l 3)) (q) (q 2 (q 2 (i (not (= (f 2) (q . 51))) (q 4 2 (a 5 (c 5 (r 7)))) (q 2 (q 4 2 (a 11 (c 11 (r 15)))) (c (c (q . 51) (c (f (r 2)) (c (* (f (r (r 2))) (q . 2)) (r (r (r 2)))))) 1))) 1) (c (f 3) 1))) 1) 1))
 solution: (((51 0x718e6218f392d41274e6f56be2177016500bfd60269fe73080979dbfb7cea5ed 100)))
 output: ((g2_add 100) (g1_negate 0x718e6218f392d41274e6f56be2177016500bfd60269fe73080979dbfb7cea5ed 200))
-runtime_cost: 3908
-byte_cost: 2292000
-total_cost: 2295908
+runtime_cost: 3702
+byte_cost: 2076000
+total_cost: 2079702

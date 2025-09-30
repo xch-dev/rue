@@ -107,7 +107,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         kind: if function.inline().is_some() {
             FunctionKind::Inline
         } else {
-            FunctionKind::Sequential
+            FunctionKind::BinaryTree
         },
     });
 

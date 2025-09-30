@@ -97,8 +97,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     ) -> LirId {
         let (capture_groups, param_group) = self.function_groups(symbol, &function);
 
-        let mut function_env =
-            Self::apply_group(Environment::Nil, &param_group, function.nil_terminated);
+        let mut function_env = Self::apply_group(
+            Environment::Nil,
+            &param_group,
+            function.nil_terminated && matches!(param_group, SymbolGroup::Sequential(_)),
+        );
 
         for group in &capture_groups {
             function_env = Self::apply_group(function_env, group, true);
@@ -369,7 +372,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 rest,
                 false,
                 Some(&args),
-                function.nil_terminated,
+                function.nil_terminated && matches!(param_group, SymbolGroup::Sequential(_)),
             );
 
             for group in &capture_groups {

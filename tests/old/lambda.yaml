@@ -1,7 +1,7 @@
-program: (a (q 2 (a 2 (c 5 ())) (c (* (a (a 2 (c 5 ())) (c 5 ())) (q . 42)) ())) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1))
-debug_program: (a (q 2 (a 2 (c 5 ())) (c (* (a (a 2 (c 5 ())) (c 5 ())) (q . 42)) ())) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1))
+program: (a (q 2 (a 2 5) (c (* (a (a 2 5) (c 5 ())) (q . 42)) ())) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) 1))
+debug_program: (a (q 2 (a 2 5) (c (* (a (a 2 5) (c 5 ())) (q . 42)) ())) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) 1))
 solution: (17)
 output: '1445'
-runtime_cost: 5757
-byte_cost: 1668000
-total_cost: 1673757
+runtime_cost: 5559
+byte_cost: 1524000
+total_cost: 1529559
