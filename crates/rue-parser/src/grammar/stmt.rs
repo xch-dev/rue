@@ -63,7 +63,9 @@ fn let_stmt(p: &mut Parser) {
 fn return_stmt(p: &mut Parser) {
     p.start(SyntaxKind::ReturnStmt);
     p.expect(T![return]);
-    expr(p);
+    if !p.at(T![;]) {
+        expr(p);
+    }
     p.expect(T![;]);
     p.finish();
 }
@@ -79,7 +81,9 @@ fn assert_stmt(p: &mut Parser) {
 fn raise_stmt(p: &mut Parser) {
     p.start(SyntaxKind::RaiseStmt);
     p.expect(T![raise]);
-    expr(p);
+    if !p.at(T![;]) {
+        expr(p);
+    }
     p.expect(T![;]);
     p.finish();
 }

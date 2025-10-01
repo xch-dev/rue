@@ -612,7 +612,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .alloc(Lir::If(condition, then_branch, else_branch, false))
     }
 
-    fn lower_raise(&mut self, env: &Environment, hir: HirId, srcloc: SrcLoc) -> LirId {
+    fn lower_raise(&mut self, env: &Environment, hir: Option<HirId>, srcloc: SrcLoc) -> LirId {
         if !self.options.debug_symbols {
             return self.arena.alloc(Lir::Raise(vec![]));
         }
@@ -620,9 +620,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let error = self.arena.alloc(Lir::Atom(
             format!("raise called at {}", srcloc.start()).into_bytes(),
         ));
-        let lir = self.lower_hir(env, hir);
+        let lir = hir.map(|hir| self.lower_hir(env, hir));
 
-        self.arena.alloc(Lir::Raise(vec![error, lir]))
+        let mut args = vec![error];
+
+        if let Some(hir) = lir {
+            args.push(hir);
+        }
+
+        self.arena.alloc(Lir::Raise(args))
     }
 
     fn lower_if(

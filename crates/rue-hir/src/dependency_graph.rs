@@ -109,7 +109,9 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                         visit_hir(db, graph, *stmt, false);
                     }
                     Statement::Raise(stmt, _) => {
-                        if graph.options.debug_symbols {
+                        if graph.options.debug_symbols
+                            && let Some(stmt) = stmt
+                        {
                             visit_hir(db, graph, *stmt, false);
                         }
                     }

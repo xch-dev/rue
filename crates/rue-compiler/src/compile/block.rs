@@ -138,8 +138,7 @@ pub fn compile_block(
                 let value = if let Some(expr) = stmt.expr() {
                     compile_expr(ctx, &expr, expected_type)
                 } else {
-                    debug!("Unresolved return stmt expr");
-                    ctx.builtins().unresolved.clone()
+                    ctx.builtins().nil.clone()
                 };
 
                 if is_expr {
@@ -170,12 +169,7 @@ pub fn compile_block(
                 )
             }
             AstStmt::RaiseStmt(stmt) => {
-                let value = if let Some(expr) = stmt.expr() {
-                    compile_expr(ctx, &expr, None)
-                } else {
-                    debug!("Unresolved raise stmt expr");
-                    ctx.builtins().unresolved.clone()
-                };
+                let value = stmt.expr().map(|expr| compile_expr(ctx, &expr, None));
 
                 if return_value.is_none() {
                     return_value = Some(Value::new(
@@ -185,7 +179,7 @@ pub fn compile_block(
                 }
 
                 Statement::Raise(
-                    value.hir,
+                    value.map(|value| value.hir),
                     SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
                 )
             }
