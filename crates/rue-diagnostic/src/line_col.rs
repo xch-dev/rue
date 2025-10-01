@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LineCol {
     pub line: usize,
@@ -25,5 +27,11 @@ impl LineCol {
         }
 
         Self { line, col }
+    }
+}
+
+impl fmt::Display for LineCol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line + 1, self.col + 1)
     }
 }

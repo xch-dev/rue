@@ -1,6 +1,6 @@
 use log::debug;
 use rue_ast::{AstBlock, AstNode, AstStmt, AstStmtOrExpr};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, Hir, IfStatement, Scope, Statement, Symbol,
     Value,
@@ -164,7 +164,10 @@ pub fn compile_block(
 
                 ctx.push_mappings(value.then_map);
 
-                Statement::Assert(value.hir)
+                Statement::Assert(
+                    value.hir,
+                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
+                )
             }
             AstStmt::RaiseStmt(stmt) => {
                 let value = if let Some(expr) = stmt.expr() {

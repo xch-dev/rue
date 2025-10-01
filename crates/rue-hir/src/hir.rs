@@ -1,5 +1,6 @@
 use id_arena::Id;
 use num_bigint::BigInt;
+use rue_diagnostic::SrcLoc;
 
 use crate::{BinaryOp, SymbolId, UnaryOp};
 
@@ -38,13 +39,13 @@ pub struct Block {
     pub body: Option<HirId>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Expr(ExprStatement),
     Let(SymbolId),
     If(IfStatement),
     Return(HirId),
-    Assert(HirId),
+    Assert(HirId, SrcLoc),
     Raise(HirId),
 }
 

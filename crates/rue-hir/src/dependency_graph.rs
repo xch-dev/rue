@@ -92,7 +92,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                             graph.locals.entry(*last).or_default().insert(*stmt);
                         }
                     }
-                    Statement::Assert(stmt) => {
+                    Statement::Assert(stmt, _) => {
                         visit_hir(db, graph, *stmt, false);
                     }
                     Statement::Raise(stmt) => {

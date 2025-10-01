@@ -1,3 +1,7 @@
 fn main() -> Bytes {
     "Hello, world!"
 }
+
+test fn tests() {
+    assert main() == "Hello, world!";
+}

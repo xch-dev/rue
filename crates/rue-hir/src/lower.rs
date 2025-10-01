@@ -4,6 +4,7 @@ use std::{collections::HashMap, mem};
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
+use rue_diagnostic::SrcLoc;
 use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
@@ -453,7 +454,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         stmts: Vec<Statement>,
         body: Option<HirId>,
     ) -> LirId {
-        let Some(stmt) = stmts.first().copied() else {
+        let Some(stmt) = stmts.first().cloned() else {
             return if let Some(body) = body {
                 self.lower_hir(env, body)
             } else {
@@ -464,7 +465,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         match stmt {
             Statement::Let(_) => self.lower_let_stmts(env, stmts, body),
             Statement::Return(hir) => self.lower_block(env, vec![], Some(hir)),
-            Statement::Assert(condition) => self.lower_assert(env, stmts, condition, body),
+            Statement::Assert(condition, token) => {
+                self.lower_assert(env, stmts, condition, token, body)
+            }
             Statement::Expr(_) => self.lower_expr_stmts(env, stmts, body),
             Statement::Raise(hir) => self.lower_raise(env, hir),
             Statement::If(stmt) => self.lower_if(env, stmts, stmt, body),
@@ -586,12 +589,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         env: &Environment,
         mut stmts: Vec<Statement>,
         condition: HirId,
+        srcloc: SrcLoc,
         body: Option<HirId>,
     ) -> LirId {
         stmts.remove(0);
+
+        let error = self.arena.alloc(Lir::Atom(
+            format!("Assertion failed at {}", srcloc.start()).into_bytes(),
+        ));
+
         let condition = self.lower_hir(env, condition);
         let then_branch = self.lower_block(env, stmts, body);
-        let else_branch = self.arena.alloc(Lir::Raise(vec![]));
+        let else_branch = self.arena.alloc(Lir::Raise(vec![error]));
         self.arena
             .alloc(Lir::If(condition, then_branch, else_branch, false))
     }
@@ -625,7 +634,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut ids = Vec::new();
         let mut always_nil = true;
 
-        while let Some(stmt) = stmts.first().copied()
+        while let Some(stmt) = stmts.first().cloned()
             && let Statement::Expr(expr) = stmt
         {
             always_nil &= expr.always_nil;
@@ -696,7 +705,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     || matches!(self.db.symbol(symbol), Symbol::Function(_))
                     || by_reference
                 {
-                    if !self.should_inline(symbol) {
+                    if !self.should_inline(symbol) && self.graph.references(symbol) > 0 {
                         group.push(symbol);
                     }
                     false

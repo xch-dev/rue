@@ -3,7 +3,7 @@ use std::{fs, sync::Arc};
 use anyhow::Result;
 use clap::Parser;
 use clvm_tools_rs::classic::clvm_tools::binutils::disassemble;
-use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program};
+use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, error::EvalErr, run_program};
 use rue_compiler::compile_file;
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
@@ -53,7 +53,7 @@ fn test(file: String) -> Result<()> {
     let result = compile_file(
         &mut allocator,
         Source::new(Arc::from(source), SourceKind::File(file)),
-        CompilerOptions::default(),
+        CompilerOptions::debug(),
     )?;
 
     for diagnostic in result.diagnostics {
@@ -80,9 +80,17 @@ fn test(file: String) -> Result<()> {
                 }
                 eprintln!("Test failed due to non-nil output");
             }
-            Err(error) => {
-                eprintln!("Test failed due to error: {error}");
-            }
+            Err(error) => match error {
+                EvalErr::Raise(error) => {
+                    eprintln!(
+                        "Test failed due to raise: {}",
+                        disassemble(&allocator, error, None)
+                    );
+                }
+                _ => {
+                    eprintln!("Test failed due to error: {error}");
+                }
+            },
         }
     }
 

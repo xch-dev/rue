@@ -1,5 +1,5 @@
 program: (x)
-debug_program: (a (i (not (q . 1)) (q . 2) (q 8)) 1)
+debug_program: (a (i (not (q . 1)) (q . 2) (q 8 (q . "Assertion failed at 2:5"))) 1)
 solution: (42)
 byte_cost: 36000
 clvm_error: clvm raise
