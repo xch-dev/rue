@@ -72,7 +72,9 @@ impl Parser {
                 TokenKind::True => T![true],
                 TokenKind::False => T![false],
                 TokenKind::Export => T![export],
+                TokenKind::Extern => T![extern],
                 TokenKind::Inline => T![inline],
+                TokenKind::Test => T![test],
                 TokenKind::Mod => T![mod],
                 TokenKind::Fn => T![fn],
                 TokenKind::Const => T![const],
@@ -151,10 +153,16 @@ impl Parser {
     }
 
     pub(crate) fn checkpoint(&mut self) -> Checkpoint {
+        self.eat_trivia();
         self.builder.checkpoint()
     }
 
+    pub(crate) fn start_including_trivia(&mut self, kind: SyntaxKind) {
+        self.builder.start_node(RueLang::kind_to_raw(kind));
+    }
+
     pub(crate) fn start(&mut self, kind: SyntaxKind) {
+        self.eat_trivia();
         self.builder.start_node(RueLang::kind_to_raw(kind));
     }
 
@@ -164,7 +172,6 @@ impl Parser {
     }
 
     pub(crate) fn finish(&mut self) {
-        self.eat_trivia();
         self.builder.finish_node();
     }
 
@@ -219,7 +226,7 @@ impl Parser {
             .map_or(SyntaxKind::Eof, |token| token.kind)
     }
 
-    fn eat_trivia(&mut self) {
+    pub(crate) fn eat_trivia(&mut self) {
         while self.nth(0).is_trivia() {
             self.bump(self.nth(0));
         }

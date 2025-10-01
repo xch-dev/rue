@@ -84,6 +84,7 @@ pub(crate) fn compare_impl(
         }
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Never, _) => Comparison::Assign,
+        (_, Type::Any) => Comparison::Assign,
         (Type::Atom(lhs), Type::Atom(rhs)) => {
             let semantic = if lhs.semantic == rhs.semantic || rhs.semantic == AtomSemantic::Any {
                 Comparison::Assign
@@ -196,8 +197,11 @@ pub(crate) fn compare_impl(
                 rhs_semantic,
             );
 
+            let rhs_semantics = semantics_of(arena, rhs);
+
             if rhs_semantic == Some(lhs.semantic)
-                || semantics_of(arena, rhs).contains(&Some(lhs.semantic))
+                || rhs_semantics.contains(&Some(Semantic::Id(lhs.semantic)))
+                || rhs_semantics.contains(&Some(Semantic::All))
             {
                 inner
             } else {
@@ -217,7 +221,9 @@ pub(crate) fn compare_impl(
 
             let semantics = semantics_of(arena, lhs);
 
-            if (semantics.len() != 1 || !semantics.contains(&Some(rhs.semantic)))
+            if (semantics.len() != 1
+                || (!semantics.contains(&Some(Semantic::Id(rhs.semantic)))
+                    && !semantics.contains(&Some(Semantic::All))))
                 && lhs_semantic != Some(rhs.semantic)
             {
                 max(inner, Comparison::Cast)
@@ -243,11 +249,11 @@ pub(crate) fn compare_impl(
             lhs_semantic,
             rhs_semantic,
         ),
-        (Type::Function(_) | Type::Generic(_), _) => compare_impl(
+        (Type::Function(_) | Type::Generic(_) | Type::Any, _) => compare_impl(
             arena,
             builtins,
             ctx,
-            builtins.any,
+            builtins.recursive_any,
             rhs,
             lhs_semantic,
             rhs_semantic,
@@ -285,16 +291,23 @@ pub(crate) fn compare_impl(
     result
 }
 
-fn semantics_of(arena: &Arena<Type>, id: TypeId) -> HashSet<Option<TypeId>> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Semantic {
+    All,
+    Id(TypeId),
+}
+
+fn semantics_of(arena: &Arena<Type>, id: TypeId) -> HashSet<Option<Semantic>> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => semantics_of(arena, id),
         Type::Alias(alias) => semantics_of(arena, alias.inner),
         Type::Never => HashSet::new(),
+        Type::Any => HashSet::from_iter([Some(Semantic::All)]),
         Type::Unresolved | Type::Generic(_) | Type::Atom(_) | Type::Pair(_) | Type::Function(_) => {
             HashSet::from_iter([None])
         }
-        Type::Struct(ty) => HashSet::from_iter([Some(ty.semantic)]),
+        Type::Struct(ty) => HashSet::from_iter([Some(Semantic::Id(ty.semantic))]),
         Type::Union(ty) => {
             let mut semantics = HashSet::new();
 

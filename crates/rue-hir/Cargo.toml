@@ -19,6 +19,7 @@ rue-options = { workspace = true }
 rue-parser = { workspace = true }
 rue-lir = { workspace = true }
 rue-types = { workspace = true }
+rue-diagnostic = { workspace = true }
 id-arena = { workspace = true }
 indexmap = { workspace = true }
 num-bigint = { workspace = true }

@@ -1761,6 +1761,7 @@ dependencies = [
  "id-arena",
  "indexmap",
  "num-bigint",
+ "rue-diagnostic",
  "rue-lir",
  "rue-options",
  "rue-parser",

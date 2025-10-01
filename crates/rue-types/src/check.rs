@@ -424,7 +424,7 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
         Type::Never => vec![],
         Type::Alias(alias) => variants_of(arena, builtins, alias.inner),
         Type::Struct(ty) => variants_of(arena, builtins, ty.inner),
-        Type::Function(_) => vec![builtins.atom, builtins.any_pair],
+        Type::Function(_) | Type::Any => vec![builtins.atom, builtins.recursive_any_pair],
         Type::Union(ty) => {
             let mut variants = Vec::new();
 
@@ -442,7 +442,7 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Result<Option<Atoms>, CheckError
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => atoms_of(arena, id)?,
         Type::Unresolved | Type::Never | Type::Pair(_) => None,
-        Type::Generic(_) => Some(Atoms::Unrestricted),
+        Type::Generic(_) | Type::Any => Some(Atoms::Unrestricted),
         Type::Atom(atom) => {
             let Some(restriction) = atom.restriction else {
                 return Ok(Some(Atoms::Unrestricted));
@@ -501,7 +501,9 @@ fn pairs_of(
         Type::Ref(id) => pairs_of(arena, builtins, id)?,
         Type::Unresolved | Type::Never | Type::Atom(_) => vec![],
         Type::Pair(pair) => vec![pair],
-        Type::Generic(_) => vec![Pair::new(builtins.any, builtins.any)],
+        Type::Generic(_) | Type::Any => {
+            vec![Pair::new(builtins.recursive_any, builtins.recursive_any)]
+        }
         Type::Alias(alias) => pairs_of(arena, builtins, alias.inner)?,
         Type::Struct(ty) => pairs_of(arena, builtins, ty.inner)?,
         Type::Function(_) => return Err(CheckError::FunctionType),

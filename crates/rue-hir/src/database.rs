@@ -21,6 +21,7 @@ pub struct Database {
     relevant_declarations: IndexSet<Declaration>,
     declared_by: HashMap<Declaration, HashSet<Declaration>>,
     referenced_by: HashMap<Declaration, HashSet<Declaration>>,
+    tests: Vec<SymbolId>,
 }
 
 impl Database {
@@ -116,6 +117,14 @@ impl Database {
             .unwrap_or_default()
             .into_iter()
             .collect()
+    }
+
+    pub fn add_test(&mut self, symbol: SymbolId) {
+        self.tests.push(symbol);
+    }
+
+    pub fn tests(&self) -> impl Iterator<Item = SymbolId> {
+        self.tests.iter().copied()
     }
 
     pub fn debug_symbol(&self, id: SymbolId) -> String {
@@ -287,6 +296,8 @@ impl Database {
                     self.debug_hir(*msg)
                 )
             }
+            Hir::InfinityG1 => "INFINITY_G1".to_string(),
+            Hir::InfinityG2 => "INFINITY_G2".to_string(),
         }
     }
 }

@@ -12,22 +12,16 @@ impl Diagnostic {
     }
 
     pub fn start(&self) -> LineCol {
-        LineCol::new(&self.srcloc.source.text, self.srcloc.span.start)
+        self.srcloc.start()
     }
 
     pub fn end(&self) -> LineCol {
-        LineCol::new(&self.srcloc.source.text, self.srcloc.span.end)
+        self.srcloc.end()
     }
 
     pub fn message(&self) -> String {
         let start = self.start();
 
-        format!(
-            "{} at {}:{}:{}",
-            self.kind,
-            self.srcloc.source.kind,
-            start.line + 1,
-            start.col + 1
-        )
+        format!("{} at {}:{}", self.kind, self.srcloc.source.kind, start)
     }
 }

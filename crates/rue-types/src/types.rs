@@ -24,6 +24,7 @@ pub type TypeId = Id<Type>;
 pub enum Type {
     Unresolved,
     Generic(Generic),
+    Any,
     Never,
     Ref(TypeId),
     Atom(Atom),

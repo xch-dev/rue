@@ -5,3 +5,4 @@ output: '"Big"'
 runtime_cost: 1580
 byte_cost: 1692000
 total_cost: 1693580
+tests_passed: true

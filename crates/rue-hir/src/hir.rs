@@ -1,5 +1,6 @@
 use id_arena::Id;
 use num_bigint::BigInt;
+use rue_diagnostic::SrcLoc;
 
 use crate::{BinaryOp, SymbolId, UnaryOp};
 
@@ -30,6 +31,8 @@ pub enum Hir {
     BlsVerify(HirId, Vec<HirId>),
     Secp256K1Verify(HirId, HirId, HirId),
     Secp256R1Verify(HirId, HirId, HirId),
+    InfinityG1,
+    InfinityG2,
 }
 
 #[derive(Debug, Clone)]
@@ -38,14 +41,14 @@ pub struct Block {
     pub body: Option<HirId>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Expr(ExprStatement),
     Let(SymbolId),
     If(IfStatement),
     Return(HirId),
-    Assert(HirId),
-    Raise(HirId),
+    Assert(HirId, SrcLoc),
+    Raise(Option<HirId>, SrcLoc),
 }
 
 #[derive(Debug, Clone, Copy)]

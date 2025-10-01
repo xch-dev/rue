@@ -344,18 +344,18 @@ mod tests {
             "(32 + 6) * 8",
             expect![[r#"
                 BinaryExpr@0..12
-                  GroupExpr@0..9
+                  GroupExpr@0..8
                     OpenParen@0..1 "("
                     BinaryExpr@1..7
-                      LiteralExpr@1..4
+                      LiteralExpr@1..3
                         Integer@1..3 "32"
-                        Whitespace@3..4 " "
+                      Whitespace@3..4 " "
                       Plus@4..5 "+"
                       Whitespace@5..6 " "
                       LiteralExpr@6..7
                         Integer@6..7 "6"
                     CloseParen@7..8 ")"
-                    Whitespace@8..9 " "
+                  Whitespace@8..9 " "
                   Star@9..10 "*"
                   Whitespace@10..11 " "
                   LiteralExpr@11..12
@@ -394,20 +394,20 @@ mod tests {
             expect![[r#"
                 BinaryExpr@0..13
                   BinaryExpr@0..10
-                    LiteralExpr@0..2
+                    LiteralExpr@0..1
                       Integer@0..1 "1"
-                      Whitespace@1..2 " "
+                    Whitespace@1..2 " "
                     Plus@2..3 "+"
-                    BinaryExpr@3..10
-                      Whitespace@3..4 " "
-                      LiteralExpr@4..6
+                    Whitespace@3..4 " "
+                    BinaryExpr@4..10
+                      LiteralExpr@4..5
                         Integer@4..5 "2"
-                        Whitespace@5..6 " "
+                      Whitespace@5..6 " "
                       Star@6..7 "*"
                       Whitespace@7..8 " "
-                      LiteralExpr@8..10
+                      LiteralExpr@8..9
                         Integer@8..9 "3"
-                        Whitespace@9..10 " "
+                      Whitespace@9..10 " "
                   GreaterThan@10..11 ">"
                   Whitespace@11..12 " "
                   LiteralExpr@12..13
@@ -422,14 +422,14 @@ mod tests {
             expect![[r#"
                 BinaryExpr@0..11
                   BinaryExpr@0..7
-                    LiteralExpr@0..2
+                    LiteralExpr@0..1
                       Integer@0..1 "1"
-                      Whitespace@1..2 " "
+                    Whitespace@1..2 " "
                     And@2..4 "&&"
                     Whitespace@4..5 " "
-                    LiteralExpr@5..7
+                    LiteralExpr@5..6
                       Integer@5..6 "2"
-                      Whitespace@6..7 " "
+                    Whitespace@6..7 " "
                   And@7..9 "&&"
                   Whitespace@9..10 " "
                   LiteralExpr@10..11
@@ -521,30 +521,30 @@ mod tests {
             expr,
             "if true { 42 } else { 84 }",
             expect![[r#"
-            IfExpr@0..26
-              If@0..2 "if"
-              Whitespace@2..3 " "
-              LiteralExpr@3..8
-                True@3..7 "true"
-                Whitespace@7..8 " "
-              Block@8..15
-                OpenBrace@8..9 "{"
-                Whitespace@9..10 " "
-                LiteralExpr@10..13
-                  Integer@10..12 "42"
-                  Whitespace@12..13 " "
-                CloseBrace@13..14 "}"
-                Whitespace@14..15 " "
-              Else@15..19 "else"
-              Whitespace@19..20 " "
-              Block@20..26
-                OpenBrace@20..21 "{"
-                Whitespace@21..22 " "
-                LiteralExpr@22..25
-                  Integer@22..24 "84"
-                  Whitespace@24..25 " "
-                CloseBrace@25..26 "}"
-        "#]],
+                IfExpr@0..26
+                  If@0..2 "if"
+                  Whitespace@2..3 " "
+                  LiteralExpr@3..7
+                    True@3..7 "true"
+                  Whitespace@7..8 " "
+                  Block@8..14
+                    OpenBrace@8..9 "{"
+                    Whitespace@9..10 " "
+                    LiteralExpr@10..12
+                      Integer@10..12 "42"
+                    Whitespace@12..13 " "
+                    CloseBrace@13..14 "}"
+                  Whitespace@14..15 " "
+                  Else@15..19 "else"
+                  Whitespace@19..20 " "
+                  Block@20..26
+                    OpenBrace@20..21 "{"
+                    Whitespace@21..22 " "
+                    LiteralExpr@22..24
+                      Integer@22..24 "84"
+                    Whitespace@24..25 " "
+                    CloseBrace@25..26 "}"
+            "#]],
             expect![""],
         );
 
@@ -555,41 +555,41 @@ mod tests {
                 IfExpr@0..47
                   If@0..2 "if"
                   Whitespace@2..3 " "
-                  LiteralExpr@3..8
+                  LiteralExpr@3..7
                     True@3..7 "true"
-                    Whitespace@7..8 " "
-                  Block@8..15
+                  Whitespace@7..8 " "
+                  Block@8..14
                     OpenBrace@8..9 "{"
                     Whitespace@9..10 " "
-                    LiteralExpr@10..13
+                    LiteralExpr@10..12
                       Integer@10..12 "42"
-                      Whitespace@12..13 " "
+                    Whitespace@12..13 " "
                     CloseBrace@13..14 "}"
-                    Whitespace@14..15 " "
+                  Whitespace@14..15 " "
                   Else@15..19 "else"
                   Whitespace@19..20 " "
                   IfExpr@20..47
                     If@20..22 "if"
                     Whitespace@22..23 " "
-                    LiteralExpr@23..29
+                    LiteralExpr@23..28
                       False@23..28 "false"
-                      Whitespace@28..29 " "
-                    Block@29..36
+                    Whitespace@28..29 " "
+                    Block@29..35
                       OpenBrace@29..30 "{"
                       Whitespace@30..31 " "
-                      LiteralExpr@31..34
+                      LiteralExpr@31..33
                         Integer@31..33 "84"
-                        Whitespace@33..34 " "
+                      Whitespace@33..34 " "
                       CloseBrace@34..35 "}"
-                      Whitespace@35..36 " "
+                    Whitespace@35..36 " "
                     Else@36..40 "else"
                     Whitespace@40..41 " "
                     Block@41..47
                       OpenBrace@41..42 "{"
                       Whitespace@42..43 " "
-                      LiteralExpr@43..46
+                      LiteralExpr@43..45
                         Integer@43..45 "91"
-                        Whitespace@45..46 " "
+                      Whitespace@45..46 " "
                       CloseBrace@46..47 "}"
             "#]],
             expect![""],

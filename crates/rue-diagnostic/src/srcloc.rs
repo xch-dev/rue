@@ -2,6 +2,8 @@ use std::{ops::Range, sync::Arc};
 
 use derive_more::Display;
 
+use crate::LineCol;
+
 #[derive(Debug, Clone)]
 pub struct Source {
     pub text: Arc<str>,
@@ -41,5 +43,13 @@ pub struct SrcLoc {
 impl SrcLoc {
     pub fn new(source: Source, span: Range<usize>) -> Self {
         Self { source, span }
+    }
+
+    pub fn start(&self) -> LineCol {
+        LineCol::new(&self.source.text, self.span.start)
+    }
+
+    pub fn end(&self) -> LineCol {
+        LineCol::new(&self.source.text, self.span.end)
     }
 }

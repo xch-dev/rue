@@ -266,9 +266,18 @@ impl Compiler {
 
         match comparison {
             Comparison::Assign => {
-                if cast {
+                if cast
+                    && rue_types::compare_with_inference(
+                        self.db.types_mut(),
+                        &self.builtins.types,
+                        to,
+                        from,
+                        None,
+                    ) == Comparison::Assign
+                {
                     let from = self.type_name(from);
                     let to = self.type_name(to);
+
                     self.diagnostic(node, DiagnosticKind::UnnecessaryCast(from, to));
                 }
             }

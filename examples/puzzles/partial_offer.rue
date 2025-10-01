@@ -74,7 +74,7 @@ fn main(
     let inner_conditions = inner_puzzle(...inner_puzzle_solution);
 
     let rest = inline if !(create_coin_rest is nil) && create_coin_rest.amount > -1 {
-        [unchecked_cast::<CreateCoin>((CREATE_COIN, create_coin_rest) as Any), ...inner_conditions]
+        [unchecked_cast::<CreateCoin>((CREATE_COIN, create_coin_rest)), ...inner_conditions]
     } else {
         inner_conditions
     };

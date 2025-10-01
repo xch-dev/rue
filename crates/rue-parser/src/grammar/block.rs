@@ -65,7 +65,7 @@ mod tests {
             expect![[r#"
                 Block@0..15
                   OpenBrace@0..1 "{"
-                  LetStmt@1..12
+                  LetStmt@1..11
                     Let@1..4 "let"
                     Whitespace@4..5 " "
                     Ident@5..6 "x"
@@ -75,7 +75,7 @@ mod tests {
                     LiteralExpr@9..10
                       Integer@9..10 "5"
                     Semicolon@10..11 ";"
-                    Whitespace@11..12 " "
+                  Whitespace@11..12 " "
                   LiteralExpr@12..14
                     Integer@12..14 "42"
                   CloseBrace@14..15 "}"

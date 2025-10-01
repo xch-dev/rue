@@ -11,6 +11,10 @@ use crate::{Compiler, compile_block, compile_generic_parameters, compile_type};
 pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> SymbolId {
     let symbol = ctx.alloc_symbol(Symbol::Unresolved);
 
+    if function.test().is_some() {
+        ctx.add_test(symbol);
+    }
+
     ctx.push_declaration(Declaration::Symbol(symbol));
 
     let scope = ctx.alloc_scope(Scope::new());
@@ -106,6 +110,8 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         body,
         kind: if function.inline().is_some() {
             FunctionKind::Inline
+        } else if function.extern_kw().is_some() {
+            FunctionKind::Sequential
         } else {
             FunctionKind::BinaryTree
         },

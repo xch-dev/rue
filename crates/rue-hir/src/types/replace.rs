@@ -8,9 +8,12 @@ pub fn replace_type(db: &mut Database, from: TypeId, to: TypeId, path: &[TypePat
     };
 
     match db.ty(from).clone() {
-        Type::Unresolved | Type::Generic(_) | Type::Atom(..) | Type::Function(_) | Type::Never => {
-            from
-        }
+        Type::Unresolved
+        | Type::Generic(_)
+        | Type::Atom(..)
+        | Type::Function(_)
+        | Type::Never
+        | Type::Any => from,
         Type::Ref(id) => replace_type(db, id, to, path),
         Type::Apply(apply) => {
             let inner = replace_type(db, apply.inner, to, path);

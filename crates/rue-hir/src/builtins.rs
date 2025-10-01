@@ -1,8 +1,8 @@
 use rue_types::{BuiltinTypes, FunctionType, Generic, Pair, Type, TypeId, Union};
 
 use crate::{
-    Database, FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId,
-    UnaryOp, Value, VerificationFunctionSymbol,
+    ConstantSymbol, Database, FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId,
+    Symbol, SymbolId, UnaryOp, Value, VerificationFunctionSymbol,
 };
 
 #[derive(Debug, Clone)]
@@ -40,14 +40,14 @@ impl Builtins {
         scope.insert_type("Signature".to_string(), types.signature, false);
         scope.insert_type("Int".to_string(), types.int, false);
         scope.insert_type("Bool".to_string(), types.bool, false);
-        scope.insert_type("Any".to_string(), types.any, false);
+        scope.insert_type("Any".to_string(), types.permissive_any, false);
         scope.insert_type("List".to_string(), types.list, false);
 
         let unchecked_cast_generic = db.alloc_type(Type::Generic(Generic { name: None }));
 
         scope.insert_symbol(
             "unchecked_cast".to_string(),
-            unchecked_cast(db, unchecked_cast_generic, types.any),
+            unchecked_cast(db, unchecked_cast_generic, types.permissive_any),
             false,
         );
         scope.insert_symbol(
@@ -138,6 +138,29 @@ impl Builtins {
             db.alloc_symbol(Symbol::VerificationFunction(
                 VerificationFunctionSymbol::Secp256R1Verify,
             )),
+            false,
+        );
+
+        let infinity_g1 = db.alloc_hir(Hir::InfinityG1);
+        let infinity_g2 = db.alloc_hir(Hir::InfinityG2);
+        scope.insert_symbol(
+            "INFINITY_G1".to_string(),
+            db.alloc_symbol(Symbol::Constant(ConstantSymbol {
+                name: None,
+                ty: types.public_key,
+                value: infinity_g1,
+                inline: false,
+            })),
+            false,
+        );
+        scope.insert_symbol(
+            "INFINITY_G2".to_string(),
+            db.alloc_symbol(Symbol::Constant(ConstantSymbol {
+                name: None,
+                ty: types.signature,
+                value: infinity_g2,
+                inline: false,
+            })),
             false,
         );
 

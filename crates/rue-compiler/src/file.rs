@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
-use rue_hir::{DependencyGraph, Environment, Lowerer, Scope, ScopeId};
+use rue_hir::{DependencyGraph, Environment, Lowerer, Scope, ScopeId, SymbolId};
 use rue_lexer::Lexer;
 use rue_lir::{Error, codegen, optimize};
 use rue_options::CompilerOptions;
@@ -16,6 +16,7 @@ use crate::{Compiler, check_unused, compile_document, declare_document};
 pub struct Compilation {
     pub diagnostics: Vec<Diagnostic>,
     pub program: Option<NodePtr>,
+    pub tests: Vec<NodePtr>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,14 +67,20 @@ fn compile_file_impl(
     let mut compilation = Compilation {
         diagnostics: file.diagnostics,
         program: None,
+        tests: Vec::new(),
     };
 
-    let Some(symbol) = ctx.scope(file.scope).symbol("main") else {
-        return Ok(compilation);
-    };
-    let graph = DependencyGraph::build(&ctx, symbol);
+    let main_symbol = ctx.scope(file.scope).symbol("main");
 
-    check_unused(&mut ctx, &graph, symbol);
+    let mut entrypoints = HashSet::new();
+
+    entrypoints.extend(main_symbol);
+
+    for test in ctx.tests() {
+        entrypoints.insert(test);
+    }
+
+    check_unused(&mut ctx, &entrypoints);
 
     compilation.diagnostics.extend(ctx.take_diagnostics());
 
@@ -86,17 +93,36 @@ fn compile_file_impl(
         return Ok(compilation);
     }
 
+    if let Some(symbol) = main_symbol {
+        compilation.program = Some(generate(&mut ctx, allocator, symbol, options)?);
+    }
+
+    for test in ctx.tests().collect::<Vec<_>>() {
+        compilation
+            .tests
+            .push(generate(&mut ctx, allocator, test, options)?);
+    }
+
+    Ok(compilation)
+}
+
+fn generate(
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    symbol: SymbolId,
+    options: CompilerOptions,
+) -> Result<NodePtr, Error> {
+    let graph = DependencyGraph::build(ctx, symbol, options);
+
     let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(&mut ctx, &mut arena, &graph, options, symbol);
+    let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol);
     let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
 
     if options.optimize_lir {
         lir = optimize(&mut arena, lir);
     }
 
-    compilation.program = Some(codegen(&arena, allocator, lir)?);
-
-    Ok(compilation)
+    codegen(&arena, allocator, lir)
 }
 
 fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilation {

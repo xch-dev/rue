@@ -179,7 +179,8 @@ pub fn compile_path(
                     | Type::Function(..)
                     | Type::Generic(_)
                     | Type::Union(..)
-                    | Type::Never => {
+                    | Type::Never
+                    | Type::Any => {
                         vec![]
                     }
                     Type::Alias(alias) => alias.generics.clone(),

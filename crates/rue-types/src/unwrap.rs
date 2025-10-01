@@ -17,7 +17,8 @@ fn unwrap_semantic_impl(arena: &mut Arena<Type>, id: TypeId, resolve_aliases: bo
         | Type::Atom(_)
         | Type::Pair(_)
         | Type::Function(_)
-        | Type::Struct(_) => id,
+        | Type::Struct(_)
+        | Type::Any => id,
         Type::Union(ty) => {
             if ty.types.len() == 1 {
                 ty.types[0]

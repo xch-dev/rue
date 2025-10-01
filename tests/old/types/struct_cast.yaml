@@ -1,7 +1,8 @@
 solution: ()
 diagnostics:
-- Cannot assign `B` to `A` without a cast, since they are semantically different at test:13:17
-- Cannot assign `A | B` to `A` without a cast, since they are semantically different at test:15:15
+- Cannot assign `B` to `A` without a cast, since they are semantically different at test:13:18
+- Cannot assign `A | B` to `A` without a cast, since they are semantically different at test:15:16
 - Unused binding `b` at test:11:9
 - Unused binding `a_b` at test:12:9
 - Unused binding `b_a` at test:13:9
+tests_passed: true

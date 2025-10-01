@@ -6,6 +6,9 @@ pub struct CompilerOptions {
 
     /// Whether to fully optimize the generated LIR, or preserve the original structure.
     pub optimize_lir: bool,
+
+    /// Whether to include debug symbols in the generated code.
+    pub debug_symbols: bool,
 }
 
 impl Default for CompilerOptions {
@@ -13,6 +16,7 @@ impl Default for CompilerOptions {
         Self {
             auto_inline: true,
             optimize_lir: true,
+            debug_symbols: false,
         }
     }
 }
@@ -22,6 +26,7 @@ impl CompilerOptions {
         Self {
             auto_inline: false,
             optimize_lir: false,
+            debug_symbols: true,
         }
     }
 }

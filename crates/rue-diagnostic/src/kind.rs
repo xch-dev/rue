@@ -58,7 +58,7 @@ pub enum DiagnosticKind {
     #[error("Cannot cast `{0}` to `{1}`, since they have different runtime representations")]
     IncompatibleCast(String, String),
 
-    #[error("Unnecessary cast from `{0}` to `{1}`, since they are directly assignable")]
+    #[error("Unnecessary cast from `{0}` to `{1}`, since they are compatible with each other")]
     UnnecessaryCast(String, String),
 
     #[error("Cannot type guard from `{0}` to `{1}`, since they do not overlap")]

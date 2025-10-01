@@ -76,7 +76,7 @@ inline fn curry_singleton_hash(
 ) -> Bytes32 {
   curry_tree_hash(
     singleton.mod_hash,
-    tree_hash(singleton as Any),
+    tree_hash(singleton),
     inner_puzzle_hash,
   )
 }
@@ -131,4 +131,45 @@ inline fn morph_condition(condition: CreateCoin, ...singleton: Singleton) -> Cre
     amount: condition.amount,
     memos: condition.memos,
   }
+}
+
+test fn tests() {
+  let parent_parent_coin_id = sha256("parent_parent_coin_id");
+  let launcher_puzzle_hash = sha256("launcher_puzzle");
+  let launcher_id = coinid(parent_parent_coin_id, launcher_puzzle_hash, 0);
+
+  let singleton = Singleton {
+    mod_hash: tree_hash(main),
+    launcher_id: launcher_id,
+    launcher_puzzle_hash: launcher_puzzle_hash,
+  };
+
+  let inner_puzzle = fn(...solution: List<SingletonCondition>) => solution;
+
+  let proof = EveProof {
+    parent_parent_coin_id: parent_parent_coin_id,
+    parent_amount: 0,
+  };
+
+  let p2_puzzle_hash = sha256("p2_puzzle_hash");
+
+  let conditions = main(
+    singleton,
+    inner_puzzle,
+    proof,
+    1,
+    [CreateCoin {
+      puzzle_hash: p2_puzzle_hash,
+      amount: 1,
+    }],
+  );
+
+  assert tree_hash(conditions) == tree_hash([
+    AssertMyAmount { amount: 1 },
+    AssertMyParentId { parent_id: launcher_id },
+    CreateCoin {
+      puzzle_hash: curry_singleton_hash(singleton, p2_puzzle_hash),
+      amount: 1,
+    },
+  ]);
 }

@@ -7,3 +7,4 @@ byte_cost: 180000
 total_cost: 180122
 diagnostics:
 - Value returned by statement is unused at test:2:5
+tests_passed: true

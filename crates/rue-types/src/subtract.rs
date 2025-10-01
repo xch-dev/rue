@@ -128,14 +128,14 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
 
             variants
         }
-        Type::Function(_) | Type::Generic(_) => vec![
+        Type::Function(_) | Type::Generic(_) | Type::Any => vec![
             Variant {
                 semantic_type_ids: vec![],
                 type_id: builtins.atom,
             },
             Variant {
                 semantic_type_ids: vec![],
-                type_id: builtins.any_pair,
+                type_id: builtins.recursive_any_pair,
             },
         ],
         Type::Union(ty) => {

@@ -1,6 +1,6 @@
 use log::debug;
 use rue_ast::{AstBlock, AstNode, AstStmt, AstStmtOrExpr};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, Hir, IfStatement, Scope, Statement, Symbol,
     Value,
@@ -138,8 +138,7 @@ pub fn compile_block(
                 let value = if let Some(expr) = stmt.expr() {
                     compile_expr(ctx, &expr, expected_type)
                 } else {
-                    debug!("Unresolved return stmt expr");
-                    ctx.builtins().unresolved.clone()
+                    ctx.builtins().nil.clone()
                 };
 
                 if is_expr {
@@ -164,15 +163,13 @@ pub fn compile_block(
 
                 ctx.push_mappings(value.then_map);
 
-                Statement::Assert(value.hir)
+                Statement::Assert(
+                    value.hir,
+                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
+                )
             }
             AstStmt::RaiseStmt(stmt) => {
-                let value = if let Some(expr) = stmt.expr() {
-                    compile_expr(ctx, &expr, None)
-                } else {
-                    debug!("Unresolved raise stmt expr");
-                    ctx.builtins().unresolved.clone()
-                };
+                let value = stmt.expr().map(|expr| compile_expr(ctx, &expr, None));
 
                 if return_value.is_none() {
                     return_value = Some(Value::new(
@@ -181,7 +178,10 @@ pub fn compile_block(
                     ));
                 }
 
-                Statement::Raise(value.hir)
+                Statement::Raise(
+                    value.map(|value| value.hir),
+                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
+                )
             }
         };
 
