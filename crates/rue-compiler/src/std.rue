@@ -299,14 +299,14 @@ export fn merge_list<T>(a: List<T>, b: List<T>) -> List<T> {
 }
 
 export fn deep_equal(a: Any, b: Any) -> Bool {
-    if a is Atom {
-        if b is Atom {
+    if a is Bytes {
+        if b is Bytes {
             a == b
         } else {
             false
         }
     } else {
-        if b is Atom {
+        if b is Bytes {
             false
         } else {
             deep_equal(a.first, b.first) && deep_equal(a.rest, b.rest)
