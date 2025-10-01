@@ -83,9 +83,7 @@ inline const RING_MORPH_BYTE: Bytes = 0xcb;
 inline fn cat_puzzle_hash(cat_info: CatInfo, inner_puzzle_hash: Bytes32) -> Bytes32 {
     curry_tree_hash(
         cat_info.mod_hash,
-        cat_info.mod_hash_hash,
-        tree_hash_atom(cat_info.asset_id),
-        inner_puzzle_hash
+        ...[cat_info.mod_hash_hash, tree_hash_atom(cat_info.asset_id), inner_puzzle_hash]
     )
 }
 

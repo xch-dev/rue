@@ -144,10 +144,7 @@ pub enum DiagnosticKind {
     InvalidFunctionCall(String),
 
     #[error("Expected {0} arguments, but found {1}")]
-    ExpectedArgumentsExact(usize, usize),
-
-    #[error("Expected at least {0} arguments, but found {1}")]
-    ExpectedArgumentsMinimum(usize, usize),
+    ExpectedArguments(usize, usize),
 
     #[error("Cannot destructure non-pair parameter with type `{0}`")]
     CannotDestructureParameter(String),
@@ -155,9 +152,7 @@ pub enum DiagnosticKind {
     #[error("Can only spread the last element in a list")]
     NonFinalSpread,
 
-    #[error(
-        "Spread operator cannot be used on function that does not accept a variable number of arguments"
-    )]
+    #[error("Spread operator must be used on functions with spread parameters")]
     InvalidSpread,
 
     #[error("Field `{0}` exists on struct `{1}`, but it's not present in the underlying type")]
@@ -231,8 +226,7 @@ impl DiagnosticKind {
             | Self::CannotInferParameterType(..)
             | Self::CannotDisambiguateFunctionTypes(..)
             | Self::InvalidFunctionCall(..)
-            | Self::ExpectedArgumentsExact(..)
-            | Self::ExpectedArgumentsMinimum(..)
+            | Self::ExpectedArguments(..)
             | Self::CannotDestructureParameter(..)
             | Self::NonFinalSpread
             | Self::InvalidSpread

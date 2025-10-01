@@ -1,12 +1,12 @@
 solution: ()
 diagnostics:
-- Cannot assign `nil` to `Int` without a cast, since they are semantically different at test:3:13
-- Cannot destructure non-pair parameter with type `Int` at test:4:20
-- Cannot destructure non-pair parameter with type `Int` at test:5:20
+- Spread operator must be used on functions with spread parameters at test:3:13
+- Expected 2 arguments, but found 1 at test:3:13
+- Cannot assign `(2, nil)` to `Int`, since they are incompatible at test:4:23
+- Spread operator must be used on functions with spread parameters at test:5:13
 - Expected 2 arguments, but found 3 at test:5:13
 - Can only spread the last element in a list at test:6:17
-- Cannot destructure non-pair parameter with type `Int` at test:7:20
 - Expected 2 arguments, but found 3 at test:7:13
-- Cannot assign `nil` to `Int` without a cast, since they are semantically different at test:8:13
+- Spread operator must be used on functions with spread parameters at test:8:13
 - Expected 2 arguments, but found 0 at test:8:13
 tests_passed: true

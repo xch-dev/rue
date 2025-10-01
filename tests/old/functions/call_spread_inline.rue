@@ -1,5 +1,5 @@
 fn main() -> List<Int> {
-    noop(1, 2, 3)
+    noop(...[1, 2, 3])
 }
 
 inline fn noop(...value: List<Int>) -> List<Int> {

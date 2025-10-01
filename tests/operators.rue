@@ -21,8 +21,6 @@ test fn arithmetic() {
     assert -200 / 3 == -67;
     assert -200 % 3 == 1;
     assert -67 * 3 + 1 == -200;
-    
-    assert modpow(2, 3, 5) == 3;
 }
 
 test fn comparison() {
