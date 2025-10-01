@@ -225,9 +225,9 @@ mod tests {
                           Whitespace@34..35 " "
                       Plus@35..36 "+"
                       Whitespace@36..37 " "
-                      LiteralExpr@37..40
+                      LiteralExpr@37..39
                         Integer@37..39 "42"
-                        Whitespace@39..40 " "
+                      Whitespace@39..40 " "
                     CloseBrace@40..41 "}"
             "#]],
             expect![""],

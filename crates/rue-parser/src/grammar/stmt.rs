@@ -142,11 +142,11 @@ mod tests {
                       Ident@11..14 "Int"
                       Whitespace@14..15 " "
                   Assign@15..16 "="
-                  BinaryExpr@16..23
-                    Whitespace@16..17 " "
-                    LiteralExpr@17..20
+                  Whitespace@16..17 " "
+                  BinaryExpr@17..23
+                    LiteralExpr@17..19
                       Integer@17..19 "42"
-                      Whitespace@19..20 " "
+                    Whitespace@19..20 " "
                     Plus@20..21 "+"
                     Whitespace@21..22 " "
                     LiteralExpr@22..23
@@ -166,9 +166,9 @@ mod tests {
                 GroupExpr@0..8
                   OpenParen@0..1 "("
                   BinaryExpr@1..7
-                    LiteralExpr@1..4
+                    LiteralExpr@1..3
                       Integer@1..3 "42"
-                      Whitespace@3..4 " "
+                    Whitespace@3..4 " "
                     Plus@4..5 "+"
                     Whitespace@5..6 " "
                     LiteralExpr@6..7
@@ -189,9 +189,9 @@ mod tests {
                   GroupExpr@0..8
                     OpenParen@0..1 "("
                     BinaryExpr@1..7
-                      LiteralExpr@1..4
+                      LiteralExpr@1..3
                         Integer@1..3 "42"
-                        Whitespace@3..4 " "
+                      Whitespace@3..4 " "
                       Plus@4..5 "+"
                       Whitespace@5..6 " "
                       LiteralExpr@6..7
@@ -212,15 +212,15 @@ mod tests {
                 IfStmt@0..14
                   If@0..2 "if"
                   Whitespace@2..3 " "
-                  LiteralExpr@3..8
+                  LiteralExpr@3..7
                     True@3..7 "true"
-                    Whitespace@7..8 " "
+                  Whitespace@7..8 " "
                   Block@8..14
                     OpenBrace@8..9 "{"
                     Whitespace@9..10 " "
-                    LiteralExpr@10..13
+                    LiteralExpr@10..12
                       Integer@10..12 "42"
-                      Whitespace@12..13 " "
+                    Whitespace@12..13 " "
                     CloseBrace@13..14 "}"
             "#]],
             expect![],
