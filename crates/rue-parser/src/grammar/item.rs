@@ -9,18 +9,20 @@ pub fn item(p: &mut Parser) {
     let cp = p.checkpoint();
     p.try_eat(T![export]);
     let inline = p.try_eat(T![inline]);
+    let extern_kw = if inline { false } else { p.try_eat(T![extern]) };
+    let test = p.try_eat(T![test]);
 
-    if p.at(T![mod]) && !inline {
+    if p.at(T![mod]) && !inline && !extern_kw && !test {
         module_item(p, cp);
     } else if p.at(T![fn]) {
         function_item(p, cp);
-    } else if p.at(T![const]) {
+    } else if p.at(T![const]) && !extern_kw && !test {
         constant_item(p, cp);
-    } else if p.at(T![type]) && !inline {
+    } else if p.at(T![type]) && !inline && !extern_kw && !test {
         type_alias_item(p, cp);
-    } else if p.at(T![struct]) && !inline {
+    } else if p.at(T![struct]) && !inline && !extern_kw && !test {
         struct_item(p, cp);
-    } else if !inline {
+    } else if !inline && !extern_kw && !test {
         p.skip();
     }
 }

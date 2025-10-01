@@ -41,8 +41,14 @@ pub enum SyntaxKind {
     #[display("`export`")]
     Export,
 
+    #[display("`extern`")]
+    Extern,
+
     #[display("`inline`")]
     Inline,
+
+    #[display("`test`")]
+    Test,
 
     #[display("`mod`")]
     Mod,
@@ -335,7 +341,9 @@ macro_rules! T {
     [true] => { $crate::SyntaxKind::True };
     [false] => { $crate::SyntaxKind::False };
     [export] => { $crate::SyntaxKind::Export };
+    [extern] => { $crate::SyntaxKind::Extern };
     [inline] => { $crate::SyntaxKind::Inline };
+    [test] => { $crate::SyntaxKind::Test };
     [mod] => { $crate::SyntaxKind::Mod };
     [fn] => { $crate::SyntaxKind::Fn };
     [const] => { $crate::SyntaxKind::Const };
@@ -437,7 +445,9 @@ impl SyntaxKind {
             T![true] => &[T![true]],
             T![false] => &[T![false]],
             T![export] => &[T![export]],
+            T![extern] => &[T![extern]],
             T![inline] => &[T![inline]],
+            T![test] => &[T![test]],
             T![mod] => &[T![mod]],
             T![fn] => &[T![fn]],
             T![const] => &[T![const]],
