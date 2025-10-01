@@ -20,8 +20,10 @@ pub struct BuiltinTypes {
     pub recursive_any_pair: TypeId,
     pub permissive_any: TypeId,
     pub list: TypeId,
-    pub list_pair: TypeId,
     pub list_generic: TypeId,
+    pub alternating_list: TypeId,
+    pub alternating_list_generic_a: TypeId,
+    pub alternating_list_generic_b: TypeId,
 }
 
 impl BuiltinTypes {
@@ -55,6 +57,25 @@ impl BuiltinTypes {
             generics: vec![list_generic],
         });
 
+        let alternating_list = arena.alloc(Type::Unresolved);
+        let alternating_list_generic_a = arena.alloc(Type::Generic(Generic { name: None }));
+        let alternating_list_generic_b = arena.alloc(Type::Generic(Generic { name: None }));
+        let alternating_list_pair = arena.alloc(Type::Pair(Pair::new(
+            alternating_list_generic_b,
+            alternating_list,
+        )));
+        let alternating_list_pair = arena.alloc(Type::Pair(Pair::new(
+            alternating_list_generic_a,
+            alternating_list_pair,
+        )));
+        let alternating_list_union =
+            arena.alloc(Type::Union(Union::new(vec![nil, alternating_list_pair])));
+        *arena.get_mut(alternating_list).unwrap() = Type::Alias(Alias {
+            name: None,
+            inner: alternating_list_union,
+            generics: vec![alternating_list_generic_a, alternating_list_generic_b],
+        });
+
         Self {
             unresolved,
             atom,
@@ -72,8 +93,10 @@ impl BuiltinTypes {
             recursive_any_pair,
             permissive_any,
             list,
-            list_pair,
             list_generic,
+            alternating_list,
+            alternating_list_generic_a,
+            alternating_list_generic_b,
         }
     }
 }

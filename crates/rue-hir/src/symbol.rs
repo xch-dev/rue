@@ -1,5 +1,4 @@
 use id_arena::Id;
-use rue_lir::ClvmOp;
 use rue_parser::SyntaxToken;
 use rue_types::TypeId;
 
@@ -12,7 +11,7 @@ pub enum Symbol {
     Unresolved,
     Module(ModuleSymbol),
     Function(FunctionSymbol),
-    ClvmOp(ClvmOp),
+    Builtin(Builtin),
     Parameter(ParameterSymbol),
     Constant(ConstantSymbol),
     Binding(BindingSymbol),
@@ -71,4 +70,13 @@ pub struct BindingSymbol {
     pub ty: TypeId,
     pub value: HirId,
     pub inline: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Builtin {
+    Sha256 { inline: bool },
+    Keccak256 { inline: bool },
+    CoinId,
+    Substr,
+    BlsPairingIdentity,
 }

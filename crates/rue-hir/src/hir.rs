@@ -1,6 +1,7 @@
 use id_arena::Id;
 use num_bigint::BigInt;
 use rue_diagnostic::SrcLoc;
+use rue_lir::ClvmOp;
 
 use crate::{BinaryOp, SymbolId, UnaryOp};
 
@@ -33,6 +34,7 @@ pub enum Hir {
     Secp256R1Verify(HirId, HirId, HirId),
     InfinityG1,
     InfinityG2,
+    ClvmOp(ClvmOp, HirId),
 }
 
 #[derive(Debug, Clone)]

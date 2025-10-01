@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{FunctionCall, Hir, Symbol, Value};
+use rue_hir::{Builtin, FunctionCall, Hir, Symbol, UnaryOp, Value};
 use rue_lir::ClvmOp;
 use rue_types::{Type, Union, substitute_with_mappings};
 
@@ -18,9 +18,9 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     let expr = compile_expr(ctx, &expr, None);
 
     if let Hir::Reference(symbol) = ctx.hir(expr.hir).clone()
-        && let Symbol::ClvmOp(verification) = ctx.symbol(symbol).clone()
+        && let Symbol::Builtin(builtin) = ctx.symbol(symbol).clone()
     {
-        return compile_clvm_op(ctx, call, verification);
+        return compile_builtin(ctx, call, builtin);
     }
 
     let expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty);
@@ -111,59 +111,192 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     Value::new(hir, ty)
 }
 
-fn compile_clvm_op(ctx: &mut Compiler, call: &AstFunctionCallExpr, op: ClvmOp) -> Value {
+fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Builtin) -> Value {
     let mut args = Vec::new();
+    let mut spread = None;
 
-    for arg in call.args() {
-        if arg.spread().is_some() {
-            ctx.diagnostic(arg.syntax(), DiagnosticKind::InvalidSpread);
-        }
+    let len = call.args().count();
 
+    for (i, arg) in call.args().enumerate() {
         let Some(expr) = arg.expr() else {
+            debug!("Unresolved clvm op argument");
             continue;
         };
 
-        let value = compile_expr(ctx, &expr, Some(ctx.builtins().types.atom));
-        ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.atom);
-        args.push(value.hir);
+        if let Some(op) = arg.spread() {
+            if i == len - 1 {
+                spread = Some(op);
+            } else {
+                ctx.diagnostic(arg.syntax(), DiagnosticKind::NonFinalSpread);
+            }
+        }
+
+        let value = compile_expr(ctx, &expr, None);
+
+        args.push((value, expr));
     }
 
-    let hir = match op {
-        ClvmOp::BlsPairingIdentity => Hir::BlsPairingIdentity(args),
-        ClvmOp::BlsVerify => {
-            if args.is_empty() {
-                // ctx.diagnostic(
-                //     call.syntax(),
-                //     DiagnosticKind::ExpectedArgumentsMinimum(1, 0),
-                // );
-                return ctx.builtins().unresolved.clone();
+    match builtin {
+        Builtin::Sha256 { inline } | Builtin::Keccak256 { inline } => {
+            if args.len() != 1 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(1, args.len()),
+                );
             }
-            Hir::BlsVerify(args[0], args[1..].to_vec())
+
+            let value = if let Some((value, expr)) = args.first() {
+                let ty = if let Some(spread) = &spread {
+                    if inline {
+                        ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+                    }
+
+                    let list = ctx.builtins().types.list;
+
+                    let mappings = HashMap::from_iter([(
+                        ctx.builtins().types.list_generic,
+                        ctx.builtins().types.bytes,
+                    )]);
+
+                    rue_types::substitute_with_mappings(ctx.types_mut(), list, &mappings)
+                } else {
+                    ctx.builtins().types.bytes
+                };
+                ctx.assign_type(expr.syntax(), value.ty, ty);
+                value.hir
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            let hir = match (builtin, spread) {
+                (Builtin::Sha256 { inline }, None) => {
+                    if inline {
+                        ctx.alloc_hir(Hir::Unary(UnaryOp::Sha256Inline, value))
+                    } else {
+                        ctx.alloc_hir(Hir::Unary(UnaryOp::Sha256, value))
+                    }
+                }
+                (Builtin::Keccak256 { inline }, None) => {
+                    if inline {
+                        ctx.alloc_hir(Hir::Unary(UnaryOp::Keccak256Inline, value))
+                    } else {
+                        ctx.alloc_hir(Hir::Unary(UnaryOp::Keccak256, value))
+                    }
+                }
+                (Builtin::Sha256 { .. }, Some(_)) => {
+                    ctx.alloc_hir(Hir::ClvmOp(ClvmOp::Sha256, value))
+                }
+                (Builtin::Keccak256 { .. }, Some(_)) => {
+                    ctx.alloc_hir(Hir::ClvmOp(ClvmOp::Keccak256, value))
+                }
+                _ => unreachable!(),
+            };
+
+            Value::new(hir, ctx.builtins().types.bytes32)
         }
-        ClvmOp::Secp256K1Verify => {
+        Builtin::CoinId => {
             if args.len() != 3 {
                 ctx.diagnostic(
                     call.syntax(),
                     DiagnosticKind::ExpectedArguments(3, args.len()),
                 );
-                return ctx.builtins().unresolved.clone();
             }
-            Hir::Secp256K1Verify(args[0], args[1], args[2])
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let hir = if args.len() == 3 {
+                ctx.assign_type(args[0].1.syntax(), args[0].0.ty, ctx.builtins().types.bytes);
+                ctx.assign_type(args[1].1.syntax(), args[1].0.ty, ctx.builtins().types.bytes);
+                ctx.assign_type(args[2].1.syntax(), args[2].0.ty, ctx.builtins().types.int);
+                ctx.alloc_hir(Hir::CoinId(args[0].0.hir, args[1].0.hir, args[2].0.hir))
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            Value::new(hir, ctx.builtins().types.bytes32)
         }
-        ClvmOp::Secp256R1Verify => {
-            if args.len() != 3 {
+        Builtin::Substr => {
+            if args.len() != 2 && args.len() != 3 {
                 ctx.diagnostic(
                     call.syntax(),
-                    DiagnosticKind::ExpectedArguments(3, args.len()),
+                    DiagnosticKind::ExpectedArgumentsBetween(2, 3, args.len()),
                 );
-                return ctx.builtins().unresolved.clone();
             }
-            Hir::Secp256R1Verify(args[0], args[1], args[2])
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let hir = if args.len() >= 2 {
+                ctx.assign_type(args[0].1.syntax(), args[0].0.ty, ctx.builtins().types.bytes);
+                ctx.assign_type(args[1].1.syntax(), args[1].0.ty, ctx.builtins().types.int);
+
+                if args.len() == 3 {
+                    ctx.assign_type(args[2].1.syntax(), args[2].0.ty, ctx.builtins().types.int);
+                }
+
+                ctx.alloc_hir(Hir::Substr(
+                    args[0].0.hir,
+                    args[1].0.hir,
+                    args.get(2).map(|arg| arg.0.hir),
+                ))
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            Value::new(hir, ctx.builtins().types.bytes)
         }
-        _ => unreachable!(),
-    };
+        Builtin::BlsPairingIdentity => {
+            let hir = if spread.is_some() {
+                if args.len() != 1 {
+                    ctx.diagnostic(
+                        call.syntax(),
+                        DiagnosticKind::ExpectedArguments(1, args.len()),
+                    );
+                }
 
-    let hir = ctx.alloc_hir(hir);
+                let list = ctx.builtins().types.alternating_list;
 
-    Value::new(hir, ctx.builtins().types.nil)
+                let mappings = HashMap::from_iter([
+                    (
+                        ctx.builtins().types.alternating_list_generic_a,
+                        ctx.builtins().types.public_key,
+                    ),
+                    (
+                        ctx.builtins().types.alternating_list_generic_b,
+                        ctx.builtins().types.signature,
+                    ),
+                ]);
+
+                let ty = rue_types::substitute_with_mappings(ctx.types_mut(), list, &mappings);
+
+                if let Some((value, expr)) = args.first() {
+                    ctx.assign_type(expr.syntax(), value.ty, ty);
+                    ctx.alloc_hir(Hir::ClvmOp(ClvmOp::BlsPairingIdentity, value.hir))
+                } else {
+                    ctx.builtins().unresolved.hir
+                }
+            } else {
+                if args.len() % 2 != 0 {
+                    ctx.diagnostic(call.syntax(), DiagnosticKind::ExpectedEvenArguments);
+                }
+
+                for (i, (value, expr)) in args.iter().enumerate() {
+                    if i % 2 == 0 {
+                        ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.public_key);
+                    } else {
+                        ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.signature);
+                    }
+                }
+
+                ctx.alloc_hir(Hir::BlsPairingIdentity(
+                    args.iter().map(|arg| arg.0.hir).collect(),
+                ))
+            };
+
+            Value::new(hir, ctx.builtins().types.nil)
+        }
+    }
 }

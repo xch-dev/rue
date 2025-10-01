@@ -1,8 +1,6 @@
 use clvm_traits::{ToClvm, ToClvmError};
 use clvmr::{Allocator, NodePtr};
-use derive_more::Display;
 use id_arena::Id;
-use strum::EnumIter;
 
 pub type LirId = Id<Lir>;
 
@@ -64,150 +62,55 @@ pub enum Lir {
     Op(ClvmOp, LirId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ClvmOp {
-    #[display("quote")]
     Quote,
-
-    #[display("apply")]
     Apply,
-
-    #[display("if")]
     If,
-
-    #[display("cons")]
     Cons,
-
-    #[display("first")]
     First,
-
-    #[display("rest")]
     Rest,
-
-    #[display("listp")]
     Listp,
-
-    #[display("raise")]
     Raise,
-
-    #[display("eq")]
     Eq,
-
-    #[display("gt_bytes")]
     GtBytes,
-
-    #[display("sha256")]
     Sha256,
-
-    #[display("substr")]
     Substr,
-
-    #[display("strlen")]
     Strlen,
-
-    #[display("concat")]
     Concat,
-
-    #[display("add")]
     Add,
-
-    #[display("sub")]
     Sub,
-
-    #[display("mul")]
     Mul,
-
-    #[display("div")]
     Div,
-
-    #[display("divmod")]
     Divmod,
-
-    #[display("gt")]
     Gt,
-
-    #[display("ash")]
     Ash,
-
-    #[display("lsh")]
     Lsh,
-
-    #[display("logand")]
     Logand,
-
-    #[display("logior")]
     Logior,
-
-    #[display("logxor")]
     Logxor,
-
-    #[display("lognot")]
     Lognot,
-
-    #[display("not")]
     Not,
-
-    #[display("any")]
     Any,
-
-    #[display("all")]
     All,
-
-    #[display("modpow")]
     Modpow,
-
-    #[display("mod")]
     Mod,
-
-    #[display("coinid")]
     CoinId,
-
-    #[display("pubkey_for_exp")]
     PubkeyForExp,
-
-    #[display("g1_add")]
     G1Add,
-
-    #[display("g1_subtract")]
     G1Subtract,
-
-    #[display("g1_multiply")]
     G1Multiply,
-
-    #[display("g1_negate")]
     G1Negate,
-
-    #[display("g1_map")]
     G2Add,
-
-    #[display("g2_subtract")]
     G2Subtract,
-
-    #[display("g2_multiply")]
     G2Multiply,
-
-    #[display("g2_negate")]
     G2Negate,
-
-    #[display("g1_map")]
     G1Map,
-
-    #[display("g2_map")]
     G2Map,
-
-    #[display("bls_pairing_identity")]
     BlsPairingIdentity,
-
-    #[display("bls_verify")]
     BlsVerify,
-
-    #[display("secp256k1_verify")]
     Secp256K1Verify,
-
-    #[display("secp256r1_verify")]
     Secp256R1Verify,
-
-    #[display("keccak256")]
     Keccak256,
 }
 

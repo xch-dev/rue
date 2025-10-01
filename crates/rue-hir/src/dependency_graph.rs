@@ -209,6 +209,9 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
         }
         Hir::InfinityG1 => {}
         Hir::InfinityG2 => {}
+        Hir::ClvmOp(_op, args) => {
+            visit_hir(db, graph, *args, false);
+        }
     }
 }
 
@@ -221,7 +224,7 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     graph.stack.insert(symbol);
 
     match db.symbol(symbol) {
-        Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::ClvmOp(_) => {}
+        Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {}
         Symbol::Function(function) => {
             graph
                 .locals

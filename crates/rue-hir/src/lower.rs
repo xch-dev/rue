@@ -55,7 +55,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         match self.db.symbol(symbol).clone() {
-            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::ClvmOp(_) => {
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {
                 unreachable!()
             }
             Symbol::Function(function) => self.lower_function(env, symbol, function),
@@ -320,6 +320,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
             Hir::InfinityG1 => self.arena.alloc(Lir::G1Add(vec![])),
             Hir::InfinityG2 => self.arena.alloc(Lir::G2Add(vec![])),
+            Hir::ClvmOp(op, args) => {
+                let args = self.lower_hir(env, args);
+                self.arena.alloc(Lir::Op(op, args))
+            }
         }
     }
 
@@ -793,7 +797,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let references = self.graph.references(symbol);
 
         match self.db.symbol(symbol) {
-            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::ClvmOp(_) => {
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {
                 false
             }
             Symbol::Function(function) => {
