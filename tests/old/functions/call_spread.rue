@@ -1,6 +1,6 @@
 fn main() -> Int {
     let nums = [300, 400];
-    sum(1, 2, 3) + sum(100, 200, ...nums) + sum()
+    sum(...[1, 2, 3]) + sum(...[100, 200, ...nums]) + sum(...[])
 }
 
 fn sum(...numbers: List<Int>) -> Int {

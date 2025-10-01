@@ -1,5 +1,5 @@
 diagnostics:
 - Unnecessary `+` operator, since it has no effect at test:2:12
-- Condition always evaluates to `true` at test:53:12
-- Condition always evaluates to `true` at test:54:12
+- Condition always evaluates to `true` at test:51:12
+- Condition always evaluates to `true` at test:52:12
 tests_passed: true

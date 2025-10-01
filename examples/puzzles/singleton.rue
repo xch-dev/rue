@@ -74,11 +74,7 @@ inline fn curry_singleton_hash(
   singleton: Singleton,
   inner_puzzle_hash: Bytes32,
 ) -> Bytes32 {
-  curry_tree_hash(
-    singleton.mod_hash,
-    tree_hash(singleton),
-    inner_puzzle_hash,
-  )
+  curry_tree_hash(singleton.mod_hash, ...[tree_hash(singleton), inner_puzzle_hash])
 }
 
 fn verify_lineage_proof(
