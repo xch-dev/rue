@@ -27,7 +27,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
             debug!("Unresolved field access due to unresolved type");
             ctx.builtins().unresolved.clone()
         }
-        Type::Generic(_) | Type::Function(_) | Type::Never => {
+        Type::Generic(_) | Type::Function(_) | Type::Never | Type::Any => {
             debug!("Unresolved field access due to unknown field");
             let type_name = ctx.type_name(expr.ty);
             ctx.diagnostic(

@@ -76,7 +76,7 @@ inline fn curry_singleton_hash(
 ) -> Bytes32 {
   curry_tree_hash(
     singleton.mod_hash,
-    tree_hash(singleton as Any),
+    tree_hash(singleton),
     inner_puzzle_hash,
   )
 }
@@ -155,21 +155,21 @@ test fn tests() {
 
   let conditions = main(
     singleton,
-    inner_puzzle as fn(...solution: Any) -> List<SingletonCondition>,
+    inner_puzzle,
     proof,
     1,
     [CreateCoin {
       puzzle_hash: p2_puzzle_hash,
       amount: 1,
-    } as Any],
+    }],
   );
 
-  assert tree_hash(conditions as Any) == tree_hash([
+  assert tree_hash(conditions) == tree_hash([
     AssertMyAmount { amount: 1 },
     AssertMyParentId { parent_id: launcher_id },
     CreateCoin {
       puzzle_hash: curry_singleton_hash(singleton, p2_puzzle_hash),
       amount: 1,
     },
-  ] as Any);
+  ]);
 }

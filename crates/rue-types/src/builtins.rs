@@ -16,8 +16,9 @@ pub struct BuiltinTypes {
     pub bool: TypeId,
     pub nil: TypeId,
     pub never: TypeId,
-    pub any: TypeId,
-    pub any_pair: TypeId,
+    pub recursive_any: TypeId,
+    pub recursive_any_pair: TypeId,
+    pub permissive_any: TypeId,
     pub list: TypeId,
     pub list_pair: TypeId,
     pub list_generic: TypeId,
@@ -38,9 +39,11 @@ impl BuiltinTypes {
         let never = arena.alloc(Type::Never);
         let nil = arena.alloc(Type::Atom(Atom::NIL));
 
-        let any = arena.alloc(Type::Unresolved);
-        let any_pair = arena.alloc(Type::Pair(Pair::new(any, any)));
-        *arena.get_mut(any).unwrap() = Type::Union(Union::new(vec![atom, any_pair]));
+        let recursive_any = arena.alloc(Type::Unresolved);
+        let recursive_any_pair = arena.alloc(Type::Pair(Pair::new(recursive_any, recursive_any)));
+        *arena.get_mut(recursive_any).unwrap() =
+            Type::Union(Union::new(vec![atom, recursive_any_pair]));
+        let permissive_any = arena.alloc(Type::Any);
 
         let list = arena.alloc(Type::Unresolved);
         let list_generic = arena.alloc(Type::Generic(Generic { name: None }));
@@ -65,8 +68,9 @@ impl BuiltinTypes {
             bool,
             nil,
             never,
-            any,
-            any_pair,
+            recursive_any,
+            recursive_any_pair,
+            permissive_any,
             list,
             list_pair,
             list_generic,

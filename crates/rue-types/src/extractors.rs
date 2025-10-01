@@ -19,7 +19,7 @@ fn extract_atoms_impl(arena: &Arena<Type>, id: TypeId, strict: bool) -> Option<A
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => extract_atoms_impl(arena, id, strict),
         Type::Unresolved => Some(Atoms::Unrestricted),
-        Type::Generic(_) | Type::Never | Type::Function(_) | Type::Pair(_) => None,
+        Type::Generic(_) | Type::Never | Type::Function(_) | Type::Pair(_) | Type::Any => None,
         Type::Atom(atom) => atom
             .restriction
             .map_or(Some(Atoms::Unrestricted), |restriction| {
@@ -67,7 +67,7 @@ fn extract_pairs_impl(arena: &Arena<Type>, id: TypeId, strict: bool) -> Option<V
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => extract_pairs_impl(arena, id, strict),
         Type::Unresolved => Some(vec![]),
-        Type::Generic(_) | Type::Never | Type::Atom(_) | Type::Function(_) => None,
+        Type::Generic(_) | Type::Never | Type::Atom(_) | Type::Function(_) | Type::Any => None,
         Type::Pair(pair) => Some(vec![pair]),
         Type::Struct(ty) => extract_pairs_impl(arena, ty.inner, strict),
         Type::Alias(alias) => extract_pairs_impl(arena, alias.inner, strict),
@@ -99,7 +99,7 @@ fn extract_functions_impl(arena: &Arena<Type>, id: TypeId) -> Option<Vec<Functio
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => extract_functions_impl(arena, id),
         Type::Unresolved | Type::Never => Some(vec![]),
-        Type::Generic(_) | Type::Atom(_) | Type::Pair(_) => None,
+        Type::Generic(_) | Type::Atom(_) | Type::Pair(_) | Type::Any => None,
         Type::Function(function) => Some(vec![function]),
         Type::Struct(ty) => extract_functions_impl(arena, ty.inner),
         Type::Alias(alias) => extract_functions_impl(arena, alias.inner),

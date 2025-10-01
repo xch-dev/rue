@@ -33,6 +33,7 @@ pub(crate) fn stringify_impl(
             }
         }
         Type::Never => "Never".to_string(),
+        Type::Any => "Any".to_string(),
         Type::Atom(atom) => atom.to_string(),
         Type::Pair(pair) => {
             let first = stringify_impl(arena, pair.first, stack);

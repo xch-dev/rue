@@ -40,14 +40,14 @@ impl Builtins {
         scope.insert_type("Signature".to_string(), types.signature, false);
         scope.insert_type("Int".to_string(), types.int, false);
         scope.insert_type("Bool".to_string(), types.bool, false);
-        scope.insert_type("Any".to_string(), types.any, false);
+        scope.insert_type("Any".to_string(), types.permissive_any, false);
         scope.insert_type("List".to_string(), types.list, false);
 
         let unchecked_cast_generic = db.alloc_type(Type::Generic(Generic { name: None }));
 
         scope.insert_symbol(
             "unchecked_cast".to_string(),
-            unchecked_cast(db, unchecked_cast_generic, types.any),
+            unchecked_cast(db, unchecked_cast_generic, types.permissive_any),
             false,
         );
         scope.insert_symbol(
