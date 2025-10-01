@@ -5,3 +5,4 @@ byte_cost: 36000
 clvm_error: clvm raise
 diagnostics:
 - Unnecessary type guard from `Int | nil` to `Int`, since they are already compatible types at test:2:14
+tests_passed: true

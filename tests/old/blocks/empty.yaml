@@ -1,2 +1,3 @@
 diagnostics:
 - Block does not return a value at test:1:18
+tests_passed: true

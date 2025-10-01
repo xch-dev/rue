@@ -5,3 +5,4 @@ output: ((g1_multiply 0xc0000000000000000000000000000000000000000000000000000000
 runtime_cost: 13347
 byte_cost: 1428000
 total_cost: 1441347
+tests_passed: true

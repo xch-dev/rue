@@ -5,3 +5,4 @@ output: ((73 1) (71 0x82acf3e76d5657e98438ad4dc0fcaf84f8e194d78313206ead021e2d5a
 runtime_cost: 1374909
 byte_cost: 13344000
 total_cost: 14718909
+tests_passed: true

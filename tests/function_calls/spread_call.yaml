@@ -9,3 +9,4 @@ diagnostics:
 - Expected 2 arguments, but found 3 at test:7:12
 - Cannot assign `nil` to `Int` without a cast, since they are semantically different at test:8:12
 - Expected 2 arguments, but found 0 at test:8:12
+tests_passed: true

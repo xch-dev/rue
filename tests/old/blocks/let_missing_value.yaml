@@ -1,3 +1,4 @@
 diagnostics:
 - Let bindings must have a value, since they cannot be reassigned at test:2:5
 - Unused binding `xyz` at test:2:9
+tests_passed: true

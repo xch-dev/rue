@@ -5,6 +5,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvm_utils::tree_hash;
+use clvmr::NodePtr;
+use clvmr::SExp;
 use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
 use rue_compiler::compile_file;
 use rue_diagnostic::Source;
@@ -41,6 +43,9 @@ struct TestCase {
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     diagnostics: Vec<String>,
+
+    #[serde(default)]
+    tests_passed: bool,
 }
 
 fn main() -> Result<()> {
@@ -160,6 +165,28 @@ fn main() -> Result<()> {
             test_case.runtime_cost = None;
             test_case.byte_cost = None;
             test_case.total_cost = None;
+        }
+
+        test_case.tests_passed = true;
+
+        for test in result.tests {
+            let response = run_program(
+                &mut allocator,
+                &ChiaDialect::new(0),
+                test,
+                NodePtr::NIL,
+                100_000_000,
+            );
+
+            if let Ok(output) = response
+                && let SExp::Atom = allocator.sexp(output.1)
+                && allocator.atom(output.1).is_empty()
+            {
+                continue;
+            }
+
+            test_case.tests_passed = false;
+            break;
         }
 
         test_case.diagnostics = diagnostics;

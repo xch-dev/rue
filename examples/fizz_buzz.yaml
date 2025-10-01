@@ -5,3 +5,4 @@ output: (g1_subtract 50 "Fizz" 52 "Buzz" "Fizz" 55 56 "Fizz" "Buzz" 12593 "Fizz"
 runtime_cost: 140546
 byte_cost: 5892000
 total_cost: 6032546
+tests_passed: true

@@ -5,3 +5,4 @@ output: ((70 0x615236766bed52d7abaa41d270407f3ec852981852334b213bd8515924459a5d)
 runtime_cost: 299027
 byte_cost: 18768000
 total_cost: 19067027
+tests_passed: true

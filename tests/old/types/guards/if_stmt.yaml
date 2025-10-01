@@ -7,3 +7,4 @@ byte_cost: 444000
 total_cost: 444602
 diagnostics:
 - Unused binding `x` at test:3:13
+tests_passed: true
