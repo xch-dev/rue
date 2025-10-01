@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
@@ -68,12 +68,17 @@ fn compile_file_impl(
         program: None,
     };
 
-    let Some(symbol) = ctx.scope(file.scope).symbol("main") else {
-        return Ok(compilation);
-    };
-    let graph = DependencyGraph::build(&ctx, symbol);
+    let main_symbol = ctx.scope(file.scope).symbol("main");
 
-    check_unused(&mut ctx, &graph, symbol);
+    let mut entrypoints = HashSet::new();
+
+    entrypoints.extend(main_symbol);
+
+    for test in ctx.tests() {
+        entrypoints.insert(test);
+    }
+
+    check_unused(&mut ctx, &entrypoints);
 
     compilation.diagnostics.extend(ctx.take_diagnostics());
 
@@ -85,6 +90,12 @@ fn compile_file_impl(
     {
         return Ok(compilation);
     }
+
+    let Some(symbol) = main_symbol else {
+        return Ok(compilation);
+    };
+
+    let graph = DependencyGraph::build(&ctx, symbol);
 
     let mut arena = Arena::new();
     let mut lowerer = Lowerer::new(&mut ctx, &mut arena, &graph, options, symbol);
