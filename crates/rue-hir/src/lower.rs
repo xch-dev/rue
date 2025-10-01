@@ -936,6 +936,7 @@ fn count_nil_in_env(arena: &Arena<Lir>, id: LirId) -> usize {
                 + count_nil_in_env(arena, message)
                 + count_nil_in_env(arena, signature)
         }
+        Lir::Op(_, arg) => count_nil_in_env(arena, arg),
     }
 }
 
@@ -1270,6 +1271,10 @@ fn replace_nil_in_env(
             let message = replace_nil_in_env(arena, message, verifications);
             let signature = replace_nil_in_env(arena, signature, verifications);
             arena.alloc(Lir::R1Verify(public_key, message, signature))
+        }
+        Lir::Op(op, arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::Op(op, arg))
         }
     }
 }

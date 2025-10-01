@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use sha3::Keccak256;
 
 use crate::{
-    Lir, LirId, atom_bigint, bigint_atom, first_path,
+    ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
     optimize::{ArgList, opt_truthy},
     rest_path,
 };
@@ -677,4 +677,8 @@ pub fn opt_r1_verify(
     signature: LirId,
 ) -> LirId {
     arena.alloc(Lir::R1Verify(public_key, message, signature))
+}
+
+pub fn opt_op(arena: &mut Arena<Lir>, op: ClvmOp, arg: LirId) -> LirId {
+    arena.alloc(Lir::Op(op, arg))
 }

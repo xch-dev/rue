@@ -248,5 +248,9 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let signature = optimize(arena, signature);
             opt_r1_verify(arena, public_key, message, signature)
         }
+        Lir::Op(op, arg) => {
+            let arg = optimize(arena, arg);
+            opt_op(arena, op, arg)
+        }
     }
 }
