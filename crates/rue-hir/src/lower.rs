@@ -465,11 +465,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         match stmt {
             Statement::Let(_) => self.lower_let_stmts(env, stmts, body),
             Statement::Return(hir) => self.lower_block(env, vec![], Some(hir)),
-            Statement::Assert(condition, token) => {
-                self.lower_assert(env, stmts, condition, token, body)
+            Statement::Assert(condition, srcloc) => {
+                self.lower_assert(env, stmts, condition, srcloc, body)
             }
             Statement::Expr(_) => self.lower_expr_stmts(env, stmts, body),
-            Statement::Raise(hir) => self.lower_raise(env, hir),
+            Statement::Raise(hir, srcloc) => self.lower_raise(env, hir, srcloc),
             Statement::If(stmt) => self.lower_if(env, stmts, stmt, body),
         }
     }
@@ -594,20 +594,33 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     ) -> LirId {
         stmts.remove(0);
 
-        let error = self.arena.alloc(Lir::Atom(
-            format!("Assertion failed at {}", srcloc.start()).into_bytes(),
-        ));
+        let raise = if self.options.debug_symbols {
+            let error = self.arena.alloc(Lir::Atom(
+                format!("assertion failed at {}", srcloc.start()).into_bytes(),
+            ));
+            vec![error]
+        } else {
+            vec![]
+        };
 
         let condition = self.lower_hir(env, condition);
         let then_branch = self.lower_block(env, stmts, body);
-        let else_branch = self.arena.alloc(Lir::Raise(vec![error]));
+        let else_branch = self.arena.alloc(Lir::Raise(raise));
         self.arena
             .alloc(Lir::If(condition, then_branch, else_branch, false))
     }
 
-    fn lower_raise(&mut self, env: &Environment, hir: HirId) -> LirId {
+    fn lower_raise(&mut self, env: &Environment, hir: HirId, srcloc: SrcLoc) -> LirId {
+        if !self.options.debug_symbols {
+            return self.arena.alloc(Lir::Raise(vec![]));
+        }
+
+        let error = self.arena.alloc(Lir::Atom(
+            format!("raise called at {}", srcloc.start()).into_bytes(),
+        ));
         let lir = self.lower_hir(env, hir);
-        self.arena.alloc(Lir::Raise(vec![lir]))
+
+        self.arena.alloc(Lir::Raise(vec![error, lir]))
     }
 
     fn lower_if(

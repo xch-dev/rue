@@ -184,7 +184,10 @@ pub fn compile_block(
                     ));
                 }
 
-                Statement::Raise(value.hir)
+                Statement::Raise(
+                    value.hir,
+                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
+                )
             }
         };
 

@@ -1,11 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexSet;
+use rue_options::CompilerOptions;
 
 use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct DependencyGraph {
+    options: CompilerOptions,
+
     // Keeps track of the direct dependencies of a symbol
     dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
 
@@ -26,9 +29,19 @@ pub struct DependencyGraph {
 }
 
 impl DependencyGraph {
-    pub fn build(db: &Database, main: SymbolId) -> Self {
-        let mut graph = Self::default();
+    pub fn build(db: &Database, main: SymbolId, options: CompilerOptions) -> Self {
+        let mut graph = Self {
+            options,
+            dependencies: HashMap::new(),
+            locals: HashMap::new(),
+            references: HashMap::new(),
+            closures: HashSet::new(),
+            stack: IndexSet::new(),
+            visited: IndexSet::new(),
+        };
+
         visit_symbol_reference(db, &mut graph, main);
+
         graph
     }
 
@@ -95,8 +108,10 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                     Statement::Assert(stmt, _) => {
                         visit_hir(db, graph, *stmt, false);
                     }
-                    Statement::Raise(stmt) => {
-                        visit_hir(db, graph, *stmt, false);
+                    Statement::Raise(stmt, _) => {
+                        if graph.options.debug_symbols {
+                            visit_hir(db, graph, *stmt, false);
+                        }
                     }
                     Statement::If(stmt) => {
                         visit_hir(db, graph, stmt.condition, false);

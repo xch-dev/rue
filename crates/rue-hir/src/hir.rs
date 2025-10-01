@@ -46,7 +46,7 @@ pub enum Statement {
     If(IfStatement),
     Return(HirId),
     Assert(HirId, SrcLoc),
-    Raise(HirId),
+    Raise(HirId, SrcLoc),
 }
 
 #[derive(Debug, Clone, Copy)]

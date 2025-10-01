@@ -1,5 +1,5 @@
 program: (a (i 2 (q 2 (i (= (strlen 2) (q . 48)) (q 8) (q 2 (i (= (strlen 2) (q . 32)) (q 8) (q 2 (i (= 2 (q . 42)) (q 8) (q . 2)) 1)) 1)) 1) (q 8)) 1)
-debug_program: (a (i (not (= 2 ())) (q 2 (i (not (= (strlen 2) (q . 48))) (q 2 (i (not (= (strlen 2) (q . 32))) (q 2 (i (not (= 2 (q . 42))) (q 2 (q . 2) (c 2 1)) (q 8 (q . "Assertion failed at 5:5"))) 1) (q 8 (q . "Assertion failed at 4:5"))) 1) (q 8 (q . "Assertion failed at 3:5"))) 1) (q 8 (q . "Assertion failed at 2:5"))) 1)
+debug_program: (a (i (not (= 2 ())) (q 2 (i (not (= (strlen 2) (q . 48))) (q 2 (i (not (= (strlen 2) (q . 32))) (q 2 (i (not (= 2 (q . 42))) (q 2 (q . 2) (c 2 1)) (q 8 (q . "assertion failed at 5:5"))) 1) (q 8 (q . "assertion failed at 4:5"))) 1) (q 8 (q . "assertion failed at 3:5"))) 1) (q 8 (q . "assertion failed at 2:5"))) 1)
 solution: (100)
 output: '100'
 runtime_cost: 1866

@@ -427,8 +427,8 @@ pub fn opt_if(
 }
 
 // We can remove all arguments from raise, since the program fails either way
-pub fn opt_raise(arena: &mut Arena<Lir>, _args: Vec<LirId>) -> LirId {
-    arena.alloc(Lir::Raise(vec![]))
+pub fn opt_raise(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    arena.alloc(Lir::Raise(args))
 }
 
 pub fn opt_concat(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {

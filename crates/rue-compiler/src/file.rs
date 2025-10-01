@@ -112,7 +112,7 @@ fn generate(
     symbol: SymbolId,
     options: CompilerOptions,
 ) -> Result<NodePtr, Error> {
-    let graph = DependencyGraph::build(ctx, symbol);
+    let graph = DependencyGraph::build(ctx, symbol, options);
 
     let mut arena = Arena::new();
     let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol);
