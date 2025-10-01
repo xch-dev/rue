@@ -1,4 +1,5 @@
 use id_arena::Id;
+use rue_lir::ClvmOp;
 use rue_parser::SyntaxToken;
 use rue_types::TypeId;
 
@@ -11,7 +12,7 @@ pub enum Symbol {
     Unresolved,
     Module(ModuleSymbol),
     Function(FunctionSymbol),
-    VerificationFunction(VerificationFunctionSymbol),
+    ClvmOp(ClvmOp),
     Parameter(ParameterSymbol),
     Constant(ConstantSymbol),
     Binding(BindingSymbol),
@@ -48,14 +49,6 @@ pub enum FunctionKind {
     BinaryTree,
     Sequential,
     Inline,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum VerificationFunctionSymbol {
-    BlsPairingIdentity,
-    BlsVerify,
-    Secp256K1Verify,
-    Secp256R1Verify,
 }
 
 #[derive(Debug, Clone)]

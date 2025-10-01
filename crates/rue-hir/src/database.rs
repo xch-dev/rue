@@ -134,7 +134,7 @@ impl Database {
             Symbol::Function(function) => {
                 function.name.as_ref().map(|name| name.text().to_string())
             }
-            Symbol::VerificationFunction(function) => Some(format!("{function:?}")),
+            Symbol::ClvmOp(function) => Some(format!("{function:?}")),
             Symbol::Parameter(parameter) => {
                 parameter.name.as_ref().map(|name| name.text().to_string())
             }

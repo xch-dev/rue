@@ -221,10 +221,7 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     graph.stack.insert(symbol);
 
     match db.symbol(symbol) {
-        Symbol::Unresolved
-        | Symbol::Module(_)
-        | Symbol::Parameter(_)
-        | Symbol::VerificationFunction(_) => {}
+        Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::ClvmOp(_) => {}
         Symbol::Function(function) => {
             graph
                 .locals

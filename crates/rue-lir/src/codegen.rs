@@ -342,13 +342,19 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let pubkey = codegen(arena, allocator, *pubkey)?;
             let message = codegen(arena, allocator, *message)?;
             let signature = codegen(arena, allocator, *signature)?;
-            Ok(clvm_list!(ClvmOp::K1Verify, pubkey, message, signature).to_clvm(allocator)?)
+            Ok(
+                clvm_list!(ClvmOp::Secp256K1Verify, pubkey, message, signature)
+                    .to_clvm(allocator)?,
+            )
         }
         Lir::R1Verify(pubkey, message, signature) => {
             let pubkey = codegen(arena, allocator, *pubkey)?;
             let message = codegen(arena, allocator, *message)?;
             let signature = codegen(arena, allocator, *signature)?;
-            Ok(clvm_list!(ClvmOp::R1Verify, pubkey, message, signature).to_clvm(allocator)?)
+            Ok(
+                clvm_list!(ClvmOp::Secp256R1Verify, pubkey, message, signature)
+                    .to_clvm(allocator)?,
+            )
         }
         Lir::Op(op, args) => {
             let args = codegen(arena, allocator, *args)?;

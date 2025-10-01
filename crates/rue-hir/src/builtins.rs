@@ -1,8 +1,10 @@
+use rue_lir::ClvmOp;
 use rue_types::{BuiltinTypes, FunctionType, Generic, Pair, Type, TypeId, Union};
+use strum::IntoEnumIterator;
 
 use crate::{
-    ConstantSymbol, Database, FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId,
-    Symbol, SymbolId, UnaryOp, Value, VerificationFunctionSymbol,
+    ConstantSymbol, Database, FunctionKind, FunctionSymbol, Hir, ModuleDeclarations, ModuleSymbol,
+    ParameterSymbol, Scope, ScopeId, Symbol, SymbolId, UnaryOp, Value,
 };
 
 #[derive(Debug, Clone)]
@@ -112,34 +114,19 @@ impl Builtins {
         );
         scope.insert_symbol("modpow".to_string(), modpow(db, types.int), false);
 
-        scope.insert_symbol(
-            "bls_pairing_identity".to_string(),
-            db.alloc_symbol(Symbol::VerificationFunction(
-                VerificationFunctionSymbol::BlsPairingIdentity,
-            )),
-            false,
-        );
-        scope.insert_symbol(
-            "bls_verify".to_string(),
-            db.alloc_symbol(Symbol::VerificationFunction(
-                VerificationFunctionSymbol::BlsVerify,
-            )),
-            false,
-        );
-        scope.insert_symbol(
-            "secp256k1_verify".to_string(),
-            db.alloc_symbol(Symbol::VerificationFunction(
-                VerificationFunctionSymbol::Secp256K1Verify,
-            )),
-            false,
-        );
-        scope.insert_symbol(
-            "secp256r1_verify".to_string(),
-            db.alloc_symbol(Symbol::VerificationFunction(
-                VerificationFunctionSymbol::Secp256R1Verify,
-            )),
-            false,
-        );
+        let mut clvm = Scope::new();
+
+        for op in ClvmOp::iter() {
+            clvm.insert_symbol(op.to_string(), db.alloc_symbol(Symbol::ClvmOp(op)), true);
+        }
+
+        let clvm_scope = db.alloc_scope(clvm);
+        let clvm_module = db.alloc_symbol(Symbol::Module(ModuleSymbol {
+            name: None,
+            scope: clvm_scope,
+            declarations: ModuleDeclarations::default(),
+        }));
+        scope.insert_symbol("clvm".to_string(), clvm_module, false);
 
         let infinity_g1 = db.alloc_hir(Hir::InfinityG1);
         let infinity_g2 = db.alloc_hir(Hir::InfinityG2);

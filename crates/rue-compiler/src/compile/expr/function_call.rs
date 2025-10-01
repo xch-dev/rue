@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{FunctionCall, Hir, Symbol, Value, VerificationFunctionSymbol};
+use rue_hir::{FunctionCall, Hir, Symbol, Value};
+use rue_lir::ClvmOp;
 use rue_types::{Type, Union, substitute_with_mappings};
 
 use crate::{Compiler, compile_expr};
@@ -17,9 +18,9 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     let expr = compile_expr(ctx, &expr, None);
 
     if let Hir::Reference(symbol) = ctx.hir(expr.hir).clone()
-        && let Symbol::VerificationFunction(verification) = ctx.symbol(symbol).clone()
+        && let Symbol::ClvmOp(verification) = ctx.symbol(symbol).clone()
     {
-        return compile_verification_function_call(ctx, call, verification);
+        return compile_clvm_op(ctx, call, verification);
     }
 
     let expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty);
@@ -110,11 +111,7 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     Value::new(hir, ty)
 }
 
-fn compile_verification_function_call(
-    ctx: &mut Compiler,
-    call: &AstFunctionCallExpr,
-    verification: VerificationFunctionSymbol,
-) -> Value {
+fn compile_clvm_op(ctx: &mut Compiler, call: &AstFunctionCallExpr, op: ClvmOp) -> Value {
     let mut args = Vec::new();
 
     for arg in call.args() {
@@ -131,9 +128,9 @@ fn compile_verification_function_call(
         args.push(value.hir);
     }
 
-    let hir = match verification {
-        VerificationFunctionSymbol::BlsPairingIdentity => Hir::BlsPairingIdentity(args),
-        VerificationFunctionSymbol::BlsVerify => {
+    let hir = match op {
+        ClvmOp::BlsPairingIdentity => Hir::BlsPairingIdentity(args),
+        ClvmOp::BlsVerify => {
             if args.is_empty() {
                 // ctx.diagnostic(
                 //     call.syntax(),
@@ -143,7 +140,7 @@ fn compile_verification_function_call(
             }
             Hir::BlsVerify(args[0], args[1..].to_vec())
         }
-        VerificationFunctionSymbol::Secp256K1Verify => {
+        ClvmOp::Secp256K1Verify => {
             if args.len() != 3 {
                 ctx.diagnostic(
                     call.syntax(),
@@ -153,7 +150,7 @@ fn compile_verification_function_call(
             }
             Hir::Secp256K1Verify(args[0], args[1], args[2])
         }
-        VerificationFunctionSymbol::Secp256R1Verify => {
+        ClvmOp::Secp256R1Verify => {
             if args.len() != 3 {
                 ctx.diagnostic(
                     call.syntax(),
@@ -163,6 +160,7 @@ fn compile_verification_function_call(
             }
             Hir::Secp256R1Verify(args[0], args[1], args[2])
         }
+        _ => unreachable!(),
     };
 
     let hir = ctx.alloc_hir(hir);

@@ -106,7 +106,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
         }
 
         match ctx.symbol(symbol).clone() {
-            Symbol::Unresolved | Symbol::Module(_) | Symbol::VerificationFunction(_) => {}
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::ClvmOp(_) => {}
             Symbol::Function(FunctionSymbol { name, .. }) => {
                 if let Some(name) = name {
                     if name.text().starts_with('_') {

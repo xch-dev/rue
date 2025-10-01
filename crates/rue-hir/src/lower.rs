@@ -55,10 +55,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         match self.db.symbol(symbol).clone() {
-            Symbol::Unresolved
-            | Symbol::Module(_)
-            | Symbol::Parameter(_)
-            | Symbol::VerificationFunction(_) => unreachable!(),
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::ClvmOp(_) => {
+                unreachable!()
+            }
             Symbol::Function(function) => self.lower_function(env, symbol, function),
             Symbol::Constant(constant) => self.lower_constant(env, constant),
             Symbol::Binding(binding) => self.lower_binding(env, binding),
@@ -794,10 +793,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let references = self.graph.references(symbol);
 
         match self.db.symbol(symbol) {
-            Symbol::Unresolved
-            | Symbol::Module(_)
-            | Symbol::Parameter(_)
-            | Symbol::VerificationFunction(_) => false,
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::ClvmOp(_) => {
+                false
+            }
             Symbol::Function(function) => {
                 if self.graph.dependencies(symbol, false).contains(&symbol) {
                     return false;
