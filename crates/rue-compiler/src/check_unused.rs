@@ -109,6 +109,10 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             Symbol::Unresolved | Symbol::Module(_) | Symbol::VerificationFunction(_) => {}
             Symbol::Function(FunctionSymbol { name, .. }) => {
                 if let Some(name) = name {
+                    if name.text().starts_with('_') {
+                        continue;
+                    }
+
                     ctx.diagnostic(
                         &name,
                         DiagnosticKind::UnusedFunction(name.text().to_string()),
@@ -117,6 +121,10 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             }
             Symbol::Binding(BindingSymbol { name, .. }) => {
                 if let Some(name) = name {
+                    if name.text().starts_with('_') {
+                        continue;
+                    }
+
                     ctx.diagnostic(
                         &name,
                         DiagnosticKind::UnusedBinding(name.text().to_string()),
@@ -125,6 +133,10 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             }
             Symbol::Constant(ConstantSymbol { name, .. }) => {
                 if let Some(name) = name {
+                    if name.text().starts_with('_') {
+                        continue;
+                    }
+
                     ctx.diagnostic(
                         &name,
                         DiagnosticKind::UnusedConstant(name.text().to_string()),
@@ -133,6 +145,10 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             }
             Symbol::Parameter(ParameterSymbol { name, .. }) => {
                 if let Some(name) = name {
+                    if name.text().starts_with('_') {
+                        continue;
+                    }
+
                     ctx.diagnostic(
                         &name,
                         DiagnosticKind::UnusedParameter(name.text().to_string()),
@@ -160,6 +176,10 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
 
         match ctx.ty(ty).clone() {
             Type::Generic(Generic { name: Some(name) }) => {
+                if name.text().starts_with('_') {
+                    continue;
+                }
+
                 ctx.diagnostic(
                     &name,
                     DiagnosticKind::UnusedGenericType(name.text().to_string()),
@@ -168,11 +188,19 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             Type::Struct(Struct {
                 name: Some(name), ..
             }) => {
+                if name.text().starts_with('_') {
+                    continue;
+                }
+
                 ctx.diagnostic(&name, DiagnosticKind::UnusedStruct(name.text().to_string()));
             }
             Type::Alias(Alias {
                 name: Some(name), ..
             }) => {
+                if name.text().starts_with('_') {
+                    continue;
+                }
+
                 ctx.diagnostic(
                     &name,
                     DiagnosticKind::UnusedTypeAlias(name.text().to_string()),

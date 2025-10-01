@@ -1,8 +1,8 @@
 use rue_types::{BuiltinTypes, FunctionType, Generic, Pair, Type, TypeId, Union};
 
 use crate::{
-    Database, FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId, Symbol, SymbolId,
-    UnaryOp, Value, VerificationFunctionSymbol,
+    ConstantSymbol, Database, FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, ScopeId,
+    Symbol, SymbolId, UnaryOp, Value, VerificationFunctionSymbol,
 };
 
 #[derive(Debug, Clone)]
@@ -138,6 +138,29 @@ impl Builtins {
             db.alloc_symbol(Symbol::VerificationFunction(
                 VerificationFunctionSymbol::Secp256R1Verify,
             )),
+            false,
+        );
+
+        let infinity_g1 = db.alloc_hir(Hir::InfinityG1);
+        let infinity_g2 = db.alloc_hir(Hir::InfinityG2);
+        scope.insert_symbol(
+            "INFINITY_G1".to_string(),
+            db.alloc_symbol(Symbol::Constant(ConstantSymbol {
+                name: None,
+                ty: types.public_key,
+                value: infinity_g1,
+                inline: false,
+            })),
+            false,
+        );
+        scope.insert_symbol(
+            "INFINITY_G2".to_string(),
+            db.alloc_symbol(Symbol::Constant(ConstantSymbol {
+                name: None,
+                ty: types.signature,
+                value: infinity_g2,
+                inline: false,
+            })),
             false,
         );
 

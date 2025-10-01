@@ -1,0 +1,5 @@
+diagnostics:
+- Unnecessary `+` operator, since it has no effect at test:2:11
+- Condition always evaluates to `true` at test:53:12
+- Condition always evaluates to `true` at test:54:11
+tests_passed: true

@@ -296,6 +296,8 @@ impl Database {
                     self.debug_hir(*msg)
                 )
             }
+            Hir::InfinityG1 => "INFINITY_G1".to_string(),
+            Hir::InfinityG2 => "INFINITY_G2".to_string(),
         }
     }
 }

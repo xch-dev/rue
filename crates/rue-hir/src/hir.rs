@@ -31,6 +31,8 @@ pub enum Hir {
     BlsVerify(HirId, Vec<HirId>),
     Secp256K1Verify(HirId, HirId, HirId),
     Secp256R1Verify(HirId, HirId, HirId),
+    InfinityG1,
+    InfinityG2,
 }
 
 #[derive(Debug, Clone)]

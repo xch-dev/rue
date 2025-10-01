@@ -25,11 +25,18 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
     match op.kind() {
         T![!] => {
             if ctx.is_assignable(value.ty, ctx.builtins().types.bool) {
+                let is_true = ctx.is_assignable(value.ty, ctx.builtins().types.bool_true);
+                let is_false = ctx.is_assignable(value.ty, ctx.builtins().types.bool_false);
+
                 let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Not, value.hir));
-                return value
-                    .flip_mappings()
-                    .with_hir(hir)
-                    .with_type(ctx.builtins().types.bool);
+
+                return value.flip_mappings().with_hir(hir).with_type(if is_true {
+                    ctx.builtins().types.bool_false
+                } else if is_false {
+                    ctx.builtins().types.bool_true
+                } else {
+                    ctx.builtins().types.bool
+                });
             }
         }
         T![+] => {

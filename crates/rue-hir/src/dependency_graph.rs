@@ -205,6 +205,8 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *pk, false);
             visit_hir(db, graph, *msg, false);
         }
+        Hir::InfinityG1 => {}
+        Hir::InfinityG2 => {}
     }
 }
 

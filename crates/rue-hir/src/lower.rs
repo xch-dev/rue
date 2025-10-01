@@ -319,6 +319,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let msg = self.lower_hir(env, msg);
                 self.arena.alloc(Lir::R1Verify(sig, pk, msg))
             }
+            Hir::InfinityG1 => self.arena.alloc(Lir::G1Add(vec![])),
+            Hir::InfinityG2 => self.arena.alloc(Lir::G2Add(vec![])),
         }
     }
 
