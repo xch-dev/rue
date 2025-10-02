@@ -2,7 +2,7 @@ use rowan::Checkpoint;
 
 use crate::{
     Parser, SyntaxKind, T,
-    grammar::{block::block, expr::expr, generics::generic_parameters, ty::ty},
+    grammar::{binding::binding, block::block, expr::expr, generics::generic_parameters, ty::ty},
 };
 
 pub fn item(p: &mut Parser) {
@@ -64,7 +64,7 @@ fn function_item(p: &mut Parser, cp: Checkpoint) {
 fn function_parameter(p: &mut Parser) {
     p.start(SyntaxKind::FunctionParameter);
     p.try_eat(T![...]);
-    p.expect(SyntaxKind::Ident);
+    binding(p);
     p.expect(T![:]);
     ty(p);
     p.finish();
@@ -201,7 +201,8 @@ mod tests {
                   Ident@3..7 "main"
                   OpenParen@7..8 "("
                   FunctionParameter@8..18
-                    Ident@8..13 "value"
+                    NamedBinding@8..13
+                      Ident@8..13 "value"
                     Colon@13..14 ":"
                     Whitespace@14..15 " "
                     PathType@15..18

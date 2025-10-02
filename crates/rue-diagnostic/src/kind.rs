@@ -132,10 +132,8 @@ pub enum DiagnosticKind {
     #[error("Struct `{0}` is missing required fields: {1}")]
     MissingRequiredFields(String, String),
 
-    #[error(
-        "Cannot infer type of parameter `{0}` in this context, it must be specified explicitly"
-    )]
-    CannotInferParameterType(String),
+    #[error("Type of parameter cannot be inferred, it must be specified explicitly")]
+    CannotInferParameterType,
 
     #[error("Cannot disambiguate between multiple functions in type `{0}`")]
     CannotDisambiguateFunctionTypes(String),
@@ -241,7 +239,7 @@ impl DiagnosticKind {
             | Self::GenericArgumentsOnSymbolReference
             | Self::NonStructInitializer(..)
             | Self::MissingRequiredFields(..)
-            | Self::CannotInferParameterType(..)
+            | Self::CannotInferParameterType
             | Self::CannotDisambiguateFunctionTypes(..)
             | Self::InvalidFunctionCall(..)
             | Self::ExpectedArguments(..)

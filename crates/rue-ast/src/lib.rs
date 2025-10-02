@@ -347,11 +347,8 @@ impl AstFunctionParameter {
             .find(|token| token.kind() == T![...])
     }
 
-    pub fn name(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Ident)
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
     }
 
     pub fn ty(&self) -> Option<AstType> {

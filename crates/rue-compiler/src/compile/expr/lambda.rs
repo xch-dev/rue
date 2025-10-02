@@ -4,7 +4,7 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, Symbol, Value};
 use rue_types::{FunctionType, Type, TypeId, Union};
 
-use crate::{Compiler, compile_expr, compile_type};
+use crate::{Compiler, compile_expr, compile_type, create_binding};
 
 pub fn compile_lambda_expr(
     ctx: &mut Compiler,
@@ -59,30 +59,14 @@ pub fn compile_lambda_expr(
             }
         } else {
             debug!("Unresolved lambda parameter type due to missing inference");
-            if let Some(name) = param.name() {
-                ctx.diagnostic(
-                    param.syntax(),
-                    DiagnosticKind::CannotInferParameterType(name.text().to_string()),
-                );
-            }
+            ctx.diagnostic(param.syntax(), DiagnosticKind::CannotInferParameterType);
             ctx.builtins().unresolved.ty
         };
 
-        let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol {
-            name: param.name(),
-            ty,
-        }));
+        let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }));
 
-        if let Some(name) = param.name() {
-            if ctx.last_scope().symbol(name.text()).is_some() {
-                ctx.diagnostic(
-                    &name,
-                    DiagnosticKind::DuplicateSymbol(name.text().to_string()),
-                );
-            }
-
-            ctx.last_scope_mut()
-                .insert_symbol(name.text().to_string(), symbol, false);
+        if let Some(binding) = param.binding() {
+            create_binding(ctx, symbol, &binding);
         }
 
         parameters.push(symbol);

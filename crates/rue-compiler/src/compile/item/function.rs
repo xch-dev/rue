@@ -6,7 +6,7 @@ use rue_hir::{
 };
 use rue_types::{FunctionType, Type};
 
-use crate::{Compiler, compile_block, compile_generic_parameters, compile_type};
+use crate::{Compiler, compile_block, compile_generic_parameters, compile_type, create_binding};
 
 pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> SymbolId {
     let symbol = ctx.alloc_symbol(Symbol::Unresolved);
@@ -66,22 +66,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
             ctx.builtins().unresolved.ty
         };
 
-        *ctx.symbol_mut(symbol) = Symbol::Parameter(ParameterSymbol {
-            name: parameter.name(),
-            ty,
-        });
-
-        if let Some(name) = parameter.name() {
-            if ctx.scope(scope).symbol(name.text()).is_some() {
-                ctx.diagnostic(
-                    &name,
-                    DiagnosticKind::DuplicateSymbol(name.text().to_string()),
-                );
-            }
-
-            ctx.scope_mut(scope)
-                .insert_symbol(name.text().to_string(), symbol, false);
-        }
+        *ctx.symbol_mut(symbol) = Symbol::Parameter(ParameterSymbol { name: None, ty });
 
         param_types.push(ty);
         parameters.push(symbol);
@@ -140,16 +125,29 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: SymbolId) {
     ctx.push_declaration(Declaration::Symbol(symbol));
 
-    let (scope, return_type) = if let Symbol::Function(FunctionSymbol {
-        scope, return_type, ..
-    }) = ctx.symbol(symbol)
-    {
-        (*scope, *return_type)
-    } else {
+    let Symbol::Function(FunctionSymbol {
+        scope,
+        parameters,
+        return_type,
+        ..
+    }) = ctx.symbol(symbol).clone()
+    else {
         unreachable!();
     };
 
     ctx.push_scope(scope);
+
+    for (i, parameter) in function.parameters().enumerate() {
+        let symbol = parameters[i];
+
+        ctx.push_declaration(Declaration::Symbol(symbol));
+
+        if let Some(binding) = parameter.binding() {
+            create_binding(ctx, symbol, &binding);
+        }
+
+        ctx.pop_declaration();
+    }
 
     let resolved_body = if let Some(body) = function.body() {
         let index = ctx.mapping_checkpoint();
