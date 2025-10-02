@@ -1,7 +1,9 @@
 use log::debug;
 use rue_ast::{AstListBinding, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{BindingSymbol, Hir, Symbol, SymbolId, SymbolPath, TypePath, UnaryOp, Value};
+use rue_hir::{
+    BindingSymbol, Declaration, Hir, Symbol, SymbolId, SymbolPath, TypePath, UnaryOp, Value,
+};
 use rue_types::{Type, Union};
 
 use crate::{Compiler, create_binding};
@@ -9,6 +11,7 @@ use crate::{Compiler, create_binding};
 pub fn create_list_binding(ctx: &mut Compiler, symbol: SymbolId, list_binding: &AstListBinding) {
     let mut symbol = symbol;
     let mut ty = ctx.symbol_type(symbol);
+    let mut needs_popping = 0;
 
     let len = list_binding.items().count();
 
@@ -41,7 +44,7 @@ pub fn create_list_binding(ctx: &mut Compiler, symbol: SymbolId, list_binding: &
                 binding.syntax(),
                 DiagnosticKind::CannotDestructurePair(name),
             );
-            return;
+            break;
         }
 
         let (first, rest) = if pairs.len() == 1 {
@@ -65,15 +68,28 @@ pub fn create_list_binding(ctx: &mut Compiler, symbol: SymbolId, list_binding: &
                 .with_reference(SymbolPath::new(symbol, vec![TypePath::First])),
             inline: true,
         }));
+        ctx.push_declaration(Declaration::Symbol(first_symbol));
+        ctx.reference(Declaration::Symbol(symbol));
         create_binding(ctx, first_symbol, &binding);
+        ctx.pop_declaration();
 
         let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, reference));
-        symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
+        let rest_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
             name: None,
             value: Value::new(hir, rest)
                 .with_reference(SymbolPath::new(symbol, vec![TypePath::Rest])),
             inline: true,
         }));
+
+        needs_popping += 1;
+        ctx.push_declaration(Declaration::Symbol(rest_symbol));
+        ctx.reference(Declaration::Symbol(symbol));
+
+        symbol = rest_symbol;
         ty = rest;
+    }
+
+    for _ in 0..needs_popping {
+        ctx.pop_declaration();
     }
 }

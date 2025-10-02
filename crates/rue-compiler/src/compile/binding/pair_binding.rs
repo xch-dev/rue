@@ -1,6 +1,8 @@
 use rue_ast::{AstNode, AstPairBinding};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{BindingSymbol, Hir, Symbol, SymbolId, SymbolPath, TypePath, UnaryOp, Value};
+use rue_hir::{
+    BindingSymbol, Declaration, Hir, Symbol, SymbolId, SymbolPath, TypePath, UnaryOp, Value,
+};
 use rue_types::{Type, Union};
 
 use crate::{Compiler, create_binding};
@@ -34,23 +36,29 @@ pub fn create_pair_binding(ctx: &mut Compiler, symbol: SymbolId, binding: &AstPa
 
     if let Some(first) = binding.first() {
         let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, reference));
-        let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
+        let first_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
             name: None,
             value: Value::new(hir, first_ty)
                 .with_reference(SymbolPath::new(symbol, vec![TypePath::First])),
             inline: true,
         }));
-        create_binding(ctx, symbol, &first);
+        ctx.push_declaration(Declaration::Symbol(first_symbol));
+        ctx.reference(Declaration::Symbol(symbol));
+        create_binding(ctx, first_symbol, &first);
+        ctx.pop_declaration();
     }
 
     if let Some(rest) = binding.rest() {
         let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, reference));
-        let symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
+        let rest_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
             name: None,
             value: Value::new(hir, rest_ty)
                 .with_reference(SymbolPath::new(symbol, vec![TypePath::Rest])),
             inline: true,
         }));
-        create_binding(ctx, symbol, &rest);
+        ctx.push_declaration(Declaration::Symbol(rest_symbol));
+        ctx.reference(Declaration::Symbol(symbol));
+        create_binding(ctx, rest_symbol, &rest);
+        ctx.pop_declaration();
     }
 }
