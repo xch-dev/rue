@@ -246,6 +246,12 @@ pub enum SyntaxKind {
     #[display("pair type")]
     PairType,
 
+    #[display("list type")]
+    ListType,
+
+    #[display("list type item")]
+    ListTypeItem,
+
     #[display("lambda type")]
     LambdaType,
 
@@ -326,6 +332,24 @@ pub enum SyntaxKind {
 
     #[display("lambda expression")]
     LambdaExpr,
+
+    #[display("named binding")]
+    NamedBinding,
+
+    #[display("pair binding")]
+    PairBinding,
+
+    #[display("list binding")]
+    ListBinding,
+
+    #[display("list binding item")]
+    ListBindingItem,
+
+    #[display("struct binding")]
+    StructBinding,
+
+    #[display("struct field binding")]
+    StructFieldBinding,
 
     // Unexpected cases
     #[display("error")]
@@ -511,6 +535,8 @@ impl SyntaxKind {
             SyntaxKind::UnionType => &[SyntaxKind::UnionType],
             SyntaxKind::GroupType => &[SyntaxKind::GroupType],
             SyntaxKind::PairType => &[SyntaxKind::PairType],
+            SyntaxKind::ListType => &[SyntaxKind::ListType],
+            SyntaxKind::ListTypeItem => &[SyntaxKind::ListTypeItem],
             SyntaxKind::LambdaType => &[SyntaxKind::LambdaType],
             SyntaxKind::LambdaParameter => &[SyntaxKind::LambdaParameter],
             SyntaxKind::Block => &[SyntaxKind::Block],
@@ -538,6 +564,12 @@ impl SyntaxKind {
             SyntaxKind::CastExpr => &[SyntaxKind::CastExpr],
             SyntaxKind::FieldAccessExpr => &[SyntaxKind::FieldAccessExpr],
             SyntaxKind::LambdaExpr => &[SyntaxKind::LambdaExpr],
+            SyntaxKind::NamedBinding => &[SyntaxKind::NamedBinding],
+            SyntaxKind::PairBinding => &[SyntaxKind::PairBinding],
+            SyntaxKind::ListBinding => &[SyntaxKind::ListBinding],
+            SyntaxKind::ListBindingItem => &[SyntaxKind::ListBindingItem],
+            SyntaxKind::StructBinding => &[SyntaxKind::StructBinding],
+            SyntaxKind::StructFieldBinding => &[SyntaxKind::StructFieldBinding],
             SyntaxKind::Error => &[SyntaxKind::Error],
             SyntaxKind::Eof => &[SyntaxKind::Eof],
         }

@@ -1,5 +1,6 @@
 mod group;
 mod lambda;
+mod list;
 mod literal;
 mod pair;
 mod path;
@@ -7,6 +8,7 @@ mod union;
 
 pub use group::*;
 pub use lambda::*;
+pub use list::*;
 pub use literal::*;
 pub use pair::*;
 pub use path::*;
@@ -23,6 +25,7 @@ pub fn compile_type(ctx: &mut Compiler, ty: &AstType) -> TypeId {
         AstType::UnionType(union) => compile_union_type(ctx, union),
         AstType::GroupType(group) => compile_group_type(ctx, group),
         AstType::PairType(pair) => compile_pair_type(ctx, pair),
+        AstType::ListType(list) => compile_list_type(ctx, list),
         AstType::LiteralType(literal) => compile_literal_type(ctx, literal),
         AstType::LambdaType(lambda) => compile_lambda_type(ctx, lambda),
     }

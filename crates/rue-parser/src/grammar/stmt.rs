@@ -1,6 +1,7 @@
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
+        binding::binding,
         expr::{ExprOptions, expr, expr_with},
         ty::ty,
     },
@@ -49,7 +50,7 @@ fn let_stmt(p: &mut Parser) {
     p.start(SyntaxKind::LetStmt);
     p.try_eat(T![inline]);
     p.expect(T![let]);
-    p.expect(SyntaxKind::Ident);
+    binding(p);
     if p.try_eat(T![:]) {
         ty(p);
     }
@@ -116,7 +117,9 @@ mod tests {
                 LetStmt@0..10
                   Let@0..3 "let"
                   Whitespace@3..4 " "
-                  Ident@4..5 "x"
+                  Binding@4..5
+                    NamedBinding@4..5
+                      Ident@4..5 "x"
                   Whitespace@5..6 " "
                   Assign@6..7 "="
                   Whitespace@7..8 " "
@@ -134,7 +137,9 @@ mod tests {
                 LetStmt@0..24
                   Let@0..3 "let"
                   Whitespace@3..4 " "
-                  Ident@4..9 "thing"
+                  Binding@4..9
+                    NamedBinding@4..9
+                      Ident@4..9 "thing"
                   Colon@9..10 ":"
                   Whitespace@10..11 " "
                   PathType@11..15

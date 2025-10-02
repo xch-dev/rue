@@ -69,6 +69,8 @@ ast_nodes!(
     UnionType,
     GroupType,
     PairType,
+    ListType,
+    ListTypeItem,
     LambdaType,
     LambdaParameter,
     Block,
@@ -96,6 +98,12 @@ ast_nodes!(
     CastExpr,
     FieldAccessExpr,
     LambdaExpr,
+    NamedBinding,
+    PairBinding,
+    ListBinding,
+    ListBindingItem,
+    StructBinding,
+    StructFieldBinding,
 );
 
 ast_enum!(Item, TypeItem, SymbolItem);
@@ -130,7 +138,15 @@ ast_enum!(
     UnionType,
     GroupType,
     PairType,
+    ListType,
     LambdaType,
+);
+ast_enum!(
+    Binding,
+    NamedBinding,
+    PairBinding,
+    ListBinding,
+    StructBinding,
 );
 
 impl AstDocument {
@@ -372,11 +388,8 @@ impl AstLetStmt {
             .find(|token| token.kind() == T![inline])
     }
 
-    pub fn name(&self) -> Option<SyntaxToken> {
-        self.syntax()
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Ident)
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
     }
 
     pub fn ty(&self) -> Option<AstType> {
@@ -674,6 +687,25 @@ impl AstPairType {
     }
 }
 
+impl AstListType {
+    pub fn items(&self) -> impl Iterator<Item = AstListTypeItem> {
+        self.syntax().children().filter_map(AstListTypeItem::cast)
+    }
+}
+
+impl AstListTypeItem {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![...])
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+}
+
 impl AstLambdaType {
     pub fn parameters(&self) -> impl Iterator<Item = AstLambdaParameter> {
         self.syntax()
@@ -696,5 +728,66 @@ impl AstLambdaParameter {
 
     pub fn ty(&self) -> Option<AstType> {
         self.syntax().children().find_map(AstType::cast)
+    }
+}
+
+impl AstNamedBinding {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+}
+
+impl AstPairBinding {
+    pub fn first(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
+    }
+
+    pub fn rest(&self) -> Option<AstBinding> {
+        self.syntax().children().filter_map(AstBinding::cast).nth(1)
+    }
+}
+
+impl AstListBinding {
+    pub fn items(&self) -> impl Iterator<Item = AstListBindingItem> {
+        self.syntax()
+            .children()
+            .filter_map(AstListBindingItem::cast)
+    }
+}
+
+impl AstListBindingItem {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![...])
+    }
+
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
+    }
+}
+
+impl AstStructBinding {
+    pub fn fields(&self) -> impl Iterator<Item = AstStructFieldBinding> {
+        self.syntax()
+            .children()
+            .filter_map(AstStructFieldBinding::cast)
+    }
+}
+
+impl AstStructFieldBinding {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax().children().find_map(AstBinding::cast)
     }
 }

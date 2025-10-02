@@ -201,8 +201,7 @@ impl Builtins {
             "INFINITY_G1".to_string(),
             db.alloc_symbol(Symbol::Constant(ConstantSymbol {
                 name: None,
-                ty: types.public_key,
-                value: infinity_g1,
+                value: Value::new(infinity_g1, types.public_key),
                 inline: false,
             })),
             false,
@@ -212,8 +211,7 @@ impl Builtins {
             "INFINITY_G2".to_string(),
             db.alloc_symbol(Symbol::Constant(ConstantSymbol {
                 name: None,
-                ty: types.signature,
-                value: infinity_g2,
+                value: Value::new(infinity_g2, types.signature),
                 inline: false,
             })),
             false,

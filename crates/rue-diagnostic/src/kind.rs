@@ -196,6 +196,9 @@ pub enum DiagnosticKind {
 
     #[error("Condition always evaluates to `true`")]
     AlwaysTrueCondition,
+
+    #[error("Cannot destructure type `{0}` into a pair")]
+    CannotDestructurePair(String),
 }
 
 impl DiagnosticKind {
@@ -246,7 +249,8 @@ impl DiagnosticKind {
             | Self::NonFinalSpread
             | Self::InvalidSpread
             | Self::InvalidSpreadBuiltin
-            | Self::MissingField(..) => DiagnosticSeverity::Error,
+            | Self::MissingField(..)
+            | Self::CannotDestructurePair(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields

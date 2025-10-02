@@ -34,7 +34,9 @@ mod tests {
                   LetStmt@1..11
                     Let@1..4 "let"
                     Whitespace@4..5 " "
-                    Ident@5..6 "x"
+                    Binding@5..6
+                      NamedBinding@5..6
+                        Ident@5..6 "x"
                     Whitespace@6..7 " "
                     Assign@7..8 "="
                     Whitespace@8..9 " "
@@ -68,7 +70,9 @@ mod tests {
                   LetStmt@1..11
                     Let@1..4 "let"
                     Whitespace@4..5 " "
-                    Ident@5..6 "x"
+                    Binding@5..6
+                      NamedBinding@5..6
+                        Ident@5..6 "x"
                     Whitespace@6..7 " "
                     Assign@7..8 "="
                     Whitespace@8..9 " "

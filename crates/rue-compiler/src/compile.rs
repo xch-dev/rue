@@ -1,3 +1,4 @@
+mod binding;
 mod block;
 mod document;
 mod expr;
@@ -6,6 +7,7 @@ mod item;
 mod path;
 mod ty;
 
+pub use binding::*;
 pub use block::*;
 pub use document::*;
 pub use expr::*;

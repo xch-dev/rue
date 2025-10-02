@@ -133,11 +133,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_constant(&mut self, env: &Environment, constant: ConstantSymbol) -> LirId {
-        self.lower_hir(env, constant.value)
+        self.lower_hir(env, constant.value.hir)
     }
 
     fn lower_binding(&mut self, env: &Environment, binding: BindingSymbol) -> LirId {
-        self.lower_hir(env, binding.value)
+        self.lower_hir(env, binding.value.hir)
     }
 
     fn lower_hir(&mut self, env: &Environment, hir: HirId) -> LirId {

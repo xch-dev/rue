@@ -235,10 +235,10 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
             visit_hir(db, graph, function.body, false);
         }
         Symbol::Constant(constant) => {
-            visit_hir(db, graph, constant.value, false);
+            visit_hir(db, graph, constant.value.hir, false);
         }
         Symbol::Binding(binding) => {
-            visit_hir(db, graph, binding.value, false);
+            visit_hir(db, graph, binding.value.hir, false);
         }
     }
 

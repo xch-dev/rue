@@ -146,8 +146,8 @@ impl Compiler {
             }
             Symbol::Function(function) => function.ty,
             Symbol::Parameter(parameter) => parameter.ty,
-            Symbol::Constant(constant) => constant.ty,
-            Symbol::Binding(binding) => binding.ty,
+            Symbol::Constant(constant) => constant.value.ty,
+            Symbol::Binding(binding) => binding.value.ty,
         }
     }
 
