@@ -20,6 +20,18 @@ pub enum AtomSemantic {
     #[display("Signature")]
     Signature,
 
+    #[display("K1PublicKey")]
+    K1PublicKey,
+
+    #[display("K1Signature")]
+    K1Signature,
+
+    #[display("R1PublicKey")]
+    R1PublicKey,
+
+    #[display("R1Signature")]
+    R1Signature,
+
     #[display("Bool")]
     Bool,
 }
@@ -56,6 +68,14 @@ impl Atom {
         Self::new(AtomSemantic::PublicKey, Some(AtomRestriction::Length(48)));
     pub const SIGNATURE: Self =
         Self::new(AtomSemantic::Signature, Some(AtomRestriction::Length(96)));
+    pub const K1_PUBLIC_KEY: Self =
+        Self::new(AtomSemantic::K1PublicKey, Some(AtomRestriction::Length(33)));
+    pub const K1_SIGNATURE: Self =
+        Self::new(AtomSemantic::K1Signature, Some(AtomRestriction::Length(64)));
+    pub const R1_PUBLIC_KEY: Self =
+        Self::new(AtomSemantic::R1PublicKey, Some(AtomRestriction::Length(33)));
+    pub const R1_SIGNATURE: Self =
+        Self::new(AtomSemantic::Signature, Some(AtomRestriction::Length(64)));
     pub const INT: Self = Self::new(AtomSemantic::Int, None);
 
     pub const fn new(semantic: AtomSemantic, restriction: Option<AtomRestriction>) -> Self {
@@ -85,7 +105,11 @@ impl fmt::Display for Atom {
                 AtomSemantic::Any
                 | AtomSemantic::Bytes
                 | AtomSemantic::PublicKey
-                | AtomSemantic::Signature => {
+                | AtomSemantic::Signature
+                | AtomSemantic::K1PublicKey
+                | AtomSemantic::K1Signature
+                | AtomSemantic::R1PublicKey
+                | AtomSemantic::R1Signature => {
                     if value.is_empty() {
                         return write!(f, "nil");
                     }

@@ -42,7 +42,11 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
                 text = stripped;
             }
 
-            let text = text.replace('_', "");
+            let mut text = text.replace('_', "");
+
+            if text.len() % 2 == 1 {
+                text.insert(0, '0');
+            }
 
             let bytes = hex::decode(text).unwrap();
             let ty = ctx.alloc_type(Type::Atom(if bytes.is_empty() {

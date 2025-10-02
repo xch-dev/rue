@@ -10,6 +10,10 @@ pub struct BuiltinTypes {
     pub bytes32: TypeId,
     pub public_key: TypeId,
     pub signature: TypeId,
+    pub k1_public_key: TypeId,
+    pub k1_signature: TypeId,
+    pub r1_public_key: TypeId,
+    pub r1_signature: TypeId,
     pub int: TypeId,
     pub bool_true: TypeId,
     pub bool_false: TypeId,
@@ -34,6 +38,10 @@ impl BuiltinTypes {
         let bytes32 = arena.alloc(Type::Atom(Atom::BYTES_32));
         let public_key = arena.alloc(Type::Atom(Atom::PUBLIC_KEY));
         let signature = arena.alloc(Type::Atom(Atom::SIGNATURE));
+        let k1_public_key = arena.alloc(Type::Atom(Atom::K1_PUBLIC_KEY));
+        let k1_signature = arena.alloc(Type::Atom(Atom::K1_SIGNATURE));
+        let r1_public_key = arena.alloc(Type::Atom(Atom::R1_PUBLIC_KEY));
+        let r1_signature = arena.alloc(Type::Atom(Atom::R1_SIGNATURE));
         let int = arena.alloc(Type::Atom(Atom::INT));
         let bool_true = arena.alloc(Type::Atom(Atom::TRUE));
         let bool_false = arena.alloc(Type::Atom(Atom::FALSE));
@@ -83,6 +91,10 @@ impl BuiltinTypes {
             bytes32,
             public_key,
             signature,
+            k1_public_key,
+            k1_signature,
+            r1_public_key,
+            r1_signature,
             int,
             bool_true,
             bool_false,

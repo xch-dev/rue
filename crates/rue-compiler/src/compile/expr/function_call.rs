@@ -5,7 +5,7 @@ use rue_ast::{AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{BinaryOp, Builtin, FunctionCall, Hir, Symbol, UnaryOp, Value};
 use rue_lir::ClvmOp;
-use rue_types::{Type, Union, substitute_with_mappings};
+use rue_types::{Pair, Type, Union, substitute_with_mappings};
 
 use crate::{Compiler, compile_expr};
 
@@ -338,7 +338,10 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.builtins().unresolved.hir
             };
 
-            Value::new(hir, ctx.builtins().types.int)
+            let int = ctx.builtins().types.int;
+            let pair = ctx.alloc_type(Type::Pair(Pair::new(int, int)));
+
+            Value::new(hir, pair)
         }
         Builtin::Modpow => {
             if args.len() != 3 {
@@ -426,7 +429,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
 
             Value::new(hir, ctx.builtins().types.public_key)
         }
-        Builtin::G1Sum | Builtin::G1Difference | Builtin::G1Product => {
+        Builtin::G1Sum | Builtin::G1Difference => {
             if args.len() != 1 {
                 ctx.diagnostic(
                     call.syntax(),
@@ -457,7 +460,6 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 match builtin {
                     Builtin::G1Sum => ClvmOp::G1Add,
                     Builtin::G1Difference => ClvmOp::G1Subtract,
-                    Builtin::G1Product => ClvmOp::G1Multiply,
                     _ => unreachable!(),
                 },
                 value,
@@ -465,7 +467,7 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
 
             Value::new(hir, ctx.builtins().types.public_key)
         }
-        Builtin::G2Sum | Builtin::G2Difference | Builtin::G2Product => {
+        Builtin::G2Sum | Builtin::G2Difference => {
             if args.len() != 1 {
                 ctx.diagnostic(
                     call.syntax(),
@@ -496,7 +498,6 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 match builtin {
                     Builtin::G2Sum => ClvmOp::G2Add,
                     Builtin::G2Difference => ClvmOp::G2Subtract,
-                    Builtin::G2Product => ClvmOp::G2Multiply,
                     _ => unreachable!(),
                 },
                 value,
@@ -676,7 +677,11 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(
                     args[0].1.syntax(),
                     args[0].0.ty,
-                    ctx.builtins().types.public_key,
+                    match builtin {
+                        Builtin::Secp256K1Verify => ctx.builtins().types.k1_public_key,
+                        Builtin::Secp256R1Verify => ctx.builtins().types.r1_public_key,
+                        _ => unreachable!(),
+                    },
                 );
                 ctx.assign_type(
                     args[1].1.syntax(),
@@ -686,7 +691,11 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.assign_type(
                     args[2].1.syntax(),
                     args[2].0.ty,
-                    ctx.builtins().types.signature,
+                    match builtin {
+                        Builtin::Secp256K1Verify => ctx.builtins().types.k1_signature,
+                        Builtin::Secp256R1Verify => ctx.builtins().types.r1_signature,
+                        _ => unreachable!(),
+                    },
                 );
 
                 match builtin {

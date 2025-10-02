@@ -5,6 +5,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvm_utils::tree_hash;
+use clvmr::ENABLE_KECCAK_OPS_OUTSIDE_GUARD;
+use clvmr::MEMPOOL_MODE;
 use clvmr::NodePtr;
 use clvmr::SExp;
 use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
@@ -134,10 +136,16 @@ fn handle_test_case(name: &str, entry: &DirEntry) -> Result<()> {
 
         test_case.debug_program = Some(disassemble(&allocator, debug_ptr, None));
 
-        let response = run_program(&mut allocator, &ChiaDialect::new(0), ptr, env, 100_000_000);
+        let response = run_program(
+            &mut allocator,
+            &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
+            ptr,
+            env,
+            100_000_000,
+        );
         let debug_response = run_program(
             &mut allocator,
-            &ChiaDialect::new(0),
+            &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
             debug_ptr,
             env,
             100_000_000,
@@ -188,7 +196,7 @@ fn handle_test_case(name: &str, entry: &DirEntry) -> Result<()> {
     for test in result.tests {
         let response = run_program(
             &mut allocator,
-            &ChiaDialect::new(0),
+            &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
             test,
             NodePtr::NIL,
             100_000_000,

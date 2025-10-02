@@ -38,6 +38,10 @@ impl Builtins {
         scope.insert_type("Bytes32".to_string(), types.bytes32, false);
         scope.insert_type("PublicKey".to_string(), types.public_key, false);
         scope.insert_type("Signature".to_string(), types.signature, false);
+        scope.insert_type("K1PublicKey".to_string(), types.k1_public_key, false);
+        scope.insert_type("K1Signature".to_string(), types.k1_signature, false);
+        scope.insert_type("R1PublicKey".to_string(), types.r1_public_key, false);
+        scope.insert_type("R1Signature".to_string(), types.r1_signature, false);
         scope.insert_type("Int".to_string(), types.int, false);
         scope.insert_type("Bool".to_string(), types.bool, false);
         scope.insert_type("Any".to_string(), types.permissive_any, false);
@@ -155,12 +159,6 @@ impl Builtins {
         );
 
         scope.insert_symbol(
-            "g1_product".to_string(),
-            db.alloc_symbol(Symbol::Builtin(Builtin::G1Product)),
-            false,
-        );
-
-        scope.insert_symbol(
             "g2_sum".to_string(),
             db.alloc_symbol(Symbol::Builtin(Builtin::G2Sum)),
             false,
@@ -169,12 +167,6 @@ impl Builtins {
         scope.insert_symbol(
             "g2_difference".to_string(),
             db.alloc_symbol(Symbol::Builtin(Builtin::G2Difference)),
-            false,
-        );
-
-        scope.insert_symbol(
-            "g2_product".to_string(),
-            db.alloc_symbol(Symbol::Builtin(Builtin::G2Product)),
             false,
         );
 
