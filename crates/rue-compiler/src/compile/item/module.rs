@@ -1,12 +1,16 @@
 use rue_ast::AstModuleItem;
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{ModuleSymbol, Scope, Symbol, SymbolId};
+use rue_hir::{ModuleDeclarations, ModuleSymbol, Scope, Symbol, SymbolId};
 
-use crate::{Compiler, compile_items, declare_items};
+use crate::{
+    Compiler, compile_symbol_items, compile_type_items, declare_symbol_items, declare_type_items,
+};
 
-pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
+pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
     let scope = ctx.alloc_scope(Scope::new());
-    let declarations = declare_items(ctx, scope, module.items());
+
+    let mut declarations = ModuleDeclarations::default();
+    declare_type_items(ctx, scope, module.items(), &mut declarations);
 
     let symbol = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
         name: module.name(),
@@ -32,7 +36,32 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
     symbol
 }
 
-pub fn compile_module(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
+pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
+    let (scope, mut declarations) = if let Symbol::Module(ModuleSymbol {
+        scope,
+        declarations,
+        ..
+    }) = ctx.symbol(symbol)
+    {
+        (*scope, declarations.clone())
+    } else {
+        unreachable!();
+    };
+
+    declare_symbol_items(ctx, scope, module.items(), &mut declarations);
+
+    let Symbol::Module(ModuleSymbol {
+        declarations: updated,
+        ..
+    }) = ctx.symbol_mut(symbol)
+    else {
+        unreachable!();
+    };
+
+    *updated = declarations;
+}
+
+pub fn compile_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
     let (scope, declarations) = if let Symbol::Module(ModuleSymbol {
         scope,
         declarations,
@@ -44,5 +73,20 @@ pub fn compile_module(ctx: &mut Compiler, module: &AstModuleItem, symbol: Symbol
         unreachable!();
     };
 
-    compile_items(ctx, scope, module.items(), declarations);
+    compile_type_items(ctx, scope, module.items(), &declarations);
+}
+
+pub fn compile_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
+    let (scope, declarations) = if let Symbol::Module(ModuleSymbol {
+        scope,
+        declarations,
+        ..
+    }) = ctx.symbol(symbol)
+    {
+        (*scope, declarations.clone())
+    } else {
+        unreachable!();
+    };
+
+    compile_symbol_items(ctx, scope, module.items(), &declarations);
 }

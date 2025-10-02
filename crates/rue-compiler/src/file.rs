@@ -4,13 +4,18 @@ use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
-use rue_hir::{DependencyGraph, Environment, Lowerer, Scope, ScopeId, SymbolId};
+use rue_hir::{
+    DependencyGraph, Environment, Lowerer, ModuleDeclarations, Scope, ScopeId, SymbolId,
+};
 use rue_lexer::Lexer;
 use rue_lir::{Error, codegen, optimize};
 use rue_options::CompilerOptions;
 use rue_parser::Parser;
 
-use crate::{Compiler, check_unused, compile_document, declare_document};
+use crate::{
+    Compiler, check_unused, compile_symbol_items, compile_type_items, declare_symbol_items,
+    declare_type_items,
+};
 
 #[derive(Debug, Clone)]
 pub struct Compilation {
@@ -143,8 +148,12 @@ fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilatio
         return compilation;
     };
 
-    let declarations = declare_document(ctx, scope, &ast);
-    compile_document(ctx, scope, &ast, declarations);
+    let mut declarations = ModuleDeclarations::default();
+
+    declare_type_items(ctx, scope, ast.items(), &mut declarations);
+    declare_symbol_items(ctx, scope, ast.items(), &mut declarations);
+    compile_type_items(ctx, scope, ast.items(), &declarations);
+    compile_symbol_items(ctx, scope, ast.items(), &declarations);
 
     compilation.diagnostics.extend(ctx.take_diagnostics());
 

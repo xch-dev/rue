@@ -1,80 +1,40 @@
-use rue_ast::{AstDocument, AstItem};
+use rue_ast::{AstItem, AstSymbolItem};
 use rue_hir::{ModuleDeclarations, ScopeId};
 
 use crate::{
-    Compiler, compile_symbol_item, compile_type_item, declare_symbol_item, declare_type_item,
+    Compiler, compile_module_symbols, compile_module_types, compile_symbol_item, compile_type_item,
+    declare_module_symbols, declare_module_types, declare_symbol_item, declare_type_item,
 };
 
-pub fn declare_document(
-    ctx: &mut Compiler,
-    scope: ScopeId,
-    document: &AstDocument,
-) -> ModuleDeclarations {
-    declare_items(ctx, scope, document.items())
-}
-
-pub fn declare_items(
+pub fn declare_type_items(
     ctx: &mut Compiler,
     scope: ScopeId,
     items: impl Iterator<Item = AstItem>,
-) -> ModuleDeclarations {
-    let items = &items.collect::<Vec<_>>();
-
-    let mut declarations = ModuleDeclarations::default();
-
+    declarations: &mut ModuleDeclarations,
+) {
     ctx.push_scope(scope);
 
     for item in items {
         match item {
-            AstItem::TypeItem(item) => declarations.types.push(declare_type_item(ctx, item)),
-            AstItem::SymbolItem(_) => {}
-        }
-    }
-
-    for item in items {
-        match item {
-            AstItem::TypeItem(_) => {}
-            AstItem::SymbolItem(item) => declarations.symbols.push(declare_symbol_item(ctx, item)),
+            AstItem::TypeItem(item) => declarations.types.push(declare_type_item(ctx, &item)),
+            AstItem::SymbolItem(item) => {
+                if let AstSymbolItem::ModuleItem(item) = item {
+                    declarations.symbols.push(declare_module_types(ctx, &item));
+                }
+            }
         }
     }
 
     ctx.pop_scope();
-
-    declarations
 }
 
-pub fn compile_document(
-    ctx: &mut Compiler,
-    scope: ScopeId,
-    document: &AstDocument,
-    declarations: ModuleDeclarations,
-) {
-    compile_items(ctx, scope, document.items(), declarations);
-}
-
-#[allow(clippy::needless_pass_by_value)]
-pub fn compile_items(
+pub fn declare_symbol_items(
     ctx: &mut Compiler,
     scope: ScopeId,
     items: impl Iterator<Item = AstItem>,
-    declarations: ModuleDeclarations,
+    declarations: &mut ModuleDeclarations,
 ) {
-    let items = &items.collect::<Vec<_>>();
-
     ctx.push_scope(scope);
-
-    let mut index = 0;
-
-    for item in items {
-        match item {
-            AstItem::TypeItem(item) => {
-                let (ty, scope) = declarations.types[index];
-                compile_type_item(ctx, item, ty, scope);
-                index += 1;
-            }
-            AstItem::SymbolItem(_) => {}
-        }
-    }
 
     let mut index = 0;
 
@@ -82,7 +42,69 @@ pub fn compile_items(
         match item {
             AstItem::TypeItem(_) => {}
             AstItem::SymbolItem(item) => {
-                compile_symbol_item(ctx, item, declarations.symbols[index]);
+                if let AstSymbolItem::ModuleItem(item) = item {
+                    declare_module_symbols(ctx, &item, declarations.symbols[index]);
+                    index += 1;
+                } else {
+                    declarations.symbols.push(declare_symbol_item(ctx, &item));
+                }
+            }
+        }
+    }
+
+    ctx.pop_scope();
+}
+
+pub fn compile_type_items(
+    ctx: &mut Compiler,
+    scope: ScopeId,
+    items: impl Iterator<Item = AstItem>,
+    declarations: &ModuleDeclarations,
+) {
+    ctx.push_scope(scope);
+
+    let mut index = 0;
+    let mut module_index = 0;
+
+    for item in items {
+        match item {
+            AstItem::TypeItem(item) => {
+                let (ty, scope) = declarations.types[index];
+                compile_type_item(ctx, &item, ty, scope);
+                index += 1;
+            }
+            AstItem::SymbolItem(item) => {
+                if let AstSymbolItem::ModuleItem(item) = item {
+                    compile_module_types(ctx, &item, declarations.symbols[module_index]);
+                    module_index += 1;
+                }
+            }
+        }
+    }
+
+    ctx.pop_scope();
+}
+
+pub fn compile_symbol_items(
+    ctx: &mut Compiler,
+    scope: ScopeId,
+    items: impl Iterator<Item = AstItem>,
+    declarations: &ModuleDeclarations,
+) {
+    ctx.push_scope(scope);
+
+    let mut index = 0;
+
+    for item in items {
+        match item {
+            AstItem::TypeItem(_) => {}
+            AstItem::SymbolItem(item) => {
+                if let AstSymbolItem::ModuleItem(item) = item {
+                    compile_module_symbols(ctx, &item, declarations.symbols[index]);
+                } else {
+                    let symbol = declarations.symbols[index];
+                    compile_symbol_item(ctx, &item, symbol);
+                }
                 index += 1;
             }
         }

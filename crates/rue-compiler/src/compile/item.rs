@@ -26,7 +26,7 @@ pub fn declare_type_item(ctx: &mut Compiler, item: &AstTypeItem) -> (TypeId, Sco
 
 pub fn declare_symbol_item(ctx: &mut Compiler, item: &AstSymbolItem) -> SymbolId {
     match item {
-        AstSymbolItem::ModuleItem(module) => declare_module(ctx, module),
+        AstSymbolItem::ModuleItem(_) => unreachable!(), // This is handled externally
         AstSymbolItem::FunctionItem(function) => declare_function(ctx, function),
         AstSymbolItem::ConstantItem(constant) => declare_constant(ctx, constant),
     }
@@ -41,7 +41,7 @@ pub fn compile_type_item(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId, sco
 
 pub fn compile_symbol_item(ctx: &mut Compiler, item: &AstSymbolItem, symbol: SymbolId) {
     match item {
-        AstSymbolItem::ModuleItem(module) => compile_module(ctx, module, symbol),
+        AstSymbolItem::ModuleItem(_) => unreachable!(), // This is handled externally
         AstSymbolItem::FunctionItem(function) => compile_function(ctx, function, symbol),
         AstSymbolItem::ConstantItem(constant) => compile_constant(ctx, constant, symbol),
     }
