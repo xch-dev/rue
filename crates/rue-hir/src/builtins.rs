@@ -42,6 +42,7 @@ impl Builtins {
         scope.insert_type("Bool".to_string(), types.bool, false);
         scope.insert_type("Any".to_string(), types.permissive_any, false);
         scope.insert_type("List".to_string(), types.list, false);
+        scope.insert_type("AlternatingList".to_string(), types.alternating_list, false);
 
         let unchecked_cast_generic = db.alloc_type(Type::Generic(Generic { name: None }));
 
@@ -76,6 +77,12 @@ impl Builtins {
         );
 
         scope.insert_symbol(
+            "concat".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Concat)),
+            false,
+        );
+
+        scope.insert_symbol(
             "coinid".to_string(),
             db.alloc_symbol(Symbol::Builtin(Builtin::CoinId)),
             false,
@@ -88,8 +95,110 @@ impl Builtins {
         );
 
         scope.insert_symbol(
+            "sum".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Sum)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "difference".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Difference)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "product".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Product)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "divmod".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Divmod)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "modpow".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Modpow)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "any".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Any)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "all".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::All)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "pubkey_for_exp".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::PubkeyForExp)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "g1_sum".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::G1Sum)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "g1_difference".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::G1Difference)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "g1_product".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::G1Product)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "g2_sum".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::G2Sum)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "g2_difference".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::G2Difference)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "g2_product".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::G2Product)),
+            false,
+        );
+
+        scope.insert_symbol(
             "bls_pairing_identity".to_string(),
             db.alloc_symbol(Symbol::Builtin(Builtin::BlsPairingIdentity)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "bls_verify".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::BlsVerify)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "secp256k1_verify".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Secp256K1Verify)),
+            false,
+        );
+
+        scope.insert_symbol(
+            "secp256r1_verify".to_string(),
+            db.alloc_symbol(Symbol::Builtin(Builtin::Secp256R1Verify)),
             false,
         );
 

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Builtin, FunctionCall, Hir, Symbol, UnaryOp, Value};
+use rue_hir::{BinaryOp, Builtin, FunctionCall, Hir, Symbol, UnaryOp, Value};
 use rue_lir::ClvmOp;
 use rue_types::{Type, Union, substitute_with_mappings};
 
@@ -194,6 +194,37 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
 
             Value::new(hir, ctx.builtins().types.bytes32)
         }
+        Builtin::Concat => {
+            if args.len() != 1 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(1, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let value = if let Some((value, expr)) = args.first() {
+                let list = ctx.builtins().types.list;
+
+                let mappings = HashMap::from_iter([(
+                    ctx.builtins().types.list_generic,
+                    ctx.builtins().types.bytes,
+                )]);
+
+                let ty = rue_types::substitute_with_mappings(ctx.types_mut(), list, &mappings);
+                ctx.assign_type(expr.syntax(), value.ty, ty);
+                value.hir
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            let hir = ctx.alloc_hir(Hir::ClvmOp(ClvmOp::Concat, value));
+
+            Value::new(hir, ctx.builtins().types.bytes)
+        }
         Builtin::CoinId => {
             if args.len() != 3 {
                 ctx.diagnostic(
@@ -248,6 +279,270 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
 
             Value::new(hir, ctx.builtins().types.bytes)
         }
+        Builtin::Sum | Builtin::Difference | Builtin::Product => {
+            if args.len() != 1 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(1, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let value = if let Some((value, expr)) = args.first() {
+                let list = ctx.builtins().types.list;
+
+                let mappings = HashMap::from_iter([(
+                    ctx.builtins().types.list_generic,
+                    ctx.builtins().types.int,
+                )]);
+
+                let ty = rue_types::substitute_with_mappings(ctx.types_mut(), list, &mappings);
+                ctx.assign_type(expr.syntax(), value.ty, ty);
+                value.hir
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            let hir = ctx.alloc_hir(Hir::ClvmOp(
+                match builtin {
+                    Builtin::Sum => ClvmOp::Add,
+                    Builtin::Difference => ClvmOp::Sub,
+                    Builtin::Product => ClvmOp::Mul,
+                    _ => unreachable!(),
+                },
+                value,
+            ));
+
+            Value::new(hir, ctx.builtins().types.int)
+        }
+        Builtin::Divmod => {
+            if args.len() != 2 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(2, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let hir = if args.len() == 2 {
+                ctx.assign_type(args[0].1.syntax(), args[0].0.ty, ctx.builtins().types.int);
+                ctx.assign_type(args[1].1.syntax(), args[1].0.ty, ctx.builtins().types.int);
+                ctx.alloc_hir(Hir::Binary(BinaryOp::Divmod, args[0].0.hir, args[1].0.hir))
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            Value::new(hir, ctx.builtins().types.int)
+        }
+        Builtin::Modpow => {
+            if args.len() != 3 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(3, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let hir = if args.len() == 3 {
+                ctx.assign_type(args[0].1.syntax(), args[0].0.ty, ctx.builtins().types.int);
+                ctx.assign_type(args[1].1.syntax(), args[1].0.ty, ctx.builtins().types.int);
+                ctx.assign_type(args[2].1.syntax(), args[2].0.ty, ctx.builtins().types.int);
+                ctx.alloc_hir(Hir::Modpow(args[0].0.hir, args[1].0.hir, args[2].0.hir))
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            Value::new(hir, ctx.builtins().types.int)
+        }
+        Builtin::Any | Builtin::All => {
+            if args.len() != 1 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(1, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let value = if let Some((value, expr)) = args.first() {
+                let list = ctx.builtins().types.list;
+
+                let mappings = HashMap::from_iter([(
+                    ctx.builtins().types.list_generic,
+                    ctx.builtins().types.bool,
+                )]);
+
+                let ty = rue_types::substitute_with_mappings(ctx.types_mut(), list, &mappings);
+                ctx.assign_type(expr.syntax(), value.ty, ty);
+                value.hir
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            let hir = ctx.alloc_hir(Hir::ClvmOp(
+                match builtin {
+                    Builtin::Any => ClvmOp::Any,
+                    Builtin::All => ClvmOp::All,
+                    _ => unreachable!(),
+                },
+                value,
+            ));
+
+            Value::new(hir, ctx.builtins().types.bool)
+        }
+        Builtin::PubkeyForExp => {
+            if args.len() != 1 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(1, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let hir = if args.len() == 1 {
+                ctx.assign_type(
+                    args[0].1.syntax(),
+                    args[0].0.ty,
+                    ctx.builtins().types.bytes32,
+                );
+                ctx.alloc_hir(Hir::Unary(UnaryOp::PubkeyForExp, args[0].0.hir))
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            Value::new(hir, ctx.builtins().types.public_key)
+        }
+        Builtin::G1Sum | Builtin::G1Difference | Builtin::G1Product => {
+            if args.len() != 1 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(1, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let value = if let Some((value, expr)) = args.first() {
+                let list = ctx.builtins().types.list;
+
+                let mappings = HashMap::from_iter([(
+                    ctx.builtins().types.list_generic,
+                    ctx.builtins().types.public_key,
+                )]);
+
+                let ty = rue_types::substitute_with_mappings(ctx.types_mut(), list, &mappings);
+                ctx.assign_type(expr.syntax(), value.ty, ty);
+                value.hir
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            let hir = ctx.alloc_hir(Hir::ClvmOp(
+                match builtin {
+                    Builtin::G1Sum => ClvmOp::G1Add,
+                    Builtin::G1Difference => ClvmOp::G1Subtract,
+                    Builtin::G1Product => ClvmOp::G1Multiply,
+                    _ => unreachable!(),
+                },
+                value,
+            ));
+
+            Value::new(hir, ctx.builtins().types.public_key)
+        }
+        Builtin::G2Sum | Builtin::G2Difference | Builtin::G2Product => {
+            if args.len() != 1 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(1, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let value = if let Some((value, expr)) = args.first() {
+                let list = ctx.builtins().types.list;
+
+                let mappings = HashMap::from_iter([(
+                    ctx.builtins().types.list_generic,
+                    ctx.builtins().types.signature,
+                )]);
+
+                let ty = rue_types::substitute_with_mappings(ctx.types_mut(), list, &mappings);
+                ctx.assign_type(expr.syntax(), value.ty, ty);
+                value.hir
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            let hir = ctx.alloc_hir(Hir::ClvmOp(
+                match builtin {
+                    Builtin::G2Sum => ClvmOp::G2Add,
+                    Builtin::G2Difference => ClvmOp::G2Subtract,
+                    Builtin::G2Product => ClvmOp::G2Multiply,
+                    _ => unreachable!(),
+                },
+                value,
+            ));
+
+            Value::new(hir, ctx.builtins().types.signature)
+        }
+        Builtin::G1Map | Builtin::G2Map => {
+            if args.len() != 1 && args.len() != 2 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArgumentsBetween(1, 2, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let data = if let Some((value, expr)) = args.first() {
+                ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.bytes);
+                value.hir
+            } else {
+                ctx.builtins().unresolved.hir
+            };
+
+            let dst = args.get(1).map(|(value, expr)| {
+                ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.bytes);
+                value.hir
+            });
+
+            let hir = match builtin {
+                Builtin::G1Map => ctx.alloc_hir(Hir::G1Map(data, dst)),
+                Builtin::G2Map => ctx.alloc_hir(Hir::G2Map(data, dst)),
+                _ => unreachable!(),
+            };
+
+            Value::new(
+                hir,
+                match builtin {
+                    Builtin::G1Map => ctx.builtins().types.public_key,
+                    Builtin::G2Map => ctx.builtins().types.signature,
+                    _ => unreachable!(),
+                },
+            )
+        }
         Builtin::BlsPairingIdentity => {
             let hir = if spread.is_some() {
                 if args.len() != 1 {
@@ -294,6 +589,121 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
                 ctx.alloc_hir(Hir::BlsPairingIdentity(
                     args.iter().map(|arg| arg.0.hir).collect(),
                 ))
+            };
+
+            Value::new(hir, ctx.builtins().types.nil)
+        }
+        Builtin::BlsVerify => {
+            let hir = if spread.is_some() {
+                if args.len() != 2 {
+                    ctx.diagnostic(
+                        call.syntax(),
+                        DiagnosticKind::ExpectedArguments(2, args.len()),
+                    );
+                }
+
+                let list = ctx.builtins().types.alternating_list;
+
+                let mappings = HashMap::from_iter([
+                    (
+                        ctx.builtins().types.alternating_list_generic_a,
+                        ctx.builtins().types.public_key,
+                    ),
+                    (
+                        ctx.builtins().types.alternating_list_generic_b,
+                        ctx.builtins().types.bytes,
+                    ),
+                ]);
+
+                let ty = rue_types::substitute_with_mappings(ctx.types_mut(), list, &mappings);
+
+                if args.len() == 2 {
+                    ctx.assign_type(
+                        args[0].1.syntax(),
+                        args[0].0.ty,
+                        ctx.builtins().types.signature,
+                    );
+                    ctx.assign_type(args[1].1.syntax(), args[1].0.ty, ty);
+
+                    let pair = ctx.alloc_hir(Hir::Pair(args[0].0.hir, args[1].0.hir));
+                    ctx.alloc_hir(Hir::ClvmOp(ClvmOp::BlsVerify, pair))
+                } else {
+                    ctx.builtins().unresolved.hir
+                }
+            } else {
+                if args.is_empty() || args.len() % 2 != 1 {
+                    ctx.diagnostic(
+                        call.syntax(),
+                        DiagnosticKind::ExpectedOneArgumentEvenAdditional,
+                    );
+                }
+
+                for (i, (value, expr)) in args.iter().enumerate() {
+                    if i == 0 {
+                        ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.signature);
+                    } else if i % 2 == 1 {
+                        ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.public_key);
+                    } else {
+                        ctx.assign_type(expr.syntax(), value.ty, ctx.builtins().types.bytes);
+                    }
+                }
+
+                if args.is_empty() {
+                    ctx.builtins().unresolved.hir
+                } else {
+                    ctx.alloc_hir(Hir::BlsVerify(
+                        args[0].0.hir,
+                        args.iter().skip(1).map(|arg| arg.0.hir).collect(),
+                    ))
+                }
+            };
+
+            Value::new(hir, ctx.builtins().types.nil)
+        }
+        Builtin::Secp256K1Verify | Builtin::Secp256R1Verify => {
+            if args.len() != 3 {
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::ExpectedArguments(3, args.len()),
+                );
+            }
+
+            if let Some(spread) = &spread {
+                ctx.diagnostic(spread, DiagnosticKind::InvalidSpreadBuiltin);
+            }
+
+            let hir = if args.len() == 3 {
+                ctx.assign_type(
+                    args[0].1.syntax(),
+                    args[0].0.ty,
+                    ctx.builtins().types.public_key,
+                );
+                ctx.assign_type(
+                    args[1].1.syntax(),
+                    args[1].0.ty,
+                    ctx.builtins().types.bytes32,
+                );
+                ctx.assign_type(
+                    args[2].1.syntax(),
+                    args[2].0.ty,
+                    ctx.builtins().types.signature,
+                );
+
+                match builtin {
+                    Builtin::Secp256K1Verify => ctx.alloc_hir(Hir::Secp256K1Verify(
+                        args[0].0.hir,
+                        args[1].0.hir,
+                        args[2].0.hir,
+                    )),
+                    Builtin::Secp256R1Verify => ctx.alloc_hir(Hir::Secp256R1Verify(
+                        args[0].0.hir,
+                        args[1].0.hir,
+                        args[2].0.hir,
+                    )),
+                    _ => unreachable!(),
+                }
+            } else {
+                ctx.builtins().unresolved.hir
             };
 
             Value::new(hir, ctx.builtins().types.nil)

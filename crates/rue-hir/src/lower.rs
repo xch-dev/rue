@@ -198,6 +198,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     BinaryOp::Mul => self.arena.alloc(Lir::Mul(vec![left, right])),
                     BinaryOp::Div => self.arena.alloc(Lir::Div(left, right)),
                     BinaryOp::Mod => self.arena.alloc(Lir::Mod(left, right)),
+                    BinaryOp::Divmod => self.arena.alloc(Lir::Divmod(left, right)),
                     BinaryOp::Concat => self.arena.alloc(Lir::Concat(vec![left, right])),
                     BinaryOp::G1Add => self.arena.alloc(Lir::G1Add(vec![left, right])),
                     BinaryOp::G1Subtract => self.arena.alloc(Lir::G1Subtract(vec![left, right])),
