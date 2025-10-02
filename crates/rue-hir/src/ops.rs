@@ -62,6 +62,9 @@ pub enum BinaryOp {
     #[display("%")]
     Mod,
 
+    #[display("divmod")]
+    Divmod,
+
     #[display("+")]
     Concat,
 

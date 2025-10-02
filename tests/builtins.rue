@@ -1,0 +1,132 @@
+test fn casting() {
+    assert unchecked_cast::<Int>("hello") == "hello" as Int;
+}
+
+test fn hash_functions() {
+    assert sha256("hello") == 0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824;
+    assert sha256(...["hel", "lo"]) == 0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824;
+    assert sha256_inline("hello") == 0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824;
+
+    assert keccak256("hello") == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;
+    assert keccak256(...["hel", "lo"]) == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;   
+    assert keccak256_inline("hello") == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;
+
+    let parent_coin_id = sha256("parent_coin_id");
+    let puzzle_hash = sha256("puzzle_hash");
+    let amount = 1;
+    let coin_id = coinid(parent_coin_id, puzzle_hash, amount);
+
+    assert coin_id == sha256(parent_coin_id + puzzle_hash + amount as Bytes);
+    assert coin_id == 0xb74ea4f137ada0db15f35bb38f3ae75e5a92d0c9bb2dc8745ed8b202d8397add;
+}
+
+test fn byte_manipulation() {
+    assert concat([]) == "";
+    assert concat(["hello"]) == "hello";
+    assert concat(["hel", "lo"]) == "hello";
+
+    assert substr("hello", 2) == "llo";
+    assert substr("hello", 0, 2) == "he";
+    assert substr("hello", 0, 5) == "hello";
+}
+
+test fn arithmetic() {
+    assert sum([]) == 0;
+    assert sum([1]) == 1;
+    assert sum([1, 2]) == 3;
+
+    assert difference([]) == 0;
+    assert difference([1]) == 1;
+    assert difference([1, 2]) == -1;
+
+    assert product([]) == 1;
+    assert product([1]) == 1;
+    assert product([2, 3]) == 6;
+
+    let result = divmod(10, 3);
+    assert result.first == 3;
+    assert result.rest == 1;
+
+    assert modpow(2, 3, 5) == 3;
+}
+
+test fn boolean_logic() {
+    assert any([]) == false;
+    assert any([false]) == false;
+    assert any([true]) == true;
+    assert any([false, true]) == true;
+
+    assert all([]) == true;
+    assert all([false]) == false;
+    assert all([true]) == true;
+    assert all([true, true]) == true;
+}
+
+test fn g1_math() {
+    let pk = 0x8646e8b10532e235ddb8fd7edcdb8d8b76c1006af0518e39d6cc2a84d059d1858f7749e4af3571eb8660d0d3aa91954b;
+    let sum = 0xa895cfd6482f4ff7328e0aa65a7902654bfaaf473eadf53a30620d04500949b1b2003c4559cd3a4bed3125f9ea2825d5;
+
+    assert pubkey_for_exp(unchecked_cast::<Bytes32>(0)) == INFINITY_G1;
+    assert pubkey_for_exp(0x0000000000000000000000000000000000000000000000000000000000000000) == INFINITY_G1;
+    assert pubkey_for_exp(sha256(nil)) == pk;
+
+    assert g1_sum([]) == INFINITY_G1;
+    assert g1_sum([INFINITY_G1]) == INFINITY_G1;
+    assert g1_sum([INFINITY_G1, INFINITY_G1]) == INFINITY_G1;
+    assert g1_sum([pk]) == pk;
+    assert g1_sum([pk, pk]) == sum;
+
+    assert g1_difference([]) == INFINITY_G1;
+    assert g1_difference([INFINITY_G1]) == INFINITY_G1;
+    assert g1_difference([INFINITY_G1, INFINITY_G1]) == INFINITY_G1;
+    assert g1_difference([pk]) == pk;
+    assert g1_difference([pk, pk]) == INFINITY_G1;
+    assert g1_difference([sum, pk]) == pk;
+    assert g1_difference([sum, pk, pk]) == INFINITY_G1;
+}
+
+test fn g2_math() {
+    let sig = 0xb1e87e3c3edbc445c23ec72974abf75ddf37d2958ee46e7c1e625feb3038a22915d5625b09b988d45ac125b43b8bb3bc16de0110df42517cf5e832584015b8af417eaa77df04acf45b4ef5ce0e574d3f5c1a3fc41cbea00500e2da5699ba9063;
+    let sum = 0x8842468e1b71c650a1c89917df83e9d3c7be9768c326cfb3acd392ab9e7bc03631ee0fe5597b6bd64a7d056713c19f6e0269fb581460167adcc15c3602b9d84bdfa3089568697512a2bc09d08be3db872a461f87ced501ccc600830b2ae4df9a;
+
+    assert g2_sum([]) == INFINITY_G2;
+    assert g2_sum([INFINITY_G2]) == INFINITY_G2;
+    assert g2_sum([INFINITY_G2, INFINITY_G2]) == INFINITY_G2;
+    assert g2_sum([sig]) == sig;
+    assert g2_sum([sig, sig]) == sum;
+
+    assert g2_difference([]) == INFINITY_G2;
+    assert g2_difference([INFINITY_G2]) == INFINITY_G2;
+    assert g2_difference([INFINITY_G2, INFINITY_G2]) == INFINITY_G2;
+    assert g2_difference([sig]) == sig;
+    assert g2_difference([sig, sig]) == INFINITY_G2;
+    assert g2_difference([sum, sig]) == sig;
+    assert g2_difference([sum, sig, sig]) == INFINITY_G2;
+}
+
+test fn verifications() {
+    bls_pairing_identity(
+        0x8b202593319bce41b090f3309986de59861ab1e2ff32aef871d83f9aac232c7253c01f1f649c6f69879c441286319de4,
+        0x942adad4dbeadcfd75aaa11940a5e5e16a8d8e91742029a3944610635ccc0572eceeb1c89d8a0e904c5d30b9497e700312dee7b833535effef24953dbf8f8aa770e2f1a8e01d3b6f6844e01a635ed95664babe9d62a2572651d0258461c8ba00,
+        0xb7f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb,
+        0x80c37921e62092ef55f85f9eccb21bd80cfaafc0bce9cbdd6999b1a8cabadc8f23720f0261efafaf53cbcc74580b9432007b66d824668900a94934f184bc41bf9ccf9ec141c6f7da610aa7296cd0a181ae8fe176b607aa4c367f15ee0cb985d7,
+    );
+
+    bls_verify(
+        0x80c37921e62092ef55f85f9eccb21bd80cfaafc0bce9cbdd6999b1a8cabadc8f23720f0261efafaf53cbcc74580b9432007b66d824668900a94934f184bc41bf9ccf9ec141c6f7da610aa7296cd0a181ae8fe176b607aa4c367f15ee0cb985d7,
+        0x8b202593319bce41b090f3309986de59861ab1e2ff32aef871d83f9aac232c7253c01f1f649c6f69879c441286319de4,
+        0x39cb1950dba19a7bee9924b5bd2b29f190ffe4ef,
+    );
+
+    secp256k1_verify(
+        0x02390b19842e100324163334b16947f66125b76d4fa4a11b9ccdde9b7398e64076 as K1PublicKey,
+        0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2,
+        0x481477e62a1d02268127ae89cc58929e09ad5d30229721965ae35965d098a5f630205a7e69f4cb8084f16c7407ed7312994ffbf87ba5eb1aee16682dd324943e as K1Signature,
+    );
+
+    secp256r1_verify(
+        0x033e1a1b2ccbc35883c60fdfc3f4a02175096ade6271fe85517ca5772594bbd0dc as R1PublicKey,
+        0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2,
+        0xeae2f488080919bd0a7069c24cdd9c6ce2db423861b0c9d4236cdadbd0005f6d8f3709e6eb19249fd9c8bea664aba35218e67ea4b0f2239488dc3147f336e1e6 as R1Signature,
+    );
+}

@@ -146,6 +146,15 @@ pub enum DiagnosticKind {
     #[error("Expected {0} arguments, but found {1}")]
     ExpectedArguments(usize, usize),
 
+    #[error("Expected between {0} and {1} arguments, but found {1}")]
+    ExpectedArgumentsBetween(usize, usize, usize),
+
+    #[error("Expected an even number of arguments")]
+    ExpectedEvenArguments,
+
+    #[error("Expected one argument followed by an even number of additional arguments")]
+    ExpectedOneArgumentEvenAdditional,
+
     #[error("Cannot destructure non-pair parameter with type `{0}`")]
     CannotDestructureParameter(String),
 
@@ -154,6 +163,9 @@ pub enum DiagnosticKind {
 
     #[error("Spread operator must be used on functions with spread parameters")]
     InvalidSpread,
+
+    #[error("Spread operator cannot be used on this builtin")]
+    InvalidSpreadBuiltin,
 
     #[error("Field `{0}` exists on struct `{1}`, but it's not present in the underlying type")]
     MissingField(String, String),
@@ -199,6 +211,9 @@ impl DiagnosticKind {
             | Self::UndeclaredSymbol(..)
             | Self::UndeclaredType(..)
             | Self::ExpectedGenericArguments(..)
+            | Self::ExpectedArgumentsBetween(..)
+            | Self::ExpectedEvenArguments
+            | Self::ExpectedOneArgumentEvenAdditional
             | Self::DuplicateField(..)
             | Self::UndeclaredSubtypeField(..)
             | Self::IncompatibleType(..)
@@ -230,6 +245,7 @@ impl DiagnosticKind {
             | Self::CannotDestructureParameter(..)
             | Self::NonFinalSpread
             | Self::InvalidSpread
+            | Self::InvalidSpreadBuiltin
             | Self::MissingField(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments

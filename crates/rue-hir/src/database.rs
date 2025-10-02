@@ -134,7 +134,7 @@ impl Database {
             Symbol::Function(function) => {
                 function.name.as_ref().map(|name| name.text().to_string())
             }
-            Symbol::VerificationFunction(function) => Some(format!("{function:?}")),
+            Symbol::Builtin(builtin) => Some(format!("{builtin:?}")),
             Symbol::Parameter(parameter) => {
                 parameter.name.as_ref().map(|name| name.text().to_string())
             }
@@ -298,6 +298,9 @@ impl Database {
             }
             Hir::InfinityG1 => "INFINITY_G1".to_string(),
             Hir::InfinityG2 => "INFINITY_G2".to_string(),
+            Hir::ClvmOp(op, args) => {
+                format!("{:?}({})", op, self.debug_hir(*args))
+            }
         }
     }
 }

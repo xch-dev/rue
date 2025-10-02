@@ -55,10 +55,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         match self.db.symbol(symbol).clone() {
-            Symbol::Unresolved
-            | Symbol::Module(_)
-            | Symbol::Parameter(_)
-            | Symbol::VerificationFunction(_) => unreachable!(),
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {
+                unreachable!()
+            }
             Symbol::Function(function) => self.lower_function(env, symbol, function),
             Symbol::Constant(constant) => self.lower_constant(env, constant),
             Symbol::Binding(binding) => self.lower_binding(env, binding),
@@ -199,6 +198,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     BinaryOp::Mul => self.arena.alloc(Lir::Mul(vec![left, right])),
                     BinaryOp::Div => self.arena.alloc(Lir::Div(left, right)),
                     BinaryOp::Mod => self.arena.alloc(Lir::Mod(left, right)),
+                    BinaryOp::Divmod => self.arena.alloc(Lir::Divmod(left, right)),
                     BinaryOp::Concat => self.arena.alloc(Lir::Concat(vec![left, right])),
                     BinaryOp::G1Add => self.arena.alloc(Lir::G1Add(vec![left, right])),
                     BinaryOp::G1Subtract => self.arena.alloc(Lir::G1Subtract(vec![left, right])),
@@ -321,6 +321,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
             Hir::InfinityG1 => self.arena.alloc(Lir::G1Add(vec![])),
             Hir::InfinityG2 => self.arena.alloc(Lir::G2Add(vec![])),
+            Hir::ClvmOp(op, args) => {
+                let args = self.lower_hir(env, args);
+                self.arena.alloc(Lir::Op(op, args))
+            }
         }
     }
 
@@ -794,10 +798,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let references = self.graph.references(symbol);
 
         match self.db.symbol(symbol) {
-            Symbol::Unresolved
-            | Symbol::Module(_)
-            | Symbol::Parameter(_)
-            | Symbol::VerificationFunction(_) => false,
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {
+                false
+            }
             Symbol::Function(function) => {
                 if self.graph.dependencies(symbol, false).contains(&symbol) {
                     return false;
@@ -936,6 +939,7 @@ fn count_nil_in_env(arena: &Arena<Lir>, id: LirId) -> usize {
                 + count_nil_in_env(arena, message)
                 + count_nil_in_env(arena, signature)
         }
+        Lir::Op(_, arg) => count_nil_in_env(arena, arg),
     }
 }
 
@@ -1270,6 +1274,10 @@ fn replace_nil_in_env(
             let message = replace_nil_in_env(arena, message, verifications);
             let signature = replace_nil_in_env(arena, signature, verifications);
             arena.alloc(Lir::R1Verify(public_key, message, signature))
+        }
+        Lir::Op(op, arg) => {
+            let arg = replace_nil_in_env(arena, arg, verifications);
+            arena.alloc(Lir::Op(op, arg))
         }
     }
 }

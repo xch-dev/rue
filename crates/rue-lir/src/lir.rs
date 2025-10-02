@@ -1,4 +1,8 @@
+use clvm_traits::{ToClvm, ToClvmError};
+use clvmr::{Allocator, NodePtr};
 use id_arena::Id;
+
+use crate::bigint_atom;
 
 pub type LirId = Id<Lir>;
 
@@ -57,4 +61,122 @@ pub enum Lir {
     CoinId(LirId, LirId, LirId),
     K1Verify(LirId, LirId, LirId),
     R1Verify(LirId, LirId, LirId),
+    Op(ClvmOp, LirId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ClvmOp {
+    Quote,
+    Apply,
+    If,
+    Cons,
+    First,
+    Rest,
+    Listp,
+    Raise,
+    Eq,
+    GtBytes,
+    Sha256,
+    Substr,
+    Strlen,
+    Concat,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Divmod,
+    Gt,
+    Ash,
+    Lsh,
+    Logand,
+    Logior,
+    Logxor,
+    Lognot,
+    Not,
+    Any,
+    All,
+    Modpow,
+    Mod,
+    CoinId,
+    PubkeyForExp,
+    G1Add,
+    G1Subtract,
+    G1Multiply,
+    G1Negate,
+    G2Add,
+    G2Subtract,
+    G2Multiply,
+    G2Negate,
+    G1Map,
+    G2Map,
+    BlsPairingIdentity,
+    BlsVerify,
+    Secp256K1Verify,
+    Secp256R1Verify,
+    Keccak256,
+}
+
+impl ClvmOp {
+    pub fn to_atom(self) -> Vec<u8> {
+        let num = match self {
+            Self::Quote => 1,
+            Self::Apply => 2,
+            Self::If => 3,
+            Self::Cons => 4,
+            Self::First => 5,
+            Self::Rest => 6,
+            Self::Listp => 7,
+            Self::Raise => 8,
+            Self::Eq => 9,
+            Self::GtBytes => 10,
+            Self::Sha256 => 11,
+            Self::Substr => 12,
+            Self::Strlen => 13,
+            Self::Concat => 14,
+            Self::Add => 16,
+            Self::Sub => 17,
+            Self::Mul => 18,
+            Self::Div => 19,
+            Self::Divmod => 20,
+            Self::Gt => 21,
+            Self::Ash => 22,
+            Self::Lsh => 23,
+            Self::Logand => 24,
+            Self::Logior => 25,
+            Self::Logxor => 26,
+            Self::Lognot => 27,
+            Self::Not => 32,
+            Self::Any => 33,
+            Self::All => 34,
+            Self::Modpow => 60,
+            Self::Mod => 61,
+            Self::PubkeyForExp => 30,
+            Self::CoinId => 48,
+            Self::G1Add => 29,
+            Self::G1Subtract => 49,
+            Self::G1Multiply => 50,
+            Self::G1Negate => 51,
+            Self::G2Add => 52,
+            Self::G2Subtract => 53,
+            Self::G2Multiply => 54,
+            Self::G2Negate => 55,
+            Self::G1Map => 56,
+            Self::G2Map => 57,
+            Self::BlsPairingIdentity => 58,
+            Self::BlsVerify => 59,
+            Self::Secp256K1Verify => return vec![0x13, 0xd6, 0x1f, 0x00],
+            Self::Secp256R1Verify => return vec![0x1c, 0x3a, 0x8f, 0x00],
+            Self::Keccak256 => 62,
+        };
+
+        bigint_atom(num.into())
+    }
+}
+
+impl ToClvm<Allocator> for ClvmOp {
+    fn to_clvm(&self, encoder: &mut Allocator) -> Result<NodePtr, clvm_traits::ToClvmError> {
+        encoder
+            .new_atom(&self.to_atom())
+            .map_err(|_| ToClvmError::OutOfMemory)
+    }
 }

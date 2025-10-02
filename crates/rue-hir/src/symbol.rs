@@ -11,7 +11,7 @@ pub enum Symbol {
     Unresolved,
     Module(ModuleSymbol),
     Function(FunctionSymbol),
-    VerificationFunction(VerificationFunctionSymbol),
+    Builtin(Builtin),
     Parameter(ParameterSymbol),
     Constant(ConstantSymbol),
     Binding(BindingSymbol),
@@ -50,14 +50,6 @@ pub enum FunctionKind {
     Inline,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum VerificationFunctionSymbol {
-    BlsPairingIdentity,
-    BlsVerify,
-    Secp256K1Verify,
-    Secp256R1Verify,
-}
-
 #[derive(Debug, Clone)]
 pub struct ParameterSymbol {
     pub name: Option<SyntaxToken>,
@@ -78,4 +70,31 @@ pub struct BindingSymbol {
     pub ty: TypeId,
     pub value: HirId,
     pub inline: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Builtin {
+    Sha256 { inline: bool },
+    Keccak256 { inline: bool },
+    Concat,
+    CoinId,
+    Substr,
+    Sum,
+    Difference,
+    Product,
+    Divmod,
+    Modpow,
+    Any,
+    All,
+    PubkeyForExp,
+    G1Sum,
+    G1Difference,
+    G2Sum,
+    G2Difference,
+    G1Map,
+    G2Map,
+    BlsPairingIdentity,
+    BlsVerify,
+    Secp256K1Verify,
+    Secp256R1Verify,
 }

@@ -141,7 +141,7 @@ impl Compiler {
         }
 
         match self.symbol(symbol) {
-            Symbol::Unresolved | Symbol::Module(_) | Symbol::VerificationFunction(_) => {
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => {
                 self.builtins().unresolved.ty
             }
             Symbol::Function(function) => function.ty,

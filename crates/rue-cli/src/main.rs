@@ -3,7 +3,10 @@ use std::{fs, sync::Arc};
 use anyhow::Result;
 use clap::Parser;
 use clvm_tools_rs::classic::clvm_tools::binutils::disassemble;
-use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, error::EvalErr, run_program};
+use clvmr::{
+    Allocator, ChiaDialect, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, MEMPOOL_MODE, NodePtr, SExp,
+    error::EvalErr, run_program,
+};
 use rue_compiler::compile_file;
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
@@ -67,7 +70,7 @@ fn test(file: String) -> Result<()> {
 
         match run_program(
             &mut allocator,
-            &ChiaDialect::new(0),
+            &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
             test,
             NodePtr::NIL,
             100_000_000,
