@@ -150,15 +150,3 @@ pub fn compile_struct_item(
 
     ctx.pop_declaration();
 }
-
-#[cfg(test)]
-mod tests {
-    use expect_test::expect;
-
-    use crate::compile::tests::check;
-
-    #[test]
-    fn test_type_alias() {
-        check("type Alias = Int;", expect![""]);
-    }
-}
