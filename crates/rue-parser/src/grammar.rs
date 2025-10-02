@@ -1,3 +1,4 @@
+mod binding;
 mod block;
 mod document;
 mod expr;

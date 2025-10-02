@@ -43,9 +43,9 @@ test fn arithmetic() {
     assert product([1]) == 1;
     assert product([2, 3]) == 6;
 
-    let result = divmod(10, 3);
-    assert result.first == 3;
-    assert result.rest == 1;
+    let (quotient, remainder) = divmod(10, 3);
+    assert quotient == 3;
+    assert remainder == 1;
 
     assert modpow(2, 3, 5) == 3;
 }

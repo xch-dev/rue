@@ -1,7 +1,7 @@
 use log::debug;
 use rue_ast::{AstConstantItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{ConstantSymbol, Declaration, Symbol, SymbolId};
+use rue_hir::{ConstantSymbol, Declaration, Symbol, SymbolId, Value};
 
 use crate::{Compiler, compile_expr, compile_type};
 
@@ -21,8 +21,7 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
 
     *ctx.symbol_mut(symbol) = Symbol::Constant(ConstantSymbol {
         name: constant.name(),
-        ty,
-        value,
+        value: Value::new(value, ty),
         inline: constant.inline().is_some(),
     });
 
@@ -49,8 +48,8 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
 pub fn compile_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: SymbolId) {
     ctx.push_declaration(Declaration::Symbol(symbol));
 
-    let ty = if let Symbol::Constant(ConstantSymbol { ty, .. }) = ctx.symbol(symbol) {
-        *ty
+    let ty = if let Symbol::Constant(ConstantSymbol { value, .. }) = ctx.symbol(symbol) {
+        value.ty
     } else {
         unreachable!();
     };
@@ -68,7 +67,7 @@ pub fn compile_constant(ctx: &mut Compiler, constant: &AstConstantItem, symbol: 
         unreachable!();
     };
 
-    *value = resolved_value.hir;
+    *value = resolved_value.with_type(ty);
 
     ctx.pop_declaration();
 }

@@ -2,7 +2,7 @@ use rowan::Checkpoint;
 
 use crate::{
     Parser, SyntaxKind, T,
-    grammar::{block::block, generics::generic_arguments, ty::ty},
+    grammar::{binding::binding, block::block, generics::generic_arguments, ty::ty},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -108,7 +108,7 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
         while !p.at(T![')']) {
             p.start(SyntaxKind::FunctionParameter);
             p.try_eat(T![...]);
-            p.expect(SyntaxKind::Ident);
+            binding(p);
             if p.try_eat(T![:]) {
                 ty(p);
             }

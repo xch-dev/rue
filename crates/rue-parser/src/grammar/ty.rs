@@ -25,6 +25,20 @@ fn ty_inner(p: &mut Parser, allow_union: bool) {
         }
         p.expect(T![')']);
         p.finish();
+    } else if p.at(T!['[']) {
+        p.start_at(cp, SyntaxKind::ListType);
+        p.expect(T!['[']);
+        while !p.at(T![']']) {
+            p.start(SyntaxKind::ListTypeItem);
+            p.try_eat(T![...]);
+            ty(p);
+            p.finish();
+            if !p.try_eat(T![,]) {
+                break;
+            }
+        }
+        p.expect(T![']']);
+        p.finish();
     } else if p.at(T![fn]) {
         p.start(SyntaxKind::LambdaType);
         p.expect(T![fn]);

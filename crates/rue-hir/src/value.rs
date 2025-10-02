@@ -65,6 +65,12 @@ pub struct SymbolPath {
     pub path: Vec<TypePath>,
 }
 
+impl SymbolPath {
+    pub fn new(symbol: SymbolId, path: Vec<TypePath>) -> Self {
+        Self { symbol, path }
+    }
+}
+
 pub fn merge_mappings(a: &Mappings, b: &Mappings) -> Mappings {
     let mut map = Mappings::new();
 

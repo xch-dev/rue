@@ -90,21 +90,6 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
     }
 
     for &symbol in &unused_symbols {
-        let mut parent_is_unused = false;
-
-        for parent in ctx.declaration_parents(Declaration::Symbol(symbol)) {
-            if let Declaration::Symbol(parent) = parent
-                && unused_symbols.contains(&parent)
-            {
-                parent_is_unused = true;
-                break;
-            }
-        }
-
-        if parent_is_unused {
-            continue;
-        }
-
         match ctx.symbol(symbol).clone() {
             Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => {}
             Symbol::Function(FunctionSymbol { name, .. }) => {
@@ -159,21 +144,6 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
     }
 
     for &ty in &unused_types {
-        let mut parent_is_unused = false;
-
-        for parent in ctx.declaration_parents(Declaration::Type(ty)) {
-            if let Declaration::Symbol(parent) = parent
-                && unused_symbols.contains(&parent)
-            {
-                parent_is_unused = true;
-                break;
-            }
-        }
-
-        if parent_is_unused {
-            continue;
-        }
-
         match ctx.ty(ty).clone() {
             Type::Generic(Generic { name: Some(name) }) => {
                 if name.text().starts_with('_') {

@@ -2,7 +2,7 @@ use id_arena::Id;
 use rue_parser::SyntaxToken;
 use rue_types::TypeId;
 
-use crate::{HirId, ScopeId};
+use crate::{HirId, ScopeId, Value};
 
 pub type SymbolId = Id<Symbol>;
 
@@ -59,16 +59,14 @@ pub struct ParameterSymbol {
 #[derive(Debug, Clone)]
 pub struct ConstantSymbol {
     pub name: Option<SyntaxToken>,
-    pub ty: TypeId,
-    pub value: HirId,
+    pub value: Value,
     pub inline: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct BindingSymbol {
     pub name: Option<SyntaxToken>,
-    pub ty: TypeId,
-    pub value: HirId,
+    pub value: Value,
     pub inline: bool,
 }
 

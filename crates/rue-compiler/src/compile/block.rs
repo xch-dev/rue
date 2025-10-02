@@ -7,7 +7,7 @@ use rue_hir::{
 };
 use rue_types::TypeId;
 
-use crate::{Compiler, compile_expr, compile_type};
+use crate::{Compiler, compile_expr, compile_type, create_binding};
 
 pub fn compile_block(
     ctx: &mut Compiler,
@@ -85,15 +85,13 @@ pub fn compile_block(
                 };
 
                 *ctx.symbol_mut(symbol) = Symbol::Binding(BindingSymbol {
-                    name: stmt.name(),
-                    ty,
-                    value: value.hir,
+                    name: None,
+                    value: value.with_type(ty),
                     inline: stmt.inline().is_some(),
                 });
 
-                if let Some(name) = stmt.name() {
-                    ctx.last_scope_mut()
-                        .insert_symbol(name.text().to_string(), symbol, false);
+                if let Some(binding) = stmt.binding() {
+                    create_binding(ctx, symbol, &binding);
                 }
 
                 ctx.pop_declaration();
