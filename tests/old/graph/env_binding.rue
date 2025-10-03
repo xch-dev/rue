@@ -1,4 +1,0 @@
-fn main(param: Int) -> Int {
-    let num = param * 42;
-    num + num
-}
