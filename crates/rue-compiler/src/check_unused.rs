@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use indexmap::IndexSet;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    BindingSymbol, ConstantSymbol, Declaration, FunctionSymbol, ParameterSymbol, Symbol,
+    BindingSymbol, ConstantSymbol, Declaration, FunctionKind, FunctionSymbol, ParameterSymbol,
+    Symbol,
 };
 use rue_types::{Alias, Generic, Struct, Type};
 
@@ -25,13 +26,31 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
             if !visited.insert(current) {
                 if let Declaration::Symbol(current_symbol) = current
                     && current_symbol == symbol
-                    && entrypoints.contains(&current)
                     && let Some(name) = ctx.symbol(symbol).clone().name()
                 {
-                    ctx.diagnostic(
-                        name,
-                        DiagnosticKind::RecursiveEntrypoint(name.text().to_string()),
-                    );
+                    if entrypoints.contains(&current) {
+                        ctx.diagnostic(
+                            name,
+                            DiagnosticKind::RecursiveEntrypoint(name.text().to_string()),
+                        );
+                    } else if matches!(
+                        ctx.symbol(symbol),
+                        Symbol::Function(FunctionSymbol {
+                            kind: FunctionKind::Inline,
+                            ..
+                        })
+                    ) {
+                        ctx.diagnostic(
+                            name,
+                            DiagnosticKind::RecursiveInlineFunction(name.text().to_string()),
+                        );
+                    } else if matches!(ctx.symbol(symbol), Symbol::Constant(ConstantSymbol { .. }))
+                    {
+                        ctx.diagnostic(
+                            name,
+                            DiagnosticKind::RecursiveConstant(name.text().to_string()),
+                        );
+                    }
                 }
 
                 continue;

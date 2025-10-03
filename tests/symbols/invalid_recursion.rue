@@ -1,0 +1,16 @@
+fn main() -> Int {
+    factorial(5) + A + B + D
+}
+
+inline fn factorial(num: Int) -> Int {
+    if num > 1 {
+        num * factorial(num - 1)
+    } else {
+        1
+    }
+}
+
+const A: Int = A;
+const B: Int = C;
+const C: Int = B;
+inline const D: Int = D;
