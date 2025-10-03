@@ -17,6 +17,20 @@ pub enum Symbol {
     Binding(BindingSymbol),
 }
 
+impl Symbol {
+    pub fn name(&self) -> Option<&SyntaxToken> {
+        match self {
+            Self::Unresolved => None,
+            Self::Module(module) => module.name.as_ref(),
+            Self::Function(function) => function.name.as_ref(),
+            Self::Builtin(_) => None,
+            Self::Parameter(parameter) => parameter.name.as_ref(),
+            Self::Constant(constant) => constant.name.as_ref(),
+            Self::Binding(binding) => binding.name.as_ref(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ModuleSymbol {
     pub name: Option<SyntaxToken>,

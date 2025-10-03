@@ -197,6 +197,9 @@ pub enum DiagnosticKind {
 
     #[error("Cannot destructure type `{0}` into a pair")]
     CannotDestructurePair(String),
+
+    #[error("Entrypoint `{0}` references itself")]
+    RecursiveEntrypoint(String),
 }
 
 impl DiagnosticKind {
@@ -248,7 +251,8 @@ impl DiagnosticKind {
             | Self::InvalidSpread
             | Self::InvalidSpreadBuiltin
             | Self::MissingField(..)
-            | Self::CannotDestructurePair(..) => DiagnosticSeverity::Error,
+            | Self::CannotDestructurePair(..)
+            | Self::RecursiveEntrypoint(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::EmptySubtypeFields

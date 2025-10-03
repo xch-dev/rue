@@ -13,21 +13,27 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
     let mut used_symbols = IndexSet::new();
     let mut unused_symbols = IndexSet::new();
 
-    for declaration in ctx.relevant_declarations() {
+    for declaration in ctx.relevant_declarations().collect::<Vec<_>>() {
         let Declaration::Symbol(symbol) = declaration else {
             continue;
         };
-
-        if entrypoints.contains(&Declaration::Symbol(symbol)) {
-            used_symbols.insert(symbol);
-            continue;
-        }
 
         let mut visited = HashSet::new();
         let mut stack = vec![declaration];
 
         while let Some(current) = stack.pop() {
             if !visited.insert(current) {
+                if let Declaration::Symbol(current_symbol) = current
+                    && current_symbol == symbol
+                    && entrypoints.contains(&current)
+                    && let Some(name) = ctx.symbol(symbol).clone().name()
+                {
+                    ctx.diagnostic(
+                        name,
+                        DiagnosticKind::RecursiveEntrypoint(name.text().to_string()),
+                    );
+                }
+
                 continue;
             }
 
@@ -38,21 +44,20 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                     Declaration::Symbol(parent_symbol) => {
                         if entrypoints.contains(&Declaration::Symbol(parent_symbol)) {
                             used_symbols.insert(symbol);
-                            break;
                         }
                     }
                     Declaration::Type(parent_ty) => {
                         if entrypoints.contains(&Declaration::Type(parent_ty)) {
                             used_symbols.insert(symbol);
-                            break;
                         }
                     }
                 }
             }
+        }
 
-            if used_symbols.contains(&symbol) {
-                break;
-            }
+        if entrypoints.contains(&Declaration::Symbol(symbol)) {
+            used_symbols.insert(symbol);
+            continue;
         }
 
         if !used_symbols.contains(&symbol) {

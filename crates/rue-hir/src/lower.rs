@@ -110,6 +110,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut expr = self.lower_hir(&function_env, function.body);
 
         if symbol == self.main {
+            if self
+                .graph
+                .dependencies(symbol, true)
+                .iter()
+                .any(|dependency| *dependency == symbol)
+            {
+                panic!("The entrypoint cannot reference itself");
+            }
+
             for (i, group) in capture_groups.iter().enumerate().rev() {
                 expr = self.arena.alloc(Lir::Quote(expr));
 

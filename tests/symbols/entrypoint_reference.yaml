@@ -1,0 +1,2 @@
+diagnostics:
+- Entrypoint `main` references itself at test:1:4
