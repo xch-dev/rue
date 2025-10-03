@@ -657,13 +657,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         body: Option<HirId>,
     ) -> LirId {
         let mut ids = Vec::new();
-        let mut always_nil = true;
 
         while let Some(stmt) = stmts.first().cloned()
             && let Statement::Expr(expr) = stmt
         {
-            always_nil &= expr.always_nil;
-            ids.push(self.lower_hir(env, expr.hir));
+            ids.push((self.lower_hir(env, expr.hir), expr.always_nil));
             stmts.remove(0);
         }
 
@@ -676,20 +674,42 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let nil_count = count_nil_in_env(self.arena, expr);
 
         if nil_count == 0 {
-            let id = if ids.len() == 1 {
-                ids[0]
-            } else if always_nil {
-                self.arena.alloc(Lir::All(ids))
+            let (condition, verifications) = if ids.len() == 1 {
+                let condition = self.arena.alloc(Lir::Atom(vec![]));
+
+                (condition, ids[0].0)
+            } else if let Some(index) = ids.iter().position(|(_, always_nil)| *always_nil) {
+                let (condition, _) = ids.remove(index);
+
+                let id = if ids.len() == 1 {
+                    ids[0].0
+                } else {
+                    self.arena
+                        .alloc(Lir::All(ids.iter().map(|(id, _)| *id).collect()))
+                };
+
+                (condition, id)
             } else {
-                let mut ids = ids.clone();
-                ids.push(self.arena.alloc(Lir::Atom(vec![])));
-                self.arena.alloc(Lir::All(ids))
+                let condition = self.arena.alloc(Lir::Atom(vec![]));
+
+                let id = if ids.len() == 1 {
+                    ids[0].0
+                } else {
+                    self.arena
+                        .alloc(Lir::All(ids.iter().map(|(id, _)| *id).collect()))
+                };
+
+                (condition, id)
             };
 
-            let pair = self.arena.alloc(Lir::Cons(id, expr));
-            self.arena.alloc(Lir::Rest(pair))
+            self.arena
+                .alloc(Lir::If(condition, verifications, expr, true))
         } else {
+            let always_nil = ids.iter().all(|(_, always_nil)| *always_nil);
+            let ids: Vec<LirId> = ids.iter().map(|(id, _)| *id).collect();
+
             let length = ids.len();
+
             replace_nil_in_env(
                 self.arena,
                 expr,
