@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use log::debug;
-use rue_ast::{AstNode, AstPathSegment};
+use rowan::TextRange;
+use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Symbol, SymbolId};
+use rue_parser::SyntaxToken;
 use rue_types::{Apply, Type, TypeId};
 
 use crate::{Compiler, GetTextRange, compile_generic_arguments};
@@ -21,12 +23,50 @@ pub enum PathResult {
     Type(TypeId),
 }
 
-pub fn compile_path(
+pub trait PathSegment {
+    fn initial_separator(&self) -> Option<TextRange>;
+    fn name(&self) -> Option<SyntaxToken>;
+    fn generic_arguments(&self) -> Option<AstGenericArguments>;
+}
+
+impl PathSegment for AstPathSegment {
+    fn initial_separator(&self) -> Option<TextRange> {
+        self.initial_separator()
+            .map(|separator| separator.syntax().text_range())
+    }
+
+    fn name(&self) -> Option<SyntaxToken> {
+        self.name()
+    }
+
+    fn generic_arguments(&self) -> Option<AstGenericArguments> {
+        self.generic_arguments()
+    }
+}
+
+impl PathSegment for SyntaxToken {
+    fn initial_separator(&self) -> Option<TextRange> {
+        None
+    }
+
+    fn name(&self) -> Option<SyntaxToken> {
+        Some(self.clone())
+    }
+
+    fn generic_arguments(&self) -> Option<AstGenericArguments> {
+        None
+    }
+}
+
+pub fn compile_path<S>(
     ctx: &mut Compiler,
     range: &impl GetTextRange,
-    segments: impl Iterator<Item = AstPathSegment>,
+    segments: impl Iterator<Item = S>,
     kind: PathKind,
-) -> PathResult {
+) -> PathResult
+where
+    S: PathSegment,
+{
     let segments = &segments.collect::<Vec<_>>();
 
     let mut value = None;
@@ -36,10 +76,7 @@ pub fn compile_path(
         if index == 0
             && let Some(separator) = segment.initial_separator()
         {
-            ctx.diagnostic(
-                separator.syntax(),
-                DiagnosticKind::PathSeparatorInFirstSegment,
-            );
+            ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
             return PathResult::Unresolved;
         }
 

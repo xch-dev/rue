@@ -101,9 +101,9 @@ fn main(
 ) -> List<Condition> {
     // For simplicity, we'll pack these values into a struct.
     let cat_info = CatInfo {
-        mod_hash: mod_hash,
+        mod_hash,
         mod_hash_hash: tree_hash_atom(mod_hash),
-        asset_id: asset_id,
+        asset_id,
     };
 
     // Calculate the inner puzzle hash and conditions.
@@ -120,14 +120,8 @@ fn main(
 
     // Create the CAT Truth struct.
     let truths = Truths {
-        puzzle_truths: PuzzleTruths {
-            inner_puzzle_hash: inner_puzzle_hash,
-            cat_info: cat_info,
-        },
-        coin_truths: CoinTruths {
-            my_coin_id: my_coin_id,
-            my_coin: my_coin,
-        },
+        puzzle_truths: PuzzleTruths { inner_puzzle_hash, cat_info },
+        coin_truths: CoinTruths { my_coin_id, my_coin },
     };
 
     // Check whether the parent is a CAT or not.
@@ -215,7 +209,7 @@ fn morph_conditions(
         };
     }
 
-    let condition = conditions.first;
+    inline let condition = conditions.first;
 
     if condition is RunTail {
         let rest = morph_conditions(conditions.rest, cat_info, TailInfo {

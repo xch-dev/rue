@@ -55,8 +55,9 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
             while !p.at(T!['}']) {
                 p.start(SyntaxKind::StructInitializerField);
                 p.expect(SyntaxKind::Ident);
-                p.expect(T![:]);
-                expr(p);
+                if p.try_eat(T![:]) {
+                    expr(p);
+                }
                 p.finish();
                 if !p.try_eat(T![,]) {
                     break;
