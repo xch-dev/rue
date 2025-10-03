@@ -11,6 +11,12 @@ tests:
   runtime_cost: 17820
   byte_cost: 9012000
   total_cost: 9029820
+- program: (a (i (= (lognot (q . 10)) (q . -11)) (q 2 (i (= (ash (q . 10) (q . -2)) (q . 2)) (q 2 (i (= (ash (q . 10) (q . 2)) (q . 40)) (q 2 (i (logand (q . 10) (q . 5)) (q 8) (q 2 (i (= (logior (q . 10) (q . 5)) (q . 15)) (q 2 (i (= (logxor (q . 10) (q . 5)) (q . 15)) (q) (q 8)) 1) (q 8)) 1)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (= (lognot (q . 10)) (- () (q . 11))) (q 2 (i (= (ash (q . 10) (- () (q . 2))) (q . 2)) (q 2 (i (= (ash (q . 10) (q . 2)) (q . 40)) (q 2 (i (= (logand (q . 10) (q . 5)) ()) (q 2 (i (= (logior (q . 10) (q . 5)) (q . 15)) (q 2 (i (= (logxor (q . 10) (q . 5)) (q . 15)) (q) (q 8 (q . "assertion failed at 67:5"))) 1) (q 8 (q . "assertion failed at 66:5"))) 1) (q 8 (q . "assertion failed at 65:5"))) 1) (q 8 (q . "assertion failed at 64:5"))) 1) (q 8 (q . "assertion failed at 63:5"))) 1) (q 8 (q . "assertion failed at 62:5"))) 1)
+  output: ()
+  runtime_cost: 5714
+  byte_cost: 2628000
+  total_cost: 2633714
 diagnostics:
 - Unnecessary `+` operator, since it has no effect at test:2:12
 - Condition always evaluates to `true` at test:51:12

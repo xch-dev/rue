@@ -8,6 +8,7 @@ use clvm_utils::tree_hash;
 use clvmr::ENABLE_KECCAK_OPS_OUTSIDE_GUARD;
 use clvmr::MEMPOOL_MODE;
 use clvmr::NodePtr;
+use clvmr::error::EvalErr;
 use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
 use rue_compiler::compile_file;
 use rue_diagnostic::Source;
@@ -210,31 +211,31 @@ fn handle_test_case(
     let bytes = node_to_bytes(allocator, ptr)?.len();
     test_case.byte_cost = Some(bytes as u64 * 12_000);
 
-    match response {
-        Ok(output) => {
-            let output_hash = tree_hash(allocator, output.1);
-            let debug_output_hash = tree_hash(allocator, debug_response?.1);
+    if let Ok(output) = response {
+        let output_hash = tree_hash(allocator, output.1);
+        let debug_output_hash = tree_hash(allocator, debug_response?.1);
 
-            if output_hash != debug_output_hash {
-                println!(
-                    "Debug output mismatch: {}",
-                    disassemble(allocator, debug_ptr, None)
-                );
-            }
-
-            test_case.output = Some(disassemble(allocator, output.1, None));
-            test_case.runtime_cost = Some(output.0);
-            test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
-            test_case.clvm_error = None;
+        if output_hash != debug_output_hash {
+            println!(
+                "Debug output mismatch: {}",
+                disassemble(allocator, debug_ptr, None)
+            );
         }
-        Err(error) => {
-            debug_response.expect_err("debug program succeeded unexpectedly");
 
-            test_case.clvm_error = Some(error.to_string());
-            test_case.runtime_cost = None;
-            test_case.total_cost = None;
-            test_case.output = None;
-        }
+        test_case.output = Some(disassemble(allocator, output.1, None));
+        test_case.runtime_cost = Some(output.0);
+        test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
+        test_case.clvm_error = None;
+    } else {
+        let error = debug_response.expect_err("debug program succeeded unexpectedly");
+
+        test_case.clvm_error = Some(match error {
+            EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble(allocator, ptr, None)),
+            _ => error.to_string(),
+        });
+        test_case.runtime_cost = None;
+        test_case.total_cost = None;
+        test_case.output = None;
     }
 
     Ok(())

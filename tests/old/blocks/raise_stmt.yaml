@@ -2,4 +2,4 @@ program: (x)
 debug_program: (x (q . "raise called at 2:5") (q . "Hello, world!"))
 solution: ()
 byte_cost: 36000
-clvm_error: clvm raise
+clvm_error: clvm raise ("raise called at 2:5" "Hello, world!")
