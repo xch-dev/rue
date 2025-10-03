@@ -12,7 +12,7 @@ pub enum Lir {
     Path(u32),
     Quote(LirId),
     Run(LirId, LirId),
-    Closure(LirId, Vec<LirId>),
+    Closure(LirId, Vec<LirId>, bool),
     First(LirId),
     Rest(LirId),
     Cons(LirId, LirId),

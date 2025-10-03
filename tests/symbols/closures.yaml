@@ -1,0 +1,60 @@
+tests:
+- name: no_captures
+  program: (q 1 . 42)
+  debug_program: (c (q . 2) (c (c (q . 1) (q 1 . 42)) (c () ())))
+  output: (q . 42)
+  debug_output: (a (q 1 . 42) ())
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: one_capture
+  program: (a (q 4 (q . 2) (c (c (q . 1) (q 16 2 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) (c (q . 42) 1))
+  debug_program: (a (q 4 (q . 2) (c (c (q . 1) (q 16 2 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) (c (q . 42) 1))
+  output: (a (q 16 2 2) (c (q . 42) ()))
+  runtime_cost: 914
+  byte_cost: 972000
+  total_cost: 972914
+- name: one_inline_capture
+  program: (q 1 . 84)
+  debug_program: (c (q . 2) (c (c (q . 1) (q 16 (q . 42) (q . 42))) (c () ())))
+  output: (q . 84)
+  debug_output: (a (q 16 (q . 42) (q . 42)) ())
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: two_captures
+  program: (a (q 4 (q . 2) (c (c (q . 1) (q 16 (* 6 6) (* 4 4))) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ()))) ()))) (c (c (q . 42) (q . 34)) 1))
+  debug_program: (a (q 4 (q . 2) (c (c (q . 1) (q 16 (* 6 6) (* 4 4))) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ()))) ()))) (c (c (q . 42) (q . 34)) 1))
+  output: (a (q 16 (* 6 6) (* 4 4)) (c (q . 34) (c (q . 42) ())))
+  runtime_cost: 1329
+  byte_cost: 1548000
+  total_cost: 1549329
+- name: two_inline_captures
+  program: (q 1 . 2920)
+  debug_program: (c (q . 2) (c (c (q . 1) (q 16 (* (q . 42) (q . 42)) (* (q . 34) (q . 34)))) (c () ())))
+  output: (q . 2920)
+  debug_output: (a (q 16 (* (q . 42) (q . 42)) (* (q . 34) (q . 34))) ())
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020
+- name: adder_inline
+  program: (a (q 16 2 (q . 10)) (c (q . 20) ()))
+  debug_program: (a (q 2 (q 2 (q 2 2 (c (q . 20) ())) (c (a 5 2) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
+  output: '30'
+  runtime_cost: 1050
+  byte_cost: 300000
+  total_cost: 301050
+- name: adder_non_inline
+  program: (a (q 2 (q 2 (q 16 (a 4 (c (q . 20) ())) (a 6 (c (q . 30) ())) (a 4 (c (q . 40) ())) (a 6 (c (q . 50) ()))) (c (c (a 5 (* 2 (q . 2))) (a 5 (* 2 (q . 3)))) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (+ (a 4 (c (q . 20) ())) (a 6 (c (q . 30) ()))) (a 4 (c (q . 40) ()))) (a 6 (c (q . 50) ()))) (c (c (a 5 (* 2 (q . 2))) (a 5 (* 2 (q . 3)))) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
+  output: '240'
+  runtime_cost: 11223
+  byte_cost: 2556000
+  total_cost: 2567223
+- name: nested_closures
+  program: (a (q 2 (q 16 (a (a 2 ()) ()) (a (a 2 ()) ())) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 16 2 (a (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ())))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) (c (q . 10) 1))
+  debug_program: (a (q 2 (q 16 (a (a 2 ()) ()) (a (a 2 ()) ())) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 16 2 (a (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ())))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) (c (q . 10) 1))
+  output: '42'
+  runtime_cost: 10146
+  byte_cost: 3060000
+  total_cost: 3070146

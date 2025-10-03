@@ -29,10 +29,14 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             let env = codegen(arena, allocator, *env)?;
             Ok(clvm_list!(ClvmOp::Apply, callee, env).to_clvm(allocator)?)
         }
-        Lir::Closure(function, captures) => {
+        Lir::Closure(function, captures, has_parameters) => {
             let function = codegen(arena, allocator, *function)?;
 
-            let mut args = clvm_quote!(1).to_clvm(allocator)?;
+            let mut args = if *has_parameters {
+                clvm_quote!(1).to_clvm(allocator)?
+            } else {
+                NodePtr::NIL
+            };
 
             for capture in captures.iter().rev() {
                 let capture = codegen(arena, allocator, *capture)?;
@@ -441,7 +445,7 @@ mod tests {
         let add = arena.alloc(Lir::Add(vec![path, path]));
         let function = arena.alloc(Lir::Quote(add));
         let capture = arena.alloc(Lir::Atom(vec![0x10]));
-        let closure = arena.alloc(Lir::Closure(function, vec![capture]));
+        let closure = arena.alloc(Lir::Closure(function, vec![capture], true));
         check(
             &arena,
             closure,

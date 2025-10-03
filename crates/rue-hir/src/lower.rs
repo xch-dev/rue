@@ -19,6 +19,16 @@ enum SymbolGroup {
     Tree(Environment),
 }
 
+impl SymbolGroup {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            SymbolGroup::Sequential(symbols) => symbols.is_empty(),
+            SymbolGroup::Tree(Environment::Nil) => true,
+            SymbolGroup::Tree(_) => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Lowerer<'d, 'a, 'g> {
     db: &'d mut Database,
@@ -128,7 +138,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     bind_env = Self::apply_group(bind_env, existing_group, true);
                 }
 
-                let rest = self.arena.alloc(Lir::Path(1));
+                let rest = if param_group.is_empty() {
+                    self.arena.alloc(Lir::Atom(vec![]))
+                } else {
+                    self.arena.alloc(Lir::Path(1))
+                };
+
                 let group_env =
                     self.lower_group_environment(&bind_env, group, rest, false, None, true);
 
@@ -436,7 +451,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             self.lower_symbol_reference(env, symbol)
         };
 
-        if matches!(self.db.symbol(symbol).clone(), Symbol::Function(_)) {
+        if let Symbol::Function(function) = self.db.symbol(symbol).clone() {
             let captures: Vec<SymbolId> = self
                 .graph
                 .dependencies(symbol, true)
@@ -450,7 +465,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 refs.push(self.lower_symbol_reference(env, capture));
             }
 
-            reference = self.arena.alloc(Lir::Closure(reference, refs));
+            reference = self.arena.alloc(Lir::Closure(
+                reference,
+                refs,
+                !function.parameters.is_empty(),
+            ));
         }
 
         reference
@@ -870,7 +889,7 @@ fn count_nil_in_env(arena: &Arena<Lir>, id: LirId) -> usize {
         Lir::Atom(atom) => usize::from(atom.is_empty()),
         Lir::Path(_) | Lir::Quote(_) => 0,
         Lir::Run(_, env) => count_nil_in_env(arena, env),
-        Lir::Closure(_, env) => env.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::Closure(_, env, _) => env.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
         Lir::First(arg) => count_nil_in_env(arena, arg),
         Lir::Rest(arg) => count_nil_in_env(arena, arg),
         Lir::Cons(first, rest) => count_nil_in_env(arena, first) + count_nil_in_env(arena, rest),
@@ -1003,12 +1022,12 @@ fn replace_nil_in_env(
             let env = replace_nil_in_env(arena, env, verifications);
             arena.alloc(Lir::Run(callee, env))
         }
-        Lir::Closure(callee, env) => {
+        Lir::Closure(callee, env, has_parameters) => {
             let mut result = Vec::new();
             for arg in env {
                 result.push(replace_nil_in_env(arena, arg, verifications));
             }
-            arena.alloc(Lir::Closure(callee, result))
+            arena.alloc(Lir::Closure(callee, result, has_parameters))
         }
         Lir::First(arg) => {
             let arg = replace_nil_in_env(arena, arg, verifications);

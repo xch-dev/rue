@@ -1,5 +1,5 @@
 program: (a (q 16 2 (q . 120)) (c (q . 32) ()))
-debug_program: (a (q 2 (q 2 (q 2 2 (c (q . 32) ())) (c (a 5 2) 1)) (c (q . 120) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) 1))
+debug_program: (a (q 2 (q 2 (q 2 2 (c (q . 32) ())) (c (a 5 2) 1)) (c (q . 120) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
 solution: ()
 output: '152'
 runtime_cost: 1060

@@ -8,7 +8,7 @@ total_cost: 192020
 tests:
 - name: tests
   program: (a (i (= (q . "Hello, world!") (q . "Hello, world!")) (q) (q 8)) 1)
-  debug_program: (a (q 2 (i (= (a 2 ()) (q . "Hello, world!")) (q) (q 8 (q . "assertion failed at 6:5"))) 1) (c (q 1 . "Hello, world!") 1))
+  debug_program: (a (q 2 (i (= (a 2 ()) (q . "Hello, world!")) (q) (q 8 (q . "assertion failed at 6:5"))) 1) (c (q 1 . "Hello, world!") ()))
   output: ()
   runtime_cost: 437
   byte_cost: 684000

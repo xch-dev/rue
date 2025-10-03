@@ -46,12 +46,17 @@ pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
 
 // If there are no captures, we don't need to create a closure
 // We can also skip the closure if the program has no path, since it's not going to rely on the captures
-pub fn opt_closure(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId {
+pub fn opt_closure(
+    arena: &mut Arena<Lir>,
+    callee: LirId,
+    args: Vec<LirId>,
+    has_parameters: bool,
+) -> LirId {
     if args.is_empty() {
         return callee;
     }
 
-    arena.alloc(Lir::Closure(callee, args))
+    arena.alloc(Lir::Closure(callee, args, has_parameters))
 }
 
 // If the value is a path, we can optimize it to a first path

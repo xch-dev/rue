@@ -25,10 +25,10 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let env = optimize(arena, env);
             opt_run(arena, callee, env)
         }
-        Lir::Closure(callee, args) => {
+        Lir::Closure(callee, args, has_parameters) => {
             let callee = optimize(arena, callee);
             let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
-            opt_closure(arena, callee, args)
+            opt_closure(arena, callee, args, has_parameters)
         }
         Lir::First(value) => {
             let value = optimize(arena, value);
