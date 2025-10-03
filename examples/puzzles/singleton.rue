@@ -27,13 +27,16 @@ fn main(
     inner_solution: Any,
 ) -> List<Condition> {
     // Verify the amount and parent coin id
-    let (is_lineage, parent_coin_id) = if proof is LineageProof {
+    // TODO: proof is LineageProof is hand optimized here, it should be done by the compiler
+    let (is_lineage, parent_coin_id) = if unchecked_cast::<Bool>((proof as (Any, (Any, Any))).rest.rest) {
+        inline let proof = unchecked_cast::<LineageProof>(proof);
         (true, coinid(
             proof.parent_parent_coin_info,
             singleton_puzzle_hash(singleton, proof.parent_inner_puzzle_hash),
             proof.parent_amount,
         ))
     } else {
+        inline let proof = unchecked_cast::<EveProof>(proof);
         (false, coinid(
             proof.parent_parent_coin_info,
             singleton.launcher_puzzle_hash,
