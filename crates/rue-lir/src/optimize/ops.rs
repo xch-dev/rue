@@ -154,16 +154,19 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     while let Some(arg) = args.next() {
         match arena[arg].clone() {
             Lir::Atom(atom) => {
-                if first.is_none() {
+                if let Some(first_lir) = first {
+                    if let Lir::Atom(first_atom) = arena[first_lir].clone() {
+                        first = Some(arena.alloc(Lir::Atom(bigint_atom(
+                            atom_bigint(first_atom) - atom_bigint(atom),
+                        ))));
+                    } else {
+                        sum += atom_bigint(atom);
+                    }
+                } else {
                     first = Some(arg);
-                    continue;
                 }
-                sum += atom_bigint(atom);
             }
             Lir::Sub(items) => {
-                if first.is_none() {
-                    first = Some(arena.alloc(Lir::Atom(vec![])));
-                }
                 args.prepend(items);
             }
             Lir::Raise(_) => return arg,

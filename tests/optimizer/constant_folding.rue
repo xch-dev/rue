@@ -1,0 +1,31 @@
+test fn add_num() -> Int {
+    100 + 200 + 300
+}
+
+test fn add_ref(num: Int) -> Int {
+    100 + num + 300
+}
+
+test fn sub_num() -> Int {
+    100 - 200 - 300
+}
+
+test fn sub_ref(num: Int) -> Int {
+    100 - num - 300
+}
+
+test fn neg_num() -> Int {
+    -100
+}
+
+test fn neg_ref(num: Int) -> Int {
+    -num
+}
+
+test fn nest_sub_add_num() -> Int {
+    (100 + 200) - 100
+}
+
+test fn nest_sub_add_ref(num: Int) -> Int {
+    (num + 200) - num
+}

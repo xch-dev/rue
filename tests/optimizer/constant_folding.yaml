@@ -1,0 +1,61 @@
+tests:
+- name: add_num
+  program: (q . 600)
+  debug_program: (+ (+ (q . 100) (q . 200)) (q . 300))
+  output: '600'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: add_ref
+  program: (+ 2 (q . 400))
+  debug_program: (+ (+ (q . 100) 2) (q . 300))
+  solution: (200)
+  output: '600'
+  runtime_cost: 840
+  byte_cost: 132000
+  total_cost: 132840
+- name: sub_num
+  program: (q . -400)
+  debug_program: (- (- (q . 100) (q . 200)) (q . 300))
+  output: '-400'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: sub_ref
+  program: (- (q . -200) 2)
+  debug_program: (- (- (q . 100) 2) (q . 300))
+  solution: (200)
+  output: '-400'
+  runtime_cost: 840
+  byte_cost: 132000
+  total_cost: 132840
+- name: neg_num
+  program: (q . -100)
+  debug_program: (- () (q . 100))
+  output: '-100'
+  runtime_cost: 20
+  byte_cost: 48000
+  total_cost: 48020
+- name: neg_ref
+  program: (- () 2)
+  debug_program: (- () 2)
+  solution: (100)
+  output: '-100'
+  runtime_cost: 845
+  byte_cost: 84000
+  total_cost: 84845
+- name: nest_sub_add_num
+  program: (q . 200)
+  debug_program: (- (+ (q . 100) (q . 200)) (q . 100))
+  output: '200'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: nest_sub_add_ref
+  program: (- (+ 2 (q . 200)) 2)
+  debug_program: (- (+ 2 (q . 200)) 2)
+  solution: (100)
+  output: '200'
+  runtime_cost: 1654
+  byte_cost: 204000
+  total_cost: 205654
