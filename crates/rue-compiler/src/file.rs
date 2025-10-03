@@ -22,7 +22,13 @@ use crate::{
 pub struct Compilation {
     pub diagnostics: Vec<Diagnostic>,
     pub program: Option<NodePtr>,
-    pub tests: Vec<NodePtr>,
+    pub tests: Vec<Test>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Test {
+    pub name: String,
+    pub program: NodePtr,
 }
 
 #[derive(Debug, Clone)]
@@ -112,9 +118,12 @@ fn compile_file_impl(
     }
 
     for test in ctx.tests().collect::<Vec<_>>() {
-        compilation
-            .tests
-            .push(generate(&mut ctx, allocator, test, options)?);
+        let name = ctx.symbol(test).name().unwrap().text().to_string();
+
+        compilation.tests.push(Test {
+            name,
+            program: generate(&mut ctx, allocator, test, options)?,
+        });
     }
 
     Ok(compilation)

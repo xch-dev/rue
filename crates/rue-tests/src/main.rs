@@ -34,6 +34,9 @@ struct TestFile {
 #[serde(default)]
 struct TestCase {
     #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     program: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -155,11 +158,13 @@ fn handle_test_file(name: &str, entry: &DirEntry) -> Result<()> {
     assert_eq!(debug_result.tests.len(), result.tests.len());
 
     for (i, test_case) in file.tests.iter_mut().enumerate() {
+        test_case.name = Some(result.tests[i].name.clone());
+
         handle_test_case(
             &mut allocator,
             test_case,
-            Some(result.tests[i]),
-            Some(debug_result.tests[i]),
+            Some(result.tests[i].program),
+            Some(debug_result.tests[i].program),
         )?;
     }
 
