@@ -1,0 +1,48 @@
+test fn one_wrapped_nil(num: Int) -> Int {
+    check_returns_nil(num);
+    1
+}
+
+test fn one_inserted_nil(num: Int) {
+    check_returns_nil(num);
+}
+
+test fn two_inserted_all_nil(num: Int) {
+    check_returns_nil(num);
+    check_returns_nil(num);
+}
+
+test fn two_inserted_separate_nil(num: Int) -> (nil, nil) {
+    check_returns_nil(num);
+    check_returns_nil(num);
+    (nil, nil)
+}
+
+test fn one_wrapped_non_nil(num: Int) -> Int {
+    check_returns_non_nil(num);
+    1
+}
+
+test fn one_inserted_non_nil(num: Int) {
+    check_returns_non_nil(num);
+}
+
+test fn two_inserted_all_non_nil(num: Int) {
+    check_returns_non_nil(num);
+    check_returns_non_nil(num);
+}
+
+test fn two_inserted_separate_non_nil(num: Int) -> (nil, nil) {
+    check_returns_non_nil(num);
+    check_returns_non_nil(num);
+    (nil, nil)
+}
+
+inline fn check_returns_nil(num: Int) {
+    assert num > 0;
+}
+
+inline fn check_returns_non_nil(num: Int) -> nil | 1 {
+    assert num > 0;
+    1
+}

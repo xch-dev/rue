@@ -1,0 +1,72 @@
+tests:
+- name: one_wrapped_nil
+  program: (i () (a (i (> 2 ()) (q) (q 8)) 1) (q . 1))
+  debug_program: (i () (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1) (q . 1))
+  solution: (1)
+  output: '1'
+  runtime_cost: 944
+  byte_cost: 444000
+  total_cost: 444944
+- name: one_inserted_nil
+  program: (a (i (> 2 ()) (q) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1)
+  solution: (1)
+  output: ()
+  runtime_cost: 846
+  byte_cost: 324000
+  total_cost: 324846
+- name: two_inserted_all_nil
+  program: (all (a (i (> 2 ()) (q) (q 8)) 1) (a (i (> 2 ()) (q) (q 8)) 1))
+  debug_program: (all (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1))
+  solution: (1)
+  output: ()
+  runtime_cost: 2493
+  byte_cost: 708000
+  total_cost: 710493
+- name: two_inserted_separate_nil
+  program: (c (a (i (> 2 ()) (q) (q 8)) 1) (a (i (> 2 ()) (q) (q 8)) 1))
+  debug_program: (c (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1))
+  solution: (1)
+  output: (())
+  runtime_cost: 1743
+  byte_cost: 708000
+  total_cost: 709743
+- name: one_wrapped_non_nil
+  program: (i () (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) (q . 1))
+  debug_program: (i () (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) (q . 1))
+  solution: (1)
+  output: '1'
+  runtime_cost: 920
+  byte_cost: 468000
+  total_cost: 468920
+- name: one_inserted_non_nil
+  program: (all (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) ())
+  debug_program: (all (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) ())
+  solution: (1)
+  output: ()
+  runtime_cost: 1667
+  byte_cost: 420000
+  total_cost: 421667
+- name: two_inserted_all_non_nil
+  program: (all (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) ())
+  debug_program: (all (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) ())
+  solution: (1)
+  output: ()
+  runtime_cost: 2789
+  byte_cost: 780000
+  total_cost: 782789
+- name: two_inserted_separate_non_nil
+  program: (c (all (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) ()) ())
+  debug_program: (c (all (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) ()) ())
+  solution: (1)
+  output: (())
+  runtime_cost: 2884
+  byte_cost: 852000
+  total_cost: 854884
+diagnostics:
+- Value returned by statement is unused at test:22:5
+- Value returned by statement is unused at test:27:5
+- Value returned by statement is unused at test:31:5
+- Value returned by statement is unused at test:32:5
+- Value returned by statement is unused at test:36:5
+- Value returned by statement is unused at test:37:5

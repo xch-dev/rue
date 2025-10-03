@@ -26,11 +26,11 @@ test fn explicit_inline() -> Int {
     num_inline() + num_inline()
 }
 
-test fn double_param(num: Int) -> Int {
-    double_param_ref(num)
+test fn double_param() -> Int {
+    double_param_ref(42)
 }
 
-test fn explicit_inline_double_param(num: Int) -> Int {
-    double_param_ref_inline(num)
+test fn explicit_inline_double_param() -> Int {
+    double_param_ref_inline(42)
 }
 

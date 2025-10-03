@@ -358,11 +358,17 @@ pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 // TODO: Collapse nested alls
 pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut result = Vec::new();
+    let mut has_false = false;
 
     for arg in args {
         match opt_truthy(arena, arg) {
             Ok(true) => {}
-            Ok(false) => return arena.alloc(Lir::Atom(vec![])),
+            Ok(false) => {
+                if !has_false {
+                    has_false = true;
+                    result.push(arg);
+                }
+            }
             Err(arg) => {
                 if matches!(arena[arg], Lir::Raise(_)) {
                     return arg;
@@ -382,11 +388,17 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 // TODO: Collapse nested anys
 pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut result = Vec::new();
+    let mut has_true = false;
 
     for arg in args {
         match opt_truthy(arena, arg) {
             Ok(false) => {}
-            Ok(true) => return arena.alloc(Lir::Atom(vec![1])),
+            Ok(true) => {
+                if !has_true {
+                    has_true = true;
+                    result.push(arg);
+                }
+            }
             Err(arg) => {
                 if matches!(arena[arg], Lir::Raise(_)) {
                     return arg;
