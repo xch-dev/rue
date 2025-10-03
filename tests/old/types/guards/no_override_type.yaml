@@ -1,4 +1,3 @@
 solution: (0x2847213288f0988543a76512fab09684131809d98baa8b93c2cd8a03a0e31d41 100)
 diagnostics:
 - Cannot compare `Bytes` to `Bytes32` without a type guard, since the runtime value must be constrained at test:1:48
-tests_passed: true

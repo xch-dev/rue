@@ -5,4 +5,3 @@ output: '"Hello, world! How are you doing?"'
 runtime_cost: 20
 byte_cost: 420000
 total_cost: 420020
-tests_passed: true

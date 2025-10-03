@@ -3,4 +3,3 @@ debug_program: (a (q 2 (q 2 (q 4 45 (c 61 (c 4 6))) (c (c (i (> 4 ()) (c (q . 51
 solution: ()
 byte_cost: 5148000
 clvm_error: path into atom
-tests_passed: true

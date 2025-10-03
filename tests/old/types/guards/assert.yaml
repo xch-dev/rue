@@ -5,4 +5,3 @@ output: '0x2847213288f0988543a76512fab09684131809d98baa8b93c2cd8a03a0e31d41'
 runtime_cost: 661
 byte_cost: 396000
 total_cost: 396661
-tests_passed: true

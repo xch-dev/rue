@@ -5,4 +5,3 @@ output: '3528'
 runtime_cost: 2152
 byte_cost: 348000
 total_cost: 350152
-tests_passed: true

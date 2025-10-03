@@ -5,4 +5,3 @@ output: ((modpow ()) (73 1000) (g1_negate 0x3816a97150946c7745457f45a4fed6c16890
 runtime_cost: 15881
 byte_cost: 3852000
 total_cost: 3867881
-tests_passed: true

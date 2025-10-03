@@ -5,4 +5,3 @@ output: (q 2 3)
 runtime_cost: 257
 byte_cost: 300000
 total_cost: 300257
-tests_passed: true

@@ -8,4 +8,3 @@ total_cost: 156146
 diagnostics:
 - Unused constant `A_REF` at test:1:7
 - Unused struct `A` at test:3:8
-tests_passed: true

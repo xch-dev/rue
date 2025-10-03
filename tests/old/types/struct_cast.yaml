@@ -5,4 +5,3 @@ diagnostics:
 - Unused binding `b` at test:11:9
 - Unused binding `a_b` at test:12:9
 - Unused binding `b_a` at test:13:9
-tests_passed: true

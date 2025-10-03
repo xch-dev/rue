@@ -5,4 +5,3 @@ output: '0xac9b16a5ee4d65aa433611da7a278a44977de399a293d5689b504bdaa161fb6f'
 runtime_cost: 1533
 byte_cost: 1296000
 total_cost: 1297533
-tests_passed: true
