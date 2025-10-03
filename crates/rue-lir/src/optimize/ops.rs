@@ -29,11 +29,16 @@ pub fn opt_quote(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 // we can skip both quoting and running the program, and just use it directly
 // We can also skip quoting if the program has no path, since it's not going to rely on the environment
 pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
-    if let Lir::Quote(value) = arena[callee].clone()
-        && let Lir::Path(path) = arena[env].clone()
-        && path == 1
-    {
-        return value;
+    if let Lir::Quote(value) = arena[callee].clone() {
+        if let Lir::Path(1) = arena[env].clone() {
+            return value;
+        }
+
+        if let Lir::Atom(atom) = arena[env].clone()
+            && atom.is_empty()
+        {
+            return value;
+        }
     }
 
     arena.alloc(Lir::Run(callee, env))
@@ -125,7 +130,7 @@ pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         return arena.alloc(Lir::Atom(vec![]));
     }
 
-    if result.len() == 1 {
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 
@@ -179,7 +184,7 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         return arena.alloc(Lir::Atom(vec![]));
     }
 
-    if result.len() == 1 {
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 
@@ -216,7 +221,7 @@ pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         result.push(arena.alloc(Lir::Atom(bigint_atom(product))));
     }
 
-    if result.is_empty() {
+    if result.is_empty() && matches!(arena[result[0]], Lir::Atom(_)) {
         return arena.alloc(Lir::Atom(vec![1]));
     }
 
@@ -468,7 +473,7 @@ pub fn opt_concat(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         return arena.alloc(Lir::Atom(Vec::new()));
     }
 
-    if result.len() == 1 {
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 
