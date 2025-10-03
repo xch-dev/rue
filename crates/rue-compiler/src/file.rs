@@ -5,7 +5,8 @@ use id_arena::Arena;
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
 use rue_hir::{
-    DependencyGraph, Environment, Lowerer, ModuleDeclarations, Scope, ScopeId, SymbolId,
+    Declaration, DependencyGraph, Environment, Lowerer, ModuleDeclarations, Scope, ScopeId,
+    SymbolId,
 };
 use rue_lexer::Lexer;
 use rue_lir::{Error, codegen, optimize};
@@ -70,7 +71,7 @@ fn compile_file_impl(
     let file = compile_file_partial(&mut ctx, file);
 
     let mut compilation = Compilation {
-        diagnostics: file.diagnostics,
+        diagnostics: [std.diagnostics, file.diagnostics].concat(),
         program: None,
         tests: Vec::new(),
     };
@@ -79,10 +80,18 @@ fn compile_file_impl(
 
     let mut entrypoints = HashSet::new();
 
-    entrypoints.extend(main_symbol);
+    entrypoints.extend(main_symbol.map(Declaration::Symbol));
 
     for test in ctx.tests() {
-        entrypoints.insert(test);
+        entrypoints.insert(Declaration::Symbol(test));
+    }
+
+    for (_, symbol) in ctx.scope(file.scope).exported_symbols() {
+        entrypoints.insert(Declaration::Symbol(symbol));
+    }
+
+    for (_, ty) in ctx.scope(file.scope).exported_types() {
+        entrypoints.insert(Declaration::Type(ty));
     }
 
     check_unused(&mut ctx, &entrypoints);

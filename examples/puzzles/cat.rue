@@ -83,7 +83,7 @@ inline const RING_MORPH_BYTE: Bytes = 0xcb;
 inline fn cat_puzzle_hash(cat_info: CatInfo, inner_puzzle_hash: Bytes32) -> Bytes32 {
     curry_tree_hash(
         cat_info.mod_hash,
-        ...[cat_info.mod_hash_hash, tree_hash_atom(cat_info.asset_id), inner_puzzle_hash]
+        [cat_info.mod_hash_hash, tree_hash_atom(cat_info.asset_id), inner_puzzle_hash]
     )
 }
 
@@ -107,7 +107,7 @@ fn main(
     };
 
     // Calculate the inner puzzle hash and conditions.
-    let morph = morph_conditions(inner_puzzle(...inner_solution), cat_info, ...nil);
+    let morph = morph_conditions(inner_puzzle(...inner_solution), cat_info, nil);
     let inner_puzzle_hash = tree_hash(inner_puzzle);
     
     // Calculate coin ids.
@@ -204,7 +204,7 @@ struct Morph {
 fn morph_conditions(
     conditions: List<CatCondition>,
     cat_info: CatInfo,
-    ...tail_info: TailInfo | nil,
+    tail_info: TailInfo | nil,
 ) -> Morph {
     // If there are no conditions, return an empty morph.
     if conditions is nil {
@@ -218,7 +218,7 @@ fn morph_conditions(
     let condition = conditions.first;
 
     if condition is RunTail {
-        let rest = morph_conditions(conditions.rest, cat_info, ...TailInfo {
+        let rest = morph_conditions(conditions.rest, cat_info, TailInfo {
             tail_puzzle: condition.tail_puzzle,
             tail_solution: condition.tail_solution,
         });
@@ -252,7 +252,7 @@ fn morph_conditions(
         (condition, 0)
     };
 
-    let rest = morph_conditions(conditions.rest, cat_info, ...tail_info);
+    let rest = morph_conditions(conditions.rest, cat_info, tail_info);
 
     Morph {
         conditions: [morphed.first, ...rest.conditions],

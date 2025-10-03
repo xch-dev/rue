@@ -3,13 +3,13 @@ use std::collections::HashSet;
 use indexmap::IndexSet;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    BindingSymbol, ConstantSymbol, Declaration, FunctionSymbol, ParameterSymbol, Symbol, SymbolId,
+    BindingSymbol, ConstantSymbol, Declaration, FunctionSymbol, ParameterSymbol, Symbol,
 };
 use rue_types::{Alias, Generic, Struct, Type};
 
 use crate::Compiler;
 
-pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
+pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
     let mut used_symbols = IndexSet::new();
     let mut unused_symbols = IndexSet::new();
 
@@ -18,7 +18,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             continue;
         };
 
-        if entrypoints.contains(&symbol) {
+        if entrypoints.contains(&Declaration::Symbol(symbol)) {
             used_symbols.insert(symbol);
             continue;
         }
@@ -34,11 +34,19 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             for parent in ctx.reference_parents(current) {
                 stack.push(parent);
 
-                if let Declaration::Symbol(parent_symbol) = parent
-                    && entrypoints.contains(&parent_symbol)
-                {
-                    used_symbols.insert(symbol);
-                    break;
+                match parent {
+                    Declaration::Symbol(parent_symbol) => {
+                        if entrypoints.contains(&Declaration::Symbol(parent_symbol)) {
+                            used_symbols.insert(symbol);
+                            break;
+                        }
+                    }
+                    Declaration::Type(parent_ty) => {
+                        if entrypoints.contains(&Declaration::Type(parent_ty)) {
+                            used_symbols.insert(symbol);
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -60,6 +68,11 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             continue;
         };
 
+        if entrypoints.contains(&Declaration::Type(ty)) {
+            used_types.insert(ty);
+            continue;
+        }
+
         let mut visited = HashSet::new();
         let mut stack = vec![declaration];
 
@@ -71,11 +84,19 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             for parent in ctx.reference_parents(current) {
                 stack.push(parent);
 
-                if let Declaration::Symbol(symbol) = parent
-                    && used_symbols.contains(&symbol)
-                {
-                    used_types.insert(ty);
-                    break;
+                match parent {
+                    Declaration::Symbol(symbol) => {
+                        if used_symbols.contains(&symbol) {
+                            used_types.insert(ty);
+                            break;
+                        }
+                    }
+                    Declaration::Type(ty) => {
+                        if entrypoints.contains(&Declaration::Type(ty)) {
+                            used_types.insert(ty);
+                            break;
+                        }
+                    }
                 }
             }
 

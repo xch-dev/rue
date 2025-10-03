@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
-use clvm_utils::tree_hash;
 use clvmr::ENABLE_KECCAK_OPS_OUTSIDE_GUARD;
 use clvmr::MEMPOOL_MODE;
 use clvmr::NodePtr;
@@ -47,6 +46,9 @@ struct TestCase {
     output: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    debug_output: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     runtime_cost: Option<u64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -57,6 +59,9 @@ struct TestCase {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     clvm_error: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug_clvm_error: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -126,10 +131,10 @@ fn handle_test_file(name: &str, entry: &DirEntry) -> Result<()> {
     let result = compile_file(&mut allocator, source.clone(), CompilerOptions::default())?;
     let debug_result = compile_file(&mut allocator, source.clone(), CompilerOptions::debug())?;
 
-    let mut diagnostics = Vec::new();
+    file.diagnostics = Vec::new();
 
     for diagnostic in result.diagnostics {
-        diagnostics.push(diagnostic.message());
+        file.diagnostics.push(diagnostic.message());
     }
 
     handle_test_case(
@@ -177,7 +182,9 @@ fn handle_test_case(
         test_case.program = None;
         test_case.debug_program = None;
         test_case.output = None;
+        test_case.debug_output = None;
         test_case.clvm_error = None;
+        test_case.debug_clvm_error = None;
         test_case.runtime_cost = None;
         test_case.byte_cost = None;
         test_case.total_cost = None;
@@ -211,31 +218,44 @@ fn handle_test_case(
     let bytes = node_to_bytes(allocator, ptr)?.len();
     test_case.byte_cost = Some(bytes as u64 * 12_000);
 
-    if let Ok(output) = response {
-        let output_hash = tree_hash(allocator, output.1);
-        let debug_output_hash = tree_hash(allocator, debug_response?.1);
-
-        if output_hash != debug_output_hash {
-            println!(
-                "Debug output mismatch: {}",
-                disassemble(allocator, debug_ptr, None)
-            );
+    match response {
+        Ok(output) => {
+            test_case.output = Some(disassemble(allocator, output.1, None));
+            test_case.runtime_cost = Some(output.0);
+            test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
+            test_case.clvm_error = None;
         }
+        Err(error) => {
+            test_case.clvm_error = Some(match error {
+                EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble(allocator, ptr, None)),
+                _ => error.to_string(),
+            });
+            test_case.runtime_cost = None;
+            test_case.total_cost = None;
+            test_case.output = None;
+        }
+    }
 
-        test_case.output = Some(disassemble(allocator, output.1, None));
-        test_case.runtime_cost = Some(output.0);
-        test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
-        test_case.clvm_error = None;
-    } else {
-        let error = debug_response.expect_err("debug program succeeded unexpectedly");
+    match debug_response {
+        Ok(output) => {
+            test_case.debug_output = Some(disassemble(allocator, output.1, None));
+            test_case.debug_clvm_error = None;
+        }
+        Err(error) => {
+            test_case.debug_clvm_error = Some(match error {
+                EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble(allocator, ptr, None)),
+                _ => error.to_string(),
+            });
+            test_case.debug_output = None;
+        }
+    }
 
-        test_case.clvm_error = Some(match error {
-            EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble(allocator, ptr, None)),
-            _ => error.to_string(),
-        });
-        test_case.runtime_cost = None;
-        test_case.total_cost = None;
-        test_case.output = None;
+    if test_case.debug_output == test_case.output {
+        test_case.debug_output = None;
+    }
+
+    if test_case.debug_clvm_error == test_case.clvm_error {
+        test_case.debug_clvm_error = None;
     }
 
     Ok(())
