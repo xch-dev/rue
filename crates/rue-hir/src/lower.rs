@@ -839,10 +839,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 references <= 1 && self.options.auto_inline
             }
             Symbol::Constant(constant) => {
-                if self.graph.dependencies(symbol, false).contains(&symbol) {
-                    return false;
-                }
-
                 if constant.inline {
                     return true;
                 }
@@ -850,10 +846,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 references <= 1 && self.options.auto_inline
             }
             Symbol::Binding(binding) => {
-                if self.graph.dependencies(symbol, false).contains(&symbol) {
-                    return false;
-                }
-
                 if binding.inline {
                     return true;
                 }

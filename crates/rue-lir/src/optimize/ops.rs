@@ -306,6 +306,15 @@ pub fn opt_modpow(arena: &mut Arena<Lir>, base: LirId, exponent: LirId, modulus:
 }
 
 pub fn opt_eq(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if let Lir::Mod(lhs, rhs) = arena[left].clone()
+        && let Lir::Atom(rhs) = arena[rhs].clone()
+        && atom_bigint(rhs) == BigInt::from(2)
+        && let Lir::Atom(eq) = arena[right].clone()
+        && atom_bigint(eq) == BigInt::from(1)
+    {
+        return arena.alloc(Lir::Logand(vec![lhs, right]));
+    }
+
     arena.alloc(Lir::Eq(left, right))
 }
 
