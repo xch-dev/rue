@@ -9,7 +9,7 @@ fn main(payouts: List<Payout>, my_amount: Int, total_shares: Int) -> List<Condit
     [
         CreateCoinAnnouncement { message: nil },
         AssertMyAmount { amount: my_amount },
-        ...calculate_amount_and_split(payouts, my_amount, total_shares, 0, ...my_amount),
+        ...calculate_amount_and_split(payouts, my_amount, total_shares, 0, my_amount),
     ]
 }
 
@@ -22,7 +22,7 @@ fn calculate_amount_and_split(
     total_amount: Int,
     total_shares: Int,
     shares_sum: Int,
-    ...remaining_amount: Int,
+    remaining_amount: Int,
 ) -> List<Condition> {
     if payouts is nil {
         if total_shares == shares_sum {
@@ -38,7 +38,7 @@ fn calculate_amount_and_split(
         total_amount,
         total_shares,
         shares_sum,
-        ...remaining_amount,
+        remaining_amount,
     )
 }
 
@@ -48,7 +48,7 @@ fn split_amount_and_create_coins(
     total_amount: Int,
     total_shares: Int,
     shares_sum: Int,
-    ...remaining_amount: Int,
+    remaining_amount: Int,
 ) -> List<Condition> {
     let create_coin = CreateCoin {
         puzzle_hash: payouts.first.puzzle_hash,
@@ -63,7 +63,7 @@ fn split_amount_and_create_coins(
             total_amount,
             total_shares,
             shares_sum + payouts.first.share,
-            ...remaining_amount - this_amount,
+            remaining_amount - this_amount,
         ),
     ]
 }

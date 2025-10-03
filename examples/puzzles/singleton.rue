@@ -98,7 +98,6 @@ fn morph_conditions(
     [condition, ...morph_conditions(singleton, rest, false)]
 }
 
-
 test fn tests() {
   let parent_parent_coin_info = sha256("parent_parent_coin_info");
   let launcher_puzzle_hash = sha256("launcher_puzzle");
