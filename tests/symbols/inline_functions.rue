@@ -1,0 +1,36 @@
+fn num() -> Int {
+    42
+}
+
+inline fn num_inline() -> Int {
+    42
+}
+
+fn double_param_ref(num: Int) -> Int {
+    num + num
+}
+
+inline fn double_param_ref_inline(num: Int) -> Int {
+    num + num
+}
+
+test fn implicit_inline() -> Int {
+    num()
+}
+
+test fn double_reference() -> Int {
+    num() + num()
+}
+
+test fn explicit_inline() -> Int {
+    num_inline() + num_inline()
+}
+
+test fn double_param(num: Int) -> Int {
+    double_param_ref(num)
+}
+
+test fn explicit_inline_double_param(num: Int) -> Int {
+    double_param_ref_inline(num)
+}
+
