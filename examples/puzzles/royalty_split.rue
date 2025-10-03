@@ -13,7 +13,7 @@ fn main(payouts: List<Payout>, my_amount: Int, total_shares: Int) -> List<Condit
     ]
 }
 
-fn calculate_share(total_amount: Int, share: Int, ...total_shares: Int) -> Int {
+fn calculate_share(total_amount: Int, share: Int, total_shares: Int) -> Int {
     total_amount * share / total_shares
 }
 
@@ -34,7 +34,7 @@ fn calculate_amount_and_split(
 
     split_amount_and_create_coins(
         payouts,
-        calculate_share(total_amount, payouts.first.share, ...total_shares),
+        calculate_share(total_amount, payouts.first.share, total_shares),
         total_amount,
         total_shares,
         shares_sum,
@@ -52,7 +52,7 @@ fn split_amount_and_create_coins(
 ) -> List<Condition> {
     let create_coin = CreateCoin {
         puzzle_hash: payouts.first.puzzle_hash,
-        amount: if !(payouts.rest is nil) { this_amount } else { remaining_amount },
+        amount: inline if payouts.rest is nil { remaining_amount } else { this_amount },
         memos: Memos { value: [payouts.first.puzzle_hash] },
     };
 
