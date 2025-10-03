@@ -715,7 +715,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 expr,
                 &mut (
                     ids,
-                    if nil_count < length {
+                    if nil_count < length || !always_nil {
                         if always_nil {
                             VerificationKind::Grouped
                         } else {
