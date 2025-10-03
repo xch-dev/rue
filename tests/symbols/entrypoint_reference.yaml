@@ -1,2 +1,4 @@
 diagnostics:
 - Entrypoint `main` references itself at test:1:4
+- Entrypoint `a` references itself at test:5:9
+- Entrypoint `b` references itself at test:9:9

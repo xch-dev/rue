@@ -1,3 +1,11 @@
 fn main() -> Int {
     main()
 }
+
+test fn a() -> Int {
+    b()
+}
+
+test fn b() -> Int {
+    a()
+}
