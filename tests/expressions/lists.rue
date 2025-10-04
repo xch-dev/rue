@@ -1,0 +1,31 @@
+test fn list() -> List<Int> {
+    [1, 2, 3]
+}
+
+test fn list_spread() -> List<Int> {
+    [1, ...[2, 3]]
+}
+
+test fn empty_list() -> List<Int> {
+    []
+}
+
+test fn empty_list_spread() -> List<Int> {
+    [...[]]
+}
+
+test fn nil_list() -> List<Int> {
+    nil
+}
+
+test fn nil_list_spread() -> List<Int> {
+    [...nil]
+}
+
+test fn pair_list() -> List<Int> {
+    (1, (2, (3, nil)))
+}
+
+test fn list_spread_pair() -> List<Int> {
+    [1, ...(2, (3, nil))]
+}

@@ -1,0 +1,57 @@
+tests:
+- name: list
+  program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+  debug_program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+  output: (q 2 3)
+  runtime_cost: 257
+  byte_cost: 300000
+  total_cost: 300257
+- name: list_spread
+  program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+  debug_program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+  output: (q 2 3)
+  runtime_cost: 257
+  byte_cost: 300000
+  total_cost: 300257
+- name: empty_list
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: empty_list_spread
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: nil_list
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: nil_list_spread
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: pair_list
+  program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+  debug_program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+  output: (q 2 3)
+  runtime_cost: 257
+  byte_cost: 300000
+  total_cost: 300257
+- name: list_spread_pair
+  program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+  debug_program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
+  output: (q 2 3)
+  runtime_cost: 257
+  byte_cost: 300000
+  total_cost: 300257
