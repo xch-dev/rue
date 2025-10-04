@@ -1,0 +1,37 @@
+// Modules themselves don't trigger unused symbol warnings
+mod unused_module {
+    export const UNUSED_IN_MODULE: Int = 0;
+}
+
+mod used_module {
+    export const USED_IN_MODULE: Int = 0;
+}
+
+fn main() -> Int {
+    let used = 1;
+    let unused = 2;
+    used_by_main();
+    used_by_both();
+    USED_BY_MAIN + USED_BY_BOTH + used + used_module::USED_IN_MODULE
+}
+
+test fn tests() -> Int {
+    let used = 1;
+    let unused = 2;
+    used_by_tests();
+    used_by_both();
+    USED_BY_TESTS + USED_BY_BOTH + used
+}
+
+const USED_BY_MAIN: Int = 42;
+const USED_BY_TESTS: Int = 34;
+const USED_BY_BOTH: Int = 69;
+const UNUSED: Int = 0;
+
+fn used_by_main() {}
+
+fn used_by_tests() {}
+
+fn used_by_both() {}
+
+fn unused() {}

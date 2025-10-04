@@ -1,0 +1,48 @@
+type Recursive = Recursive;
+
+type A = B;
+type B = A;
+
+type Used = 42;
+type Unused = "Hello, world!";
+
+const USED_VALUE: 42 = 42;
+const UNUSED_VALUE: 34 = 34;
+
+struct UsedStruct {
+    value = USED_VALUE,
+}
+
+struct UnusedStruct {
+    value = UNUSED_VALUE,
+}
+
+type UsedAlias = UsedStruct;
+type UnusedAlias = UnusedStruct;
+
+type Thing1 = 42;
+type Thing2 = 42;
+
+const INNER: Thing1 = 42;
+const OUTER: Thing2 = 42;
+
+struct Inner {
+    value = INNER,
+}
+
+struct Outer {
+    inner = Inner {},
+    value = OUTER,
+}
+
+fn main() -> (A, Used) {
+    (34, 42)
+}
+
+test fn alias() -> Int {
+    UsedAlias {}.value
+}
+
+test fn nested() -> Outer {
+    Outer {}
+}
