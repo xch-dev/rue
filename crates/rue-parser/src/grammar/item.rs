@@ -22,7 +22,7 @@ pub fn item(p: &mut Parser) {
         type_alias_item(p, cp);
     } else if p.at(T![struct]) && !inline && !extern_kw && !test {
         struct_item(p, cp);
-    } else if !inline && !extern_kw && !test {
+    } else {
         p.skip();
     }
 }
