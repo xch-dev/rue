@@ -1,0 +1,31 @@
+test fn unused_main_parameter(value: Int) {}
+
+test fn unused_main_generic<T>() {}
+
+test fn unused_fn_parameter() {
+    unused_parameter(42);
+}
+
+test fn used_fn_parameter() -> Int {
+    used_parameter(42)
+}
+
+test fn unused_fn_generic() {
+    unused_generic();
+}
+
+test fn used_fn_generic<T>(value: T) -> T {
+    used_generic(value)
+}
+
+fn unused_parameter(value: Int) {}
+
+fn used_parameter(value: Int) -> Int {
+    value
+}
+
+fn unused_generic<T>() {}
+
+fn used_generic<T>(value: T) -> T {
+    value
+}

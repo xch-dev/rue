@@ -1,0 +1,46 @@
+tests:
+- name: unused_main_parameter
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: unused_main_generic
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: unused_fn_parameter
+  program: ()
+  debug_program: (a (q 2 2 (q . 42)) (c (q) ()))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: used_fn_parameter
+  program: (q . 42)
+  debug_program: (a (q 2 2 (q . 42)) (c (q . 1) ()))
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: unused_fn_generic
+  program: ()
+  debug_program: (a (q 2 2 ()) (c (q) ()))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: used_fn_generic
+  program: '2'
+  debug_program: (a (q 2 2 5) (c (q . 1) 1))
+  byte_cost: 12000
+  clvm_error: path into atom
+diagnostics:
+- Unused parameter `value` at test:1:31
+- Unused parameter `value` at test:21:21
+- Unused generic type `T` at test:3:29
+- Unused generic type `T` at test:27:19

@@ -1,0 +1,21 @@
+test fn expr_statement() {
+    42;
+}
+
+test fn nil_statement() {
+    nil;
+}
+
+test fn check_function_call() {
+    check();
+}
+
+test fn value_function_call() {
+    check_with_value();
+}
+
+fn check() {}
+
+fn check_with_value() -> Int {
+    42
+}

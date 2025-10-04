@@ -1,0 +1,9 @@
+fn main() -> Int {
+    let result = if 42 > 10 {
+        return 34;
+    } else {
+        return 42;
+    };
+
+    return result;
+}

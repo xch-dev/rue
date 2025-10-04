@@ -1,0 +1,10 @@
+program: (a (i (> (q . 42) (q . 10)) (q 1 . 34) (q 1 . 42)) 1)
+debug_program: (a (q . 2) (c (a (i (> (q . 42) (q . 10)) (q 1 . 34) (q 1 . 42)) 1) 1))
+output: '34'
+runtime_cost: 772
+byte_cost: 396000
+total_cost: 396772
+diagnostics:
+- Unnecessary `return` statement, end the function with an expression instead at test:3:9
+- Unnecessary `return` statement, end the function with an expression instead at test:5:9
+- Unnecessary `return` statement, end the function with an expression instead at test:8:5

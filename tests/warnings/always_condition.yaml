@@ -1,0 +1,10 @@
+program: (q . 1)
+debug_program: (a (i (q . 1) (q 2 (i (not ()) (q 2 (i () (q) (q 1 . 1)) 1) (q 8 (q . "assertion failed at 3:5"))) 1) (q 8 (q . "assertion failed at 2:5"))) 1)
+output: '1'
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020
+diagnostics:
+- Condition always evaluates to `true` at test:2:12
+- Condition always evaluates to `true` at test:3:12
+- Condition always evaluates to `false` at test:5:8
