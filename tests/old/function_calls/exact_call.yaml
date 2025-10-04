@@ -1,6 +1,0 @@
-solution: ()
-diagnostics:
-- Expected 2 arguments, but found 0 at test:3:13
-- Expected 2 arguments, but found 1 at test:4:13
-- Expected 2 arguments, but found 3 at test:5:13
-- Spread operator must be used on functions with spread parameters at test:6:13
