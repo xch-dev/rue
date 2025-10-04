@@ -2,13 +2,19 @@ tests:
 - name: atom_shape_only
   program: (not (l 2))
   debug_program: (not (l 2))
+  solution: (42)
+  output: '1'
+  runtime_cost: 269
   byte_cost: 108000
-  clvm_error: path into atom
+  total_cost: 108269
 - name: atom_value_single
   program: (= 2 (q . 42))
   debug_program: (= 2 (q . 42))
+  solution: (42)
+  output: '1'
+  runtime_cost: 188
   byte_cost: 108000
-  clvm_error: path into atom
+  total_cost: 108188
 - name: atom_value_union
   program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 2 (i (= 2 (q . 34)) (q 1 . 1) (q)) 1)) 1)
   debug_program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 2 (i (= 2 (q . 34)) (q 1 . 1) (q)) 1)) 1)

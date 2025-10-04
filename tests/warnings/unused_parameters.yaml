@@ -37,8 +37,11 @@ tests:
 - name: used_fn_generic
   program: '2'
   debug_program: (a (q 2 2 5) (c (q . 1) 1))
+  solution: (5)
+  output: '5'
+  runtime_cost: 48
   byte_cost: 12000
-  clvm_error: path into atom
+  total_cost: 12048
 diagnostics:
 - Unused parameter `value` at test:1:31
 - Unused parameter `value` at test:21:21
