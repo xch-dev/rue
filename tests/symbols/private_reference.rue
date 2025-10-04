@@ -1,0 +1,11 @@
+mod private {
+    type Type = nil;
+
+    fn function() -> Type {
+        nil
+    }
+}
+
+fn main() -> private::Type {
+    private::function();
+}

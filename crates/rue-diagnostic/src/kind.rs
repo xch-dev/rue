@@ -37,9 +37,6 @@ pub enum DiagnosticKind {
     #[error("Unnecessary empty generic argument list specified")]
     EmptyGenericArguments,
 
-    #[error("Unnecessary empty subtype fields specified")]
-    EmptySubtypeFields,
-
     #[error("Duplicate field `{0}` specified")]
     DuplicateField(String),
 
@@ -93,8 +90,8 @@ pub enum DiagnosticKind {
     #[error("Expected statement block to end in `return` or `raise`, not an expression")]
     UnexpectedImplicitReturn,
 
-    #[error("Unnecessary `return` statement, end the function with an expression instead")]
-    UnnecessaryExplicitReturn,
+    #[error("Cannot use a `return` statement here, end the block with an expression instead")]
+    UnexpectedExplicitReturn,
 
     #[error("Block does not return a value")]
     MissingReturn,
@@ -260,13 +257,12 @@ impl DiagnosticKind {
             | Self::CannotDestructurePair(..)
             | Self::RecursiveEntrypoint(..)
             | Self::RecursiveInlineFunction(..)
-            | Self::RecursiveConstant(..) => DiagnosticSeverity::Error,
+            | Self::RecursiveConstant(..)
+            | Self::UnexpectedExplicitReturn => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
-            | Self::EmptySubtypeFields
             | Self::UnnecessaryCast(..)
             | Self::UnnecessaryGuard(..)
-            | Self::UnnecessaryExplicitReturn
             | Self::UnnecessaryPlus
             | Self::UnusedFunction(..)
             | Self::UnusedConstant(..)

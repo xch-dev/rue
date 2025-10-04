@@ -1,0 +1,59 @@
+tests:
+- name: unnecessary_atom
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: unnecessary_broaden_atom
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: narrow_atom
+  program: (= (q . 42) (q . 42))
+  debug_program: (= (q . 42) (q . 42))
+  output: '1'
+  runtime_cost: 160
+  byte_cost: 132000
+  total_cost: 132160
+- name: unnecessary_struct
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: narrow_struct
+  program: (a (i (a (i (l (f (c (q . 42) ()))) (q) (q 2 (i (a (i (l (r (c (q . 42) ()))) (q) (q 2 (i (r (c (q . 42) ())) (q) (q 1 . 1)) 1)) 1) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1)
+  debug_program: (a (i (l (c (q . 42) ())) (q 2 (i (a (i (not (l (f (c (q . 42) ())))) (q 2 (i (a (i (not (l (r (c (q . 42) ())))) (q 2 (i (= (r (c (q . 42) ())) ()) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1)
+  output: '1'
+  runtime_cost: 1583
+  byte_cost: 1692000
+  total_cost: 1693583
+- name: struct_to_alias
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: alias_to_struct
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+diagnostics:
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at test:2:5
+- Unnecessary type guard from `42` to `Int`, since they are already compatible types at test:6:5
+- Unnecessary type guard from `A` to `A`, since they are already compatible types at test:14:5
+- Unnecessary cast from `A` to `Alias`, since they are compatible with each other at test:22:5
+- Unnecessary type guard from `Alias` to `A`, since they are already compatible types at test:22:5
+- Unnecessary cast from `Alias` to `A`, since they are compatible with each other at test:26:5
+- Unnecessary type guard from `A` to `A`, since they are already compatible types at test:26:5
+- Unused struct `B` at test:33:8

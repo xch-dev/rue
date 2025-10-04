@@ -1,0 +1,36 @@
+tests:
+- name: simple
+  program: (q . 42)
+  debug_program: (q . 42)
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: capture
+  program: (q . 84)
+  debug_program: (a (q 18 2 (q . 2)) (c (q . 42) 1))
+  output: '84'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: shadow
+  program: (a (q 16 2 (* 2 (q . 34)) 2) (c (q . 42) 1))
+  debug_program: (a (q 16 (+ 2 (a (q 18 4 6) (c (c 2 (q . 34)) 1))) 2) (c (q . 42) 1))
+  output: '1512'
+  runtime_cost: 2492
+  byte_cost: 396000
+  total_cost: 398492
+- name: binding
+  program: (q . 69)
+  debug_program: (a (q 16 2 (q . 1)) (c (a (q 18 2 (q . 2)) (c (q . 34) 1)) 1))
+  output: '69'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: nested
+  program: (q . 42)
+  debug_program: (q . 42)
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

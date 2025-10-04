@@ -1,0 +1,73 @@
+test fn closure() -> Any {
+    function
+}
+
+test fn call_binary_tree() {
+    function(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26);
+}
+
+test fn call_extern() {
+    function_extern(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26);
+}
+
+fn function(
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    e: Int,
+    f: Int,
+    g: Int,
+    h: Int,
+    i: Int,
+    j: Int,
+    k: Int,
+    l: Int,
+    m: Int,
+    n: Int,
+    o: Int,
+    p: Int,
+    q: Int,
+    r: Int,
+    s: Int,
+    t: Int,
+    u: Int,
+    v: Int,
+    w: Int,
+    x: Int,
+    y: Int,
+    z: Int,
+) {
+    assert (a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p + q + r + s + t + u + v + w + x + y + z) > 0;
+}
+
+extern fn function_extern(
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    e: Int,
+    f: Int,
+    g: Int,
+    h: Int,
+    i: Int,
+    j: Int,
+    k: Int,
+    l: Int,
+    m: Int,
+    n: Int,
+    o: Int,
+    p: Int,
+    q: Int,
+    r: Int,
+    s: Int,
+    t: Int,
+    u: Int,
+    v: Int,
+    w: Int,
+    x: Int,
+    y: Int,
+    z: Int,
+) {
+    assert (a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p + q + r + s + t + u + v + w + x + y + z) > 0;
+}

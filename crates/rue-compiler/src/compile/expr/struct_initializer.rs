@@ -132,7 +132,7 @@ pub fn compile_struct_initializer_expr(
     for (i, name) in struct_type.fields.into_iter().rev().enumerate() {
         let value = if let Some(value) = fields.remove(&name) {
             value
-        } else if let Some(value) = ctx.default_field(ty, &name) {
+        } else if let Some(value) = ctx.default_field(struct_type.semantic, &name) {
             value
         } else {
             debug!("Unresolved struct initializer field");

@@ -1,9 +1,0 @@
-program: (q . 42)
-debug_program: (q . 42)
-solution: ()
-output: '42'
-runtime_cost: 20
-byte_cost: 36000
-total_cost: 36020
-diagnostics:
-- Unnecessary `return` statement, end the function with an expression instead at test:2:5

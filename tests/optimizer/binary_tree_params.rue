@@ -1,0 +1,67 @@
+test fn tree_params() -> Int {
+    calc(1, 2, 3, 4)
+}
+
+test fn spread_tree_params() -> Int {
+    calc_spread(1, 2, 3, ...4)
+}
+
+test fn manual_inline() -> Int {
+    calc_inline(1, 2, 3, 4)
+}
+
+test fn spread_manual_inline() -> Int {
+    calc_spread_inline(1, 2, 3, ...4)
+}
+
+test fn manual_extern() -> Int {
+    calc_extern(1, 2, 3, 4)
+}
+
+test fn spread_manual_extern() -> Int {
+    calc_spread_extern(1, 2, 3, ...4)
+}
+
+test fn closure_auto_extern() -> Int {
+    let calc = calc;
+    calc(1, 2, 3, 4)
+}
+
+test fn closure_spread_auto_extern() -> Int {
+    let calc = calc_spread;
+    calc(1, 2, 3, ...4)
+}
+
+test fn closure_manual_extern() -> Int {
+    let calc = calc_extern;
+    calc(1, 2, 3, 4)
+}
+
+test fn closure_spread_manual_extern() -> Int {
+    let calc = calc_spread_extern;
+    calc(1, 2, 3, ...4)
+}
+
+fn calc(a: Int, b: Int, c: Int, d: Int) -> Int {
+    a * 10 + b * 20 + c * 30 + d * 40
+}
+
+inline fn calc_inline(a: Int, b: Int, c: Int, d: Int) -> Int {
+    a * 10 + b * 20 + c * 30 + d * 40
+}
+
+extern fn calc_extern(a: Int, b: Int, c: Int, d: Int) -> Int {
+    a * 10 + b * 20 + c * 30 + d * 40
+}
+
+fn calc_spread(a: Int, b: Int, c: Int, ...d: Int) -> Int {
+    a * 10 + b * 20 + c * 30 + d * 40
+}
+
+inline fn calc_spread_inline(a: Int, b: Int, c: Int, ...d: Int) -> Int {
+    a * 10 + b * 20 + c * 30 + d * 40
+}
+
+extern fn calc_spread_extern(a: Int, b: Int, c: Int, ...d: Int) -> Int {
+    a * 10 + b * 20 + c * 30 + d * 40
+}

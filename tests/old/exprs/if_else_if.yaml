@@ -1,7 +1,0 @@
-program: (a (i (> 2 (q . 100)) (q 1 . "Very big") (q 2 (i (> 2 (q . 50)) (q 1 . "Big") (q 2 (i (> 2 (q . 25)) (q 1 . "Medium") (q 2 (i (> 2 (q . 10)) (q 1 . "Small") (q 1 . "Tiny")) 1)) 1)) 1)) 1)
-debug_program: (a (i (> 2 (q . 100)) (q 1 . "Very big") (q 2 (i (> 2 (q . 50)) (q 1 . "Big") (q 2 (i (> 2 (q . 25)) (q 1 . "Medium") (q 2 (i (> 2 (q . 10)) (q 1 . "Small") (q 1 . "Tiny")) 1)) 1)) 1)) 1)
-solution: (58)
-output: '"Big"'
-runtime_cost: 1580
-byte_cost: 1692000
-total_cost: 1693580

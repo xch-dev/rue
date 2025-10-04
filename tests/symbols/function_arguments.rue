@@ -1,0 +1,33 @@
+test fn nil_terminated_valid() {
+    nil_terminated(1, 2);
+}
+
+test fn nil_terminated_wrong_args() {
+    nil_terminated();
+    nil_terminated(1);
+    nil_terminated(1, 2, 3);
+}
+
+test fn nil_terminated_spread() {
+    nil_terminated(1, ...2);
+}
+
+test fn spread_valid() {
+    spread(1, ...2);
+}
+
+test fn spread_wrong_args() {
+    spread(...1);
+    spread(1, 2, ...3);
+}
+
+test fn spread_missing() {
+    spread();
+    spread(1);
+    spread(1, 2);
+    spread(1, 2, 3);
+}
+
+fn nil_terminated(_a: Int, _b: Int) {}
+
+fn spread(_a: Int, ..._b: Int) {}

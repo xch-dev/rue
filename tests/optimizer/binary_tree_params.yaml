@@ -1,0 +1,71 @@
+tests:
+- name: tree_params
+  program: (q . 300)
+  debug_program: (a (q 2 2 (c (c (q . 1) (q . 2)) (c (q . 3) (q . 4)))) (c (q 16 (+ (+ (* 4 (q . 10)) (* 6 (q . 20))) (* 5 (q . 30))) (* 7 (q . 40))) ()))
+  output: '300'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: spread_tree_params
+  program: (q . 300)
+  debug_program: (a (q 2 2 (c (c (q . 1) (q . 2)) (c (q . 3) (q . 4)))) (c (q 16 (+ (+ (* 4 (q . 10)) (* 6 (q . 20))) (* 5 (q . 30))) (* 7 (q . 40))) ()))
+  output: '300'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: manual_inline
+  program: (q . 300)
+  debug_program: (+ (+ (+ (* (q . 1) (q . 10)) (* (q . 2) (q . 20))) (* (q . 3) (q . 30))) (* (q . 4) (q . 40)))
+  output: '300'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: spread_manual_inline
+  program: (q . 300)
+  debug_program: (+ (+ (+ (* (q . 1) (q . 10)) (* (q . 2) (q . 20))) (* (q . 3) (q . 30))) (* (q . 4) (q . 40)))
+  output: '300'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: manual_extern
+  program: (q . 300)
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 23 (q . 40))) ()))
+  output: '300'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: spread_manual_extern
+  program: (q . 300)
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 15 (q . 40))) ()))
+  output: '300'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: closure_auto_extern
+  program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ())))))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 23 (q . 40))) ()))
+  output: '300'
+  runtime_cost: 6160
+  byte_cost: 996000
+  total_cost: 1002160
+- name: closure_spread_auto_extern
+  program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) (c (q . 1) (c (q . 2) (c (q . 3) (q . 4)))))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 15 (q . 40))) ()))
+  output: '300'
+  runtime_cost: 6061
+  byte_cost: 924000
+  total_cost: 930061
+- name: closure_manual_extern
+  program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ())))))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 23 (q . 40))) ()))
+  output: '300'
+  runtime_cost: 6160
+  byte_cost: 996000
+  total_cost: 1002160
+- name: closure_spread_manual_extern
+  program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) (c (q . 1) (c (q . 2) (c (q . 3) (q . 4)))))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 16 (+ (+ (* 2 (q . 10)) (* 5 (q . 20))) (* 11 (q . 30))) (* 15 (q . 40))) ()))
+  output: '300'
+  runtime_cost: 6061
+  byte_cost: 924000
+  total_cost: 930061

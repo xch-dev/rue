@@ -10,7 +10,8 @@ use rue_options::CompilerOptions;
 
 use crate::{
     BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, FunctionCall,
-    FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, Statement, Symbol, SymbolId, UnaryOp,
+    FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError, Statement, Symbol, SymbolId,
+    UnaryOp,
 };
 
 #[derive(Debug, Clone)]
@@ -476,10 +477,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_path(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
-        self.arena
-            .alloc(Lir::Path(env.path(symbol).unwrap_or_else(|| {
-                panic!("symbol not found: {}", self.db.debug_symbol(symbol))
-            })))
+        self.arena.alloc(Lir::Path(env.path(symbol).unwrap_or_else(
+            |error| match error {
+                PathError::SymbolNotFound => panic!(
+                    "clvm path in environment not found for symbol {}",
+                    self.db.debug_symbol(symbol)
+                ),
+                PathError::PathTooLarge => panic!(
+                    "calculated clvm path too large for symbol {}",
+                    self.db.debug_symbol(symbol)
+                ),
+            },
+        )))
     }
 
     fn lower_block(

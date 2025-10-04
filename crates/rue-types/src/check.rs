@@ -1,4 +1,4 @@
-use std::{cmp::max, collections::HashSet};
+use std::cmp::max;
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet, indexset};
@@ -162,18 +162,15 @@ fn check_impl(
     lhs: TypeId,
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
-    let mut variants = variants_of(arena, builtins, lhs)
-        .into_iter()
-        .enumerate()
-        .collect();
-    check_each(arena, builtins, ctx, &mut variants, rhs)
+    let variants = variants_of(arena, builtins, lhs);
+    check_each(arena, builtins, ctx, &variants, rhs)
 }
 
 fn check_each(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
     ctx: &mut CheckContext,
-    lhs: &mut Vec<(usize, TypeId)>,
+    lhs: &[TypeId],
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
     ctx.depth += 1;
@@ -184,14 +181,14 @@ fn check_each(
 
     let mut result = Comparison::Assign;
 
-    for &(_, lhs) in &*lhs {
+    for &id in lhs {
         result = max(
             result,
             compare_impl(
                 arena,
                 builtins,
                 &mut ComparisonContext::default(),
-                lhs,
+                id,
                 rhs,
                 None,
                 None,
@@ -207,23 +204,11 @@ fn check_each(
 
     let mut overlap = IndexSet::new();
     let mut exceeds_overlap = false;
-    let mut unrestricted = false;
     let mut lhs_has_atom = false;
     let mut can_be_truthy = false;
-    let mut error = None;
 
-    lhs.retain(|&(_, id)| {
-        if error.is_some() {
-            return true;
-        }
-
-        let atoms = match atoms_of(arena, id) {
-            Ok(atoms) => atoms,
-            Err(err) => {
-                error = Some(err);
-                return true;
-            }
-        };
+    for &id in lhs {
+        let atoms = atoms_of(arena, id)?;
 
         if let Some(atoms) = &atoms {
             lhs_has_atom = true;
@@ -252,24 +237,27 @@ fn check_each(
         }
 
         match (atoms, &target_atoms) {
-            (Some(_), None) => false,
-            (Some(_), Some(Atoms::Unrestricted)) | (None, _) => true,
+            (Some(_), None) => {}
+            (Some(_), Some(Atoms::Unrestricted)) | (None, _) => {}
             (Some(Atoms::Unrestricted), Some(Atoms::Restricted(restrictions))) => {
                 exceeds_overlap = true;
-                unrestricted = true;
-                overlap.clone_from(restrictions);
-                true
+
+                for restriction in restrictions {
+                    if let AtomRestriction::Value(value) = restriction
+                        && overlap.contains(&AtomRestriction::Length(value.len()))
+                    {
+                        continue;
+                    }
+                    overlap.insert(restriction.clone());
+                }
             }
             (
                 Some(Atoms::Restricted(restrictions)),
                 Some(Atoms::Restricted(target_restrictions)),
             ) => {
-                let mut has_overlap = false;
-
                 for restriction in restrictions {
                     if target_restrictions.contains(&restriction) {
                         overlap.insert(restriction);
-                        has_overlap = true;
                         continue;
                     }
 
@@ -278,7 +266,6 @@ fn check_each(
                             let length = AtomRestriction::Length(value.len());
                             if target_restrictions.contains(&length) {
                                 overlap.insert(length);
-                                has_overlap = true;
                                 continue;
                             }
                         }
@@ -287,14 +274,8 @@ fn check_each(
 
                     exceeds_overlap = true;
                 }
-
-                has_overlap
             }
         }
-    });
-
-    if let Some(error) = error {
-        return Err(error);
     }
 
     let atom_result = lhs_has_atom.then(|| {
@@ -307,34 +288,28 @@ fn check_each(
         } else if overlap.len() == 1 {
             overlap.into_iter().next().map(Check::Atom).unwrap()
         } else {
-            Check::And(overlap.into_iter().map(Check::Atom).collect())
+            Check::Or(overlap.into_iter().map(Check::Atom).collect())
         }
     });
 
     let target_pairs = pairs_of(arena, builtins, rhs)?;
 
     let mut checks = Vec::new();
-    let mut included_indices = IndexSet::new();
-    let mut candidate_pairs = HashSet::new();
     let mut requires_check = false;
-    let mut lhs_has_pair = false;
 
-    let mut firsts = Vec::new();
+    let mut pairs = Vec::new();
 
-    for &(i, lhs) in &*lhs {
+    for &lhs in lhs {
         for pair in pairs_of(arena, builtins, lhs)? {
-            for ty in variants_of(arena, builtins, pair.first) {
-                candidate_pairs.insert(lhs);
-                firsts.push((i, ty));
-                lhs_has_pair = true;
-            }
+            pairs.push(pair);
         }
     }
 
     for target_pair in &target_pairs {
-        let mut firsts = firsts.clone();
+        let pairs = pairs.clone();
 
-        let first = check_each(arena, builtins, ctx, &mut firsts, target_pair.first)?;
+        let firsts: Vec<TypeId> = pairs.iter().map(|pair| pair.first).collect();
+        let first = check_each(arena, builtins, ctx, &firsts, target_pair.first)?;
 
         if first == Check::Impossible {
             requires_check = true;
@@ -343,30 +318,38 @@ fn check_each(
 
         let mut rests = Vec::new();
 
-        for (i, _) in firsts {
-            for pair in pairs_of(
+        // TODO: We can do this in inverse (rest then first) as well and see which check is simpler
+        for pair in pairs {
+            if compare_impl(
                 arena,
                 builtins,
-                lhs.iter().find(|(j, _)| *j == i).unwrap().1,
-            )? {
-                for ty in variants_of(arena, builtins, pair.rest) {
-                    rests.push((i, ty));
-                }
+                &mut ComparisonContext::default(),
+                target_pair.first,
+                pair.first,
+                None,
+                None,
+            ) > Comparison::Cast
+            {
+                continue;
             }
+
+            rests.push(pair.rest);
         }
 
-        let rest = check_each(arena, builtins, ctx, &mut rests, target_pair.rest)?;
+        if rests.is_empty() {
+            requires_check = true;
+            continue;
+        }
+
+        let rest = check_each(arena, builtins, ctx, &rests, target_pair.rest)?;
 
         if rest == Check::Impossible {
             requires_check = true;
             continue;
         }
 
-        for (i, _) in rests {
-            included_indices.insert(i);
-        }
-
         if first == Check::None && rest == Check::None {
+            // TODO: Should this set requires_check to false and break?
             continue;
         }
 
@@ -375,11 +358,7 @@ fn check_each(
         checks.push(Check::Pair(Box::new(first), Box::new(rest)));
     }
 
-    lhs.retain(|&(i, type_id)| {
-        !candidate_pairs.contains(&type_id) || included_indices.contains(&i)
-    });
-
-    let pair_result = lhs_has_pair.then(|| {
+    let pair_result = (!pairs.is_empty()).then(|| {
         if target_pairs.is_empty() {
             Check::Impossible
         } else if !requires_check {

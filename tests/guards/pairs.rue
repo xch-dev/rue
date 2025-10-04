@@ -1,0 +1,29 @@
+test fn pair_shape_only(value: Any) -> Bool {
+    value is (Any, Any)
+}
+
+test fn pair_value_single(value: (Atom, Atom)) -> Bool {
+    value is (42, 34)
+}
+
+test fn pair_value_union(value: (Atom, Atom)) -> Bool {
+    value is (42 | 34, 42 | 34)
+}
+
+test fn pair_shape_value(value: Any) -> Bool {
+    value is (42, 34)
+}
+
+test fn narrow_pair(value: (Bytes32, nil) | (nil, Bytes32)) -> Bool {
+    value is (nil, Bytes32)
+}
+
+test fn guard_type_assumption_shortcut() {
+    let value = unchecked_cast::<(Bytes32, nil) | (nil, Bytes32)>((nil, nil));
+
+    // This will pass because the type checker assumes `nil` is enough to disambiguate the type.
+    assert value is (nil, Bytes32);
+
+    // This will fail because the type checker does not assume `nil` is enough to disambiguate the type.
+    assert !(value as (Atom, Atom) is (nil, Bytes32));
+}

@@ -1,0 +1,55 @@
+tests:
+- name: unnecessary_atom
+  program: (q . 42)
+  debug_program: (q . 42)
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: allow_broadening
+  program: (q . 42)
+  debug_program: (q . 42)
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: allow_atom_semantics
+  program: (q . "Hello, world!")
+  debug_program: (q . "Hello, world!")
+  output: '"Hello, world!"'
+  runtime_cost: 20
+  byte_cost: 192000
+  total_cost: 192020
+- name: unnecessary_struct
+  program: (f (c (q . 42) ()))
+  debug_program: (f (c (q . 42) ()))
+  output: '42'
+  runtime_cost: 146
+  byte_cost: 156000
+  total_cost: 156146
+- name: allow_struct_semantics
+  program: (f (c (q . 42) ()))
+  debug_program: (f (c (q . 42) ()))
+  output: '42'
+  runtime_cost: 146
+  byte_cost: 156000
+  total_cost: 156146
+- name: struct_to_alias
+  program: (f (c (q . 42) ()))
+  debug_program: (f (c (q . 42) ()))
+  output: '42'
+  runtime_cost: 146
+  byte_cost: 156000
+  total_cost: 156146
+- name: alias_to_struct
+  program: (f (c (q . 42) ()))
+  debug_program: (f (c (q . 42) ()))
+  output: '42'
+  runtime_cost: 146
+  byte_cost: 156000
+  total_cost: 156146
+diagnostics:
+- Unnecessary cast from `42` to `42`, since they are compatible with each other at test:2:5
+- Unnecessary cast from `A` to `A`, since they are compatible with each other at test:14:5
+- Unnecessary cast from `A` to `Alias`, since they are compatible with each other at test:22:5
+- Unnecessary cast from `Alias` to `A`, since they are compatible with each other at test:26:5

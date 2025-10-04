@@ -11,6 +11,12 @@ pub enum Environment {
     Pair(Box<Environment>, Box<Environment>),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PathError {
+    SymbolNotFound,
+    PathTooLarge,
+}
+
 impl Environment {
     pub fn sequential(symbols: &[SymbolId], nil_terminated: bool) -> Self {
         let mut result = Self::Nil;
@@ -85,16 +91,26 @@ impl Environment {
         )
     }
 
-    pub fn path(&self, symbol_id: SymbolId) -> Option<u32> {
-        let ops = self.get_pair_ops(symbol_id)?;
-        let mut path = 1;
+    pub fn path(&self, symbol_id: SymbolId) -> Result<u32, PathError> {
+        let ops = self
+            .get_pair_ops(symbol_id)
+            .ok_or(PathError::SymbolNotFound)?;
+        let mut path: u32 = 1;
         for op in ops.into_iter().rev() {
             match op {
-                PairOp::First => path *= 2,
-                PairOp::Rest => path = path * 2 + 1,
+                PairOp::First => {
+                    path = path.checked_mul(2).ok_or(PathError::PathTooLarge)?;
+                }
+                PairOp::Rest => {
+                    path = path
+                        .checked_mul(2)
+                        .ok_or(PathError::PathTooLarge)?
+                        .checked_add(1)
+                        .ok_or(PathError::PathTooLarge)?;
+                }
             }
         }
-        Some(path)
+        Ok(path)
     }
 
     fn get_pair_ops(&self, symbol_id: SymbolId) -> Option<Vec<PairOp>> {

@@ -1,3 +1,0 @@
-fn main() -> Bytes {
-    42 as Bytes
-}

@@ -15,6 +15,7 @@ pub struct ExprOptions {
     pub minimum_binding_power: u8,
     pub allow_statement: bool,
     pub allow_struct_initializer: bool,
+    pub inline: bool,
 }
 
 impl Default for ExprOptions {
@@ -23,30 +24,35 @@ impl Default for ExprOptions {
             minimum_binding_power: 0,
             allow_statement: false,
             allow_struct_initializer: true,
+            inline: false,
         }
     }
 }
 
 pub fn expr(p: &mut Parser) {
-    expr_with(p, ExprOptions::default());
+    let checkpoint = p.checkpoint();
+    expr_with(p, checkpoint, ExprOptions::default());
 }
 
-pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
-    let checkpoint = p.checkpoint();
-
-    if let Some(kind) = p.at_any(SyntaxKind::PREFIX_OPS) {
+pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -> bool {
+    if !options.inline
+        && let Some(kind) = p.at_any(SyntaxKind::PREFIX_OPS)
+    {
         p.start_at(checkpoint, SyntaxKind::PrefixExpr);
         p.expect(kind);
+        let cp = p.checkpoint();
         expr_with(
             p,
+            cp,
             ExprOptions {
                 minimum_binding_power: 255,
                 allow_statement: false,
                 allow_struct_initializer: options.allow_struct_initializer,
+                inline: false,
             },
         );
         p.finish();
-    } else if p.at(T![::]) || p.at(SyntaxKind::Ident) {
+    } else if !options.inline && p.at(T![::]) || p.at(SyntaxKind::Ident) {
         p.start_at(checkpoint, SyntaxKind::PathExpr);
         let mut separated = path_expr_segment(p, true, false);
         while separated || p.at(T![::]) {
@@ -71,11 +77,13 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
             p.expect(T!['}']);
             p.finish();
         }
-    } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL) {
+    } else if !options.inline
+        && let Some(kind) = p.at_any(SyntaxKind::LITERAL)
+    {
         p.start(SyntaxKind::LiteralExpr);
         p.expect(kind);
         p.finish();
-    } else if p.at(T!['(']) {
+    } else if !options.inline && p.at(T!['(']) {
         p.expect(T!['(']);
         expr(p);
         if p.try_eat(T![,]) {
@@ -87,7 +95,7 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
         }
         p.expect(T![')']);
         p.finish();
-    } else if p.at(T!['[']) {
+    } else if !options.inline && p.at(T!['[']) {
         p.start_at(checkpoint, SyntaxKind::ListExpr);
         p.expect(T!['[']);
         while !p.at(T![']']) {
@@ -101,13 +109,13 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
         }
         p.expect(T![']']);
         p.finish();
-    } else if p.at(T!['{']) {
+    } else if !options.inline && p.at(T!['{']) {
         block(p);
-    } else if p.at(T![if]) || p.at(T![inline]) {
-        if if_expr(p, checkpoint, options.allow_statement) {
+    } else if p.at(T![if]) || (!options.inline && p.at(T![inline])) {
+        if if_expr(p, checkpoint, options.allow_statement, !options.inline) {
             return true;
         }
-    } else if p.at(T![fn]) {
+    } else if !options.inline && p.at(T![fn]) {
         p.start_at(checkpoint, SyntaxKind::LambdaExpr);
         p.expect(T![fn]);
         if p.at(T![<]) {
@@ -199,12 +207,15 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
         p.expect(op);
 
         p.start_at(checkpoint, SyntaxKind::BinaryExpr);
+        let cp = p.checkpoint();
         expr_with(
             p,
+            cp,
             ExprOptions {
                 minimum_binding_power: right_binding_power,
                 allow_statement: false,
                 allow_struct_initializer: options.allow_struct_initializer,
+                inline: false,
             },
         );
         p.finish();
@@ -234,15 +245,25 @@ fn path_expr_segment(p: &mut Parser, first: bool, separated: bool) -> bool {
     separated
 }
 
-fn if_expr(p: &mut Parser, checkpoint: Checkpoint, allow_statement: bool) -> bool {
-    p.try_eat(T![inline]);
+fn if_expr(
+    p: &mut Parser,
+    checkpoint: Checkpoint,
+    allow_statement: bool,
+    allow_inline: bool,
+) -> bool {
+    if allow_inline {
+        p.try_eat(T![inline]);
+    }
     p.expect(T![if]);
+    let child = p.checkpoint();
     expr_with(
         p,
+        child,
         ExprOptions {
             minimum_binding_power: 0,
             allow_statement: false,
             allow_struct_initializer: false,
+            inline: false,
         },
     );
     block(p);
@@ -254,8 +275,8 @@ fn if_expr(p: &mut Parser, checkpoint: Checkpoint, allow_statement: bool) -> boo
         p.start_at(checkpoint, SyntaxKind::IfExpr);
         p.expect(T![else]);
         if p.at(T![if]) {
-            let checkpoint = p.checkpoint();
-            if_expr(p, checkpoint, false);
+            let child = p.checkpoint();
+            if_expr(p, child, false, false);
         } else {
             block(p);
         }

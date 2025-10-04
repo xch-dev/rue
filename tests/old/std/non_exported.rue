@@ -1,3 +1,0 @@
-fn main() -> Bytes32 {
-    quote_hash(sha256("hello"))
-}

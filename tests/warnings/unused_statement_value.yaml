@@ -1,0 +1,32 @@
+tests:
+- name: expr_statement
+  program: (all ())
+  debug_program: (all (q . 42) ())
+  output: ()
+  runtime_cost: 545
+  byte_cost: 60000
+  total_cost: 60545
+- name: nil_statement
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: check_function_call
+  program: ()
+  debug_program: (a (q 2 2 ()) (c (q) ()))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: value_function_call
+  program: (all ())
+  debug_program: (a (q 34 (a 2 ()) ()) (c (q 1 . 42) ()))
+  output: ()
+  runtime_cost: 545
+  byte_cost: 60000
+  total_cost: 60545
+diagnostics:
+- Value returned by statement is unused at test:2:5
+- Value returned by statement is unused at test:14:5

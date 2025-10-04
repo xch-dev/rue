@@ -1,0 +1,9 @@
+test fn implicit_nil() {}
+
+test fn explicit_nil() {
+    nil
+}
+
+test fn wrong_type() {
+    42
+}

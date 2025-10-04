@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot assign `42` to `nil`, since they are incompatible at test:7:22

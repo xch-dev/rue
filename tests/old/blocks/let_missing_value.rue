@@ -1,4 +1,0 @@
-fn main() -> Int {
-    let xyz;
-    42
-}
