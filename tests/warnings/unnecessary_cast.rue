@@ -1,0 +1,37 @@
+test fn unnecessary_atom() -> Int {
+    42 as 42
+}
+
+test fn allow_broadening() -> Int {
+    42 as Int
+}
+
+test fn allow_atom_semantics() -> Int {
+    "Hello, world!" as Int
+}
+
+test fn unnecessary_struct() -> Int {
+    A {} as A.value
+}
+
+test fn allow_struct_semantics() -> Int {
+    A {} as B.value
+}
+
+test fn struct_to_alias() -> Int {
+    A {} as Alias.value
+}
+
+test fn alias_to_struct() -> Int {
+    Alias {} as A.value
+}
+
+struct A {
+    value: Int = 42,
+}
+
+struct B {
+    value: Int = 42,
+}
+
+type Alias = A;

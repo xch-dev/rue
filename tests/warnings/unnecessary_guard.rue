@@ -1,0 +1,38 @@
+test fn unnecessary_atom() -> Bool {
+    42 as Int is Int
+}
+
+test fn unnecessary_broaden_atom() -> Bool {
+    42 is Int
+}
+
+test fn narrow_atom() -> Bool {
+    42 as Int is 42
+}
+
+test fn unnecessary_struct() -> Bool {
+    A {} is A
+}
+
+test fn narrow_struct() -> Bool {
+    A {} as Any is A
+}
+
+test fn struct_to_alias() -> Bool {
+    A {} as Alias is A
+}
+
+test fn alias_to_struct() -> Bool {
+    Alias {} as A is A
+}
+
+struct A {
+    value: Int = 42,
+}
+
+struct B {
+    value: Int = 42,
+}
+
+type Alias = A;
+

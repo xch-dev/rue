@@ -37,9 +37,6 @@ pub enum DiagnosticKind {
     #[error("Unnecessary empty generic argument list specified")]
     EmptyGenericArguments,
 
-    #[error("Unnecessary empty subtype fields specified")]
-    EmptySubtypeFields,
-
     #[error("Duplicate field `{0}` specified")]
     DuplicateField(String),
 
@@ -263,7 +260,6 @@ impl DiagnosticKind {
             | Self::RecursiveConstant(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
-            | Self::EmptySubtypeFields
             | Self::UnnecessaryCast(..)
             | Self::UnnecessaryGuard(..)
             | Self::UnnecessaryExplicitReturn
