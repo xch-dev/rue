@@ -1,0 +1,48 @@
+tests:
+- name: pair_shape_only
+  program: (l 2)
+  debug_program: (l 2)
+  solution: ((42 42))
+  output: '1'
+  runtime_cost: 68
+  byte_cost: 60000
+  total_cost: 60068
+- name: pair_value_single
+  program: (a (i (= 4 (q . 42)) (q 2 (i (= 6 (q . 34)) (q 1 . 1) (q)) 1) (q)) 1)
+  debug_program: (a (i (= (f 2) (q . 42)) (q 2 (i (= (r 2) (q . 34)) (q 1 . 1) (q)) 1) (q)) 1)
+  solution: ((42 . 34))
+  output: '1'
+  runtime_cost: 822
+  byte_cost: 660000
+  total_cost: 660822
+- name: pair_value_union
+  program: (a (i (a (i (= 4 (q . 42)) (q 1 . 1) (q 2 (i (= 4 (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (a (i (= 6 (q . 42)) (q 1 . 1) (q 2 (i (= 6 (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1)
+  debug_program: (a (i (a (i (= (f 2) (q . 42)) (q 1 . 1) (q 2 (i (= (f 2) (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (a (i (= (r 2) (q . 42)) (q 1 . 1) (q 2 (i (= (r 2) (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1)
+  solution: ((42 . 34))
+  output: '1'
+  runtime_cost: 1681
+  byte_cost: 1812000
+  total_cost: 1813681
+- name: pair_shape_value
+  program: (a (i (l 2) (q 2 (i (a (i (a (i (l 4) (q) (q 2 (i (= 4 (q . 42)) (q 1 . 1) (q)) 1)) 1) (q 2 (i (a (i (l 6) (q) (q 2 (i (= 6 (q . 34)) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1)
+  debug_program: (a (i (l 2) (q 2 (i (a (i (a (i (not (l (f 2))) (q 2 (i (= (f 2) (q . 42)) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (a (i (not (l (r 2))) (q 2 (i (= (r 2) (q . 34)) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1)
+  solution: ((42 . 34))
+  output: '1'
+  runtime_cost: 2348
+  byte_cost: 2172000
+  total_cost: 2174348
+- name: narrow_pair
+  program: (= 4 ())
+  debug_program: (= (f 2) ())
+  solution: ((0 . 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855))
+  output: '1'
+  runtime_cost: 214
+  byte_cost: 84000
+  total_cost: 84214
+- name: guard_type_assumption_shortcut
+  program: (a (q 2 (i 4 (q 8) (q 2 (i (a (i 4 (q) (q 2 (i (= (strlen 6) (q . 32)) (q 1 . 1) (q)) 1)) 1) (q 8) (q)) 1)) 1) (c (c () ()) 1))
+  debug_program: (a (q 2 (i (= (f 2) ()) (q 2 (i (not (a (i (= (f 2) ()) (q 2 (i (= (strlen (r 2)) (q . 32)) (q 1 . 1) (q)) 1) (q)) 1)) (q) (q 8 (q . "assertion failed at 28:5"))) 1) (q 8 (q . "assertion failed at 25:5"))) 1) (c (c () ()) 1))
+  output: ()
+  runtime_cost: 1738
+  byte_cost: 1332000
+  total_cost: 1333738
