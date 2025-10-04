@@ -1,3 +1,0 @@
-fn main() -> Bytes32 {
-    tree_hash("Hello, world!")
-}
