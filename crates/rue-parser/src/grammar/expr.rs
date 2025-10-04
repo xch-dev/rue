@@ -2,7 +2,12 @@ use rowan::Checkpoint;
 
 use crate::{
     Parser, SyntaxKind, T,
-    grammar::{binding::binding, block::block, generics::generic_arguments, ty::ty},
+    grammar::{
+        binding::binding,
+        block::block,
+        generics::{generic_arguments, generic_parameters},
+        ty::ty,
+    },
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -105,6 +110,9 @@ pub fn expr_with(p: &mut Parser, options: ExprOptions) -> bool {
     } else if p.at(T![fn]) {
         p.start_at(checkpoint, SyntaxKind::LambdaExpr);
         p.expect(T![fn]);
+        if p.at(T![<]) {
+            generic_parameters(p);
+        }
         p.expect(T!['(']);
         while !p.at(T![')']) {
             p.start(SyntaxKind::FunctionParameter);

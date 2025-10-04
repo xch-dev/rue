@@ -1,4 +1,7 @@
-use crate::{Parser, SyntaxKind, T, grammar::generics::generic_arguments};
+use crate::{
+    Parser, SyntaxKind, T,
+    grammar::generics::{generic_arguments, generic_parameters},
+};
 
 pub fn ty(p: &mut Parser) {
     ty_inner(p, true);
@@ -42,6 +45,9 @@ fn ty_inner(p: &mut Parser, allow_union: bool) {
     } else if p.at(T![fn]) {
         p.start(SyntaxKind::LambdaType);
         p.expect(T![fn]);
+        if p.at(T![<]) {
+            generic_parameters(p);
+        }
         p.expect(T!['(']);
         while !p.at(T![')']) {
             p.start(SyntaxKind::LambdaParameter);

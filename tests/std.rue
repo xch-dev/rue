@@ -45,16 +45,6 @@ test fn hashing() {
     assert tree_hash("hello") == 0xcceeb7a985ecc3dabcb4c8f666cd637f16f008e3c963db6aa6f83a7b288c54ef;
     assert tree_hash("hello") == tree_hash_atom("hello");
     assert tree_hash_atom("hello") == sha256(1 as Bytes + "hello");
-    
-    // (a (q + 2 5) 1)
-    let debug = 0xc71082ef47283d2f0723105cbddea6e3fa73e772d12587ec2d2a29a6f8057bc3;
-
-    // (+ 2 5)
-    let optimized = 0x19c7b1ed29e8f501f6985cd6addd3b6e5bd7ccc251f1a4018550837b3006239b;
-
-    let actual = tree_hash(fn(a: Int, b: Int) => a + b);
-    
-    assert actual == debug || actual == optimized;
 }
 
 test fn currying() {

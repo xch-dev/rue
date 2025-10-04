@@ -58,3 +58,10 @@ tests:
   runtime_cost: 10146
   byte_cost: 3060000
   total_cost: 3070146
+- name: auto_extern
+  program: (a (q 16 (a 2 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 2 (c (q . 4) (c (q . 5) (c (q . 6) ()))))) (c (q 16 2 5 11) 1))
+  debug_program: (a (q 16 (a 2 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 2 (c (q . 4) (c (q . 5) (c (q . 6) ()))))) (c (c (q . 2) (c (c (q . 1) (q 16 (+ 2 5) 11)) (c (q . 1) ()))) 1))
+  output: '21'
+  runtime_cost: 4244
+  byte_cost: 1092000
+  total_cost: 1096244

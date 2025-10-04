@@ -1,0 +1,6 @@
+program: (a (q 2 (q 2 (i (a (i (= 2 (q . 0xc71082ef47283d2f0723105cbddea6e3fa73e772d12587ec2d2a29a6f8057bc3)) (q 1 . 1) (q 2 (i (= 2 (q . 0x19c7b1ed29e8f501f6985cd6addd3b6e5bd7ccc251f1a4018550837b3006239b)) (q 1 . 1) (q)) 1)) 1) (q) (q 8)) 1) (c (a 2 (c 2 (q 16 2 5))) 1)) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) ()))
+debug_program: (a (q 2 (q 2 (i (a (i (= 4 10) (q 1 . 1) (q 2 (i (= 4 14) (q 1 . 1) (q)) 1)) 1) (q) (q 8 (q . "assertion failed at 14:5"))) 1) (c (c (a 2 (c 2 (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))))) (c (q . 0xc71082ef47283d2f0723105cbddea6e3fa73e772d12587ec2d2a29a6f8057bc3) (q . 0x19c7b1ed29e8f501f6985cd6addd3b6e5bd7ccc251f1a4018550837b3006239b))) 1)) (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) ()))
+output: ()
+runtime_cost: 11430
+byte_cost: 3060000
+total_cost: 3071430
