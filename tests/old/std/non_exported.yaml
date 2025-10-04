@@ -1,4 +1,0 @@
-solution: (((51 0x718e6218f392d41274e6f56be2177016500bfd60269fe73080979dbfb7cea5ed 100)))
-diagnostics:
-- Undeclared symbol `quote_hash` at test:2:5
-- Cannot call non-function value with type `{unresolved}` at test:2:5
