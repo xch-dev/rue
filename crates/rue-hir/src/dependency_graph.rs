@@ -137,6 +137,8 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 graph.locals.entry(*last).or_default().insert(*lambda);
             }
 
+            graph.closures.insert(*lambda);
+
             visit_symbol_reference(db, graph, *lambda);
         }
         Hir::If(condition, then, else_, _inline) => {

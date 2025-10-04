@@ -48,6 +48,37 @@ test fn auto_extern() -> Int {
     closure(1, 2, 3) + closure(4, 5, 6)
 }
 
+// TODO: This is a regression test to ensure tree captures are disabled for closures
+// It was breaking due to the Closure LIR generation being sequential
+// We can add support for tree captures for closures in the future
+test fn closure_sequential_captures() {
+    let tree_params = tree_params;
+    let a = tree_params(1, 2, 3, 4);
+    let tree_params_spread = tree_params_spread;
+    let b = tree_params_spread(1, 2, 3, ...4);
+    assert a == 76;
+    assert b == 76;
+}
+
 fn create_adder(a: Int) -> fn(b: Int) -> Int {
     fn(b: Int) => a + b
+}
+
+const CAPTURE_1: Int = 42;
+const CAPTURE_2: Int = 34;
+
+fn tree_params(a: Int, b: Int, c: Int, d: Int) -> Int {
+    assert a == 1;
+    assert b == 2;
+    assert c == 3;
+    assert d == 4;
+    CAPTURE_1 + CAPTURE_2
+}
+
+fn tree_params_spread(a: Int, b: Int, c: Int, ...d: Int) -> Int {
+    assert a == 1;
+    assert b == 2;
+    assert c == 3;
+    assert d == 4;
+    CAPTURE_1 + CAPTURE_2
 }
