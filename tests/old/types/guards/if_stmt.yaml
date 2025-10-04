@@ -1,9 +1,0 @@
-program: (a (i (= (strlen 2) (q . 32)) (q 1 . 100) (q 1 . 200)) 1)
-debug_program: (a (i (= (strlen 2) (q . 32)) (q 1 . 100) (q 1 . 200)) 1)
-solution: (42)
-output: '200'
-runtime_cost: 602
-byte_cost: 444000
-total_cost: 444602
-diagnostics:
-- Unused binding `x` at test:3:13

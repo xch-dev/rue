@@ -1,7 +1,0 @@
-fn main(value: Int | (Int, Int)) -> Int {
-    if value is Int {
-        value * value
-    } else {
-        value.first * value.rest
-    }
-}

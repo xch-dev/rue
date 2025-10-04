@@ -1,7 +1,0 @@
-fn main(value: Bytes) -> Int {
-    if !(value is Bytes32) {
-        return 100;
-    }
-    let x: Bytes32 = value;
-    x as Int
-}

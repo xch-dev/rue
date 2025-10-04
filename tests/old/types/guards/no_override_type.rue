@@ -1,4 +1,0 @@
-fn main(value: Bytes, other: Bytes) -> Bytes32 {
-    assert value is Bytes32;
-    other
-}
