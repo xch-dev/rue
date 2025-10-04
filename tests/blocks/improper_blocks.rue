@@ -1,0 +1,25 @@
+test fn empty_no_return() {}
+
+test fn empty_with_return() -> Int {}
+
+test fn empty_if() {
+    if true {}
+}
+
+test fn implicit_if_value() {
+    if true {
+        42
+    }
+}
+
+test fn unexpected_return() -> Int {
+    return 42;
+}
+
+test fn unexpected_if_return() -> Int {
+    if true {
+        return 34;
+    } else {
+        return 42;
+    }
+}

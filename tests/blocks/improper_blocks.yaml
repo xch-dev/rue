@@ -1,0 +1,10 @@
+diagnostics:
+- Block does not return a value at test:3:36
+- Condition always evaluates to `true` at test:6:8
+- Block does not return a value at test:6:13
+- Condition always evaluates to `true` at test:10:8
+- Expected statement block to end in `return` or `raise`, not an expression at test:11:9
+- Cannot use a `return` statement here, end the block with an expression instead at test:16:5
+- Condition always evaluates to `true` at test:20:8
+- Cannot use a `return` statement here, end the block with an expression instead at test:21:9
+- Cannot use a `return` statement here, end the block with an expression instead at test:23:9

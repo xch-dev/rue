@@ -140,7 +140,7 @@ pub fn compile_block(
                 };
 
                 if is_expr {
-                    ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnnecessaryExplicitReturn);
+                    ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnexpectedExplicitReturn);
                 }
 
                 if return_value.is_none() {
