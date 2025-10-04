@@ -87,8 +87,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|&symbol| !self.should_inline(symbol))
             .collect();
 
-        let capture_groups =
-            self.group_symbols(captures.into_iter().collect(), symbol != self.main);
+        let capture_groups = self.group_symbols(
+            captures.into_iter().collect(),
+            symbol != self.main,
+            !self.graph.is_closure(symbol),
+        );
 
         let param_group = self.create_group(
             function.parameters.clone(),
@@ -532,7 +535,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             stmts.remove(0);
         }
 
-        let binding_groups = self.group_symbols(symbols, false);
+        let binding_groups = self.group_symbols(symbols, false, true);
 
         let mut body_env = env.clone();
 
@@ -770,6 +773,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         &mut self,
         mut symbols: IndexSet<SymbolId>,
         by_reference: bool,
+        is_tree: bool,
     ) -> Vec<SymbolGroup> {
         let mut groups = Vec::new();
 
@@ -800,7 +804,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 continue;
             }
 
-            groups.push(self.create_group(group, true));
+            groups.push(self.create_group(group, is_tree));
         }
 
         groups
