@@ -1,0 +1,7 @@
+test fn guard_function(value: nil | fn() -> Int) -> Bool {
+    value is fn() -> Int
+}
+
+test fn guard_any(value: Any) -> Bool {
+    value is List<Int>
+}
