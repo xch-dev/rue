@@ -1,3 +1,5 @@
+use rowan::Checkpoint;
+
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
@@ -15,22 +17,27 @@ pub enum StatementKind {
 }
 
 pub fn stmt(p: &mut Parser) -> StatementKind {
-    if p.at(T![let]) || p.at(T![inline]) {
-        let_stmt(p);
-    } else if p.at(T![return]) {
+    let cp = p.checkpoint();
+
+    let inline = p.try_eat(T![inline]);
+
+    if p.at(T![let]) {
+        let_stmt(p, cp);
+    } else if p.at(T![return]) && !inline {
         return_stmt(p);
-    } else if p.at(T![assert]) {
+    } else if p.at(T![assert]) && !inline {
         assert_stmt(p);
-    } else if p.at(T![raise]) {
+    } else if p.at(T![raise]) && !inline {
         raise_stmt(p);
     } else {
-        let cp = p.checkpoint();
         if expr_with(
             p,
+            cp,
             ExprOptions {
                 minimum_binding_power: 0,
                 allow_statement: true,
                 allow_struct_initializer: true,
+                inline,
             },
         ) {
             return StatementKind::Normal;
@@ -46,8 +53,8 @@ pub fn stmt(p: &mut Parser) -> StatementKind {
     StatementKind::Normal
 }
 
-fn let_stmt(p: &mut Parser) {
-    p.start(SyntaxKind::LetStmt);
+fn let_stmt(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::LetStmt);
     p.try_eat(T![inline]);
     p.expect(T![let]);
     binding(p);

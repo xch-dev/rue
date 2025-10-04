@@ -1,0 +1,23 @@
+test fn lazy_if(value: Int) -> Bytes {
+    if value > 100 {
+        "Large"
+    } else {
+        "Small"
+    }
+}
+
+test fn eager_if_grouped(value: Int) -> Bytes {
+    (inline if value > 100 {
+        "Large"
+    } else {
+        "Small"
+    })
+}
+
+test fn eager_if_ungrouped(value: Int) -> Bytes {
+    inline if value > 100 {
+        "Large"
+    } else {
+        "Small"
+    }
+}
