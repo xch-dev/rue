@@ -1,0 +1,23 @@
+test fn atom_shape_only(value: Any) -> Bool {
+    value is Atom
+}
+
+test fn atom_value_single(value: Atom) -> Bool {
+    value is 42
+}
+
+test fn atom_value_union(value: Atom) -> Bool {
+    value is 42 | 34
+}
+
+test fn atom_shape_value(value: Any) -> Bool {
+    value is 42
+}
+
+test fn atom_length(value: Atom) -> Bool {
+    value is Bytes32
+}
+
+test fn narrow_atom(value: 42 | 34) -> Bool {
+    value is 42
+}

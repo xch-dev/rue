@@ -241,7 +241,15 @@ fn check_each(
             (Some(_), Some(Atoms::Unrestricted)) | (None, _) => {}
             (Some(Atoms::Unrestricted), Some(Atoms::Restricted(restrictions))) => {
                 exceeds_overlap = true;
-                overlap.clone_from(restrictions);
+
+                for restriction in restrictions {
+                    if let AtomRestriction::Value(value) = restriction
+                        && overlap.contains(&AtomRestriction::Length(value.len()))
+                    {
+                        continue;
+                    }
+                    overlap.insert(restriction.clone());
+                }
             }
             (
                 Some(Atoms::Restricted(restrictions)),
@@ -280,7 +288,7 @@ fn check_each(
         } else if overlap.len() == 1 {
             overlap.into_iter().next().map(Check::Atom).unwrap()
         } else {
-            Check::And(overlap.into_iter().map(Check::Atom).collect())
+            Check::Or(overlap.into_iter().map(Check::Atom).collect())
         }
     });
 

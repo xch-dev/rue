@@ -1,0 +1,43 @@
+tests:
+- name: atom_shape_only
+  program: (not (l 2))
+  debug_program: (not (l 2))
+  byte_cost: 108000
+  clvm_error: path into atom
+- name: atom_value_single
+  program: (= 2 (q . 42))
+  debug_program: (= 2 (q . 42))
+  byte_cost: 108000
+  clvm_error: path into atom
+- name: atom_value_union
+  program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 2 (i (= 2 (q . 34)) (q 1 . 1) (q)) 1)) 1)
+  debug_program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 2 (i (= 2 (q . 34)) (q 1 . 1) (q)) 1)) 1)
+  solution: (34)
+  output: '1'
+  runtime_cost: 814
+  byte_cost: 684000
+  total_cost: 684814
+- name: atom_shape_value
+  program: (a (i (l 2) (q) (q 2 (i (= 2 (q . 42)) (q 1 . 1) (q)) 1)) 1)
+  debug_program: (a (i (not (l 2)) (q 2 (i (= 2 (q . 42)) (q 1 . 1) (q)) 1) (q)) 1)
+  solution: (42)
+  output: '1'
+  runtime_cost: 694
+  byte_cost: 612000
+  total_cost: 612694
+- name: atom_length
+  program: (= (strlen 2) (q . 32))
+  debug_program: (= (strlen 2) (q . 32))
+  solution: (0)
+  output: ()
+  runtime_cost: 361
+  byte_cost: 156000
+  total_cost: 156361
+- name: narrow_atom
+  program: (= 2 (q . 42))
+  debug_program: (= 2 (q . 42))
+  solution: (42)
+  output: '1'
+  runtime_cost: 188
+  byte_cost: 108000
+  total_cost: 108188

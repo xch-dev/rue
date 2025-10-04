@@ -1,2 +1,4 @@
 diagnostics:
+- Cannot check if value is of function type at runtime at test:2:5
 - Recursion depth exceeded while checking type at test:6:5
+- Recursion depth exceeded while checking type at test:10:5
