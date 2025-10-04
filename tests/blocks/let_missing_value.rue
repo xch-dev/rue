@@ -1,0 +1,4 @@
+fn main() {
+    let missing;
+    let with_type: Int;
+}

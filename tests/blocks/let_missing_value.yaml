@@ -1,0 +1,5 @@
+diagnostics:
+- Let bindings must have a value, since they cannot be reassigned at test:2:5
+- Let bindings must have a value, since they cannot be reassigned at test:3:5
+- Unused binding `missing` at test:2:9
+- Unused binding `with_type` at test:3:9
