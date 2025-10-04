@@ -1,0 +1,15 @@
+test fn any_is_atom_truthy(value: Any) {
+    assert value is Atom;
+}
+
+test fn any_is_atom_exact(value: Any) {
+    assert value is Atom == true;
+}
+
+test fn list_is_nil_truthy(value: List<Int>) {
+    assert value is nil;
+}
+
+test fn list_is_atom_exact(value: List<Int>) {
+    assert value is nil == true;
+}

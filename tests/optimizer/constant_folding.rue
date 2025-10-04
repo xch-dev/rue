@@ -1,0 +1,68 @@
+test fn add_num() -> Int {
+    100 + 200 + 300
+}
+
+test fn add_ref(num: Int) -> Int {
+    100 + num + 300
+}
+
+test fn sub_num() -> Int {
+    100 - 200 - 300
+}
+
+test fn sub_ref(num: Int) -> Int {
+    100 - num - 300
+}
+
+test fn neg_num() -> Int {
+    -100
+}
+
+test fn neg_ref(num: Int) -> Int {
+    -num
+}
+
+test fn nest_sub_add_num() -> Int {
+    (100 + 200) - 100
+}
+
+test fn nest_sub_add_ref(num: Int) -> Int {
+    (num + 200) - num
+}
+
+test fn mul_num() -> Int {
+    10 * 20 * 30
+}
+
+test fn mul_ref(num: Int) -> Int {
+    10 * num * 30
+}
+
+test fn div_num() -> Int {
+    30 / 13
+}
+
+test fn mod_num() -> Int {
+    30 % 13
+}
+
+test fn divmod_num() -> Int {
+    inline let (quotient, remainder) = divmod(30, 13);
+    quotient + remainder
+}
+
+test fn concat_bytes() -> Bytes {
+    "hel" + "lo"
+}
+
+test fn concat_ref(lo: Bytes) -> Bytes {
+    "hel" + lo
+}
+
+test fn sha256_concat_bytes() -> Bytes32 {
+    sha256("hel" + "lo")
+}
+
+test fn sha256_concat_ref(lo: Bytes) -> Bytes32 {
+    sha256("hel" + lo)
+}

@@ -1,0 +1,34 @@
+solution: (() () () ())
+tests:
+- name: any_is_atom_truthy
+  program: (a (i (l 2) (q 8) (q)) 1)
+  debug_program: (a (i (not (l 2)) (q) (q 8 (q . "assertion failed at 2:5"))) 1)
+  solution: (())
+  output: ()
+  runtime_cost: 321
+  byte_cost: 300000
+  total_cost: 300321
+- name: any_is_atom_exact
+  program: (a (i (= (not (l 2)) (q . 1)) (q) (q 8)) 1)
+  debug_program: (a (i (= (not (l 2)) (q . 1)) (q) (q 8 (q . "assertion failed at 6:5"))) 1)
+  solution: (())
+  output: ()
+  runtime_cost: 662
+  byte_cost: 444000
+  total_cost: 444662
+- name: list_is_nil_truthy
+  program: (a (i 2 (q 8) (q)) 1)
+  debug_program: (a (i (not (l 2)) (q) (q 8 (q . "assertion failed at 10:5"))) 1)
+  solution: (())
+  output: ()
+  runtime_cost: 301
+  byte_cost: 252000
+  total_cost: 252301
+- name: list_is_atom_exact
+  program: (a (i (= (not 2) (q . 1)) (q) (q 8)) 1)
+  debug_program: (a (i (= (not (l 2)) (q . 1)) (q) (q 8 (q . "assertion failed at 14:5"))) 1)
+  solution: (())
+  output: ()
+  runtime_cost: 642
+  byte_cost: 396000
+  total_cost: 396642

@@ -1,0 +1,13 @@
+fn main() -> Int {
+    let a = 42;
+    let b = 69;
+    42
+}
+
+fn unused_in_main() -> Int {
+    100
+}
+
+test fn separate_entrypoint() -> Int {
+    unused_in_main() * unused_in_main()
+}

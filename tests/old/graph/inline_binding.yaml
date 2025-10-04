@@ -1,8 +1,0 @@
-program: '2'
-debug_program: (a (q . 2) (c 2 1))
-solution: (42)
-output: '42'
-runtime_cost: 48
-byte_cost: 12000
-total_cost: 12048
-tests_passed: true

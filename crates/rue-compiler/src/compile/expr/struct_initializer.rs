@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstNode, AstStructInitializerExpr};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, Hir, Value};
+use rue_hir::{Declaration, Hir, SymbolPath, Value};
 use rue_types::{Pair, Type, Union};
 
 use crate::{Compiler, PathKind, PathResult, compile_expr, compile_path};
@@ -75,8 +75,32 @@ pub fn compile_struct_initializer_expr(
                     .and_then(|name| expected_field_types.get(name.text()).copied()),
             )
         } else {
-            debug!("Unresolved struct initializer field expr");
-            ctx.builtins().unresolved.clone()
+            let Some(name) = field.name() else {
+                continue;
+            };
+
+            if let PathResult::Symbol(symbol, override_type) =
+                compile_path(ctx, field.syntax(), [name].into_iter(), PathKind::Symbol)
+            {
+                ctx.reference(Declaration::Symbol(symbol));
+
+                let ty = ctx.symbol_type(symbol);
+
+                let mut value = Value::new(ctx.alloc_hir(Hir::Reference(symbol)), ty)
+                    .with_reference(SymbolPath {
+                        symbol,
+                        path: vec![],
+                    });
+
+                if let Some(override_type) = override_type {
+                    value = value.with_type(override_type);
+                }
+
+                value
+            } else {
+                debug!("Unresolved field path in struct initializer");
+                ctx.builtins().unresolved.clone()
+            }
         };
 
         let Some(name) = field.name() else {

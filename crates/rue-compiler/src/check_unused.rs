@@ -3,48 +3,80 @@ use std::collections::HashSet;
 use indexmap::IndexSet;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    BindingSymbol, ConstantSymbol, Declaration, FunctionSymbol, ParameterSymbol, Symbol, SymbolId,
+    BindingSymbol, ConstantSymbol, Declaration, FunctionKind, FunctionSymbol, ParameterSymbol,
+    Symbol,
 };
 use rue_types::{Alias, Generic, Struct, Type};
 
 use crate::Compiler;
 
-pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
+pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
     let mut used_symbols = IndexSet::new();
     let mut unused_symbols = IndexSet::new();
 
-    for declaration in ctx.relevant_declarations() {
+    for declaration in ctx.relevant_declarations().collect::<Vec<_>>() {
         let Declaration::Symbol(symbol) = declaration else {
             continue;
         };
-
-        if entrypoints.contains(&symbol) {
-            used_symbols.insert(symbol);
-            continue;
-        }
 
         let mut visited = HashSet::new();
         let mut stack = vec![declaration];
 
         while let Some(current) = stack.pop() {
             if !visited.insert(current) {
+                if let Declaration::Symbol(current_symbol) = current
+                    && current_symbol == symbol
+                    && let Some(name) = ctx.symbol(symbol).clone().name()
+                {
+                    if entrypoints.contains(&current) {
+                        ctx.diagnostic(
+                            name,
+                            DiagnosticKind::RecursiveEntrypoint(name.text().to_string()),
+                        );
+                    } else if matches!(
+                        ctx.symbol(symbol),
+                        Symbol::Function(FunctionSymbol {
+                            kind: FunctionKind::Inline,
+                            ..
+                        })
+                    ) {
+                        ctx.diagnostic(
+                            name,
+                            DiagnosticKind::RecursiveInlineFunction(name.text().to_string()),
+                        );
+                    } else if matches!(ctx.symbol(symbol), Symbol::Constant(ConstantSymbol { .. }))
+                    {
+                        ctx.diagnostic(
+                            name,
+                            DiagnosticKind::RecursiveConstant(name.text().to_string()),
+                        );
+                    }
+                }
+
                 continue;
             }
 
             for parent in ctx.reference_parents(current) {
                 stack.push(parent);
 
-                if let Declaration::Symbol(parent_symbol) = parent
-                    && entrypoints.contains(&parent_symbol)
-                {
-                    used_symbols.insert(symbol);
-                    break;
+                match parent {
+                    Declaration::Symbol(parent_symbol) => {
+                        if entrypoints.contains(&Declaration::Symbol(parent_symbol)) {
+                            used_symbols.insert(symbol);
+                        }
+                    }
+                    Declaration::Type(parent_ty) => {
+                        if entrypoints.contains(&Declaration::Type(parent_ty)) {
+                            used_symbols.insert(symbol);
+                        }
+                    }
                 }
             }
+        }
 
-            if used_symbols.contains(&symbol) {
-                break;
-            }
+        if entrypoints.contains(&Declaration::Symbol(symbol)) {
+            used_symbols.insert(symbol);
+            continue;
         }
 
         if !used_symbols.contains(&symbol) {
@@ -60,6 +92,11 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             continue;
         };
 
+        if entrypoints.contains(&Declaration::Type(ty)) {
+            used_types.insert(ty);
+            continue;
+        }
+
         let mut visited = HashSet::new();
         let mut stack = vec![declaration];
 
@@ -71,11 +108,19 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<SymbolId>) {
             for parent in ctx.reference_parents(current) {
                 stack.push(parent);
 
-                if let Declaration::Symbol(symbol) = parent
-                    && used_symbols.contains(&symbol)
-                {
-                    used_types.insert(ty);
-                    break;
+                match parent {
+                    Declaration::Symbol(symbol) => {
+                        if used_symbols.contains(&symbol) {
+                            used_types.insert(ty);
+                            break;
+                        }
+                    }
+                    Declaration::Type(ty) => {
+                        if entrypoints.contains(&Declaration::Type(ty)) {
+                            used_types.insert(ty);
+                            break;
+                        }
+                    }
                 }
             }
 

@@ -21,7 +21,6 @@ rue-options = { workspace = true }
 rue-diagnostic = { workspace = true }
 clvmr = { workspace = true }
 clvm_tools_rs = { workspace = true }
-clvm-utils = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 walkdir = { workspace = true }

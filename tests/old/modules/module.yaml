@@ -1,8 +1,7 @@
 program: (q . 42)
-debug_program: (a (q . 2) (c (q . 42) 1))
+debug_program: (a (q . 2) (c (q . 42) ()))
 solution: ()
 output: '42'
 runtime_cost: 20
 byte_cost: 36000
 total_cost: 36020
-tests_passed: true

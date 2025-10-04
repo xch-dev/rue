@@ -29,11 +29,16 @@ pub fn opt_quote(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 // we can skip both quoting and running the program, and just use it directly
 // We can also skip quoting if the program has no path, since it's not going to rely on the environment
 pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
-    if let Lir::Quote(value) = arena[callee].clone()
-        && let Lir::Path(path) = arena[env].clone()
-        && path == 1
-    {
-        return value;
+    if let Lir::Quote(value) = arena[callee].clone() {
+        if let Lir::Path(1) = arena[env].clone() {
+            return value;
+        }
+
+        if let Lir::Atom(atom) = arena[env].clone()
+            && atom.is_empty()
+        {
+            return value;
+        }
     }
 
     arena.alloc(Lir::Run(callee, env))
@@ -41,12 +46,17 @@ pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
 
 // If there are no captures, we don't need to create a closure
 // We can also skip the closure if the program has no path, since it's not going to rely on the captures
-pub fn opt_closure(arena: &mut Arena<Lir>, callee: LirId, args: Vec<LirId>) -> LirId {
+pub fn opt_closure(
+    arena: &mut Arena<Lir>,
+    callee: LirId,
+    args: Vec<LirId>,
+    has_parameters: bool,
+) -> LirId {
     if args.is_empty() {
         return callee;
     }
 
-    arena.alloc(Lir::Closure(callee, args))
+    arena.alloc(Lir::Closure(callee, args, has_parameters))
 }
 
 // If the value is a path, we can optimize it to a first path
@@ -125,7 +135,7 @@ pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         return arena.alloc(Lir::Atom(vec![]));
     }
 
-    if result.len() == 1 {
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 
@@ -144,16 +154,19 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     while let Some(arg) = args.next() {
         match arena[arg].clone() {
             Lir::Atom(atom) => {
-                if first.is_none() {
+                if let Some(first_lir) = first {
+                    if let Lir::Atom(first_atom) = arena[first_lir].clone() {
+                        first = Some(arena.alloc(Lir::Atom(bigint_atom(
+                            atom_bigint(first_atom) - atom_bigint(atom),
+                        ))));
+                    } else {
+                        sum += atom_bigint(atom);
+                    }
+                } else {
                     first = Some(arg);
-                    continue;
                 }
-                sum += atom_bigint(atom);
             }
             Lir::Sub(items) => {
-                if first.is_none() {
-                    first = Some(arena.alloc(Lir::Atom(vec![])));
-                }
                 args.prepend(items);
             }
             Lir::Raise(_) => return arg,
@@ -179,7 +192,7 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         return arena.alloc(Lir::Atom(vec![]));
     }
 
-    if result.len() == 1 {
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 
@@ -216,7 +229,7 @@ pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         result.push(arena.alloc(Lir::Atom(bigint_atom(product))));
     }
 
-    if result.is_empty() {
+    if result.is_empty() && matches!(arena[result[0]], Lir::Atom(_)) {
         return arena.alloc(Lir::Atom(vec![1]));
     }
 
@@ -306,6 +319,15 @@ pub fn opt_modpow(arena: &mut Arena<Lir>, base: LirId, exponent: LirId, modulus:
 }
 
 pub fn opt_eq(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if let Lir::Mod(lhs, rhs) = arena[left].clone()
+        && let Lir::Atom(rhs) = arena[rhs].clone()
+        && atom_bigint(rhs) == BigInt::from(2)
+        && let Lir::Atom(eq) = arena[right].clone()
+        && atom_bigint(eq) == BigInt::from(1)
+    {
+        return arena.alloc(Lir::Logand(vec![lhs, right]));
+    }
+
     arena.alloc(Lir::Eq(left, right))
 }
 
@@ -344,11 +366,17 @@ pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 // TODO: Collapse nested alls
 pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut result = Vec::new();
+    let mut has_false = false;
 
     for arg in args {
         match opt_truthy(arena, arg) {
             Ok(true) => {}
-            Ok(false) => return arena.alloc(Lir::Atom(vec![])),
+            Ok(false) => {
+                if !has_false {
+                    has_false = true;
+                    result.push(arg);
+                }
+            }
             Err(arg) => {
                 if matches!(arena[arg], Lir::Raise(_)) {
                     return arg;
@@ -368,11 +396,17 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 // TODO: Collapse nested anys
 pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut result = Vec::new();
+    let mut has_true = false;
 
     for arg in args {
         match opt_truthy(arena, arg) {
             Ok(false) => {}
-            Ok(true) => return arena.alloc(Lir::Atom(vec![1])),
+            Ok(true) => {
+                if !has_true {
+                    has_true = true;
+                    result.push(arg);
+                }
+            }
             Err(arg) => {
                 if matches!(arena[arg], Lir::Raise(_)) {
                     return arg;
@@ -459,7 +493,7 @@ pub fn opt_concat(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         return arena.alloc(Lir::Atom(Vec::new()));
     }
 
-    if result.len() == 1 {
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 

@@ -1,9 +1,0 @@
-fn main() -> Int {
-    let num = 120;
-    let adder = create_adder(num);
-    adder(32)
-}
-
-fn create_adder(a: Int) -> fn(b: Int) -> Int {
-    fn(b) => a + b
-}

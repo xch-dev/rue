@@ -65,13 +65,13 @@ fn test(file: String) -> Result<()> {
 
     let len = result.tests.len();
 
-    for (i, &test) in result.tests.iter().enumerate() {
-        println!("Running test {}/{}", i + 1, len);
+    for (i, test) in result.tests.iter().enumerate() {
+        println!("Running test {} {}/{}", test.name, i + 1, len);
 
         match run_program(
             &mut allocator,
             &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
-            test,
+            test.program,
             NodePtr::NIL,
             100_000_000,
         ) {

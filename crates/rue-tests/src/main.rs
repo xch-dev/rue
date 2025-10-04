@@ -4,11 +4,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
-use clvm_utils::tree_hash;
 use clvmr::ENABLE_KECCAK_OPS_OUTSIDE_GUARD;
 use clvmr::MEMPOOL_MODE;
 use clvmr::NodePtr;
-use clvmr::SExp;
+use clvmr::error::EvalErr;
 use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
 use rue_compiler::compile_file;
 use rue_diagnostic::Source;
@@ -20,7 +19,23 @@ use walkdir::WalkDir;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+struct TestFile {
+    #[serde(flatten)]
+    main: TestCase,
+
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tests: Vec<TestCase>,
+
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 struct TestCase {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     program: Option<String>,
 
@@ -34,6 +49,9 @@ struct TestCase {
     output: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    debug_output: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     runtime_cost: Option<u64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -45,10 +63,8 @@ struct TestCase {
     #[serde(skip_serializing_if = "Option::is_none")]
     clvm_error: Option<String>,
 
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    diagnostics: Vec<String>,
-
-    tests_passed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug_clvm_error: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -71,7 +87,7 @@ fn main() -> Result<()> {
                 .join(format!("{name}.yaml"))
                 .try_exists()?
             {
-                handle_test_case(name, &entry)?;
+                handle_test_file(name, &entry)?;
             }
             continue;
         }
@@ -87,139 +103,165 @@ fn main() -> Result<()> {
             continue;
         }
 
-        handle_test_case(name, &entry)?;
+        handle_test_file(name, &entry)?;
     }
 
     Ok(())
 }
 
-fn handle_test_case(name: &str, entry: &DirEntry) -> Result<()> {
+fn handle_test_file(name: &str, entry: &DirEntry) -> Result<()> {
     let parent = entry.path().parent().unwrap();
     let yaml_file = parent.join(format!("{name}.yaml"));
     let rue_file = parent.join(format!("{name}.rue"));
 
     println!("Running {name}");
 
-    let mut test_case: TestCase = if yaml_file.try_exists()? {
+    let mut file: TestFile = if yaml_file.try_exists()? {
         serde_yml::from_str(&fs::read_to_string(&yaml_file)?)?
     } else {
-        TestCase::default()
+        TestFile::default()
     };
 
-    let original = test_case.clone();
+    let original = file.clone();
 
-    let source = fs::read_to_string(rue_file)?;
-
-    let source = Source::new(Arc::from(source), SourceKind::File("test".to_string()));
+    let source = Source::new(
+        Arc::from(fs::read_to_string(rue_file)?),
+        SourceKind::File("test".to_string()),
+    );
 
     let mut allocator = Allocator::new();
-    let result = compile_file(&mut allocator, source.clone(), CompilerOptions::default())?;
 
-    let mut diagnostics = Vec::new();
+    let result = compile_file(&mut allocator, source.clone(), CompilerOptions::default())?;
+    let debug_result = compile_file(&mut allocator, source.clone(), CompilerOptions::debug())?;
+
+    file.diagnostics = Vec::new();
 
     for diagnostic in result.diagnostics {
-        diagnostics.push(diagnostic.message());
+        file.diagnostics.push(diagnostic.message());
     }
 
-    if let Some(ptr) = result.program {
-        let env = assemble(
-            &mut allocator,
-            test_case.solution.as_ref().expect("missing solution"),
-        )
-        .expect("failed to assemble env");
+    handle_test_case(
+        &mut allocator,
+        &mut file.main,
+        result.program,
+        debug_result.program,
+    )?;
 
-        test_case.program = Some(disassemble(&allocator, ptr, None));
-
-        let debug_ptr = compile_file(&mut allocator, source, CompilerOptions::debug())?
-            .program
-            .unwrap();
-
-        test_case.debug_program = Some(disassemble(&allocator, debug_ptr, None));
-
-        let response = run_program(
-            &mut allocator,
-            &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
-            ptr,
-            env,
-            100_000_000,
-        );
-        let debug_response = run_program(
-            &mut allocator,
-            &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
-            debug_ptr,
-            env,
-            100_000_000,
-        );
-
-        let bytes = node_to_bytes(&allocator, ptr)?.len();
-        test_case.byte_cost = Some(bytes as u64 * 12_000);
-
-        match response {
-            Ok(output) => {
-                let output_hash = tree_hash(&allocator, output.1);
-                let debug_output_hash =
-                    tree_hash(&allocator, debug_response.expect("debug program failed").1);
-
-                if output_hash != debug_output_hash {
-                    println!(
-                        "Debug output mismatch: {}",
-                        disassemble(&allocator, debug_ptr, None)
-                    );
-                }
-
-                test_case.output = Some(disassemble(&allocator, output.1, None));
-                test_case.runtime_cost = Some(output.0);
-                test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
-                test_case.clvm_error = None;
-            }
-            Err(error) => {
-                debug_response.expect_err("debug program succeeded unexpectedly");
-
-                test_case.clvm_error = Some(error.to_string());
-                test_case.runtime_cost = None;
-                test_case.total_cost = None;
-                test_case.output = None;
-            }
-        }
-    } else {
-        test_case.program = None;
-        test_case.debug_program = None;
-        test_case.output = None;
-        test_case.clvm_error = None;
-        test_case.runtime_cost = None;
-        test_case.byte_cost = None;
-        test_case.total_cost = None;
+    if file.tests.len() > result.tests.len() {
+        file.tests.truncate(result.tests.len());
     }
 
-    test_case.tests_passed = true;
-
-    for test in result.tests {
-        let response = run_program(
-            &mut allocator,
-            &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
-            test,
-            NodePtr::NIL,
-            100_000_000,
-        );
-
-        if let Ok(output) = response
-            && let SExp::Atom = allocator.sexp(output.1)
-            && allocator.atom(output.1).is_empty()
-        {
-            continue;
-        }
-
-        test_case.tests_passed = false;
-        break;
+    for _ in file.tests.len()..result.tests.len() {
+        file.tests.push(TestCase::default());
     }
 
-    test_case.diagnostics = diagnostics;
+    assert_eq!(debug_result.tests.len(), result.tests.len());
 
-    if test_case != original {
+    for (i, test_case) in file.tests.iter_mut().enumerate() {
+        test_case.name = Some(result.tests[i].name.clone());
+
+        handle_test_case(
+            &mut allocator,
+            test_case,
+            Some(result.tests[i].program),
+            Some(debug_result.tests[i].program),
+        )?;
+    }
+
+    if file != original {
         println!("Failed, updated test case");
     }
 
-    fs::write(yaml_file, serde_yml::to_string(&test_case)?)?;
+    fs::write(yaml_file, serde_yml::to_string(&file)?)?;
+
+    Ok(())
+}
+
+fn handle_test_case(
+    allocator: &mut Allocator,
+    test_case: &mut TestCase,
+    program: Option<NodePtr>,
+    debug_program: Option<NodePtr>,
+) -> Result<()> {
+    let Some(ptr) = program else {
+        test_case.program = None;
+        test_case.debug_program = None;
+        test_case.output = None;
+        test_case.debug_output = None;
+        test_case.clvm_error = None;
+        test_case.debug_clvm_error = None;
+        test_case.runtime_cost = None;
+        test_case.byte_cost = None;
+        test_case.total_cost = None;
+
+        return Ok(());
+    };
+
+    let debug_ptr = debug_program.unwrap();
+
+    let env = assemble(allocator, test_case.solution.as_deref().unwrap_or("()"))?;
+
+    test_case.program = Some(disassemble(allocator, ptr, None));
+    test_case.debug_program = Some(disassemble(allocator, debug_ptr, None));
+
+    let response = run_program(
+        allocator,
+        &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
+        ptr,
+        env,
+        100_000_000,
+    );
+
+    let debug_response = run_program(
+        allocator,
+        &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
+        debug_ptr,
+        env,
+        100_000_000,
+    );
+
+    let bytes = node_to_bytes(allocator, ptr)?.len();
+    test_case.byte_cost = Some(bytes as u64 * 12_000);
+
+    match response {
+        Ok(output) => {
+            test_case.output = Some(disassemble(allocator, output.1, None));
+            test_case.runtime_cost = Some(output.0);
+            test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
+            test_case.clvm_error = None;
+        }
+        Err(error) => {
+            test_case.clvm_error = Some(match error {
+                EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble(allocator, ptr, None)),
+                _ => error.to_string(),
+            });
+            test_case.runtime_cost = None;
+            test_case.total_cost = None;
+            test_case.output = None;
+        }
+    }
+
+    match debug_response {
+        Ok(output) => {
+            test_case.debug_output = Some(disassemble(allocator, output.1, None));
+            test_case.debug_clvm_error = None;
+        }
+        Err(error) => {
+            test_case.debug_clvm_error = Some(match error {
+                EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble(allocator, ptr, None)),
+                _ => error.to_string(),
+            });
+            test_case.debug_output = None;
+        }
+    }
+
+    if test_case.debug_output == test_case.output {
+        test_case.debug_output = None;
+    }
+
+    if test_case.debug_clvm_error == test_case.clvm_error {
+        test_case.debug_clvm_error = None;
+    }
 
     Ok(())
 }

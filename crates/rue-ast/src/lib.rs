@@ -632,6 +632,12 @@ impl AstFieldAccessExpr {
 }
 
 impl AstLambdaExpr {
+    pub fn generic_parameters(&self) -> Option<AstGenericParameters> {
+        self.syntax()
+            .children()
+            .find_map(AstGenericParameters::cast)
+    }
+
     pub fn parameters(&self) -> impl Iterator<Item = AstFunctionParameter> {
         self.syntax()
             .children()
@@ -704,6 +710,12 @@ impl AstListTypeItem {
 }
 
 impl AstLambdaType {
+    pub fn generic_parameters(&self) -> Option<AstGenericParameters> {
+        self.syntax()
+            .children()
+            .find_map(AstGenericParameters::cast)
+    }
+
     pub fn parameters(&self) -> impl Iterator<Item = AstLambdaParameter> {
         self.syntax()
             .children()

@@ -5,4 +5,3 @@ output: '100'
 runtime_cost: 602
 byte_cost: 396000
 total_cost: 396602
-tests_passed: true

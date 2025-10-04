@@ -1,0 +1,15 @@
+fn main() {
+    // In debug builds, the function will be unoptimized, and have the following value:
+    // (a (q + 2 5) 1)
+    let debug = 0xc71082ef47283d2f0723105cbddea6e3fa73e772d12587ec2d2a29a6f8057bc3;
+
+    // In optimized builds, the function will be optimized, and have the following value:
+    // (+ 2 5)
+    let optimized = 0x19c7b1ed29e8f501f6985cd6addd3b6e5bd7ccc251f1a4018550837b3006239b;
+
+    // So the output of this will be different depending on the build type
+    let actual = tree_hash(fn(a: Int, b: Int) => a + b);
+    
+    // However, this test should pass in both debug and optimized builds
+    assert actual == debug || actual == optimized;
+}

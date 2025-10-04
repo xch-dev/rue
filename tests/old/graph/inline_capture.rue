@@ -1,5 +1,0 @@
-fn main() -> Int {
-    let a = 42;
-    let closure = fn(b: Int) => a + b;
-    closure(100)
-}

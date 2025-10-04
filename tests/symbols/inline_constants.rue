@@ -1,0 +1,14 @@
+const NUM: Int = 42;
+inline const NUM_INLINE: Int = 42;
+
+test fn implicit_inline_binding() -> Int {
+    NUM
+}
+
+test fn explicit_inline_binding() -> Int {
+    NUM_INLINE + NUM_INLINE
+}
+
+test fn env_binding() -> Int {
+    NUM + NUM
+}

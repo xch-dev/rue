@@ -1,5 +1,13 @@
 test fn casting() {
     assert unchecked_cast::<Int>("hello") == "hello" as Int;
+
+    let noop = unchecked_cast::<fn<T>(...value: T) -> T>(1);
+    assert noop(...42) == 42;
+
+    let first = unchecked_cast::<fn<A, B>(...value: (A, B)) -> A>(2);
+    let rest = unchecked_cast::<fn<A, B>(...value: (A, B)) -> B>(3);
+    assert first(...("hello", "world")) == "hello";
+    assert rest(...("hello", "world")) == "world";
 }
 
 test fn hash_functions() {

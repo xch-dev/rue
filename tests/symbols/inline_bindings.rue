@@ -1,0 +1,14 @@
+test fn implicit_inline_binding() -> Int {
+    let num = 42;
+    num
+}
+
+test fn explicit_inline_binding() -> Int {
+    inline let num = 42;
+    num + num
+}
+
+test fn env_binding() -> Int {
+    let num = 42;
+    num + num
+}

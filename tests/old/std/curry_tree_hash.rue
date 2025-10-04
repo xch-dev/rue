@@ -2,5 +2,5 @@ fn main() -> Bytes32 {
     let mod_hash = sha256(nil);
     let arg_1 = sha256(1 as Bytes);
     let arg_2 = sha256(2 as Bytes);
-    curry_tree_hash(mod_hash, ...[arg_1, arg_2])
+    curry_tree_hash(mod_hash, [arg_1, arg_2])
 }

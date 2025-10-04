@@ -1,0 +1,17 @@
+program: (q . 42)
+debug_program: (q . 42)
+output: '42'
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020
+tests:
+- name: separate_entrypoint
+  program: (a (q 18 (a 2 ()) (a 2 ())) (c (q 1 . 100) ()))
+  debug_program: (a (q 18 (a 2 ()) (a 2 ())) (c (q 1 . 100) ()))
+  output: '10000'
+  runtime_cost: 1642
+  byte_cost: 444000
+  total_cost: 445642
+diagnostics:
+- Unused binding `a` at test:2:9
+- Unused binding `b` at test:3:9

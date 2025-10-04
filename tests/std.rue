@@ -1,0 +1,77 @@
+test fn condition_type_guards() {
+    let puzzle_hash = sha256("puzzle_hash");
+    let coin_id = sha256("coin_id");
+    let id = sha256("id");
+
+    assert Remark {} as Condition is Remark;
+    assert Remark { rest: 42 } as Condition is Remark;
+    assert AggSigParent { message: nil, public_key: INFINITY_G1 } as Condition is AggSigParent;
+    assert AggSigPuzzle { message: nil, public_key: INFINITY_G1 } as Condition is AggSigPuzzle;
+    assert AggSigAmount { message: nil, public_key: INFINITY_G1 } as Condition is AggSigAmount;
+    assert AggSigPuzzleAmount { message: nil, public_key: INFINITY_G1 } as Condition is AggSigPuzzleAmount;
+    assert AggSigParentAmount { message: nil, public_key: INFINITY_G1 } as Condition is AggSigParentAmount;
+    assert AggSigParentPuzzle { message: nil, public_key: INFINITY_G1 } as Condition is AggSigParentPuzzle;
+    assert AggSigUnsafe { message: nil, public_key: INFINITY_G1 } as Condition is AggSigUnsafe;
+    assert AggSigMe { message: nil, public_key: INFINITY_G1 } as Condition is AggSigMe;
+    assert CreateCoin { puzzle_hash: puzzle_hash, amount: 42 } as Condition is CreateCoin;
+    assert ReserveFee { amount: 42 } as Condition is ReserveFee;
+    assert CreateCoinAnnouncement { message: nil } as Condition is CreateCoinAnnouncement;
+    assert AssertCoinAnnouncement { id: id } as Condition is AssertCoinAnnouncement;
+    assert CreatePuzzleAnnouncement { message: nil } as Condition is CreatePuzzleAnnouncement;
+    assert AssertPuzzleAnnouncement { id: id } as Condition is AssertPuzzleAnnouncement;
+    assert AssertConcurrentSpend { coin_id: coin_id } as Condition is AssertConcurrentSpend;
+    assert AssertConcurrentPuzzle { puzzle_hash: puzzle_hash } as Condition is AssertConcurrentPuzzle;
+    assert SendMessage { mode: 42, message: nil, receiver: [42] } as Condition is SendMessage;
+    assert ReceiveMessage { mode: 42, message: nil, sender: [42] } as Condition is ReceiveMessage;
+    assert AssertMyCoinId { coin_id: coin_id } as Condition is AssertMyCoinId;
+    assert AssertMyParentId { parent_id: id } as Condition is AssertMyParentId;
+    assert AssertMyPuzzleHash { puzzle_hash: puzzle_hash } as Condition is AssertMyPuzzleHash;
+    assert AssertMyAmount { amount: 42 } as Condition is AssertMyAmount;
+    assert AssertMyBirthSeconds { seconds: 42 } as Condition is AssertMyBirthSeconds;
+    assert AssertMyBirthHeight { height: 42 } as Condition is AssertMyBirthHeight;
+    assert AssertEphemeral { } as Condition is AssertEphemeral;
+    assert AssertSecondsRelative { seconds: 42 } as Condition is AssertSecondsRelative;
+    assert AssertSecondsAbsolute { seconds: 42 } as Condition is AssertSecondsAbsolute;
+    assert AssertHeightRelative { height: 42 } as Condition is AssertHeightRelative;
+    assert AssertHeightAbsolute { height: 42 } as Condition is AssertHeightAbsolute;
+    assert AssertBeforeSecondsRelative { seconds: 42 } as Condition is AssertBeforeSecondsRelative;
+    assert AssertBeforeSecondsAbsolute { seconds: 42 } as Condition is AssertBeforeSecondsAbsolute;
+    assert AssertBeforeHeightRelative { height: 42 } as Condition is AssertBeforeHeightRelative;
+    assert AssertBeforeHeightAbsolute { height: 42 } as Condition is AssertBeforeHeightAbsolute;
+    assert Softfork { cost: 42, args: []} as Condition is Softfork;
+}
+
+test fn hashing() {
+    assert tree_hash("hello") == 0xcceeb7a985ecc3dabcb4c8f666cd637f16f008e3c963db6aa6f83a7b288c54ef;
+    assert tree_hash("hello") == tree_hash_atom("hello");
+    assert tree_hash_atom("hello") == sha256(1 as Bytes + "hello");
+}
+
+test fn currying() {
+    let hash = curry_tree_hash(tree_hash("xyz"), [tree_hash("a"), tree_hash("b"), tree_hash("c")]);
+    assert hash == 0x932daac5826a521478ec3dc75c49f889278bc56bf6afa45cdfa3aadffe2e76ed;
+}
+
+test fn recursion() {
+    check_each([
+        nil,
+        "Hello, world!",
+        (100, 200),
+        [1, 2, 3],
+        fn(a: Int, b: Int) => a + b,
+        check_each,
+    ]);
+}
+
+fn check_each(list: List<Any>) {
+    if list is nil {
+        return;
+    }
+
+    let (value, rest) = list;
+
+    assert deep_equal(value, value);
+    assert tree_hash(value) == tree_hash(value);
+
+    check_each(rest);
+}

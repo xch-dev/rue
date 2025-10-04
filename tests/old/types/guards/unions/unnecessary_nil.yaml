@@ -2,7 +2,7 @@ program: (x)
 debug_program: (a (i (not (q . 1)) (q . 2) (q 8 (q . "assertion failed at 2:5"))) 1)
 solution: (42)
 byte_cost: 36000
-clvm_error: clvm raise
+clvm_error: clvm raise ()
+debug_clvm_error: clvm raise "assertion failed at 2:5"
 diagnostics:
 - Unnecessary type guard from `Int | nil` to `Int`, since they are already compatible types at test:2:14
-tests_passed: true

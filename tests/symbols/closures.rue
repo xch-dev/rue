@@ -1,0 +1,53 @@
+test fn no_captures() -> fn() -> Int {
+    fn() => 42
+}
+
+test fn one_capture() -> fn() -> Int {
+    let num = 42;
+    fn() => num + num
+}
+
+test fn one_inline_capture() -> fn() -> Int {
+    inline let num = 42;
+    fn() => num + num
+}
+
+test fn two_captures() -> fn() -> Int {
+    let a = 42;
+    let b = 34;
+    fn() => a * a + b * b
+}
+
+test fn two_inline_captures() -> fn() -> Int {
+    inline let a = 42;
+    inline let b = 34;
+    fn() => a * a + b * b
+}
+
+test fn adder_inline() -> Int {
+    let num = 10;
+    let adder = create_adder(num);
+    adder(20)
+}
+
+test fn adder_non_inline() -> Int {
+    let num = 10;
+    let adder_1 = create_adder(num * 2);
+    let adder_2 = create_adder(num * 3);
+    adder_1(20) + adder_2(30) + adder_1(40) + adder_2(50)
+}
+
+test fn nested_closures() -> Int {
+    let num = 10;
+    let result = fn() => fn() => num + (fn() => num + 1)();
+    result()() + result()()
+}
+
+test fn auto_extern() -> Int {
+    let closure = fn(a: Int, b: Int, c: Int) => a + b + c;
+    closure(1, 2, 3) + closure(4, 5, 6)
+}
+
+fn create_adder(a: Int) -> fn(b: Int) -> Int {
+    fn(b: Int) => a + b
+}

@@ -4,7 +4,7 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, Symbol, Value};
 use rue_types::{FunctionType, Type, TypeId, Union};
 
-use crate::{Compiler, compile_expr, compile_type, create_binding};
+use crate::{Compiler, compile_expr, compile_generic_parameters, compile_type, create_binding};
 
 pub fn compile_lambda_expr(
     ctx: &mut Compiler,
@@ -18,6 +18,12 @@ pub fn compile_lambda_expr(
     };
 
     let scope = ctx.alloc_scope(Scope::new());
+
+    let vars = if let Some(generic_parameters) = expr.generic_parameters() {
+        compile_generic_parameters(ctx, scope, &generic_parameters)
+    } else {
+        vec![]
+    };
 
     ctx.push_scope(scope);
 
@@ -100,7 +106,7 @@ pub fn compile_lambda_expr(
         name: None,
         ty,
         scope,
-        vars: vec![],
+        vars,
         parameters,
         nil_terminated,
         return_type,

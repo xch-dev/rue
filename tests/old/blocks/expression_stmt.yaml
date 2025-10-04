@@ -1,10 +1,9 @@
-program: (r (c (q . 13) (q . 42)))
-debug_program: (r (c (q . 13) (q . 42)))
+program: (i () (q . 13) (q . 42))
+debug_program: (i () (q . 13) (q . 42))
 solution: ()
 output: '42'
-runtime_cost: 122
-byte_cost: 180000
-total_cost: 180122
+runtime_cost: 118
+byte_cost: 156000
+total_cost: 156118
 diagnostics:
 - Value returned by statement is unused at test:2:5
-tests_passed: true

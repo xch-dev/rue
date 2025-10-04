@@ -1,0 +1,22 @@
+tests:
+- name: implicit_inline_binding
+  program: (q . 42)
+  debug_program: (a (q . 2) (c (q . 42) ()))
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: explicit_inline_binding
+  program: (q . 84)
+  debug_program: (+ (q . 42) (q . 42))
+  output: '84'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: env_binding
+  program: (a (q 16 2 2) (c (q . 42) ()))
+  debug_program: (a (q 16 2 2) (c (q . 42) ()))
+  output: '84'
+  runtime_cost: 1078
+  byte_cost: 276000
+  total_cost: 277078

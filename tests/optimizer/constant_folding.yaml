@@ -1,0 +1,127 @@
+tests:
+- name: add_num
+  program: (q . 600)
+  debug_program: (+ (+ (q . 100) (q . 200)) (q . 300))
+  output: '600'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: add_ref
+  program: (+ 2 (q . 400))
+  debug_program: (+ (+ (q . 100) 2) (q . 300))
+  solution: (200)
+  output: '600'
+  runtime_cost: 840
+  byte_cost: 132000
+  total_cost: 132840
+- name: sub_num
+  program: (q . -400)
+  debug_program: (- (- (q . 100) (q . 200)) (q . 300))
+  output: '-400'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: sub_ref
+  program: (- (q . -200) 2)
+  debug_program: (- (- (q . 100) 2) (q . 300))
+  solution: (200)
+  output: '-400'
+  runtime_cost: 840
+  byte_cost: 132000
+  total_cost: 132840
+- name: neg_num
+  program: (q . -100)
+  debug_program: (- () (q . 100))
+  output: '-100'
+  runtime_cost: 20
+  byte_cost: 48000
+  total_cost: 48020
+- name: neg_ref
+  program: (- () 2)
+  debug_program: (- () 2)
+  solution: (100)
+  output: '-100'
+  runtime_cost: 845
+  byte_cost: 84000
+  total_cost: 84845
+- name: nest_sub_add_num
+  program: (q . 200)
+  debug_program: (- (+ (q . 100) (q . 200)) (q . 100))
+  output: '200'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: nest_sub_add_ref
+  program: (- (+ 2 (q . 200)) 2)
+  debug_program: (- (+ 2 (q . 200)) 2)
+  solution: (100)
+  output: '200'
+  runtime_cost: 1654
+  byte_cost: 204000
+  total_cost: 205654
+- name: mul_num
+  program: (q . 6000)
+  debug_program: (* (* (q . 10) (q . 20)) (q . 30))
+  output: '6000'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: mul_ref
+  program: (* 2 (q . 300))
+  debug_program: (* (* (q . 10) 2) (q . 30))
+  solution: (20)
+  output: '6000'
+  runtime_cost: 1084
+  byte_cost: 132000
+  total_cost: 133084
+- name: div_num
+  program: (q . 2)
+  debug_program: (/ (q . 30) (q . 13))
+  output: '2'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: mod_num
+  program: (q . 4)
+  debug_program: (% (q . 30) (q . 13))
+  output: '4'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: divmod_num
+  program: (+ (f (c (q . 2) (q . 4))) (r (c (q . 2) (q . 4))))
+  debug_program: (+ (f (divmod (q . 30) (q . 13))) (r (divmod (q . 30) (q . 13))))
+  output: '6'
+  runtime_cost: 1000
+  byte_cost: 420000
+  total_cost: 421000
+- name: concat_bytes
+  program: (q . "hello")
+  debug_program: (concat (q . "hel") (q . 27759))
+  output: '"hello"'
+  runtime_cost: 20
+  byte_cost: 96000
+  total_cost: 96020
+- name: concat_ref
+  program: (concat (q . "hel") 2)
+  debug_program: (concat (q . "hel") 2)
+  solution: ("lo")
+  output: '"hello"'
+  runtime_cost: 546
+  byte_cost: 144000
+  total_cost: 144546
+- name: sha256_concat_bytes
+  program: (sha256 (q . "hello"))
+  debug_program: (sha256 (concat (q . "hel") (q . 27759)))
+  output: '0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'
+  runtime_cost: 572
+  byte_cost: 144000
+  total_cost: 144572
+- name: sha256_concat_ref
+  program: (sha256 (q . "hel") 2)
+  debug_program: (sha256 (concat (q . "hel") 2))
+  solution: ("lo")
+  output: '0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'
+  runtime_cost: 754
+  byte_cost: 144000
+  total_cost: 144754

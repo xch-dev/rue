@@ -1,5 +1,5 @@
 program: (f (c (q . 42) ()))
-debug_program: (a (q 5 (c 2 ())) (c (q . 42) 1))
+debug_program: (a (q 5 (c 2 ())) (c (q . 42) ()))
 solution: ()
 output: '42'
 runtime_cost: 146
@@ -8,4 +8,3 @@ total_cost: 156146
 diagnostics:
 - Unused constant `A_REF` at test:1:7
 - Unused struct `A` at test:3:8
-tests_passed: true
