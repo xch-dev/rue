@@ -378,6 +378,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "clvm-utils"
+version = "0.28.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce13549ac22902a1db76fe63e1a6417072f5242a8298fe5dcecc88f5cd13c997"
+dependencies = [
+ "chia-sha2 0.28.2",
+ "clvm-traits",
+ "clvmr",
+ "hex",
+ "hex-literal",
+]
+
+[[package]]
 name = "clvm_tools_rs"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -436,6 +449,15 @@ name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
+
+[[package]]
+name = "colored"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
+dependencies = [
+ "windows-sys 0.59.0",
+]
 
 [[package]]
 name = "console_error_panic_hook"
@@ -1701,8 +1723,11 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
+ "clvm-utils",
  "clvm_tools_rs",
  "clvmr",
+ "colored",
+ "hex",
  "rue-compiler",
  "rue-diagnostic",
  "rue-options",
