@@ -75,12 +75,16 @@ fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let filter_arg = args.get(1).cloned();
 
-    run_tests(filter_arg.as_deref(), ".", true)?;
+    let failed = run_tests(filter_arg.as_deref(), ".", true)?;
+
+    if failed {
+        process::exit(1);
+    }
 
     Ok(())
 }
 
-fn run_tests(filter_arg: Option<&str>, base_path: &str, update: bool) -> Result<()> {
+fn run_tests(filter_arg: Option<&str>, base_path: &str, update: bool) -> Result<bool> {
     let mut failed = false;
 
     for entry in WalkDir::new(Path::new(base_path).join("tests"))
@@ -116,9 +120,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &str, update: bool) -> Result<
         handle_test_file(name, &entry, &mut failed, update)?;
     }
 
-    assert!(!failed);
-
-    Ok(())
+    Ok(failed)
 }
 
 fn handle_test_file(name: &str, entry: &DirEntry, failed: &mut bool, update: bool) -> Result<()> {
@@ -291,7 +293,9 @@ mod tests {
 
     #[test]
     fn tests() -> Result<()> {
-        run_tests(None, "../..", false)?;
+        let failed = run_tests(None, "../..", false)?;
+
+        assert!(!failed);
 
         Ok(())
     }
