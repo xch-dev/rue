@@ -23,6 +23,9 @@ rue-compiler = { workspace = true }
 rue-options = { workspace = true }
 rue-diagnostic = { workspace = true }
 clvmr = { workspace = true }
+clvm-utils = { workspace = true }
 clvm_tools_rs = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
+hex = { workspace = true }
+colored = { workspace = true }

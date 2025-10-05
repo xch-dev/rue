@@ -2,6 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
+use indexmap::IndexMap;
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
 use rue_hir::{
@@ -21,7 +22,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Compilation {
     pub diagnostics: Vec<Diagnostic>,
-    pub program: Option<NodePtr>,
+    pub main: Option<NodePtr>,
+    pub exports: IndexMap<String, NodePtr>,
     pub tests: Vec<Test>,
 }
 
@@ -78,7 +80,8 @@ fn compile_file_impl(
 
     let mut compilation = Compilation {
         diagnostics: [std.diagnostics, file.diagnostics].concat(),
-        program: None,
+        main: None,
+        exports: IndexMap::new(),
         tests: Vec::new(),
     };
 
@@ -114,7 +117,19 @@ fn compile_file_impl(
     }
 
     if let Some(symbol) = main_symbol {
-        compilation.program = Some(generate(&mut ctx, allocator, symbol, options)?);
+        compilation.main = Some(generate(&mut ctx, allocator, symbol, options)?);
+    }
+
+    for (name, symbol) in ctx
+        .scope(file.scope)
+        .exported_symbols()
+        .map(|(name, symbol)| (name.to_string(), symbol))
+        .collect::<Vec<_>>()
+    {
+        compilation.exports.insert(
+            name.to_string(),
+            generate(&mut ctx, allocator, symbol, options)?,
+        );
     }
 
     for test in ctx.tests().collect::<Vec<_>>() {

@@ -143,8 +143,8 @@ fn handle_test_file(name: &str, entry: &DirEntry) -> Result<()> {
     handle_test_case(
         &mut allocator,
         &mut file.main,
-        result.program,
-        debug_result.program,
+        result.main,
+        debug_result.main,
     )?;
 
     if file.tests.len() > result.tests.len() {
