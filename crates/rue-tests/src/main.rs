@@ -1,5 +1,7 @@
 use std::env;
 use std::fs;
+use std::path::Path;
+use std::process;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -73,9 +75,17 @@ fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let filter_arg = args.get(1).cloned();
 
-    for entry in WalkDir::new("tests")
+    run_tests(filter_arg.as_deref(), ".", true)?;
+
+    Ok(())
+}
+
+fn run_tests(filter_arg: Option<&str>, base_path: &str, update: bool) -> Result<()> {
+    let mut failed = false;
+
+    for entry in WalkDir::new(Path::new(base_path).join("tests"))
         .into_iter()
-        .chain(WalkDir::new("examples").into_iter())
+        .chain(WalkDir::new(Path::new(base_path).join("examples")).into_iter())
     {
         let entry = entry?;
 
@@ -87,7 +97,7 @@ fn main() -> Result<()> {
                 .join(format!("{name}.yaml"))
                 .try_exists()?
             {
-                handle_test_file(name, &entry)?;
+                handle_test_file(name, &entry, &mut failed, update)?;
             }
             continue;
         }
@@ -103,13 +113,15 @@ fn main() -> Result<()> {
             continue;
         }
 
-        handle_test_file(name, &entry)?;
+        handle_test_file(name, &entry, &mut failed, update)?;
     }
+
+    assert!(!failed);
 
     Ok(())
 }
 
-fn handle_test_file(name: &str, entry: &DirEntry) -> Result<()> {
+fn handle_test_file(name: &str, entry: &DirEntry, failed: &mut bool, update: bool) -> Result<()> {
     let parent = entry.path().parent().unwrap();
     let yaml_file = parent.join(format!("{name}.yaml"));
     let rue_file = parent.join(format!("{name}.rue"));
@@ -169,10 +181,17 @@ fn handle_test_file(name: &str, entry: &DirEntry) -> Result<()> {
     }
 
     if file != original {
-        println!("Failed, updated test case");
+        if update {
+            eprintln!("Test failed, updated yaml file");
+        } else {
+            eprintln!("Test failed, moving on");
+        }
+        *failed = true;
     }
 
-    fs::write(yaml_file, serde_yml::to_string(&file)?)?;
+    if update {
+        fs::write(yaml_file, serde_yml::to_string(&file)?)?;
+    }
 
     Ok(())
 }
@@ -264,4 +283,16 @@ fn handle_test_case(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tests() -> Result<()> {
+        run_tests(None, "../..", false)?;
+
+        Ok(())
+    }
 }
