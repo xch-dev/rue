@@ -86,7 +86,11 @@ pub(crate) fn compare_impl(
         (Type::Never, _) => Comparison::Assign,
         (_, Type::Any) => Comparison::Assign,
         (Type::Atom(lhs), Type::Atom(rhs)) => {
-            let semantic = if lhs.semantic == rhs.semantic || rhs.semantic == AtomSemantic::Any {
+            let semantic = if lhs.semantic == rhs.semantic
+                || rhs.semantic == AtomSemantic::Any
+                || (lhs.semantic == AtomSemantic::String && rhs.semantic == AtomSemantic::Bytes)
+                || (lhs.semantic == AtomSemantic::Bytes && rhs.semantic == AtomSemantic::String)
+            {
                 Comparison::Assign
             } else {
                 Comparison::Cast
@@ -249,7 +253,7 @@ pub(crate) fn compare_impl(
             lhs_semantic,
             rhs_semantic,
         ),
-        (Type::Function(_) | Type::Generic(_) | Type::Any, _) => compare_impl(
+        (Type::Generic(_) | Type::Any, _) => compare_impl(
             arena,
             builtins,
             ctx,
@@ -258,6 +262,35 @@ pub(crate) fn compare_impl(
             lhs_semantic,
             rhs_semantic,
         ),
+        (Type::Function(_), _) => {
+            let result = if let Type::Union(rhs) = arena[rhs].clone() {
+                let mut result = Comparison::Invalid;
+
+                for &id in &rhs.types {
+                    result = min(
+                        result,
+                        compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
+                    );
+                }
+
+                result
+            } else {
+                Comparison::Invalid
+            };
+
+            min(
+                result,
+                compare_impl(
+                    arena,
+                    builtins,
+                    ctx,
+                    builtins.recursive_any,
+                    rhs,
+                    lhs_semantic,
+                    rhs_semantic,
+                ),
+            )
+        }
         (Type::Union(lhs), _) => {
             let mut result = Comparison::Assign;
 

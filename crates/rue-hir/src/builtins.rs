@@ -36,6 +36,7 @@ impl Builtins {
         scope.insert_type("Atom".to_string(), types.atom, false);
         scope.insert_type("Bytes".to_string(), types.bytes, false);
         scope.insert_type("Bytes32".to_string(), types.bytes32, false);
+        scope.insert_type("String".to_string(), types.string, false);
         scope.insert_type("PublicKey".to_string(), types.public_key, false);
         scope.insert_type("Signature".to_string(), types.signature, false);
         scope.insert_type("K1PublicKey".to_string(), types.k1_public_key, false);

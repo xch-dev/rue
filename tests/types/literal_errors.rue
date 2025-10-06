@@ -1,0 +1,19 @@
+test fn wrong_int() -> 42 {
+    34
+}
+
+test fn wrong_bytes() -> 0xCAFE_F00D {
+    0xCAFE
+}
+
+test fn wrong_string() -> "Hello, world!" {
+    "Hello!"
+}
+
+test fn wrong_bool() -> true {
+    false
+}
+
+test fn wrong_nil() -> true {
+    nil
+}

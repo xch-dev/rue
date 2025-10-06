@@ -28,7 +28,7 @@ pub fn compile_literal_type(ctx: &mut Compiler, literal: &AstLiteralType) -> Typ
             }
 
             ctx.alloc_type(Type::Atom(Atom::new(
-                AtomSemantic::Bytes,
+                AtomSemantic::String,
                 Some(AtomRestriction::Value(Cow::Owned(text.as_bytes().to_vec()))),
             )))
         }

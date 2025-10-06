@@ -1,8 +1,8 @@
-fn main(num: Int) -> List<Bytes> {
+fn main(num: Int) -> List<String> {
     fizz_buzz(1, num)
 }
 
-fn fizz_buzz(num: Int, limit: Int) -> List<Bytes> {
+fn fizz_buzz(num: Int, limit: Int) -> List<String> {
     let rest = if num == limit {
         nil
     } else {
@@ -11,7 +11,7 @@ fn fizz_buzz(num: Int, limit: Int) -> List<Bytes> {
     (fizz_buzz_value(num), rest)
 }
 
-fn fizz_buzz_value(num: Int) -> Bytes {
+fn fizz_buzz_value(num: Int) -> String {
     if num % 3 == 0 && num % 5 == 0 {
         "FizzBuzz"
     } else if num % 3 == 0 {
@@ -23,7 +23,7 @@ fn fizz_buzz_value(num: Int) -> Bytes {
     }
 }
 
-fn integer_to_string(num: Int) -> Bytes {
+fn integer_to_string(num: Int) -> String {
     if num < 0 {
         "-" + integer_to_string(-num)
     } else if num < 10 {
@@ -33,8 +33,8 @@ fn integer_to_string(num: Int) -> Bytes {
     }
 }
 
-fn single_digit_to_string(digit: Int) -> Bytes {
-    ("0" as Int + digit) as Bytes
+fn single_digit_to_string(digit: Int) -> String {
+    ("0" as Int + digit) as String
 }
 
 test fn tests() {

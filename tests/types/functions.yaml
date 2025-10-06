@@ -1,0 +1,25 @@
+tests:
+- name: direct_assignment
+  program: (q 18 2 2)
+  debug_program: (c (q . 2) (c (c (q . 1) (q 18 2 2)) (c (q . 1) ())))
+  output: (* 2 2)
+  debug_output: (a (q 18 2 2) 1)
+  runtime_cost: 20
+  byte_cost: 108000
+  total_cost: 108020
+- name: assign_to_union
+  program: (q 18 2 2)
+  debug_program: (c (q . 2) (c (c (q . 1) (q 18 2 2)) (c (q . 1) ())))
+  output: (* 2 2)
+  debug_output: (a (q 18 2 2) 1)
+  runtime_cost: 20
+  byte_cost: 108000
+  total_cost: 108020
+- name: assign_union_to_union
+  program: (q 18 2 2)
+  debug_program: (a (q . 2) (c (c (q . 2) (c (c (q . 1) (q 18 2 2)) (c (q . 1) ()))) 1))
+  output: (* 2 2)
+  debug_output: (a (q 18 2 2) 1)
+  runtime_cost: 20
+  byte_cost: 108000
+  total_cost: 108020

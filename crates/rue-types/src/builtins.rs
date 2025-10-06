@@ -8,6 +8,7 @@ pub struct BuiltinTypes {
     pub atom: TypeId,
     pub bytes: TypeId,
     pub bytes32: TypeId,
+    pub string: TypeId,
     pub public_key: TypeId,
     pub signature: TypeId,
     pub k1_public_key: TypeId,
@@ -36,6 +37,7 @@ impl BuiltinTypes {
         let atom = arena.alloc(Type::Atom(Atom::ANY));
         let bytes = arena.alloc(Type::Atom(Atom::BYTES));
         let bytes32 = arena.alloc(Type::Atom(Atom::BYTES_32));
+        let string = arena.alloc(Type::Atom(Atom::STRING));
         let public_key = arena.alloc(Type::Atom(Atom::PUBLIC_KEY));
         let signature = arena.alloc(Type::Atom(Atom::SIGNATURE));
         let k1_public_key = arena.alloc(Type::Atom(Atom::K1_PUBLIC_KEY));
@@ -89,6 +91,7 @@ impl BuiltinTypes {
             atom,
             bytes,
             bytes32,
+            string,
             public_key,
             signature,
             k1_public_key,
