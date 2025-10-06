@@ -22,6 +22,12 @@ pub enum SyntaxKind {
     #[display("hex literal")]
     Hex,
 
+    #[display("binary literal")]
+    Binary,
+
+    #[display("octal literal")]
+    Octal,
+
     #[display("integer literal")]
     Integer,
 
@@ -422,6 +428,8 @@ impl SyntaxKind {
     pub const LITERAL: &[Self] = &[
         SyntaxKind::String,
         SyntaxKind::Hex,
+        SyntaxKind::Binary,
+        SyntaxKind::Octal,
         SyntaxKind::Integer,
         T![nil],
         T![true],
@@ -463,6 +471,8 @@ impl SyntaxKind {
             SyntaxKind::BlockComment => &[Self::BlockComment],
             SyntaxKind::String => &[Self::String],
             SyntaxKind::Hex => &[Self::Hex],
+            SyntaxKind::Binary => &[Self::Binary],
+            SyntaxKind::Octal => &[Self::Octal],
             SyntaxKind::Integer => &[Self::Integer],
             SyntaxKind::Ident => &[Self::Ident],
             T![nil] => &[T![nil]],

@@ -19,6 +19,12 @@ pub enum DiagnosticKind {
     #[error("Unterminated hex literal")]
     UnterminatedHex,
 
+    #[error("Unterminated binary literal")]
+    UnterminatedBinary,
+
+    #[error("Unterminated octal literal")]
+    UnterminatedOctal,
+
     #[error("Duplicate symbol `{0}` found in scope")]
     DuplicateSymbol(String),
 
@@ -213,6 +219,8 @@ impl DiagnosticKind {
             | Self::UnterminatedBlockComment
             | Self::UnterminatedString
             | Self::UnterminatedHex
+            | Self::UnterminatedBinary
+            | Self::UnterminatedOctal
             | Self::DuplicateSymbol(..)
             | Self::DuplicateType(..)
             | Self::UndeclaredSymbol(..)

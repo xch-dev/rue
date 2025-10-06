@@ -1744,6 +1744,7 @@ dependencies = [
  "indexmap",
  "log",
  "num-bigint",
+ "num-traits",
  "rowan",
  "rue-ast",
  "rue-diagnostic",

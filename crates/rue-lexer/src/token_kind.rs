@@ -6,6 +6,8 @@ pub enum TokenKind {
 
     // Literals
     String { is_terminated: bool },
+    Binary { is_terminated: bool },
+    Octal { is_terminated: bool },
     Hex { is_terminated: bool },
     Integer,
     Ident,

@@ -2,6 +2,7 @@ use std::{borrow::Cow, str::FromStr};
 
 use log::debug;
 use num_bigint::BigInt;
+use num_traits::Num;
 use rue_ast::AstLiteralType;
 use rue_lir::bigint_atom;
 use rue_parser::{SyntaxKind, T};
@@ -56,6 +57,44 @@ pub fn compile_literal_type(ctx: &mut Compiler, literal: &AstLiteralType) -> Typ
                     Some(AtomRestriction::Value(Cow::Owned(bytes))),
                 )
             }))
+        }
+        SyntaxKind::Binary => {
+            let mut text = value.text();
+
+            if let Some(stripped) = text.strip_prefix("0b") {
+                text = stripped;
+            }
+
+            let text = text.replace('_', "");
+            let bigint = if text.is_empty() {
+                BigInt::ZERO
+            } else {
+                BigInt::from_str_radix(&text, 2).expect("invalid binary literal")
+            };
+
+            ctx.alloc_type(Type::Atom(Atom::new(
+                AtomSemantic::Int,
+                Some(AtomRestriction::Value(Cow::Owned(bigint_atom(bigint)))),
+            )))
+        }
+        SyntaxKind::Octal => {
+            let mut text = value.text();
+
+            if let Some(stripped) = text.strip_prefix("0o") {
+                text = stripped;
+            }
+
+            let text = text.replace('_', "");
+            let bigint = if text.is_empty() {
+                BigInt::ZERO
+            } else {
+                BigInt::from_str_radix(&text, 8).expect("invalid octal literal")
+            };
+
+            ctx.alloc_type(Type::Atom(Atom::new(
+                AtomSemantic::Int,
+                Some(AtomRestriction::Value(Cow::Owned(bigint_atom(bigint)))),
+            )))
         }
         SyntaxKind::Integer => {
             let text = value.text().replace('_', "");

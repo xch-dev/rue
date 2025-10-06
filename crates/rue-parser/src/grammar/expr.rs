@@ -328,6 +328,26 @@ mod tests {
 
         check(
             expr,
+            "0b1011",
+            expect![[r#"
+                LiteralExpr@0..6
+                  Binary@0..6 "0b1011"
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
+            "0o123",
+            expect![[r#"
+                LiteralExpr@0..5
+                  Octal@0..5 "0o123"
+            "#]],
+            expect![],
+        );
+
+        check(
+            expr,
             "\"hello\"",
             expect![[r#"
                 LiteralExpr@0..7

@@ -1,18 +1,32 @@
 tests:
 - name: number
-  program: (q . 0x401640)
-  debug_program: (* (q . 0x00a410) (q . 100))
-  output: '0x401640'
+  program: (q . 0x00a410)
+  debug_program: (q . 0x00a410)
+  output: '0x00a410'
   runtime_cost: 20
   byte_cost: 72000
   total_cost: 72020
 - name: hex
-  program: (q . 0xcafef00dcafef00d000f)
-  debug_program: (concat (concat (q . 0xcafef00d) (q . 0xcafef00d)) (q . 0x000f))
-  output: '0xcafef00dcafef00d000f'
+  program: (q . 0xcafef00d)
+  debug_program: (q . 0xcafef00d)
+  output: '0xcafef00d'
   runtime_cost: 20
-  byte_cost: 156000
-  total_cost: 156020
+  byte_cost: 84000
+  total_cost: 84020
+- name: binary
+  program: (q . 42)
+  debug_program: (q . 42)
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: octal
+  program: (q . 83)
+  debug_program: (q . 83)
+  output: '83'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: hex_bytes32
   program: (q . 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855)
   debug_program: (q . 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855)

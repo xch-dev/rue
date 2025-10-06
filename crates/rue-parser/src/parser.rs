@@ -66,6 +66,24 @@ impl Parser {
                     }
                     SyntaxKind::Hex
                 }
+                TokenKind::Binary { is_terminated } => {
+                    if !is_terminated {
+                        diagnostics.push(Diagnostic::new(
+                            SrcLoc::new(source.clone(), token.span.clone()),
+                            DiagnosticKind::UnterminatedBinary,
+                        ));
+                    }
+                    SyntaxKind::Binary
+                }
+                TokenKind::Octal { is_terminated } => {
+                    if !is_terminated {
+                        diagnostics.push(Diagnostic::new(
+                            SrcLoc::new(source.clone(), token.span.clone()),
+                            DiagnosticKind::UnterminatedOctal,
+                        ));
+                    }
+                    SyntaxKind::Octal
+                }
                 TokenKind::Integer => SyntaxKind::Integer,
                 TokenKind::Ident => SyntaxKind::Ident,
                 TokenKind::Nil => T![nil],
