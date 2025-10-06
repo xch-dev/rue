@@ -36,7 +36,12 @@ pub fn compile_struct_initializer_expr(
     let mut expected_field_types = HashMap::new();
     let mut current = struct_type.inner;
 
-    for field in &struct_type.fields {
+    for (i, field) in struct_type.fields.iter().enumerate() {
+        if i == struct_type.fields.len() - 1 && !struct_type.nil_terminated {
+            expected_field_types.insert(field.clone(), current);
+            continue;
+        }
+
         let pairs = rue_types::extract_pairs(ctx.types_mut(), current, false);
 
         if pairs.is_empty() {
@@ -107,19 +112,23 @@ pub fn compile_struct_initializer_expr(
             continue;
         };
 
-        if fields.insert(name.text().to_string(), value).is_some() {
-            ctx.diagnostic(
-                &name,
-                DiagnosticKind::DuplicateField(name.text().to_string()),
-            );
-            continue;
-        }
-
-        if !struct_type.fields.contains(name.text()) {
+        if struct_type.fields.contains(name.text()) {
+            if let Some(expected_type) = expected_field_types.get(name.text()) {
+                ctx.assign_type(field.syntax(), value.ty, *expected_type);
+            }
+        } else {
             let type_name = ctx.type_name(ty);
             ctx.diagnostic(
                 &name,
                 DiagnosticKind::UnknownField(name.text().to_string(), type_name),
+            );
+            continue;
+        }
+
+        if fields.insert(name.text().to_string(), value).is_some() {
+            ctx.diagnostic(
+                &name,
+                DiagnosticKind::DuplicateField(name.text().to_string()),
             );
         }
     }
@@ -156,8 +165,6 @@ pub fn compile_struct_initializer_expr(
             DiagnosticKind::MissingRequiredFields(type_name, missing_fields.join(", ")),
         );
     }
-
-    ctx.assign_type(expr.syntax(), list_type, struct_type.inner);
 
     Value::new(hir, ty)
 }
