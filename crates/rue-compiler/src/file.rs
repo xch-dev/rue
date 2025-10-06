@@ -33,12 +33,6 @@ pub struct Test {
     pub program: NodePtr,
 }
 
-#[derive(Debug, Clone)]
-struct PartialCompilation {
-    diagnostics: Vec<Diagnostic>,
-    scope: ScopeId,
-}
-
 pub fn compile_file(
     allocator: &mut Allocator,
     file: Source,
@@ -58,28 +52,34 @@ fn compile_file_impl(
     do_codegen: bool,
 ) -> Result<Compilation, Error> {
     let mut ctx = Compiler::new(options);
-    let std = compile_file_partial(
-        &mut ctx,
-        Source::new(Arc::from(include_str!("./std.rue")), SourceKind::Std),
-    );
 
-    let mut scope = Scope::new();
+    let std = File::std(&mut ctx).unwrap();
+    let file = File::parse(&mut ctx, file).unwrap();
 
-    for (name, symbol) in ctx.scope(std.scope).exported_symbols() {
-        scope.insert_symbol(name.to_string(), symbol, false);
+    compile_file_tree(&mut ctx, FileTree::File(std.clone()))?;
+
+    for (name, symbol) in ctx
+        .scope(std.scope)
+        .exported_symbols()
+        .map(|(name, symbol)| (name.to_string(), symbol))
+        .collect::<Vec<_>>()
+    {
+        ctx.scope_mut(file.scope).insert_symbol(name, symbol, false);
     }
 
-    for (name, ty) in ctx.scope(std.scope).exported_types() {
-        scope.insert_type(name.to_string(), ty, false);
+    for (name, ty) in ctx
+        .scope(std.scope)
+        .exported_types()
+        .map(|(name, ty)| (name.to_string(), ty))
+        .collect::<Vec<_>>()
+    {
+        ctx.scope_mut(file.scope).insert_type(name, ty, false);
     }
 
-    let scope = ctx.alloc_scope(scope);
-
-    ctx.push_scope(scope);
-    let file = compile_file_partial(&mut ctx, file);
+    compile_file_tree(&mut ctx, FileTree::File(file.clone()))?;
 
     let mut compilation = Compilation {
-        diagnostics: [std.diagnostics, file.diagnostics].concat(),
+        diagnostics: ctx.take_diagnostics(),
         main: None,
         exports: IndexMap::new(),
         tests: Vec::new(),
@@ -163,32 +163,136 @@ fn generate(
     codegen(&arena, allocator, lir)
 }
 
-fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilation {
-    let tokens = Lexer::new(&source.text).collect::<Vec<_>>();
-    let parser = Parser::new(source.clone(), tokens);
-    let parse_result = parser.parse();
+#[derive(Debug, Clone)]
+pub struct File {
+    source: Source,
+    document: AstDocument,
+    scope: ScopeId,
+    declarations: ModuleDeclarations,
+}
 
-    ctx.set_source(source);
+impl File {
+    pub fn parse(ctx: &mut Compiler, source: Source) -> Option<Self> {
+        let tokens = Lexer::new(&source.text).collect::<Vec<_>>();
+        let parser = Parser::new(source.clone(), tokens);
+        let parse = parser.parse();
 
-    let scope = ctx.alloc_scope(Scope::new());
+        for diagnostic in parse.diagnostics {
+            ctx.insert_diagnostic(diagnostic);
+        }
 
-    let mut compilation = PartialCompilation {
-        diagnostics: parse_result.diagnostics,
-        scope,
-    };
+        Some(Self {
+            source,
+            document: AstDocument::cast(parse.node)?,
+            scope: ctx.alloc_scope(Scope::new()),
+            declarations: ModuleDeclarations::default(),
+        })
+    }
 
-    let Some(ast) = AstDocument::cast(parse_result.node) else {
-        return compilation;
-    };
+    pub fn std(ctx: &mut Compiler) -> Option<Self> {
+        Self::parse(
+            ctx,
+            Source::new(Arc::from(include_str!("./std.rue")), SourceKind::Std),
+        )
+    }
+}
 
-    let mut declarations = ModuleDeclarations::default();
+#[derive(Debug, Clone)]
+pub struct Directory {
+    scope: ScopeId,
+    children: Vec<FileTree>,
+}
 
-    declare_type_items(ctx, scope, ast.items(), &mut declarations);
-    declare_symbol_items(ctx, scope, ast.items(), &mut declarations);
-    compile_type_items(ctx, scope, ast.items(), &declarations);
-    compile_symbol_items(ctx, scope, ast.items(), &declarations);
+#[derive(Debug, Clone)]
+pub enum FileTree {
+    File(File),
+    Directory(Directory),
+}
 
-    compilation.diagnostics.extend(ctx.take_diagnostics());
+pub fn compile_file_tree(ctx: &mut Compiler, mut tree: FileTree) -> Result<(), Error> {
+    declare_types_tree(ctx, &mut tree)?;
+    declare_symbols_tree(ctx, &mut tree)?;
+    compile_types_tree(ctx, &tree)?;
+    compile_symbols_tree(ctx, &tree)?;
+    Ok(())
+}
 
-    compilation
+fn declare_types_tree(ctx: &mut Compiler, tree: &mut FileTree) -> Result<(), Error> {
+    match tree {
+        FileTree::File(file) => {
+            ctx.set_source(file.source.clone());
+            ctx.push_scope(file.scope);
+            declare_type_items(ctx, file.document.items(), &mut file.declarations);
+            ctx.pop_scope();
+        }
+        FileTree::Directory(directory) => {
+            ctx.push_scope(directory.scope);
+            for child in &mut directory.children {
+                declare_types_tree(ctx, child)?;
+            }
+            ctx.pop_scope();
+        }
+    }
+
+    Ok(())
+}
+
+fn declare_symbols_tree(ctx: &mut Compiler, tree: &mut FileTree) -> Result<(), Error> {
+    match tree {
+        FileTree::File(file) => {
+            ctx.set_source(file.source.clone());
+            ctx.push_scope(file.scope);
+            declare_symbol_items(ctx, file.document.items(), &mut file.declarations);
+            ctx.pop_scope();
+        }
+        FileTree::Directory(directory) => {
+            ctx.push_scope(directory.scope);
+            for child in &mut directory.children {
+                declare_symbols_tree(ctx, child)?;
+            }
+            ctx.pop_scope();
+        }
+    }
+
+    Ok(())
+}
+
+fn compile_types_tree(ctx: &mut Compiler, tree: &FileTree) -> Result<(), Error> {
+    match tree {
+        FileTree::File(file) => {
+            ctx.set_source(file.source.clone());
+            ctx.push_scope(file.scope);
+            compile_type_items(ctx, file.document.items(), &file.declarations);
+            ctx.pop_scope();
+        }
+        FileTree::Directory(directory) => {
+            ctx.push_scope(directory.scope);
+            for child in &directory.children {
+                compile_types_tree(ctx, child)?;
+            }
+            ctx.pop_scope();
+        }
+    }
+
+    Ok(())
+}
+
+fn compile_symbols_tree(ctx: &mut Compiler, tree: &FileTree) -> Result<(), Error> {
+    match tree {
+        FileTree::File(file) => {
+            ctx.set_source(file.source.clone());
+            ctx.push_scope(file.scope);
+            compile_symbol_items(ctx, file.document.items(), &file.declarations);
+            ctx.pop_scope();
+        }
+        FileTree::Directory(directory) => {
+            ctx.push_scope(directory.scope);
+            for child in &directory.children {
+                compile_symbols_tree(ctx, child)?;
+            }
+            ctx.pop_scope();
+        }
+    }
+
+    Ok(())
 }

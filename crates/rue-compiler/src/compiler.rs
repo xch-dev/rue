@@ -78,6 +78,10 @@ impl Compiler {
         &self.builtins
     }
 
+    pub fn insert_diagnostic(&mut self, diagnostic: Diagnostic) {
+        self.diagnostics.push(diagnostic);
+    }
+
     pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
         let range = node.text_range();
         let span: Range<usize> = range.start().into()..range.end().into();
