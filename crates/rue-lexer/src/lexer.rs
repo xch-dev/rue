@@ -142,6 +142,34 @@ impl<'a> Lexer<'a> {
         TokenKind::Hex { is_terminated }
     }
 
+    fn eat_binary(&mut self) -> TokenKind {
+        // Skip the initial `b`
+        self.bump();
+
+        let mut is_terminated = false;
+
+        while matches!(self.peek(), '0' | '1' | '_') {
+            self.bump();
+            is_terminated = true;
+        }
+
+        TokenKind::Binary { is_terminated }
+    }
+
+    fn eat_octal(&mut self) -> TokenKind {
+        // Skip the initial `o`
+        self.bump();
+
+        let mut is_terminated = false;
+
+        while matches!(self.peek(), '0'..='7' | '_') {
+            self.bump();
+            is_terminated = true;
+        }
+
+        TokenKind::Octal { is_terminated }
+    }
+
     fn eat_integer(&mut self) -> TokenKind {
         while matches!(self.peek(), '0'..='9' | '_') {
             self.bump();
@@ -170,6 +198,8 @@ impl Iterator for Lexer<'_> {
             'a'..='z' | 'A'..='Z' | '_' => self.eat_ident(start),
             '"' => self.eat_string(),
             '0' if self.peek() == 'x' => self.eat_hex(),
+            '0' if self.peek() == 'b' => self.eat_binary(),
+            '0' if self.peek() == 'o' => self.eat_octal(),
             '0'..='9' => self.eat_integer(),
             '(' => TokenKind::OpenParen,
             ')' => TokenKind::CloseParen,
@@ -340,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bytes() {
+    fn test_hex() {
         check(
             "0x",
             expect![[r#"
@@ -375,6 +405,72 @@ mod tests {
             "0xabc_def___",
             expect![[r#"
                 Hex { is_terminated: true }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_binary() {
+        check(
+            "0b",
+            expect![[r#"
+                Binary { is_terminated: false }
+            "#]],
+        );
+
+        check(
+            "0b 42",
+            expect![[r#"
+                Binary { is_terminated: false }
+                Whitespace
+                Integer
+            "#]],
+        );
+
+        check(
+            "0b01011",
+            expect![[r#"
+                Binary { is_terminated: true }
+            "#]],
+        );
+
+        check(
+            "0b01011_01100_",
+            expect![[r#"
+                Binary { is_terminated: true }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_octal() {
+        check(
+            "0o",
+            expect![[r#"
+                Octal { is_terminated: false }
+            "#]],
+        );
+
+        check(
+            "0o 42",
+            expect![[r#"
+                Octal { is_terminated: false }
+                Whitespace
+                Integer
+            "#]],
+        );
+
+        check(
+            "0o0471",
+            expect![[r#"
+                Octal { is_terminated: true }
+            "#]],
+        );
+
+        check(
+            "0o0471_0541_",
+            expect![[r#"
+                Octal { is_terminated: true }
             "#]],
         );
     }
