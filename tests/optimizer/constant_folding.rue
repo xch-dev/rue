@@ -51,11 +51,11 @@ test fn divmod_num() -> Int {
     quotient + remainder
 }
 
-test fn concat_bytes() -> Bytes {
+test fn concat_bytes() -> String {
     "hel" + "lo"
 }
 
-test fn concat_ref(lo: Bytes) -> Bytes {
+test fn concat_ref(lo: String) -> String {
     "hel" + lo
 }
 
@@ -63,6 +63,6 @@ test fn sha256_concat_bytes() -> Bytes32 {
     sha256("hel" + "lo")
 }
 
-test fn sha256_concat_ref(lo: Bytes) -> Bytes32 {
+test fn sha256_concat_ref(lo: String) -> Bytes32 {
     sha256("hel" + lo)
 }

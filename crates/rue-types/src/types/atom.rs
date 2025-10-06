@@ -11,6 +11,9 @@ pub enum AtomSemantic {
     #[display("Bytes")]
     Bytes,
 
+    #[display("String")]
+    String,
+
     #[display("Int")]
     Int,
 
@@ -64,6 +67,7 @@ impl Atom {
     );
     pub const BYTES: Self = Self::new(AtomSemantic::Bytes, None);
     pub const BYTES_32: Self = Self::new(AtomSemantic::Bytes, Some(AtomRestriction::Length(32)));
+    pub const STRING: Self = Self::new(AtomSemantic::String, None);
     pub const PUBLIC_KEY: Self =
         Self::new(AtomSemantic::PublicKey, Some(AtomRestriction::Length(48)));
     pub const SIGNATURE: Self =
@@ -88,55 +92,60 @@ impl Atom {
 
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = format!("{}", self.semantic);
-
-        let qualifier = match &self.restriction {
-            None => None,
-            Some(AtomRestriction::Length(length)) => {
-                if (self.semantic == AtomSemantic::PublicKey && *length == 48)
-                    || (self.semantic == AtomSemantic::Signature && *length == 96)
-                {
-                    None
-                } else {
-                    Some(format!("{length}"))
-                }
-            }
-            Some(AtomRestriction::Value(value)) => match self.semantic {
-                AtomSemantic::Any
-                | AtomSemantic::Bytes
-                | AtomSemantic::PublicKey
-                | AtomSemantic::Signature
-                | AtomSemantic::K1PublicKey
-                | AtomSemantic::K1Signature
-                | AtomSemantic::R1PublicKey
-                | AtomSemantic::R1Signature => {
-                    if value.is_empty() {
-                        return write!(f, "nil");
+        match self.semantic {
+            AtomSemantic::Any => write!(f, "Atom"),
+            AtomSemantic::Bytes => match &self.restriction {
+                None => write!(f, "Bytes"),
+                Some(AtomRestriction::Length(length)) => {
+                    if *length == 32 {
+                        write!(f, "Bytes32")
+                    } else {
+                        write!(f, "Bytes")
                     }
-
-                    return write!(f, "0x{}", hex::encode(value));
                 }
-                AtomSemantic::Int => {
-                    let mut allocator = Allocator::new();
-                    let ptr = allocator.new_atom(value).unwrap();
-                    return write!(f, "{}", allocator.number(ptr));
-                }
-                AtomSemantic::Bool => {
+                Some(AtomRestriction::Value(value)) => {
                     if value.is_empty() {
-                        return write!(f, "false");
-                    } else if value.as_ref() == [1] {
-                        return write!(f, "true");
+                        write!(f, "nil")
+                    } else {
+                        write!(f, "0x{}", hex::encode(value))
                     }
-
-                    return write!(f, "0x{}", hex::encode(value));
                 }
             },
-        };
-
-        if let Some(qualifier) = qualifier {
-            write!(f, "{name}{qualifier}")
-        } else {
-            write!(f, "{name}")
+            AtomSemantic::String => match &self.restriction {
+                None | Some(AtomRestriction::Length(_)) => {
+                    write!(f, "String")
+                }
+                Some(AtomRestriction::Value(value)) => {
+                    write!(f, "\"{}\"", String::from_utf8_lossy(value))
+                }
+            },
+            AtomSemantic::Int => match &self.restriction {
+                None | Some(AtomRestriction::Length(_)) => write!(f, "Int"),
+                Some(AtomRestriction::Value(value)) => {
+                    let mut allocator = Allocator::new();
+                    let ptr = allocator.new_atom(value).unwrap();
+                    let bigint = allocator.number(ptr);
+                    write!(f, "{bigint}")
+                }
+            },
+            AtomSemantic::PublicKey => write!(f, "PublicKey"),
+            AtomSemantic::Signature => write!(f, "Signature"),
+            AtomSemantic::K1PublicKey => write!(f, "K1PublicKey"),
+            AtomSemantic::K1Signature => write!(f, "K1Signature"),
+            AtomSemantic::R1PublicKey => write!(f, "R1PublicKey"),
+            AtomSemantic::R1Signature => write!(f, "R1Signature"),
+            AtomSemantic::Bool => match &self.restriction {
+                None | Some(AtomRestriction::Length(_)) => write!(f, "Bool"),
+                Some(AtomRestriction::Value(value)) => {
+                    if value.is_empty() {
+                        write!(f, "false")
+                    } else if value.as_ref() == [1] {
+                        write!(f, "true")
+                    } else {
+                        write!(f, "Bool")
+                    }
+                }
+            },
         }
     }
 }

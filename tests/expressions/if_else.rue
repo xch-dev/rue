@@ -1,4 +1,4 @@
-test fn lazy_if(value: Int) -> Bytes {
+test fn lazy_if(value: Int) -> String {
     if value > 100 {
         "Large"
     } else {
@@ -6,7 +6,7 @@ test fn lazy_if(value: Int) -> Bytes {
     }
 }
 
-test fn eager_if_grouped(value: Int) -> Bytes {
+test fn eager_if_grouped(value: Int) -> String {
     (inline if value > 100 {
         "Large"
     } else {
@@ -14,7 +14,7 @@ test fn eager_if_grouped(value: Int) -> Bytes {
     })
 }
 
-test fn eager_if_ungrouped(value: Int) -> Bytes {
+test fn eager_if_ungrouped(value: Int) -> String {
     inline if value > 100 {
         "Large"
     } else {

@@ -1,12 +1,12 @@
-const HELLO: Bytes = "Hello";
-const WORLD: Bytes = "world";
-const GREETING: Bytes = greet(WORLD);
-const MESSAGE: Bytes = GREETING + " How are you doing?";
+const HELLO: String = "Hello";
+const WORLD: String = "world";
+const GREETING: String = greet(WORLD);
+const MESSAGE: String = GREETING + " How are you doing?";
 
-fn main() -> Bytes {
+fn main() -> String {
     MESSAGE
 }
 
-fn greet(noun: Bytes) -> Bytes {
+fn greet(noun: String) -> String {
     HELLO + ", " + noun + "!"
 }

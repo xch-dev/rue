@@ -30,7 +30,7 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
 
             let hir = ctx.alloc_hir(Hir::String(text.to_string()));
             let ty = ctx.alloc_type(Type::Atom(Atom::new(
-                AtomSemantic::Bytes,
+                AtomSemantic::String,
                 Some(AtomRestriction::Value(Cow::Owned(text.as_bytes().to_vec()))),
             )));
             Value::new(hir, ty)

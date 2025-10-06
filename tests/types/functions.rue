@@ -1,0 +1,12 @@
+test fn direct_assignment() -> fn(num: Int) -> Int {
+    fn(num: Int) => num * num
+}
+
+test fn assign_to_union() -> nil | fn(num: Int) -> Int {
+    fn(num: Int) => num * num
+}
+
+test fn assign_union_to_union() -> nil | fn(num: Int) -> Int {
+    let union: nil | fn(num: Int) -> Int = fn(num: Int) => num * num;
+    union
+}
