@@ -4,7 +4,7 @@ use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Symbol, SymbolId};
+use rue_hir::{Declaration, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, Type, TypeId};
 
@@ -160,6 +160,8 @@ where
         match initial {
             PathResult::Unresolved => return PathResult::Unresolved,
             PathResult::Symbol(symbol, mut override_type) => {
+                ctx.reference(Declaration::Symbol(symbol));
+
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
                     compile_generic_arguments(ctx, &generic_arguments)
                 } else {
@@ -200,6 +202,8 @@ where
                 value = Some(PathResult::Symbol(symbol, override_type));
             }
             PathResult::Type(mut ty) => {
+                ctx.reference(Declaration::Type(ty));
+
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
                     compile_generic_arguments(ctx, &generic_arguments)
                 } else {

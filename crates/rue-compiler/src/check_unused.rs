@@ -109,14 +109,14 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                 stack.push(parent);
 
                 match parent {
-                    Declaration::Symbol(symbol) => {
-                        if used_symbols.contains(&symbol) {
+                    Declaration::Symbol(parent_symbol) => {
+                        if used_symbols.contains(&parent_symbol) {
                             used_types.insert(ty);
                             break;
                         }
                     }
-                    Declaration::Type(ty) => {
-                        if entrypoints.contains(&Declaration::Type(ty)) {
+                    Declaration::Type(parent_ty) => {
+                        if entrypoints.contains(&Declaration::Type(parent_ty)) {
                             used_types.insert(ty);
                             break;
                         }
