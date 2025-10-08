@@ -19,6 +19,13 @@ tests:
   runtime_cost: 281
   byte_cost: 276000
   total_cost: 276281
+- name: recursive
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 diagnostics:
 - Unused constant `UNUSED_VALUE` at test:10:7
 - Unused type alias `Recursive` at test:1:6

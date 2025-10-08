@@ -35,6 +35,8 @@ struct Outer {
     value = OUTER,
 }
 
+type RecursiveWithBaseCase<T> = nil | (T, RecursiveWithBaseCase<T>);
+
 fn main() -> (A, Used) {
     (34, 42)
 }
@@ -45,4 +47,8 @@ test fn alias() -> Int {
 
 test fn nested() -> Outer {
     Outer {}
+}
+
+test fn recursive() -> RecursiveWithBaseCase<Int> {
+    nil
 }
