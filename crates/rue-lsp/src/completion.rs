@@ -16,6 +16,8 @@ pub enum CompletionContext {
     ExpressionValue,
     /// After a dot (module access or field access)
     AfterDot,
+    /// Inside a struct initialization literal
+    StructInitialization,
     /// Unknown/default context
     Unknown,
 }
@@ -86,6 +88,14 @@ impl<'a> CompletionProvider<'a> {
         match context {
             CompletionContext::TypePosition => self.get_type_completions(),
             CompletionContext::TopLevel => self.get_toplevel_completions(),
+            CompletionContext::StructInitialization => {
+                // Try to provide struct field completions
+                if let Some(completions) = self.get_struct_init_completions(position, text) {
+                    return completions;
+                }
+                // Fallback to value completions if struct type lookup failed
+                self.get_value_completions()
+            }
             CompletionContext::ExpressionValue | CompletionContext::Unknown => {
                 // If we have scope information, use scope-aware completions
                 if let Some(scope_map) = scope_map {
@@ -274,6 +284,11 @@ impl<'a> CompletionProvider<'a> {
             .collect::<Vec<_>>()
             .join("\n");
 
+        // Check if we're inside a struct initialization (pattern: TypeName {)
+        if self.is_in_struct_init(&all_text_before_cursor) {
+            return CompletionContext::StructInitialization;
+        }
+
         // Count opening and closing braces to determine if we're inside a block
         let open_braces = all_text_before_cursor.matches('{').count();
         let close_braces = all_text_before_cursor.matches('}').count();
@@ -318,7 +333,209 @@ impl<'a> CompletionProvider<'a> {
             }
         }
 
+        // Check for partial type being typed after ":" or "->"
+        // Pattern: "name: PartialType" or "-> PartialType"
+        // Look backwards to find the last ":" or "->" and check if there's only identifier chars after it
+        if let Some(colon_pos) = text_before_cursor.rfind(": ") {
+            let after_colon = &text_before_cursor[colon_pos + 2..];
+            // Check if everything after ": " is a potential type identifier (or empty)
+            if after_colon.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return true;
+            }
+        }
+
+        if let Some(arrow_pos) = text_before_cursor.rfind("-> ") {
+            let after_arrow = &text_before_cursor[arrow_pos + 3..];
+            // Check if everything after "-> " is a potential type identifier (or empty)
+            if after_arrow.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return true;
+            }
+        }
+
         false
+    }
+
+    /// Check if we're inside a struct initialization literal (pattern: TypeName {)
+    fn is_in_struct_init(&self, text_before_cursor: &str) -> bool {
+        // Count braces to see if we're inside an unclosed brace
+        let open_braces = text_before_cursor.matches('{').count();
+        let close_braces = text_before_cursor.matches('}').count();
+
+        if open_braces <= close_braces {
+            return false; // Not inside any braces
+        }
+
+        // Find the position of the last unclosed opening brace
+        let mut brace_depth = 0;
+        let mut last_open_brace_pos = None;
+
+        for (i, ch) in text_before_cursor.char_indices().rev() {
+            if ch == '}' {
+                brace_depth += 1;
+            } else if ch == '{' {
+                if brace_depth == 0 {
+                    last_open_brace_pos = Some(i);
+                    break;
+                } else {
+                    brace_depth -= 1;
+                }
+            }
+        }
+
+        if let Some(brace_pos) = last_open_brace_pos {
+            // Look backwards from the brace to find an identifier (the struct name)
+            let before_brace = &text_before_cursor[..brace_pos];
+
+            // Extract identifier before the brace
+            let trimmed = before_brace.trim_end();
+
+            // Extract the last identifier (potential type name)
+            let last_identifier = if let Some(last_word_start) =
+                trimmed.rfind(|c: char| !c.is_alphanumeric() && c != '_')
+            {
+                &trimmed[last_word_start + 1..]
+            } else {
+                trimmed
+            };
+
+            // Check if it looks like a type name (starts with uppercase)
+            if last_identifier.is_empty() || !last_identifier.chars().next().unwrap().is_uppercase()
+            {
+                return false;
+            }
+
+            // Now check if this is a function body by looking for "->" pattern before the type name
+            // We want to detect: "fn foo() -> TypeName {" and exclude it
+            // But allow: "= TypeName {" or "TypeName {" or ": TypeName {"
+
+            // Find where the type name starts in trimmed
+            let type_start = if let Some(pos) = trimmed.rfind(last_identifier) {
+                pos
+            } else {
+                return false;
+            };
+
+            let before_type = &trimmed[..type_start].trim_end();
+
+            // If there's a "->" immediately before the type name, it's a function return type
+            if before_type.ends_with("->") {
+                return false;
+            }
+
+            // It's a struct initialization
+            return true;
+        }
+
+        false
+    }
+
+    /// Get struct field completions when initializing a struct
+    fn get_struct_init_completions(
+        &self,
+        position: Position,
+        text: &str,
+    ) -> Option<Vec<CompletionItem>> {
+        let lines: Vec<&str> = text.lines().collect();
+        let line_idx = position.line as usize;
+        let char_idx = position.character as usize;
+
+        if line_idx >= lines.len() {
+            return None;
+        }
+
+        // Get all text before cursor
+        let all_text_before_cursor: String = lines[..=line_idx]
+            .iter()
+            .enumerate()
+            .map(|(i, line)| {
+                if i == line_idx {
+                    &line[..char_idx]
+                } else {
+                    *line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Find the last unclosed opening brace
+        let mut brace_depth = 0;
+        let mut last_open_brace_pos = None;
+
+        for (i, ch) in all_text_before_cursor.char_indices().rev() {
+            if ch == '}' {
+                brace_depth += 1;
+            } else if ch == '{' {
+                if brace_depth == 0 {
+                    last_open_brace_pos = Some(i);
+                    break;
+                } else {
+                    brace_depth -= 1;
+                }
+            }
+        }
+
+        let brace_pos = last_open_brace_pos?;
+        let before_brace = &all_text_before_cursor[..brace_pos];
+        let trimmed = before_brace.trim_end();
+
+        // Extract the type name before the brace
+        let type_name = if let Some(last_word_start) =
+            trimmed.rfind(|c: char| !c.is_alphanumeric() && c != '_')
+        {
+            &trimmed[last_word_start + 1..]
+        } else {
+            trimmed
+        };
+
+        if type_name.is_empty() {
+            return None;
+        }
+
+        // Look up the type in available scopes
+        let type_id = self.lookup_type_by_name(type_name)?;
+
+        // Get field completions for the struct type
+        let completions = self.get_field_completions_for_type(type_id);
+
+        if completions.is_empty() {
+            None
+        } else {
+            Some(completions)
+        }
+    }
+
+    /// Look up a type by name in available scopes
+    fn lookup_type_by_name(&self, type_name: &str) -> Option<TypeId> {
+        // Check file scope first
+        let file_scope = self.compiler.scope(self.file_scope);
+        for (name, type_id) in file_scope.types() {
+            if name == type_name {
+                return Some(type_id);
+            }
+        }
+
+        // Check std scope
+        let std_scope = self.compiler.scope(self.std_scope);
+        for (name, type_id) in std_scope.types() {
+            if name == type_name {
+                return Some(type_id);
+            }
+        }
+
+        // Check built-in types
+        let builtins = self.compiler.builtins();
+        match type_name {
+            "Atom" => Some(builtins.types.atom),
+            "Bytes" => Some(builtins.types.bytes),
+            "Bytes32" => Some(builtins.types.bytes32),
+            "String" => Some(builtins.types.string),
+            "PublicKey" => Some(builtins.types.public_key),
+            "Signature" => Some(builtins.types.signature),
+            "Int" => Some(builtins.types.int),
+            "Bool" => Some(builtins.types.bool),
+            "Any" => Some(builtins.types.permissive_any),
+            _ => None,
+        }
     }
 
     /// Get completions for top-level declarations
@@ -469,6 +686,12 @@ impl<'a> CompletionProvider<'a> {
         // Add std lib types
         let std_scope = self.compiler.scope(self.std_scope);
         for (name, type_id) in std_scope.exported_types() {
+            items.push(self.type_to_completion_item(name, type_id));
+        }
+
+        // Add file-local types (user-defined structs and type aliases)
+        let file_scope = self.compiler.scope(self.file_scope);
+        for (name, type_id) in file_scope.types() {
             items.push(self.type_to_completion_item(name, type_id));
         }
 
@@ -1117,6 +1340,22 @@ fn foo(x: |) -> Int {
     }
 
     #[test]
+    fn test_context_type_position_after_colon_with_partial_text() {
+        let code = r#"
+fn foo(x: In|) -> Int {
+    x
+}
+"#;
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest type completions even when partially typed
+        assert_contains_completion(&completions, "Int");
+        assert_contains_completion(&completions, "Bool");
+        assert_contains_completion(&completions, "Bytes");
+        assert_contains_completion(&completions, "String");
+    }
+
+    #[test]
     fn test_context_type_position_after_arrow() {
         let code = r#"
 fn foo() -> | {
@@ -1129,6 +1368,22 @@ fn foo() -> | {
         assert_contains_completion(&completions, "Int");
         assert_contains_completion(&completions, "Bool");
         assert_contains_completion(&completions, "Bytes");
+    }
+
+    #[test]
+    fn test_context_type_position_after_arrow_with_partial_text() {
+        let code = r#"
+fn foo() -> By| {
+    5
+}
+"#;
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest type completions even when partially typed
+        assert_contains_completion(&completions, "Int");
+        assert_contains_completion(&completions, "Bool");
+        assert_contains_completion(&completions, "Bytes");
+        assert_contains_completion(&completions, "Bytes32");
     }
 
     #[test]
@@ -1150,6 +1405,53 @@ struct Foo {
         // Should NOT suggest expression keywords
         assert_not_contains_completion(&completions, "if");
         assert_not_contains_completion(&completions, "let");
+    }
+
+    #[test]
+    fn test_context_type_position_struct_field_with_partial_text() {
+        let code = r#"
+struct Foo {
+    bar: Str|
+}
+"#;
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest type completions for struct fields even when partially typed
+        assert_contains_completion(&completions, "Int");
+        assert_contains_completion(&completions, "Bool");
+        assert_contains_completion(&completions, "String");
+
+        // Should NOT suggest expression keywords
+        assert_not_contains_completion(&completions, "if");
+        assert_not_contains_completion(&completions, "let");
+    }
+
+    #[test]
+    fn test_context_type_position_includes_custom_structs() {
+        let code = r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+struct Rectangle {
+    width: Int,
+    height: Int,
+}
+
+fn foo(p: |) -> Int {
+    5
+}
+"#;
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest built-in types
+        assert_contains_completion(&completions, "Int");
+        assert_contains_completion(&completions, "Bool");
+
+        // Should also suggest user-defined struct types
+        assert_contains_completion(&completions, "Point");
+        assert_contains_completion(&completions, "Rectangle");
     }
 
     #[test]
@@ -1810,23 +2112,18 @@ struct Point {
 }
 
 fn foo() -> Point {
-    Point { |
+    Point {
+      |
 }
 "#;
-        // Should handle incomplete struct literal
-        let result = std::panic::catch_unwind(|| compile_and_get_completions(code));
+        // Should handle incomplete struct literal and suggest fields
+        let completions = compile_and_get_completions(code);
 
-        match result {
-            Ok(completions) => {
-                println!(
-                    "Got {} completions for incomplete struct literal",
-                    completions.len()
-                );
-            }
-            Err(_) => {
-                println!("Compilation failed for incomplete struct literal");
-            }
-        }
+        // Should suggest the struct fields x and y
+        assert_contains_completion(&completions, "x");
+        assert_contains_completion(&completions, "y");
+        assert_completion_kind(&completions, "x", CompletionItemKind::FIELD);
+        assert_completion_kind(&completions, "y", CompletionItemKind::FIELD);
     }
 
     #[test]
@@ -1963,5 +2260,220 @@ fn foo() -> Int {
         assert_not_contains_completion(&completions, "first");
         assert_not_contains_completion(&completions, "rest");
         // Note: length might not be present, but if the type system doesn't have it, this should pass
+    }
+
+    // ============================================================================
+    // Struct Initialization Field Completion Tests
+    // ============================================================================
+
+    #[test]
+    fn test_struct_init_field_completion_basic() {
+        let code = r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn foo() -> Point {
+    Point {|
+}
+"#;
+        // Test field completions at the start of struct initialization
+        let completions = compile_and_get_completions(code);
+
+        println!(
+            "Completions: {:?}",
+            completions.iter().map(|c| &c.label).collect::<Vec<_>>()
+        );
+
+        assert_contains_completion(&completions, "x");
+        assert_contains_completion(&completions, "y");
+        assert_completion_kind(&completions, "x", CompletionItemKind::FIELD);
+        assert_completion_kind(&completions, "y", CompletionItemKind::FIELD);
+
+        // Should NOT have top-level keywords
+        assert_not_contains_completion(&completions, "export");
+        assert_not_contains_completion(&completions, "fn");
+        assert_not_contains_completion(&completions, "const");
+
+        // Should NOT have expression keywords either
+        assert_not_contains_completion(&completions, "if");
+        assert_not_contains_completion(&completions, "let");
+    }
+
+    #[test]
+    fn test_struct_init_field_completion_with_scope_map() {
+        let code = r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn foo() -> Point {
+    Point {|
+}
+"#;
+        let (code_without_marker, line, character) = parse_cursor_position(code);
+
+        let source = Source::new(
+            Arc::from(code_without_marker.as_str()),
+            SourceKind::File("test.rue".to_string()),
+        );
+        let options = CompilerOptions::default();
+
+        let result =
+            analyze_file_with_context(source, options).expect("Failed to compile test code");
+
+        let provider =
+            CompletionProvider::new(&result.compiler, result.std_scope, result.file_scope);
+
+        let position = Position::new(line, character);
+
+        // This simulates the actual LSP call with scope_map
+        let completions = provider.get_completions_at_position(
+            position,
+            &code_without_marker,
+            Some(&result.scope_map),
+        );
+
+        println!(
+            "Completions with scope_map: {:?}",
+            completions.iter().map(|c| &c.label).collect::<Vec<_>>()
+        );
+
+        assert_contains_completion(&completions, "x");
+        assert_contains_completion(&completions, "y");
+        assert_completion_kind(&completions, "x", CompletionItemKind::FIELD);
+        assert_completion_kind(&completions, "y", CompletionItemKind::FIELD);
+
+        // Should NOT have top-level keywords
+        assert_not_contains_completion(&completions, "export");
+        assert_not_contains_completion(&completions, "fn");
+        assert_not_contains_completion(&completions, "const");
+
+        // Should NOT have expression keywords either
+        assert_not_contains_completion(&completions, "if");
+        assert_not_contains_completion(&completions, "let");
+    }
+
+    #[test]
+    fn test_struct_init_field_completion_after_newline() {
+        let code = r#"
+struct Person {
+    name: String,
+    age: Int,
+}
+
+fn create_person() -> Person {
+    Person {
+        |
+    }
+}
+"#;
+        // Test field completions on new line inside struct initialization
+        let completions = compile_and_get_completions(code);
+
+        assert_contains_completion(&completions, "name");
+        assert_contains_completion(&completions, "age");
+        assert_completion_kind(&completions, "name", CompletionItemKind::FIELD);
+        assert_completion_kind(&completions, "age", CompletionItemKind::FIELD);
+    }
+
+    #[test]
+    fn test_struct_init_field_completion_after_comma() {
+        let code = r#"
+struct Rect {
+    width: Int,
+    height: Int,
+}
+
+fn create_rect() -> Rect {
+    Rect {
+        width: 10,
+        |
+    }
+}
+"#;
+        // Test field completions after completing one field
+        let completions = compile_and_get_completions(code);
+
+        // Should still suggest all fields (including already filled ones)
+        assert_contains_completion(&completions, "width");
+        assert_contains_completion(&completions, "height");
+    }
+
+    #[test]
+    fn test_struct_init_nested_struct() {
+        let code = r#"
+struct Inner {
+    value: Int,
+}
+
+struct Outer {
+    inner: Inner,
+    name: String,
+}
+
+fn foo() -> Outer {
+    Outer {
+        inner: Inner {|
+    }
+}
+"#;
+        // Test field completions for nested struct initialization
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest fields from Inner struct
+        assert_contains_completion(&completions, "value");
+    }
+
+    #[test]
+    fn test_struct_init_in_let_binding() {
+        let code = r#"
+struct Color {
+    r: Int,
+    g: Int,
+    b: Int,
+}
+
+fn foo() -> Int {
+    let c = Color {|
+    5
+}
+"#;
+        // Test field completions in let binding context
+        let completions = compile_and_get_completions(code);
+
+        assert_contains_completion(&completions, "r");
+        assert_contains_completion(&completions, "g");
+        assert_contains_completion(&completions, "b");
+    }
+
+    #[test]
+    fn test_struct_init_doesnt_trigger_in_function_body() {
+        let code = r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn foo() -> Point {
+    let z = 5;
+    |
+}
+"#;
+        // Test that struct init context isn't triggered in regular function body
+        let completions = compile_and_get_completions(code);
+
+        // Should have regular completions (not just x and y)
+        // Check for some standard completions that wouldn't be present if we were in struct init
+        assert_contains_completion(&completions, "sha256");
+        assert_contains_completion(&completions, "let");
+
+        // But we shouldn't exclusively have just x and y
+        assert!(
+            completions.len() > 2,
+            "Should have more than just struct fields"
+        );
     }
 }
