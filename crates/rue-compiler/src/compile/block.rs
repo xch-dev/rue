@@ -40,7 +40,7 @@ pub fn compile_block(
             }
         };
 
-        let compiled = match stmt {
+        match stmt {
             AstStmt::ExprStmt(stmt) => {
                 let value = if let Some(expr) = stmt.expr() {
                     compile_expr(ctx, &expr, None)
@@ -55,10 +55,10 @@ pub fn compile_block(
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnusedStatementValue);
                 }
 
-                Statement::Expr(ExprStatement {
+                statements.push(Statement::Expr(ExprStatement {
                     hir: value.hir,
                     always_nil,
-                })
+                }));
             }
             AstStmt::LetStmt(stmt) => {
                 let symbol = ctx.alloc_symbol(Symbol::Unresolved);
@@ -96,7 +96,7 @@ pub fn compile_block(
 
                 ctx.pop_declaration();
 
-                Statement::Let(symbol)
+                statements.push(Statement::Let(symbol));
             }
             AstStmt::IfStmt(stmt) => {
                 let condition = if let Some(condition) = stmt.condition() {
@@ -126,11 +126,76 @@ pub fn compile_block(
                     ctx.push_mappings(condition.else_map);
                 }
 
-                Statement::If(IfStatement {
+                statements.push(Statement::If(IfStatement {
                     condition: condition.hir,
                     then: then_block.hir,
                     inline: stmt.inline().is_some(),
-                })
+                }));
+            }
+            AstStmt::MatchStmt(stmt) => {
+                if stmt.arms().count() == 0 {
+                    ctx.diagnostic(stmt.syntax(), DiagnosticKind::EmptyMatchStatement);
+                    continue;
+                }
+
+                for arm in stmt.arms() {
+                    let match_value = if let Some(expr) = stmt.expr() {
+                        compile_expr(ctx, &expr, None)
+                    } else {
+                        debug!("Unresolved match stmt expr");
+                        ctx.builtins().unresolved.clone()
+                    };
+
+                    let ty = if arm.else_keyword().is_some() {
+                        None
+                    } else if let Some(ty) = arm.ty() {
+                        Some(compile_type(ctx, &ty))
+                    } else {
+                        debug!("Unresolved match stmt arm type");
+                        Some(ctx.builtins().unresolved.ty)
+                    };
+
+                    let condition = ty.map(|ty| ctx.guard_value(arm.syntax(), match_value, ty));
+
+                    let arm_value = if let Some(expr) = arm.expr() {
+                        if stmt.inline().is_some() {
+                            compile_expr(ctx, &expr, expected_type)
+                        } else if let Some(condition) = condition.clone() {
+                            let index = ctx.push_mappings(condition.then_map.clone());
+                            let value = compile_expr(ctx, &expr, expected_type);
+                            ctx.revert_mappings(index);
+                            value
+                        } else {
+                            compile_expr(ctx, &expr, expected_type)
+                        }
+                    } else {
+                        debug!("Unresolved if stmt then block");
+                        ctx.builtins().unresolved.clone()
+                    };
+
+                    if stmt.inline().is_none()
+                        && let Some(condition) = condition.clone()
+                    {
+                        ctx.push_mappings(condition.else_map);
+                    }
+
+                    if let Some(condition) = condition {
+                        statements.push(Statement::If(IfStatement {
+                            condition: condition.hir,
+                            then: arm_value.hir,
+                            inline: stmt.inline().is_some(),
+                        }));
+                    } else {
+                        if !is_expr {
+                            ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnexpectedImplicitReturn);
+                        }
+
+                        if return_value.is_none() {
+                            return_value = Some(arm_value);
+                            implicit_return = true;
+                        }
+                    }
+                }
             }
             AstStmt::ReturnStmt(stmt) => {
                 let value = if let Some(expr) = stmt.expr() {
@@ -147,7 +212,7 @@ pub fn compile_block(
                     return_value = Some(value.clone());
                 }
 
-                Statement::Return(value.hir)
+                statements.push(Statement::Return(value.hir));
             }
             AstStmt::AssertStmt(stmt) => {
                 let value = if let Some(expr) = stmt.expr() {
@@ -161,10 +226,10 @@ pub fn compile_block(
 
                 ctx.push_mappings(value.then_map);
 
-                Statement::Assert(
+                statements.push(Statement::Assert(
                     value.hir,
                     SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
-                )
+                ));
             }
             AstStmt::RaiseStmt(stmt) => {
                 let value = stmt.expr().map(|expr| compile_expr(ctx, &expr, None));
@@ -176,14 +241,12 @@ pub fn compile_block(
                     ));
                 }
 
-                Statement::Raise(
+                statements.push(Statement::Raise(
                     value.map(|value| value.hir),
                     SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
-                )
+                ));
             }
-        };
-
-        statements.push(compiled);
+        }
     }
 
     if return_value.is_none() && require_return {

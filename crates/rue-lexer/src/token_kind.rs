@@ -28,6 +28,7 @@ pub enum TokenKind {
     Let,
     If,
     Else,
+    Match,
     Return,
     Assert,
     Raise,

@@ -209,6 +209,12 @@ pub enum DiagnosticKind {
 
     #[error("Constant `{0}` references itself")]
     RecursiveConstant(String),
+
+    #[error("Empty match statement")]
+    EmptyMatchStatement,
+
+    #[error("Non-exhaustive match expression")]
+    NonExhaustiveMatchExpression,
 }
 
 impl DiagnosticKind {
@@ -266,7 +272,9 @@ impl DiagnosticKind {
             | Self::RecursiveEntrypoint(..)
             | Self::RecursiveInlineFunction(..)
             | Self::RecursiveConstant(..)
-            | Self::UnexpectedExplicitReturn => DiagnosticSeverity::Error,
+            | Self::UnexpectedExplicitReturn
+            | Self::EmptyMatchStatement
+            | Self::NonExhaustiveMatchExpression => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::UnnecessaryCast(..)

@@ -10,7 +10,7 @@ use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SourceKind, SrcLoc};
 use rue_hir::{
     Builtins, Constraint, Database, Declaration, Scope, ScopeId, Symbol, SymbolId, TypePath, Value,
-    replace_type,
+    generate_check_hir, replace_type,
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
@@ -226,6 +226,32 @@ impl Compiler {
         let else_id = rue_types::subtract(self.db.types_mut(), &self.builtins.types, from, to);
 
         Constraint::new(check).with_else(else_id)
+    }
+
+    pub fn guard_value(&mut self, node: &impl GetTextRange, expr: Value, ty: TypeId) -> Value {
+        let constraint = self.guard_type(node, expr.ty, ty);
+        let builtins = self.builtins().clone();
+        let check_hir = generate_check_hir(self, &builtins, constraint.check, expr.hir);
+
+        let mut value = Value::new(check_hir, self.builtins().types.bool);
+
+        if let Some(reference) = expr.reference {
+            let mut then_map = HashMap::new();
+            let mut symbol_map = HashMap::new();
+            symbol_map.insert(reference.path.clone(), ty);
+            then_map.insert(reference.symbol, symbol_map);
+
+            let mut else_map = HashMap::new();
+            if let Some(else_id) = constraint.else_id {
+                let mut symbol_map = HashMap::new();
+                symbol_map.insert(reference.path.clone(), else_id);
+                else_map.insert(reference.symbol, symbol_map);
+            }
+
+            value = value.with_mappings(then_map, else_map);
+        }
+
+        value
     }
 
     pub fn check_condition(&mut self, node: &impl GetTextRange, ty: TypeId) {

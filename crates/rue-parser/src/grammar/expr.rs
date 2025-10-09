@@ -111,8 +111,26 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
         p.finish();
     } else if !options.inline && p.at(T!['{']) {
         block(p);
-    } else if p.at(T![if]) || (!options.inline && p.at(T![inline])) {
-        if if_expr(p, checkpoint, options.allow_statement, !options.inline) {
+    } else if !options.inline && p.at(T![inline]) {
+        p.expect(T![inline]);
+        if p.at(T![if]) {
+            if if_expr(p, checkpoint, options.allow_statement) {
+                return true;
+            }
+        } else if p.at(T![match]) {
+            if match_expr(p, checkpoint, options.allow_statement) {
+                return true;
+            }
+        } else {
+            p.skip();
+            return false;
+        }
+    } else if p.at(T![if]) {
+        if if_expr(p, checkpoint, options.allow_statement) {
+            return true;
+        }
+    } else if p.at(T![match]) {
+        if match_expr(p, checkpoint, options.allow_statement) {
             return true;
         }
     } else if !options.inline && p.at(T![fn]) {
@@ -245,15 +263,7 @@ fn path_expr_segment(p: &mut Parser, first: bool, separated: bool) -> bool {
     separated
 }
 
-fn if_expr(
-    p: &mut Parser,
-    checkpoint: Checkpoint,
-    allow_statement: bool,
-    allow_inline: bool,
-) -> bool {
-    if allow_inline {
-        p.try_eat(T![inline]);
-    }
+fn if_expr(p: &mut Parser, checkpoint: Checkpoint, allow_statement: bool) -> bool {
     p.expect(T![if]);
     let child = p.checkpoint();
     expr_with(
@@ -276,13 +286,57 @@ fn if_expr(
         p.expect(T![else]);
         if p.at(T![if]) {
             let child = p.checkpoint();
-            if_expr(p, child, false, false);
+            if_expr(p, child, false);
         } else {
             block(p);
         }
         p.finish();
         false
     }
+}
+
+fn match_expr(p: &mut Parser, checkpoint: Checkpoint, allow_statement: bool) -> bool {
+    p.start_at(
+        checkpoint,
+        if allow_statement {
+            SyntaxKind::MatchStmt
+        } else {
+            SyntaxKind::MatchExpr
+        },
+    );
+    p.expect(T![match]);
+    let child = p.checkpoint();
+    expr_with(
+        p,
+        child,
+        ExprOptions {
+            minimum_binding_power: 0,
+            allow_statement: false,
+            allow_struct_initializer: false,
+            inline: false,
+        },
+    );
+    p.expect(T!['{']);
+    while !p.at(T!['}']) {
+        p.start(SyntaxKind::MatchArm);
+        if !p.try_eat(T![else]) {
+            ty(p);
+        }
+        p.expect(T![=>]);
+        if p.at(T!['{']) {
+            block(p);
+            p.try_eat(T![,]);
+        } else {
+            expr(p);
+            if !p.try_eat(T![,]) {
+                break;
+            }
+        }
+        p.finish();
+    }
+    p.expect(T!['}']);
+    p.finish();
+    allow_statement
 }
 
 #[cfg(test)]

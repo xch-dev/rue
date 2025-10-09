@@ -77,9 +77,11 @@ ast_nodes!(
     LetStmt,
     ExprStmt,
     IfStmt,
+    MatchStmt,
     ReturnStmt,
     AssertStmt,
     RaiseStmt,
+    MatchArm,
     PathExpr,
     PathSegment,
     LeadingPathSeparator,
@@ -94,6 +96,7 @@ ast_nodes!(
     BinaryExpr,
     FunctionCallExpr,
     IfExpr,
+    MatchExpr,
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
@@ -110,7 +113,7 @@ ast_enum!(Item, TypeItem, SymbolItem);
 ast_enum!(TypeItem, TypeAliasItem, StructItem);
 ast_enum!(SymbolItem, ModuleItem, FunctionItem, ConstantItem);
 ast_enum!(
-    Stmt, LetStmt, ExprStmt, IfStmt, ReturnStmt, AssertStmt, RaiseStmt
+    Stmt, LetStmt, ExprStmt, IfStmt, MatchStmt, ReturnStmt, AssertStmt, RaiseStmt
 );
 ast_enum!(StmtOrExpr, Stmt, Expr);
 ast_enum!(
@@ -126,6 +129,7 @@ ast_enum!(
     FunctionCallExpr,
     Block,
     IfExpr,
+    MatchExpr,
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
@@ -425,6 +429,40 @@ impl AstIfStmt {
     }
 }
 
+impl AstMatchStmt {
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![inline])
+    }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn arms(&self) -> impl Iterator<Item = AstMatchArm> {
+        self.syntax().children().filter_map(AstMatchArm::cast)
+    }
+}
+
+impl AstMatchArm {
+    pub fn else_keyword(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![else])
+    }
+
+    pub fn ty(&self) -> Option<AstType> {
+        self.syntax().children().find_map(AstType::cast)
+    }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
 impl AstReturnStmt {
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
@@ -595,6 +633,23 @@ impl AstIfExpr {
 
     pub fn else_expr(&self) -> Option<AstExpr> {
         self.syntax().children().filter_map(AstExpr::cast).nth(2)
+    }
+}
+
+impl AstMatchExpr {
+    pub fn inline(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![inline])
+    }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+
+    pub fn arms(&self) -> impl Iterator<Item = AstMatchArm> {
+        self.syntax().children().filter_map(AstMatchArm::cast)
     }
 }
 

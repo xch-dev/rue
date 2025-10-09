@@ -8,6 +8,7 @@ mod if_expr;
 mod lambda;
 mod list;
 mod literal;
+mod match_expr;
 mod pair;
 mod path;
 mod prefix;
@@ -23,6 +24,7 @@ pub use if_expr::*;
 pub use lambda::*;
 pub use list::*;
 pub use literal::*;
+pub use match_expr::*;
 pub use pair::*;
 pub use path::*;
 pub use prefix::*;
@@ -46,6 +48,7 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::BinaryExpr(expr) => compile_binary_expr(ctx, expr),
         AstExpr::FunctionCallExpr(expr) => compile_function_call_expr(ctx, expr),
         AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type),
+        AstExpr::MatchExpr(expr) => compile_match_expr(ctx, expr, expected_type),
         AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
         AstExpr::FieldAccessExpr(expr) => compile_field_access_expr(ctx, expr),

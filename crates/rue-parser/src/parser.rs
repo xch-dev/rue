@@ -101,6 +101,7 @@ impl Parser {
                 TokenKind::Let => T![let],
                 TokenKind::If => T![if],
                 TokenKind::Else => T![else],
+                TokenKind::Match => T![match],
                 TokenKind::Return => T![return],
                 TokenKind::Assert => T![assert],
                 TokenKind::Raise => T![raise],
