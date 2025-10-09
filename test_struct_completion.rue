@@ -1,0 +1,12 @@
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn foo() -> Point {
+    Point {
+        x: 1,
+        
+    }
+}
+

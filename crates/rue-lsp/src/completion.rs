@@ -263,12 +263,6 @@ impl<'a> CompletionProvider<'a> {
             }
         }
 
-        // Check if we're in a type position (after : or ->)
-        // Look for patterns like "name: " or "-> "
-        if self.is_in_type_position(before_cursor) {
-            return CompletionContext::TypePosition;
-        }
-
         // Check if we're at top level
         let trimmed = before_cursor.trim_start();
         if trimmed.starts_with("export")
@@ -306,8 +300,21 @@ impl<'a> CompletionProvider<'a> {
             .join("\n");
 
         // Check if we're inside a struct initialization (pattern: TypeName {)
+        // This check must come BEFORE type position check because "field: |" in a struct init
+        // should suggest values, not types
         if self.is_in_struct_init(&all_text_before_cursor) {
+            // Check if we're after a colon in a field assignment (e.g., "field: |")
+            // In this case, we want value completions, not field name completions
+            if self.is_after_field_colon(before_cursor) {
+                return CompletionContext::ExpressionValue;
+            }
             return CompletionContext::StructInitialization;
+        }
+
+        // Check if we're in a type position (after : or ->)
+        // Look for patterns like "name: " or "-> "
+        if self.is_in_type_position(before_cursor) {
+            return CompletionContext::TypePosition;
         }
 
         // Count opening and closing braces to determine if we're inside a block
@@ -345,6 +352,11 @@ impl<'a> CompletionProvider<'a> {
             return true;
         }
 
+        // Check for "as " pattern (cast expression)
+        if text_before_cursor.ends_with("as ") {
+            return true;
+        }
+
         // Check for incomplete type annotation (just ":")
         let trimmed = text_before_cursor.trim_end();
         if trimmed.ends_with(':') {
@@ -354,9 +366,28 @@ impl<'a> CompletionProvider<'a> {
             }
         }
 
-        // Check for partial type being typed after ":" or "->"
-        // Pattern: "name: PartialType" or "-> PartialType"
-        // Look backwards to find the last ":" or "->" and check if there's only identifier chars after it
+        // Check for incomplete cast (just "as")
+        if trimmed.ends_with("as") {
+            // Make sure there's a word boundary before "as"
+            // to avoid matching "class", "was", etc.
+            if trimmed.len() >= 2 {
+                let before_as = trimmed.chars().rev().nth(2);
+                if let Some(ch) = before_as {
+                    if !ch.is_alphanumeric() && ch != '_' {
+                        return true;
+                    }
+                } else {
+                    // "as" is at the start
+                    return true;
+                }
+            } else {
+                return true;
+            }
+        }
+
+        // Check for partial type being typed after ":" or "->" or "as"
+        // Pattern: "name: PartialType" or "-> PartialType" or "expr as PartialType"
+        // Look backwards to find the last ":", "->", or "as" and check if there's only identifier chars after it
         if let Some(colon_pos) = text_before_cursor.rfind(": ") {
             let after_colon = &text_before_cursor[colon_pos + 2..];
             // Check if everything after ": " is a potential type identifier (or empty)
@@ -369,6 +400,52 @@ impl<'a> CompletionProvider<'a> {
             let after_arrow = &text_before_cursor[arrow_pos + 3..];
             // Check if everything after "-> " is a potential type identifier (or empty)
             if after_arrow.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return true;
+            }
+        }
+
+        if let Some(as_pos) = text_before_cursor.rfind("as ") {
+            let after_as = &text_before_cursor[as_pos + 3..];
+            // Check if everything after "as " is a potential type identifier (or empty)
+            if after_as.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Check if we're after a colon in a struct field assignment (e.g., "field: |")
+    /// This indicates we should suggest values, not field names
+    fn is_after_field_colon(&self, line_before_cursor: &str) -> bool {
+        let trimmed = line_before_cursor.trim_end();
+
+        // Check for ": " pattern at the end
+        if trimmed.ends_with(": ") {
+            return true;
+        }
+
+        // Check for just ":" at the end
+        if trimmed.ends_with(':') && !trimmed.ends_with("::") {
+            return true;
+        }
+
+        // Check if we have a pattern like "field: partial_value"
+        // where we're typing a partial value after the colon
+        if let Some(colon_pos) = trimmed.rfind(':') {
+            // Make sure it's not "::"
+            if colon_pos > 0 && trimmed.chars().nth(colon_pos - 1) == Some(':') {
+                return false;
+            }
+
+            // Check what comes after the colon
+            let after_colon = &trimmed[colon_pos + 1..].trim_start();
+
+            // If there's only identifier-like characters after the colon (or nothing),
+            // we're likely in a field value position
+            if after_colon.is_empty()
+                || after_colon.chars().all(|c| c.is_alphanumeric() || c == '_')
+            {
                 return true;
             }
         }
@@ -1473,6 +1550,107 @@ fn foo(p: |) -> Int {
         // Should also suggest user-defined struct types
         assert_contains_completion(&completions, "Point");
         assert_contains_completion(&completions, "Rectangle");
+    }
+
+    #[test]
+    fn test_context_type_position_after_as() {
+        let code = r#"
+fn foo() -> Bytes {
+    1 as |
+}
+"#;
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest type completions after "as "
+        assert_contains_completion(&completions, "Int");
+        assert_contains_completion(&completions, "Bool");
+        assert_contains_completion(&completions, "Bytes");
+        assert_contains_completion(&completions, "Bytes32");
+        assert_contains_completion(&completions, "String");
+
+        // Should NOT suggest expression keywords
+        assert_not_contains_completion(&completions, "if");
+        assert_not_contains_completion(&completions, "let");
+    }
+
+    #[test]
+    fn test_context_type_position_after_as_with_partial_text() {
+        let code = r#"
+fn foo() -> Bytes {
+    1 as By|
+}
+"#;
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest type completions even when partially typed
+        assert_contains_completion(&completions, "Int");
+        assert_contains_completion(&completions, "Bool");
+        assert_contains_completion(&completions, "Bytes");
+        assert_contains_completion(&completions, "Bytes32");
+    }
+
+    #[test]
+    fn test_context_type_position_after_as_on_variable() {
+        let code = r#"
+fn foo() -> Bytes {
+    let a = 5;
+    let b = a as |
+    b
+}
+"#;
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest type completions
+        assert_contains_completion(&completions, "Int");
+        assert_contains_completion(&completions, "Bool");
+        assert_contains_completion(&completions, "Bytes");
+        assert_contains_completion(&completions, "String");
+
+        // Should NOT suggest variables/values
+        assert_not_contains_completion(&completions, "if");
+        assert_not_contains_completion(&completions, "let");
+    }
+
+    #[test]
+    fn test_context_type_position_after_as_on_field() {
+        let code = r#"
+struct Data {
+    value: Int,
+}
+
+fn foo(data: Data) -> Bytes {
+    data.value as |
+}
+"#;
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest type completions
+        assert_contains_completion(&completions, "Int");
+        assert_contains_completion(&completions, "Bool");
+        assert_contains_completion(&completions, "Bytes");
+        assert_contains_completion(&completions, "Bytes32");
+    }
+
+    #[test]
+    fn test_context_type_position_after_as_with_custom_types() {
+        let code = r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn foo() -> Any {
+    1 as |
+}
+"#;
+        let completions = compile_and_get_completions(code);
+
+        // Should suggest built-in types
+        assert_contains_completion(&completions, "Int");
+        assert_contains_completion(&completions, "Bytes");
+
+        // Should also suggest user-defined struct types
+        assert_contains_completion(&completions, "Point");
     }
 
     #[test]
