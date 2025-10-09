@@ -10,7 +10,10 @@ pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem) -> Symbo
     let scope = ctx.alloc_scope(Scope::new());
 
     let mut declarations = ModuleDeclarations::default();
-    declare_type_items(ctx, scope, module.items(), &mut declarations);
+
+    ctx.push_scope(scope);
+    declare_type_items(ctx, module.items(), &mut declarations);
+    ctx.pop_scope();
 
     let symbol = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
         name: module.name(),
@@ -48,7 +51,9 @@ pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
         unreachable!();
     };
 
-    declare_symbol_items(ctx, scope, module.items(), &mut declarations);
+    ctx.push_scope(scope);
+    declare_symbol_items(ctx, module.items(), &mut declarations);
+    ctx.pop_scope();
 
     let Symbol::Module(ModuleSymbol {
         declarations: updated,
@@ -73,7 +78,9 @@ pub fn compile_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
         unreachable!();
     };
 
-    compile_type_items(ctx, scope, module.items(), &declarations);
+    ctx.push_scope(scope);
+    compile_type_items(ctx, module.items(), &declarations);
+    ctx.pop_scope();
 }
 
 pub fn compile_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
@@ -88,5 +95,7 @@ pub fn compile_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
         unreachable!();
     };
 
-    compile_symbol_items(ctx, scope, module.items(), &declarations);
+    ctx.push_scope(scope);
+    compile_symbol_items(ctx, module.items(), &declarations);
+    ctx.pop_scope();
 }

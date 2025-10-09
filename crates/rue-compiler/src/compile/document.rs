@@ -1,5 +1,5 @@
 use rue_ast::{AstItem, AstSymbolItem};
-use rue_hir::{ModuleDeclarations, ScopeId};
+use rue_hir::ModuleDeclarations;
 
 use crate::{
     Compiler, compile_module_symbols, compile_module_types, compile_symbol_item, compile_type_item,
@@ -8,12 +8,9 @@ use crate::{
 
 pub fn declare_type_items(
     ctx: &mut Compiler,
-    scope: ScopeId,
     items: impl Iterator<Item = AstItem>,
     declarations: &mut ModuleDeclarations,
 ) {
-    ctx.push_scope(scope);
-
     for item in items {
         match item {
             AstItem::TypeItem(item) => declarations.types.push(declare_type_item(ctx, &item)),
@@ -24,18 +21,13 @@ pub fn declare_type_items(
             }
         }
     }
-
-    ctx.pop_scope();
 }
 
 pub fn declare_symbol_items(
     ctx: &mut Compiler,
-    scope: ScopeId,
     items: impl Iterator<Item = AstItem>,
     declarations: &mut ModuleDeclarations,
 ) {
-    ctx.push_scope(scope);
-
     let mut index = 0;
 
     for item in items {
@@ -51,18 +43,13 @@ pub fn declare_symbol_items(
             }
         }
     }
-
-    ctx.pop_scope();
 }
 
 pub fn compile_type_items(
     ctx: &mut Compiler,
-    scope: ScopeId,
     items: impl Iterator<Item = AstItem>,
     declarations: &ModuleDeclarations,
 ) {
-    ctx.push_scope(scope);
-
     let mut index = 0;
     let mut module_index = 0;
 
@@ -81,18 +68,13 @@ pub fn compile_type_items(
             }
         }
     }
-
-    ctx.pop_scope();
 }
 
 pub fn compile_symbol_items(
     ctx: &mut Compiler,
-    scope: ScopeId,
     items: impl Iterator<Item = AstItem>,
     declarations: &ModuleDeclarations,
 ) {
-    ctx.push_scope(scope);
-
     let mut index = 0;
 
     for item in items {
@@ -109,6 +91,4 @@ pub fn compile_symbol_items(
             }
         }
     }
-
-    ctx.pop_scope();
 }
