@@ -61,6 +61,16 @@ impl Scope {
             .map(|t| (self.type_names.get(t).unwrap().as_str(), *t))
     }
 
+    /// Iterate over ALL symbols in this scope (including non-exported)
+    pub fn symbols(&self) -> impl Iterator<Item = (&str, SymbolId)> {
+        self.symbols.iter().map(|(name, id)| (name.as_str(), *id))
+    }
+
+    /// Iterate over ALL types in this scope (including non-exported)
+    pub fn types(&self) -> impl Iterator<Item = (&str, TypeId)> {
+        self.types.iter().map(|(name, id)| (name.as_str(), *id))
+    }
+
     pub fn symbol(&self, name: &str) -> Option<SymbolId> {
         self.symbols.get(name).copied()
     }

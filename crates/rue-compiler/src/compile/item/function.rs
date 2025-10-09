@@ -135,21 +135,34 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
         unreachable!();
     };
 
+    // Get parent scope before pushing
+    let parent_scope = ctx.current_scope_id();
+
     ctx.push_scope(scope);
 
-    for (i, parameter) in function.parameters().enumerate() {
-        let symbol = parameters[i];
+    // Record scope parent relationship
+    ctx.record_scope_parent(scope, parent_scope);
 
-        ctx.push_declaration(Declaration::Symbol(symbol));
+    for (i, parameter) in function.parameters().enumerate() {
+        let param_symbol = parameters[i];
+
+        ctx.push_declaration(Declaration::Symbol(param_symbol));
 
         if let Some(binding) = parameter.binding() {
-            create_binding(ctx, symbol, &binding);
+            // Record parameter symbol range (use the whole parameter range)
+            ctx.record_symbol_range(param_symbol, parameter.syntax().text_range());
+            create_binding(ctx, param_symbol, &binding);
         }
 
         ctx.pop_declaration();
     }
 
     let resolved_body = if let Some(body) = function.body() {
+        // Note: We don't record the function scope range here because compile_block()
+        // will create a child scope and record it at the block range.
+        // The block scope's parent is set to the function scope, so the scope chain
+        // will include both scopes, making parameters and let bindings accessible.
+
         let index = ctx.mapping_checkpoint();
         let value = compile_block(
             ctx,

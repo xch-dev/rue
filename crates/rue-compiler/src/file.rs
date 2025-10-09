@@ -28,6 +28,15 @@ pub struct Compilation {
 }
 
 #[derive(Debug, Clone)]
+pub struct CompilationWithContext {
+    pub compilation: Compilation,
+    pub compiler: Compiler,
+    pub std_scope: ScopeId,
+    pub file_scope: ScopeId,
+    pub scope_map: crate::ScopeMap,
+}
+
+#[derive(Debug, Clone)]
 pub struct Test {
     pub name: String,
     pub program: NodePtr,
@@ -49,6 +58,73 @@ pub fn compile_file(
 
 pub fn analyze_file(file: Source, options: CompilerOptions) -> Result<Compilation, Error> {
     compile_file_impl(&mut Allocator::new(), file, options, false)
+}
+
+pub fn analyze_file_with_context(
+    file: Source,
+    options: CompilerOptions,
+) -> Result<CompilationWithContext, Error> {
+    let mut ctx = Compiler::new(options);
+    let std = compile_file_partial(
+        &mut ctx,
+        Source::new(Arc::from(include_str!("./std.rue")), SourceKind::Std),
+    );
+
+    let mut scope = Scope::new();
+
+    for (name, symbol) in ctx.scope(std.scope).exported_symbols() {
+        scope.insert_symbol(name.to_string(), symbol, false);
+    }
+
+    for (name, ty) in ctx.scope(std.scope).exported_types() {
+        scope.insert_type(name.to_string(), ty, false);
+    }
+
+    let scope = ctx.alloc_scope(scope);
+
+    ctx.push_scope(scope);
+    let file_partial = compile_file_partial(&mut ctx, file);
+
+    let mut compilation = Compilation {
+        diagnostics: [std.diagnostics, file_partial.diagnostics].concat(),
+        main: None,
+        exports: IndexMap::new(),
+        tests: Vec::new(),
+    };
+
+    let main_symbol = ctx.scope(file_partial.scope).symbol("main");
+
+    let mut entrypoints = HashSet::new();
+
+    entrypoints.extend(main_symbol.map(Declaration::Symbol));
+
+    for test in ctx.tests() {
+        entrypoints.insert(Declaration::Symbol(test));
+    }
+
+    for (_, symbol) in ctx.scope(file_partial.scope).exported_symbols() {
+        entrypoints.insert(Declaration::Symbol(symbol));
+    }
+
+    for (_, ty) in ctx.scope(file_partial.scope).exported_types() {
+        entrypoints.insert(Declaration::Type(ty));
+    }
+
+    check_unused(&mut ctx, &entrypoints);
+
+    compilation.diagnostics.extend(ctx.take_diagnostics());
+    
+    // Finalize the scope map
+    ctx.scope_map_mut().finalize();
+    let scope_map = ctx.scope_map().clone();
+
+    Ok(CompilationWithContext {
+        compilation,
+        compiler: ctx,
+        std_scope: std.scope,
+        file_scope: file_partial.scope,
+        scope_map,
+    })
 }
 
 fn compile_file_impl(

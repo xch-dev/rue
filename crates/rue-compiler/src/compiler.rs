@@ -16,6 +16,8 @@ use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, CheckError, Comparison, TypeId};
 
+use crate::ScopeMap;
+
 #[derive(Debug, Clone)]
 pub struct Compiler {
     _options: CompilerOptions,
@@ -27,6 +29,7 @@ pub struct Compiler {
     builtins: Builtins,
     defaults: HashMap<TypeId, HashMap<String, Value>>,
     declaration_stack: Vec<Declaration>,
+    scope_map: ScopeMap,
 }
 
 impl Deref for Compiler {
@@ -59,7 +62,35 @@ impl Compiler {
             builtins,
             defaults: HashMap::new(),
             declaration_stack: Vec::new(),
+            scope_map: ScopeMap::new(),
         }
+    }
+
+    pub fn scope_map(&self) -> &ScopeMap {
+        &self.scope_map
+    }
+
+    pub fn scope_map_mut(&mut self) -> &mut ScopeMap {
+        &mut self.scope_map
+    }
+
+    pub fn take_scope_map(self) -> ScopeMap {
+        self.scope_map
+    }
+
+    /// Record a scope active at a particular text range
+    pub fn record_scope_range(&mut self, range: TextRange, scope: ScopeId) {
+        self.scope_map.add_scope_range(range, scope);
+    }
+
+    /// Record a parent-child scope relationship
+    pub fn record_scope_parent(&mut self, scope: ScopeId, parent: ScopeId) {
+        self.scope_map.set_scope_parent(scope, parent);
+    }
+
+    /// Record where a symbol is defined
+    pub fn record_symbol_range(&mut self, symbol: SymbolId, range: TextRange) {
+        self.scope_map.add_symbol_range(symbol, range);
     }
 
     pub fn source(&self) -> &Source {
@@ -95,8 +126,12 @@ impl Compiler {
         self.scope_stack.pop().unwrap();
     }
 
+    pub fn current_scope_id(&self) -> ScopeId {
+        *self.scope_stack.last().unwrap()
+    }
+
     pub fn last_scope(&self) -> &Scope {
-        let scope = *self.scope_stack.last().unwrap();
+        let scope = self.current_scope_id();
         self.scope(scope)
     }
 

@@ -17,7 +17,15 @@ pub fn compile_block(
     require_return: bool,
 ) -> Value {
     let scope = ctx.alloc_scope(Scope::new());
+
+    // Get parent scope before pushing
+    let parent_scope = ctx.current_scope_id();
+
     ctx.push_scope(scope);
+
+    // Record scope parent relationship and range
+    ctx.record_scope_parent(scope, parent_scope);
+    ctx.record_scope_range(block.syntax().text_range(), scope);
 
     let mut statements = Vec::new();
     let mut return_value = None;
@@ -89,6 +97,9 @@ pub fn compile_block(
                     value: value.with_type(ty),
                     inline: stmt.inline().is_some(),
                 });
+
+                // Record binding symbol range
+                ctx.record_symbol_range(symbol, stmt.syntax().text_range());
 
                 if let Some(binding) = stmt.binding() {
                     create_binding(ctx, symbol, &binding);

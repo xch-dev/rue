@@ -1810,7 +1810,9 @@ version = "0.4.0"
 dependencies = [
  "rue-compiler",
  "rue-diagnostic",
+ "rue-hir",
  "rue-options",
+ "rue-types",
  "tokio",
  "tower-lsp",
 ]
