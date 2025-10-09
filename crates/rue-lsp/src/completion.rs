@@ -148,12 +148,23 @@ impl<'a> CompletionProvider<'a> {
 
         // Find the dot and extract the identifier before it
         let trimmed = before_cursor.trim_end();
-        if !trimmed.ends_with('.') {
-            return None;
-        }
 
-        // Remove the dot and extract the identifier
-        let before_dot = &trimmed[..trimmed.len() - 1];
+        // Handle both "identifier." and "identifier.partial" cases
+        let before_dot = if trimmed.ends_with('.') {
+            // Case: "identifier."
+            &trimmed[..trimmed.len() - 1]
+        } else if let Some(dot_pos) = trimmed.rfind('.') {
+            // Case: "identifier.partial" - check if after dot is valid identifier chars
+            let after_dot = &trimmed[dot_pos + 1..];
+            if !after_dot.is_empty() && after_dot.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                // Extract up to the dot
+                &trimmed[..dot_pos]
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
 
         // Find the last identifier (word characters including underscore)
         let mut identifier = String::new();
@@ -237,9 +248,19 @@ impl<'a> CompletionProvider<'a> {
             current_line
         };
 
-        // Check if we're after a dot
-        if before_cursor.trim_end().ends_with('.') {
+        // Check if we're after a dot (including when typing partial field name)
+        // Pattern: "identifier." or "identifier.partial"
+        let trimmed = before_cursor.trim_end();
+        if trimmed.ends_with('.') {
             return CompletionContext::AfterDot;
+        }
+        // Also check for dot followed by partial identifier (e.g., "obj.fie")
+        if let Some(dot_pos) = trimmed.rfind('.') {
+            let after_dot = &trimmed[dot_pos + 1..];
+            // Check if everything after the dot is a valid identifier (being typed)
+            if !after_dot.is_empty() && after_dot.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return CompletionContext::AfterDot;
+            }
         }
 
         // Check if we're in a type position (after : or ->)
@@ -2228,6 +2249,52 @@ fn get_x(p: Point) -> Int {
         // Should have field completions for Point struct
         assert_contains_completion(&completions, "x");
         assert_contains_completion(&completions, "y");
+    }
+
+    #[test]
+    fn test_e2e_field_completion_while_typing_after_dot() {
+        let code = r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn get_x(p: Point) -> Int {
+    p.x|
+}
+"#;
+        // Test field completions when typing after the dot (should still show fields, not full scope)
+        let completions = compile_and_get_completions(code);
+
+        // Should have field completions for Point struct
+        assert_contains_completion(&completions, "x");
+        assert_contains_completion(&completions, "y");
+
+        // Should NOT have full scope completions like top-level functions
+        // (the LSP client will filter based on "x", but we should provide fields)
+        assert_completion_kind(&completions, "x", CompletionItemKind::FIELD);
+        assert_completion_kind(&completions, "y", CompletionItemKind::FIELD);
+    }
+
+    #[test]
+    fn test_e2e_field_completion_partial_field_name() {
+        let code = r#"
+struct Rectangle {
+    width: Int,
+    height: Int,
+}
+
+fn test(r: Rectangle) -> Int {
+    r.wi|
+}
+"#;
+        // Test field completions when partially typing a field name
+        let completions = compile_and_get_completions(code);
+
+        // Should still show all fields (LSP client filters based on prefix)
+        assert_contains_completion(&completions, "width");
+        assert_contains_completion(&completions, "height");
+        assert_completion_kind(&completions, "width", CompletionItemKind::FIELD);
     }
 
     #[test]
