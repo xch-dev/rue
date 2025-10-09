@@ -263,6 +263,12 @@ impl<'a> CompletionProvider<'a> {
             }
         }
 
+        // Check if we're in a type position (after : or ->) BEFORE checking top-level
+        // This is more specific and should take precedence
+        if self.is_in_type_position(before_cursor) {
+            return CompletionContext::TypePosition;
+        }
+
         // Check if we're at top level
         let trimmed = before_cursor.trim_start();
         if trimmed.starts_with("export")
@@ -300,8 +306,8 @@ impl<'a> CompletionProvider<'a> {
             .join("\n");
 
         // Check if we're inside a struct initialization (pattern: TypeName {)
-        // This check must come BEFORE type position check because "field: |" in a struct init
-        // should suggest values, not types
+        // Note: We already checked for type position earlier, so "field: |" will have
+        // been caught as TypePosition before getting here
         if self.is_in_struct_init(&all_text_before_cursor) {
             // Check if we're after a colon in a field assignment (e.g., "field: |")
             // In this case, we want value completions, not field name completions
@@ -309,12 +315,6 @@ impl<'a> CompletionProvider<'a> {
                 return CompletionContext::ExpressionValue;
             }
             return CompletionContext::StructInitialization;
-        }
-
-        // Check if we're in a type position (after : or ->)
-        // Look for patterns like "name: " or "-> "
-        if self.is_in_type_position(before_cursor) {
-            return CompletionContext::TypePosition;
         }
 
         // Count opening and closing braces to determine if we're inside a block
@@ -517,6 +517,11 @@ impl<'a> CompletionProvider<'a> {
 
             // If there's a "->" immediately before the type name, it's a function return type
             if before_type.ends_with("->") {
+                return false;
+            }
+
+            // If there's a "struct" keyword before the type name, it's a struct definition
+            if before_type.ends_with("struct") {
                 return false;
             }
 
