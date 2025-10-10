@@ -16,6 +16,8 @@ pub fn compile_block(
     expected_type: Option<TypeId>,
     require_return: bool,
 ) -> Value {
+    let index = ctx.mapping_checkpoint();
+
     let scope = ctx.alloc_scope(Scope::new());
     ctx.push_scope(scope);
 
@@ -202,6 +204,8 @@ pub fn compile_block(
     }));
 
     ctx.pop_scope();
+
+    ctx.revert_mappings(index);
 
     if let Some(return_value) = return_value {
         return_value.with_hir(hir)
