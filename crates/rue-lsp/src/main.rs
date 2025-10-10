@@ -16,8 +16,8 @@ use tower_lsp::lsp_types::{
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
     HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, LanguageString,
-    Location, MarkedString, MessageType, OneOf, Position, Range, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    Location, MarkedString, MessageType, OneOf, Position, Range, ReferenceParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -39,6 +39,7 @@ impl LanguageServer for Backend {
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -78,6 +79,10 @@ impl LanguageServer for Backend {
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
         Ok(self.on_goto_definition(&params))
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        Ok(self.on_references(&params))
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -171,7 +176,7 @@ impl Backend {
         let cache = cache.get(&uri)?;
         let position = cache.position(params.text_document_position_params.position);
 
-        let range = cache.definition(position);
+        let range = cache.definitions(position);
 
         if range.is_empty() {
             None
@@ -184,6 +189,27 @@ impl Backend {
                     .map(|range| Location::new(uri.clone(), range))
                     .collect(),
             ))
+        }
+    }
+
+    fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
+        let uri = params.text_document_position.text_document.uri.clone();
+
+        let cache = self.cache.lock().unwrap();
+        let cache = cache.get(&uri)?;
+        let position = cache.position(params.text_document_position.position);
+
+        let range = cache.references(position);
+
+        if range.is_empty() {
+            None
+        } else {
+            Some(
+                range
+                    .into_iter()
+                    .map(|range| Location::new(uri.clone(), range))
+                    .collect(),
+            )
         }
     }
 }
