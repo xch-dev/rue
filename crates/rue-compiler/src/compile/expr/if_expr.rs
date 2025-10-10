@@ -24,9 +24,10 @@ pub fn compile_if_expr(
             // We can't type guard if the branches are eagerly evaluated
             compile_expr(ctx, &then_expr, expected_type)
         } else {
-            let index = ctx.push_mappings(condition.then_map.clone());
+            let range = then_expr.syntax().text_range();
+            let index = ctx.push_mappings(condition.then_map.clone(), range.start());
             let value = compile_expr(ctx, &then_expr, expected_type);
-            ctx.revert_mappings(index);
+            ctx.revert_mappings(index, range.end());
             value
         }
     } else {
@@ -39,9 +40,10 @@ pub fn compile_if_expr(
             // We can't type guard if the branches are eagerly evaluated
             compile_expr(ctx, &else_expr, expected_type)
         } else {
-            let index = ctx.push_mappings(condition.else_map.clone());
+            let range = else_expr.syntax().text_range();
+            let index = ctx.push_mappings(condition.else_map.clone(), range.start());
             let value = compile_expr(ctx, &else_expr, expected_type);
-            ctx.revert_mappings(index);
+            ctx.revert_mappings(index, range.end());
             value
         }
     } else {

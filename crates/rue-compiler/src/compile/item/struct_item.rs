@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 use log::debug;
-use rue_ast::AstStructItem;
+use rue_ast::{AstNode, AstStructItem};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, Scope, ScopeId};
 use rue_types::{Pair, Struct, Type, TypeId};
@@ -96,7 +96,8 @@ pub fn compile_struct_item(
         unreachable!()
     };
 
-    ctx.push_scope(scope);
+    let range = struct_item.syntax().text_range();
+    ctx.push_scope(scope, range.start());
 
     let mut types = Vec::new();
     let mut names = IndexSet::new();
@@ -128,7 +129,7 @@ pub fn compile_struct_item(
         }
     }
 
-    ctx.pop_scope();
+    ctx.pop_scope(range.end());
 
     let mut resolved_inner = ctx.builtins().nil.ty;
 

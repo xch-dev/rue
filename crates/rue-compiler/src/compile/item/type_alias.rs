@@ -1,5 +1,5 @@
 use log::debug;
-use rue_ast::AstTypeAliasItem;
+use rue_ast::{AstNode, AstTypeAliasItem};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, Scope, ScopeId};
 use rue_types::{Alias, Type, TypeId};
@@ -55,7 +55,8 @@ pub fn compile_type_alias(
 ) {
     ctx.push_declaration(Declaration::Type(ty));
 
-    ctx.push_scope(scope);
+    let range = type_alias.syntax().text_range();
+    ctx.push_scope(scope, range.start());
 
     let resolved_inner = if let Some(inner) = type_alias.ty() {
         compile_type(ctx, &inner)
@@ -64,7 +65,7 @@ pub fn compile_type_alias(
         ctx.builtins().unresolved.ty
     };
 
-    ctx.pop_scope();
+    ctx.pop_scope(range.end());
 
     let Type::Alias(Alias { inner, .. }) = ctx.ty(ty) else {
         unreachable!()

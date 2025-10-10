@@ -3,6 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 use indexmap::IndexMap;
+use rowan::TextSize;
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
 use rue_hir::{
@@ -75,7 +76,7 @@ fn compile_file_impl(
 
     let scope = ctx.alloc_scope(scope);
 
-    ctx.push_scope(scope);
+    ctx.push_scope(scope, TextSize::from(0));
     let file = compile_file_partial(&mut ctx, file);
 
     let mut compilation = Compilation {
@@ -183,10 +184,13 @@ fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilatio
 
     let mut declarations = ModuleDeclarations::default();
 
-    declare_type_items(ctx, scope, ast.items(), &mut declarations);
-    declare_symbol_items(ctx, scope, ast.items(), &mut declarations);
-    compile_type_items(ctx, scope, ast.items(), &declarations);
-    compile_symbol_items(ctx, scope, ast.items(), &declarations);
+    let range = ast.syntax().text_range();
+    ctx.push_scope(scope, range.start());
+    declare_type_items(ctx, ast.items(), &mut declarations);
+    declare_symbol_items(ctx, ast.items(), &mut declarations);
+    compile_type_items(ctx, ast.items(), &declarations);
+    compile_symbol_items(ctx, ast.items(), &declarations);
+    ctx.pop_scope(range.end());
 
     compilation.diagnostics.extend(ctx.take_diagnostics());
 
