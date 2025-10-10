@@ -41,6 +41,7 @@ pub struct FieldHoverInfo {
 pub enum NameKind {
     Declaration,
     Reference,
+    Initializer,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +127,14 @@ impl Cache {
                         container_name: self.type_name(scopes, field.container),
                         type_name: self.type_name(scopes, field.ty),
                         kind: NameKind::Reference,
+                    }));
+                }
+                SyntaxItemKind::FieldInitializer(field) => {
+                    return Some(HoverInfo::Field(FieldHoverInfo {
+                        name: field.name,
+                        container_name: self.type_name(scopes, field.container),
+                        type_name: self.type_name(scopes, field.ty),
+                        kind: NameKind::Initializer,
                     }));
                 }
                 SyntaxItemKind::Scope(_) => {}
@@ -284,7 +293,7 @@ impl Cache {
                         })
                         .collect();
                 }
-                SyntaxItemKind::Scope(_) => {}
+                SyntaxItemKind::FieldInitializer(_) | SyntaxItemKind::Scope(_) => {}
             }
         }
 
@@ -355,7 +364,7 @@ impl Cache {
                         })
                         .collect();
                 }
-                SyntaxItemKind::Scope(_) => {}
+                SyntaxItemKind::FieldInitializer(_) | SyntaxItemKind::Scope(_) => {}
             }
         }
 

@@ -41,6 +41,7 @@ pub enum SyntaxItemKind {
     TypeReference(TypeId),
     FieldDeclaration(SyntaxField),
     FieldReference(SyntaxField),
+    FieldInitializer(SyntaxField),
     Scope(ScopeId),
 }
 

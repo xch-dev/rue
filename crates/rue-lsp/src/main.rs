@@ -159,6 +159,7 @@ impl Backend {
                 MarkedString::String(match kind {
                     NameKind::Declaration => "Declaration".to_string(),
                     NameKind::Reference => "Reference".to_string(),
+                    NameKind::Initializer => "Initializer".to_string(),
                 }),
             ]),
             range: None,
