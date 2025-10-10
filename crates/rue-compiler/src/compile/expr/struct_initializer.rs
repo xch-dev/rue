@@ -27,6 +27,19 @@ pub fn compile_struct_initializer_expr(
 
     let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
 
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::StructFields {
+            ty: semantic,
+            specified_fields: Some(
+                expr.fields()
+                    .filter_map(|field| field.name())
+                    .map(|field| field.text().to_string())
+                    .collect(),
+            ),
+        }),
+        expr.syntax().text_range(),
+    ));
+
     let Type::Struct(struct_type) = ctx.ty(semantic).clone() else {
         debug!("Unresolved struct initializer due to non struct type");
         let name = ctx.type_name(ty);
@@ -143,14 +156,6 @@ pub fn compile_struct_initializer_expr(
             );
         }
     }
-
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
-        SyntaxItemKind::CompletionContext(CompletionContext::StructFields {
-            ty: semantic,
-            specified_fields: Some(fields.keys().cloned().collect()),
-        }),
-        expr.syntax().text_range(),
-    ));
 
     let mut hir = ctx.builtins().nil.hir;
     let mut list_type = ctx.builtins().nil.ty;
