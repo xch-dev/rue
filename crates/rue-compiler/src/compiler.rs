@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use rowan::TextRange;
+use rowan::{TextRange, TextSize};
 use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SourceKind, SrcLoc};
 use rue_hir::{
     Builtins, Constraint, Database, Declaration, Scope, ScopeId, Symbol, SymbolId, TypePath, Value,
@@ -16,14 +16,16 @@ use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, CheckError, Comparison, TypeId};
 
+use crate::{SyntaxItem, SyntaxItemKind, SyntaxMap};
+
 #[derive(Debug, Clone)]
 pub struct Compiler {
     _options: CompilerOptions,
     source: Source,
     diagnostics: Vec<Diagnostic>,
     db: Database,
-    scope_stack: Vec<ScopeId>,
-    mapping_stack: Vec<HashMap<SymbolId, TypeId>>,
+    syntax_maps: HashMap<SourceKind, SyntaxMap>,
+    scope_stack: Vec<(TextSize, ScopeId)>,
     builtins: Builtins,
     defaults: HashMap<TypeId, HashMap<String, Value>>,
     declaration_stack: Vec<Declaration>,
@@ -54,8 +56,8 @@ impl Compiler {
             source: Source::new(Arc::from(""), SourceKind::Std),
             diagnostics: Vec::new(),
             db,
-            scope_stack: vec![builtins.scope],
-            mapping_stack: vec![],
+            syntax_maps: HashMap::new(),
+            scope_stack: vec![(TextSize::from(0), builtins.scope)],
             builtins,
             defaults: HashMap::new(),
             declaration_stack: Vec::new(),
@@ -66,8 +68,26 @@ impl Compiler {
         &self.source
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     pub fn set_source(&mut self, source: Source) {
+        self.syntax_maps
+            .entry(source.kind.clone())
+            .or_default()
+            .add_item(SyntaxItem::new(
+                SyntaxItemKind::Scope(self.builtins.scope),
+                TextRange::new(TextSize::from(0), TextSize::from(source.text.len() as u32)),
+            ));
         self.source = source;
+    }
+
+    pub fn syntax_map(&self, source_kind: &SourceKind) -> Option<&SyntaxMap> {
+        self.syntax_maps.get(source_kind)
+    }
+
+    pub fn syntax_map_mut(&mut self) -> &mut SyntaxMap {
+        self.syntax_maps
+            .entry(self.source.kind.clone())
+            .or_default()
     }
 
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
@@ -87,27 +107,32 @@ impl Compiler {
         ));
     }
 
-    pub fn push_scope(&mut self, scope: ScopeId) {
-        self.scope_stack.push(scope);
+    pub fn push_scope(&mut self, scope: ScopeId, start: TextSize) {
+        self.scope_stack.push((start, scope));
     }
 
-    pub fn pop_scope(&mut self) {
-        self.scope_stack.pop().unwrap();
+    pub fn pop_scope(&mut self, end: TextSize) {
+        let (start, scope) = self.scope_stack.pop().unwrap();
+
+        self.syntax_map_mut().add_item(SyntaxItem::new(
+            SyntaxItemKind::Scope(scope),
+            TextRange::new(start, end),
+        ));
     }
 
     pub fn last_scope(&self) -> &Scope {
         let scope = *self.scope_stack.last().unwrap();
-        self.scope(scope)
+        self.scope(scope.1)
     }
 
     pub fn last_scope_mut(&mut self) -> &mut Scope {
         let scope = *self.scope_stack.last().unwrap();
-        self.scope_mut(scope)
+        self.scope_mut(scope.1)
     }
 
     pub fn resolve_symbol(&self, name: &str) -> Option<SymbolId> {
         for scope in self.scope_stack.iter().rev() {
-            if let Some(symbol) = self.scope(*scope).symbol(name) {
+            if let Some(symbol) = self.scope(scope.1).symbol(name) {
                 return Some(symbol);
             }
         }
@@ -116,7 +141,7 @@ impl Compiler {
 
     pub fn resolve_type(&self, name: &str) -> Option<TypeId> {
         for scope in self.scope_stack.iter().rev() {
-            if let Some(ty) = self.scope(*scope).ty(name) {
+            if let Some(ty) = self.scope(scope.1).ty(name) {
                 return Some(ty);
             }
         }
@@ -125,7 +150,7 @@ impl Compiler {
 
     pub fn type_name(&mut self, ty: TypeId) -> String {
         for scope in self.scope_stack.iter().rev() {
-            if let Some(name) = self.scope(*scope).type_name(ty) {
+            if let Some(name) = self.scope(scope.1).type_name(ty) {
                 return name.to_string();
             }
         }
@@ -134,9 +159,9 @@ impl Compiler {
     }
 
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {
-        for map in self.mapping_stack.iter().rev() {
-            if let Some(ty) = map.get(&symbol) {
-                return *ty;
+        for scope in self.scope_stack.iter().rev() {
+            if let Some(ty) = self.scope(scope.1).symbol_override_type(symbol) {
+                return ty;
             }
         }
 
@@ -154,8 +179,9 @@ impl Compiler {
     pub fn push_mappings(
         &mut self,
         mappings: HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>,
+        start: TextSize,
     ) -> usize {
-        let mut result = HashMap::new();
+        let mut result = Scope::new();
 
         for (symbol, paths) in mappings {
             let mut ty = self.symbol_type(symbol);
@@ -167,20 +193,23 @@ impl Compiler {
                 ty = replace_type(&mut self.db, ty, replacement, &path);
             }
 
-            result.insert(symbol, ty);
+            result.override_symbol_type(symbol, ty);
         }
 
-        let index = self.mapping_stack.len();
-        self.mapping_stack.push(result);
+        let index = self.scope_stack.len();
+        let scope = self.alloc_scope(result);
+        self.push_scope(scope, start);
         index
     }
 
     pub fn mapping_checkpoint(&self) -> usize {
-        self.mapping_stack.len()
+        self.scope_stack.len()
     }
 
-    pub fn revert_mappings(&mut self, index: usize) {
-        self.mapping_stack.truncate(index);
+    pub fn revert_mappings(&mut self, index: usize, end: TextSize) {
+        while self.scope_stack.len() > index {
+            self.pop_scope(end);
+        }
     }
 
     pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {
@@ -341,6 +370,26 @@ impl Compiler {
         if let Some(last) = self.declaration_stack.last() {
             self.db.add_reference(*last, reference);
         }
+    }
+
+    pub fn declaration_span(&mut self, declaration: Declaration, span: TextRange) {
+        self.syntax_map_mut().add_item(SyntaxItem::new(
+            match declaration {
+                Declaration::Symbol(symbol) => SyntaxItemKind::SymbolDeclaration(symbol),
+                Declaration::Type(ty) => SyntaxItemKind::TypeDeclaration(ty),
+            },
+            span,
+        ));
+    }
+
+    pub fn reference_span(&mut self, reference: Declaration, span: TextRange) {
+        self.syntax_map_mut().add_item(SyntaxItem::new(
+            match reference {
+                Declaration::Symbol(symbol) => SyntaxItemKind::SymbolReference(symbol),
+                Declaration::Type(ty) => SyntaxItemKind::TypeReference(ty),
+            },
+            span,
+        ));
     }
 }
 

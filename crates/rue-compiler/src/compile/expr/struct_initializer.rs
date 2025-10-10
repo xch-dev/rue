@@ -6,7 +6,10 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, SymbolPath, Value};
 use rue_types::{Pair, Type, Union};
 
-use crate::{Compiler, PathKind, PathResult, compile_expr, compile_path};
+use crate::{
+    Compiler, CompletionContext, PathKind, PathResult, SyntaxField, SyntaxItem, SyntaxItemKind,
+    compile_expr, compile_path,
+};
 
 pub fn compile_struct_initializer_expr(
     ctx: &mut Compiler,
@@ -23,6 +26,19 @@ pub fn compile_struct_initializer_expr(
     };
 
     let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::StructFields {
+            ty: semantic,
+            specified_fields: Some(
+                expr.fields()
+                    .filter_map(|field| field.name())
+                    .map(|field| field.text().to_string())
+                    .collect(),
+            ),
+        }),
+        expr.syntax().text_range(),
+    ));
 
     let Type::Struct(struct_type) = ctx.ty(semantic).clone() else {
         debug!("Unresolved struct initializer due to non struct type");
@@ -107,6 +123,18 @@ pub fn compile_struct_initializer_expr(
         let Some(name) = field.name() else {
             continue;
         };
+
+        ctx.syntax_map_mut().add_item(SyntaxItem::new(
+            SyntaxItemKind::FieldInitializer(SyntaxField {
+                name: name.text().to_string(),
+                container: semantic,
+                ty: expected_field_types
+                    .get(name.text())
+                    .copied()
+                    .unwrap_or(value.ty),
+            }),
+            name.text_range(),
+        ));
 
         if struct_type.fields.contains(name.text()) {
             if let Some(expected_type) = expected_field_types.get(name.text()) {

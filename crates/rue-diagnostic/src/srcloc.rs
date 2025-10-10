@@ -16,7 +16,7 @@ impl Source {
     }
 }
 
-#[derive(Debug, Clone, Display)]
+#[derive(Debug, Clone, Display, PartialEq, Eq, Hash)]
 pub enum SourceKind {
     #[display("std")]
     Std,

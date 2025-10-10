@@ -1,19 +1,33 @@
-use std::sync::Arc;
+#![allow(clippy::cast_possible_truncation)]
+
+mod cache;
+
+use cache::Cache;
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use rue_compiler::analyze_file;
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
+use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    InitializeParams, InitializeResult, InitializedParams, MessageType, Position, Range,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, InitializedParams, LanguageString, Location, MarkedString,
+    MessageType, OneOf, Position, Range, ReferenceParams, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+
+use crate::cache::{HoverInfo, NameKind};
 
 #[derive(Debug)]
 struct Backend {
     client: Client,
+    cache: Mutex<HashMap<Url, SendWrapper<Cache>>>,
 }
 
 #[tower_lsp::async_trait]
@@ -24,6 +38,22 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
+                definition_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![".".to_string(), ",".to_string()]),
+                    all_commit_characters: Some(vec![
+                        ";".to_string(),
+                        "(".to_string(),
+                        ")".to_string(),
+                        "{".to_string(),
+                        "}".to_string(),
+                        "[".to_string(),
+                        "]".to_string(),
+                    ]),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             ..Default::default()
@@ -54,6 +84,25 @@ impl LanguageServer for Backend {
         .await;
     }
 
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        Ok(self.on_hover(&params))
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        Ok(self.on_goto_definition(&params))
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        Ok(self.on_references(&params))
+    }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        Ok(self.on_completion(&params))
+    }
+
     async fn shutdown(&self) -> Result<()> {
         Ok(())
     }
@@ -61,9 +110,16 @@ impl LanguageServer for Backend {
 
 impl Backend {
     async fn on_change(&self, uri: Url, text: String, _version: i32) {
+        let diagnostics = self.on_change_impl(&uri, &text);
+        self.client
+            .publish_diagnostics(uri, diagnostics, None)
+            .await;
+    }
+
+    fn on_change_impl(&self, uri: &Url, text: &str) -> Vec<Diagnostic> {
         let compilation = analyze_file(
             Source::new(
-                Arc::from(text.as_str()),
+                Arc::from(text),
                 SourceKind::File(
                     uri.to_file_path()
                         .unwrap()
@@ -78,11 +134,116 @@ impl Backend {
         )
         .unwrap();
 
-        let diagnostics: Vec<Diagnostic> = compilation.diagnostics.iter().map(diagnostic).collect();
+        let diagnostics = compilation.diagnostics.iter().map(diagnostic).collect();
 
-        self.client
-            .publish_diagnostics(uri, diagnostics, None)
-            .await;
+        let mut cache = self.cache.lock().unwrap();
+        cache.insert(uri.clone(), SendWrapper::new(Cache::new(compilation)));
+
+        diagnostics
+    }
+
+    fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
+        let cache = self.cache.lock().unwrap();
+        let cache = cache.get(&params.text_document_position_params.text_document.uri)?;
+        let position = cache.position(params.text_document_position_params.position);
+
+        let scopes = cache.scopes(position);
+        let info = cache.hover(&scopes, position)?;
+
+        let content = MarkedString::LanguageString(LanguageString {
+            language: "rue".to_string(),
+            value: match &info {
+                HoverInfo::Symbol(info) => format!("let {}: {}", info.name, info.type_name),
+                HoverInfo::Type(info) => {
+                    if let Some(inner) = &info.inner_name {
+                        format!("type {} = {}", info.name, inner)
+                    } else {
+                        format!("type {}", info.name)
+                    }
+                }
+                HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
+            },
+        });
+
+        let kind = match info {
+            HoverInfo::Symbol(info) => info.kind,
+            HoverInfo::Type(info) => info.kind,
+            HoverInfo::Field(info) => info.kind,
+        };
+
+        Some(Hover {
+            contents: HoverContents::Array(vec![
+                content,
+                MarkedString::String(match kind {
+                    NameKind::Declaration => "Declaration".to_string(),
+                    NameKind::Reference => "Reference".to_string(),
+                    NameKind::Initializer => "Initializer".to_string(),
+                }),
+            ]),
+            range: None,
+        })
+    }
+
+    fn on_goto_definition(&self, params: &GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
+        let uri = params
+            .text_document_position_params
+            .text_document
+            .uri
+            .clone();
+
+        let cache = self.cache.lock().unwrap();
+        let cache = cache.get(&uri)?;
+        let position = cache.position(params.text_document_position_params.position);
+
+        let range = cache.definitions(position);
+
+        if range.is_empty() {
+            None
+        } else if range.len() == 1 {
+            Some(GotoDefinitionResponse::Scalar(Location::new(uri, range[0])))
+        } else {
+            Some(GotoDefinitionResponse::Array(
+                range
+                    .into_iter()
+                    .map(|range| Location::new(uri.clone(), range))
+                    .collect(),
+            ))
+        }
+    }
+
+    fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
+        let uri = params.text_document_position.text_document.uri.clone();
+
+        let cache = self.cache.lock().unwrap();
+        let cache = cache.get(&uri)?;
+        let position = cache.position(params.text_document_position.position);
+
+        let range = cache.references(position);
+
+        if range.is_empty() {
+            None
+        } else {
+            Some(
+                range
+                    .into_iter()
+                    .map(|range| Location::new(uri.clone(), range))
+                    .collect(),
+            )
+        }
+    }
+
+    fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
+        let uri = params.text_document_position.text_document.uri.clone();
+
+        let mut cache = self.cache.lock().unwrap();
+        let cache = cache.get_mut(&uri)?;
+        let position = cache.position(params.text_document_position.position);
+
+        let scopes = cache.scopes(position);
+
+        Some(CompletionResponse::Array(
+            cache.completions(&scopes, position),
+        ))
     }
 }
 
@@ -115,6 +276,9 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| Backend { client });
+    let (service, socket) = LspService::new(|client| Backend {
+        client,
+        cache: Mutex::new(HashMap::new()),
+    });
     Server::new(stdin, stdout, socket).serve(service).await;
 }

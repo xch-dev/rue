@@ -1,5 +1,5 @@
 use log::debug;
-use rue_ast::AstLambdaType;
+use rue_ast::{AstLambdaType, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::Scope;
 use rue_types::{FunctionType, Type, TypeId};
@@ -13,7 +13,8 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
         compile_generic_parameters(ctx, scope, &generic_parameters);
     }
 
-    ctx.push_scope(scope);
+    let range = lambda.syntax().text_range();
+    ctx.push_scope(scope, range.start());
 
     let mut params = Vec::new();
     let mut nil_terminated = true;
@@ -53,7 +54,7 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
         ctx.builtins().unresolved.ty
     };
 
-    ctx.pop_scope();
+    ctx.pop_scope(range.end());
 
     ctx.alloc_type(Type::Function(FunctionType {
         params,

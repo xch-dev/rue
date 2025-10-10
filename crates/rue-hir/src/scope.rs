@@ -14,6 +14,7 @@ pub struct Scope {
     symbol_names: HashMap<SymbolId, String>,
     types: IndexMap<String, TypeId>,
     type_names: HashMap<TypeId, String>,
+    symbol_types: HashMap<SymbolId, TypeId>,
     exported_symbols: IndexSet<SymbolId>,
     exported_types: IndexSet<TypeId>,
 }
@@ -24,6 +25,8 @@ impl Scope {
     }
 
     pub fn insert_symbol(&mut self, name: String, symbol: SymbolId, exported: bool) {
+        assert!(!self.symbols.contains_key(&name));
+
         self.symbols.insert(name.clone(), symbol);
         self.symbol_names.insert(symbol, name);
 
@@ -33,12 +36,18 @@ impl Scope {
     }
 
     pub fn insert_type(&mut self, name: String, ty: TypeId, exported: bool) {
+        assert!(!self.types.contains_key(&name));
+
         self.types.insert(name.clone(), ty);
         self.type_names.insert(ty, name);
 
         if exported {
             self.exported_types.insert(ty);
         }
+    }
+
+    pub fn override_symbol_type(&mut self, symbol: SymbolId, ty: TypeId) {
+        self.symbol_types.insert(symbol, ty);
     }
 
     pub fn is_symbol_exported(&self, symbol: SymbolId) -> bool {
@@ -75,5 +84,17 @@ impl Scope {
 
     pub fn type_name(&self, ty: TypeId) -> Option<&str> {
         self.type_names.get(&ty).map(String::as_str)
+    }
+
+    pub fn symbol_override_type(&self, symbol: SymbolId) -> Option<TypeId> {
+        self.symbol_types.get(&symbol).copied()
+    }
+
+    pub fn symbol_names(&self) -> impl Iterator<Item = &str> {
+        self.symbol_names.values().map(String::as_str)
+    }
+
+    pub fn type_names(&self) -> impl Iterator<Item = &str> {
+        self.type_names.values().map(String::as_str)
     }
 }

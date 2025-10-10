@@ -1808,9 +1808,13 @@ dependencies = [
 name = "rue-lsp"
 version = "0.4.0"
 dependencies = [
+ "rowan",
  "rue-compiler",
  "rue-diagnostic",
+ "rue-hir",
  "rue-options",
+ "rue-types",
+ "send_wrapper",
  "tokio",
  "tower-lsp",
 ]
@@ -1958,6 +1962,12 @@ name = "semver"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56e6fa9c48d24d85fb3de5ad847117517440f6beceb7798af16b4a87d616b8d0"
+
+[[package]]
+name = "send_wrapper"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
 
 [[package]]
 name = "serde"

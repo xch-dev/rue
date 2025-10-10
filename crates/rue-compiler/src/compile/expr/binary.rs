@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstBinaryExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{BinaryOp, Hir, Value, merge_mappings};
+use rue_hir::{BinaryOp, Hir, Mappings, Value, merge_mappings};
 use rue_parser::T;
 
 use crate::{Compiler, compile_expr};
@@ -18,9 +18,17 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
     };
 
-    let right = |ctx: &mut Compiler| {
+    let right = |ctx: &mut Compiler, mappings: Option<Mappings>| {
         if let Some(right) = binary.right() {
-            compile_expr(ctx, &right, None)
+            if let Some(mappings) = mappings {
+                let range = right.syntax().text_range();
+                let index = ctx.push_mappings(mappings, range.start());
+                let value = compile_expr(ctx, &right, None);
+                ctx.revert_mappings(index, range.end());
+                value
+            } else {
+                compile_expr(ctx, &right, None)
+            }
         } else {
             debug!("Unresolved rhs in binary expr");
             ctx.builtins().unresolved.clone()
@@ -35,7 +43,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
     let (left, right) = match op.kind() {
         T![+] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -65,7 +73,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![-] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -89,7 +97,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![*] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -113,7 +121,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![/] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -125,7 +133,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![%] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -137,7 +145,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![<<] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -149,7 +157,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![>>] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -161,7 +169,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![>] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -179,7 +187,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![<] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -197,7 +205,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![>=] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -215,7 +223,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![<=] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -233,10 +241,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![&&] => {
             let left = left(ctx);
-
-            let index = ctx.push_mappings(left.then_map.clone());
-            let right = right(ctx);
-            ctx.revert_mappings(index);
+            let right = right(ctx, Some(left.then_map.clone()));
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.bool) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.bool);
@@ -251,10 +256,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![||] => {
             let left = left(ctx);
-
-            let index = ctx.push_mappings(left.else_map.clone());
-            let right = right(ctx);
-            ctx.revert_mappings(index);
+            let right = right(ctx, Some(left.else_map.clone()));
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.bool) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.bool);
@@ -269,7 +271,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![&] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.bool) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.bool);
@@ -290,7 +292,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![|] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.bool) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.bool);
@@ -311,7 +313,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![^] => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
@@ -325,7 +327,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             // TODO: Guard?
 
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             let types = [
                 ctx.builtins().types.bool,
@@ -358,7 +360,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         _ => {
             let left = left(ctx);
-            let right = right(ctx);
+            let right = right(ctx, None);
 
             (left, right)
         }

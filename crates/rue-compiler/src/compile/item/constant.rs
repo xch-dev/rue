@@ -38,6 +38,8 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
             symbol,
             constant.export().is_some(),
         );
+
+        ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }
 
     ctx.pop_declaration();

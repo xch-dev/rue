@@ -28,6 +28,32 @@ impl LineCol {
 
         Self { line, col }
     }
+
+    pub fn index(&self, source: &str) -> usize {
+        let mut current_line = 0;
+        let mut current_col = 0;
+
+        for (i, c) in source.chars().enumerate() {
+            if current_line == self.line && current_col == self.col {
+                return i;
+            }
+
+            if c == '\n' {
+                current_line += 1;
+                current_col = 0;
+            } else {
+                current_col += 1;
+            }
+        }
+
+        // Handle position at end of file
+        if current_line == self.line && current_col == self.col {
+            return source.len();
+        }
+
+        // Return source length if position is out of bounds
+        source.len()
+    }
 }
 
 impl fmt::Display for LineCol {

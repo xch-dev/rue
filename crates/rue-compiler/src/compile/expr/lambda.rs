@@ -25,7 +25,8 @@ pub fn compile_lambda_expr(
         vec![]
     };
 
-    ctx.push_scope(scope);
+    let range = expr.syntax().text_range();
+    ctx.push_scope(scope, range.start());
 
     let mut parameters = Vec::new();
     let mut params = Vec::new();
@@ -100,7 +101,7 @@ pub fn compile_lambda_expr(
         ret: return_type,
     }));
 
-    ctx.pop_scope();
+    ctx.pop_scope(range.end());
 
     let symbol = ctx.alloc_symbol(Symbol::Function(FunctionSymbol {
         name: None,

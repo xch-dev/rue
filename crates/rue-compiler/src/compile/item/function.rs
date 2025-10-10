@@ -25,7 +25,8 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         vec![]
     };
 
-    ctx.push_scope(scope);
+    let range = function.syntax().text_range();
+    ctx.push_scope(scope, range.start());
 
     let return_type = if let Some(return_type) = function.return_type() {
         compile_type(ctx, &return_type)
@@ -74,7 +75,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         ctx.pop_declaration();
     }
 
-    ctx.pop_scope();
+    ctx.pop_scope(range.end());
 
     let body = ctx.builtins().unresolved.hir;
 
@@ -115,6 +116,8 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
             symbol,
             function.export().is_some(),
         );
+
+        ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }
 
     ctx.pop_declaration();
@@ -135,7 +138,8 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
         unreachable!();
     };
 
-    ctx.push_scope(scope);
+    let range = function.syntax().text_range();
+    ctx.push_scope(scope, range.start());
 
     for (i, parameter) in function.parameters().enumerate() {
         let symbol = parameters[i];
@@ -150,7 +154,6 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
     }
 
     let resolved_body = if let Some(body) = function.body() {
-        let index = ctx.mapping_checkpoint();
         let value = compile_block(
             ctx,
             &body,
@@ -159,14 +162,13 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
             function.return_type().is_some(),
         );
         ctx.assign_type(body.syntax(), value.ty, return_type);
-        ctx.revert_mappings(index);
         value
     } else {
         debug!("Unresolved function body");
         ctx.builtins().unresolved.clone()
     };
 
-    ctx.pop_scope();
+    ctx.pop_scope(range.end());
 
     let Symbol::Function(FunctionSymbol { body, .. }) = ctx.symbol_mut(symbol) else {
         unreachable!();

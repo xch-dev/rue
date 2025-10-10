@@ -1,7 +1,5 @@
-use log::debug;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, TypePath, UnaryOp, Value};
-use rue_parser::SyntaxToken;
 use rue_types::{Type, Union};
 
 use crate::{Compiler, GetTextRange};
@@ -18,30 +16,6 @@ pub enum FieldResult {
     Value(Value),
     Unknown,
     Error,
-}
-
-pub fn compile_named_field(ctx: &mut Compiler, expr: &Value, name: &SyntaxToken) -> Value {
-    match compile_field(ctx, expr.clone(), &Field::Named(name.text())) {
-        FieldResult::Value(value) => value,
-        FieldResult::Unknown => {
-            debug!("Unresolved field access due to unknown field");
-            let type_name = ctx.type_name(expr.ty);
-            ctx.diagnostic(
-                name,
-                DiagnosticKind::UnknownField(name.text().to_string(), type_name),
-            );
-            ctx.builtins().unresolved.clone()
-        }
-        FieldResult::Error => {
-            debug!("Unresolved field access due to missing field in underlying struct type");
-            let type_name = ctx.type_name(expr.ty);
-            ctx.diagnostic(
-                name,
-                DiagnosticKind::MissingField(name.text().to_string(), type_name),
-            );
-            ctx.builtins().unresolved.clone()
-        }
-    }
 }
 
 pub fn compile_pair_fields(

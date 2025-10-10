@@ -7,7 +7,10 @@ use rue_hir::{
 };
 use rue_types::TypeId;
 
-use crate::{Compiler, compile_expr, compile_type, create_binding};
+use crate::{
+    Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_expr, compile_type,
+    create_binding,
+};
 
 pub fn compile_block(
     ctx: &mut Compiler,
@@ -16,8 +19,16 @@ pub fn compile_block(
     expected_type: Option<TypeId>,
     require_return: bool,
 ) -> Value {
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::Expression),
+        block.syntax().text_range(),
+    ));
+
+    let index = ctx.mapping_checkpoint();
+
     let scope = ctx.alloc_scope(Scope::new());
-    ctx.push_scope(scope);
+    let range = block.syntax().text_range();
+    ctx.push_scope(scope, range.start());
 
     let mut statements = Vec::new();
     let mut return_value = None;
@@ -91,6 +102,10 @@ pub fn compile_block(
                 });
 
                 if let Some(binding) = stmt.binding() {
+                    let scope = ctx.alloc_scope(Scope::new());
+
+                    ctx.push_scope(scope, stmt.syntax().text_range().start());
+
                     create_binding(ctx, symbol, &binding);
                 }
 
@@ -112,9 +127,10 @@ pub fn compile_block(
                     if stmt.inline().is_some() {
                         compile_block(ctx, &then_block, false, expected_type, true)
                     } else {
-                        let index = ctx.push_mappings(condition.then_map.clone());
+                        let range = then_block.syntax().text_range();
+                        let index = ctx.push_mappings(condition.then_map.clone(), range.start());
                         let value = compile_block(ctx, &then_block, false, expected_type, true);
-                        ctx.revert_mappings(index);
+                        ctx.revert_mappings(index, range.end());
                         value
                     }
                 } else {
@@ -123,7 +139,7 @@ pub fn compile_block(
                 };
 
                 if stmt.inline().is_none() {
-                    ctx.push_mappings(condition.else_map);
+                    ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
                 }
 
                 Statement::If(IfStatement {
@@ -159,7 +175,7 @@ pub fn compile_block(
                     ctx.builtins().unresolved.clone()
                 };
 
-                ctx.push_mappings(value.then_map);
+                ctx.push_mappings(value.then_map, stmt.syntax().text_range().end());
 
                 Statement::Assert(
                     value.hir,
@@ -201,7 +217,7 @@ pub fn compile_block(
             .and_then(|value| implicit_return.then_some(value.hir)),
     }));
 
-    ctx.pop_scope();
+    ctx.revert_mappings(index, range.end());
 
     if let Some(return_value) = return_value {
         return_value.with_hir(hir)

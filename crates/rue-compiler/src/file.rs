@@ -3,6 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 use indexmap::IndexMap;
+use rowan::TextSize;
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
 use rue_hir::{
@@ -15,16 +16,19 @@ use rue_options::CompilerOptions;
 use rue_parser::Parser;
 
 use crate::{
-    Compiler, check_unused, compile_symbol_items, compile_type_items, declare_symbol_items,
-    declare_type_items,
+    Compiler, SyntaxMap, check_unused, compile_symbol_items, compile_type_items,
+    declare_symbol_items, declare_type_items,
 };
 
 #[derive(Debug, Clone)]
 pub struct Compilation {
+    pub compiler: Compiler,
     pub diagnostics: Vec<Diagnostic>,
     pub main: Option<NodePtr>,
     pub exports: IndexMap<String, NodePtr>,
     pub tests: Vec<Test>,
+    pub syntax_map: SyntaxMap,
+    pub source: Source,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +55,7 @@ pub fn analyze_file(file: Source, options: CompilerOptions) -> Result<Compilatio
     compile_file_impl(&mut Allocator::new(), file, options, false)
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn compile_file_impl(
     allocator: &mut Allocator,
     file: Source,
@@ -58,9 +63,10 @@ fn compile_file_impl(
     do_codegen: bool,
 ) -> Result<Compilation, Error> {
     let mut ctx = Compiler::new(options);
+    let std_source = include_str!("./std.rue");
     let std = compile_file_partial(
         &mut ctx,
-        Source::new(Arc::from(include_str!("./std.rue")), SourceKind::Std),
+        Source::new(Arc::from(std_source), SourceKind::Std),
     );
 
     let mut scope = Scope::new();
@@ -75,17 +81,17 @@ fn compile_file_impl(
 
     let scope = ctx.alloc_scope(scope);
 
-    ctx.push_scope(scope);
-    let file = compile_file_partial(&mut ctx, file);
+    ctx.push_scope(scope, TextSize::from(0));
+    let compiled_file = compile_file_partial(&mut ctx, file.clone());
+    #[allow(clippy::cast_possible_truncation)]
+    ctx.pop_scope(TextSize::from(std_source.len() as u32));
 
-    let mut compilation = Compilation {
-        diagnostics: [std.diagnostics, file.diagnostics].concat(),
-        main: None,
-        exports: IndexMap::new(),
-        tests: Vec::new(),
-    };
+    let mut diagnostics = [std.diagnostics, compiled_file.diagnostics].concat();
+    let mut exports = IndexMap::new();
+    let mut tests = Vec::new();
 
-    let main_symbol = ctx.scope(file.scope).symbol("main");
+    let syntax_map = ctx.syntax_map(&file.kind).unwrap().clone();
+    let main_symbol = ctx.scope(compiled_file.scope).symbol("main");
 
     let mut entrypoints = HashSet::new();
 
@@ -95,38 +101,47 @@ fn compile_file_impl(
         entrypoints.insert(Declaration::Symbol(test));
     }
 
-    for (_, symbol) in ctx.scope(file.scope).exported_symbols() {
+    for (_, symbol) in ctx.scope(compiled_file.scope).exported_symbols() {
         entrypoints.insert(Declaration::Symbol(symbol));
     }
 
-    for (_, ty) in ctx.scope(file.scope).exported_types() {
+    for (_, ty) in ctx.scope(compiled_file.scope).exported_types() {
         entrypoints.insert(Declaration::Type(ty));
     }
 
     check_unused(&mut ctx, &entrypoints);
 
-    compilation.diagnostics.extend(ctx.take_diagnostics());
+    diagnostics.extend(ctx.take_diagnostics());
+
+    let mut main = None;
 
     if !do_codegen
-        || compilation
-            .diagnostics
+        || diagnostics
             .iter()
             .any(|d| d.kind.severity() == DiagnosticSeverity::Error)
     {
-        return Ok(compilation);
+        return Ok(Compilation {
+            compiler: ctx,
+            diagnostics,
+            main,
+            exports,
+            tests,
+            syntax_map,
+            source: file,
+        });
     }
 
     if let Some(symbol) = main_symbol {
-        compilation.main = Some(generate(&mut ctx, allocator, symbol, options)?);
+        main = Some(generate(&mut ctx, allocator, symbol, options)?);
     }
 
     for (name, symbol) in ctx
-        .scope(file.scope)
+        .scope(compiled_file.scope)
         .exported_symbols()
         .map(|(name, symbol)| (name.to_string(), symbol))
         .collect::<Vec<_>>()
     {
-        compilation.exports.insert(
+        exports.insert(
             name.to_string(),
             generate(&mut ctx, allocator, symbol, options)?,
         );
@@ -135,13 +150,21 @@ fn compile_file_impl(
     for test in ctx.tests().collect::<Vec<_>>() {
         let name = ctx.symbol(test).name().unwrap().text().to_string();
 
-        compilation.tests.push(Test {
+        tests.push(Test {
             name,
             program: generate(&mut ctx, allocator, test, options)?,
         });
     }
 
-    Ok(compilation)
+    Ok(Compilation {
+        compiler: ctx,
+        diagnostics,
+        main,
+        exports,
+        tests,
+        syntax_map,
+        source: file,
+    })
 }
 
 fn generate(
@@ -183,10 +206,13 @@ fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilatio
 
     let mut declarations = ModuleDeclarations::default();
 
-    declare_type_items(ctx, scope, ast.items(), &mut declarations);
-    declare_symbol_items(ctx, scope, ast.items(), &mut declarations);
-    compile_type_items(ctx, scope, ast.items(), &declarations);
-    compile_symbol_items(ctx, scope, ast.items(), &declarations);
+    let range = ast.syntax().text_range();
+    ctx.push_scope(scope, range.start());
+    declare_type_items(ctx, ast.items(), &mut declarations);
+    declare_symbol_items(ctx, ast.items(), &mut declarations);
+    compile_type_items(ctx, ast.items(), &declarations);
+    compile_symbol_items(ctx, ast.items(), &declarations);
+    ctx.pop_scope(range.end());
 
     compilation.diagnostics.extend(ctx.take_diagnostics());
 
