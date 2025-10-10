@@ -21,6 +21,8 @@ pub fn compile_generic_parameters(
             name: Some(generic_parameter.clone()),
         }));
 
+        ctx.declaration_span(Declaration::Type(ty), generic_parameter.text_range());
+
         ctx.push_declaration(Declaration::Type(ty));
 
         if ctx.scope(scope).ty(generic_parameter.text()).is_some() {
