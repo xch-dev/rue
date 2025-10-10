@@ -32,7 +32,6 @@ pub struct TypeHoverInfo {
 #[derive(Debug, Clone)]
 pub struct FieldHoverInfo {
     pub name: String,
-    pub container_name: String,
     pub type_name: String,
     pub kind: NameKind,
 }
@@ -116,7 +115,6 @@ impl Cache {
                 SyntaxItemKind::FieldDeclaration(field) => {
                     return Some(HoverInfo::Field(FieldHoverInfo {
                         name: field.name,
-                        container_name: self.type_name(scopes, field.container),
                         type_name: self.type_name(scopes, field.ty),
                         kind: NameKind::Declaration,
                     }));
@@ -124,7 +122,6 @@ impl Cache {
                 SyntaxItemKind::FieldReference(field) => {
                     return Some(HoverInfo::Field(FieldHoverInfo {
                         name: field.name,
-                        container_name: self.type_name(scopes, field.container),
                         type_name: self.type_name(scopes, field.ty),
                         kind: NameKind::Reference,
                     }));
@@ -132,7 +129,6 @@ impl Cache {
                 SyntaxItemKind::FieldInitializer(field) => {
                     return Some(HoverInfo::Field(FieldHoverInfo {
                         name: field.name,
-                        container_name: self.type_name(scopes, field.container),
                         type_name: self.type_name(scopes, field.ty),
                         kind: NameKind::Initializer,
                     }));
