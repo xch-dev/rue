@@ -22,11 +22,13 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct Compilation {
+    pub compiler: Compiler,
     pub diagnostics: Vec<Diagnostic>,
     pub main: Option<NodePtr>,
     pub exports: IndexMap<String, NodePtr>,
     pub tests: Vec<Test>,
     pub syntax_map: SyntaxMap,
+    pub source: Source,
 }
 
 #[derive(Debug, Clone)]
@@ -84,14 +86,11 @@ fn compile_file_impl(
     #[allow(clippy::cast_possible_truncation)]
     ctx.pop_scope(TextSize::from(std_source.len() as u32));
 
-    let mut compilation = Compilation {
-        diagnostics: [std.diagnostics, compiled_file.diagnostics].concat(),
-        main: None,
-        exports: IndexMap::new(),
-        tests: Vec::new(),
-        syntax_map: ctx.syntax_map(&file.kind).unwrap().clone(),
-    };
+    let mut diagnostics = [std.diagnostics, compiled_file.diagnostics].concat();
+    let mut exports = IndexMap::new();
+    let mut tests = Vec::new();
 
+    let syntax_map = ctx.syntax_map(&file.kind).unwrap().clone();
     let main_symbol = ctx.scope(compiled_file.scope).symbol("main");
 
     let mut entrypoints = HashSet::new();
@@ -112,19 +111,28 @@ fn compile_file_impl(
 
     check_unused(&mut ctx, &entrypoints);
 
-    compilation.diagnostics.extend(ctx.take_diagnostics());
+    diagnostics.extend(ctx.take_diagnostics());
+
+    let mut main = None;
 
     if !do_codegen
-        || compilation
-            .diagnostics
+        || diagnostics
             .iter()
             .any(|d| d.kind.severity() == DiagnosticSeverity::Error)
     {
-        return Ok(compilation);
+        return Ok(Compilation {
+            compiler: ctx,
+            diagnostics,
+            main,
+            exports,
+            tests,
+            syntax_map,
+            source: file,
+        });
     }
 
     if let Some(symbol) = main_symbol {
-        compilation.main = Some(generate(&mut ctx, allocator, symbol, options)?);
+        main = Some(generate(&mut ctx, allocator, symbol, options)?);
     }
 
     for (name, symbol) in ctx
@@ -133,7 +141,7 @@ fn compile_file_impl(
         .map(|(name, symbol)| (name.to_string(), symbol))
         .collect::<Vec<_>>()
     {
-        compilation.exports.insert(
+        exports.insert(
             name.to_string(),
             generate(&mut ctx, allocator, symbol, options)?,
         );
@@ -142,13 +150,21 @@ fn compile_file_impl(
     for test in ctx.tests().collect::<Vec<_>>() {
         let name = ctx.symbol(test).name().unwrap().text().to_string();
 
-        compilation.tests.push(Test {
+        tests.push(Test {
             name,
             program: generate(&mut ctx, allocator, test, options)?,
         });
     }
 
-    Ok(compilation)
+    Ok(Compilation {
+        compiler: ctx,
+        diagnostics,
+        main,
+        exports,
+        tests,
+        syntax_map,
+        source: file,
+    })
 }
 
 fn generate(

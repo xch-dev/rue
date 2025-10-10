@@ -56,8 +56,6 @@ fn build(args: BuildArgs) -> Result<()> {
         },
     )?;
 
-    println!("{:?}", result.syntax_map);
-
     for diagnostic in &result.diagnostics {
         let message = diagnostic.message();
         let severity = diagnostic.kind.severity();

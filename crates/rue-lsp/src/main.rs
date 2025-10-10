@@ -1,19 +1,31 @@
-use std::sync::Arc;
+#![allow(clippy::cast_possible_truncation)]
+
+mod cache;
+
+use cache::Cache;
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use rue_compiler::analyze_file;
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
+use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    InitializeParams, InitializeResult, InitializedParams, MessageType, Position, Range,
+    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidOpenTextDocumentParams, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, LanguageString, MarkedString, MessageType, Position, Range,
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
+use crate::cache::HoverInfo;
+
 #[derive(Debug)]
 struct Backend {
     client: Client,
+    cache: Mutex<HashMap<Url, SendWrapper<Cache>>>,
 }
 
 #[tower_lsp::async_trait]
@@ -24,6 +36,7 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -54,6 +67,10 @@ impl LanguageServer for Backend {
         .await;
     }
 
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        Ok(self.on_hover(&params))
+    }
+
     async fn shutdown(&self) -> Result<()> {
         Ok(())
     }
@@ -61,9 +78,16 @@ impl LanguageServer for Backend {
 
 impl Backend {
     async fn on_change(&self, uri: Url, text: String, _version: i32) {
+        let diagnostics = self.on_change_impl(&uri, &text);
+        self.client
+            .publish_diagnostics(uri, diagnostics, None)
+            .await;
+    }
+
+    fn on_change_impl(&self, uri: &Url, text: &str) -> Vec<Diagnostic> {
         let compilation = analyze_file(
             Source::new(
-                Arc::from(text.as_str()),
+                Arc::from(text),
                 SourceKind::File(
                     uri.to_file_path()
                         .unwrap()
@@ -78,11 +102,39 @@ impl Backend {
         )
         .unwrap();
 
-        let diagnostics: Vec<Diagnostic> = compilation.diagnostics.iter().map(diagnostic).collect();
+        let diagnostics = compilation.diagnostics.iter().map(diagnostic).collect();
 
-        self.client
-            .publish_diagnostics(uri, diagnostics, None)
-            .await;
+        let mut cache = self.cache.lock().unwrap();
+        cache.insert(uri.clone(), SendWrapper::new(Cache::new(compilation)));
+
+        diagnostics
+    }
+
+    fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
+        let cache = self.cache.lock().unwrap();
+        let cache = cache.get(&params.text_document_position_params.text_document.uri)?;
+        let position = cache.position(params.text_document_position_params.position);
+
+        let scopes = cache.scopes(position);
+        let info = cache.hover(&scopes, position)?;
+
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::LanguageString(LanguageString {
+                language: "rue".to_string(),
+                value: match info {
+                    HoverInfo::Symbol(info) => format!("let {}: {}", info.name, info.type_name),
+                    HoverInfo::Type(info) => {
+                        if let Some(inner) = info.inner_name {
+                            format!("type {} = {}", info.name, inner)
+                        } else {
+                            format!("type {}", info.name)
+                        }
+                    }
+                    HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
+                },
+            })),
+            range: None,
+        })
     }
 }
 
@@ -115,6 +167,9 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| Backend { client });
+    let (service, socket) = LspService::new(|client| Backend {
+        client,
+        cache: Mutex::new(HashMap::new()),
+    });
     Server::new(stdin, stdout, socket).serve(service).await;
 }

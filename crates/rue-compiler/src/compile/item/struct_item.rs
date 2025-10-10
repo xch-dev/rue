@@ -5,7 +5,10 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, Scope, ScopeId};
 use rue_types::{Pair, Struct, Type, TypeId};
 
-use crate::{Compiler, compile_expr, compile_generic_parameters, compile_type};
+use crate::{
+    Compiler, SyntaxField, SyntaxItem, SyntaxItemKind, compile_expr, compile_generic_parameters,
+    compile_type,
+};
 
 pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (TypeId, ScopeId) {
     let ty = ctx.alloc_type(Type::Unresolved);
@@ -129,6 +132,15 @@ pub fn compile_struct_item(
         if names.insert(name.text().to_string()) {
             types.push(field_type);
         }
+
+        ctx.syntax_map_mut().add_item(SyntaxItem::new(
+            SyntaxItemKind::FieldDeclaration(SyntaxField {
+                name: name.text().to_string(),
+                container: struct_type,
+                ty: field_type,
+            }),
+            name.text_range(),
+        ));
     }
 
     ctx.pop_scope(range.end());

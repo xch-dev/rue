@@ -15,9 +15,13 @@ impl SyntaxMap {
     pub fn add_item(&mut self, item: SyntaxItem) {
         self.items.push(item);
     }
+
+    pub fn items(&self) -> impl Iterator<Item = &SyntaxItem> {
+        self.items.iter()
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SyntaxItem {
     pub kind: SyntaxItemKind,
     pub span: TextRange,
@@ -29,11 +33,20 @@ impl SyntaxItem {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum SyntaxItemKind {
     SymbolDeclaration(SymbolId),
     SymbolReference(SymbolId),
     TypeDeclaration(TypeId),
     TypeReference(TypeId),
+    FieldDeclaration(SyntaxField),
+    FieldReference(SyntaxField),
     Scope(ScopeId),
+}
+
+#[derive(Debug, Clone)]
+pub struct SyntaxField {
+    pub name: String,
+    pub container: TypeId,
+    pub ty: TypeId,
 }

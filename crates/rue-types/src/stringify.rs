@@ -8,6 +8,10 @@ pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
     stringify_impl(arena, id, &mut IndexMap::new())
 }
 
+pub fn stringify_without_substitution(arena: &Arena<Type>, id: TypeId) -> String {
+    stringify_impl(arena, id, &mut IndexMap::new())
+}
+
 pub(crate) fn stringify_impl(
     arena: &Arena<Type>,
     id: TypeId,
