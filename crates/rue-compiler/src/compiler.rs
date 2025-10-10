@@ -23,7 +23,6 @@ pub struct Compiler {
     diagnostics: Vec<Diagnostic>,
     db: Database,
     scope_stack: Vec<ScopeId>,
-    mapping_stack: Vec<HashMap<SymbolId, TypeId>>,
     builtins: Builtins,
     defaults: HashMap<TypeId, HashMap<String, Value>>,
     declaration_stack: Vec<Declaration>,
@@ -55,7 +54,6 @@ impl Compiler {
             diagnostics: Vec::new(),
             db,
             scope_stack: vec![builtins.scope],
-            mapping_stack: vec![],
             builtins,
             defaults: HashMap::new(),
             declaration_stack: Vec::new(),
@@ -134,9 +132,9 @@ impl Compiler {
     }
 
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {
-        for map in self.mapping_stack.iter().rev() {
-            if let Some(ty) = map.get(&symbol) {
-                return *ty;
+        for scope in self.scope_stack.iter().rev() {
+            if let Some(ty) = self.scope(*scope).symbol_override_type(symbol) {
+                return ty;
             }
         }
 
@@ -155,7 +153,7 @@ impl Compiler {
         &mut self,
         mappings: HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>,
     ) -> usize {
-        let mut result = HashMap::new();
+        let mut result = Scope::new();
 
         for (symbol, paths) in mappings {
             let mut ty = self.symbol_type(symbol);
@@ -167,20 +165,21 @@ impl Compiler {
                 ty = replace_type(&mut self.db, ty, replacement, &path);
             }
 
-            result.insert(symbol, ty);
+            result.override_symbol_type(symbol, ty);
         }
 
-        let index = self.mapping_stack.len();
-        self.mapping_stack.push(result);
+        let index = self.scope_stack.len();
+        let scope = self.alloc_scope(result);
+        self.push_scope(scope);
         index
     }
 
     pub fn mapping_checkpoint(&self) -> usize {
-        self.mapping_stack.len()
+        self.scope_stack.len()
     }
 
     pub fn revert_mappings(&mut self, index: usize) {
-        self.mapping_stack.truncate(index);
+        self.scope_stack.truncate(index);
     }
 
     pub fn is_assignable(&mut self, from: TypeId, to: TypeId) -> bool {

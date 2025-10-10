@@ -93,6 +93,10 @@ pub fn compile_block(
                 });
 
                 if let Some(binding) = stmt.binding() {
+                    let scope = ctx.alloc_scope(Scope::new());
+
+                    ctx.push_scope(scope);
+
                     create_binding(ctx, symbol, &binding);
                 }
 
