@@ -1,20 +1,32 @@
 use log::debug;
-use rue_ast::AstFieldAccessExpr;
+use rowan::TextRange;
+use rue_ast::{AstFieldAccessExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::Value;
 
 use crate::{
-    Compiler, Field, FieldResult, SyntaxField, SyntaxItem, SyntaxItemKind, compile_expr,
-    compile_field,
+    Compiler, CompletionContext, Field, FieldResult, SyntaxField, SyntaxItem, SyntaxItemKind,
+    compile_expr, compile_field,
 };
 
 pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr) -> Value {
+    let mut start = access.syntax().text_range().start();
+
     let expr = if let Some(expr) = access.expr() {
+        start = expr.syntax().text_range().end();
         compile_expr(ctx, &expr, None)
     } else {
         debug!("Unresolved field access expr");
         ctx.builtins().unresolved.clone()
     };
+
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::StructFields {
+            ty: expr.ty,
+            specified_fields: None,
+        }),
+        TextRange::new(start, access.syntax().text_range().end()),
+    ));
 
     let Some(name) = access.field() else {
         debug!("Unresolved field access name");

@@ -13,11 +13,12 @@ use rue_options::CompilerOptions;
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, LanguageString,
-    Location, MarkedString, MessageType, OneOf, Position, Range, ReferenceParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, InitializedParams, LanguageString, Location, MarkedString,
+    MessageType, OneOf, Position, Range, ReferenceParams, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -40,6 +41,19 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![".".to_string(), ",".to_string()]),
+                    all_commit_characters: Some(vec![
+                        ";".to_string(),
+                        "(".to_string(),
+                        ")".to_string(),
+                        "{".to_string(),
+                        "}".to_string(),
+                        "[".to_string(),
+                        "]".to_string(),
+                    ]),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             ..Default::default()
@@ -83,6 +97,10 @@ impl LanguageServer for Backend {
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
         Ok(self.on_references(&params))
+    }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        Ok(self.on_completion(&params))
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -212,6 +230,20 @@ impl Backend {
                     .collect(),
             )
         }
+    }
+
+    fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
+        let uri = params.text_document_position.text_document.uri.clone();
+
+        let mut cache = self.cache.lock().unwrap();
+        let cache = cache.get_mut(&uri)?;
+        let position = cache.position(params.text_document_position.position);
+
+        let scopes = cache.scopes(position);
+
+        Some(CompletionResponse::Array(
+            cache.completions(&scopes, position),
+        ))
     }
 }
 

@@ -89,4 +89,12 @@ impl Scope {
     pub fn symbol_override_type(&self, symbol: SymbolId) -> Option<TypeId> {
         self.symbol_types.get(&symbol).copied()
     }
+
+    pub fn symbol_names(&self) -> impl Iterator<Item = &str> {
+        self.symbol_names.values().map(String::as_str)
+    }
+
+    pub fn type_names(&self) -> impl Iterator<Item = &str> {
+        self.type_names.values().map(String::as_str)
+    }
 }

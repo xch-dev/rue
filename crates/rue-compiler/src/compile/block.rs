@@ -7,7 +7,10 @@ use rue_hir::{
 };
 use rue_types::TypeId;
 
-use crate::{Compiler, compile_expr, compile_type, create_binding};
+use crate::{
+    Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_expr, compile_type,
+    create_binding,
+};
 
 pub fn compile_block(
     ctx: &mut Compiler,
@@ -16,6 +19,11 @@ pub fn compile_block(
     expected_type: Option<TypeId>,
     require_return: bool,
 ) -> Value {
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::Expression),
+        block.syntax().text_range(),
+    ));
+
     let index = ctx.mapping_checkpoint();
 
     let scope = ctx.alloc_scope(Scope::new());

@@ -7,8 +7,8 @@ use rue_hir::{Hir, SymbolPath, Value};
 use rue_types::{Pair, Type, Union};
 
 use crate::{
-    Compiler, PathKind, PathResult, SyntaxField, SyntaxItem, SyntaxItemKind, compile_expr,
-    compile_path,
+    Compiler, CompletionContext, PathKind, PathResult, SyntaxField, SyntaxItem, SyntaxItemKind,
+    compile_expr, compile_path,
 };
 
 pub fn compile_struct_initializer_expr(
@@ -143,6 +143,14 @@ pub fn compile_struct_initializer_expr(
             );
         }
     }
+
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::StructFields {
+            ty: semantic,
+            specified_fields: Some(fields.keys().cloned().collect()),
+        }),
+        expr.syntax().text_range(),
+    ));
 
     let mut hir = ctx.builtins().nil.hir;
     let mut list_type = ctx.builtins().nil.ty;

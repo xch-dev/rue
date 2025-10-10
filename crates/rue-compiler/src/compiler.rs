@@ -68,8 +68,15 @@ impl Compiler {
         &self.source
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     pub fn set_source(&mut self, source: Source) {
-        self.syntax_maps.entry(source.kind.clone()).or_default();
+        self.syntax_maps
+            .entry(source.kind.clone())
+            .or_default()
+            .add_item(SyntaxItem::new(
+                SyntaxItemKind::Scope(self.builtins.scope),
+                TextRange::new(TextSize::from(0), TextSize::from(source.text.len() as u32)),
+            ));
         self.source = source;
     }
 
