@@ -161,6 +161,7 @@ where
             PathResult::Unresolved => return PathResult::Unresolved,
             PathResult::Symbol(symbol, mut override_type) => {
                 ctx.reference(Declaration::Symbol(symbol));
+                ctx.reference_span(Declaration::Symbol(symbol), name.text_range());
 
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
                     compile_generic_arguments(ctx, &generic_arguments)
@@ -203,6 +204,7 @@ where
             }
             PathResult::Type(mut ty) => {
                 ctx.reference(Declaration::Type(ty));
+                ctx.reference_span(Declaration::Type(ty), name.text_range());
 
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
                     compile_generic_arguments(ctx, &generic_arguments)

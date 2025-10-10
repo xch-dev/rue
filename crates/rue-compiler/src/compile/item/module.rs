@@ -1,6 +1,6 @@
 use rue_ast::{AstModuleItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{ModuleDeclarations, ModuleSymbol, Scope, Symbol, SymbolId};
+use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Scope, Symbol, SymbolId};
 
 use crate::{
     Compiler, compile_symbol_items, compile_type_items, declare_symbol_items, declare_type_items,
@@ -35,6 +35,8 @@ pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem) -> Symbo
             symbol,
             module.export().is_some(),
         );
+
+        ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }
 
     symbol

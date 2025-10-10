@@ -73,7 +73,11 @@ impl Compiler {
         self.source = source;
     }
 
-    pub fn syntax_map(&mut self) -> &mut SyntaxMap {
+    pub fn syntax_map(&self, source_kind: &SourceKind) -> Option<&SyntaxMap> {
+        self.syntax_maps.get(source_kind)
+    }
+
+    pub fn syntax_map_mut(&mut self) -> &mut SyntaxMap {
         self.syntax_maps
             .entry(self.source.kind.clone())
             .or_default()
@@ -103,7 +107,7 @@ impl Compiler {
     pub fn pop_scope(&mut self, end: TextSize) {
         let (start, scope) = self.scope_stack.pop().unwrap();
 
-        self.syntax_map().add_item(SyntaxItem::new(
+        self.syntax_map_mut().add_item(SyntaxItem::new(
             SyntaxItemKind::Scope(scope),
             TextRange::new(start, end),
         ));
@@ -359,6 +363,26 @@ impl Compiler {
         if let Some(last) = self.declaration_stack.last() {
             self.db.add_reference(*last, reference);
         }
+    }
+
+    pub fn declaration_span(&mut self, declaration: Declaration, span: TextRange) {
+        self.syntax_map_mut().add_item(SyntaxItem::new(
+            match declaration {
+                Declaration::Symbol(symbol) => SyntaxItemKind::SymbolDeclaration(symbol),
+                Declaration::Type(ty) => SyntaxItemKind::TypeDeclaration(ty),
+            },
+            span,
+        ));
+    }
+
+    pub fn reference_span(&mut self, reference: Declaration, span: TextRange) {
+        self.syntax_map_mut().add_item(SyntaxItem::new(
+            match reference {
+                Declaration::Symbol(symbol) => SyntaxItemKind::SymbolReference(symbol),
+                Declaration::Type(ty) => SyntaxItemKind::TypeReference(ty),
+            },
+            span,
+        ));
     }
 }
 

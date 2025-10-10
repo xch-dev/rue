@@ -16,8 +16,8 @@ use rue_options::CompilerOptions;
 use rue_parser::Parser;
 
 use crate::{
-    Compiler, check_unused, compile_symbol_items, compile_type_items, declare_symbol_items,
-    declare_type_items,
+    Compiler, SyntaxMap, check_unused, compile_symbol_items, compile_type_items,
+    declare_symbol_items, declare_type_items,
 };
 
 #[derive(Debug, Clone)]
@@ -26,6 +26,7 @@ pub struct Compilation {
     pub main: Option<NodePtr>,
     pub exports: IndexMap<String, NodePtr>,
     pub tests: Vec<Test>,
+    pub syntax_map: SyntaxMap,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +53,7 @@ pub fn analyze_file(file: Source, options: CompilerOptions) -> Result<Compilatio
     compile_file_impl(&mut Allocator::new(), file, options, false)
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn compile_file_impl(
     allocator: &mut Allocator,
     file: Source,
@@ -78,18 +80,19 @@ fn compile_file_impl(
     let scope = ctx.alloc_scope(scope);
 
     ctx.push_scope(scope, TextSize::from(0));
-    let file = compile_file_partial(&mut ctx, file);
+    let compiled_file = compile_file_partial(&mut ctx, file.clone());
     #[allow(clippy::cast_possible_truncation)]
     ctx.pop_scope(TextSize::from(std_source.len() as u32));
 
     let mut compilation = Compilation {
-        diagnostics: [std.diagnostics, file.diagnostics].concat(),
+        diagnostics: [std.diagnostics, compiled_file.diagnostics].concat(),
         main: None,
         exports: IndexMap::new(),
         tests: Vec::new(),
+        syntax_map: ctx.syntax_map(&file.kind).unwrap().clone(),
     };
 
-    let main_symbol = ctx.scope(file.scope).symbol("main");
+    let main_symbol = ctx.scope(compiled_file.scope).symbol("main");
 
     let mut entrypoints = HashSet::new();
 
@@ -99,11 +102,11 @@ fn compile_file_impl(
         entrypoints.insert(Declaration::Symbol(test));
     }
 
-    for (_, symbol) in ctx.scope(file.scope).exported_symbols() {
+    for (_, symbol) in ctx.scope(compiled_file.scope).exported_symbols() {
         entrypoints.insert(Declaration::Symbol(symbol));
     }
 
-    for (_, ty) in ctx.scope(file.scope).exported_types() {
+    for (_, ty) in ctx.scope(compiled_file.scope).exported_types() {
         entrypoints.insert(Declaration::Type(ty));
     }
 
@@ -125,7 +128,7 @@ fn compile_file_impl(
     }
 
     for (name, symbol) in ctx
-        .scope(file.scope)
+        .scope(compiled_file.scope)
         .exported_symbols()
         .map(|(name, symbol)| (name.to_string(), symbol))
         .collect::<Vec<_>>()

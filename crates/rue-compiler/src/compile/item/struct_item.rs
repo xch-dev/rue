@@ -75,6 +75,8 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
             ty,
             struct_item.export().is_some(),
         );
+
+        ctx.declaration_span(Declaration::Type(ty), name.text_range());
     }
 
     ctx.pop_declaration();

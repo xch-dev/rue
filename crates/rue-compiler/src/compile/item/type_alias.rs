@@ -40,6 +40,8 @@ pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> 
             ty,
             type_alias.export().is_some(),
         );
+
+        ctx.declaration_span(Declaration::Type(ty), name.text_range());
     }
 
     ctx.pop_declaration();

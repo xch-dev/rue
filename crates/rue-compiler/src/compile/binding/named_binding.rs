@@ -1,5 +1,5 @@
 use rue_ast::AstNamedBinding;
-use rue_hir::{Symbol, SymbolId};
+use rue_hir::{Declaration, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 
 use crate::Compiler;
@@ -15,6 +15,8 @@ pub fn create_named_binding(ctx: &mut Compiler, symbol: SymbolId, binding: &AstN
 pub fn create_binding_for_identifier(ctx: &mut Compiler, symbol: SymbolId, name: SyntaxToken) {
     ctx.last_scope_mut()
         .insert_symbol(name.text().to_string(), symbol, false);
+
+    ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
 
     match ctx.symbol_mut(symbol) {
         Symbol::Binding(binding) => binding.name = Some(name),

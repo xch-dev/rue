@@ -31,7 +31,9 @@ impl SyntaxItem {
 
 #[derive(Debug, Clone, Copy)]
 pub enum SyntaxItemKind {
-    Symbol(SymbolId),
-    Type(TypeId),
+    SymbolDeclaration(SymbolId),
+    SymbolReference(SymbolId),
+    TypeDeclaration(TypeId),
+    TypeReference(TypeId),
     Scope(ScopeId),
 }

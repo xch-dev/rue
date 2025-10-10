@@ -116,6 +116,8 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
             symbol,
             function.export().is_some(),
         );
+
+        ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }
 
     ctx.pop_declaration();
