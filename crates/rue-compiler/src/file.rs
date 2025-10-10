@@ -59,9 +59,10 @@ fn compile_file_impl(
     do_codegen: bool,
 ) -> Result<Compilation, Error> {
     let mut ctx = Compiler::new(options);
+    let std_source = include_str!("./std.rue");
     let std = compile_file_partial(
         &mut ctx,
-        Source::new(Arc::from(include_str!("./std.rue")), SourceKind::Std),
+        Source::new(Arc::from(std_source), SourceKind::Std),
     );
 
     let mut scope = Scope::new();
@@ -78,6 +79,8 @@ fn compile_file_impl(
 
     ctx.push_scope(scope, TextSize::from(0));
     let file = compile_file_partial(&mut ctx, file);
+    #[allow(clippy::cast_possible_truncation)]
+    ctx.pop_scope(TextSize::from(std_source.len() as u32));
 
     let mut compilation = Compilation {
         diagnostics: [std.diagnostics, file.diagnostics].concat(),
