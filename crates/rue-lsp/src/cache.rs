@@ -1,9 +1,9 @@
-use rowan::TextSize;
+use rowan::{TextRange, TextSize};
 use rue_compiler::{Compilation, SyntaxItemKind};
 use rue_diagnostic::LineCol;
 use rue_hir::{ScopeId, SymbolId};
 use rue_types::{Type, TypeId};
-use tower_lsp::lsp_types::Position;
+use tower_lsp::lsp_types::{Position, Range};
 
 #[derive(Debug, Clone)]
 pub struct Scopes(Vec<ScopeId>);
@@ -133,6 +133,147 @@ impl Cache {
         }
 
         None
+    }
+
+    pub fn definition(&self, index: usize) -> Vec<Range> {
+        self.definition_impl(index)
+            .into_iter()
+            .map(|span| {
+                let start = LineCol::new(&self.compilation.source.text, span.start().into());
+                let end = LineCol::new(&self.compilation.source.text, span.end().into());
+
+                Range::new(
+                    Position::new(start.line as u32, start.col as u32),
+                    Position::new(end.line as u32, end.col as u32),
+                )
+            })
+            .collect()
+    }
+
+    fn definition_impl(&self, index: usize) -> Vec<TextRange> {
+        for item in self.compilation.syntax_map.items() {
+            if !item.span.contains(TextSize::from(index as u32)) {
+                continue;
+            }
+
+            match item.kind.clone() {
+                SyntaxItemKind::SymbolDeclaration(symbol) => {
+                    return self
+                        .compilation
+                        .syntax_map
+                        .items()
+                        .filter_map(|item| {
+                            let SyntaxItemKind::SymbolReference(declaration) = item.kind else {
+                                return None;
+                            };
+
+                            if declaration == symbol {
+                                Some(item.span)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                }
+                SyntaxItemKind::SymbolReference(symbol) => {
+                    return self
+                        .compilation
+                        .syntax_map
+                        .items()
+                        .filter_map(|item| {
+                            let SyntaxItemKind::SymbolDeclaration(declaration) = item.kind else {
+                                return None;
+                            };
+
+                            if declaration == symbol {
+                                Some(item.span)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                }
+                SyntaxItemKind::TypeDeclaration(ty) => {
+                    return self
+                        .compilation
+                        .syntax_map
+                        .items()
+                        .filter_map(|item| {
+                            let SyntaxItemKind::TypeReference(declaration) = item.kind else {
+                                return None;
+                            };
+
+                            if declaration == ty {
+                                Some(item.span)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                }
+                SyntaxItemKind::TypeReference(ty) => {
+                    return self
+                        .compilation
+                        .syntax_map
+                        .items()
+                        .filter_map(|item| {
+                            let SyntaxItemKind::TypeDeclaration(declaration) = item.kind else {
+                                return None;
+                            };
+
+                            if declaration == ty {
+                                Some(item.span)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                }
+                SyntaxItemKind::FieldDeclaration(field) => {
+                    return self
+                        .compilation
+                        .syntax_map
+                        .items()
+                        .filter_map(|item| {
+                            let SyntaxItemKind::FieldReference(declaration) = &item.kind else {
+                                return None;
+                            };
+
+                            if declaration.container == field.container
+                                && declaration.name == field.name
+                            {
+                                Some(item.span)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                }
+                SyntaxItemKind::FieldReference(field) => {
+                    return self
+                        .compilation
+                        .syntax_map
+                        .items()
+                        .filter_map(|item| {
+                            let SyntaxItemKind::FieldDeclaration(declaration) = &item.kind else {
+                                return None;
+                            };
+
+                            if declaration.container == field.container
+                                && declaration.name == field.name
+                            {
+                                Some(item.span)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                }
+                SyntaxItemKind::Scope(_) => {}
+            }
+        }
+
+        Vec::new()
     }
 
     fn type_name(&self, scopes: &Scopes, ty: TypeId) -> String {

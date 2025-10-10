@@ -13,14 +13,15 @@ use rue_options::CompilerOptions;
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidOpenTextDocumentParams, Hover,
-    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-    InitializedParams, LanguageString, MarkedString, MessageType, Position, Range,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, LanguageString,
+    Location, MarkedString, MessageType, OneOf, Position, Range, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-use crate::cache::HoverInfo;
+use crate::cache::{HoverInfo, NameKind};
 
 #[derive(Debug)]
 struct Backend {
@@ -37,6 +38,7 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                definition_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -69,6 +71,13 @@ impl LanguageServer for Backend {
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         Ok(self.on_hover(&params))
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        Ok(self.on_goto_definition(&params))
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -118,23 +127,64 @@ impl Backend {
         let scopes = cache.scopes(position);
         let info = cache.hover(&scopes, position)?;
 
-        Some(Hover {
-            contents: HoverContents::Scalar(MarkedString::LanguageString(LanguageString {
-                language: "rue".to_string(),
-                value: match info {
-                    HoverInfo::Symbol(info) => format!("let {}: {}", info.name, info.type_name),
-                    HoverInfo::Type(info) => {
-                        if let Some(inner) = info.inner_name {
-                            format!("type {} = {}", info.name, inner)
-                        } else {
-                            format!("type {}", info.name)
-                        }
+        let content = MarkedString::LanguageString(LanguageString {
+            language: "rue".to_string(),
+            value: match &info {
+                HoverInfo::Symbol(info) => format!("let {}: {}", info.name, info.type_name),
+                HoverInfo::Type(info) => {
+                    if let Some(inner) = &info.inner_name {
+                        format!("type {} = {}", info.name, inner)
+                    } else {
+                        format!("type {}", info.name)
                     }
-                    HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
-                },
-            })),
+                }
+                HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
+            },
+        });
+
+        let kind = match info {
+            HoverInfo::Symbol(info) => info.kind,
+            HoverInfo::Type(info) => info.kind,
+            HoverInfo::Field(info) => info.kind,
+        };
+
+        Some(Hover {
+            contents: HoverContents::Array(vec![
+                content,
+                MarkedString::String(match kind {
+                    NameKind::Declaration => "Declaration".to_string(),
+                    NameKind::Reference => "Reference".to_string(),
+                }),
+            ]),
             range: None,
         })
+    }
+
+    fn on_goto_definition(&self, params: &GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
+        let uri = params
+            .text_document_position_params
+            .text_document
+            .uri
+            .clone();
+
+        let cache = self.cache.lock().unwrap();
+        let cache = cache.get(&uri)?;
+        let position = cache.position(params.text_document_position_params.position);
+
+        let range = cache.definition(position);
+
+        if range.is_empty() {
+            None
+        } else if range.len() == 1 {
+            Some(GotoDefinitionResponse::Scalar(Location::new(uri, range[0])))
+        } else {
+            Some(GotoDefinitionResponse::Array(
+                range
+                    .into_iter()
+                    .map(|range| Location::new(uri.clone(), range))
+                    .collect(),
+            ))
+        }
     }
 }
 
