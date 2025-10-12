@@ -157,8 +157,8 @@ fn handle_test_file(name: &str, entry: &DirEntry, failed: &mut bool, update: boo
     handle_test_case(
         &mut allocator,
         &mut file.main,
-        result.main,
-        debug_result.main,
+        result.main.map(|output| output.program),
+        debug_result.main.map(|output| output.program),
     )?;
 
     if file.tests.len() > result.tests.len() {
@@ -177,8 +177,8 @@ fn handle_test_file(name: &str, entry: &DirEntry, failed: &mut bool, update: boo
         handle_test_case(
             &mut allocator,
             test_case,
-            Some(result.tests[i].program),
-            Some(debug_result.tests[i].program),
+            Some(result.tests[i].output.program),
+            Some(debug_result.tests[i].output.program),
         )?;
     }
 

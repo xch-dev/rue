@@ -1796,6 +1796,7 @@ dependencies = [
  "clvm_tools_rs",
  "clvmr",
  "expect-test",
+ "hex",
  "id-arena",
  "num-bigint",
  "num-integer",

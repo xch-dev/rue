@@ -11,7 +11,7 @@ use rue_hir::{
     SymbolId,
 };
 use rue_lexer::Lexer;
-use rue_lir::{Error, codegen, optimize};
+use rue_lir::{Error, codegen, optimize, stringify_lir};
 use rue_options::CompilerOptions;
 use rue_parser::Parser;
 
@@ -24,17 +24,23 @@ use crate::{
 pub struct Compilation {
     pub compiler: Compiler,
     pub diagnostics: Vec<Diagnostic>,
-    pub main: Option<NodePtr>,
-    pub exports: IndexMap<String, NodePtr>,
+    pub main: Option<CodegenOutput>,
+    pub exports: IndexMap<String, CodegenOutput>,
     pub tests: Vec<Test>,
     pub syntax_map: SyntaxMap,
     pub source: Source,
 }
 
 #[derive(Debug, Clone)]
+pub struct CodegenOutput {
+    pub program: NodePtr,
+    pub lir: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct Test {
     pub name: String,
-    pub program: NodePtr,
+    pub output: CodegenOutput,
 }
 
 #[derive(Debug, Clone)]
@@ -152,7 +158,7 @@ fn compile_file_impl(
 
         tests.push(Test {
             name,
-            program: generate(&mut ctx, allocator, test, options)?,
+            output: generate(&mut ctx, allocator, test, options)?,
         });
     }
 
@@ -172,7 +178,7 @@ fn generate(
     allocator: &mut Allocator,
     symbol: SymbolId,
     options: CompilerOptions,
-) -> Result<NodePtr, Error> {
+) -> Result<CodegenOutput, Error> {
     let graph = DependencyGraph::build(ctx, symbol, options);
 
     let mut arena = Arena::new();
@@ -183,7 +189,12 @@ fn generate(
         lir = optimize(&mut arena, lir);
     }
 
-    codegen(&arena, allocator, lir)
+    let program = codegen(&arena, allocator, lir)?;
+
+    Ok(CodegenOutput {
+        program,
+        lir: stringify_lir(&arena, lir),
+    })
 }
 
 fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilation {

@@ -20,6 +20,7 @@ pub enum Command {
 }
 
 #[derive(Debug, Parser)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BuildArgs {
     file: String,
     #[clap(short, long)]
@@ -28,6 +29,8 @@ pub struct BuildArgs {
     debug: bool,
     #[clap(short = 'x', long)]
     hex: bool,
+    #[clap(long)]
+    lir: bool,
     #[clap(long)]
     hash: bool,
 }
@@ -75,15 +78,15 @@ fn build(args: BuildArgs) -> Result<()> {
         process::exit(1);
     }
 
-    let program = if let Some(export) = args.export {
-        let Some(program) = result.exports.get(&export).copied() else {
+    let output = if let Some(export) = args.export {
+        let Some(output) = result.exports.get(&export).cloned() else {
             eprintln!("{}", format!("Export `{export}` not found").red().bold());
             process::exit(1);
         };
 
-        program
-    } else if let Some(program) = result.main {
-        program
+        output
+    } else if let Some(output) = result.main.clone() {
+        output
     } else if result.exports.is_empty() {
         eprintln!(
             "{}",
@@ -102,17 +105,42 @@ fn build(args: BuildArgs) -> Result<()> {
         process::exit(1);
     };
 
+    if args.hex && args.hash && args.lir {
+        eprintln!(
+            "{}",
+            "Cannot use both `--hex`, `--hash`, and `--lir`"
+                .red()
+                .bold()
+        );
+        process::exit(1);
+    }
+
     if args.hex && args.hash {
         eprintln!("{}", "Cannot use both `--hex` and `--hash`".red().bold());
         process::exit(1);
     }
 
+    if args.hex && args.lir {
+        eprintln!("{}", "Cannot use both `--hex` and `--lir`".red().bold());
+        process::exit(1);
+    }
+
+    if args.hash && args.lir {
+        eprintln!("{}", "Cannot use both `--hash` and `--lir`".red().bold());
+        process::exit(1);
+    }
+
     if args.hex {
-        println!("{}", hex::encode(node_to_bytes(&allocator, program)?));
+        println!(
+            "{}",
+            hex::encode(node_to_bytes(&allocator, output.program)?)
+        );
     } else if args.hash {
-        println!("0x{}", tree_hash(&allocator, program));
+        println!("0x{}", tree_hash(&allocator, output.program));
+    } else if args.lir {
+        println!("{}", output.lir);
     } else {
-        println!("{}", disassemble(&allocator, program, None));
+        println!("{}", disassemble(&allocator, output.program, None));
     }
 
     Ok(())
@@ -163,7 +191,7 @@ fn test(file: String) -> Result<()> {
         match run_program(
             &mut allocator,
             &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
-            test.program,
+            test.output.program,
             NodePtr::NIL,
             u64::MAX,
         ) {

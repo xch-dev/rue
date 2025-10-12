@@ -35,7 +35,7 @@ pub fn compile(source: String) -> Result<Compilation, JsError> {
 
     let program = result
         .main
-        .map(|program| disassemble(&allocator, program, None));
+        .map(|output| disassemble(&allocator, output.program, None));
 
     let diagnostics = result.diagnostics.iter().map(Diagnostic::message).collect();
 
