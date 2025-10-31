@@ -1,3 +1,5 @@
+use std::fmt;
+
 use id_arena::Id;
 use rue_parser::SyntaxToken;
 use rue_types::TypeId;
@@ -109,4 +111,48 @@ pub enum Builtin {
     BlsVerify,
     Secp256K1Verify,
     Secp256R1Verify,
+}
+
+impl fmt::Display for Builtin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Sha256 { inline } =>
+                    if *inline {
+                        "sha256_inline"
+                    } else {
+                        "sha256"
+                    },
+                Self::Keccak256 { inline } =>
+                    if *inline {
+                        "keccak256_inline"
+                    } else {
+                        "keccak256"
+                    },
+                Self::Concat => "concat",
+                Self::CoinId => "coinid",
+                Self::Substr => "substr",
+                Self::Sum => "sum",
+                Self::Difference => "difference",
+                Self::Product => "product",
+                Self::Divmod => "divmod",
+                Self::Modpow => "modpow",
+                Self::Any => "any",
+                Self::All => "all",
+                Self::PubkeyForExp => "pubkey_for_exp",
+                Self::G1Sum => "g1_sum",
+                Self::G1Difference => "g1_difference",
+                Self::G2Sum => "g2_sum",
+                Self::G2Difference => "g2_difference",
+                Self::G1Map => "g1_map",
+                Self::G2Map => "g2_map",
+                Self::BlsPairingIdentity => "bls_pairing_identity",
+                Self::BlsVerify => "bls_verify",
+                Self::Secp256K1Verify => "secp256k1_verify",
+                Self::Secp256R1Verify => "secp256r1_verify",
+            }
+        )
+    }
 }

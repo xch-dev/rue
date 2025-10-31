@@ -158,6 +158,31 @@ impl Compiler {
         rue_types::stringify(self.db.types_mut(), ty)
     }
 
+    pub fn symbol_name(&self, symbol: SymbolId) -> String {
+        for scope in self.scope_stack.iter().rev() {
+            if let Some(name) = self.scope(scope.1).symbol_name(symbol) {
+                return name.to_string();
+            }
+        }
+
+        match self.symbol(symbol) {
+            Symbol::Binding(binding) => binding.name.as_ref().map(|name| name.text().to_string()),
+            Symbol::Constant(constant) => {
+                constant.name.as_ref().map(|name| name.text().to_string())
+            }
+            Symbol::Function(function) => {
+                function.name.as_ref().map(|name| name.text().to_string())
+            }
+            Symbol::Module(module) => module.name.as_ref().map(|name| name.text().to_string()),
+            Symbol::Builtin(builtin) => Some(builtin.to_string()),
+            Symbol::Parameter(parameter) => {
+                parameter.name.as_ref().map(|name| name.text().to_string())
+            }
+            Symbol::Unresolved => None,
+        }
+        .unwrap_or("{unknown}".to_string())
+    }
+
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {
         for scope in self.scope_stack.iter().rev() {
             if let Some(ty) = self.scope(scope.1).symbol_override_type(symbol) {

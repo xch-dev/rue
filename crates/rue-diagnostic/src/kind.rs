@@ -212,6 +212,21 @@ pub enum DiagnosticKind {
 
     #[error("Constant `{0}` references itself")]
     RecursiveConstant(String),
+
+    #[error("Unresolved import `{0}`")]
+    UnresolvedImport(String),
+
+    #[error("Cannot import `{0}` from type `{1}`")]
+    CannotImportFromType(String, String),
+
+    #[error("Cannot import `{0}` from symbol `{1}`")]
+    CannotImportFromSymbol(String, String),
+
+    #[error("Import `{0}` is unused in this scope due to a different symbol with the same name")]
+    DuplicateImportSymbol(String),
+
+    #[error("Import `{0}` is unused in this scope due to a different type with the same name")]
+    DuplicateImportType(String),
 }
 
 impl DiagnosticKind {
@@ -270,7 +285,10 @@ impl DiagnosticKind {
             | Self::RecursiveEntrypoint(..)
             | Self::RecursiveInlineFunction(..)
             | Self::RecursiveConstant(..)
-            | Self::UnexpectedExplicitReturn => DiagnosticSeverity::Error,
+            | Self::UnexpectedExplicitReturn
+            | Self::UnresolvedImport(..)
+            | Self::CannotImportFromType(..)
+            | Self::CannotImportFromSymbol(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::UnnecessaryCast(..)
@@ -285,7 +303,9 @@ impl DiagnosticKind {
             | Self::UnusedGenericType(..)
             | Self::AlwaysFalseCondition
             | Self::AlwaysTrueCondition
-            | Self::UnusedStatementValue => DiagnosticSeverity::Warning,
+            | Self::UnusedStatementValue
+            | Self::DuplicateImportSymbol(..)
+            | Self::DuplicateImportType(..) => DiagnosticSeverity::Warning,
         }
     }
 }

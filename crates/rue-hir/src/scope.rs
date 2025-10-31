@@ -2,11 +2,34 @@ use std::collections::HashMap;
 
 use id_arena::Id;
 use indexmap::{IndexMap, IndexSet};
+use rue_parser::SyntaxToken;
 use rue_types::TypeId;
 
 use crate::SymbolId;
 
 pub type ScopeId = Id<Scope>;
+
+#[derive(Debug, Clone)]
+pub struct Import {
+    pub name: SyntaxToken,
+    pub include_self: bool,
+    pub include_all: bool,
+    pub children: IndexMap<String, Import>,
+}
+
+impl Import {
+    pub fn extend(&mut self, import: Import) {
+        self.include_all |= import.include_all;
+        self.include_self |= import.include_self;
+
+        for (name, import) in import.children {
+            self.children
+                .entry(name)
+                .or_insert(import.clone())
+                .extend(import);
+        }
+    }
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope {
@@ -17,6 +40,7 @@ pub struct Scope {
     symbol_types: HashMap<SymbolId, TypeId>,
     exported_symbols: IndexSet<SymbolId>,
     exported_types: IndexSet<TypeId>,
+    imports: IndexMap<String, Import>,
 }
 
 impl Scope {
@@ -96,5 +120,16 @@ impl Scope {
 
     pub fn type_names(&self) -> impl Iterator<Item = &str> {
         self.type_names.values().map(String::as_str)
+    }
+
+    pub fn import(&mut self, base: String, import: Import) {
+        self.imports
+            .entry(base)
+            .or_insert(import.clone())
+            .extend(import);
+    }
+
+    pub fn imports(&self) -> IndexMap<String, Import> {
+        self.imports.clone()
     }
 }
