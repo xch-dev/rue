@@ -19,6 +19,7 @@ pub fn declare_type_items(
                     declarations.symbols.push(declare_module_types(ctx, &item));
                 }
             }
+            AstItem::ImportItem(_) => {}
         }
     }
 }
@@ -41,6 +42,7 @@ pub fn declare_symbol_items(
                     declarations.symbols.push(declare_symbol_item(ctx, &item));
                 }
             }
+            AstItem::ImportItem(_) => {}
         }
     }
 }
@@ -66,6 +68,7 @@ pub fn compile_type_items(
                     module_index += 1;
                 }
             }
+            AstItem::ImportItem(_) => {}
         }
     }
 }
@@ -89,6 +92,7 @@ pub fn compile_symbol_items(
                 }
                 index += 1;
             }
+            AstItem::ImportItem(_) => {}
         }
     }
 }

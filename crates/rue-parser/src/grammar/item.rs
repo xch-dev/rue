@@ -163,7 +163,7 @@ fn import_path_segment(p: &mut Parser, first: bool) -> bool {
     } else if !first && p.at(T!['{']) {
         p.expect(T!['{']);
         while !p.at(T!['}']) {
-            import_path_segment(p, false);
+            import_path(p, false);
             if !p.try_eat(T![,]) {
                 break;
             }
@@ -431,12 +431,14 @@ mod tests {
                     ImportPathSegment@12..29
                       PathSeparator@12..14 "::"
                       OpenBrace@14..15 "{"
-                      ImportPathSegment@15..20
-                        Ident@15..20 "world"
+                      ImportPath@15..20
+                        ImportPathSegment@15..20
+                          Ident@15..20 "world"
                       Comma@20..21 ","
                       Whitespace@21..22 " "
-                      ImportPathSegment@22..27
-                        Ident@22..27 "there"
+                      ImportPath@22..27
+                        ImportPathSegment@22..27
+                          Ident@22..27 "there"
                       Comma@27..28 ","
                       CloseBrace@28..29 "}"
                   Semicolon@29..30 ";"

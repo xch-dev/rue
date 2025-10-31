@@ -62,6 +62,9 @@ ast_nodes!(
     TypeAliasItem,
     StructItem,
     StructField,
+    ImportItem,
+    ImportPath,
+    ImportPathSegment,
     GenericParameters,
     GenericArguments,
     LiteralType,
@@ -106,7 +109,7 @@ ast_nodes!(
     StructFieldBinding,
 );
 
-ast_enum!(Item, TypeItem, SymbolItem);
+ast_enum!(Item, TypeItem, SymbolItem, ImportItem);
 ast_enum!(TypeItem, TypeAliasItem, StructItem);
 ast_enum!(SymbolItem, ModuleItem, FunctionItem, ConstantItem);
 ast_enum!(
@@ -336,6 +339,53 @@ impl AstStructField {
 
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstImportItem {
+    pub fn export(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![export])
+    }
+
+    pub fn path(&self) -> Option<AstImportPath> {
+        self.syntax().children().find_map(AstImportPath::cast)
+    }
+}
+
+impl AstImportPath {
+    pub fn segments(&self) -> impl Iterator<Item = AstImportPathSegment> {
+        self.syntax()
+            .children()
+            .filter_map(AstImportPathSegment::cast)
+    }
+}
+
+impl AstImportPathSegment {
+    pub fn initial_separator(&self) -> Option<AstLeadingPathSeparator> {
+        self.syntax()
+            .children()
+            .find_map(AstLeadingPathSeparator::cast)
+    }
+
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn star(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![*])
+    }
+
+    pub fn items(&self) -> impl Iterator<Item = AstImportPath> {
+        self.syntax().children().filter_map(AstImportPath::cast)
     }
 }
 
