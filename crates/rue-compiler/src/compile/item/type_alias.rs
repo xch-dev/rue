@@ -1,7 +1,7 @@
 use log::debug;
 use rue_ast::{AstNode, AstTypeAliasItem};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, Scope, ScopeId};
+use rue_hir::{Declaration, ScopeId};
 use rue_types::{Alias, Type, TypeId};
 
 use crate::{
@@ -19,7 +19,7 @@ pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> 
 
     ctx.push_declaration(Declaration::Type(ty));
 
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
 
     let generics = if let Some(generic_parameters) = type_alias.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)

@@ -107,6 +107,11 @@ impl Compiler {
         ));
     }
 
+    pub fn alloc_child_scope(&mut self) -> ScopeId {
+        let parent_scope = self.last_scope_id();
+        self.alloc_scope(Scope::new(Some(parent_scope)))
+    }
+
     pub fn push_scope(&mut self, scope: ScopeId, start: TextSize) {
         self.scope_stack.push((start, scope));
     }
@@ -210,7 +215,7 @@ impl Compiler {
         mappings: HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>,
         start: TextSize,
     ) -> usize {
-        let mut result = Scope::new();
+        let scope = self.alloc_child_scope();
 
         for (symbol, paths) in mappings {
             let mut ty = self.symbol_type(symbol);
@@ -222,11 +227,10 @@ impl Compiler {
                 ty = replace_type(&mut self.db, ty, replacement, &path);
             }
 
-            result.override_symbol_type(symbol, ty);
+            self.scope_mut(scope).override_symbol_type(symbol, ty);
         }
 
         let index = self.scope_stack.len();
-        let scope = self.alloc_scope(result);
         self.push_scope(scope, start);
         index
     }

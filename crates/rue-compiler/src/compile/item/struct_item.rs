@@ -2,7 +2,7 @@ use indexmap::IndexSet;
 use log::debug;
 use rue_ast::{AstNode, AstStructItem};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, Scope, ScopeId};
+use rue_hir::{Declaration, ScopeId};
 use rue_types::{Pair, Struct, Type, TypeId};
 
 use crate::{
@@ -20,7 +20,7 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
 
     ctx.push_declaration(Declaration::Type(ty));
 
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
 
     let generics = if let Some(generic_parameters) = struct_item.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)

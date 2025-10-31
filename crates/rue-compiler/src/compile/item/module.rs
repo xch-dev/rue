@@ -1,6 +1,6 @@
 use rue_ast::{AstModuleItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Scope, Symbol, SymbolId};
+use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Symbol, SymbolId};
 
 use crate::{
     Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_symbol_items,
@@ -13,7 +13,7 @@ pub fn declare_module_imports(ctx: &mut Compiler, module: &AstModuleItem) -> Sym
         module.syntax().text_range(),
     ));
 
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
 
     let mut declarations = ModuleDeclarations::default();
 

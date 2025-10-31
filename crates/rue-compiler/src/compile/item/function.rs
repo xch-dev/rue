@@ -1,9 +1,7 @@
 use log::debug;
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{
-    Declaration, FunctionKind, FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId,
-};
+use rue_hir::{Declaration, FunctionKind, FunctionSymbol, ParameterSymbol, Symbol, SymbolId};
 use rue_types::{FunctionType, Type};
 
 use crate::{
@@ -25,7 +23,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 
     ctx.push_declaration(Declaration::Symbol(symbol));
 
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
 
     let vars = if let Some(generic_parameters) = function.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)

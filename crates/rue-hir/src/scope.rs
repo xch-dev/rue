@@ -8,8 +8,9 @@ use crate::{ImportId, SymbolId};
 
 pub type ScopeId = Id<Scope>;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Scope {
+    parent: Option<ScopeId>,
     symbols: IndexMap<String, SymbolId>,
     symbol_names: HashMap<SymbolId, String>,
     types: IndexMap<String, TypeId>,
@@ -21,8 +22,22 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(parent: Option<ScopeId>) -> Self {
+        Self {
+            parent,
+            symbols: IndexMap::new(),
+            symbol_names: HashMap::new(),
+            types: IndexMap::new(),
+            type_names: HashMap::new(),
+            symbol_types: HashMap::new(),
+            exported_symbols: IndexSet::new(),
+            exported_types: IndexSet::new(),
+            imports: Vec::new(),
+        }
+    }
+
+    pub fn parent(&self) -> Option<ScopeId> {
+        self.parent
     }
 
     pub fn insert_symbol(&mut self, name: String, symbol: SymbolId, exported: bool) {

@@ -7,8 +7,7 @@ use rowan::TextSize;
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
 use rue_hir::{
-    Declaration, DependencyGraph, Environment, Lowerer, ModuleDeclarations, Scope, ScopeId,
-    SymbolId,
+    Declaration, DependencyGraph, Environment, Lowerer, ModuleDeclarations, ScopeId, SymbolId,
 };
 use rue_lexer::Lexer;
 use rue_lir::{Error, codegen, optimize};
@@ -70,17 +69,27 @@ fn compile_file_impl(
         Source::new(Arc::from(std_source), SourceKind::Std),
     );
 
-    let mut scope = Scope::new();
+    let scope = ctx.alloc_child_scope();
 
-    for (name, symbol) in ctx.scope(std.scope).exported_symbols() {
-        scope.insert_symbol(name.to_string(), symbol, false);
+    for (name, symbol) in ctx
+        .scope(std.scope)
+        .exported_symbols()
+        .map(|(name, symbol)| (name.to_string(), symbol))
+        .collect::<Vec<_>>()
+    {
+        ctx.scope_mut(scope)
+            .insert_symbol(name.to_string(), symbol, false);
     }
 
-    for (name, ty) in ctx.scope(std.scope).exported_types() {
-        scope.insert_type(name.to_string(), ty, false);
+    for (name, ty) in ctx
+        .scope(std.scope)
+        .exported_types()
+        .map(|(name, ty)| (name.to_string(), ty))
+        .collect::<Vec<_>>()
+    {
+        ctx.scope_mut(scope)
+            .insert_type(name.to_string(), ty, false);
     }
-
-    let scope = ctx.alloc_scope(scope);
 
     ctx.push_scope(scope, TextSize::from(0));
     let compiled_file = compile_file_partial(&mut ctx, file.clone());
@@ -194,7 +203,7 @@ fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilatio
 
     ctx.set_source(source);
 
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
 
     let mut compilation = PartialCompilation {
         diagnostics: parse_result.diagnostics,

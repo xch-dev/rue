@@ -2,8 +2,7 @@ use log::debug;
 use rue_ast::{AstBlock, AstNode, AstStmt, AstStmtOrExpr};
 use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
-    BindingSymbol, Block, Declaration, ExprStatement, Hir, IfStatement, Scope, Statement, Symbol,
-    Value,
+    BindingSymbol, Block, Declaration, ExprStatement, Hir, IfStatement, Statement, Symbol, Value,
 };
 use rue_types::TypeId;
 
@@ -26,7 +25,7 @@ pub fn compile_block(
 
     let index = ctx.mapping_checkpoint();
 
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
     let range = block.syntax().text_range();
     ctx.push_scope(scope, range.start());
 
@@ -109,7 +108,7 @@ pub fn compile_block(
                 });
 
                 if let Some(binding) = stmt.binding() {
-                    let scope = ctx.alloc_scope(Scope::new());
+                    let scope = ctx.alloc_child_scope();
 
                     ctx.push_scope(scope, stmt.syntax().text_range().start());
 

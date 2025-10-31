@@ -1,13 +1,12 @@
 use log::debug;
 use rue_ast::{AstLambdaType, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::Scope;
 use rue_types::{FunctionType, Type, TypeId};
 
 use crate::{Compiler, compile_generic_parameters, compile_type};
 
 pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId {
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
 
     if let Some(generic_parameters) = lambda.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters);
