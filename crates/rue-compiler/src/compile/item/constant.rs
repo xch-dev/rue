@@ -36,13 +36,13 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
                 &name,
                 DiagnosticKind::DuplicateSymbol(name.text().to_string()),
             );
+        } else {
+            ctx.last_scope_mut().insert_symbol(
+                name.text().to_string(),
+                symbol,
+                constant.export().is_some(),
+            );
         }
-
-        ctx.last_scope_mut().insert_symbol(
-            name.text().to_string(),
-            symbol,
-            constant.export().is_some(),
-        );
 
         ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }

@@ -34,13 +34,13 @@ pub fn declare_module_imports(ctx: &mut Compiler, module: &AstModuleItem) -> Sym
                 &name,
                 DiagnosticKind::DuplicateSymbol(name.text().to_string()),
             );
+        } else {
+            ctx.last_scope_mut().insert_symbol(
+                name.text().to_string(),
+                symbol,
+                module.export().is_some(),
+            );
         }
-
-        ctx.last_scope_mut().insert_symbol(
-            name.text().to_string(),
-            symbol,
-            module.export().is_some(),
-        );
 
         ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }
