@@ -1,18 +1,17 @@
 use indexmap::IndexMap;
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, Import, ScopeId, Symbol};
+use rue_hir::{Declaration, Import, Symbol};
 
 use crate::Compiler;
 
-pub fn resolve_imports(ctx: &mut Compiler, scope_id: ScopeId, include_diagnostics: bool) {
-    let imports = ctx.scope(scope_id).imports();
+pub fn resolve_imports(ctx: &mut Compiler, include_diagnostics: bool) {
+    let imports = ctx.last_scope().imports();
 
-    resolve_import_map(ctx, scope_id, None, &imports, include_diagnostics);
+    resolve_import_map(ctx, None, &imports, include_diagnostics);
 }
 
 fn resolve_import_map(
     ctx: &mut Compiler,
-    base_scope_id: ScopeId,
     parent: Option<Declaration>,
     imports: &IndexMap<String, Import>,
     include_diagnostics: bool,
@@ -20,7 +19,7 @@ fn resolve_import_map(
     for (name, import) in imports {
         let (scope_id, symbol_names, type_names) = match parent {
             None => {
-                let scope = ctx.scope(base_scope_id);
+                let scope = ctx.last_scope();
                 let symbol_names = scope
                     .symbol_names()
                     .map(ToString::to_string)
@@ -29,7 +28,7 @@ fn resolve_import_map(
                     .type_names()
                     .map(ToString::to_string)
                     .collect::<Vec<_>>();
-                (base_scope_id, symbol_names, type_names)
+                (ctx.last_scope_id(), symbol_names, type_names)
             }
             Some(Declaration::Symbol(symbol)) => {
                 let Symbol::Module(module) = ctx.symbol(symbol) else {
@@ -79,7 +78,7 @@ fn resolve_import_map(
 
         if import.include_self {
             if let Some(symbol) = symbol {
-                if let Some(existing) = ctx.scope(base_scope_id).symbol(name)
+                if let Some(existing) = ctx.last_scope().symbol(name)
                     && existing != symbol
                     && include_diagnostics
                 {
@@ -89,17 +88,14 @@ fn resolve_import_map(
                     );
                 }
 
-                if ctx.scope(base_scope_id).symbol(name).is_none() {
-                    ctx.scope_mut(base_scope_id).insert_symbol(
-                        name.clone(),
-                        symbol,
-                        import.exported,
-                    );
+                if ctx.last_scope().symbol(name).is_none() {
+                    ctx.last_scope_mut()
+                        .insert_symbol(name.clone(), symbol, import.exported);
                 }
             }
 
             if let Some(ty) = ty {
-                if let Some(existing) = ctx.scope(base_scope_id).ty(name)
+                if let Some(existing) = ctx.last_scope().ty(name)
                     && existing != ty
                     && include_diagnostics
                 {
@@ -109,8 +105,8 @@ fn resolve_import_map(
                     );
                 }
 
-                if ctx.scope(base_scope_id).ty(name).is_none() {
-                    ctx.scope_mut(base_scope_id)
+                if ctx.last_scope().ty(name).is_none() {
+                    ctx.last_scope_mut()
                         .insert_type(name.clone(), ty, import.exported);
                 }
             }
@@ -124,8 +120,8 @@ fn resolve_import_map(
             for name in symbol_names {
                 let symbol = ctx.scope(scope_id).symbol(&name).unwrap();
 
-                if ctx.scope(base_scope_id).symbol(&name).is_none() {
-                    ctx.scope_mut(base_scope_id)
+                if ctx.last_scope().symbol(&name).is_none() {
+                    ctx.last_scope_mut()
                         .insert_symbol(name, symbol, import.exported);
                 }
             }
@@ -133,9 +129,8 @@ fn resolve_import_map(
             for name in type_names {
                 let ty = ctx.scope(scope_id).ty(&name).unwrap();
 
-                if ctx.scope(base_scope_id).ty(&name).is_none() {
-                    ctx.scope_mut(base_scope_id)
-                        .insert_type(name, ty, import.exported);
+                if ctx.last_scope().ty(&name).is_none() {
+                    ctx.last_scope_mut().insert_type(name, ty, import.exported);
                 }
             }
         }
@@ -143,7 +138,6 @@ fn resolve_import_map(
         if let Some(symbol) = symbol {
             resolve_import_map(
                 ctx,
-                base_scope_id,
                 Some(Declaration::Symbol(symbol)),
                 &import.children,
                 include_diagnostics,
@@ -153,7 +147,6 @@ fn resolve_import_map(
         if let Some(ty) = ty {
             resolve_import_map(
                 ctx,
-                base_scope_id,
                 Some(Declaration::Type(ty)),
                 &import.children,
                 include_diagnostics,

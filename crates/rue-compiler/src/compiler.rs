@@ -130,6 +130,10 @@ impl Compiler {
         self.scope_mut(scope.1)
     }
 
+    pub fn last_scope_id(&self) -> ScopeId {
+        self.scope_stack.last().unwrap().1
+    }
+
     pub fn resolve_symbol(&self, name: &str) -> Option<SymbolId> {
         for scope in self.scope_stack.iter().rev() {
             if let Some(symbol) = self.scope(scope.1).symbol(name) {

@@ -1,3 +1,6 @@
-diagnostics:
-- Undeclared symbol `hello` at test:10:5
-- Unused function `hello` at test:2:15
+program: (q . "Hello, world!")
+debug_program: (a (q 2 2 ()) (c (q 1 . "Hello, world!") ()))
+output: '"Hello, world!"'
+runtime_cost: 20
+byte_cost: 192000
+total_cost: 192020

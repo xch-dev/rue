@@ -44,6 +44,7 @@ pub struct ModuleSymbol {
 pub struct ModuleDeclarations {
     pub types: Vec<(TypeId, ScopeId)>,
     pub symbols: Vec<SymbolId>,
+    pub modules: Vec<SymbolId>,
 }
 
 #[derive(Debug, Clone)]
