@@ -4,10 +4,10 @@ use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Scope, Symbol, Symb
 
 use crate::{
     Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_symbol_items,
-    compile_type_items, declare_symbol_items, declare_type_items,
+    compile_type_items, declare_import_items, declare_symbol_items, declare_type_items,
 };
 
-pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
+pub fn declare_module_imports(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
     ctx.syntax_map_mut().add_item(SyntaxItem::new(
         SyntaxItemKind::CompletionContext(CompletionContext::Item),
         module.syntax().text_range(),
@@ -19,7 +19,7 @@ pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem) -> Symbo
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    declare_type_items(ctx, module.items(), &mut declarations);
+    declare_import_items(ctx, module.items(), &mut declarations);
     ctx.pop_scope(range.end());
 
     let symbol = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
@@ -46,6 +46,34 @@ pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem) -> Symbo
     }
 
     symbol
+}
+
+pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
+    let (scope, mut declarations) = if let Symbol::Module(ModuleSymbol {
+        scope,
+        declarations,
+        ..
+    }) = ctx.symbol(symbol)
+    {
+        (*scope, declarations.clone())
+    } else {
+        unreachable!();
+    };
+
+    let range = module.syntax().text_range();
+    ctx.push_scope(scope, range.start());
+    declare_type_items(ctx, module.items(), &mut declarations);
+    ctx.pop_scope(range.end());
+
+    let Symbol::Module(ModuleSymbol {
+        declarations: updated,
+        ..
+    }) = ctx.symbol_mut(symbol)
+    else {
+        unreachable!();
+    };
+
+    *updated = declarations;
 }
 
 pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {

@@ -3,20 +3,42 @@ use rue_hir::ModuleDeclarations;
 
 use crate::{
     Compiler, compile_module_symbols, compile_module_types, compile_symbol_item, compile_type_item,
-    declare_module_symbols, declare_module_types, declare_symbol_item, declare_type_item,
+    declare_import_item, declare_module_imports, declare_module_symbols, declare_module_types,
+    declare_symbol_item, declare_type_item,
 };
 
-pub fn declare_type_items(
+pub fn declare_import_items(
     ctx: &mut Compiler,
     items: impl Iterator<Item = AstItem>,
     declarations: &mut ModuleDeclarations,
 ) {
     for item in items {
         match item {
+            AstItem::ImportItem(item) => declare_import_item(ctx, &item),
+            AstItem::SymbolItem(AstSymbolItem::ModuleItem(item)) => {
+                declarations
+                    .symbols
+                    .push(declare_module_imports(ctx, &item));
+            }
+            _ => {}
+        }
+    }
+}
+
+pub fn declare_type_items(
+    ctx: &mut Compiler,
+    items: impl Iterator<Item = AstItem>,
+    declarations: &mut ModuleDeclarations,
+) {
+    let mut index = 0;
+
+    for item in items {
+        match item {
             AstItem::TypeItem(item) => declarations.types.push(declare_type_item(ctx, &item)),
             AstItem::SymbolItem(item) => {
                 if let AstSymbolItem::ModuleItem(item) = item {
-                    declarations.symbols.push(declare_module_types(ctx, &item));
+                    declare_module_types(ctx, &item, declarations.symbols[index]);
+                    index += 1;
                 }
             }
             AstItem::ImportItem(_) => {}

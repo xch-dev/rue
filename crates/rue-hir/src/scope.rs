@@ -12,6 +12,7 @@ pub type ScopeId = Id<Scope>;
 #[derive(Debug, Clone)]
 pub struct Import {
     pub name: SyntaxToken,
+    pub exported: bool,
     pub include_self: bool,
     pub include_all: bool,
     pub children: IndexMap<String, Import>,
@@ -21,6 +22,7 @@ impl Import {
     pub fn extend(&mut self, import: Import) {
         self.include_all |= import.include_all;
         self.include_self |= import.include_self;
+        self.exported |= import.exported;
 
         for (name, import) in import.children {
             self.children

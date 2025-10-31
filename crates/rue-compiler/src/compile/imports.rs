@@ -4,15 +4,10 @@ use rue_hir::{Declaration, Import, ScopeId, Symbol};
 
 use crate::Compiler;
 
-pub fn resolve_imports(
-    ctx: &mut Compiler,
-    scope_id: ScopeId,
-    include_diagnostics: bool,
-    exported: bool,
-) {
+pub fn resolve_imports(ctx: &mut Compiler, scope_id: ScopeId, include_diagnostics: bool) {
     let imports = ctx.scope(scope_id).imports();
 
-    resolve_import_map(ctx, scope_id, None, &imports, include_diagnostics, exported);
+    resolve_import_map(ctx, scope_id, None, &imports, include_diagnostics);
 }
 
 fn resolve_import_map(
@@ -21,7 +16,6 @@ fn resolve_import_map(
     parent: Option<Declaration>,
     imports: &IndexMap<String, Import>,
     include_diagnostics: bool,
-    exported: bool,
 ) {
     for (name, import) in imports {
         let (scope_id, symbol_names, type_names) = match parent {
@@ -96,8 +90,11 @@ fn resolve_import_map(
                 }
 
                 if ctx.scope(base_scope_id).symbol(name).is_none() {
-                    ctx.scope_mut(base_scope_id)
-                        .insert_symbol(name.clone(), symbol, exported);
+                    ctx.scope_mut(base_scope_id).insert_symbol(
+                        name.clone(),
+                        symbol,
+                        import.exported,
+                    );
                 }
             }
 
@@ -114,7 +111,7 @@ fn resolve_import_map(
 
                 if ctx.scope(base_scope_id).ty(name).is_none() {
                     ctx.scope_mut(base_scope_id)
-                        .insert_type(name.clone(), ty, exported);
+                        .insert_type(name.clone(), ty, import.exported);
                 }
             }
 
@@ -129,7 +126,7 @@ fn resolve_import_map(
 
                 if ctx.scope(base_scope_id).symbol(&name).is_none() {
                     ctx.scope_mut(base_scope_id)
-                        .insert_symbol(name, symbol, exported);
+                        .insert_symbol(name, symbol, import.exported);
                 }
             }
 
@@ -137,7 +134,8 @@ fn resolve_import_map(
                 let ty = ctx.scope(scope_id).ty(&name).unwrap();
 
                 if ctx.scope(base_scope_id).ty(&name).is_none() {
-                    ctx.scope_mut(base_scope_id).insert_type(name, ty, exported);
+                    ctx.scope_mut(base_scope_id)
+                        .insert_type(name, ty, import.exported);
                 }
             }
         }
@@ -149,7 +147,6 @@ fn resolve_import_map(
                 Some(Declaration::Symbol(symbol)),
                 &import.children,
                 include_diagnostics,
-                exported,
             );
         }
 
@@ -160,7 +157,6 @@ fn resolve_import_map(
                 Some(Declaration::Type(ty)),
                 &import.children,
                 include_diagnostics,
-                exported,
             );
         }
     }
