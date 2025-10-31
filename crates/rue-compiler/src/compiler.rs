@@ -140,38 +140,52 @@ impl Compiler {
     }
 
     pub fn resolve_symbol(&self, name: &str) -> Option<SymbolId> {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(symbol) = self.scope(scope.1).symbol(name) {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(symbol) = self.scope(scope).symbol(name) {
                 return Some(symbol);
             }
+            current = self.scope(scope).parent();
         }
+
         None
     }
 
     pub fn resolve_type(&self, name: &str) -> Option<TypeId> {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(ty) = self.scope(scope.1).ty(name) {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(ty) = self.scope(scope).ty(name) {
                 return Some(ty);
             }
+            current = self.scope(scope).parent();
         }
+
         None
     }
 
     pub fn type_name(&mut self, ty: TypeId) -> String {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(name) = self.scope(scope.1).type_name(ty) {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(name) = self.scope(scope).type_name(ty) {
                 return name.to_string();
             }
+            current = self.scope(scope).parent();
         }
 
         rue_types::stringify(self.db.types_mut(), ty)
     }
 
     pub fn symbol_name(&self, symbol: SymbolId) -> String {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(name) = self.scope(scope.1).symbol_name(symbol) {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(name) = self.scope(scope).symbol_name(symbol) {
                 return name.to_string();
             }
+            current = self.scope(scope).parent();
         }
 
         match self.symbol(symbol) {
@@ -193,10 +207,13 @@ impl Compiler {
     }
 
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(ty) = self.scope(scope.1).symbol_override_type(symbol) {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(ty) = self.scope(scope).symbol_override_type(symbol) {
                 return ty;
             }
+            current = self.scope(scope).parent();
         }
 
         match self.symbol(symbol) {
