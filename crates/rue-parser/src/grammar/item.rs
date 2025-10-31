@@ -7,7 +7,7 @@ use crate::{
 
 pub fn item(p: &mut Parser) {
     let cp = p.checkpoint();
-    p.try_eat(T![export]);
+    let export = p.try_eat(T![export]);
     let inline = p.try_eat(T![inline]);
     let extern_kw = if inline { false } else { p.try_eat(T![extern]) };
     let test = p.try_eat(T![test]);
@@ -22,6 +22,8 @@ pub fn item(p: &mut Parser) {
         type_alias_item(p, cp);
     } else if p.at(T![struct]) && !inline && !extern_kw && !test {
         struct_item(p, cp);
+    } else if p.at(T![import]) || export {
+        import_item(p, cp, export);
     } else {
         p.skip();
     }
@@ -127,6 +129,53 @@ fn struct_field(p: &mut Parser) {
         expr(p);
     }
     p.finish();
+}
+
+fn import_item(p: &mut Parser, cp: Checkpoint, export: bool) {
+    p.start_at(cp, SyntaxKind::ImportItem);
+    if !export {
+        p.expect(T![import]);
+    }
+    import_path(p, true);
+    p.expect(T![;]);
+    p.finish();
+}
+
+fn import_path(p: &mut Parser, mut first: bool) {
+    p.start(SyntaxKind::ImportPath);
+    let mut required = true;
+    while p.at(T![::]) || required {
+        if import_path_segment(p, first) {
+            break;
+        }
+        first = false;
+        required = false;
+    }
+    p.finish();
+}
+
+fn import_path_segment(p: &mut Parser, first: bool) -> bool {
+    p.start(SyntaxKind::ImportPathSegment);
+    p.try_eat(T![::]);
+    let last = if !first && p.at(T![*]) {
+        p.expect(T![*]);
+        true
+    } else if !first && p.at(T!['{']) {
+        p.expect(T!['{']);
+        while !p.at(T!['}']) {
+            import_path_segment(p, false);
+            if !p.try_eat(T![,]) {
+                break;
+            }
+        }
+        p.expect(T!['}']);
+        true
+    } else {
+        p.expect(SyntaxKind::Ident);
+        false
+    };
+    p.finish();
+    last
 }
 
 #[cfg(test)]
@@ -251,6 +300,181 @@ mod tests {
                   PathType@13..18
                     PathSegment@13..18
                       Ident@13..18 "World"
+                  Semicolon@18..19 ";"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_import_item() {
+        check(
+            item,
+            "import clvm::quote;",
+            expect![[r#"
+                ImportItem@0..19
+                  Import@0..6 "import"
+                  Whitespace@6..7 " "
+                  ImportPath@7..18
+                    ImportPathSegment@7..11
+                      Ident@7..11 "clvm"
+                    ImportPathSegment@11..18
+                      PathSeparator@11..13 "::"
+                      Ident@13..18 "quote"
+                  Semicolon@18..19 ";"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            item,
+            "import hello_world;",
+            expect![[r#"
+                ImportItem@0..19
+                  Import@0..6 "import"
+                  Whitespace@6..7 " "
+                  ImportPath@7..18
+                    ImportPathSegment@7..18
+                      Ident@7..18 "hello_world"
+                  Semicolon@18..19 ";"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            item,
+            "import;",
+            expect![[r#"
+                ImportItem@0..6
+                  Import@0..6 "import"
+                  ImportPath@6..6
+                    ImportPathSegment@6..6
+            "#]],
+            expect![[r#"
+                Expected one of `::`, identifier, found `;` at main.rue:1:7
+                Expected one of `::`, `;`, found eof at main.rue:1:8"#]],
+        );
+
+        check(
+            item,
+            "import *;",
+            expect![[r#"
+                ImportItem@0..8
+                  Import@0..6 "import"
+                  Whitespace@6..7 " "
+                  ImportPath@7..7
+                    ImportPathSegment@7..7
+                  Semicolon@7..8 ";"
+            "#]],
+            expect!["Expected one of `::`, identifier, found `*` at main.rue:1:8"],
+        );
+
+        check(
+            item,
+            "import {};",
+            expect![[r#"
+                ImportItem@0..7
+                  Import@0..6 "import"
+                  Whitespace@6..7 " "
+                  ImportPath@7..7
+                    ImportPathSegment@7..7
+            "#]],
+            expect![[r#"
+                Expected one of `::`, identifier, found `{` at main.rue:1:8
+                Expected one of `::`, `;`, found `}` at main.rue:1:9"#]],
+        );
+
+        check(
+            item,
+            "import {x, y};",
+            expect![[r#"
+                ImportItem@0..7
+                  Import@0..6 "import"
+                  Whitespace@6..7 " "
+                  ImportPath@7..7
+                    ImportPathSegment@7..7
+            "#]],
+            expect![[r#"
+                Expected one of `::`, identifier, found `{` at main.rue:1:8
+                Expected one of `::`, `;`, found identifier at main.rue:1:9"#]],
+        );
+
+        check(
+            item,
+            "import hello::{};",
+            expect![[r#"
+                ImportItem@0..17
+                  Import@0..6 "import"
+                  Whitespace@6..7 " "
+                  ImportPath@7..16
+                    ImportPathSegment@7..12
+                      Ident@7..12 "hello"
+                    ImportPathSegment@12..16
+                      PathSeparator@12..14 "::"
+                      OpenBrace@14..15 "{"
+                      CloseBrace@15..16 "}"
+                  Semicolon@16..17 ";"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            item,
+            "import hello::{world, there,};",
+            expect![[r#"
+                ImportItem@0..30
+                  Import@0..6 "import"
+                  Whitespace@6..7 " "
+                  ImportPath@7..29
+                    ImportPathSegment@7..12
+                      Ident@7..12 "hello"
+                    ImportPathSegment@12..29
+                      PathSeparator@12..14 "::"
+                      OpenBrace@14..15 "{"
+                      ImportPathSegment@15..20
+                        Ident@15..20 "world"
+                      Comma@20..21 ","
+                      Whitespace@21..22 " "
+                      ImportPathSegment@22..27
+                        Ident@22..27 "there"
+                      Comma@27..28 ","
+                      CloseBrace@28..29 "}"
+                  Semicolon@29..30 ";"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            item,
+            "import hello::*;",
+            expect![[r#"
+                ImportItem@0..16
+                  Import@0..6 "import"
+                  Whitespace@6..7 " "
+                  ImportPath@7..15
+                    ImportPathSegment@7..12
+                      Ident@7..12 "hello"
+                    ImportPathSegment@12..15
+                      PathSeparator@12..14 "::"
+                      Star@14..15 "*"
+                  Semicolon@15..16 ";"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            item,
+            "export clvm::quote;",
+            expect![[r#"
+                ImportItem@0..19
+                  Export@0..6 "export"
+                  Whitespace@6..7 " "
+                  ImportPath@7..18
+                    ImportPathSegment@7..11
+                      Ident@7..11 "clvm"
+                    ImportPathSegment@11..18
+                      PathSeparator@11..13 "::"
+                      Ident@13..18 "quote"
                   Semicolon@18..19 ";"
             "#]],
             expect![""],
