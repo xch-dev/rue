@@ -14,7 +14,7 @@ use rue_hir::{
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
-use rue_types::{Check, CheckError, Comparison, TypeId};
+use rue_types::{Check, CheckError, Comparison, Type, TypeId};
 
 use crate::{SyntaxItem, SyntaxItemKind, SyntaxMap};
 
@@ -415,6 +415,11 @@ impl Compiler {
             },
             span,
         ));
+    }
+
+    pub fn is_unresolved(&mut self, ty: TypeId) -> bool {
+        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
+        matches!(self.ty(semantic), Type::Unresolved)
     }
 }
 

@@ -1,0 +1,3 @@
+diagnostics:
+- Undeclared symbol `hello` at test:10:5
+- Unused function `hello` at test:2:15

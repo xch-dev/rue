@@ -23,6 +23,8 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
         return compile_builtin(ctx, call, builtin);
     }
 
+    let is_unresolved = ctx.is_unresolved(expr.ty);
+
     let expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty);
 
     if expected_functions.len() > 1 {
@@ -31,7 +33,7 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
             call.syntax(),
             DiagnosticKind::CannotDisambiguateFunctionTypes(name),
         );
-    } else if expected_functions.is_empty() {
+    } else if expected_functions.is_empty() && !is_unresolved {
         let name = ctx.type_name(expr.ty);
         ctx.diagnostic(call.syntax(), DiagnosticKind::InvalidFunctionCall(name));
     }
