@@ -15,22 +15,7 @@ pub struct Import {
     pub exported: bool,
     pub include_self: bool,
     pub include_all: bool,
-    pub children: IndexMap<String, Import>,
-}
-
-impl Import {
-    pub fn extend(&mut self, import: Import) {
-        self.include_all |= import.include_all;
-        self.include_self |= import.include_self;
-        self.exported |= import.exported;
-
-        for (name, import) in import.children {
-            self.children
-                .entry(name)
-                .or_insert(import.clone())
-                .extend(import);
-        }
-    }
+    pub children: Vec<Import>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -42,7 +27,7 @@ pub struct Scope {
     symbol_types: HashMap<SymbolId, TypeId>,
     exported_symbols: IndexSet<SymbolId>,
     exported_types: IndexSet<TypeId>,
-    imports: IndexMap<String, Import>,
+    imports: Vec<Import>,
 }
 
 impl Scope {
@@ -124,14 +109,11 @@ impl Scope {
         self.type_names.values().map(String::as_str)
     }
 
-    pub fn import(&mut self, base: String, import: Import) {
-        self.imports
-            .entry(base)
-            .or_insert(import.clone())
-            .extend(import);
+    pub fn import(&mut self, import: Import) {
+        self.imports.push(import);
     }
 
-    pub fn imports(&self) -> IndexMap<String, Import> {
+    pub fn imports(&self) -> Vec<Import> {
         self.imports.clone()
     }
 }

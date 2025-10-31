@@ -1,4 +1,3 @@
-use indexmap::IndexMap;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, Import, Symbol};
 
@@ -13,10 +12,12 @@ pub fn resolve_imports(ctx: &mut Compiler, include_diagnostics: bool) {
 fn resolve_import_map(
     ctx: &mut Compiler,
     parent: Option<Declaration>,
-    imports: &IndexMap<String, Import>,
+    imports: &[Import],
     include_diagnostics: bool,
 ) {
-    for (name, import) in imports {
+    for import in imports {
+        let name = import.name.text();
+
         let (symbol, ty) = match parent {
             None => {
                 let symbol = ctx.resolve_symbol(name);
@@ -29,7 +30,7 @@ fn resolve_import_map(
                         let symbol_name = ctx.symbol_name(symbol);
                         ctx.diagnostic(
                             &import.name,
-                            DiagnosticKind::CannotImportFromSymbol(name.clone(), symbol_name),
+                            DiagnosticKind::CannotImportFromSymbol(name.to_string(), symbol_name),
                         );
                     }
                     continue;
@@ -44,7 +45,7 @@ fn resolve_import_map(
                     let type_name = ctx.type_name(ty);
                     ctx.diagnostic(
                         &import.name,
-                        DiagnosticKind::CannotImportFromType(name.clone(), type_name),
+                        DiagnosticKind::CannotImportFromType(name.to_string(), type_name),
                     );
                 }
                 continue;
@@ -52,7 +53,10 @@ fn resolve_import_map(
         };
 
         if symbol.is_none() && ty.is_none() && include_diagnostics {
-            ctx.diagnostic(&import.name, DiagnosticKind::UnresolvedImport(name.clone()));
+            ctx.diagnostic(
+                &import.name,
+                DiagnosticKind::UnresolvedImport(name.to_string()),
+            );
         }
 
         if import.include_self {
@@ -63,13 +67,13 @@ fn resolve_import_map(
                 {
                     ctx.diagnostic(
                         &import.name,
-                        DiagnosticKind::DuplicateImportSymbol(name.clone()),
+                        DiagnosticKind::DuplicateImportSymbol(name.to_string()),
                     );
                 }
 
                 if ctx.last_scope().symbol(name).is_none() {
                     ctx.last_scope_mut()
-                        .insert_symbol(name.clone(), symbol, import.exported);
+                        .insert_symbol(name.to_string(), symbol, import.exported);
                 }
             }
 
@@ -80,13 +84,13 @@ fn resolve_import_map(
                 {
                     ctx.diagnostic(
                         &import.name,
-                        DiagnosticKind::DuplicateImportType(name.clone()),
+                        DiagnosticKind::DuplicateImportType(name.to_string()),
                     );
                 }
 
                 if ctx.last_scope().ty(name).is_none() {
                     ctx.last_scope_mut()
-                        .insert_type(name.clone(), ty, import.exported);
+                        .insert_type(name.to_string(), ty, import.exported);
                 }
             }
         }
@@ -125,7 +129,7 @@ fn resolve_import_map(
                     let symbol_name = ctx.symbol_name(symbol);
                     ctx.diagnostic(
                         &import.name,
-                        DiagnosticKind::CannotImportFromSymbol(name.clone(), symbol_name),
+                        DiagnosticKind::CannotImportFromSymbol(name.to_string(), symbol_name),
                     );
                 }
             } else if let Some(ty) = ty
