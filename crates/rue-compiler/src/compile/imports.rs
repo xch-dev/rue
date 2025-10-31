@@ -18,18 +18,7 @@ fn resolve_import_map(
 ) {
     for (name, import) in imports {
         let (scope_id, symbol_names, type_names) = match parent {
-            None => {
-                let scope = ctx.last_scope();
-                let symbol_names = scope
-                    .symbol_names()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>();
-                let type_names = scope
-                    .type_names()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>();
-                (ctx.last_scope_id(), symbol_names, type_names)
-            }
+            None => (ctx.last_scope_id(), Vec::new(), Vec::new()),
             Some(Declaration::Symbol(symbol)) => {
                 let Symbol::Module(module) = ctx.symbol(symbol) else {
                     if include_diagnostics {
@@ -64,13 +53,17 @@ fn resolve_import_map(
             }
         };
 
-        let symbol = if symbol_names.contains(name) {
+        let symbol = if parent.is_none() {
+            ctx.resolve_symbol(name)
+        } else if symbol_names.contains(name) {
             ctx.scope(scope_id).symbol(name)
         } else {
             None
         };
 
-        let ty = if type_names.contains(name) {
+        let ty = if parent.is_none() {
+            ctx.resolve_type(name)
+        } else if type_names.contains(name) {
             ctx.scope(scope_id).ty(name)
         } else {
             None
@@ -116,7 +109,7 @@ fn resolve_import_map(
             }
         }
 
-        if import.include_all {
+        if import.include_all && parent.is_some() {
             for name in symbol_names {
                 let symbol = ctx.scope(scope_id).symbol(&name).unwrap();
 

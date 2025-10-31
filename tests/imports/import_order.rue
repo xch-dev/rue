@@ -25,10 +25,10 @@ mod b {
 import a::hello_world_a;
 import b::hello_world_b;
 
-export fn a_entrypoint() -> String {
+test fn a_entrypoint() -> String {
     a::hello_world_a()
 }
 
-export fn b_entrypoint() -> String {
+test fn b_entrypoint() -> String {
     b::hello_world_b()
 }
