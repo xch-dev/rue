@@ -36,7 +36,14 @@ pub fn compile_block(
 
     for stmt in block.items() {
         let stmt = match stmt {
-            AstStmtOrExpr::Stmt(stmt) => stmt,
+            AstStmtOrExpr::Stmt(stmt) => {
+                ctx.syntax_map_mut().add_item(SyntaxItem::new(
+                    SyntaxItemKind::CompletionContext(CompletionContext::Statement),
+                    stmt.syntax().text_range(),
+                ));
+
+                stmt
+            }
             AstStmtOrExpr::Expr(expr) => {
                 if !is_expr {
                     ctx.diagnostic(expr.syntax(), DiagnosticKind::UnexpectedImplicitReturn);

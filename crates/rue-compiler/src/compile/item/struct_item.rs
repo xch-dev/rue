@@ -6,11 +6,16 @@ use rue_hir::{Declaration, Scope, ScopeId};
 use rue_types::{Pair, Struct, Type, TypeId};
 
 use crate::{
-    Compiler, SyntaxField, SyntaxItem, SyntaxItemKind, compile_expr, compile_generic_parameters,
-    compile_type,
+    Compiler, CompletionContext, SyntaxField, SyntaxItem, SyntaxItemKind, compile_expr,
+    compile_generic_parameters, compile_type,
 };
 
 pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (TypeId, ScopeId) {
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::Item),
+        struct_item.syntax().text_range(),
+    ));
+
     let ty = ctx.alloc_type(Type::Unresolved);
 
     ctx.push_declaration(Declaration::Type(ty));

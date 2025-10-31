@@ -1,4 +1,5 @@
 use rowan::Checkpoint;
+use rue_diagnostic::DiagnosticKind;
 
 use crate::{
     Parser, SyntaxKind, T,
@@ -59,7 +60,11 @@ fn function_item(p: &mut Parser, cp: Checkpoint) {
     if p.try_eat(T![->]) {
         ty(p);
     }
-    block(p);
+    if p.at(T!['{']) {
+        block(p);
+    } else {
+        p.error(DiagnosticKind::MissingFunctionBody);
+    }
     p.finish();
 }
 

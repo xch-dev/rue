@@ -24,3 +24,4 @@ tokio = { workspace = true, features = ["full"] }
 tower-lsp = { workspace = true }
 send_wrapper = { workspace = true }
 rowan = { workspace = true }
+indexmap = { workspace = true }

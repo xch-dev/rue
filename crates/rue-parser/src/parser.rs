@@ -274,6 +274,22 @@ impl Parser {
         }
     }
 
+    pub(crate) fn error(&mut self, kind: DiagnosticKind) {
+        self.expected.clear();
+
+        let len = self.source.text.len();
+
+        let span = self
+            .parse_tokens
+            .get(self.pos)
+            .map_or(len..len, |token| token.span.clone());
+
+        self.diagnostics.push(Diagnostic::new(
+            SrcLoc::new(self.source.clone(), span),
+            kind,
+        ));
+    }
+
     fn bump(&mut self, kind: SyntaxKind) {
         self.expected.clear();
 

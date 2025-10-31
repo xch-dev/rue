@@ -6,9 +6,17 @@ use rue_hir::{
 };
 use rue_types::{FunctionType, Type};
 
-use crate::{Compiler, compile_block, compile_generic_parameters, compile_type, create_binding};
+use crate::{
+    Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_block,
+    compile_generic_parameters, compile_type, create_binding,
+};
 
 pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> SymbolId {
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::Item),
+        function.syntax().text_range(),
+    ));
+
     let symbol = ctx.alloc_symbol(Symbol::Unresolved);
 
     if function.test().is_some() {
