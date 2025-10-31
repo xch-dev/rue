@@ -1,0 +1,2 @@
+diagnostics:
+- Undeclared symbol `inner_hello` at test:18:5

@@ -17,8 +17,12 @@ fn resolve_import_map(
     include_diagnostics: bool,
 ) {
     for (name, import) in imports {
-        let (scope_id, symbol_names, type_names) = match parent {
-            None => (ctx.last_scope_id(), Vec::new(), Vec::new()),
+        let (symbol, ty) = match parent {
+            None => {
+                let symbol = ctx.resolve_symbol(name);
+                let ty = ctx.resolve_type(name);
+                (symbol, ty)
+            }
             Some(Declaration::Symbol(symbol)) => {
                 let Symbol::Module(module) = ctx.symbol(symbol) else {
                     if include_diagnostics {
@@ -31,15 +35,9 @@ fn resolve_import_map(
                     continue;
                 };
                 let scope = ctx.scope(module.scope);
-                let symbol_names = scope
-                    .exported_symbols()
-                    .map(|(name, _)| name.to_string())
-                    .collect::<Vec<_>>();
-                let type_names = scope
-                    .exported_types()
-                    .map(|(name, _)| name.to_string())
-                    .collect::<Vec<_>>();
-                (module.scope, symbol_names, type_names)
+                let symbol = scope.symbol(name).filter(|s| scope.is_symbol_exported(*s));
+                let ty = scope.ty(name).filter(|t| scope.is_type_exported(*t));
+                (symbol, ty)
             }
             Some(Declaration::Type(ty)) => {
                 if include_diagnostics {
@@ -53,21 +51,9 @@ fn resolve_import_map(
             }
         };
 
-        let symbol = if parent.is_none() {
-            ctx.resolve_symbol(name)
-        } else if symbol_names.contains(name) {
-            ctx.scope(scope_id).symbol(name)
-        } else {
-            None
-        };
-
-        let ty = if parent.is_none() {
-            ctx.resolve_type(name)
-        } else if type_names.contains(name) {
-            ctx.scope(scope_id).ty(name)
-        } else {
-            None
-        };
+        if symbol.is_none() && ty.is_none() && include_diagnostics {
+            ctx.diagnostic(&import.name, DiagnosticKind::UnresolvedImport(name.clone()));
+        }
 
         if import.include_self {
             if let Some(symbol) = symbol {
@@ -103,28 +89,53 @@ fn resolve_import_map(
                         .insert_type(name.clone(), ty, import.exported);
                 }
             }
-
-            if symbol.is_none() && ty.is_none() && include_diagnostics {
-                ctx.diagnostic(&import.name, DiagnosticKind::UnresolvedImport(name.clone()));
-            }
         }
 
-        if import.include_all && parent.is_some() {
-            for name in symbol_names {
-                let symbol = ctx.scope(scope_id).symbol(&name).unwrap();
+        if import.include_all {
+            if let Some(symbol) = symbol {
+                if let Symbol::Module(module) = ctx.symbol(symbol).clone() {
+                    let symbol_names = ctx
+                        .scope(module.scope)
+                        .exported_symbols()
+                        .map(|(name, _)| name.to_string())
+                        .collect::<Vec<_>>();
+                    let type_names = ctx
+                        .scope(module.scope)
+                        .exported_types()
+                        .map(|(name, _)| name.to_string())
+                        .collect::<Vec<_>>();
 
-                if ctx.last_scope().symbol(&name).is_none() {
-                    ctx.last_scope_mut()
-                        .insert_symbol(name, symbol, import.exported);
+                    for name in symbol_names {
+                        let symbol = ctx.scope(module.scope).symbol(&name).unwrap();
+
+                        if ctx.last_scope().symbol(&name).is_none() {
+                            ctx.last_scope_mut()
+                                .insert_symbol(name, symbol, import.exported);
+                        }
+                    }
+
+                    for name in type_names {
+                        let ty = ctx.scope(module.scope).ty(&name).unwrap();
+
+                        if ctx.last_scope().ty(&name).is_none() {
+                            ctx.last_scope_mut().insert_type(name, ty, import.exported);
+                        }
+                    }
+                } else if include_diagnostics {
+                    let symbol_name = ctx.symbol_name(symbol);
+                    ctx.diagnostic(
+                        &import.name,
+                        DiagnosticKind::CannotImportFromSymbol(name.clone(), symbol_name),
+                    );
                 }
-            }
-
-            for name in type_names {
-                let ty = ctx.scope(scope_id).ty(&name).unwrap();
-
-                if ctx.last_scope().ty(&name).is_none() {
-                    ctx.last_scope_mut().insert_type(name, ty, import.exported);
-                }
+            } else if let Some(ty) = ty
+                && include_diagnostics
+            {
+                let type_name = ctx.type_name(ty);
+                ctx.diagnostic(
+                    &import.name,
+                    DiagnosticKind::CannotImportFromType("*".to_string(), type_name),
+                );
             }
         }
 
