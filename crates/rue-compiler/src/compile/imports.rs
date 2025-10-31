@@ -1,5 +1,5 @@
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, Import, Symbol};
+use rue_hir::{Declaration, ImportId, Symbol};
 
 use crate::Compiler;
 
@@ -12,10 +12,12 @@ pub fn resolve_imports(ctx: &mut Compiler, include_diagnostics: bool) {
 fn resolve_import_map(
     ctx: &mut Compiler,
     parent: Option<Declaration>,
-    imports: &[Import],
+    imports: &[ImportId],
     include_diagnostics: bool,
 ) {
-    for import in imports {
+    for &import in imports {
+        let import = ctx.import(import).clone();
+
         let name = import.name.text();
 
         let (symbol, ty) = match parent {

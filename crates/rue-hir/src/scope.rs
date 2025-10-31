@@ -2,21 +2,11 @@ use std::collections::HashMap;
 
 use id_arena::Id;
 use indexmap::{IndexMap, IndexSet};
-use rue_parser::SyntaxToken;
 use rue_types::TypeId;
 
-use crate::SymbolId;
+use crate::{ImportId, SymbolId};
 
 pub type ScopeId = Id<Scope>;
-
-#[derive(Debug, Clone)]
-pub struct Import {
-    pub name: SyntaxToken,
-    pub exported: bool,
-    pub include_self: bool,
-    pub include_all: bool,
-    pub children: Vec<Import>,
-}
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope {
@@ -27,7 +17,7 @@ pub struct Scope {
     symbol_types: HashMap<SymbolId, TypeId>,
     exported_symbols: IndexSet<SymbolId>,
     exported_types: IndexSet<TypeId>,
-    imports: Vec<Import>,
+    imports: Vec<ImportId>,
 }
 
 impl Scope {
@@ -109,11 +99,11 @@ impl Scope {
         self.type_names.values().map(String::as_str)
     }
 
-    pub fn import(&mut self, import: Import) {
+    pub fn import(&mut self, import: ImportId) {
         self.imports.push(import);
     }
 
-    pub fn imports(&self) -> Vec<Import> {
+    pub fn imports(&self) -> Vec<ImportId> {
         self.imports.clone()
     }
 }

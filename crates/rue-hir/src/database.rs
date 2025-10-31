@@ -4,7 +4,7 @@ use id_arena::Arena;
 use indexmap::IndexSet;
 use rue_types::{Type, TypeId};
 
-use crate::{Hir, HirId, Scope, ScopeId, Symbol, SymbolId};
+use crate::{Hir, HirId, Import, ImportId, Scope, ScopeId, Symbol, SymbolId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Declaration {
@@ -16,6 +16,7 @@ pub enum Declaration {
 pub struct Database {
     hir: Arena<Hir>,
     scopes: Arena<Scope>,
+    imports: Arena<Import>,
     symbols: Arena<Symbol>,
     types: Arena<Type>,
     relevant_declarations: IndexSet<Declaration>,
@@ -51,6 +52,18 @@ impl Database {
 
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
         &mut self.scopes[id]
+    }
+
+    pub fn alloc_import(&mut self, import: Import) -> ImportId {
+        self.imports.alloc(import)
+    }
+
+    pub fn import(&self, id: ImportId) -> &Import {
+        &self.imports[id]
+    }
+
+    pub fn import_mut(&mut self, id: ImportId) -> &mut Import {
+        &mut self.imports[id]
     }
 
     pub fn alloc_symbol(&mut self, symbol: Symbol) -> SymbolId {
