@@ -18,6 +18,11 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
 
     let value = compile_expr(ctx, &expr, None);
 
+    if ctx.is_unresolved(value.ty) {
+        debug!("Unresolved prefix expr");
+        return ctx.builtins().unresolved.clone();
+    }
+
     let Some(op) = prefix.op() else {
         return value;
     };

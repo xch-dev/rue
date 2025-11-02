@@ -1,14 +1,20 @@
 use log::debug;
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{
-    Declaration, FunctionKind, FunctionSymbol, ParameterSymbol, Scope, Symbol, SymbolId,
-};
+use rue_hir::{Declaration, FunctionKind, FunctionSymbol, ParameterSymbol, Symbol, SymbolId};
 use rue_types::{FunctionType, Type};
 
-use crate::{Compiler, compile_block, compile_generic_parameters, compile_type, create_binding};
+use crate::{
+    Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_block,
+    compile_generic_parameters, compile_type, create_binding,
+};
 
 pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> SymbolId {
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::Item),
+        function.syntax().text_range(),
+    ));
+
     let symbol = ctx.alloc_symbol(Symbol::Unresolved);
 
     if function.test().is_some() {
@@ -17,7 +23,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 
     ctx.push_declaration(Declaration::Symbol(symbol));
 
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
 
     let vars = if let Some(generic_parameters) = function.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)
@@ -109,13 +115,13 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
                 &name,
                 DiagnosticKind::DuplicateSymbol(name.text().to_string()),
             );
+        } else {
+            ctx.last_scope_mut().insert_symbol(
+                name.text().to_string(),
+                symbol,
+                function.export().is_some(),
+            );
         }
-
-        ctx.last_scope_mut().insert_symbol(
-            name.text().to_string(),
-            symbol,
-            function.export().is_some(),
-        );
 
         ctx.declaration_span(Declaration::Symbol(symbol), name.text_range());
     }

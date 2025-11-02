@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use indexmap::IndexSet;
 use rowan::{TextRange, TextSize};
 use rue_compiler::{Compilation, CompletionContext, SyntaxItemKind};
 use rue_diagnostic::LineCol;
@@ -131,11 +132,32 @@ impl Cache {
             ty,
             specified_fields,
         } = context.clone()
-            && let semantic =
-                rue_types::unwrap_semantic(self.compilation.compiler.types_mut(), ty, true)
-            && let Type::Struct(ty) = self.compilation.compiler.ty(semantic).clone()
         {
-            for field in ty.fields {
+            let semantic =
+                rue_types::unwrap_semantic(self.compilation.compiler.types_mut(), ty, true);
+
+            let mut fields = IndexSet::new();
+
+            match self.compilation.compiler.ty(semantic) {
+                Type::Struct(ty) => {
+                    fields.extend(ty.fields.clone());
+                }
+                Type::Atom(_) => {
+                    fields.insert("length".to_string());
+                }
+                Type::Pair(_) | Type::Union(_) => {
+                    let pairs =
+                        rue_types::extract_pairs(self.compilation.compiler.types_mut(), ty, true);
+
+                    if !pairs.is_empty() {
+                        fields.insert("first".to_string());
+                        fields.insert("rest".to_string());
+                    }
+                }
+                _ => {}
+            }
+
+            for field in fields {
                 if specified_fields
                     .as_ref()
                     .is_some_and(|fields| fields.contains(&field))
@@ -190,7 +212,10 @@ impl Cache {
                 }
 
                 match context {
-                    CompletionContext::Document | CompletionContext::StructFields { .. } => {
+                    CompletionContext::Document
+                    | CompletionContext::Item
+                    | CompletionContext::Statement
+                    | CompletionContext::StructFields { .. } => {
                         continue;
                     }
                     CompletionContext::Type => {}

@@ -2,20 +2,25 @@ use indexmap::IndexSet;
 use log::debug;
 use rue_ast::{AstNode, AstStructItem};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, Scope, ScopeId};
+use rue_hir::{Declaration, ScopeId};
 use rue_types::{Pair, Struct, Type, TypeId};
 
 use crate::{
-    Compiler, SyntaxField, SyntaxItem, SyntaxItemKind, compile_expr, compile_generic_parameters,
-    compile_type,
+    Compiler, CompletionContext, SyntaxField, SyntaxItem, SyntaxItemKind, compile_expr,
+    compile_generic_parameters, compile_type,
 };
 
 pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (TypeId, ScopeId) {
+    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        SyntaxItemKind::CompletionContext(CompletionContext::Item),
+        struct_item.syntax().text_range(),
+    ));
+
     let ty = ctx.alloc_type(Type::Unresolved);
 
     ctx.push_declaration(Declaration::Type(ty));
 
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
 
     let generics = if let Some(generic_parameters) = struct_item.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)
