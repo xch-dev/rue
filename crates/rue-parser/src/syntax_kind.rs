@@ -44,6 +44,9 @@ pub enum SyntaxKind {
     #[display("`false`")]
     False,
 
+    #[display("`import`")]
+    Import,
+
     #[display("`export`")]
     Export,
 
@@ -234,6 +237,15 @@ pub enum SyntaxKind {
     #[display("struct field")]
     StructField,
 
+    #[display("import item")]
+    ImportItem,
+
+    #[display("import path")]
+    ImportPath,
+
+    #[display("import path segment")]
+    ImportPathSegment,
+
     #[display("generic parameters")]
     GenericParameters,
 
@@ -376,6 +388,7 @@ macro_rules! T {
     [nil] => { $crate::SyntaxKind::Nil };
     [true] => { $crate::SyntaxKind::True };
     [false] => { $crate::SyntaxKind::False };
+    [import] => { $crate::SyntaxKind::Import };
     [export] => { $crate::SyntaxKind::Export };
     [extern] => { $crate::SyntaxKind::Extern };
     [inline] => { $crate::SyntaxKind::Inline };
@@ -485,6 +498,7 @@ impl SyntaxKind {
             T![nil] => &[T![nil]],
             T![true] => &[T![true]],
             T![false] => &[T![false]],
+            T![import] => &[T![import]],
             T![export] => &[T![export]],
             T![extern] => &[T![extern]],
             T![inline] => &[T![inline]],
@@ -546,6 +560,9 @@ impl SyntaxKind {
             SyntaxKind::TypeAliasItem => &[SyntaxKind::TypeAliasItem],
             SyntaxKind::StructItem => &[SyntaxKind::StructItem],
             SyntaxKind::StructField => &[SyntaxKind::StructField],
+            SyntaxKind::ImportItem => &[SyntaxKind::ImportItem],
+            SyntaxKind::ImportPath => &[SyntaxKind::ImportPath],
+            SyntaxKind::ImportPathSegment => &[SyntaxKind::ImportPathSegment],
             SyntaxKind::GenericParameters => &[SyntaxKind::GenericParameters],
             SyntaxKind::GenericArguments => &[SyntaxKind::GenericArguments],
             SyntaxKind::LiteralType => &[SyntaxKind::LiteralType],
