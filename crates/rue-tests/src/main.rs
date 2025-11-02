@@ -245,16 +245,17 @@ fn handle_test_case(
     let bytes = node_to_bytes(allocator, ptr)?.len();
     test_case.byte_cost = Some(bytes as u64 * 12_000);
 
+    test_case.print_messages = print_messages
+        .into_iter()
+        .map(|message| message.message)
+        .collect();
+
     match response {
         Ok(output) => {
             test_case.output = Some(disassemble(allocator, output.1, None));
             test_case.runtime_cost = Some(output.0);
             test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
             test_case.clvm_error = None;
-            test_case.print_messages = print_messages
-                .into_iter()
-                .map(|message| message.message)
-                .collect();
         }
         Err(error) => {
             test_case.clvm_error = Some(match error {
