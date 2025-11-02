@@ -35,6 +35,7 @@ pub enum Hir {
     InfinityG1,
     InfinityG2,
     ClvmOp(ClvmOp, HirId),
+    DebugPrint(Vec<HirId>),
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +52,7 @@ pub enum Statement {
     Return(HirId),
     Assert(HirId, SrcLoc),
     Raise(Option<HirId>, SrcLoc),
+    Print(HirId, SrcLoc),
 }
 
 #[derive(Debug, Clone, Copy)]

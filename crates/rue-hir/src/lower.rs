@@ -353,6 +353,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let args = self.lower_hir(env, args);
                 self.arena.alloc(Lir::Op(op, args))
             }
+            Hir::DebugPrint(args) => {
+                let args = args
+                    .into_iter()
+                    .map(|arg| self.lower_hir(env, arg))
+                    .collect();
+                self.arena.alloc(Lir::DebugPrint(args))
+            }
         }
     }
 
@@ -517,6 +524,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Statement::Expr(_) => self.lower_expr_stmts(env, stmts, body),
             Statement::Raise(hir, srcloc) => self.lower_raise(env, hir, srcloc),
             Statement::If(stmt) => self.lower_if(env, stmts, stmt, body),
+            Statement::Print(hir, srcloc) => self.lower_print(env, stmts, hir, srcloc, body),
         }
     }
 
@@ -673,6 +681,33 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         self.arena.alloc(Lir::Raise(args))
+    }
+
+    fn lower_print(
+        &mut self,
+        env: &Environment,
+        mut stmts: Vec<Statement>,
+        value: HirId,
+        srcloc: SrcLoc,
+        body: Option<HirId>,
+    ) -> LirId {
+        stmts.remove(0);
+
+        let rest = self.lower_block(env, stmts, body);
+
+        if !self.options.debug_symbols {
+            return rest;
+        }
+
+        let message = self.arena.alloc(Lir::Atom(
+            format!("print at {}", srcloc.start()).into_bytes(),
+        ));
+
+        let value = self.lower_hir(env, value);
+
+        let lir = self.arena.alloc(Lir::DebugPrint(vec![message, value]));
+        let cons = self.arena.alloc(Lir::Cons(lir, rest));
+        self.arena.alloc(Lir::Rest(cons))
     }
 
     fn lower_if(
@@ -993,6 +1028,7 @@ fn count_nil_in_env(arena: &Arena<Lir>, id: LirId) -> usize {
                 + count_nil_in_env(arena, signature)
         }
         Lir::Op(_, arg) => count_nil_in_env(arena, arg),
+        Lir::DebugPrint(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
     }
 }
 
@@ -1331,6 +1367,13 @@ fn replace_nil_in_env(
         Lir::Op(op, arg) => {
             let arg = replace_nil_in_env(arena, arg, verifications);
             arena.alloc(Lir::Op(op, arg))
+        }
+        Lir::DebugPrint(args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.push(replace_nil_in_env(arena, arg, verifications));
+            }
+            arena.alloc(Lir::DebugPrint(result))
         }
     }
 }

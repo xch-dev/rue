@@ -20,7 +20,7 @@ use crate::{SyntaxItem, SyntaxItemKind, SyntaxMap};
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
-    _options: CompilerOptions,
+    options: CompilerOptions,
     source: Source,
     diagnostics: Vec<Diagnostic>,
     db: Database,
@@ -52,7 +52,7 @@ impl Compiler {
         let builtins = Builtins::new(&mut db);
 
         Self {
-            _options: options,
+            options,
             source: Source::new(Arc::from(""), SourceKind::Std),
             diagnostics: Vec::new(),
             db,
@@ -66,6 +66,10 @@ impl Compiler {
 
     pub fn source(&self) -> &Source {
         &self.source
+    }
+
+    pub fn options(&self) -> &CompilerOptions {
+        &self.options
     }
 
     #[allow(clippy::cast_possible_truncation)]

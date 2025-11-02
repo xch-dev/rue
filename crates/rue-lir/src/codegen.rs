@@ -373,12 +373,19 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             )
             .to_clvm(allocator)?)
         }
+        Lir::DebugPrint(args) => {
+            let args = args
+                .iter()
+                .map(|arg| codegen(arena, allocator, *arg))
+                .collect::<Result<Vec<_>>>()?;
+            Ok((ClvmOp::DebugPrint, args).to_clvm(allocator)?)
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use clvm_tools_rs::classic::clvm_tools::binutils::disassemble;
+    use chialisp::classic::clvm_tools::binutils::disassemble;
     use expect_test::{Expect, expect};
 
     use super::*;

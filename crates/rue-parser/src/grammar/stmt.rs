@@ -29,6 +29,8 @@ pub fn stmt(p: &mut Parser) -> StatementKind {
         assert_stmt(p);
     } else if p.at(T![raise]) && !inline {
         raise_stmt(p);
+    } else if p.at(T![print]) && !inline {
+        print_stmt(p);
     } else {
         if expr_with(
             p,
@@ -92,6 +94,14 @@ fn raise_stmt(p: &mut Parser) {
     if !p.at(T![;]) {
         expr(p);
     }
+    p.expect(T![;]);
+    p.finish();
+}
+
+fn print_stmt(p: &mut Parser) {
+    p.start(SyntaxKind::PrintStmt);
+    p.expect(T![print]);
+    expr(p);
     p.expect(T![;]);
     p.finish();
 }
@@ -283,6 +293,23 @@ mod tests {
                   LiteralExpr@7..9
                     Integer@7..9 "42"
                   Semicolon@9..10 ";"
+            "#]],
+            expect![],
+        );
+    }
+
+    #[test]
+    fn test_print_stmt() {
+        check_stmt(
+            StatementKind::Normal,
+            "print 42;",
+            expect![[r#"
+                PrintStmt@0..9
+                  Print@0..5 "print"
+                  Whitespace@5..6 " "
+                  LiteralExpr@6..8
+                    Integer@6..8 "42"
+                  Semicolon@8..9 ";"
             "#]],
             expect![],
         );

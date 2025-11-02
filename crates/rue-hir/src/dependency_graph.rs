@@ -125,6 +125,11 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                     Statement::Expr(expr) => {
                         visit_hir(db, graph, expr.hir, false);
                     }
+                    Statement::Print(expr, _) => {
+                        if graph.options.debug_symbols {
+                            visit_hir(db, graph, *expr, false);
+                        }
+                    }
                 }
             }
 
@@ -213,6 +218,11 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
         Hir::InfinityG2 => {}
         Hir::ClvmOp(_op, args) => {
             visit_hir(db, graph, *args, false);
+        }
+        Hir::DebugPrint(args) => {
+            for arg in args {
+                visit_hir(db, graph, *arg, false);
+            }
         }
     }
 }

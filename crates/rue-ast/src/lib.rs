@@ -80,6 +80,7 @@ ast_nodes!(
     ReturnStmt,
     AssertStmt,
     RaiseStmt,
+    PrintStmt,
     PathExpr,
     PathSegment,
     LeadingPathSeparator,
@@ -110,7 +111,7 @@ ast_enum!(Item, TypeItem, SymbolItem);
 ast_enum!(TypeItem, TypeAliasItem, StructItem);
 ast_enum!(SymbolItem, ModuleItem, FunctionItem, ConstantItem);
 ast_enum!(
-    Stmt, LetStmt, ExprStmt, IfStmt, ReturnStmt, AssertStmt, RaiseStmt
+    Stmt, LetStmt, ExprStmt, IfStmt, ReturnStmt, AssertStmt, RaiseStmt, PrintStmt
 );
 ast_enum!(StmtOrExpr, Stmt, Expr);
 ast_enum!(
@@ -438,6 +439,12 @@ impl AstAssertStmt {
 }
 
 impl AstRaiseStmt {
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
+    }
+}
+
+impl AstPrintStmt {
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
     }

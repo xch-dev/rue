@@ -62,6 +62,7 @@ pub enum Lir {
     K1Verify(LirId, LirId, LirId),
     R1Verify(LirId, LirId, LirId),
     Op(ClvmOp, LirId),
+    DebugPrint(Vec<LirId>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -114,6 +115,9 @@ pub enum ClvmOp {
     Secp256K1Verify,
     Secp256R1Verify,
     Keccak256,
+
+    // Non-standard
+    DebugPrint,
 }
 
 impl ClvmOp {
@@ -167,6 +171,7 @@ impl ClvmOp {
             Self::Secp256K1Verify => return vec![0x13, 0xd6, 0x1f, 0x00],
             Self::Secp256R1Verify => return vec![0x1c, 0x3a, 0x8f, 0x00],
             Self::Keccak256 => 62,
+            Self::DebugPrint => return b"debug_print".into(),
         };
 
         bigint_atom(num.into())
@@ -174,7 +179,7 @@ impl ClvmOp {
 }
 
 impl ToClvm<Allocator> for ClvmOp {
-    fn to_clvm(&self, encoder: &mut Allocator) -> Result<NodePtr, clvm_traits::ToClvmError> {
+    fn to_clvm(&self, encoder: &mut Allocator) -> Result<NodePtr, ToClvmError> {
         encoder
             .new_atom(&self.to_atom())
             .map_err(|_| ToClvmError::OutOfMemory)

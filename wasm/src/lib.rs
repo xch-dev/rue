@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use clvm_tools_rs::classic::clvm_tools::binutils::disassemble;
+use chialisp::classic::clvm_tools::binutils::disassemble;
 use clvmr::Allocator;
 use rue_compiler::compile_file;
 use rue_diagnostic::{Diagnostic, Source, SourceKind};

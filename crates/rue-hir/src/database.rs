@@ -301,6 +301,15 @@ impl Database {
             Hir::ClvmOp(op, args) => {
                 format!("{:?}({})", op, self.debug_hir(*args))
             }
+            Hir::DebugPrint(args) => {
+                format!(
+                    "debug_print({})",
+                    args.iter()
+                        .map(|arg| self.debug_hir(*arg))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
         }
     }
 }

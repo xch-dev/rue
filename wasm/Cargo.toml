@@ -23,6 +23,6 @@ rue-compiler = { workspace = true }
 rue-options = { workspace = true }
 rue-diagnostic = { workspace = true }
 clvmr = { workspace = true }
-clvm_tools_rs = { workspace = true }
+chialisp = { workspace = true }
 wasm-bindgen = { workspace = true }
 console_error_panic_hook = { workspace = true }

@@ -5,15 +5,16 @@ use std::process;
 use std::sync::Arc;
 
 use anyhow::Result;
-use clvm_tools_rs::classic::clvm_tools::binutils::{assemble, disassemble};
+use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::ENABLE_KECCAK_OPS_OUTSIDE_GUARD;
 use clvmr::MEMPOOL_MODE;
 use clvmr::NodePtr;
 use clvmr::error::EvalErr;
-use clvmr::{Allocator, ChiaDialect, run_program, serde::node_to_bytes};
+use clvmr::{Allocator, run_program, serde::node_to_bytes};
 use rue_compiler::compile_file;
 use rue_diagnostic::Source;
 use rue_diagnostic::SourceKind;
+use rue_lir::DebugDialect;
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
 use walkdir::DirEntry;
@@ -227,7 +228,7 @@ fn handle_test_case(
 
     let response = run_program(
         allocator,
-        &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
+        &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
         ptr,
         env,
         100_000_000,
@@ -235,7 +236,7 @@ fn handle_test_case(
 
     let debug_response = run_program(
         allocator,
-        &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
+        &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
         debug_ptr,
         env,
         100_000_000,
