@@ -197,7 +197,7 @@ pub fn compile_block(
                     SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
                 )
             }
-            AstStmt::PrintStmt(stmt) => {
+            AstStmt::DebugStmt(stmt) => {
                 let value = if let Some(expr) = stmt.expr() {
                     compile_expr(ctx, &expr, None)
                 } else {
@@ -205,7 +205,7 @@ pub fn compile_block(
                     ctx.builtins().unresolved.clone()
                 };
 
-                Statement::Print(
+                Statement::Debug(
                     value.hir,
                     SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
                 )

@@ -29,8 +29,8 @@ pub fn stmt(p: &mut Parser) -> StatementKind {
         assert_stmt(p);
     } else if p.at(T![raise]) && !inline {
         raise_stmt(p);
-    } else if p.at(T![print]) && !inline {
-        print_stmt(p);
+    } else if p.at(T![debug]) && !inline {
+        debug_stmt(p);
     } else {
         if expr_with(
             p,
@@ -98,9 +98,9 @@ fn raise_stmt(p: &mut Parser) {
     p.finish();
 }
 
-fn print_stmt(p: &mut Parser) {
-    p.start(SyntaxKind::PrintStmt);
-    p.expect(T![print]);
+fn debug_stmt(p: &mut Parser) {
+    p.start(SyntaxKind::DebugStmt);
+    p.expect(T![debug]);
     expr(p);
     p.expect(T![;]);
     p.finish();
@@ -299,13 +299,13 @@ mod tests {
     }
 
     #[test]
-    fn test_print_stmt() {
+    fn test_debug_stmt() {
         check_stmt(
             StatementKind::Normal,
-            "print 42;",
+            "debug 42;",
             expect![[r#"
-                PrintStmt@0..9
-                  Print@0..5 "print"
+                DebugStmt@0..9
+                  Debug@0..5 "debug"
                   Whitespace@5..6 " "
                   LiteralExpr@6..8
                     Integer@6..8 "42"

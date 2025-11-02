@@ -31,7 +31,7 @@ pub enum TokenKind {
     Return,
     Assert,
     Raise,
-    Print,
+    Debug,
     Is,
     As,
 

@@ -517,7 +517,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Statement::Expr(stmt) => self.lower_expr_stmts(env, stmt, stmts, body),
             Statement::Raise(hir, srcloc) => self.lower_raise(env, hir, srcloc),
             Statement::If(stmt) => self.lower_if(env, stmts, stmt, body),
-            Statement::Print(hir, srcloc) => self.lower_print(env, stmts, hir, srcloc, body),
+            Statement::Debug(hir, srcloc) => self.lower_debug(env, stmts, hir, srcloc, body),
         }
     }
 
@@ -676,7 +676,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         self.arena.alloc(Lir::Raise(args))
     }
 
-    fn lower_print(
+    fn lower_debug(
         &mut self,
         env: &Environment,
         mut stmts: Vec<Statement>,

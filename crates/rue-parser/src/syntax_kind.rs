@@ -89,8 +89,8 @@ pub enum SyntaxKind {
     #[display("`raise`")]
     Raise,
 
-    #[display("`print`")]
-    Print,
+    #[display("`debug`")]
+    Debug,
 
     #[display("`is`")]
     Is,
@@ -288,8 +288,8 @@ pub enum SyntaxKind {
     #[display("raise statement")]
     RaiseStmt,
 
-    #[display("print statement")]
-    PrintStmt,
+    #[display("debug statement")]
+    DebugStmt,
 
     #[display("path expression")]
     PathExpr,
@@ -391,7 +391,7 @@ macro_rules! T {
     [return] => { $crate::SyntaxKind::Return };
     [assert] => { $crate::SyntaxKind::Assert };
     [raise] => { $crate::SyntaxKind::Raise };
-    [print] => { $crate::SyntaxKind::Print };
+    [debug] => { $crate::SyntaxKind::Debug };
     [is] => { $crate::SyntaxKind::Is };
     [as] => { $crate::SyntaxKind::As };
     ['('] => { $crate::SyntaxKind::OpenParen };
@@ -500,7 +500,7 @@ impl SyntaxKind {
             T![return] => &[T![return]],
             T![assert] => &[T![assert]],
             T![raise] => &[T![raise]],
-            T![print] => &[T![print]],
+            T![debug] => &[T![debug]],
             T![is] => &[T![is]],
             T![as] => &[T![as]],
             T!['('] => &[T!['(']],
@@ -564,7 +564,7 @@ impl SyntaxKind {
             SyntaxKind::ReturnStmt => &[SyntaxKind::ReturnStmt],
             SyntaxKind::AssertStmt => &[SyntaxKind::AssertStmt],
             SyntaxKind::RaiseStmt => &[SyntaxKind::RaiseStmt],
-            SyntaxKind::PrintStmt => &[SyntaxKind::PrintStmt],
+            SyntaxKind::DebugStmt => &[SyntaxKind::DebugStmt],
             SyntaxKind::PathExpr => &[SyntaxKind::PathExpr],
             SyntaxKind::PathSegment => &[SyntaxKind::PathSegment],
             SyntaxKind::LeadingPathSeparator => &[SyntaxKind::LeadingPathSeparator],

@@ -104,7 +104,7 @@ impl Parser {
                 TokenKind::Return => T![return],
                 TokenKind::Assert => T![assert],
                 TokenKind::Raise => T![raise],
-                TokenKind::Print => T![print],
+                TokenKind::Debug => T![debug],
                 TokenKind::Is => T![is],
                 TokenKind::As => T![as],
                 TokenKind::OpenParen => T!['('],
