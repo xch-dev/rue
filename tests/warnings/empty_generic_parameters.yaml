@@ -1,5 +1,5 @@
 program: ()
-debug_program: (a (q 2 2 ()) (c (q) ()))
+debug_program: (a (q 3 (q . 1) () (a 2 ())) (c (q) ()))
 output: ()
 runtime_cost: 44
 byte_cost: 12000

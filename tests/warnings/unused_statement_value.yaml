@@ -1,28 +1,28 @@
 tests:
 - name: expr_statement
   program: (all ())
-  debug_program: (all (q . 42) ())
+  debug_program: (i (q . 1) () (q . 42))
   output: ()
   runtime_cost: 545
   byte_cost: 60000
   total_cost: 60545
 - name: nil_statement
   program: ()
-  debug_program: ()
+  debug_program: (i (q . 1) () ())
   output: ()
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
 - name: check_function_call
   program: ()
-  debug_program: (a (q 2 2 ()) (c (q) ()))
+  debug_program: (a (q 3 (q . 1) () (a 2 ())) (c (q) ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
 - name: value_function_call
   program: (all ())
-  debug_program: (a (q 34 (a 2 ()) ()) (c (q 1 . 42) ()))
+  debug_program: (a (q 3 (q . 1) () (a 2 ())) (c (q 1 . 42) ()))
   output: ()
   runtime_cost: 545
   byte_cost: 60000

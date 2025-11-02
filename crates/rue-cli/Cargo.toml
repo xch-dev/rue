@@ -22,9 +22,10 @@ path = "src/main.rs"
 rue-compiler = { workspace = true }
 rue-options = { workspace = true }
 rue-diagnostic = { workspace = true }
+rue-lir = { workspace = true }
 clvmr = { workspace = true }
 clvm-utils = { workspace = true }
-clvm_tools_rs = { workspace = true }
+chialisp = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
 hex = { workspace = true }

@@ -197,6 +197,19 @@ pub fn compile_block(
                     SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
                 )
             }
+            AstStmt::DebugStmt(stmt) => {
+                let value = if let Some(expr) = stmt.expr() {
+                    compile_expr(ctx, &expr, None)
+                } else {
+                    debug!("Unresolved print expr");
+                    ctx.builtins().unresolved.clone()
+                };
+
+                Statement::Debug(
+                    value.hir,
+                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
+                )
+            }
         };
 
         statements.push(compiled);

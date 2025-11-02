@@ -15,7 +15,7 @@ tests:
   total_cost: 12044
 - name: unused_fn_parameter
   program: ()
-  debug_program: (a (q 2 2 (q . 42)) (c (q) ()))
+  debug_program: (a (q 3 (q . 1) () (a 2 (q . 42))) (c (q) ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000
@@ -29,7 +29,7 @@ tests:
   total_cost: 36020
 - name: unused_fn_generic
   program: ()
-  debug_program: (a (q 2 2 ()) (c (q) ()))
+  debug_program: (a (q 3 (q . 1) () (a 2 ())) (c (q) ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000

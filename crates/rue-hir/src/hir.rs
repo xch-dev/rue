@@ -51,6 +51,7 @@ pub enum Statement {
     Return(HirId),
     Assert(HirId, SrcLoc),
     Raise(Option<HirId>, SrcLoc),
+    Debug(HirId, SrcLoc),
 }
 
 #[derive(Debug, Clone, Copy)]

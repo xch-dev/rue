@@ -1,7 +1,7 @@
 tests:
 - name: one_wrapped_nil
   program: (i () (a (i (> 2 ()) (q) (q 8)) 1) (q . 1))
-  debug_program: (i () (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1) (q . 1))
+  debug_program: (i (q . 1) (q . 1) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1))
   solution: (1)
   output: '1'
   runtime_cost: 944
@@ -9,7 +9,7 @@ tests:
   total_cost: 444944
 - name: one_inserted_nil
   program: (a (i (> 2 ()) (q) (q 8)) 1)
-  debug_program: (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1)
+  debug_program: (i (q . 1) () (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1))
   solution: (1)
   output: ()
   runtime_cost: 846
@@ -17,7 +17,7 @@ tests:
   total_cost: 324846
 - name: two_inserted_all_nil
   program: (all (a (i (> 2 ()) (q) (q 8)) 1) (a (i (> 2 ()) (q) (q 8)) 1))
-  debug_program: (all (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1))
+  debug_program: (i (q . 1) (i (q . 1) () (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1)) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1))
   solution: (1)
   output: ()
   runtime_cost: 2493
@@ -25,7 +25,7 @@ tests:
   total_cost: 710493
 - name: two_inserted_separate_nil
   program: (c (a (i (> 2 ()) (q) (q 8)) 1) (a (i (> 2 ()) (q) (q 8)) 1))
-  debug_program: (c (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1))
+  debug_program: (i (q . 1) (i (q . 1) (c () ()) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1)) (a (i (> 2 ()) (q) (q 8 (q . "assertion failed at 42:5"))) 1))
   solution: (1)
   output: (())
   runtime_cost: 1743
@@ -33,7 +33,7 @@ tests:
   total_cost: 709743
 - name: one_wrapped_non_nil
   program: (i () (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) (q . 1))
-  debug_program: (i () (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) (q . 1))
+  debug_program: (i (q . 1) (q . 1) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1))
   solution: (1)
   output: '1'
   runtime_cost: 920
@@ -41,7 +41,7 @@ tests:
   total_cost: 468920
 - name: one_inserted_non_nil
   program: (all (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) ())
-  debug_program: (all (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) ())
+  debug_program: (i (q . 1) () (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1))
   solution: (1)
   output: ()
   runtime_cost: 1667
@@ -49,7 +49,7 @@ tests:
   total_cost: 421667
 - name: two_inserted_all_non_nil
   program: (all (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) ())
-  debug_program: (all (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) ())
+  debug_program: (i (q . 1) (i (q . 1) () (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1)) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1))
   solution: (1)
   output: ()
   runtime_cost: 2789
@@ -57,7 +57,7 @@ tests:
   total_cost: 782789
 - name: two_inserted_separate_non_nil
   program: (c (all (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) (a (i (> 2 ()) (q 1 . 1) (q 8)) 1) ()) ())
-  debug_program: (c (all (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1) ()) ())
+  debug_program: (i (q . 1) (i (q . 1) (c () ()) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1)) (a (i (> 2 ()) (q 1 . 1) (q 8 (q . "assertion failed at 46:5"))) 1))
   solution: (1)
   output: (())
   runtime_cost: 2884

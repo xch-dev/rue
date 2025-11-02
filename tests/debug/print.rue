@@ -1,0 +1,43 @@
+test fn single_print() {
+    debug "Hello, world!";
+}
+
+test fn multiple_prints() {
+    debug 1;
+    debug 2;
+    debug 3;
+}
+
+test fn print_recursive() {
+    print_list([1, 2, 3]);
+}
+
+fn print_list(list: List<Int>) {
+    if list is nil {
+        return;
+    }
+
+    debug list.first;
+
+    print_list(list.rest);
+}
+
+test fn print_with_assertions() {
+    debug "First test";
+    validate_input(("hello", nil));
+    debug "Second test";
+    validate_input(("goodbye", nil));
+    debug "Third test";
+    validate_input(("hello", "world"));
+}
+
+fn validate_input(value: Any) {
+    debug "Asserting value is a pair";
+    assert value is (Any, Any);
+    debug "Asserting first is a string";
+    assert value.first is String;
+    debug "Asserting rest is nil";
+    debug value;
+    assert value.rest is nil;
+    debug "Value is valid";
+}

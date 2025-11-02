@@ -716,3 +716,7 @@ pub fn opt_r1_verify(
 pub fn opt_op(arena: &mut Arena<Lir>, op: ClvmOp, arg: LirId) -> LirId {
     arena.alloc(Lir::Op(op, arg))
 }
+
+pub fn opt_debug_print(arena: &mut Arena<Lir>, srcloc: String, value: LirId) -> LirId {
+    arena.alloc(Lir::DebugPrint(srcloc, value))
+}

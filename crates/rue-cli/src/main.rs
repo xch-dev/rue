@@ -1,22 +1,26 @@
 use std::{fs, process, sync::Arc};
 
 use anyhow::Result;
+use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
 use clap::Parser;
-use clvm_tools_rs::classic::clvm_tools::binutils::disassemble;
 use clvm_utils::tree_hash;
 use clvmr::{
-    Allocator, ChiaDialect, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, MEMPOOL_MODE, NodePtr, SExp,
-    error::EvalErr, run_program, serde::node_to_bytes,
+    Allocator, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, MEMPOOL_MODE, NodePtr, SExp,
+    error::EvalErr,
+    run_program,
+    serde::{node_from_bytes, node_to_bytes},
 };
 use colored::Colorize;
 use rue_compiler::compile_file;
 use rue_diagnostic::{DiagnosticSeverity, Source, SourceKind};
+use rue_lir::DebugDialect;
 use rue_options::CompilerOptions;
 
 #[derive(Debug, Parser)]
 pub enum Command {
     Build(BuildArgs),
-    Test { file: String },
+    Test(TestArgs),
+    Debug(DebugArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -32,12 +36,26 @@ pub struct BuildArgs {
     hash: bool,
 }
 
+#[derive(Debug, Parser)]
+pub struct TestArgs {
+    file: String,
+}
+
+#[derive(Debug, Parser)]
+pub struct DebugArgs {
+    program: String,
+    solution: Option<String>,
+    #[clap(short = 'x', long)]
+    hex: bool,
+}
+
 fn main() -> Result<()> {
     let args = Command::parse();
 
     match args {
         Command::Build(args) => build(args),
-        Command::Test { file } => test(file),
+        Command::Test(args) => test(args),
+        Command::Debug(args) => debug(args),
     }
 }
 
@@ -118,14 +136,14 @@ fn build(args: BuildArgs) -> Result<()> {
     Ok(())
 }
 
-fn test(file: String) -> Result<()> {
-    let source = fs::read_to_string(&file)?;
+fn test(args: TestArgs) -> Result<()> {
+    let source = fs::read_to_string(&args.file)?;
 
     let mut allocator = Allocator::new();
 
     let result = compile_file(
         &mut allocator,
-        Source::new(Arc::from(source), SourceKind::File(file)),
+        Source::new(Arc::from(source), SourceKind::File(args.file)),
         CompilerOptions::debug(),
     )?;
 
@@ -162,7 +180,7 @@ fn test(file: String) -> Result<()> {
 
         match run_program(
             &mut allocator,
-            &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
+            &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
             test.program,
             NodePtr::NIL,
             u64::MAX,
@@ -204,6 +222,43 @@ fn test(file: String) -> Result<()> {
     if failed {
         process::exit(1);
     }
+
+    Ok(())
+}
+
+fn debug(args: DebugArgs) -> Result<()> {
+    let mut allocator = Allocator::new();
+
+    let program = if args.hex {
+        let bytes = hex::decode(args.program)?;
+        node_from_bytes(&mut allocator, &bytes)?
+    } else {
+        assemble(&mut allocator, &args.program)?
+    };
+
+    let solution = if let Some(solution) = args.solution {
+        if args.hex {
+            let bytes = hex::decode(solution)?;
+            node_from_bytes(&mut allocator, &bytes)?
+        } else {
+            assemble(&mut allocator, &solution)?
+        }
+    } else {
+        NodePtr::NIL
+    };
+
+    let output = run_program(
+        &mut allocator,
+        &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
+        program,
+        solution,
+        u64::MAX,
+    )?
+    .1;
+
+    let output = disassemble(&allocator, output, None);
+
+    println!("{output}");
 
     Ok(())
 }
