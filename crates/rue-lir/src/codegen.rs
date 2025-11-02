@@ -373,12 +373,9 @@ pub fn codegen(arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId) -> Res
             )
             .to_clvm(allocator)?)
         }
-        Lir::DebugPrint(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::DebugPrint, args).to_clvm(allocator)?)
+        Lir::DebugPrint(srcloc, value) => {
+            let value = codegen(arena, allocator, *value)?;
+            Ok(clvm_list!(ClvmOp::DebugPrint, clvm_quote!(srcloc), value).to_clvm(allocator)?)
         }
     }
 }

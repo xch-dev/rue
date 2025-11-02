@@ -1,4 +1,4 @@
-use std::{ops::Range, sync::Arc};
+use std::{fmt, ops::Range, sync::Arc};
 
 use derive_more::Display;
 
@@ -51,5 +51,11 @@ impl SrcLoc {
 
     pub fn end(&self) -> LineCol {
         LineCol::new(&self.source.text, self.span.end)
+    }
+}
+
+impl fmt::Display for SrcLoc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.source.kind, self.start())
     }
 }

@@ -252,9 +252,9 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
             let arg = optimize(arena, arg);
             opt_op(arena, op, arg)
         }
-        Lir::DebugPrint(args) => {
-            let args = args.iter().map(|arg| optimize(arena, *arg)).collect();
-            opt_debug_print(arena, args)
+        Lir::DebugPrint(srcloc, value) => {
+            let value = optimize(arena, value);
+            opt_debug_print(arena, srcloc, value)
         }
     }
 }

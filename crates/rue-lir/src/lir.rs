@@ -62,7 +62,7 @@ pub enum Lir {
     K1Verify(LirId, LirId, LirId),
     R1Verify(LirId, LirId, LirId),
     Op(ClvmOp, LirId),
-    DebugPrint(Vec<LirId>),
+    DebugPrint(String, LirId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

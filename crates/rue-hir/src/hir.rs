@@ -35,7 +35,6 @@ pub enum Hir {
     InfinityG1,
     InfinityG2,
     ClvmOp(ClvmOp, HirId),
-    DebugPrint(Vec<HirId>),
 }
 
 #[derive(Debug, Clone)]

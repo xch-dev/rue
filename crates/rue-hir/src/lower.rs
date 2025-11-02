@@ -9,9 +9,9 @@ use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
 use crate::{
-    BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, FunctionCall,
-    FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError, Statement, Symbol, SymbolId,
-    UnaryOp,
+    BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, ExprStatement,
+    FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError, Statement,
+    Symbol, SymbolId, UnaryOp,
 };
 
 #[derive(Debug, Clone)]
@@ -353,13 +353,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let args = self.lower_hir(env, args);
                 self.arena.alloc(Lir::Op(op, args))
             }
-            Hir::DebugPrint(args) => {
-                let args = args
-                    .into_iter()
-                    .map(|arg| self.lower_hir(env, arg))
-                    .collect();
-                self.arena.alloc(Lir::DebugPrint(args))
-            }
         }
     }
 
@@ -521,7 +514,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Statement::Assert(condition, srcloc) => {
                 self.lower_assert(env, stmts, condition, srcloc, body)
             }
-            Statement::Expr(_) => self.lower_expr_stmts(env, stmts, body),
+            Statement::Expr(stmt) => self.lower_expr_stmts(env, stmt, stmts, body),
             Statement::Raise(hir, srcloc) => self.lower_raise(env, hir, srcloc),
             Statement::If(stmt) => self.lower_if(env, stmts, stmt, body),
             Statement::Print(hir, srcloc) => self.lower_print(env, stmts, hir, srcloc, body),
@@ -699,15 +692,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             return rest;
         }
 
-        let message = self.arena.alloc(Lir::Atom(
-            format!("print at {}", srcloc.start()).into_bytes(),
-        ));
-
         let value = self.lower_hir(env, value);
-
-        let lir = self.arena.alloc(Lir::DebugPrint(vec![message, value]));
-        let cons = self.arena.alloc(Lir::Cons(lir, rest));
-        self.arena.alloc(Lir::Rest(cons))
+        let print = self.arena.alloc(Lir::DebugPrint(srcloc.to_string(), value));
+        let nil = self.arena.alloc(Lir::Atom(vec![]));
+        self.arena.alloc(Lir::If(print, nil, rest, false))
     }
 
     fn lower_if(
@@ -728,9 +716,19 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     fn lower_expr_stmts(
         &mut self,
         env: &Environment,
+        stmt: ExprStatement,
         mut stmts: Vec<Statement>,
         body: Option<HirId>,
     ) -> LirId {
+        if self.options.debug_symbols {
+            stmts.remove(0);
+
+            let rest = self.lower_block(env, stmts, body);
+            let value = self.lower_hir(env, stmt.hir);
+            let one = self.arena.alloc(Lir::Atom(vec![1]));
+            return self.arena.alloc(Lir::If(one, rest, value, true));
+        }
+
         let mut ids = Vec::new();
 
         while let Some(stmt) = stmts.first().cloned()
@@ -748,7 +746,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
         let nil_count = count_nil_in_env(self.arena, expr);
 
-        if nil_count == 0 {
+        if nil_count == 0 || self.options.debug_symbols {
             let (condition, verifications) = if ids.len() == 1 {
                 let condition = self.arena.alloc(Lir::Atom(vec![]));
 
@@ -1028,7 +1026,7 @@ fn count_nil_in_env(arena: &Arena<Lir>, id: LirId) -> usize {
                 + count_nil_in_env(arena, signature)
         }
         Lir::Op(_, arg) => count_nil_in_env(arena, arg),
-        Lir::DebugPrint(args) => args.iter().map(|arg| count_nil_in_env(arena, *arg)).sum(),
+        Lir::DebugPrint(_, value) => count_nil_in_env(arena, value),
     }
 }
 
@@ -1368,12 +1366,9 @@ fn replace_nil_in_env(
             let arg = replace_nil_in_env(arena, arg, verifications);
             arena.alloc(Lir::Op(op, arg))
         }
-        Lir::DebugPrint(args) => {
-            let mut result = Vec::new();
-            for arg in args {
-                result.push(replace_nil_in_env(arena, arg, verifications));
-            }
-            arena.alloc(Lir::DebugPrint(result))
+        Lir::DebugPrint(srcloc, value) => {
+            let value = replace_nil_in_env(arena, value, verifications);
+            arena.alloc(Lir::DebugPrint(srcloc, value))
         }
     }
 }

@@ -1,21 +1,28 @@
 use std::cell::RefCell;
 
 use chialisp::classic::clvm_tools::binutils::disassemble;
-use clvm_traits::FromClvm;
+use clvm_traits::{FromClvm, destructure_tuple, match_tuple};
 use clvmr::{
     Allocator, ChiaDialect, NodePtr,
     dialect::{Dialect, OperatorSet},
     error::EvalErr,
     reduction::Reduction,
 };
+use colored::Colorize;
 
 use crate::ClvmOp;
+
+#[derive(Debug, Clone)]
+pub struct PrintMessage {
+    pub srcloc: String,
+    pub message: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct DebugDialect {
     flags: u32,
     stdout: bool,
-    log: RefCell<Vec<String>>,
+    log: RefCell<Vec<PrintMessage>>,
 }
 
 impl DebugDialect {
@@ -27,7 +34,7 @@ impl DebugDialect {
         }
     }
 
-    pub fn log(&self) -> Vec<String> {
+    pub fn log(&self) -> Vec<PrintMessage> {
         self.log.borrow().clone()
     }
 
@@ -62,21 +69,19 @@ impl Dialect for DebugDialect {
         extensions: OperatorSet,
     ) -> Result<Reduction, EvalErr> {
         if allocator.atom(op).as_ref() == ClvmOp::DebugPrint.to_atom() {
-            let Some(values) = Vec::<NodePtr>::from_clvm(allocator, args).ok() else {
+            let Some(destructure_tuple!(srcloc, value, _)) =
+                <match_tuple!(String, NodePtr, NodePtr)>::from_clvm(allocator, args).ok()
+            else {
                 return Err(EvalErr::InvalidNilTerminator(args));
             };
 
-            let message = values
-                .into_iter()
-                .map(|value| disassemble(allocator, value, None))
-                .collect::<Vec<_>>()
-                .join(" ");
+            let message = disassemble(allocator, value, None);
 
             if self.stdout {
-                println!("{message}");
+                eprintln!("{}: {}", srcloc.cyan().bold(), message);
             }
 
-            self.log.borrow_mut().push(message);
+            self.log.borrow_mut().push(PrintMessage { srcloc, message });
 
             return Ok(Reduction(0, NodePtr::NIL));
         }

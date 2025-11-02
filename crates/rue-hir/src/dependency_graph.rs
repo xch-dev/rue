@@ -219,11 +219,6 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
         Hir::ClvmOp(_op, args) => {
             visit_hir(db, graph, *args, false);
         }
-        Hir::DebugPrint(args) => {
-            for arg in args {
-                visit_hir(db, graph, *arg, false);
-            }
-        }
     }
 }
 
