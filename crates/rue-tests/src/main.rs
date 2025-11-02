@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
+use clvmr::ChiaDialect;
 use clvmr::ENABLE_KECCAK_OPS_OUTSIDE_GUARD;
 use clvmr::MEMPOOL_MODE;
 use clvmr::NodePtr;
@@ -68,6 +69,9 @@ struct TestCase {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     debug_clvm_error: Option<String>,
+
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    print_messages: Vec<String>,
 }
 
 fn main() -> Result<()> {
@@ -228,19 +232,15 @@ fn handle_test_case(
 
     let response = run_program(
         allocator,
-        &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
+        &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
         ptr,
         env,
         100_000_000,
     );
 
-    let debug_response = run_program(
-        allocator,
-        &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
-        debug_ptr,
-        env,
-        100_000_000,
-    );
+    let debug_dialect = DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, false);
+    let debug_response = run_program(allocator, &debug_dialect, debug_ptr, env, 100_000_000);
+    let print_messages = debug_dialect.log();
 
     let bytes = node_to_bytes(allocator, ptr)?.len();
     test_case.byte_cost = Some(bytes as u64 * 12_000);
@@ -251,6 +251,10 @@ fn handle_test_case(
             test_case.runtime_cost = Some(output.0);
             test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
             test_case.clvm_error = None;
+            test_case.print_messages = print_messages
+                .into_iter()
+                .map(|message| message.message)
+                .collect();
         }
         Err(error) => {
             test_case.clvm_error = Some(match error {
