@@ -14,7 +14,7 @@ use rue_hir::{
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
-use rue_types::{Check, CheckError, Comparison, TypeId};
+use rue_types::{Check, CheckError, Comparison, Type, TypeId};
 
 use crate::{SyntaxItem, SyntaxItemKind, SyntaxMap};
 
@@ -111,6 +111,11 @@ impl Compiler {
         ));
     }
 
+    pub fn alloc_child_scope(&mut self) -> ScopeId {
+        let parent_scope = self.last_scope_id();
+        self.alloc_scope(Scope::new(Some(parent_scope)))
+    }
+
     pub fn push_scope(&mut self, scope: ScopeId, start: TextSize) {
         self.scope_stack.push((start, scope));
     }
@@ -134,39 +139,85 @@ impl Compiler {
         self.scope_mut(scope.1)
     }
 
+    pub fn last_scope_id(&self) -> ScopeId {
+        self.scope_stack.last().unwrap().1
+    }
+
     pub fn resolve_symbol(&self, name: &str) -> Option<SymbolId> {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(symbol) = self.scope(scope.1).symbol(name) {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(symbol) = self.scope(scope).symbol(name) {
                 return Some(symbol);
             }
+            current = self.scope(scope).parent();
         }
+
         None
     }
 
     pub fn resolve_type(&self, name: &str) -> Option<TypeId> {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(ty) = self.scope(scope.1).ty(name) {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(ty) = self.scope(scope).ty(name) {
                 return Some(ty);
             }
+            current = self.scope(scope).parent();
         }
+
         None
     }
 
     pub fn type_name(&mut self, ty: TypeId) -> String {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(name) = self.scope(scope.1).type_name(ty) {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(name) = self.scope(scope).type_name(ty) {
                 return name.to_string();
             }
+            current = self.scope(scope).parent();
         }
 
         rue_types::stringify(self.db.types_mut(), ty)
     }
 
+    pub fn symbol_name(&self, symbol: SymbolId) -> String {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(name) = self.scope(scope).symbol_name(symbol) {
+                return name.to_string();
+            }
+            current = self.scope(scope).parent();
+        }
+
+        match self.symbol(symbol) {
+            Symbol::Binding(binding) => binding.name.as_ref().map(|name| name.text().to_string()),
+            Symbol::Constant(constant) => {
+                constant.name.as_ref().map(|name| name.text().to_string())
+            }
+            Symbol::Function(function) => {
+                function.name.as_ref().map(|name| name.text().to_string())
+            }
+            Symbol::Module(module) => module.name.as_ref().map(|name| name.text().to_string()),
+            Symbol::Builtin(builtin) => Some(builtin.to_string()),
+            Symbol::Parameter(parameter) => {
+                parameter.name.as_ref().map(|name| name.text().to_string())
+            }
+            Symbol::Unresolved => None,
+        }
+        .unwrap_or("{unknown}".to_string())
+    }
+
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(ty) = self.scope(scope.1).symbol_override_type(symbol) {
+        let mut current = Some(self.last_scope_id());
+
+        while let Some(scope) = current {
+            if let Some(ty) = self.scope(scope).symbol_override_type(symbol) {
                 return ty;
             }
+            current = self.scope(scope).parent();
         }
 
         match self.symbol(symbol) {
@@ -185,7 +236,7 @@ impl Compiler {
         mappings: HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>,
         start: TextSize,
     ) -> usize {
-        let mut result = Scope::new();
+        let scope = self.alloc_child_scope();
 
         for (symbol, paths) in mappings {
             let mut ty = self.symbol_type(symbol);
@@ -197,11 +248,10 @@ impl Compiler {
                 ty = replace_type(&mut self.db, ty, replacement, &path);
             }
 
-            result.override_symbol_type(symbol, ty);
+            self.scope_mut(scope).override_symbol_type(symbol, ty);
         }
 
         let index = self.scope_stack.len();
-        let scope = self.alloc_scope(result);
         self.push_scope(scope, start);
         index
     }
@@ -394,6 +444,11 @@ impl Compiler {
             },
             span,
         ));
+    }
+
+    pub fn is_unresolved(&mut self, ty: TypeId) -> bool {
+        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
+        matches!(self.ty(semantic), Type::Unresolved)
     }
 }
 

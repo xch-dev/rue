@@ -25,6 +25,9 @@ pub enum DiagnosticKind {
     #[error("Unterminated octal literal")]
     UnterminatedOctal,
 
+    #[error("Missing function body")]
+    MissingFunctionBody,
+
     #[error("Duplicate symbol `{0}` found in scope")]
     DuplicateSymbol(String),
 
@@ -221,6 +224,7 @@ impl DiagnosticKind {
             | Self::UnterminatedHex
             | Self::UnterminatedBinary
             | Self::UnterminatedOctal
+            | Self::MissingFunctionBody
             | Self::DuplicateSymbol(..)
             | Self::DuplicateType(..)
             | Self::UndeclaredSymbol(..)

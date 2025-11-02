@@ -58,6 +58,8 @@ pub struct SyntaxField {
 #[derive(Debug, Clone)]
 pub enum CompletionContext {
     Document,
+    Item,
+    Statement,
     Type,
     Expression,
     StructFields {

@@ -1,7 +1,7 @@
 use log::debug;
 use rue_ast::{AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope, Symbol, Value};
+use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Symbol, Value};
 use rue_types::{FunctionType, Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr, compile_generic_parameters, compile_type, create_binding};
@@ -17,7 +17,7 @@ pub fn compile_lambda_expr(
         vec![]
     };
 
-    let scope = ctx.alloc_scope(Scope::new());
+    let scope = ctx.alloc_child_scope();
 
     let vars = if let Some(generic_parameters) = expr.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)

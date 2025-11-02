@@ -31,7 +31,7 @@ impl Builtins {
         *db.ty_mut(function_inner_pair) =
             Type::Union(Union::new(vec![types.atom, function_inner_pair]));
 
-        let mut scope = Scope::new();
+        let mut scope = Scope::new(None);
 
         scope.insert_type("Atom".to_string(), types.atom, false);
         scope.insert_type("Bytes".to_string(), types.bytes, false);
@@ -232,7 +232,8 @@ impl Builtins {
 }
 
 fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
-    let scope = db.alloc_scope(Scope::new());
+    // TODO: Use the parent scope
+    let scope = db.alloc_scope(Scope::new(None));
 
     let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
         name: None,
