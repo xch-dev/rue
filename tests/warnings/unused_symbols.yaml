@@ -1,5 +1,5 @@
 program: (+ (all ()) (q . 112))
-debug_program: (a (q 2 (q 3 (a 61 ()) (a 45 ()) (+ (+ (+ 21 25) 2) 17)) (c (q . 1) 1)) (c (c (c () (q . 69)) (c (q . 42) (c (q) (q)))) ()))
+debug_program: (a (q 2 (q 3 (q . 1) (i (q . 1) (+ (+ (+ 21 25) 2) 17) (a 45 ())) (a 61 ())) (c (q . 1) 1)) (c (c (c () (q . 69)) (c (q . 42) (c (q) (q)))) ()))
 output: '112'
 runtime_cost: 1318
 byte_cost: 156000
@@ -7,7 +7,7 @@ total_cost: 157318
 tests:
 - name: tests
   program: (i () () (q . 104))
-  debug_program: (a (q 2 (q 3 (a 29 ()) (a 21 ()) (+ (+ 25 17) 2)) (c (q . 1) 1)) (c (c (c (q . 69) (q . 34)) (c (q) (q))) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) (i (q . 1) (+ (+ 25 17) 2) (a 21 ())) (a 29 ())) (c (q . 1) 1)) (c (c (c (q . 69) (q . 34)) (c (q) (q))) ()))
   output: '104'
   runtime_cost: 142
   byte_cost: 132000
