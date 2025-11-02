@@ -1774,7 +1774,6 @@ dependencies = [
  "clvmr",
  "colored",
  "expect-test",
- "hex",
  "id-arena",
  "num-bigint",
  "num-integer",
