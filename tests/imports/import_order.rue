@@ -1,0 +1,34 @@
+mod a {
+    import b::hello;
+
+    export fn world() -> String {
+        "world!"
+    }
+
+    export fn hello_world_a() -> String {
+        hello() + world()
+    }
+}
+
+mod b {
+    import a::world;
+
+    export fn hello() -> String {
+        "Hello, "
+    }
+
+    export fn hello_world_b() -> String {
+        hello() + world()
+    }
+}
+
+import a::hello_world_a;
+import b::hello_world_b;
+
+test fn a_entrypoint() -> String {
+    hello_world_a()
+}
+
+test fn b_entrypoint() -> String {
+    hello_world_b()
+}

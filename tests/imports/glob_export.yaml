@@ -1,0 +1,6 @@
+program: (a (q 14 (a 2 ()) (q . 8480) (a 2 ()) (q . 33)) (c (q 1 . "Hello") ()))
+debug_program: (a (q 14 (concat (concat (a 4 ()) (q . 8480)) (a 6 (c 4 ()))) (q . 33)) (c (c (q 1 . "Hello") (q 2 2 ())) ()))
+output: '"Hello! Hello!"'
+runtime_cost: 1524
+byte_cost: 624000
+total_cost: 625524

@@ -1,10 +1,11 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use id_arena::Id;
+use indexmap::IndexMap;
 use rue_parser::SyntaxToken;
 use rue_types::TypeId;
 
-use crate::{HirId, ScopeId, Value};
+use crate::{HirId, ImportId, ScopeId, Value};
 
 pub type SymbolId = Id<Symbol>;
 
@@ -45,6 +46,9 @@ pub struct ModuleDeclarations {
     pub types: Vec<(TypeId, ScopeId)>,
     pub symbols: Vec<SymbolId>,
     pub modules: Vec<SymbolId>,
+    pub import_cache: HashMap<Vec<String>, ScopeId>,
+    pub unused_imports: IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
+    pub glob_import_counts: IndexMap<ImportId, (SyntaxToken, usize)>,
 }
 
 #[derive(Debug, Clone)]

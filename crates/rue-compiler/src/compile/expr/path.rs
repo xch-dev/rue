@@ -5,7 +5,7 @@ use rue_hir::{Hir, SymbolPath, Value};
 use crate::{Compiler, PathKind, PathResult, compile_path};
 
 pub fn compile_path_expr(ctx: &mut Compiler, path: &AstPathExpr) -> Value {
-    let PathResult::Symbol(symbol, override_type) =
+    let PathResult::Symbol(symbol, override_type, _) =
         compile_path(ctx, path.syntax(), path.segments(), PathKind::Symbol)
     else {
         debug!("Unresolved path expr");

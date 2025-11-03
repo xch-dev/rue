@@ -4,7 +4,7 @@ use id_arena::Id;
 use indexmap::{IndexMap, IndexSet};
 use rue_types::TypeId;
 
-use crate::SymbolId;
+use crate::{ImportId, SymbolId};
 
 pub type ScopeId = Id<Scope>;
 
@@ -13,11 +13,14 @@ pub struct Scope {
     parent: Option<ScopeId>,
     symbols: IndexMap<String, SymbolId>,
     symbol_names: HashMap<SymbolId, String>,
+    symbol_imports: HashMap<SymbolId, ImportId>,
     types: IndexMap<String, TypeId>,
     type_names: HashMap<TypeId, String>,
+    type_imports: HashMap<TypeId, ImportId>,
     symbol_types: HashMap<SymbolId, TypeId>,
     exported_symbols: IndexSet<SymbolId>,
     exported_types: IndexSet<TypeId>,
+    imports: Vec<ImportId>,
 }
 
 impl Scope {
@@ -26,11 +29,14 @@ impl Scope {
             parent,
             symbols: IndexMap::new(),
             symbol_names: HashMap::new(),
+            symbol_imports: HashMap::new(),
             types: IndexMap::new(),
             type_names: HashMap::new(),
+            type_imports: HashMap::new(),
             symbol_types: HashMap::new(),
             exported_symbols: IndexSet::new(),
             exported_types: IndexSet::new(),
+            imports: Vec::new(),
         }
     }
 
@@ -72,6 +78,14 @@ impl Scope {
         self.exported_types.contains(&ty)
     }
 
+    pub fn export_symbol(&mut self, symbol: SymbolId) {
+        self.exported_symbols.insert(symbol);
+    }
+
+    pub fn export_type(&mut self, ty: TypeId) {
+        self.exported_types.insert(ty);
+    }
+
     pub fn exported_symbols(&self) -> impl Iterator<Item = (&str, SymbolId)> {
         self.exported_symbols
             .iter()
@@ -110,5 +124,29 @@ impl Scope {
 
     pub fn type_names(&self) -> impl Iterator<Item = &str> {
         self.type_names.values().map(String::as_str)
+    }
+
+    pub fn add_import(&mut self, import: ImportId) {
+        self.imports.push(import);
+    }
+
+    pub fn imports(&self) -> impl Iterator<Item = ImportId> {
+        self.imports.iter().copied()
+    }
+
+    pub fn add_symbol_import(&mut self, symbol: SymbolId, import: ImportId) {
+        self.symbol_imports.insert(symbol, import);
+    }
+
+    pub fn add_type_import(&mut self, ty: TypeId, import: ImportId) {
+        self.type_imports.insert(ty, import);
+    }
+
+    pub fn symbol_import(&self, symbol: SymbolId) -> Option<ImportId> {
+        self.symbol_imports.get(&symbol).copied()
+    }
+
+    pub fn type_import(&self, ty: TypeId) -> Option<ImportId> {
+        self.type_imports.get(&ty).copied()
     }
 }

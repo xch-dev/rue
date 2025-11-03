@@ -1,0 +1,9 @@
+mod a {
+    export type Hello = String;
+}
+
+import a::Hello;
+
+fn main() -> Hello {
+    "Hello, world!"
+}

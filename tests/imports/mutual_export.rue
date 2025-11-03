@@ -1,0 +1,19 @@
+mod a {
+    export b::*;
+
+    export fn a() -> Int {
+        4
+    }
+}
+
+mod b {
+    export a::*;
+
+    export fn b() -> Int {
+        5
+    }
+}
+
+fn main() -> Int {
+    a::a() + b::b() + a::b() + b::a()
+}

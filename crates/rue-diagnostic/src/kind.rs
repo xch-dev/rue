@@ -195,6 +195,9 @@ pub enum DiagnosticKind {
     #[error("Unused generic type `{0}`")]
     UnusedGenericType(String),
 
+    #[error("Unused import `{0}`")]
+    UnusedImport(String),
+
     #[error("Condition always evaluates to `false`")]
     AlwaysFalseCondition,
 
@@ -212,6 +215,12 @@ pub enum DiagnosticKind {
 
     #[error("Constant `{0}` references itself")]
     RecursiveConstant(String),
+
+    #[error("Unresolved import `{0}`")]
+    UnresolvedImport(String),
+
+    #[error("Unused import `*`")]
+    UnusedGlobImport,
 }
 
 impl DiagnosticKind {
@@ -270,7 +279,8 @@ impl DiagnosticKind {
             | Self::RecursiveEntrypoint(..)
             | Self::RecursiveInlineFunction(..)
             | Self::RecursiveConstant(..)
-            | Self::UnexpectedExplicitReturn => DiagnosticSeverity::Error,
+            | Self::UnexpectedExplicitReturn
+            | Self::UnresolvedImport(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::UnnecessaryCast(..)
@@ -283,9 +293,11 @@ impl DiagnosticKind {
             | Self::UnusedStruct(..)
             | Self::UnusedTypeAlias(..)
             | Self::UnusedGenericType(..)
+            | Self::UnusedImport(..)
             | Self::AlwaysFalseCondition
             | Self::AlwaysTrueCondition
-            | Self::UnusedStatementValue => DiagnosticSeverity::Warning,
+            | Self::UnusedStatementValue
+            | Self::UnusedGlobImport => DiagnosticSeverity::Warning,
         }
     }
 }

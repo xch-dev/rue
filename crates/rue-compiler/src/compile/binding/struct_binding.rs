@@ -49,7 +49,7 @@ pub fn create_struct_binding(
             inline: true,
         }));
         ctx.push_declaration(Declaration::Symbol(binding_symbol));
-        ctx.reference(Declaration::Symbol(symbol));
+        ctx.reference(Declaration::Symbol(symbol), None);
 
         if let Some(binding) = field.binding() {
             create_binding(ctx, binding_symbol, &binding);

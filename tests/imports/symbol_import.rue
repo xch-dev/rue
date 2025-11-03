@@ -1,0 +1,11 @@
+mod a {
+    export fn hello() -> String {
+        "Hello, world!"
+    }
+}
+
+import a::hello;
+
+fn main() -> String {
+    hello()
+}

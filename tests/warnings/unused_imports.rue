@@ -1,0 +1,58 @@
+mod single {
+    export fn a() -> Int {
+        42
+    }
+}
+
+mod glob {
+    export fn b() -> Int {
+        42
+    }
+}
+
+mod shadow_1 {
+    export fn c() -> Int {
+        42
+    }
+}
+
+mod shadow_2 {
+    export fn d() -> Int {
+        42
+    }
+}
+
+mod private {
+    fn private() -> Int {
+        42
+    }
+}
+
+mod empty {}
+
+import single::a;
+import glob::*;
+import shadow_1::c;
+import shadow_1::*;
+import shadow_2::*;
+import shadow_2::d;
+import private::*;
+import empty::*;
+
+mod deeply {
+    export mod nested {
+        export mod module {
+            export fn used() -> Int {
+                42
+            }
+        }
+    }
+}
+
+import deeply::nested;
+import nested::module;
+import module::used;
+
+fn main() -> Int {
+    used()
+}

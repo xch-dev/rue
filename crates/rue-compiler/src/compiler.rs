@@ -9,8 +9,8 @@ use std::{
 use rowan::{TextRange, TextSize};
 use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SourceKind, SrcLoc};
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, Scope, ScopeId, Symbol, SymbolId, TypePath, Value,
-    replace_type,
+    Builtins, Constraint, Database, Declaration, ImportId, Scope, ScopeId, Symbol, SymbolId,
+    TypePath, Value, replace_type,
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
@@ -143,12 +143,26 @@ impl Compiler {
         self.scope_stack.last().unwrap().1
     }
 
-    pub fn resolve_symbol(&self, name: &str) -> Option<SymbolId> {
-        let mut current = Some(self.last_scope_id());
+    pub fn resolve_symbol(&self, name: &str) -> Option<(SymbolId, Option<ImportId>)> {
+        let last = self.last_scope_id();
+        self.resolve_symbol_in(last, name)
+    }
+
+    pub fn resolve_type(&self, name: &str) -> Option<(TypeId, Option<ImportId>)> {
+        let last = self.last_scope_id();
+        self.resolve_type_in(last, name)
+    }
+
+    pub fn resolve_symbol_in(
+        &self,
+        scope: ScopeId,
+        name: &str,
+    ) -> Option<(SymbolId, Option<ImportId>)> {
+        let mut current = Some(scope);
 
         while let Some(scope) = current {
             if let Some(symbol) = self.scope(scope).symbol(name) {
-                return Some(symbol);
+                return Some((symbol, self.scope(scope).symbol_import(symbol)));
             }
             current = self.scope(scope).parent();
         }
@@ -156,12 +170,16 @@ impl Compiler {
         None
     }
 
-    pub fn resolve_type(&self, name: &str) -> Option<TypeId> {
-        let mut current = Some(self.last_scope_id());
+    pub fn resolve_type_in(
+        &self,
+        scope: ScopeId,
+        name: &str,
+    ) -> Option<(TypeId, Option<ImportId>)> {
+        let mut current = Some(scope);
 
         while let Some(scope) = current {
             if let Some(ty) = self.scope(scope).ty(name) {
-                return Some(ty);
+                return Some((ty, self.scope(scope).type_import(ty)));
             }
             current = self.scope(scope).parent();
         }
@@ -420,9 +438,13 @@ impl Compiler {
         self.declaration_stack.pop().unwrap();
     }
 
-    pub fn reference(&mut self, reference: Declaration) {
+    pub fn reference(&mut self, reference: Declaration, import: Option<ImportId>) {
         if let Some(last) = self.declaration_stack.last() {
             self.db.add_reference(*last, reference);
+        }
+
+        if let Some(import) = import {
+            self.db.add_import_reference(import, reference);
         }
     }
 
