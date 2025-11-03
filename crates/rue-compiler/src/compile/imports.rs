@@ -254,7 +254,7 @@ fn resolve_import(
             for (name, ty) in types {
                 let target = ctx.scope_mut(target_scope);
 
-                if target.symbol(&name).is_none() {
+                if target.ty(&name).is_none() {
                     target.insert_type(name.clone(), ty, import.exported);
                     target.add_type_import(ty, import_id);
                     ctx.import_mut(import_id)
