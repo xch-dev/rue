@@ -1,3 +1,9 @@
+program: (q . 42)
+debug_program: (a (q 2 2 ()) (c (q 1 . 42) ()))
+output: '42'
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020
 diagnostics:
 - Unused import `d` at test:38:18
 - Unused import `*` at test:36:18
