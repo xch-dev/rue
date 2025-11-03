@@ -1,0 +1,8 @@
+mod inner {
+    export fn unused() -> Int {
+        42
+    }
+}
+
+import inner::unused;
+import inner::*;
