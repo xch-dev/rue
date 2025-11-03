@@ -1,0 +1,6 @@
+program: (a (q 16 (a 6 ()) (a 4 ()) (a 4 ()) (a 6 ())) (c (c (q 1 . 5) (q 1 . 4)) ()))
+debug_program: (a (q 16 (+ (+ (a 6 ()) (a 4 ())) (a 4 ())) (a 6 ())) (c (c (q 1 . 5) (q 1 . 4)) ()))
+output: '18'
+runtime_cost: 2527
+byte_cost: 756000
+total_cost: 758527
