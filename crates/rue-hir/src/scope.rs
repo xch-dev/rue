@@ -4,7 +4,7 @@ use id_arena::Id;
 use indexmap::{IndexMap, IndexSet};
 use rue_types::TypeId;
 
-use crate::SymbolId;
+use crate::{ImportId, SymbolId};
 
 pub type ScopeId = Id<Scope>;
 
@@ -18,6 +18,7 @@ pub struct Scope {
     symbol_types: HashMap<SymbolId, TypeId>,
     exported_symbols: IndexSet<SymbolId>,
     exported_types: IndexSet<TypeId>,
+    imports: Vec<ImportId>,
 }
 
 impl Scope {
@@ -31,6 +32,7 @@ impl Scope {
             symbol_types: HashMap::new(),
             exported_symbols: IndexSet::new(),
             exported_types: IndexSet::new(),
+            imports: Vec::new(),
         }
     }
 
@@ -110,5 +112,13 @@ impl Scope {
 
     pub fn type_names(&self) -> impl Iterator<Item = &str> {
         self.type_names.values().map(String::as_str)
+    }
+
+    pub fn add_import(&mut self, import: ImportId) {
+        self.imports.push(import);
+    }
+
+    pub fn imports(&self) -> impl Iterator<Item = ImportId> {
+        self.imports.iter().copied()
     }
 }

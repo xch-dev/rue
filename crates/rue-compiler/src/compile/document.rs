@@ -3,8 +3,8 @@ use rue_hir::ModuleDeclarations;
 
 use crate::{
     Compiler, compile_module_symbols, compile_module_types, compile_symbol_item, compile_type_item,
-    declare_module, declare_module_symbols, declare_module_types, declare_symbol_item,
-    declare_type_item,
+    declare_import_item, declare_module, declare_module_symbols, declare_module_types,
+    declare_symbol_item, declare_type_item,
 };
 
 pub fn declare_module_items(
@@ -13,8 +13,14 @@ pub fn declare_module_items(
     declarations: &mut ModuleDeclarations,
 ) {
     for item in items {
-        if let AstItem::SymbolItem(AstSymbolItem::ModuleItem(item)) = item {
-            declarations.modules.push(declare_module(ctx, &item));
+        match item {
+            AstItem::SymbolItem(AstSymbolItem::ModuleItem(item)) => {
+                declarations.modules.push(declare_module(ctx, &item));
+            }
+            AstItem::ImportItem(import) => {
+                declare_import_item(ctx, &import);
+            }
+            _ => {}
         }
     }
 }

@@ -4,7 +4,7 @@ use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Symbol, SymbolId};
 
 use crate::{
     Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_symbol_items,
-    compile_type_items, declare_symbol_items, declare_type_items,
+    compile_type_items, declare_module_items, declare_symbol_items, declare_type_items,
 };
 
 pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
@@ -15,11 +15,11 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
 
     let scope = ctx.alloc_child_scope();
 
-    let declarations = ModuleDeclarations::default();
+    let mut declarations = ModuleDeclarations::default();
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    // TODO: Imports
+    declare_module_items(ctx, module.items(), &mut declarations);
     ctx.pop_scope(range.end());
 
     let symbol = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
