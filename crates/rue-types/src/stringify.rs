@@ -78,7 +78,7 @@ pub(crate) fn stringify_impl(
             let params = function
                 .params
                 .iter()
-                .map(|id| stringify_impl(arena, *id, stack))
+                .map(|(name, id)| format!("{}: {}", name, stringify_impl(arena, *id, stack)))
                 .collect::<Vec<_>>()
                 .join(", ");
             let ret = stringify_impl(arena, function.ret, stack);

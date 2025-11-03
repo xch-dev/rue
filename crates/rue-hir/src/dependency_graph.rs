@@ -237,7 +237,7 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
                 .locals
                 .entry(symbol)
                 .or_default()
-                .extend(function.parameters.iter().copied());
+                .extend(function.parameters.values().copied());
 
             visit_hir(db, graph, function.body, false);
         }

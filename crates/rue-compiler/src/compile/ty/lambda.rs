@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use log::debug;
 use rue_ast::{AstLambdaType, AstNode};
 use rue_diagnostic::DiagnosticKind;
@@ -15,7 +16,7 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
     let range = lambda.syntax().text_range();
     ctx.push_scope(scope, range.start());
 
-    let mut params = Vec::new();
+    let mut params = IndexMap::new();
     let mut nil_terminated = true;
 
     let len = lambda.parameters().count();
@@ -43,7 +44,10 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
             ctx.builtins().unresolved.ty
         };
 
-        params.push(ty);
+        let name = param
+            .name()
+            .map_or(String::new(), |name| name.text().to_string());
+        params.insert(name, ty);
     }
 
     let ret = if let Some(ty) = lambda.return_type() {

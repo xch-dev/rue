@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use id_arena::Id;
 use indexmap::{IndexMap, IndexSet};
+use log::warn;
 use rue_types::TypeId;
 
 use crate::{ImportId, SymbolId};
@@ -45,7 +46,10 @@ impl Scope {
     }
 
     pub fn insert_symbol(&mut self, name: String, symbol: SymbolId, exported: bool) {
-        assert!(!self.symbols.contains_key(&name));
+        if self.symbols.contains_key(&name) {
+            warn!("skipping duplicate symbol {name}");
+            return;
+        }
 
         self.symbols.insert(name.clone(), symbol);
         self.symbol_names.insert(symbol, name);
@@ -56,7 +60,10 @@ impl Scope {
     }
 
     pub fn insert_type(&mut self, name: String, ty: TypeId, exported: bool) {
-        assert!(!self.types.contains_key(&name));
+        if self.types.contains_key(&name) {
+            warn!("skipping duplicate type {name}");
+            return;
+        }
 
         self.types.insert(name.clone(), ty);
         self.type_names.insert(ty, name);

@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use log::debug;
 use rue_ast::{AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
@@ -28,8 +29,8 @@ pub fn compile_lambda_expr(
     let range = expr.syntax().text_range();
     ctx.push_scope(scope, range.start());
 
-    let mut parameters = Vec::new();
-    let mut params = Vec::new();
+    let mut parameters = IndexMap::new();
+    let mut params = IndexMap::new();
     let mut nil_terminated = true;
 
     let len = expr.parameters().count();
@@ -55,7 +56,7 @@ pub fn compile_lambda_expr(
         } else if !expected_functions.is_empty()
             && let params = expected_functions
                 .iter()
-                .filter_map(|function| function.params.get(i).copied())
+                .filter_map(|function| function.params.get_index(i).map(|(_, id)| *id))
                 .collect::<Vec<_>>()
             && !params.is_empty()
         {
@@ -76,8 +77,12 @@ pub fn compile_lambda_expr(
             create_binding(ctx, symbol, &binding);
         }
 
-        parameters.push(symbol);
-        params.push(ty);
+        let name = param
+            .binding()
+            .map_or(String::new(), |binding| binding.syntax().text().to_string());
+
+        parameters.insert(name.clone(), symbol);
+        params.insert(name, ty);
     }
 
     let return_type = expr.ty().map(|ty| compile_type(ctx, &ty));

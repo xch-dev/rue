@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use log::debug;
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
@@ -40,8 +41,8 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         ctx.builtins().nil.ty
     };
 
-    let mut parameters = Vec::new();
-    let mut param_types = Vec::new();
+    let mut parameters = IndexMap::new();
+    let mut param_types = IndexMap::new();
     let mut nil_terminated = true;
 
     let len = function.parameters().count();
@@ -75,8 +76,12 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
 
         *ctx.symbol_mut(symbol) = Symbol::Parameter(ParameterSymbol { name: None, ty });
 
-        param_types.push(ty);
-        parameters.push(symbol);
+        let name = parameter
+            .binding()
+            .map_or(String::new(), |binding| binding.syntax().text().to_string());
+
+        param_types.insert(name.clone(), ty);
+        parameters.insert(name, symbol);
 
         ctx.pop_declaration();
     }

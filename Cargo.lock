@@ -1750,6 +1750,7 @@ dependencies = [
  "hex",
  "id-arena",
  "indexmap",
+ "log",
  "num-bigint",
  "rue-diagnostic",
  "rue-lir",

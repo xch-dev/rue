@@ -145,7 +145,7 @@ pub(crate) fn compare_impl(
                 for (i, param) in lhs.params.iter().enumerate() {
                     result = max(
                         result,
-                        compare_impl(arena, builtins, ctx, *param, rhs.params[i], None, None),
+                        compare_impl(arena, builtins, ctx, *param.1, rhs.params[i], None, None),
                     );
                 }
 

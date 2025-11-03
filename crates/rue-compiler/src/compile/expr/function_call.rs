@@ -72,11 +72,11 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
         let mut mappings = HashMap::new();
         let mut results = Vec::new();
 
-        for (i, &param) in function.params.iter().enumerate() {
+        for (i, (_, param)) in function.params.iter().enumerate() {
             if let Some(expr) = args.get(i) {
-                let value = compile_expr(ctx, expr, Some(param));
+                let value = compile_expr(ctx, expr, Some(*param));
                 results.push(value.hir);
-                ctx.infer_type(expr.syntax(), value.ty, param, &mut mappings);
+                ctx.infer_type(expr.syntax(), value.ty, *param, &mut mappings);
             } else {
                 debug!("Unresolved function call argument");
                 results.push(ctx.builtins().unresolved.hir);
