@@ -219,7 +219,7 @@ pub enum DiagnosticKind {
     #[error("Unresolved import `{0}`")]
     UnresolvedImport(String),
 
-    #[error("Nothing is imported by this `*`")]
+    #[error("Unused import `*`")]
     UnusedGlobImport,
 }
 

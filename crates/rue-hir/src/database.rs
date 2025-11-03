@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use id_arena::Arena;
 use indexmap::IndexSet;
@@ -20,8 +20,10 @@ pub struct Database {
     symbols: Arena<Symbol>,
     types: Arena<Type>,
     relevant_declarations: IndexSet<Declaration>,
-    declared_by: HashMap<Declaration, HashSet<Declaration>>,
-    referenced_by: HashMap<Declaration, HashSet<Declaration>>,
+    declared_by: HashMap<Declaration, IndexSet<Declaration>>,
+    referenced_by: HashMap<Declaration, IndexSet<Declaration>>,
+    relevant_imports: IndexSet<ImportId>,
+    import_references: HashMap<ImportId, IndexSet<Declaration>>,
     tests: Vec<SymbolId>,
 }
 
@@ -126,6 +128,30 @@ impl Database {
     pub fn declaration_parents(&self, declaration: Declaration) -> Vec<Declaration> {
         self.declared_by
             .get(&declaration)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect()
+    }
+
+    pub fn add_relevant_import(&mut self, import: ImportId) {
+        self.relevant_imports.insert(import);
+    }
+
+    pub fn relevant_imports(&self) -> impl Iterator<Item = ImportId> {
+        self.relevant_imports.iter().copied()
+    }
+
+    pub fn add_import_reference(&mut self, import: ImportId, declaration: Declaration) {
+        self.import_references
+            .entry(import)
+            .or_default()
+            .insert(declaration);
+    }
+
+    pub fn import_references(&self, import: ImportId) -> Vec<Declaration> {
+        self.import_references
+            .get(&import)
             .cloned()
             .unwrap_or_default()
             .into_iter()

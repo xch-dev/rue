@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use indexmap::IndexSet;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    BindingSymbol, ConstantSymbol, Declaration, FunctionKind, FunctionSymbol, ParameterSymbol,
-    Symbol,
+    BindingSymbol, ConstantSymbol, Declaration, FunctionKind, FunctionSymbol, Items,
+    ParameterSymbol, Symbol,
 };
 use rue_types::{Alias, Generic, Struct, Type};
 
@@ -135,6 +135,49 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
 
         if !used_declarations.contains(&declaration) {
             unused_declarations.insert(declaration);
+        }
+    }
+
+    for import in ctx.relevant_imports().collect::<Vec<_>>() {
+        let references = ctx
+            .import_references(import)
+            .into_iter()
+            .collect::<HashSet<_>>();
+
+        let import = ctx.import(import);
+
+        if import.exported {
+            continue;
+        }
+
+        let items = match &import.items {
+            Items::All(star) => {
+                let star = star.clone();
+                if !import.declarations.is_empty() && references.is_empty() {
+                    ctx.diagnostic(&star, DiagnosticKind::UnusedGlobImport);
+                }
+                continue;
+            }
+            Items::Named(items) => items,
+        };
+
+        let mut unused = Vec::new();
+
+        for (name, declaration) in import.declarations.clone() {
+            if !references.contains(&declaration) {
+                let Some(token) = items.iter().find(|item| item.text() == name) else {
+                    continue;
+                };
+
+                unused.push(token.clone());
+            }
+        }
+
+        for token in unused {
+            ctx.diagnostic(
+                &token,
+                DiagnosticKind::UnusedImport(token.text().to_string()),
+            );
         }
     }
 

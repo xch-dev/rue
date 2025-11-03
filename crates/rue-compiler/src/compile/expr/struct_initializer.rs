@@ -16,7 +16,7 @@ pub fn compile_struct_initializer_expr(
     expr: &AstStructInitializerExpr,
 ) -> Value {
     let ty = if let Some(path) = expr.path()
-        && let PathResult::Type(ty) =
+        && let PathResult::Type(ty, _) =
             compile_path(ctx, path.syntax(), path.segments(), PathKind::Type)
     {
         ty
@@ -98,7 +98,7 @@ pub fn compile_struct_initializer_expr(
                 continue;
             };
 
-            if let PathResult::Symbol(symbol, override_type) =
+            if let PathResult::Symbol(symbol, override_type, _) =
                 compile_path(ctx, field.syntax(), [name].into_iter(), PathKind::Symbol)
             {
                 let ty = ctx.symbol_type(symbol);

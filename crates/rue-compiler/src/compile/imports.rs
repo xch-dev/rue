@@ -22,6 +22,7 @@ pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
 
     for import in imports {
         ctx.last_scope_mut().add_import(import);
+        ctx.add_relevant_import(import);
     }
 }
 
@@ -46,12 +47,14 @@ fn construct_imports(
             path,
             items: Items::Named(vec![name]),
             exported,
+            declarations: Vec::new(),
         })]
     } else if let Some(star) = last.star() {
         vec![ctx.alloc_import(Import {
             path,
             items: Items::All(star),
             exported,
+            declarations: Vec::new(),
         })]
     } else if let items = last.items().collect::<Vec<_>>()
         && !items.is_empty()
@@ -156,17 +159,22 @@ fn resolve_import(
         let name = ident.text();
 
         let symbol = if let Some(base) = base {
-            ctx.scope(base).symbol(name)
+            let base = ctx.scope(base);
+            base.symbol(name).map(|s| (s, base.symbol_import(s)))
         } else {
             ctx.resolve_symbol_in(target_scope, name)
         };
 
-        let Some(symbol) = symbol else {
+        let Some((symbol, import)) = symbol else {
             if diagnostics {
                 ctx.diagnostic(ident, DiagnosticKind::UndeclaredSymbol(name.to_string()));
             }
             return false;
         };
+
+        if let Some(import) = import {
+            ctx.add_import_reference(import, Declaration::Symbol(symbol));
+        }
 
         ctx.reference_span(Declaration::Symbol(symbol), ident.text_range());
 
@@ -223,7 +231,11 @@ fn resolve_import(
                 let target = ctx.scope_mut(target_scope);
 
                 if target.symbol(&name).is_none() {
-                    target.insert_symbol(name, symbol, import.exported);
+                    target.insert_symbol(name.clone(), symbol, import.exported);
+                    target.add_symbol_import(symbol, import_id);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name, Declaration::Symbol(symbol)));
                     updated = true;
                     *count += 1;
                 } else if !target.is_symbol_exported(symbol)
@@ -231,6 +243,9 @@ fn resolve_import(
                     && target.symbol(&name) == Some(symbol)
                 {
                     target.export_symbol(symbol);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name, Declaration::Symbol(symbol)));
                     updated = true;
                     *count += 1;
                 }
@@ -240,7 +255,11 @@ fn resolve_import(
                 let target = ctx.scope_mut(target_scope);
 
                 if target.symbol(&name).is_none() {
-                    target.insert_type(name, ty, import.exported);
+                    target.insert_type(name.clone(), ty, import.exported);
+                    target.add_type_import(ty, import_id);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name, Declaration::Type(ty)));
                     updated = true;
                     *count += 1;
                 } else if !target.is_type_exported(ty)
@@ -248,6 +267,9 @@ fn resolve_import(
                     && target.ty(&name) == Some(ty)
                 {
                     target.export_type(ty);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name, Declaration::Type(ty)));
                     updated = true;
                     *count += 1;
                 }
@@ -277,8 +299,8 @@ fn resolve_import(
                     let ty = base.ty(name).filter(|t| base.is_type_exported(*t));
                     (symbol, ty)
                 } else {
-                    let symbol = ctx.resolve_symbol_in(target_scope, name);
-                    let ty = ctx.resolve_type_in(target_scope, name);
+                    let symbol = ctx.resolve_symbol_in(target_scope, name).map(|(s, _)| s);
+                    let ty = ctx.resolve_type_in(target_scope, name).map(|(t, _)| t);
                     (symbol, ty)
                 };
 
@@ -291,6 +313,10 @@ fn resolve_import(
 
                     if target.symbol(name).is_none() {
                         target.insert_symbol(name.to_string(), symbol, import.exported);
+                        target.add_symbol_import(symbol, import_id);
+                        ctx.import_mut(import_id)
+                            .declarations
+                            .push((name.to_string(), Declaration::Symbol(symbol)));
                         updated = true;
                         unused_imports.shift_remove(name);
                     } else if !target.is_symbol_exported(symbol)
@@ -298,6 +324,9 @@ fn resolve_import(
                         && target.symbol(name) == Some(symbol)
                     {
                         target.export_symbol(symbol);
+                        ctx.import_mut(import_id)
+                            .declarations
+                            .push((name.to_string(), Declaration::Symbol(symbol)));
                         updated = true;
                         unused_imports.shift_remove(name);
                     }
@@ -312,6 +341,10 @@ fn resolve_import(
 
                     if target.ty(name).is_none() {
                         target.insert_type(name.to_string(), ty, import.exported);
+                        target.add_type_import(ty, import_id);
+                        ctx.import_mut(import_id)
+                            .declarations
+                            .push((name.to_string(), Declaration::Type(ty)));
                         updated = true;
                         unused_imports.shift_remove(name);
                     } else if !target.is_type_exported(ty)
@@ -319,6 +352,9 @@ fn resolve_import(
                         && target.ty(name) == Some(ty)
                     {
                         target.export_type(ty);
+                        ctx.import_mut(import_id)
+                            .declarations
+                            .push((name.to_string(), Declaration::Type(ty)));
                         updated = true;
                         unused_imports.shift_remove(name);
                     }

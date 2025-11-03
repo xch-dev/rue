@@ -26,9 +26,9 @@ import a::hello_world_a;
 import b::hello_world_b;
 
 test fn a_entrypoint() -> String {
-    a::hello_world_a()
+    hello_world_a()
 }
 
 test fn b_entrypoint() -> String {
-    b::hello_world_b()
+    hello_world_b()
 }

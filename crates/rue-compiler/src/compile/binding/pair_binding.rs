@@ -18,7 +18,7 @@ pub fn create_pair_binding(ctx: &mut Compiler, symbol: SymbolId, binding: &AstPa
             inline: true,
         }));
         ctx.push_declaration(Declaration::Symbol(first_symbol));
-        ctx.reference(Declaration::Symbol(symbol));
+        ctx.reference(Declaration::Symbol(symbol), None);
         create_binding(ctx, first_symbol, &first);
         ctx.pop_declaration();
     }
@@ -30,7 +30,7 @@ pub fn create_pair_binding(ctx: &mut Compiler, symbol: SymbolId, binding: &AstPa
             inline: true,
         }));
         ctx.push_declaration(Declaration::Symbol(rest_symbol));
-        ctx.reference(Declaration::Symbol(symbol));
+        ctx.reference(Declaration::Symbol(symbol), None);
         create_binding(ctx, rest_symbol, &rest);
         ctx.pop_declaration();
     }

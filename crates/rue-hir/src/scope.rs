@@ -13,8 +13,10 @@ pub struct Scope {
     parent: Option<ScopeId>,
     symbols: IndexMap<String, SymbolId>,
     symbol_names: HashMap<SymbolId, String>,
+    symbol_imports: HashMap<SymbolId, ImportId>,
     types: IndexMap<String, TypeId>,
     type_names: HashMap<TypeId, String>,
+    type_imports: HashMap<TypeId, ImportId>,
     symbol_types: HashMap<SymbolId, TypeId>,
     exported_symbols: IndexSet<SymbolId>,
     exported_types: IndexSet<TypeId>,
@@ -27,8 +29,10 @@ impl Scope {
             parent,
             symbols: IndexMap::new(),
             symbol_names: HashMap::new(),
+            symbol_imports: HashMap::new(),
             types: IndexMap::new(),
             type_names: HashMap::new(),
+            type_imports: HashMap::new(),
             symbol_types: HashMap::new(),
             exported_symbols: IndexSet::new(),
             exported_types: IndexSet::new(),
@@ -128,5 +132,21 @@ impl Scope {
 
     pub fn imports(&self) -> impl Iterator<Item = ImportId> {
         self.imports.iter().copied()
+    }
+
+    pub fn add_symbol_import(&mut self, symbol: SymbolId, import: ImportId) {
+        self.symbol_imports.insert(symbol, import);
+    }
+
+    pub fn add_type_import(&mut self, ty: TypeId, import: ImportId) {
+        self.type_imports.insert(ty, import);
+    }
+
+    pub fn symbol_import(&self, symbol: SymbolId) -> Option<ImportId> {
+        self.symbol_imports.get(&symbol).copied()
+    }
+
+    pub fn type_import(&self, ty: TypeId) -> Option<ImportId> {
+        self.type_imports.get(&ty).copied()
     }
 }

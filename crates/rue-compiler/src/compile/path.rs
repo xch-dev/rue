@@ -4,7 +4,7 @@ use log::debug;
 use rowan::TextRange;
 use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, Symbol, SymbolId};
+use rue_hir::{Declaration, ImportId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, Type, TypeId};
 
@@ -19,8 +19,8 @@ pub enum PathKind {
 #[derive(Debug, Clone, Copy)]
 pub enum PathResult {
     Unresolved,
-    Symbol(SymbolId, Option<TypeId>),
-    Type(TypeId),
+    Symbol(SymbolId, Option<TypeId>, Option<ImportId>),
+    Type(TypeId, Option<ImportId>),
 }
 
 pub trait PathSegment {
@@ -85,16 +85,20 @@ where
         };
 
         let (symbol, ty) = if let Some(value) = value {
-            if let PathResult::Symbol(symbol, _) = value
+            if let PathResult::Symbol(symbol, _, _) = value
                 && let Symbol::Module(module) = ctx.symbol(symbol)
             {
                 let scope = ctx.scope(module.scope);
-                let symbol = scope
-                    .symbol(name.text())
-                    .map(|symbol| (symbol, scope.is_symbol_exported(symbol)));
+                let symbol = scope.symbol(name.text()).map(|symbol| {
+                    (
+                        symbol,
+                        scope.is_symbol_exported(symbol),
+                        scope.symbol_import(symbol),
+                    )
+                });
                 let ty = scope
                     .ty(name.text())
-                    .map(|ty| (ty, scope.is_type_exported(ty)));
+                    .map(|ty| (ty, scope.is_type_exported(ty), scope.type_import(ty)));
                 (symbol, ty)
             } else {
                 ctx.diagnostic(
@@ -104,18 +108,24 @@ where
                 return PathResult::Unresolved;
             }
         } else {
-            let symbol = ctx.resolve_symbol(name.text()).map(|symbol| (symbol, true));
-            let ty = ctx.resolve_type(name.text()).map(|ty| (ty, true));
+            let symbol = ctx
+                .resolve_symbol(name.text())
+                .map(|(symbol, import)| (symbol, true, import));
+            let ty = ctx
+                .resolve_type(name.text())
+                .map(|(ty, import)| (ty, true, import));
             (symbol, ty)
         };
 
         let initial = match (symbol, ty) {
-            (Some((symbol, _)), Some((ty, _))) => match kind {
-                PathKind::Symbol => PathResult::Symbol(symbol, None),
-                PathKind::Type => PathResult::Type(ty),
+            (Some((symbol, _, symbol_import)), Some((ty, _, type_import))) => match kind {
+                PathKind::Symbol => PathResult::Symbol(symbol, None, symbol_import),
+                PathKind::Type => PathResult::Type(ty, type_import),
             },
-            (Some((symbol, _)), None) => PathResult::Symbol(symbol, None),
-            (None, Some((ty, _))) => PathResult::Type(ty),
+            (Some((symbol, _, symbol_import)), None) => {
+                PathResult::Symbol(symbol, None, symbol_import)
+            }
+            (None, Some((ty, _, type_import))) => PathResult::Type(ty, type_import),
             (None, None) => {
                 match kind {
                     PathKind::Symbol => ctx.diagnostic(
@@ -131,8 +141,8 @@ where
             }
         };
 
-        if matches!(initial, PathResult::Symbol(_, _))
-            && let Some((_, is_exported)) = symbol
+        if matches!(initial, PathResult::Symbol(_, _, _))
+            && let Some((_, is_exported, _)) = symbol
             && !is_exported
         {
             ctx.diagnostic(
@@ -144,8 +154,8 @@ where
             );
         }
 
-        if matches!(initial, PathResult::Type(_))
-            && let Some((_, is_exported)) = ty
+        if matches!(initial, PathResult::Type(_, _))
+            && let Some((_, is_exported, _)) = ty
             && !is_exported
         {
             ctx.diagnostic(
@@ -159,8 +169,8 @@ where
 
         match initial {
             PathResult::Unresolved => return PathResult::Unresolved,
-            PathResult::Symbol(symbol, mut override_type) => {
-                ctx.reference(Declaration::Symbol(symbol));
+            PathResult::Symbol(symbol, mut override_type, import) => {
+                ctx.reference(Declaration::Symbol(symbol), import);
                 ctx.reference_span(Declaration::Symbol(symbol), name.text_range());
 
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
@@ -200,10 +210,10 @@ where
                     }
                 }
 
-                value = Some(PathResult::Symbol(symbol, override_type));
+                value = Some(PathResult::Symbol(symbol, override_type, import));
             }
-            PathResult::Type(mut ty) => {
-                ctx.reference(Declaration::Type(ty));
+            PathResult::Type(mut ty, import) => {
+                ctx.reference(Declaration::Type(ty), import);
                 ctx.reference_span(Declaration::Type(ty), name.text_range());
 
                 let args = if let Some(generic_arguments) = segment.generic_arguments() {
@@ -249,7 +259,7 @@ where
                     ty = ctx.alloc_type(Type::Apply(Apply::new(ty, map)));
                 }
 
-                value = Some(PathResult::Type(ty));
+                value = Some(PathResult::Type(ty, import));
             }
         }
 
@@ -259,11 +269,11 @@ where
     let value = value.unwrap_or(PathResult::Unresolved);
 
     match (value, kind) {
-        (PathResult::Symbol(_, _), PathKind::Type) => {
+        (PathResult::Symbol(_, _, _), PathKind::Type) => {
             ctx.diagnostic(range, DiagnosticKind::ExpectedType(previous_name.unwrap()));
             PathResult::Unresolved
         }
-        (PathResult::Type(_), PathKind::Symbol) => {
+        (PathResult::Type(_, _), PathKind::Symbol) => {
             ctx.diagnostic(
                 range,
                 DiagnosticKind::ExpectedSymbol(previous_name.unwrap()),
