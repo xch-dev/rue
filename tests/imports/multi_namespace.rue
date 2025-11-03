@@ -1,0 +1,11 @@
+mod module {
+    const X: X = 42;
+    type X = 42;
+    export X;
+}
+
+import module::X;
+
+fn main() -> X {
+    X
+}

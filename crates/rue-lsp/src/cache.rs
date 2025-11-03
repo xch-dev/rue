@@ -4,7 +4,7 @@ use indexmap::IndexSet;
 use rowan::{TextRange, TextSize};
 use rue_compiler::{Compilation, CompletionContext, SyntaxItemKind};
 use rue_diagnostic::LineCol;
-use rue_hir::{ScopeId, SymbolId};
+use rue_hir::{ScopeId, Symbol, SymbolId};
 use rue_types::{Type, TypeId};
 use tower_lsp::lsp_types::{CompletionItem, Position, Range};
 
@@ -14,6 +14,7 @@ pub struct Scopes(Vec<ScopeId>);
 #[derive(Debug, Clone)]
 pub enum HoverInfo {
     Symbol(SymbolHoverInfo),
+    Module(ModuleHoverInfo),
     Type(TypeHoverInfo),
     Field(FieldHoverInfo),
 }
@@ -22,28 +23,23 @@ pub enum HoverInfo {
 pub struct SymbolHoverInfo {
     pub name: String,
     pub type_name: String,
-    pub kind: NameKind,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleHoverInfo {
+    pub name: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypeHoverInfo {
     pub name: String,
     pub inner_name: Option<String>,
-    pub kind: NameKind,
 }
 
 #[derive(Debug, Clone)]
 pub struct FieldHoverInfo {
     pub name: String,
     pub type_name: String,
-    pub kind: NameKind,
-}
-
-#[derive(Debug, Clone)]
-pub enum NameKind {
-    Declaration,
-    Reference,
-    Initializer,
 }
 
 #[derive(Debug, Clone)]
@@ -249,7 +245,9 @@ impl Cache {
         scored_items.into_iter().map(|(_, item)| item).collect()
     }
 
-    pub fn hover(&self, scopes: &Scopes, index: usize) -> Option<HoverInfo> {
+    pub fn hover(&self, scopes: &Scopes, index: usize) -> Vec<HoverInfo> {
+        let mut infos = Vec::new();
+
         for item in self.compilation.syntax_map.items() {
             if !contains(item.span, index) {
                 continue;
@@ -257,59 +255,68 @@ impl Cache {
 
             match item.kind.clone() {
                 SyntaxItemKind::SymbolDeclaration(symbol) => {
-                    return Some(HoverInfo::Symbol(SymbolHoverInfo {
-                        name: self.symbol_name(scopes, symbol)?,
-                        type_name: self.type_name(scopes, self.symbol_type(scopes, symbol)),
-                        kind: NameKind::Declaration,
-                    }));
+                    let Some(name) = self.symbol_name(scopes, symbol) else {
+                        continue;
+                    };
+
+                    if let Symbol::Module(_) = self.compilation.compiler.symbol(symbol) {
+                        infos.push(HoverInfo::Module(ModuleHoverInfo { name }));
+                    } else {
+                        infos.push(HoverInfo::Symbol(SymbolHoverInfo {
+                            name,
+                            type_name: self.type_name(scopes, self.symbol_type(scopes, symbol)),
+                        }));
+                    }
                 }
                 SyntaxItemKind::SymbolReference(symbol) => {
-                    return Some(HoverInfo::Symbol(SymbolHoverInfo {
-                        name: self.symbol_name(scopes, symbol)?,
-                        type_name: self.type_name(scopes, self.symbol_type(scopes, symbol)),
-                        kind: NameKind::Reference,
-                    }));
+                    let Some(name) = self.symbol_name(scopes, symbol) else {
+                        continue;
+                    };
+
+                    if let Symbol::Module(_) = self.compilation.compiler.symbol(symbol) {
+                        infos.push(HoverInfo::Module(ModuleHoverInfo { name }));
+                    } else {
+                        infos.push(HoverInfo::Symbol(SymbolHoverInfo {
+                            name,
+                            type_name: self.type_name(scopes, self.symbol_type(scopes, symbol)),
+                        }));
+                    }
                 }
                 SyntaxItemKind::TypeDeclaration(ty) => {
-                    return Some(HoverInfo::Type(TypeHoverInfo {
+                    infos.push(HoverInfo::Type(TypeHoverInfo {
                         name: self.type_name(scopes, ty),
                         inner_name: self.inner_type(ty).map(|ty| self.type_name(scopes, ty)),
-                        kind: NameKind::Declaration,
                     }));
                 }
                 SyntaxItemKind::TypeReference(ty) => {
-                    return Some(HoverInfo::Type(TypeHoverInfo {
+                    infos.push(HoverInfo::Type(TypeHoverInfo {
                         name: self.type_name(scopes, ty),
                         inner_name: self.inner_type(ty).map(|ty| self.type_name(scopes, ty)),
-                        kind: NameKind::Reference,
                     }));
                 }
                 SyntaxItemKind::FieldDeclaration(field) => {
-                    return Some(HoverInfo::Field(FieldHoverInfo {
+                    infos.push(HoverInfo::Field(FieldHoverInfo {
                         name: field.name,
                         type_name: self.type_name(scopes, field.ty),
-                        kind: NameKind::Declaration,
                     }));
                 }
                 SyntaxItemKind::FieldReference(field) => {
-                    return Some(HoverInfo::Field(FieldHoverInfo {
+                    infos.push(HoverInfo::Field(FieldHoverInfo {
                         name: field.name,
                         type_name: self.type_name(scopes, field.ty),
-                        kind: NameKind::Reference,
                     }));
                 }
                 SyntaxItemKind::FieldInitializer(field) => {
-                    return Some(HoverInfo::Field(FieldHoverInfo {
+                    infos.push(HoverInfo::Field(FieldHoverInfo {
                         name: field.name,
                         type_name: self.type_name(scopes, field.ty),
-                        kind: NameKind::Initializer,
                     }));
                 }
                 SyntaxItemKind::Scope(_) | SyntaxItemKind::CompletionContext(_) => {}
             }
         }
 
-        None
+        infos
     }
 
     pub fn definitions(&self, index: usize) -> Vec<Range> {

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use rue_ast::{AstImportItem, AstImportPathSegment};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Import, ImportId, Items, ModuleDeclarations, ScopeId, Symbol};
+use rue_hir::{Declaration, Import, ImportId, Items, ModuleDeclarations, ScopeId, Symbol};
 use rue_parser::SyntaxToken;
 
 use crate::Compiler;
@@ -168,6 +168,8 @@ fn resolve_import(
             return false;
         };
 
+        ctx.reference_span(Declaration::Symbol(symbol), ident.text_range());
+
         let Symbol::Module(module) = ctx.symbol(symbol) else {
             if diagnostics {
                 ctx.diagnostic(ident, DiagnosticKind::SubpathNotSupported(name.to_string()));
@@ -281,6 +283,10 @@ fn resolve_import(
                 };
 
                 if let Some(symbol) = symbol {
+                    if diagnostics {
+                        ctx.reference_span(Declaration::Symbol(symbol), item.text_range());
+                    }
+
                     let target = ctx.scope_mut(target_scope);
 
                     if target.symbol(name).is_none() {
@@ -298,6 +304,10 @@ fn resolve_import(
                 }
 
                 if let Some(ty) = ty {
+                    if diagnostics {
+                        ctx.reference_span(Declaration::Type(ty), item.text_range());
+                    }
+
                     let target = ctx.scope_mut(target_scope);
 
                     if target.ty(name).is_none() {

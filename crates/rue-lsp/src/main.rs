@@ -22,7 +22,7 @@ use tower_lsp::lsp_types::{
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-use crate::cache::{HoverInfo, NameKind};
+use crate::cache::HoverInfo;
 
 #[derive(Debug)]
 struct Backend {
@@ -148,38 +148,35 @@ impl Backend {
         let position = cache.position(params.text_document_position_params.position);
 
         let scopes = cache.scopes(position);
-        let info = cache.hover(&scopes, position)?;
+        let infos = cache.hover(&scopes, position);
 
-        let content = MarkedString::LanguageString(LanguageString {
-            language: "rue".to_string(),
-            value: match &info {
-                HoverInfo::Symbol(info) => format!("let {}: {}", info.name, info.type_name),
-                HoverInfo::Type(info) => {
-                    if let Some(inner) = &info.inner_name {
-                        format!("type {} = {}", info.name, inner)
-                    } else {
-                        format!("type {}", info.name)
-                    }
-                }
-                HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
-            },
-        });
+        if infos.is_empty() {
+            return None;
+        }
 
-        let kind = match info {
-            HoverInfo::Symbol(info) => info.kind,
-            HoverInfo::Type(info) => info.kind,
-            HoverInfo::Field(info) => info.kind,
-        };
+        let content = infos
+            .into_iter()
+            .map(|info| {
+                MarkedString::LanguageString(LanguageString {
+                    language: "rue".to_string(),
+                    value: match &info {
+                        HoverInfo::Symbol(info) => format!("let {}: {}", info.name, info.type_name),
+                        HoverInfo::Module(info) => format!("mod {}", info.name),
+                        HoverInfo::Type(info) => {
+                            if let Some(inner) = &info.inner_name {
+                                format!("type {} = {}", info.name, inner)
+                            } else {
+                                format!("type {}", info.name)
+                            }
+                        }
+                        HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
+                    },
+                })
+            })
+            .collect();
 
         Some(Hover {
-            contents: HoverContents::Array(vec![
-                content,
-                MarkedString::String(match kind {
-                    NameKind::Declaration => "Declaration".to_string(),
-                    NameKind::Reference => "Reference".to_string(),
-                    NameKind::Initializer => "Initializer".to_string(),
-                }),
-            ]),
+            contents: HoverContents::Array(content),
             range: None,
         })
     }
