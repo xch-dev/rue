@@ -1,0 +1,20 @@
+fn unused_parameter(value: Int) {}
+
+fn used_parameter(value: Int) -> Int {
+    value
+}
+
+fn unused_generic<T>() {}
+
+fn used_generic<T>(value: T) -> T {
+    value
+}
+
+fn unused_binding() {
+    let x = 42;
+}
+
+fn used_binding() -> Int {
+    let x = 42;
+    x
+}
