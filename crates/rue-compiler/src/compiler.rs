@@ -144,7 +144,17 @@ impl Compiler {
     }
 
     pub fn resolve_symbol(&self, name: &str) -> Option<SymbolId> {
-        let mut current = Some(self.last_scope_id());
+        let last = self.last_scope_id();
+        self.resolve_symbol_in(last, name)
+    }
+
+    pub fn resolve_type(&self, name: &str) -> Option<TypeId> {
+        let last = self.last_scope_id();
+        self.resolve_type_in(last, name)
+    }
+
+    pub fn resolve_symbol_in(&self, scope: ScopeId, name: &str) -> Option<SymbolId> {
+        let mut current = Some(scope);
 
         while let Some(scope) = current {
             if let Some(symbol) = self.scope(scope).symbol(name) {
@@ -156,8 +166,8 @@ impl Compiler {
         None
     }
 
-    pub fn resolve_type(&self, name: &str) -> Option<TypeId> {
-        let mut current = Some(self.last_scope_id());
+    pub fn resolve_type_in(&self, scope: ScopeId, name: &str) -> Option<TypeId> {
+        let mut current = Some(scope);
 
         while let Some(scope) = current {
             if let Some(ty) = self.scope(scope).ty(name) {

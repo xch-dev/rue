@@ -74,6 +74,14 @@ impl Scope {
         self.exported_types.contains(&ty)
     }
 
+    pub fn export_symbol(&mut self, symbol: SymbolId) {
+        self.exported_symbols.insert(symbol);
+    }
+
+    pub fn export_type(&mut self, ty: TypeId) {
+        self.exported_types.insert(ty);
+    }
+
     pub fn exported_symbols(&self) -> impl Iterator<Item = (&str, SymbolId)> {
         self.exported_symbols
             .iter()

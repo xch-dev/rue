@@ -16,7 +16,7 @@ use rue_parser::Parser;
 
 use crate::{
     Compiler, SyntaxMap, check_unused, compile_symbol_items, compile_type_items,
-    declare_module_items, declare_symbol_items, declare_type_items,
+    declare_module_items, declare_symbol_items, declare_type_items, resolve_imports,
 };
 
 #[derive(Debug, Clone)]
@@ -219,7 +219,9 @@ fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilatio
     ctx.push_scope(scope, range.start());
     declare_module_items(ctx, ast.items(), &mut declarations);
     declare_type_items(ctx, ast.items(), &mut declarations);
+    resolve_imports(ctx, &declarations);
     declare_symbol_items(ctx, ast.items(), &mut declarations);
+    resolve_imports(ctx, &declarations);
     compile_type_items(ctx, ast.items(), &declarations);
     compile_symbol_items(ctx, ast.items(), &declarations);
     ctx.pop_scope(range.end());
