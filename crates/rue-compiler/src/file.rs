@@ -219,9 +219,10 @@ fn compile_file_partial(ctx: &mut Compiler, source: Source) -> PartialCompilatio
     ctx.push_scope(scope, range.start());
     declare_module_items(ctx, ast.items(), &mut declarations);
     declare_type_items(ctx, ast.items(), &mut declarations);
-    resolve_imports(ctx, &declarations);
+    resolve_imports(ctx, &mut declarations, false);
     declare_symbol_items(ctx, ast.items(), &mut declarations);
-    resolve_imports(ctx, &declarations);
+    resolve_imports(ctx, &mut declarations, false);
+    resolve_imports(ctx, &mut declarations, true);
     compile_type_items(ctx, ast.items(), &declarations);
     compile_symbol_items(ctx, ast.items(), &declarations);
     ctx.pop_scope(range.end());

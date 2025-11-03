@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use id_arena::Id;
 use rue_parser::SyntaxToken;
@@ -45,6 +45,7 @@ pub struct ModuleDeclarations {
     pub types: Vec<(TypeId, ScopeId)>,
     pub symbols: Vec<SymbolId>,
     pub modules: Vec<SymbolId>,
+    pub import_cache: HashMap<Vec<String>, ScopeId>,
 }
 
 #[derive(Debug, Clone)]

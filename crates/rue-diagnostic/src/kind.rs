@@ -212,6 +212,9 @@ pub enum DiagnosticKind {
 
     #[error("Constant `{0}` references itself")]
     RecursiveConstant(String),
+
+    #[error("Unresolved import `{0}`")]
+    UnresolvedImport(String),
 }
 
 impl DiagnosticKind {
@@ -270,7 +273,8 @@ impl DiagnosticKind {
             | Self::RecursiveEntrypoint(..)
             | Self::RecursiveInlineFunction(..)
             | Self::RecursiveConstant(..)
-            | Self::UnexpectedExplicitReturn => DiagnosticSeverity::Error,
+            | Self::UnexpectedExplicitReturn
+            | Self::UnresolvedImport(..) => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::UnnecessaryCast(..)
