@@ -1,0 +1,6 @@
+program: (q . "Hello, world!")
+debug_program: (q . "Hello, world!")
+output: '"Hello, world!"'
+runtime_cost: 20
+byte_cost: 192000
+total_cost: 192020

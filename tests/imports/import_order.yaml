@@ -1,0 +1,15 @@
+tests:
+- name: a_entrypoint
+  program: (q . "Hello, world!")
+  debug_program: (a (q 2 4 (c (c 10 14) ())) (c (c (q 14 (a 6 ()) (a 4 ())) (c (q 1 . "world!") (q 1 . "Hello, "))) ()))
+  output: '"Hello, world!"'
+  runtime_cost: 20
+  byte_cost: 192000
+  total_cost: 192020
+- name: b_entrypoint
+  program: (q . "Hello, world!")
+  debug_program: (a (q 2 4 (c (c 10 14) ())) (c (c (q 14 (a 6 ()) (a 4 ())) (c (q 1 . "world!") (q 1 . "Hello, "))) ()))
+  output: '"Hello, world!"'
+  runtime_cost: 20
+  byte_cost: 192000
+  total_cost: 192020
