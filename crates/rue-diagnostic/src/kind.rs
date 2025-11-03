@@ -195,6 +195,9 @@ pub enum DiagnosticKind {
     #[error("Unused generic type `{0}`")]
     UnusedGenericType(String),
 
+    #[error("Unused import `{0}`")]
+    UnusedImport(String),
+
     #[error("Condition always evaluates to `false`")]
     AlwaysFalseCondition,
 
@@ -215,6 +218,9 @@ pub enum DiagnosticKind {
 
     #[error("Unresolved import `{0}`")]
     UnresolvedImport(String),
+
+    #[error("Nothing is imported by this `*`")]
+    UnusedGlobImport,
 }
 
 impl DiagnosticKind {
@@ -287,9 +293,11 @@ impl DiagnosticKind {
             | Self::UnusedStruct(..)
             | Self::UnusedTypeAlias(..)
             | Self::UnusedGenericType(..)
+            | Self::UnusedImport(..)
             | Self::AlwaysFalseCondition
             | Self::AlwaysTrueCondition
-            | Self::UnusedStatementValue => DiagnosticSeverity::Warning,
+            | Self::UnusedStatementValue
+            | Self::UnusedGlobImport => DiagnosticSeverity::Warning,
         }
     }
 }

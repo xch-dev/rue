@@ -1,8 +1,40 @@
-mod inner {
-    export fn unused() -> Int {
+mod single {
+    export fn a() -> Int {
         42
     }
 }
 
-import inner::unused;
-import inner::*;
+mod glob {
+    export fn b() -> Int {
+        42
+    }
+}
+
+mod shadow_1 {
+    export fn c() -> Int {
+        42
+    }
+}
+
+mod shadow_2 {
+    export fn d() -> Int {
+        42
+    }
+}
+
+mod private {
+    fn private() -> Int {
+        42
+    }
+}
+
+mod empty {}
+
+import single::a;
+import glob::*;
+import shadow_1::c;
+import shadow_1::*;
+import shadow_2::*;
+import shadow_2::d;
+import private::*;
+import empty::*;

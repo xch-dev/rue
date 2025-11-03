@@ -1,2 +1,10 @@
 diagnostics:
-- Unused function `unused` at test:2:15
+- Unused import `d` at test:38:18
+- Nothing is imported by this `*` at test:36:18
+- Nothing is imported by this `*` at test:39:17
+- Nothing is imported by this `*` at test:40:15
+- Unused function `a` at test:2:15
+- Unused function `b` at test:8:15
+- Unused function `c` at test:14:15
+- Unused function `d` at test:20:15
+- Unused function `private` at test:26:8

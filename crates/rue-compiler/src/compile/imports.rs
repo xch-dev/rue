@@ -94,6 +94,8 @@ pub fn resolve_imports(
                 diagnostics,
                 &mut declarations.import_cache,
                 &mut missing_imports,
+                &mut declarations.unused_imports,
+                &mut declarations.glob_import_counts,
             );
         }
     }
@@ -104,9 +106,22 @@ pub fn resolve_imports(
                 ctx.diagnostic(&token, DiagnosticKind::UnresolvedImport(name.to_string()));
             }
         }
+
+        for unused_imports in declarations.unused_imports.values() {
+            for (name, token) in unused_imports {
+                ctx.diagnostic(token, DiagnosticKind::UnusedImport(name.to_string()));
+            }
+        }
+
+        for (token, count) in declarations.glob_import_counts.values() {
+            if *count == 0 {
+                ctx.diagnostic(token, DiagnosticKind::UnusedGlobImport);
+            }
+        }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_import(
     ctx: &mut Compiler,
     target_scope: ScopeId,
@@ -114,6 +129,8 @@ fn resolve_import(
     diagnostics: bool,
     cache: &mut HashMap<Vec<String>, ScopeId>,
     missing_imports: &mut IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
+    unused_imports: &mut IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
+    glob_import_counts: &mut IndexMap<ImportId, (SyntaxToken, usize)>,
 ) -> bool {
     let import = ctx.import(import_id).clone();
 
@@ -166,7 +183,12 @@ fn resolve_import(
     let mut updated = false;
 
     match import.items {
-        Items::All(_) => {
+        Items::All(star) => {
+            let count = &mut glob_import_counts
+                .entry(import_id)
+                .or_insert_with(|| (star.clone(), 0))
+                .1;
+
             let symbols = if let Some(base) = base {
                 ctx.scope(base)
                     .exported_symbols()
@@ -201,12 +223,14 @@ fn resolve_import(
                 if target.symbol(&name).is_none() {
                     target.insert_symbol(name, symbol, import.exported);
                     updated = true;
+                    *count += 1;
                 } else if !target.is_symbol_exported(symbol)
                     && import.exported
                     && target.symbol(&name) == Some(symbol)
                 {
                     target.export_symbol(symbol);
                     updated = true;
+                    *count += 1;
                 }
             }
 
@@ -216,17 +240,26 @@ fn resolve_import(
                 if target.symbol(&name).is_none() {
                     target.insert_type(name, ty, import.exported);
                     updated = true;
+                    *count += 1;
                 } else if !target.is_type_exported(ty)
                     && import.exported
                     && target.ty(&name) == Some(ty)
                 {
                     target.export_type(ty);
                     updated = true;
+                    *count += 1;
                 }
             }
         }
         Items::Named(items) => {
             let missing_imports = missing_imports.entry(import_id).or_insert_with(|| {
+                items
+                    .iter()
+                    .map(|item| (item.text().to_string(), item.clone()))
+                    .collect()
+            });
+
+            let unused_imports = unused_imports.entry(import_id).or_insert_with(|| {
                 items
                     .iter()
                     .map(|item| (item.text().to_string(), item.clone()))
@@ -253,12 +286,14 @@ fn resolve_import(
                     if target.symbol(name).is_none() {
                         target.insert_symbol(name.to_string(), symbol, import.exported);
                         updated = true;
+                        unused_imports.shift_remove(name);
                     } else if !target.is_symbol_exported(symbol)
                         && import.exported
                         && target.symbol(name) == Some(symbol)
                     {
                         target.export_symbol(symbol);
                         updated = true;
+                        unused_imports.shift_remove(name);
                     }
                 }
 
@@ -268,17 +303,21 @@ fn resolve_import(
                     if target.ty(name).is_none() {
                         target.insert_type(name.to_string(), ty, import.exported);
                         updated = true;
+                        unused_imports.shift_remove(name);
                     } else if !target.is_type_exported(ty)
                         && import.exported
                         && target.ty(name) == Some(ty)
                     {
                         target.export_type(ty);
                         updated = true;
+                        unused_imports.shift_remove(name);
                     }
                 }
 
                 if symbol.is_some() || ty.is_some() {
                     missing_imports.shift_remove(name);
+                } else if diagnostics {
+                    unused_imports.shift_remove(name);
                 }
             }
         }

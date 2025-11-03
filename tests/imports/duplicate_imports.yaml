@@ -4,3 +4,6 @@ output: '42'
 runtime_cost: 20
 byte_cost: 36000
 total_cost: 36020
+diagnostics:
+- Unused import `thing` at test:6:12
+- Unused import `thing` at test:7:12
