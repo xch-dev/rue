@@ -94,7 +94,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         );
 
         let param_group = self.create_group(
-            function.parameters.clone(),
+            function.parameters.values().copied().collect(),
             function.kind == FunctionKind::BinaryTree
                 && !self.graph.is_closure(symbol)
                 && symbol != self.main,
@@ -384,7 +384,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 }
 
                 if let Some(last_param) = function.parameters.last() {
-                    args.insert(*last_param, last_arg);
+                    args.insert(*last_param.1, last_arg);
                 }
             }
 
@@ -904,8 +904,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
-                for &parameter in &function.parameters {
-                    if self.graph.references(parameter) > 1 {
+                for (_, parameter) in &function.parameters {
+                    if self.graph.references(*parameter) > 1 {
                         return false;
                     }
                 }

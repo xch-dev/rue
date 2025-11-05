@@ -69,7 +69,7 @@ fn substitute_impl(
             let params = function
                 .params
                 .iter()
-                .map(|id| substitute_impl(arena, *id, map, stack))
+                .map(|(name, id)| (name.clone(), substitute_impl(arena, *id, map, stack)))
                 .collect();
             let ret = substitute_impl(arena, function.ret, map, stack);
             arena.alloc(Type::Function(FunctionType {

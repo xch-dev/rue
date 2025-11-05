@@ -1,0 +1,22 @@
+fn main() {
+    assert pair((100, 200)) == 300;
+    assert list([1, 2, 3]) == 6;
+    assert point(Point { x: 100, y: 200 }) == 300;
+}
+
+fn pair((a, b): (Int, Int)) -> Int {
+    a + b
+}
+
+fn list([...list]: List<Int>) -> Int {
+    sum(list)
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn point({ x, y }: Point) -> Int {
+    x + y
+}

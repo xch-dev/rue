@@ -57,7 +57,7 @@ pub struct FunctionSymbol {
     pub ty: TypeId,
     pub scope: ScopeId,
     pub vars: Vec<TypeId>,
-    pub parameters: Vec<SymbolId>,
+    pub parameters: IndexMap<String, SymbolId>,
     pub nil_terminated: bool,
     pub return_type: TypeId,
     pub body: HirId,

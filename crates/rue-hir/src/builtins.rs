@@ -1,3 +1,4 @@
+use indexmap::indexmap;
 use rue_types::{BuiltinTypes, FunctionType, Generic, Pair, Type, TypeId, Union};
 
 use crate::{
@@ -246,7 +247,7 @@ fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
     let reference = db.alloc_hir(Hir::Reference(parameter));
 
     let ty = db.alloc_type(Type::Function(FunctionType {
-        params: vec![any],
+        params: indexmap!["value".to_string() => any],
         nil_terminated: true,
         ret: generic,
     }));
@@ -256,7 +257,7 @@ fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
         ty,
         scope,
         vars: vec![generic],
-        parameters: vec![parameter],
+        parameters: indexmap!["value".to_string() => parameter],
         nil_terminated: true,
         return_type: generic,
         body: reference,
