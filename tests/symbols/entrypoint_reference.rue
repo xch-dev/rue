@@ -9,3 +9,11 @@ test fn a() -> Int {
 test fn b() -> Int {
     a()
 }
+
+test fn factorial(num: Int) -> Int {
+    if num > 1 {
+        num * factorial(num - 1)
+    } else {
+        1
+    }
+}

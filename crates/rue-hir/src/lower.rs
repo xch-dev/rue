@@ -124,13 +124,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut expr = self.lower_hir(&function_env, function.body);
 
         if symbol == self.main {
+            let mut map = HashMap::new();
+
             if self
                 .graph
                 .dependencies(symbol, true)
                 .iter()
                 .any(|dependency| *dependency == symbol)
             {
-                panic!("The entrypoint cannot reference itself");
+                map.insert(symbol, self.arena.alloc(Lir::Quote(expr)));
+                let reference = self.lower_symbol_reference(&function_env, symbol);
+                let entire_env = self.arena.alloc(Lir::Path(1));
+                expr = self.arena.alloc(Lir::Run(reference, entire_env));
             }
 
             for (i, group) in capture_groups.iter().enumerate().rev() {
@@ -149,7 +154,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 };
 
                 let group_env =
-                    self.lower_group_environment(&bind_env, group, rest, false, None, true);
+                    self.lower_group_environment(&bind_env, group, rest, false, Some(&map), true);
 
                 expr = self.arena.alloc(Lir::Run(expr, group_env));
             }
@@ -401,12 +406,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
             let rest = self.arena.alloc(Lir::Atom(vec![]));
 
+            let mut lir_args = HashMap::new();
+
+            for (symbol, hir) in &args {
+                lir_args.insert(*symbol, self.lower_hir(env, *hir));
+            }
+
             let mut arg_env = self.lower_group_environment(
                 env,
                 &param_group,
                 rest,
                 false,
-                Some(&args),
+                Some(&lir_args),
                 function.nil_terminated && matches!(param_group, SymbolGroup::Sequential(_)),
             );
 
@@ -570,7 +581,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         group: &SymbolGroup,
         rest: LirId,
         by_reference: bool,
-        map: Option<&HashMap<SymbolId, HirId>>,
+        map: Option<&HashMap<SymbolId, LirId>>,
         include_rest: bool,
     ) -> LirId {
         match group {
@@ -578,8 +589,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let mut result = rest;
 
                 for (i, &symbol) in symbols.iter().rev().enumerate() {
-                    let value = if let Some(hir) = map.and_then(|map| map.get(&symbol)) {
-                        self.lower_hir(env, *hir)
+                    let value = if let Some(lir) = map.and_then(|map| map.get(&symbol)) {
+                        *lir
                     } else if by_reference {
                         self.lower_symbol_reference(env, symbol)
                     } else {
@@ -610,13 +621,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         env: &Environment,
         tree: &Environment,
         by_reference: bool,
-        map: Option<&HashMap<SymbolId, HirId>>,
+        map: Option<&HashMap<SymbolId, LirId>>,
     ) -> LirId {
         match tree {
             Environment::Nil => self.arena.alloc(Lir::Atom(vec![])),
             Environment::Leaf(symbol) => {
-                if let Some(hir) = map.and_then(|map| map.get(symbol)) {
-                    self.lower_hir(env, *hir)
+                if let Some(lir) = map.and_then(|map| map.get(symbol)) {
+                    *lir
                 } else if by_reference {
                     self.lower_symbol_reference(env, *symbol)
                 } else {

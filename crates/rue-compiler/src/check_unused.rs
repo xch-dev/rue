@@ -35,12 +35,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                     && current_symbol == symbol
                     && let Some(name) = ctx.symbol(symbol).clone().name()
                 {
-                    if entrypoints.contains(&current) {
-                        ctx.diagnostic(
-                            name,
-                            DiagnosticKind::RecursiveEntrypoint(name.text().to_string()),
-                        );
-                    } else if matches!(
+                    if matches!(
                         ctx.symbol(symbol),
                         Symbol::Function(FunctionSymbol {
                             kind: FunctionKind::Inline,
