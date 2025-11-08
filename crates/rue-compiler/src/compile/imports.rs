@@ -111,11 +111,11 @@ fn flatten_imports(
 
 pub fn resolve_imports(
     ctx: &mut Compiler,
-    top_level_modules: Vec<SymbolId>,
+    all_modules: Vec<SymbolId>,
     cache: &mut ImportCache,
     diagnostics: bool,
 ) {
-    let imports = flatten_imports(ctx, top_level_modules);
+    let imports = flatten_imports(ctx, all_modules);
 
     let mut updated = true;
     let mut missing_imports = IndexMap::new();
