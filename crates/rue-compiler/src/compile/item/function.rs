@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 use log::debug;
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, FunctionKind, FunctionSymbol, ParameterSymbol, Symbol, SymbolId};
+use rue_hir::{Declaration, FunctionKind, FunctionSymbol, ParameterSymbol, Symbol, SymbolId, Test};
 use rue_types::{FunctionType, Type};
 
 use crate::{
@@ -19,7 +19,13 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
     let symbol = ctx.alloc_symbol(Symbol::Unresolved);
 
     if function.test().is_some() {
-        ctx.add_test(symbol);
+        let path = ctx.source().kind.clone();
+
+        ctx.add_test(Test {
+            name: function.name().map(|name| name.text().to_string()),
+            path,
+            symbol,
+        });
     }
 
     ctx.push_declaration(Declaration::Symbol(symbol));

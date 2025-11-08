@@ -1,24 +1,165 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, fs, io, path::Path, sync::Arc};
 
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet, indexset};
-use rowan::TextSize;
 use rue_ast::{AstDocument, AstNode};
-use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
+use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{
     Declaration, DependencyGraph, Environment, Lowerer, ModuleDeclarations, ModuleSymbol, ScopeId,
     Symbol, SymbolId,
 };
 use rue_lexer::Lexer;
-use rue_lir::{Error, codegen, optimize};
-use rue_options::CompilerOptions;
 use rue_parser::Parser;
+use thiserror::Error;
 
 use crate::{
-    Compiler, ImportCache, SyntaxMap, check_unused, compile_symbol_items, compile_type_items,
+    Compiler, ImportCache, check_unused, compile_symbol_items, compile_type_items,
     declare_module_items, declare_symbol_items, declare_type_items, resolve_imports,
 };
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("IO error: {0}")]
+    Io(#[from] io::Error),
+
+    #[error("Codegen error: {0}")]
+    Lir(#[from] rue_lir::Error),
+
+    #[error("Source not found in compilation unit: {0}")]
+    SourceNotFound(SourceKind),
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledTest {
+    pub name: Option<String>,
+    pub path: SourceKind,
+    pub symbol: SymbolId,
+    pub ptr: NodePtr,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledExport {
+    pub name: String,
+    pub symbol: SymbolId,
+    pub ptr: NodePtr,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompilationUnit {
+    tree: FileTree,
+}
+
+impl CompilationUnit {
+    pub fn new(ctx: &mut Compiler, path: &Path) -> Result<Self, Error> {
+        let prelude = create_prelude(ctx);
+
+        ctx.push_scope_raw(prelude);
+
+        let tree =
+            FileTree::from_path(ctx, path)?.ok_or(io::Error::other("Invalid file extension"))?;
+
+        tree.compile(ctx);
+
+        ctx.pop_scope_raw();
+
+        let entrypoints = tree.entrypoints(ctx);
+        check_unused(ctx, &entrypoints);
+
+        Ok(Self { tree })
+    }
+
+    pub fn main(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        path: &SourceKind,
+    ) -> Result<Option<NodePtr>, Error> {
+        let tree = self
+            .tree
+            .find(path)
+            .ok_or_else(|| Error::SourceNotFound(path.clone()))?;
+
+        let scope = ctx.module(tree.module()).scope;
+        let Some(main) = ctx.scope(scope).symbol("main") else {
+            return Ok(None);
+        };
+
+        Ok(Some(codegen(ctx, allocator, main)?))
+    }
+
+    pub fn exports(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        path: &SourceKind,
+    ) -> Result<Vec<CompiledExport>, Error> {
+        let tree = self
+            .tree
+            .find(path)
+            .ok_or_else(|| Error::SourceNotFound(path.clone()))?;
+
+        let scope = ctx.module(tree.module()).scope;
+
+        let mut exports = Vec::new();
+
+        for (name, symbol) in ctx
+            .scope(scope)
+            .exported_symbols()
+            .map(|(name, symbol)| (name.to_string(), symbol))
+            .collect::<Vec<_>>()
+        {
+            let ptr = codegen(ctx, allocator, symbol)?;
+            exports.push(CompiledExport { name, symbol, ptr });
+        }
+
+        Ok(exports)
+    }
+
+    pub fn tests(
+        &self,
+        ctx: &mut Compiler,
+        allocator: &mut Allocator,
+        path: Option<&SourceKind>,
+        search_term: Option<&str>,
+    ) -> Result<Vec<CompiledTest>, Error> {
+        let tests = ctx
+            .tests()
+            .filter(|test| {
+                if let Some(path) = path
+                    && &test.path != path
+                {
+                    return false;
+                }
+
+                if let Some(search_term) = search_term {
+                    let Some(name) = &test.name else {
+                        return false;
+                    };
+
+                    return name.to_lowercase().contains(&search_term.to_lowercase());
+                }
+
+                true
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut outputs = Vec::new();
+
+        for test in tests {
+            let ptr = codegen(ctx, allocator, test.symbol)?;
+            outputs.push(CompiledTest {
+                name: test.name,
+                path: test.path,
+                symbol: test.symbol,
+                ptr,
+            });
+        }
+
+        Ok(outputs)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum FileTree {
@@ -27,6 +168,59 @@ pub enum FileTree {
 }
 
 impl FileTree {
+    pub fn from_path(ctx: &mut Compiler, path: &Path) -> Result<Option<Self>, Error> {
+        let file_name = path
+            .file_name()
+            .ok_or(io::Error::new(
+                io::ErrorKind::InvalidFilename,
+                "Missing file name",
+            ))?
+            .to_string_lossy()
+            .to_lowercase();
+
+        if fs::metadata(path)?.is_file() {
+            let text = fs::read_to_string(path)?;
+
+            let source = Source::new(Arc::from(text), normalize_path(path)?);
+
+            #[allow(clippy::case_sensitive_file_extension_comparisons)]
+            if !file_name.ends_with(".rue") {
+                return Ok(None);
+            }
+
+            Ok(Some(Self::File(File::new(
+                ctx,
+                file_name.replace(".rue", ""),
+                source,
+            ))))
+        } else {
+            let mut children = Vec::new();
+
+            for entry in fs::read_dir(path)? {
+                let entry = entry?;
+                let path = entry.path();
+                let tree = Self::from_path(ctx, &path)?;
+                children.extend(tree);
+            }
+
+            Ok(Some(Self::Directory(Directory::new(
+                ctx, file_name, children,
+            ))))
+        }
+    }
+
+    pub fn std(ctx: &mut Compiler) -> Self {
+        let text = include_str!("./std.rue");
+
+        let file = File::new(
+            ctx,
+            "std".to_string(),
+            Source::new(Arc::from(text), SourceKind::Std),
+        );
+
+        Self::File(file)
+    }
+
     pub fn name(&self) -> &str {
         match self {
             Self::File(file) => &file.name,
@@ -69,6 +263,57 @@ impl FileTree {
 
         self.compile_types(ctx);
         self.compile_symbols(ctx);
+    }
+
+    pub fn entrypoints(&self, ctx: &Compiler) -> HashSet<Declaration> {
+        let mut entrypoints = ctx
+            .tests()
+            .map(|test| Declaration::Symbol(test.symbol))
+            .collect::<HashSet<_>>();
+
+        let mut stack = vec![self];
+
+        while let Some(current) = stack.pop() {
+            match current {
+                Self::File(file) => {
+                    let scope = file.module(ctx).scope;
+
+                    if let Some(main) = ctx.scope(scope).symbol("main") {
+                        entrypoints.insert(Declaration::Symbol(main));
+                    }
+
+                    ctx.scope(scope).exported_symbols().for_each(|(_, symbol)| {
+                        entrypoints.insert(Declaration::Symbol(symbol));
+                    });
+
+                    ctx.scope(scope).exported_types().for_each(|(_, ty)| {
+                        entrypoints.insert(Declaration::Type(ty));
+                    });
+                }
+                Self::Directory(directory) => {
+                    directory.children.iter().for_each(|child| {
+                        stack.push(child);
+                    });
+                }
+            }
+        }
+
+        entrypoints
+    }
+
+    pub fn find(&self, path: &SourceKind) -> Option<&FileTree> {
+        match self {
+            Self::File(file) => {
+                if file.source.kind == *path {
+                    Some(self)
+                } else {
+                    None
+                }
+            }
+            Self::Directory(directory) => {
+                directory.children.iter().find_map(|child| child.find(path))
+            }
+        }
     }
 
     fn declare_modules(&self, ctx: &mut Compiler) {
@@ -288,50 +533,38 @@ impl Directory {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Compilation {
-    pub compiler: Compiler,
-    pub diagnostics: Vec<Diagnostic>,
-    pub main: Option<NodePtr>,
-    pub exports: IndexMap<String, NodePtr>,
-    pub tests: Vec<Test>,
-    pub syntax_map: SyntaxMap,
-    pub source: Source,
+pub fn normalize_path(path: &Path) -> Result<SourceKind, Error> {
+    Ok(SourceKind::File(
+        path.canonicalize()?.to_string_lossy().to_lowercase(),
+    ))
 }
 
-#[derive(Debug, Clone)]
-pub struct Test {
-    pub name: String,
-    pub program: NodePtr,
-}
-
-pub fn compile_file(
+fn codegen(
+    ctx: &mut Compiler,
     allocator: &mut Allocator,
-    file: Source,
-    options: CompilerOptions,
-) -> Result<Compilation, Error> {
-    compile_file_impl(allocator, file, options, true)
+    symbol: SymbolId,
+) -> Result<NodePtr, Error> {
+    let options = *ctx.options();
+    let graph = DependencyGraph::build(ctx, symbol, options);
+
+    let mut arena = Arena::new();
+    let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol);
+    let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
+
+    if options.optimize_lir {
+        lir = rue_lir::optimize(&mut arena, lir);
+    }
+
+    Ok(rue_lir::codegen(&arena, allocator, lir)?)
 }
 
-pub fn analyze_file(file: Source, options: CompilerOptions) -> Result<Compilation, Error> {
-    compile_file_impl(&mut Allocator::new(), file, options, false)
-}
+fn create_prelude(ctx: &mut Compiler) -> ScopeId {
+    let std = FileTree::std(ctx);
+    std.compile(ctx);
+    let std_module = std.module();
+    let std_scope = ctx.module(std_module).scope;
 
-fn compile_file_impl(
-    allocator: &mut Allocator,
-    file: Source,
-    options: CompilerOptions,
-    do_codegen: bool,
-) -> Result<Compilation, Error> {
-    let mut ctx = Compiler::new(options);
-    let std_source = include_str!("./std.rue");
-    let std = compile_file_partial(
-        &mut ctx,
-        Source::new(Arc::from(std_source), SourceKind::Std),
-    );
-    let std_scope = std.module(&ctx).scope;
-
-    let scope = ctx.alloc_child_scope();
+    let prelude = ctx.alloc_child_scope();
 
     for (name, symbol) in ctx
         .scope(std_scope)
@@ -339,7 +572,7 @@ fn compile_file_impl(
         .map(|(name, symbol)| (name.to_string(), symbol))
         .collect::<Vec<_>>()
     {
-        ctx.scope_mut(scope)
+        ctx.scope_mut(prelude)
             .insert_symbol(name.to_string(), symbol, false);
     }
 
@@ -349,119 +582,9 @@ fn compile_file_impl(
         .map(|(name, ty)| (name.to_string(), ty))
         .collect::<Vec<_>>()
     {
-        ctx.scope_mut(scope)
+        ctx.scope_mut(prelude)
             .insert_type(name.to_string(), ty, false);
     }
 
-    ctx.push_scope(scope, TextSize::from(0));
-    let compiled_file = compile_file_partial(&mut ctx, file.clone());
-    let compiled_file_scope = compiled_file.module(&ctx).scope;
-    #[allow(clippy::cast_possible_truncation)]
-    ctx.pop_scope(TextSize::from(std_source.len() as u32));
-
-    let mut exports = IndexMap::new();
-    let mut tests = Vec::new();
-
-    let syntax_map = ctx.syntax_map(&file.kind).unwrap().clone();
-    let main_symbol = ctx.scope(compiled_file_scope).symbol("main");
-
-    let mut entrypoints = HashSet::new();
-
-    entrypoints.extend(main_symbol.map(Declaration::Symbol));
-
-    for test in ctx.tests() {
-        entrypoints.insert(Declaration::Symbol(test));
-    }
-
-    for (_, symbol) in ctx.scope(compiled_file_scope).exported_symbols() {
-        entrypoints.insert(Declaration::Symbol(symbol));
-    }
-
-    for (_, ty) in ctx.scope(compiled_file_scope).exported_types() {
-        entrypoints.insert(Declaration::Type(ty));
-    }
-
-    check_unused(&mut ctx, &entrypoints);
-
-    let diagnostics = ctx.take_diagnostics();
-
-    let mut main = None;
-
-    if !do_codegen
-        || diagnostics
-            .iter()
-            .any(|d| d.kind.severity() == DiagnosticSeverity::Error)
-    {
-        return Ok(Compilation {
-            compiler: ctx,
-            diagnostics,
-            main,
-            exports,
-            tests,
-            syntax_map,
-            source: file,
-        });
-    }
-
-    if let Some(symbol) = main_symbol {
-        main = Some(generate(&mut ctx, allocator, symbol, options)?);
-    }
-
-    for (name, symbol) in ctx
-        .scope(compiled_file_scope)
-        .exported_symbols()
-        .map(|(name, symbol)| (name.to_string(), symbol))
-        .collect::<Vec<_>>()
-    {
-        exports.insert(
-            name.to_string(),
-            generate(&mut ctx, allocator, symbol, options)?,
-        );
-    }
-
-    for test in ctx.tests().collect::<Vec<_>>() {
-        let name = ctx.symbol(test).name().unwrap().text().to_string();
-
-        tests.push(Test {
-            name,
-            program: generate(&mut ctx, allocator, test, options)?,
-        });
-    }
-
-    Ok(Compilation {
-        compiler: ctx,
-        diagnostics,
-        main,
-        exports,
-        tests,
-        syntax_map,
-        source: file,
-    })
-}
-
-fn generate(
-    ctx: &mut Compiler,
-    allocator: &mut Allocator,
-    symbol: SymbolId,
-    options: CompilerOptions,
-) -> Result<NodePtr, Error> {
-    let graph = DependencyGraph::build(ctx, symbol, options);
-
-    let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol);
-    let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
-
-    if options.optimize_lir {
-        lir = optimize(&mut arena, lir);
-    }
-
-    codegen(&arena, allocator, lir)
-}
-
-fn compile_file_partial(ctx: &mut Compiler, source: Source) -> File {
-    let file = File::new(ctx, source.kind.to_string().replace(".rue", ""), source);
-
-    FileTree::File(file.clone()).compile(ctx);
-
-    file
+    prelude
 }

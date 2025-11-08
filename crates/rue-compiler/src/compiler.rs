@@ -74,7 +74,6 @@ impl Compiler {
         &self.options
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     pub fn set_source(&mut self, source: Source) {
         self.syntax_maps
             .entry(source.kind.clone())
@@ -137,6 +136,16 @@ impl Compiler {
             SyntaxItemKind::Scope(scope),
             TextRange::new(start, end),
         ));
+    }
+
+    pub fn push_scope_raw(&mut self, scope: ScopeId) {
+        assert!(self.registered_scopes.contains(&scope));
+        self.scope_stack.push((TextSize::from(0), scope));
+    }
+
+    pub fn pop_scope_raw(&mut self) {
+        assert!(self.registered_scopes.contains(&self.last_scope_id()));
+        self.pop_scope(TextSize::from(0));
     }
 
     pub fn last_scope(&self) -> &Scope {

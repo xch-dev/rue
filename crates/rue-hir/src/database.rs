@@ -2,14 +2,22 @@ use std::collections::HashMap;
 
 use id_arena::Arena;
 use indexmap::IndexSet;
+use rue_diagnostic::SourceKind;
 use rue_types::{Type, TypeId};
 
-use crate::{Hir, HirId, Import, ImportId, Scope, ScopeId, Symbol, SymbolId};
+use crate::{Hir, HirId, Import, ImportId, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Declaration {
     Symbol(SymbolId),
     Type(TypeId),
+}
+
+#[derive(Debug, Clone)]
+pub struct Test {
+    pub name: Option<String>,
+    pub path: SourceKind,
+    pub symbol: SymbolId,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -24,7 +32,7 @@ pub struct Database {
     referenced_by: HashMap<Declaration, IndexSet<Declaration>>,
     relevant_imports: IndexSet<ImportId>,
     import_references: HashMap<ImportId, IndexSet<Declaration>>,
-    tests: Vec<SymbolId>,
+    tests: Vec<Test>,
 }
 
 impl Database {
@@ -78,6 +86,20 @@ impl Database {
 
     pub fn symbol_mut(&mut self, id: SymbolId) -> &mut Symbol {
         &mut self.symbols[id]
+    }
+
+    pub fn module(&self, id: SymbolId) -> &ModuleSymbol {
+        match self.symbol(id) {
+            Symbol::Module(module) => module,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn module_mut(&mut self, id: SymbolId) -> &mut ModuleSymbol {
+        match self.symbol_mut(id) {
+            Symbol::Module(module) => module,
+            _ => unreachable!(),
+        }
     }
 
     pub fn alloc_type(&mut self, ty: Type) -> TypeId {
@@ -158,12 +180,12 @@ impl Database {
             .collect()
     }
 
-    pub fn add_test(&mut self, symbol: SymbolId) {
-        self.tests.push(symbol);
+    pub fn add_test(&mut self, test: Test) {
+        self.tests.push(test);
     }
 
-    pub fn tests(&self) -> impl Iterator<Item = SymbolId> {
-        self.tests.iter().copied()
+    pub fn tests(&self) -> impl Iterator<Item = &Test> {
+        self.tests.iter()
     }
 
     pub fn debug_symbol(&self, id: SymbolId) -> String {

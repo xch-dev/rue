@@ -1731,6 +1731,7 @@ dependencies = [
  "rue-options",
  "rue-parser",
  "rue-types",
+ "thiserror 2.0.14",
 ]
 
 [[package]]

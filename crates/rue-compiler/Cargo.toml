@@ -31,6 +31,7 @@ hex = { workspace = true }
 clvmr = { workspace = true }
 indexmap = { workspace = true }
 log = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 rue-lexer = { workspace = true }
