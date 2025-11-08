@@ -1,6 +1,6 @@
 use std::{
     cmp::Reverse,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     mem,
     ops::{Deref, DerefMut, Range},
     sync::Arc,
@@ -29,6 +29,7 @@ pub struct Compiler {
     builtins: Builtins,
     defaults: HashMap<TypeId, HashMap<String, Value>>,
     declaration_stack: Vec<Declaration>,
+    registered_scopes: HashSet<ScopeId>,
 }
 
 impl Deref for Compiler {
@@ -61,6 +62,7 @@ impl Compiler {
             builtins,
             defaults: HashMap::new(),
             declaration_stack: Vec::new(),
+            registered_scopes: HashSet::new(),
         }
     }
 
@@ -111,6 +113,10 @@ impl Compiler {
         ));
     }
 
+    pub fn extend_diagnostics(&mut self, diagnostics: Vec<Diagnostic>) {
+        self.diagnostics.extend(diagnostics);
+    }
+
     pub fn alloc_child_scope(&mut self) -> ScopeId {
         let parent_scope = self.last_scope_id();
         self.alloc_scope(Scope::new(Some(parent_scope)))
@@ -122,6 +128,10 @@ impl Compiler {
 
     pub fn pop_scope(&mut self, end: TextSize) {
         let (start, scope) = self.scope_stack.pop().unwrap();
+
+        if !self.registered_scopes.insert(scope) {
+            return;
+        }
 
         self.syntax_map_mut().add_item(SyntaxItem::new(
             SyntaxItemKind::Scope(scope),

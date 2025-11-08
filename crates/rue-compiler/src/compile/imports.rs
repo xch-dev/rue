@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use rue_ast::{AstImportItem, AstImportPathSegment};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, Import, ImportId, Items, ModuleDeclarations, ScopeId, Symbol};
+use rue_hir::{Declaration, Import, ImportId, Items, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 
 use crate::Compiler;
@@ -76,12 +76,46 @@ fn construct_imports(
     }
 }
 
+#[derive(Debug, Default)]
+pub struct ImportCache {
+    scopes: HashMap<Vec<String>, ScopeId>,
+    unused_imports: IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
+    glob_import_counts: IndexMap<ImportId, (SyntaxToken, usize)>,
+}
+
+fn flatten_imports(
+    ctx: &mut Compiler,
+    top_level_modules: Vec<SymbolId>,
+) -> Vec<(ScopeId, ImportId)> {
+    let mut imports = Vec::new();
+    let mut stack = vec![(None, top_level_modules)];
+
+    while let Some((scope, modules)) = stack.pop() {
+        if let Some(scope) = scope {
+            for import in ctx.scope(scope).imports() {
+                imports.push((scope, import));
+            }
+        }
+
+        for module in modules {
+            let Symbol::Module(module) = ctx.symbol(module).clone() else {
+                unreachable!();
+            };
+
+            stack.push((Some(module.scope), module.declarations.modules.clone()));
+        }
+    }
+
+    imports
+}
+
 pub fn resolve_imports(
     ctx: &mut Compiler,
-    declarations: &mut ModuleDeclarations,
+    top_level_modules: Vec<SymbolId>,
+    cache: &mut ImportCache,
     diagnostics: bool,
 ) {
-    let imports = flatten_imports(ctx, declarations);
+    let imports = flatten_imports(ctx, top_level_modules);
 
     let mut updated = true;
     let mut missing_imports = IndexMap::new();
@@ -95,10 +129,10 @@ pub fn resolve_imports(
                 target_scope,
                 import,
                 diagnostics,
-                &mut declarations.import_cache,
+                &mut cache.scopes,
                 &mut missing_imports,
-                &mut declarations.unused_imports,
-                &mut declarations.glob_import_counts,
+                &mut cache.unused_imports,
+                &mut cache.glob_import_counts,
             );
         }
     }
@@ -110,13 +144,13 @@ pub fn resolve_imports(
             }
         }
 
-        for unused_imports in declarations.unused_imports.values() {
+        for unused_imports in cache.unused_imports.values() {
             for (name, token) in unused_imports {
                 ctx.diagnostic(token, DiagnosticKind::UnusedImport(name.to_string()));
             }
         }
 
-        for (token, count) in declarations.glob_import_counts.values() {
+        for (token, count) in cache.glob_import_counts.values() {
             if *count == 0 {
                 ctx.diagnostic(token, DiagnosticKind::UnusedGlobImport);
             }
@@ -370,28 +404,4 @@ fn resolve_import(
     }
 
     updated
-}
-
-fn flatten_imports(
-    ctx: &mut Compiler,
-    declarations: &ModuleDeclarations,
-) -> Vec<(ScopeId, ImportId)> {
-    let mut imports = Vec::new();
-    let mut stack = vec![(ctx.last_scope_id(), declarations.modules.clone())];
-
-    while let Some((scope, modules)) = stack.pop() {
-        for import in ctx.scope(scope).imports() {
-            imports.push((scope, import));
-        }
-
-        for module in modules {
-            let Symbol::Module(module) = ctx.symbol(module).clone() else {
-                unreachable!();
-            };
-
-            stack.push((module.scope, module.declarations.modules.clone()));
-        }
-    }
-
-    imports
 }
