@@ -115,6 +115,7 @@ impl CompilationUnit {
         ctx: &mut Compiler,
         allocator: &mut Allocator,
         path: &SourceKind,
+        export_name: Option<&str>,
     ) -> Result<Vec<CompiledExport>, Error> {
         let tree = self
             .tree
@@ -131,6 +132,12 @@ impl CompilationUnit {
             .map(|(name, symbol)| (name.to_string(), symbol))
             .collect::<Vec<_>>()
         {
+            if let Some(export_name) = export_name
+                && name != export_name
+            {
+                continue;
+            }
+
             let ptr = codegen(ctx, allocator, symbol)?;
             exports.push(CompiledExport { name, symbol, ptr });
         }

@@ -1,4 +1,4 @@
-use std::{fs, process, sync::Arc};
+use std::{path::Path, process};
 
 use anyhow::Result;
 use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
@@ -11,8 +11,8 @@ use clvmr::{
     serde::{node_from_bytes, node_to_bytes},
 };
 use colored::Colorize;
-use rue_compiler::compile_file;
-use rue_diagnostic::{DiagnosticSeverity, Source, SourceKind};
+use rue_compiler::{CompilationUnit, Compiler, normalize_path};
+use rue_diagnostic::DiagnosticSeverity;
 use rue_lir::DebugDialect;
 use rue_options::CompilerOptions;
 
@@ -60,56 +60,49 @@ fn main() -> Result<()> {
 }
 
 fn build(args: BuildArgs) -> Result<()> {
-    let source = fs::read_to_string(&args.file)?;
-
     let mut allocator = Allocator::new();
 
-    let result = compile_file(
-        &mut allocator,
-        Source::new(Arc::from(source), SourceKind::File(args.file)),
-        if args.debug {
-            CompilerOptions::debug()
-        } else {
-            CompilerOptions::default()
-        },
-    )?;
+    let mut ctx = Compiler::new(if args.debug {
+        CompilerOptions::debug()
+    } else {
+        CompilerOptions::default()
+    });
 
-    for diagnostic in &result.diagnostics {
+    let path = Path::new(&args.file);
+    let unit = CompilationUnit::new(&mut ctx, path)?;
+    let path = normalize_path(path)?;
+
+    let mut codegen = true;
+
+    for diagnostic in ctx.take_diagnostics() {
         let message = diagnostic.message();
         let severity = diagnostic.kind.severity();
 
         if severity == DiagnosticSeverity::Error {
             eprintln!("{}", format!("Error: {message}").red().bold());
+            codegen = false;
         } else {
             eprintln!("{}", format!("Warning: {message}").yellow().bold());
         }
     }
 
-    if result
-        .diagnostics
-        .iter()
-        .any(|d| d.kind.severity() == DiagnosticSeverity::Error)
-    {
+    if !codegen {
         process::exit(1);
     }
 
     let program = if let Some(export) = args.export {
-        let Some(program) = result.exports.get(&export).copied() else {
+        let Some(program) = unit
+            .exports(&mut ctx, &mut allocator, &path, Some(&export))?
+            .into_iter()
+            .next()
+        else {
             eprintln!("{}", format!("Export `{export}` not found").red().bold());
             process::exit(1);
         };
 
-        program
-    } else if let Some(program) = result.main {
-        program
-    } else if result.exports.is_empty() {
-        eprintln!(
-            "{}",
-            "No `main` function or exported functions found"
-                .red()
-                .bold()
-        );
-        process::exit(1);
+        program.ptr
+    } else if let Some(ptr) = unit.main(&mut ctx, &mut allocator, &path)? {
+        ptr
     } else {
         eprintln!(
             "{}",
@@ -136,44 +129,46 @@ fn build(args: BuildArgs) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn test(args: TestArgs) -> Result<()> {
-    let source = fs::read_to_string(&args.file)?;
-
     let mut allocator = Allocator::new();
+    let mut ctx = Compiler::new(CompilerOptions::debug());
 
-    let result = compile_file(
-        &mut allocator,
-        Source::new(Arc::from(source), SourceKind::File(args.file)),
-        CompilerOptions::debug(),
-    )?;
+    let path = Path::new(&args.file);
+    let unit = CompilationUnit::new(&mut ctx, path)?;
 
-    for diagnostic in &result.diagnostics {
+    let mut codegen = true;
+
+    for diagnostic in ctx.take_diagnostics() {
         let message = diagnostic.message();
         let severity = diagnostic.kind.severity();
 
         if severity == DiagnosticSeverity::Error {
             eprintln!("{}", format!("Error: {message}").red().bold());
+            codegen = false;
         } else {
             eprintln!("{}", format!("Warning: {message}").yellow().bold());
         }
     }
 
-    if result
-        .diagnostics
-        .iter()
-        .any(|d| d.kind.severity() == DiagnosticSeverity::Error)
-    {
+    if !codegen {
         process::exit(1);
     }
 
-    let len = result.tests.len();
+    let tests = unit.tests(&mut ctx, &mut allocator, None, None)?;
+
+    let len = tests.len();
 
     let mut failed = false;
 
-    for (i, test) in result.tests.iter().enumerate() {
+    for (i, test) in tests.iter().enumerate() {
+        let Some(name) = &test.name else {
+            continue;
+        };
+
         println!(
             "{}",
-            format!("Running test `{}` ({}/{})", test.name, i + 1, len)
+            format!("Running test `{}` ({}/{})", name, i + 1, len)
                 .cyan()
                 .bold()
         );
@@ -181,7 +176,7 @@ fn test(args: TestArgs) -> Result<()> {
         match run_program(
             &mut allocator,
             &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
-            test.program,
+            test.ptr,
             NodePtr::NIL,
             u64::MAX,
         ) {
