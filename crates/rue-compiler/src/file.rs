@@ -70,15 +70,19 @@ impl FileTree {
     }
 
     pub fn compile_path(ctx: &mut Compiler, path: &Path) -> Result<Self, Error> {
-        let tree =
-            Self::try_from_path(ctx, path)?.ok_or(io::Error::other("Invalid file extension"))?;
+        let tree = Self::try_from_path(ctx, path, None)?
+            .ok_or(io::Error::other("Invalid file extension"))?;
 
         tree.compile(ctx);
 
         Ok(tree)
     }
 
-    pub fn try_from_path(ctx: &mut Compiler, path: &Path) -> Result<Option<Self>, Error> {
+    pub fn try_from_path(
+        ctx: &mut Compiler,
+        path: &Path,
+        parent: Option<SymbolId>,
+    ) -> Result<Option<Self>, Error> {
         let file_name = path
             .file_name()
             .ok_or(io::Error::new(
@@ -104,17 +108,25 @@ impl FileTree {
                 source,
             ))))
         } else {
+            let scope = ctx.alloc_child_scope();
+
+            let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
+                name: None,
+                scope,
+                declarations: ModuleDeclarations::default(),
+            }));
+
             let mut children = Vec::new();
 
             for entry in fs::read_dir(path)? {
                 let entry = entry?;
                 let path = entry.path();
-                let tree = Self::try_from_path(ctx, &path)?;
+                let tree = Self::try_from_path(ctx, &path, Some(module))?;
                 children.extend(tree);
             }
 
             Ok(Some(Self::Directory(Directory::new(
-                ctx, file_name, children,
+                ctx, file_name, module, parent, children,
             ))))
         }
     }
@@ -482,14 +494,14 @@ pub struct Directory {
 }
 
 impl Directory {
-    pub fn new(ctx: &mut Compiler, name: String, children: Vec<FileTree>) -> Self {
-        let scope = ctx.alloc_child_scope();
-
-        let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
-            name: None,
-            scope,
-            declarations: ModuleDeclarations::default(),
-        }));
+    pub fn new(
+        ctx: &mut Compiler,
+        name: String,
+        module: SymbolId,
+        parent: Option<SymbolId>,
+        children: Vec<FileTree>,
+    ) -> Self {
+        let scope = ctx.module(module).scope;
 
         let mut child_modules = IndexMap::new();
 
@@ -510,6 +522,13 @@ impl Directory {
                     ctx.scope_mut(file.sibling_scope)
                         .insert_symbol(name, module, false);
                 }
+            }
+
+            if let Some(parent) = parent
+                && let FileTree::File(file) = child
+            {
+                ctx.scope_mut(file.sibling_scope)
+                    .insert_symbol("super".to_string(), parent, false);
             }
         }
 

@@ -202,7 +202,9 @@ fn resolve_import(
 
         let symbol = if let Some(base) = base {
             let base = ctx.scope(base);
-            base.symbol(name).map(|s| (s, base.symbol_import(s)))
+            base.symbol(name)
+                .filter(|s| base.is_symbol_exported(*s))
+                .map(|s| (s, base.symbol_import(s)))
         } else {
             ctx.resolve_symbol_in(target_scope, name)
         };
