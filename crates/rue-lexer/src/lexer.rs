@@ -71,6 +71,7 @@ impl<'a> Lexer<'a> {
             "debug" => TokenKind::Debug,
             "is" => TokenKind::Is,
             "as" => TokenKind::As,
+            "super" => TokenKind::Super,
             _ => TokenKind::Ident,
         }
     }
@@ -661,6 +662,13 @@ mod tests {
             "as",
             expect![[r#"
                 As
+            "#]],
+        );
+
+        check(
+            "super",
+            expect![[r#"
+                Super
             "#]],
         );
     }

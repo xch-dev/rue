@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use rue_ast::{AstImportItem, AstImportPathSegment};
-use rue_diagnostic::DiagnosticKind;
+use rue_diagnostic::{DiagnosticKind, Source};
 use rue_hir::{Declaration, Import, ImportId, Items, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 
@@ -83,8 +83,8 @@ fn construct_imports(
 #[derive(Debug, Default)]
 pub struct ImportCache {
     scopes: HashMap<Vec<String>, ScopeId>,
-    unused_imports: IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
-    glob_import_counts: IndexMap<ImportId, (SyntaxToken, usize)>,
+    unused_imports: IndexMap<ImportId, IndexMap<String, (SyntaxToken, Source)>>,
+    glob_import_counts: IndexMap<ImportId, (SyntaxToken, Source, usize)>,
 }
 
 fn flatten_imports(
@@ -143,19 +143,22 @@ pub fn resolve_imports(
 
     if diagnostics {
         for missing_imports in missing_imports.into_values() {
-            for (name, token) in missing_imports {
+            for (name, (token, source)) in missing_imports {
+                ctx.set_source(source);
                 ctx.diagnostic(&token, DiagnosticKind::UnresolvedImport(name.to_string()));
             }
         }
 
         for unused_imports in cache.unused_imports.values() {
-            for (name, token) in unused_imports {
+            for (name, (token, source)) in unused_imports {
+                ctx.set_source(source.clone());
                 ctx.diagnostic(token, DiagnosticKind::UnusedImport(name.to_string()));
             }
         }
 
-        for (token, count) in cache.glob_import_counts.values() {
+        for (token, source, count) in cache.glob_import_counts.values() {
             if *count == 0 {
+                ctx.set_source(source.clone());
                 ctx.diagnostic(token, DiagnosticKind::UnusedGlobImport);
             }
         }
@@ -169,12 +172,12 @@ fn resolve_import(
     import_id: ImportId,
     diagnostics: bool,
     cache: &mut HashMap<Vec<String>, ScopeId>,
-    missing_imports: &mut IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
-    unused_imports: &mut IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
-    glob_import_counts: &mut IndexMap<ImportId, (SyntaxToken, usize)>,
+    missing_imports: &mut IndexMap<ImportId, IndexMap<String, (SyntaxToken, Source)>>,
+    unused_imports: &mut IndexMap<ImportId, IndexMap<String, (SyntaxToken, Source)>>,
+    glob_import_counts: &mut IndexMap<ImportId, (SyntaxToken, Source, usize)>,
 ) -> bool {
     let import = ctx.import(import_id).clone();
-    let source = import.source.kind.clone();
+    let source = import.source.clone();
 
     let mut base = None;
     let mut path_so_far = Vec::new();
@@ -206,6 +209,7 @@ fn resolve_import(
 
         let Some((symbol, import)) = symbol else {
             if diagnostics {
+                ctx.set_source(source.clone());
                 ctx.diagnostic(ident, DiagnosticKind::UndeclaredSymbol(name.to_string()));
             }
             return false;
@@ -215,7 +219,7 @@ fn resolve_import(
             ctx.add_import_reference(import, Declaration::Symbol(symbol));
         }
 
-        ctx.syntax_map_for_source(source.clone())
+        ctx.syntax_map_for_source(source.kind.clone())
             .add_item(SyntaxItem::new(
                 SyntaxItemKind::SymbolReference(symbol),
                 ident.text_range(),
@@ -223,6 +227,7 @@ fn resolve_import(
 
         let Symbol::Module(module) = ctx.symbol(symbol) else {
             if diagnostics {
+                ctx.set_source(source.clone());
                 ctx.diagnostic(ident, DiagnosticKind::SubpathNotSupported(name.to_string()));
             }
             return false;
@@ -239,8 +244,8 @@ fn resolve_import(
         Items::All(star) => {
             let count = &mut glob_import_counts
                 .entry(import_id)
-                .or_insert_with(|| (star.clone(), 0))
-                .1;
+                .or_insert_with(|| (star.clone(), source.clone(), 0))
+                .2;
 
             let symbols = if let Some(base) = base {
                 ctx.scope(base)
@@ -322,14 +327,14 @@ fn resolve_import(
             let missing_imports = missing_imports.entry(import_id).or_insert_with(|| {
                 items
                     .iter()
-                    .map(|item| (item.text().to_string(), item.clone()))
+                    .map(|item| (item.text().to_string(), (item.clone(), source.clone())))
                     .collect()
             });
 
             let unused_imports = unused_imports.entry(import_id).or_insert_with(|| {
                 items
                     .iter()
-                    .map(|item| (item.text().to_string(), item.clone()))
+                    .map(|item| (item.text().to_string(), (item.clone(), source.clone())))
                     .collect()
             });
 
@@ -349,7 +354,7 @@ fn resolve_import(
 
                 if let Some(symbol) = symbol {
                     if diagnostics {
-                        ctx.syntax_map_for_source(source.clone())
+                        ctx.syntax_map_for_source(source.kind.clone())
                             .add_item(SyntaxItem::new(
                                 SyntaxItemKind::SymbolReference(symbol),
                                 item.text_range(),
@@ -381,7 +386,7 @@ fn resolve_import(
 
                 if let Some(ty) = ty {
                     if diagnostics {
-                        ctx.syntax_map_for_source(source.clone())
+                        ctx.syntax_map_for_source(source.kind.clone())
                             .add_item(SyntaxItem::new(
                                 SyntaxItemKind::TypeReference(ty),
                                 item.text_range(),

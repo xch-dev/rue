@@ -52,7 +52,7 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
             },
         );
         p.finish();
-    } else if !options.inline && p.at(T![::]) || p.at(SyntaxKind::Ident) {
+    } else if !options.inline && p.at(T![::]) || p.at(SyntaxKind::Ident) || p.at(T![super]) {
         p.start_at(checkpoint, SyntaxKind::PathExpr);
         let mut separated = path_expr_segment(p, true, false);
         while separated || p.at(T![::]) {
@@ -235,7 +235,9 @@ fn path_expr_segment(p: &mut Parser, first: bool, separated: bool) -> bool {
             p.expect(T![::]);
         }
     }
-    p.expect(SyntaxKind::Ident);
+    if !first || !p.try_eat(T![super]) {
+        p.expect(SyntaxKind::Ident);
+    }
     let mut separated = p.try_eat(T![::]);
     if separated && p.at(T![<]) {
         generic_arguments(p);

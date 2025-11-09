@@ -10,7 +10,7 @@ pub fn ty(p: &mut Parser) {
 fn ty_inner(p: &mut Parser, allow_union: bool) {
     let cp = p.checkpoint();
 
-    if p.at(SyntaxKind::Ident) || p.at(T![::]) {
+    if p.at(SyntaxKind::Ident) || p.at(T![super]) || p.at(T![::]) {
         path_type(p);
     } else if let Some(kind) = p.at_any(SyntaxKind::LITERAL) {
         p.start(SyntaxKind::LiteralType);
@@ -94,7 +94,9 @@ fn path_type_segment(p: &mut Parser, first: bool) {
     } else {
         p.expect(T![::]);
     }
-    p.expect(SyntaxKind::Ident);
+    if !first || !p.try_eat(T![super]) {
+        p.expect(SyntaxKind::Ident);
+    }
     if p.at(T![<]) {
         generic_arguments(p);
     }

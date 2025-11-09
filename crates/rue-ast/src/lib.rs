@@ -375,7 +375,7 @@ impl AstImportPathSegment {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Ident)
+            .find(|token| token.kind() == SyntaxKind::Ident || token.kind() == T![super])
     }
 
     pub fn star(&self) -> Option<SyntaxToken> {
@@ -517,7 +517,7 @@ impl AstPathSegment {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Ident)
+            .find(|token| token.kind() == SyntaxKind::Ident || token.kind() == T![super])
     }
 
     pub fn generic_arguments(&self) -> Option<AstGenericArguments> {

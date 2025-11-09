@@ -101,6 +101,9 @@ pub enum SyntaxKind {
     #[display("`as`")]
     As,
 
+    #[display("`super`")]
+    Super,
+
     // Grouping
     #[display("`(`")]
     OpenParen,
@@ -407,6 +410,7 @@ macro_rules! T {
     [debug] => { $crate::SyntaxKind::Debug };
     [is] => { $crate::SyntaxKind::Is };
     [as] => { $crate::SyntaxKind::As };
+    [super] => { $crate::SyntaxKind::Super };
     ['('] => { $crate::SyntaxKind::OpenParen };
     [')'] => { $crate::SyntaxKind::CloseParen };
     ['{'] => { $crate::SyntaxKind::OpenBrace };
@@ -454,6 +458,7 @@ impl SyntaxKind {
         T![nil],
         T![true],
         T![false],
+        T![super],
     ];
     pub const PREFIX_OPS: &[Self] = &[T![!], T![-], T![+], T![~]];
     pub const BINARY_OPS: &[Self] = &[
@@ -517,6 +522,7 @@ impl SyntaxKind {
             T![debug] => &[T![debug]],
             T![is] => &[T![is]],
             T![as] => &[T![as]],
+            T![super] => &[T![super]],
             T!['('] => &[T!['(']],
             T![')'] => &[T![')']],
             T!['{'] => &[T!['{']],
