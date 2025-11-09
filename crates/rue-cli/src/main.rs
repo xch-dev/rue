@@ -69,7 +69,16 @@ fn build(args: BuildArgs) -> Result<()> {
     });
 
     let path = Path::new(&args.file);
-    let unit = CompilationUnit::new(&mut ctx, path)?;
+    let unit = CompilationUnit::new(
+        &mut ctx,
+        if path.is_file()
+            && let Some(parent) = path.parent()
+        {
+            parent
+        } else {
+            path
+        },
+    )?;
     let path = normalize_path(path)?;
 
     let mut codegen = true;
