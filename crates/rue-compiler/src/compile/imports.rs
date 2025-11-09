@@ -6,7 +6,7 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, Import, ImportId, Items, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 
-use crate::Compiler;
+use crate::{Compiler, SyntaxItem, SyntaxItemKind};
 
 pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
     let Some(path) = import.path() else {
@@ -42,8 +42,11 @@ fn construct_imports(
         return vec![];
     };
 
+    let source = ctx.source().clone();
+
     if let Some(name) = last.name() {
         vec![ctx.alloc_import(Import {
+            source,
             path,
             items: Items::Named(vec![name]),
             exported,
@@ -51,6 +54,7 @@ fn construct_imports(
         })]
     } else if let Some(star) = last.star() {
         vec![ctx.alloc_import(Import {
+            source,
             path,
             items: Items::All(star),
             exported,
@@ -170,6 +174,7 @@ fn resolve_import(
     glob_import_counts: &mut IndexMap<ImportId, (SyntaxToken, usize)>,
 ) -> bool {
     let import = ctx.import(import_id).clone();
+    let source = import.source.kind.clone();
 
     let mut base = None;
     let mut path_so_far = Vec::new();
@@ -210,7 +215,11 @@ fn resolve_import(
             ctx.add_import_reference(import, Declaration::Symbol(symbol));
         }
 
-        ctx.reference_span(Declaration::Symbol(symbol), ident.text_range());
+        ctx.syntax_map_for_source(source.clone())
+            .add_item(SyntaxItem::new(
+                SyntaxItemKind::SymbolReference(symbol),
+                ident.text_range(),
+            ));
 
         let Symbol::Module(module) = ctx.symbol(symbol) else {
             if diagnostics {
@@ -340,7 +349,11 @@ fn resolve_import(
 
                 if let Some(symbol) = symbol {
                     if diagnostics {
-                        ctx.reference_span(Declaration::Symbol(symbol), item.text_range());
+                        ctx.syntax_map_for_source(source.clone())
+                            .add_item(SyntaxItem::new(
+                                SyntaxItemKind::SymbolReference(symbol),
+                                item.text_range(),
+                            ));
                     }
 
                     let target = ctx.scope_mut(target_scope);
@@ -368,7 +381,11 @@ fn resolve_import(
 
                 if let Some(ty) = ty {
                     if diagnostics {
-                        ctx.reference_span(Declaration::Type(ty), item.text_range());
+                        ctx.syntax_map_for_source(source.clone())
+                            .add_item(SyntaxItem::new(
+                                SyntaxItemKind::TypeReference(ty),
+                                item.text_range(),
+                            ));
                     }
 
                     let target = ctx.scope_mut(target_scope);

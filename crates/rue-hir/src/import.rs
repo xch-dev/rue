@@ -1,4 +1,5 @@
 use id_arena::Id;
+use rue_diagnostic::Source;
 use rue_parser::SyntaxToken;
 
 use crate::Declaration;
@@ -7,6 +8,7 @@ pub type ImportId = Id<Import>;
 
 #[derive(Debug, Clone)]
 pub struct Import {
+    pub source: Source,
     pub path: Vec<SyntaxToken>,
     pub items: Items,
     pub exported: bool,

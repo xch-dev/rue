@@ -124,6 +124,10 @@ impl Compiler {
             .or_default()
     }
 
+    pub fn syntax_map_for_source(&mut self, source: SourceKind) -> &mut SyntaxMap {
+        self.syntax_maps.entry(source).or_default()
+    }
+
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
         mem::take(&mut self.diagnostics)
     }

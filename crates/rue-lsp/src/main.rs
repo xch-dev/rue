@@ -3,12 +3,13 @@
 mod cache;
 
 use cache::Cache;
-use rue_compiler::{Compiler, File, FileTree};
+use rue_compiler::{Compiler, FileTree, normalize_path};
+use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::fs;
+use std::sync::Mutex;
 
-use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
@@ -23,6 +24,11 @@ use tower_lsp::lsp_types::{
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use crate::cache::HoverInfo;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Manifest {
+    pub entrypoint: String,
+}
 
 #[derive(Debug)]
 struct Backend {
@@ -116,42 +122,45 @@ impl Backend {
             .await;
     }
 
-    fn on_change_impl(&self, uri: &Url, text: &str) -> Vec<Diagnostic> {
+    fn on_change_impl(&self, uri: &Url, _text: &str) -> Vec<Diagnostic> {
         let mut ctx = Compiler::new(CompilerOptions::default());
 
-        let file_name = uri
-            .to_file_path()
-            .unwrap()
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let mut path = uri.to_file_path().unwrap();
+        let source_kind = normalize_path(&path).unwrap();
 
-        let source = Source::new(
-            Arc::from(text),
-            SourceKind::File(
-                uri.to_file_path()
-                    .unwrap()
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-            ),
-        );
+        let mut manifest_path = path.clone();
 
-        let tree = FileTree::File(File::new(
-            &mut ctx,
-            file_name.replace(".rue", ""),
-            source.clone(),
-        ));
-        tree.compile(&mut ctx);
+        loop {
+            if manifest_path.is_file()
+                || !fs::read_dir(&manifest_path).unwrap().any(|entry| {
+                    let child = entry.unwrap().path();
+                    child.is_file() && child.file_name().unwrap().to_string_lossy() == "Rue.toml"
+                })
+            {
+                manifest_path = manifest_path.parent().unwrap().to_path_buf();
+                continue;
+            }
+
+            let manifest = fs::read_to_string(manifest_path.join("Rue.toml")).unwrap();
+            let manifest: Manifest = toml::from_str(&manifest).unwrap();
+
+            path = manifest_path.join(manifest.entrypoint);
+            break;
+        }
+
+        let tree = FileTree::compile_path(&mut ctx, &path).unwrap();
 
         let diagnostics = ctx.take_diagnostics().iter().map(diagnostic).collect();
 
+        let FileTree::File(file) = tree.find(&source_kind).unwrap() else {
+            unreachable!();
+        };
+
         let mut cache = self.cache.lock().unwrap();
-        cache.insert(uri.clone(), SendWrapper::new(Cache::new(ctx, source)));
+        cache.insert(
+            uri.clone(),
+            SendWrapper::new(Cache::new(ctx, file.source.clone())),
+        );
 
         diagnostics
     }
