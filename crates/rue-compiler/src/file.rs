@@ -69,6 +69,28 @@ impl CompilationUnit {
         Ok(Self { tree })
     }
 
+    pub fn single_file(ctx: &mut Compiler, path: &Path, file_name: String) -> Result<Self, Error> {
+        let prelude = create_prelude(ctx);
+
+        ctx.push_scope_raw(prelude);
+
+        let text = fs::read_to_string(path)?;
+        let tree = FileTree::File(File::new(
+            ctx,
+            "main".to_string(),
+            Source::new(Arc::from(text), SourceKind::File(file_name)),
+        ));
+
+        tree.compile(ctx);
+
+        ctx.pop_scope_raw();
+
+        let entrypoints = tree.entrypoints(ctx);
+        check_unused(ctx, &entrypoints);
+
+        Ok(Self { tree })
+    }
+
     pub fn main(
         &self,
         ctx: &mut Compiler,
@@ -176,7 +198,7 @@ impl FileTree {
                 "Missing file name",
             ))?
             .to_string_lossy()
-            .to_lowercase();
+            .to_string();
 
         if fs::metadata(path)?.is_file() {
             let text = fs::read_to_string(path)?;
@@ -207,18 +229,6 @@ impl FileTree {
                 ctx, file_name, children,
             ))))
         }
-    }
-
-    pub fn std(ctx: &mut Compiler) -> Self {
-        let text = include_str!("./std.rue");
-
-        let file = File::new(
-            ctx,
-            "std".to_string(),
-            Source::new(Arc::from(text), SourceKind::Std),
-        );
-
-        Self::File(file)
     }
 
     pub fn name(&self) -> &str {
@@ -394,6 +404,16 @@ impl File {
         }
     }
 
+    pub fn std(ctx: &mut Compiler) -> Self {
+        let text = include_str!("./std.rue");
+
+        Self::new(
+            ctx,
+            "std".to_string(),
+            Source::new(Arc::from(text), SourceKind::Std),
+        )
+    }
+
     fn module<'a>(&'a self, ctx: &'a Compiler) -> &'a ModuleSymbol {
         match ctx.symbol(self.module) {
             Symbol::Module(module) => module,
@@ -535,7 +555,7 @@ impl Directory {
 
 pub fn normalize_path(path: &Path) -> Result<SourceKind, Error> {
     Ok(SourceKind::File(
-        path.canonicalize()?.to_string_lossy().to_lowercase(),
+        path.canonicalize()?.to_string_lossy().to_string(),
     ))
 }
 
@@ -559,10 +579,10 @@ fn codegen(
 }
 
 fn create_prelude(ctx: &mut Compiler) -> ScopeId {
-    let std = FileTree::std(ctx);
-    std.compile(ctx);
-    let std_module = std.module();
-    let std_scope = ctx.module(std_module).scope;
+    let std = File::std(ctx);
+    let tree = FileTree::File(std.clone());
+    tree.compile(ctx);
+    let std_scope = std.module(ctx).scope;
 
     let prelude = ctx.alloc_child_scope();
 
@@ -585,6 +605,9 @@ fn create_prelude(ctx: &mut Compiler) -> ScopeId {
         ctx.scope_mut(prelude)
             .insert_type(name.to_string(), ty, false);
     }
+
+    ctx.push_scope(prelude, std.document.syntax().text_range().start());
+    ctx.pop_scope(std.document.syntax().text_range().end());
 
     prelude
 }

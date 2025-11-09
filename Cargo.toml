@@ -38,6 +38,7 @@ needless_raw_string_hashes = "allow"
 implicit_hasher = "allow"
 match_same_arms = "allow"
 similar_names = "allow"
+cast_possible_truncation = "allow"
 
 [workspace.dependencies]
 rue-lexer = { path = "crates/rue-lexer", version = "0.5.0" }
