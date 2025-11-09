@@ -3,6 +3,7 @@
 mod cache;
 
 use cache::Cache;
+use rue_compiler::{Compiler, File, FileTree};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -116,27 +117,41 @@ impl Backend {
     }
 
     fn on_change_impl(&self, uri: &Url, text: &str) -> Vec<Diagnostic> {
-        let compilation = analyze_file(
-            Source::new(
-                Arc::from(text),
-                SourceKind::File(
-                    uri.to_file_path()
-                        .unwrap()
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                ),
-            ),
-            CompilerOptions::default(),
-        )
-        .unwrap();
+        let mut ctx = Compiler::new(CompilerOptions::default());
 
-        let diagnostics = compilation.diagnostics.iter().map(diagnostic).collect();
+        let file_name = uri
+            .to_file_path()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let source = Source::new(
+            Arc::from(text),
+            SourceKind::File(
+                uri.to_file_path()
+                    .unwrap()
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            ),
+        );
+
+        let tree = FileTree::File(File::new(
+            &mut ctx,
+            file_name.replace(".rue", ""),
+            source.clone(),
+        ));
+        tree.compile(&mut ctx);
+
+        let diagnostics = ctx.take_diagnostics().iter().map(diagnostic).collect();
 
         let mut cache = self.cache.lock().unwrap();
-        cache.insert(uri.clone(), SendWrapper::new(Cache::new(compilation)));
+        cache.insert(uri.clone(), SendWrapper::new(Cache::new(ctx, source)));
 
         diagnostics
     }
