@@ -43,8 +43,11 @@ pub fn create_struct_binding(
             }
         };
 
+        let source = ctx.source().clone();
+
         let binding_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
             name: None,
+            source,
             value,
             inline: true,
         }));

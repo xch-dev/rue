@@ -80,7 +80,13 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
             ctx.builtins().unresolved.ty
         };
 
-        *ctx.symbol_mut(symbol) = Symbol::Parameter(ParameterSymbol { name: None, ty });
+        let source = ctx.source().clone();
+
+        *ctx.symbol_mut(symbol) = Symbol::Parameter(ParameterSymbol {
+            name: None,
+            source,
+            ty,
+        });
 
         let name = parameter
             .binding()
@@ -102,8 +108,11 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         ret: return_type,
     }));
 
+    let source = ctx.source().clone();
+
     *ctx.symbol_mut(symbol) = Symbol::Function(FunctionSymbol {
         name: function.name(),
+        source,
         ty,
         scope,
         vars,

@@ -1855,6 +1855,7 @@ dependencies = [
  "indexmap",
  "log",
  "rstest",
+ "rue-diagnostic",
  "rue-parser",
  "thiserror 2.0.14",
 ]

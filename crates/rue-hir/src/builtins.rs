@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use indexmap::indexmap;
+use rue_diagnostic::{Source, SourceKind};
 use rue_types::{BuiltinTypes, FunctionType, Generic, Pair, Type, TypeId, Union};
 
 use crate::{
@@ -50,7 +53,12 @@ impl Builtins {
         scope.insert_type("List".to_string(), types.list, false);
         scope.insert_type("AlternatingList".to_string(), types.alternating_list, false);
 
-        let unchecked_cast_generic = db.alloc_type(Type::Generic(Generic { name: None }));
+        let source = Source::new(Arc::from(""), SourceKind::Std);
+
+        let unchecked_cast_generic = db.alloc_type(Type::Generic(Generic {
+            name: None,
+            source: source.clone(),
+        }));
 
         scope.insert_symbol(
             "unchecked_cast".to_string(),
@@ -199,10 +207,13 @@ impl Builtins {
         let infinity_g1 = db.alloc_hir(Hir::InfinityG1);
         let infinity_g2 = db.alloc_hir(Hir::InfinityG2);
 
+        let source = Source::new(Arc::from(""), SourceKind::Std);
+
         scope.insert_symbol(
             "INFINITY_G1".to_string(),
             db.alloc_symbol(Symbol::Constant(ConstantSymbol {
                 name: None,
+                source: source.clone(),
                 value: Value::new(infinity_g1, types.public_key),
                 inline: false,
             })),
@@ -213,6 +224,7 @@ impl Builtins {
             "INFINITY_G2".to_string(),
             db.alloc_symbol(Symbol::Constant(ConstantSymbol {
                 name: None,
+                source,
                 value: Value::new(infinity_g2, types.signature),
                 inline: false,
             })),
@@ -236,8 +248,11 @@ fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
     // TODO: Use the parent scope
     let scope = db.alloc_scope(Scope::new(None));
 
+    let source = Source::new(Arc::from(""), SourceKind::Std);
+
     let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
         name: None,
+        source: source.clone(),
         ty: any,
     }));
 
@@ -254,6 +269,7 @@ fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
 
     db.alloc_symbol(Symbol::Function(FunctionSymbol {
         name: None,
+        source,
         ty,
         scope,
         vars: vec![generic],

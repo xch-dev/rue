@@ -16,6 +16,7 @@ workspace = true
 
 [dependencies]
 rue-parser = { workspace = true }
+rue-diagnostic = { workspace = true }
 id-arena = { workspace = true }
 indexmap = { workspace = true }
 clvmr = { workspace = true }

@@ -2,6 +2,7 @@ use std::fmt;
 
 use id_arena::Id;
 use indexmap::IndexMap;
+use rue_diagnostic::Source;
 use rue_parser::SyntaxToken;
 use rue_types::TypeId;
 
@@ -51,6 +52,7 @@ pub struct ModuleDeclarations {
 #[derive(Debug, Clone)]
 pub struct FunctionSymbol {
     pub name: Option<SyntaxToken>,
+    pub source: Source,
     pub ty: TypeId,
     pub scope: ScopeId,
     pub vars: Vec<TypeId>,
@@ -71,12 +73,14 @@ pub enum FunctionKind {
 #[derive(Debug, Clone)]
 pub struct ParameterSymbol {
     pub name: Option<SyntaxToken>,
+    pub source: Source,
     pub ty: TypeId,
 }
 
 #[derive(Debug, Clone)]
 pub struct ConstantSymbol {
     pub name: Option<SyntaxToken>,
+    pub source: Source,
     pub value: Value,
     pub inline: bool,
 }
@@ -84,6 +88,7 @@ pub struct ConstantSymbol {
 #[derive(Debug, Clone)]
 pub struct BindingSymbol {
     pub name: Option<SyntaxToken>,
+    pub source: Source,
     pub value: Value,
     pub inline: bool,
 }

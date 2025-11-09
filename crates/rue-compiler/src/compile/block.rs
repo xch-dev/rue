@@ -101,8 +101,11 @@ pub fn compile_block(
                     value.ty
                 };
 
+                let source = ctx.source().clone();
+
                 *ctx.symbol_mut(symbol) = Symbol::Binding(BindingSymbol {
                     name: None,
+                    source,
                     value: value.with_type(ty),
                     inline: stmt.inline().is_some(),
                 });

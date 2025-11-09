@@ -29,8 +29,11 @@ pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> 
 
     let inner = ctx.alloc_type(Type::Unresolved);
 
+    let source = ctx.source().clone();
+
     *ctx.ty_mut(ty) = Type::Alias(Alias {
         name: type_alias.name(),
+        source,
         generics,
         inner,
     });

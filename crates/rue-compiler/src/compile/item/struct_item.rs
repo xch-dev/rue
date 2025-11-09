@@ -61,10 +61,13 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
         }
     }
 
+    let source = ctx.source().clone();
+
     *ctx.ty_mut(ty) = Type::Struct(Struct {
         semantic: ty,
         inner,
         name: struct_item.name(),
+        source,
         generics,
         fields,
         nil_terminated,

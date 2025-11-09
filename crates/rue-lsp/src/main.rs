@@ -116,6 +116,7 @@ impl Backend {
         let mut ctx = Compiler::new(CompilerOptions::default());
 
         let mut path = uri.to_file_path().unwrap();
+
         let source_kind = normalize_path(&path).unwrap();
 
         let mut manifest_path = path.clone();
@@ -141,7 +142,12 @@ impl Backend {
             let manifest = fs::read_to_string(manifest_path.join("Rue.toml")).unwrap();
             let manifest: Manifest = toml::from_str(&manifest).unwrap();
 
-            path = manifest_path.join(manifest.entrypoint);
+            let entrypoint = manifest_path.join(manifest.entrypoint);
+
+            if path.starts_with(&entrypoint) {
+                path = entrypoint;
+            }
+
             break;
         }
 

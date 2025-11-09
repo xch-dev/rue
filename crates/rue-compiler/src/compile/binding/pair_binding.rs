@@ -11,9 +11,12 @@ pub fn create_pair_binding(ctx: &mut Compiler, symbol: SymbolId, binding: &AstPa
 
     let (first_value, rest_value) = compile_pair_fields(ctx, binding.syntax(), &reference);
 
+    let source = ctx.source().clone();
+
     if let Some(first) = binding.first() {
         let first_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
             name: None,
+            source: source.clone(),
             value: first_value,
             inline: true,
         }));
@@ -26,6 +29,7 @@ pub fn create_pair_binding(ctx: &mut Compiler, symbol: SymbolId, binding: &AstPa
     if let Some(rest) = binding.rest() {
         let rest_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
             name: None,
+            source,
             value: rest_value,
             inline: true,
         }));

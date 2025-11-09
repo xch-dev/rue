@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use id_arena::Arena;
+use rue_diagnostic::{Source, SourceKind};
 
 use crate::{Alias, Atom, Generic, Pair, Type, TypeId, Union};
 
@@ -33,6 +36,8 @@ pub struct BuiltinTypes {
 
 impl BuiltinTypes {
     pub fn new(arena: &mut Arena<Type>) -> Self {
+        let source = Source::new(Arc::from(""), SourceKind::Std);
+
         let unresolved = arena.alloc(Type::Unresolved);
         let atom = arena.alloc(Type::Atom(Atom::ANY));
         let bytes = arena.alloc(Type::Atom(Atom::BYTES));
@@ -58,18 +63,28 @@ impl BuiltinTypes {
         let permissive_any = arena.alloc(Type::Any);
 
         let list = arena.alloc(Type::Unresolved);
-        let list_generic = arena.alloc(Type::Generic(Generic { name: None }));
+        let list_generic = arena.alloc(Type::Generic(Generic {
+            name: None,
+            source: source.clone(),
+        }));
         let list_pair = arena.alloc(Type::Pair(Pair::new(list_generic, list)));
         let list_union = arena.alloc(Type::Union(Union::new(vec![nil, list_pair])));
         *arena.get_mut(list).unwrap() = Type::Alias(Alias {
             name: None,
             inner: list_union,
             generics: vec![list_generic],
+            source: source.clone(),
         });
 
         let alternating_list = arena.alloc(Type::Unresolved);
-        let alternating_list_generic_a = arena.alloc(Type::Generic(Generic { name: None }));
-        let alternating_list_generic_b = arena.alloc(Type::Generic(Generic { name: None }));
+        let alternating_list_generic_a = arena.alloc(Type::Generic(Generic {
+            name: None,
+            source: source.clone(),
+        }));
+        let alternating_list_generic_b = arena.alloc(Type::Generic(Generic {
+            name: None,
+            source: source.clone(),
+        }));
         let alternating_list_pair = arena.alloc(Type::Pair(Pair::new(
             alternating_list_generic_b,
             alternating_list,
@@ -84,6 +99,7 @@ impl BuiltinTypes {
             name: None,
             inner: alternating_list_union,
             generics: vec![alternating_list_generic_a, alternating_list_generic_b],
+            source,
         });
 
         Self {
