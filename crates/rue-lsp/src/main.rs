@@ -15,7 +15,7 @@ use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
     InitializeParams, InitializeResult, InitializedParams, LanguageString, Location, MarkedString,
     MessageType, OneOf, Position, Range, ReferenceParams, ServerCapabilities,
@@ -73,21 +73,11 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.on_change(
-            params.text_document.uri,
-            params.text_document.text,
-            params.text_document.version,
-        )
-        .await;
+        self.on_change(params.text_document.uri).await;
     }
 
-    async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        self.on_change(
-            params.text_document.uri,
-            params.content_changes[0].text.clone(),
-            params.text_document.version,
-        )
-        .await;
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        self.on_change(params.text_document.uri).await;
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -115,14 +105,14 @@ impl LanguageServer for Backend {
 }
 
 impl Backend {
-    async fn on_change(&self, uri: Url, text: String, _version: i32) {
-        let diagnostics = self.on_change_impl(&uri, &text);
+    async fn on_change(&self, uri: Url) {
+        let diagnostics = self.on_change_impl(&uri);
         self.client
             .publish_diagnostics(uri, diagnostics, None)
             .await;
     }
 
-    fn on_change_impl(&self, uri: &Url, _text: &str) -> Vec<Diagnostic> {
+    fn on_change_impl(&self, uri: &Url) -> Vec<Diagnostic> {
         let mut ctx = Compiler::new(CompilerOptions::default());
 
         let mut path = uri.to_file_path().unwrap();
@@ -132,12 +122,19 @@ impl Backend {
 
         loop {
             if manifest_path.is_file()
-                || !fs::read_dir(&manifest_path).unwrap().any(|entry| {
-                    let child = entry.unwrap().path();
-                    child.is_file() && child.file_name().unwrap().to_string_lossy() == "Rue.toml"
-                })
+                || !fs::read_dir(&manifest_path)
+                    .map_or(vec![], Iterator::collect)
+                    .into_iter()
+                    .any(|entry| {
+                        let child = entry.unwrap().path();
+                        child.is_file()
+                            && child.file_name().unwrap().to_string_lossy() == "Rue.toml"
+                    })
             {
-                manifest_path = manifest_path.parent().unwrap().to_path_buf();
+                let Some(parent) = manifest_path.parent() else {
+                    break;
+                };
+                manifest_path = parent.to_path_buf();
                 continue;
             }
 
@@ -150,7 +147,12 @@ impl Backend {
 
         let tree = FileTree::compile_path(&mut ctx, &path).unwrap();
 
-        let diagnostics = ctx.take_diagnostics().iter().map(diagnostic).collect();
+        let diagnostics = ctx
+            .take_diagnostics()
+            .iter()
+            .filter(|diagnostic| diagnostic.srcloc.source.kind == source_kind)
+            .map(diagnostic)
+            .collect();
 
         let FileTree::File(file) = tree.find(&source_kind).unwrap() else {
             unreachable!();
