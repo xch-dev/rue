@@ -11,7 +11,7 @@ use clvmr::{
     serde::{node_from_bytes, node_to_bytes},
 };
 use colored::Colorize;
-use rue_compiler::{CompilationUnit, Compiler, normalize_path};
+use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::DiagnosticSeverity;
 use rue_lir::DebugDialect;
 use rue_options::CompilerOptions;
@@ -69,7 +69,7 @@ fn build(args: BuildArgs) -> Result<()> {
     });
 
     let path = Path::new(&args.file);
-    let unit = CompilationUnit::new(
+    let tree = FileTree::compile_path(
         &mut ctx,
         if path.is_file()
             && let Some(parent) = path.parent()
@@ -100,7 +100,7 @@ fn build(args: BuildArgs) -> Result<()> {
     }
 
     let program = if let Some(export) = args.export {
-        let Some(program) = unit
+        let Some(program) = tree
             .exports(&mut ctx, &mut allocator, &path, Some(&export))?
             .into_iter()
             .next()
@@ -110,7 +110,7 @@ fn build(args: BuildArgs) -> Result<()> {
         };
 
         program.ptr
-    } else if let Some(ptr) = unit.main(&mut ctx, &mut allocator, &path)? {
+    } else if let Some(ptr) = tree.main(&mut ctx, &mut allocator, &path)? {
         ptr
     } else {
         eprintln!(
@@ -144,7 +144,7 @@ fn test(args: TestArgs) -> Result<()> {
     let mut ctx = Compiler::new(CompilerOptions::debug());
 
     let path = Path::new(&args.file);
-    let unit = CompilationUnit::new(&mut ctx, path)?;
+    let tree = FileTree::compile_path(&mut ctx, path)?;
 
     let mut codegen = true;
 
@@ -164,7 +164,7 @@ fn test(args: TestArgs) -> Result<()> {
         process::exit(1);
     }
 
-    let tests = unit.tests(&mut ctx, &mut allocator, None, None)?;
+    let tests = tree.tests(&mut ctx, &mut allocator, None, None)?;
 
     let len = tests.len();
 

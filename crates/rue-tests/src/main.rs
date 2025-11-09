@@ -5,21 +5,17 @@ use std::process;
 
 use anyhow::Result;
 use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
-use clvmr::ChiaDialect;
-use clvmr::ENABLE_KECCAK_OPS_OUTSIDE_GUARD;
-use clvmr::MEMPOOL_MODE;
-use clvmr::NodePtr;
 use clvmr::error::EvalErr;
-use clvmr::{Allocator, run_program, serde::node_to_bytes};
-use rue_compiler::CompilationUnit;
-use rue_compiler::Compiler;
-use rue_diagnostic::DiagnosticSeverity;
-use rue_diagnostic::SourceKind;
+use clvmr::{
+    Allocator, ChiaDialect, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, MEMPOOL_MODE, NodePtr, run_program,
+    serde::node_to_bytes,
+};
+use rue_compiler::{Compiler, FileTree};
+use rue_diagnostic::{DiagnosticSeverity, SourceKind};
 use rue_lir::DebugDialect;
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
-use walkdir::DirEntry;
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -148,8 +144,8 @@ fn handle_test_file(name: &str, entry: &DirEntry, failed: &mut bool, update: boo
     let mut ctx = Compiler::new(CompilerOptions::default());
     let mut debug_ctx = Compiler::new(CompilerOptions::debug());
 
-    let unit = CompilationUnit::single_file(&mut ctx, &rue_file, "test".to_string())?;
-    let debug_unit = CompilationUnit::single_file(&mut debug_ctx, &rue_file, "test".to_string())?;
+    let unit = FileTree::compile_file(&mut ctx, &rue_file, "test".to_string())?;
+    let debug_unit = FileTree::compile_file(&mut debug_ctx, &rue_file, "test".to_string())?;
     let kind = SourceKind::File("test".to_string());
 
     file.diagnostics = Vec::new();

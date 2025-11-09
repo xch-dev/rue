@@ -7,6 +7,7 @@ use std::{
 };
 
 use rowan::{TextRange, TextSize};
+use rue_ast::AstNode;
 use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SourceKind, SrcLoc};
 use rue_hir::{
     Builtins, Constraint, Database, Declaration, ImportId, Scope, ScopeId, Symbol, SymbolId,
@@ -16,7 +17,7 @@ use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, CheckError, Comparison, Type, TypeId};
 
-use crate::{SyntaxItem, SyntaxItemKind, SyntaxMap};
+use crate::{File, FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
@@ -52,7 +53,7 @@ impl Compiler {
 
         let builtins = Builtins::new(&mut db);
 
-        Self {
+        let mut ctx = Self {
             options,
             source: Source::new(Arc::from(""), SourceKind::Std),
             diagnostics: Vec::new(),
@@ -63,7 +64,38 @@ impl Compiler {
             defaults: HashMap::new(),
             declaration_stack: Vec::new(),
             registered_scopes: HashSet::new(),
+        };
+
+        let std = File::std(&mut ctx);
+        let tree = FileTree::File(std.clone());
+        tree.compile_impl(&mut ctx, false);
+        let std_scope = std.module(&ctx).scope;
+
+        let prelude = ctx.alloc_child_scope();
+
+        for (name, symbol) in ctx
+            .scope(std_scope)
+            .exported_symbols()
+            .map(|(name, symbol)| (name.to_string(), symbol))
+            .collect::<Vec<_>>()
+        {
+            ctx.scope_mut(prelude)
+                .insert_symbol(name.to_string(), symbol, false);
         }
+
+        for (name, ty) in ctx
+            .scope(std_scope)
+            .exported_types()
+            .map(|(name, ty)| (name.to_string(), ty))
+            .collect::<Vec<_>>()
+        {
+            ctx.scope_mut(prelude)
+                .insert_type(name.to_string(), ty, false);
+        }
+
+        ctx.push_scope(prelude, std.document.syntax().text_range().start());
+
+        ctx
     }
 
     pub fn source(&self) -> &Source {
@@ -75,14 +107,11 @@ impl Compiler {
     }
 
     pub fn set_source(&mut self, source: Source) {
-        self.syntax_maps
-            .entry(source.kind.clone())
-            .or_default()
-            .add_item(SyntaxItem::new(
-                SyntaxItemKind::Scope(self.builtins.scope),
-                TextRange::new(TextSize::from(0), TextSize::from(source.text.len() as u32)),
-            ));
         self.source = source;
+    }
+
+    pub fn scope_stack(&self) -> Vec<ScopeId> {
+        self.scope_stack.iter().map(|(_, scope)| *scope).collect()
     }
 
     pub fn syntax_map(&self, source_kind: &SourceKind) -> Option<&SyntaxMap> {
@@ -136,16 +165,6 @@ impl Compiler {
             SyntaxItemKind::Scope(scope),
             TextRange::new(start, end),
         ));
-    }
-
-    pub fn push_scope_raw(&mut self, scope: ScopeId) {
-        assert!(self.registered_scopes.contains(&scope));
-        self.scope_stack.push((TextSize::from(0), scope));
-    }
-
-    pub fn pop_scope_raw(&mut self) {
-        assert!(self.registered_scopes.contains(&self.last_scope_id()));
-        self.pop_scope(TextSize::from(0));
     }
 
     pub fn last_scope(&self) -> &Scope {

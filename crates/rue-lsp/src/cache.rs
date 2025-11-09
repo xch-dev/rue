@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use indexmap::IndexSet;
 use rowan::{TextRange, TextSize};
-use rue_compiler::{CompilationUnit, Compiler, CompletionContext, SyntaxItemKind, SyntaxMap};
+use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItemKind, SyntaxMap};
 use rue_diagnostic::{LineCol, Source};
 use rue_hir::{ScopeId, Symbol, SymbolId};
 use rue_types::{Type, TypeId};
@@ -45,21 +45,16 @@ pub struct FieldHoverInfo {
 #[derive(Debug, Clone)]
 pub struct Cache {
     ctx: Compiler,
-    unit: CompilationUnit,
+    tree: FileTree,
     source: Source,
     syntax_map: SyntaxMap,
 }
 
 impl Cache {
-    pub fn new(
-        ctx: Compiler,
-        unit: CompilationUnit,
-        source: Source,
-        syntax_map: SyntaxMap,
-    ) -> Self {
+    pub fn new(ctx: Compiler, tree: FileTree, source: Source, syntax_map: SyntaxMap) -> Self {
         Self {
             ctx,
-            unit,
+            tree,
             source,
             syntax_map,
         }

@@ -7,7 +7,6 @@ use cache::Cache;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use rue_compiler::analyze_file;
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
 use send_wrapper::SendWrapper;
