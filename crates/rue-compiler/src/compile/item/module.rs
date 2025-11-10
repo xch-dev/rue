@@ -22,8 +22,10 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
     declare_module_items(ctx, module.items(), &mut declarations);
     ctx.pop_scope(range.end());
 
+    let name = module.name().map(|name| ctx.local_name(&name));
+
     let symbol = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
-        name: module.name(),
+        name,
         scope,
         declarations,
     }));

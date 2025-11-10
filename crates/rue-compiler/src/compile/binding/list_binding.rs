@@ -38,11 +38,8 @@ pub fn create_list_binding(ctx: &mut Compiler, symbol: SymbolId, list_binding: &
 
         let (first_value, rest_value) = compile_pair_fields(ctx, binding.syntax(), &reference);
 
-        let source = ctx.source().clone();
-
         let first_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
             name: None,
-            source: source.clone(),
             value: first_value,
             inline: true,
         }));
@@ -53,7 +50,6 @@ pub fn create_list_binding(ctx: &mut Compiler, symbol: SymbolId, list_binding: &
 
         let rest_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
             name: None,
-            source,
             value: rest_value.clone(),
             inline: true,
         }));

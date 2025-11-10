@@ -33,25 +33,22 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
             if !visited.insert(current) {
                 if let Declaration::Symbol(current_symbol) = current
                     && current_symbol == symbol
-                    && let Some(name) = ctx.symbol(symbol).clone().name()
+                    && let Some(name) = ctx.symbol(symbol).name()
                 {
                     if let Symbol::Function(FunctionSymbol {
                         kind: FunctionKind::Inline,
-                        source,
                         ..
                     }) = ctx.symbol(symbol).clone()
                     {
-                        ctx.set_source(source);
-                        ctx.diagnostic(
-                            name,
+                        ctx.diagnostic_name(
+                            &name,
                             DiagnosticKind::RecursiveInlineFunction(name.text().to_string()),
                         );
-                    } else if let Symbol::Constant(ConstantSymbol { source, .. }) =
+                    } else if let Symbol::Constant(ConstantSymbol { .. }) =
                         ctx.symbol(symbol).clone()
                     {
-                        ctx.set_source(source);
-                        ctx.diagnostic(
-                            name,
+                        ctx.diagnostic_name(
+                            &name,
                             DiagnosticKind::RecursiveConstant(name.text().to_string()),
                         );
                     }
@@ -142,7 +139,6 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
             .collect::<HashSet<_>>();
 
         let import = ctx.import(import);
-        let source = import.source.clone();
 
         if import.exported {
             continue;
@@ -152,8 +148,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
             Items::All(star) => {
                 let star = star.clone();
                 if !import.declarations.is_empty() && references.is_empty() {
-                    ctx.set_source(source.clone());
-                    ctx.diagnostic(&star, DiagnosticKind::UnusedGlobImport);
+                    ctx.diagnostic_name(&star, DiagnosticKind::UnusedGlobImport);
                 }
                 continue;
             }
@@ -172,12 +167,8 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
             }
         }
 
-        for token in unused {
-            ctx.set_source(source.clone());
-            ctx.diagnostic(
-                &token,
-                DiagnosticKind::UnusedImport(token.text().to_string()),
-            );
+        for name in unused {
+            ctx.diagnostic_name(&name, DiagnosticKind::UnusedImport(name.text().to_string()));
         }
     }
 
@@ -185,57 +176,49 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
         match declaration {
             Declaration::Symbol(symbol) => match ctx.symbol(symbol).clone() {
                 Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => {}
-                Symbol::Function(FunctionSymbol { name, source, .. }) => {
+                Symbol::Function(FunctionSymbol { name, .. }) => {
                     if let Some(name) = name {
                         if name.text().starts_with('_') {
                             continue;
                         }
 
-                        ctx.set_source(source);
-
-                        ctx.diagnostic(
+                        ctx.diagnostic_name(
                             &name,
                             DiagnosticKind::UnusedFunction(name.text().to_string()),
                         );
                     }
                 }
-                Symbol::Binding(BindingSymbol { name, source, .. }) => {
+                Symbol::Binding(BindingSymbol { name, .. }) => {
                     if let Some(name) = name {
                         if name.text().starts_with('_') {
                             continue;
                         }
 
-                        ctx.set_source(source);
-
-                        ctx.diagnostic(
+                        ctx.diagnostic_name(
                             &name,
                             DiagnosticKind::UnusedBinding(name.text().to_string()),
                         );
                     }
                 }
-                Symbol::Constant(ConstantSymbol { name, source, .. }) => {
+                Symbol::Constant(ConstantSymbol { name, .. }) => {
                     if let Some(name) = name {
                         if name.text().starts_with('_') {
                             continue;
                         }
 
-                        ctx.set_source(source);
-
-                        ctx.diagnostic(
+                        ctx.diagnostic_name(
                             &name,
                             DiagnosticKind::UnusedConstant(name.text().to_string()),
                         );
                     }
                 }
-                Symbol::Parameter(ParameterSymbol { name, source, .. }) => {
+                Symbol::Parameter(ParameterSymbol { name, .. }) => {
                     if let Some(name) = name {
                         if name.text().starts_with('_') {
                             continue;
                         }
 
-                        ctx.set_source(source);
-
-                        ctx.diagnostic(
+                        ctx.diagnostic_name(
                             &name,
                             DiagnosticKind::UnusedParameter(name.text().to_string()),
                         );
@@ -244,46 +227,37 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
             },
             Declaration::Type(ty) => match ctx.ty(ty).clone() {
                 Type::Generic(Generic {
-                    name: Some(name),
-                    source,
-                    ..
+                    name: Some(name), ..
                 }) => {
                     if name.text().starts_with('_') {
                         continue;
                     }
 
-                    ctx.set_source(source);
-
-                    ctx.diagnostic(
+                    ctx.diagnostic_name(
                         &name,
                         DiagnosticKind::UnusedGenericType(name.text().to_string()),
                     );
                 }
                 Type::Struct(Struct {
-                    name: Some(name),
-                    source,
-                    ..
+                    name: Some(name), ..
                 }) => {
                     if name.text().starts_with('_') {
                         continue;
                     }
 
-                    ctx.set_source(source);
-
-                    ctx.diagnostic(&name, DiagnosticKind::UnusedStruct(name.text().to_string()));
+                    ctx.diagnostic_name(
+                        &name,
+                        DiagnosticKind::UnusedStruct(name.text().to_string()),
+                    );
                 }
                 Type::Alias(Alias {
-                    name: Some(name),
-                    source,
-                    ..
+                    name: Some(name), ..
                 }) => {
                     if name.text().starts_with('_') {
                         continue;
                     }
 
-                    ctx.set_source(source);
-
-                    ctx.diagnostic(
+                    ctx.diagnostic_name(
                         &name,
                         DiagnosticKind::UnusedTypeAlias(name.text().to_string()),
                     );

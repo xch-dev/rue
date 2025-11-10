@@ -8,7 +8,7 @@ use std::{
 
 use rowan::{TextRange, TextSize};
 use rue_ast::AstNode;
-use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SourceKind, SrcLoc};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, Name, Source, SourceKind, SrcLoc};
 use rue_hir::{
     Builtins, Constraint, Database, Declaration, ImportId, Scope, ScopeId, Symbol, SymbolId,
     TypePath, Value, replace_type,
@@ -137,12 +137,29 @@ impl Compiler {
     }
 
     pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
+        let srcloc = self.srcloc(node);
+        self.diagnostic_at(srcloc, kind);
+    }
+
+    pub fn diagnostic_name(&mut self, name: &Name, kind: DiagnosticKind) {
+        if let Some(srcloc) = name.srcloc().cloned() {
+            self.diagnostic_at(srcloc, kind);
+        }
+    }
+
+    pub fn diagnostic_at(&mut self, srcloc: SrcLoc, kind: DiagnosticKind) {
+        self.diagnostics.push(Diagnostic::new(srcloc, kind));
+    }
+
+    pub fn srcloc(&self, node: &impl GetTextRange) -> SrcLoc {
         let range = node.text_range();
         let span: Range<usize> = range.start().into()..range.end().into();
-        self.diagnostics.push(Diagnostic::new(
-            SrcLoc::new(self.source.clone(), span),
-            kind,
-        ));
+        SrcLoc::new(self.source.clone(), span)
+    }
+
+    pub fn local_name(&self, token: &SyntaxToken) -> Name {
+        let srcloc = self.srcloc(token);
+        Name::new(token.text().to_string(), Some(srcloc))
     }
 
     pub fn extend_diagnostics(&mut self, diagnostics: Vec<Diagnostic>) {
@@ -252,22 +269,10 @@ impl Compiler {
             current = self.scope(scope).parent();
         }
 
-        match self.symbol(symbol) {
-            Symbol::Binding(binding) => binding.name.as_ref().map(|name| name.text().to_string()),
-            Symbol::Constant(constant) => {
-                constant.name.as_ref().map(|name| name.text().to_string())
-            }
-            Symbol::Function(function) => {
-                function.name.as_ref().map(|name| name.text().to_string())
-            }
-            Symbol::Module(module) => module.name.as_ref().map(|name| name.text().to_string()),
-            Symbol::Builtin(builtin) => Some(builtin.to_string()),
-            Symbol::Parameter(parameter) => {
-                parameter.name.as_ref().map(|name| name.text().to_string())
-            }
-            Symbol::Unresolved => None,
-        }
-        .unwrap_or("{unknown}".to_string())
+        self.symbol(symbol)
+            .name()
+            .map_or_else(|| "{unknown}".to_string(), |name| name.text().to_string())
+            .to_string()
     }
 
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {

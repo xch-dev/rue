@@ -189,24 +189,10 @@ impl Database {
     }
 
     pub fn debug_symbol(&self, id: SymbolId) -> String {
-        let name = match self.symbol(id) {
-            Symbol::Unresolved => None,
-            Symbol::Module(module) => module.name.as_ref().map(|name| name.text().to_string()),
-            Symbol::Function(function) => {
-                function.name.as_ref().map(|name| name.text().to_string())
-            }
-            Symbol::Builtin(builtin) => Some(format!("{builtin:?}")),
-            Symbol::Parameter(parameter) => {
-                parameter.name.as_ref().map(|name| name.text().to_string())
-            }
-            Symbol::Constant(constant) => {
-                constant.name.as_ref().map(|name| name.text().to_string())
-            }
-            Symbol::Binding(binding) => binding.name.as_ref().map(|name| name.text().to_string()),
-        };
+        let name = self.symbol(id).name();
 
         if let Some(name) = name {
-            format!("{}<{}>", name.replace('"', ""), id.index())
+            format!("{}<{}>", name.text(), id.index())
         } else {
             format!("<{}>", id.index())
         }

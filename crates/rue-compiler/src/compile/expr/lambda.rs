@@ -71,13 +71,7 @@ pub fn compile_lambda_expr(
             ctx.builtins().unresolved.ty
         };
 
-        let source = ctx.source().clone();
-
-        let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol {
-            name: None,
-            source,
-            ty,
-        }));
+        let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }));
 
         if let Some(binding) = param.binding() {
             create_binding(ctx, symbol, &binding);
@@ -114,11 +108,8 @@ pub fn compile_lambda_expr(
 
     ctx.pop_scope(range.end());
 
-    let source = ctx.source().clone();
-
     let symbol = ctx.alloc_symbol(Symbol::Function(FunctionSymbol {
         name: None,
-        source,
         ty,
         scope,
         vars,

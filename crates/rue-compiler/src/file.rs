@@ -5,7 +5,7 @@ use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet, indexset};
 use rowan::{TextRange, TextSize};
 use rue_ast::{AstDocument, AstNode};
-use rue_diagnostic::{Source, SourceKind};
+use rue_diagnostic::{Name, Source, SourceKind};
 use rue_hir::{
     Declaration, DependencyGraph, Environment, Lowerer, ModuleDeclarations, ModuleSymbol, Scope,
     ScopeId, Symbol, SymbolId,
@@ -111,7 +111,7 @@ impl FileTree {
             let scope = ctx.alloc_child_scope();
 
             let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
-                name: None,
+                name: Some(Name::new(file_name.as_str(), None)),
                 scope,
                 declarations: ModuleDeclarations::default(),
             }));
@@ -390,7 +390,7 @@ impl File {
         let scope = ctx.alloc_scope(Scope::new(Some(sibling_scope)));
 
         let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
-            name: None,
+            name: Some(Name::new(name.as_str(), None)),
             scope,
             declarations: ModuleDeclarations::default(),
         }));

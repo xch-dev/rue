@@ -43,11 +43,8 @@ pub fn create_struct_binding(
             }
         };
 
-        let source = ctx.source().clone();
-
         let binding_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
             name: None,
-            source,
             value,
             inline: true,
         }));
@@ -57,7 +54,7 @@ pub fn create_struct_binding(
         if let Some(binding) = field.binding() {
             create_binding(ctx, binding_symbol, &binding);
         } else {
-            create_binding_for_identifier(ctx, binding_symbol, name);
+            create_binding_for_identifier(ctx, binding_symbol, &name);
         }
 
         ctx.pop_declaration();
