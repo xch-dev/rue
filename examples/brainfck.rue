@@ -1,0 +1,226 @@
+struct Program {
+    state: State,
+    source: String,
+}
+
+struct State {
+    tape: Tape,
+    input: String,
+    output: String,
+}
+
+struct Tape {
+    value: Int,
+    left: List<Int>,
+    right: List<Int>,
+}
+
+fn eval(program: Program) -> Program {
+    if program.source == "" {
+        program
+    } else {
+        eval(step(program))
+    }
+}
+
+fn step(program: Program) -> Program {
+    inline let { state, source } = program;
+
+    let char = substr(source, 0, 1);
+    let source = substr(source, 1);
+
+    if char == "+" {
+        Program {
+            state: increment(state),
+            source,
+        }
+    } else if char == "-" {
+        Program {
+            state: decrement(state),
+            source,
+        }
+    } else if char == "<" {
+        Program {
+            state: move_left(state),
+            source,
+        }
+    } else if char == ">" {
+        Program {
+            state: move_right(state),
+            source,
+        }
+    } else if char == "," {
+        Program {
+            state: input(state),
+            source,
+        }
+    } else if char == "." {
+        Program {
+            state: output(state),
+            source,
+        }
+    } else if char == "[" {
+        let length = block_length(source, 1);
+        let block = substr(source, 0, length);
+        let source = substr(source, length);
+
+        Program {
+            state: loop(state, block),
+            source,
+        }
+    } else {
+        Program { state, source }
+    }
+}
+
+fn loop(state: State, block: String) -> State {
+    if state.tape.value == 0 {
+        state
+    } else {
+        loop(eval(Program { state, source: block }).state, block)
+    }
+}
+
+fn block_length(source: String, depth: Int) -> Int {
+    if source == "" {
+        return 0;
+    }
+
+    let char = substr(source, 0, 1);
+    let rest = substr(source, 1);
+
+    1 + if char == "[" {
+        block_length(rest, depth + 1)
+    } else if char == "]" {
+        if depth == 1 {
+            0
+        } else {
+            block_length(rest, depth - 1)
+        }
+    } else {
+        block_length(rest, depth)
+    }
+}
+
+inline fn update(state: State, tape: Tape) -> State {
+    inline let { input, output } = state;
+
+    State { tape, input, output }
+}
+
+inline fn increment(state: State) -> State {
+    inline let { tape } = state;
+
+    update(state, Tape {
+        value: tape.value + 1,
+        left: tape.left,
+        right: tape.right,
+    })
+}
+
+inline fn decrement(state: State) -> State {
+    inline let { tape } = state;
+
+    update(state, Tape {
+        value: tape.value - 1,
+        left: tape.left,
+        right: tape.right,
+    })
+}
+
+inline fn move_left(state: State) -> State {
+    inline let { tape } = state;
+
+    if tape.left is nil {
+        update(state, Tape {
+            value: 0,
+            left: nil,
+            right: (tape.value, tape.right),
+        })
+    } else {
+        update(state, Tape {
+            value: tape.left.first,
+            left: tape.left.rest,
+            right: (tape.value, tape.right),
+        })
+    }
+}
+
+inline fn move_right(state: State) -> State {
+    inline let { tape } = state;
+
+    if tape.right is nil {
+        update(state, Tape {
+            value: 0,
+            left: (tape.value, tape.left),
+            right: nil,
+        })
+    } else {
+        update(state, Tape {
+            value: tape.right.first,
+            left: (tape.value, tape.left),
+            right: tape.right.rest,
+        })
+    }
+}
+
+inline fn output(state: State) -> State {
+    inline let { tape, input, output } = state;
+
+    State {
+        tape,
+        input,
+        output: output + tape.value as String,
+    }
+}
+
+inline fn input(state: State) -> State {
+    inline let { tape, input, output } = state;
+
+    State {
+        tape: Tape {
+            value: substr(input, 0, 1) as Int,
+            left: tape.left,
+            right: tape.right,
+        },
+        input: substr(input, 1),
+        output,
+    }
+}
+
+inline fn run(source: String, input: String) -> String {
+    let program = Program {
+        state: State {
+            tape: Tape {
+                value: 0,
+                left: nil,
+                right: nil,
+            },
+            input,
+            output: "",
+        },
+        source,
+    };
+
+    let output = eval(program).state.output;
+
+    debug "run(`" + source + "`, `" + input + "`) = `" + output + "`";
+
+    output
+}
+
+fn repeat(string: String, times: Int) -> String {
+    if times > 0 {
+        string + repeat(string, times - 1)
+    } else {
+        ""
+    }
+}
+
+test fn abc() -> String {
+    run(repeat("+", 65) + ".+.+.", "")
+}
+
+test fn alphabet() -> String {
+    run(">" + repeat("+", 65) + "<" + repeat("+", 26) + "[->.+<]", "")
+}
