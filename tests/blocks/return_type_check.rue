@@ -1,0 +1,5 @@
+test fn incorrect_return_type() {
+    if 1 == 1 {
+        return 42;
+    }
+}
