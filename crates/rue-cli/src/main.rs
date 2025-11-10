@@ -1,4 +1,4 @@
-use std::{path::Path, process};
+use std::{collections::HashMap, path::Path, process};
 
 use anyhow::Result;
 use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
@@ -78,6 +78,7 @@ fn build(args: BuildArgs) -> Result<()> {
         } else {
             path
         },
+        &mut HashMap::new(),
     )?;
     let path = normalize_path(path)?;
 
@@ -144,7 +145,7 @@ fn test(args: TestArgs) -> Result<()> {
     let mut ctx = Compiler::new(CompilerOptions::debug());
 
     let path = Path::new(&args.file);
-    let tree = FileTree::compile_path(&mut ctx, path)?;
+    let tree = FileTree::compile_path(&mut ctx, path, &mut HashMap::new())?;
 
     let mut codegen = true;
 

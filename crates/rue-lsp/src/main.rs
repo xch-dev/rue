@@ -4,6 +4,7 @@ mod cache;
 
 use cache::Cache;
 use rue_compiler::{Compiler, FileTree, normalize_path};
+use rue_diagnostic::SourceKind;
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
@@ -15,11 +16,11 @@ use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, InitializedParams, LanguageString, Location, MarkedString,
-    MessageType, OneOf, Position, Range, ReferenceParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, LanguageString,
+    Location, MarkedString, MessageType, OneOf, Position, Range, ReferenceParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -34,6 +35,7 @@ pub struct Manifest {
 struct Backend {
     client: Client,
     cache: Mutex<HashMap<Url, SendWrapper<Cache>>>,
+    file_cache: Mutex<HashMap<SourceKind, String>>,
 }
 
 #[tower_lsp::async_trait]
@@ -73,11 +75,19 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.on_change(params.text_document.uri).await;
+        self.on_change(params.text_document.uri, None).await;
+    }
+
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+        self.on_change(
+            params.text_document.uri,
+            Some(params.content_changes[0].text.clone()),
+        )
+        .await;
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        self.on_change(params.text_document.uri).await;
+        self.on_change(params.text_document.uri, None).await;
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -105,19 +115,28 @@ impl LanguageServer for Backend {
 }
 
 impl Backend {
-    async fn on_change(&self, uri: Url) {
-        let diagnostics = self.on_change_impl(&uri);
+    async fn on_change(&self, uri: Url, text: Option<String>) {
+        let diagnostics = self.on_change_impl(&uri, text);
         self.client
             .publish_diagnostics(uri, diagnostics, None)
             .await;
     }
 
-    fn on_change_impl(&self, uri: &Url) -> Vec<Diagnostic> {
+    fn on_change_impl(&self, uri: &Url, text: Option<String>) -> Vec<Diagnostic> {
         let mut ctx = Compiler::new(CompilerOptions::default());
 
         let mut path = uri.to_file_path().unwrap();
 
         let source_kind = normalize_path(&path).unwrap();
+
+        if let Some(text) = text {
+            self.file_cache
+                .lock()
+                .unwrap()
+                .insert(source_kind.clone(), text);
+        } else {
+            self.file_cache.lock().unwrap().remove(&source_kind);
+        }
 
         let mut manifest_path = path.clone();
 
@@ -151,7 +170,11 @@ impl Backend {
             break;
         }
 
-        let tree = FileTree::compile_path(&mut ctx, &path).unwrap();
+        let mut file_cache = self.file_cache.lock().unwrap();
+
+        let tree = FileTree::compile_path(&mut ctx, &path, &mut file_cache).unwrap();
+
+        drop(file_cache);
 
         let diagnostics = ctx
             .take_diagnostics()
@@ -307,6 +330,7 @@ async fn main() {
     let (service, socket) = LspService::new(|client| Backend {
         client,
         cache: Mutex::new(HashMap::new()),
+        file_cache: Mutex::new(HashMap::new()),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }

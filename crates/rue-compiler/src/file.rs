@@ -1,4 +1,9 @@
-use std::{collections::HashSet, fs, io, path::Path, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fs, io,
+    path::Path,
+    sync::Arc,
+};
 
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
@@ -69,8 +74,12 @@ impl FileTree {
         Ok(tree)
     }
 
-    pub fn compile_path(ctx: &mut Compiler, path: &Path) -> Result<Self, Error> {
-        let tree = Self::try_from_path(ctx, path, None)?
+    pub fn compile_path(
+        ctx: &mut Compiler,
+        path: &Path,
+        cache: &mut HashMap<SourceKind, String>,
+    ) -> Result<Self, Error> {
+        let tree = Self::try_from_path(ctx, path, None, cache)?
             .ok_or(io::Error::other("Invalid file extension"))?;
 
         tree.compile(ctx);
@@ -82,6 +91,7 @@ impl FileTree {
         ctx: &mut Compiler,
         path: &Path,
         parent: Option<SymbolId>,
+        cache: &mut HashMap<SourceKind, String>,
     ) -> Result<Option<Self>, Error> {
         let file_name = path
             .file_name()
@@ -93,9 +103,15 @@ impl FileTree {
             .to_string();
 
         if fs::metadata(path)?.is_file() {
-            let text = fs::read_to_string(path)?;
+            let source_kind = normalize_path(path)?;
 
-            let source = Source::new(Arc::from(text), normalize_path(path)?);
+            let text = if let Some(text) = cache.get(&source_kind) {
+                text.clone()
+            } else {
+                fs::read_to_string(path)?
+            };
+
+            let source = Source::new(Arc::from(text), source_kind);
 
             #[allow(clippy::case_sensitive_file_extension_comparisons)]
             if !file_name.ends_with(".rue") {
@@ -121,7 +137,7 @@ impl FileTree {
             for entry in fs::read_dir(path)? {
                 let entry = entry?;
                 let path = entry.path();
-                let tree = Self::try_from_path(ctx, &path, Some(module))?;
+                let tree = Self::try_from_path(ctx, &path, Some(module), cache)?;
                 children.extend(tree);
             }
 
@@ -152,6 +168,17 @@ impl FileTree {
                 .children
                 .iter()
                 .flat_map(Self::all_modules)
+                .collect(),
+        }
+    }
+
+    pub fn all_files(&self) -> Vec<SourceKind> {
+        match self {
+            Self::File(file) => vec![file.source.kind.clone()],
+            Self::Directory(directory) => directory
+                .children
+                .iter()
+                .flat_map(Self::all_files)
                 .collect(),
         }
     }
