@@ -542,7 +542,7 @@ impl Cache {
 
     fn type_name(&self, scopes: &Scopes, ty: TypeId) -> String {
         for &scope in &scopes.0 {
-            let scope = self.ctx.scope(scope);
+            let scope = self.ctx.scope(scope).clone();
 
             if let Some(name) = scope.type_name(ty) {
                 return name.to_string();
@@ -559,7 +559,7 @@ impl Cache {
 
     fn symbol_name(&self, scopes: &Scopes, symbol: SymbolId) -> Option<String> {
         for &scope in &scopes.0 {
-            let scope = self.ctx.scope(scope);
+            let scope = self.ctx.scope(scope).clone();
 
             if let Some(name) = scope.symbol_name(symbol) {
                 return Some(name.to_string());
@@ -574,7 +574,7 @@ impl Cache {
 
     fn symbol_type(&self, scopes: &Scopes, symbol: SymbolId) -> TypeId {
         for &scope in &scopes.0 {
-            let scope = self.ctx.scope(scope);
+            let scope = self.ctx.scope(scope).clone();
 
             if let Some(ty) = scope.symbol_override_type(symbol) {
                 return ty;

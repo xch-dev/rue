@@ -3,6 +3,7 @@
 mod cache;
 
 use cache::Cache;
+use indexmap::IndexMap;
 use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::SourceKind;
 use serde::{Deserialize, Serialize};
@@ -117,12 +118,25 @@ impl LanguageServer for Backend {
 impl Backend {
     async fn on_change(&self, uri: Url, text: Option<String>) {
         let diagnostics = self.on_change_impl(&uri, text);
-        self.client
-            .publish_diagnostics(uri, diagnostics, None)
-            .await;
+
+        for (kind, diagnostics) in diagnostics {
+            let SourceKind::File(path) = kind else {
+                continue;
+            };
+
+            let uri = Url::from_file_path(path).unwrap();
+
+            self.client
+                .publish_diagnostics(uri, diagnostics, None)
+                .await;
+        }
     }
 
-    fn on_change_impl(&self, uri: &Url, text: Option<String>) -> Vec<Diagnostic> {
+    fn on_change_impl(
+        &self,
+        uri: &Url,
+        text: Option<String>,
+    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
         let mut ctx = Compiler::new(CompilerOptions::default());
 
         let mut path = uri.to_file_path().unwrap();
@@ -176,22 +190,31 @@ impl Backend {
 
         drop(file_cache);
 
-        let diagnostics = ctx
-            .take_diagnostics()
-            .iter()
-            .filter(|diagnostic| diagnostic.srcloc.source.kind == source_kind)
-            .map(diagnostic)
-            .collect();
+        let mut diagnostics = IndexMap::<SourceKind, Vec<Diagnostic>>::new();
 
-        let FileTree::File(file) = tree.find(&source_kind).unwrap() else {
-            unreachable!();
-        };
+        for item in ctx.take_diagnostics() {
+            diagnostics
+                .entry(item.srcloc.source.kind.clone())
+                .or_default()
+                .push(diagnostic(&item));
+        }
 
         let mut cache = self.cache.lock().unwrap();
-        cache.insert(
-            uri.clone(),
-            SendWrapper::new(Cache::new(ctx, file.source.clone())),
-        );
+
+        for file in tree.all_files() {
+            let SourceKind::File(path) = &file.source.kind else {
+                continue;
+            };
+
+            let uri = Url::from_file_path(path).unwrap();
+
+            cache.insert(
+                uri,
+                SendWrapper::new(Cache::new(ctx.clone(), file.source.clone())),
+            );
+
+            diagnostics.entry(file.source.kind.clone()).or_default();
+        }
 
         diagnostics
     }

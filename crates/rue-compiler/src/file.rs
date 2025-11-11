@@ -172,9 +172,9 @@ impl FileTree {
         }
     }
 
-    pub fn all_files(&self) -> Vec<SourceKind> {
+    pub fn all_files(&self) -> Vec<&File> {
         match self {
-            Self::File(file) => vec![file.source.kind.clone()],
+            Self::File(file) => vec![file],
             Self::Directory(directory) => directory
                 .children
                 .iter()
