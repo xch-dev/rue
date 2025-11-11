@@ -1762,7 +1762,6 @@ dependencies = [
  "rue-diagnostic",
  "rue-lir",
  "rue-options",
- "rue-parser",
  "rue-types",
 ]
 
@@ -1811,6 +1810,9 @@ dependencies = [
 [[package]]
 name = "rue-options"
 version = "0.5.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "rue-parser"

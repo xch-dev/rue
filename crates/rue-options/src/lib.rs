@@ -1,3 +1,7 @@
+mod manifest;
+
+pub use manifest::*;
+
 #[derive(Debug, Clone, Copy)]
 pub struct CompilerOptions {
     /// Whether symbols which are only referenced once (including any parameters they have)

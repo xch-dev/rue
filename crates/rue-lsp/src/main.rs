@@ -6,13 +6,12 @@ use cache::Cache;
 use indexmap::IndexMap;
 use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::SourceKind;
-use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex;
 
-use rue_options::CompilerOptions;
+use rue_options::{CompilerOptions, Manifest};
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
@@ -26,11 +25,6 @@ use tower_lsp::lsp_types::{
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use crate::cache::HoverInfo;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Manifest {
-    pub entrypoint: String,
-}
 
 #[derive(Debug)]
 struct Backend {
