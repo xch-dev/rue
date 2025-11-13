@@ -109,15 +109,27 @@ fn build(args: BuildArgs) -> Result<()> {
         process::exit(1);
     };
 
+    if project.manifest.is_some_and(|manifest| {
+        manifest
+            .compiler
+            .version
+            .is_some_and(|version| version != env!("CARGO_PKG_VERSION"))
+    }) {
+        eprintln!("{}", "Project version mismatch".red().bold());
+        process::exit(1);
+    }
+
     let file_kind = args
         .file
         .map(|file| normalize_path(Path::new(&file)))
         .transpose()?;
 
     let main_kind = if let Some(file_kind) = &file_kind {
-        file_kind.clone()
+        Some(file_kind.clone())
+    } else if project.entrypoint.join("main.rue").exists() {
+        Some(normalize_path(&project.entrypoint.join("main.rue"))?)
     } else {
-        normalize_path(&project.entrypoint.join("main.rue"))?
+        None
     };
 
     let mut ctx = Compiler::new(project.options);
@@ -153,7 +165,9 @@ fn build(args: BuildArgs) -> Result<()> {
         };
 
         program.ptr
-    } else if let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind)? {
+    } else if let Some(main_kind) = main_kind
+        && let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind)?
+    {
         ptr
     } else {
         eprintln!(
