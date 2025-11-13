@@ -144,7 +144,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
             continue;
         }
 
-        let items = match &import.items {
+        let item = match &import.items {
             Items::All(star) => {
                 let star = star.clone();
                 if !import.declarations.is_empty() && references.is_empty() {
@@ -152,18 +152,18 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                 }
                 continue;
             }
-            Items::Named(items) => items,
+            Items::Named(item) => item,
         };
 
         let mut unused = Vec::new();
 
         for (name, declaration) in import.declarations.clone() {
             if !references.contains(&declaration) {
-                let Some(token) = items.iter().find(|item| item.text() == name) else {
+                if item.text() != name {
                     continue;
-                };
+                }
 
-                unused.push(token.clone());
+                unused.push(item.clone());
             }
         }
 

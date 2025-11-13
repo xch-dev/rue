@@ -50,7 +50,7 @@ fn construct_imports(
         vec![ctx.alloc_import(Import {
             source,
             path,
-            items: Items::Named(vec![name]),
+            items: Items::Named(name),
             exported,
             declarations: Vec::new(),
         })]
@@ -336,110 +336,108 @@ fn resolve_import(
                 }
             }
         }
-        Items::Named(items) => {
+        Items::Named(item) => {
             let missing_imports = missing_imports.entry(import_id).or_insert_with(|| {
-                items
-                    .iter()
-                    .map(|item| (item.text().to_string(), item.clone()))
+                [item.clone()]
+                    .into_iter()
+                    .map(|item| (item.text().to_string(), item))
                     .collect()
             });
 
             let unused_imports = unused_imports.entry(import_id).or_insert_with(|| {
-                items
-                    .iter()
-                    .map(|item| (item.text().to_string(), item.clone()))
+                [item.clone()]
+                    .into_iter()
+                    .map(|item| (item.text().to_string(), item))
                     .collect()
             });
 
-            for item in items {
-                let name = item.text();
+            let name = item.text();
 
-                let (symbol, ty) = if let Some(base) = base {
-                    let base = ctx.scope(base);
-                    let symbol = base.symbol(name).filter(|s| base.is_symbol_exported(*s));
-                    let ty = base.ty(name).filter(|t| base.is_type_exported(*t));
-                    (symbol, ty)
-                } else {
-                    let symbol = ctx.resolve_symbol_in(target_scope, name).map(|(s, _)| s);
-                    let ty = ctx.resolve_type_in(target_scope, name).map(|(t, _)| t);
-                    (symbol, ty)
-                };
+            let (symbol, ty) = if let Some(base) = base {
+                let base = ctx.scope(base);
+                let symbol = base.symbol(name).filter(|s| base.is_symbol_exported(*s));
+                let ty = base.ty(name).filter(|t| base.is_type_exported(*t));
+                (symbol, ty)
+            } else {
+                let symbol = ctx.resolve_symbol_in(target_scope, name).map(|(s, _)| s);
+                let ty = ctx.resolve_type_in(target_scope, name).map(|(t, _)| t);
+                (symbol, ty)
+            };
 
-                if let Some(symbol) = symbol {
-                    if diagnostics && let Some(srcloc) = item.srcloc() {
-                        ctx.syntax_map_for_source(source.kind.clone())
-                            .add_item(SyntaxItem::new(
-                                SyntaxItemKind::SymbolReference(symbol),
-                                TextRange::new(
-                                    srcloc.span.start.try_into().unwrap(),
-                                    srcloc.span.end.try_into().unwrap(),
-                                ),
-                            ));
-                    }
-
-                    let target = ctx.scope_mut(target_scope);
-
-                    if target.symbol(name).is_none() {
-                        target.insert_symbol(name.to_string(), symbol, import.exported);
-                        target.add_symbol_import(symbol, import_id);
-                        ctx.import_mut(import_id)
-                            .declarations
-                            .push((name.to_string(), Declaration::Symbol(symbol)));
-                        updated = true;
-                        unused_imports.shift_remove(name);
-                    } else if !target.is_symbol_exported(symbol)
-                        && import.exported
-                        && target.symbol(name) == Some(symbol)
-                    {
-                        target.export_symbol(symbol);
-                        ctx.import_mut(import_id)
-                            .declarations
-                            .push((name.to_string(), Declaration::Symbol(symbol)));
-                        updated = true;
-                        unused_imports.shift_remove(name);
-                    }
+            if let Some(symbol) = symbol {
+                if diagnostics && let Some(srcloc) = item.srcloc() {
+                    ctx.syntax_map_for_source(source.kind.clone())
+                        .add_item(SyntaxItem::new(
+                            SyntaxItemKind::SymbolReference(symbol),
+                            TextRange::new(
+                                srcloc.span.start.try_into().unwrap(),
+                                srcloc.span.end.try_into().unwrap(),
+                            ),
+                        ));
                 }
 
-                if let Some(ty) = ty {
-                    if diagnostics && let Some(srcloc) = item.srcloc() {
-                        ctx.syntax_map_for_source(source.kind.clone())
-                            .add_item(SyntaxItem::new(
-                                SyntaxItemKind::TypeReference(ty),
-                                TextRange::new(
-                                    srcloc.span.start.try_into().unwrap(),
-                                    srcloc.span.end.try_into().unwrap(),
-                                ),
-                            ));
-                    }
+                let target = ctx.scope_mut(target_scope);
 
-                    let target = ctx.scope_mut(target_scope);
-
-                    if target.ty(name).is_none() {
-                        target.insert_type(name.to_string(), ty, import.exported);
-                        target.add_type_import(ty, import_id);
-                        ctx.import_mut(import_id)
-                            .declarations
-                            .push((name.to_string(), Declaration::Type(ty)));
-                        updated = true;
-                        unused_imports.shift_remove(name);
-                    } else if !target.is_type_exported(ty)
-                        && import.exported
-                        && target.ty(name) == Some(ty)
-                    {
-                        target.export_type(ty);
-                        ctx.import_mut(import_id)
-                            .declarations
-                            .push((name.to_string(), Declaration::Type(ty)));
-                        updated = true;
-                        unused_imports.shift_remove(name);
-                    }
-                }
-
-                if symbol.is_some() || ty.is_some() {
-                    missing_imports.shift_remove(name);
-                } else if diagnostics {
+                if target.symbol(name).is_none() {
+                    target.insert_symbol(name.to_string(), symbol, import.exported);
+                    target.add_symbol_import(symbol, import_id);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name.to_string(), Declaration::Symbol(symbol)));
+                    updated = true;
+                    unused_imports.shift_remove(name);
+                } else if !target.is_symbol_exported(symbol)
+                    && import.exported
+                    && target.symbol(name) == Some(symbol)
+                {
+                    target.export_symbol(symbol);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name.to_string(), Declaration::Symbol(symbol)));
+                    updated = true;
                     unused_imports.shift_remove(name);
                 }
+            }
+
+            if let Some(ty) = ty {
+                if diagnostics && let Some(srcloc) = item.srcloc() {
+                    ctx.syntax_map_for_source(source.kind.clone())
+                        .add_item(SyntaxItem::new(
+                            SyntaxItemKind::TypeReference(ty),
+                            TextRange::new(
+                                srcloc.span.start.try_into().unwrap(),
+                                srcloc.span.end.try_into().unwrap(),
+                            ),
+                        ));
+                }
+
+                let target = ctx.scope_mut(target_scope);
+
+                if target.ty(name).is_none() {
+                    target.insert_type(name.to_string(), ty, import.exported);
+                    target.add_type_import(ty, import_id);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name.to_string(), Declaration::Type(ty)));
+                    updated = true;
+                    unused_imports.shift_remove(name);
+                } else if !target.is_type_exported(ty)
+                    && import.exported
+                    && target.ty(name) == Some(ty)
+                {
+                    target.export_type(ty);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name.to_string(), Declaration::Type(ty)));
+                    updated = true;
+                    unused_imports.shift_remove(name);
+                }
+            }
+
+            if symbol.is_some() || ty.is_some() {
+                missing_imports.shift_remove(name);
+            } else if diagnostics {
+                unused_imports.shift_remove(name);
             }
         }
     }

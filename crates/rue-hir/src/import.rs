@@ -17,5 +17,5 @@ pub struct Import {
 #[derive(Debug, Clone)]
 pub enum Items {
     All(Name),
-    Named(Vec<Name>),
+    Named(Name),
 }
