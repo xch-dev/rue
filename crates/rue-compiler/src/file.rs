@@ -87,7 +87,7 @@ impl FileTree {
         Ok(tree)
     }
 
-    pub fn try_from_path(
+    fn try_from_path(
         ctx: &mut Compiler,
         path: &Path,
         parent: Option<SymbolId>,
