@@ -1802,9 +1802,7 @@ dependencies = [
  "rue-options",
  "rue-types",
  "send_wrapper",
- "serde",
  "tokio",
- "toml",
  "tower-lsp",
 ]
 

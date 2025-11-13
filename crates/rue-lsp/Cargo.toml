@@ -25,5 +25,3 @@ tower-lsp = { workspace = true }
 send_wrapper = { workspace = true }
 rowan = { workspace = true }
 indexmap = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-toml = { workspace = true }
