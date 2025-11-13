@@ -1714,6 +1714,7 @@ dependencies = [
  "rue-diagnostic",
  "rue-lir",
  "rue-options",
+ "toml",
 ]
 
 [[package]]
@@ -1812,6 +1813,8 @@ name = "rue-options"
 version = "0.5.0"
 dependencies = [
  "serde",
+ "thiserror 2.0.14",
+ "toml",
 ]
 
 [[package]]

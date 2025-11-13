@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use indexmap::IndexSet;
 use rowan::{TextRange, TextSize};
@@ -43,14 +43,14 @@ pub struct FieldHoverInfo {
 }
 
 #[derive(Debug, Clone)]
-pub struct Cache {
-    ctx: Compiler,
+pub struct Cache<T> {
+    ctx: T,
     source: Source,
     syntax_map: SyntaxMap,
 }
 
-impl Cache {
-    pub fn new(ctx: Compiler, source: Source) -> Self {
+impl Cache<Arc<Compiler>> {
+    pub fn new(ctx: Arc<Compiler>, source: Source) -> Self {
         let syntax_map = ctx.syntax_map(&source.kind).cloned().unwrap_or_default();
 
         Self {
@@ -60,6 +60,16 @@ impl Cache {
         }
     }
 
+    pub fn to_cloned(&self) -> Cache<Compiler> {
+        Cache {
+            ctx: self.ctx.as_ref().clone(),
+            source: self.source.clone(),
+            syntax_map: self.syntax_map.clone(),
+        }
+    }
+}
+
+impl Cache<Compiler> {
     pub fn position(&self, position: Position) -> usize {
         LineCol {
             line: position.line as usize,

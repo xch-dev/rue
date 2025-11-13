@@ -103,6 +103,11 @@ impl FileTree {
             .to_string();
 
         if fs::metadata(path)?.is_file() {
+            #[allow(clippy::case_sensitive_file_extension_comparisons)]
+            if !file_name.ends_with(".rue") {
+                return Ok(None);
+            }
+
             let source_kind = normalize_path(path)?;
 
             let text = if let Some(text) = cache.get(&source_kind) {
@@ -112,11 +117,6 @@ impl FileTree {
             };
 
             let source = Source::new(Arc::from(text), source_kind);
-
-            #[allow(clippy::case_sensitive_file_extension_comparisons)]
-            if !file_name.ends_with(".rue") {
-                return Ok(None);
-            }
 
             Ok(Some(Self::File(File::new(
                 ctx,
@@ -269,9 +269,20 @@ impl FileTree {
         &self,
         ctx: &mut Compiler,
         allocator: &mut Allocator,
-        path: &SourceKind,
+        path: Option<&SourceKind>,
         export_name: Option<&str>,
     ) -> Result<Vec<CompiledExport>, Error> {
+        let Some(path) = path else {
+            return Ok(self
+                .all_files()
+                .iter()
+                .map(|file| self.exports(ctx, allocator, Some(&file.source.kind), export_name))
+                .collect::<Result<Vec<_>, Error>>()?
+                .into_iter()
+                .flatten()
+                .collect());
+        };
+
         let tree = self
             .find(path)
             .ok_or_else(|| Error::SourceNotFound(path.clone()))?;

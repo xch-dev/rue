@@ -8,10 +8,9 @@ use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::SourceKind;
 
 use std::collections::HashMap;
-use std::fs;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use rue_options::{CompilerOptions, Manifest};
+use rue_options::find_project;
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
@@ -29,7 +28,7 @@ use crate::cache::HoverInfo;
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    cache: Mutex<HashMap<Url, SendWrapper<Cache>>>,
+    cache: Mutex<HashMap<Url, SendWrapper<Cache<Arc<Compiler>>>>>,
     file_cache: Mutex<HashMap<SourceKind, String>>,
 }
 
@@ -131,56 +130,24 @@ impl Backend {
         uri: &Url,
         text: Option<String>,
     ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let mut ctx = Compiler::new(CompilerOptions::default());
+        let uri_path = uri.to_file_path().unwrap();
+        let Some(project) = find_project(&uri_path, false).unwrap() else {
+            return IndexMap::new();
+        };
 
-        let mut path = uri.to_file_path().unwrap();
+        let mut ctx = Compiler::new(project.options);
 
-        let source_kind = normalize_path(&path).unwrap();
-
-        if let Some(text) = text {
-            self.file_cache
-                .lock()
-                .unwrap()
-                .insert(source_kind.clone(), text);
-        } else {
-            self.file_cache.lock().unwrap().remove(&source_kind);
-        }
-
-        let mut manifest_path = path.clone();
-
-        loop {
-            if manifest_path.is_file()
-                || !fs::read_dir(&manifest_path)
-                    .map_or(vec![], Iterator::collect)
-                    .into_iter()
-                    .any(|entry| {
-                        let child = entry.unwrap().path();
-                        child.is_file()
-                            && child.file_name().unwrap().to_string_lossy() == "Rue.toml"
-                    })
-            {
-                let Some(parent) = manifest_path.parent() else {
-                    break;
-                };
-                manifest_path = parent.to_path_buf();
-                continue;
-            }
-
-            let manifest = fs::read_to_string(manifest_path.join("Rue.toml")).unwrap();
-            let manifest: Manifest = toml::from_str(&manifest).unwrap();
-
-            let entrypoint = manifest_path.join(manifest.entrypoint);
-
-            if path.starts_with(&entrypoint) {
-                path = entrypoint;
-            }
-
-            break;
-        }
+        let source_kind = normalize_path(&uri_path).unwrap();
 
         let mut file_cache = self.file_cache.lock().unwrap();
 
-        let tree = FileTree::compile_path(&mut ctx, &path, &mut file_cache).unwrap();
+        if let Some(text) = text {
+            file_cache.insert(source_kind.clone(), text);
+        } else {
+            file_cache.remove(&source_kind);
+        }
+
+        let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut file_cache).unwrap();
 
         drop(file_cache);
 
@@ -194,6 +161,8 @@ impl Backend {
         }
 
         let mut cache = self.cache.lock().unwrap();
+
+        let ctx = Arc::new(ctx);
 
         for file in tree.all_files() {
             let SourceKind::File(path) = &file.source.kind else {
@@ -214,8 +183,12 @@ impl Backend {
     }
 
     fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
-        let cache = self.cache.lock().unwrap();
-        let cache = cache.get(&params.text_document_position_params.text_document.uri)?;
+        let cache = self
+            .cache
+            .lock()
+            .unwrap()
+            .get(&params.text_document_position_params.text_document.uri)?
+            .to_cloned();
         let position = cache.position(params.text_document_position_params.position);
 
         let scopes = cache.scopes(position);
@@ -259,8 +232,7 @@ impl Backend {
             .uri
             .clone();
 
-        let cache = self.cache.lock().unwrap();
-        let cache = cache.get(&uri)?;
+        let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position_params.position);
 
         let range = cache.definitions(position);
@@ -282,8 +254,7 @@ impl Backend {
     fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
         let uri = params.text_document_position.text_document.uri.clone();
 
-        let cache = self.cache.lock().unwrap();
-        let cache = cache.get(&uri)?;
+        let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
         let range = cache.references(position);
@@ -303,8 +274,7 @@ impl Backend {
     fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
         let uri = params.text_document_position.text_document.uri.clone();
 
-        let mut cache = self.cache.lock().unwrap();
-        let cache = cache.get_mut(&uri)?;
+        let mut cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
         let scopes = cache.scopes(position);

@@ -1,4 +1,9 @@
-use std::{collections::HashMap, path::Path, process};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    process,
+};
 
 use anyhow::Result;
 use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
@@ -14,18 +19,24 @@ use colored::Colorize;
 use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::DiagnosticSeverity;
 use rue_lir::DebugDialect;
-use rue_options::CompilerOptions;
+use rue_options::{Manifest, find_project};
 
 #[derive(Debug, Parser)]
 pub enum Command {
+    Init(InitArgs),
     Build(BuildArgs),
     Test(TestArgs),
     Debug(DebugArgs),
 }
 
 #[derive(Debug, Parser)]
+pub struct InitArgs {
+    path: Option<String>,
+}
+
+#[derive(Debug, Parser)]
 pub struct BuildArgs {
-    file: String,
+    file: Option<String>,
     #[clap(short, long)]
     export: Option<String>,
     #[clap(short, long)]
@@ -38,7 +49,7 @@ pub struct BuildArgs {
 
 #[derive(Debug, Parser)]
 pub struct TestArgs {
-    file: String,
+    file: Option<String>,
 }
 
 #[derive(Debug, Parser)]
@@ -53,34 +64,65 @@ fn main() -> Result<()> {
     let args = Command::parse();
 
     match args {
+        Command::Init(args) => init(args),
         Command::Build(args) => build(args),
         Command::Test(args) => test(args),
         Command::Debug(args) => debug(args),
     }
 }
 
+fn init(args: InitArgs) -> Result<()> {
+    let path = PathBuf::from(args.path.unwrap_or_else(|| ".".to_string()));
+    let manifest = Manifest::default();
+    let entrypoint_dir = path.join(&manifest.compiler.entrypoint);
+    let manifest_path = path.join("Rue.toml");
+    let main_path = entrypoint_dir.join("main.rue");
+
+    if manifest_path.try_exists()? {
+        eprintln!("{}", "Rue.toml already exists".red().bold());
+        process::exit(1);
+    }
+
+    if main_path.try_exists()? {
+        eprintln!("{}", "main.rue already exists".red().bold());
+        process::exit(1);
+    }
+
+    fs::create_dir_all(entrypoint_dir)?;
+    fs::write(manifest_path, toml::to_string(&manifest)?)?;
+    fs::write(
+        main_path,
+        "fn main() -> String {\n    \"Hello, world!\"\n}\n",
+    )?;
+
+    Ok(())
+}
+
 fn build(args: BuildArgs) -> Result<()> {
     let mut allocator = Allocator::new();
 
-    let mut ctx = Compiler::new(if args.debug {
-        CompilerOptions::debug()
-    } else {
-        CompilerOptions::default()
-    });
+    let search_path = Path::new(args.file.as_deref().unwrap_or("."));
+    let project = find_project(search_path, args.debug)?;
 
-    let path = Path::new(&args.file);
-    let tree = FileTree::compile_path(
-        &mut ctx,
-        if path.is_file()
-            && let Some(parent) = path.parent()
-        {
-            parent
-        } else {
-            path
-        },
-        &mut HashMap::new(),
-    )?;
-    let path = normalize_path(path)?;
+    let Some(project) = project else {
+        eprintln!("{}", "No project found".red().bold());
+        process::exit(1);
+    };
+
+    let file_kind = args
+        .file
+        .map(|file| normalize_path(Path::new(&file)))
+        .transpose()?;
+
+    let main_kind = if let Some(file_kind) = &file_kind {
+        file_kind.clone()
+    } else {
+        normalize_path(&project.entrypoint.join("main.rue"))?
+    };
+
+    let mut ctx = Compiler::new(project.options);
+
+    let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut HashMap::new())?;
 
     let mut codegen = true;
 
@@ -102,7 +144,7 @@ fn build(args: BuildArgs) -> Result<()> {
 
     let program = if let Some(export) = args.export {
         let Some(program) = tree
-            .exports(&mut ctx, &mut allocator, &path, Some(&export))?
+            .exports(&mut ctx, &mut allocator, file_kind.as_ref(), Some(&export))?
             .into_iter()
             .next()
         else {
@@ -111,7 +153,7 @@ fn build(args: BuildArgs) -> Result<()> {
         };
 
         program.ptr
-    } else if let Some(ptr) = tree.main(&mut ctx, &mut allocator, &path)? {
+    } else if let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind)? {
         ptr
     } else {
         eprintln!(
@@ -142,10 +184,18 @@ fn build(args: BuildArgs) -> Result<()> {
 #[allow(clippy::needless_pass_by_value)]
 fn test(args: TestArgs) -> Result<()> {
     let mut allocator = Allocator::new();
-    let mut ctx = Compiler::new(CompilerOptions::debug());
 
-    let path = Path::new(&args.file);
-    let tree = FileTree::compile_path(&mut ctx, path, &mut HashMap::new())?;
+    let search_path = Path::new(args.file.as_deref().unwrap_or("."));
+    let project = find_project(search_path, true)?;
+
+    let Some(project) = project else {
+        eprintln!("{}", "No project found".red().bold());
+        process::exit(1);
+    };
+
+    let mut ctx = Compiler::new(project.options);
+
+    let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut HashMap::new())?;
 
     let mut codegen = true;
 
