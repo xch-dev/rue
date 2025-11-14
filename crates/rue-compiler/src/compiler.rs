@@ -399,7 +399,7 @@ impl Compiler {
         node: &impl GetTextRange,
         from: TypeId,
         to: TypeId,
-        infer: &mut HashMap<TypeId, TypeId>,
+        infer: &mut HashMap<TypeId, Vec<TypeId>>,
     ) {
         self.compare_type(node, from, to, false, Some(infer));
     }
@@ -410,7 +410,7 @@ impl Compiler {
         from: TypeId,
         to: TypeId,
         cast: bool,
-        infer: Option<&mut HashMap<TypeId, TypeId>>,
+        infer: Option<&mut HashMap<TypeId, Vec<TypeId>>>,
     ) {
         let comparison = rue_types::compare_with_inference(
             self.db.types_mut(),
