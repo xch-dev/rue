@@ -175,7 +175,7 @@ fn import_path_segment(p: &mut Parser, first: bool) -> bool {
         }
         p.expect(T!['}']);
         true
-    } else if first && p.at(T![super]) {
+    } else if p.at(T![super]) {
         p.expect(T![super]);
         false
     } else {

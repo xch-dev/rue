@@ -13,8 +13,13 @@ pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
         return;
     };
 
+    let base_scope = ctx.last_scope_id();
+    let module_stack = ctx.parent_module_stack().to_vec();
+
     let imports = construct_imports(
         ctx,
+        base_scope,
+        module_stack,
         Vec::new(),
         &path.segments().collect::<Vec<_>>(),
         import.export().is_some(),
@@ -28,13 +33,33 @@ pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
 
 fn construct_imports(
     ctx: &mut Compiler,
+    mut base_scope: ScopeId,
+    mut module_stack: Vec<SymbolId>,
     mut path: Vec<Name>,
     segments: &[AstImportPathSegment],
     exported: bool,
 ) -> Vec<ImportId> {
+    let mut has_non_super = false;
+
     for segment in segments.iter().take(segments.len() - 1) {
         if let Some(name) = segment.name() {
-            path.push(ctx.local_name(&name));
+            if name.text() == "super" {
+                if has_non_super {
+                    ctx.diagnostic(&name, DiagnosticKind::SuperAfterNamedImport);
+                } else if let Some(module) = module_stack.pop() {
+                    base_scope = ctx.module(module).scope;
+
+                    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+                        SyntaxItemKind::SymbolReference(module),
+                        name.text_range(),
+                    ));
+                } else {
+                    ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
+                }
+            } else {
+                path.push(ctx.local_name(&name));
+                has_non_super = true;
+            }
         }
     }
 
@@ -42,12 +67,19 @@ fn construct_imports(
         return vec![];
     };
 
+    if let Some(name) = last.name()
+        && name.text() == "super"
+    {
+        ctx.diagnostic(&name, DiagnosticKind::SuperAtEnd);
+    }
+
     let source = ctx.source().clone();
 
     if let Some(name) = last.name() {
         let name = ctx.local_name(&name);
 
         vec![ctx.alloc_import(Import {
+            base_scope,
             source,
             path,
             items: Items::Named(name),
@@ -58,6 +90,7 @@ fn construct_imports(
         let star = ctx.local_name(&star);
 
         vec![ctx.alloc_import(Import {
+            base_scope,
             source,
             path,
             items: Items::All(star),
@@ -72,6 +105,8 @@ fn construct_imports(
         for item in items {
             imports.extend(construct_imports(
                 ctx,
+                base_scope,
+                module_stack.clone(),
                 path.clone(),
                 &item.segments().collect::<Vec<_>>(),
                 exported,
@@ -131,16 +166,14 @@ pub fn resolve_imports(
     while updated {
         updated = false;
 
-        for &(target_scope, import) in &imports {
+        for &(import_scope, import) in &imports {
             updated |= resolve_import(
                 ctx,
-                target_scope,
+                import_scope,
                 import,
                 diagnostics,
-                &mut cache.scopes,
+                cache,
                 &mut missing_imports,
-                &mut cache.unused_imports,
-                &mut cache.glob_import_counts,
             );
         }
     }
@@ -169,16 +202,13 @@ pub fn resolve_imports(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn resolve_import(
     ctx: &mut Compiler,
-    target_scope: ScopeId,
+    import_scope: ScopeId,
     import_id: ImportId,
     diagnostics: bool,
-    cache: &mut HashMap<Vec<String>, ScopeId>,
+    cache: &mut ImportCache,
     missing_imports: &mut IndexMap<ImportId, IndexMap<String, Name>>,
-    unused_imports: &mut IndexMap<ImportId, IndexMap<String, Name>>,
-    glob_import_counts: &mut IndexMap<ImportId, (Name, usize)>,
 ) -> bool {
     let import = ctx.import(import_id).clone();
     let source = import.source.clone();
@@ -194,7 +224,7 @@ fn resolve_import(
             .map(|t| t.text().to_string())
             .collect::<Vec<_>>();
 
-        if let Some(cached) = cache.get(&subpath) {
+        if let Some(cached) = cache.scopes.get(&subpath) {
             base = Some(*cached);
             path_so_far = subpath;
             break;
@@ -208,7 +238,7 @@ fn resolve_import(
                 .filter(|s| base.is_symbol_exported(*s))
                 .map(|s| (s, base.symbol_import(s)))
         } else {
-            ctx.resolve_symbol_in(target_scope, name.text())
+            ctx.resolve_symbol_in(import.base_scope, name.text())
         };
 
         let Some((symbol, import)) = symbol else {
@@ -248,14 +278,15 @@ fn resolve_import(
 
         base = Some(module.scope);
         path_so_far.push(name.text().to_string());
-        cache.insert(path_so_far.clone(), module.scope);
+        cache.scopes.insert(path_so_far.clone(), module.scope);
     }
 
     let mut updated = false;
 
     match import.items {
         Items::All(star) => {
-            let count = &mut glob_import_counts
+            let count = &mut cache
+                .glob_import_counts
                 .entry(import_id)
                 .or_insert_with(|| (star.clone(), 0))
                 .1;
@@ -266,11 +297,10 @@ fn resolve_import(
                     .map(|(name, symbol)| (name.to_string(), symbol))
                     .collect::<Vec<_>>()
             } else {
-                let target = ctx.scope(target_scope);
+                let base = ctx.scope(import.base_scope);
 
-                target
-                    .symbol_names()
-                    .map(|name| (name.to_string(), target.symbol(name).unwrap()))
+                base.symbol_names()
+                    .map(|name| (name.to_string(), base.symbol(name).unwrap()))
                     .collect::<Vec<_>>()
             };
 
@@ -280,16 +310,15 @@ fn resolve_import(
                     .map(|(name, ty)| (name.to_string(), ty))
                     .collect::<Vec<_>>()
             } else {
-                let target = ctx.scope(target_scope);
+                let base = ctx.scope(import.base_scope);
 
-                target
-                    .type_names()
-                    .map(|name| (name.to_string(), target.ty(name).unwrap()))
+                base.type_names()
+                    .map(|name| (name.to_string(), base.ty(name).unwrap()))
                     .collect::<Vec<_>>()
             };
 
             for (name, symbol) in symbols {
-                let target = ctx.scope_mut(target_scope);
+                let target = ctx.scope_mut(import_scope);
 
                 if target.symbol(&name).is_none() {
                     target.insert_symbol(name.clone(), symbol, import.exported);
@@ -313,7 +342,7 @@ fn resolve_import(
             }
 
             for (name, ty) in types {
-                let target = ctx.scope_mut(target_scope);
+                let target = ctx.scope_mut(import_scope);
 
                 if target.ty(&name).is_none() {
                     target.insert_type(name.clone(), ty, import.exported);
@@ -344,7 +373,7 @@ fn resolve_import(
                     .collect()
             });
 
-            let unused_imports = unused_imports.entry(import_id).or_insert_with(|| {
+            let unused_imports = cache.unused_imports.entry(import_id).or_insert_with(|| {
                 [item.clone()]
                     .into_iter()
                     .map(|item| (item.text().to_string(), item))
@@ -359,8 +388,10 @@ fn resolve_import(
                 let ty = base.ty(name).filter(|t| base.is_type_exported(*t));
                 (symbol, ty)
             } else {
-                let symbol = ctx.resolve_symbol_in(target_scope, name).map(|(s, _)| s);
-                let ty = ctx.resolve_type_in(target_scope, name).map(|(t, _)| t);
+                let symbol = ctx
+                    .resolve_symbol_in(import.base_scope, name)
+                    .map(|(s, _)| s);
+                let ty = ctx.resolve_type_in(import.base_scope, name).map(|(t, _)| t);
                 (symbol, ty)
             };
 
@@ -376,7 +407,7 @@ fn resolve_import(
                         ));
                 }
 
-                let target = ctx.scope_mut(target_scope);
+                let target = ctx.scope_mut(import_scope);
 
                 if target.symbol(name).is_none() {
                     target.insert_symbol(name.to_string(), symbol, import.exported);
@@ -411,7 +442,7 @@ fn resolve_import(
                         ));
                 }
 
-                let target = ctx.scope_mut(target_scope);
+                let target = ctx.scope_mut(import_scope);
 
                 if target.ty(name).is_none() {
                     target.insert_type(name.to_string(), ty, import.exported);

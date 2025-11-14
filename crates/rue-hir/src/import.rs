@@ -1,12 +1,13 @@
 use id_arena::Id;
 use rue_diagnostic::{Name, Source};
 
-use crate::Declaration;
+use crate::{Declaration, ScopeId};
 
 pub type ImportId = Id<Import>;
 
 #[derive(Debug, Clone)]
 pub struct Import {
+    pub base_scope: ScopeId,
     pub source: Source,
     pub path: Vec<Name>,
     pub items: Items,

@@ -94,7 +94,7 @@ fn path_type_segment(p: &mut Parser, first: bool) {
     } else {
         p.expect(T![::]);
     }
-    if !first || !p.try_eat(T![super]) {
+    if !p.try_eat(T![super]) {
         p.expect(SyntaxKind::Ident);
     }
     if p.at(T![<]) {

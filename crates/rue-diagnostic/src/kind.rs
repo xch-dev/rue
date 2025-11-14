@@ -218,6 +218,15 @@ pub enum DiagnosticKind {
 
     #[error("Unused import `*`")]
     UnusedGlobImport,
+
+    #[error("Unresolved `super`, there is no parent module")]
+    UnresolvedSuper,
+
+    #[error("Cannot use `super` after named import")]
+    SuperAfterNamedImport,
+
+    #[error("Cannot end path in `super`")]
+    SuperAtEnd,
 }
 
 impl DiagnosticKind {
@@ -276,7 +285,10 @@ impl DiagnosticKind {
             | Self::RecursiveInlineFunction(..)
             | Self::RecursiveConstant(..)
             | Self::UnexpectedExplicitReturn
-            | Self::UnresolvedImport(..) => DiagnosticSeverity::Error,
+            | Self::UnresolvedImport(..)
+            | Self::UnresolvedSuper
+            | Self::SuperAfterNamedImport
+            | Self::SuperAtEnd => DiagnosticSeverity::Error,
             Self::EmptyGenericParameters
             | Self::EmptyGenericArguments
             | Self::UnnecessaryCast(..)

@@ -235,7 +235,7 @@ fn path_expr_segment(p: &mut Parser, first: bool, separated: bool) -> bool {
             p.expect(T![::]);
         }
     }
-    if !first || !p.try_eat(T![super]) {
+    if !p.try_eat(T![super]) {
         p.expect(SyntaxKind::Ident);
     }
     let mut separated = p.try_eat(T![::]);

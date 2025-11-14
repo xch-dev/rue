@@ -79,7 +79,7 @@ impl FileTree {
         path: &Path,
         cache: &mut HashMap<SourceKind, String>,
     ) -> Result<Self, Error> {
-        let tree = Self::try_from_path(ctx, path, None, cache)?
+        let tree = Self::try_from_path(ctx, path, cache)?
             .ok_or(io::Error::other("Invalid file extension"))?;
 
         tree.compile(ctx);
@@ -90,7 +90,6 @@ impl FileTree {
     fn try_from_path(
         ctx: &mut Compiler,
         path: &Path,
-        parent: Option<SymbolId>,
         cache: &mut HashMap<SourceKind, String>,
     ) -> Result<Option<Self>, Error> {
         let file_name = path
@@ -137,12 +136,12 @@ impl FileTree {
             for entry in fs::read_dir(path)? {
                 let entry = entry?;
                 let path = entry.path();
-                let tree = Self::try_from_path(ctx, &path, Some(module), cache)?;
+                let tree = Self::try_from_path(ctx, &path, cache)?;
                 children.extend(tree);
             }
 
             Ok(Some(Self::Directory(Directory::new(
-                ctx, file_name, module, parent, children,
+                ctx, file_name, module, children,
             ))))
         }
     }
@@ -474,10 +473,12 @@ impl File {
             self.document.syntax().text_range().start(),
         );
         ctx.push_scope(scope, self.document.syntax().text_range().start());
+        ctx.push_module(self.module);
         self.module(ctx).declarations.clone()
     }
 
     fn end(&self, ctx: &mut Compiler, declarations: ModuleDeclarations) {
+        ctx.pop_module();
         ctx.pop_scope(self.document.syntax().text_range().end());
         ctx.pop_scope(self.document.syntax().text_range().end());
         self.module_mut(ctx).declarations = declarations;
@@ -536,7 +537,6 @@ impl Directory {
         ctx: &mut Compiler,
         name: String,
         module: SymbolId,
-        parent: Option<SymbolId>,
         children: Vec<FileTree>,
     ) -> Self {
         let scope = ctx.module(module).scope;
@@ -561,13 +561,6 @@ impl Directory {
                         .insert_symbol(name, module, false);
                 }
             }
-
-            if let Some(parent) = parent
-                && let FileTree::File(file) = child
-            {
-                ctx.scope_mut(file.sibling_scope)
-                    .insert_symbol("super".to_string(), parent, false);
-            }
         }
 
         Self {
@@ -577,34 +570,53 @@ impl Directory {
         }
     }
 
+    fn begin(&self, ctx: &mut Compiler) {
+        ctx.push_module(self.module);
+    }
+
+    #[allow(clippy::unused_self)]
+    fn end(&self, ctx: &mut Compiler) {
+        ctx.pop_module();
+    }
+
     fn declare_modules(&self, ctx: &mut Compiler) {
+        self.begin(ctx);
         for child in &self.children {
             child.declare_modules(ctx);
         }
+        self.end(ctx);
     }
 
     fn declare_types(&self, ctx: &mut Compiler) {
+        self.begin(ctx);
         for child in &self.children {
             child.declare_types(ctx);
         }
+        self.end(ctx);
     }
 
     fn declare_symbols(&self, ctx: &mut Compiler) {
+        self.begin(ctx);
         for child in &self.children {
             child.declare_symbols(ctx);
         }
+        self.end(ctx);
     }
 
     fn compile_types(&self, ctx: &mut Compiler) {
+        self.begin(ctx);
         for child in &self.children {
             child.compile_types(ctx);
         }
+        self.end(ctx);
     }
 
     fn compile_symbols(&self, ctx: &mut Compiler) {
+        self.begin(ctx);
         for child in &self.children {
             child.compile_symbols(ctx);
         }
+        self.end(ctx);
     }
 }
 

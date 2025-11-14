@@ -27,6 +27,7 @@ pub struct Compiler {
     db: Database,
     syntax_maps: HashMap<SourceKind, SyntaxMap>,
     scope_stack: Vec<(TextSize, ScopeId)>,
+    module_stack: Vec<SymbolId>,
     builtins: Builtins,
     defaults: HashMap<TypeId, HashMap<String, Value>>,
     declaration_stack: Vec<Declaration>,
@@ -60,6 +61,7 @@ impl Compiler {
             db,
             syntax_maps: HashMap::new(),
             scope_stack: vec![(TextSize::from(0), builtins.scope)],
+            module_stack: Vec::new(),
             builtins,
             defaults: HashMap::new(),
             declaration_stack: Vec::new(),
@@ -200,6 +202,18 @@ impl Compiler {
 
     pub fn last_scope_id(&self) -> ScopeId {
         self.scope_stack.last().unwrap().1
+    }
+
+    pub fn push_module(&mut self, module: SymbolId) {
+        self.module_stack.push(module);
+    }
+
+    pub fn pop_module(&mut self) {
+        self.module_stack.pop().unwrap();
+    }
+
+    pub fn parent_module_stack(&self) -> &[SymbolId] {
+        &self.module_stack[..self.module_stack.len() - 1]
     }
 
     pub fn resolve_symbol(&self, name: &str) -> Option<(SymbolId, Option<ImportId>)> {
