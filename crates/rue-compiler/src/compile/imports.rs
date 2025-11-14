@@ -121,7 +121,7 @@ fn construct_imports(
 
 #[derive(Debug, Default)]
 pub struct ImportCache {
-    scopes: HashMap<Vec<String>, ScopeId>,
+    scopes: HashMap<Vec<String>, (ScopeId, SymbolId)>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
     glob_import_counts: IndexMap<ImportId, (Name, usize)>,
 }
@@ -225,8 +225,22 @@ fn resolve_import(
             .collect::<Vec<_>>();
 
         if let Some(cached) = cache.scopes.get(&subpath) {
-            base = Some(*cached);
+            base = Some(cached.0);
             path_so_far = subpath;
+
+            for name in import.path.iter().take(path_so_far.len()) {
+                if diagnostics && let Some(srcloc) = name.srcloc() {
+                    ctx.syntax_map_for_source(source.kind.clone())
+                        .add_item(SyntaxItem::new(
+                            SyntaxItemKind::SymbolReference(cached.1),
+                            TextRange::new(
+                                srcloc.span.start.try_into().unwrap(),
+                                srcloc.span.end.try_into().unwrap(),
+                            ),
+                        ));
+                }
+            }
+
             break;
         }
     }
@@ -259,7 +273,7 @@ fn resolve_import(
             ctx.add_import_reference(import, Declaration::Symbol(symbol));
         }
 
-        if let Some(srcloc) = name.srcloc() {
+        if diagnostics && let Some(srcloc) = name.srcloc() {
             ctx.syntax_map_for_source(source.kind.clone())
                 .add_item(SyntaxItem::new(
                     SyntaxItemKind::SymbolReference(symbol),
@@ -282,7 +296,9 @@ fn resolve_import(
 
         base = Some(module.scope);
         path_so_far.push(name.text().to_string());
-        cache.scopes.insert(path_so_far.clone(), module.scope);
+        cache
+            .scopes
+            .insert(path_so_far.clone(), (module.scope, symbol));
     }
 
     let mut updated = false;
