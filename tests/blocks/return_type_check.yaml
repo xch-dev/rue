@@ -1,2 +1,8 @@
-diagnostics:
-- Cannot compare `42 | nil` to `nil` without a type guard, since the runtime value must be constrained at test:1:33
+tests:
+- name: incorrect_return_type
+  program: (a (i (= (q . 1) (q . 1)) (q 1 . 42) (q)) 1)
+  debug_program: (a (i (= (q . 1) (q . 1)) (q 1 . 42) (q)) 1)
+  output: '42'
+  runtime_cost: 389
+  byte_cost: 372000
+  total_cost: 372389
