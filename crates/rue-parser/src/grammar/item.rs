@@ -359,7 +359,7 @@ mod tests {
                     ImportPathSegment@6..6
             "#]],
             expect![[r#"
-                Expected one of `::`, identifier, found `;` at main.rue:1:7
+                Expected one of `::`, `super`, identifier, found `;` at main.rue:1:7
                 Expected one of `::`, `;`, found eof at main.rue:1:8"#]],
         );
 
@@ -374,7 +374,7 @@ mod tests {
                     ImportPathSegment@7..7
                   Semicolon@7..8 ";"
             "#]],
-            expect!["Expected one of `::`, identifier, found `*` at main.rue:1:8"],
+            expect!["Expected one of `::`, `super`, identifier, found `*` at main.rue:1:8"],
         );
 
         check(
@@ -388,7 +388,7 @@ mod tests {
                     ImportPathSegment@7..7
             "#]],
             expect![[r#"
-                Expected one of `::`, identifier, found `{` at main.rue:1:8
+                Expected one of `::`, `super`, identifier, found `{` at main.rue:1:8
                 Expected one of `::`, `;`, found `}` at main.rue:1:9"#]],
         );
 
@@ -403,7 +403,7 @@ mod tests {
                     ImportPathSegment@7..7
             "#]],
             expect![[r#"
-                Expected one of `::`, identifier, found `{` at main.rue:1:8
+                Expected one of `::`, `super`, identifier, found `{` at main.rue:1:8
                 Expected one of `::`, `;`, found identifier at main.rue:1:9"#]],
         );
 
