@@ -62,14 +62,8 @@ pub(crate) fn stringify_impl(
             let inner = stringify_impl(arena, apply.inner, stack);
             let generics = apply
                 .generics
-                .iter()
-                .map(|(k, v)| {
-                    format!(
-                        "{}: {}",
-                        stringify_impl(arena, *k, stack),
-                        stringify_impl(arena, *v, stack)
-                    )
-                })
+                .values()
+                .map(|v| stringify_impl(arena, *v, stack))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{inner}<{generics}>")
