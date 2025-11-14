@@ -153,7 +153,9 @@ pub fn compile_block(
                     ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
                 }
 
-                return_types.push(then_block.ty);
+                if !is_expr {
+                    return_types.push(then_block.ty);
+                }
 
                 Statement::If(IfStatement {
                     condition: condition.hir,
@@ -172,7 +174,9 @@ pub fn compile_block(
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnexpectedExplicitReturn);
                 }
 
-                return_types.push(value.ty);
+                if !is_expr {
+                    return_types.push(value.ty);
+                }
 
                 if return_value.is_none() {
                     return_value = Some(value.clone());
