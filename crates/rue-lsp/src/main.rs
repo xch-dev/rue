@@ -3,22 +3,23 @@
 mod cache;
 
 use cache::Cache;
+use indexmap::IndexMap;
+use rue_compiler::{Compiler, FileTree, normalize_path};
+use rue_diagnostic::SourceKind;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use rue_compiler::analyze_file;
-use rue_diagnostic::{Source, SourceKind};
-use rue_options::CompilerOptions;
+use rue_options::find_project;
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, InitializedParams, LanguageString, Location, MarkedString,
-    MessageType, OneOf, Position, Range, ReferenceParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, LanguageString,
+    Location, MarkedString, MessageType, OneOf, Position, Range, ReferenceParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -27,7 +28,8 @@ use crate::cache::HoverInfo;
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    cache: Mutex<HashMap<Url, SendWrapper<Cache>>>,
+    cache: Mutex<HashMap<Url, SendWrapper<Cache<Arc<Compiler>>>>>,
+    file_cache: Mutex<HashMap<SourceKind, String>>,
 }
 
 #[tower_lsp::async_trait]
@@ -67,21 +69,19 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.on_change(
-            params.text_document.uri,
-            params.text_document.text,
-            params.text_document.version,
-        )
-        .await;
+        self.on_change(params.text_document.uri, None).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         self.on_change(
             params.text_document.uri,
-            params.content_changes[0].text.clone(),
-            params.text_document.version,
+            Some(params.content_changes[0].text.clone()),
         )
         .await;
+    }
+
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        self.on_change(params.text_document.uri, None).await;
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -109,42 +109,86 @@ impl LanguageServer for Backend {
 }
 
 impl Backend {
-    async fn on_change(&self, uri: Url, text: String, _version: i32) {
-        let diagnostics = self.on_change_impl(&uri, &text);
-        self.client
-            .publish_diagnostics(uri, diagnostics, None)
-            .await;
+    async fn on_change(&self, uri: Url, text: Option<String>) {
+        let diagnostics = self.on_change_impl(&uri, text);
+
+        for (kind, diagnostics) in diagnostics {
+            let SourceKind::File(path) = kind else {
+                continue;
+            };
+
+            let uri = Url::from_file_path(path).unwrap();
+
+            self.client
+                .publish_diagnostics(uri, diagnostics, None)
+                .await;
+        }
     }
 
-    fn on_change_impl(&self, uri: &Url, text: &str) -> Vec<Diagnostic> {
-        let compilation = analyze_file(
-            Source::new(
-                Arc::from(text),
-                SourceKind::File(
-                    uri.to_file_path()
-                        .unwrap()
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                ),
-            ),
-            CompilerOptions::default(),
-        )
-        .unwrap();
+    fn on_change_impl(
+        &self,
+        uri: &Url,
+        text: Option<String>,
+    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+        let uri_path = uri.to_file_path().unwrap();
+        let Some(project) = find_project(&uri_path, false).unwrap() else {
+            return IndexMap::new();
+        };
 
-        let diagnostics = compilation.diagnostics.iter().map(diagnostic).collect();
+        let mut ctx = Compiler::new(project.options);
+
+        let source_kind = normalize_path(&uri_path).unwrap();
+
+        let mut file_cache = self.file_cache.lock().unwrap();
+
+        if let Some(text) = text {
+            file_cache.insert(source_kind.clone(), text);
+        } else {
+            file_cache.remove(&source_kind);
+        }
+
+        let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut file_cache).unwrap();
+
+        drop(file_cache);
+
+        let mut diagnostics = IndexMap::<SourceKind, Vec<Diagnostic>>::new();
+
+        for item in ctx.take_diagnostics() {
+            diagnostics
+                .entry(item.srcloc.source.kind.clone())
+                .or_default()
+                .push(diagnostic(&item));
+        }
 
         let mut cache = self.cache.lock().unwrap();
-        cache.insert(uri.clone(), SendWrapper::new(Cache::new(compilation)));
+
+        let ctx = Arc::new(ctx);
+
+        for file in tree.all_files() {
+            let SourceKind::File(path) = &file.source.kind else {
+                continue;
+            };
+
+            let uri = Url::from_file_path(path).unwrap();
+
+            cache.insert(
+                uri,
+                SendWrapper::new(Cache::new(ctx.clone(), file.source.clone())),
+            );
+
+            diagnostics.entry(file.source.kind.clone()).or_default();
+        }
 
         diagnostics
     }
 
     fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
-        let cache = self.cache.lock().unwrap();
-        let cache = cache.get(&params.text_document_position_params.text_document.uri)?;
+        let cache = self
+            .cache
+            .lock()
+            .unwrap()
+            .get(&params.text_document_position_params.text_document.uri)?
+            .to_cloned();
         let position = cache.position(params.text_document_position_params.position);
 
         let scopes = cache.scopes(position);
@@ -188,8 +232,7 @@ impl Backend {
             .uri
             .clone();
 
-        let cache = self.cache.lock().unwrap();
-        let cache = cache.get(&uri)?;
+        let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position_params.position);
 
         let range = cache.definitions(position);
@@ -211,8 +254,7 @@ impl Backend {
     fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
         let uri = params.text_document_position.text_document.uri.clone();
 
-        let cache = self.cache.lock().unwrap();
-        let cache = cache.get(&uri)?;
+        let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
         let range = cache.references(position);
@@ -232,8 +274,7 @@ impl Backend {
     fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
         let uri = params.text_document_position.text_document.uri.clone();
 
-        let mut cache = self.cache.lock().unwrap();
-        let cache = cache.get_mut(&uri)?;
+        let mut cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
         let scopes = cache.scopes(position);
@@ -276,6 +317,7 @@ async fn main() {
     let (service, socket) = LspService::new(|client| Backend {
         client,
         cache: Mutex::new(HashMap::new()),
+        file_cache: Mutex::new(HashMap::new()),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }

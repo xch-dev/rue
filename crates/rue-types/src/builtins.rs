@@ -1,4 +1,5 @@
 use id_arena::Arena;
+use rue_diagnostic::Name;
 
 use crate::{Alias, Atom, Generic, Pair, Type, TypeId, Union};
 
@@ -58,18 +59,24 @@ impl BuiltinTypes {
         let permissive_any = arena.alloc(Type::Any);
 
         let list = arena.alloc(Type::Unresolved);
-        let list_generic = arena.alloc(Type::Generic(Generic { name: None }));
+        let list_generic = arena.alloc(Type::Generic(Generic {
+            name: Some(Name::new("T", None)),
+        }));
         let list_pair = arena.alloc(Type::Pair(Pair::new(list_generic, list)));
         let list_union = arena.alloc(Type::Union(Union::new(vec![nil, list_pair])));
         *arena.get_mut(list).unwrap() = Type::Alias(Alias {
-            name: None,
+            name: Some(Name::new("List", None)),
             inner: list_union,
             generics: vec![list_generic],
         });
 
         let alternating_list = arena.alloc(Type::Unresolved);
-        let alternating_list_generic_a = arena.alloc(Type::Generic(Generic { name: None }));
-        let alternating_list_generic_b = arena.alloc(Type::Generic(Generic { name: None }));
+        let alternating_list_generic_a = arena.alloc(Type::Generic(Generic {
+            name: Some(Name::new("A", None)),
+        }));
+        let alternating_list_generic_b = arena.alloc(Type::Generic(Generic {
+            name: Some(Name::new("B", None)),
+        }));
         let alternating_list_pair = arena.alloc(Type::Pair(Pair::new(
             alternating_list_generic_b,
             alternating_list,
@@ -81,7 +88,7 @@ impl BuiltinTypes {
         let alternating_list_union =
             arena.alloc(Type::Union(Union::new(vec![nil, alternating_list_pair])));
         *arena.get_mut(alternating_list).unwrap() = Type::Alias(Alias {
-            name: None,
+            name: Some(Name::new("AlternatingList", None)),
             inner: alternating_list_union,
             generics: vec![alternating_list_generic_a, alternating_list_generic_b],
         });

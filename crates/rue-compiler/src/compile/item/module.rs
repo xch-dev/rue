@@ -15,18 +15,24 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
 
     let scope = ctx.alloc_child_scope();
 
+    let name = module.name().map(|name| ctx.local_name(&name));
+
+    let symbol = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
+        name,
+        scope,
+        declarations: ModuleDeclarations::default(),
+    }));
+
     let mut declarations = ModuleDeclarations::default();
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
+    // ctx.push_module(symbol);
     declare_module_items(ctx, module.items(), &mut declarations);
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 
-    let symbol = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
-        name: module.name(),
-        scope,
-        declarations,
-    }));
+    ctx.module_mut(symbol).declarations = declarations;
 
     if let Some(name) = module.name() {
         if ctx.last_scope().symbol(name.text()).is_some() {
@@ -62,7 +68,9 @@ pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
+    // ctx.push_module(symbol);
     declare_type_items(ctx, module.items(), &mut declarations);
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 
     let Symbol::Module(ModuleSymbol {
@@ -90,7 +98,9 @@ pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
+    // ctx.push_module(symbol);
     declare_symbol_items(ctx, module.items(), &mut declarations);
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 
     let Symbol::Module(ModuleSymbol {
@@ -118,7 +128,9 @@ pub fn compile_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
+    // ctx.push_module(symbol);
     compile_type_items(ctx, module.items(), &declarations);
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 }
 
@@ -136,6 +148,8 @@ pub fn compile_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
+    // ctx.push_module(symbol);
     compile_symbol_items(ctx, module.items(), &declarations);
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 }

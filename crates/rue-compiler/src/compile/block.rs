@@ -4,7 +4,7 @@ use rue_diagnostic::{DiagnosticKind, SrcLoc};
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, Hir, IfStatement, Statement, Symbol, Value,
 };
-use rue_types::TypeId;
+use rue_types::{Type, TypeId, Union};
 
 use crate::{
     Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_expr, compile_type,
@@ -31,6 +31,7 @@ pub fn compile_block(
 
     let mut statements = Vec::new();
     let mut return_value = None;
+    let mut return_types = Vec::new();
     let mut implicit_return = false;
 
     for stmt in block.items() {
@@ -48,8 +49,12 @@ pub fn compile_block(
                     ctx.diagnostic(expr.syntax(), DiagnosticKind::UnexpectedImplicitReturn);
                 }
 
+                let value = compile_expr(ctx, &expr, expected_type);
+
+                return_types.push(value.ty);
+
                 if return_value.is_none() {
-                    return_value = Some(compile_expr(ctx, &expr, expected_type));
+                    return_value = Some(value);
                     implicit_return = true;
                 }
 
@@ -148,6 +153,8 @@ pub fn compile_block(
                     ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
                 }
 
+                return_types.push(then_block.ty);
+
                 Statement::If(IfStatement {
                     condition: condition.hir,
                     then: then_block.hir,
@@ -164,6 +171,8 @@ pub fn compile_block(
                 if is_expr {
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnexpectedExplicitReturn);
                 }
+
+                return_types.push(value.ty);
 
                 if return_value.is_none() {
                     return_value = Some(value.clone());
@@ -221,12 +230,23 @@ pub fn compile_block(
         statements.push(compiled);
     }
 
+    if return_value.is_none() {
+        return_types.push(ctx.builtins().types.nil);
+    }
+
+    let return_type = if return_types.is_empty() {
+        ctx.builtins().types.never
+    } else if return_types.len() == 1 {
+        return_types[0]
+    } else {
+        ctx.alloc_type(Type::Union(Union::new(return_types)))
+    };
+
+    let mut return_value = return_value.map(|value| value.with_type(return_type));
+
     if return_value.is_none() && require_return {
         ctx.diagnostic(block.syntax(), DiagnosticKind::MissingReturn);
-        return_value = Some(Value::new(
-            ctx.alloc_hir(Hir::Unresolved),
-            ctx.builtins().types.unresolved,
-        ));
+        return_value = Some(Value::new(ctx.alloc_hir(Hir::Unresolved), return_type));
     }
 
     let hir = ctx.alloc_hir(Hir::Block(Block {
@@ -241,6 +261,6 @@ pub fn compile_block(
     if let Some(return_value) = return_value {
         return_value.with_hir(hir)
     } else {
-        Value::new(hir, ctx.builtins().nil.ty)
+        Value::new(hir, return_type)
     }
 }

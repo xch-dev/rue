@@ -33,23 +33,22 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
             if !visited.insert(current) {
                 if let Declaration::Symbol(current_symbol) = current
                     && current_symbol == symbol
-                    && let Some(name) = ctx.symbol(symbol).clone().name()
+                    && let Some(name) = ctx.symbol(symbol).name()
                 {
-                    if matches!(
-                        ctx.symbol(symbol),
-                        Symbol::Function(FunctionSymbol {
-                            kind: FunctionKind::Inline,
-                            ..
-                        })
-                    ) {
-                        ctx.diagnostic(
-                            name,
+                    if let Symbol::Function(FunctionSymbol {
+                        kind: FunctionKind::Inline,
+                        ..
+                    }) = ctx.symbol(symbol).clone()
+                    {
+                        ctx.diagnostic_name(
+                            &name,
                             DiagnosticKind::RecursiveInlineFunction(name.text().to_string()),
                         );
-                    } else if matches!(ctx.symbol(symbol), Symbol::Constant(ConstantSymbol { .. }))
+                    } else if let Symbol::Constant(ConstantSymbol { .. }) =
+                        ctx.symbol(symbol).clone()
                     {
-                        ctx.diagnostic(
-                            name,
+                        ctx.diagnostic_name(
+                            &name,
                             DiagnosticKind::RecursiveConstant(name.text().to_string()),
                         );
                     }
@@ -145,34 +144,31 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
             continue;
         }
 
-        let items = match &import.items {
+        let item = match &import.items {
             Items::All(star) => {
                 let star = star.clone();
                 if !import.declarations.is_empty() && references.is_empty() {
-                    ctx.diagnostic(&star, DiagnosticKind::UnusedGlobImport);
+                    ctx.diagnostic_name(&star, DiagnosticKind::UnusedGlobImport);
                 }
                 continue;
             }
-            Items::Named(items) => items,
+            Items::Named(item) => item,
         };
 
         let mut unused = Vec::new();
 
         for (name, declaration) in import.declarations.clone() {
             if !references.contains(&declaration) {
-                let Some(token) = items.iter().find(|item| item.text() == name) else {
+                if item.text() != name {
                     continue;
-                };
+                }
 
-                unused.push(token.clone());
+                unused.push(item.clone());
             }
         }
 
-        for token in unused {
-            ctx.diagnostic(
-                &token,
-                DiagnosticKind::UnusedImport(token.text().to_string()),
-            );
+        for name in unused {
+            ctx.diagnostic_name(&name, DiagnosticKind::UnusedImport(name.text().to_string()));
         }
     }
 
@@ -186,7 +182,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                             continue;
                         }
 
-                        ctx.diagnostic(
+                        ctx.diagnostic_name(
                             &name,
                             DiagnosticKind::UnusedFunction(name.text().to_string()),
                         );
@@ -198,7 +194,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                             continue;
                         }
 
-                        ctx.diagnostic(
+                        ctx.diagnostic_name(
                             &name,
                             DiagnosticKind::UnusedBinding(name.text().to_string()),
                         );
@@ -210,7 +206,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                             continue;
                         }
 
-                        ctx.diagnostic(
+                        ctx.diagnostic_name(
                             &name,
                             DiagnosticKind::UnusedConstant(name.text().to_string()),
                         );
@@ -222,7 +218,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                             continue;
                         }
 
-                        ctx.diagnostic(
+                        ctx.diagnostic_name(
                             &name,
                             DiagnosticKind::UnusedParameter(name.text().to_string()),
                         );
@@ -230,12 +226,14 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                 }
             },
             Declaration::Type(ty) => match ctx.ty(ty).clone() {
-                Type::Generic(Generic { name: Some(name) }) => {
+                Type::Generic(Generic {
+                    name: Some(name), ..
+                }) => {
                     if name.text().starts_with('_') {
                         continue;
                     }
 
-                    ctx.diagnostic(
+                    ctx.diagnostic_name(
                         &name,
                         DiagnosticKind::UnusedGenericType(name.text().to_string()),
                     );
@@ -247,7 +245,10 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                         continue;
                     }
 
-                    ctx.diagnostic(&name, DiagnosticKind::UnusedStruct(name.text().to_string()));
+                    ctx.diagnostic_name(
+                        &name,
+                        DiagnosticKind::UnusedStruct(name.text().to_string()),
+                    );
                 }
                 Type::Alias(Alias {
                     name: Some(name), ..
@@ -256,7 +257,7 @@ pub fn check_unused(ctx: &mut Compiler, entrypoints: &HashSet<Declaration>) {
                         continue;
                     }
 
-                    ctx.diagnostic(
+                    ctx.diagnostic_name(
                         &name,
                         DiagnosticKind::UnusedTypeAlias(name.text().to_string()),
                     );

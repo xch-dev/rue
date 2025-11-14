@@ -8,7 +8,7 @@ use rue_hir::{Declaration, ImportId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, Type, TypeId};
 
-use crate::{Compiler, GetTextRange, compile_generic_arguments};
+use crate::{Compiler, GetTextRange, SyntaxItem, SyntaxItemKind, compile_generic_arguments};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathKind {
@@ -67,12 +67,45 @@ pub fn compile_path<S>(
 where
     S: PathSegment,
 {
-    let segments = &segments.collect::<Vec<_>>();
+    let mut segments = segments.collect::<Vec<_>>();
+    let mut base_scope = ctx.last_scope_id();
+    let mut module_stack = ctx.parent_module_stack().to_vec();
+
+    let length = segments.len();
+
+    while !segments.is_empty()
+        && let Some(name) = segments[0].name()
+        && name.text() == "super"
+    {
+        segments.remove(0);
+
+        if let Some(module) = module_stack.pop() {
+            base_scope = ctx.module(module).scope;
+
+            ctx.syntax_map_mut().add_item(SyntaxItem::new(
+                SyntaxItemKind::SymbolReference(module),
+                name.text_range(),
+            ));
+        } else {
+            ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
+        }
+    }
 
     let mut value = None;
     let mut previous_name = None;
 
     for (index, segment) in segments.iter().enumerate() {
+        if let Some(name) = segment.name()
+            && name.text() == "super"
+        {
+            if index == length - 1 {
+                ctx.diagnostic(&name, DiagnosticKind::SuperAtEnd);
+            } else {
+                ctx.diagnostic(&name, DiagnosticKind::SuperAfterNamedImport);
+            }
+            return PathResult::Unresolved;
+        }
+
         if index == 0
             && let Some(separator) = segment.initial_separator()
         {
@@ -109,10 +142,17 @@ where
             }
         } else {
             let symbol = ctx
-                .resolve_symbol(name.text())
+                .resolve_symbol_in(base_scope, name.text())
+                .filter(|s| {
+                    base_scope == ctx.last_scope_id()
+                        || ctx.scope(base_scope).is_symbol_exported(s.0)
+                })
                 .map(|(symbol, import)| (symbol, true, import));
             let ty = ctx
-                .resolve_type(name.text())
+                .resolve_type_in(base_scope, name.text())
+                .filter(|t| {
+                    base_scope == ctx.last_scope_id() || ctx.scope(base_scope).is_type_exported(t.0)
+                })
                 .map(|(ty, import)| (ty, true, import));
             (symbol, ty)
         };

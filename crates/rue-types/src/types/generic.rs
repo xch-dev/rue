@@ -1,6 +1,6 @@
-use rue_parser::SyntaxToken;
+use rue_diagnostic::Name;
 
 #[derive(Debug, Clone)]
 pub struct Generic {
-    pub name: Option<SyntaxToken>,
+    pub name: Option<Name>,
 }

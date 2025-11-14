@@ -1,10 +1,10 @@
-use rue_parser::SyntaxToken;
+use rue_diagnostic::Name;
 
 use crate::TypeId;
 
 #[derive(Debug, Clone)]
 pub struct Alias {
+    pub name: Option<Name>,
     pub inner: TypeId,
-    pub name: Option<SyntaxToken>,
     pub generics: Vec<TypeId>,
 }

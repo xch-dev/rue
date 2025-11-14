@@ -16,7 +16,6 @@ workspace = true
 
 [dependencies]
 rue-options = { workspace = true }
-rue-parser = { workspace = true }
 rue-lir = { workspace = true }
 rue-types = { workspace = true }
 rue-diagnostic = { workspace = true }

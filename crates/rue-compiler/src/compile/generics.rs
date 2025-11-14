@@ -17,9 +17,9 @@ pub fn compile_generic_parameters(
     for generic_parameter in generic_parameters.names() {
         is_empty = false;
 
-        let ty = ctx.alloc_type(Type::Generic(Generic {
-            name: Some(generic_parameter.clone()),
-        }));
+        let name = ctx.local_name(&generic_parameter);
+
+        let ty = ctx.alloc_type(Type::Generic(Generic { name: Some(name) }));
 
         ctx.declaration_span(Declaration::Type(ty), generic_parameter.text_range());
 

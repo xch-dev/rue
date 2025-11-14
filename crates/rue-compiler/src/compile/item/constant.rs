@@ -24,8 +24,10 @@ pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> Symbo
 
     let value = ctx.builtins().unresolved.hir;
 
+    let name = constant.name().map(|name| ctx.local_name(&name));
+
     *ctx.symbol_mut(symbol) = Symbol::Constant(ConstantSymbol {
-        name: constant.name(),
+        name,
         value: Value::new(value, ty),
         inline: constant.inline().is_some(),
     });

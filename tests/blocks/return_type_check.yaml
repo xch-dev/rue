@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot compare `42 | nil` to `nil` without a type guard, since the runtime value must be constrained at test:1:33

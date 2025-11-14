@@ -1,13 +1,14 @@
 use std::{
     cmp::Reverse,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     mem,
     ops::{Deref, DerefMut, Range},
     sync::Arc,
 };
 
 use rowan::{TextRange, TextSize};
-use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SourceKind, SrcLoc};
+use rue_ast::AstNode;
+use rue_diagnostic::{Diagnostic, DiagnosticKind, Name, Source, SourceKind, SrcLoc};
 use rue_hir::{
     Builtins, Constraint, Database, Declaration, ImportId, Scope, ScopeId, Symbol, SymbolId,
     TypePath, Value, replace_type,
@@ -16,7 +17,7 @@ use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, CheckError, Comparison, Type, TypeId};
 
-use crate::{SyntaxItem, SyntaxItemKind, SyntaxMap};
+use crate::{File, FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
@@ -26,9 +27,11 @@ pub struct Compiler {
     db: Database,
     syntax_maps: HashMap<SourceKind, SyntaxMap>,
     scope_stack: Vec<(TextSize, ScopeId)>,
+    module_stack: Vec<SymbolId>,
     builtins: Builtins,
     defaults: HashMap<TypeId, HashMap<String, Value>>,
     declaration_stack: Vec<Declaration>,
+    registered_scopes: HashSet<ScopeId>,
 }
 
 impl Deref for Compiler {
@@ -51,17 +54,50 @@ impl Compiler {
 
         let builtins = Builtins::new(&mut db);
 
-        Self {
+        let mut ctx = Self {
             options,
             source: Source::new(Arc::from(""), SourceKind::Std),
             diagnostics: Vec::new(),
             db,
             syntax_maps: HashMap::new(),
             scope_stack: vec![(TextSize::from(0), builtins.scope)],
+            module_stack: Vec::new(),
             builtins,
             defaults: HashMap::new(),
             declaration_stack: Vec::new(),
+            registered_scopes: HashSet::new(),
+        };
+
+        let std = File::std(&mut ctx);
+        let tree = FileTree::File(std.clone());
+        tree.compile_impl(&mut ctx, false);
+        let std_scope = std.module(&ctx).scope;
+
+        let prelude = ctx.alloc_child_scope();
+
+        for (name, symbol) in ctx
+            .scope(std_scope)
+            .exported_symbols()
+            .map(|(name, symbol)| (name.to_string(), symbol))
+            .collect::<Vec<_>>()
+        {
+            ctx.scope_mut(prelude)
+                .insert_symbol(name.to_string(), symbol, false);
         }
+
+        for (name, ty) in ctx
+            .scope(std_scope)
+            .exported_types()
+            .map(|(name, ty)| (name.to_string(), ty))
+            .collect::<Vec<_>>()
+        {
+            ctx.scope_mut(prelude)
+                .insert_type(name.to_string(), ty, false);
+        }
+
+        ctx.push_scope(prelude, std.document.syntax().text_range().start());
+
+        ctx
     }
 
     pub fn source(&self) -> &Source {
@@ -72,16 +108,12 @@ impl Compiler {
         &self.options
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     pub fn set_source(&mut self, source: Source) {
-        self.syntax_maps
-            .entry(source.kind.clone())
-            .or_default()
-            .add_item(SyntaxItem::new(
-                SyntaxItemKind::Scope(self.builtins.scope),
-                TextRange::new(TextSize::from(0), TextSize::from(source.text.len() as u32)),
-            ));
         self.source = source;
+    }
+
+    pub fn scope_stack(&self) -> Vec<ScopeId> {
+        self.scope_stack.iter().map(|(_, scope)| *scope).collect()
     }
 
     pub fn syntax_map(&self, source_kind: &SourceKind) -> Option<&SyntaxMap> {
@@ -94,6 +126,10 @@ impl Compiler {
             .or_default()
     }
 
+    pub fn syntax_map_for_source(&mut self, source: SourceKind) -> &mut SyntaxMap {
+        self.syntax_maps.entry(source).or_default()
+    }
+
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
         mem::take(&mut self.diagnostics)
     }
@@ -103,12 +139,33 @@ impl Compiler {
     }
 
     pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
+        let srcloc = self.srcloc(node);
+        self.diagnostic_at(srcloc, kind);
+    }
+
+    pub fn diagnostic_name(&mut self, name: &Name, kind: DiagnosticKind) {
+        if let Some(srcloc) = name.srcloc().cloned() {
+            self.diagnostic_at(srcloc, kind);
+        }
+    }
+
+    pub fn diagnostic_at(&mut self, srcloc: SrcLoc, kind: DiagnosticKind) {
+        self.diagnostics.push(Diagnostic::new(srcloc, kind));
+    }
+
+    pub fn srcloc(&self, node: &impl GetTextRange) -> SrcLoc {
         let range = node.text_range();
         let span: Range<usize> = range.start().into()..range.end().into();
-        self.diagnostics.push(Diagnostic::new(
-            SrcLoc::new(self.source.clone(), span),
-            kind,
-        ));
+        SrcLoc::new(self.source.clone(), span)
+    }
+
+    pub fn local_name(&self, token: &SyntaxToken) -> Name {
+        let srcloc = self.srcloc(token);
+        Name::new(token.text().to_string(), Some(srcloc))
+    }
+
+    pub fn extend_diagnostics(&mut self, diagnostics: Vec<Diagnostic>) {
+        self.diagnostics.extend(diagnostics);
     }
 
     pub fn alloc_child_scope(&mut self) -> ScopeId {
@@ -122,6 +179,10 @@ impl Compiler {
 
     pub fn pop_scope(&mut self, end: TextSize) {
         let (start, scope) = self.scope_stack.pop().unwrap();
+
+        if !self.registered_scopes.insert(scope) {
+            return;
+        }
 
         self.syntax_map_mut().add_item(SyntaxItem::new(
             SyntaxItemKind::Scope(scope),
@@ -143,14 +204,20 @@ impl Compiler {
         self.scope_stack.last().unwrap().1
     }
 
-    pub fn resolve_symbol(&self, name: &str) -> Option<(SymbolId, Option<ImportId>)> {
-        let last = self.last_scope_id();
-        self.resolve_symbol_in(last, name)
+    pub fn push_module(&mut self, module: SymbolId) {
+        self.module_stack.push(module);
     }
 
-    pub fn resolve_type(&self, name: &str) -> Option<(TypeId, Option<ImportId>)> {
-        let last = self.last_scope_id();
-        self.resolve_type_in(last, name)
+    pub fn pop_module(&mut self) {
+        self.module_stack.pop().unwrap();
+    }
+
+    pub fn parent_module_stack(&self) -> &[SymbolId] {
+        if self.module_stack.is_empty() {
+            return &[];
+        }
+
+        &self.module_stack[..self.module_stack.len() - 1]
     }
 
     pub fn resolve_symbol_in(
@@ -210,22 +277,10 @@ impl Compiler {
             current = self.scope(scope).parent();
         }
 
-        match self.symbol(symbol) {
-            Symbol::Binding(binding) => binding.name.as_ref().map(|name| name.text().to_string()),
-            Symbol::Constant(constant) => {
-                constant.name.as_ref().map(|name| name.text().to_string())
-            }
-            Symbol::Function(function) => {
-                function.name.as_ref().map(|name| name.text().to_string())
-            }
-            Symbol::Module(module) => module.name.as_ref().map(|name| name.text().to_string()),
-            Symbol::Builtin(builtin) => Some(builtin.to_string()),
-            Symbol::Parameter(parameter) => {
-                parameter.name.as_ref().map(|name| name.text().to_string())
-            }
-            Symbol::Unresolved => None,
-        }
-        .unwrap_or("{unknown}".to_string())
+        self.symbol(symbol)
+            .name()
+            .map_or_else(|| "{unknown}".to_string(), |name| name.text().to_string())
+            .to_string()
     }
 
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {

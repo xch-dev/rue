@@ -1,9 +1,9 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use indexmap::IndexSet;
 use rowan::{TextRange, TextSize};
-use rue_compiler::{Compilation, CompletionContext, SyntaxItemKind};
-use rue_diagnostic::LineCol;
+use rue_compiler::{Compiler, CompletionContext, SyntaxItemKind, SyntaxMap};
+use rue_diagnostic::{LineCol, Source};
 use rue_hir::{ScopeId, Symbol, SymbolId};
 use rue_types::{Type, TypeId};
 use tower_lsp::lsp_types::{CompletionItem, Position, Range};
@@ -43,27 +43,45 @@ pub struct FieldHoverInfo {
 }
 
 #[derive(Debug, Clone)]
-pub struct Cache {
-    compilation: Compilation,
+pub struct Cache<T> {
+    ctx: T,
+    source: Source,
+    syntax_map: SyntaxMap,
 }
 
-impl Cache {
-    pub fn new(compilation: Compilation) -> Self {
-        Self { compilation }
+impl Cache<Arc<Compiler>> {
+    pub fn new(ctx: Arc<Compiler>, source: Source) -> Self {
+        let syntax_map = ctx.syntax_map(&source.kind).cloned().unwrap_or_default();
+
+        Self {
+            ctx,
+            source,
+            syntax_map,
+        }
     }
 
+    pub fn to_cloned(&self) -> Cache<Compiler> {
+        Cache {
+            ctx: self.ctx.as_ref().clone(),
+            source: self.source.clone(),
+            syntax_map: self.syntax_map.clone(),
+        }
+    }
+}
+
+impl Cache<Compiler> {
     pub fn position(&self, position: Position) -> usize {
         LineCol {
             line: position.line as usize,
             col: position.character as usize,
         }
-        .index(&self.compilation.source.text)
+        .index(&self.source.text)
     }
 
     pub fn scopes(&self, index: usize) -> Scopes {
         let mut scopes = Vec::new();
 
-        for item in self.compilation.syntax_map.items() {
+        for item in self.syntax_map.items() {
             let SyntaxItemKind::Scope(scope) = item.kind else {
                 continue;
             };
@@ -78,7 +96,6 @@ impl Cache {
 
     fn completion_context(&self, index: usize) -> CompletionContext {
         for item in self
-            .compilation
             .syntax_map
             .items()
             .collect::<Vec<_>>()
@@ -98,7 +115,7 @@ impl Cache {
     }
 
     fn partial_identifier(&self, index: usize) -> Option<String> {
-        let mut source = self.compilation.source.text[..index].to_string();
+        let mut source = self.source.text[..index].to_string();
         let mut ident = String::new();
 
         while let Some(c) = source.pop() {
@@ -129,12 +146,11 @@ impl Cache {
             specified_fields,
         } = context.clone()
         {
-            let semantic =
-                rue_types::unwrap_semantic(self.compilation.compiler.types_mut(), ty, true);
+            let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
 
             let mut fields = IndexSet::new();
 
-            match self.compilation.compiler.ty(semantic) {
+            match self.ctx.ty(semantic) {
                 Type::Struct(ty) => {
                     fields.extend(ty.fields.clone());
                 }
@@ -142,8 +158,7 @@ impl Cache {
                     fields.insert("length".to_string());
                 }
                 Type::Pair(_) | Type::Union(_) => {
-                    let pairs =
-                        rue_types::extract_pairs(self.compilation.compiler.types_mut(), ty, true);
+                    let pairs = rue_types::extract_pairs(self.ctx.types_mut(), ty, true);
 
                     if !pairs.is_empty() {
                         fields.insert("first".to_string());
@@ -172,16 +187,14 @@ impl Cache {
 
         for scope in &scopes.0 {
             let symbols = self
-                .compilation
-                .compiler
+                .ctx
                 .scope(*scope)
                 .symbol_names()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>();
 
             let types = self
-                .compilation
-                .compiler
+                .ctx
                 .scope(*scope)
                 .type_names()
                 .map(ToString::to_string)
@@ -216,15 +229,11 @@ impl Cache {
                     }
                     CompletionContext::Type => {}
                     CompletionContext::Expression => {
-                        let ty = self.compilation.compiler.scope(*scope).ty(&name).unwrap();
+                        let ty = self.ctx.scope(*scope).ty(&name).unwrap();
 
-                        let semantic = rue_types::unwrap_semantic(
-                            self.compilation.compiler.types_mut(),
-                            ty,
-                            true,
-                        );
+                        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
 
-                        match self.compilation.compiler.ty(semantic) {
+                        match self.ctx.ty(semantic) {
                             Type::Struct(_) => {}
                             _ => continue,
                         }
@@ -248,7 +257,7 @@ impl Cache {
     pub fn hover(&self, scopes: &Scopes, index: usize) -> Vec<HoverInfo> {
         let mut infos = Vec::new();
 
-        for item in self.compilation.syntax_map.items() {
+        for item in self.syntax_map.items() {
             if !contains(item.span, index) {
                 continue;
             }
@@ -259,7 +268,7 @@ impl Cache {
                         continue;
                     };
 
-                    if let Symbol::Module(_) = self.compilation.compiler.symbol(symbol) {
+                    if let Symbol::Module(_) = self.ctx.symbol(symbol) {
                         infos.push(HoverInfo::Module(ModuleHoverInfo { name }));
                     } else {
                         infos.push(HoverInfo::Symbol(SymbolHoverInfo {
@@ -273,7 +282,7 @@ impl Cache {
                         continue;
                     };
 
-                    if let Symbol::Module(_) = self.compilation.compiler.symbol(symbol) {
+                    if let Symbol::Module(_) = self.ctx.symbol(symbol) {
                         infos.push(HoverInfo::Module(ModuleHoverInfo { name }));
                     } else {
                         infos.push(HoverInfo::Symbol(SymbolHoverInfo {
@@ -323,8 +332,8 @@ impl Cache {
         self.definitions_impl(index)
             .into_iter()
             .map(|span| {
-                let start = LineCol::new(&self.compilation.source.text, span.start().into());
-                let end = LineCol::new(&self.compilation.source.text, span.end().into());
+                let start = LineCol::new(&self.source.text, span.start().into());
+                let end = LineCol::new(&self.source.text, span.end().into());
 
                 Range::new(
                     Position::new(start.line as u32, start.col as u32),
@@ -338,8 +347,8 @@ impl Cache {
         self.references_impl(index)
             .into_iter()
             .map(|span| {
-                let start = LineCol::new(&self.compilation.source.text, span.start().into());
-                let end = LineCol::new(&self.compilation.source.text, span.end().into());
+                let start = LineCol::new(&self.source.text, span.start().into());
+                let end = LineCol::new(&self.source.text, span.end().into());
 
                 Range::new(
                     Position::new(start.line as u32, start.col as u32),
@@ -350,7 +359,7 @@ impl Cache {
     }
 
     fn definitions_impl(&self, index: usize) -> Vec<TextRange> {
-        for item in self.compilation.syntax_map.items() {
+        for item in self.syntax_map.items() {
             if !contains(item.span, index) {
                 continue;
             }
@@ -358,7 +367,6 @@ impl Cache {
             match item.kind.clone() {
                 SyntaxItemKind::SymbolDeclaration(symbol) => {
                     return self
-                        .compilation
                         .syntax_map
                         .items()
                         .filter_map(|item| {
@@ -376,7 +384,6 @@ impl Cache {
                 }
                 SyntaxItemKind::SymbolReference(symbol) => {
                     return self
-                        .compilation
                         .syntax_map
                         .items()
                         .filter_map(|item| {
@@ -394,7 +401,6 @@ impl Cache {
                 }
                 SyntaxItemKind::TypeDeclaration(ty) => {
                     return self
-                        .compilation
                         .syntax_map
                         .items()
                         .filter_map(|item| {
@@ -412,7 +418,6 @@ impl Cache {
                 }
                 SyntaxItemKind::TypeReference(ty) => {
                     return self
-                        .compilation
                         .syntax_map
                         .items()
                         .filter_map(|item| {
@@ -430,7 +435,6 @@ impl Cache {
                 }
                 SyntaxItemKind::FieldDeclaration(field) => {
                     return self
-                        .compilation
                         .syntax_map
                         .items()
                         .filter_map(|item| {
@@ -450,7 +454,6 @@ impl Cache {
                 }
                 SyntaxItemKind::FieldReference(field) => {
                     return self
-                        .compilation
                         .syntax_map
                         .items()
                         .filter_map(|item| {
@@ -478,7 +481,7 @@ impl Cache {
     }
 
     fn references_impl(&self, index: usize) -> Vec<TextRange> {
-        for item in self.compilation.syntax_map.items() {
+        for item in self.syntax_map.items() {
             if !contains(item.span, index) {
                 continue;
             }
@@ -487,7 +490,6 @@ impl Cache {
                 SyntaxItemKind::SymbolDeclaration(symbol)
                 | SyntaxItemKind::SymbolReference(symbol) => {
                     return self
-                        .compilation
                         .syntax_map
                         .items()
                         .filter_map(|item| {
@@ -505,7 +507,6 @@ impl Cache {
                 }
                 SyntaxItemKind::TypeDeclaration(ty) | SyntaxItemKind::TypeReference(ty) => {
                     return self
-                        .compilation
                         .syntax_map
                         .items()
                         .filter_map(|item| {
@@ -523,7 +524,6 @@ impl Cache {
                 }
                 SyntaxItemKind::FieldDeclaration(field) | SyntaxItemKind::FieldReference(field) => {
                     return self
-                        .compilation
                         .syntax_map
                         .items()
                         .filter_map(|item| {
@@ -552,34 +552,31 @@ impl Cache {
 
     fn type_name(&self, scopes: &Scopes, ty: TypeId) -> String {
         for &scope in &scopes.0 {
-            let scope = self.compilation.compiler.scope(scope);
+            let scope = self.ctx.scope(scope).clone();
 
             if let Some(name) = scope.type_name(ty) {
                 return name.to_string();
             }
         }
 
-        match self.compilation.compiler.ty(ty) {
+        match self.ctx.ty(ty) {
             Type::Struct(ty) => ty.name.as_ref().map(|token| token.text().to_string()),
             Type::Alias(ty) => ty.name.as_ref().map(|token| token.text().to_string()),
             _ => None,
         }
-        .unwrap_or_else(|| {
-            rue_types::stringify_without_substitution(self.compilation.compiler.types(), ty)
-        })
+        .unwrap_or_else(|| rue_types::stringify_without_substitution(self.ctx.types(), ty))
     }
 
     fn symbol_name(&self, scopes: &Scopes, symbol: SymbolId) -> Option<String> {
         for &scope in &scopes.0 {
-            let scope = self.compilation.compiler.scope(scope);
+            let scope = self.ctx.scope(scope).clone();
 
             if let Some(name) = scope.symbol_name(symbol) {
                 return Some(name.to_string());
             }
         }
 
-        self.compilation
-            .compiler
+        self.ctx
             .symbol(symbol)
             .name()
             .map(|token| token.text().to_string())
@@ -587,18 +584,18 @@ impl Cache {
 
     fn symbol_type(&self, scopes: &Scopes, symbol: SymbolId) -> TypeId {
         for &scope in &scopes.0 {
-            let scope = self.compilation.compiler.scope(scope);
+            let scope = self.ctx.scope(scope).clone();
 
             if let Some(ty) = scope.symbol_override_type(symbol) {
                 return ty;
             }
         }
 
-        self.compilation.compiler.symbol_type(symbol)
+        self.ctx.symbol_type(symbol)
     }
 
     fn inner_type(&self, ty: TypeId) -> Option<TypeId> {
-        match self.compilation.compiler.ty(ty) {
+        match self.ctx.ty(ty) {
             Type::Alias(ty) => Some(ty.inner),
             _ => None,
         }

@@ -61,10 +61,12 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
         }
     }
 
+    let name = struct_item.name().map(|name| ctx.local_name(&name));
+
     *ctx.ty_mut(ty) = Type::Struct(Struct {
+        name,
         semantic: ty,
         inner,
-        name: struct_item.name(),
         generics,
         fields,
         nil_terminated,

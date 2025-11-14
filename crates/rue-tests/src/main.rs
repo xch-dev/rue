@@ -2,24 +2,20 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::process;
-use std::sync::Arc;
 
 use anyhow::Result;
 use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
-use clvmr::ChiaDialect;
-use clvmr::ENABLE_KECCAK_OPS_OUTSIDE_GUARD;
-use clvmr::MEMPOOL_MODE;
-use clvmr::NodePtr;
 use clvmr::error::EvalErr;
-use clvmr::{Allocator, run_program, serde::node_to_bytes};
-use rue_compiler::compile_file;
-use rue_diagnostic::Source;
-use rue_diagnostic::SourceKind;
+use clvmr::{
+    Allocator, ChiaDialect, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, MEMPOOL_MODE, NodePtr, run_program,
+    serde::node_to_bytes,
+};
+use rue_compiler::{Compiler, FileTree};
+use rue_diagnostic::{DiagnosticSeverity, SourceKind};
 use rue_lir::DebugDialect;
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
-use walkdir::DirEntry;
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -143,47 +139,65 @@ fn handle_test_file(name: &str, entry: &DirEntry, failed: &mut bool, update: boo
 
     let original = file.clone();
 
-    let source = Source::new(
-        Arc::from(fs::read_to_string(rue_file)?),
-        SourceKind::File("test".to_string()),
-    );
-
     let mut allocator = Allocator::new();
 
-    let result = compile_file(&mut allocator, source.clone(), CompilerOptions::default())?;
-    let debug_result = compile_file(&mut allocator, source.clone(), CompilerOptions::debug())?;
+    let mut ctx = Compiler::new(CompilerOptions::default());
+    let mut debug_ctx = Compiler::new(CompilerOptions::debug());
+
+    let unit = FileTree::compile_file(&mut ctx, &rue_file, "test".to_string())?;
+    let debug_unit = FileTree::compile_file(&mut debug_ctx, &rue_file, "test".to_string())?;
+    let kind = SourceKind::File("test".to_string());
 
     file.diagnostics = Vec::new();
 
-    for diagnostic in result.diagnostics {
+    let mut codegen = true;
+
+    for diagnostic in ctx.take_diagnostics() {
         file.diagnostics.push(diagnostic.message());
+
+        if diagnostic.kind.severity() == DiagnosticSeverity::Error {
+            codegen = false;
+        }
     }
 
-    handle_test_case(
-        &mut allocator,
-        &mut file.main,
-        result.main,
-        debug_result.main,
-    )?;
+    let main = codegen
+        .then(|| unit.main(&mut ctx, &mut allocator, &kind))
+        .transpose()?
+        .flatten();
+    let debug_main = codegen
+        .then(|| debug_unit.main(&mut debug_ctx, &mut allocator, &kind))
+        .transpose()?
+        .flatten();
 
-    if file.tests.len() > result.tests.len() {
-        file.tests.truncate(result.tests.len());
+    let tests = codegen
+        .then(|| unit.tests(&mut ctx, &mut allocator, None, None))
+        .transpose()?
+        .unwrap_or_default();
+    let debug_tests = codegen
+        .then(|| debug_unit.tests(&mut debug_ctx, &mut allocator, None, None))
+        .transpose()?
+        .unwrap_or_default();
+
+    handle_test_case(&mut allocator, &mut file.main, main, debug_main)?;
+
+    if file.tests.len() > tests.len() {
+        file.tests.truncate(tests.len());
     }
 
-    for _ in file.tests.len()..result.tests.len() {
+    for _ in file.tests.len()..tests.len() {
         file.tests.push(TestCase::default());
     }
 
-    assert_eq!(debug_result.tests.len(), result.tests.len());
+    assert_eq!(debug_tests.len(), tests.len());
 
     for (i, test_case) in file.tests.iter_mut().enumerate() {
-        test_case.name = Some(result.tests[i].name.clone());
+        test_case.name.clone_from(&tests[i].name);
 
         handle_test_case(
             &mut allocator,
             test_case,
-            Some(result.tests[i].program),
-            Some(debug_result.tests[i].program),
+            Some(tests[i].ptr),
+            Some(debug_tests[i].ptr),
         )?;
     }
 

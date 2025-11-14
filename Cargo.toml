@@ -38,6 +38,7 @@ needless_raw_string_hashes = "allow"
 implicit_hasher = "allow"
 match_same_arms = "allow"
 similar_names = "allow"
+cast_possible_truncation = "allow"
 
 [workspace.dependencies]
 rue-lexer = { path = "crates/rue-lexer", version = "0.5.0" }
@@ -82,3 +83,4 @@ tower-lsp = "0.20.0"
 colored = "3.0.0"
 send_wrapper = "0.6.0"
 chialisp = "0.4.1"
+toml = "0.9.8"

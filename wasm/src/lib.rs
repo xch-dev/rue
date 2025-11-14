@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chialisp::classic::clvm_tools::binutils::disassemble;
 use clvmr::Allocator;
-use rue_compiler::compile_file;
+use rue_compiler::{Compiler, File, FileTree};
 use rue_diagnostic::{Diagnostic, Source, SourceKind};
 use rue_options::CompilerOptions;
 use wasm_bindgen::prelude::*;
@@ -26,18 +26,27 @@ pub fn compile(source: String) -> Result<Compilation, JsError> {
     console_error_panic_hook::set_once();
 
     let mut allocator = Allocator::new();
+    let mut ctx = Compiler::new(CompilerOptions::default());
 
-    let result = compile_file(
-        &mut allocator,
-        Source::new(Arc::from(source), SourceKind::File("main.rue".to_string())),
-        CompilerOptions::default(),
-    )?;
+    let kind = SourceKind::File("main.rue".to_string());
 
-    let program = result
-        .main
+    let tree = FileTree::File(File::new(
+        &mut ctx,
+        "main".to_string(),
+        Source::new(Arc::from(source), kind.clone()),
+    ));
+
+    tree.compile(&mut ctx);
+
+    let program = tree
+        .main(&mut ctx, &mut allocator, &kind)?
         .map(|program| disassemble(&allocator, program, None));
 
-    let diagnostics = result.diagnostics.iter().map(Diagnostic::message).collect();
+    let diagnostics = ctx
+        .take_diagnostics()
+        .iter()
+        .map(Diagnostic::message)
+        .collect();
 
     Ok(Compilation {
         program,

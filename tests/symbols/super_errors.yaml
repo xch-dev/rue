@@ -1,0 +1,10 @@
+diagnostics:
+- Unresolved `super`, there is no parent module at test:2:12
+- Unresolved `super`, there is no parent module at test:5:8
+- Cannot end path in `super` at test:6:8
+- Unresolved `super`, there is no parent module at test:7:8
+- Cannot end path in `super` at test:7:15
+- Unresolved import `x` at test:5:15
+- Unresolved import `super` at test:6:8
+- Unresolved import `super` at test:7:15
+- Unused import `a` at test:2:19

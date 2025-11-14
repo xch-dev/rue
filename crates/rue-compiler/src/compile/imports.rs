@@ -1,20 +1,25 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
+use rowan::TextRange;
 use rue_ast::{AstImportItem, AstImportPathSegment};
-use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Declaration, Import, ImportId, Items, ModuleDeclarations, ScopeId, Symbol};
-use rue_parser::SyntaxToken;
+use rue_diagnostic::{DiagnosticKind, Name};
+use rue_hir::{Declaration, Import, ImportId, Items, ScopeId, Symbol, SymbolId};
 
-use crate::Compiler;
+use crate::{Compiler, SyntaxItem, SyntaxItemKind};
 
 pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
     let Some(path) = import.path() else {
         return;
     };
 
+    let base_scope = ctx.last_scope_id();
+    let module_stack = ctx.parent_module_stack().to_vec();
+
     let imports = construct_imports(
         ctx,
+        base_scope,
+        module_stack,
         Vec::new(),
         &path.segments().collect::<Vec<_>>(),
         import.export().is_some(),
@@ -28,13 +33,33 @@ pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
 
 fn construct_imports(
     ctx: &mut Compiler,
-    mut path: Vec<SyntaxToken>,
+    mut base_scope: ScopeId,
+    mut module_stack: Vec<SymbolId>,
+    mut path: Vec<Name>,
     segments: &[AstImportPathSegment],
     exported: bool,
 ) -> Vec<ImportId> {
+    let mut has_non_super = false;
+
     for segment in segments.iter().take(segments.len() - 1) {
         if let Some(name) = segment.name() {
-            path.push(name);
+            if name.text() == "super" {
+                if has_non_super {
+                    ctx.diagnostic(&name, DiagnosticKind::SuperAfterNamedImport);
+                } else if let Some(module) = module_stack.pop() {
+                    base_scope = ctx.module(module).scope;
+
+                    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+                        SyntaxItemKind::SymbolReference(module),
+                        name.text_range(),
+                    ));
+                } else {
+                    ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
+                }
+            } else {
+                path.push(ctx.local_name(&name));
+                has_non_super = true;
+            }
         }
     }
 
@@ -42,15 +67,31 @@ fn construct_imports(
         return vec![];
     };
 
+    if let Some(name) = last.name()
+        && name.text() == "super"
+    {
+        ctx.diagnostic(&name, DiagnosticKind::SuperAtEnd);
+    }
+
+    let source = ctx.source().clone();
+
     if let Some(name) = last.name() {
+        let name = ctx.local_name(&name);
+
         vec![ctx.alloc_import(Import {
+            base_scope,
+            source,
             path,
-            items: Items::Named(vec![name]),
+            items: Items::Named(name),
             exported,
             declarations: Vec::new(),
         })]
     } else if let Some(star) = last.star() {
+        let star = ctx.local_name(&star);
+
         vec![ctx.alloc_import(Import {
+            base_scope,
+            source,
             path,
             items: Items::All(star),
             exported,
@@ -64,6 +105,8 @@ fn construct_imports(
         for item in items {
             imports.extend(construct_imports(
                 ctx,
+                base_scope,
+                module_stack.clone(),
                 path.clone(),
                 &item.segments().collect::<Vec<_>>(),
                 exported,
@@ -76,12 +119,46 @@ fn construct_imports(
     }
 }
 
+#[derive(Debug, Default)]
+pub struct ImportCache {
+    scopes: HashMap<Vec<String>, (ScopeId, SymbolId)>,
+    unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
+    glob_import_counts: IndexMap<ImportId, (Name, usize)>,
+}
+
+fn flatten_imports(
+    ctx: &mut Compiler,
+    top_level_modules: Vec<SymbolId>,
+) -> Vec<(ScopeId, ImportId)> {
+    let mut imports = Vec::new();
+    let mut stack = vec![(None, top_level_modules)];
+
+    while let Some((scope, modules)) = stack.pop() {
+        if let Some(scope) = scope {
+            for import in ctx.scope(scope).imports() {
+                imports.push((scope, import));
+            }
+        }
+
+        for module in modules {
+            let Symbol::Module(module) = ctx.symbol(module).clone() else {
+                unreachable!();
+            };
+
+            stack.push((Some(module.scope), module.declarations.modules.clone()));
+        }
+    }
+
+    imports
+}
+
 pub fn resolve_imports(
     ctx: &mut Compiler,
-    declarations: &mut ModuleDeclarations,
+    all_modules: Vec<SymbolId>,
+    cache: &mut ImportCache,
     diagnostics: bool,
 ) {
-    let imports = flatten_imports(ctx, declarations);
+    let imports = flatten_imports(ctx, all_modules);
 
     let mut updated = true;
     let mut missing_imports = IndexMap::new();
@@ -89,53 +166,52 @@ pub fn resolve_imports(
     while updated {
         updated = false;
 
-        for &(target_scope, import) in &imports {
+        for &(import_scope, import) in &imports {
             updated |= resolve_import(
                 ctx,
-                target_scope,
+                import_scope,
                 import,
                 diagnostics,
-                &mut declarations.import_cache,
+                cache,
                 &mut missing_imports,
-                &mut declarations.unused_imports,
-                &mut declarations.glob_import_counts,
             );
         }
     }
 
     if diagnostics {
         for missing_imports in missing_imports.into_values() {
-            for (name, token) in missing_imports {
-                ctx.diagnostic(&token, DiagnosticKind::UnresolvedImport(name.to_string()));
+            for name in missing_imports.into_values() {
+                ctx.diagnostic_name(
+                    &name,
+                    DiagnosticKind::UnresolvedImport(name.text().to_string()),
+                );
             }
         }
 
-        for unused_imports in declarations.unused_imports.values() {
-            for (name, token) in unused_imports {
-                ctx.diagnostic(token, DiagnosticKind::UnusedImport(name.to_string()));
+        for unused_imports in cache.unused_imports.values() {
+            for name in unused_imports.values() {
+                ctx.diagnostic_name(name, DiagnosticKind::UnusedImport(name.text().to_string()));
             }
         }
 
-        for (token, count) in declarations.glob_import_counts.values() {
+        for (name, count) in cache.glob_import_counts.values() {
             if *count == 0 {
-                ctx.diagnostic(token, DiagnosticKind::UnusedGlobImport);
+                ctx.diagnostic_name(name, DiagnosticKind::UnusedGlobImport);
             }
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn resolve_import(
     ctx: &mut Compiler,
-    target_scope: ScopeId,
+    import_scope: ScopeId,
     import_id: ImportId,
     diagnostics: bool,
-    cache: &mut HashMap<Vec<String>, ScopeId>,
-    missing_imports: &mut IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
-    unused_imports: &mut IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
-    glob_import_counts: &mut IndexMap<ImportId, (SyntaxToken, usize)>,
+    cache: &mut ImportCache,
+    missing_imports: &mut IndexMap<ImportId, IndexMap<String, Name>>,
 ) -> bool {
     let import = ctx.import(import_id).clone();
+    let source = import.source.clone();
 
     let mut base = None;
     let mut path_so_far = Vec::new();
@@ -148,26 +224,47 @@ fn resolve_import(
             .map(|t| t.text().to_string())
             .collect::<Vec<_>>();
 
-        if let Some(cached) = cache.get(&subpath) {
-            base = Some(*cached);
+        if let Some(cached) = cache.scopes.get(&subpath) {
+            base = Some(cached.0);
             path_so_far = subpath;
+
+            for name in import.path.iter().take(path_so_far.len()) {
+                if diagnostics && let Some(srcloc) = name.srcloc() {
+                    ctx.syntax_map_for_source(source.kind.clone())
+                        .add_item(SyntaxItem::new(
+                            SyntaxItemKind::SymbolReference(cached.1),
+                            TextRange::new(
+                                srcloc.span.start.try_into().unwrap(),
+                                srcloc.span.end.try_into().unwrap(),
+                            ),
+                        ));
+                }
+            }
+
             break;
         }
     }
 
-    for ident in import.path.iter().skip(path_so_far.len()) {
-        let name = ident.text();
-
+    for name in import.path.iter().skip(path_so_far.len()) {
         let symbol = if let Some(base) = base {
             let base = ctx.scope(base);
-            base.symbol(name).map(|s| (s, base.symbol_import(s)))
+            base.symbol(name.text())
+                .filter(|s| base.is_symbol_exported(*s))
+                .map(|s| (s, base.symbol_import(s)))
         } else {
-            ctx.resolve_symbol_in(target_scope, name)
+            ctx.resolve_symbol_in(import.base_scope, name.text())
+                .filter(|s| {
+                    import.base_scope == import_scope
+                        || ctx.scope(import.base_scope).is_symbol_exported(s.0)
+                })
         };
 
         let Some((symbol, import)) = symbol else {
             if diagnostics {
-                ctx.diagnostic(ident, DiagnosticKind::UndeclaredSymbol(name.to_string()));
+                ctx.diagnostic_name(
+                    name,
+                    DiagnosticKind::UndeclaredSymbol(name.text().to_string()),
+                );
             }
             return false;
         };
@@ -176,25 +273,40 @@ fn resolve_import(
             ctx.add_import_reference(import, Declaration::Symbol(symbol));
         }
 
-        ctx.reference_span(Declaration::Symbol(symbol), ident.text_range());
+        if diagnostics && let Some(srcloc) = name.srcloc() {
+            ctx.syntax_map_for_source(source.kind.clone())
+                .add_item(SyntaxItem::new(
+                    SyntaxItemKind::SymbolReference(symbol),
+                    TextRange::new(
+                        srcloc.span.start.try_into().unwrap(),
+                        srcloc.span.end.try_into().unwrap(),
+                    ),
+                ));
+        }
 
         let Symbol::Module(module) = ctx.symbol(symbol) else {
             if diagnostics {
-                ctx.diagnostic(ident, DiagnosticKind::SubpathNotSupported(name.to_string()));
+                ctx.diagnostic_name(
+                    name,
+                    DiagnosticKind::SubpathNotSupported(name.text().to_string()),
+                );
             }
             return false;
         };
 
         base = Some(module.scope);
-        path_so_far.push(name.to_string());
-        cache.insert(path_so_far.clone(), module.scope);
+        path_so_far.push(name.text().to_string());
+        cache
+            .scopes
+            .insert(path_so_far.clone(), (module.scope, symbol));
     }
 
     let mut updated = false;
 
     match import.items {
         Items::All(star) => {
-            let count = &mut glob_import_counts
+            let count = &mut cache
+                .glob_import_counts
                 .entry(import_id)
                 .or_insert_with(|| (star.clone(), 0))
                 .1;
@@ -205,11 +317,10 @@ fn resolve_import(
                     .map(|(name, symbol)| (name.to_string(), symbol))
                     .collect::<Vec<_>>()
             } else {
-                let target = ctx.scope(target_scope);
+                let base = ctx.scope(import.base_scope);
 
-                target
-                    .symbol_names()
-                    .map(|name| (name.to_string(), target.symbol(name).unwrap()))
+                base.symbol_names()
+                    .map(|name| (name.to_string(), base.symbol(name).unwrap()))
                     .collect::<Vec<_>>()
             };
 
@@ -219,16 +330,15 @@ fn resolve_import(
                     .map(|(name, ty)| (name.to_string(), ty))
                     .collect::<Vec<_>>()
             } else {
-                let target = ctx.scope(target_scope);
+                let base = ctx.scope(import.base_scope);
 
-                target
-                    .type_names()
-                    .map(|name| (name.to_string(), target.ty(name).unwrap()))
+                base.type_names()
+                    .map(|name| (name.to_string(), base.ty(name).unwrap()))
                     .collect::<Vec<_>>()
             };
 
             for (name, symbol) in symbols {
-                let target = ctx.scope_mut(target_scope);
+                let target = ctx.scope_mut(import_scope);
 
                 if target.symbol(&name).is_none() {
                     target.insert_symbol(name.clone(), symbol, import.exported);
@@ -252,7 +362,7 @@ fn resolve_import(
             }
 
             for (name, ty) in types {
-                let target = ctx.scope_mut(target_scope);
+                let target = ctx.scope_mut(import_scope);
 
                 if target.ty(&name).is_none() {
                     target.insert_type(name.clone(), ty, import.exported);
@@ -275,123 +385,123 @@ fn resolve_import(
                 }
             }
         }
-        Items::Named(items) => {
+        Items::Named(item) => {
             let missing_imports = missing_imports.entry(import_id).or_insert_with(|| {
-                items
-                    .iter()
-                    .map(|item| (item.text().to_string(), item.clone()))
+                [item.clone()]
+                    .into_iter()
+                    .map(|item| (item.text().to_string(), item))
                     .collect()
             });
 
-            let unused_imports = unused_imports.entry(import_id).or_insert_with(|| {
-                items
-                    .iter()
-                    .map(|item| (item.text().to_string(), item.clone()))
+            let unused_imports = cache.unused_imports.entry(import_id).or_insert_with(|| {
+                [item.clone()]
+                    .into_iter()
+                    .map(|item| (item.text().to_string(), item))
                     .collect()
             });
 
-            for item in items {
-                let name = item.text();
+            let name = item.text();
 
-                let (symbol, ty) = if let Some(base) = base {
-                    let base = ctx.scope(base);
-                    let symbol = base.symbol(name).filter(|s| base.is_symbol_exported(*s));
-                    let ty = base.ty(name).filter(|t| base.is_type_exported(*t));
-                    (symbol, ty)
-                } else {
-                    let symbol = ctx.resolve_symbol_in(target_scope, name).map(|(s, _)| s);
-                    let ty = ctx.resolve_type_in(target_scope, name).map(|(t, _)| t);
-                    (symbol, ty)
-                };
+            let (symbol, ty) = if let Some(base) = base {
+                let base = ctx.scope(base);
+                let symbol = base.symbol(name).filter(|s| base.is_symbol_exported(*s));
+                let ty = base.ty(name).filter(|t| base.is_type_exported(*t));
+                (symbol, ty)
+            } else {
+                let symbol = ctx
+                    .resolve_symbol_in(import.base_scope, name)
+                    .filter(|s| {
+                        import.base_scope == import_scope
+                            || ctx.scope(import.base_scope).is_symbol_exported(s.0)
+                    })
+                    .map(|(s, _)| s);
+                let ty = ctx
+                    .resolve_type_in(import.base_scope, name)
+                    .filter(|t| {
+                        import.base_scope == import_scope
+                            || ctx.scope(import.base_scope).is_type_exported(t.0)
+                    })
+                    .map(|(t, _)| t);
+                (symbol, ty)
+            };
 
-                if let Some(symbol) = symbol {
-                    if diagnostics {
-                        ctx.reference_span(Declaration::Symbol(symbol), item.text_range());
-                    }
-
-                    let target = ctx.scope_mut(target_scope);
-
-                    if target.symbol(name).is_none() {
-                        target.insert_symbol(name.to_string(), symbol, import.exported);
-                        target.add_symbol_import(symbol, import_id);
-                        ctx.import_mut(import_id)
-                            .declarations
-                            .push((name.to_string(), Declaration::Symbol(symbol)));
-                        updated = true;
-                        unused_imports.shift_remove(name);
-                    } else if !target.is_symbol_exported(symbol)
-                        && import.exported
-                        && target.symbol(name) == Some(symbol)
-                    {
-                        target.export_symbol(symbol);
-                        ctx.import_mut(import_id)
-                            .declarations
-                            .push((name.to_string(), Declaration::Symbol(symbol)));
-                        updated = true;
-                        unused_imports.shift_remove(name);
-                    }
+            if let Some(symbol) = symbol {
+                if diagnostics && let Some(srcloc) = item.srcloc() {
+                    ctx.syntax_map_for_source(source.kind.clone())
+                        .add_item(SyntaxItem::new(
+                            SyntaxItemKind::SymbolReference(symbol),
+                            TextRange::new(
+                                srcloc.span.start.try_into().unwrap(),
+                                srcloc.span.end.try_into().unwrap(),
+                            ),
+                        ));
                 }
 
-                if let Some(ty) = ty {
-                    if diagnostics {
-                        ctx.reference_span(Declaration::Type(ty), item.text_range());
-                    }
+                let target = ctx.scope_mut(import_scope);
 
-                    let target = ctx.scope_mut(target_scope);
-
-                    if target.ty(name).is_none() {
-                        target.insert_type(name.to_string(), ty, import.exported);
-                        target.add_type_import(ty, import_id);
-                        ctx.import_mut(import_id)
-                            .declarations
-                            .push((name.to_string(), Declaration::Type(ty)));
-                        updated = true;
-                        unused_imports.shift_remove(name);
-                    } else if !target.is_type_exported(ty)
-                        && import.exported
-                        && target.ty(name) == Some(ty)
-                    {
-                        target.export_type(ty);
-                        ctx.import_mut(import_id)
-                            .declarations
-                            .push((name.to_string(), Declaration::Type(ty)));
-                        updated = true;
-                        unused_imports.shift_remove(name);
-                    }
-                }
-
-                if symbol.is_some() || ty.is_some() {
-                    missing_imports.shift_remove(name);
-                } else if diagnostics {
+                if target.symbol(name).is_none() {
+                    target.insert_symbol(name.to_string(), symbol, import.exported);
+                    target.add_symbol_import(symbol, import_id);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name.to_string(), Declaration::Symbol(symbol)));
+                    updated = true;
+                    unused_imports.shift_remove(name);
+                } else if !target.is_symbol_exported(symbol)
+                    && import.exported
+                    && target.symbol(name) == Some(symbol)
+                {
+                    target.export_symbol(symbol);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name.to_string(), Declaration::Symbol(symbol)));
+                    updated = true;
                     unused_imports.shift_remove(name);
                 }
+            }
+
+            if let Some(ty) = ty {
+                if diagnostics && let Some(srcloc) = item.srcloc() {
+                    ctx.syntax_map_for_source(source.kind.clone())
+                        .add_item(SyntaxItem::new(
+                            SyntaxItemKind::TypeReference(ty),
+                            TextRange::new(
+                                srcloc.span.start.try_into().unwrap(),
+                                srcloc.span.end.try_into().unwrap(),
+                            ),
+                        ));
+                }
+
+                let target = ctx.scope_mut(import_scope);
+
+                if target.ty(name).is_none() {
+                    target.insert_type(name.to_string(), ty, import.exported);
+                    target.add_type_import(ty, import_id);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name.to_string(), Declaration::Type(ty)));
+                    updated = true;
+                    unused_imports.shift_remove(name);
+                } else if !target.is_type_exported(ty)
+                    && import.exported
+                    && target.ty(name) == Some(ty)
+                {
+                    target.export_type(ty);
+                    ctx.import_mut(import_id)
+                        .declarations
+                        .push((name.to_string(), Declaration::Type(ty)));
+                    updated = true;
+                    unused_imports.shift_remove(name);
+                }
+            }
+
+            if symbol.is_some() || ty.is_some() {
+                missing_imports.shift_remove(name);
+            } else if diagnostics {
+                unused_imports.shift_remove(name);
             }
         }
     }
 
     updated
-}
-
-fn flatten_imports(
-    ctx: &mut Compiler,
-    declarations: &ModuleDeclarations,
-) -> Vec<(ScopeId, ImportId)> {
-    let mut imports = Vec::new();
-    let mut stack = vec![(ctx.last_scope_id(), declarations.modules.clone())];
-
-    while let Some((scope, modules)) = stack.pop() {
-        for import in ctx.scope(scope).imports() {
-            imports.push((scope, import));
-        }
-
-        for module in modules {
-            let Symbol::Module(module) = ctx.symbol(module).clone() else {
-                unreachable!();
-            };
-
-            stack.push((module.scope, module.declarations.modules.clone()));
-        }
-    }
-
-    imports
 }

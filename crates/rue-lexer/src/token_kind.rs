@@ -35,6 +35,7 @@ pub enum TokenKind {
     Debug,
     Is,
     As,
+    Super,
 
     // Grouping
     OpenParen,

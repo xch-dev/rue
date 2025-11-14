@@ -1,11 +1,11 @@
-use std::{collections::HashMap, fmt};
+use std::fmt;
 
 use id_arena::Id;
 use indexmap::IndexMap;
-use rue_parser::SyntaxToken;
+use rue_diagnostic::Name;
 use rue_types::TypeId;
 
-use crate::{HirId, ImportId, ScopeId, Value};
+use crate::{HirId, ScopeId, Value};
 
 pub type SymbolId = Id<Symbol>;
 
@@ -21,22 +21,22 @@ pub enum Symbol {
 }
 
 impl Symbol {
-    pub fn name(&self) -> Option<&SyntaxToken> {
+    pub fn name(&self) -> Option<Name> {
         match self {
             Self::Unresolved => None,
-            Self::Module(module) => module.name.as_ref(),
-            Self::Function(function) => function.name.as_ref(),
-            Self::Builtin(_) => None,
-            Self::Parameter(parameter) => parameter.name.as_ref(),
-            Self::Constant(constant) => constant.name.as_ref(),
-            Self::Binding(binding) => binding.name.as_ref(),
+            Self::Module(module) => module.name.clone(),
+            Self::Function(function) => function.name.clone(),
+            Self::Builtin(builtin) => Some(Name::new(builtin.to_string(), None)),
+            Self::Parameter(parameter) => parameter.name.clone(),
+            Self::Constant(constant) => constant.name.clone(),
+            Self::Binding(binding) => binding.name.clone(),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ModuleSymbol {
-    pub name: Option<SyntaxToken>,
+    pub name: Option<Name>,
     pub scope: ScopeId,
     pub declarations: ModuleDeclarations,
 }
@@ -46,14 +46,11 @@ pub struct ModuleDeclarations {
     pub types: Vec<(TypeId, ScopeId)>,
     pub symbols: Vec<SymbolId>,
     pub modules: Vec<SymbolId>,
-    pub import_cache: HashMap<Vec<String>, ScopeId>,
-    pub unused_imports: IndexMap<ImportId, IndexMap<String, SyntaxToken>>,
-    pub glob_import_counts: IndexMap<ImportId, (SyntaxToken, usize)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionSymbol {
-    pub name: Option<SyntaxToken>,
+    pub name: Option<Name>,
     pub ty: TypeId,
     pub scope: ScopeId,
     pub vars: Vec<TypeId>,
@@ -73,20 +70,20 @@ pub enum FunctionKind {
 
 #[derive(Debug, Clone)]
 pub struct ParameterSymbol {
-    pub name: Option<SyntaxToken>,
+    pub name: Option<Name>,
     pub ty: TypeId,
 }
 
 #[derive(Debug, Clone)]
 pub struct ConstantSymbol {
-    pub name: Option<SyntaxToken>,
+    pub name: Option<Name>,
     pub value: Value,
     pub inline: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct BindingSymbol {
-    pub name: Option<SyntaxToken>,
+    pub name: Option<Name>,
     pub value: Value,
     pub inline: bool,
 }

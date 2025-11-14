@@ -30,3 +30,4 @@ clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
 hex = { workspace = true }
 colored = { workspace = true }
+toml = { workspace = true }

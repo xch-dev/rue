@@ -29,8 +29,10 @@ pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> 
 
     let inner = ctx.alloc_type(Type::Unresolved);
 
+    let name = type_alias.name().map(|name| ctx.local_name(&name));
+
     *ctx.ty_mut(ty) = Type::Alias(Alias {
-        name: type_alias.name(),
+        name,
         generics,
         inner,
     });

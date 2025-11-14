@@ -108,6 +108,7 @@ impl Parser {
                 TokenKind::Debug => T![debug],
                 TokenKind::Is => T![is],
                 TokenKind::As => T![as],
+                TokenKind::Super => T![super],
                 TokenKind::OpenParen => T!['('],
                 TokenKind::CloseParen => T![')'],
                 TokenKind::OpenBrace => T!['{'],

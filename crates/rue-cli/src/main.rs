@@ -1,4 +1,9 @@
-use std::{fs, process, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    process,
+};
 
 use anyhow::Result;
 use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
@@ -11,21 +16,27 @@ use clvmr::{
     serde::{node_from_bytes, node_to_bytes},
 };
 use colored::Colorize;
-use rue_compiler::compile_file;
-use rue_diagnostic::{DiagnosticSeverity, Source, SourceKind};
+use rue_compiler::{Compiler, FileTree, normalize_path};
+use rue_diagnostic::DiagnosticSeverity;
 use rue_lir::DebugDialect;
-use rue_options::CompilerOptions;
+use rue_options::{Manifest, find_project};
 
 #[derive(Debug, Parser)]
 pub enum Command {
+    Init(InitArgs),
     Build(BuildArgs),
     Test(TestArgs),
     Debug(DebugArgs),
 }
 
 #[derive(Debug, Parser)]
+pub struct InitArgs {
+    path: Option<String>,
+}
+
+#[derive(Debug, Parser)]
 pub struct BuildArgs {
-    file: String,
+    file: Option<String>,
     #[clap(short, long)]
     export: Option<String>,
     #[clap(short, long)]
@@ -38,7 +49,7 @@ pub struct BuildArgs {
 
 #[derive(Debug, Parser)]
 pub struct TestArgs {
-    file: String,
+    file: Option<String>,
 }
 
 #[derive(Debug, Parser)]
@@ -53,63 +64,111 @@ fn main() -> Result<()> {
     let args = Command::parse();
 
     match args {
+        Command::Init(args) => init(args),
         Command::Build(args) => build(args),
         Command::Test(args) => test(args),
         Command::Debug(args) => debug(args),
     }
 }
 
-fn build(args: BuildArgs) -> Result<()> {
-    let source = fs::read_to_string(&args.file)?;
+fn init(args: InitArgs) -> Result<()> {
+    let path = PathBuf::from(args.path.unwrap_or_else(|| ".".to_string()));
+    let manifest = Manifest::default();
+    let entrypoint_dir = path.join(&manifest.compiler.entrypoint);
+    let manifest_path = path.join("Rue.toml");
+    let main_path = entrypoint_dir.join("main.rue");
 
-    let mut allocator = Allocator::new();
+    if manifest_path.try_exists()? {
+        eprintln!("{}", "Rue.toml already exists".red().bold());
+        process::exit(1);
+    }
 
-    let result = compile_file(
-        &mut allocator,
-        Source::new(Arc::from(source), SourceKind::File(args.file)),
-        if args.debug {
-            CompilerOptions::debug()
-        } else {
-            CompilerOptions::default()
-        },
+    if main_path.try_exists()? {
+        eprintln!("{}", "main.rue already exists".red().bold());
+        process::exit(1);
+    }
+
+    fs::create_dir_all(entrypoint_dir)?;
+    fs::write(manifest_path, toml::to_string(&manifest)?)?;
+    fs::write(
+        main_path,
+        "fn main() -> String {\n    \"Hello, world!\"\n}\n",
     )?;
 
-    for diagnostic in &result.diagnostics {
+    Ok(())
+}
+
+fn build(args: BuildArgs) -> Result<()> {
+    let mut allocator = Allocator::new();
+
+    let search_path = Path::new(args.file.as_deref().unwrap_or("."));
+    let project = find_project(search_path, args.debug)?;
+
+    let Some(project) = project else {
+        eprintln!("{}", "No project found".red().bold());
+        process::exit(1);
+    };
+
+    if project.manifest.is_some_and(|manifest| {
+        manifest
+            .compiler
+            .version
+            .is_some_and(|version| version != env!("CARGO_PKG_VERSION"))
+    }) {
+        eprintln!("{}", "Project version mismatch".red().bold());
+        process::exit(1);
+    }
+
+    let file_kind = args
+        .file
+        .map(|file| normalize_path(Path::new(&file)))
+        .transpose()?;
+
+    let main_kind = if let Some(file_kind) = &file_kind {
+        Some(file_kind.clone())
+    } else if project.entrypoint.join("main.rue").exists() {
+        Some(normalize_path(&project.entrypoint.join("main.rue"))?)
+    } else {
+        None
+    };
+
+    let mut ctx = Compiler::new(project.options);
+
+    let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut HashMap::new())?;
+
+    let mut codegen = true;
+
+    for diagnostic in ctx.take_diagnostics() {
         let message = diagnostic.message();
         let severity = diagnostic.kind.severity();
 
         if severity == DiagnosticSeverity::Error {
             eprintln!("{}", format!("Error: {message}").red().bold());
+            codegen = false;
         } else {
             eprintln!("{}", format!("Warning: {message}").yellow().bold());
         }
     }
 
-    if result
-        .diagnostics
-        .iter()
-        .any(|d| d.kind.severity() == DiagnosticSeverity::Error)
-    {
+    if !codegen {
         process::exit(1);
     }
 
     let program = if let Some(export) = args.export {
-        let Some(program) = result.exports.get(&export).copied() else {
+        let Some(program) = tree
+            .exports(&mut ctx, &mut allocator, file_kind.as_ref(), Some(&export))?
+            .into_iter()
+            .next()
+        else {
             eprintln!("{}", format!("Export `{export}` not found").red().bold());
             process::exit(1);
         };
 
-        program
-    } else if let Some(program) = result.main {
-        program
-    } else if result.exports.is_empty() {
-        eprintln!(
-            "{}",
-            "No `main` function or exported functions found"
-                .red()
-                .bold()
-        );
-        process::exit(1);
+        program.ptr
+    } else if let Some(main_kind) = main_kind
+        && let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind)?
+    {
+        ptr
     } else {
         eprintln!(
             "{}",
@@ -136,44 +195,54 @@ fn build(args: BuildArgs) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn test(args: TestArgs) -> Result<()> {
-    let source = fs::read_to_string(&args.file)?;
-
     let mut allocator = Allocator::new();
 
-    let result = compile_file(
-        &mut allocator,
-        Source::new(Arc::from(source), SourceKind::File(args.file)),
-        CompilerOptions::debug(),
-    )?;
+    let search_path = Path::new(args.file.as_deref().unwrap_or("."));
+    let project = find_project(search_path, true)?;
 
-    for diagnostic in &result.diagnostics {
+    let Some(project) = project else {
+        eprintln!("{}", "No project found".red().bold());
+        process::exit(1);
+    };
+
+    let mut ctx = Compiler::new(project.options);
+
+    let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut HashMap::new())?;
+
+    let mut codegen = true;
+
+    for diagnostic in ctx.take_diagnostics() {
         let message = diagnostic.message();
         let severity = diagnostic.kind.severity();
 
         if severity == DiagnosticSeverity::Error {
             eprintln!("{}", format!("Error: {message}").red().bold());
+            codegen = false;
         } else {
             eprintln!("{}", format!("Warning: {message}").yellow().bold());
         }
     }
 
-    if result
-        .diagnostics
-        .iter()
-        .any(|d| d.kind.severity() == DiagnosticSeverity::Error)
-    {
+    if !codegen {
         process::exit(1);
     }
 
-    let len = result.tests.len();
+    let tests = tree.tests(&mut ctx, &mut allocator, None, None)?;
+
+    let len = tests.len();
 
     let mut failed = false;
 
-    for (i, test) in result.tests.iter().enumerate() {
+    for (i, test) in tests.iter().enumerate() {
+        let Some(name) = &test.name else {
+            continue;
+        };
+
         println!(
             "{}",
-            format!("Running test `{}` ({}/{})", test.name, i + 1, len)
+            format!("Running test `{}` ({}/{})", name, i + 1, len)
                 .cyan()
                 .bold()
         );
@@ -181,7 +250,7 @@ fn test(args: TestArgs) -> Result<()> {
         match run_program(
             &mut allocator,
             &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
-            test.program,
+            test.ptr,
             NodePtr::NIL,
             u64::MAX,
         ) {

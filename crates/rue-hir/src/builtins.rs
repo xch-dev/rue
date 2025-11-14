@@ -1,4 +1,5 @@
 use indexmap::indexmap;
+use rue_diagnostic::Name;
 use rue_types::{BuiltinTypes, FunctionType, Generic, Pair, Type, TypeId, Union};
 
 use crate::{
@@ -50,7 +51,9 @@ impl Builtins {
         scope.insert_type("List".to_string(), types.list, false);
         scope.insert_type("AlternatingList".to_string(), types.alternating_list, false);
 
-        let unchecked_cast_generic = db.alloc_type(Type::Generic(Generic { name: None }));
+        let unchecked_cast_generic = db.alloc_type(Type::Generic(Generic {
+            name: Some(Name::new("T", None)),
+        }));
 
         scope.insert_symbol(
             "unchecked_cast".to_string(),
@@ -202,7 +205,7 @@ impl Builtins {
         scope.insert_symbol(
             "INFINITY_G1".to_string(),
             db.alloc_symbol(Symbol::Constant(ConstantSymbol {
-                name: None,
+                name: Some(Name::new("INFINITY_G1", None)),
                 value: Value::new(infinity_g1, types.public_key),
                 inline: false,
             })),
@@ -212,7 +215,7 @@ impl Builtins {
         scope.insert_symbol(
             "INFINITY_G2".to_string(),
             db.alloc_symbol(Symbol::Constant(ConstantSymbol {
-                name: None,
+                name: Some(Name::new("INFINITY_G2", None)),
                 value: Value::new(infinity_g2, types.signature),
                 inline: false,
             })),
@@ -237,7 +240,7 @@ fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
     let scope = db.alloc_scope(Scope::new(None));
 
     let parameter = db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
-        name: None,
+        name: Some(Name::new("value", None)),
         ty: any,
     }));
 
@@ -253,7 +256,7 @@ fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
     }));
 
     db.alloc_symbol(Symbol::Function(FunctionSymbol {
-        name: None,
+        name: Some(Name::new("unchecked_cast", None)),
         ty,
         scope,
         vars: vec![generic],
