@@ -5,7 +5,7 @@ use rue_ast::{AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{BinaryOp, Builtin, FunctionCall, Hir, Symbol, UnaryOp, Value};
 use rue_lir::ClvmOp;
-use rue_types::{Pair, Type, Union, substitute_with_mappings};
+use rue_types::{Pair, Type, TypeId, Union, substitute_with_mappings};
 
 use crate::{Compiler, compile_expr};
 
@@ -69,14 +69,32 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
             );
         }
 
-        let mut mappings = HashMap::new();
+        let mut mappings: HashMap<TypeId, Vec<TypeId>> = HashMap::new();
         let mut results = Vec::new();
 
         for (i, (_, param)) in function.params.iter().enumerate() {
+            let substitute_mappings = mappings
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        *k,
+                        if v.is_empty() {
+                            ctx.builtins().types.never
+                        } else if v.len() == 1 {
+                            v[0]
+                        } else {
+                            ctx.alloc_type(Type::Union(Union::new(v.clone())))
+                        },
+                    )
+                })
+                .collect();
+
+            let param = substitute_with_mappings(ctx.types_mut(), *param, &substitute_mappings);
+
             if let Some(expr) = args.get(i) {
-                let value = compile_expr(ctx, expr, Some(*param));
+                let value = compile_expr(ctx, expr, Some(param));
                 results.push(value.hir);
-                ctx.infer_type(expr.syntax(), value.ty, *param, &mut mappings);
+                ctx.infer_type(expr.syntax(), value.ty, param, &mut mappings);
             } else {
                 debug!("Unresolved function call argument");
                 results.push(ctx.builtins().unresolved.hir);
@@ -101,6 +119,22 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
                 .collect(),
         )))
     };
+
+    let mappings = mappings
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                k,
+                if v.is_empty() {
+                    ctx.builtins().types.never
+                } else if v.len() == 1 {
+                    v[0]
+                } else {
+                    ctx.alloc_type(Type::Union(Union::new(v)))
+                },
+            )
+        })
+        .collect();
 
     let ty = substitute_with_mappings(ctx.types_mut(), ty, &mappings);
 

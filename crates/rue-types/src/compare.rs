@@ -20,7 +20,7 @@ pub enum Comparison {
 
 #[derive(Debug, Default)]
 pub(crate) struct ComparisonContext<'a> {
-    infer: Option<&'a mut HashMap<TypeId, TypeId>>,
+    infer: Option<&'a mut HashMap<TypeId, Vec<TypeId>>>,
     stack: IndexSet<(TypeId, TypeId)>,
 }
 
@@ -29,7 +29,7 @@ pub fn compare_with_inference(
     builtins: &BuiltinTypes,
     lhs: TypeId,
     rhs: TypeId,
-    infer: Option<&mut HashMap<TypeId, TypeId>>,
+    infer: Option<&mut HashMap<TypeId, Vec<TypeId>>>,
 ) -> Comparison {
     let lhs = substitute(arena, lhs);
     let rhs = substitute(arena, rhs);
@@ -156,17 +156,13 @@ pub(crate) fn compare_impl(
             if lhs == rhs {
                 Comparison::Assign
             } else if let Some(infer) = &mut ctx.infer {
-                if let Some(rhs) = infer.get(&rhs).copied() {
-                    compare_impl(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
-                } else {
-                    debug!(
-                        "Inferring {} is {}",
-                        stringify_impl(arena, rhs, &mut IndexMap::new()),
-                        stringify_impl(arena, lhs, &mut IndexMap::new())
-                    );
-                    infer.insert(rhs, lhs);
-                    Comparison::Assign
-                }
+                debug!(
+                    "Inferring {} could include {}",
+                    stringify_impl(arena, rhs, &mut IndexMap::new()),
+                    stringify_impl(arena, lhs, &mut IndexMap::new())
+                );
+                infer.entry(rhs).or_default().push(lhs);
+                Comparison::Assign
             } else if let Type::Union(lhs) = arena[lhs].clone() {
                 let mut result = Comparison::Assign;
 
