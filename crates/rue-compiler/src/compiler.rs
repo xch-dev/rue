@@ -213,6 +213,10 @@ impl Compiler {
     }
 
     pub fn parent_module_stack(&self) -> &[SymbolId] {
+        if self.module_stack.is_empty() {
+            return &[];
+        }
+
         &self.module_stack[..self.module_stack.len() - 1]
     }
 

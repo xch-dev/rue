@@ -473,12 +473,12 @@ impl File {
             self.document.syntax().text_range().start(),
         );
         ctx.push_scope(scope, self.document.syntax().text_range().start());
-        ctx.push_module(self.module);
+        // ctx.push_module(self.module);
         self.module(ctx).declarations.clone()
     }
 
     fn end(&self, ctx: &mut Compiler, declarations: ModuleDeclarations) {
-        ctx.pop_module();
+        // ctx.pop_module();
         ctx.pop_scope(self.document.syntax().text_range().end());
         ctx.pop_scope(self.document.syntax().text_range().end());
         self.module_mut(ctx).declarations = declarations;

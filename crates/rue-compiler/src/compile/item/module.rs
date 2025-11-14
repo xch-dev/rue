@@ -27,9 +27,9 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    ctx.push_module(symbol);
+    // ctx.push_module(symbol);
     declare_module_items(ctx, module.items(), &mut declarations);
-    ctx.pop_module();
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 
     ctx.module_mut(symbol).declarations = declarations;
@@ -68,9 +68,9 @@ pub fn declare_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    ctx.push_module(symbol);
+    // ctx.push_module(symbol);
     declare_type_items(ctx, module.items(), &mut declarations);
-    ctx.pop_module();
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 
     let Symbol::Module(ModuleSymbol {
@@ -98,9 +98,9 @@ pub fn declare_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    ctx.push_module(symbol);
+    // ctx.push_module(symbol);
     declare_symbol_items(ctx, module.items(), &mut declarations);
-    ctx.pop_module();
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 
     let Symbol::Module(ModuleSymbol {
@@ -128,9 +128,9 @@ pub fn compile_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    ctx.push_module(symbol);
+    // ctx.push_module(symbol);
     compile_type_items(ctx, module.items(), &declarations);
-    ctx.pop_module();
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 }
 
@@ -148,8 +148,8 @@ pub fn compile_module_symbols(ctx: &mut Compiler, module: &AstModuleItem, symbol
 
     let range = module.syntax().text_range();
     ctx.push_scope(scope, range.start());
-    ctx.push_module(symbol);
+    // ctx.push_module(symbol);
     compile_symbol_items(ctx, module.items(), &declarations);
-    ctx.pop_module();
+    // ctx.pop_module();
     ctx.pop_scope(range.end());
 }
