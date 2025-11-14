@@ -1,0 +1,17 @@
+mod a {
+    export mod b {
+        export mod c {
+            export fn thing() -> Int {
+                super::super::super::thing() + 1
+            }
+        }
+    }
+}
+
+export fn thing() -> Int {
+    42
+}
+
+fn main() -> Int {
+    a::b::c::thing()
+}

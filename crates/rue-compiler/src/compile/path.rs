@@ -143,9 +143,16 @@ where
         } else {
             let symbol = ctx
                 .resolve_symbol_in(base_scope, name.text())
+                .filter(|s| {
+                    base_scope == ctx.last_scope_id()
+                        || ctx.scope(base_scope).is_symbol_exported(s.0)
+                })
                 .map(|(symbol, import)| (symbol, true, import));
             let ty = ctx
                 .resolve_type_in(base_scope, name.text())
+                .filter(|t| {
+                    base_scope == ctx.last_scope_id() || ctx.scope(base_scope).is_type_exported(t.0)
+                })
                 .map(|(ty, import)| (ty, true, import));
             (symbol, ty)
         };

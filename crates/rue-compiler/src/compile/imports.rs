@@ -239,6 +239,10 @@ fn resolve_import(
                 .map(|s| (s, base.symbol_import(s)))
         } else {
             ctx.resolve_symbol_in(import.base_scope, name.text())
+                .filter(|s| {
+                    import.base_scope == import_scope
+                        || ctx.scope(import.base_scope).is_symbol_exported(s.0)
+                })
         };
 
         let Some((symbol, import)) = symbol else {
@@ -390,8 +394,18 @@ fn resolve_import(
             } else {
                 let symbol = ctx
                     .resolve_symbol_in(import.base_scope, name)
+                    .filter(|s| {
+                        import.base_scope == import_scope
+                            || ctx.scope(import.base_scope).is_symbol_exported(s.0)
+                    })
                     .map(|(s, _)| s);
-                let ty = ctx.resolve_type_in(import.base_scope, name).map(|(t, _)| t);
+                let ty = ctx
+                    .resolve_type_in(import.base_scope, name)
+                    .filter(|t| {
+                        import.base_scope == import_scope
+                            || ctx.scope(import.base_scope).is_type_exported(t.0)
+                    })
+                    .map(|(t, _)| t);
                 (symbol, ty)
             };
 

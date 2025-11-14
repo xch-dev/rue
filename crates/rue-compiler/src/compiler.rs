@@ -216,16 +216,6 @@ impl Compiler {
         &self.module_stack[..self.module_stack.len() - 1]
     }
 
-    pub fn resolve_symbol(&self, name: &str) -> Option<(SymbolId, Option<ImportId>)> {
-        let last = self.last_scope_id();
-        self.resolve_symbol_in(last, name)
-    }
-
-    pub fn resolve_type(&self, name: &str) -> Option<(TypeId, Option<ImportId>)> {
-        let last = self.last_scope_id();
-        self.resolve_type_in(last, name)
-    }
-
     pub fn resolve_symbol_in(
         &self,
         scope: ScopeId,
