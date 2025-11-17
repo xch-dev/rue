@@ -174,20 +174,24 @@ where
                 );
                 return PathResult::Unresolved;
             }
-        } else {
+        } else if base_scope == ctx.last_scope_id() {
             let symbol = ctx
                 .resolve_symbol_in(base_scope, name.text())
-                .filter(|s| {
-                    base_scope == ctx.last_scope_id()
-                        || ctx.scope(base_scope).is_symbol_exported(s.0)
-                })
                 .map(|(symbol, import)| (symbol, true, import));
             let ty = ctx
                 .resolve_type_in(base_scope, name.text())
-                .filter(|t| {
-                    base_scope == ctx.last_scope_id() || ctx.scope(base_scope).is_type_exported(t.0)
-                })
                 .map(|(ty, import)| (ty, true, import));
+            (symbol, ty)
+        } else {
+            let base = ctx.scope(base_scope);
+            let symbol = base
+                .symbol(name.text())
+                .filter(|s| base.is_symbol_exported(*s))
+                .map(|s| (s, true, base.symbol_import(s)));
+            let ty = base
+                .ty(name.text())
+                .filter(|t| base.is_type_exported(*t))
+                .map(|t| (t, true, base.type_import(t)));
             (symbol, ty)
         };
 

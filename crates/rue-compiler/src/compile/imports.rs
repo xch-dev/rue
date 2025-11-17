@@ -254,12 +254,13 @@ fn resolve_import(
             base.symbol(name.text())
                 .filter(|s| base.is_symbol_exported(*s))
                 .map(|s| (s, base.symbol_import(s)))
-        } else {
+        } else if import.base_scope == import_scope {
             ctx.resolve_symbol_in(import.base_scope, name.text())
-                .filter(|s| {
-                    import.base_scope == import_scope
-                        || ctx.scope(import.base_scope).is_symbol_exported(s.0)
-                })
+        } else {
+            let base = ctx.scope(import.base_scope);
+            base.symbol(name.text())
+                .filter(|s| base.is_symbol_exported(*s))
+                .map(|s| (s, base.symbol_import(s)))
         };
 
         let Some((symbol, import)) = symbol else {
