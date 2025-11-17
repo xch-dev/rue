@@ -365,7 +365,9 @@ impl Cache<Compiler> {
                         type_name: self.type_name(scopes, field.ty),
                     }));
                 }
-                SyntaxItemKind::Scope(_) | SyntaxItemKind::CompletionContext(_) => {}
+                SyntaxItemKind::Scope(_)
+                | SyntaxItemKind::CompletionContext(_)
+                | SyntaxItemKind::FileModule(_) => {}
             }
         }
 
@@ -445,7 +447,9 @@ impl Cache<Compiler> {
                         .syntax_map
                         .items()
                         .filter_map(|item| {
-                            let SyntaxItemKind::SymbolDeclaration(declaration) = item.kind else {
+                            let (SyntaxItemKind::SymbolDeclaration(declaration)
+                            | SyntaxItemKind::FileModule(declaration)) = item.kind
+                            else {
                                 return None;
                             };
 
@@ -531,7 +535,8 @@ impl Cache<Compiler> {
                 }
                 SyntaxItemKind::FieldInitializer(_)
                 | SyntaxItemKind::Scope(_)
-                | SyntaxItemKind::CompletionContext(_) => {}
+                | SyntaxItemKind::CompletionContext(_)
+                | SyntaxItemKind::FileModule(_) => {}
             }
         }
 
@@ -601,7 +606,8 @@ impl Cache<Compiler> {
                 }
                 SyntaxItemKind::FieldInitializer(_)
                 | SyntaxItemKind::Scope(_)
-                | SyntaxItemKind::CompletionContext(_) => {}
+                | SyntaxItemKind::CompletionContext(_)
+                | SyntaxItemKind::FileModule(_) => {}
             }
         }
 

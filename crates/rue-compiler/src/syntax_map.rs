@@ -43,6 +43,7 @@ impl SyntaxItem {
 
 #[derive(Debug, Clone)]
 pub enum SyntaxItemKind {
+    FileModule(SymbolId),
     SymbolDeclaration(SymbolId),
     SymbolReference(SymbolId),
     TypeDeclaration(TypeId),

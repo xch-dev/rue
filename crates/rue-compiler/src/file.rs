@@ -431,6 +431,12 @@ impl File {
             declarations: ModuleDeclarations::default(),
         }));
 
+        ctx.add_syntax_for_source(
+            SyntaxItemKind::FileModule(module),
+            document.syntax().text_range(),
+            source.kind.clone(),
+        );
+
         Self {
             name,
             source,
