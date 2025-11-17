@@ -3,11 +3,11 @@ use std::{collections::HashSet, sync::Arc};
 use indexmap::IndexMap;
 use rowan::{TextRange, TextSize};
 use rue_compiler::{Compiler, CompletionContext, SyntaxItemKind, SyntaxMap};
-use rue_diagnostic::{LineCol, Source};
+use rue_diagnostic::{LineCol, Source, SourceKind};
 use rue_hir::{ScopeId, Symbol, SymbolId};
 use rue_types::{Type, TypeId, Union};
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Position, Range,
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position, Range, Url,
 };
 
 #[derive(Debug, Clone)]
@@ -60,7 +60,7 @@ pub struct Cache<T> {
 
 impl Cache<Arc<Compiler>> {
     pub fn new(ctx: Arc<Compiler>, source: Source) -> Self {
-        let syntax_map = ctx.syntax_map(&source.kind).cloned().unwrap_or_default();
+        let syntax_map = ctx.syntax_map().clone();
 
         Self {
             ctx,
@@ -91,6 +91,10 @@ impl Cache<Compiler> {
         let mut scopes = Vec::new();
 
         for item in self.syntax_map.items() {
+            if item.source_kind != self.source.kind {
+                continue;
+            }
+
             let SyntaxItemKind::Scope(scope) = item.kind else {
                 continue;
             };
@@ -107,6 +111,7 @@ impl Cache<Compiler> {
         for item in self
             .syntax_map
             .items()
+            .filter(|item| item.source_kind == self.source.kind)
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
@@ -313,6 +318,7 @@ impl Cache<Compiler> {
         for item in self
             .syntax_map
             .items()
+            .filter(|item| item.source_kind == self.source.kind)
             .map(Clone::clone)
             .collect::<Vec<_>>()
         {
@@ -366,42 +372,56 @@ impl Cache<Compiler> {
         infos
     }
 
-    pub fn definitions(&self, index: usize) -> Vec<Range> {
+    pub fn definitions(&self, index: usize) -> Vec<Location> {
         self.definitions_impl(index)
             .into_iter()
-            .map(|span| {
+            .filter(|(_, kind)| matches!(kind, SourceKind::File(_)))
+            .map(|(span, kind)| {
+                let SourceKind::File(path) = kind else {
+                    unreachable!();
+                };
+
                 let start = LineCol::new(&self.source.text, span.start().into());
                 let end = LineCol::new(&self.source.text, span.end().into());
 
-                Range::new(
+                let range = Range::new(
                     Position::new(start.line as u32, start.col as u32),
                     Position::new(end.line as u32, end.col as u32),
-                )
+                );
+
+                Location::new(Url::from_file_path(path).unwrap(), range)
             })
             .collect()
     }
 
-    pub fn references(&self, index: usize) -> Vec<Range> {
+    pub fn references(&self, index: usize) -> Vec<Location> {
         self.references_impl(index)
             .into_iter()
-            .map(|span| {
+            .filter(|(_, kind)| matches!(kind, SourceKind::File(_)))
+            .map(|(span, kind)| {
+                let SourceKind::File(path) = kind else {
+                    unreachable!();
+                };
+
                 let start = LineCol::new(&self.source.text, span.start().into());
                 let end = LineCol::new(&self.source.text, span.end().into());
 
-                Range::new(
+                let range = Range::new(
                     Position::new(start.line as u32, start.col as u32),
                     Position::new(end.line as u32, end.col as u32),
-                )
+                );
+
+                Location::new(Url::from_file_path(path).unwrap(), range)
             })
             .collect()
     }
 
-    fn definitions_impl(&self, index: usize) -> Vec<TextRange> {
-        for item in self.syntax_map.items() {
-            if !contains(item.span, index) {
-                continue;
-            }
-
+    fn definitions_impl(&self, index: usize) -> Vec<(TextRange, SourceKind)> {
+        for item in self
+            .syntax_map
+            .items()
+            .filter(|item| item.source_kind == self.source.kind && contains(item.span, index))
+        {
             match item.kind.clone() {
                 SyntaxItemKind::SymbolDeclaration(symbol) => {
                     return self
@@ -413,7 +433,7 @@ impl Cache<Compiler> {
                             };
 
                             if declaration == symbol {
-                                Some(item.span)
+                                Some((item.span, item.source_kind.clone()))
                             } else {
                                 None
                             }
@@ -430,7 +450,7 @@ impl Cache<Compiler> {
                             };
 
                             if declaration == symbol {
-                                Some(item.span)
+                                Some((item.span, item.source_kind.clone()))
                             } else {
                                 None
                             }
@@ -447,7 +467,7 @@ impl Cache<Compiler> {
                             };
 
                             if declaration == ty {
-                                Some(item.span)
+                                Some((item.span, item.source_kind.clone()))
                             } else {
                                 None
                             }
@@ -464,7 +484,7 @@ impl Cache<Compiler> {
                             };
 
                             if declaration == ty {
-                                Some(item.span)
+                                Some((item.span, item.source_kind.clone()))
                             } else {
                                 None
                             }
@@ -483,7 +503,7 @@ impl Cache<Compiler> {
                             if declaration.container == field.container
                                 && declaration.name == field.name
                             {
-                                Some(item.span)
+                                Some((item.span, item.source_kind.clone()))
                             } else {
                                 None
                             }
@@ -502,7 +522,7 @@ impl Cache<Compiler> {
                             if declaration.container == field.container
                                 && declaration.name == field.name
                             {
-                                Some(item.span)
+                                Some((item.span, item.source_kind.clone()))
                             } else {
                                 None
                             }
@@ -518,12 +538,12 @@ impl Cache<Compiler> {
         Vec::new()
     }
 
-    fn references_impl(&self, index: usize) -> Vec<TextRange> {
-        for item in self.syntax_map.items() {
-            if !contains(item.span, index) {
-                continue;
-            }
-
+    fn references_impl(&self, index: usize) -> Vec<(TextRange, SourceKind)> {
+        for item in self
+            .syntax_map
+            .items()
+            .filter(|item| item.source_kind == self.source.kind && contains(item.span, index))
+        {
             match item.kind.clone() {
                 SyntaxItemKind::SymbolDeclaration(symbol)
                 | SyntaxItemKind::SymbolReference(symbol) => {
@@ -536,7 +556,7 @@ impl Cache<Compiler> {
                             };
 
                             if declaration == symbol {
-                                Some(item.span)
+                                Some((item.span, item.source_kind.clone()))
                             } else {
                                 None
                             }
@@ -553,7 +573,7 @@ impl Cache<Compiler> {
                             };
 
                             if declaration == ty {
-                                Some(item.span)
+                                Some((item.span, item.source_kind.clone()))
                             } else {
                                 None
                             }
@@ -572,7 +592,7 @@ impl Cache<Compiler> {
                             if declaration.container == field.container
                                 && declaration.name == field.name
                             {
-                                Some(item.span)
+                                Some((item.span, item.source_kind.clone()))
                             } else {
                                 None
                             }

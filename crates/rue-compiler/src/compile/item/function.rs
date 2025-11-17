@@ -6,15 +6,15 @@ use rue_hir::{Declaration, FunctionKind, FunctionSymbol, ParameterSymbol, Symbol
 use rue_types::{FunctionType, Type};
 
 use crate::{
-    Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_block,
-    compile_generic_parameters, compile_type, create_binding,
+    Compiler, CompletionContext, SyntaxItemKind, compile_block, compile_generic_parameters,
+    compile_type, create_binding,
 };
 
 pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> SymbolId {
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Item),
         function.syntax().text_range(),
-    ));
+    );
 
     let symbol = ctx.alloc_symbol(Symbol::Unresolved);
 

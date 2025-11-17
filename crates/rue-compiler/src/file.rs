@@ -20,9 +20,8 @@ use rue_parser::Parser;
 use thiserror::Error;
 
 use crate::{
-    Compiler, ImportCache, SyntaxItem, SyntaxItemKind, check_unused, compile_symbol_items,
-    compile_type_items, declare_module_items, declare_symbol_items, declare_type_items,
-    resolve_imports,
+    Compiler, ImportCache, SyntaxItemKind, check_unused, compile_symbol_items, compile_type_items,
+    declare_module_items, declare_symbol_items, declare_type_items, resolve_imports,
 };
 
 #[derive(Debug, Error)]
@@ -514,13 +513,13 @@ impl File {
         self.end(ctx, declarations);
 
         for scope in ctx.scope_stack().into_iter().rev() {
-            ctx.syntax_map_mut().add_item(SyntaxItem::new(
+            ctx.add_syntax(
                 SyntaxItemKind::Scope(scope),
                 TextRange::new(
                     TextSize::from(0),
                     TextSize::from(self.source.text.len() as u32),
                 ),
-            ));
+            );
         }
     }
 }

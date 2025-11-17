@@ -17,13 +17,13 @@ pub use union::*;
 use rue_ast::{AstNode, AstType};
 use rue_types::TypeId;
 
-use crate::{Compiler, CompletionContext, SyntaxItem, SyntaxItemKind};
+use crate::{Compiler, CompletionContext, SyntaxItemKind};
 
 pub fn compile_type(ctx: &mut Compiler, ty: &AstType) -> TypeId {
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Type),
         ty.syntax().text_range(),
-    ));
+    );
 
     match ty {
         AstType::PathType(path) => compile_path_type(ctx, path),

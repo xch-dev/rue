@@ -6,8 +6,8 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{BindingSymbol, Declaration, Hir, Symbol, SymbolId, SymbolPath, Value};
 
 use crate::{
-    Compiler, CompletionContext, Field, FieldResult, SyntaxField, SyntaxItem, SyntaxItemKind,
-    compile_field, create_binding, create_binding_for_identifier,
+    Compiler, CompletionContext, Field, FieldResult, SyntaxField, SyntaxItemKind, compile_field,
+    create_binding, create_binding_for_identifier,
 };
 
 pub fn create_struct_binding(
@@ -70,21 +70,21 @@ pub fn create_struct_binding(
 
         ctx.pop_declaration();
 
-        ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        ctx.add_syntax(
             SyntaxItemKind::FieldReference(SyntaxField {
                 name: name.text().to_string(),
                 container: ty,
                 ty: field_type,
             }),
             name.text_range(),
-        ));
+        );
     }
 
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::StructFields {
             ty,
             specified_fields: Some(specified_fields),
         }),
         struct_binding.syntax().text_range(),
-    ));
+    );
 }

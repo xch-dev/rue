@@ -5,8 +5,8 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::Value;
 
 use crate::{
-    Compiler, CompletionContext, Field, FieldResult, SyntaxField, SyntaxItem, SyntaxItemKind,
-    compile_expr, compile_field,
+    Compiler, CompletionContext, Field, FieldResult, SyntaxField, SyntaxItemKind, compile_expr,
+    compile_field,
 };
 
 pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr) -> Value {
@@ -20,13 +20,13 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
         ctx.builtins().unresolved.clone()
     };
 
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::StructFields {
             ty: expr.ty,
             specified_fields: None,
         }),
         TextRange::new(start, access.syntax().text_range().end()),
-    ));
+    );
 
     let Some(name) = access.field() else {
         debug!("Unresolved field access name");
@@ -35,14 +35,14 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
 
     match compile_field(ctx, expr.clone(), &Field::Named(name.text())) {
         FieldResult::Value(value) => {
-            ctx.syntax_map_mut().add_item(SyntaxItem::new(
+            ctx.add_syntax(
                 SyntaxItemKind::FieldReference(SyntaxField {
                     name: name.text().to_string(),
                     container: expr.ty,
                     ty: value.ty,
                 }),
                 name.text_range(),
-            ));
+            );
             value
         }
         FieldResult::Unknown => {

@@ -244,19 +244,14 @@ impl Backend {
         let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position_params.position);
 
-        let range = cache.definitions(position);
+        let locations = cache.definitions(position);
 
-        if range.is_empty() {
+        if locations.is_empty() {
             None
-        } else if range.len() == 1 {
-            Some(GotoDefinitionResponse::Scalar(Location::new(uri, range[0])))
+        } else if locations.len() == 1 {
+            Some(GotoDefinitionResponse::Scalar(locations[0].clone()))
         } else {
-            Some(GotoDefinitionResponse::Array(
-                range
-                    .into_iter()
-                    .map(|range| Location::new(uri.clone(), range))
-                    .collect(),
-            ))
+            Some(GotoDefinitionResponse::Array(locations))
         }
     }
 
@@ -266,17 +261,12 @@ impl Backend {
         let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
-        let range = cache.references(position);
+        let locations = cache.references(position);
 
-        if range.is_empty() {
+        if locations.is_empty() {
             None
         } else {
-            Some(
-                range
-                    .into_iter()
-                    .map(|range| Location::new(uri.clone(), range))
-                    .collect(),
-            )
+            Some(locations)
         }
     }
 

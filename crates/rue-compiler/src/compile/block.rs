@@ -7,8 +7,7 @@ use rue_hir::{
 use rue_types::{Type, TypeId, Union};
 
 use crate::{
-    Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_expr, compile_type,
-    create_binding,
+    Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_type, create_binding,
 };
 
 pub fn compile_block(
@@ -18,10 +17,10 @@ pub fn compile_block(
     expected_type: Option<TypeId>,
     require_return: bool,
 ) -> Value {
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Expression),
         block.syntax().text_range(),
-    ));
+    );
 
     let index = ctx.mapping_checkpoint();
 
@@ -37,10 +36,10 @@ pub fn compile_block(
     for stmt in block.items() {
         let stmt = match stmt {
             AstStmtOrExpr::Stmt(stmt) => {
-                ctx.syntax_map_mut().add_item(SyntaxItem::new(
+                ctx.add_syntax(
                     SyntaxItemKind::CompletionContext(CompletionContext::Statement),
                     stmt.syntax().text_range(),
-                ));
+                );
 
                 stmt
             }

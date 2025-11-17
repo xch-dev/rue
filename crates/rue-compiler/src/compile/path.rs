@@ -8,7 +8,7 @@ use rue_hir::{Declaration, ImportId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, Type, TypeId};
 
-use crate::{Compiler, GetTextRange, SyntaxItem, SyntaxItemKind, compile_generic_arguments};
+use crate::{Compiler, GetTextRange, SyntaxItemKind, compile_generic_arguments};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathKind {
@@ -82,10 +82,7 @@ where
         if let Some(module) = module_stack.pop() {
             base_scope = ctx.module(module).scope;
 
-            ctx.syntax_map_mut().add_item(SyntaxItem::new(
-                SyntaxItemKind::SymbolReference(module),
-                name.text_range(),
-            ));
+            ctx.add_syntax(SyntaxItemKind::SymbolReference(module), name.text_range());
         } else {
             ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
         }

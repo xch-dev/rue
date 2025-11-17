@@ -5,15 +5,14 @@ use rue_hir::{Declaration, ScopeId};
 use rue_types::{Alias, Type, TypeId};
 
 use crate::{
-    Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_generic_parameters,
-    compile_type,
+    Compiler, CompletionContext, SyntaxItemKind, compile_generic_parameters, compile_type,
 };
 
 pub fn declare_type_alias(ctx: &mut Compiler, type_alias: &AstTypeAliasItem) -> (TypeId, ScopeId) {
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Item),
         type_alias.syntax().text_range(),
-    ));
+    );
 
     let ty = ctx.alloc_type(Type::Unresolved);
 

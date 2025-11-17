@@ -25,7 +25,7 @@ pub struct Compiler {
     source: Source,
     diagnostics: Vec<Diagnostic>,
     db: Database,
-    syntax_maps: HashMap<SourceKind, SyntaxMap>,
+    syntax_map: SyntaxMap,
     scope_stack: Vec<(TextSize, ScopeId)>,
     module_stack: Vec<SymbolId>,
     builtins: Builtins,
@@ -59,7 +59,7 @@ impl Compiler {
             source: Source::new(Arc::from(""), SourceKind::Std),
             diagnostics: Vec::new(),
             db,
-            syntax_maps: HashMap::new(),
+            syntax_map: SyntaxMap::new(),
             scope_stack: vec![(TextSize::from(0), builtins.scope)],
             module_stack: Vec::new(),
             builtins,
@@ -116,18 +116,22 @@ impl Compiler {
         self.scope_stack.iter().map(|(_, scope)| *scope).collect()
     }
 
-    pub fn syntax_map(&self, source_kind: &SourceKind) -> Option<&SyntaxMap> {
-        self.syntax_maps.get(source_kind)
+    pub fn syntax_map(&self) -> &SyntaxMap {
+        &self.syntax_map
     }
 
-    pub fn syntax_map_mut(&mut self) -> &mut SyntaxMap {
-        self.syntax_maps
-            .entry(self.source.kind.clone())
-            .or_default()
+    pub fn add_syntax(&mut self, kind: SyntaxItemKind, span: TextRange) {
+        self.add_syntax_for_source(kind, span, self.source.kind.clone());
     }
 
-    pub fn syntax_map_for_source(&mut self, source: SourceKind) -> &mut SyntaxMap {
-        self.syntax_maps.entry(source).or_default()
+    pub fn add_syntax_for_source(
+        &mut self,
+        kind: SyntaxItemKind,
+        span: TextRange,
+        source_kind: SourceKind,
+    ) {
+        self.syntax_map
+            .add_item(SyntaxItem::new(kind, span, source_kind));
     }
 
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
@@ -184,10 +188,7 @@ impl Compiler {
             return;
         }
 
-        self.syntax_map_mut().add_item(SyntaxItem::new(
-            SyntaxItemKind::Scope(scope),
-            TextRange::new(start, end),
-        ));
+        self.add_syntax(SyntaxItemKind::Scope(scope), TextRange::new(start, end));
     }
 
     pub fn last_scope(&self) -> &Scope {
@@ -514,23 +515,23 @@ impl Compiler {
     }
 
     pub fn declaration_span(&mut self, declaration: Declaration, span: TextRange) {
-        self.syntax_map_mut().add_item(SyntaxItem::new(
+        self.add_syntax(
             match declaration {
                 Declaration::Symbol(symbol) => SyntaxItemKind::SymbolDeclaration(symbol),
                 Declaration::Type(ty) => SyntaxItemKind::TypeDeclaration(ty),
             },
             span,
-        ));
+        );
     }
 
     pub fn reference_span(&mut self, reference: Declaration, span: TextRange) {
-        self.syntax_map_mut().add_item(SyntaxItem::new(
+        self.add_syntax(
             match reference {
                 Declaration::Symbol(symbol) => SyntaxItemKind::SymbolReference(symbol),
                 Declaration::Type(ty) => SyntaxItemKind::TypeReference(ty),
             },
             span,
-        ));
+        );
     }
 
     pub fn is_unresolved(&mut self, ty: TypeId) -> bool {

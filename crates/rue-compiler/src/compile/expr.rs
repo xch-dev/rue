@@ -32,13 +32,13 @@ use rue_ast::{AstExpr, AstNode};
 use rue_hir::Value;
 use rue_types::TypeId;
 
-use crate::{Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_block};
+use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_block};
 
 pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<TypeId>) -> Value {
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Expression),
         expr.syntax().text_range(),
-    ));
+    );
 
     match expr {
         AstExpr::PathExpr(expr) => compile_path_expr(ctx, expr),
