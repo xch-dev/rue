@@ -17,7 +17,7 @@ pub fn compile_struct_initializer_expr(
 ) -> Value {
     let ty = if let Some(path) = expr.path()
         && let PathResult::Type(ty, _) =
-            compile_path(ctx, path.syntax(), path.segments(), PathKind::Type)
+            compile_path(ctx, path.syntax(), path.segments(), PathKind::Type, true)
     {
         ty
     } else {
@@ -98,9 +98,13 @@ pub fn compile_struct_initializer_expr(
                 continue;
             };
 
-            if let PathResult::Symbol(symbol, override_type, _) =
-                compile_path(ctx, field.syntax(), [name].into_iter(), PathKind::Symbol)
-            {
+            if let PathResult::Symbol(symbol, override_type, _) = compile_path(
+                ctx,
+                field.syntax(),
+                [name].into_iter(),
+                PathKind::Symbol,
+                false,
+            ) {
                 let ty = ctx.symbol_type(symbol);
 
                 let mut value = Value::new(ctx.alloc_hir(Hir::Reference(symbol)), ty)

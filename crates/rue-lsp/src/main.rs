@@ -44,7 +44,11 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![".".to_string(), ",".to_string()]),
+                    trigger_characters: Some(vec![
+                        ".".to_string(),
+                        ",".to_string(),
+                        ":".to_string(),
+                    ]),
                     all_commit_characters: Some(vec![
                         ";".to_string(),
                         "(".to_string(),
@@ -277,10 +281,13 @@ impl Backend {
         let position = cache.position(params.text_document_position.position);
 
         let scopes = cache.scopes(position);
+        let completions = cache.completions(&scopes, position);
 
-        Some(CompletionResponse::Array(
-            cache.completions(&scopes, position),
-        ))
+        if completions.is_empty() {
+            return None;
+        }
+
+        Some(CompletionResponse::Array(completions))
     }
 }
 

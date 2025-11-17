@@ -73,4 +73,7 @@ pub enum CompletionContext {
         ty: TypeId,
         specified_fields: Option<HashSet<String>>,
     },
+    ModuleExports {
+        module: SymbolId,
+    },
 }

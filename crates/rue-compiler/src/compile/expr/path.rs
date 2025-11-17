@@ -6,7 +6,7 @@ use crate::{Compiler, PathKind, PathResult, compile_path};
 
 pub fn compile_path_expr(ctx: &mut Compiler, path: &AstPathExpr) -> Value {
     let PathResult::Symbol(symbol, override_type, _) =
-        compile_path(ctx, path.syntax(), path.segments(), PathKind::Symbol)
+        compile_path(ctx, path.syntax(), path.segments(), PathKind::Symbol, true)
     else {
         debug!("Unresolved path expr");
         return ctx.builtins().unresolved.clone();

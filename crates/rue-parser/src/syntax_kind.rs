@@ -212,6 +212,9 @@ pub enum SyntaxKind {
     #[display("`::`")]
     PathSeparator,
 
+    #[display("`::<`")]
+    TurboFish,
+
     #[display("`...`")]
     Spread,
 
@@ -558,6 +561,7 @@ impl SyntaxKind {
             T![=>] => &[T![=], T![>]],
             T![::] => &[T![:], T![:]],
             T![...] => &[T![.], T![.], T![.]],
+            SyntaxKind::TurboFish => &[T![:], T![:], T![<]],
             SyntaxKind::Document => &[SyntaxKind::Document],
             SyntaxKind::ModuleItem => &[SyntaxKind::ModuleItem],
             SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],

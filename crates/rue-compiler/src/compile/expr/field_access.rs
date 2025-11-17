@@ -10,14 +10,16 @@ use crate::{
 };
 
 pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr) -> Value {
-    let mut start = access.syntax().text_range().start();
-
     let expr = if let Some(expr) = access.expr() {
-        start = expr.syntax().text_range().end();
         compile_expr(ctx, &expr, None)
     } else {
         debug!("Unresolved field access expr");
         ctx.builtins().unresolved.clone()
+    };
+
+    let Some(dot) = access.dot() else {
+        debug!("Unresolved field access dot");
+        return ctx.builtins().unresolved.clone();
     };
 
     ctx.add_syntax(
@@ -25,7 +27,7 @@ pub fn compile_field_access_expr(ctx: &mut Compiler, access: &AstFieldAccessExpr
             ty: expr.ty,
             specified_fields: None,
         }),
-        TextRange::new(start, access.syntax().text_range().end()),
+        TextRange::new(dot.text_range().end(), access.syntax().text_range().end()),
     );
 
     let Some(name) = access.field() else {

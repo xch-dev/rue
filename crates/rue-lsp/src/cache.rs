@@ -148,12 +148,18 @@ impl Cache<Compiler> {
     }
 
     pub fn completions(&mut self, scopes: &Scopes, index: usize) -> Vec<CompletionItem> {
+        if self.source.text.get(index - 1..index) == Some(":")
+            && self.source.text.get(index - 2..index) != Some("::")
+        {
+            return vec![];
+        }
+
         let context = self.completion_context(index);
         let partial = self.partial_identifier(index).unwrap_or_default();
 
         let mut scored_items = Vec::new();
         let mut symbol_names = HashSet::new();
-        let mut types_names = HashSet::new();
+        let mut type_names = HashSet::new();
 
         if let CompletionContext::StructFields {
             ty,
@@ -226,6 +232,50 @@ impl Cache<Compiler> {
             }
         }
 
+        if let CompletionContext::ModuleExports { module } = context.clone() {
+            let scope = self.ctx.module(module).scope;
+
+            for (name, symbol) in self
+                .ctx
+                .scope(scope)
+                .exported_symbols()
+                .map(|(name, symbol)| (name.to_string(), symbol))
+                .collect::<Vec<_>>()
+            {
+                if !symbol_names.insert(name.to_string()) {
+                    continue;
+                }
+
+                if let Some(score) = fuzzy_match(&partial, &name) {
+                    let ty = self.ctx.symbol_type_in(scope, symbol);
+                    let type_name = self.type_name(scopes, ty);
+                    let kind = symbol_kind(self.ctx.symbol(symbol));
+                    scored_items.push((score, create_completion_item(name, kind, Some(type_name))));
+                }
+            }
+
+            for (name, ty) in self
+                .ctx
+                .scope(scope)
+                .exported_types()
+                .map(|(name, ty)| (name.to_string(), ty))
+                .collect::<Vec<_>>()
+            {
+                if !type_names.insert(name.to_string()) {
+                    continue;
+                }
+
+                if let Some(score) = fuzzy_match(&partial, &name) {
+                    let type_name = self.inner_type(ty).map(|ty| self.type_name(scopes, ty));
+
+                    scored_items.push((
+                        score,
+                        create_completion_item(name, Some(CompletionItemKind::STRUCT), type_name),
+                    ));
+                }
+            }
+        }
+
         for scope in &scopes.0 {
             let symbols = self
                 .ctx
@@ -251,17 +301,7 @@ impl Cache<Compiler> {
                         let symbol = self.ctx.scope(*scope).symbol(&name).unwrap();
                         let ty = self.ctx.symbol_type_in(*scope, symbol);
                         let type_name = self.type_name(scopes, ty);
-
-                        let kind = match self.ctx.symbol(symbol) {
-                            Symbol::Binding(_) => Some(CompletionItemKind::VARIABLE),
-                            Symbol::Constant(_) => Some(CompletionItemKind::CONSTANT),
-                            Symbol::Function(_) => Some(CompletionItemKind::FUNCTION),
-                            Symbol::Parameter(_) => Some(CompletionItemKind::VARIABLE),
-                            Symbol::Module(_) => Some(CompletionItemKind::MODULE),
-                            Symbol::Builtin(_) => Some(CompletionItemKind::FUNCTION),
-                            Symbol::Unresolved => None,
-                        };
-
+                        let kind = symbol_kind(self.ctx.symbol(symbol));
                         scored_items
                             .push((score, create_completion_item(name, kind, Some(type_name))));
                     }
@@ -269,7 +309,7 @@ impl Cache<Compiler> {
             }
 
             for name in types {
-                if !types_names.insert(name.clone()) {
+                if !type_names.insert(name.clone()) {
                     continue;
                 }
 
@@ -277,7 +317,8 @@ impl Cache<Compiler> {
                     CompletionContext::Document
                     | CompletionContext::Item
                     | CompletionContext::Statement
-                    | CompletionContext::StructFields { .. } => {
+                    | CompletionContext::StructFields { .. }
+                    | CompletionContext::ModuleExports { .. } => {
                         continue;
                     }
                     CompletionContext::Type => {}
@@ -788,5 +829,17 @@ fn create_completion_item(
             description: None,
         }),
         ..Default::default()
+    }
+}
+
+fn symbol_kind(symbol: &Symbol) -> Option<CompletionItemKind> {
+    match symbol {
+        Symbol::Binding(_) => Some(CompletionItemKind::VARIABLE),
+        Symbol::Constant(_) => Some(CompletionItemKind::CONSTANT),
+        Symbol::Function(_) => Some(CompletionItemKind::FUNCTION),
+        Symbol::Parameter(_) => Some(CompletionItemKind::VARIABLE),
+        Symbol::Module(_) => Some(CompletionItemKind::MODULE),
+        Symbol::Builtin(_) => Some(CompletionItemKind::FUNCTION),
+        Symbol::Unresolved => None,
     }
 }
