@@ -107,7 +107,11 @@ impl Cache<Compiler> {
         Scopes(scopes)
     }
 
-    fn completion_context(&self, index: usize) -> CompletionContext {
+    fn completion_context(&self, index: usize) -> (CompletionContext, CompletionContext) {
+        let mut first = CompletionContext::Document;
+        let mut second = CompletionContext::Document;
+        let mut has_first = false;
+
         for item in self
             .syntax_map
             .items()
@@ -121,11 +125,17 @@ impl Cache<Compiler> {
             };
 
             if contains(item.span, index) {
-                return context.clone();
+                if has_first {
+                    second = context.clone();
+                    break;
+                }
+
+                first = context.clone();
+                has_first = true;
             }
         }
 
-        CompletionContext::Document
+        (first, second)
     }
 
     fn partial_identifier(&self, index: usize) -> Option<String> {
@@ -154,7 +164,7 @@ impl Cache<Compiler> {
             return vec![];
         }
 
-        let context = self.completion_context(index);
+        let (context, subcontext) = self.completion_context(index);
         let partial = self.partial_identifier(index).unwrap_or_default();
 
         let mut scored_items = Vec::new();
@@ -246,7 +256,11 @@ impl Cache<Compiler> {
                     continue;
                 }
 
-                if let Some(score) = fuzzy_match(&partial, &name) {
+                if let Some(score) = fuzzy_match(&partial, &name)
+                    && (matches!(subcontext, CompletionContext::Expression)
+                        || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
+                            && matches!(subcontext, CompletionContext::Type)))
+                {
                     let ty = self.ctx.symbol_type_in(scope, symbol);
                     let type_name = self.type_name(scopes, ty);
                     let kind = symbol_kind(self.ctx.symbol(symbol));
@@ -263,6 +277,25 @@ impl Cache<Compiler> {
             {
                 if !type_names.insert(name.to_string()) {
                     continue;
+                }
+
+                match subcontext {
+                    CompletionContext::Document
+                    | CompletionContext::Item
+                    | CompletionContext::Statement
+                    | CompletionContext::StructFields { .. }
+                    | CompletionContext::ModuleExports { .. } => {
+                        continue;
+                    }
+                    CompletionContext::Type => {}
+                    CompletionContext::Expression => {
+                        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
+
+                        match self.ctx.ty(semantic) {
+                            Type::Struct(_) => {}
+                            _ => continue,
+                        }
+                    }
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name) {
@@ -291,14 +324,18 @@ impl Cache<Compiler> {
                 .map(ToString::to_string)
                 .collect::<Vec<_>>();
 
-            if matches!(context, CompletionContext::Expression) {
-                for name in symbols {
-                    if !symbol_names.insert(name.clone()) {
-                        continue;
-                    }
+            for name in symbols {
+                if !symbol_names.insert(name.clone()) {
+                    continue;
+                }
 
-                    if let Some(score) = fuzzy_match(&partial, &name) {
-                        let symbol = self.ctx.scope(*scope).symbol(&name).unwrap();
+                if let Some(score) = fuzzy_match(&partial, &name) {
+                    let symbol = self.ctx.scope(*scope).symbol(&name).unwrap();
+
+                    if matches!(context, CompletionContext::Expression)
+                        || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
+                            && matches!(context, CompletionContext::Type))
+                    {
                         let ty = self.ctx.symbol_type_in(*scope, symbol);
                         let type_name = self.type_name(scopes, ty);
                         let kind = symbol_kind(self.ctx.symbol(symbol));
