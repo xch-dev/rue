@@ -315,9 +315,6 @@ pub enum SyntaxKind {
     #[display("path segment")]
     PathSegment,
 
-    #[display("leading path separator")]
-    LeadingPathSeparator,
-
     #[display("struct initializer expression")]
     StructInitializerExpr,
 
@@ -594,7 +591,6 @@ impl SyntaxKind {
             SyntaxKind::DebugStmt => &[SyntaxKind::DebugStmt],
             SyntaxKind::PathExpr => &[SyntaxKind::PathExpr],
             SyntaxKind::PathSegment => &[SyntaxKind::PathSegment],
-            SyntaxKind::LeadingPathSeparator => &[SyntaxKind::LeadingPathSeparator],
             SyntaxKind::StructInitializerExpr => &[SyntaxKind::StructInitializerExpr],
             SyntaxKind::StructInitializerField => &[SyntaxKind::StructInitializerField],
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],

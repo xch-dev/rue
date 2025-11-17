@@ -86,7 +86,6 @@ ast_nodes!(
     DebugStmt,
     PathExpr,
     PathSegment,
-    LeadingPathSeparator,
     StructInitializerExpr,
     StructInitializerField,
     LiteralExpr,
@@ -365,10 +364,11 @@ impl AstImportPath {
 }
 
 impl AstImportPathSegment {
-    pub fn initial_separator(&self) -> Option<AstLeadingPathSeparator> {
+    pub fn separator(&self) -> Option<SyntaxToken> {
         self.syntax()
-            .children()
-            .find_map(AstLeadingPathSeparator::cast)
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![::])
     }
 
     pub fn name(&self) -> Option<SyntaxToken> {

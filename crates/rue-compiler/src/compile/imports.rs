@@ -41,6 +41,12 @@ fn construct_imports(
 ) -> Vec<ImportId> {
     let mut has_non_super = false;
 
+    if let Some(segment) = segments.first()
+        && let Some(separator) = segment.separator()
+    {
+        ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
+    }
+
     for segment in segments.iter().take(segments.len() - 1) {
         if let Some(name) = segment.name() {
             if name.text() == "super" {
