@@ -75,5 +75,6 @@ pub enum CompletionContext {
     },
     ModuleExports {
         module: SymbolId,
+        allow_super: bool,
     },
 }

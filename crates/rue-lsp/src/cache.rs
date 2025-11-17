@@ -158,13 +158,21 @@ impl Cache<Compiler> {
     }
 
     pub fn completions(&mut self, scopes: &Scopes, index: usize) -> Vec<CompletionItem> {
+        let (context, subcontext) = self.completion_context(index);
+
         if self.source.text.get(index - 1..index) == Some(":")
-            && self.source.text.get(index - 2..index) != Some("::")
+            && (self.source.text.get(index - 2..index) != Some("::")
+                || !matches!(context, CompletionContext::ModuleExports { .. }))
         {
             return vec![];
         }
 
-        let (context, subcontext) = self.completion_context(index);
+        if self.source.text.get(index - 1..index) == Some(".")
+            && !matches!(context, CompletionContext::StructFields { .. })
+        {
+            return vec![];
+        }
+
         let partial = self.partial_identifier(index).unwrap_or_default();
 
         let mut scored_items = Vec::new();
@@ -242,7 +250,22 @@ impl Cache<Compiler> {
             }
         }
 
-        if let CompletionContext::ModuleExports { module } = context.clone() {
+        if let CompletionContext::ModuleExports {
+            module,
+            allow_super,
+        } = context.clone()
+        {
+            if allow_super && let Some(score) = fuzzy_match(&partial, "super") {
+                scored_items.push((
+                    score,
+                    create_completion_item(
+                        "super".to_string(),
+                        Some(CompletionItemKind::MODULE),
+                        None,
+                    ),
+                ));
+            }
+
             let scope = self.ctx.module(module).scope;
 
             for (name, symbol) in self
@@ -307,6 +330,18 @@ impl Cache<Compiler> {
                     ));
                 }
             }
+        }
+
+        if let Some(score) = fuzzy_match(&partial, "super")
+            && matches!(
+                context,
+                CompletionContext::Expression | CompletionContext::Type
+            )
+        {
+            scored_items.push((
+                score,
+                create_completion_item("super".to_string(), Some(CompletionItemKind::MODULE), None),
+            ));
         }
 
         for scope in &scopes.0 {

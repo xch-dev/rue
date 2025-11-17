@@ -71,7 +71,7 @@ pub fn compile_path<S>(
     range: &impl GetTextRange,
     segments: impl Iterator<Item = S>,
     kind: PathKind,
-    completions: bool,
+    mut completions: bool,
 ) -> PathResult
 where
     S: PathSegment,
@@ -98,7 +98,10 @@ where
             && let Some(separator) = segment.separator()
         {
             ctx.add_syntax(
-                SyntaxItemKind::CompletionContext(CompletionContext::ModuleExports { module }),
+                SyntaxItemKind::CompletionContext(CompletionContext::ModuleExports {
+                    module,
+                    allow_super: true,
+                }),
                 TextRange::new(separator.end(), segment.text_range().end()),
             );
         }
@@ -112,6 +115,7 @@ where
             ctx.add_syntax(SyntaxItemKind::SymbolReference(module), name.text_range());
         } else {
             ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
+            completions = false;
         }
     }
 
@@ -124,7 +128,10 @@ where
             && let Some(separator) = segment.separator()
         {
             ctx.add_syntax(
-                SyntaxItemKind::CompletionContext(CompletionContext::ModuleExports { module }),
+                SyntaxItemKind::CompletionContext(CompletionContext::ModuleExports {
+                    module,
+                    allow_super: index == 0,
+                }),
                 TextRange::new(separator.end(), segment.text_range().end()),
             );
         }
