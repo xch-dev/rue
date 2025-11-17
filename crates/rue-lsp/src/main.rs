@@ -183,7 +183,7 @@ impl Backend {
     }
 
     fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
-        let cache = self
+        let mut cache = self
             .cache
             .lock()
             .unwrap()
@@ -213,6 +213,15 @@ impl Backend {
                                 format!("type {}", info.name)
                             }
                         }
+                        HoverInfo::Struct(info) => format!(
+                            "struct {} {{\n{}\n}}",
+                            info.name,
+                            info.fields
+                                .iter()
+                                .map(|field| format!("    {}: {},", field.name, field.type_name))
+                                .collect::<Vec<String>>()
+                                .join("\n")
+                        ),
                         HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
                     },
                 })

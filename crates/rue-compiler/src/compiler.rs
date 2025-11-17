@@ -255,7 +255,12 @@ impl Compiler {
     }
 
     pub fn type_name(&mut self, ty: TypeId) -> String {
-        let mut current = Some(self.last_scope_id());
+        let current = self.last_scope_id();
+        self.type_name_in(current, ty)
+    }
+
+    pub fn type_name_in(&mut self, scope: ScopeId, ty: TypeId) -> String {
+        let mut current = Some(scope);
 
         while let Some(scope) = current {
             if let Some(name) = self.scope(scope).type_name(ty) {
@@ -284,7 +289,12 @@ impl Compiler {
     }
 
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {
-        let mut current = Some(self.last_scope_id());
+        let current = self.last_scope_id();
+        self.symbol_type_in(current, symbol)
+    }
+
+    pub fn symbol_type_in(&self, scope: ScopeId, symbol: SymbolId) -> TypeId {
+        let mut current = Some(scope);
 
         while let Some(scope) = current {
             if let Some(ty) = self.scope(scope).symbol_override_type(symbol) {

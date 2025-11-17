@@ -1,12 +1,14 @@
 use std::{collections::HashSet, sync::Arc};
 
-use indexmap::IndexSet;
+use indexmap::IndexMap;
 use rowan::{TextRange, TextSize};
 use rue_compiler::{Compiler, CompletionContext, SyntaxItemKind, SyntaxMap};
 use rue_diagnostic::{LineCol, Source};
 use rue_hir::{ScopeId, Symbol, SymbolId};
-use rue_types::{Type, TypeId};
-use tower_lsp::lsp_types::{CompletionItem, Position, Range};
+use rue_types::{Type, TypeId, Union};
+use tower_lsp::lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Position, Range,
+};
 
 #[derive(Debug, Clone)]
 pub struct Scopes(Vec<ScopeId>);
@@ -16,6 +18,7 @@ pub enum HoverInfo {
     Symbol(SymbolHoverInfo),
     Module(ModuleHoverInfo),
     Type(TypeHoverInfo),
+    Struct(StructHoverInfo),
     Field(FieldHoverInfo),
 }
 
@@ -34,6 +37,12 @@ pub struct ModuleHoverInfo {
 pub struct TypeHoverInfo {
     pub name: String,
     pub inner_name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructHoverInfo {
+    pub name: String,
+    pub fields: Vec<FieldHoverInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -148,27 +157,50 @@ impl Cache<Compiler> {
         {
             let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
 
-            let mut fields = IndexSet::new();
+            let mut fields = IndexMap::new();
 
             match self.ctx.ty(semantic) {
-                Type::Struct(ty) => {
-                    fields.extend(ty.fields.clone());
+                Type::Struct(_) => {
+                    for field in self.struct_fields(scopes, semantic).unwrap() {
+                        fields.insert(field.name, field.type_name);
+                    }
                 }
                 Type::Atom(_) => {
-                    fields.insert("length".to_string());
+                    let ty = self.ctx.builtins().types.int;
+                    let type_name = self.type_name(scopes, ty);
+                    fields.insert("length".to_string(), type_name);
                 }
                 Type::Pair(_) | Type::Union(_) => {
                     let pairs = rue_types::extract_pairs(self.ctx.types_mut(), ty, true);
 
                     if !pairs.is_empty() {
-                        fields.insert("first".to_string());
-                        fields.insert("rest".to_string());
+                        let first = if pairs.len() == 1 {
+                            pairs[0].first
+                        } else {
+                            self.ctx.alloc_type(Type::Union(Union::new(
+                                pairs.iter().map(|pair| pair.first).collect(),
+                            )))
+                        };
+
+                        let rest = if pairs.len() == 1 {
+                            pairs[0].rest
+                        } else {
+                            self.ctx.alloc_type(Type::Union(Union::new(
+                                pairs.iter().map(|pair| pair.rest).collect(),
+                            )))
+                        };
+
+                        let first = self.type_name(scopes, first);
+                        let rest = self.type_name(scopes, rest);
+
+                        fields.insert("first".to_string(), first);
+                        fields.insert("rest".to_string(), rest);
                     }
                 }
                 _ => {}
             }
 
-            for field in fields {
+            for (field, field_type) in fields {
                 if specified_fields
                     .as_ref()
                     .is_some_and(|fields| fields.contains(&field))
@@ -179,7 +211,11 @@ impl Cache<Compiler> {
                 if let Some(score) = fuzzy_match(&partial, &field) {
                     scored_items.push((
                         score,
-                        CompletionItem::new_simple(field, "Field".to_string()),
+                        create_completion_item(
+                            field,
+                            Some(CompletionItemKind::FIELD),
+                            Some(field_type),
+                        ),
                     ));
                 }
             }
@@ -207,10 +243,22 @@ impl Cache<Compiler> {
                     }
 
                     if let Some(score) = fuzzy_match(&partial, &name) {
-                        scored_items.push((
-                            score,
-                            CompletionItem::new_simple(name, "Symbol".to_string()),
-                        ));
+                        let symbol = self.ctx.scope(*scope).symbol(&name).unwrap();
+                        let ty = self.ctx.symbol_type_in(*scope, symbol);
+                        let type_name = self.type_name(scopes, ty);
+
+                        let kind = match self.ctx.symbol(symbol) {
+                            Symbol::Binding(_) => Some(CompletionItemKind::VARIABLE),
+                            Symbol::Constant(_) => Some(CompletionItemKind::CONSTANT),
+                            Symbol::Function(_) => Some(CompletionItemKind::FUNCTION),
+                            Symbol::Parameter(_) => Some(CompletionItemKind::VARIABLE),
+                            Symbol::Module(_) => Some(CompletionItemKind::MODULE),
+                            Symbol::Builtin(_) => Some(CompletionItemKind::FUNCTION),
+                            Symbol::Unresolved => None,
+                        };
+
+                        scored_items
+                            .push((score, create_completion_item(name, kind, Some(type_name))));
                     }
                 }
             }
@@ -241,8 +289,13 @@ impl Cache<Compiler> {
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name) {
-                    scored_items
-                        .push((score, CompletionItem::new_simple(name, "Type".to_string())));
+                    let ty = self.ctx.scope(*scope).ty(&name).unwrap();
+                    let type_name = self.inner_type(ty).map(|ty| self.type_name(scopes, ty));
+
+                    scored_items.push((
+                        score,
+                        create_completion_item(name, Some(CompletionItemKind::STRUCT), type_name),
+                    ));
                 }
             }
         }
@@ -254,16 +307,22 @@ impl Cache<Compiler> {
         scored_items.into_iter().map(|(_, item)| item).collect()
     }
 
-    pub fn hover(&self, scopes: &Scopes, index: usize) -> Vec<HoverInfo> {
+    pub fn hover(&mut self, scopes: &Scopes, index: usize) -> Vec<HoverInfo> {
         let mut infos = Vec::new();
 
-        for item in self.syntax_map.items() {
+        for item in self
+            .syntax_map
+            .items()
+            .map(Clone::clone)
+            .collect::<Vec<_>>()
+        {
             if !contains(item.span, index) {
                 continue;
             }
 
             match item.kind.clone() {
-                SyntaxItemKind::SymbolDeclaration(symbol) => {
+                SyntaxItemKind::SymbolDeclaration(symbol)
+                | SyntaxItemKind::SymbolReference(symbol) => {
                     let Some(name) = self.symbol_name(scopes, symbol) else {
                         continue;
                     };
@@ -277,45 +336,24 @@ impl Cache<Compiler> {
                         }));
                     }
                 }
-                SyntaxItemKind::SymbolReference(symbol) => {
-                    let Some(name) = self.symbol_name(scopes, symbol) else {
-                        continue;
-                    };
+                SyntaxItemKind::TypeDeclaration(ty) | SyntaxItemKind::TypeReference(ty) => {
+                    let fields = self.struct_fields(scopes, ty);
 
-                    if let Symbol::Module(_) = self.ctx.symbol(symbol) {
-                        infos.push(HoverInfo::Module(ModuleHoverInfo { name }));
+                    if let Some(fields) = fields {
+                        infos.push(HoverInfo::Struct(StructHoverInfo {
+                            name: self.type_name(scopes, ty),
+                            fields,
+                        }));
                     } else {
-                        infos.push(HoverInfo::Symbol(SymbolHoverInfo {
-                            name,
-                            type_name: self.type_name(scopes, self.symbol_type(scopes, symbol)),
+                        infos.push(HoverInfo::Type(TypeHoverInfo {
+                            name: self.type_name(scopes, ty),
+                            inner_name: self.inner_type(ty).map(|ty| self.type_name(scopes, ty)),
                         }));
                     }
                 }
-                SyntaxItemKind::TypeDeclaration(ty) => {
-                    infos.push(HoverInfo::Type(TypeHoverInfo {
-                        name: self.type_name(scopes, ty),
-                        inner_name: self.inner_type(ty).map(|ty| self.type_name(scopes, ty)),
-                    }));
-                }
-                SyntaxItemKind::TypeReference(ty) => {
-                    infos.push(HoverInfo::Type(TypeHoverInfo {
-                        name: self.type_name(scopes, ty),
-                        inner_name: self.inner_type(ty).map(|ty| self.type_name(scopes, ty)),
-                    }));
-                }
-                SyntaxItemKind::FieldDeclaration(field) => {
-                    infos.push(HoverInfo::Field(FieldHoverInfo {
-                        name: field.name,
-                        type_name: self.type_name(scopes, field.ty),
-                    }));
-                }
-                SyntaxItemKind::FieldReference(field) => {
-                    infos.push(HoverInfo::Field(FieldHoverInfo {
-                        name: field.name,
-                        type_name: self.type_name(scopes, field.ty),
-                    }));
-                }
-                SyntaxItemKind::FieldInitializer(field) => {
+                SyntaxItemKind::FieldDeclaration(field)
+                | SyntaxItemKind::FieldReference(field)
+                | SyntaxItemKind::FieldInitializer(field) => {
                     infos.push(HoverInfo::Field(FieldHoverInfo {
                         name: field.name,
                         type_name: self.type_name(scopes, field.ty),
@@ -550,7 +588,7 @@ impl Cache<Compiler> {
         Vec::new()
     }
 
-    fn type_name(&self, scopes: &Scopes, ty: TypeId) -> String {
+    fn type_name(&mut self, scopes: &Scopes, ty: TypeId) -> String {
         for &scope in &scopes.0 {
             let scope = self.ctx.scope(scope).clone();
 
@@ -564,7 +602,7 @@ impl Cache<Compiler> {
             Type::Alias(ty) => ty.name.as_ref().map(|token| token.text().to_string()),
             _ => None,
         }
-        .unwrap_or_else(|| rue_types::stringify_without_substitution(self.ctx.types(), ty))
+        .unwrap_or_else(|| rue_types::stringify(self.ctx.types_mut(), ty))
     }
 
     fn symbol_name(&self, scopes: &Scopes, symbol: SymbolId) -> Option<String> {
@@ -599,6 +637,52 @@ impl Cache<Compiler> {
             Type::Alias(ty) => Some(ty.inner),
             _ => None,
         }
+    }
+
+    fn struct_fields(&mut self, scopes: &Scopes, ty: TypeId) -> Option<Vec<FieldHoverInfo>> {
+        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
+
+        let mut fields = Vec::new();
+
+        let Type::Struct(ty) = self.ctx.ty(semantic).clone() else {
+            return None;
+        };
+
+        let mut inner = ty.inner;
+
+        for (i, name) in ty.fields.iter().enumerate() {
+            let next = if i == ty.fields.len() - 1 && !ty.nil_terminated {
+                inner
+            } else {
+                let pairs = rue_types::extract_pairs(self.ctx.types_mut(), inner, false);
+
+                let (firsts, rests) = if pairs.is_empty() {
+                    let never = self.ctx.builtins().types.never;
+                    (never, never)
+                } else if pairs.len() == 1 {
+                    (pairs[0].first, pairs[0].rest)
+                } else {
+                    let firsts = self.ctx.alloc_type(Type::Union(Union::new(
+                        pairs.iter().map(|pair| pair.first).collect(),
+                    )));
+                    let rests = self.ctx.alloc_type(Type::Union(Union::new(
+                        pairs.iter().map(|pair| pair.rest).collect(),
+                    )));
+                    (firsts, rests)
+                };
+
+                inner = rests;
+
+                firsts
+            };
+
+            fields.push(FieldHoverInfo {
+                name: name.to_string(),
+                type_name: self.type_name(scopes, next),
+            });
+        }
+
+        Some(fields)
     }
 }
 
@@ -663,4 +747,20 @@ fn fuzzy_match(query: &str, candidate: &str) -> Option<u32> {
     let position_score = 100u32.saturating_sub(u32::try_from(last_matched_pos).unwrap_or(100));
 
     Some(consecutive_score + match_ratio_score + position_score)
+}
+
+fn create_completion_item(
+    name: String,
+    kind: Option<CompletionItemKind>,
+    ty: Option<String>,
+) -> CompletionItem {
+    CompletionItem {
+        label: name,
+        kind,
+        label_details: Some(CompletionItemLabelDetails {
+            detail: ty.map(|ty| format!(" {ty}")),
+            description: None,
+        }),
+        ..Default::default()
+    }
 }
