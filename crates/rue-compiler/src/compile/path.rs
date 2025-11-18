@@ -362,6 +362,15 @@ where
             );
             PathResult::Unresolved
         }
+        (PathResult::Symbol(symbol, _, _), PathKind::Symbol) => {
+            if let Symbol::Module(_) = ctx.symbol(symbol) {
+                ctx.diagnostic(
+                    range,
+                    DiagnosticKind::CannotReferenceModule(previous_name.unwrap()),
+                );
+            }
+            value
+        }
         _ => value,
     }
 }

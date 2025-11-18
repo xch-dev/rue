@@ -1,0 +1,6 @@
+program: (q . "inner")
+debug_program: (a (q 2 2 ()) (c (q 1 . "inner") ()))
+output: '"inner"'
+runtime_cost: 20
+byte_cost: 96000
+total_cost: 96020

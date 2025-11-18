@@ -129,6 +129,9 @@ pub enum DiagnosticKind {
     #[error("Expected type, but found symbol `{0}`")]
     ExpectedType(String),
 
+    #[error("Cannot reference module `{0}`")]
+    CannotReferenceModule(String),
+
     #[error("Generic arguments are not permitted on symbol references")]
     GenericArgumentsOnSymbolReference,
 
@@ -269,6 +272,7 @@ impl DiagnosticKind {
             | Self::PrivateType(..)
             | Self::ExpectedSymbol(..)
             | Self::ExpectedType(..)
+            | Self::CannotReferenceModule(..)
             | Self::GenericArgumentsOnSymbolReference
             | Self::NonStructInitializer(..)
             | Self::MissingRequiredFields(..)
