@@ -1,6 +1,6 @@
-program: (q . "inner")
-debug_program: (a (q 2 2 ()) (c (q 1 . "inner") ()))
-output: '"inner"'
+program: (q . "inner outer")
+debug_program: (a (q 2 4 (c 6 ())) (c (c (q 14 (q . "inner ") (a 2 ())) (q 1 . "outer")) ()))
+output: '"inner outer"'
 runtime_cost: 20
-byte_cost: 96000
-total_cost: 96020
+byte_cost: 168000
+total_cost: 168020
