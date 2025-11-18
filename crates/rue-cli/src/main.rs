@@ -135,11 +135,16 @@ fn build(args: BuildArgs) -> Result<()> {
     let mut ctx = Compiler::new(project.options);
 
     let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut HashMap::new())?;
+    let base_path = if project.entrypoint.is_file() {
+        project.entrypoint.parent().unwrap().canonicalize()?
+    } else {
+        project.entrypoint.canonicalize()?
+    };
 
     let mut codegen = true;
 
     for diagnostic in ctx.take_diagnostics() {
-        let message = diagnostic.message();
+        let message = diagnostic.message(&base_path);
         let severity = diagnostic.kind.severity();
 
         if severity == DiagnosticSeverity::Error {
@@ -156,7 +161,13 @@ fn build(args: BuildArgs) -> Result<()> {
 
     let program = if let Some(export) = args.export {
         let Some(program) = tree
-            .exports(&mut ctx, &mut allocator, file_kind.as_ref(), Some(&export))?
+            .exports(
+                &mut ctx,
+                &mut allocator,
+                file_kind.as_ref(),
+                Some(&export),
+                &base_path,
+            )?
             .into_iter()
             .next()
         else {
@@ -166,7 +177,7 @@ fn build(args: BuildArgs) -> Result<()> {
 
         program.ptr
     } else if let Some(main_kind) = main_kind
-        && let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind)?
+        && let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind, base_path)?
     {
         ptr
     } else {
@@ -210,11 +221,16 @@ fn test(args: TestArgs) -> Result<()> {
     let mut ctx = Compiler::new(project.options);
 
     let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut HashMap::new())?;
+    let base_path = if project.entrypoint.is_file() {
+        project.entrypoint.parent().unwrap().canonicalize()?
+    } else {
+        project.entrypoint.canonicalize()?
+    };
 
     let mut codegen = true;
 
     for diagnostic in ctx.take_diagnostics() {
-        let message = diagnostic.message();
+        let message = diagnostic.message(&base_path);
         let severity = diagnostic.kind.severity();
 
         if severity == DiagnosticSeverity::Error {
@@ -229,7 +245,7 @@ fn test(args: TestArgs) -> Result<()> {
         process::exit(1);
     }
 
-    let tests = tree.tests(&mut ctx, &mut allocator, None, None)?;
+    let tests = tree.tests(&mut ctx, &mut allocator, None, None, &base_path)?;
 
     let len = tests.len();
 
