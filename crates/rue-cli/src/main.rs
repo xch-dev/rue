@@ -101,7 +101,7 @@ fn init(args: InitArgs) -> Result<()> {
 fn build(args: BuildArgs) -> Result<()> {
     let mut allocator = Allocator::new();
 
-    let search_path = Path::new(args.file.as_deref().unwrap_or("."));
+    let search_path = &Path::new(args.file.as_deref().unwrap_or(".")).canonicalize()?;
     let project = find_project(search_path, args.debug)?;
 
     let Some(project) = project else {
@@ -199,7 +199,7 @@ fn build(args: BuildArgs) -> Result<()> {
 fn test(args: TestArgs) -> Result<()> {
     let mut allocator = Allocator::new();
 
-    let search_path = Path::new(args.file.as_deref().unwrap_or("."));
+    let search_path = &Path::new(args.file.as_deref().unwrap_or(".")).canonicalize()?;
     let project = find_project(search_path, true)?;
 
     let Some(project) = project else {
