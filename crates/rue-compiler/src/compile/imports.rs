@@ -6,7 +6,7 @@ use rue_ast::{AstImportItem, AstImportPathSegment};
 use rue_diagnostic::{DiagnosticKind, Name};
 use rue_hir::{Declaration, Import, ImportId, Items, ScopeId, Symbol, SymbolId};
 
-use crate::{Compiler, SyntaxItem, SyntaxItemKind};
+use crate::{Compiler, SyntaxItemKind};
 
 pub fn declare_import_item(ctx: &mut Compiler, import: &AstImportItem) {
     let Some(path) = import.path() else {
@@ -41,6 +41,12 @@ fn construct_imports(
 ) -> Vec<ImportId> {
     let mut has_non_super = false;
 
+    if let Some(segment) = segments.first()
+        && let Some(separator) = segment.separator()
+    {
+        ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
+    }
+
     for segment in segments.iter().take(segments.len() - 1) {
         if let Some(name) = segment.name() {
             if name.text() == "super" {
@@ -49,10 +55,7 @@ fn construct_imports(
                 } else if let Some(module) = module_stack.pop() {
                     base_scope = ctx.module(module).scope;
 
-                    ctx.syntax_map_mut().add_item(SyntaxItem::new(
-                        SyntaxItemKind::SymbolReference(module),
-                        name.text_range(),
-                    ));
+                    ctx.add_syntax(SyntaxItemKind::SymbolReference(module), name.text_range());
                 } else {
                     ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
                 }
@@ -230,14 +233,14 @@ fn resolve_import(
 
             for name in import.path.iter().take(path_so_far.len()) {
                 if diagnostics && let Some(srcloc) = name.srcloc() {
-                    ctx.syntax_map_for_source(source.kind.clone())
-                        .add_item(SyntaxItem::new(
-                            SyntaxItemKind::SymbolReference(cached.1),
-                            TextRange::new(
-                                srcloc.span.start.try_into().unwrap(),
-                                srcloc.span.end.try_into().unwrap(),
-                            ),
-                        ));
+                    ctx.add_syntax_for_source(
+                        SyntaxItemKind::SymbolReference(cached.1),
+                        TextRange::new(
+                            srcloc.span.start.try_into().unwrap(),
+                            srcloc.span.end.try_into().unwrap(),
+                        ),
+                        source.kind.clone(),
+                    );
                 }
             }
 
@@ -251,12 +254,13 @@ fn resolve_import(
             base.symbol(name.text())
                 .filter(|s| base.is_symbol_exported(*s))
                 .map(|s| (s, base.symbol_import(s)))
-        } else {
+        } else if import.base_scope == import_scope {
             ctx.resolve_symbol_in(import.base_scope, name.text())
-                .filter(|s| {
-                    import.base_scope == import_scope
-                        || ctx.scope(import.base_scope).is_symbol_exported(s.0)
-                })
+        } else {
+            let base = ctx.scope(import.base_scope);
+            base.symbol(name.text())
+                .filter(|s| base.is_symbol_exported(*s))
+                .map(|s| (s, base.symbol_import(s)))
         };
 
         let Some((symbol, import)) = symbol else {
@@ -274,14 +278,14 @@ fn resolve_import(
         }
 
         if diagnostics && let Some(srcloc) = name.srcloc() {
-            ctx.syntax_map_for_source(source.kind.clone())
-                .add_item(SyntaxItem::new(
-                    SyntaxItemKind::SymbolReference(symbol),
-                    TextRange::new(
-                        srcloc.span.start.try_into().unwrap(),
-                        srcloc.span.end.try_into().unwrap(),
-                    ),
-                ));
+            ctx.add_syntax_for_source(
+                SyntaxItemKind::SymbolReference(symbol),
+                TextRange::new(
+                    srcloc.span.start.try_into().unwrap(),
+                    srcloc.span.end.try_into().unwrap(),
+                ),
+                source.kind.clone(),
+            );
         }
 
         let Symbol::Module(module) = ctx.symbol(symbol) else {
@@ -427,14 +431,14 @@ fn resolve_import(
 
             if let Some(symbol) = symbol {
                 if diagnostics && let Some(srcloc) = item.srcloc() {
-                    ctx.syntax_map_for_source(source.kind.clone())
-                        .add_item(SyntaxItem::new(
-                            SyntaxItemKind::SymbolReference(symbol),
-                            TextRange::new(
-                                srcloc.span.start.try_into().unwrap(),
-                                srcloc.span.end.try_into().unwrap(),
-                            ),
-                        ));
+                    ctx.add_syntax_for_source(
+                        SyntaxItemKind::SymbolReference(symbol),
+                        TextRange::new(
+                            srcloc.span.start.try_into().unwrap(),
+                            srcloc.span.end.try_into().unwrap(),
+                        ),
+                        source.kind.clone(),
+                    );
                 }
 
                 let target = ctx.scope_mut(import_scope);
@@ -462,14 +466,14 @@ fn resolve_import(
 
             if let Some(ty) = ty {
                 if diagnostics && let Some(srcloc) = item.srcloc() {
-                    ctx.syntax_map_for_source(source.kind.clone())
-                        .add_item(SyntaxItem::new(
-                            SyntaxItemKind::TypeReference(ty),
-                            TextRange::new(
-                                srcloc.span.start.try_into().unwrap(),
-                                srcloc.span.end.try_into().unwrap(),
-                            ),
-                        ));
+                    ctx.add_syntax_for_source(
+                        SyntaxItemKind::TypeReference(ty),
+                        TextRange::new(
+                            srcloc.span.start.try_into().unwrap(),
+                            srcloc.span.end.try_into().unwrap(),
+                        ),
+                        source.kind.clone(),
+                    );
                 }
 
                 let target = ctx.scope_mut(import_scope);

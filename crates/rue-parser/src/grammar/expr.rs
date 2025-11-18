@@ -53,12 +53,7 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
         );
         p.finish();
     } else if !options.inline && p.at(T![::]) || p.at(SyntaxKind::Ident) || p.at(T![super]) {
-        p.start_at(checkpoint, SyntaxKind::PathExpr);
-        let mut separated = path_expr_segment(p, true, false);
-        while separated || p.at(T![::]) {
-            separated = path_expr_segment(p, false, separated);
-        }
-        p.finish();
+        path_expr(p, checkpoint);
 
         if p.at(T!['{']) && options.allow_struct_initializer {
             p.start_at(checkpoint, SyntaxKind::StructInitializerExpr);
@@ -222,31 +217,6 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
     }
 }
 
-fn path_expr_segment(p: &mut Parser, first: bool, separated: bool) -> bool {
-    p.start(SyntaxKind::PathSegment);
-    if !separated {
-        if first {
-            if p.at(T![::]) {
-                p.start(SyntaxKind::LeadingPathSeparator);
-                p.expect(T![::]);
-                p.finish();
-            }
-        } else {
-            p.expect(T![::]);
-        }
-    }
-    if !p.try_eat(T![super]) {
-        p.expect(SyntaxKind::Ident);
-    }
-    let mut separated = p.try_eat(T![::]);
-    if separated && p.at(T![<]) {
-        generic_arguments(p);
-        separated = false;
-    }
-    p.finish();
-    separated
-}
-
 fn if_expr(
     p: &mut Parser,
     checkpoint: Checkpoint,
@@ -285,6 +255,32 @@ fn if_expr(
         p.finish();
         false
     }
+}
+
+fn path_expr(p: &mut Parser, checkpoint: Checkpoint) {
+    p.start_at(checkpoint, SyntaxKind::PathExpr);
+    path_expr_segment(p, true);
+    while p.at(T![::]) {
+        path_expr_segment(p, false);
+    }
+    p.finish();
+}
+
+fn path_expr_segment(p: &mut Parser, first: bool) {
+    p.start(SyntaxKind::PathSegment);
+    if first {
+        p.try_eat(T![::]);
+    } else {
+        p.expect(T![::]);
+    }
+    if !p.try_eat(T![super]) {
+        p.expect(SyntaxKind::Ident);
+    }
+    if p.at(SyntaxKind::TurboFish) {
+        p.expect(T![::]);
+        generic_arguments(p);
+    }
+    p.finish();
 }
 
 #[cfg(test)]
@@ -645,6 +641,36 @@ mod tests {
                       CloseBrace@46..47 "}"
             "#]],
             expect![""],
+        );
+    }
+
+    #[test]
+    fn test_field_access_expr() {
+        check(
+            expr,
+            "hello.world",
+            expect![[r#"
+                FieldAccessExpr@0..11
+                  PathExpr@0..5
+                    PathSegment@0..5
+                      Ident@0..5 "hello"
+                  Dot@5..6 "."
+                  Ident@6..11 "world"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "hello.",
+            expect![[r#"
+                FieldAccessExpr@0..6
+                  PathExpr@0..5
+                    PathSegment@0..5
+                      Ident@0..5 "hello"
+                  Dot@5..6 "."
+            "#]],
+            expect!["Expected identifier, found eof at main.rue:1:7"],
         );
     }
 }

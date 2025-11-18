@@ -3,13 +3,13 @@ use rue_ast::{AstConstantItem, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{ConstantSymbol, Declaration, Symbol, SymbolId, Value};
 
-use crate::{Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_expr, compile_type};
+use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_type};
 
 pub fn declare_constant(ctx: &mut Compiler, constant: &AstConstantItem) -> SymbolId {
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Item),
         constant.syntax().text_range(),
-    ));
+    );
 
     let symbol = ctx.alloc_symbol(Symbol::Unresolved);
 

@@ -44,7 +44,11 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![".".to_string(), ",".to_string()]),
+                    trigger_characters: Some(vec![
+                        ".".to_string(),
+                        ",".to_string(),
+                        ":".to_string(),
+                    ]),
                     all_commit_characters: Some(vec![
                         ";".to_string(),
                         "(".to_string(),
@@ -183,7 +187,7 @@ impl Backend {
     }
 
     fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
-        let cache = self
+        let mut cache = self
             .cache
             .lock()
             .unwrap()
@@ -213,6 +217,15 @@ impl Backend {
                                 format!("type {}", info.name)
                             }
                         }
+                        HoverInfo::Struct(info) => format!(
+                            "struct {} {{\n{}\n}}",
+                            info.name,
+                            info.fields
+                                .iter()
+                                .map(|field| format!("    {}: {},", field.name, field.type_name))
+                                .collect::<Vec<String>>()
+                                .join("\n")
+                        ),
                         HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
                     },
                 })
@@ -235,19 +248,14 @@ impl Backend {
         let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position_params.position);
 
-        let range = cache.definitions(position);
+        let locations = cache.definitions(position);
 
-        if range.is_empty() {
+        if locations.is_empty() {
             None
-        } else if range.len() == 1 {
-            Some(GotoDefinitionResponse::Scalar(Location::new(uri, range[0])))
+        } else if locations.len() == 1 {
+            Some(GotoDefinitionResponse::Scalar(locations[0].clone()))
         } else {
-            Some(GotoDefinitionResponse::Array(
-                range
-                    .into_iter()
-                    .map(|range| Location::new(uri.clone(), range))
-                    .collect(),
-            ))
+            Some(GotoDefinitionResponse::Array(locations))
         }
     }
 
@@ -257,17 +265,12 @@ impl Backend {
         let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
-        let range = cache.references(position);
+        let locations = cache.references(position);
 
-        if range.is_empty() {
+        if locations.is_empty() {
             None
         } else {
-            Some(
-                range
-                    .into_iter()
-                    .map(|range| Location::new(uri.clone(), range))
-                    .collect(),
-            )
+            Some(locations)
         }
     }
 
@@ -278,10 +281,13 @@ impl Backend {
         let position = cache.position(params.text_document_position.position);
 
         let scopes = cache.scopes(position);
+        let completions = cache.completions(&scopes, position);
 
-        Some(CompletionResponse::Array(
-            cache.completions(&scopes, position),
-        ))
+        if completions.is_empty() {
+            return None;
+        }
+
+        Some(CompletionResponse::Array(completions))
     }
 }
 

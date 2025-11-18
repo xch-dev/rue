@@ -8,7 +8,7 @@ use rue_hir::{Declaration, ImportId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
 use rue_types::{Apply, Type, TypeId};
 
-use crate::{Compiler, GetTextRange, SyntaxItem, SyntaxItemKind, compile_generic_arguments};
+use crate::{Compiler, CompletionContext, GetTextRange, SyntaxItemKind, compile_generic_arguments};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathKind {
@@ -24,15 +24,19 @@ pub enum PathResult {
 }
 
 pub trait PathSegment {
-    fn initial_separator(&self) -> Option<TextRange>;
+    fn separator(&self) -> Option<TextRange>;
+    fn text_range(&self) -> TextRange;
     fn name(&self) -> Option<SyntaxToken>;
     fn generic_arguments(&self) -> Option<AstGenericArguments>;
 }
 
 impl PathSegment for AstPathSegment {
-    fn initial_separator(&self) -> Option<TextRange> {
-        self.initial_separator()
-            .map(|separator| separator.syntax().text_range())
+    fn separator(&self) -> Option<TextRange> {
+        self.separator().map(|separator| separator.text_range())
+    }
+
+    fn text_range(&self) -> TextRange {
+        self.syntax().text_range()
     }
 
     fn name(&self) -> Option<SyntaxToken> {
@@ -45,8 +49,12 @@ impl PathSegment for AstPathSegment {
 }
 
 impl PathSegment for SyntaxToken {
-    fn initial_separator(&self) -> Option<TextRange> {
+    fn separator(&self) -> Option<TextRange> {
         None
+    }
+
+    fn text_range(&self) -> TextRange {
+        self.text_range()
     }
 
     fn name(&self) -> Option<SyntaxToken> {
@@ -63,6 +71,7 @@ pub fn compile_path<S>(
     range: &impl GetTextRange,
     segments: impl Iterator<Item = S>,
     kind: PathKind,
+    mut completions: bool,
 ) -> PathResult
 where
     S: PathSegment,
@@ -70,24 +79,43 @@ where
     let mut segments = segments.collect::<Vec<_>>();
     let mut base_scope = ctx.last_scope_id();
     let mut module_stack = ctx.parent_module_stack().to_vec();
+    let mut path_completion_module = None;
 
     let length = segments.len();
 
-    while !segments.is_empty()
-        && let Some(name) = segments[0].name()
+    if let Some(segment) = segments.first()
+        && let Some(separator) = segment.separator()
+    {
+        ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
+    }
+
+    while let Some(segment) = segments.first()
+        && let Some(name) = segment.name()
         && name.text() == "super"
     {
+        if let Some(module) = path_completion_module
+            && completions
+            && let Some(separator) = segment.separator()
+        {
+            ctx.add_syntax(
+                SyntaxItemKind::CompletionContext(CompletionContext::ModuleExports {
+                    module,
+                    allow_super: true,
+                }),
+                TextRange::new(separator.end(), segment.text_range().end()),
+            );
+        }
+
         segments.remove(0);
 
         if let Some(module) = module_stack.pop() {
             base_scope = ctx.module(module).scope;
+            path_completion_module = Some(module);
 
-            ctx.syntax_map_mut().add_item(SyntaxItem::new(
-                SyntaxItemKind::SymbolReference(module),
-                name.text_range(),
-            ));
+            ctx.add_syntax(SyntaxItemKind::SymbolReference(module), name.text_range());
         } else {
             ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
+            completions = false;
         }
     }
 
@@ -95,6 +123,19 @@ where
     let mut previous_name = None;
 
     for (index, segment) in segments.iter().enumerate() {
+        if let Some(module) = path_completion_module
+            && completions
+            && let Some(separator) = segment.separator()
+        {
+            ctx.add_syntax(
+                SyntaxItemKind::CompletionContext(CompletionContext::ModuleExports {
+                    module,
+                    allow_super: index == 0,
+                }),
+                TextRange::new(separator.end(), segment.text_range().end()),
+            );
+        }
+
         if let Some(name) = segment.name()
             && name.text() == "super"
         {
@@ -103,13 +144,6 @@ where
             } else {
                 ctx.diagnostic(&name, DiagnosticKind::SuperAfterNamedImport);
             }
-            return PathResult::Unresolved;
-        }
-
-        if index == 0
-            && let Some(separator) = segment.initial_separator()
-        {
-            ctx.diagnostic(&separator, DiagnosticKind::PathSeparatorInFirstSegment);
             return PathResult::Unresolved;
         }
 
@@ -140,20 +174,24 @@ where
                 );
                 return PathResult::Unresolved;
             }
-        } else {
+        } else if base_scope == ctx.last_scope_id() {
             let symbol = ctx
                 .resolve_symbol_in(base_scope, name.text())
-                .filter(|s| {
-                    base_scope == ctx.last_scope_id()
-                        || ctx.scope(base_scope).is_symbol_exported(s.0)
-                })
                 .map(|(symbol, import)| (symbol, true, import));
             let ty = ctx
                 .resolve_type_in(base_scope, name.text())
-                .filter(|t| {
-                    base_scope == ctx.last_scope_id() || ctx.scope(base_scope).is_type_exported(t.0)
-                })
                 .map(|(ty, import)| (ty, true, import));
+            (symbol, ty)
+        } else {
+            let base = ctx.scope(base_scope);
+            let symbol = base
+                .symbol(name.text())
+                .filter(|s| base.is_symbol_exported(*s))
+                .map(|s| (s, true, base.symbol_import(s)));
+            let ty = base
+                .ty(name.text())
+                .filter(|t| base.is_type_exported(*t))
+                .map(|t| (t, true, base.type_import(t)));
             (symbol, ty)
         };
 
@@ -248,6 +286,10 @@ where
                         ctx.diagnostic(&name, DiagnosticKind::GenericArgumentsOnSymbolReference);
                         return PathResult::Unresolved;
                     }
+                }
+
+                if matches!(ctx.symbol(symbol), Symbol::Module(_)) {
+                    path_completion_module = Some(symbol);
                 }
 
                 value = Some(PathResult::Symbol(symbol, override_type, import));

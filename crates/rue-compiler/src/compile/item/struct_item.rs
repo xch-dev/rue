@@ -6,15 +6,15 @@ use rue_hir::{Declaration, ScopeId};
 use rue_types::{Pair, Struct, Type, TypeId};
 
 use crate::{
-    Compiler, CompletionContext, SyntaxField, SyntaxItem, SyntaxItemKind, compile_expr,
+    Compiler, CompletionContext, SyntaxField, SyntaxItemKind, compile_expr,
     compile_generic_parameters, compile_type,
 };
 
 pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (TypeId, ScopeId) {
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Item),
         struct_item.syntax().text_range(),
-    ));
+    );
 
     let ty = ctx.alloc_type(Type::Unresolved);
 
@@ -140,14 +140,14 @@ pub fn compile_struct_item(
             types.push(field_type);
         }
 
-        ctx.syntax_map_mut().add_item(SyntaxItem::new(
+        ctx.add_syntax(
             SyntaxItemKind::FieldDeclaration(SyntaxField {
                 name: name.text().to_string(),
                 container: struct_type,
                 ty: field_type,
             }),
             name.text_range(),
-        ));
+        );
     }
 
     ctx.pop_scope(range.end());

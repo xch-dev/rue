@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use rowan::TextRange;
+use rue_diagnostic::SourceKind;
 use rue_hir::{ScopeId, SymbolId};
 use rue_types::TypeId;
 
@@ -27,16 +28,22 @@ impl SyntaxMap {
 pub struct SyntaxItem {
     pub kind: SyntaxItemKind,
     pub span: TextRange,
+    pub source_kind: SourceKind,
 }
 
 impl SyntaxItem {
-    pub fn new(kind: SyntaxItemKind, span: TextRange) -> Self {
-        Self { kind, span }
+    pub fn new(kind: SyntaxItemKind, span: TextRange, source_kind: SourceKind) -> Self {
+        Self {
+            kind,
+            span,
+            source_kind,
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum SyntaxItemKind {
+    FileModule(SymbolId),
     SymbolDeclaration(SymbolId),
     SymbolReference(SymbolId),
     TypeDeclaration(TypeId),
@@ -65,5 +72,9 @@ pub enum CompletionContext {
     StructFields {
         ty: TypeId,
         specified_fields: Option<HashSet<String>>,
+    },
+    ModuleExports {
+        module: SymbolId,
+        allow_super: bool,
     },
 }

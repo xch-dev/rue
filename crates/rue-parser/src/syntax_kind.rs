@@ -212,6 +212,9 @@ pub enum SyntaxKind {
     #[display("`::`")]
     PathSeparator,
 
+    #[display("`::<`")]
+    TurboFish,
+
     #[display("`...`")]
     Spread,
 
@@ -311,9 +314,6 @@ pub enum SyntaxKind {
 
     #[display("path segment")]
     PathSegment,
-
-    #[display("leading path separator")]
-    LeadingPathSeparator,
 
     #[display("struct initializer expression")]
     StructInitializerExpr,
@@ -558,6 +558,7 @@ impl SyntaxKind {
             T![=>] => &[T![=], T![>]],
             T![::] => &[T![:], T![:]],
             T![...] => &[T![.], T![.], T![.]],
+            SyntaxKind::TurboFish => &[T![:], T![:], T![<]],
             SyntaxKind::Document => &[SyntaxKind::Document],
             SyntaxKind::ModuleItem => &[SyntaxKind::ModuleItem],
             SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],
@@ -590,7 +591,6 @@ impl SyntaxKind {
             SyntaxKind::DebugStmt => &[SyntaxKind::DebugStmt],
             SyntaxKind::PathExpr => &[SyntaxKind::PathExpr],
             SyntaxKind::PathSegment => &[SyntaxKind::PathSegment],
-            SyntaxKind::LeadingPathSeparator => &[SyntaxKind::LeadingPathSeparator],
             SyntaxKind::StructInitializerExpr => &[SyntaxKind::StructInitializerExpr],
             SyntaxKind::StructInitializerField => &[SyntaxKind::StructInitializerField],
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],

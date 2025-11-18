@@ -3,15 +3,15 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Symbol, SymbolId};
 
 use crate::{
-    Compiler, CompletionContext, SyntaxItem, SyntaxItemKind, compile_symbol_items,
-    compile_type_items, declare_module_items, declare_symbol_items, declare_type_items,
+    Compiler, CompletionContext, SyntaxItemKind, compile_symbol_items, compile_type_items,
+    declare_module_items, declare_symbol_items, declare_type_items,
 };
 
 pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
-    ctx.syntax_map_mut().add_item(SyntaxItem::new(
+    ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Item),
         module.syntax().text_range(),
-    ));
+    );
 
     let scope = ctx.alloc_child_scope();
 
