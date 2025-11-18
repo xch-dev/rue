@@ -49,11 +49,11 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 diagnostics:
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at test:2:5
-- Unnecessary type guard from `42` to `Int`, since they are already compatible types at test:6:5
-- Unnecessary type guard from `A` to `A`, since they are already compatible types at test:14:5
-- Unnecessary cast from `A` to `Alias`, since they are compatible with each other at test:22:5
-- Unnecessary type guard from `Alias` to `A`, since they are already compatible types at test:22:5
-- Unnecessary cast from `Alias` to `A`, since they are compatible with each other at test:26:5
-- Unnecessary type guard from `A` to `A`, since they are already compatible types at test:26:5
-- Unused struct `B` at test:33:8
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at unnecessary_guard.rue:2:5
+- Unnecessary type guard from `42` to `Int`, since they are already compatible types at unnecessary_guard.rue:6:5
+- Unnecessary type guard from `A` to `A`, since they are already compatible types at unnecessary_guard.rue:14:5
+- Unnecessary cast from `A` to `Alias`, since they are compatible with each other at unnecessary_guard.rue:22:5
+- Unnecessary type guard from `Alias` to `A`, since they are already compatible types at unnecessary_guard.rue:22:5
+- Unnecessary cast from `Alias` to `A`, since they are compatible with each other at unnecessary_guard.rue:26:5
+- Unnecessary type guard from `A` to `A`, since they are already compatible types at unnecessary_guard.rue:26:5
+- Unused struct `B` at unnecessary_guard.rue:33:8

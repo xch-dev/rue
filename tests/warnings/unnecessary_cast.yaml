@@ -49,7 +49,7 @@ tests:
   byte_cost: 156000
   total_cost: 156146
 diagnostics:
-- Unnecessary cast from `42` to `42`, since they are compatible with each other at test:2:5
-- Unnecessary cast from `A` to `A`, since they are compatible with each other at test:14:5
-- Unnecessary cast from `A` to `Alias`, since they are compatible with each other at test:22:5
-- Unnecessary cast from `Alias` to `A`, since they are compatible with each other at test:26:5
+- Unnecessary cast from `42` to `42`, since they are compatible with each other at unnecessary_cast.rue:2:5
+- Unnecessary cast from `A` to `A`, since they are compatible with each other at unnecessary_cast.rue:14:5
+- Unnecessary cast from `A` to `Alias`, since they are compatible with each other at unnecessary_cast.rue:22:5
+- Unnecessary cast from `Alias` to `A`, since they are compatible with each other at unnecessary_cast.rue:26:5

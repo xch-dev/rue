@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -10,12 +11,13 @@ use clvmr::{
     Allocator, ChiaDialect, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, MEMPOOL_MODE, NodePtr, run_program,
     serde::node_to_bytes,
 };
+use indexmap::IndexMap;
+use rue_compiler::normalize_path;
 use rue_compiler::{Compiler, FileTree};
-use rue_diagnostic::{DiagnosticSeverity, SourceKind};
+use rue_diagnostic::DiagnosticSeverity;
 use rue_lir::DebugDialect;
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
-use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -76,7 +78,7 @@ fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let filter_arg = args.get(1).cloned();
 
-    let failed = run_tests(filter_arg.as_deref(), ".", true)?;
+    let failed = run_tests(filter_arg.as_deref(), Path::new("."), true)?;
 
     if failed {
         process::exit(1);
@@ -85,16 +87,31 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn run_tests(filter_arg: Option<&str>, base_path: &str, update: bool) -> Result<bool> {
+fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result<bool> {
     let mut failed = false;
 
-    for entry in WalkDir::new(Path::new(base_path).join("tests"))
-        .into_iter()
-        .chain(WalkDir::new(Path::new(base_path).join("examples")).into_iter())
-    {
-        let entry = entry?;
+    walk_dir(&base_path.join("tests"), filter_arg, update, &mut failed)?;
+    walk_dir(&base_path.join("examples"), filter_arg, update, &mut failed)?;
 
-        if let Some(name) = entry.file_name().to_str().unwrap().strip_suffix(".rue") {
+    Ok(failed)
+}
+
+fn walk_dir(path: &Path, filter_arg: Option<&str>, update: bool, failed: &mut bool) -> Result<()> {
+    let mut directories = IndexMap::new();
+
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            directories.insert(entry.file_name().to_string_lossy().to_string(), path);
+            continue;
+        }
+
+        let file_name = entry.file_name();
+        let file_name = file_name.to_str().unwrap();
+
+        if let Some(name) = file_name.strip_suffix(".rue") {
             if !entry
                 .path()
                 .parent()
@@ -102,14 +119,27 @@ fn run_tests(filter_arg: Option<&str>, base_path: &str, update: bool) -> Result<
                 .join(format!("{name}.yaml"))
                 .try_exists()?
             {
-                handle_test_file(name, &entry, &mut failed, update)?;
+                handle_test_file(name, &entry.path(), failed, update, false)?;
             }
             continue;
         }
 
-        let Some(name) = entry.file_name().to_str().unwrap().strip_suffix(".yaml") else {
+        let Some(name) = file_name.strip_suffix(".yaml") else {
             continue;
         };
+
+        let mut is_dir = false;
+
+        if !entry
+            .path()
+            .parent()
+            .unwrap()
+            .join(format!("{name}.rue"))
+            .try_exists()?
+        {
+            directories.shift_remove(name);
+            is_dir = true;
+        }
 
         // If a filter argument is provided, skip tests that don't contain it
         if let Some(ref filter) = filter_arg
@@ -118,16 +148,25 @@ fn run_tests(filter_arg: Option<&str>, base_path: &str, update: bool) -> Result<
             continue;
         }
 
-        handle_test_file(name, &entry, &mut failed, update)?;
+        handle_test_file(name, &entry.path(), failed, update, is_dir)?;
     }
 
-    Ok(failed)
+    for (_, path) in directories {
+        walk_dir(&path, filter_arg, update, failed)?;
+    }
+
+    Ok(())
 }
 
-fn handle_test_file(name: &str, entry: &DirEntry, failed: &mut bool, update: bool) -> Result<()> {
-    let parent = entry.path().parent().unwrap();
+fn handle_test_file(
+    name: &str,
+    entry: &Path,
+    failed: &mut bool,
+    update: bool,
+    is_dir: bool,
+) -> Result<()> {
+    let parent = entry.parent().unwrap();
     let yaml_file = parent.join(format!("{name}.yaml"));
-    let rue_file = parent.join(format!("{name}.rue"));
 
     println!("Running {name}");
 
@@ -144,16 +183,26 @@ fn handle_test_file(name: &str, entry: &DirEntry, failed: &mut bool, update: boo
     let mut ctx = Compiler::new(CompilerOptions::default());
     let mut debug_ctx = Compiler::new(CompilerOptions::debug());
 
-    let unit = FileTree::compile_file(&mut ctx, &rue_file, "test".to_string())?;
-    let debug_unit = FileTree::compile_file(&mut debug_ctx, &rue_file, "test".to_string())?;
-    let kind = SourceKind::File("test".to_string());
+    let (unit, debug_unit, kind, base_path) = if is_dir {
+        let rue_dir = parent.join(name);
+        let unit = FileTree::compile_path(&mut ctx, &rue_dir, &mut HashMap::new())?;
+        let debug_unit = FileTree::compile_path(&mut debug_ctx, &rue_dir, &mut HashMap::new())?;
+        let kind = normalize_path(&rue_dir.join("main.rue"))?;
+        (unit, debug_unit, kind, rue_dir.canonicalize()?)
+    } else {
+        let rue_file = parent.join(format!("{name}.rue"));
+        let unit = FileTree::compile_file(&mut ctx, &rue_file)?;
+        let debug_unit = FileTree::compile_file(&mut debug_ctx, &rue_file)?;
+        let kind = normalize_path(&rue_file)?;
+        (unit, debug_unit, kind, parent.canonicalize()?)
+    };
 
     file.diagnostics = Vec::new();
 
     let mut codegen = true;
 
     for diagnostic in ctx.take_diagnostics() {
-        file.diagnostics.push(diagnostic.message());
+        file.diagnostics.push(diagnostic.message(&base_path));
 
         if diagnostic.kind.severity() == DiagnosticSeverity::Error {
             codegen = false;
@@ -161,20 +210,20 @@ fn handle_test_file(name: &str, entry: &DirEntry, failed: &mut bool, update: boo
     }
 
     let main = codegen
-        .then(|| unit.main(&mut ctx, &mut allocator, &kind))
+        .then(|| unit.main(&mut ctx, &mut allocator, &kind, base_path.clone()))
         .transpose()?
         .flatten();
     let debug_main = codegen
-        .then(|| debug_unit.main(&mut debug_ctx, &mut allocator, &kind))
+        .then(|| debug_unit.main(&mut debug_ctx, &mut allocator, &kind, base_path.clone()))
         .transpose()?
         .flatten();
 
     let tests = codegen
-        .then(|| unit.tests(&mut ctx, &mut allocator, None, None))
+        .then(|| unit.tests(&mut ctx, &mut allocator, None, None, &base_path))
         .transpose()?
         .unwrap_or_default();
     let debug_tests = codegen
-        .then(|| debug_unit.tests(&mut debug_ctx, &mut allocator, None, None))
+        .then(|| debug_unit.tests(&mut debug_ctx, &mut allocator, None, None, &base_path))
         .transpose()?
         .unwrap_or_default();
 
@@ -313,7 +362,7 @@ mod tests {
 
     #[test]
     fn tests() -> Result<()> {
-        let failed = run_tests(None, "../..", false)?;
+        let failed = run_tests(None, Path::new("../.."), false)?;
 
         assert!(!failed);
 

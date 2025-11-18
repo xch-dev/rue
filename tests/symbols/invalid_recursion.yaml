@@ -1,6 +1,6 @@
 diagnostics:
-- Function `factorial` cannot be inline, since it references itself at test:5:11
-- Constant `A` references itself at test:13:7
-- Constant `B` references itself at test:14:7
-- Constant `C` references itself at test:15:7
-- Constant `D` references itself at test:16:14
+- Function `factorial` cannot be inline, since it references itself at invalid_recursion.rue:5:11
+- Constant `A` references itself at invalid_recursion.rue:13:7
+- Constant `B` references itself at invalid_recursion.rue:14:7
+- Constant `C` references itself at invalid_recursion.rue:15:7
+- Constant `D` references itself at invalid_recursion.rue:16:14

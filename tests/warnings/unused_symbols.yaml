@@ -13,8 +13,8 @@ tests:
   byte_cost: 132000
   total_cost: 132142
 diagnostics:
-- Unused constant `UNUSED_IN_MODULE` at test:3:18
-- Unused constant `UNUSED` at test:29:7
-- Unused function `unused` at test:37:4
-- Unused binding `unused` at test:12:9
-- Unused binding `unused` at test:20:9
+- Unused constant `UNUSED_IN_MODULE` at unused_symbols.rue:3:18
+- Unused constant `UNUSED` at unused_symbols.rue:29:7
+- Unused function `unused` at unused_symbols.rue:37:4
+- Unused binding `unused` at unused_symbols.rue:12:9
+- Unused binding `unused` at unused_symbols.rue:20:9

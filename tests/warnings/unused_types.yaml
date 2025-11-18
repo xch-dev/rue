@@ -27,8 +27,8 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 diagnostics:
-- Unused constant `UNUSED_VALUE` at test:10:7
-- Unused type alias `Recursive` at test:1:6
-- Unused type alias `Unused` at test:7:6
-- Unused struct `UnusedStruct` at test:16:8
-- Unused type alias `UnusedAlias` at test:21:6
+- Unused constant `UNUSED_VALUE` at unused_types.rue:10:7
+- Unused type alias `Recursive` at unused_types.rue:1:6
+- Unused type alias `Unused` at unused_types.rue:7:6
+- Unused struct `UnusedStruct` at unused_types.rue:16:8
+- Unused type alias `UnusedAlias` at unused_types.rue:21:6

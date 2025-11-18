@@ -1,4 +1,4 @@
 diagnostics:
-- Cannot reference private type `Type` in module `private` at test:9:23
-- Cannot reference private symbol `function` in module `private` at test:10:14
-- Block does not return a value at test:9:28
+- Cannot reference private type `Type` in module `private` at private_reference.rue:9:23
+- Cannot reference private symbol `function` in module `private` at private_reference.rue:10:14
+- Block does not return a value at private_reference.rue:9:28

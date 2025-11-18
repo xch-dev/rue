@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{DiagnosticKind, LineCol, SrcLoc};
 
 #[derive(Debug, Clone)]
@@ -19,9 +21,14 @@ impl Diagnostic {
         self.srcloc.end()
     }
 
-    pub fn message(&self) -> String {
+    pub fn message(&self, relative_to: &Path) -> String {
         let start = self.start();
 
-        format!("{} at {}:{}", self.kind, self.srcloc.source.kind, start)
+        format!(
+            "{} at {}:{}",
+            self.kind,
+            self.srcloc.source.kind.display(relative_to),
+            start
+        )
     }
 }

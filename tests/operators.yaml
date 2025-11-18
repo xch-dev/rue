@@ -21,6 +21,6 @@ tests:
   byte_cost: 2628000
   total_cost: 2633714
 diagnostics:
-- Unnecessary `+` operator, since it has no effect at test:2:12
-- Condition always evaluates to `true` at test:51:12
-- Condition always evaluates to `true` at test:52:12
+- Unnecessary `+` operator, since it has no effect at operators.rue:2:12
+- Condition always evaluates to `true` at operators.rue:51:12
+- Condition always evaluates to `true` at operators.rue:52:12

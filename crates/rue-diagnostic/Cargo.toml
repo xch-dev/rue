@@ -16,4 +16,3 @@ workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
-derive_more = { workspace = true, features = ["display"] }

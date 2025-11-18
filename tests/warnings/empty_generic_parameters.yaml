@@ -5,8 +5,8 @@ runtime_cost: 44
 byte_cost: 12000
 total_cost: 12044
 diagnostics:
-- Unnecessary empty generic parameter list specified at test:6:14
-- Unnecessary empty generic parameter list specified at test:8:11
-- Unnecessary empty generic argument list specified at test:1:19
-- Unnecessary empty generic parameter list specified at test:10:12
-- Unnecessary empty generic argument list specified at test:8:22
+- Unnecessary empty generic parameter list specified at empty_generic_parameters.rue:6:14
+- Unnecessary empty generic parameter list specified at empty_generic_parameters.rue:8:11
+- Unnecessary empty generic argument list specified at empty_generic_parameters.rue:1:19
+- Unnecessary empty generic parameter list specified at empty_generic_parameters.rue:10:12
+- Unnecessary empty generic argument list specified at empty_generic_parameters.rue:8:22
