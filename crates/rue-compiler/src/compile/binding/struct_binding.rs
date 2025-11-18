@@ -64,20 +64,20 @@ pub fn create_struct_binding(
 
         if let Some(binding) = field.binding() {
             create_binding(ctx, binding_symbol, &binding);
+
+            ctx.add_syntax(
+                SyntaxItemKind::FieldReference(SyntaxField {
+                    name: name.text().to_string(),
+                    container: ty,
+                    ty: field_type,
+                }),
+                name.text_range(),
+            );
         } else {
             create_binding_for_identifier(ctx, binding_symbol, &name);
         }
 
         ctx.pop_declaration();
-
-        ctx.add_syntax(
-            SyntaxItemKind::FieldReference(SyntaxField {
-                name: name.text().to_string(),
-                container: ty,
-                ty: field_type,
-            }),
-            name.text_range(),
-        );
     }
 
     ctx.add_syntax(
