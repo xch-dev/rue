@@ -32,6 +32,7 @@ clvmr = { workspace = true }
 indexmap = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
+include_dir = { workspace = true }
 
 [dev-dependencies]
 rue-lexer = { workspace = true }

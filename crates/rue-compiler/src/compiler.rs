@@ -17,7 +17,7 @@ use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, CheckError, Comparison, Type, TypeId};
 
-use crate::{File, FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
+use crate::{FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
@@ -56,7 +56,7 @@ impl Compiler {
 
         let mut ctx = Self {
             options,
-            source: Source::new(Arc::from(""), SourceKind::Std),
+            source: Source::new(Arc::from(""), SourceKind::Std("<placeholder>".to_string())),
             diagnostics: Vec::new(),
             db,
             syntax_map: SyntaxMap::new(),
@@ -68,15 +68,17 @@ impl Compiler {
             registered_scopes: HashSet::new(),
         };
 
-        let std = File::std(&mut ctx);
-        let tree = FileTree::File(std.clone());
+        let tree = FileTree::load_std(&mut ctx).unwrap();
         tree.compile_impl(&mut ctx, false);
-        let std_scope = std.module(&ctx).scope;
+        let prelude_file = tree
+            .find(&SourceKind::Std("prelude.rue".to_string()))
+            .unwrap();
+        let prelude_scope = ctx.module(prelude_file.module).scope;
 
         let prelude = ctx.alloc_child_scope();
 
         for (name, symbol) in ctx
-            .scope(std_scope)
+            .scope(prelude_scope)
             .exported_symbols()
             .map(|(name, symbol)| (name.to_string(), symbol))
             .collect::<Vec<_>>()
@@ -86,7 +88,7 @@ impl Compiler {
         }
 
         for (name, ty) in ctx
-            .scope(std_scope)
+            .scope(prelude_scope)
             .exported_types()
             .map(|(name, ty)| (name.to_string(), ty))
             .collect::<Vec<_>>()
@@ -95,7 +97,7 @@ impl Compiler {
                 .insert_type(name.to_string(), ty, false);
         }
 
-        ctx.push_scope(prelude, std.document.syntax().text_range().start());
+        ctx.push_scope(prelude, prelude_file.document.syntax().text_range().start());
 
         ctx
     }
