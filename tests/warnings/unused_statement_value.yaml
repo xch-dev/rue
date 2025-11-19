@@ -28,5 +28,5 @@ tests:
   byte_cost: 60000
   total_cost: 60545
 diagnostics:
-- Value returned by statement is unused at test:2:5
-- Value returned by statement is unused at test:14:5
+- Value returned by statement is unused at unused_statement_value.rue:2:5
+- Value returned by statement is unused at unused_statement_value.rue:14:5

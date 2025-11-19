@@ -1,0 +1,7 @@
+fn main() -> String {
+    a::b::c::inner::inner()
+}
+
+export fn outer() -> String {
+    "outer"
+}

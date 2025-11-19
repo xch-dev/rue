@@ -5,4 +5,4 @@ runtime_cost: 20
 byte_cost: 36000
 total_cost: 36020
 diagnostics:
-- Unnecessary `+` operator, since it has no effect at test:2:5
+- Unnecessary `+` operator, since it has no effect at unnecessary_plus.rue:2:5

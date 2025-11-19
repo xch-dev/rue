@@ -1,14 +1,14 @@
 diagnostics:
-- Expected 2 arguments, but found 0 at test:6:5
-- Expected 2 arguments, but found 1 at test:7:5
-- Expected 2 arguments, but found 3 at test:8:5
-- Spread operator must be used on functions with spread parameters at test:12:5
-- Expected 2 arguments, but found 1 at test:20:5
-- Expected 2 arguments, but found 3 at test:21:5
-- Spread operator must be used on functions with spread parameters at test:25:5
-- Expected 2 arguments, but found 0 at test:25:5
-- Spread operator must be used on functions with spread parameters at test:26:5
-- Expected 2 arguments, but found 1 at test:26:5
-- Spread operator must be used on functions with spread parameters at test:27:5
-- Spread operator must be used on functions with spread parameters at test:28:5
-- Expected 2 arguments, but found 3 at test:28:5
+- Expected 2 arguments, but found 0 at function_arguments.rue:6:5
+- Expected 2 arguments, but found 1 at function_arguments.rue:7:5
+- Expected 2 arguments, but found 3 at function_arguments.rue:8:5
+- Spread operator must be used on functions with spread parameters at function_arguments.rue:12:5
+- Expected 2 arguments, but found 1 at function_arguments.rue:20:5
+- Expected 2 arguments, but found 3 at function_arguments.rue:21:5
+- Spread operator must be used on functions with spread parameters at function_arguments.rue:25:5
+- Expected 2 arguments, but found 0 at function_arguments.rue:25:5
+- Spread operator must be used on functions with spread parameters at function_arguments.rue:26:5
+- Expected 2 arguments, but found 1 at function_arguments.rue:26:5
+- Spread operator must be used on functions with spread parameters at function_arguments.rue:27:5
+- Spread operator must be used on functions with spread parameters at function_arguments.rue:28:5
+- Expected 2 arguments, but found 3 at function_arguments.rue:28:5

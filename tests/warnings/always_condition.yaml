@@ -5,6 +5,6 @@ runtime_cost: 20
 byte_cost: 36000
 total_cost: 36020
 diagnostics:
-- Condition always evaluates to `true` at test:2:12
-- Condition always evaluates to `true` at test:3:12
-- Condition always evaluates to `false` at test:5:8
+- Condition always evaluates to `true` at always_condition.rue:2:12
+- Condition always evaluates to `true` at always_condition.rue:3:12
+- Condition always evaluates to `false` at always_condition.rue:5:8

@@ -1,0 +1,3 @@
+export fn inner() -> String {
+    "inner " + super::super::super::main::outer()
+}

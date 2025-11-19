@@ -1,6 +1,6 @@
 diagnostics:
-- Cannot assign `34` to `42`, since they are incompatible at test:1:27
-- Cannot assign `0xcafe` to `0xcafef00d`, since they are incompatible at test:5:38
-- Cannot assign `"Hello!"` to `"Hello, world!"`, since they are incompatible at test:9:43
-- Cannot assign `false` to `true`, since they are incompatible at test:13:30
-- Cannot assign `nil` to `true`, since they are incompatible at test:17:29
+- Cannot assign `34` to `42`, since they are incompatible at literal_errors.rue:1:27
+- Cannot assign `0xcafe` to `0xcafef00d`, since they are incompatible at literal_errors.rue:5:38
+- Cannot assign `"Hello!"` to `"Hello, world!"`, since they are incompatible at literal_errors.rue:9:43
+- Cannot assign `false` to `true`, since they are incompatible at literal_errors.rue:13:30
+- Cannot assign `nil` to `true`, since they are incompatible at literal_errors.rue:17:29

@@ -1,0 +1,9 @@
+import utils::greet;
+
+test fn greet_world() -> String {
+    greet("world")
+}
+
+test fn greet_alice() -> String {
+    greet("Alice")
+}

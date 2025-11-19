@@ -1,0 +1,15 @@
+tests:
+- name: greet_world
+  program: (q . "Hello, world!")
+  debug_program: (a (q 2 2 (q . "world")) (c (q 14 (concat (q . "Hello, ") 1) (q . 33)) ()))
+  output: '"Hello, world!"'
+  runtime_cost: 20
+  byte_cost: 192000
+  total_cost: 192020
+- name: greet_alice
+  program: (q . "Hello, Alice!")
+  debug_program: (a (q 2 2 (q . "Alice")) (c (q 14 (concat (q . "Hello, ") 1) (q . 33)) ()))
+  output: '"Hello, Alice!"'
+  runtime_cost: 20
+  byte_cost: 192000
+  total_cost: 192020

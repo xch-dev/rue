@@ -1,2 +1,2 @@
 diagnostics:
-- Cannot assign `"1"` to `Int` without a cast, since they are semantically different at test:8:9
+- Cannot assign `"1"` to `Int` without a cast, since they are semantically different at struct_error.rue:8:9

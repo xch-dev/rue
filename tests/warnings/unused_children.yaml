@@ -1,10 +1,10 @@
 diagnostics:
-- Unused function `unused_parameter` at test:1:4
-- Unused parameter `value` at test:1:21
-- Unused function `used_parameter` at test:3:4
-- Unused function `unused_generic` at test:7:4
-- Unused function `used_generic` at test:9:4
-- Unused function `unused_binding` at test:13:4
-- Unused function `used_binding` at test:17:4
-- Unused binding `x` at test:14:9
-- Unused generic type `T` at test:7:19
+- Unused function `unused_parameter` at unused_children.rue:1:4
+- Unused parameter `value` at unused_children.rue:1:21
+- Unused function `used_parameter` at unused_children.rue:3:4
+- Unused function `unused_generic` at unused_children.rue:7:4
+- Unused function `used_generic` at unused_children.rue:9:4
+- Unused function `unused_binding` at unused_children.rue:13:4
+- Unused function `used_binding` at unused_children.rue:17:4
+- Unused binding `x` at unused_children.rue:14:9
+- Unused generic type `T` at unused_children.rue:7:19

@@ -13,5 +13,5 @@ tests:
   byte_cost: 444000
   total_cost: 445642
 diagnostics:
-- Unused binding `a` at test:2:9
-- Unused binding `b` at test:3:9
+- Unused binding `a` at tree_shaking.rue:2:9
+- Unused binding `b` at tree_shaking.rue:3:9

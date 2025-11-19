@@ -11,7 +11,7 @@ pub(crate) use document::document;
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{path::Path, sync::Arc};
 
     use expect_test::Expect;
     use rue_diagnostic::{Source, SourceKind};
@@ -38,7 +38,7 @@ mod tests {
             if i != 0 {
                 error_output.push('\n');
             }
-            error_output.push_str(&error.message());
+            error_output.push_str(&error.message(Path::new(".")));
         }
 
         expect.assert_eq(&output);

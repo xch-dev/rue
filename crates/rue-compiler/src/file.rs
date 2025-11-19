@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs, io,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -32,7 +32,7 @@ pub enum Error {
     #[error("Codegen error: {0}")]
     Lir(#[from] rue_lir::Error),
 
-    #[error("Source not found in compilation unit: {0}")]
+    #[error("Source not found in compilation unit")]
     SourceNotFound(SourceKind),
 }
 
@@ -58,14 +58,11 @@ pub enum FileTree {
 }
 
 impl FileTree {
-    pub fn compile_file(ctx: &mut Compiler, path: &Path, file_name: String) -> Result<Self, Error> {
+    pub fn compile_file(ctx: &mut Compiler, path: &Path) -> Result<Self, Error> {
         let tree = Self::File(File::new(
             ctx,
             "main".to_string(),
-            Source::new(
-                Arc::from(fs::read_to_string(path)?),
-                SourceKind::File(file_name),
-            ),
+            Source::new(Arc::from(fs::read_to_string(path)?), normalize_path(path)?),
         ));
 
         tree.compile(ctx);
@@ -250,6 +247,7 @@ impl FileTree {
         ctx: &mut Compiler,
         allocator: &mut Allocator,
         path: &SourceKind,
+        base_path: PathBuf,
     ) -> Result<Option<NodePtr>, Error> {
         let tree = self
             .find(path)
@@ -260,7 +258,7 @@ impl FileTree {
             return Ok(None);
         };
 
-        Ok(Some(codegen(ctx, allocator, main)?))
+        Ok(Some(codegen(ctx, allocator, main, base_path)?))
     }
 
     pub fn exports(
@@ -269,12 +267,21 @@ impl FileTree {
         allocator: &mut Allocator,
         path: Option<&SourceKind>,
         export_name: Option<&str>,
+        base_path: &Path,
     ) -> Result<Vec<CompiledExport>, Error> {
         let Some(path) = path else {
             return Ok(self
                 .all_files()
                 .iter()
-                .map(|file| self.exports(ctx, allocator, Some(&file.source.kind), export_name))
+                .map(|file| {
+                    self.exports(
+                        ctx,
+                        allocator,
+                        Some(&file.source.kind),
+                        export_name,
+                        base_path,
+                    )
+                })
                 .collect::<Result<Vec<_>, Error>>()?
                 .into_iter()
                 .flatten()
@@ -301,7 +308,7 @@ impl FileTree {
                 continue;
             }
 
-            let ptr = codegen(ctx, allocator, symbol)?;
+            let ptr = codegen(ctx, allocator, symbol, base_path.to_path_buf())?;
             exports.push(CompiledExport { name, symbol, ptr });
         }
 
@@ -314,6 +321,7 @@ impl FileTree {
         allocator: &mut Allocator,
         path: Option<&SourceKind>,
         search_term: Option<&str>,
+        base_path: &Path,
     ) -> Result<Vec<CompiledTest>, Error> {
         let tests = ctx
             .tests()
@@ -340,7 +348,7 @@ impl FileTree {
         let mut outputs = Vec::new();
 
         for test in tests {
-            let ptr = codegen(ctx, allocator, test.symbol)?;
+            let ptr = codegen(ctx, allocator, test.symbol, base_path.to_path_buf())?;
             outputs.push(CompiledTest {
                 name: test.name,
                 path: test.path,
@@ -635,12 +643,13 @@ fn codegen(
     ctx: &mut Compiler,
     allocator: &mut Allocator,
     symbol: SymbolId,
+    base_path: PathBuf,
 ) -> Result<NodePtr, Error> {
     let options = *ctx.options();
     let graph = DependencyGraph::build(ctx, symbol, options);
 
     let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol);
+    let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol, base_path);
     let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
 
     if options.optimize_lir {

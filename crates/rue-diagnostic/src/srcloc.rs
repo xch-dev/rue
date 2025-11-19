@@ -1,6 +1,4 @@
-use std::{fmt, ops::Range, sync::Arc};
-
-use derive_more::Display;
+use std::{ops::Range, path::Path, sync::Arc};
 
 use crate::LineCol;
 
@@ -16,12 +14,9 @@ impl Source {
     }
 }
 
-#[derive(Debug, Clone, Display, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SourceKind {
-    #[display("std")]
     Std,
-
-    #[display("{_0}")]
     File(String),
 }
 
@@ -30,6 +25,15 @@ impl SourceKind {
         match self {
             Self::Std => false,
             Self::File(_) => true,
+        }
+    }
+
+    pub fn display(&self, relative_to: &Path) -> String {
+        match self {
+            Self::Std => "std".to_string(),
+            Self::File(path) => Path::new(path)
+                .strip_prefix(relative_to)
+                .map_or_else(|_| path.clone(), |path| path.to_string_lossy().to_string()),
         }
     }
 }
@@ -52,10 +56,8 @@ impl SrcLoc {
     pub fn end(&self) -> LineCol {
         LineCol::new(&self.source.text, self.span.end)
     }
-}
 
-impl fmt::Display for SrcLoc {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.source.kind, self.start())
+    pub fn display(&self, relative_to: &Path) -> String {
+        format!("{}:{}", self.source.kind.display(relative_to), self.start())
     }
 }

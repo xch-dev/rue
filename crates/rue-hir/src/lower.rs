@@ -1,6 +1,6 @@
 #![allow(clippy::needless_pass_by_value)]
 
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, mem, path::PathBuf};
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
@@ -38,6 +38,7 @@ pub struct Lowerer<'d, 'a, 'g> {
     inline_symbols: Vec<HashMap<SymbolId, HirId>>,
     options: CompilerOptions,
     main: SymbolId,
+    base_path: PathBuf,
 }
 
 impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
@@ -47,6 +48,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         graph: &'g DependencyGraph,
         options: CompilerOptions,
         main: SymbolId,
+        base_path: PathBuf,
     ) -> Self {
         Self {
             db,
@@ -55,6 +57,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             inline_symbols: Vec::new(),
             options,
             main,
+            base_path,
         }
     }
 
@@ -704,7 +707,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         let value = self.lower_hir(env, value);
-        let print = self.arena.alloc(Lir::DebugPrint(srcloc.to_string(), value));
+        let print = self
+            .arena
+            .alloc(Lir::DebugPrint(srcloc.display(&self.base_path), value));
         let nil = self.arena.alloc(Lir::Atom(vec![]));
         self.arena.alloc(Lir::If(print, nil, rest, false))
     }
