@@ -6,5 +6,8 @@ export conditions::opcodes::*;
 export conditions::types::*;
 
 export mod std {
-    export main::*;
+    export conditions;
+    export curry_tree_hash;
+    export tree_hash;
+    export utils;
 }
