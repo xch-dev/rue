@@ -1,6 +1,10 @@
-export main::{deep_equal, merge_list};
-export tree_hash::{tree_hash, tree_hash_atom, tree_hash_pair};
-export curry_tree_hash::curry_tree_hash;
+export utils::*;
+export tree_hash::*;
+export curry_tree_hash::*;
 export conditions::message_flags::*;
 export conditions::opcodes::*;
 export conditions::types::*;
+
+export mod std {
+    export main::*;
+}
