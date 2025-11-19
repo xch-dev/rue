@@ -34,13 +34,19 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
             .ok_or(Error::MissingParent)?
             .join(&manifest.compiler.entrypoint);
 
+        let mut options = if debug {
+            CompilerOptions::debug()
+        } else {
+            CompilerOptions::default()
+        };
+
+        if let Some(false) = manifest.compiler.std {
+            options.std = false;
+        }
+
         return Ok(Some(Project {
             manifest: Some(manifest),
-            options: if debug {
-                CompilerOptions::debug()
-            } else {
-                CompilerOptions::default()
-            },
+            options,
             entrypoint,
         }));
     }

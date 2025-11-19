@@ -167,6 +167,7 @@ impl Backend {
         let mut cache = self.cache.lock().unwrap();
 
         let ctx = Arc::new(ctx);
+        let tree = Arc::new(SendWrapper::new(tree));
 
         for file in tree.all_files() {
             let SourceKind::File(path) = &file.source.kind else {
@@ -177,7 +178,7 @@ impl Backend {
 
             cache.insert(
                 uri,
-                SendWrapper::new(Cache::new(ctx.clone(), file.source.clone())),
+                SendWrapper::new(Cache::new(ctx.clone(), tree.clone(), file.source.clone())),
             );
 
             diagnostics.entry(file.source.kind.clone()).or_default();

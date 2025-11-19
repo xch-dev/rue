@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use chialisp::classic::clvm_tools::binutils::disassemble;
 use clvmr::Allocator;
 use rue_compiler::{Compiler, File, FileTree};
-use rue_diagnostic::{Diagnostic, Source, SourceKind};
+use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
 use wasm_bindgen::prelude::*;
 
@@ -39,13 +39,18 @@ pub fn compile(source: String) -> Result<Compilation, JsError> {
     tree.compile(&mut ctx);
 
     let program = tree
-        .main(&mut ctx, &mut allocator, &kind)?
+        .main(
+            &mut ctx,
+            &mut allocator,
+            &kind,
+            Path::new(".").to_path_buf(),
+        )?
         .map(|program| disassemble(&allocator, program, None));
 
     let diagnostics = ctx
         .take_diagnostics()
         .iter()
-        .map(Diagnostic::message)
+        .map(|diagnostic| diagnostic.message(Path::new(".")))
         .collect();
 
     Ok(Compilation {

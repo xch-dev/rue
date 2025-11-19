@@ -68,36 +68,38 @@ impl Compiler {
             registered_scopes: HashSet::new(),
         };
 
-        let tree = FileTree::load_std(&mut ctx).unwrap();
-        tree.compile_impl(&mut ctx, false);
-        let prelude_file = tree
-            .find(&SourceKind::Std("prelude.rue".to_string()))
-            .unwrap();
-        let prelude_scope = ctx.module(prelude_file.module).scope;
+        if options.std {
+            let tree = FileTree::load_std(&mut ctx).unwrap();
+            tree.compile_impl(&mut ctx, false);
+            let prelude_file = tree
+                .find(&SourceKind::Std("prelude.rue".to_string()))
+                .unwrap();
+            let prelude_scope = ctx.module(prelude_file.module).scope;
 
-        let prelude = ctx.alloc_child_scope();
+            let prelude = ctx.alloc_child_scope();
 
-        for (name, symbol) in ctx
-            .scope(prelude_scope)
-            .exported_symbols()
-            .map(|(name, symbol)| (name.to_string(), symbol))
-            .collect::<Vec<_>>()
-        {
-            ctx.scope_mut(prelude)
-                .insert_symbol(name.to_string(), symbol, false);
+            for (name, symbol) in ctx
+                .scope(prelude_scope)
+                .exported_symbols()
+                .map(|(name, symbol)| (name.to_string(), symbol))
+                .collect::<Vec<_>>()
+            {
+                ctx.scope_mut(prelude)
+                    .insert_symbol(name.to_string(), symbol, false);
+            }
+
+            for (name, ty) in ctx
+                .scope(prelude_scope)
+                .exported_types()
+                .map(|(name, ty)| (name.to_string(), ty))
+                .collect::<Vec<_>>()
+            {
+                ctx.scope_mut(prelude)
+                    .insert_type(name.to_string(), ty, false);
+            }
+
+            ctx.push_scope(prelude, prelude_file.document.syntax().text_range().start());
         }
-
-        for (name, ty) in ctx
-            .scope(prelude_scope)
-            .exported_types()
-            .map(|(name, ty)| (name.to_string(), ty))
-            .collect::<Vec<_>>()
-        {
-            ctx.scope_mut(prelude)
-                .insert_type(name.to_string(), ty, false);
-        }
-
-        ctx.push_scope(prelude, prelude_file.document.syntax().text_range().start());
 
         ctx
     }
