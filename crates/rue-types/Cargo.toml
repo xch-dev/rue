@@ -22,5 +22,5 @@ clvmr = { workspace = true }
 hex = { workspace = true }
 thiserror = { workspace = true }
 rstest = { workspace = true }
-derive_more = { workspace = true }
+derive_more = { workspace = true, features = ["display"] }
 log = { workspace = true }

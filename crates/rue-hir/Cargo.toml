@@ -23,7 +23,7 @@ id-arena = { workspace = true }
 indexmap = { workspace = true }
 num-bigint = { workspace = true }
 hex = { workspace = true }
-derive_more = { workspace = true }
+derive_more = { workspace = true, features = ["display"] }
 log = { workspace = true }
 
 [dev-dependencies]
