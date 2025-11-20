@@ -1,0 +1,9 @@
+export inline const SENDER_COIN: 0b111_000 = 0b111_000;
+export inline const SENDER_PARENT: 0b100_000 = 0b100_000;
+export inline const SENDER_PUZZLE: 0b010_000 = 0b010_000;
+export inline const SENDER_AMOUNT: 0b001_000 = 0b001_000;
+
+export inline const RECEIVER_COIN: 0b000_111 = 0b000_111;
+export inline const RECEIVER_PARENT: 0b000_100 = 0b000_100;
+export inline const RECEIVER_PUZZLE: 0b000_010 = 0b000_010;
+export inline const RECEIVER_AMOUNT: 0b000_001 = 0b000_001;

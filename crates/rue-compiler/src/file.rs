@@ -2,11 +2,13 @@ use std::{
     collections::{HashMap, HashSet},
     fs, io,
     path::{Path, PathBuf},
+    string::FromUtf8Error,
     sync::Arc,
 };
 
 use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
+use include_dir::{Dir, DirEntry, include_dir};
 use indexmap::{IndexMap, IndexSet, indexset};
 use rowan::{TextRange, TextSize};
 use rue_ast::{AstDocument, AstNode};
@@ -34,6 +36,9 @@ pub enum Error {
 
     #[error("Source not found in compilation unit")]
     SourceNotFound(SourceKind),
+
+    #[error("UTF-8 conversion error: {0}")]
+    Utf8(#[from] FromUtf8Error),
 }
 
 #[derive(Debug, Clone)]
@@ -57,7 +62,71 @@ pub enum FileTree {
     Directory(Directory),
 }
 
+static STD_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/std");
+
 impl FileTree {
+    pub(crate) fn load_std(ctx: &mut Compiler) -> Result<Self, Error> {
+        Self::load_std_dir(ctx, "std".to_string(), STD_DIR.entries())
+    }
+
+    fn load_std_dir<'a>(
+        ctx: &mut Compiler,
+        name: String,
+        entries: &'a [DirEntry<'a>],
+    ) -> Result<Self, Error> {
+        let scope = ctx.alloc_child_scope();
+
+        let module = ctx.alloc_symbol(Symbol::Module(ModuleSymbol {
+            name: Some(Name::new(name.as_str(), None)),
+            scope,
+            declarations: ModuleDeclarations::default(),
+        }));
+
+        let mut children = Vec::new();
+
+        for entry in entries {
+            children.extend(Self::try_load_std_entry(ctx, entry)?);
+        }
+
+        Ok(Self::Directory(Directory::new(ctx, name, module, children)))
+    }
+
+    fn try_load_std_entry<'a>(
+        ctx: &mut Compiler,
+        entry: &'a DirEntry<'a>,
+    ) -> Result<Option<Self>, Error> {
+        let file_name = entry
+            .path()
+            .file_name()
+            .ok_or(io::Error::new(
+                io::ErrorKind::InvalidFilename,
+                "Missing file name",
+            ))?
+            .to_string_lossy()
+            .to_string();
+
+        if let Some(file) = entry.as_file() {
+            #[allow(clippy::case_sensitive_file_extension_comparisons)]
+            if !file_name.ends_with(".rue") {
+                return Ok(None);
+            }
+
+            let source_kind = SourceKind::Std(entry.path().to_string_lossy().to_string());
+
+            let text = String::from_utf8(file.contents().to_vec())?;
+
+            let source = Source::new(Arc::from(text), source_kind);
+
+            Ok(Some(Self::File(File::new(
+                ctx,
+                file_name.replace(".rue", ""),
+                source,
+            ))))
+        } else {
+            Ok(Some(Self::load_std_dir(ctx, file_name, entry.children())?))
+        }
+    }
+
     pub fn compile_file(ctx: &mut Compiler, path: &Path) -> Result<Self, Error> {
         let tree = Self::File(File::new(
             ctx,
@@ -253,7 +322,7 @@ impl FileTree {
             .find(path)
             .ok_or_else(|| Error::SourceNotFound(path.clone()))?;
 
-        let scope = ctx.module(tree.module()).scope;
+        let scope = ctx.module(tree.module).scope;
         let Some(main) = ctx.scope(scope).symbol("main") else {
             return Ok(None);
         };
@@ -292,7 +361,7 @@ impl FileTree {
             .find(path)
             .ok_or_else(|| Error::SourceNotFound(path.clone()))?;
 
-        let scope = ctx.module(tree.module()).scope;
+        let scope = ctx.module(tree.module).scope;
 
         let mut exports = Vec::new();
 
@@ -360,11 +429,11 @@ impl FileTree {
         Ok(outputs)
     }
 
-    pub fn find(&self, path: &SourceKind) -> Option<&Self> {
+    pub fn find(&self, path: &SourceKind) -> Option<&File> {
         match self {
             Self::File(file) => {
                 if file.source.kind == *path {
-                    Some(self)
+                    Some(file)
                 } else {
                     None
                 }
@@ -452,16 +521,6 @@ impl File {
             module,
             sibling_scope,
         }
-    }
-
-    pub fn std(ctx: &mut Compiler) -> Self {
-        let text = include_str!("./std.rue");
-
-        Self::new(
-            ctx,
-            "std".to_string(),
-            Source::new(Arc::from(text), SourceKind::Std),
-        )
     }
 
     pub(crate) fn module<'a>(&'a self, ctx: &'a Compiler) -> &'a ModuleSymbol {

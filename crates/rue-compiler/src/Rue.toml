@@ -1,0 +1,3 @@
+[compiler]
+entrypoint = "std"
+std = false

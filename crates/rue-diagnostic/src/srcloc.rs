@@ -16,21 +16,21 @@ impl Source {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SourceKind {
-    Std,
+    Std(String),
     File(String),
 }
 
 impl SourceKind {
     pub fn check_unused(&self) -> bool {
         match self {
-            Self::Std => false,
+            Self::Std(_) => false,
             Self::File(_) => true,
         }
     }
 
     pub fn display(&self, relative_to: &Path) -> String {
         match self {
-            Self::Std => "std".to_string(),
+            Self::Std(path) => Path::new("std").join(path).to_string_lossy().to_string(),
             Self::File(path) => Path::new(path)
                 .strip_prefix(relative_to)
                 .map_or_else(|_| path.clone(), |path| path.to_string_lossy().to_string()),

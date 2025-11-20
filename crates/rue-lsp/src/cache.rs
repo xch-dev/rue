@@ -2,10 +2,11 @@ use std::{collections::HashSet, sync::Arc};
 
 use indexmap::IndexMap;
 use rowan::{TextRange, TextSize};
-use rue_compiler::{Compiler, CompletionContext, SyntaxItemKind, SyntaxMap};
+use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItemKind, SyntaxMap};
 use rue_diagnostic::{LineCol, Source, SourceKind};
 use rue_hir::{ScopeId, Symbol, SymbolId};
 use rue_types::{Type, TypeId, Union};
+use send_wrapper::SendWrapper;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position, Range, Url,
 };
@@ -54,16 +55,18 @@ pub struct FieldHoverInfo {
 #[derive(Debug, Clone)]
 pub struct Cache<T> {
     ctx: T,
+    tree: Arc<SendWrapper<FileTree>>,
     source: Source,
     syntax_map: SyntaxMap,
 }
 
 impl Cache<Arc<Compiler>> {
-    pub fn new(ctx: Arc<Compiler>, source: Source) -> Self {
+    pub fn new(ctx: Arc<Compiler>, tree: Arc<SendWrapper<FileTree>>, source: Source) -> Self {
         let syntax_map = ctx.syntax_map().clone();
 
         Self {
             ctx,
+            tree,
             source,
             syntax_map,
         }
@@ -72,6 +75,7 @@ impl Cache<Arc<Compiler>> {
     pub fn to_cloned(&self) -> Cache<Compiler> {
         Cache {
             ctx: self.ctx.as_ref().clone(),
+            tree: self.tree.clone(),
             source: self.source.clone(),
             syntax_map: self.syntax_map.clone(),
         }
@@ -492,12 +496,14 @@ impl Cache<Compiler> {
             .into_iter()
             .filter(|(_, kind)| matches!(kind, SourceKind::File(_)))
             .map(|(span, kind)| {
-                let SourceKind::File(path) = kind else {
+                let SourceKind::File(path) = &kind else {
                     unreachable!();
                 };
 
-                let start = LineCol::new(&self.source.text, span.start().into());
-                let end = LineCol::new(&self.source.text, span.end().into());
+                let text = &self.tree.find(&kind).unwrap().source.text;
+
+                let start = LineCol::new(text, span.start().into());
+                let end = LineCol::new(text, span.end().into());
 
                 let range = Range::new(
                     Position::new(start.line as u32, start.col as u32),
@@ -514,12 +520,14 @@ impl Cache<Compiler> {
             .into_iter()
             .filter(|(_, kind)| matches!(kind, SourceKind::File(_)))
             .map(|(span, kind)| {
-                let SourceKind::File(path) = kind else {
+                let SourceKind::File(path) = &kind else {
                     unreachable!();
                 };
 
-                let start = LineCol::new(&self.source.text, span.start().into());
-                let end = LineCol::new(&self.source.text, span.end().into());
+                let text = &self.tree.find(&kind).unwrap().source.text;
+
+                let start = LineCol::new(text, span.start().into());
+                let end = LineCol::new(text, span.end().into());
 
                 let range = Range::new(
                     Position::new(start.line as u32, start.col as u32),

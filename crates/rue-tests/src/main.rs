@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -98,6 +99,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
 
 fn walk_dir(path: &Path, filter_arg: Option<&str>, update: bool, failed: &mut bool) -> Result<()> {
     let mut directories = IndexMap::new();
+    let mut directories_to_exclude = HashSet::new();
 
     for entry in fs::read_dir(path)? {
         let entry = entry?;
@@ -137,7 +139,7 @@ fn walk_dir(path: &Path, filter_arg: Option<&str>, update: bool, failed: &mut bo
             .join(format!("{name}.rue"))
             .try_exists()?
         {
-            directories.shift_remove(name);
+            directories_to_exclude.insert(name.to_string());
             is_dir = true;
         }
 
@@ -151,7 +153,10 @@ fn walk_dir(path: &Path, filter_arg: Option<&str>, update: bool, failed: &mut bo
         handle_test_file(name, &entry.path(), failed, update, is_dir)?;
     }
 
-    for (_, path) in directories {
+    for (name, path) in directories {
+        if directories_to_exclude.contains(&name) {
+            continue;
+        }
         walk_dir(&path, filter_arg, update, failed)?;
     }
 

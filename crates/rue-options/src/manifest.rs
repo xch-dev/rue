@@ -11,6 +11,8 @@ pub struct CompilerSection {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     pub entrypoint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub std: Option<bool>,
 }
 
 impl Default for CompilerSection {
@@ -18,6 +20,7 @@ impl Default for CompilerSection {
         Self {
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
             entrypoint: "puzzles".to_string(),
+            std: None,
         }
     }
 }
