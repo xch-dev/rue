@@ -245,7 +245,7 @@ fn test(args: TestArgs) -> Result<()> {
         process::exit(1);
     }
 
-    let tests = tree.tests(&mut ctx, &mut allocator, None, None, &base_path)?;
+    let tests = tree.tests(&mut ctx, &mut allocator, None, None, &base_path, false)?;
 
     let len = tests.len();
 

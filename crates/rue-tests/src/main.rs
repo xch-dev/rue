@@ -94,6 +94,81 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
     walk_dir(&base_path.join("tests"), filter_arg, update, &mut failed)?;
     walk_dir(&base_path.join("examples"), filter_arg, update, &mut failed)?;
 
+    println!("Running std tests");
+
+    let yaml_file = base_path.join("std_tests.yaml");
+
+    let mut file: TestFile = if yaml_file.try_exists()? {
+        serde_yml::from_str(&fs::read_to_string(&yaml_file)?)?
+    } else {
+        TestFile::default()
+    };
+
+    let original = file.clone();
+
+    let mut allocator = Allocator::new();
+
+    let mut ctx = Compiler::new(CompilerOptions::default());
+    let mut debug_ctx = Compiler::new(CompilerOptions::debug());
+
+    let unit = FileTree::empty(&mut ctx)?;
+    let debug_unit = FileTree::empty(&mut debug_ctx)?;
+
+    file.diagnostics = Vec::new();
+
+    let mut codegen = true;
+
+    for diagnostic in ctx.take_diagnostics() {
+        file.diagnostics.push(diagnostic.message(base_path));
+
+        if diagnostic.kind.severity() == DiagnosticSeverity::Error {
+            codegen = false;
+        }
+    }
+
+    let tests = codegen
+        .then(|| unit.tests(&mut ctx, &mut allocator, None, None, base_path, true))
+        .transpose()?
+        .unwrap_or_default();
+    let debug_tests = codegen
+        .then(|| debug_unit.tests(&mut debug_ctx, &mut allocator, None, None, base_path, true))
+        .transpose()?
+        .unwrap_or_default();
+
+    if file.tests.len() > tests.len() {
+        file.tests.truncate(tests.len());
+    }
+
+    for _ in file.tests.len()..tests.len() {
+        file.tests.push(TestCase::default());
+    }
+
+    assert_eq!(debug_tests.len(), tests.len());
+
+    for (i, test_case) in file.tests.iter_mut().enumerate() {
+        test_case.name.clone_from(&tests[i].name);
+
+        handle_test_case(
+            &mut allocator,
+            test_case,
+            Some(tests[i].ptr),
+            Some(debug_tests[i].ptr),
+        )?;
+    }
+
+    if file != original {
+        if update {
+            eprintln!("Test failed, updated yaml file");
+        } else {
+            eprintln!("Test failed, moving on");
+        }
+        failed = true;
+    }
+
+    if update {
+        fs::write(yaml_file, serde_yml::to_string(&file)?)?;
+    }
+
     Ok(failed)
 }
 
@@ -224,11 +299,20 @@ fn handle_test_file(
         .flatten();
 
     let tests = codegen
-        .then(|| unit.tests(&mut ctx, &mut allocator, None, None, &base_path))
+        .then(|| unit.tests(&mut ctx, &mut allocator, None, None, &base_path, false))
         .transpose()?
         .unwrap_or_default();
     let debug_tests = codegen
-        .then(|| debug_unit.tests(&mut debug_ctx, &mut allocator, None, None, &base_path))
+        .then(|| {
+            debug_unit.tests(
+                &mut debug_ctx,
+                &mut allocator,
+                None,
+                None,
+                &base_path,
+                false,
+            )
+        })
         .transpose()?
         .unwrap_or_default();
 
