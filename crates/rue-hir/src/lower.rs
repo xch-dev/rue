@@ -657,7 +657,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
         let raise = if self.options.debug_symbols {
             let error = self.arena.alloc(Lir::Atom(
-                format!("assertion failed at {}", srcloc.start()).into_bytes(),
+                format!("assertion failed at {}", srcloc.display(&self.base_path)).into_bytes(),
             ));
             vec![error]
         } else {
@@ -677,7 +677,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         let error = self.arena.alloc(Lir::Atom(
-            format!("raise called at {}", srcloc.start()).into_bytes(),
+            format!("raise called at {}", srcloc.display(&self.base_path)).into_bytes(),
         ));
         let lir = hir.map(|hir| self.lower_hir(env, hir));
 
