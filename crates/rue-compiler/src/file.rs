@@ -171,7 +171,6 @@ impl FileTree {
             .to_string();
 
         if fs::metadata(path)?.is_file() {
-            #[allow(clippy::case_sensitive_file_extension_comparisons)]
             if !file_name.ends_with(".rue") {
                 return Ok(None);
             }
