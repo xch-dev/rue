@@ -41,7 +41,7 @@ tests:
   total_cost: 84214
 - name: guard_type_assumption_shortcut
   program: (a (q 2 (i 4 (q 8) (q 2 (i (a (i 4 (q) (q 2 (i (= (strlen 6) (q . 32)) (q 1 . 1) (q)) 1)) 1) (q 8) (q)) 1)) 1) (c (c () ()) 1))
-  debug_program: (a (q 2 (i (= (f 2) ()) (q 2 (i (not (a (i (= (f 2) ()) (q 2 (i (= (strlen (r 2)) (q . 32)) (q 1 . 1) (q)) 1) (q)) 1)) (q) (q 8 (q . "assertion failed at 28:5"))) 1) (q 8 (q . "assertion failed at 25:5"))) 1) (c (c () ()) 1))
+  debug_program: (a (q 2 (i (= (f 2) ()) (q 2 (i (not (a (i (= (f 2) ()) (q 2 (i (= (strlen (r 2)) (q . 32)) (q 1 . 1) (q)) 1) (q)) 1)) (q) (q 8 (q . "assertion failed at pairs.rue:28:5"))) 1) (q 8 (q . "assertion failed at pairs.rue:25:5"))) 1) (c (c () ()) 1))
   output: ()
   runtime_cost: 1738
   byte_cost: 1332000

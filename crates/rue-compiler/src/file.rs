@@ -65,6 +65,10 @@ pub enum FileTree {
 static STD_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/std");
 
 impl FileTree {
+    pub fn empty(ctx: &mut Compiler) -> Result<Self, Error> {
+        Self::load_std_dir(ctx, "empty".to_string(), &[])
+    }
+
     pub(crate) fn load_std(ctx: &mut Compiler) -> Result<Self, Error> {
         Self::load_std_dir(ctx, "std".to_string(), STD_DIR.entries())
     }
@@ -167,7 +171,6 @@ impl FileTree {
             .to_string();
 
         if fs::metadata(path)?.is_file() {
-            #[allow(clippy::case_sensitive_file_extension_comparisons)]
             if !file_name.ends_with(".rue") {
                 return Ok(None);
             }
@@ -391,6 +394,7 @@ impl FileTree {
         path: Option<&SourceKind>,
         search_term: Option<&str>,
         base_path: &Path,
+        std: bool,
     ) -> Result<Vec<CompiledTest>, Error> {
         let tests = ctx
             .tests()
@@ -398,6 +402,10 @@ impl FileTree {
                 if let Some(path) = path
                     && &test.path != path
                 {
+                    return false;
+                }
+
+                if matches!(test.path, SourceKind::Std(_)) && !std {
                     return false;
                 }
 

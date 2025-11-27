@@ -1,22 +1,22 @@
 tests:
 - name: closure
   program: (q 2 (i (> (+ 2 5 11 23 47 95 -65 383 767 1535 3071 6143 12287 24575 -16385 0x017fff 0x02ffff 0x05ffff 0x0bffff 0x17ffff 0x2fffff 0x5fffff 0xbfffff 0x017fffff 0x02ffffff 0x05ffffff) ()) (q) (q 8)) 1)
-  debug_program: (a (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (c (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 2 5) 11) 23) 47) 95) -65) 383) 767) 1535) 3071) 6143) 12287) 24575) -16385) 0x017fff) 0x02ffff) 0x05ffff) 0x0bffff) 0x17ffff) 0x2fffff) 0x5fffff) 0xbfffff) 0x017fffff) 0x02ffffff) 0x05ffffff) ()) (q) (q 8 (q . "assertion failed at 41:5"))) 1) ()))
+  debug_program: (a (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (c (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 2 5) 11) 23) 47) 95) -65) 383) 767) 1535) 3071) 6143) 12287) 24575) -16385) 0x017fff) 0x02ffff) 0x05ffff) 0x0bffff) 0x17ffff) 0x2fffff) 0x5fffff) 0xbfffff) 0x017fffff) 0x02ffffff) 0x05ffffff) ()) (q) (q 8 (q . "assertion failed at many_params_non_overflow.rue:41:5"))) 1) ()))
   output: (a (i (> (+ 2 5 11 23 47 95 -65 383 767 1535 3071 6143 12287 24575 -16385 0x017fff 0x02ffff 0x05ffff 0x0bffff 0x17ffff 0x2fffff 0x5fffff 0xbfffff 0x017fffff 0x02ffffff 0x05ffffff) ()) (q) (q 8)) 1)
-  debug_output: (a (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 2 5) 11) 23) 47) 95) -65) 383) 767) 1535) 3071) 6143) 12287) 24575) -16385) 0x017fff) 0x02ffff) 0x05ffff) 0x0bffff) 0x17ffff) 0x2fffff) 0x5fffff) 0xbfffff) 0x017fffff) 0x02ffffff) 0x05ffffff) ()) (q) (q 8 (q . "assertion failed at 41:5"))) 1) 1)
+  debug_output: (a (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 2 5) 11) 23) 47) 95) -65) 383) 767) 1535) 3071) 6143) 12287) 24575) -16385) 0x017fff) 0x02ffff) 0x05ffff) 0x0bffff) 0x17ffff) 0x2fffff) 0x5fffff) 0xbfffff) 0x017fffff) 0x02ffffff) 0x05ffffff) ()) (q) (q 8 (q . "assertion failed at many_params_non_overflow.rue:41:5"))) 1) 1)
   runtime_cost: 20
   byte_cost: 1632000
   total_cost: 1632020
 - name: call_binary_tree
   program: (a (i (> (q . 351) ()) (q) (q 8)) 1)
-  debug_program: (a (q 3 (q . 1) () (a 2 (c (c (c (c (q . 1) (c (q . 2) (q . 3))) (c (q . 4) (c (q . 5) (q . 6)))) (c (c (q . 7) (c (q . 8) (q . 9))) (c (c (q . 10) (q . 11)) (c (q . 12) (q . 13))))) (c (c (c (q . 14) (c (q . 15) (q . 16))) (c (q . 17) (c (q . 18) (q . 19)))) (c (c (q . 20) (c (q . 21) (q . 22))) (c (c (q . 23) (q . 24)) (c (q . 25) (q . 26)))))))) (c (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 16 40) 56) 20) 44) 60) 18) 42) 58) 38) 54) 46) 62) 17) 41) 57) 21) 45) 61) 19) 43) 59) 39) 55) 47) 63) ()) (q) (q 8 (q . "assertion failed at 41:5"))) 1) ()))
+  debug_program: (a (q 3 (q . 1) () (a 2 (c (c (c (c (q . 1) (c (q . 2) (q . 3))) (c (q . 4) (c (q . 5) (q . 6)))) (c (c (q . 7) (c (q . 8) (q . 9))) (c (c (q . 10) (q . 11)) (c (q . 12) (q . 13))))) (c (c (c (q . 14) (c (q . 15) (q . 16))) (c (q . 17) (c (q . 18) (q . 19)))) (c (c (q . 20) (c (q . 21) (q . 22))) (c (c (q . 23) (q . 24)) (c (q . 25) (q . 26)))))))) (c (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 16 40) 56) 20) 44) 60) 18) 42) 58) 38) 54) 46) 62) 17) 41) 57) 21) 45) 61) 19) 43) 59) 39) 55) 47) 63) ()) (q) (q 8 (q . "assertion failed at many_params_non_overflow.rue:41:5"))) 1) ()))
   output: ()
   runtime_cost: 820
   byte_cost: 372000
   total_cost: 372820
 - name: call_extern
   program: (a (i (> (q . 351) ()) (q) (q 8)) 1)
-  debug_program: (a (q 3 (q . 1) () (a 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) (c (q . 6) (c (q . 7) (c (q . 8) (c (q . 9) (c (q . 10) (c (q . 11) (c (q . 12) (c (q . 13) (c (q . 14) (c (q . 15) (c (q . 16) (c (q . 17) (c (q . 18) (c (q . 19) (c (q . 20) (c (q . 21) (c (q . 22) (c (q . 23) (c (q . 24) (c (q . 25) (c (q . 26) ())))))))))))))))))))))))))))) (c (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 2 5) 11) 23) 47) 95) -65) 383) 767) 1535) 3071) 6143) 12287) 24575) -16385) 0x017fff) 0x02ffff) 0x05ffff) 0x0bffff) 0x17ffff) 0x2fffff) 0x5fffff) 0xbfffff) 0x017fffff) 0x02ffffff) 0x05ffffff) ()) (q) (q 8 (q . "assertion failed at 72:5"))) 1) ()))
+  debug_program: (a (q 3 (q . 1) () (a 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) (c (q . 6) (c (q . 7) (c (q . 8) (c (q . 9) (c (q . 10) (c (q . 11) (c (q . 12) (c (q . 13) (c (q . 14) (c (q . 15) (c (q . 16) (c (q . 17) (c (q . 18) (c (q . 19) (c (q . 20) (c (q . 21) (c (q . 22) (c (q . 23) (c (q . 24) (c (q . 25) (c (q . 26) ())))))))))))))))))))))))))))) (c (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 2 5) 11) 23) 47) 95) -65) 383) 767) 1535) 3071) 6143) 12287) 24575) -16385) 0x017fff) 0x02ffff) 0x05ffff) 0x0bffff) 0x17ffff) 0x2fffff) 0x5fffff) 0xbfffff) 0x017fffff) 0x02ffffff) 0x05ffffff) ()) (q) (q 8 (q . "assertion failed at many_params_non_overflow.rue:72:5"))) 1) ()))
   output: ()
   runtime_cost: 820
   byte_cost: 372000
