@@ -4,7 +4,7 @@ use crate::LirId;
 
 #[derive(Debug, Clone)]
 pub struct ArgList {
-    args: Vec<LirId>,
+    pub args: Vec<LirId>,
 }
 
 impl ArgList {
