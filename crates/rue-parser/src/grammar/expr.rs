@@ -189,7 +189,7 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
             T![|] => (9, 10),
             T![^] => (11, 12),
             T![&] => (13, 14),
-            T![<<] | T![>>] => (15, 16),
+            T![<<] | T![>>] | T![>>>] => (15, 16),
             T![+] | T![-] => (17, 18),
             T![*] | T![/] | T![%] => (19, 20),
             _ => unreachable!(),

@@ -179,7 +179,11 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
-                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::LeftShift, left.hir, right.hir));
+                let hir = ctx.alloc_hir(Hir::Binary(
+                    BinaryOp::LeftArithmeticShift,
+                    left.hir,
+                    right.hir,
+                ));
                 return Value::new(hir, ctx.builtins().types.int);
             }
 
@@ -196,7 +200,32 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
 
             if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
-                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::RightShift, left.hir, right.hir));
+                let hir = ctx.alloc_hir(Hir::Binary(
+                    BinaryOp::RightArithmeticShift,
+                    left.hir,
+                    right.hir,
+                ));
+                return Value::new(hir, ctx.builtins().types.int);
+            }
+
+            (left, right)
+        }
+        T![>>>] => {
+            let left = left(ctx);
+            let right = right(ctx, None);
+
+            if ctx.is_unresolved(left.ty) || ctx.is_unresolved(right.ty) {
+                debug!("Unresolved binary expr operands");
+                return ctx.builtins().unresolved.clone();
+            }
+
+            if ctx.is_assignable(left.ty, ctx.builtins().types.int) {
+                ctx.assign_type(&op, right.ty, ctx.builtins().types.int);
+                let hir = ctx.alloc_hir(Hir::Binary(
+                    BinaryOp::RightLogicalShift,
+                    left.hir,
+                    right.hir,
+                ));
                 return Value::new(hir, ctx.builtins().types.int);
             }
 
