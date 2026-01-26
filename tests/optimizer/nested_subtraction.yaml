@@ -28,6 +28,6 @@ tests:
   byte_cost: 468000
   total_cost: 468727
 diagnostics:
-- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at nested_subtraction.rue:2:5
-- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at nested_subtraction.rue:15:12
-- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at nested_subtraction.rue:16:12
+- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at nested_subtraction.rue:2:6
+- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at nested_subtraction.rue:15:13
+- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at nested_subtraction.rue:16:13
