@@ -1,0 +1,29 @@
+fn double_negate(num: Int) -> Int {
+    --num
+}
+
+fn subtract(a: Int, b: Int) -> Int {
+    a - b
+}
+
+test fn double_negate_cases() {
+    assert double_negate(100) == 100;
+    assert double_negate(-100) == -100;
+}
+
+test fn double_negate_literal() {
+    assert --100 == 100;
+    assert --(-100) == -100;
+}
+
+test fn nested_subtraction() {
+    assert subtract(100, 200) - 300 == -400;
+    assert subtract(100, subtract(200, 300)) == 200;
+    assert (100 - 200) - 300 == -400;
+    assert 100 - (200 - 300) == 200;
+    assert 100 - 200 - 300 == -400;
+}
+
+test fn negative_right_logical_shift() {
+    assert 10 >>> -1 == 20;
+}

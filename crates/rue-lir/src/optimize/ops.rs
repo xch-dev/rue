@@ -1,3 +1,5 @@
+use std::num::Saturating;
+
 use id_arena::Arena;
 use num_bigint::{BigInt, Sign};
 use num_integer::Integer;
@@ -142,67 +144,96 @@ pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Add(result))
 }
 
-// If the value is an atom, we can add it to a sum to subtract from
-// We can collapse nested subs
-// If the value is a raise, we can return it directly
+// Split the subtraction into minuends and subtrahends and sum them together,
+// then subtract the subtrahend from the minuend
 pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    let mut minuend_value = BigInt::from(0);
+    let mut other_minuends = Vec::new();
+    let mut other_subtrahends = Vec::new();
+
     let mut args = ArgList::new(args);
-    let mut result = Vec::new();
-    let mut first = None;
-    let mut sum = BigInt::from(0);
+    let mut minuend_count = Saturating(1usize);
 
     while let Some(arg) = args.next() {
         match arena[arg].clone() {
             Lir::Atom(atom) => {
-                if let Some(first_lir) = first {
-                    if let Lir::Atom(first_atom) = arena[first_lir].clone() {
-                        first = Some(arena.alloc(Lir::Atom(bigint_atom(
-                            atom_bigint(first_atom) - atom_bigint(atom),
-                        ))));
-                    } else {
-                        sum += atom_bigint(atom);
-                    }
+                let value = atom_bigint(atom);
+
+                if minuend_count > Saturating(0) {
+                    minuend_value += value;
                 } else {
-                    first = Some(arg);
+                    // Fold subtrahend values into the minuend as an optimization
+                    minuend_value -= value;
                 }
             }
-            Lir::Sub(items) => {
+            Lir::Add(items) => {
+                if minuend_count > Saturating(0) {
+                    minuend_count += items.len();
+                }
+
                 args.prepend(items);
+            }
+            Lir::Sub(items) => {
+                if !items.is_empty() {
+                    if minuend_count > Saturating(0) {
+                        // Just unroll the inner subtraction into the outer subtraction
+                        // The first item is the new minuend, the rest are the subtrahends
+                        args.prepend(items);
+                        minuend_count += 1;
+                    } else {
+                        // The minuend of the inner subtraction is a subtrahend of the outer subtraction
+                        args.prepend(vec![items[0]]);
+
+                        // The subtrahends of the inner subtraction are minuends of the outer subtraction
+                        // One extra because minuend_count will be subtracted at the end of this iteration
+                        minuend_count += items.len();
+                        args.prepend(items.iter().skip(1).copied().collect());
+                    }
+                }
             }
             Lir::Raise(_) => return arg,
             _ => {
-                if first.is_none() {
-                    first = Some(arg);
-                    continue;
+                if minuend_count > Saturating(0) {
+                    other_minuends.push(arg);
+                } else {
+                    other_subtrahends.push(arg);
                 }
-                result.push(arg);
             }
         }
+
+        minuend_count -= 1;
     }
 
-    if let Some(first) = first {
-        result.insert(0, first);
+    if other_minuends.is_empty() && other_subtrahends.is_empty() {
+        return arena.alloc(Lir::Atom(bigint_atom(minuend_value)));
     }
 
-    if sum != BigInt::from(0) {
-        result.push(arena.alloc(Lir::Atom(bigint_atom(sum))));
-    }
-
-    if result.is_empty() {
-        return arena.alloc(Lir::Atom(vec![]));
-    }
-
-    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
-        return result[0];
-    }
-
-    if result.len() == 2
-        && let Lir::Atom(first) = arena[result[0]].clone()
-        && let Lir::Atom(second) = arena[result[1]].clone()
+    if minuend_value > BigInt::from(0)
+        || (minuend_value != BigInt::from(0) && !other_subtrahends.is_empty())
     {
-        return arena.alloc(Lir::Atom(bigint_atom(
-            atom_bigint(first) - atom_bigint(second),
-        )));
+        other_minuends.insert(0, arena.alloc(Lir::Atom(bigint_atom(minuend_value))));
+    } else if minuend_value < BigInt::from(0) {
+        other_subtrahends.insert(0, arena.alloc(Lir::Atom(bigint_atom(-minuend_value))));
+    }
+
+    let minuend = if other_minuends.len() == 1
+        && (matches!(arena[other_minuends[0]], Lir::Atom(_)) || !other_subtrahends.is_empty())
+    {
+        other_minuends[0]
+    } else if other_minuends.is_empty() {
+        arena.alloc(Lir::Atom(vec![]))
+    } else {
+        arena.alloc(Lir::Add(other_minuends))
+    };
+
+    if other_subtrahends.is_empty() {
+        return minuend;
+    }
+
+    let mut result = vec![minuend];
+
+    for subtrahend in other_subtrahends {
+        result.push(subtrahend);
     }
 
     arena.alloc(Lir::Sub(result))

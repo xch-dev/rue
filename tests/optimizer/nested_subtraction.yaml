@@ -1,0 +1,33 @@
+tests:
+- name: double_negate_cases
+  program: (a (q 2 (i (= (a 2 (q . 100)) (q . 100)) (q 2 (i (= (a 2 (q . -100)) (q . -100)) (q) (q 8)) 1) (q 8)) 1) (c (q 16 1) ()))
+  debug_program: (a (q 2 (i (= (a 2 (q . 100)) (q . 100)) (q 2 (i (= (a 2 (- () (q . 100))) (- () (q . 100))) (q) (q 8 (q . "assertion failed at nested_subtraction.rue:11:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:10:5"))) 1) (c (q 17 () (- () 1)) ()))
+  output: ()
+  runtime_cost: 2240
+  byte_cost: 1140000
+  total_cost: 1142240
+- name: double_negate_literal
+  program: (a (i (= (q . 100) (q . 100)) (q 2 (i (= (q . -100) (q . -100)) (q) (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (= (- () (- () (q . 100))) (q . 100)) (q 2 (i (= (- () (- () (- () (q . 100)))) (- () (q . 100))) (q) (q 8 (q . "assertion failed at nested_subtraction.rue:16:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:15:5"))) 1)
+  output: ()
+  runtime_cost: 782
+  byte_cost: 756000
+  total_cost: 756782
+- name: nested_subtraction
+  program: (a (q 2 (i (= (- (a 2 (c (q . 100) (q . 200))) (q . 300)) (q . -400)) (q 2 (i (= (a 2 (c (q . 100) (a 2 (c (q . 200) (q . 300))))) (q . 200)) (q 2 (i (= (q . -400) (q . -400)) (q 2 (i (= (q . 200) (q . 200)) (q 2 (i (= (q . -400) (q . -400)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (q 17 2 3) ()))
+  debug_program: (a (q 2 (i (= (- (a 2 (c (q . 100) (q . 200))) (q . 300)) (- () (q . 400))) (q 2 (i (= (a 2 (c (q . 100) (a 2 (c (q . 200) (q . 300))))) (q . 200)) (q 2 (i (= (- (- (q . 100) (q . 200)) (q . 300)) (- () (q . 400))) (q 2 (i (= (- (q . 100) (- (q . 200) (q . 300))) (q . 200)) (q 2 (i (= (- (- (q . 100) (q . 200)) (q . 300)) (- () (q . 400))) (q) (q 8 (q . "assertion failed at nested_subtraction.rue:24:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:23:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:22:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:21:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:20:5"))) 1) (c (q 17 2 3) ()))
+  output: ()
+  runtime_cost: 6119
+  byte_cost: 2964000
+  total_cost: 2970119
+- name: negative_right_logical_shift
+  program: (a (i (= (lsh (q . 10) (q . 1)) (q . 20)) (q) (q 8)) 1)
+  debug_program: (a (i (= (lsh (q . 10) (- () (- () (q . 1)))) (q . 20)) (q) (q 8 (q . "assertion failed at nested_subtraction.rue:28:5"))) 1)
+  output: ()
+  runtime_cost: 727
+  byte_cost: 468000
+  total_cost: 468727
+diagnostics:
+- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at nested_subtraction.rue:2:5
+- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at nested_subtraction.rue:15:12
+- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at nested_subtraction.rue:16:12
