@@ -279,7 +279,7 @@ impl Cache<Compiler> {
                 .map(|(name, symbol)| (name.to_string(), symbol))
                 .collect::<Vec<_>>()
             {
-                if !symbol_names.insert(name.to_string()) {
+                if !symbol_names.insert(name.clone()) {
                     continue;
                 }
 
@@ -302,7 +302,7 @@ impl Cache<Compiler> {
                 .map(|(name, ty)| (name.to_string(), ty))
                 .collect::<Vec<_>>()
             {
-                if !type_names.insert(name.to_string()) {
+                if !type_names.insert(name.clone()) {
                     continue;
                 }
 
@@ -824,7 +824,7 @@ impl Cache<Compiler> {
             };
 
             fields.push(FieldHoverInfo {
-                name: name.to_string(),
+                name: name.clone(),
                 type_name: self.type_name(scopes, next),
             });
         }

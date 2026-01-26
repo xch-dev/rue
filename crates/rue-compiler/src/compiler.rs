@@ -84,8 +84,7 @@ impl Compiler {
                 .map(|(name, symbol)| (name.to_string(), symbol))
                 .collect::<Vec<_>>()
             {
-                ctx.scope_mut(prelude)
-                    .insert_symbol(name.to_string(), symbol, false);
+                ctx.scope_mut(prelude).insert_symbol(name, symbol, false);
             }
 
             for (name, ty) in ctx
@@ -94,8 +93,7 @@ impl Compiler {
                 .map(|(name, ty)| (name.to_string(), ty))
                 .collect::<Vec<_>>()
             {
-                ctx.scope_mut(prelude)
-                    .insert_type(name.to_string(), ty, false);
+                ctx.scope_mut(prelude).insert_type(name, ty, false);
             }
 
             ctx.push_scope(prelude, prelude_file.document.syntax().text_range().start());
@@ -290,7 +288,6 @@ impl Compiler {
         self.symbol(symbol)
             .name()
             .map_or_else(|| "{unknown}".to_string(), |name| name.text().to_string())
-            .to_string()
     }
 
     pub fn symbol_type(&self, symbol: SymbolId) -> TypeId {
