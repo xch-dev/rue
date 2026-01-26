@@ -8,11 +8,11 @@ inline fn two_item_list_hash(first: Bytes32, rest: Bytes32) -> Bytes32 {
     tree_hash_pair(first, tree_hash_pair(rest, tree_hash_atom(nil)))
 }
 
-inline fn apply_hash(mod_hash: Bytes32, environment_hash: Bytes32) -> Bytes32 {
+fn apply_hash(mod_hash: Bytes32, environment_hash: Bytes32) -> Bytes32 {
     sha256(2 as Bytes + tree_hash_atom(2 as Bytes) + two_item_list_hash(quote_hash(mod_hash), environment_hash))
 }
 
-inline fn update_hash_with_parameter(
+fn update_hash_with_parameter(
     parameter_hash: Bytes32,
     environment_hash: Bytes32
 ) -> Bytes32 {
@@ -26,7 +26,7 @@ fn curried_params_hash(parameters: List<Bytes32>) -> Bytes32 {
     update_hash_with_parameter(parameters.first, curried_params_hash(parameters.rest))
 }
 
-export inline fn curry_tree_hash(
+export fn curry_tree_hash(
     mod_hash: Bytes32,
     parameters: List<Bytes32>
 ) -> Bytes32 {
