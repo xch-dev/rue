@@ -230,6 +230,11 @@ pub enum DiagnosticKind {
 
     #[error("Cannot end path in `super`")]
     SuperAtEnd,
+
+    #[error(
+        "Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages"
+    )]
+    DoubleNegationWarning,
 }
 
 impl DiagnosticKind {
@@ -309,7 +314,8 @@ impl DiagnosticKind {
             | Self::AlwaysFalseCondition
             | Self::AlwaysTrueCondition
             | Self::UnusedStatementValue
-            | Self::UnusedGlobImport => DiagnosticSeverity::Warning,
+            | Self::UnusedGlobImport
+            | Self::DoubleNegationWarning => DiagnosticSeverity::Warning,
         }
     }
 }

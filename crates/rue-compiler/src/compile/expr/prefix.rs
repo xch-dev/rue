@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use log::debug;
-use rue_ast::{AstNode, AstPrefixExpr};
+use rue_ast::{AstExpr, AstNode, AstPrefixExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, UnaryOp, Value};
 use rue_lir::{atom_bigint, bigint_atom};
@@ -51,6 +51,10 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
             }
         }
         T![-] => {
+            if let AstExpr::PrefixExpr(_) = &expr {
+                ctx.diagnostic(prefix.syntax(), DiagnosticKind::DoubleNegationWarning);
+            }
+
             if ctx.is_assignable(value.ty, ctx.builtins().types.int) {
                 let ty = if let Some(Atoms::Restricted(restrictions)) =
                     rue_types::extract_atoms(ctx.types_mut(), value.ty, true)
