@@ -20,3 +20,10 @@ tests:
   runtime_cost: 6119
   byte_cost: 2964000
   total_cost: 2970119
+- name: negative_right_logical_shift
+  program: (a (i (= (lsh (q . 10) (q . 1)) (q . 20)) (q) (q 8)) 1)
+  debug_program: (a (i (= (lsh (q . 10) (- () (- () (q . 1)))) (q . 20)) (q) (q 8 (q . "assertion failed at nested_subtraction.rue:28:5"))) 1)
+  output: ()
+  runtime_cost: 727
+  byte_cost: 468000
+  total_cost: 468727

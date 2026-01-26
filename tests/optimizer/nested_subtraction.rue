@@ -23,3 +23,7 @@ test fn nested_subtraction() {
     assert 100 - (200 - 300) == 200;
     assert 100 - 200 - 300 == -400;
 }
+
+test fn negative_right_logical_shift() {
+    assert 10 >>> -1 == 20;
+}
