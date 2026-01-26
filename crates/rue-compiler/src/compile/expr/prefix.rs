@@ -51,7 +51,10 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
             }
         }
         T![-] => {
-            if let AstExpr::PrefixExpr(_) = &expr {
+            if let AstExpr::PrefixExpr(prefix) = &expr
+                && let Some(op) = prefix.op()
+                && op.kind() == T![-]
+            {
                 ctx.diagnostic(prefix.syntax(), DiagnosticKind::DoubleNegationWarning);
             }
 
