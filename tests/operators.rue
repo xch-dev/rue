@@ -60,8 +60,12 @@ test fn comparison() {
 
 test fn bitwise() {
     assert ~10 == -11;
-    assert 10 << 2 == 2;
-    assert 10 >> 2 == 40;
+    assert 50 >> 2 == 12;
+    assert 50 << 2 == 200;
+    assert -50 >>> 1 == 103;
+    assert 50 >>> 1 == 25;
+    assert -50 >>> -1 == 412;
+    assert 50 >>> -1 == 100;
     assert 10 & 5 == 0;
     assert 10 | 5 == 15;
     assert 10 ^ 5 == 15;

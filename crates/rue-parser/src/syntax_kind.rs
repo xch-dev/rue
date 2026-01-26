@@ -182,10 +182,13 @@ pub enum SyntaxKind {
     BitwiseXor,
 
     #[display("`<<`")]
-    LeftShift,
+    LeftArithmeticShift,
 
     #[display("`>>`")]
-    RightShift,
+    RightArithmeticShift,
+
+    #[display("`>>>`")]
+    RightLogicalShift,
 
     // Punctuation
     #[display("`=`")]
@@ -435,8 +438,9 @@ macro_rules! T {
     [|] => { $crate::SyntaxKind::BitwiseOr };
     [~] => { $crate::SyntaxKind::BitwiseNot };
     [^] => { $crate::SyntaxKind::BitwiseXor };
-    [<<] => { $crate::SyntaxKind::LeftShift };
-    [>>] => { $crate::SyntaxKind::RightShift };
+    [<<] => { $crate::SyntaxKind::LeftArithmeticShift };
+    [>>] => { $crate::SyntaxKind::RightArithmeticShift };
+    [>>>] => { $crate::SyntaxKind::RightLogicalShift };
     [=] => { $crate::SyntaxKind::Assign };
     [.] => { $crate::SyntaxKind::Dot };
     [,] => { $crate::SyntaxKind::Comma };
@@ -478,6 +482,7 @@ impl SyntaxKind {
         T![&],
         T![|],
         T![^],
+        T![>>>],
         T![<<],
         T![>>],
     ];
@@ -549,6 +554,7 @@ impl SyntaxKind {
             T![^] => &[T![^]],
             T![<<] => &[T![<], T![<]],
             T![>>] => &[T![>], T![>]],
+            T![>>>] => &[T![>], T![>], T![>]],
             T![=] => &[T![=]],
             T![.] => &[T![.]],
             T![,] => &[T![,]],

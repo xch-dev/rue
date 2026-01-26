@@ -138,8 +138,11 @@ pub enum BinaryOp {
     BitwiseXor,
 
     #[display("<<")]
-    LeftShift,
+    LeftArithmeticShift,
 
     #[display(">>")]
-    RightShift,
+    RightArithmeticShift,
+
+    #[display(">>>")]
+    RightLogicalShift,
 }
