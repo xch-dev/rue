@@ -9,7 +9,7 @@ use sha3::Keccak256;
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
     optimize::{ArgList, opt_truthy},
-    rest_path,
+    parent_path, rest_path,
 };
 
 // There's no way to optimize an atom
@@ -96,6 +96,16 @@ pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
 
     if matches!(arena[rest], Lir::Raise(_)) {
         return rest;
+    }
+
+    if let Lir::Path(f_path) = arena[first].clone()
+        && let Lir::Path(r_path) = arena[rest].clone()
+        && let parent = parent_path(f_path)
+        && parent == parent_path(r_path)
+        && first_path(parent) == f_path
+        && rest_path(parent) == r_path
+    {
+        return arena.alloc(Lir::Path(parent));
     }
 
     arena.alloc(Lir::Cons(first, rest))

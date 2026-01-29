@@ -191,14 +191,13 @@ fn build(args: BuildArgs) -> Result<()> {
     };
 
     if args.hex && args.hash {
-        eprintln!("{}", "Cannot use both `--hex` and `--hash`".red().bold());
-        process::exit(1);
-    }
-
-    if args.hex {
+        println!("{}", hex::encode(node_to_bytes(&allocator, program)?));
+        println!();
+        println!("{}", tree_hash(&allocator, program));
+    } else if args.hex {
         println!("{}", hex::encode(node_to_bytes(&allocator, program)?));
     } else if args.hash {
-        println!("0x{}", tree_hash(&allocator, program));
+        println!("{}", tree_hash(&allocator, program));
     } else {
         println!("{}", disassemble(&allocator, program, None));
     }

@@ -2,6 +2,7 @@ fn main() {
     assert pair((100, 200)) == 300;
     assert list([1, 2, 3]) == 6;
     assert point(Point { x: 100, y: 200 }) == 300;
+    assert point_destructure_struct_ref(Point { x: 100, y: 200 }) == 300;
 }
 
 fn pair((a, b): (Int, Int)) -> Int {
@@ -19,4 +20,8 @@ struct Point {
 
 fn point({ x, y }: Point) -> Int {
     x + y
+}
+
+fn point_destructure_struct_ref({ x, ...point }: Point) -> Int {
+    x + point.y
 }
