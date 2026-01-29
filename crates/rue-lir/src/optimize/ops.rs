@@ -100,8 +100,8 @@ pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
 
     if let Lir::Path(f_path) = arena[first].clone()
         && let Lir::Path(r_path) = arena[rest].clone()
-        && let parent = parent_path(f_path)
-        && parent == parent_path(r_path)
+        && let Some(parent) = parent_path(f_path)
+        && Some(parent) == parent_path(r_path)
         && first_path(parent) == f_path
         && rest_path(parent) == r_path
     {

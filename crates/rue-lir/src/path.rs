@@ -28,12 +28,23 @@ fn add_path(a: u32, mut b: u32) -> u32 {
     b | (a & mask)
 }
 
-pub fn parent_path(path: u32) -> u32 {
-    let result_depth = 31 - path.leading_zeros();
+pub fn parent_path(path: u32) -> Option<u32> {
+    let result_depth = 31u32.saturating_sub(path.leading_zeros());
+
+    if result_depth == 0 {
+        return None;
+    }
+
     let original_depth = result_depth - 1;
     let mask = (1 << original_depth) - 1;
     let lower_bits = path & mask;
-    (1 << original_depth) | lower_bits
+    let result = (1 << original_depth) | lower_bits;
+
+    if result == 0 {
+        return None;
+    }
+
+    Some(result)
 }
 
 #[cfg(test)]
@@ -63,24 +74,26 @@ mod tests {
 
     #[test]
     fn test_parent_path() {
-        assert_eq!(parent_path(2), 1);
-        assert_eq!(parent_path(3), 1);
-        assert_eq!(parent_path(4), 2);
-        assert_eq!(parent_path(6), 2);
-        assert_eq!(parent_path(5), 3);
-        assert_eq!(parent_path(7), 3);
-        assert_eq!(parent_path(8), 4);
-        assert_eq!(parent_path(12), 4);
-        assert_eq!(parent_path(10), 6);
-        assert_eq!(parent_path(14), 6);
-        assert_eq!(parent_path(9), 5);
-        assert_eq!(parent_path(13), 5);
-        assert_eq!(parent_path(11), 7);
-        assert_eq!(parent_path(15), 7);
+        assert_eq!(parent_path(0), None);
+        assert_eq!(parent_path(1), None);
+        assert_eq!(parent_path(2), Some(1));
+        assert_eq!(parent_path(3), Some(1));
+        assert_eq!(parent_path(4), Some(2));
+        assert_eq!(parent_path(6), Some(2));
+        assert_eq!(parent_path(5), Some(3));
+        assert_eq!(parent_path(7), Some(3));
+        assert_eq!(parent_path(8), Some(4));
+        assert_eq!(parent_path(12), Some(4));
+        assert_eq!(parent_path(10), Some(6));
+        assert_eq!(parent_path(14), Some(6));
+        assert_eq!(parent_path(9), Some(5));
+        assert_eq!(parent_path(13), Some(5));
+        assert_eq!(parent_path(11), Some(7));
+        assert_eq!(parent_path(15), Some(7));
 
         for path in 1..u32::from(u16::MAX) {
-            assert_eq!(parent_path(first_path(path)), path);
-            assert_eq!(parent_path(rest_path(path)), path);
+            assert_eq!(parent_path(first_path(path)), Some(path));
+            assert_eq!(parent_path(rest_path(path)), Some(path));
         }
     }
 }
