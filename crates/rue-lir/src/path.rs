@@ -28,6 +28,14 @@ fn add_path(a: u32, mut b: u32) -> u32 {
     b | (a & mask)
 }
 
+pub fn parent_path(path: u32) -> u32 {
+    let result_depth = 31 - path.leading_zeros();
+    let original_depth = result_depth - 1;
+    let mask = (1 << original_depth) - 1;
+    let lower_bits = path & mask;
+    (1 << original_depth) | lower_bits
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,5 +59,28 @@ mod tests {
         assert_eq!(rest_path(1), 3);
         assert_eq!(rest_path(2), 6);
         assert_eq!(rest_path(5), 13);
+    }
+
+    #[test]
+    fn test_parent_path() {
+        assert_eq!(parent_path(2), 1);
+        assert_eq!(parent_path(3), 1);
+        assert_eq!(parent_path(4), 2);
+        assert_eq!(parent_path(6), 2);
+        assert_eq!(parent_path(5), 3);
+        assert_eq!(parent_path(7), 3);
+        assert_eq!(parent_path(8), 4);
+        assert_eq!(parent_path(12), 4);
+        assert_eq!(parent_path(10), 6);
+        assert_eq!(parent_path(14), 6);
+        assert_eq!(parent_path(9), 5);
+        assert_eq!(parent_path(13), 5);
+        assert_eq!(parent_path(11), 7);
+        assert_eq!(parent_path(15), 7);
+
+        for path in 1..u32::from(u16::MAX) {
+            assert_eq!(parent_path(first_path(path)), path);
+            assert_eq!(parent_path(rest_path(path)), path);
+        }
     }
 }
