@@ -1,6 +1,6 @@
-program: (a (q 2 (i (= (a 6 (c (q . 100) (q . 200))) (q . 300)) (q 2 (i (= (a (c (c (q . 16) ()) (c (q . 1) (c (q . 2) (c (q . 3) ())))) ()) (q . 6)) (q 2 (i (= (a 4 (c (q . 100) (c (q . 200) ()))) (q . 300)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (c (q 16 2 5) (q 16 2 3)) ()))
-debug_program: (a (q 2 (i (= (a 14 (c (q . 100) (q . 200))) (q . 300)) (q 2 (i (= (a 10 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (q . 6)) (q 2 (i (= (a 4 (c (q . 100) (c (q . 200) ()))) (q . 300)) (q) (q 8 (q . "assertion failed at destructuring.rue:4:5"))) 1) (q 8 (q . "assertion failed at destructuring.rue:3:5"))) 1) (q 8 (q . "assertion failed at destructuring.rue:2:5"))) 1) (c (c (q 16 (f 1) (f (r 1))) (c (q 2 (c (c (q . 16) ()) 1) ()) (q 16 (f 1) (r 1)))) ()))
+program: (a (q 2 (i (= (a 14 (c (q . 100) (q . 200))) (q . 300)) (q 2 (i (= (a (c (c (q . 16) ()) (c (q . 1) (c (q . 2) (c (q . 3) ())))) ()) (q . 6)) (q 2 (i (= (a 10 (c (q . 100) (c (q . 200) ()))) (q . 300)) (q 2 (i (= (a 4 (c (q . 100) (c (q . 200) ()))) (q . 300)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (c (q 16 2 5) (c (q 16 2 5) (q 16 2 3))) ()))
+debug_program: (a (q 2 (i (= (a 14 (c (q . 100) (q . 200))) (q . 300)) (q 2 (i (= (a 10 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (q . 6)) (q 2 (i (= (a 12 (c (q . 100) (c (q . 200) ()))) (q . 300)) (q 2 (i (= (a 8 (c (q . 100) (c (q . 200) ()))) (q . 300)) (q) (q 8 (q . "assertion failed at destructuring.rue:5:5"))) 1) (q 8 (q . "assertion failed at destructuring.rue:4:5"))) 1) (q 8 (q . "assertion failed at destructuring.rue:3:5"))) 1) (q 8 (q . "assertion failed at destructuring.rue:2:5"))) 1) (c (c (c (q 16 (f 1) (f (r 1))) (q 16 (f 1) (f (r 1)))) (c (q 2 (c (c (q . 16) ()) 1) ()) (q 16 (f 1) (r 1)))) ()))
 output: ()
-runtime_cost: 5415
-byte_cost: 2532000
-total_cost: 2537415
+runtime_cost: 7043
+byte_cost: 3348000
+total_cost: 3355043

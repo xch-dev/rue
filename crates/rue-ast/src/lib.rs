@@ -867,6 +867,13 @@ impl AstStructBinding {
 }
 
 impl AstStructFieldBinding {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![...])
+    }
+
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()

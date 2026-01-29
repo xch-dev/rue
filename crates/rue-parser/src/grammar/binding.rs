@@ -33,8 +33,9 @@ pub fn binding(p: &mut Parser) {
         p.expect(T!['{']);
         while !p.at(T!['}']) {
             p.start(SyntaxKind::StructFieldBinding);
+            let spread = p.try_eat(T![...]);
             p.expect(SyntaxKind::Ident);
-            if p.try_eat(T![:]) {
+            if p.try_eat(T![:]) && !spread {
                 binding(p);
             }
             p.finish();

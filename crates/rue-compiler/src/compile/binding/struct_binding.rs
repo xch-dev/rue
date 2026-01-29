@@ -21,10 +21,34 @@ pub fn create_struct_binding(
 
     let mut specified_fields = HashSet::new();
 
-    for field in struct_binding.fields() {
+    let len = struct_binding.fields().count();
+
+    for (i, field) in struct_binding.fields().enumerate() {
         let Some(name) = field.name() else {
             continue;
         };
+
+        if let Some(spread) = field.spread() {
+            if i != len - 1 {
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
+            }
+
+            let binding_symbol = ctx.alloc_symbol(Symbol::Binding(BindingSymbol {
+                name: None,
+                value: reference.clone(),
+                inline: true,
+            }));
+
+            ctx.push_declaration(Declaration::Symbol(binding_symbol));
+
+            ctx.reference(Declaration::Symbol(symbol), None);
+
+            create_binding_for_identifier(ctx, binding_symbol, &name);
+
+            ctx.pop_declaration();
+
+            continue;
+        }
 
         specified_fields.insert(name.text().to_string());
 
