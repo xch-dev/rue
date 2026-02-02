@@ -1,0 +1,7 @@
+test fn test_bitwise_or() -> Int {
+    SENDER_PUZZLE | RECEIVER_PUZZLE
+}
+
+test fn test_bitwise_and() -> Int {
+    0b110_000 & 0b010_000
+}

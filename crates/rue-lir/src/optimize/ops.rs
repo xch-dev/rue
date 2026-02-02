@@ -576,11 +576,61 @@ pub fn opt_substr(
 }
 
 pub fn opt_logand(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    arena.alloc(Lir::Logand(args))
+    let mut args = ArgList::new(args);
+    let mut result = Vec::new();
+    let mut value = BigInt::from(-1);
+
+    while let Some(arg) = args.next() {
+        match arena[arg].clone() {
+            Lir::Atom(atom) => value &= atom_bigint(atom),
+            Lir::Logand(items) => args.prepend(items),
+            Lir::Raise(_) => return arg,
+            _ => result.push(arg),
+        }
+    }
+
+    if value != BigInt::from(-1) {
+        result.push(arena.alloc(Lir::Atom(bigint_atom(value))));
+    }
+
+    if result.is_empty() {
+        return arena.alloc(Lir::Atom(bigint_atom(BigInt::from(-1))));
+    }
+
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
+        return result[0];
+    }
+
+    arena.alloc(Lir::Logand(result))
 }
 
 pub fn opt_logior(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    arena.alloc(Lir::Logior(args))
+    let mut args = ArgList::new(args);
+    let mut result = Vec::new();
+    let mut value = BigInt::from(0);
+
+    while let Some(arg) = args.next() {
+        match arena[arg].clone() {
+            Lir::Atom(atom) => value |= atom_bigint(atom),
+            Lir::Logior(items) => args.prepend(items),
+            Lir::Raise(_) => return arg,
+            _ => result.push(arg),
+        }
+    }
+
+    if value != BigInt::from(0) {
+        result.push(arena.alloc(Lir::Atom(bigint_atom(value))));
+    }
+
+    if result.is_empty() {
+        return arena.alloc(Lir::Atom(vec![]));
+    }
+
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
+        return result[0];
+    }
+
+    arena.alloc(Lir::Logior(result))
 }
 
 pub fn opt_logxor(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
