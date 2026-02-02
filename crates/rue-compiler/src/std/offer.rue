@@ -1,0 +1,12 @@
+import conditions::types::Memos;
+
+export struct NotarizedPayment {
+    nonce: Bytes32,
+    ...payments: List<Payment>,
+}
+
+export struct Payment {
+    puzzle_hash: Bytes32,
+    amount: Int,
+    ...memos: Memos | nil,
+}

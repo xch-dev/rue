@@ -1,0 +1,18 @@
+export struct SingletonStruct {
+    mod_hash: Bytes32,
+    launcher_id: Bytes32,
+    ...launcher_puzzle_hash: Bytes32,
+}
+
+export type Proof = LineageProof | EveProof;
+
+export struct LineageProof {
+    parent_parent_coin_info: Bytes32,
+    parent_inner_puzzle_hash: Bytes32,
+    parent_amount: Int,
+}
+
+export struct EveProof {
+    parent_parent_coin_info: Bytes32,
+    parent_amount: Int,
+}
