@@ -1,0 +1,15 @@
+tests:
+- name: test_bitwise_or
+  program: (q . 18)
+  debug_program: (logior (q . 16) (q . 2))
+  output: '18'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: test_bitwise_and
+  program: (q . 16)
+  debug_program: (logand (q . 48) (q . 16))
+  output: '16'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
