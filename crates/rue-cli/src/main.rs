@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     process,
@@ -17,7 +17,7 @@ use clvmr::{
 };
 use colored::Colorize;
 use rue_compiler::{Compiler, FileTree, normalize_path};
-use rue_diagnostic::DiagnosticSeverity;
+use rue_diagnostic::{DiagnosticSeverity, SourceKind};
 use rue_lir::DebugDialect;
 use rue_options::{Manifest, find_project};
 
@@ -35,6 +35,7 @@ pub struct InitArgs {
 }
 
 #[derive(Debug, Parser)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BuildArgs {
     file: Option<String>,
     #[clap(short, long)]
@@ -43,8 +44,12 @@ pub struct BuildArgs {
     debug: bool,
     #[clap(short = 'x', long)]
     hex: bool,
-    #[clap(long)]
+    #[clap(short, long)]
     hash: bool,
+    #[clap(short, long)]
+    split: bool,
+    #[clap(short, long)]
+    all: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -109,10 +114,11 @@ fn build(args: BuildArgs) -> Result<()> {
         process::exit(1);
     };
 
-    if project.manifest.is_some_and(|manifest| {
+    if project.manifest.as_ref().is_some_and(|manifest| {
         manifest
             .compiler
             .version
+            .as_ref()
             .is_some_and(|version| version != env!("CARGO_PKG_VERSION"))
     }) {
         eprintln!("{}", "Project version mismatch".red().bold());
@@ -159,47 +165,208 @@ fn build(args: BuildArgs) -> Result<()> {
         process::exit(1);
     }
 
-    let program = if let Some(export) = args.export {
-        let Some(program) = tree
-            .exports(
+    if args.all {
+        if args.export.is_some() {
+            eprintln!("{}", "Cannot use `--export` with `--all`".red().bold());
+            process::exit(1);
+        }
+
+        let dist_dir = project
+            .manifest
+            .as_ref()
+            .and_then(|manifest| manifest.compiler.dist_dir.clone())
+            .map(PathBuf::from);
+
+        if let Some(dist_dir) = &dist_dir
+            && !dist_dir.exists()
+        {
+            fs::create_dir_all(dist_dir)?;
+        }
+
+        let mut file_names = HashSet::new();
+        let mut outputs = HashMap::new();
+
+        for file in tree.all_files() {
+            let SourceKind::File(file_path) = &file.source.kind else {
+                continue;
+            };
+            let file_path = Path::new(file_path);
+            let file_name = file_path.file_name().unwrap().to_string_lossy().to_string();
+
+            let exports = tree.exports(
                 &mut ctx,
                 &mut allocator,
-                file_kind.as_ref(),
-                Some(&export),
+                Some(&file.source.kind),
+                None,
                 &base_path,
-            )?
-            .into_iter()
-            .next()
-        else {
-            eprintln!("{}", format!("Export `{export}` not found").red().bold());
+            )?;
+
+            let main = tree.main(
+                &mut ctx,
+                &mut allocator,
+                &file.source.kind,
+                base_path.clone(),
+            )?;
+
+            let mut exports = if main_kind
+                .as_ref()
+                .is_some_and(|main| main == &file.source.kind)
+            {
+                exports
+                    .into_iter()
+                    .map(|export| {
+                        (
+                            if dist_dir.is_some() {
+                                export.name
+                            } else {
+                                format!("{file_name}_{}", export.name)
+                            },
+                            export.ptr,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                vec![]
+            };
+
+            if let Some(main) = main {
+                exports.push((
+                    file_name
+                        .strip_suffix(".rue")
+                        .unwrap_or(&file_name)
+                        .to_string(),
+                    main,
+                ));
+            }
+
+            for (name, ptr) in exports {
+                if dist_dir.is_some() && !file_names.insert(name.clone()) {
+                    eprintln!(
+                        "{}",
+                        format!("Duplicate export with name `{name}`, aborting")
+                            .red()
+                            .bold()
+                    );
+                    process::exit(1);
+                }
+
+                let hex = hex::encode(node_to_bytes(&allocator, ptr)?);
+
+                let mut output = String::new();
+
+                if args.split {
+                    let chars = hex.chars().collect::<Vec<_>>();
+                    let chunks = chars.chunks(64);
+                    for chunk in chunks {
+                        output.push_str(&chunk.iter().collect::<String>());
+                        output.push('\n');
+                    }
+                } else {
+                    output.push_str(&hex);
+                    output.push('\n');
+                }
+
+                let path = if let Some(dist_dir) = &dist_dir {
+                    dist_dir
+                        .join(format!("{name}.rue.hex"))
+                        .to_string_lossy()
+                        .to_string()
+                } else {
+                    file_path
+                        .parent()
+                        .unwrap()
+                        .join(format!("{name}.rue.hex"))
+                        .to_string_lossy()
+                        .to_string()
+                };
+
+                outputs.insert(PathBuf::from(path), output);
+
+                if args.hash {
+                    let hash = tree_hash(&allocator, ptr).to_string();
+
+                    let path = if let Some(dist_dir) = &dist_dir {
+                        dist_dir
+                            .join(format!("{name}.rue.hash"))
+                            .to_string_lossy()
+                            .to_string()
+                    } else {
+                        file_path
+                            .parent()
+                            .unwrap()
+                            .join(format!("{name}.rue.hash"))
+                            .to_string_lossy()
+                            .to_string()
+                    };
+
+                    outputs.insert(PathBuf::from(path), format!("{hash}\n"));
+                }
+            }
+        }
+
+        for (path, output) in outputs {
+            fs::write(path, output)?;
+        }
+    } else {
+        let program = if let Some(export) = args.export {
+            let Some(program) = tree
+                .exports(
+                    &mut ctx,
+                    &mut allocator,
+                    file_kind.as_ref(),
+                    Some(&export),
+                    &base_path,
+                )?
+                .into_iter()
+                .next()
+            else {
+                eprintln!("{}", format!("Export `{export}` not found").red().bold());
+                process::exit(1);
+            };
+
+            program.ptr
+        } else if let Some(main_kind) = main_kind
+            && let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind, base_path)?
+        {
+            ptr
+        } else {
+            eprintln!(
+                "{}",
+                "No `main` function found (you can specify an entrypoint with `--export`)"
+                    .red()
+                    .bold()
+            );
             process::exit(1);
         };
 
-        program.ptr
-    } else if let Some(main_kind) = main_kind
-        && let Some(ptr) = tree.main(&mut ctx, &mut allocator, &main_kind, base_path)?
-    {
-        ptr
-    } else {
-        eprintln!(
-            "{}",
-            "No `main` function found (you can specify an entrypoint with `--export`)"
-                .red()
-                .bold()
-        );
-        process::exit(1);
-    };
+        if args.hex {
+            let hex = hex::encode(node_to_bytes(&allocator, program)?);
 
-    if args.hex && args.hash {
-        println!("{}", hex::encode(node_to_bytes(&allocator, program)?));
-        println!();
-        println!("{}", tree_hash(&allocator, program));
-    } else if args.hex {
-        println!("{}", hex::encode(node_to_bytes(&allocator, program)?));
-    } else if args.hash {
-        println!("{}", tree_hash(&allocator, program));
-    } else {
-        println!("{}", disassemble(&allocator, program, None));
+            if args.split {
+                let chars = hex.chars().collect::<Vec<_>>();
+                let chunks = chars.chunks(64);
+                for chunk in chunks {
+                    println!("{}", chunk.iter().collect::<String>());
+                }
+            } else {
+                println!("{hex}");
+            }
+        } else if args.split {
+            eprintln!("{}", "Cannot use `--split` without `--hex`".red().bold());
+            process::exit(1);
+        }
+
+        if args.hex && args.hash {
+            println!();
+        }
+
+        if args.hash {
+            println!("{}", tree_hash(&allocator, program));
+        }
+
+        if !args.hex && !args.hash {
+            println!("{}", disassemble(&allocator, program, None));
+        }
     }
 
     Ok(())
