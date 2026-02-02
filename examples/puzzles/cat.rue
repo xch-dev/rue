@@ -168,7 +168,7 @@ fn main(
     } else {
         // If there's no TAIL, make sure the extra delta is zero.
         // It must have a parent that is also a CAT.
-        assert parent_is_cat && extra_delta == 0;
+        assert parent_is_cat & (extra_delta == 0);
 
         // Output the conditions as they are.
         conditions
@@ -237,8 +237,7 @@ fn morph_conditions(
         // If the condition is a coin announcement,
         // make sure it's not pretending to be part of the ring.
         if condition is CreateCoinAnnouncement
-            && condition.message.length == 33
-            && substr(condition.message, 0, 1) == RING_MORPH_BYTE
+            && ((condition.message.length == 33) & (substr(condition.message, 0, 1) == RING_MORPH_BYTE))
         {
             raise "Created coin announcements must not have the ring morph byte";
         }

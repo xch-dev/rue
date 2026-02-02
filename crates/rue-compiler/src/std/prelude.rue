@@ -4,10 +4,14 @@ export curry_tree_hash::*;
 export conditions::message_flags::*;
 export conditions::opcodes::*;
 export conditions::types::*;
+export merkle::*;
 
 export mod std {
     export conditions;
     export curry_tree_hash;
     export tree_hash;
     export utils;
+    export merkle;
+    export offer;
+    export singleton;
 }
