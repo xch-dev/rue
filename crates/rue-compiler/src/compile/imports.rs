@@ -40,6 +40,7 @@ fn construct_imports(
     exported: bool,
 ) -> Vec<ImportId> {
     let mut has_non_super = false;
+    let mut has_super = false;
 
     if let Some(segment) = segments.first()
         && let Some(separator) = segment.separator()
@@ -59,6 +60,8 @@ fn construct_imports(
                 } else {
                     ctx.diagnostic(&name, DiagnosticKind::UnresolvedSuper);
                 }
+
+                has_super = true;
             } else {
                 path.push(ctx.local_name(&name));
                 has_non_super = true;
@@ -88,6 +91,7 @@ fn construct_imports(
             items: Items::Named(name),
             exported,
             declarations: Vec::new(),
+            has_super,
         })]
     } else if let Some(star) = last.star() {
         let star = ctx.local_name(&star);
@@ -99,6 +103,7 @@ fn construct_imports(
             items: Items::All(star),
             exported,
             declarations: Vec::new(),
+            has_super,
         })]
     } else if let items = last.items().collect::<Vec<_>>()
         && !items.is_empty()
@@ -124,7 +129,7 @@ fn construct_imports(
 
 #[derive(Debug, Default)]
 pub struct ImportCache {
-    scopes: HashMap<Vec<String>, (ScopeId, SymbolId)>,
+    scopes: HashMap<(ScopeId, Vec<String>), (ScopeId, SymbolId)>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
     glob_import_counts: IndexMap<ImportId, (Name, usize)>,
 }
@@ -214,6 +219,7 @@ fn resolve_import(
     missing_imports: &mut IndexMap<ImportId, IndexMap<String, Name>>,
 ) -> bool {
     let import = ctx.import(import_id).clone();
+    let has_super = import.has_super;
     let source = import.source.clone();
 
     let mut base = None;
@@ -227,7 +233,7 @@ fn resolve_import(
             .map(|t| t.text().to_string())
             .collect::<Vec<_>>();
 
-        if let Some(cached) = cache.scopes.get(&subpath) {
+        if let Some(cached) = cache.scopes.get(&(import_scope, subpath.clone())) {
             base = Some(cached.0);
             path_so_far = subpath;
 
@@ -300,9 +306,12 @@ fn resolve_import(
 
         base = Some(module.scope);
         path_so_far.push(name.text().to_string());
-        cache
-            .scopes
-            .insert(path_so_far.clone(), (module.scope, symbol));
+
+        if !has_super {
+            cache
+                .scopes
+                .insert((import_scope, path_so_far.clone()), (module.scope, symbol));
+        }
     }
 
     let mut updated = false;

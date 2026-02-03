@@ -1,0 +1,5 @@
+import utils::greet;
+
+fn main() -> String {
+    greet("world main")
+}

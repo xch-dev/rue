@@ -1,0 +1,3 @@
+diagnostics:
+- Undeclared symbol `utils` at a/b/inner.rue:1:8
+- Undeclared symbol `greet` at a/b/inner.rue:4:5
