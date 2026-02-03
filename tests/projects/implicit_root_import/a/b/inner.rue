@@ -1,0 +1,5 @@
+import utils::greet;
+
+test fn inner() -> String {
+    greet("world inner")
+}

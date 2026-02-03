@@ -1,0 +1,14 @@
+program: (q . "Hello, world main!")
+debug_program: (a (q 2 2 (q . "world main")) (c (q 14 (concat (q . "Hello, ") 1) (q . 33)) ()))
+output: '"Hello, world main!"'
+runtime_cost: 20
+byte_cost: 252000
+total_cost: 252020
+tests:
+- name: inner
+  program: (q . "Hello, world inner!")
+  debug_program: (a (q 2 2 (q . "world inner")) (c (q 14 (concat (q . "Hello, ") 1) (q . 33)) ()))
+  output: '"Hello, world inner!"'
+  runtime_cost: 20
+  byte_cost: 264000
+  total_cost: 264020
