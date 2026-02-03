@@ -13,6 +13,7 @@ pub struct Import {
     pub items: Items,
     pub exported: bool,
     pub declarations: Vec<(String, Declaration)>,
+    pub has_super: bool,
 }
 
 #[derive(Debug, Clone)]
