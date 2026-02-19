@@ -516,9 +516,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     fn lower_block(
         &mut self,
         env: &Environment,
-        stmts: Vec<Statement>,
+        mut stmts: Vec<Statement>,
         body: Option<HirId>,
     ) -> LirId {
+        if !self.options.debug_symbols {
+            stmts.retain(|stmt| !matches!(stmt, Statement::Debug(..)));
+        }
+
         let Some(stmt) = stmts.first().cloned() else {
             return if let Some(body) = body {
                 self.lower_hir(env, body)
@@ -706,10 +710,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         stmts.remove(0);
 
         let rest = self.lower_block(env, stmts, body);
-
-        if !self.options.debug_symbols {
-            return rest;
-        }
 
         let value = self.lower_hir(env, value);
         let print = self
