@@ -14,12 +14,12 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: unused_fn_parameter
-  program: ()
+  program: (i () () ())
   debug_program: (a (q 3 (q . 1) () (a 2 (q . 42))) (c (q) ()))
   output: ()
-  runtime_cost: 44
-  byte_cost: 12000
-  total_cost: 12044
+  runtime_cost: 166
+  byte_cost: 108000
+  total_cost: 108166
 - name: used_fn_parameter
   program: (q . 42)
   debug_program: (a (q 2 2 (q . 42)) (c (q . 1) ()))
@@ -28,12 +28,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: unused_fn_generic
-  program: ()
+  program: (i () () ())
   debug_program: (a (q 3 (q . 1) () (a 2 ())) (c (q) ()))
   output: ()
-  runtime_cost: 44
-  byte_cost: 12000
-  total_cost: 12044
+  runtime_cost: 166
+  byte_cost: 108000
+  total_cost: 108166
 - name: used_fn_generic
   program: '2'
   debug_program: (a (q 2 2 5) (c (q . 1) 1))
