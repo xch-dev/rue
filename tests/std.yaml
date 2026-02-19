@@ -21,9 +21,9 @@ tests:
   byte_cost: 4800000
   total_cost: 4831127
 - name: recursion
-  program: (a (q 2 10 (c 10 (c 4 (c 14 (c (c () (c (q . "Hello, world!") (c (c (q . 100) (q . 200)) (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) (c (q 16 2 5) (c (c (q . 2) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 14) (c (q . 1) ()))) ()))) ()))) ()))) ())))))) ()))))) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (c (q 2 (i 23 (q 2 (q 2 (i (a 23 (c 23 (c 4 4))) (q 2 (i (= (a 11 (c 11 4)) (a 11 (c 11 4))) (q 2 5 (c 5 (c 11 (c 23 (c 6 ()))))) (q 8)) 1) (q 8)) 1) (c 23 1)) (q)) 1) (q 2 (i (l 7) (q 2 (i (l 5) (q 2 (i (a 2 (c 2 (c 9 11))) (q 2 (i (a 2 (c 2 (c 13 15))) (q 1 . 1) (q)) 1) (q)) 1) (q)) 1) (q 2 (i (l 5) (q) (q 9 7 5)) 1)) 1))) ()))
+  program: (a (q 3 () (a 10 (c 10 (c 4 (c 14 (c (c () (c (q . "Hello, world!") (c (c (q . 100) (q . 200)) (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) (c (q 16 2 5) (c (c (q . 2) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 14) (c (q . 1) ()))) ()))) ()))) ()))) ())))))) ()))))) ()) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (c (q 2 (i 23 (q 2 (q 2 (i (a 23 (c 23 (c 4 4))) (q 2 (i (= (a 11 (c 11 4)) (a 11 (c 11 4))) (q 3 () (a 5 (c 5 (c 11 (c 23 (c 6 ()))))) ()) (q 8)) 1) (q 8)) 1) (c 23 1)) (q)) 1) (q 2 (i (l 7) (q 2 (i (l 5) (q 2 (i (a 2 (c 2 (c 9 11))) (q 2 (i (a 2 (c 2 (c 13 15))) (q 1 . 1) (q)) 1) (q)) 1) (q)) 1) (q 2 (i (l 5) (q) (q 9 7 5)) 1)) 1))) ()))
   debug_program: (a (q 3 (q . 1) () (a 10 (c 10 (c 4 (c 14 (c (c () (c (q . "Hello, world!") (c (c (q . 100) (q . 200)) (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 14) (c (q . 1) ()))) ()))) ()))) ()))) ())))))) ())))))) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (c (q 2 (i (not (l 23)) (q) (q 2 (q 2 (i (a 23 (c 23 (c (f 2) (f 2)))) (q 2 (i (= (a 11 (c 11 (f 2))) (a 11 (c 11 (f 2)))) (q 3 (q . 1) () (a 5 (c 5 (c 11 (c 23 (c (r 2) ())))))) (q 8 (q . "assertion failed at std.rue:74:5"))) 1) (q 8 (q . "assertion failed at std.rue:73:5"))) 1) (c 23 1))) 1) (q 2 (i (not (l 7)) (q 2 (i (not (l 5)) (q 9 7 5) (q)) 1) (q 2 (i (not (l 5)) (q) (q 2 (i (a 2 (c 2 (c (f 5) (f 7)))) (q 2 (i (a 2 (c 2 (c (r 5) (r 7)))) (q 1 . 1) (q)) 1) (q)) 1)) 1)) 1))) ()))
   output: ()
-  runtime_cost: 2336234
-  byte_cost: 7584000
-  total_cost: 9920234
+  runtime_cost: 2403228
+  byte_cost: 7776000
+  total_cost: 10179228

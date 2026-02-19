@@ -20,20 +20,20 @@ tests:
   - '2'
   - '3'
 - name: print_recursive
-  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 3) ()))))) (c (q 2 (i 3 (q 2 2 (c 2 7)) (q)) 1) ()))
+  program: (a (q 3 () (a 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 3) ()))))) ()) (c (q 2 (i 3 (q 3 () (a 2 (c 2 7)) ()) (q)) 1) ()))
   debug_program: (a (q 3 (q . 1) () (a 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 3) ())))))) (c (q 2 (i (not (l 3)) (q) (q 2 (i ("debug_print" (q . "print.rue:20:5") (f 3)) (q) (q 3 (q . 1) () (a 2 (c 2 (r 3))))) 1)) 1) ()))
   output: ()
-  runtime_cost: 2663
-  byte_cost: 996000
-  total_cost: 998663
+  runtime_cost: 3151
+  byte_cost: 1188000
+  total_cost: 1191151
   print_messages:
   - '1'
   - '2'
   - '3'
 - name: print_with_assertions
-  program: (a (q 3 (a 2 (c (q . "hello") ())) (a 2 (c (q . "goodbye") ())) (a 2 (c (q . "hello") (q . "world")))) (c (q 2 (i (l 1) (q 2 (i (l 2) (q 8) (q 2 (i (a (i (l 3) (q) (q 2 (i 3 (q) (q 1 . 1)) 1)) 1) (q) (q 8)) 1)) 1) (q 8)) 1) ()))
+  program: (a (q 3 (a 2 (c (q . "hello") ())) (all (a 2 (c (q . "goodbye") ())) (a 2 (c (q . "hello") (q . "world")))) ()) (c (q 2 (i (l 1) (q 2 (i (l 2) (q 8) (q 2 (i (a (i (l 3) (q) (q 2 (i 3 (q) (q 1 . 1)) 1)) 1) (q) (q 8)) 1)) 1) (q 8)) 1) ()))
   debug_program: (a (q 2 (i ("debug_print" (q . "print.rue:26:5") (q . "First test")) (q) (q 3 (q . 1) (a (i ("debug_print" (q . "print.rue:28:5") (q . "Second test")) (q) (q 3 (q . 1) (a (i ("debug_print" (q . "print.rue:30:5") (q . "Third test")) (q) (q 3 (q . 1) () (a 2 (c (q . "hello") (q . "world"))))) 1) (a 2 (c (q . "goodbye") ())))) 1) (a 2 (c (q . "hello") ())))) 1) (c (q 2 (i ("debug_print" (q . "print.rue:35:5") (q . "Asserting value is a pair")) (q) (q 2 (i (l 1) (q 2 (i ("debug_print" (q . "print.rue:37:5") (q . "Asserting first is a string")) (q) (q 2 (i (not (l (f 1))) (q 2 (i ("debug_print" (q . "print.rue:39:5") (q . "Asserting rest is nil")) (q) (q 2 (i ("debug_print" (q . "print.rue:40:5") 1) (q) (q 2 (i (a (i (not (l (r 1))) (q 2 (i (= (r 1) ()) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i ("debug_print" (q . "print.rue:42:5") (q . "Value is valid")) (q) (q)) 1) (q 8 (q . "assertion failed at print.rue:41:5"))) 1)) 1)) 1) (q 8 (q . "assertion failed at print.rue:38:5"))) 1)) 1) (q 8 (q . "assertion failed at print.rue:36:5"))) 1)) 1) ()))
-  byte_cost: 2412000
+  byte_cost: 2484000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at print.rue:41:5"
   print_messages:

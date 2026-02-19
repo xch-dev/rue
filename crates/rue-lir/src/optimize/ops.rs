@@ -64,12 +64,10 @@ pub fn opt_closure(
 // If the value is a path, we can optimize it to a first path
 // If the value is a cons, we can extract the first element out of it
 // If the value is a divmod, we can optimize it to a div since that's the first output
-// If the value is a raise, we can return it directly
 pub fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) => arena.alloc(Lir::Path(first_path(path))),
         Lir::Divmod(left, right) => opt_div(arena, left, right),
-        Lir::Raise(_) => value,
         _ => arena.alloc(Lir::First(value)),
     }
 }
@@ -77,27 +75,16 @@ pub fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 // If the value is a path, we can optimize it to a rest path
 // If the value is a cons, we can extract the rest element out of it
 // If the value is a divmod, we can optimize it to a remainder since that's the rest output
-// If the value is a raise, we can return it directly
 pub fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Path(path) => arena.alloc(Lir::Path(rest_path(path))),
         Lir::Divmod(left, right) => opt_mod(arena, left, right),
-        Lir::Raise(_) => value,
         _ => arena.alloc(Lir::Rest(value)),
     }
 }
 
-// If the first or rest is a raise, we can return it directly
 // TODO: Optimize pair of div and mod into divmod
 pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
-    if matches!(arena[first], Lir::Raise(_)) {
-        return first;
-    }
-
-    if matches!(arena[rest], Lir::Raise(_)) {
-        return rest;
-    }
-
     if let Lir::Path(f_path) = arena[first].clone()
         && let Lir::Path(r_path) = arena[rest].clone()
         && let Some(parent) = parent_path(f_path)
@@ -111,20 +98,16 @@ pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
     arena.alloc(Lir::Cons(first, rest))
 }
 
-// If the value is an atom or pair, we know the result
-// If the value is a raise, we can return it directly
+// If the value is an atom, we know the result
 pub fn opt_listp(arena: &mut Arena<Lir>, value: LirId, can_be_truthy: bool) -> LirId {
     match arena[value].clone() {
         Lir::Atom(_) => arena.alloc(Lir::Atom(vec![])),
-        Lir::Cons(..) => arena.alloc(Lir::Atom(vec![1])),
-        Lir::Raise(_) => value,
         _ => arena.alloc(Lir::Listp(value, can_be_truthy)),
     }
 }
 
 // If the value is an atom, we can add it to a sum
 // We can collapse nested adds
-// If the value is a raise, we can return it directly
 pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut args = ArgList::new(args);
     let mut result = Vec::new();
@@ -134,7 +117,6 @@ pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         match arena[arg].clone() {
             Lir::Atom(atom) => sum += atom_bigint(atom),
             Lir::Add(items) => args.prepend(items),
-            Lir::Raise(_) => return arg,
             _ => result.push(arg),
         }
     }
@@ -201,7 +183,6 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
                     }
                 }
             }
-            Lir::Raise(_) => return arg,
             _ => {
                 if minuend_count > Saturating(0) {
                     other_minuends.push(arg);
@@ -251,7 +232,6 @@ pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 
 // If the value is an atom, we can add it to a product
 // We can collapse nested muls
-// If the value is a raise, we can return it directly
 pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut args = ArgList::new(args);
     let mut result = Vec::new();
@@ -261,7 +241,6 @@ pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         match arena[arg].clone() {
             Lir::Atom(atom) => product *= atom_bigint(atom),
             Lir::Mul(items) => args.prepend(items),
-            Lir::Raise(_) => return arg,
             _ => result.push(arg),
         }
     }
@@ -282,16 +261,7 @@ pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 }
 
 // If both values are atoms, we can perform the division (as long as the right value is not zero)
-// If either value is a raise, we can return it directly
 pub fn opt_div(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
-    if matches!(arena[left], Lir::Raise(_)) {
-        return left;
-    }
-
-    if matches!(arena[right], Lir::Raise(_)) {
-        return right;
-    }
-
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
         && let left = atom_bigint(left)
@@ -305,16 +275,7 @@ pub fn opt_div(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
 }
 
 // If both values are atoms, we can perform the division and remainder (as long as the right value is not zero)
-// If either value is a raise, we can return it directly
 pub fn opt_divmod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
-    if matches!(arena[left], Lir::Raise(_)) {
-        return left;
-    }
-
-    if matches!(arena[right], Lir::Raise(_)) {
-        return right;
-    }
-
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
         && let left = atom_bigint(left)
@@ -333,16 +294,7 @@ pub fn opt_divmod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
 }
 
 // If both values are atoms, we can perform the remainder (as long as the right value is not zero)
-// If either value is a raise, we can return it directly
 pub fn opt_mod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
-    if matches!(arena[left], Lir::Raise(_)) {
-        return left;
-    }
-
-    if matches!(arena[right], Lir::Raise(_)) {
-        return right;
-    }
-
     if let Lir::Atom(left) = arena[left].clone()
         && let Lir::Atom(right) = arena[right].clone()
         && let left = atom_bigint(left)
@@ -382,17 +334,12 @@ pub fn opt_gtbytes(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
 
 // If the value is another not, we can unwrap both
 // If it resolves to true or false, we know the result
-// If the value is a raise, we can return it directly
 pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match opt_truthy(arena, value) {
         Ok(true) => arena.alloc(Lir::Atom(vec![])),
         Ok(false) => arena.alloc(Lir::Atom(vec![1])),
         Err(value) => {
             if let Lir::Not(value) = arena[value].clone() {
-                return value;
-            }
-
-            if matches!(arena[value], Lir::Raise(_)) {
                 return value;
             }
 
@@ -403,7 +350,6 @@ pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 
 // If one of the arguments is true, we can ignore it
 // If one of the arguments is false, we know the result is false
-// If one of the arguments is a raise, we can return it directly
 // TODO: Collapse nested alls
 pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut result = Vec::new();
@@ -419,10 +365,6 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
                 }
             }
             Err(arg) => {
-                if matches!(arena[arg], Lir::Raise(_)) {
-                    return arg;
-                }
-
                 result.push(arg);
             }
         }
@@ -433,7 +375,6 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 
 // If one of the arguments is false, we can ignore it
 // If one of the arguments is true, we know the result is true
-// If one of the arguments is a raise, we can return it directly
 // TODO: Collapse nested anys
 pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut result = Vec::new();
@@ -449,10 +390,6 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
                 }
             }
             Err(arg) => {
-                if matches!(arena[arg], Lir::Raise(_)) {
-                    return arg;
-                }
-
                 result.push(arg);
             }
         }
@@ -463,7 +400,6 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 
 // If the condition is true, we can return the then branch
 // If the condition is false, we can return the else branch
-// If the condition is a raise, we can return it directly
 // If the condition is a not, we can flip the then and else branches
 pub fn opt_if(
     arena: &mut Arena<Lir>,
@@ -485,10 +421,6 @@ pub fn opt_if(
             }
         }
         Err(condition) => {
-            if matches!(arena[condition], Lir::Raise(_)) {
-                return condition;
-            }
-
             let (condition, then, otherwise) = if let Lir::Not(opposite) = arena[condition].clone()
             {
                 (opposite, otherwise, then)
@@ -542,36 +474,19 @@ pub fn opt_concat(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 }
 
 // If the value is an atom, we know the result
-// If the value is a raise, we can return it directly
 pub fn opt_strlen(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Atom(atom) => arena.alloc(Lir::Atom(bigint_atom(atom.len().into()))),
-        Lir::Raise(_) => value,
         _ => arena.alloc(Lir::Strlen(value)),
     }
 }
 
-// If the string, start, or end is a raise, we can return it directly
 pub fn opt_substr(
     arena: &mut Arena<Lir>,
     string: LirId,
     start: LirId,
     end: Option<LirId>,
 ) -> LirId {
-    if matches!(arena[string], Lir::Raise(_)) {
-        return string;
-    }
-
-    if matches!(arena[start], Lir::Raise(_)) {
-        return start;
-    }
-
-    if let Some(end) = end
-        && matches!(arena[end], Lir::Raise(_))
-    {
-        return end;
-    }
-
     arena.alloc(Lir::Substr(string, start, end))
 }
 
@@ -584,7 +499,6 @@ pub fn opt_logand(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         match arena[arg].clone() {
             Lir::Atom(atom) => value &= atom_bigint(atom),
             Lir::Logand(items) => args.prepend(items),
-            Lir::Raise(_) => return arg,
             _ => result.push(arg),
         }
     }
@@ -613,7 +527,6 @@ pub fn opt_logior(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         match arena[arg].clone() {
             Lir::Atom(atom) => value |= atom_bigint(atom),
             Lir::Logior(items) => args.prepend(items),
-            Lir::Raise(_) => return arg,
             _ => result.push(arg),
         }
     }
