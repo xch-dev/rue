@@ -1,0 +1,21 @@
+[package]
+name = "rue-clvm"
+version = "0.10.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Converts CLVM values to and from their textual representation."
+authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
+homepage = "https://github.com/xch-dev/rue"
+repository = "https://github.com/xch-dev/rue"
+readme = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[lints]
+workspace = true
+
+[dependencies]
+clvmr = { workspace = true }
+num-bigint = { workspace = true }
+hex = { workspace = true }
+thiserror = { workspace = true }

@@ -450,8 +450,8 @@ fn codegen_static_value(
 
 #[cfg(test)]
 mod tests {
-    use chialisp::classic::clvm_tools::binutils::disassemble;
     use expect_test::{Expect, expect};
+    use rue_clvm::disassemble_program;
 
     use super::*;
 
@@ -459,7 +459,7 @@ mod tests {
     fn check(arena: &Arena<Lir>, lir: LirId, expect: Expect) {
         let mut allocator = Allocator::new();
         let ptr = codegen(arena, &mut allocator, lir, CodegenOptions::default()).unwrap();
-        let result = disassemble(&allocator, ptr, None);
+        let result = disassemble_program(&allocator, ptr);
         expect.assert_eq(&result);
     }
 
@@ -480,7 +480,7 @@ mod tests {
             },
         )
         .unwrap();
-        let result = disassemble(&allocator, ptr, None);
+        let result = disassemble_program(&allocator, ptr);
         expect.assert_eq(&result);
     }
 
@@ -952,14 +952,14 @@ mod tests {
         check(
             &arena,
             k1_verify,
-            expect!["(0x13d61f00 (q . 1) (q . 2) (q . 3))"],
+            expect!["(secp256k1_verify (q . 1) (q . 2) (q . 3))"],
         );
 
         let r1_verify = arena.alloc(Lir::R1Verify(pubkey, message, signature));
         check(
             &arena,
             r1_verify,
-            expect!["(0x1c3a8f00 (q . 1) (q . 2) (q . 3))"],
+            expect!["(secp256r1_verify (q . 1) (q . 2) (q . 3))"],
         );
     }
 }

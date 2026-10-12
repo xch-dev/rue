@@ -1,10 +1,7 @@
 use std::path::PathBuf;
 
 use clvmr::error::EvalErr;
-use clvmr::{
-    Allocator, ChiaDialect, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, MEMPOOL_MODE, NodePtr, SExp,
-    run_program,
-};
+use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program};
 use id_arena::Arena;
 use indexmap::IndexMap;
 use rue_diagnostic::DiagnosticKind;
@@ -12,7 +9,7 @@ use rue_hir::{
     DependencyGraph, Environment, FunctionKind, FunctionSymbol, Hir, HirId, Lowerer, LoweringMode,
     Symbol,
 };
-use rue_lir::{CodegenOptions, codegen, optimize};
+use rue_lir::{CLVM_FLAGS, CodegenOptions, codegen, optimize};
 use rue_options::CompilerOptions;
 
 use crate::Compiler;
@@ -127,7 +124,7 @@ fn evaluate_const_expr(ctx: &mut Compiler, value: HirId) -> Result<Hir, ConstEva
         },
     )
     .map_err(|error| ConstEvalError::Failed(error.to_string()))?;
-    let dialect = ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE);
+    let dialect = ChiaDialect::new(CLVM_FLAGS);
 
     let output = run_program(&mut allocator, &dialect, program, NodePtr::NIL, max_cost).map_err(
         |error| match error {

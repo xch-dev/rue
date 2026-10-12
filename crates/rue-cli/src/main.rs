@@ -6,19 +6,19 @@ use std::{
 };
 
 use anyhow::Result;
-use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
 use clap::Parser;
 use clvm_utils::tree_hash;
 use clvmr::{
-    Allocator, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, MEMPOOL_MODE, NodePtr, SExp,
+    Allocator, NodePtr, SExp,
     error::EvalErr,
     run_program,
     serde::{node_from_bytes, node_to_bytes},
 };
 use colored::Colorize;
+use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::{DiagnosticSeverity, SourceKind};
-use rue_lir::DebugDialect;
+use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::{Manifest, find_project};
 
 mod fmt;
@@ -371,7 +371,7 @@ fn build(args: BuildArgs) -> Result<()> {
         }
 
         if !args.hex && !args.hash {
-            println!("{}", disassemble(&allocator, program, None));
+            println!("{}", disassemble_program(&allocator, program));
         }
     }
 
@@ -437,7 +437,7 @@ fn test(args: TestArgs) -> Result<()> {
 
         match run_program(
             &mut allocator,
-            &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
+            &DebugDialect::new(CLVM_FLAGS, true),
             test.ptr,
             NodePtr::NIL,
             u64::MAX,
@@ -458,7 +458,7 @@ fn test(args: TestArgs) -> Result<()> {
                             "{}",
                             format!(
                                 "Test failed due to raise: {}",
-                                disassemble(&allocator, error, None)
+                                disassemble_value(&allocator, error)
                             )
                             .red()
                             .bold()
@@ -506,14 +506,14 @@ fn debug(args: DebugArgs) -> Result<()> {
 
     let output = run_program(
         &mut allocator,
-        &DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, true),
+        &DebugDialect::new(CLVM_FLAGS, true),
         program,
         solution,
         u64::MAX,
     )?
     .1;
 
-    let output = disassemble(&allocator, output, None);
+    let output = disassemble_value(&allocator, output);
 
     println!("{output}");
 

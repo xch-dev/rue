@@ -6,18 +6,15 @@ use std::path::Path;
 use std::process;
 
 use anyhow::Result;
-use chialisp::classic::clvm_tools::binutils::{assemble, disassemble};
 use clvmr::error::EvalErr;
-use clvmr::{
-    Allocator, ChiaDialect, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, MEMPOOL_MODE, NodePtr, run_program,
-    serde::node_to_bytes,
-};
+use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
 use indexmap::IndexMap;
+use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::normalize_path;
 use rue_compiler::{Compiler, FileTree};
 use rue_diagnostic::DiagnosticSeverity;
 use rue_formatter::{FormatError, FormatOptions, format_source};
-use rue_lir::DebugDialect;
+use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
 
@@ -442,18 +439,18 @@ fn handle_test_case(
 
     let env = assemble(allocator, test_case.solution.as_deref().unwrap_or("()"))?;
 
-    test_case.program = Some(disassemble(allocator, ptr, None));
-    test_case.debug_program = Some(disassemble(allocator, debug_ptr, None));
+    test_case.program = Some(disassemble_program(allocator, ptr));
+    test_case.debug_program = Some(disassemble_program(allocator, debug_ptr));
 
     let response = run_program(
         allocator,
-        &ChiaDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE),
+        &ChiaDialect::new(CLVM_FLAGS),
         ptr,
         env,
         100_000_000,
     );
 
-    let debug_dialect = DebugDialect::new(ENABLE_KECCAK_OPS_OUTSIDE_GUARD | MEMPOOL_MODE, false);
+    let debug_dialect = DebugDialect::new(CLVM_FLAGS, false);
     let debug_response = run_program(allocator, &debug_dialect, debug_ptr, env, 100_000_000);
     let print_messages = debug_dialect.log();
 
@@ -467,14 +464,14 @@ fn handle_test_case(
 
     match response {
         Ok(output) => {
-            test_case.output = Some(disassemble(allocator, output.1, None));
+            test_case.output = Some(disassemble_value(allocator, output.1));
             test_case.runtime_cost = Some(output.0);
             test_case.total_cost = Some(output.0 + bytes as u64 * 12_000);
             test_case.clvm_error = None;
         }
         Err(error) => {
             test_case.clvm_error = Some(match error {
-                EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble(allocator, ptr, None)),
+                EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble_value(allocator, ptr)),
                 _ => error.to_string(),
             });
             test_case.runtime_cost = None;
@@ -485,12 +482,12 @@ fn handle_test_case(
 
     match debug_response {
         Ok(output) => {
-            test_case.debug_output = Some(disassemble(allocator, output.1, None));
+            test_case.debug_output = Some(disassemble_value(allocator, output.1));
             test_case.debug_clvm_error = None;
         }
         Err(error) => {
             test_case.debug_clvm_error = Some(match error {
-                EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble(allocator, ptr, None)),
+                EvalErr::Raise(ptr) => format!("clvm raise {}", disassemble_value(allocator, ptr)),
                 _ => error.to_string(),
             });
             test_case.debug_output = None;

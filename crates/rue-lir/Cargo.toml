@@ -23,7 +23,7 @@ num-bigint = { workspace = true }
 num-integer = { workspace = true }
 sha2 = { workspace = true }
 sha3 = { workspace = true }
-chialisp = { workspace = true }
+rue-clvm = { workspace = true }
 colored = { workspace = true }
 
 [dev-dependencies]

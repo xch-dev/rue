@@ -1,16 +1,22 @@
 use std::cell::RefCell;
 
-use chialisp::classic::clvm_tools::binutils::disassemble;
 use clvm_traits::{FromClvm, destructure_tuple, match_tuple};
 use clvmr::{
-    Allocator, ChiaDialect, NodePtr,
+    Allocator, ChiaDialect, ClvmFlags, MEMPOOL_MODE, NodePtr,
     dialect::{Dialect, OperatorSet},
     error::EvalErr,
     reduction::Reduction,
 };
 use colored::Colorize;
+use rue_clvm::disassemble_value;
 
 use crate::ClvmOp;
+
+/// The flags used to run Rue programs. These match mempool mode, with keccak256 enabled, and
+/// with modpow left enabled (`DISABLE_OP` turns it off in newer versions of mempool mode).
+pub const CLVM_FLAGS: ClvmFlags = MEMPOOL_MODE
+    .union(ClvmFlags::ENABLE_KECCAK_OPS_OUTSIDE_GUARD)
+    .difference(ClvmFlags::DISABLE_OP);
 
 #[derive(Debug, Clone)]
 pub struct PrintMessage {
@@ -20,13 +26,13 @@ pub struct PrintMessage {
 
 #[derive(Debug, Clone)]
 pub struct DebugDialect {
-    flags: u32,
+    flags: ClvmFlags,
     stdout: bool,
     log: RefCell<Vec<PrintMessage>>,
 }
 
 impl DebugDialect {
-    pub fn new(flags: u32, stdout: bool) -> Self {
+    pub fn new(flags: ClvmFlags, stdout: bool) -> Self {
         Self {
             flags,
             stdout,
@@ -60,6 +66,14 @@ impl Dialect for DebugDialect {
         self.inner().softfork_extension(ext)
     }
 
+    fn flags(&self) -> ClvmFlags {
+        self.flags
+    }
+
+    fn gc_candidate(&self, allocator: &Allocator, op: NodePtr) -> bool {
+        self.inner().gc_candidate(allocator, op)
+    }
+
     fn op(
         &self,
         allocator: &mut Allocator,
@@ -75,7 +89,7 @@ impl Dialect for DebugDialect {
                 return Err(EvalErr::InvalidNilTerminator(args));
             };
 
-            let message = disassemble(allocator, value, None);
+            let message = disassemble_value(allocator, value);
 
             if self.stdout {
                 eprintln!("{}: {}", srcloc.cyan().bold(), message);

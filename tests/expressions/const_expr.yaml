@@ -23,14 +23,14 @@ tests:
 - name: pair
   program: (q 1 . 2)
   debug_program: (c (q . 1) (q . 2))
-  output: (q . 2)
+  output: (1 . 2)
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
 - name: list
   program: (q 1 2 3)
   debug_program: (c (q . 1) (c (q . 2) (c (q . 3) ())))
-  output: (q 2 3)
+  output: (1 2 3)
   runtime_cost: 20
   byte_cost: 108000
   total_cost: 108020

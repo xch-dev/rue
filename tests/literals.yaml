@@ -1,15 +1,15 @@
 tests:
 - name: number
-  program: (q . 0x00a410)
-  debug_program: (q . 0x00a410)
-  output: '0x00a410'
+  program: (q . 42000)
+  debug_program: (q . 42000)
+  output: '42000'
   runtime_cost: 20
   byte_cost: 72000
   total_cost: 72020
 - name: hex
-  program: (q . 0xcafef00d)
-  debug_program: (q . 0xcafef00d)
-  output: '0xcafef00d'
+  program: (q . -889262067)
+  debug_program: (q . -889262067)
+  output: '-889262067'
   runtime_cost: 20
   byte_cost: 84000
   total_cost: 84020

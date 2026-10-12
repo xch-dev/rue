@@ -26,7 +26,7 @@ rue-diagnostic = { workspace = true }
 rue-lir = { workspace = true }
 clvmr = { workspace = true }
 clvm-utils = { workspace = true }
-chialisp = { workspace = true }
+rue-clvm = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
 hex = { workspace = true }

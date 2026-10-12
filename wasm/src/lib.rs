@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
-use chialisp::classic::clvm_tools::binutils::disassemble;
 use clvmr::Allocator;
+use rue_clvm::disassemble_program;
 use rue_compiler::{Compiler, File, FileTree};
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
@@ -45,7 +45,7 @@ pub fn compile(source: String) -> Result<Compilation, JsError> {
             &kind,
             Path::new(".").to_path_buf(),
         )?
-        .map(|program| disassemble(&allocator, program, None));
+        .map(|program| disassemble_program(&allocator, program));
 
     let diagnostics = ctx
         .take_diagnostics()
