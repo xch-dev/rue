@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use rowan::{TextRange, TextSize};
 use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItemKind, SyntaxMap};
 use rue_diagnostic::{Source, SourceKind};
-use rue_hir::{ScopeId, Symbol, SymbolId};
+use rue_hir::{FunctionKind, ScopeId, Symbol, SymbolId};
 use rue_types::{Type, TypeId, Union};
 use send_wrapper::SendWrapper;
 use tower_lsp::lsp_types::{
@@ -28,7 +28,25 @@ pub enum HoverInfo {
 #[derive(Debug, Clone)]
 pub struct SymbolHoverInfo {
     pub name: String,
-    pub type_name: String,
+    pub kind: SymbolHoverKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum SymbolHoverKind {
+    Binding {
+        type_name: String,
+    },
+    Parameter {
+        type_name: String,
+    },
+    Constant {
+        type_name: String,
+        inline: bool,
+    },
+    Function {
+        signatures: Vec<String>,
+        inline: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -288,9 +306,9 @@ impl Cache<Compiler> {
                             && matches!(subcontext, CompletionContext::Type)))
                 {
                     let ty = self.ctx.symbol_type_in(scope, symbol);
-                    let type_name = self.type_name(scopes, ty);
+                    let detail = self.symbol_detail(scopes, symbol, ty);
                     let kind = symbol_kind(self.ctx.symbol(symbol));
-                    scored_items.push((score, create_completion_item(name, kind, Some(type_name))));
+                    scored_items.push((score, create_completion_item(name, kind, Some(detail))));
                 }
             }
 
@@ -375,10 +393,10 @@ impl Cache<Compiler> {
                             && matches!(context, CompletionContext::Type))
                     {
                         let ty = self.ctx.symbol_type_in(*scope, symbol);
-                        let type_name = self.type_name(scopes, ty);
+                        let detail = self.symbol_detail(scopes, symbol, ty);
                         let kind = symbol_kind(self.ctx.symbol(symbol));
                         scored_items
-                            .push((score, create_completion_item(name, kind, Some(type_name))));
+                            .push((score, create_completion_item(name, kind, Some(detail))));
                     }
                 }
             }
@@ -452,10 +470,8 @@ impl Cache<Compiler> {
                     if let Symbol::Module(_) = self.ctx.symbol(symbol) {
                         infos.push(HoverInfo::Module(ModuleHoverInfo { name }));
                     } else {
-                        infos.push(HoverInfo::Symbol(SymbolHoverInfo {
-                            name,
-                            type_name: self.type_name(scopes, self.symbol_type(scopes, symbol)),
-                        }));
+                        let kind = self.symbol_hover_kind(scopes, symbol);
+                        infos.push(HoverInfo::Symbol(SymbolHoverInfo { name, kind }));
                     }
                 }
                 SyntaxItemKind::TypeDeclaration(ty) | SyntaxItemKind::TypeReference(ty) => {
@@ -736,6 +752,102 @@ impl Cache<Compiler> {
             _ => None,
         }
         .unwrap_or_else(|| rue_types::stringify(self.ctx.types_mut(), ty))
+    }
+
+    fn symbol_detail(&mut self, scopes: &Scopes, symbol: SymbolId, ty: TypeId) -> String {
+        if let Symbol::Builtin(builtin) = self.ctx.symbol(symbol) {
+            return format!("fn{}", builtin.signatures()[0]);
+        }
+
+        self.type_name(scopes, ty)
+    }
+
+    fn symbol_hover_kind(&mut self, scopes: &Scopes, symbol: SymbolId) -> SymbolHoverKind {
+        match self.ctx.symbol(symbol).clone() {
+            Symbol::Builtin(builtin) => SymbolHoverKind::Function {
+                signatures: builtin
+                    .signatures()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                inline: false,
+            },
+            Symbol::Function(function) => {
+                let ty = self.symbol_type(scopes, symbol);
+
+                if let Some(signature) = self.function_signature(scopes, &function.vars, ty) {
+                    SymbolHoverKind::Function {
+                        signatures: vec![signature],
+                        inline: function.kind == FunctionKind::Inline,
+                    }
+                } else {
+                    SymbolHoverKind::Binding {
+                        type_name: self.type_name(scopes, ty),
+                    }
+                }
+            }
+            Symbol::Constant(constant) => SymbolHoverKind::Constant {
+                type_name: self.type_name(scopes, self.symbol_type(scopes, symbol)),
+                inline: constant.inline,
+            },
+            Symbol::Parameter(_) => SymbolHoverKind::Parameter {
+                type_name: self.type_name(scopes, self.symbol_type(scopes, symbol)),
+            },
+            Symbol::Binding(_) | Symbol::Module(_) | Symbol::Unresolved => {
+                SymbolHoverKind::Binding {
+                    type_name: self.type_name(scopes, self.symbol_type(scopes, symbol)),
+                }
+            }
+        }
+    }
+
+    /// Renders a function's signature, without the `fn` keyword or name, e.g. `<T>(value: T) -> T`.
+    fn function_signature(
+        &mut self,
+        scopes: &Scopes,
+        generics: &[TypeId],
+        mut ty: TypeId,
+    ) -> Option<String> {
+        while let Type::Ref(inner) = self.ctx.ty(ty) {
+            ty = *inner;
+        }
+
+        let Type::Function(function) = self.ctx.ty(ty).clone() else {
+            return None;
+        };
+
+        let generics = if generics.is_empty() {
+            String::new()
+        } else {
+            let names = generics
+                .iter()
+                .map(|&generic| self.type_name(scopes, generic))
+                .collect::<Vec<_>>();
+
+            format!("<{}>", names.join(", "))
+        };
+
+        let len = function.params.len();
+
+        let params = function
+            .params
+            .iter()
+            .enumerate()
+            .map(|(i, (name, &ty))| {
+                let spread = if !function.nil_terminated && i == len - 1 {
+                    "..."
+                } else {
+                    ""
+                };
+
+                format!("{spread}{name}: {}", self.type_name(scopes, ty))
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let ret = self.type_name(scopes, function.ret);
+
+        Some(format!("{generics}({params}) -> {ret}"))
     }
 
     fn symbol_name(&self, scopes: &Scopes, symbol: SymbolId) -> Option<String> {

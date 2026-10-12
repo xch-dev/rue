@@ -26,7 +26,7 @@ use tower_lsp::lsp_types::{
 };
 use tower_lsp::{Client, LanguageServer};
 
-use crate::cache::HoverInfo;
+use crate::cache::{HoverInfo, SymbolHoverKind};
 use crate::position::offsets_to_range;
 
 #[derive(Debug)]
@@ -257,7 +257,30 @@ impl Backend {
                 MarkedString::LanguageString(LanguageString {
                     language: "rue".to_string(),
                     value: match &info {
-                        HoverInfo::Symbol(info) => format!("let {}: {}", info.name, info.type_name),
+                        HoverInfo::Symbol(info) => match &info.kind {
+                            SymbolHoverKind::Binding { type_name } => {
+                                format!("let {}: {type_name}", info.name)
+                            }
+                            SymbolHoverKind::Parameter { type_name } => {
+                                format!("{}: {type_name}", info.name)
+                            }
+                            SymbolHoverKind::Constant { type_name, inline } => format!(
+                                "{}const {}: {type_name}",
+                                if *inline { "inline " } else { "" },
+                                info.name
+                            ),
+                            SymbolHoverKind::Function { signatures, inline } => signatures
+                                .iter()
+                                .map(|signature| {
+                                    format!(
+                                        "{}fn {}{signature}",
+                                        if *inline { "inline " } else { "" },
+                                        info.name
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n"),
+                        },
                         HoverInfo::Module(info) => format!("mod {}", info.name),
                         HoverInfo::Type(info) => {
                             if let Some(inner) = &info.inner_name {

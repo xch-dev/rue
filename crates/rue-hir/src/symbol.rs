@@ -116,6 +116,59 @@ pub enum Builtin {
     Secp256R1Verify,
 }
 
+impl Builtin {
+    /// Human readable signatures for each of the ways this builtin can be called, used for
+    /// documentation. Builtins are type checked specially, so they don't have a function type.
+    pub fn signatures(&self) -> &'static [&'static str] {
+        match self {
+            Self::Sha256 { inline: false } | Self::Keccak256 { inline: false } => &[
+                "(value: Bytes) -> Bytes32",
+                "(...values: List<Bytes>) -> Bytes32",
+            ],
+            Self::Sha256 { inline: true } | Self::Keccak256 { inline: true } => {
+                &["(value: Bytes) -> Bytes32"]
+            }
+            Self::Concat => &["(values: List<Bytes>) -> Bytes"],
+            Self::CoinId => {
+                &["(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32"]
+            }
+            Self::Substr => &[
+                "(value: Bytes, start: Int) -> Bytes",
+                "(value: Bytes, start: Int, end: Int) -> Bytes",
+            ],
+            Self::Sum | Self::Difference | Self::Product => &["(values: List<Int>) -> Int"],
+            Self::Divmod => &["(numerator: Int, denominator: Int) -> (Int, Int)"],
+            Self::Modpow => &["(base: Int, exponent: Int, modulus: Int) -> Int"],
+            Self::Any | Self::All => &["(values: List<Bool>) -> Bool"],
+            Self::PubkeyForExp => &["(exponent: Bytes32) -> PublicKey"],
+            Self::G1Sum | Self::G1Difference => &["(values: List<PublicKey>) -> PublicKey"],
+            Self::G2Sum | Self::G2Difference => &["(values: List<Signature>) -> Signature"],
+            Self::G1Map => &[
+                "(data: Bytes) -> PublicKey",
+                "(data: Bytes, dst: Bytes) -> PublicKey",
+            ],
+            Self::G2Map => &[
+                "(data: Bytes) -> Signature",
+                "(data: Bytes, dst: Bytes) -> Signature",
+            ],
+            Self::BlsPairingIdentity => &[
+                "(g1: PublicKey, g2: Signature, ...) -> nil",
+                "(...pairs: AlternatingList<PublicKey, Signature>) -> nil",
+            ],
+            Self::BlsVerify => &[
+                "(signature: Signature, public_key: PublicKey, message: Bytes, ...) -> nil",
+                "(signature: Signature, ...pairs: AlternatingList<PublicKey, Bytes>) -> nil",
+            ],
+            Self::Secp256K1Verify => {
+                &["(public_key: K1PublicKey, message_hash: Bytes32, signature: K1Signature) -> nil"]
+            }
+            Self::Secp256R1Verify => {
+                &["(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil"]
+            }
+        }
+    }
+}
+
 impl fmt::Display for Builtin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
