@@ -23,12 +23,12 @@ use tower_lsp::lsp_types::{
     LanguageString, Location, MarkedString, MessageType, OneOf, Position, Range, ReferenceParams,
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
 };
-use tower_lsp::{Client, LanguageServer, LspService, Server};
+use tower_lsp::{Client, LanguageServer};
 
 use crate::cache::HoverInfo;
 
 #[derive(Debug)]
-struct Backend {
+pub struct Backend {
     client: Client,
     cache: Mutex<HashMap<Url, SendWrapper<Cache<Arc<Compiler>>>>>,
     file_cache: Mutex<HashMap<SourceKind, String>>,
@@ -121,6 +121,14 @@ impl LanguageServer for Backend {
 }
 
 impl Backend {
+    pub fn new(client: Client) -> Self {
+        Self {
+            client,
+            cache: Mutex::new(HashMap::new()),
+            file_cache: Mutex::new(HashMap::new()),
+        }
+    }
+
     async fn on_change(&self, uri: Url, text: Option<String>) {
         let diagnostics = self.on_change_impl(&uri, text);
 
@@ -142,14 +150,19 @@ impl Backend {
         uri: &Url,
         text: Option<String>,
     ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let uri_path = uri.to_file_path().unwrap();
-        let Some(project) = find_project(&uri_path, false).unwrap() else {
+        let Ok(uri_path) = uri.to_file_path() else {
+            return IndexMap::new();
+        };
+
+        let Ok(Some(project)) = find_project(&uri_path, false) else {
+            return IndexMap::new();
+        };
+
+        let Ok(source_kind) = normalize_path(&uri_path) else {
             return IndexMap::new();
         };
 
         let mut ctx = Compiler::new(project.options);
-
-        let source_kind = normalize_path(&uri_path).unwrap();
 
         let mut file_cache = self.file_cache.lock().unwrap();
 
@@ -159,9 +172,13 @@ impl Backend {
             file_cache.remove(&source_kind);
         }
 
-        let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut file_cache).unwrap();
+        let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut file_cache);
 
         drop(file_cache);
+
+        let Ok(tree) = tree else {
+            return IndexMap::new();
+        };
 
         let mut diagnostics = IndexMap::<SourceKind, Vec<Diagnostic>>::new();
 
@@ -380,15 +397,5 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
     }
 }
 
-#[tokio::main]
-async fn main() {
-    let stdin = tokio::io::stdin();
-    let stdout = tokio::io::stdout();
-
-    let (service, socket) = LspService::new(|client| Backend {
-        client,
-        cache: Mutex::new(HashMap::new()),
-        file_cache: Mutex::new(HashMap::new()),
-    });
-    Server::new(stdin, stdout, socket).serve(service).await;
-}
+#[cfg(test)]
+mod tests;
