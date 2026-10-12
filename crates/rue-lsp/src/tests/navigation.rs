@@ -287,3 +287,16 @@ export fn gre$0et(name: String) -> String {
         "#]],
     );
 }
+
+#[test]
+fn test_definition_after_non_ascii() {
+    check_definitions(
+        &[(
+            "main.rue",
+            "fn main() -> Int {\n    let s = \"\u{1F600}\"; let value = 42; val$0ue\n}\n",
+        )],
+        expect![[r#"
+            main.rue:1:22-1:27
+        "#]],
+    );
+}

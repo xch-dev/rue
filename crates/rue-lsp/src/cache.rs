@@ -3,13 +3,15 @@ use std::{collections::HashSet, sync::Arc};
 use indexmap::IndexMap;
 use rowan::{TextRange, TextSize};
 use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItemKind, SyntaxMap};
-use rue_diagnostic::{LineCol, Source, SourceKind};
+use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{ScopeId, Symbol, SymbolId};
 use rue_types::{Type, TypeId, Union};
 use send_wrapper::SendWrapper;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position, Range, Url,
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position, Url,
 };
+
+use crate::position::{offsets_to_range, position_to_offset};
 
 #[derive(Debug, Clone)]
 pub struct Scopes(Vec<ScopeId>);
@@ -85,11 +87,7 @@ impl Cache<Arc<Compiler>> {
 
 impl Cache<Compiler> {
     pub fn position(&self, position: Position) -> usize {
-        LineCol {
-            line: position.line as usize,
-            col: position.character as usize,
-        }
-        .index(&self.source.text)
+        position_to_offset(&self.source.text, position)
     }
 
     pub fn scopes(&self, index: usize) -> Scopes {
@@ -503,14 +501,7 @@ impl Cache<Compiler> {
                 };
 
                 let text = &self.tree.find(&kind).unwrap().source.text;
-
-                let start = LineCol::new(text, span.start().into());
-                let end = LineCol::new(text, span.end().into());
-
-                let range = Range::new(
-                    Position::new(start.line as u32, start.col as u32),
-                    Position::new(end.line as u32, end.col as u32),
-                );
+                let range = offsets_to_range(text, span.start().into(), span.end().into());
 
                 Location::new(Url::from_file_path(path).unwrap(), range)
             })
@@ -527,14 +518,7 @@ impl Cache<Compiler> {
                 };
 
                 let text = &self.tree.find(&kind).unwrap().source.text;
-
-                let start = LineCol::new(text, span.start().into());
-                let end = LineCol::new(text, span.end().into());
-
-                let range = Range::new(
-                    Position::new(start.line as u32, start.col as u32),
-                    Position::new(end.line as u32, end.col as u32),
-                );
+                let range = offsets_to_range(text, span.start().into(), span.end().into());
 
                 Location::new(Url::from_file_path(path).unwrap(), range)
             })

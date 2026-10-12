@@ -121,3 +121,17 @@ fn test_diagnostics_non_file_uri() {
 
     assert!(diagnostics.is_empty());
 }
+
+#[test]
+fn test_diagnostics_after_non_ascii() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    expect![[r#"
+        main.rue:1:18-1:19 Error: Undeclared symbol `x`
+        main.rue:1:8-1:9 Warning: Unused binding `s`
+    "#]]
+    .assert_eq(&project.change(
+        "main.rue",
+        Some("fn main() -> Int {\n    let s = \"\u{1F600}\"; x\n}\n"),
+    ));
+}

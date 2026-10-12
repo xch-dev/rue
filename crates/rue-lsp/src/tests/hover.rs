@@ -229,3 +229,13 @@ fn main() -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_hover_after_non_ascii() {
+    check(
+        "fn main() -> Int {\n    let s = \"\u{e9}\u{1F600}\u{1F600}\"; let value = 42; val$0ue\n}\n",
+        expect![[r#"
+            let value: 42
+        "#]],
+    );
+}

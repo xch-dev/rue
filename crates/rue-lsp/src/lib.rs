@@ -1,6 +1,7 @@
 #![allow(clippy::cast_possible_truncation)]
 
 mod cache;
+mod position;
 
 use cache::Cache;
 use indexmap::IndexMap;
@@ -26,6 +27,7 @@ use tower_lsp::lsp_types::{
 use tower_lsp::{Client, LanguageServer};
 
 use crate::cache::HoverInfo;
+use crate::position::offsets_to_range;
 
 #[derive(Debug)]
 pub struct Backend {
@@ -374,20 +376,10 @@ fn document_end(source: &str) -> Position {
 }
 
 fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
-    let start = diagnostic.start();
-    let end = diagnostic.end();
+    let srcloc = &diagnostic.srcloc;
 
     Diagnostic {
-        range: Range {
-            start: Position {
-                line: start.line.try_into().unwrap(),
-                character: start.col.try_into().unwrap(),
-            },
-            end: Position {
-                line: end.line.try_into().unwrap(),
-                character: end.col.try_into().unwrap(),
-            },
-        },
+        range: offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
         message: diagnostic.kind.to_string(),
         severity: Some(match diagnostic.kind.severity() {
             rue_diagnostic::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
