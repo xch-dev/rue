@@ -43,17 +43,17 @@ case_sensitive_file_extension_comparisons = "allow"
 wildcard_imports = "allow"
 
 [workspace.dependencies]
-rue-lexer = { path = "crates/rue-lexer", version = "0.10.0" }
-rue-parser = { path = "crates/rue-parser", version = "0.10.0" }
-rue-diagnostic = { path = "crates/rue-diagnostic", version = "0.10.0" }
-rue-ast = { path = "crates/rue-ast", version = "0.10.0" }
-rue-formatter = { path = "crates/rue-formatter", version = "0.10.0" }
-rue-compiler = { path = "crates/rue-compiler", version = "0.10.0" }
-rue-options = { path = "crates/rue-options", version = "0.10.0" }
-rue-lir = { path = "crates/rue-lir", version = "0.10.0" }
-rue-hir = { path = "crates/rue-hir", version = "0.10.0" }
-rue-types = { path = "crates/rue-types", version = "0.10.0" }
-rue-clvm = { path = "crates/rue-clvm", version = "0.10.0" }
+rue-lexer = { path = "crates/rue-lexer", version = "0.11.0" }
+rue-parser = { path = "crates/rue-parser", version = "0.11.0" }
+rue-diagnostic = { path = "crates/rue-diagnostic", version = "0.11.0" }
+rue-ast = { path = "crates/rue-ast", version = "0.11.0" }
+rue-formatter = { path = "crates/rue-formatter", version = "0.11.0" }
+rue-compiler = { path = "crates/rue-compiler", version = "0.11.0" }
+rue-options = { path = "crates/rue-options", version = "0.11.0" }
+rue-lir = { path = "crates/rue-lir", version = "0.11.0" }
+rue-hir = { path = "crates/rue-hir", version = "0.11.0" }
+rue-types = { path = "crates/rue-types", version = "0.11.0" }
+rue-clvm = { path = "crates/rue-clvm", version = "0.11.0" }
 anyhow = "1.0.98"
 clvm-traits = "0.51.0"
 clvm-utils = "0.51.0"
