@@ -165,16 +165,16 @@ impl Cache<Compiler> {
     pub fn completions(&mut self, scopes: &Scopes, index: usize) -> Vec<CompletionItem> {
         let (context, subcontext) = self.completion_context(index);
 
-        if self.source.text.get(index - 1..index) == Some(":")
-            && (self.source.text.get(index - 2..index) != Some("::")
+        let before = self.source.text.get(..index).unwrap_or_default();
+
+        if before.ends_with(':')
+            && (!before.ends_with("::")
                 || !matches!(context, CompletionContext::ModuleExports { .. }))
         {
             return vec![];
         }
 
-        if self.source.text.get(index - 1..index) == Some(".")
-            && !matches!(context, CompletionContext::StructFields { .. })
-        {
+        if before.ends_with('.') && !matches!(context, CompletionContext::StructFields { .. }) {
             return vec![];
         }
 
@@ -927,5 +927,25 @@ fn symbol_kind(symbol: &Symbol) -> Option<CompletionItemKind> {
         Symbol::Module(_) => Some(CompletionItemKind::MODULE),
         Symbol::Builtin(_) => Some(CompletionItemKind::FUNCTION),
         Symbol::Unresolved => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fuzzy_match() {
+        assert_eq!(fuzzy_match("", "anything"), Some(0));
+        assert_eq!(fuzzy_match("val", "value"), Some(1000));
+        assert_eq!(fuzzy_match("VAL", "value"), Some(1000));
+        assert_eq!(fuzzy_match("xyz", "value"), None);
+        assert_eq!(fuzzy_match("lav", "value"), None);
+
+        // Consecutive matches near the start of a short candidate score higher.
+        let close = fuzzy_match("ab", "xab").unwrap();
+        let far = fuzzy_match("ab", "x_long_name_a_b").unwrap();
+        assert!(close > far);
+        assert!(close < 1000);
     }
 }
