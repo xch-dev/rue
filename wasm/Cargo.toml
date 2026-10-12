@@ -1,6 +1,6 @@
 [package]
 name = "rue-wasm"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2024"
 publish = false
 license = "Apache-2.0"
@@ -23,6 +23,6 @@ rue-compiler = { workspace = true }
 rue-options = { workspace = true }
 rue-diagnostic = { workspace = true }
 clvmr = { workspace = true }
-chialisp = { workspace = true }
+rue-clvm = { workspace = true }
 wasm-bindgen = { workspace = true }
 console_error_panic_hook = { workspace = true }

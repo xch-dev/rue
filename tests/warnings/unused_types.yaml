@@ -1,6 +1,6 @@
 program: (q 34 . 42)
 debug_program: (c (q . 34) (q . 42))
-output: (all . 42)
+output: (34 . 42)
 runtime_cost: 20
 byte_cost: 60000
 total_cost: 60020
