@@ -479,13 +479,13 @@ impl Cache<Compiler> {
 
                     if let Some((fields, nil_terminated)) = fields {
                         infos.push(HoverInfo::Struct(StructHoverInfo {
-                            name: self.type_name(scopes, ty),
+                            name: self.declared_type_name(scopes, ty),
                             fields,
                             nil_terminated,
                         }));
                     } else {
                         infos.push(HoverInfo::Type(TypeHoverInfo {
-                            name: self.type_name(scopes, ty),
+                            name: self.declared_type_name(scopes, ty),
                             inner_name: self.inner_type(ty).map(|ty| self.type_name(scopes, ty)),
                         }));
                     }
@@ -746,12 +746,29 @@ impl Cache<Compiler> {
             }
         }
 
-        match self.ctx.ty(ty) {
-            Type::Struct(ty) => ty.name.as_ref().map(|token| token.text().to_string()),
-            Type::Alias(ty) => ty.name.as_ref().map(|token| token.text().to_string()),
-            _ => None,
+        rue_types::stringify(self.ctx.types_mut(), ty)
+    }
+
+    /// The name of a type along with its generic parameters, e.g. `List<T>`.
+    fn declared_type_name(&mut self, scopes: &Scopes, ty: TypeId) -> String {
+        let name = self.type_name(scopes, ty);
+
+        let generics = match self.ctx.ty(ty) {
+            Type::Alias(alias) => alias.generics.clone(),
+            Type::Struct(ty) => ty.generics.clone(),
+            _ => Vec::new(),
+        };
+
+        if generics.is_empty() || name.contains('<') {
+            return name;
         }
-        .unwrap_or_else(|| rue_types::stringify(self.ctx.types_mut(), ty))
+
+        let generics = generics
+            .into_iter()
+            .map(|generic| self.type_name(scopes, generic))
+            .collect::<Vec<_>>();
+
+        format!("{name}<{}>", generics.join(", "))
     }
 
     fn symbol_detail(&mut self, scopes: &Scopes, symbol: SymbolId, ty: TypeId) -> String {

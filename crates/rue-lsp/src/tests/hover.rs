@@ -172,7 +172,7 @@ fn main(value: Cur$0ried) -> Int {
         expect![[r#"
             struct Curried {
                 first: Int,
-                ...rest: List,
+                ...rest: List<Int>,
             }
         "#]],
     );
@@ -305,7 +305,7 @@ fn total(first: Int, ...rest: List<Int>) -> Int {
 }
 "#,
         expect![[r#"
-            fn total(first: Int, ...rest: List) -> Int
+            fn total(first: Int, ...rest: List<Int>) -> Int
         "#]],
     );
 }
@@ -335,6 +335,90 @@ fn main() -> Int {
 "#,
         expect![[r#"
             inline fn unchecked_cast<T>(value: Any) -> T
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_alias_reference() {
+    check(
+        r#"
+type Both<A, B> = (A, B);
+
+fn main(value: Bo$0th<Int, Bytes>) -> Int {
+    value.first
+}
+"#,
+        expect![[r#"
+            type Both<A, B> = (A, B)
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_alias_binding() {
+    check(
+        r#"
+type Both<A, B> = (A, B);
+
+fn main(val$0ue: Both<Int, Bytes>) -> Int {
+    value.first
+}
+"#,
+        expect![[r#"
+            value: Both<Int, Bytes>
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_struct() {
+    check(
+        r#"
+struct Wrapper<T> {
+    value: T,
+}
+
+fn main(wrapper: Wrapper<Int>) -> Int {
+    wrap$0per.value
+}
+"#,
+        expect![[r#"
+            wrapper: Wrapper<Int>
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_generic_struct_declaration() {
+    check(
+        r#"
+struct Wra$0pper<T> {
+    value: T,
+}
+
+fn main(wrapper: Wrapper<Int>) -> Int {
+    wrapper.value
+}
+"#,
+        expect![[r#"
+            struct Wrapper<T> {
+                value: T,
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_list() {
+    check(
+        r#"
+fn main(values: Li$0st<Int>) -> Int {
+    values.first
+}
+"#,
+        expect![[r#"
+            type List<T> = nil | (T, List<T>)
         "#]],
     );
 }
