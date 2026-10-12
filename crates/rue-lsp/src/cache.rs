@@ -1,10 +1,12 @@
 use std::{collections::HashSet, sync::Arc};
 
 use indexmap::IndexMap;
-use rowan::{TextRange, TextSize};
+use rowan::{TextRange, TextSize, TokenAtOffset};
+use rue_ast::AstNode;
 use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItemKind, SyntaxMap};
 use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{FunctionKind, ScopeId, Symbol, SymbolId};
+use rue_parser::{SyntaxKind, T};
 use rue_types::{Type, TypeId, Union};
 use send_wrapper::SendWrapper;
 use tower_lsp::lsp_types::{
@@ -156,7 +158,53 @@ impl Cache<Compiler> {
             }
         }
 
+        // When a type is missing entirely, there's no type node to provide a completion context.
+        if !matches!(first, CompletionContext::Type) && self.expects_type(index) {
+            return (CompletionContext::Type, first);
+        }
+
         (first, second)
+    }
+
+    /// Whether the token before the cursor is one that must be followed by a type.
+    fn expects_type(&self, index: usize) -> bool {
+        let Some(file) = self.tree.find(&self.source.kind) else {
+            return false;
+        };
+
+        let offset = TextSize::from(index as u32);
+
+        let mut token = match file.document.syntax().token_at_offset(offset) {
+            TokenAtOffset::None => return false,
+            TokenAtOffset::Single(token) | TokenAtOffset::Between(token, _) => token,
+        };
+
+        while token.kind().is_trivia() || token.text_range().end() > offset {
+            let Some(prev) = token.prev_token() else {
+                return false;
+            };
+
+            token = prev;
+        }
+
+        let parent = token.parent().map(|parent| parent.kind());
+
+        match token.kind() {
+            T![->] | T![as] | T![is] => true,
+            T![:] => matches!(
+                parent,
+                Some(
+                    SyntaxKind::FunctionParameter
+                        | SyntaxKind::LambdaParameter
+                        | SyntaxKind::LambdaExpr
+                        | SyntaxKind::ConstantItem
+                        | SyntaxKind::LetStmt
+                        | SyntaxKind::StructField
+                )
+            ),
+            T![=] => parent == Some(SyntaxKind::TypeAliasItem),
+            _ => false,
+        }
     }
 
     fn partial_identifier(&self, index: usize) -> Option<String> {

@@ -15,10 +15,12 @@ categories = { workspace = true }
 workspace = true
 
 [dependencies]
+rue-ast = { workspace = true }
 rue-compiler = { workspace = true }
 rue-diagnostic = { workspace = true }
 rue-formatter = { workspace = true }
 rue-options = { workspace = true }
+rue-parser = { workspace = true }
 rue-hir = { workspace = true }
 rue-types = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

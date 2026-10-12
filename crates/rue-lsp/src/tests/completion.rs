@@ -106,7 +106,6 @@ fn main(value: P$0) -> Int {
 
 #[test]
 fn test_complete_empty_type() {
-    // There's no type node to provide a completion context until something has been typed.
     check(
         r#"
 struct Point {
@@ -119,7 +118,23 @@ fn main(value: $0) -> Int {
 }
 "#,
         expect![[r#"
-            <none>
+            super [Module]
+            Point [Struct]
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
         "#]],
     );
 }
@@ -238,6 +253,162 @@ fn test_complete_start_of_file() {
         r#"$0
 fn main() -> Int {
     1
+}
+"#,
+        expect![[r#"
+            <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_return_type() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main() -> $0 {
+    1
+}
+"#,
+        expect![[r#"
+            super [Module]
+            Point [Struct]
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_let_type() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main() -> Int {
+    let value: $0 = 1;
+    value
+}
+"#,
+        expect![[r#"
+            super [Module]
+            Point [Struct]
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_cast_type() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(value: Any) -> Int {
+    value as $0
+}
+"#,
+        expect![[r#"
+            super [Module]
+            Point [Struct]
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_type_alias() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+type Alias = $0;
+"#,
+        expect![[r#"
+            super [Module]
+            Point [Struct]
+            Alias [Struct] {unresolved}
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_struct_initializer_value() {
+    // A colon in a struct initializer is followed by an expression, so types aren't suggested.
+    // TODO: Suggest expressions here, which also have no completion context until one is typed.
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(num: Int) -> Point {
+    Point { x: $0 }
 }
 "#,
         expect![[r#"
