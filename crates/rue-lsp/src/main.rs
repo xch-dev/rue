@@ -252,7 +252,16 @@ impl Backend {
                             info.name,
                             info.fields
                                 .iter()
-                                .map(|field| format!("    {}: {},", field.name, field.type_name))
+                                .enumerate()
+                                .map(|(i, field)| {
+                                    let spread =
+                                        if !info.nil_terminated && i == info.fields.len() - 1 {
+                                            "..."
+                                        } else {
+                                            ""
+                                        };
+                                    format!("    {spread}{}: {},", field.name, field.type_name)
+                                })
                                 .collect::<Vec<String>>()
                                 .join("\n")
                         ),
