@@ -44,6 +44,7 @@ pub struct TypeHoverInfo {
 pub struct StructHoverInfo {
     pub name: String,
     pub fields: Vec<FieldHoverInfo>,
+    pub nil_terminated: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -194,7 +195,7 @@ impl Cache<Compiler> {
 
             match self.ctx.ty(semantic) {
                 Type::Struct(_) => {
-                    for field in self.struct_fields(scopes, semantic).unwrap() {
+                    for field in self.struct_fields(scopes, semantic).unwrap().0 {
                         fields.insert(field.name, field.type_name);
                     }
                 }
@@ -462,10 +463,11 @@ impl Cache<Compiler> {
                 SyntaxItemKind::TypeDeclaration(ty) | SyntaxItemKind::TypeReference(ty) => {
                     let fields = self.struct_fields(scopes, ty);
 
-                    if let Some(fields) = fields {
+                    if let Some((fields, nil_terminated)) = fields {
                         infos.push(HoverInfo::Struct(StructHoverInfo {
                             name: self.type_name(scopes, ty),
                             fields,
+                            nil_terminated,
                         }));
                     } else {
                         infos.push(HoverInfo::Type(TypeHoverInfo {
@@ -786,7 +788,11 @@ impl Cache<Compiler> {
         }
     }
 
-    fn struct_fields(&mut self, scopes: &Scopes, ty: TypeId) -> Option<Vec<FieldHoverInfo>> {
+    fn struct_fields(
+        &mut self,
+        scopes: &Scopes,
+        ty: TypeId,
+    ) -> Option<(Vec<FieldHoverInfo>, bool)> {
         let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
 
         let mut fields = Vec::new();
@@ -829,7 +835,7 @@ impl Cache<Compiler> {
             });
         }
 
-        Some(fields)
+        Some((fields, ty.nil_terminated))
     }
 }
 
