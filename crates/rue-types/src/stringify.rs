@@ -1,7 +1,7 @@
 use id_arena::Arena;
 use indexmap::IndexMap;
 
-use crate::{Type, TypeId, substitute};
+use crate::{Alias, Struct, Type, TypeId, substitute};
 
 pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
     let id = substitute(arena, id);
@@ -46,27 +46,43 @@ pub(crate) fn stringify_impl(
         }
         Type::Struct(ty) => {
             if let Some(name) = ty.name {
-                name.text().to_string()
+                with_generics(arena, name.text(), &ty.generics, stack)
             } else {
                 stringify_impl(arena, ty.inner, stack)
             }
         }
         Type::Alias(alias) => {
             if let Some(name) = alias.name {
-                name.text().to_string()
+                with_generics(arena, name.text(), &alias.generics, stack)
             } else {
                 stringify_impl(arena, alias.inner, stack)
             }
         }
         Type::Apply(apply) => {
-            let inner = stringify_impl(arena, apply.inner, stack);
-            let generics = apply
-                .generics
-                .values()
-                .map(|v| stringify_impl(arena, *v, stack))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{inner}<{generics}>")
+            // Order the arguments by the generic parameters they're applied to, if known.
+            let (inner, parameters) = match &arena[apply.inner] {
+                Type::Alias(Alias {
+                    name: Some(name),
+                    generics,
+                    ..
+                })
+                | Type::Struct(Struct {
+                    name: Some(name),
+                    generics,
+                    ..
+                }) => (name.text().to_string(), generics.clone()),
+                _ => (
+                    stringify_impl(arena, apply.inner, stack),
+                    apply.generics.keys().copied().collect(),
+                ),
+            };
+
+            let arguments = parameters
+                .iter()
+                .map(|parameter| apply.generics.get(parameter).copied().unwrap_or(*parameter))
+                .collect::<Vec<_>>();
+
+            with_generics(arena, &inner, &arguments, stack)
         }
         Type::Function(function) => {
             let params = function
@@ -97,4 +113,23 @@ pub(crate) fn stringify_impl(
     } else {
         result
     }
+}
+
+fn with_generics(
+    arena: &Arena<Type>,
+    name: &str,
+    generics: &[TypeId],
+    stack: &mut IndexMap<TypeId, bool>,
+) -> String {
+    if generics.is_empty() {
+        return name.to_string();
+    }
+
+    let generics = generics
+        .iter()
+        .map(|&id| stringify_impl(arena, id, stack))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!("{name}<{generics}>")
 }

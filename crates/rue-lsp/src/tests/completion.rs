@@ -31,31 +31,31 @@ fn helper() -> Int {
             amount [Variable] Int
             total [Variable] Int
             unchecked_cast [Function] fn(value: Any) -> T
-            sha256 [Function] {unresolved}
-            sha256_inline [Function] {unresolved}
-            keccak256 [Function] {unresolved}
-            keccak256_inline [Function] {unresolved}
-            concat [Function] {unresolved}
-            coinid [Function] {unresolved}
-            substr [Function] {unresolved}
-            sum [Function] {unresolved}
-            difference [Function] {unresolved}
-            product [Function] {unresolved}
-            divmod [Function] {unresolved}
-            modpow [Function] {unresolved}
-            any [Function] {unresolved}
-            all [Function] {unresolved}
-            pubkey_for_exp [Function] {unresolved}
-            g1_sum [Function] {unresolved}
-            g1_difference [Function] {unresolved}
-            g1_map [Function] {unresolved}
-            g2_sum [Function] {unresolved}
-            g2_difference [Function] {unresolved}
-            g2_map [Function] {unresolved}
-            bls_pairing_identity [Function] {unresolved}
-            bls_verify [Function] {unresolved}
-            secp256k1_verify [Function] {unresolved}
-            secp256r1_verify [Function] {unresolved}
+            sha256 [Function] fn(value: Bytes) -> Bytes32
+            sha256_inline [Function] fn(value: Bytes) -> Bytes32
+            keccak256 [Function] fn(value: Bytes) -> Bytes32
+            keccak256_inline [Function] fn(value: Bytes) -> Bytes32
+            concat [Function] fn(values: List<Bytes>) -> Bytes
+            coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
+            substr [Function] fn(value: Bytes, start: Int) -> Bytes
+            sum [Function] fn(values: List<Int>) -> Int
+            difference [Function] fn(values: List<Int>) -> Int
+            product [Function] fn(values: List<Int>) -> Int
+            divmod [Function] fn(numerator: Int, denominator: Int) -> (Int, Int)
+            modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
+            any [Function] fn(values: List<Bool>) -> Bool
+            all [Function] fn(values: List<Bool>) -> Bool
+            pubkey_for_exp [Function] fn(exponent: Bytes32) -> PublicKey
+            g1_sum [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_difference [Function] fn(values: List<PublicKey>) -> PublicKey
+            g1_map [Function] fn(data: Bytes) -> PublicKey
+            g2_sum [Function] fn(values: List<Signature>) -> Signature
+            g2_difference [Function] fn(values: List<Signature>) -> Signature
+            g2_map [Function] fn(data: Bytes) -> Signature
+            bls_pairing_identity [Function] fn(g1: PublicKey, g2: Signature, ...) -> nil
+            bls_verify [Function] fn(signature: Signature, public_key: PublicKey, message: Bytes, ...) -> nil
+            secp256k1_verify [Function] fn(public_key: K1PublicKey, message_hash: Bytes32, signature: K1Signature) -> nil
+            secp256r1_verify [Function] fn(public_key: R1PublicKey, message_hash: Bytes32, signature: R1Signature) -> nil
             INFINITY_G1 [Constant] PublicKey
             INFINITY_G2 [Constant] Signature
         "#]],
@@ -106,7 +106,6 @@ fn main(value: P$0) -> Int {
 
 #[test]
 fn test_complete_empty_type() {
-    // There's no type node to provide a completion context until something has been typed.
     check(
         r#"
 struct Point {
@@ -119,7 +118,23 @@ fn main(value: $0) -> Int {
 }
 "#,
         expect![[r#"
-            <none>
+            super [Module]
+            Point [Struct]
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
         "#]],
     );
 }
@@ -238,6 +253,162 @@ fn test_complete_start_of_file() {
         r#"$0
 fn main() -> Int {
     1
+}
+"#,
+        expect![[r#"
+            <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_return_type() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main() -> $0 {
+    1
+}
+"#,
+        expect![[r#"
+            super [Module]
+            Point [Struct]
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_let_type() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main() -> Int {
+    let value: $0 = 1;
+    value
+}
+"#,
+        expect![[r#"
+            super [Module]
+            Point [Struct]
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_cast_type() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(value: Any) -> Int {
+    value as $0
+}
+"#,
+        expect![[r#"
+            super [Module]
+            Point [Struct]
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_empty_type_alias() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+type Alias = $0;
+"#,
+        expect![[r#"
+            super [Module]
+            Point [Struct]
+            Alias [Struct] {unresolved}
+            Atom [Struct]
+            Bytes [Struct]
+            Bytes32 [Struct]
+            String [Struct]
+            PublicKey [Struct]
+            Signature [Struct]
+            K1PublicKey [Struct]
+            K1Signature [Struct]
+            R1PublicKey [Struct]
+            R1Signature [Struct]
+            Int [Struct]
+            Bool [Struct]
+            Any [Struct]
+            List [Struct] nil | (T, List<T>)
+            AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_struct_initializer_value() {
+    // A colon in a struct initializer is followed by an expression, so types aren't suggested.
+    // TODO: Suggest expressions here, which also have no completion context until one is typed.
+    check(
+        r#"
+struct Point {
+    x: Int,
+}
+
+fn main(num: Int) -> Point {
+    Point { x: $0 }
 }
 "#,
         expect![[r#"

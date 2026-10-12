@@ -59,11 +59,29 @@ fn substitute_impl(
         }
         Type::Struct(ty) => {
             let inner = substitute_impl(arena, ty.inner, map, stack);
-            arena.alloc(Type::Struct(Struct { inner, ..ty }))
+            let generics = ty
+                .generics
+                .iter()
+                .map(|&id| substitute_impl(arena, id, map, stack))
+                .collect();
+            arena.alloc(Type::Struct(Struct {
+                inner,
+                generics,
+                ..ty
+            }))
         }
         Type::Alias(alias) => {
             let inner = substitute_impl(arena, alias.inner, map, stack);
-            arena.alloc(Type::Alias(Alias { inner, ..alias }))
+            let generics = alias
+                .generics
+                .iter()
+                .map(|&id| substitute_impl(arena, id, map, stack))
+                .collect();
+            arena.alloc(Type::Alias(Alias {
+                inner,
+                generics,
+                ..alias
+            }))
         }
         Type::Function(function) => {
             let params = function
