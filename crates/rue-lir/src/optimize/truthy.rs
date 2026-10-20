@@ -1,11 +1,13 @@
 use id_arena::Arena;
 
-use crate::{Lir, LirId, optimize::optimize};
+use crate::{Lir, LirId, codegen::is_static_value, optimize::optimize};
 
 pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Result<bool, LirId> {
     match arena[value].clone() {
         Lir::Atom(atom) => Ok(!atom.is_empty()),
-        Lir::Cons(..) => Ok(true),
+        // A pair is only known to be truthy once both of its fields have been evaluated,
+        // so it can't be folded unless neither field can fail
+        Lir::Cons(..) if is_static_value(arena, value) => Ok(true),
         Lir::Listp(inner, atom_can_be_truthy) => {
             if atom_can_be_truthy {
                 Err(value)

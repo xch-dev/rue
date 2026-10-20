@@ -418,7 +418,7 @@ fn codegen_impl(
     }
 }
 
-fn is_static_value(arena: &Arena<Lir>, lir: LirId) -> bool {
+pub(crate) fn is_static_value(arena: &Arena<Lir>, lir: LirId) -> bool {
     match &arena[lir] {
         Lir::Atom(_) => true,
         Lir::Cons(first, rest) => is_static_value(arena, *first) && is_static_value(arena, *rest),
