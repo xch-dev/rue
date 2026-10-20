@@ -1,0 +1,153 @@
+tests:
+- name: and_and
+  program: (a (i (a (i (l 2) (q) (q 2 (i (l 5) (q) (q 1 . 1)) 1)) 1) (q 16 2 5) (q)) 1)
+  debug_program: (a (i (a (i (not (l 2)) (q 2 (i (not (l 5)) (q 1 . 1) (q)) 1) (q)) 1) (q 16 2 5) (q)) 1)
+  solution: (3 4)
+  output: '7'
+  runtime_cost: 1643
+  byte_cost: 852000
+  total_cost: 853643
+- name: or_or
+  program: (a (i (a (i (l 2) (q 1 . 1) (q 2 (i (l 5) (q 1 . 1) (q)) 1)) 1) (q) (q 16 2 5)) 1)
+  debug_program: (a (i (a (i (l 2) (q 1 . 1) (q 2 (i (l 5) (q 1 . 1) (q)) 1)) 1) (q) (q 16 2 5)) 1)
+  solution: (3 4)
+  output: '7'
+  runtime_cost: 1667
+  byte_cost: 876000
+  total_cost: 877667
+- name: and_all
+  program: (a (i (all (not (l 2)) (not (l 5))) (q 16 2 5) (q)) 1)
+  debug_program: (a (i (all (not (l 2)) (not (l 5))) (q 16 2 5) (q)) 1)
+  solution: (3 4)
+  output: '7'
+  runtime_cost: 2408
+  byte_cost: 564000
+  total_cost: 566408
+- name: or_any
+  program: (a (i (any (l 2) (l 5)) (q) (q 16 2 5)) 1)
+  debug_program: (a (i (any (l 2) (l 5)) (q) (q 16 2 5)) 1)
+  solution: (3 4)
+  output: '7'
+  runtime_cost: 2006
+  byte_cost: 468000
+  total_cost: 470006
+- name: not_guard
+  program: (a (i (l 2) (q) (q . 2)) 1)
+  debug_program: (a (i (not (l 2)) (q . 2) (q)) 1)
+  solution: (5)
+  output: '5'
+  runtime_cost: 325
+  byte_cost: 276000
+  total_cost: 276325
+- name: not_not_guard
+  program: (a (i (l 2) (q) (q . 2)) 1)
+  debug_program: (a (i (not (not (not (l 2)))) (q . 2) (q)) 1)
+  solution: (5)
+  output: '5'
+  runtime_cost: 325
+  byte_cost: 276000
+  total_cost: 276325
+- name: not_or
+  program: (a (i (a (i (l 2) (q 1 . 1) (q 2 (i (l 5) (q 1 . 1) (q)) 1)) 1) (q) (q 16 2 5)) 1)
+  debug_program: (a (i (not (a (i (l 2) (q 1 . 1) (q 2 (i (l 5) (q 1 . 1) (q)) 1)) 1)) (q 16 2 5) (q)) 1)
+  solution: (3 4)
+  output: '7'
+  runtime_cost: 1667
+  byte_cost: 876000
+  total_cost: 877667
+- name: not_any
+  program: (a (i (any (l 2) (l 5)) (q) (q 16 2 5)) 1)
+  debug_program: (a (i (not (any (l 2) (l 5))) (q 16 2 5) (q)) 1)
+  solution: (3 4)
+  output: '7'
+  runtime_cost: 2006
+  byte_cost: 468000
+  total_cost: 470006
+- name: not_and
+  program: (a (i (a (i (l 2) (q) (q 2 (i (l 5) (q) (q 1 . 1)) 1)) 1) (q 16 2 5) (q)) 1)
+  debug_program: (a (i (not (a (i (not (l 2)) (q 2 (i (not (l 5)) (q 1 . 1) (q)) 1) (q)) 1)) (q) (q 16 2 5)) 1)
+  solution: (3 4)
+  output: '7'
+  runtime_cost: 1643
+  byte_cost: 852000
+  total_cost: 853643
+- name: nested_and
+  program: (a (i (a (i (a (i (l 2) (q) (q 2 (i (l 5) (q) (q 1 . 1)) 1)) 1) (q 2 (i (l 11) (q) (q 1 . 1)) 1) (q)) 1) (q 16 2 5 11) (q)) 1)
+  debug_program: (a (i (a (i (a (i (not (l 2)) (q 2 (i (not (l 5)) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (not (l 11)) (q 1 . 1) (q)) 1) (q)) 1) (q 16 (+ 2 5) 11) (q)) 1)
+  solution: (1 2 3)
+  output: '6'
+  runtime_cost: 2536
+  byte_cost: 1380000
+  total_cost: 1382536
+- name: nested_or
+  program: (a (i (a (i (l 2) (q 1 . 1) (q 2 (i (a (i (l 5) (q 1 . 1) (q 2 (i (l 11) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1)) 1) (q) (q 16 2 5 11)) 1)
+  debug_program: (a (i (a (i (l 2) (q 1 . 1) (q 2 (i (a (i (l 5) (q 1 . 1) (q 2 (i (l 11) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1)) 1) (q) (q 16 (+ 2 5) 11)) 1)
+  solution: (1 2 3)
+  output: '6'
+  runtime_cost: 2584
+  byte_cost: 1428000
+  total_cost: 1430584
+- name: nested_mixed
+  program: (a (i (any (l 2) (a (i (l 5) (q 1 . 1) (q 2 (i (l 11) (q 1 . 1) (q)) 1)) 1)) (q) (q 16 2 5 11)) 1)
+  debug_program: (a (i (any (l 2) (a (i (l 5) (q 1 . 1) (q 2 (i (l 11) (q 1 . 1) (q)) 1)) 1)) (q) (q 16 (+ 2 5) 11)) 1)
+  solution: (1 2 3)
+  output: '6'
+  runtime_cost: 2923
+  byte_cost: 1020000
+  total_cost: 1022923
+- name: nested_all_any
+  program: (a (i (all (all (not (l 2)) (not (l 5))) (not (any (l 11) (l 2)))) (q 16 2 5 11) (q)) 1)
+  debug_program: (a (i (all (all (not (l 2)) (not (l 5))) (not (any (l 11) (l 2)))) (q 16 (+ 2 5) 11) (q)) 1)
+  solution: (1 2 3)
+  output: '6'
+  runtime_cost: 4734
+  byte_cost: 876000
+  total_cost: 880734
+- name: and_right_uses_left
+  program: (a (i (l 2) (q) (q 2 (i (> 2 (q . 5)) (q 1 . 1) (q)) 1)) 1)
+  debug_program: (a (i (not (l 2)) (q 2 (i (> 2 (q . 5)) (q 1 . 1) (q)) 1) (q)) 1)
+  solution: (10)
+  output: '1'
+  runtime_cost: 1077
+  byte_cost: 612000
+  total_cost: 613077
+- name: or_right_uses_left
+  program: (a (i (l 2) (q 1 . 1) (q 2 (i (> 2 (q . 5)) (q 1 . 1) (q)) 1)) 1)
+  debug_program: (a (i (l 2) (q 1 . 1) (q 2 (i (> 2 (q . 5)) (q 1 . 1) (q)) 1)) 1)
+  solution: (10)
+  output: '1'
+  runtime_cost: 1077
+  byte_cost: 636000
+  total_cost: 637077
+- name: same_path_any
+  program: (a (i (any (a (i (l 2) (q) (q 2 (i 2 (q) (q 1 . 1)) 1)) 1) (l 2)) (q 11 ()) (q . 2)) 1)
+  debug_program: (a (i (any (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (l 2)) (q 11 ()) (q . 2)) 1)
+  solution: (0xabababababababababababababababababababababababababababababababab)
+  output: '0xabababababababababababababababababababababababababababababababab'
+  runtime_cost: 1704
+  byte_cost: 900000
+  total_cost: 901704
+- name: same_path_or
+  program: (a (i (a (i (a (i (l 2) (q) (q 2 (i 2 (q) (q 1 . 1)) 1)) 1) (q 1 . 1) (q 2 (i (l 2) (q 1 . 1) (q)) 1)) 1) (q 11 ()) (q . 2)) 1)
+  debug_program: (a (i (a (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q 2 (i (l 2) (q 1 . 1) (q)) 1)) 1) (q 11 ()) (q . 2)) 1)
+  solution: (0xabababababababababababababababababababababababababababababababab)
+  output: '0xabababababababababababababababababababababababababababababababab'
+  runtime_cost: 1365
+  byte_cost: 1308000
+  total_cost: 1309365
+- name: same_path_all
+  program: (a (i (all (a (i (l 2) (q) (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q)) 1)) 1) (not (l 2))) (q . 2) (q 11 ())) 1)
+  debug_program: (a (i (all (a (i (not (l 2)) (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q)) 1) (q)) 1) (not (l 2))) (q . 2) (q 11 ())) 1)
+  solution: (0xabababababababababababababababababababababababababababababababab)
+  output: '0xabababababababababababababababababababababababababababababababab'
+  runtime_cost: 2237
+  byte_cost: 1092000
+  total_cost: 1094237
+- name: same_path_and
+  program: (a (i (a (i (l 2) (q) (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q)) 1)) 1) (q . 2) (q 11 ())) 1)
+  debug_program: (a (i (a (i (not (l 2)) (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q)) 1) (q)) 1) (q . 2) (q 11 ())) 1)
+  solution: (0xabababababababababababababababababababababababababababababababab)
+  output: '0xabababababababababababababababababababababababababababababababab'
+  runtime_cost: 1167
+  byte_cost: 924000
+  total_cost: 925167

@@ -150,6 +150,9 @@ pub enum DiagnosticKind {
     #[error("Cannot reference module `{0}`")]
     CannotReferenceModule(String),
 
+    #[error("Cannot use builtin `{0}` as a value, it can only be called directly")]
+    CannotReferenceBuiltin(String),
+
     #[error("Generic arguments are not permitted on symbol references")]
     GenericArgumentsOnSymbolReference,
 
@@ -311,6 +314,7 @@ impl DiagnosticKind {
             | Self::ExpectedSymbol(..)
             | Self::ExpectedType(..)
             | Self::CannotReferenceModule(..)
+            | Self::CannotReferenceBuiltin(..)
             | Self::GenericArgumentsOnSymbolReference
             | Self::NonStructInitializer(..)
             | Self::MissingRequiredFields(..)

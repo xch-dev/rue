@@ -1,0 +1,24 @@
+struct Mismatch {
+    value: Bytes32 = 5,
+}
+
+struct PairMismatch {
+    value: (Int, Int) = 5,
+}
+
+// Defaults can't depend on generic parameters, since they must be valid for every instantiation
+struct GenericInt<T> {
+    value: T = 5,
+}
+
+struct GenericNil<T> {
+    value: T = nil,
+}
+
+fn main() -> Bytes32 {
+    let mismatch = Mismatch {};
+    let _pair = PairMismatch {};
+    let _int = GenericInt::<Bytes32> {};
+    let _nil = GenericNil::<Bytes32> {};
+    mismatch.value
+}

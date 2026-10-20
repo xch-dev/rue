@@ -1,0 +1,57 @@
+tests:
+- name: pair_first
+  program: (a (i (l 4) (q . 6) (q 16 4 6)) 1)
+  debug_program: (a (i (not (l (f 2))) (q 16 (f 2) (r 2)) (q 6 2)) 1)
+  solution: ((3 . 4))
+  output: '7'
+  runtime_cost: 1141
+  byte_cost: 348000
+  total_cost: 349141
+- name: pair_rest
+  program: (a (i (l 6) (q . 4) (q 16 4 6)) 1)
+  debug_program: (a (i (l (r 2)) (q 5 2) (q 16 (f 2) (r 2))) 1)
+  solution: ((3 . 4))
+  output: '7'
+  runtime_cost: 1141
+  byte_cost: 348000
+  total_cost: 349141
+- name: struct_field
+  program: (a (i (l 4) (q . 10) (q 16 4 10)) 1)
+  debug_program: (a (i (not (l (f 2))) (q 16 (f 2) (f (r 2))) (q 5 (r 2))) 1)
+  solution: ((3 4))
+  output: '7'
+  runtime_cost: 1145
+  byte_cost: 348000
+  total_cost: 349145
+- name: nested_struct_field
+  program: (a (i (l 8) (q . 10) (q 16 8 10)) 1)
+  debug_program: (a (i (not (l (f (f 2)))) (q 16 (f (f 2)) (f (r 2))) (q 5 (r 2))) 1)
+  solution: (((3 4) 5))
+  output: '8'
+  runtime_cost: 1153
+  byte_cost: 348000
+  total_cost: 349153
+- name: whole_then_field
+  program: (a (i (a (i (l 2) (q 2 (i (l 4) (q) (q 1 . 1)) 1) (q)) 1) (q 16 4 6) (q)) 1)
+  debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 16 (f 2) (r 2)) (q)) 1)
+  solution: ((3 . 4))
+  output: '7'
+  runtime_cost: 1647
+  byte_cost: 852000
+  total_cost: 853647
+- name: group_guard
+  program: (a (i (l 2) (q) (q . 2)) 1)
+  debug_program: (a (i (not (l 2)) (q . 2) (q)) 1)
+  solution: (5)
+  output: '5'
+  runtime_cost: 325
+  byte_cost: 276000
+  total_cost: 276325
+- name: cast_guard
+  program: (a (i (l 2) (q) (q . 2)) 1)
+  debug_program: (a (i (not (l 2)) (q . 2) (q)) 1)
+  solution: (5)
+  output: '5'
+  runtime_cost: 325
+  byte_cost: 276000
+  total_cost: 276325

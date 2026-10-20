@@ -1,0 +1,58 @@
+test fn assert_guard(x: Int | (Int, Int)) -> Int {
+    assert x is Int;
+    x
+}
+
+test fn assert_not_guard(x: Int | (Int, Int)) -> Int {
+    assert !(x is (Int, Int));
+    x
+}
+
+test fn assert_all(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    assert (x is Int) & (y is Int);
+    x + y
+}
+
+test fn if_stmt_else(x: Int | (Int, Int)) -> Int {
+    if x is (Int, Int) {
+        return 0;
+    }
+    x
+}
+
+test fn if_stmt_else_or(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if (x is (Int, Int)) || (y is (Int, Int)) {
+        return 0;
+    }
+    x + y
+}
+
+test fn if_stmt_else_any(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if (x is (Int, Int)) | (y is (Int, Int)) {
+        return 0;
+    }
+    x + y
+}
+
+test fn if_stmt_else_not(b: Bool) -> true {
+    if !(b is true) {
+        raise;
+    }
+    b
+}
+
+test fn if_expr_then(x: Int | (Int, Int)) -> Int {
+    if x is Int {
+        x
+    } else {
+        0
+    }
+}
+
+test fn if_expr_else(x: Int | (Int, Int)) -> Int {
+    if x is (Int, Int) {
+        0
+    } else {
+        x
+    }
+}

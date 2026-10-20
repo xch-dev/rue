@@ -1,0 +1,10 @@
+diagnostics:
+- Cannot assign `5` to `Bytes32`, since they are incompatible at struct_default_errors.rue:2:22
+- Cannot assign `5` to `(Int, Int)`, since they are incompatible at struct_default_errors.rue:6:25
+- Cannot compare `5` to `T` without a type guard, since the runtime value must be constrained at struct_default_errors.rue:11:16
+- Cannot compare `nil` to `T` without a type guard, since the runtime value must be constrained at struct_default_errors.rue:15:16
+- Unused struct `PairMismatch` at struct_default_errors.rue:5:8
+- Unused struct `GenericInt` at struct_default_errors.rue:10:8
+- Unused generic type `T` at struct_default_errors.rue:10:19
+- Unused struct `GenericNil` at struct_default_errors.rue:14:8
+- Unused generic type `T` at struct_default_errors.rue:14:19

@@ -15,7 +15,7 @@ use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Name, Source, SourceKind};
 use rue_hir::{
     Declaration, DependencyGraph, Environment, Lowerer, LoweringMode, ModuleDeclarations,
-    ModuleSymbol, Scope, ScopeId, Symbol, SymbolId,
+    ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
 };
 use rue_lexer::Lexer;
 use rue_lir::CodegenOptions;
@@ -44,6 +44,9 @@ pub enum Error {
 
     #[error("Cannot generate code while compilation errors are present")]
     CompilationFailed,
+
+    #[error("Internal compiler error: unresolved code was reached without a compilation error")]
+    UnresolvedCodegen,
 }
 
 #[derive(Debug, Clone)]
@@ -723,6 +726,19 @@ fn codegen(
     }
 
     let options = *ctx.options();
+    // Unresolved code should always be accompanied by an error, but if it's not, refuse to
+    // generate code rather than panicking or producing an incorrect program.
+    let has_unresolved = has_reachable_unresolved(ctx, symbol);
+
+    debug_assert!(
+        !has_unresolved,
+        "unresolved code reached codegen without an error"
+    );
+
+    if has_unresolved {
+        return Err(Error::UnresolvedCodegen);
+    }
+
     let graph = DependencyGraph::build(ctx, symbol, options);
 
     let mut arena = Arena::new();

@@ -7,8 +7,8 @@ use rue_hir::{Hir, SymbolPath, Value};
 use rue_types::{Pair, Type, Union};
 
 use crate::{
-    Compiler, CompletionContext, PathKind, PathResult, SyntaxField, SyntaxItemKind, compile_expr,
-    compile_path,
+    Compiler, CompletionContext, PathKind, PathResult, SyntaxField, SyntaxItemKind,
+    check_symbol_value, compile_expr, compile_path,
 };
 
 pub fn compile_struct_initializer_expr(
@@ -104,7 +104,8 @@ pub fn compile_struct_initializer_expr(
                 [name].into_iter(),
                 PathKind::Symbol,
                 false,
-            ) {
+            ) && check_symbol_value(ctx, field.syntax(), symbol)
+            {
                 let ty = ctx.symbol_type(symbol);
 
                 let mut value = Value::new(ctx.alloc_hir(Hir::Reference(symbol)), ty)
@@ -170,6 +171,11 @@ pub fn compile_struct_initializer_expr(
         let value = if let Some(value) = fields.remove(&name) {
             value
         } else if let Some(value) = ctx.default_field(struct_type.semantic, &name) {
+            // Defaults are checked against the declared field type, but check them against the
+            // field type of this instantiation as well, in case generics were substituted.
+            if let Some(expected_type) = expected_field_types.get(&name) {
+                ctx.assign_type(expr.syntax(), value.ty, *expected_type);
+            }
             value
         } else {
             debug!("Unresolved struct initializer field");

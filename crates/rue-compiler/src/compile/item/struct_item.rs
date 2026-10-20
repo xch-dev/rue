@@ -118,7 +118,17 @@ pub fn compile_struct_item(
         let expected_type = field.ty().map(|ty| compile_type(ctx, &ty));
 
         let field_type = if let Some(expr) = field.expr() {
-            let value = compile_expr(ctx, &expr, expected_type);
+            let mut value = compile_expr(ctx, &expr, expected_type);
+
+            // The default value must be assignable to the declared field type. If the field type
+            // depends on generic parameters, this effectively rejects the default, since a
+            // concrete value can't be assigned to an arbitrary generic type.
+            if let Some(expected_type) = expected_type
+                && !ctx.is_assignable(value.ty, expected_type)
+            {
+                ctx.assign_type(expr.syntax(), value.ty, expected_type);
+                value = ctx.builtins().unresolved.clone();
+            }
 
             if let Some(name) = field.name() {
                 ctx.insert_default_field(struct_type, name.text().to_string(), value.clone());

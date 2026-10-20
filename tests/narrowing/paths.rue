@@ -1,0 +1,65 @@
+struct Point {
+    x: Int | (Int, Int),
+    y: Int,
+}
+
+struct Outer {
+    inner: Point,
+    z: Int,
+}
+
+test fn pair_first(pair: (Int | (Int, Int), Int)) -> Int {
+    if pair.first is Int {
+        pair.first + pair.rest
+    } else {
+        pair.rest
+    }
+}
+
+test fn pair_rest(pair: (Int, Int | (Int, Int))) -> Int {
+    if pair.rest is (Int, Int) {
+        pair.first
+    } else {
+        pair.first + pair.rest
+    }
+}
+
+test fn struct_field(point: Point) -> Int {
+    if point.x is Int {
+        point.x + point.y
+    } else {
+        point.y
+    }
+}
+
+test fn nested_struct_field(outer: Outer) -> Int {
+    if outer.inner.x is Int {
+        outer.inner.x + outer.z
+    } else {
+        outer.z
+    }
+}
+
+test fn whole_then_field(value: Int | (Int | (Int, Int), Int)) -> Int {
+    if value is (Int | (Int, Int), Int) && value.first is Int {
+        value.first + value.rest
+    } else {
+        0
+    }
+}
+
+test fn group_guard(x: Int | (Int, Int)) -> Int {
+    if ((x)) is Int {
+        x
+    } else {
+        0
+    }
+}
+
+test fn cast_guard(x: Int | (Int, Int)) -> Int {
+    if (x as Any) is Int {
+        x
+    } else {
+        0
+    }
+}

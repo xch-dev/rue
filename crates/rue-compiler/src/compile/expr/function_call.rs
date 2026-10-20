@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use log::debug;
-use rue_ast::{AstFunctionCallExpr, AstNode};
+use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{BinaryOp, Builtin, FunctionCall, Hir, Symbol, UnaryOp, Value};
 use rue_lir::ClvmOp;
 use rue_types::{Pair, Type, TypeId, Union, substitute_with_mappings};
 
-use crate::{Compiler, compile_expr};
+use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_path_value};
 
 pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr) -> Value {
     let Some(expr) = call.expr() else {
@@ -15,7 +15,16 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
         return ctx.builtins().unresolved.clone();
     };
 
-    let expr = compile_expr(ctx, &expr, None);
+    // Builtins can only be referenced when they're called directly
+    let expr = if let AstExpr::PathExpr(path) = &expr {
+        ctx.add_syntax(
+            SyntaxItemKind::CompletionContext(CompletionContext::Expression),
+            path.syntax().text_range(),
+        );
+        compile_path_value(ctx, path, true)
+    } else {
+        compile_expr(ctx, &expr, None)
+    };
 
     if let Hir::Reference(symbol) = ctx.hir(expr.hir).clone()
         && let Symbol::Builtin(builtin) = ctx.symbol(symbol).clone()

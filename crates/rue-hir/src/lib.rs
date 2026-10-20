@@ -9,6 +9,7 @@ mod ops;
 mod scope;
 mod symbol;
 mod types;
+mod unresolved;
 mod value;
 
 pub use builtins::*;
@@ -22,4 +23,5 @@ pub use ops::*;
 pub use scope::*;
 pub use symbol::*;
 pub use types::*;
+pub use unresolved::*;
 pub use value::*;

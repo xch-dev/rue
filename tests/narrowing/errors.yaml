@@ -1,0 +1,25 @@
+diagnostics:
+- Cannot compare `Int` to `Bytes32` without a type guard, since the runtime value must be constrained at errors.rue:2:60
+- Cannot compare `Bool` to `true` without a type guard, since the runtime value must be constrained at errors.rue:10:35
+- Cannot compare `Bool` to `false` without a type guard, since the runtime value must be constrained at errors.rue:17:41
+- Cannot compare `0 | Int | (Int, Int)` to `Int` without a type guard, since the runtime value must be constrained at errors.rue:25:62
+- Cannot compare `0 | Int | (Int, Int)` to `Int` without a type guard, since the runtime value must be constrained at errors.rue:33:62
+- Cannot compare `Int | (Int, Int) | 0` to `Int` without a type guard, since the runtime value must be constrained at errors.rue:41:61
+- Cannot compare `Int | (Int, Int) | 0` to `Int` without a type guard, since the runtime value must be constrained at errors.rue:49:62
+- Cannot use `>` operator with `Int | (Int, Int)` and `5` at errors.rue:59:19
+- Cannot use `>` operator with `Int | (Int, Int)` and `5` at errors.rue:63:26
+- Cannot compare `Bytes32 | (Int, Int)` to `Bytes32` without a type guard, since the runtime value must be constrained at errors.rue:67:60
+- Cannot compare `Int | (Int, Int) | 0` to `Int` without a type guard, since the runtime value must be constrained at errors.rue:76:42
+- Cannot use `+` operator with `Int | (Int, Int)` and `Int | 0` at errors.rue:87:5
+- Unused function `any_else` at errors.rue:2:4
+- Unused function `not_reference` at errors.rue:10:4
+- Unused function `not_reference_true` at errors.rue:17:4
+- Unused function `and_else` at errors.rue:25:4
+- Unused function `all_else` at errors.rue:33:4
+- Unused function `or_then` at errors.rue:41:4
+- Unused function `any_then` at errors.rue:49:4
+- Unused function `all_right` at errors.rue:58:4
+- Unused function `any_right` at errors.rue:62:4
+- Unused function `same_path_any` at errors.rue:67:4
+- Unused function `inline_if` at errors.rue:76:4
+- Unused function `if_expr_escape` at errors.rue:81:4

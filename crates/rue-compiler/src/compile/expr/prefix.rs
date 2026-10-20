@@ -35,13 +35,17 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
 
                 let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Not, value.hir));
 
-                return value.flip_mappings().with_hir(hir).with_type(if is_true {
+                let ty = if is_true {
                     ctx.builtins().types.bool_false
                 } else if is_false {
                     ctx.builtins().types.bool_true
                 } else {
                     ctx.builtins().types.bool
-                });
+                };
+
+                // The result is a different value than the operand, so it must not keep the
+                // operand's reference (otherwise guarding on `!b` would narrow `b` itself).
+                return Value::new(hir, ty).with_mappings(value.else_map, value.then_map);
             }
         }
         T![+] => {
