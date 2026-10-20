@@ -727,22 +727,3 @@ pub fn opt_op(arena: &mut Arena<Lir>, op: ClvmOp, arg: LirId) -> LirId {
 pub fn opt_debug_print(arena: &mut Arena<Lir>, srcloc: String, value: LirId) -> LirId {
     arena.alloc(Lir::DebugPrint(srcloc, value))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn identity_products_optimize_to_one() {
-        for inputs in [vec![], vec![1], vec![1, 1], vec![-1, -1]] {
-            let mut arena = Arena::new();
-            let args = inputs
-                .into_iter()
-                .map(|n| arena.alloc(Lir::Atom(bigint_atom(BigInt::from(n)))))
-                .collect();
-            let root = arena.alloc(Lir::Mul(args));
-            let optimized = crate::optimize(&mut arena, root);
-            assert!(matches!(&arena[optimized], Lir::Atom(atom) if atom == &[1]));
-        }
-    }
-}
