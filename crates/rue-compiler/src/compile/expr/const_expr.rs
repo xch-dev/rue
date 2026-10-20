@@ -4,7 +4,7 @@ use rue_diagnostic::SrcLoc;
 use rue_hir::{ConstExpr, Hir};
 use rue_types::TypeId;
 
-use crate::{Compiler, compile_block};
+use crate::{BlockKind, Compiler, compile_block};
 
 pub fn compile_const_expr(
     ctx: &mut Compiler,
@@ -12,7 +12,7 @@ pub fn compile_const_expr(
     expected_type: Option<TypeId>,
 ) -> rue_hir::Value {
     let value = if let Some(block) = expr.block() {
-        compile_block(ctx, &block, true, expected_type, true)
+        compile_block(ctx, &block, BlockKind::Expr, expected_type, true)
     } else {
         debug!("Unresolved const expression block");
         ctx.builtins().unresolved.clone()

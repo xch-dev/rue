@@ -36,6 +36,17 @@ pub struct Compiler {
     declaration_stack: Vec<Declaration>,
     registered_scopes: HashSet<ScopeId>,
     external_programs: HashMap<PathBuf, Vec<u8>>,
+    return_stack: Vec<Option<ReturnTarget>>,
+    return_count: usize,
+}
+
+/// The function or lambda body that a `return` statement exits from.
+#[derive(Debug, Clone)]
+pub struct ReturnTarget {
+    /// The declared return type, if there is one.
+    pub expected_type: Option<TypeId>,
+    /// The types of every `return` statement compiled for this target so far.
+    pub types: Vec<TypeId>,
 }
 
 impl Deref for Compiler {
@@ -71,6 +82,8 @@ impl Compiler {
             declaration_stack: Vec::new(),
             registered_scopes: HashSet::new(),
             external_programs: HashMap::new(),
+            return_stack: Vec::new(),
+            return_count: 0,
         };
 
         if options.std {
@@ -358,6 +371,32 @@ impl Compiler {
         let index = self.scope_stack.len();
         self.push_scope(scope, start);
         index
+    }
+
+    /// Enters a context where `return` statements exit to the given target. If the target
+    /// is `None`, then `return` statements are not allowed (such as in expression blocks).
+    pub fn push_return_target(&mut self, target: Option<ReturnTarget>) {
+        self.return_stack.push(target);
+    }
+
+    pub fn pop_return_target(&mut self) -> Option<ReturnTarget> {
+        self.return_stack
+            .pop()
+            .expect("return target stack is unbalanced")
+    }
+
+    pub fn return_target_mut(&mut self) -> Option<&mut ReturnTarget> {
+        self.return_stack.last_mut().and_then(Option::as_mut)
+    }
+
+    /// The total number of `return` statements compiled so far, which can be used to
+    /// determine whether a block may have exited early.
+    pub fn return_count(&self) -> usize {
+        self.return_count
+    }
+
+    pub fn increment_return_count(&mut self) {
+        self.return_count += 1;
     }
 
     pub fn mapping_checkpoint(&self) -> usize {

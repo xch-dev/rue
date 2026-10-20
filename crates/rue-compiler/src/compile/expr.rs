@@ -34,7 +34,7 @@ use rue_ast::{AstExpr, AstNode};
 use rue_hir::Value;
 use rue_types::TypeId;
 
-use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_block};
+use crate::{BlockKind, Compiler, CompletionContext, SyntaxItemKind, compile_block};
 
 pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<TypeId>) -> Value {
     ctx.add_syntax(
@@ -58,6 +58,6 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),
         AstExpr::FieldAccessExpr(expr) => compile_field_access_expr(ctx, expr),
         AstExpr::LambdaExpr(expr) => compile_lambda_expr(ctx, expr, expected_type),
-        AstExpr::Block(block) => compile_block(ctx, block, true, expected_type, true),
+        AstExpr::Block(block) => compile_block(ctx, block, BlockKind::Expr, expected_type, true),
     }
 }

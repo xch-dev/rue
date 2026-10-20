@@ -120,6 +120,11 @@ pub enum DiagnosticKind {
     #[error("Cannot use a `return` statement here, end the block with an expression instead")]
     UnexpectedExplicitReturn,
 
+    #[error(
+        "Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function"
+    )]
+    ReturnInExpressionBlock,
+
     #[error("Block does not return a value")]
     MissingReturn,
 
@@ -330,6 +335,7 @@ impl DiagnosticKind {
             | Self::ConstEvalFailed(..)
             | Self::ConstEvalCostExceeded(..)
             | Self::UnexpectedExplicitReturn
+            | Self::ReturnInExpressionBlock
             | Self::UnresolvedImport(..)
             | Self::UnresolvedSuper
             | Self::SuperAfterNamedImport
