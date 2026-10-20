@@ -102,6 +102,9 @@ pub enum DiagnosticKind {
     #[error("Cannot check if value is of function type at runtime")]
     FunctionTypeCheck,
 
+    #[error("Cannot check if value is of generic type at runtime")]
+    GenericTypeCheck,
+
     #[error("Cannot use `{0}` operator with `{1}` and `{2}`")]
     IncompatibleBinaryOp(String, String, String),
 
@@ -298,6 +301,7 @@ impl DiagnosticKind {
             | Self::UnconstrainableComparison(..)
             | Self::TypeCheckDepthExceeded
             | Self::FunctionTypeCheck
+            | Self::GenericTypeCheck
             | Self::IncompatibleBinaryOp(..)
             | Self::IncompatibleUnaryOp(..)
             | Self::MissingLetValue

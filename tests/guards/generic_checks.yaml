@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot check if value is of generic type at runtime at generic_checks.rue:2:8

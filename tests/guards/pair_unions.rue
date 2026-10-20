@@ -1,0 +1,82 @@
+// The rest check must consider every pair whose first can pass the first check.
+test fn rest_with_narrower_first(value: (Bytes32, Bytes32) | (Bytes, nil)) -> Bool {
+    value is (Bytes, nil)
+}
+
+test fn rest_with_overlapping_first(value: (1 | 3, Bytes32) | (1 | 2, nil)) -> Bool {
+    value is (1 | 2, nil)
+}
+
+test fn rest_with_condition(value: (51, (Bytes32, (Int, nil))) | (Int, nil)) -> Bool {
+    value is (Int, nil)
+}
+
+// A target member that needs no check makes the whole check pass.
+test fn target_member_without_check(value: nil | (Int, nil) | (Int, 5)) -> Bool {
+    value is (Int, 5) | (Int, nil | 5)
+}
+
+test fn target_member_without_check_filter(value: nil | (1, nil) | (2, nil)) -> Bool {
+    value is (1, nil) | (Int, nil)
+}
+
+// Atoms of a given length can still be equal to a value in the target.
+test fn atom_length_overlaps_value(value: Bytes32 | 1) -> Bool {
+    value is 0x0000000000000000000000000000000000000000000000000000000000000000 | 1
+}
+
+// The else branch must only contain values that failed the check.
+test fn else_branch_narrowing(value: nil | (1, nil) | (2, nil)) -> nil {
+    if value is (1, nil) | (Int, nil) {
+        return nil;
+    }
+
+    value
+}
+
+test fn else_branch_narrowing_rest(value: (Bytes32, Bytes32) | (Bytes, nil)) -> Bytes32 {
+    if value is (Bytes, nil) {
+        return 0x0000000000000000000000000000000000000000000000000000000000000000;
+    }
+
+    value.rest
+}
+
+test fn guard_values() {
+    let narrower = unchecked_cast::<(Bytes32, Bytes32) | (Bytes, nil)>((
+        0x0000000000000000000000000000000000000000000000000000000000000000,
+        0x0000000000000000000000000000000000000000000000000000000000000000,
+    ));
+    assert !(narrower is (Bytes, nil));
+    let narrower = unchecked_cast::<(Bytes32, Bytes32) | (Bytes, nil)>((0x01, nil));
+    assert narrower is (Bytes, nil);
+
+    let overlapping = unchecked_cast::<(1 | 3, Bytes32) | (1 | 2, nil)>((
+        1,
+        0x0000000000000000000000000000000000000000000000000000000000000000,
+    ));
+    assert !(overlapping is (1 | 2, nil));
+    let overlapping = unchecked_cast::<(1 | 3, Bytes32) | (1 | 2, nil)>((1, nil));
+    assert overlapping is (1 | 2, nil);
+
+    let condition = unchecked_cast::<(51, (Bytes32, (Int, nil))) | (Int, nil)>((
+        51,
+        (0x0000000000000000000000000000000000000000000000000000000000000000, (1, nil)),
+    ));
+    assert !(condition is (Int, nil));
+    let condition = unchecked_cast::<(51, (Bytes32, (Int, nil))) | (Int, nil)>((51, nil));
+    assert condition is (Int, nil);
+
+    let member = unchecked_cast::<nil | (Int, nil) | (Int, 5)>((7, nil));
+    assert member is (Int, 5) | (Int, nil | 5);
+    let member = unchecked_cast::<nil | (Int, nil) | (Int, 5)>(nil);
+    assert !(member is (Int, 5) | (Int, nil | 5));
+
+    let filter = unchecked_cast::<nil | (1, nil) | (2, nil)>((2, nil));
+    assert filter is (1, nil) | (Int, nil);
+
+    let atom = unchecked_cast::<Bytes32 | 1>(
+        0x0000000000000000000000000000000000000000000000000000000000000000,
+    );
+    assert atom is 0x0000000000000000000000000000000000000000000000000000000000000000 | 1;
+}
