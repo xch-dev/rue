@@ -262,6 +262,7 @@ fn unchecked_cast(db: &mut Database, generic: TypeId, any: TypeId) -> SymbolId {
     let reference = db.alloc_hir(Hir::Reference(parameter));
 
     let ty = db.alloc_type(Type::Function(FunctionType {
+        generics: vec![generic],
         params: indexmap!["value".to_string() => any],
         nil_terminated: true,
         ret: generic,

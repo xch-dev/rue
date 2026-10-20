@@ -1,0 +1,25 @@
+fn takes_bytes32(value: Bytes32) -> Bytes32 {
+    value
+}
+
+fn apply<T>(pair: (T, fn(value: T) -> Bytes32)) -> Bytes32 {
+    pair.rest(pair.first)
+}
+
+fn call<T>(function: fn(value: T) -> T, value: T) -> T {
+    function(value)
+}
+
+fn call_generic<T>(function: fn<U>(value: U) -> U, value: T) -> T {
+    function(value)
+}
+
+fn main(value: Int) -> (Bytes32, (Bytes32, (Bytes32, Int))) {
+    (
+        apply((value, takes_bytes32)),
+        (
+            call(takes_bytes32, value),
+            (call(fn(value: Bytes32) => value, value), call_generic(takes_bytes32, value)),
+        ),
+    )
+}

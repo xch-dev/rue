@@ -1,0 +1,69 @@
+type Tree = Int | (Tree, Tree);
+type Chain = nil | (Int, Link);
+type Link = Chain;
+type Callback = fn(callback: Callback) -> Int;
+
+struct Node {
+    value: Int,
+    ...next: Node | nil,
+}
+
+type Nested<T> = T | (Nested<T>, Nested<T>);
+
+fn sum_tree(tree: Tree) -> Int {
+    if tree is Int {
+        return tree;
+    }
+
+    sum_tree(tree.first) + sum_tree(tree.rest)
+}
+
+fn sum_chain(chain: Chain) -> Int {
+    if chain is nil {
+        return 0;
+    }
+
+    chain.first + sum_chain(chain.rest)
+}
+
+fn sum_node(node: Node) -> Int {
+    if node.next is nil {
+        return node.value;
+    }
+
+    node.value + sum_node(node.next)
+}
+
+fn sum_list(list: List<Int>) -> Int {
+    if list is nil {
+        return 0;
+    }
+
+    list.first + sum_list(list.rest)
+}
+
+test fn tree() -> Int {
+    sum_tree(((1, 2), (3, 4)))
+}
+
+test fn chain() -> Int {
+    sum_chain([1, 2, 3])
+}
+
+test fn node() -> Int {
+    sum_node(Node { value: 1, next: Node { value: 2, next: nil } })
+}
+
+test fn list() -> Int {
+    sum_list([1, 2, 3, 4])
+}
+
+test fn nested() -> Nested<Int> {
+    let nested: Nested<Int> = ((1, 2), 3);
+    nested
+}
+
+test fn callback() -> Int {
+    let callback: Callback = fn(callback: Callback) => 42;
+    callback(callback)
+}

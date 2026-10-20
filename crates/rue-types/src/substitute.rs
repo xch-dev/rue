@@ -90,7 +90,15 @@ fn substitute_impl(
                 .map(|(name, id)| (name.clone(), substitute_impl(arena, *id, map, stack)))
                 .collect();
             let ret = substitute_impl(arena, function.ret, map, stack);
+            // Generics that have been substituted are no longer generic parameters
+            let generics = function
+                .generics
+                .iter()
+                .copied()
+                .filter(|generic| !map.contains_key(generic))
+                .collect();
             arena.alloc(Type::Function(FunctionType {
+                generics,
                 params,
                 ret,
                 ..function

@@ -3,8 +3,8 @@ use indexmap::IndexMap;
 use log::trace;
 
 use crate::{
-    Alias, BuiltinTypes, Comparison, Struct, Type, TypeId, Union, compare, stringify_impl,
-    substitute,
+    Alias, BuiltinTypes, Comparison, Struct, Type, TypeId, Union, compare,
+    reaches_non_contractive_cycle, stringify_impl, substitute,
 };
 
 pub fn subtract(
@@ -15,6 +15,12 @@ pub fn subtract(
 ) -> TypeId {
     let lhs_id = substitute(arena, lhs_id);
     let rhs_id = substitute(arena, rhs_id);
+
+    // These should be rejected before reaching this point, but they would recurse forever
+    if reaches_non_contractive_cycle(arena, lhs_id) {
+        return lhs_id;
+    }
+
     let lhs_name = stringify_impl(arena, lhs_id, &mut IndexMap::new());
     let rhs_name = stringify_impl(arena, rhs_id, &mut IndexMap::new());
     trace!("Subtracting {lhs_name} from {rhs_name}");

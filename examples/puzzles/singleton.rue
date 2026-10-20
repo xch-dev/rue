@@ -109,7 +109,7 @@ test fn tests() {
 
     let singleton = Singleton { mod_hash: tree_hash(main), launcher_id, launcher_puzzle_hash };
 
-    let inner_puzzle = fn(...solution: List<Condition>) => solution;
+    let inner_puzzle = fn(...solution: Any) => unchecked_cast::<List<Condition>>(solution);
 
     let proof = EveProof { parent_parent_coin_info, parent_amount: 0 };
 

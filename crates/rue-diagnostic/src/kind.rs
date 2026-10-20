@@ -52,6 +52,9 @@ pub enum DiagnosticKind {
     #[error("Duplicate type `{0}` found in scope")]
     DuplicateType(String),
 
+    #[error("Type `{0}` refers to itself without passing through a pair")]
+    NonContractiveType(String),
+
     #[error("Undeclared symbol `{0}`")]
     UndeclaredSymbol(String),
 
@@ -283,6 +286,7 @@ impl DiagnosticKind {
             | Self::InvalidExternalClvm(..)
             | Self::DuplicateSymbol(..)
             | Self::DuplicateType(..)
+            | Self::NonContractiveType(..)
             | Self::UndeclaredSymbol(..)
             | Self::UndeclaredType(..)
             | Self::ExpectedGenericArguments(..)

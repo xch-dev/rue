@@ -1,0 +1,30 @@
+type A = B;
+type B = A;
+
+type Loop = Loop | Int;
+
+struct Inner {
+    ...inner: Inner,
+}
+
+type Id<T> = T;
+type Applied = Id<Applied>;
+
+struct Wrapper<T> {
+    ...inner: T,
+}
+
+type Wrapped = Wrapper<Wrapped>;
+
+type Generic<T> = Generic<T> | nil;
+
+fn main(
+    a: A,
+    looped: Loop,
+    inner: Inner,
+    applied: Applied,
+    wrapped: Wrapped,
+    generic: Generic<Int>,
+) -> (A, (Loop, (Inner, (Applied, (Wrapped, Generic<Int>))))) {
+    (a, (looped, (inner, (applied, (wrapped, generic)))))
+}

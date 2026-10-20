@@ -18,7 +18,7 @@ use rue_hir::{
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
-use rue_types::{Check, CheckError, Comparison, Type, TypeId};
+use rue_types::{Check, CheckError, Comparison, Inference, Type, TypeId};
 
 use crate::{FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 
@@ -381,11 +381,11 @@ impl Compiler {
     }
 
     pub fn assign_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
-        self.compare_type(node, from, to, false, None);
+        self.compare_type(node, from, to, false);
     }
 
     pub fn cast_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) {
-        self.compare_type(node, from, to, true, None);
+        self.compare_type(node, from, to, true);
     }
 
     pub fn guard_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId) -> Constraint {
@@ -425,31 +425,24 @@ impl Compiler {
         }
     }
 
-    pub fn infer_type(
-        &mut self,
-        node: &impl GetTextRange,
-        from: TypeId,
-        to: TypeId,
-        infer: &mut HashMap<TypeId, Vec<TypeId>>,
-    ) {
-        self.compare_type(node, from, to, false, Some(infer));
-    }
-
-    fn compare_type(
-        &mut self,
-        node: &impl GetTextRange,
-        from: TypeId,
-        to: TypeId,
-        cast: bool,
-        infer: Option<&mut HashMap<TypeId, Vec<TypeId>>>,
-    ) {
-        let comparison = rue_types::compare_with_inference(
+    /// Collects inference candidates for the generics in `to`, without reporting diagnostics.
+    /// The value must be checked against the substituted type afterward.
+    pub fn infer_type(&mut self, from: TypeId, to: TypeId, infer: &mut Inference) {
+        rue_types::compare_with_inference(
             self.db.types_mut(),
             &self.builtins.types,
             from,
             to,
-            infer,
+            Some(infer),
         );
+    }
+
+    pub fn resolve_inference(&mut self, infer: &Inference) -> HashMap<TypeId, TypeId> {
+        rue_types::resolve_inference(self.db.types_mut(), &self.builtins.types, infer)
+    }
+
+    fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
+        let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
 
         match comparison {
             Comparison::Assign => {

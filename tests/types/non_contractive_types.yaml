@@ -1,0 +1,7 @@
+diagnostics:
+- Type `B` refers to itself without passing through a pair at non_contractive_types.rue:2:6
+- Type `Loop` refers to itself without passing through a pair at non_contractive_types.rue:4:6
+- Type `Inner` refers to itself without passing through a pair at non_contractive_types.rue:6:8
+- Type `Applied` refers to itself without passing through a pair at non_contractive_types.rue:11:6
+- Type `Wrapped` refers to itself without passing through a pair at non_contractive_types.rue:17:6
+- Type `Generic` refers to itself without passing through a pair at non_contractive_types.rue:19:6

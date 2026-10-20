@@ -1,6 +1,7 @@
 mod builtins;
 mod check;
 mod compare;
+mod contractive;
 mod extractors;
 mod stringify;
 mod substitute;
@@ -11,9 +12,13 @@ mod unwrap;
 pub use builtins::*;
 pub use check::*;
 pub use compare::*;
+pub use contractive::*;
 pub use extractors::*;
 pub use stringify::*;
 pub use substitute::*;
 pub use subtract::*;
 pub use types::*;
 pub use unwrap::*;
+
+#[cfg(test)]
+mod tests;

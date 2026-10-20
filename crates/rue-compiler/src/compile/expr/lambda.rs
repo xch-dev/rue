@@ -101,6 +101,7 @@ pub fn compile_lambda_expr(
     let return_type = return_type.unwrap_or(body.ty);
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
+        generics: vars.clone(),
         params,
         nil_terminated,
         ret: return_type,
