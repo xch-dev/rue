@@ -9,7 +9,7 @@ use sha3::Keccak256;
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
     optimize::{ArgList, opt_truthy},
-    parent_path, rest_path,
+    rest_path,
 };
 
 // There's no way to optimize an atom
@@ -86,17 +86,9 @@ pub fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 }
 
 // TODO: Optimize pair of div and mod into divmod
+// Note that `(c (f X) (r X))` can't be simplified to `X`, since that would discard
+// the implicit check that `X` is a pair, and accept atoms that should've failed
 pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
-    if let Lir::Path(f_path) = arena[first].clone()
-        && let Lir::Path(r_path) = arena[rest].clone()
-        && let Some(parent) = parent_path(&f_path)
-        && parent_path(&r_path).as_ref() == Some(&parent)
-        && first_path(&parent) == f_path
-        && rest_path(&parent) == r_path
-    {
-        return arena.alloc(Lir::Path(parent));
-    }
-
     arena.alloc(Lir::Cons(first, rest))
 }
 

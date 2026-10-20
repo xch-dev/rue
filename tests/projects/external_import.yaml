@@ -21,9 +21,9 @@ tests:
   byte_cost: 372000
   total_cost: 373146
 - name: external_tree_hash
-  program: (a (q 2 4 2) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (q 16 2 5)) ()))
+  program: (a (q 2 4 (c 4 6)) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (q 16 2 5)) ()))
   debug_program: (a (q 2 4 (c 4 6)) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (c (q . 16) (c (q . 2) (c (q . 5) ())))) ()))
   output: '0x19c7b1ed29e8f501f6985cd6addd3b6e5bd7ccc251f1a4018550837b3006239b'
-  runtime_cost: 10037
-  byte_cost: 1212000
-  total_cost: 1222037
+  runtime_cost: 10144
+  byte_cost: 1284000
+  total_cost: 1294144
