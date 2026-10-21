@@ -13,7 +13,7 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, ImportId, Mappings, Scope, ScopeId, Symbol,
+    Builtins, Constraint, Database, Declaration, HirId, ImportId, Mappings, Scope, ScopeId, Symbol,
     SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
 use rue_options::CompilerOptions;
@@ -39,6 +39,17 @@ pub struct Compiler {
     external_programs: HashMap<PathBuf, Vec<u8>>,
     return_stack: Vec<(Option<ReturnTarget>, usize)>,
     return_count: usize,
+    inline_ifs: Vec<(SrcLoc, InlineIf)>,
+}
+
+/// An `inline if` whose branches need to be checked once every function has been compiled.
+#[derive(Debug, Clone, Copy)]
+pub enum InlineIf {
+    /// An `inline if` expression, which is the given [`Hir::If`](rue_hir::Hir::If).
+    Expr(HirId),
+    /// An `inline if` statement, at the given index in the statements of a
+    /// [`Hir::Block`](rue_hir::Hir::Block). The rest of the block is its else branch.
+    Statement(HirId, usize),
 }
 
 /// The function or lambda body that a `return` statement exits from.
@@ -86,6 +97,7 @@ impl Compiler {
             external_programs: HashMap::new(),
             return_stack: Vec::new(),
             return_count: 0,
+            inline_ifs: Vec::new(),
         };
 
         if options.std {
@@ -414,6 +426,14 @@ impl Compiler {
 
     pub fn increment_return_count(&mut self) {
         self.return_count += 1;
+    }
+
+    pub fn add_inline_if(&mut self, srcloc: SrcLoc, inline_if: InlineIf) {
+        self.inline_ifs.push((srcloc, inline_if));
+    }
+
+    pub fn take_inline_ifs(&mut self) -> Vec<(SrcLoc, InlineIf)> {
+        mem::take(&mut self.inline_ifs)
     }
 
     pub fn mapping_checkpoint(&self) -> usize {
