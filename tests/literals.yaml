@@ -69,3 +69,24 @@ tests:
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
+- name: hex_odd_length
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: hex_odd_length_padded
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: hex_odd_length_param
+  program: (= (q . 291) (q . 291))
+  debug_program: (a (q 2 2 (q . 291)) (c (q 9 1 (q . 291)) ()))
+  output: '1'
+  runtime_cost: 162
+  byte_cost: 180000
+  total_cost: 180162

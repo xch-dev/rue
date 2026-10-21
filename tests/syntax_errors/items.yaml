@@ -1,0 +1,14 @@
+diagnostics:
+- Expected item, found `let` at items.rue:1:1
+- Expected `:`, found identifier at items.rue:3:18
+- Expected `}`, found `fn` at items.rue:10:1
+- Expected one of `,`, `)`, found `-` at items.rue:10:29
+- Expected one of `=`, `,`, `}`, found identifier at items.rue:16:5
+- Expected item, found `}` at items.rue:19:1
+- Expected type, found `=` at items.rue:21:14
+- Block does not return a value at items.rue:7:32
+- Cannot assign `nil` to `Int` without a cast, since they are semantically different at items.rue:7:32
+- Unknown field `y` on type `Point` at items.rue:24:31
+- Unknown field `y` on type `Point` at items.rue:25:24
+- Unused function `unclosed` at items.rue:7:4
+- Unused binding `doubled` at items.rue:8:9

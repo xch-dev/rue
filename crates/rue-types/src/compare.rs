@@ -5,10 +5,11 @@ use std::{
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
-use log::{debug, trace};
+use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, Type, TypeId, Union, stringify_impl, substitute,
+    AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, stringify_impl,
+    substitute,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -62,10 +63,12 @@ impl Inference {
     }
 }
 
+type ComparisonKey = (TypeId, TypeId, bool);
+
 #[derive(Debug, Default)]
 pub(crate) struct ComparisonContext<'a> {
     infer: Option<&'a mut Inference>,
-    stack: IndexSet<(TypeId, TypeId, bool)>,
+    stack: IndexSet<ComparisonKey>,
     /// The indices in `stack` of comparisons between pairs or functions. A cycle is only
     /// coinductively assignable if it passes through one of these, since otherwise the
     /// recursion isn't bounded by the structure of the value.
@@ -79,6 +82,10 @@ pub(crate) struct ComparisonContext<'a> {
     /// maps to the value of `flipped` in which it's on the right hand side, and the bounds that
     /// have been collected for it. The bounds are checked against each other afterward.
     instances: IndexMap<TypeId, (bool, InferenceCandidates)>,
+    /// The number of inference candidates that have been collected.
+    candidates: usize,
+    /// Completed comparisons, keyed by the comparison and the semantics passed down to it.
+    memo: Memo<ComparisonKey, (ComparisonKey, Option<TypeId>, Option<TypeId>), Comparison>,
 }
 
 impl ComparisonContext<'_> {
@@ -98,9 +105,17 @@ pub fn compare_with_inference(
 ) -> Comparison {
     let lhs = substitute(arena, lhs);
     let rhs = substitute(arena, rhs);
-    let lhs_name = stringify_impl(arena, lhs, &mut IndexMap::new());
-    let rhs_name = stringify_impl(arena, rhs, &mut IndexMap::new());
-    trace!("Comparing {lhs_name} to {rhs_name}");
+    let names = log_enabled!(Level::Trace).then(|| {
+        (
+            stringify_impl(arena, lhs, &mut IndexMap::new()),
+            stringify_impl(arena, rhs, &mut IndexMap::new()),
+        )
+    });
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        trace!("Comparing {lhs_name} to {rhs_name}");
+    }
+
     let result = compare_impl(
         arena,
         builtins,
@@ -113,7 +128,11 @@ pub fn compare_with_inference(
         None,
         None,
     );
-    trace!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        trace!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
+    }
+
     result
 }
 
@@ -138,10 +157,27 @@ pub fn resolve_inference(
     let mut mappings = HashMap::new();
 
     for (&generic, candidates) in &infer.generics {
-        let ty = if candidates.lower.len() == 1 {
-            candidates.lower[0]
-        } else if !candidates.lower.is_empty() {
-            arena.alloc(Type::Union(Union::new(candidates.lower.clone())))
+        let ty = if !candidates.lower.is_empty() {
+            // Literals are widened to their base type, so that `pick(1, 2)` infers `Int` and a
+            // lambda whose parameter type comes from `T` can accept more than the one literal.
+            // This is only done if the widened type still satisfies every upper bound, since
+            // otherwise something like `fn(x: 5) -> Int` couldn't be passed to `fn(x: T) -> Int`.
+            let widened: Vec<TypeId> = candidates
+                .lower
+                .iter()
+                .map(|&ty| widen_literal(arena, builtins, ty))
+                .collect();
+            let widened = union_of(arena, widened);
+
+            if candidates
+                .upper
+                .iter()
+                .all(|&upper| compare(arena, builtins, widened, upper) == Comparison::Assign)
+            {
+                widened
+            } else {
+                union_of(arena, candidates.lower.clone())
+            }
         } else if let Some(&first) = candidates.upper.first() {
             // Pick the most specific upper bound, if there is one
             candidates
@@ -166,6 +202,47 @@ pub fn resolve_inference(
     mappings
 }
 
+fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = TypeId>) -> TypeId {
+    let types: IndexSet<TypeId> = types.into_iter().collect();
+
+    if types.len() == 1 {
+        types[0]
+    } else {
+        arena.alloc(Type::Union(Union::new(types.into_iter().collect())))
+    }
+}
+
+/// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`.
+fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -> TypeId {
+    let Type::Atom(atom) = &arena[ty] else {
+        return ty;
+    };
+
+    let Some(AtomRestriction::Value(value)) = &atom.restriction else {
+        return ty;
+    };
+
+    let widened = match (atom.semantic, value.len()) {
+        // `nil` is kept as is, since it's commonly used to represent the absence of a value
+        // (for example, `T | nil`), and widening it to `Bytes` would lose that
+        (AtomSemantic::Bytes, 0) => return ty,
+        (AtomSemantic::Bytes, 32) => builtins.bytes32,
+        (AtomSemantic::Bytes, _) => builtins.bytes,
+        (AtomSemantic::String, _) => builtins.string,
+        (AtomSemantic::Int, _) => builtins.int,
+        (AtomSemantic::Bool, _) => builtins.bool,
+        (AtomSemantic::PublicKey, 48) => builtins.public_key,
+        (AtomSemantic::Signature, 96) => builtins.signature,
+        _ => return ty,
+    };
+
+    if compare(arena, builtins, ty, widened) == Comparison::Assign {
+        widened
+    } else {
+        ty
+    }
+}
+
 pub(crate) fn compare_impl(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
@@ -178,6 +255,8 @@ pub(crate) fn compare_impl(
     let key = (lhs, rhs, ctx.flipped);
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
+        ctx.memo.reached(index);
+
         // Revisiting a comparison is only sound to treat as assignable if we've passed through
         // a pair or function since, otherwise a non-contractive type like `type A = B; type B = A;`
         // would be assignable to anything. Those should be rejected before reaching this point.
@@ -187,6 +266,22 @@ pub(crate) fn compare_impl(
             Comparison::Invalid
         };
     }
+
+    // Generics that are being instantiated are compared differently and collect bounds as a side
+    // effect, so results are only memoized while there aren't any
+    let memo_key = ctx
+        .instances
+        .is_empty()
+        .then_some((key, lhs_semantic, rhs_semantic));
+
+    if let Some(memo_key) = &memo_key
+        && let Some(result) = ctx.memo.get(memo_key, ctx.stack.iter().copied())
+    {
+        return result;
+    }
+
+    let frame = ctx.memo.enter(ctx.stack.len());
+    let candidates = ctx.candidates;
 
     ctx.stack.insert(key);
 
@@ -353,6 +448,7 @@ pub(crate) fn compare_impl(
             );
             let infer = ctx.infer.as_mut().unwrap();
             infer.candidates_mut(lhs).upper.push(rhs);
+            ctx.candidates += 1;
             Comparison::Assign
         }
         (_, Type::Generic(_)) if !ctx.flipped && ctx.is_target(rhs) => {
@@ -363,10 +459,11 @@ pub(crate) fn compare_impl(
             );
             let infer = ctx.infer.as_mut().unwrap();
             infer.candidates_mut(rhs).lower.push(lhs);
+            ctx.candidates += 1;
             Comparison::Assign
         }
-        (_, Type::Generic(_)) => {
-            if let Type::Union(lhs) = arena[lhs].clone() {
+        (_, Type::Generic(_)) => match arena[lhs].clone() {
+            Type::Union(lhs) => {
                 let mut result = Comparison::Assign;
 
                 for &id in &lhs.types {
@@ -377,10 +474,18 @@ pub(crate) fn compare_impl(
                 }
 
                 result
-            } else {
-                Comparison::Invalid
             }
-        }
+            Type::Alias(lhs) => compare_impl(
+                arena,
+                builtins,
+                ctx,
+                lhs.inner,
+                rhs,
+                lhs_semantic,
+                rhs_semantic,
+            ),
+            _ => Comparison::Invalid,
+        },
         (Type::Struct(lhs), Type::Struct(rhs)) => max(
             compare_impl(arena, builtins, ctx, lhs.inner, rhs.inner, None, None),
             if lhs.semantic == rhs.semantic {
@@ -452,6 +557,36 @@ pub(crate) fn compare_impl(
             lhs_semantic,
             rhs_semantic,
         ),
+        (Type::Generic(_), Type::Union(rhs_union)) => {
+            // A generic is opaque, so it can only be assigned to a union if it's assignable to
+            // one of the members (such as `T` to `T | nil`). Otherwise, fall back to whatever
+            // the generic could be at runtime, as with any other type.
+            let mut result = Comparison::Invalid;
+
+            for &id in &rhs_union.types {
+                result = min(
+                    result,
+                    compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
+                );
+            }
+
+            if result == Comparison::Assign {
+                result
+            } else {
+                min(
+                    result,
+                    compare_impl(
+                        arena,
+                        builtins,
+                        ctx,
+                        builtins.recursive_any,
+                        rhs,
+                        lhs_semantic,
+                        rhs_semantic,
+                    ),
+                )
+            }
+        }
         (Type::Generic(_) | Type::Any, _) => compare_impl(
             arena,
             builtins,
@@ -519,6 +654,11 @@ pub(crate) fn compare_impl(
     };
 
     ctx.stack.pop().unwrap();
+
+    // Inference candidates are collected as a side effect of comparing, so a comparison that
+    // collected any can't be skipped
+    let memo_key = memo_key.filter(|_| ctx.candidates == candidates);
+    ctx.memo.exit(frame, key, memo_key, result);
 
     result
 }

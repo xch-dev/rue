@@ -2,11 +2,11 @@ use std::cmp::max;
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet, indexset};
-use log::trace;
+use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Pair, Type, TypeId,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Memo, Pair, Type, TypeId,
     compare_impl, reaches_non_contractive_cycle, stringify_impl, substitute,
 };
 
@@ -176,11 +176,6 @@ pub enum CheckError {
     GenericType,
 }
 
-#[derive(Debug)]
-struct CheckContext {
-    depth: usize,
-}
-
 pub fn check(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -195,35 +190,47 @@ pub fn check(
         return Err(CheckError::DepthExceeded);
     }
 
-    let lhs_name = stringify_impl(arena, lhs, &mut IndexMap::new());
-    let rhs_name = stringify_impl(arena, rhs, &mut IndexMap::new());
-    trace!("Checking {lhs_name} to {rhs_name}");
-    let result = check_impl(arena, builtins, &mut CheckContext { depth: 0 }, lhs, rhs);
-    trace!("Check from {lhs_name} to {rhs_name} yielded {result:?}");
+    let names = log_enabled!(Level::Trace).then(|| {
+        (
+            stringify_impl(arena, lhs, &mut IndexMap::new()),
+            stringify_impl(arena, rhs, &mut IndexMap::new()),
+        )
+    });
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        trace!("Checking {lhs_name} to {rhs_name}");
+    }
+
+    let result = check_impl(arena, builtins, 0, lhs, rhs);
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        trace!("Check from {lhs_name} to {rhs_name} yielded {result:?}");
+    }
+
     result
 }
 
 fn check_impl(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
-    ctx: &mut CheckContext,
+    depth: usize,
     lhs: TypeId,
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
     let variants = variants_of(arena, builtins, lhs);
-    check_each(arena, builtins, ctx, &variants, rhs)
+    check_each(arena, builtins, depth, &variants, rhs)
 }
 
 fn check_each(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
-    ctx: &mut CheckContext,
+    depth: usize,
     lhs: &[TypeId],
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
-    ctx.depth += 1;
+    let depth = depth + 1;
 
-    if ctx.depth > 25 {
+    if depth > 25 {
         return Err(CheckError::DepthExceeded);
     }
 
@@ -369,7 +376,7 @@ fn check_each(
         // whose first could pass the first check (not just those whose first is assignable to the
         // target's first). Each check in the resulting union is therefore exact for every pair.
         for target_pair in &target_pairs {
-            let first = check_each(arena, builtins, ctx, &firsts, target_pair.first)?;
+            let first = check_each(arena, builtins, depth, &firsts, target_pair.first)?;
 
             if first == Check::Impossible {
                 continue;
@@ -384,6 +391,7 @@ fn check_each(
                         pair.first,
                         target_pair.first,
                         &mut IndexSet::new(),
+                        &mut Memo::default(),
                     )
                 })
                 .map(|pair| pair.rest)
@@ -393,7 +401,7 @@ fn check_each(
                 continue;
             }
 
-            let rest = check_each(arena, builtins, ctx, &rests, target_pair.rest)?;
+            let rest = check_each(arena, builtins, depth, &rests, target_pair.rest)?;
 
             checks.push(Check::Pair(Box::new(first), Box::new(rest)));
         }
@@ -544,10 +552,19 @@ fn may_overlap(
     lhs: TypeId,
     rhs: TypeId,
     stack: &mut IndexSet<(TypeId, TypeId)>,
+    memo: &mut Memo<(TypeId, TypeId), (TypeId, TypeId, usize), bool>,
 ) -> bool {
-    if stack.len() > 25 || !stack.insert((lhs, rhs)) {
+    if stack.len() > 25 {
         return true;
     }
+
+    if let Some(index) = stack.get_index_of(&(lhs, rhs)) {
+        memo.reached(index);
+        return true;
+    }
+
+    let item = (lhs, rhs);
+    stack.insert(item);
 
     let rhs_variants = variants_of(arena, builtins, rhs);
 
@@ -572,9 +589,30 @@ fn may_overlap(
                         Some(AtomRestriction::Value(value)),
                     ) => value.len() == *length,
                 },
-                (Type::Pair(lhs), Type::Pair(rhs)) => {
-                    may_overlap(arena, builtins, lhs.first, rhs.first, stack)
-                        && may_overlap(arena, builtins, lhs.rest, rhs.rest, stack)
+                (Type::Pair(lhs_pair), Type::Pair(rhs_pair)) => {
+                    // The pairs are cached rather than the types they came from, since each
+                    // reference to a type (such as `T` in `(T, T)`) is a distinct alias of it.
+                    // This depends on the depth, since overlap is assumed past a certain depth.
+                    let key = (lhs, rhs, stack.len());
+
+                    if let Some(result) = memo.get(&key, stack.iter().copied()) {
+                        return result;
+                    }
+
+                    let frame = memo.enter(stack.len());
+                    let result =
+                        may_overlap(arena, builtins, lhs_pair.first, rhs_pair.first, stack, memo)
+                            && may_overlap(
+                                arena,
+                                builtins,
+                                lhs_pair.rest,
+                                rhs_pair.rest,
+                                stack,
+                                memo,
+                            );
+                    memo.exit(frame, item, Some(key), result);
+
+                    result
                 }
                 (Type::Atom(_), Type::Pair(_)) | (Type::Pair(_), Type::Atom(_)) => false,
                 _ => true,

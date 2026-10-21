@@ -1,0 +1,47 @@
+test fn mul_one(value: Int) -> Bool {
+    value * 1 == 1
+}
+
+test fn one_mul(value: Int) -> Bool {
+    1 * value == 1
+}
+
+test fn mul_nested_one(value: Int) -> Bool {
+    value * 2 * 1 == 2
+}
+
+test fn add_zero(value: Int) -> Bool {
+    value + 0 == 1
+}
+
+test fn sub_zero(value: Int) -> Bool {
+    value - 0 == 1
+}
+
+test fn double_negation(value: Int) -> Bool {
+    -(-value) == 1
+}
+
+test fn div_one(value: Int) -> Bool {
+    value / 1 == 1
+}
+
+test fn and_minus_one(value: Int) -> Bool {
+    value & -1 == 1
+}
+
+test fn or_zero(value: Int) -> Bool {
+    value | 0 == 1
+}
+
+test fn xor_zero(value: Int) -> Bool {
+    value ^ 0 == 1
+}
+
+test fn shift_left_zero(value: Int) -> Bool {
+    value << 0 == 1
+}
+
+test fn shift_right_zero(value: Int) -> Bool {
+    value >> 0 == 1
+}

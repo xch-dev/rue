@@ -1,15 +1,9 @@
-use std::{borrow::Cow, str::FromStr};
-
 use log::debug;
-use num_bigint::BigInt;
-use num_traits::Num;
 use rue_ast::AstLiteralExpr;
 use rue_hir::{Hir, Value};
-use rue_lir::bigint_atom;
-use rue_parser::{SyntaxKind, T};
-use rue_types::{Atom, AtomRestriction, AtomSemantic, Type};
+use rue_types::Type;
 
-use crate::Compiler;
+use crate::{Compiler, LiteralValue};
 
 pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value {
     let Some(value) = expr.value() else {
@@ -17,118 +11,18 @@ pub fn compile_literal_expr(ctx: &mut Compiler, expr: &AstLiteralExpr) -> Value 
         return ctx.builtins().unresolved.clone();
     };
 
-    match value.kind() {
-        SyntaxKind::String => {
-            let mut text = value.text();
+    let value = LiteralValue::decode(&value);
 
-            if let Some(stripped) = text.strip_prefix('"') {
-                text = stripped;
-            }
+    let hir = match &value {
+        LiteralValue::String(value) => Hir::String(value.clone()),
+        LiteralValue::Bytes(bytes) => Hir::Bytes(bytes.clone()),
+        LiteralValue::Int(value) => Hir::Int(value.clone()),
+        LiteralValue::Nil => return ctx.builtins().nil.clone(),
+        LiteralValue::True => return ctx.builtins().true_value.clone(),
+        LiteralValue::False => return ctx.builtins().false_value.clone(),
+    };
 
-            if let Some(stripped) = text.strip_suffix('"') {
-                text = stripped;
-            }
+    let ty = ctx.alloc_type(Type::Atom(value.atom()));
 
-            let hir = ctx.alloc_hir(Hir::String(text.to_string()));
-            let ty = ctx.alloc_type(Type::Atom(Atom::new(
-                AtomSemantic::String,
-                Some(AtomRestriction::Value(Cow::Owned(text.as_bytes().to_vec()))),
-            )));
-            Value::new(hir, ty)
-        }
-        SyntaxKind::Hex => {
-            let mut text = value.text();
-
-            if let Some(stripped) = text.strip_prefix("0x") {
-                text = stripped;
-            }
-
-            let mut text = text.replace('_', "");
-
-            if text.len() % 2 == 1 {
-                text.insert(0, '0');
-            }
-
-            let bytes = hex::decode(text).unwrap();
-            let ty = ctx.alloc_type(Type::Atom(if bytes.is_empty() {
-                Atom::NIL
-            } else {
-                Atom::new(
-                    if bytes.len() == 48 {
-                        AtomSemantic::PublicKey
-                    } else if bytes.len() == 96 {
-                        AtomSemantic::Signature
-                    } else {
-                        AtomSemantic::Bytes
-                    },
-                    Some(AtomRestriction::Value(Cow::Owned(bytes.clone()))),
-                )
-            }));
-
-            Value::new(ctx.alloc_hir(Hir::Bytes(bytes)), ty)
-        }
-        SyntaxKind::Binary => {
-            let mut text = value.text();
-
-            if let Some(stripped) = text.strip_prefix("0b") {
-                text = stripped;
-            }
-
-            let text = text.replace('_', "");
-
-            let bigint = if text.is_empty() {
-                BigInt::ZERO
-            } else {
-                BigInt::from_str_radix(&text, 2).expect("invalid binary literal")
-            };
-
-            let ty = ctx.alloc_type(Type::Atom(Atom::new(
-                AtomSemantic::Int,
-                Some(AtomRestriction::Value(Cow::Owned(bigint_atom(
-                    bigint.clone(),
-                )))),
-            )));
-
-            Value::new(ctx.alloc_hir(Hir::Int(bigint)), ty)
-        }
-        SyntaxKind::Octal => {
-            let mut text = value.text();
-
-            if let Some(stripped) = text.strip_prefix("0o") {
-                text = stripped;
-            }
-
-            let text = text.replace('_', "");
-
-            let bigint = if text.is_empty() {
-                BigInt::ZERO
-            } else {
-                BigInt::from_str_radix(&text, 8).expect("invalid octal literal")
-            };
-
-            let ty = ctx.alloc_type(Type::Atom(Atom::new(
-                AtomSemantic::Int,
-                Some(AtomRestriction::Value(Cow::Owned(bigint_atom(
-                    bigint.clone(),
-                )))),
-            )));
-
-            Value::new(ctx.alloc_hir(Hir::Int(bigint)), ty)
-        }
-        SyntaxKind::Integer => {
-            let text = value.text().replace('_', "");
-
-            let num = BigInt::from_str(&text).unwrap();
-            let ty = ctx.alloc_type(Type::Atom(Atom::new(
-                AtomSemantic::Int,
-                Some(AtomRestriction::Value(Cow::Owned(bigint_atom(num.clone())))),
-            )));
-
-            Value::new(ctx.alloc_hir(Hir::Int(num)), ty)
-        }
-        T![nil] => ctx.builtins().nil.clone(),
-        T![true] => ctx.builtins().true_value.clone(),
-        T![false] => ctx.builtins().false_value.clone(),
-        _ => unreachable!(),
-    }
+    Value::new(ctx.alloc_hir(hir), ty)
 }

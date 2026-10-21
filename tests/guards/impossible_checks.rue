@@ -9,3 +9,9 @@ test fn guard_any(value: Any) -> Bool {
 test fn guard_list(value: List<Bytes>) -> Bool {
     value is List<Bytes32>
 }
+
+type Tree = nil | (Tree, Tree);
+
+test fn guard_tree(value: Any) -> Bool {
+    value is Tree
+}
