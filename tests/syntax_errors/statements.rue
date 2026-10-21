@@ -1,0 +1,37 @@
+test fn missing_semicolon() -> Int {
+    let a = 1
+    let b = a + 2;
+    b
+}
+
+test fn missing_expression() -> Int {
+    let a = ;
+    let b = 1 + ;
+    a + b
+}
+
+test fn garbage_in_expression() -> Int {
+    let a = => 1;
+    let b = 1 2 3;
+    a + b
+}
+
+test fn stray_delimiters() -> Int {
+    let a = 1;
+    a);
+    ];
+    a
+}
+
+test fn stray_else() -> Int {
+    if true {
+        1
+    else {
+        2
+    }
+}
+
+test fn still_works() -> Int {
+    let value = 42;
+    value
+}

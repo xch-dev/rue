@@ -1,0 +1,26 @@
+let stray = 1;
+
+fn add(a: Int, b Int) -> Int {
+    a + b
+}
+
+fn unclosed(value: Int) -> Int {
+    let doubled = value * 2;
+
+fn missing_paren(value: Int -> Int {
+    value
+}
+
+struct Point {
+    x: Int
+    y: Int,
+}
+
+}
+
+const VALUE: = 42;
+
+test fn uses_items() -> Int {
+    let point = Point { x: 1, y: 2 };
+    add(point.x, point.y) + missing_paren(VALUE)
+}

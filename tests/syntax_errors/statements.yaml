@@ -1,0 +1,15 @@
+diagnostics:
+- Expected `;`, found `let` at statements.rue:3:5
+- Expected expression, found `;` at statements.rue:8:13
+- Expected expression, found `;` at statements.rue:9:17
+- Expected expression, found `=` at statements.rue:14:13
+- Expected `;`, found integer literal at statements.rue:15:15
+- Expected one of `;`, `}`, found `)` at statements.rue:21:6
+- Expected one of `;`, `}`, found `else` at statements.rue:29:5
+- Expected one of `else`, `}`, found `test` at statements.rue:34:1
+- Let bindings must have a value, since they cannot be reassigned at statements.rue:8:5
+- Let bindings must have a value, since they cannot be reassigned at statements.rue:14:5
+- Condition always evaluates to `true` at statements.rue:27:8
+- Expected statement block to end in `return` or `raise`, not an expression at statements.rue:28:9
+- Block does not return a value at statements.rue:26:29
+- Cannot assign `nil` to `Int` without a cast, since they are semantically different at statements.rue:26:29

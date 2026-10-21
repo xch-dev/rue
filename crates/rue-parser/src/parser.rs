@@ -26,6 +26,7 @@ pub struct Parser {
     pos: usize,
     expected: IndexSet<String>,
     last_error_pos: Option<usize>,
+    recovering: bool,
     diagnostics: Vec<Diagnostic>,
     builder: GreenNodeBuilder<'static>,
 }
@@ -162,6 +163,7 @@ impl Parser {
             pos: 0,
             expected: IndexSet::new(),
             last_error_pos,
+            recovering: false,
             diagnostics,
             builder: GreenNodeBuilder::new(),
         }
@@ -382,13 +384,15 @@ impl Parser {
         self.push_error(kind);
     }
 
-    /// Only one syntax error is reported per token, since once there's an error at a given
-    /// position any subsequent errors at the same position are just noise.
+    /// After an error, any further errors are suppressed until a token has been successfully
+    /// parsed, since they're almost always caused by the first error rather than being new
+    /// mistakes. For the same reason, only one error is reported per token.
     fn push_error(&mut self, kind: DiagnosticKind) {
-        if self.last_error_pos == Some(self.pos) {
+        if self.recovering || self.last_error_pos == Some(self.pos) {
             return;
         }
 
+        self.recovering = true;
         self.last_error_pos = Some(self.pos);
 
         let len = self.source.text.len();
@@ -425,6 +429,10 @@ impl Parser {
 
     fn bump(&mut self, kind: SyntaxKind) {
         self.expected.clear();
+
+        if !kind.is_trivia() {
+            self.recovering = false;
+        }
 
         let len = kind.split().len();
 

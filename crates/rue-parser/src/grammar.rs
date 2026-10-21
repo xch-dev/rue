@@ -62,6 +62,22 @@ pub(crate) fn recover(p: &mut Parser, name: &str, stops: &[SyntaxKind]) {
     skip_until(p, stops);
 }
 
+/// Expects a semicolon at the end of a statement or item. If it's missing and the next token is
+/// on the same line, the rest of the line up to the semicolon is likely garbage, so it's skipped
+/// rather than being parsed as the next statement and reported a second time.
+pub(crate) fn expect_semicolon(p: &mut Parser) {
+    if p.expect(T![;]) || p.at_line_start() {
+        return;
+    }
+
+    // Unlike other recovery points, commas don't end a statement
+    skip_balanced(p, |p| {
+        p.at_any_quiet(&[T![;], T![')'], T![']'], T!['}']]).is_some()
+            || p.at_any_quiet(STATEMENT_KEYWORDS).is_some()
+    });
+    p.try_eat(T![;]);
+}
+
 /// Reports an unexpected token error, then skips tokens until the next recovery point.
 pub(crate) fn skip_unexpected(p: &mut Parser) {
     p.error_unexpected();
@@ -152,7 +168,10 @@ pub(crate) fn delimited_list_with_stops(
         }
     }
 
-    p.expect(close);
+    // The missing closing delimiter is most likely caused by the error that was already reported
+    if !p.try_eat(close) && !reported {
+        p.expect(close);
+    }
 }
 
 #[cfg(test)]

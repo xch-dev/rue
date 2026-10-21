@@ -4,6 +4,7 @@ use crate::{
     Parser, SyntaxKind, T,
     grammar::{
         binding::binding,
+        expect_semicolon,
         expr::{ExprOptions, expr, expr_with},
         ty::ty,
     },
@@ -66,7 +67,7 @@ fn let_stmt(p: &mut Parser, cp: Checkpoint) {
     if p.try_eat(T![=]) {
         expr(p);
     }
-    p.expect(T![;]);
+    expect_semicolon(p);
     p.finish();
 }
 
@@ -76,7 +77,7 @@ fn return_stmt(p: &mut Parser) {
     if !p.at(T![;]) {
         expr(p);
     }
-    p.expect(T![;]);
+    expect_semicolon(p);
     p.finish();
 }
 
@@ -84,7 +85,7 @@ fn assert_stmt(p: &mut Parser) {
     p.start(SyntaxKind::AssertStmt);
     p.expect(T![assert]);
     expr(p);
-    p.expect(T![;]);
+    expect_semicolon(p);
     p.finish();
 }
 
@@ -94,7 +95,7 @@ fn raise_stmt(p: &mut Parser) {
     if !p.at(T![;]) {
         expr(p);
     }
-    p.expect(T![;]);
+    expect_semicolon(p);
     p.finish();
 }
 
@@ -102,7 +103,7 @@ fn debug_stmt(p: &mut Parser) {
     p.start(SyntaxKind::DebugStmt);
     p.expect(T![debug]);
     expr(p);
-    p.expect(T![;]);
+    expect_semicolon(p);
     p.finish();
 }
 
@@ -318,7 +319,9 @@ mod tests {
     #[test]
     fn test_let_stmt_without_value() {
         check(
-            |p| { let _ = stmt(p); },
+            |p| {
+                let _ = stmt(p);
+            },
             "let x: Int;",
             expect![[r#"
                 LetStmt@0..11
@@ -340,7 +343,9 @@ mod tests {
     #[test]
     fn test_inline_let_stmt() {
         check(
-            |p| { let _ = stmt(p); },
+            |p| {
+                let _ = stmt(p);
+            },
             "inline let x = 5;",
             expect![[r#"
                 LetStmt@0..17
@@ -364,7 +369,9 @@ mod tests {
     #[test]
     fn test_let_stmt_destructuring() {
         check(
-            |p| { let _ = stmt(p); },
+            |p| {
+                let _ = stmt(p);
+            },
             "let (a, b) = pair;",
             expect![[r#"
                 LetStmt@0..18
@@ -391,7 +398,9 @@ mod tests {
         );
 
         check(
-            |p| { let _ = stmt(p); },
+            |p| {
+                let _ = stmt(p);
+            },
             "let { x, y } = point;",
             expect![[r#"
                 LetStmt@0..21
@@ -423,7 +432,9 @@ mod tests {
     #[test]
     fn test_return_stmt_without_value() {
         check(
-            |p| { let _ = stmt(p); },
+            |p| {
+                let _ = stmt(p);
+            },
             "return;",
             expect![[r#"
                 ReturnStmt@0..7
@@ -437,7 +448,9 @@ mod tests {
     #[test]
     fn test_raise_stmt_without_value() {
         check(
-            |p| { let _ = stmt(p); },
+            |p| {
+                let _ = stmt(p);
+            },
             "raise;",
             expect![[r#"
                 RaiseStmt@0..6
@@ -451,7 +464,9 @@ mod tests {
     #[test]
     fn test_inline_if_stmt() {
         check(
-            |p| { let _ = stmt(p); },
+            |p| {
+                let _ = stmt(p);
+            },
             "inline if true { 42 }",
             expect![[r#"
                 IfStmt@0..21
@@ -477,7 +492,9 @@ mod tests {
     #[test]
     fn test_if_else_expr_stmt() {
         check(
-            |p| { let _ = stmt(p); },
+            |p| {
+                let _ = stmt(p);
+            },
             "if true { 1 } else { 2 }",
             expect![[r#"
                 IfExpr@0..24

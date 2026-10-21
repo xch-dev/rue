@@ -4,8 +4,8 @@ use rue_diagnostic::DiagnosticKind;
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
-        binding::binding, block::block, delimited_list, delimited_list_with_stops, expr::expr,
-        generics::generic_parameters, skip_balanced, ty::ty,
+        binding::binding, block::block, delimited_list, delimited_list_with_stops,
+        expect_semicolon, expr::expr, generics::generic_parameters, skip_balanced, ty::ty,
     },
 };
 
@@ -82,7 +82,7 @@ fn function_item(p: &mut Parser, cp: Checkpoint, extern_kw: bool) {
     if extern_kw && p.at(T![from]) {
         p.expect(T![from]);
         p.expect(SyntaxKind::String);
-        p.expect(T![;]);
+        expect_semicolon(p);
     } else if p.at(T!['{']) {
         block(p);
     } else {
@@ -114,7 +114,7 @@ fn constant_item(p: &mut Parser, cp: Checkpoint) {
     ty(p);
     p.expect(T![=]);
     expr(p);
-    p.expect(T![;]);
+    expect_semicolon(p);
     p.finish();
 }
 
@@ -127,7 +127,7 @@ fn type_alias_item(p: &mut Parser, cp: Checkpoint) {
     }
     p.expect(T![=]);
     ty(p);
-    p.expect(T![;]);
+    expect_semicolon(p);
     p.finish();
 }
 
@@ -166,7 +166,7 @@ fn import_item(p: &mut Parser, cp: Checkpoint, export: bool) {
         p.expect(T![import]);
     }
     import_path(p, true);
-    p.expect(T![;]);
+    expect_semicolon(p);
     p.finish();
 }
 
@@ -534,11 +534,13 @@ mod tests {
             item,
             "import *;",
             expect![[r#"
-                ImportItem@0..7
+                ImportItem@0..9
                   Import@0..6 "import"
                   Whitespace@6..7 " "
                   ImportPath@7..7
                     ImportPathSegment@7..7
+                  Error@7..8 "*"
+                  Semicolon@8..9 ";"
             "#]],
             expect!["Expected one of `::`, `super`, identifier, found `*` at main.rue:1:8"],
         );
@@ -547,11 +549,14 @@ mod tests {
             item,
             "import {};",
             expect![[r#"
-                ImportItem@0..7
+                ImportItem@0..10
                   Import@0..6 "import"
                   Whitespace@6..7 " "
                   ImportPath@7..7
                     ImportPathSegment@7..7
+                  Error@7..8 "{"
+                  Error@8..9 "}"
+                  Semicolon@9..10 ";"
             "#]],
             expect!["Expected one of `::`, `super`, identifier, found `{` at main.rue:1:8"],
         );
@@ -560,11 +565,18 @@ mod tests {
             item,
             "import {x, y};",
             expect![[r#"
-                ImportItem@0..7
+                ImportItem@0..14
                   Import@0..6 "import"
                   Whitespace@6..7 " "
                   ImportPath@7..7
                     ImportPathSegment@7..7
+                  Error@7..8 "{"
+                  Error@8..9 "x"
+                  Error@9..10 ","
+                  Whitespace@10..11 " "
+                  Error@11..12 "y"
+                  Error@12..13 "}"
+                  Semicolon@13..14 ";"
             "#]],
             expect!["Expected one of `::`, `super`, identifier, found `{` at main.rue:1:8"],
         );

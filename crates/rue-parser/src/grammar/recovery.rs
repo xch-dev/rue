@@ -58,7 +58,7 @@ fn write_tree(output: &mut String, node: &SyntaxNode, depth: usize) {
     }
 }
 
-/// Every Rue file in the repository, which are all expected to be free of syntax errors.
+/// Every Rue file in the repository that is expected to be free of syntax errors.
 fn corpus() -> Vec<(String, String)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut files = Vec::new();
@@ -78,6 +78,11 @@ fn collect(dir: &Path, files: &mut Vec<(String, String)>) {
         let path = entry.unwrap().path();
 
         if path.is_dir() {
+            // These intentionally contain syntax errors, to show how the compiler handles them
+            if path.ends_with("tests/syntax_errors") {
+                continue;
+            }
+
             collect(&path, files);
         } else if path.extension().is_some_and(|ext| ext == "rue") {
             files.push((
@@ -359,8 +364,7 @@ fn test_invalid_expression_is_skipped() {
                     NamedBinding
                     LiteralExpr
                     Error "@"
-                  ExprStmt
-                    LiteralExpr
+                    Error "2"
                   PathExpr
                     PathSegment
         "#]],
@@ -814,7 +818,6 @@ fn test_missing_field_name() {
                     FieldAccessExpr
                       PathExpr
                         PathSegment
-                  ExprStmt
                     Error "."
                     Error "other"
         "#]],
@@ -1049,10 +1052,9 @@ fn test_type_recovery() {
                 LambdaType
                   PathType
                     PathSegment
-              Error "-"
-              Error ">"
-              Error "Int"
-              Error ";"
+                Error "-"
+                Error ">"
+                Error "Int"
               FunctionItem
                 Block
         "#]],
@@ -1148,14 +1150,13 @@ fn test_struct_initializer_missing_open_brace() {
                     NamedBinding
                     PathExpr
                       PathSegment
-                  PathExpr
-                    PathSegment
-                  Error ":"
-                  Error "1"
-                  Error ","
-                  Error "y"
-                  Error ":"
-                  Error "2"
+                    Error "x"
+                    Error ":"
+                    Error "1"
+                    Error ","
+                    Error "y"
+                    Error ":"
+                    Error "2"
               Error ";"
               Error "point"
               Error "}"
@@ -1164,7 +1165,6 @@ fn test_struct_initializer_missing_open_brace() {
         "#]],
         expect![[r#"
             Expected `;`, found identifier at main.rue:2:23
-            Expected one of `;`, `}`, found `:` at main.rue:2:24
             Expected item, found `;` at main.rue:2:35"#]],
     );
 }

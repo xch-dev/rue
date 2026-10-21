@@ -1,0 +1,11 @@
+diagnostics:
+- Expected one of `,`, `)`, found integer literal at lists.rue:6:11
+- Expected one of `,`, `)`, found identifier at lists.rue:11:5
+- Expected one of `,`, `]`, found integer literal at lists.rue:15:11
+- Expected one of `,`, `)`, found integer literal at lists.rue:19:8
+- Expected one of `,`, `>`, found `{` at lists.rue:22:45
+- Expected 3 arguments, but found 2 at lists.rue:6:5
+- Block does not return a value at lists.rue:9:37
+- Cannot assign `nil` to `Int` without a cast, since they are semantically different at lists.rue:9:37
+- Cannot assign `1` to `(Int, Int)`, since they are incompatible at lists.rue:18:44
+- Unused binding `value` at lists.rue:10:9
