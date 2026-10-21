@@ -1,0 +1,61 @@
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn first<A, B>(a: A, _b: B) -> A {
+    a
+}
+
+fn konst<T>(value: T) -> fn<U>(other: U) -> T {
+    fn<U>(_other: U): T => value
+}
+
+fn apply<T>(function: fn(value: T) -> T, value: T) -> T {
+    function(value)
+}
+
+fn twice<T>(function: fn<U>(value: U) -> U, value: T) -> T {
+    function(function(value))
+}
+
+test fn pass_generic_function() -> Int {
+    apply(identity, 42)
+}
+
+test fn pass_generic_function_bytes32() -> Bytes32 {
+    apply(identity, sha256("hello"))
+}
+
+test fn instantiate_generic_function() -> Int {
+    let function: fn(value: Int) -> Int = identity;
+    function(42)
+}
+
+test fn instantiate_wider_return() -> Int | nil {
+    let function: fn(value: Int) -> Int | nil = identity;
+    function(42)
+}
+
+test fn instantiate_multiple_generics() -> Int {
+    let function: fn(a: Int, b: Bytes) -> Int = first;
+    function(42, "hello")
+}
+
+test fn rename_generics() -> Int {
+    let function: fn<U>(value: U) -> U = identity;
+    function(42)
+}
+
+test fn rename_multiple_generics() -> Int {
+    let function: fn<X, Y>(a: X, b: Y) -> X = first;
+    function(42, "hello")
+}
+
+test fn return_generic_lambda() -> Int {
+    let _function = konst(42);
+    42
+}
+
+test fn pass_polymorphic_function() -> Int {
+    twice(identity, 42)
+}

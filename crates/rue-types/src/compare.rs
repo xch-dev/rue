@@ -77,6 +77,11 @@ pub(crate) struct ComparisonContext<'a> {
     /// When this is set, the generics being inferred are on the left hand side rather than the
     /// right hand side.
     flipped: bool,
+    /// The generics of left hand side functions that are being instantiated, since a generic
+    /// function is assignable to a function type if it can be instantiated to it. Each generic
+    /// maps to the value of `flipped` in which it's on the right hand side, and the bounds that
+    /// have been collected for it. The bounds are checked against each other afterward.
+    instances: IndexMap<TypeId, (bool, InferenceCandidates)>,
     /// The number of inference candidates that have been collected.
     candidates: usize,
     /// Completed comparisons, keyed by the comparison and the semantics passed down to it.
@@ -262,9 +267,16 @@ pub(crate) fn compare_impl(
         };
     }
 
-    let memo_key = (key, lhs_semantic, rhs_semantic);
+    // Generics that are being instantiated are compared differently and collect bounds as a side
+    // effect, so results are only memoized while there aren't any
+    let memo_key = ctx
+        .instances
+        .is_empty()
+        .then_some((key, lhs_semantic, rhs_semantic));
 
-    if let Some(result) = ctx.memo.get(&memo_key, ctx.stack.iter().copied()) {
+    if let Some(memo_key) = &memo_key
+        && let Some(result) = ctx.memo.get(memo_key, ctx.stack.iter().copied())
+    {
         return result;
     }
 
@@ -284,6 +296,24 @@ pub(crate) fn compare_impl(
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Never, _) => Comparison::Assign,
         (_, Type::Any) => Comparison::Assign,
+        (Type::Generic(_), _)
+            if ctx
+                .instances
+                .get(&lhs)
+                .is_some_and(|&(flipped, _)| flipped != ctx.flipped) =>
+        {
+            ctx.instances[&lhs].1.upper.push(rhs);
+            Comparison::Assign
+        }
+        (_, Type::Generic(_))
+            if ctx
+                .instances
+                .get(&rhs)
+                .is_some_and(|&(flipped, _)| flipped == ctx.flipped) =>
+        {
+            ctx.instances[&rhs].1.lower.push(lhs);
+            Comparison::Assign
+        }
         (Type::Atom(lhs), Type::Atom(rhs)) => {
             let semantic = if lhs.semantic == rhs.semantic
                 || rhs.semantic == AtomSemantic::Any
@@ -343,6 +373,19 @@ pub(crate) fn compare_impl(
             } else {
                 ctx.guards.push(ctx.stack.len() - 1);
 
+                // The left hand side's generics are instantiated with whatever the right hand
+                // side needs, whereas the right hand side's generics stay rigid, since the
+                // function must work for any of them. Comparing two generic functions this way
+                // makes them equivalent up to renaming of their generics.
+                let previous: Vec<_> = lhs
+                    .generics
+                    .iter()
+                    .map(|&generic| {
+                        let instance = (!ctx.flipped, InferenceCandidates::default());
+                        (generic, ctx.instances.insert(generic, instance))
+                    })
+                    .collect();
+
                 // The return type is covariant, since the value returned by the function flows
                 // out to whoever expects the right hand side's return type.
                 let mut result = compare_impl(arena, builtins, ctx, lhs.ret, rhs.ret, None, None);
@@ -361,6 +404,36 @@ pub(crate) fn compare_impl(
                 }
 
                 ctx.flipped = !ctx.flipped;
+
+                let mut bounds = Vec::new();
+
+                for (generic, previous) in previous.into_iter().rev() {
+                    let instance = if let Some(previous) = previous {
+                        ctx.instances.insert(generic, previous)
+                    } else {
+                        ctx.instances.shift_remove(&generic)
+                    };
+                    bounds.push(instance.unwrap().1);
+                }
+
+                // There is an instantiation of each generic if every type that flows into it is
+                // assignable to every type it flows into (such as their union, or `Never`).
+                // The bounds come from the other side, where the generics of any enclosing
+                // functions being instantiated are rigid, so they're hidden while checking.
+                let instances = std::mem::take(&mut ctx.instances);
+
+                for candidates in bounds {
+                    for &lower in &candidates.lower {
+                        for &upper in &candidates.upper {
+                            result = max(
+                                result,
+                                compare_impl(arena, builtins, ctx, lower, upper, None, None),
+                            );
+                        }
+                    }
+                }
+
+                ctx.instances = instances;
                 ctx.guards.pop().unwrap();
 
                 result
@@ -584,7 +657,7 @@ pub(crate) fn compare_impl(
 
     // Inference candidates are collected as a side effect of comparing, so a comparison that
     // collected any can't be skipped
-    let memo_key = (ctx.candidates == candidates).then_some(memo_key);
+    let memo_key = memo_key.filter(|_| ctx.candidates == candidates);
     ctx.memo.exit(frame, key, memo_key, result);
 
     result

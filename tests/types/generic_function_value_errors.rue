@@ -1,0 +1,48 @@
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn first<A, B>(a: A, _b: B) -> A {
+    a
+}
+
+fn concrete(value: Int) -> Int {
+    value
+}
+
+fn constant<T>(_value: T) -> Int {
+    42
+}
+
+fn apply<T>(function: fn(value: T) -> T, value: T) -> T {
+    function(value)
+}
+
+fn twice<T>(function: fn<U>(value: U) -> U, value: T) -> T {
+    function(function(value))
+}
+
+fn main() -> Int {
+    // The return type can't be instantiated differently from the parameter
+    let a: fn(value: Int) -> Bytes32 = identity;
+
+    // A concrete function doesn't work for every type
+    let b: fn<U>(value: U) -> U = concrete;
+    let c: fn<U>(value: U) -> U = constant;
+
+    // The target's generics are rigid, so they can't be instantiated to a concrete type
+    let d: fn<U>(value: U) -> Int = identity;
+    let e: fn<U, V>(value: U) -> V = identity;
+    let f: fn<X, Y>(a: X, b: Y) -> Y = first;
+
+    // Passing a concrete or inconsistent function where a generic one is expected
+    let g = twice(concrete, 42);
+    let i: Int = apply(identity, sha256("hello"));
+    42
+}
+
+fn outer<T>() -> fn<U>(value: U) -> U {
+    // The inner function can't be instantiated to return the rigid `T` as an `Int`
+    let _function: fn() -> fn(value: T) -> Int = outer;
+    fn<U>(value: U): U => value
+}
