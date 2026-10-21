@@ -487,6 +487,40 @@ fn test_any_and_generics() {
 }
 
 #[test]
+fn test_subtract_generics() {
+    let mut t = Types::new();
+    let any = t.builtins.recursive_any;
+    let atom = t.builtins.atom;
+    let int = t.builtins.int;
+    let nil = t.builtins.nil;
+    let generic = t.generic();
+
+    // Nothing is known about a generic type, so it's kept as is rather than being widened
+    let generic_or_nil = t.union(vec![generic, nil]);
+    assert_eq!(t.subtract(generic_or_nil, nil), generic);
+    let generic_or_int = t.union(vec![generic, int]);
+    assert_eq!(t.subtract(generic_or_int, int), generic);
+    assert_eq!(t.subtract(generic_or_nil, atom), generic);
+    assert_eq!(t.subtract(generic, nil), generic);
+
+    // It's only removed if the target covers every possible value
+    assert_eq!(t.subtract(generic_or_nil, generic), nil);
+    let never = t.subtract(generic_or_nil, any);
+    assert_eq!(t.name(never), "Never");
+
+    // Generic types nested in other types are kept as well
+    let generic_pair = t.pair(generic, nil);
+    let alias = t.alias(generic_or_nil);
+    let from = t.union(vec![generic_pair, alias]);
+    let result = t.subtract(from, nil);
+    let generic_name = t.name(generic);
+    assert_eq!(
+        t.name(result),
+        format!("{generic_name} | ({generic_name}, nil)")
+    );
+}
+
+#[test]
 fn test_recursive_types() {
     let mut t = Types::new();
     let int = t.builtins.int;
@@ -657,13 +691,24 @@ fn eval(a: &Allocator, check: &Check, node: NodePtr) -> Result<bool, String> {
     })
 }
 
-/// Structurally determines whether a value is in a type (semantics are ignored).
-fn contains(arena: &Arena<Type>, id: TypeId, a: &Allocator, node: NodePtr) -> bool {
+/// Structurally determines whether a value is in a type (semantics are ignored). Generic types are
+/// replaced with the type they're instantiated with.
+fn contains(
+    arena: &Arena<Type>,
+    generics: &HashMap<TypeId, TypeId>,
+    id: TypeId,
+    a: &Allocator,
+    node: NodePtr,
+) -> bool {
     match &arena[id] {
-        Type::Ref(id) => contains(arena, *id, a, node),
-        Type::Alias(alias) => contains(arena, alias.inner, a, node),
-        Type::Struct(ty) => contains(arena, ty.inner, a, node),
-        Type::Union(ty) => ty.types.iter().any(|&id| contains(arena, id, a, node)),
+        Type::Ref(id) => contains(arena, generics, *id, a, node),
+        Type::Generic(_) => contains(arena, generics, generics[&id], a, node),
+        Type::Alias(alias) => contains(arena, generics, alias.inner, a, node),
+        Type::Struct(ty) => contains(arena, generics, ty.inner, a, node),
+        Type::Union(ty) => ty
+            .types
+            .iter()
+            .any(|&id| contains(arena, generics, id, a, node)),
         Type::Never => false,
         Type::Any => true,
         Type::Atom(atom) => {
@@ -684,7 +729,8 @@ fn contains(arena: &Arena<Type>, id: TypeId, a: &Allocator, node: NodePtr) -> bo
                 return false;
             };
 
-            contains(arena, pair.first, a, first) && contains(arena, pair.rest, a, rest)
+            contains(arena, generics, pair.first, a, first)
+                && contains(arena, generics, pair.rest, a, rest)
         }
         ty => panic!("unexpected type {ty:?}"),
     }
@@ -739,6 +785,8 @@ struct Generator<'a> {
     t: &'a mut Types,
     rng: Rng,
     structs: Vec<TypeId>,
+    /// A generic type and the type it's instantiated with, if generic leaves should be generated.
+    generic: Option<(TypeId, TypeId)>,
 }
 
 impl Generator<'_> {
@@ -790,9 +838,10 @@ impl Generator<'_> {
                     id
                 }
             }
-            _ => match self.rng.below(4) {
+            _ => match self.rng.below(if self.generic.is_some() { 5 } else { 4 }) {
                 0 => self.t.builtins.permissive_any,
                 1 => self.t.builtins.nil,
+                4 => self.generic.unwrap().0,
                 _ => {
                     let item = self.random_type(depth + 1);
                     self.t.list(item)
@@ -883,6 +932,7 @@ impl Generator<'_> {
 
         match self.t.arena[id].clone() {
             Type::Ref(id) => self.random_value(a, id, depth),
+            Type::Generic(_) => self.random_value(a, self.generic.unwrap().1, depth),
             Type::Alias(alias) => self.random_value(a, alias.inner, depth),
             Type::Struct(ty) => self.random_value(a, ty.inner, depth),
             Type::Never => None,
@@ -931,8 +981,11 @@ impl Generator<'_> {
     }
 }
 
-fn run_property(seed: u64, iterations: usize) -> Vec<String> {
+/// If `generics` is true, the types can contain a generic type, which is instantiated with a random
+/// type. The check and else type must be correct for every instantiation.
+fn run_property(seed: u64, iterations: usize, generics: bool) -> (Vec<String>, usize) {
     let mut failures = Vec::new();
+    let mut generic_else_types = 0;
 
     for iteration in 0..iterations {
         let mut t = Types::new();
@@ -940,10 +993,19 @@ fn run_property(seed: u64, iterations: usize) -> Vec<String> {
             t: &mut t,
             rng: Rng(seed.wrapping_add(iteration as u64)),
             structs: Vec::new(),
+            generic: None,
         };
+
+        if generics {
+            let generic = generator.t.generic();
+            let instantiation = generator.random_type(0);
+            generator.generic = Some((generic, instantiation));
+        }
 
         let from = generator.random_type(0);
         let to = generator.derive_type(from, 0);
+        let generic = generator.generic;
+        let instantiations: HashMap<TypeId, TypeId> = generic.into_iter().collect();
 
         let mut a = Allocator::new();
         let values: Vec<NodePtr> = (0..20)
@@ -966,6 +1028,7 @@ fn run_property(seed: u64, iterations: usize) -> Vec<String> {
                 t: &mut t,
                 rng: Rng(rng.next()),
                 structs: Vec::new(),
+                generic,
             };
 
             if let Some(value) = generator.random_value(&mut a, to, 0) {
@@ -973,16 +1036,26 @@ fn run_property(seed: u64, iterations: usize) -> Vec<String> {
             }
         }
 
-        let from_name = t.name(from);
+        let mut from_name = t.name(from);
         let to_name = t.name(to);
         let else_name = t.name(else_type);
 
+        if let Some((generic, instantiation)) = generic {
+            let generic_name = t.name(generic);
+            let instantiation_name = t.name(instantiation);
+            from_name = format!("{from_name}` (where `{generic_name} = {instantiation_name}`)");
+
+            if else_name.contains(&generic_name) {
+                generic_else_types += 1;
+            }
+        }
+
         for value in values.into_iter().chain(extra) {
-            if !contains(&t.arena, from, &a, value) {
+            if !contains(&t.arena, &instantiations, from, &a, value) {
                 continue;
             }
 
-            let expected = contains(&t.arena, to, &a, value);
+            let expected = contains(&t.arena, &instantiations, to, &a, value);
             let actual = eval(&a, &check, value);
             let shown = display_value(&a, value);
 
@@ -993,7 +1066,7 @@ fn run_property(seed: u64, iterations: usize) -> Vec<String> {
                 break;
             }
 
-            if !expected && !contains(&t.arena, else_type, &a, value) {
+            if !expected && !contains(&t.arena, &instantiations, else_type, &a, value) {
                 failures.push(format!(
                     "iteration {iteration}: `{shown}` in `{from_name}` is not `{to_name}`, but else type `{else_name}` excludes it"
                 ));
@@ -1002,7 +1075,7 @@ fn run_property(seed: u64, iterations: usize) -> Vec<String> {
         }
     }
 
-    failures
+    (failures, generic_else_types)
 }
 
 fn display_value(a: &Allocator, node: NodePtr) -> String {
@@ -1023,8 +1096,23 @@ fn display_value(a: &Allocator, node: NodePtr) -> String {
 
 #[test]
 fn test_check_property() {
-    let failures = run_property(0x5eed, 20_000);
+    let (failures, _) = run_property(0x5eed, 20_000, false);
+    assert_no_failures(&failures);
+}
 
+#[test]
+fn test_check_property_generics() {
+    let (failures, generic_else_types) = run_property(0x6e4e, 20_000, true);
+    assert_no_failures(&failures);
+
+    // Make sure generic types are actually kept in the else type, rather than being widened
+    assert!(
+        generic_else_types >= 500,
+        "not enough else types with generics: {generic_else_types}"
+    );
+}
+
+fn assert_no_failures(failures: &[String]) {
     assert!(
         failures.is_empty(),
         "{} failures, first few:\n{}",
@@ -1050,6 +1138,7 @@ fn test_property_coverage() {
             t: &mut t,
             rng: Rng(0x5eed + iteration),
             structs: Vec::new(),
+            generic: None,
         };
         let from = generator.random_type(0);
         let to = generator.derive_type(from, 0);

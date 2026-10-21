@@ -1,0 +1,47 @@
+fn unwrap<T>(value: T | nil) -> T {
+    if value is nil {
+        raise;
+    }
+
+    value
+}
+
+fn without_int<T>(value: T | Int) -> T {
+    if value is Int {
+        raise;
+    }
+
+    value
+}
+
+fn main() -> Int {
+    unwrap(5)
+}
+
+test fn unwrap_int() -> Int {
+    unwrap(5)
+}
+
+test fn unwrap_pair() -> (Int, Int) {
+    unwrap((1, 2))
+}
+
+test fn unwrap_nil() -> Int {
+    unwrap::<Int>(nil)
+}
+
+test fn unwrap_zero() -> Int {
+    unwrap(0)
+}
+
+test fn unwrap_nullable_nil() -> Int | nil {
+    unwrap::<Int | nil>(nil)
+}
+
+test fn without_int_pair() -> (Int, Int) {
+    without_int((1, 2))
+}
+
+test fn without_int_atom() -> (Int, Int) {
+    without_int::<(Int, Int)>(5)
+}
