@@ -5,7 +5,9 @@ use crate::{
     grammar::{
         binding::binding,
         block::block,
+        delimited_list,
         generics::{generic_arguments, generic_parameters},
+        recover, skip_unexpected,
         ty::ty,
     },
 };
@@ -36,7 +38,7 @@ pub fn expr(p: &mut Parser) {
 
 pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -> bool {
     if !options.inline
-        && let Some(kind) = p.at_any(SyntaxKind::PREFIX_OPS)
+        && let Some(kind) = p.at_any_quiet(SyntaxKind::PREFIX_OPS)
     {
         p.start_at(checkpoint, SyntaxKind::PrefixExpr);
         p.expect(kind);
@@ -52,89 +54,82 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
             },
         );
         p.finish();
-    } else if !options.inline && p.at(T![::]) || p.at(SyntaxKind::Ident) || p.at(T![super]) {
+    } else if !options.inline && p.at_quiet(T![::])
+        || p.at_quiet(SyntaxKind::Ident)
+        || p.at_quiet(T![super])
+    {
         path_expr(p, checkpoint);
 
         if p.at(T!['{']) && options.allow_struct_initializer {
             p.start_at(checkpoint, SyntaxKind::StructInitializerExpr);
             p.expect(T!['{']);
-            while !p.at(T!['}']) {
+            delimited_list(p, T!['}'], |p| {
                 p.start(SyntaxKind::StructInitializerField);
                 p.expect(SyntaxKind::Ident);
                 if p.try_eat(T![:]) {
                     expr(p);
                 }
                 p.finish();
-                if !p.try_eat(T![,]) {
-                    break;
-                }
-            }
-            p.expect(T!['}']);
+            });
             p.finish();
         }
     } else if !options.inline
-        && let Some(kind) = p.at_any(SyntaxKind::LITERAL)
+        && let Some(kind) = p.at_any_quiet(SyntaxKind::LITERAL)
     {
         p.start(SyntaxKind::LiteralExpr);
         p.expect(kind);
         p.finish();
-    } else if !options.inline && p.at(T![const]) {
+    } else if !options.inline && p.at_quiet(T![const]) && p.lookahead(1) != SyntaxKind::Ident {
         p.start_at(checkpoint, SyntaxKind::ConstExpr);
         p.expect(T![const]);
         block(p);
         p.finish();
-    } else if !options.inline && p.at(T!['(']) {
+    } else if !options.inline && p.at_quiet(T!['(']) {
         p.expect(T!['(']);
         expr(p);
+        if !p.at(T![,]) && !p.at(T![')']) {
+            skip_unexpected(p);
+        }
         if p.try_eat(T![,]) {
             p.start_at(checkpoint, SyntaxKind::PairExpr);
             expr(p);
             p.try_eat(T![,]);
+            if !p.at(T![')']) {
+                skip_unexpected(p);
+            }
         } else {
             p.start_at(checkpoint, SyntaxKind::GroupExpr);
         }
         p.expect(T![')']);
         p.finish();
-    } else if !options.inline && p.at(T!['[']) {
+    } else if !options.inline && p.at_quiet(T!['[']) {
         p.start_at(checkpoint, SyntaxKind::ListExpr);
         p.expect(T!['[']);
-        while !p.at(T![']']) {
-            p.start(SyntaxKind::ListItem);
-            p.try_eat(T![...]);
-            expr(p);
-            p.finish();
-            if !p.try_eat(T![,]) {
-                break;
-            }
-        }
-        p.expect(T![']']);
+        delimited_list(p, T![']'], list_item);
         p.finish();
-    } else if !options.inline && p.at(T!['{']) {
+    } else if !options.inline && p.at_quiet(T!['{']) {
         block(p);
-    } else if p.at(T![if]) || (!options.inline && p.at(T![inline])) {
+    } else if p.at_quiet(T![if]) || (!options.inline && p.at_quiet(T![inline])) {
         if if_expr(p, checkpoint, options.allow_statement, !options.inline) {
             return true;
         }
-    } else if !options.inline && p.at(T![fn]) {
+    } else if !options.inline && p.at_quiet(T![fn]) && p.lookahead(1) != SyntaxKind::Ident {
         p.start_at(checkpoint, SyntaxKind::LambdaExpr);
         p.expect(T![fn]);
         if p.at(T![<]) {
             generic_parameters(p);
         }
-        p.expect(T!['(']);
-        while !p.at(T![')']) {
-            p.start(SyntaxKind::FunctionParameter);
-            p.try_eat(T![...]);
-            binding(p);
-            if p.try_eat(T![:]) {
-                ty(p);
-            }
-            p.finish();
-            if !p.try_eat(T![,]) {
-                break;
-            }
+        if p.expect(T!['(']) {
+            delimited_list(p, T![')'], |p| {
+                p.start(SyntaxKind::FunctionParameter);
+                p.try_eat(T![...]);
+                binding(p);
+                if p.try_eat(T![:]) {
+                    ty(p);
+                }
+                p.finish();
+            });
         }
-        p.expect(T![')']);
         if p.try_eat(T![:]) {
             ty(p);
         }
@@ -142,7 +137,14 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
         expr(p);
         p.finish();
     } else {
-        p.skip();
+        // An expression is often followed by a block (such as in the condition of an if
+        // expression), so stop there. However, as a statement it's better to skip the block as
+        // part of the error (such as in the case of a stray `else` branch).
+        if options.allow_statement {
+            recover(p, "statement", &[]);
+        } else {
+            recover(p, "expression", &[T!['{']]);
+        }
         return false;
     }
 
@@ -150,16 +152,7 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
         if p.at(T!['(']) {
             p.start_at(checkpoint, SyntaxKind::FunctionCallExpr);
             p.expect(T!['(']);
-            while !p.at(T![')']) {
-                p.start(SyntaxKind::ListItem);
-                p.try_eat(T![...]);
-                expr(p);
-                p.finish();
-                if !p.try_eat(T![,]) {
-                    break;
-                }
-            }
-            p.expect(T![')']);
+            delimited_list(p, T![')'], list_item);
             p.finish();
         } else if p.at(T![is]) {
             p.start_at(checkpoint, SyntaxKind::GuardExpr);
@@ -174,8 +167,13 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
         } else if p.at(T![.]) {
             p.start_at(checkpoint, SyntaxKind::FieldAccessExpr);
             p.expect(T![.]);
-            p.expect(SyntaxKind::Ident);
+            let found = p.expect(SyntaxKind::Ident);
             p.finish();
+
+            // Without a field name, the rest is unlikely to be a continuation of this expression
+            if !found {
+                break;
+            }
         } else {
             break;
         }
@@ -183,6 +181,9 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
 
     loop {
         let Some(op) = p.at_any(SyntaxKind::BINARY_OPS) else {
+            // The operators that could have continued the expression are too noisy to include in
+            // diagnostics about what's expected after it
+            p.clear_expected();
             return false;
         };
 
@@ -191,6 +192,7 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
             .expect("BINARY_OPS have binding power");
 
         if left_binding_power < options.minimum_binding_power {
+            p.clear_expected();
             return false;
         }
 
@@ -210,6 +212,13 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
         );
         p.finish();
     }
+}
+
+fn list_item(p: &mut Parser) {
+    p.start(SyntaxKind::ListItem);
+    p.try_eat(T![...]);
+    expr(p);
+    p.finish();
 }
 
 fn if_expr(
@@ -578,10 +587,7 @@ mod tests {
               Whitespace@5..6 " "
               Block@6..6
         "#]],
-            expect![[r#"
-            Expected `{`, found integer literal at main.rue:1:7
-            Expected one of `}`, `inline`, `let`, `return`, `assert`, `raise`, `debug`, `!`, `-`, `+`, `~`, `::`, identifier, `super`, string literal, hex literal, binary literal, octal literal, integer literal, `nil`, `true`, `false`, `const`, `(`, `[`, `{`, `if`, `fn`, found eof at main.rue:1:9
-            Expected one of `;`, `}`, found eof at main.rue:1:9"#]],
+            expect!["Expected `{`, found integer literal at main.rue:1:7"],
         );
     }
 
@@ -860,6 +866,823 @@ mod tests {
                     Ident@15..20 "Bytes"
         "#]],
             expect![],
+        );
+    }
+
+    #[test]
+    fn test_path_expr() {
+        check(
+            expr,
+            "hello::world",
+            expect![[r#"
+                PathExpr@0..12
+                  PathSegment@0..5
+                    Ident@0..5 "hello"
+                  PathSegment@5..12
+                    PathSeparator@5..7 "::"
+                    Ident@7..12 "world"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "::absolute",
+            expect![[r#"
+                PathExpr@0..10
+                  PathSegment@0..10
+                    PathSeparator@0..2 "::"
+                    Ident@2..10 "absolute"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "super::value",
+            expect![[r#"
+                PathExpr@0..12
+                  PathSegment@0..5
+                    Super@0..5 "super"
+                  PathSegment@5..12
+                    PathSeparator@5..7 "::"
+                    Ident@7..12 "value"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "identity::<Int>",
+            expect![[r#"
+                PathExpr@0..15
+                  PathSegment@0..15
+                    Ident@0..8 "identity"
+                    PathSeparator@8..10 "::"
+                    GenericArguments@10..15
+                      LessThan@10..11 "<"
+                      PathType@11..14
+                        PathSegment@11..14
+                          Ident@11..14 "Int"
+                      GreaterThan@14..15 ">"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "a::b::<Int, Bytes>::c",
+            expect![[r#"
+                PathExpr@0..21
+                  PathSegment@0..1
+                    Ident@0..1 "a"
+                  PathSegment@1..18
+                    PathSeparator@1..3 "::"
+                    Ident@3..4 "b"
+                    PathSeparator@4..6 "::"
+                    GenericArguments@6..18
+                      LessThan@6..7 "<"
+                      PathType@7..10
+                        PathSegment@7..10
+                          Ident@7..10 "Int"
+                      Comma@10..11 ","
+                      Whitespace@11..12 " "
+                      PathType@12..17
+                        PathSegment@12..17
+                          Ident@12..17 "Bytes"
+                      GreaterThan@17..18 ">"
+                  PathSegment@18..21
+                    PathSeparator@18..20 "::"
+                    Ident@20..21 "c"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_struct_initializer_expr() {
+        check(
+            expr,
+            "Point {}",
+            expect![[r#"
+                StructInitializerExpr@0..8
+                  PathExpr@0..6
+                    PathSegment@0..6
+                      Ident@0..5 "Point"
+                      Whitespace@5..6 " "
+                  OpenBrace@6..7 "{"
+                  CloseBrace@7..8 "}"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "Point { x: 1, y: 2 }",
+            expect![[r#"
+                StructInitializerExpr@0..20
+                  PathExpr@0..6
+                    PathSegment@0..6
+                      Ident@0..5 "Point"
+                      Whitespace@5..6 " "
+                  OpenBrace@6..7 "{"
+                  Whitespace@7..8 " "
+                  StructInitializerField@8..12
+                    Ident@8..9 "x"
+                    Colon@9..10 ":"
+                    Whitespace@10..11 " "
+                    LiteralExpr@11..12
+                      Integer@11..12 "1"
+                  Comma@12..13 ","
+                  Whitespace@13..14 " "
+                  StructInitializerField@14..19
+                    Ident@14..15 "y"
+                    Colon@15..16 ":"
+                    Whitespace@16..17 " "
+                    LiteralExpr@17..18
+                      Integer@17..18 "2"
+                    Whitespace@18..19 " "
+                  CloseBrace@19..20 "}"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "Point { x, y, }",
+            expect![[r#"
+                StructInitializerExpr@0..15
+                  PathExpr@0..6
+                    PathSegment@0..6
+                      Ident@0..5 "Point"
+                      Whitespace@5..6 " "
+                  OpenBrace@6..7 "{"
+                  Whitespace@7..8 " "
+                  StructInitializerField@8..9
+                    Ident@8..9 "x"
+                  Comma@9..10 ","
+                  Whitespace@10..11 " "
+                  StructInitializerField@11..12
+                    Ident@11..12 "y"
+                  Comma@12..13 ","
+                  Whitespace@13..14 " "
+                  CloseBrace@14..15 "}"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "module::Point { x }",
+            expect![[r#"
+                StructInitializerExpr@0..19
+                  PathExpr@0..14
+                    PathSegment@0..6
+                      Ident@0..6 "module"
+                    PathSegment@6..14
+                      PathSeparator@6..8 "::"
+                      Ident@8..13 "Point"
+                      Whitespace@13..14 " "
+                  OpenBrace@14..15 "{"
+                  Whitespace@15..16 " "
+                  StructInitializerField@16..18
+                    Ident@16..17 "x"
+                    Whitespace@17..18 " "
+                  CloseBrace@18..19 "}"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_pair_expr() {
+        check(
+            expr,
+            "(1, 2)",
+            expect![[r#"
+                PairExpr@0..6
+                  OpenParen@0..1 "("
+                  LiteralExpr@1..2
+                    Integer@1..2 "1"
+                  Comma@2..3 ","
+                  Whitespace@3..4 " "
+                  LiteralExpr@4..5
+                    Integer@4..5 "2"
+                  CloseParen@5..6 ")"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "(1, 2,)",
+            expect![[r#"
+                PairExpr@0..7
+                  OpenParen@0..1 "("
+                  LiteralExpr@1..2
+                    Integer@1..2 "1"
+                  Comma@2..3 ","
+                  Whitespace@3..4 " "
+                  LiteralExpr@4..5
+                    Integer@4..5 "2"
+                  Comma@5..6 ","
+                  CloseParen@6..7 ")"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "(1, (2, 3))",
+            expect![[r#"
+                PairExpr@0..11
+                  OpenParen@0..1 "("
+                  LiteralExpr@1..2
+                    Integer@1..2 "1"
+                  Comma@2..3 ","
+                  Whitespace@3..4 " "
+                  PairExpr@4..10
+                    OpenParen@4..5 "("
+                    LiteralExpr@5..6
+                      Integer@5..6 "2"
+                    Comma@6..7 ","
+                    Whitespace@7..8 " "
+                    LiteralExpr@8..9
+                      Integer@8..9 "3"
+                    CloseParen@9..10 ")"
+                  CloseParen@10..11 ")"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_list_expr() {
+        check(
+            expr,
+            "[]",
+            expect![[r#"
+                ListExpr@0..2
+                  OpenBracket@0..1 "["
+                  CloseBracket@1..2 "]"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "[1, 2, 3]",
+            expect![[r#"
+                ListExpr@0..9
+                  OpenBracket@0..1 "["
+                  ListItem@1..2
+                    LiteralExpr@1..2
+                      Integer@1..2 "1"
+                  Comma@2..3 ","
+                  Whitespace@3..4 " "
+                  ListItem@4..5
+                    LiteralExpr@4..5
+                      Integer@4..5 "2"
+                  Comma@5..6 ","
+                  Whitespace@6..7 " "
+                  ListItem@7..8
+                    LiteralExpr@7..8
+                      Integer@7..8 "3"
+                  CloseBracket@8..9 "]"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "[1, 2,]",
+            expect![[r#"
+                ListExpr@0..7
+                  OpenBracket@0..1 "["
+                  ListItem@1..2
+                    LiteralExpr@1..2
+                      Integer@1..2 "1"
+                  Comma@2..3 ","
+                  Whitespace@3..4 " "
+                  ListItem@4..5
+                    LiteralExpr@4..5
+                      Integer@4..5 "2"
+                  Comma@5..6 ","
+                  CloseBracket@6..7 "]"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "[1, ...rest]",
+            expect![[r#"
+                ListExpr@0..12
+                  OpenBracket@0..1 "["
+                  ListItem@1..2
+                    LiteralExpr@1..2
+                      Integer@1..2 "1"
+                  Comma@2..3 ","
+                  Whitespace@3..4 " "
+                  ListItem@4..11
+                    Spread@4..7 "..."
+                    PathExpr@7..11
+                      PathSegment@7..11
+                        Ident@7..11 "rest"
+                  CloseBracket@11..12 "]"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_lambda_expr() {
+        check(
+            expr,
+            "fn(x: Int) => x",
+            expect![[r#"
+                LambdaExpr@0..15
+                  Fn@0..2 "fn"
+                  OpenParen@2..3 "("
+                  FunctionParameter@3..9
+                    NamedBinding@3..4
+                      Ident@3..4 "x"
+                    Colon@4..5 ":"
+                    Whitespace@5..6 " "
+                    PathType@6..9
+                      PathSegment@6..9
+                        Ident@6..9 "Int"
+                  CloseParen@9..10 ")"
+                  Whitespace@10..11 " "
+                  FatArrow@11..13 "=>"
+                  Whitespace@13..14 " "
+                  PathExpr@14..15
+                    PathSegment@14..15
+                      Ident@14..15 "x"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "fn() => 42",
+            expect![[r#"
+                LambdaExpr@0..10
+                  Fn@0..2 "fn"
+                  OpenParen@2..3 "("
+                  CloseParen@3..4 ")"
+                  Whitespace@4..5 " "
+                  FatArrow@5..7 "=>"
+                  Whitespace@7..8 " "
+                  LiteralExpr@8..10
+                    Integer@8..10 "42"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "fn(x) => x",
+            expect![[r#"
+                LambdaExpr@0..10
+                  Fn@0..2 "fn"
+                  OpenParen@2..3 "("
+                  FunctionParameter@3..4
+                    NamedBinding@3..4
+                      Ident@3..4 "x"
+                  CloseParen@4..5 ")"
+                  Whitespace@5..6 " "
+                  FatArrow@6..8 "=>"
+                  Whitespace@8..9 " "
+                  PathExpr@9..10
+                    PathSegment@9..10
+                      Ident@9..10 "x"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "fn<T>(x: T): T => x",
+            expect![[r#"
+                LambdaExpr@0..19
+                  Fn@0..2 "fn"
+                  GenericParameters@2..5
+                    LessThan@2..3 "<"
+                    Ident@3..4 "T"
+                    GreaterThan@4..5 ">"
+                  OpenParen@5..6 "("
+                  FunctionParameter@6..10
+                    NamedBinding@6..7
+                      Ident@6..7 "x"
+                    Colon@7..8 ":"
+                    Whitespace@8..9 " "
+                    PathType@9..10
+                      PathSegment@9..10
+                        Ident@9..10 "T"
+                  CloseParen@10..11 ")"
+                  Colon@11..12 ":"
+                  Whitespace@12..13 " "
+                  PathType@13..15
+                    PathSegment@13..15
+                      Ident@13..14 "T"
+                      Whitespace@14..15 " "
+                  FatArrow@15..17 "=>"
+                  Whitespace@17..18 " "
+                  PathExpr@18..19
+                    PathSegment@18..19
+                      Ident@18..19 "x"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "fn(...args: List<Int>) => args",
+            expect![[r#"
+                LambdaExpr@0..30
+                  Fn@0..2 "fn"
+                  OpenParen@2..3 "("
+                  FunctionParameter@3..21
+                    Spread@3..6 "..."
+                    NamedBinding@6..10
+                      Ident@6..10 "args"
+                    Colon@10..11 ":"
+                    Whitespace@11..12 " "
+                    PathType@12..21
+                      PathSegment@12..21
+                        Ident@12..16 "List"
+                        GenericArguments@16..21
+                          LessThan@16..17 "<"
+                          PathType@17..20
+                            PathSegment@17..20
+                              Ident@17..20 "Int"
+                          GreaterThan@20..21 ">"
+                  CloseParen@21..22 ")"
+                  Whitespace@22..23 " "
+                  FatArrow@23..25 "=>"
+                  Whitespace@25..26 " "
+                  PathExpr@26..30
+                    PathSegment@26..30
+                      Ident@26..30 "args"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_cast_expr() {
+        check(
+            expr,
+            "value as Int",
+            expect![[r#"
+                CastExpr@0..12
+                  PathExpr@0..6
+                    PathSegment@0..6
+                      Ident@0..5 "value"
+                      Whitespace@5..6 " "
+                  As@6..8 "as"
+                  Whitespace@8..9 " "
+                  PathType@9..12
+                    PathSegment@9..12
+                      Ident@9..12 "Int"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "value as Int + 1",
+            expect![[r#"
+                BinaryExpr@0..16
+                  CastExpr@0..13
+                    PathExpr@0..6
+                      PathSegment@0..6
+                        Ident@0..5 "value"
+                        Whitespace@5..6 " "
+                    As@6..8 "as"
+                    Whitespace@8..9 " "
+                    PathType@9..13
+                      PathSegment@9..13
+                        Ident@9..12 "Int"
+                        Whitespace@12..13 " "
+                  Plus@13..14 "+"
+                  Whitespace@14..15 " "
+                  LiteralExpr@15..16
+                    Integer@15..16 "1"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_function_call_spread() {
+        check(
+            expr,
+            "hello(...args)",
+            expect![[r#"
+                FunctionCallExpr@0..14
+                  PathExpr@0..5
+                    PathSegment@0..5
+                      Ident@0..5 "hello"
+                  OpenParen@5..6 "("
+                  ListItem@6..13
+                    Spread@6..9 "..."
+                    PathExpr@9..13
+                      PathSegment@9..13
+                        Ident@9..13 "args"
+                  CloseParen@13..14 ")"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "hello(1, ...rest)",
+            expect![[r#"
+                FunctionCallExpr@0..17
+                  PathExpr@0..5
+                    PathSegment@0..5
+                      Ident@0..5 "hello"
+                  OpenParen@5..6 "("
+                  ListItem@6..7
+                    LiteralExpr@6..7
+                      Integer@6..7 "1"
+                  Comma@7..8 ","
+                  Whitespace@8..9 " "
+                  ListItem@9..16
+                    Spread@9..12 "..."
+                    PathExpr@12..16
+                      PathSegment@12..16
+                        Ident@12..16 "rest"
+                  CloseParen@16..17 ")"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_chained_postfix_expr() {
+        check(
+            expr,
+            "a.b(1).c as Int is Bytes",
+            expect![[r#"
+                GuardExpr@0..24
+                  CastExpr@0..16
+                    FieldAccessExpr@0..8
+                      FunctionCallExpr@0..6
+                        FieldAccessExpr@0..3
+                          PathExpr@0..1
+                            PathSegment@0..1
+                              Ident@0..1 "a"
+                          Dot@1..2 "."
+                          Ident@2..3 "b"
+                        OpenParen@3..4 "("
+                        ListItem@4..5
+                          LiteralExpr@4..5
+                            Integer@4..5 "1"
+                        CloseParen@5..6 ")"
+                      Dot@6..7 "."
+                      Ident@7..8 "c"
+                    Whitespace@8..9 " "
+                    As@9..11 "as"
+                    Whitespace@11..12 " "
+                    PathType@12..16
+                      PathSegment@12..16
+                        Ident@12..15 "Int"
+                        Whitespace@15..16 " "
+                  Is@16..18 "is"
+                  Whitespace@18..19 " "
+                  PathType@19..24
+                    PathSegment@19..24
+                      Ident@19..24 "Bytes"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_shift_and_comparison_operators() {
+        check(
+            expr,
+            "1 >> 2",
+            expect![[r#"
+                BinaryExpr@0..6
+                  LiteralExpr@0..1
+                    Integer@0..1 "1"
+                  Whitespace@1..2 " "
+                  RightArithmeticShift@2..4 ">>"
+                  Whitespace@4..5 " "
+                  LiteralExpr@5..6
+                    Integer@5..6 "2"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "1 >>> 2",
+            expect![[r#"
+                BinaryExpr@0..7
+                  LiteralExpr@0..1
+                    Integer@0..1 "1"
+                  Whitespace@1..2 " "
+                  RightLogicalShift@2..5 ">>>"
+                  Whitespace@5..6 " "
+                  LiteralExpr@6..7
+                    Integer@6..7 "2"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "1 << 2",
+            expect![[r#"
+                BinaryExpr@0..6
+                  LiteralExpr@0..1
+                    Integer@0..1 "1"
+                  Whitespace@1..2 " "
+                  LeftArithmeticShift@2..4 "<<"
+                  Whitespace@4..5 " "
+                  LiteralExpr@5..6
+                    Integer@5..6 "2"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "1 <= 2 && 3 >= 4",
+            expect![[r#"
+                BinaryExpr@0..16
+                  BinaryExpr@0..7
+                    LiteralExpr@0..1
+                      Integer@0..1 "1"
+                    Whitespace@1..2 " "
+                    LessThanEquals@2..4 "<="
+                    Whitespace@4..5 " "
+                    LiteralExpr@5..6
+                      Integer@5..6 "2"
+                    Whitespace@6..7 " "
+                  And@7..9 "&&"
+                  Whitespace@9..10 " "
+                  BinaryExpr@10..16
+                    LiteralExpr@10..11
+                      Integer@10..11 "3"
+                    Whitespace@11..12 " "
+                    GreaterThanEquals@12..14 ">="
+                    Whitespace@14..15 " "
+                    LiteralExpr@15..16
+                      Integer@15..16 "4"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "1 != 2 == true",
+            expect![[r#"
+                BinaryExpr@0..14
+                  BinaryExpr@0..7
+                    LiteralExpr@0..1
+                      Integer@0..1 "1"
+                    Whitespace@1..2 " "
+                    NotEquals@2..4 "!="
+                    Whitespace@4..5 " "
+                    LiteralExpr@5..6
+                      Integer@5..6 "2"
+                    Whitespace@6..7 " "
+                  Equals@7..9 "=="
+                  Whitespace@9..10 " "
+                  LiteralExpr@10..14
+                    True@10..14 "true"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_bitwise_operator_precedence() {
+        check(
+            expr,
+            "1 | 2 ^ 3 & 4",
+            expect![[r#"
+                BinaryExpr@0..13
+                  LiteralExpr@0..1
+                    Integer@0..1 "1"
+                  Whitespace@1..2 " "
+                  BitwiseOr@2..3 "|"
+                  Whitespace@3..4 " "
+                  BinaryExpr@4..13
+                    LiteralExpr@4..5
+                      Integer@4..5 "2"
+                    Whitespace@5..6 " "
+                    BitwiseXor@6..7 "^"
+                    Whitespace@7..8 " "
+                    BinaryExpr@8..13
+                      LiteralExpr@8..9
+                        Integer@8..9 "3"
+                      Whitespace@9..10 " "
+                      BitwiseAnd@10..11 "&"
+                      Whitespace@11..12 " "
+                      LiteralExpr@12..13
+                        Integer@12..13 "4"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "1 & 2 + 3",
+            expect![[r#"
+                BinaryExpr@0..9
+                  LiteralExpr@0..1
+                    Integer@0..1 "1"
+                  Whitespace@1..2 " "
+                  BitwiseAnd@2..3 "&"
+                  Whitespace@3..4 " "
+                  BinaryExpr@4..9
+                    LiteralExpr@4..5
+                      Integer@4..5 "2"
+                    Whitespace@5..6 " "
+                    Plus@6..7 "+"
+                    Whitespace@7..8 " "
+                    LiteralExpr@8..9
+                      Integer@8..9 "3"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_inline_if_expr() {
+        check(
+            expr,
+            "inline if true { 1 } else { 2 }",
+            expect![[r#"
+                IfExpr@0..31
+                  Inline@0..6 "inline"
+                  Whitespace@6..7 " "
+                  If@7..9 "if"
+                  Whitespace@9..10 " "
+                  LiteralExpr@10..14
+                    True@10..14 "true"
+                  Whitespace@14..15 " "
+                  Block@15..20
+                    OpenBrace@15..16 "{"
+                    Whitespace@16..17 " "
+                    LiteralExpr@17..18
+                      Integer@17..18 "1"
+                    Whitespace@18..19 " "
+                    CloseBrace@19..20 "}"
+                  Whitespace@20..21 " "
+                  Else@21..25 "else"
+                  Whitespace@25..26 " "
+                  Block@26..31
+                    OpenBrace@26..27 "{"
+                    Whitespace@27..28 " "
+                    LiteralExpr@28..29
+                      Integer@28..29 "2"
+                    Whitespace@29..30 " "
+                    CloseBrace@30..31 "}"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_struct_initializer_not_allowed_in_condition() {
+        check(
+            expr,
+            "if value { 1 } else { 2 }",
+            expect![[r#"
+                IfExpr@0..25
+                  If@0..2 "if"
+                  Whitespace@2..3 " "
+                  PathExpr@3..9
+                    PathSegment@3..9
+                      Ident@3..8 "value"
+                      Whitespace@8..9 " "
+                  Block@9..14
+                    OpenBrace@9..10 "{"
+                    Whitespace@10..11 " "
+                    LiteralExpr@11..12
+                      Integer@11..12 "1"
+                    Whitespace@12..13 " "
+                    CloseBrace@13..14 "}"
+                  Whitespace@14..15 " "
+                  Else@15..19 "else"
+                  Whitespace@19..20 " "
+                  Block@20..25
+                    OpenBrace@20..21 "{"
+                    Whitespace@21..22 " "
+                    LiteralExpr@22..23
+                      Integer@22..23 "2"
+                    Whitespace@23..24 " "
+                    CloseBrace@24..25 "}"
+            "#]],
+            expect![""],
         );
     }
 }

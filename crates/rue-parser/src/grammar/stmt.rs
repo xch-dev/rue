@@ -19,17 +19,17 @@ pub enum StatementKind {
 pub fn stmt(p: &mut Parser) -> StatementKind {
     let cp = p.checkpoint();
 
-    let inline = p.try_eat(T![inline]);
+    let inline = p.at_quiet(T![inline]) && p.expect(T![inline]);
 
-    if p.at(T![let]) {
+    if p.at_quiet(T![let]) {
         let_stmt(p, cp);
-    } else if p.at(T![return]) && !inline {
+    } else if p.at_quiet(T![return]) && !inline {
         return_stmt(p);
-    } else if p.at(T![assert]) && !inline {
+    } else if p.at_quiet(T![assert]) && !inline {
         assert_stmt(p);
-    } else if p.at(T![raise]) && !inline {
+    } else if p.at_quiet(T![raise]) && !inline {
         raise_stmt(p);
-    } else if p.at(T![debug]) && !inline {
+    } else if p.at_quiet(T![debug]) && !inline {
         debug_stmt(p);
     } else {
         if expr_with(
@@ -312,6 +312,199 @@ mod tests {
                   Semicolon@8..9 ";"
             "#]],
             expect![],
+        );
+    }
+
+    #[test]
+    fn test_let_stmt_without_value() {
+        check(
+            |p| { let _ = stmt(p); },
+            "let x: Int;",
+            expect![[r#"
+                LetStmt@0..11
+                  Let@0..3 "let"
+                  Whitespace@3..4 " "
+                  NamedBinding@4..5
+                    Ident@4..5 "x"
+                  Colon@5..6 ":"
+                  Whitespace@6..7 " "
+                  PathType@7..10
+                    PathSegment@7..10
+                      Ident@7..10 "Int"
+                  Semicolon@10..11 ";"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_inline_let_stmt() {
+        check(
+            |p| { let _ = stmt(p); },
+            "inline let x = 5;",
+            expect![[r#"
+                LetStmt@0..17
+                  Inline@0..6 "inline"
+                  Whitespace@6..7 " "
+                  Let@7..10 "let"
+                  Whitespace@10..11 " "
+                  NamedBinding@11..12
+                    Ident@11..12 "x"
+                  Whitespace@12..13 " "
+                  Assign@13..14 "="
+                  Whitespace@14..15 " "
+                  LiteralExpr@15..16
+                    Integer@15..16 "5"
+                  Semicolon@16..17 ";"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_let_stmt_destructuring() {
+        check(
+            |p| { let _ = stmt(p); },
+            "let (a, b) = pair;",
+            expect![[r#"
+                LetStmt@0..18
+                  Let@0..3 "let"
+                  Whitespace@3..4 " "
+                  PairBinding@4..10
+                    OpenParen@4..5 "("
+                    NamedBinding@5..6
+                      Ident@5..6 "a"
+                    Comma@6..7 ","
+                    Whitespace@7..8 " "
+                    NamedBinding@8..9
+                      Ident@8..9 "b"
+                    CloseParen@9..10 ")"
+                  Whitespace@10..11 " "
+                  Assign@11..12 "="
+                  Whitespace@12..13 " "
+                  PathExpr@13..17
+                    PathSegment@13..17
+                      Ident@13..17 "pair"
+                  Semicolon@17..18 ";"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            |p| { let _ = stmt(p); },
+            "let { x, y } = point;",
+            expect![[r#"
+                LetStmt@0..21
+                  Let@0..3 "let"
+                  Whitespace@3..4 " "
+                  StructBinding@4..12
+                    OpenBrace@4..5 "{"
+                    Whitespace@5..6 " "
+                    StructFieldBinding@6..7
+                      Ident@6..7 "x"
+                    Comma@7..8 ","
+                    Whitespace@8..9 " "
+                    StructFieldBinding@9..11
+                      Ident@9..10 "y"
+                      Whitespace@10..11 " "
+                    CloseBrace@11..12 "}"
+                  Whitespace@12..13 " "
+                  Assign@13..14 "="
+                  Whitespace@14..15 " "
+                  PathExpr@15..20
+                    PathSegment@15..20
+                      Ident@15..20 "point"
+                  Semicolon@20..21 ";"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_return_stmt_without_value() {
+        check(
+            |p| { let _ = stmt(p); },
+            "return;",
+            expect![[r#"
+                ReturnStmt@0..7
+                  Return@0..6 "return"
+                  Semicolon@6..7 ";"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_raise_stmt_without_value() {
+        check(
+            |p| { let _ = stmt(p); },
+            "raise;",
+            expect![[r#"
+                RaiseStmt@0..6
+                  Raise@0..5 "raise"
+                  Semicolon@5..6 ";"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_inline_if_stmt() {
+        check(
+            |p| { let _ = stmt(p); },
+            "inline if true { 42 }",
+            expect![[r#"
+                IfStmt@0..21
+                  Inline@0..6 "inline"
+                  Whitespace@6..7 " "
+                  If@7..9 "if"
+                  Whitespace@9..10 " "
+                  LiteralExpr@10..14
+                    True@10..14 "true"
+                  Whitespace@14..15 " "
+                  Block@15..21
+                    OpenBrace@15..16 "{"
+                    Whitespace@16..17 " "
+                    LiteralExpr@17..19
+                      Integer@17..19 "42"
+                    Whitespace@19..20 " "
+                    CloseBrace@20..21 "}"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_if_else_expr_stmt() {
+        check(
+            |p| { let _ = stmt(p); },
+            "if true { 1 } else { 2 }",
+            expect![[r#"
+                IfExpr@0..24
+                  If@0..2 "if"
+                  Whitespace@2..3 " "
+                  LiteralExpr@3..7
+                    True@3..7 "true"
+                  Whitespace@7..8 " "
+                  Block@8..13
+                    OpenBrace@8..9 "{"
+                    Whitespace@9..10 " "
+                    LiteralExpr@10..11
+                      Integer@10..11 "1"
+                    Whitespace@11..12 " "
+                    CloseBrace@12..13 "}"
+                  Whitespace@13..14 " "
+                  Else@14..18 "else"
+                  Whitespace@18..19 " "
+                  Block@19..24
+                    OpenBrace@19..20 "{"
+                    Whitespace@20..21 " "
+                    LiteralExpr@21..22
+                      Integer@21..22 "2"
+                    Whitespace@22..23 " "
+                    CloseBrace@23..24 "}"
+            "#]],
+            expect![""],
         );
     }
 }
