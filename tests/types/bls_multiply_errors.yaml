@@ -1,0 +1,3 @@
+diagnostics:
+- Cannot assign `PublicKey` to `Int` without a cast, since they are semantically different at bls_multiply_errors.rue:2:17
+- Cannot assign `Signature` to `Int` without a cast, since they are semantically different at bls_multiply_errors.rue:6:17

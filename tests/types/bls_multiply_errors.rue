@@ -1,0 +1,7 @@
+test fn public_key_times_public_key() -> PublicKey {
+    INFINITY_G1 * INFINITY_G1
+}
+
+test fn signature_times_signature() -> Signature {
+    INFINITY_G2 * INFINITY_G2
+}
