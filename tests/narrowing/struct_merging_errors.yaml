@@ -1,0 +1,7 @@
+diagnostics:
+- Cannot compare `Int | Int | (Int, Int)` to `Int` without a type guard, since the runtime value must be constrained at struct_merging_errors.rue:23:16
+- Unknown field `y` on type `Point | Other` at struct_merging_errors.rue:35:7
+- Cannot assign `Wrapper` to `Int` without a cast, since they are semantically different at struct_merging_errors.rue:41:16
+- Unused function `merge_one_narrowed` at struct_merging_errors.rue:16:4
+- Unused function `merge_different` at struct_merging_errors.rue:29:4
+- Unused function `spread_not_field` at struct_merging_errors.rue:39:4
