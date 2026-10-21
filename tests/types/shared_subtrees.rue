@@ -1,0 +1,85 @@
+type T0 = Int;
+type T1 = (T0, T0);
+type T2 = (T1, T1);
+type T3 = (T2, T2);
+type T4 = (T3, T3);
+type T5 = (T4, T4);
+type T6 = (T5, T5);
+type T7 = (T6, T6);
+type T8 = (T7, T7);
+type T9 = (T8, T8);
+type T10 = (T9, T9);
+type T11 = (T10, T10);
+type T12 = (T11, T11);
+type T13 = (T12, T12);
+type T14 = (T13, T13);
+type T15 = (T14, T14);
+type T16 = (T15, T15);
+type T17 = (T16, T16);
+type T18 = (T17, T17);
+type T19 = (T18, T18);
+type T20 = (T19, T19);
+type T21 = (T20, T20);
+type T22 = (T21, T21);
+type T23 = (T22, T22);
+type T24 = (T23, T23);
+type T25 = (T24, T24);
+type T26 = (T25, T25);
+type T27 = (T26, T26);
+type T28 = (T27, T27);
+type T29 = (T28, T28);
+type T30 = (T29, T29);
+type T31 = (T30, T30);
+type T32 = (T31, T31);
+
+type F0 = Int;
+type F1 = nil | (F0, F0) | fn(a: F0, b: F0) -> F0;
+type F2 = nil | (F1, F1) | fn(a: F1, b: F1) -> F1;
+type F3 = nil | (F2, F2) | fn(a: F2, b: F2) -> F2;
+type F4 = nil | (F3, F3) | fn(a: F3, b: F3) -> F3;
+type F5 = nil | (F4, F4) | fn(a: F4, b: F4) -> F4;
+type F6 = nil | (F5, F5) | fn(a: F5, b: F5) -> F5;
+type F7 = nil | (F6, F6) | fn(a: F6, b: F6) -> F6;
+type F8 = nil | (F7, F7) | fn(a: F7, b: F7) -> F7;
+type F9 = nil | (F8, F8) | fn(a: F8, b: F8) -> F8;
+type F10 = nil | (F9, F9) | fn(a: F9, b: F9) -> F9;
+type F11 = nil | (F10, F10) | fn(a: F10, b: F10) -> F10;
+type F12 = nil | (F11, F11) | fn(a: F11, b: F11) -> F11;
+type F13 = nil | (F12, F12) | fn(a: F12, b: F12) -> F12;
+type F14 = nil | (F13, F13) | fn(a: F13, b: F13) -> F13;
+type F15 = nil | (F14, F14) | fn(a: F14, b: F14) -> F14;
+type F16 = nil | (F15, F15) | fn(a: F15, b: F15) -> F15;
+type F17 = nil | (F16, F16) | fn(a: F16, b: F16) -> F16;
+type F18 = nil | (F17, F17) | fn(a: F17, b: F17) -> F17;
+type F19 = nil | (F18, F18) | fn(a: F18, b: F18) -> F18;
+type F20 = nil | (F19, F19) | fn(a: F19, b: F19) -> F19;
+type F21 = nil | (F20, F20) | fn(a: F20, b: F20) -> F20;
+type F22 = nil | (F21, F21) | fn(a: F21, b: F21) -> F21;
+type F23 = nil | (F22, F22) | fn(a: F22, b: F22) -> F22;
+type F24 = nil | (F23, F23) | fn(a: F23, b: F23) -> F23;
+type F25 = nil | (F24, F24) | fn(a: F24, b: F24) -> F24;
+type F26 = nil | (F25, F25) | fn(a: F25, b: F25) -> F25;
+type F27 = nil | (F26, F26) | fn(a: F26, b: F26) -> F26;
+type F28 = nil | (F27, F27) | fn(a: F27, b: F27) -> F27;
+type F29 = nil | (F28, F28) | fn(a: F28, b: F28) -> F28;
+type F30 = nil | (F29, F29) | fn(a: F29, b: F29) -> F29;
+type F31 = nil | (F30, F30) | fn(a: F30, b: F30) -> F30;
+type F32 = nil | (F31, F31) | fn(a: F31, b: F31) -> F31;
+
+test fn shared_pairs() -> Bool {
+    let value: T32 | nil = nil;
+    pairs(value) is T32
+}
+
+test fn shared_unions() -> Bool {
+    let value: F32 = nil;
+    unions(value) is nil
+}
+
+fn pairs(value: T32 | nil) -> T32 | nil {
+    value
+}
+
+fn unions(value: F32) -> F32 {
+    value
+}
