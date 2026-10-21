@@ -22,8 +22,20 @@ pub fn substitute_with_mappings(
     }
 
     let mut ctx = SubstitutionContext::default();
-    let scope = ctx.scope(mappings);
-    let result = substitute_impl(arena, id, mappings, scope, &mut ctx);
+
+    // The mapped types belong to the caller's scope, so they're substituted without the mappings
+    let empty = HashMap::new();
+    let empty_scope = ctx.scope(&empty);
+    let mappings = mappings
+        .iter()
+        .map(|(&generic, &ty)| {
+            let ty = substitute_impl(arena, ty, &empty, empty_scope, &mut ctx);
+            (generic, ty)
+        })
+        .collect();
+
+    let scope = ctx.scope(&mappings);
+    let result = substitute_impl(arena, id, &mappings, scope, &mut ctx);
 
     if let Some(name) = &name {
         let new_name = stringify_impl(arena, result, &mut IndexMap::new());
@@ -35,12 +47,15 @@ pub fn substitute_with_mappings(
 
 #[derive(Debug, Default)]
 struct SubstitutionContext {
-    /// The types currently being substituted, along with the placeholders for their results.
-    stack: IndexMap<TypeId, TypeId>,
+    /// The types currently being substituted (keyed by the type and the index of the mappings in
+    /// `scopes`), along with the placeholders for their results. The same type can be substituted
+    /// under different mappings at the same time (for example, the inner `Alt<B, A>` in
+    /// `type Alt<A, B> = nil | (A, Alt<B, A>)`), so it isn't keyed by the type alone.
+    stack: IndexMap<(TypeId, usize), TypeId>,
     /// The generic mappings that have been in effect, so that substitutions can be keyed by them.
     scopes: IndexSet<BTreeMap<TypeId, TypeId>>,
     /// Completed substitutions, keyed by the type and the index of the mappings in `scopes`.
-    memo: Memo<TypeId, (TypeId, usize), TypeId>,
+    memo: Memo<(TypeId, usize), (TypeId, usize), TypeId>,
 }
 
 impl SubstitutionContext {
@@ -53,16 +68,26 @@ impl SubstitutionContext {
 
 fn substitute_impl(
     arena: &mut Arena<Type>,
-    mut old_id: TypeId,
+    old_id: TypeId,
     map: &HashMap<TypeId, TypeId>,
     scope: usize,
     ctx: &mut SubstitutionContext,
 ) -> TypeId {
-    if let Some(id) = map.get(&old_id) {
-        old_id = *id;
+    // The mapped type has already been substituted in the scope it came from
+    if let Some(&id) = map.get(&old_id) {
+        // It may be the placeholder for a type that is still being substituted
+        if let Some(index) = ctx
+            .stack
+            .values()
+            .position(|&placeholder| placeholder == id)
+        {
+            ctx.memo.reached(index);
+        }
+
+        return id;
     }
 
-    if let Some((index, _, id)) = ctx.stack.get_full(&old_id) {
+    if let Some((index, _, id)) = ctx.stack.get_full(&(old_id, scope)) {
         ctx.memo.reached(index);
         return *id;
     }
@@ -80,7 +105,7 @@ fn substitute_impl(
     let frame = ctx.memo.enter(ctx.stack.len());
 
     let new_id = arena.alloc(Type::Unresolved);
-    ctx.stack.insert(old_id, new_id);
+    ctx.stack.insert((old_id, scope), new_id);
 
     let result = match arena[old_id].clone() {
         Type::Apply(apply) => {
@@ -170,7 +195,8 @@ fn substitute_impl(
 
     *arena.get_mut(new_id).unwrap() = Type::Ref(result);
 
-    ctx.memo.exit(frame, old_id, Some((old_id, scope)), result);
+    ctx.memo
+        .exit(frame, (old_id, scope), Some((old_id, scope)), result);
 
     result
 }

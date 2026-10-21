@@ -1,0 +1,61 @@
+type Alt<A, B> = nil | (A, Alt<B, A>);
+
+type Even<T> = nil | (T, Odd<T>);
+type Odd<T> = (T, Even<T>);
+
+struct Swap<A, B> {
+    first: A,
+    ...rest: Swap<B, A> | nil,
+}
+
+fn is_alt(value: (Int, (Bytes32, nil)) | (Int, (Int, nil))) -> Bool {
+    value is Alt<Int, Bytes32>
+}
+
+fn count<A, B>(alt: Alt<A, B>) -> Int {
+    if alt is nil {
+        return 0;
+    }
+
+    1 + count(alt.rest)
+}
+
+fn nest<T>(value: T, depth: Int) -> Int {
+    if depth == 0 {
+        return 0;
+    }
+
+    1 + nest((value, 1), depth - 1)
+}
+
+test fn alternating() -> Alt<Int, Bytes32> {
+    let alt: Alt<Int, Bytes32> = (1, (sha256("a"), (2, nil)));
+    alt
+}
+
+test fn alternating_count() -> Int {
+    let alt: Alt<Int, Bytes32> = (1, (sha256("a"), (2, nil)));
+    count(alt)
+}
+
+test fn mutual() -> Even<Int> {
+    let even: Even<Int> = (1, (2, (3, (4, nil))));
+    even
+}
+
+test fn swapped_struct() -> Swap<Int, Bytes32> {
+    let rest = Swap::<Bytes32, Int> { first: sha256("a"), rest: nil };
+    Swap::<Int, Bytes32> { first: 1, rest: rest }
+}
+
+test fn guard_valid() -> Bool {
+    is_alt((1, (sha256("a"), nil)))
+}
+
+test fn guard_invalid() -> Bool {
+    is_alt((1, (2, nil)))
+}
+
+test fn nested_generic_call() -> Int {
+    nest(5, 3)
+}

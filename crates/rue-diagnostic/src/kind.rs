@@ -55,6 +55,11 @@ pub enum DiagnosticKind {
     #[error("Type `{0}` refers to itself without passing through a pair")]
     NonContractiveType(String),
 
+    #[error(
+        "Type `{0}` refers to itself with generic arguments other than its own generic parameters"
+    )]
+    NonRegularType(String),
+
     #[error("Undeclared symbol `{0}`")]
     UndeclaredSymbol(String),
 
@@ -313,6 +318,7 @@ impl DiagnosticKind {
             | Self::DuplicateSymbol(..)
             | Self::DuplicateType(..)
             | Self::NonContractiveType(..)
+            | Self::NonRegularType(..)
             | Self::UndeclaredSymbol(..)
             | Self::UndeclaredType(..)
             | Self::ExpectedGenericArguments(..)

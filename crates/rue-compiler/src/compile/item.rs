@@ -40,7 +40,26 @@ pub fn compile_type_item(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId, sco
         AstTypeItem::StructItem(struct_item) => compile_struct_item(ctx, struct_item, ty, scope),
     }
 
+    if !check_regular(ctx, item, ty) {
+        return;
+    }
+
     check_contractive(ctx, item, ty);
+}
+
+/// Rejects a type item that refers to itself with generic arguments that aren't its own generic
+/// parameters, such as `type L<T> = nil | (T, L<(T, T)>);`. Each level of such a type has new
+/// generic arguments, so it can't be substituted into a finite type. The cycle is broken after
+/// reporting it, and this must happen before anything substitutes the type (including the
+/// contractivity check). Returns `false` if the type was rejected.
+fn check_regular(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId) -> bool {
+    if !rue_types::is_non_regular(ctx.types(), ty) {
+        return true;
+    }
+
+    report_and_break_cycle(ctx, item, ty, DiagnosticKind::NonRegularType);
+
+    false
 }
 
 /// Rejects a type item that can reach itself without passing through a pair, such as
@@ -55,6 +74,15 @@ fn check_contractive(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId) {
         return;
     }
 
+    report_and_break_cycle(ctx, item, ty, DiagnosticKind::NonContractiveType);
+}
+
+fn report_and_break_cycle(
+    ctx: &mut Compiler,
+    item: &AstTypeItem,
+    ty: TypeId,
+    kind: fn(String) -> DiagnosticKind,
+) {
     let name = match item {
         AstTypeItem::TypeAliasItem(type_alias) => type_alias.name(),
         AstTypeItem::StructItem(struct_item) => struct_item.name(),
@@ -65,9 +93,9 @@ fn check_contractive(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId) {
         .map_or_else(|| ctx.type_name(ty), |name| name.text().to_string());
 
     if let Some(name) = name {
-        ctx.diagnostic(&name, DiagnosticKind::NonContractiveType(text));
+        ctx.diagnostic(&name, kind(text));
     } else {
-        ctx.diagnostic(item.syntax(), DiagnosticKind::NonContractiveType(text));
+        ctx.diagnostic(item.syntax(), kind(text));
     }
 
     let (Type::Alias(Alias { inner, .. }) | Type::Struct(Struct { inner, .. })) = ctx.ty(ty) else {
