@@ -5,11 +5,15 @@ use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{BinaryOp, Builtin, FunctionCall, Hir, Symbol, UnaryOp, Value};
 use rue_lir::ClvmOp;
-use rue_types::{Inference, Pair, Type, Union, substitute_with_mappings};
+use rue_types::{Inference, Pair, Type, TypeId, Union, contains_generic, substitute_with_mappings};
 
 use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_path_value};
 
-pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr) -> Value {
+pub fn compile_function_call_expr(
+    ctx: &mut Compiler,
+    call: &AstFunctionCallExpr,
+    expected_type: Option<TypeId>,
+) -> Value {
     let Some(expr) = call.expr() else {
         debug!("Unresolved function call expr");
         return ctx.builtins().unresolved.clone();
@@ -79,6 +83,17 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
         }
 
         let mut infer = Inference::new(function.generics.iter().copied());
+
+        // The type expected of the call is only used for the generics that the arguments
+        // don't constrain, such as `T` in `let value: Int = unchecked_cast(nil);`
+        let fallback = if let Some(expected_type) = expected_type {
+            let mut infer = infer.clone();
+            ctx.infer_from_expected(function.ret, expected_type, &mut infer);
+            ctx.resolve_inference(&infer)
+        } else {
+            HashMap::new()
+        };
+
         let mut results = vec![ctx.builtins().unresolved.hir; function.params.len()];
         let mut checks = Vec::new();
 
@@ -93,7 +108,12 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
             let param = function.params[i];
 
             // Use what has been inferred from the previous arguments as the expected type
-            let mappings = ctx.resolve_inference(&infer);
+            let mut mappings = ctx.resolve_inference(&infer);
+
+            for (&generic, &ty) in &fallback {
+                mappings.entry(generic).or_insert(ty);
+            }
+
             let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
             let value = compile_expr(ctx, expr, Some(expected));
@@ -109,7 +129,48 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
             debug!("Unresolved function call argument");
         }
 
-        let mappings = ctx.resolve_inference(&infer);
+        let mut mappings = ctx.resolve_inference(&infer);
+
+        let has_generic_arguments = matches!(
+            call.expr(),
+            Some(AstExpr::PathExpr(path))
+                if path.segments().any(|segment| segment.generic_arguments().is_some())
+        );
+
+        for &generic in &function.generics {
+            if mappings.contains_key(&generic) {
+                continue;
+            }
+
+            if let Some(&ty) = fallback.get(&generic) {
+                mappings.insert(generic, ty);
+                continue;
+            }
+
+            // A generic that's in scope is being passed through a recursive call, so it's
+            // fine for it to stay as is. Otherwise, the callee's generic would leak out, unless
+            // the function's type doesn't reference it at all.
+            if is_type_in_scope(ctx, generic)
+                || !std::iter::once(function.ret)
+                    .chain(function.params.values().copied())
+                    .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
+            {
+                continue;
+            }
+
+            // If generic arguments were given, a mismatch in their number was already reported
+            if !has_generic_arguments {
+                let generic_name = ctx.type_name(generic);
+                let function_name = callee_name(call);
+
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::CannotInferGeneric(generic_name, function_name),
+                );
+            }
+
+            mappings.insert(generic, ctx.builtins().unresolved.ty);
+        }
 
         // Inference only proposes types for the generics, so each argument must be checked
         // against the fully substituted parameter type. This catches arguments that constrain
@@ -148,6 +209,33 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
     }));
 
     Value::new(hir, ty)
+}
+
+/// The name of the function being called, without any generic arguments.
+fn callee_name(call: &AstFunctionCallExpr) -> String {
+    match call.expr() {
+        Some(AstExpr::PathExpr(path)) => path
+            .segments()
+            .filter_map(|segment| segment.name())
+            .map(|name| name.text().to_string())
+            .collect::<Vec<_>>()
+            .join("::"),
+        Some(expr) => expr.syntax().text().to_string(),
+        None => String::new(),
+    }
+}
+
+fn is_type_in_scope(ctx: &Compiler, ty: TypeId) -> bool {
+    let mut current = Some(ctx.last_scope_id());
+
+    while let Some(scope) = current {
+        if ctx.scope(scope).type_name(ty).is_some() {
+            return true;
+        }
+        current = ctx.scope(scope).parent();
+    }
+
+    false
 }
 
 fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Builtin) -> Value {

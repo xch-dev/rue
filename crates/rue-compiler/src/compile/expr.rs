@@ -52,7 +52,7 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::ListExpr(expr) => compile_list_expr(ctx, expr, expected_type),
         AstExpr::PrefixExpr(expr) => compile_prefix_expr(ctx, expr),
         AstExpr::BinaryExpr(expr) => compile_binary_expr(ctx, expr),
-        AstExpr::FunctionCallExpr(expr) => compile_function_call_expr(ctx, expr),
+        AstExpr::FunctionCallExpr(expr) => compile_function_call_expr(ctx, expr, expected_type),
         AstExpr::IfExpr(expr) => compile_if_expr(ctx, expr, expected_type),
         AstExpr::GuardExpr(expr) => compile_guard_expr(ctx, expr),
         AstExpr::CastExpr(expr) => compile_cast_expr(ctx, expr),

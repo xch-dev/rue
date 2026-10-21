@@ -1,0 +1,61 @@
+fn get<T>() -> T {
+    unchecked_cast(nil)
+}
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn apply<T>(function: fn(value: T) -> T) -> T {
+    function(unchecked_cast(5))
+}
+
+fn wrap<A, B>(value: A) -> (A, B | nil) {
+    (value, nil)
+}
+
+fn countdown<T>(value: T, count: Int) -> T {
+    if count == 0 {
+        value
+    } else {
+        countdown(value, count - 1)
+    }
+}
+
+fn unused_generic<T>() -> Int {
+    42
+}
+
+test fn infer_from_let_type() -> Int {
+    let value: Int = get();
+    value
+}
+
+test fn infer_from_return_type() -> Int {
+    get()
+}
+
+test fn infer_argument_from_return_type() -> Int {
+    identity(unchecked_cast(5))
+}
+
+test fn infer_lambda_from_return_type() -> Int {
+    apply(fn(value) => value + 1)
+}
+
+test fn infer_remaining_from_return_type() -> (Int, Bytes | nil) {
+    wrap(1)
+}
+
+test fn explicit_generic_arguments() -> Int {
+    let value = get::<Int>();
+    value
+}
+
+test fn recursive_generic_call() -> Int {
+    countdown(7, 3)
+}
+
+test fn unreferenced_generic() -> Int {
+    unused_generic()
+}

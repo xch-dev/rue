@@ -1,0 +1,59 @@
+tests:
+- name: infer_from_let_type
+  program: ()
+  debug_program: (a (q 2 (q . 2) (c (a 2 ()) 1)) (c (q) ()))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: infer_from_return_type
+  program: ()
+  debug_program: (a (q 2 2 ()) (c (q) ()))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: infer_argument_from_return_type
+  program: (q . 5)
+  debug_program: (a (q 2 2 (q . 5)) (c (q . 1) ()))
+  output: '5'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: infer_lambda_from_return_type
+  program: (a (q 16 2 (q . 1)) (q 5))
+  debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))) (c (q 2 1 (c (q . 5) ())) ()))
+  output: '6'
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: infer_remaining_from_return_type
+  program: (q 1)
+  debug_program: (a (q 2 2 (q . 1)) (c (q 4 1 ()) ()))
+  output: (1)
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: explicit_generic_arguments
+  program: ()
+  debug_program: (a (q 2 (q . 2) (c (a 2 ()) 1)) (c (q) ()))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: recursive_generic_call
+  program: (a (q 2 2 (c 2 (q 7 . 3))) (c (q 2 (i 7 (q 2 2 (c 2 (c 5 (- 7 (q . 1))))) (q . 5)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 7) (q . 3)))) (c (q 2 (i (= 7 ()) (q . 5) (q 2 2 (c 2 (c 5 (- 7 (q . 1)))))) 1) ()))
+  output: '7'
+  runtime_cost: 5077
+  byte_cost: 924000
+  total_cost: 929077
+- name: unreferenced_generic
+  program: (q . 42)
+  debug_program: (a (q 2 2 ()) (c (q 1 . 42) ()))
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+diagnostics:
+- Unused generic type `T` at generic_inference_expected.rue:25:19
