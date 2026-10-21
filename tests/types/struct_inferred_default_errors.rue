@@ -1,0 +1,20 @@
+// A field with a default value and no type annotation has the exact type of its default,
+// so that fields like `opcode = 51` can be used to distinguish structs at runtime.
+struct Inferred {
+    value = 42,
+    flag = false,
+    name = "hello",
+}
+
+// A type annotation is required to allow other values.
+struct Annotated {
+    value: Int = 42,
+}
+
+fn main() -> Int {
+    let same = Inferred { value: 42, flag: false, name: "hello" };
+    let other = Inferred { value: 43, flag: true, name: "world" };
+    let annotated = Annotated { value: 43 };
+    let invalid = Annotated { value: "hello" };
+    same.value + other.value + annotated.value + invalid.value
+}

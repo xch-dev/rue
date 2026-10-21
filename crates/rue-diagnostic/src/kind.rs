@@ -87,6 +87,11 @@ pub enum DiagnosticKind {
     #[error("Cannot assign `{0}` to `{1}` without a cast, since they are semantically different")]
     UnassignableType(String, String),
 
+    #[error(
+        "Cannot assign `{1}` to field `{0}` of type `{2}`, since the field's type is inferred from its default value; add a type annotation to the field to allow other values"
+    )]
+    InferredFieldType(String, String, String),
+
     #[error("Cannot cast `{0}` to `{1}`, since they have different runtime representations")]
     IncompatibleCast(String, String),
 
@@ -319,6 +324,7 @@ impl DiagnosticKind {
             | Self::UndeclaredSubtypeField(..)
             | Self::IncompatibleType(..)
             | Self::UnassignableType(..)
+            | Self::InferredFieldType(..)
             | Self::IncompatibleCast(..)
             | Self::IncompatibleGuard(..)
             | Self::UnconstrainableComparison(..)

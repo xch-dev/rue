@@ -1,0 +1,63 @@
+program: (+ (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) (q . 1))
+debug_program: (a (q 2 (q 16 (a 2 ()) (q . 1)) (c (a 2 5) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c () ()))) ()))) 1))
+solution: (10)
+output: '11'
+runtime_cost: 1873
+byte_cost: 876000
+total_cost: 877873
+tests:
+- name: closure_in_inline_function
+  program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) 2) (c (q . 10) 1))
+  debug_program: (a (q 16 (a (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) 2) (c (q . 10) 1))
+  output: '20'
+  runtime_cost: 2127
+  byte_cost: 1044000
+  total_cost: 1046127
+- name: returned_closure
+  program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) 2) (c (q . 10) 1))
+  debug_program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) 2) (c (q . 10) 1))
+  output: '20'
+  runtime_cost: 2127
+  byte_cost: 1044000
+  total_cost: 1046127
+- name: captured_binding
+  program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q 16 (* 2 (q . 2)) (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) 2) (c (q . 10) 1))
+  debug_program: (a (q 16 (a (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) 1)) (c (* 2 (q . 2)) 1)) 2) (c (q . 10) 1))
+  output: '31'
+  runtime_cost: 3923
+  byte_cost: 1236000
+  total_cost: 1239923
+- name: captured_by_nested_closure
+  program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q 2 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ())) (c (c (q . 4) (c (c (q . 1) (* 2 (q . 3))) (c () ()))) ()))) ()) 2) (c (q . 10) 1))
+  debug_program: (a (q 16 (a (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1))) (c (c (q . 4) (c (c (q . 1) (* 2 (q . 3))) (c () ()))) ()))) 1)) 2) (c (q . 10) 1))
+  output: '40'
+  runtime_cost: 4196
+  byte_cost: 1908000
+  total_cost: 1912196
+- name: argument_evaluated_once
+  program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_closure_captures.rue:39:5"))) 1) ()))
+  output: '30'
+  runtime_cost: 4805
+  byte_cost: 1932000
+  total_cost: 1936805
+- name: argument_raises
+  program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_closure_captures.rue:39:5"))) 1) ()))
+  byte_cost: 1908000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_closure_captures.rue:39:5"
+- name: auto_inlined_closure
+  program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) 2) (c (q . 10) 1))
+  debug_program: (a (q 2 (q 16 (a (a 5 2) ()) 2) (c (q . 10) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c () ()))) ()))) ()))
+  output: '20'
+  runtime_cost: 2127
+  byte_cost: 1044000
+  total_cost: 1046127
+- name: constant_argument
+  program: (q . 5)
+  debug_program: (a (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c () ()))) 1))
+  output: '5'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

@@ -111,7 +111,9 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => variants_of(arena, builtins, id),
-        Type::Unresolved | Type::Atom(_) | Type::Pair(_) => vec![Variant {
+        // Nothing is known about the values of a generic type, so it can't be split into narrower
+        // variants. It's kept as is, and only removed if the target covers every possible value.
+        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) => vec![Variant {
             semantic_type_ids: vec![],
             type_id: id,
         }],
@@ -134,7 +136,7 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
 
             variants
         }
-        Type::Function(_) | Type::Generic(_) | Type::Any => vec![
+        Type::Function(_) | Type::Any => vec![
             Variant {
                 semantic_type_ids: vec![],
                 type_id: builtins.atom,

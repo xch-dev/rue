@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 
-use crate::{AtomRestriction, FunctionType, Pair, Type, TypeId, substitute};
+use crate::{AtomRestriction, FunctionType, Pair, Struct, Type, TypeId, substitute};
 
 #[derive(Debug, Clone)]
 pub enum Atoms {
@@ -152,6 +152,66 @@ fn extract_functions_impl(
 
             Some(pairs)
         }
+    };
+
+    stack.remove(&id);
+
+    result
+}
+
+/// If every variant of the type is an instance of the same struct (such as a struct and a
+/// narrowed copy of it), returns each of those instances.
+pub fn extract_structs(arena: &mut Arena<Type>, id: TypeId) -> Option<Vec<Struct>> {
+    let id = substitute(arena, id);
+
+    let mut structs = Vec::new();
+
+    if !extract_structs_impl(arena, id, &mut structs, &mut HashSet::new()) {
+        return None;
+    }
+
+    let first = structs.first()?;
+
+    if structs
+        .iter()
+        .any(|ty| ty.semantic != first.semantic || ty.fields != first.fields)
+    {
+        return None;
+    }
+
+    Some(structs)
+}
+
+fn extract_structs_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    structs: &mut Vec<Struct>,
+    stack: &mut HashSet<TypeId>,
+) -> bool {
+    // A non-contractive cycle doesn't contribute anything
+    if !stack.insert(id) {
+        return true;
+    }
+
+    let result = match arena[id].clone() {
+        Type::Apply(_) => unreachable!(),
+        Type::Ref(id) => extract_structs_impl(arena, id, structs, stack),
+        Type::Never => true,
+        Type::Unresolved
+        | Type::Generic(_)
+        | Type::Atom(_)
+        | Type::Pair(_)
+        | Type::Function(_)
+        | Type::Any => false,
+        Type::Struct(ty) => {
+            structs.push(ty);
+            true
+        }
+        Type::Alias(alias) => extract_structs_impl(arena, alias.inner, structs, stack),
+        Type::Union(ty) => ty
+            .types
+            .into_iter()
+            .all(|ty| extract_structs_impl(arena, ty, structs, stack)),
     };
 
     stack.remove(&id);
