@@ -69,13 +69,20 @@ fn ty_inner(p: &mut Parser, allow_union: bool) {
         return;
     }
 
-    if allow_union && p.at(T![|]) {
+    // A union member can't be empty, so `||` is always a logical or after the type (for example,
+    // in `value is Int || other`) rather than the start of another union member
+    if allow_union && at_union_separator(p) {
         p.start_at(cp, SyntaxKind::UnionType);
-        while p.try_eat(T![|]) {
+        while at_union_separator(p) {
+            p.expect(T![|]);
             ty_inner(p, false);
         }
         p.finish();
     }
+}
+
+fn at_union_separator(p: &mut Parser) -> bool {
+    p.at(T![|]) && !p.at(T![||])
 }
 
 fn path_type(p: &mut Parser) {

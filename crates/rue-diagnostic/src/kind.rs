@@ -92,6 +92,11 @@ pub enum DiagnosticKind {
     UnnecessaryGuard(String, String),
 
     #[error(
+        "Type guard from `{0}` to `{1}` is always true, since every `{0}` value is also a valid `{1}` at runtime; use a cast, or guard against a narrower type"
+    )]
+    IndistinguishableGuard(String, String),
+
+    #[error(
         "Cannot compare `{0}` to `{1}` without a type guard, since the runtime value must be constrained"
     )]
     UnconstrainableComparison(String, String),
@@ -342,6 +347,7 @@ impl DiagnosticKind {
             | Self::EmptyGenericArguments
             | Self::UnnecessaryCast(..)
             | Self::UnnecessaryGuard(..)
+            | Self::IndistinguishableGuard(..)
             | Self::UnnecessaryPlus
             | Self::UnusedFunction(..)
             | Self::UnusedConstant(..)

@@ -755,4 +755,111 @@ mod tests {
             expect!["Expected identifier, found eof at main.rue:1:7"],
         );
     }
+
+    #[test]
+    fn test_guard_expr_logical_or() {
+        check(
+            expr,
+            "value is Int || other",
+            expect![[r#"
+            BinaryExpr@0..21
+              GuardExpr@0..13
+                PathExpr@0..6
+                  PathSegment@0..6
+                    Ident@0..5 "value"
+                    Whitespace@5..6 " "
+                Is@6..8 "is"
+                Whitespace@8..9 " "
+                PathType@9..13
+                  PathSegment@9..13
+                    Ident@9..12 "Int"
+                    Whitespace@12..13 " "
+              Or@13..15 "||"
+              Whitespace@15..16 " "
+              PathExpr@16..21
+                PathSegment@16..21
+                  Ident@16..21 "other"
+        "#]],
+            expect![],
+        );
+        check(
+            expr,
+            "value as Int || other",
+            expect![[r#"
+            BinaryExpr@0..21
+              CastExpr@0..13
+                PathExpr@0..6
+                  PathSegment@0..6
+                    Ident@0..5 "value"
+                    Whitespace@5..6 " "
+                As@6..8 "as"
+                Whitespace@8..9 " "
+                PathType@9..13
+                  PathSegment@9..13
+                    Ident@9..12 "Int"
+                    Whitespace@12..13 " "
+              Or@13..15 "||"
+              Whitespace@15..16 " "
+              PathExpr@16..21
+                PathSegment@16..21
+                  Ident@16..21 "other"
+        "#]],
+            expect![],
+        );
+        check(
+            expr,
+            "value is Int | Bytes || other",
+            expect![[r#"
+            BinaryExpr@0..29
+              GuardExpr@0..21
+                PathExpr@0..6
+                  PathSegment@0..6
+                    Ident@0..5 "value"
+                    Whitespace@5..6 " "
+                Is@6..8 "is"
+                Whitespace@8..9 " "
+                UnionType@9..21
+                  PathType@9..13
+                    PathSegment@9..13
+                      Ident@9..12 "Int"
+                      Whitespace@12..13 " "
+                  BitwiseOr@13..14 "|"
+                  Whitespace@14..15 " "
+                  PathType@15..21
+                    PathSegment@15..21
+                      Ident@15..20 "Bytes"
+                      Whitespace@20..21 " "
+              Or@21..23 "||"
+              Whitespace@23..24 " "
+              PathExpr@24..29
+                PathSegment@24..29
+                  Ident@24..29 "other"
+        "#]],
+            expect![],
+        );
+        check(
+            expr,
+            "value is Int | Bytes",
+            expect![[r#"
+            GuardExpr@0..20
+              PathExpr@0..6
+                PathSegment@0..6
+                  Ident@0..5 "value"
+                  Whitespace@5..6 " "
+              Is@6..8 "is"
+              Whitespace@8..9 " "
+              UnionType@9..20
+                PathType@9..13
+                  PathSegment@9..13
+                    Ident@9..12 "Int"
+                    Whitespace@12..13 " "
+                BitwiseOr@13..14 "|"
+                Whitespace@14..15 " "
+                PathType@15..20
+                  PathSegment@15..20
+                    Ident@15..20 "Bytes"
+        "#]],
+            expect![],
+        );
+    }
 }

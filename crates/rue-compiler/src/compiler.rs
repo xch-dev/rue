@@ -411,7 +411,13 @@ impl Compiler {
         let from_name = self.type_name(from);
         let to_name = self.type_name(to);
 
-        if check == Check::None {
+        if check == Check::None && !self.is_assignable(from, to) {
+            // The types are different at compile time, but there's nothing to check at runtime
+            self.diagnostic(
+                node,
+                DiagnosticKind::IndistinguishableGuard(from_name, to_name),
+            );
+        } else if check == Check::None {
             self.diagnostic(node, DiagnosticKind::UnnecessaryGuard(from_name, to_name));
         } else if check == Check::Impossible {
             self.diagnostic(node, DiagnosticKind::IncompatibleGuard(from_name, to_name));
