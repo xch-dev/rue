@@ -301,13 +301,13 @@ pub fn compile_block(
 
     ctx.revert_mappings(index, range.end());
 
-    if kind == BlockKind::Expr {
-        ctx.pop_return_target();
-    }
-
     // The trailing expression's reference and type guard mappings only describe the
     // block's value if nothing else (such as a `return` statement) could have produced it.
     let definitely_trailing = implicit_return && ctx.return_count() == return_count;
+
+    if kind == BlockKind::Expr {
+        ctx.pop_return_target();
+    }
 
     match return_value {
         Some(return_value) if definitely_trailing => return_value.with_hir(hir),

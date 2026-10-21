@@ -98,3 +98,23 @@ test fn early_returns() {
         false,
     ) == 0x0000000000000000000000000000000000000000000000000000000000000000;
 }
+
+fn block_reference_with_lambda(x: Bytes) -> Bytes32 {
+    assert ({
+        let f = fn(y: Int) => {
+            if y > 0 {
+                return 1;
+            }
+            2
+        };
+        assert f(1) == 1;
+        x
+    }) is Bytes32;
+    x
+}
+
+test fn lambda_returns_keep_block_reference() {
+    assert block_reference_with_lambda(
+        0x0000000000000000000000000000000000000000000000000000000000000000,
+    ) == 0x0000000000000000000000000000000000000000000000000000000000000000;
+}

@@ -36,7 +36,7 @@ pub struct Compiler {
     declaration_stack: Vec<Declaration>,
     registered_scopes: HashSet<ScopeId>,
     external_programs: HashMap<PathBuf, Vec<u8>>,
-    return_stack: Vec<Option<ReturnTarget>>,
+    return_stack: Vec<(Option<ReturnTarget>, usize)>,
     return_count: usize,
 }
 
@@ -376,21 +376,29 @@ impl Compiler {
     /// Enters a context where `return` statements exit to the given target. If the target
     /// is `None`, then `return` statements are not allowed (such as in expression blocks).
     pub fn push_return_target(&mut self, target: Option<ReturnTarget>) {
-        self.return_stack.push(target);
+        self.return_stack.push((target, self.return_count));
     }
 
+    /// Leaves the current return context. The return count is restored, since `return`
+    /// statements inside of it can't exit any of the blocks that enclose it.
     pub fn pop_return_target(&mut self) -> Option<ReturnTarget> {
-        self.return_stack
+        let (target, return_count) = self
+            .return_stack
             .pop()
-            .expect("return target stack is unbalanced")
+            .expect("return target stack is unbalanced");
+        self.return_count = return_count;
+        target
     }
 
     pub fn return_target_mut(&mut self) -> Option<&mut ReturnTarget> {
-        self.return_stack.last_mut().and_then(Option::as_mut)
+        self.return_stack
+            .last_mut()
+            .and_then(|(target, _)| target.as_mut())
     }
 
-    /// The total number of `return` statements compiled so far, which can be used to
-    /// determine whether a block may have exited early.
+    /// The number of `return` statements compiled so far that could exit the blocks in
+    /// the current return context, which is used to tell whether a block may have exited
+    /// early.
     pub fn return_count(&self) -> usize {
         self.return_count
     }

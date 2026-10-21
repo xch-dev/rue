@@ -6,3 +6,10 @@ tests:
   runtime_cost: 23994
   byte_cost: 10932000
   total_cost: 10955994
+- name: lambda_returns_keep_block_reference
+  program: (a (q 2 (i (= (a 2 (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q) (q 8)) 1) (c (q 2 (i (= (strlen (a (i (= (a (q 2 (i (> 2 ()) (q 1 . 1) (q 1 . 2)) 1) (q 1)) (q . 1)) (q . 1) (q 8)) 1)) (q . 32)) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (i (= (a 2 (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q . 0x0000000000000000000000000000000000000000000000000000000000000000)) (q) (q 8 (q . "assertion failed at early_return.rue:117:5"))) 1) (c (q 2 (i (= (strlen (a (q 2 (i (= (a 2 (c (q . 1) ())) (q . 1)) (q . 3) (q 8 (q . "assertion failed at early_return.rue:110:9"))) 1) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 ()) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))) 1))) (q . 32)) (q . 1) (q 8 (q . "assertion failed at early_return.rue:103:5"))) 1) ()))
+  output: ()
+  runtime_cost: 2795
+  byte_cost: 2604000
+  total_cost: 2606795
