@@ -1,0 +1,80 @@
+fn main(x: Int) -> Int {
+    let g = pick(x);
+    g() + 1
+}
+
+fn pick(x: Int) -> fn() -> Int {
+    fn() => x
+}
+
+inline fn call_closure(y: Int) -> Int {
+    let g = fn() => y;
+    g()
+}
+
+inline fn return_closure(x: Int) -> fn() -> Int {
+    fn() => x
+}
+
+inline fn capture_binding(y: Int) -> Int {
+    let a = y * 2;
+    let g = fn() => a + 1;
+    g()
+}
+
+inline fn nested_closure(y: Int) -> Int {
+    let g = fn() => {
+        let h = fn() => y;
+        h()
+    };
+    g()
+}
+
+inline fn call_twice(y: Int) -> Int {
+    let g = fn() => y;
+    g() + g()
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+test fn closure_in_inline_function() -> Int {
+    let num = 10;
+    call_closure(num) + num
+}
+
+test fn returned_closure() -> Int {
+    let num = 10;
+    return_closure(num)() + num
+}
+
+test fn captured_binding() -> Int {
+    let num = 10;
+    capture_binding(num) + num
+}
+
+test fn captured_by_nested_closure() -> Int {
+    let num = 10;
+    nested_closure(num * 3) + num
+}
+
+test fn argument_evaluated_once() -> Int {
+    let num = 10;
+    call_twice(positive(num)) + num
+}
+
+test fn argument_raises() -> Int {
+    let num = 0;
+    call_twice(positive(num)) + num
+}
+
+test fn auto_inlined_closure() -> Int {
+    let num = 10;
+    pick(num)() + num
+}
+
+test fn constant_argument() -> Int {
+    call_closure(5)
+}

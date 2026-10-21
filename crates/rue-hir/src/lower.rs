@@ -96,7 +96,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .graph
             .dependencies(symbol, true)
             .into_iter()
-            .filter(|&symbol| !self.should_inline(symbol))
+            .filter(|&symbol| self.is_capture(symbol))
             .collect();
 
         let capture_groups = self.group_symbols(
@@ -133,7 +133,20 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             function_env = Self::apply_group(function_env, group, true);
         }
 
+        // Inline arguments are lowered in the caller's environment, so the function body
+        // can only reach them through its captures, unless they are static values
+        let static_arguments = self
+            .inline_symbols
+            .iter()
+            .flat_map(HashMap::keys)
+            .filter_map(|&symbol| {
+                let hir = self.inline_argument(symbol)?;
+                self.is_static_hir(hir).then_some((symbol, hir))
+            })
+            .collect();
+        let inline_symbols = std::mem::replace(&mut self.inline_symbols, vec![static_arguments]);
         let mut expr = self.lower_hir(&function_env, function.body);
+        self.inline_symbols = inline_symbols;
 
         if symbol == self.main && function.kind == FunctionKind::External {
             let entire_env = self.arena.alloc(Lir::Path(1u8.into()));
@@ -499,7 +512,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 .graph
                 .dependencies(symbol, true)
                 .into_iter()
-                .filter(|&symbol| !self.should_inline(symbol))
+                .filter(|&symbol| self.is_capture(symbol))
                 .collect();
 
             let mut refs = Vec::new();
@@ -835,7 +848,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     || matches!(self.db.symbol(symbol), Symbol::Function(_))
                     || by_reference
                 {
-                    if !self.should_inline(symbol) && self.graph.references(symbol) > 0 {
+                    if self.is_capture(symbol) && self.graph.references(symbol) > 0 {
                         group.push(symbol);
                     }
                     false
@@ -891,12 +904,48 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
     }
 
-    fn should_inline(&self, symbol: SymbolId) -> bool {
-        if self
-            .inline_symbols
+    fn inline_argument(&self, symbol: SymbolId) -> Option<HirId> {
+        self.inline_symbols
             .iter()
-            .any(|symbols| symbols.contains_key(&symbol))
-        {
+            .rev()
+            .find_map(|symbols| symbols.get(&symbol).copied())
+    }
+
+    /// Whether the value can be lowered in any environment, since it doesn't depend on it.
+    fn is_static_hir(&self, hir: HirId) -> bool {
+        match self.db.hir(hir) {
+            Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bool(_) | Hir::Bytes(_) => true,
+            Hir::Pair(first, rest) => self.is_static_hir(*first) && self.is_static_hir(*rest),
+            Hir::Reference(symbol) => {
+                if let Some(hir) = self.inline_argument(*symbol) {
+                    return self.is_static_hir(hir);
+                }
+
+                if !self.should_inline(*symbol) {
+                    return false;
+                }
+
+                match self.db.symbol(*symbol) {
+                    Symbol::Constant(constant) => self.is_static_hir(constant.value.hir),
+                    Symbol::Binding(binding) => self.is_static_hir(binding.value.hir),
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether a function needs to capture the symbol rather than inlining its value.
+    /// Inline arguments are captured by value, unless they are static.
+    fn is_capture(&self, symbol: SymbolId) -> bool {
+        match self.inline_argument(symbol) {
+            Some(hir) => !self.is_static_hir(hir),
+            None => !self.should_inline(symbol),
+        }
+    }
+
+    fn should_inline(&self, symbol: SymbolId) -> bool {
+        if self.inline_argument(symbol).is_some() {
             return true;
         }
 
@@ -942,5 +991,133 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 references <= 1 && self.options.auto_inline
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rue_types::BuiltinTypes;
+
+    use crate::{ParameterSymbol, Scope};
+
+    use super::*;
+
+    fn function(
+        db: &mut Database,
+        builtins: &BuiltinTypes,
+        parameters: IndexMap<String, SymbolId>,
+        body: HirId,
+        kind: FunctionKind,
+    ) -> FunctionSymbol {
+        FunctionSymbol {
+            name: None,
+            ty: builtins.unresolved,
+            scope: db.alloc_scope(Scope::new(None)),
+            vars: vec![],
+            parameters,
+            nil_terminated: true,
+            return_type: builtins.unresolved,
+            body,
+            kind,
+        }
+    }
+
+    fn parameter(db: &mut Database, builtins: &BuiltinTypes) -> SymbolId {
+        db.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+            name: None,
+            ty: builtins.int,
+        }))
+    }
+
+    // fn main(x: Int) -> Int { f(<argument>)() }
+    // inline fn f(y: Int) -> fn() -> Int { fn() => y }
+    // Returns the captures of the closure created by the lambda in `f`
+    fn lambda_captures(argument: impl FnOnce(&mut Database, SymbolId) -> HirId) -> Vec<Lir> {
+        let mut db = Database::new();
+        let builtins = BuiltinTypes::new(db.types_mut());
+
+        let y = parameter(&mut db, &builtins);
+        let lambda_body = db.alloc_hir(Hir::Reference(y));
+        let lambda = function(
+            &mut db,
+            &builtins,
+            IndexMap::new(),
+            lambda_body,
+            FunctionKind::Sequential,
+        );
+        let lambda = db.alloc_symbol(Symbol::Function(lambda));
+
+        let f_body = db.alloc_hir(Hir::Lambda(lambda));
+        let f = function(
+            &mut db,
+            &builtins,
+            IndexMap::from([("y".to_string(), y)]),
+            f_body,
+            FunctionKind::Inline,
+        );
+        let f = db.alloc_symbol(Symbol::Function(f));
+
+        let x = parameter(&mut db, &builtins);
+        let f_reference = db.alloc_hir(Hir::Reference(f));
+        let argument = argument(&mut db, x);
+        let f_call = db.alloc_hir(Hir::FunctionCall(FunctionCall {
+            function: f_reference,
+            args: vec![argument],
+            nil_terminated: true,
+        }));
+        let main_body = db.alloc_hir(Hir::FunctionCall(FunctionCall {
+            function: f_call,
+            args: vec![],
+            nil_terminated: true,
+        }));
+        let main = function(
+            &mut db,
+            &builtins,
+            IndexMap::from([("x".to_string(), x)]),
+            main_body,
+            FunctionKind::Sequential,
+        );
+        let main = db.alloc_symbol(Symbol::Function(main));
+
+        let options = CompilerOptions::default();
+        let graph = DependencyGraph::build(&db, main, options);
+        let mut arena = Arena::new();
+        let mut lowerer = Lowerer::new(
+            &mut db,
+            &mut arena,
+            &graph,
+            options,
+            LoweringMode::Program,
+            main,
+            PathBuf::new(),
+        );
+        lowerer.lower_symbol_value(&Environment::default(), main);
+
+        let mut closures = arena
+            .iter()
+            .filter_map(|(_, lir)| match lir {
+                Lir::Closure(_, captures, _) => Some(captures.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(closures.len(), 1);
+
+        closures
+            .remove(0)
+            .into_iter()
+            .map(|capture| arena[capture].clone())
+            .collect()
+    }
+
+    #[test]
+    fn closure_captures_inline_argument() {
+        let captures = lambda_captures(|db, x| db.alloc_hir(Hir::Reference(x)));
+        assert!(matches!(captures.as_slice(), [Lir::Path(path)] if *path == 2u8.into()));
+    }
+
+    #[test]
+    fn closure_inlines_static_argument() {
+        let captures = lambda_captures(|db, _| db.alloc_hir(Hir::Int(5.into())));
+        assert!(captures.is_empty());
     }
 }
