@@ -1,0 +1,33 @@
+struct Coin {
+    parent_coin_info: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+test fn long_list(value: Any) -> Bool {
+    value is [Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int]
+}
+
+test fn long_list_too_short(value: Any) -> Bool {
+    value is [Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int]
+}
+
+test fn long_list_too_long(value: Any) -> Bool {
+    value is [Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int]
+}
+
+test fn long_list_nested_item(value: Any) -> Bool {
+    value is [Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int]
+}
+
+test fn nested_structs(value: Any) -> Bool {
+    value is (Coin, (Coin, (Coin, (Coin, nil))))
+}
+
+test fn nested_structs_invalid_field(value: Any) -> Bool {
+    value is (Coin, (Coin, (Coin, (Coin, nil))))
+}
+
+test fn nested_structs_too_short(value: Any) -> Bool {
+    value is (Coin, (Coin, (Coin, (Coin, nil))))
+}
