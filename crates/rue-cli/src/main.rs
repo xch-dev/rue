@@ -49,7 +49,7 @@ pub struct BuildArgs {
     debug: bool,
     #[clap(short = 'x', long)]
     hex: bool,
-    #[clap(short, long)]
+    #[clap(short = 'H', long)]
     hash: bool,
     #[clap(short, long)]
     split: bool,
@@ -518,4 +518,25 @@ fn debug(args: DebugArgs) -> Result<()> {
     println!("{output}");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Command;
+    use clap::{CommandFactory, Parser};
+
+    #[test]
+    fn build_flags_do_not_conflict_with_help() {
+        Command::command().debug_assert();
+        let help = Command::try_parse_from(["rue", "build", "-h"]).unwrap_err();
+        assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
+        assert!(matches!(
+            Command::try_parse_from(["rue", "build", "-H"]),
+            Ok(Command::Build(args)) if args.hash
+        ));
+        assert!(matches!(
+            Command::try_parse_from(["rue", "build", "--hash"]),
+            Ok(Command::Build(args)) if args.hash
+        ));
+    }
 }
