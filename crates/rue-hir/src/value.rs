@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rue_types::{BuiltinTypes, TypeId};
 
-use crate::{Database, HirId, SymbolId, TypePath, intersect_types};
+use crate::{Database, HirId, SymbolId, TypePath};
 
 pub type Mappings = HashMap<SymbolId, HashMap<Vec<TypePath>, TypeId>>;
 
@@ -88,7 +88,7 @@ pub fn merge_mappings(
             let paths = map.entry(symbol).or_default();
 
             let ty = if let Some(&existing) = paths.get(path) {
-                intersect_types(db, builtins, existing, ty)
+                rue_types::intersect(db.types_mut(), builtins, existing, ty)
             } else {
                 ty
             };
