@@ -1,11 +1,14 @@
 use indexmap::IndexMap;
 use log::debug;
-use rue_ast::{AstLambdaExpr, AstNode};
+use rue_ast::{AstExpr, AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Symbol, Value};
 use rue_types::{FunctionType, Type, TypeId, Union};
 
-use crate::{Compiler, compile_expr, compile_generic_parameters, compile_type, create_binding};
+use crate::{
+    BlockKind, Compiler, CompletionContext, ReturnTarget, SyntaxItemKind, compile_block,
+    compile_expr, compile_generic_parameters, compile_type, create_binding,
+};
 
 pub fn compile_lambda_expr(
     ctx: &mut Compiler,
@@ -87,8 +90,21 @@ pub fn compile_lambda_expr(
 
     let return_type = expr.ty().map(|ty| compile_type(ctx, &ty));
 
+    ctx.push_return_target(Some(ReturnTarget {
+        expected_type: return_type,
+        types: Vec::new(),
+    }));
+
     let body = if let Some(body) = expr.body() {
-        let result = compile_expr(ctx, &body, return_type);
+        let result = if let AstExpr::Block(block) = &body {
+            ctx.add_syntax(
+                SyntaxItemKind::CompletionContext(CompletionContext::Expression),
+                block.syntax().text_range(),
+            );
+            compile_block(ctx, block, BlockKind::Body, return_type, true)
+        } else {
+            compile_expr(ctx, &body, return_type)
+        };
         if let Some(return_type) = return_type {
             ctx.assign_type(expr.syntax(), result.ty, return_type);
         }
@@ -98,7 +114,22 @@ pub fn compile_lambda_expr(
         ctx.builtins().unresolved.clone()
     };
 
-    let return_type = return_type.unwrap_or(body.ty);
+    let early_return_types = ctx
+        .pop_return_target()
+        .map(|target| target.types)
+        .unwrap_or_default();
+
+    // If the return type isn't specified, it's inferred from both the body and any
+    // `return` statements that exit the lambda early.
+    let return_type = return_type.unwrap_or_else(|| {
+        if early_return_types.is_empty() {
+            body.ty
+        } else {
+            let mut types = early_return_types;
+            types.push(body.ty);
+            ctx.alloc_type(Type::Union(Union::new(types)))
+        }
+    });
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
         params,

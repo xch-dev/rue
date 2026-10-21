@@ -49,22 +49,17 @@ pub fn generate_check_hir(
                 .map(|check| generate_check_hir(db, builtins, check, hir))
                 .collect::<Vec<_>>();
 
-            if checks.is_empty() {
-                builtins.true_value.hir
-            } else if checks.len() == 1 {
-                checks[0]
-            } else {
-                let b = checks.pop().unwrap();
-                let a = checks.pop().unwrap();
+            // Fold from the right so that the checks are evaluated in order, since later checks
+            // can depend on earlier ones (for example, `strlen` must only run on atoms)
+            let Some(mut result) = checks.pop() else {
+                return builtins.true_value.hir;
+            };
 
-                let mut result = db.alloc_hir(Hir::Binary(BinaryOp::And, a, b));
-
-                while let Some(check) = checks.pop() {
-                    result = db.alloc_hir(Hir::Binary(BinaryOp::And, result, check));
-                }
-
-                result
+            while let Some(check) = checks.pop() {
+                result = db.alloc_hir(Hir::Binary(BinaryOp::And, check, result));
             }
+
+            result
         }
         Check::Or(checks) => {
             let mut checks = checks
@@ -72,22 +67,17 @@ pub fn generate_check_hir(
                 .map(|check| generate_check_hir(db, builtins, check, hir))
                 .collect::<Vec<_>>();
 
-            if checks.is_empty() {
-                builtins.false_value.hir
-            } else if checks.len() == 1 {
-                checks[0]
-            } else {
-                let b = checks.pop().unwrap();
-                let a = checks.pop().unwrap();
+            // Fold from the right so that the checks are evaluated in order, since later checks
+            // can depend on earlier ones (for example, `strlen` must only run on atoms)
+            let Some(mut result) = checks.pop() else {
+                return builtins.false_value.hir;
+            };
 
-                let mut result = db.alloc_hir(Hir::Binary(BinaryOp::Or, a, b));
-
-                while let Some(check) = checks.pop() {
-                    result = db.alloc_hir(Hir::Binary(BinaryOp::Or, result, check));
-                }
-
-                result
+            while let Some(check) = checks.pop() {
+                result = db.alloc_hir(Hir::Binary(BinaryOp::Or, check, result));
             }
+
+            result
         }
     }
 }

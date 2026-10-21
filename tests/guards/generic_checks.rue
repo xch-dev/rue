@@ -1,0 +1,11 @@
+fn convert<T>(value: Int | nil) -> T {
+    if value is T {
+        return value;
+    }
+
+    raise;
+}
+
+fn main(value: Int) -> Bytes32 {
+    convert::<Bytes32>(value)
+}

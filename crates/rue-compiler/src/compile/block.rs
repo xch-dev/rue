@@ -10,13 +10,35 @@ use crate::{
     Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_type, create_binding,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockKind {
+    /// The top level of a function or lambda body. It must end in an expression, and the
+    /// caller is responsible for pushing the [`ReturnTarget`](crate::ReturnTarget) that
+    /// nested `return` statements exit to.
+    Body,
+    /// A block used as an expression. It must end in an expression, and nested `return`
+    /// statements are not allowed, since they would only exit the block itself.
+    Expr,
+    /// The then block of an if statement. It must end in `return` or `raise`, and its
+    /// `return` statements exit to the enclosing return target, if there is one.
+    Statement,
+}
+
 pub fn compile_block(
     ctx: &mut Compiler,
     block: &AstBlock,
-    is_expr: bool,
+    kind: BlockKind,
     expected_type: Option<TypeId>,
     require_return: bool,
 ) -> Value {
+    let is_expr = kind != BlockKind::Statement;
+
+    if kind == BlockKind::Expr {
+        ctx.push_return_target(None);
+    }
+
+    let return_count = ctx.return_count();
+
     ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Expression),
         block.syntax().text_range(),
@@ -135,11 +157,12 @@ pub fn compile_block(
 
                 let then_block = if let Some(then_block) = stmt.then_block() {
                     if stmt.inline().is_some() {
-                        compile_block(ctx, &then_block, false, expected_type, true)
+                        compile_block(ctx, &then_block, BlockKind::Statement, None, true)
                     } else {
                         let range = then_block.syntax().text_range();
                         let index = ctx.push_mappings(condition.then_map.clone(), range.start());
-                        let value = compile_block(ctx, &then_block, false, expected_type, true);
+                        let value =
+                            compile_block(ctx, &then_block, BlockKind::Statement, None, true);
                         ctx.revert_mappings(index, range.end());
                         value
                     }
@@ -152,10 +175,6 @@ pub fn compile_block(
                     ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
                 }
 
-                if !is_expr {
-                    return_types.push(then_block.ty);
-                }
-
                 Statement::If(IfStatement {
                     condition: condition.hir,
                     then: then_block.hir,
@@ -163,18 +182,37 @@ pub fn compile_block(
                 })
             }
             AstStmt::ReturnStmt(stmt) => {
+                ctx.increment_return_count();
+
+                let has_target = ctx.return_target_mut().is_some();
+                let target_type = ctx
+                    .return_target_mut()
+                    .and_then(|target| target.expected_type);
+
                 let value = if let Some(expr) = stmt.expr() {
-                    compile_expr(ctx, &expr, expected_type)
+                    compile_expr(ctx, &expr, target_type)
                 } else {
                     ctx.builtins().nil.clone()
                 };
 
                 if is_expr {
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnexpectedExplicitReturn);
-                }
+                } else if !has_target {
+                    ctx.diagnostic(stmt.syntax(), DiagnosticKind::ReturnInExpressionBlock);
+                } else {
+                    // Every `return` exits the enclosing function or lambda, so it must be
+                    // checked against its return type rather than the type of this block.
+                    if let Some(target_type) = target_type {
+                        if let Some(expr) = stmt.expr() {
+                            ctx.assign_type(expr.syntax(), value.ty, target_type);
+                        } else {
+                            ctx.assign_type(stmt.syntax(), value.ty, target_type);
+                        }
+                    }
 
-                if !is_expr {
-                    return_types.push(value.ty);
+                    if let Some(target) = ctx.return_target_mut() {
+                        target.types.push(value.ty);
+                    }
                 }
 
                 if return_value.is_none() {
@@ -237,7 +275,9 @@ pub fn compile_block(
         return_types.push(ctx.builtins().types.nil);
     }
 
-    let return_type = if return_types.is_empty() {
+    let return_type = if kind == BlockKind::Statement || return_types.is_empty() {
+        // Statement blocks always exit by either returning from the function or raising,
+        // so control never continues past them with a value.
         ctx.builtins().types.never
     } else if return_types.len() == 1 {
         return_types[0]
@@ -261,9 +301,17 @@ pub fn compile_block(
 
     ctx.revert_mappings(index, range.end());
 
-    if let Some(return_value) = return_value {
-        return_value.with_hir(hir)
-    } else {
-        Value::new(hir, return_type)
+    // The trailing expression's reference and type guard mappings only describe the
+    // block's value if nothing else (such as a `return` statement) could have produced it.
+    let definitely_trailing = implicit_return && ctx.return_count() == return_count;
+
+    if kind == BlockKind::Expr {
+        ctx.pop_return_target();
+    }
+
+    match return_value {
+        Some(return_value) if definitely_trailing => return_value.with_hir(hir),
+        Some(return_value) => Value::new(hir, return_value.ty),
+        None => Value::new(hir, return_type),
     }
 }

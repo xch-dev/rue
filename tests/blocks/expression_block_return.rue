@@ -1,0 +1,81 @@
+export fn let_block_return(x: Int) -> Int {
+    let y = {
+        if x > 1 {
+            return 7;
+        }
+        8
+    };
+    y + 100
+}
+
+export fn trailing_block_return(x: Int) -> Int {
+    {
+        if x > 1 {
+            return 7;
+        }
+        8
+    }
+}
+
+export fn nested_statement_return(x: Int) -> Int {
+    let y = {
+        if x > 1 {
+            if x > 2 {
+                return 7;
+            }
+            raise;
+        }
+        8
+    };
+    y
+}
+
+export fn if_expr_branch_return(x: Int) -> Int {
+    if x > 1 {
+        if x > 2 {
+            return 7;
+        }
+        8
+    } else {
+        9
+    }
+}
+
+export fn argument_block_return(x: Int) -> Int {
+    add_one({
+        if x > 1 {
+            return 7;
+        }
+        8
+    })
+}
+
+export fn add_one(x: Int) -> Int {
+    x + 1
+}
+
+export const CONST_BLOCK_RETURN: Int = const {
+    if 1 > 2 {
+        return 7;
+    }
+    8
+};
+
+export fn const_expr_return() -> Int {
+    const {
+        if 1 > 2 {
+            return 7;
+        }
+        8
+    }
+}
+
+export fn block_reference(x: Int, z: Bytes32, c: Bool) -> Bytes32 {
+    assert ({
+        if c {
+            return z;
+        }
+        x
+    }) is Bytes32;
+    x
+}

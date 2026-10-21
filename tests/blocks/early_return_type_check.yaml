@@ -1,0 +1,8 @@
+diagnostics:
+- Cannot assign `(Int, Int)` to `Bytes32`, since they are incompatible at early_return_type_check.rue:3:16
+- Cannot compare `Int` to `Bytes32` without a type guard, since the runtime value must be constrained at early_return_type_check.rue:10:16
+- Cannot assign `(Int, Int)` to `Int`, since they are incompatible at early_return_type_check.rue:18:20
+- Cannot assign `nil` to `Int` without a cast, since they are semantically different at early_return_type_check.rue:27:9
+- Cannot assign `(Int, Int)` to `Int`, since they are incompatible at early_return_type_check.rue:35:20
+- 'Cannot assign `fn(y: Int) -> (Int, Int) | 0x0000000000000000000000000000000000000000000000000000000000000000` to `fn(y: Int) -> Bytes32`, since they are incompatible at early_return_type_check.rue:49:36'
+- Expected statement block to end in `return` or `raise`, not an expression at early_return_type_check.rue:55:9

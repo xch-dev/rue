@@ -1,0 +1,10 @@
+diagnostics:
+- Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:4:13
+- Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:14:13
+- Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:24:17
+- Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:36:13
+- Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:47:13
+- Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:59:9
+- Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:67:13
+- Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:76:13
+- Cannot compare `Int` to `Bytes32` without a type guard, since the runtime value must be constrained at expression_block_return.rue:73:67

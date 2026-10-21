@@ -36,6 +36,17 @@ pub struct Compiler {
     declaration_stack: Vec<Declaration>,
     registered_scopes: HashSet<ScopeId>,
     external_programs: HashMap<PathBuf, Vec<u8>>,
+    return_stack: Vec<(Option<ReturnTarget>, usize)>,
+    return_count: usize,
+}
+
+/// The function or lambda body that a `return` statement exits from.
+#[derive(Debug, Clone)]
+pub struct ReturnTarget {
+    /// The declared return type, if there is one.
+    pub expected_type: Option<TypeId>,
+    /// The types of every `return` statement compiled for this target so far.
+    pub types: Vec<TypeId>,
 }
 
 impl Deref for Compiler {
@@ -71,6 +82,8 @@ impl Compiler {
             declaration_stack: Vec::new(),
             registered_scopes: HashSet::new(),
             external_programs: HashMap::new(),
+            return_stack: Vec::new(),
+            return_count: 0,
         };
 
         if options.std {
@@ -367,6 +380,40 @@ impl Compiler {
         merge_mappings(&mut self.db, &builtins, a, b)
     }
 
+    /// Enters a context where `return` statements exit to the given target. If the target
+    /// is `None`, then `return` statements are not allowed (such as in expression blocks).
+    pub fn push_return_target(&mut self, target: Option<ReturnTarget>) {
+        self.return_stack.push((target, self.return_count));
+    }
+
+    /// Leaves the current return context. The return count is restored, since `return`
+    /// statements inside of it can't exit any of the blocks that enclose it.
+    pub fn pop_return_target(&mut self) -> Option<ReturnTarget> {
+        let (target, return_count) = self
+            .return_stack
+            .pop()
+            .expect("return target stack is unbalanced");
+        self.return_count = return_count;
+        target
+    }
+
+    pub fn return_target_mut(&mut self) -> Option<&mut ReturnTarget> {
+        self.return_stack
+            .last_mut()
+            .and_then(|(target, _)| target.as_mut())
+    }
+
+    /// The number of `return` statements compiled so far that could exit the blocks in
+    /// the current return context, which is used to tell whether a block may have exited
+    /// early.
+    pub fn return_count(&self) -> usize {
+        self.return_count
+    }
+
+    pub fn increment_return_count(&mut self) {
+        self.return_count += 1;
+    }
+
     pub fn mapping_checkpoint(&self) -> usize {
         self.scope_stack.len()
     }
@@ -404,6 +451,10 @@ impl Compiler {
             }
             Err(CheckError::FunctionType) => {
                 self.diagnostic(node, DiagnosticKind::FunctionTypeCheck);
+                return Constraint::new(Check::Impossible);
+            }
+            Err(CheckError::GenericType) => {
+                self.diagnostic(node, DiagnosticKind::GenericTypeCheck);
                 return Constraint::new(Check::Impossible);
             }
         };
@@ -492,9 +543,11 @@ impl Compiler {
                 let check =
                     match rue_types::check(self.db.types_mut(), &self.builtins.types, from, to) {
                         Ok(check) => check,
-                        Err(CheckError::DepthExceeded | CheckError::FunctionType) => {
-                            Check::Impossible
-                        }
+                        Err(
+                            CheckError::DepthExceeded
+                            | CheckError::FunctionType
+                            | CheckError::GenericType,
+                        ) => Check::Impossible,
                     };
 
                 let from = self.type_name(from);
