@@ -569,6 +569,87 @@ fn test_check_errors() {
     assert_eq!(t.check(any, list), Err(CheckError::DepthExceeded));
 }
 
+/// A nil-terminated list of the given types, like `[A, B, C]`.
+fn tuple(t: &mut Types, items: &[TypeId]) -> TypeId {
+    items
+        .iter()
+        .rev()
+        .fold(t.builtins.nil, |rest, &first| t.pair(first, rest))
+}
+
+/// A nil-terminated list of the given values.
+fn list_value(a: &mut Allocator, items: &[NodePtr]) -> NodePtr {
+    items.iter().rev().fold(NodePtr::NIL, |rest, &first| {
+        a.new_pair(first, rest).unwrap()
+    })
+}
+
+#[test]
+fn test_check_depth_bounds_nesting() {
+    let mut t = Types::new();
+    let mut a = Allocator::new();
+    let any = t.builtins.permissive_any;
+    let int = t.builtins.int;
+    let bytes32 = t.builtins.bytes32;
+
+    // The depth limit applies to how deeply the check is nested, not to how many pairs it checks
+    let ints = tuple(&mut t, &[int; 13]);
+    let check = t.check(any, ints).unwrap();
+    let values: Vec<NodePtr> = (0..14).map(|i| a.new_small_number(i).unwrap()).collect();
+    let pair = a.new_pair(values[0], values[1]).unwrap();
+    for (len, expected) in [(12, false), (13, true), (14, false)] {
+        let value = list_value(&mut a, &values[..len]);
+        assert_eq!(eval(&a, &check, value), Ok(expected), "{len} items");
+    }
+    let mut nested = values[..13].to_vec();
+    nested[12] = pair;
+    let value = list_value(&mut a, &nested);
+    assert_eq!(eval(&a, &check, value), Ok(false));
+
+    let ints = tuple(&mut t, &[int; 24]);
+    assert!(t.check(any, ints).is_ok());
+
+    // Each pair still adds a level of nesting
+    let ints = tuple(&mut t, &[int; 25]);
+    assert_eq!(t.check(any, ints), Err(CheckError::DepthExceeded));
+
+    // `(Coin, (Coin, (Coin, (Coin, nil))))` where `Coin` is `[Bytes32, Bytes32, Int]`
+    let inner = tuple(&mut t, &[bytes32, bytes32, int]);
+    let coin = t.structure(inner);
+    let coins = tuple(&mut t, &[coin; 4]);
+    let check = t.check(any, coins).unwrap();
+    let hash = a.new_atom(&[1; 32]).unwrap();
+    let short = a.new_atom(&[1; 31]).unwrap();
+    let valid_coin = list_value(&mut a, &[hash, hash, values[1]]);
+    let invalid_coin = list_value(&mut a, &[hash, short, values[1]]);
+    for (coins, expected) in [
+        (vec![valid_coin; 4], true),
+        (vec![valid_coin; 3], false),
+        (vec![valid_coin; 5], false),
+        (
+            vec![valid_coin, valid_coin, valid_coin, invalid_coin],
+            false,
+        ),
+    ] {
+        let value = list_value(&mut a, &coins);
+        assert_eq!(eval(&a, &check, value), Ok(expected));
+    }
+
+    // Recursive types still can't be checked from `Any`
+    let tree = t.alloc(Type::Unresolved);
+    let branch = t.pair(tree, tree);
+    let nil = t.builtins.nil;
+    let inner = t.union(vec![nil, branch]);
+    t.arena[tree] = Type::Alias(Alias {
+        name: None,
+        inner,
+        generics: vec![],
+    });
+    assert_eq!(t.check(any, tree), Err(CheckError::DepthExceeded));
+    let coin_list = t.list(coin);
+    assert_eq!(t.check(any, coin_list), Err(CheckError::DepthExceeded));
+}
+
 #[test]
 fn test_simplify() {
     // `None` in a union means the union always passes

@@ -176,11 +176,6 @@ pub enum CheckError {
     GenericType,
 }
 
-#[derive(Debug)]
-struct CheckContext {
-    depth: usize,
-}
-
 pub fn check(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -206,7 +201,7 @@ pub fn check(
         trace!("Checking {lhs_name} to {rhs_name}");
     }
 
-    let result = check_impl(arena, builtins, &mut CheckContext { depth: 0 }, lhs, rhs);
+    let result = check_impl(arena, builtins, 0, lhs, rhs);
 
     if let Some((lhs_name, rhs_name)) = &names {
         trace!("Check from {lhs_name} to {rhs_name} yielded {result:?}");
@@ -218,24 +213,24 @@ pub fn check(
 fn check_impl(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
-    ctx: &mut CheckContext,
+    depth: usize,
     lhs: TypeId,
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
     let variants = variants_of(arena, builtins, lhs);
-    check_each(arena, builtins, ctx, &variants, rhs)
+    check_each(arena, builtins, depth, &variants, rhs)
 }
 
 fn check_each(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
-    ctx: &mut CheckContext,
+    depth: usize,
     lhs: &[TypeId],
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
-    ctx.depth += 1;
+    let depth = depth + 1;
 
-    if ctx.depth > 25 {
+    if depth > 25 {
         return Err(CheckError::DepthExceeded);
     }
 
@@ -381,7 +376,7 @@ fn check_each(
         // whose first could pass the first check (not just those whose first is assignable to the
         // target's first). Each check in the resulting union is therefore exact for every pair.
         for target_pair in &target_pairs {
-            let first = check_each(arena, builtins, ctx, &firsts, target_pair.first)?;
+            let first = check_each(arena, builtins, depth, &firsts, target_pair.first)?;
 
             if first == Check::Impossible {
                 continue;
@@ -406,7 +401,7 @@ fn check_each(
                 continue;
             }
 
-            let rest = check_each(arena, builtins, ctx, &rests, target_pair.rest)?;
+            let rest = check_each(arena, builtins, depth, &rests, target_pair.rest)?;
 
             checks.push(Check::Pair(Box::new(first), Box::new(rest)));
         }
