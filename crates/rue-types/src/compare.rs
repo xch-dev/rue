@@ -5,10 +5,11 @@ use std::{
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
-use log::{debug, trace};
+use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, Type, TypeId, Union, stringify_impl, substitute,
+    AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, stringify_impl,
+    substitute,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -62,10 +63,12 @@ impl Inference {
     }
 }
 
+type ComparisonKey = (TypeId, TypeId, bool);
+
 #[derive(Debug, Default)]
 pub(crate) struct ComparisonContext<'a> {
     infer: Option<&'a mut Inference>,
-    stack: IndexSet<(TypeId, TypeId, bool)>,
+    stack: IndexSet<ComparisonKey>,
     /// The indices in `stack` of comparisons between pairs or functions. A cycle is only
     /// coinductively assignable if it passes through one of these, since otherwise the
     /// recursion isn't bounded by the structure of the value.
@@ -74,6 +77,10 @@ pub(crate) struct ComparisonContext<'a> {
     /// When this is set, the generics being inferred are on the left hand side rather than the
     /// right hand side.
     flipped: bool,
+    /// The number of inference candidates that have been collected.
+    candidates: usize,
+    /// Completed comparisons, keyed by the comparison and the semantics passed down to it.
+    memo: Memo<ComparisonKey, (ComparisonKey, Option<TypeId>, Option<TypeId>), Comparison>,
 }
 
 impl ComparisonContext<'_> {
@@ -93,9 +100,17 @@ pub fn compare_with_inference(
 ) -> Comparison {
     let lhs = substitute(arena, lhs);
     let rhs = substitute(arena, rhs);
-    let lhs_name = stringify_impl(arena, lhs, &mut IndexMap::new());
-    let rhs_name = stringify_impl(arena, rhs, &mut IndexMap::new());
-    trace!("Comparing {lhs_name} to {rhs_name}");
+    let names = log_enabled!(Level::Trace).then(|| {
+        (
+            stringify_impl(arena, lhs, &mut IndexMap::new()),
+            stringify_impl(arena, rhs, &mut IndexMap::new()),
+        )
+    });
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        trace!("Comparing {lhs_name} to {rhs_name}");
+    }
+
     let result = compare_impl(
         arena,
         builtins,
@@ -108,7 +123,11 @@ pub fn compare_with_inference(
         None,
         None,
     );
-    trace!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        trace!("Comparison from {lhs_name} to {rhs_name} yielded {result:?}");
+    }
+
     result
 }
 
@@ -173,6 +192,8 @@ pub(crate) fn compare_impl(
     let key = (lhs, rhs, ctx.flipped);
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
+        ctx.memo.reached(index);
+
         // Revisiting a comparison is only sound to treat as assignable if we've passed through
         // a pair or function since, otherwise a non-contractive type like `type A = B; type B = A;`
         // would be assignable to anything. Those should be rejected before reaching this point.
@@ -182,6 +203,15 @@ pub(crate) fn compare_impl(
             Comparison::Invalid
         };
     }
+
+    let memo_key = (key, lhs_semantic, rhs_semantic);
+
+    if let Some(result) = ctx.memo.get(&memo_key, ctx.stack.iter().copied()) {
+        return result;
+    }
+
+    let frame = ctx.memo.enter(ctx.stack.len());
+    let candidates = ctx.candidates;
 
     ctx.stack.insert(key);
 
@@ -287,6 +317,7 @@ pub(crate) fn compare_impl(
             );
             let infer = ctx.infer.as_mut().unwrap();
             infer.candidates_mut(lhs).upper.push(rhs);
+            ctx.candidates += 1;
             Comparison::Assign
         }
         (_, Type::Generic(_)) if !ctx.flipped && ctx.is_target(rhs) => {
@@ -297,6 +328,7 @@ pub(crate) fn compare_impl(
             );
             let infer = ctx.infer.as_mut().unwrap();
             infer.candidates_mut(rhs).lower.push(lhs);
+            ctx.candidates += 1;
             Comparison::Assign
         }
         (_, Type::Generic(_)) => {
@@ -453,6 +485,11 @@ pub(crate) fn compare_impl(
     };
 
     ctx.stack.pop().unwrap();
+
+    // Inference candidates are collected as a side effect of comparing, so a comparison that
+    // collected any can't be skipped
+    let memo_key = (ctx.candidates == candidates).then_some(memo_key);
+    ctx.memo.exit(frame, key, memo_key, result);
 
     result
 }
