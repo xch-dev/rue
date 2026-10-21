@@ -140,7 +140,7 @@ impl Builtin {
             Self::Divmod => &["(numerator: Int, denominator: Int) -> (Int, Int)"],
             Self::Modpow => &["(base: Int, exponent: Int, modulus: Int) -> Int"],
             Self::Any | Self::All => &["(values: List<Bool>) -> Bool"],
-            Self::PubkeyForExp => &["(exponent: Bytes32) -> PublicKey"],
+            Self::PubkeyForExp => &["(exponent: Int | Bytes32) -> PublicKey"],
             Self::G1Sum | Self::G1Difference => &["(values: List<PublicKey>) -> PublicKey"],
             Self::G2Sum | Self::G2Difference => &["(values: List<Signature>) -> Signature"],
             Self::G1Map => &[

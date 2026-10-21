@@ -6,6 +6,7 @@ mod field;
 mod generics;
 mod imports;
 mod item;
+mod literal;
 mod path;
 mod ty;
 
@@ -17,5 +18,6 @@ pub use field::*;
 pub use generics::*;
 pub use imports::*;
 pub use item::*;
+pub use literal::*;
 pub use path::*;
 pub use ty::*;

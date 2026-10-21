@@ -1,0 +1,49 @@
+tests:
+- name: merge_narrowed
+  program: (a (i (l 4) (q 5 (r (a (i 11 (q . 2) (q . 5)) 1))) (q 5 (r (a (i 11 (q . 2) (q . 5)) 1)))) 1)
+  debug_program: (a (i (not (l (f 2))) (q 2 (q 5 (r 2)) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q 2 (q 5 (r 2)) (c (a (i 11 (q . 2) (q . 5)) 1) 1))) 1)
+  solution: ((3 4) ((5 . 6) 7) ())
+  output: '7'
+  runtime_cost: 660
+  byte_cost: 900000
+  total_cost: 900660
+- name: merge_both_narrowed
+  program: (a (i (a (i (l 4) (q) (q 2 (i (l 9) (q) (q 1 . 1)) 1)) 1) (q 2 (q 16 4 10) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
+  debug_program: (a (i (a (i (not (l (f 2))) (q 2 (i (not (l (f 5))) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (q 16 (f 2) (f (r 2))) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
+  solution: ((3 4) (5 6) ())
+  output: '11'
+  runtime_cost: 2182
+  byte_cost: 1236000
+  total_cost: 1238182
+- name: merge_then_narrow
+  program: (a (i (l 4) (q) (q 2 (q 2 (i (l 4) (q . 10) (q 16 4 10)) 1) (c (a (i 11 (q . 2) (q . 5)) 1) 1))) 1)
+  debug_program: (a (i (not (l (f 2))) (q 2 (q 2 (i (not (l (f 2))) (q 16 (f 2) (f (r 2))) (q 5 (r 2))) 1) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
+  solution: ((3 4) (5 7) ())
+  output: '12'
+  runtime_cost: 1949
+  byte_cost: 996000
+  total_cost: 997949
+- name: merge_destructure
+  program: (a (i (l 4) (q 2 (q 2 (i (l 4) (q 16 8 10) (q 16 4 10)) 1) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
+  debug_program: (a (i (l (f 2)) (q 2 (q 2 (q 2 (i (not (l (f 2))) (q 16 (f 2) (f (r 2))) (q 16 (f (f 2)) (f (r 2)))) 1) (c 2 1)) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
+  solution: (((1 . 2) 4) (5 6) ())
+  output: '11'
+  runtime_cost: 1949
+  byte_cost: 1068000
+  total_cost: 1069949
+- name: merge_spread
+  program: (a (i (a (i (l 2) (q) (q 2 (i (l 5) (q) (q 1 . 1)) 1)) 1) (q 2 (i 11 (q . 2) (q . 5)) 1) (q)) 1)
+  debug_program: (a (i (a (i (not (l 2)) (q 2 (i (not (l 5)) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (q . 2) (c (a (i 11 (q . 2) (q . 5)) 1) 1)) (q)) 1)
+  solution: (3 5 ())
+  output: '5'
+  runtime_cost: 1104
+  byte_cost: 996000
+  total_cost: 997104
+- name: merge_inferred
+  program: (a (i (l 4) (q) (q 5 (r (a (i 11 (q . 2) (q . 5)) 1)))) 1)
+  debug_program: (a (q 2 (i (not (l (f 5))) (q 2 (q 5 (r 2)) (c (a 2 (c 5 (c 11 23))) 1)) (q)) 1) (c (q 2 (i 7 (q . 2) (q . 5)) 1) 1))
+  solution: ((3 4) ((5 . 6) 7) ())
+  output: '7'
+  runtime_cost: 660
+  byte_cost: 588000
+  total_cost: 588660

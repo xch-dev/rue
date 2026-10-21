@@ -1,0 +1,4 @@
+diagnostics:
+- Cannot assign `Bytes` to `Int | Bytes32` without a cast, since they are semantically different at pubkey_for_exp_errors.rue:3:20
+- Cannot assign `PublicKey` to `Int | Bytes32` without a cast, since they are semantically different at pubkey_for_exp_errors.rue:7:20
+- Cannot assign `true` to `Int | Bytes32` without a cast, since they are semantically different at pubkey_for_exp_errors.rue:11:20

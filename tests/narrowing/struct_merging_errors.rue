@@ -1,0 +1,44 @@
+struct Point {
+    x: Int | (Int, Int),
+    y: Int,
+}
+
+struct Other {
+    x: Int | (Int, Int),
+    y: Int,
+}
+
+struct Wrapper {
+    ...value: Int | (Int, Int),
+}
+
+// The field of a merged struct is only as narrow as the field in every struct
+fn merge_one_narrowed(p: Point, q: Point, c: Bool) -> Int {
+    if p.x is Int {
+        let r = if c {
+            p
+        } else {
+            q
+        };
+        return r.x;
+    }
+    0
+}
+
+// Different structs with the same fields aren't merged
+fn merge_different(p: Point, q: Other, c: Bool) -> Int {
+    let r = if c {
+        p
+    } else {
+        q
+    };
+    r.y
+}
+
+// Narrowing a struct with only a spread field doesn't make it the field's type
+fn spread_not_field(w: Wrapper) -> Int {
+    if w.value is Int {
+        return w;
+    }
+    0
+}

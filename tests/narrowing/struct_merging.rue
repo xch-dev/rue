@@ -1,0 +1,102 @@
+struct Point {
+    x: Int | (Int, Int),
+    y: Int,
+}
+
+struct Wrapper {
+    ...value: Int | (Int, Int),
+}
+
+// A narrowed struct can be merged with one that isn't narrowed
+test fn merge_narrowed(p: Point, q: Point, c: Bool) -> Int {
+    if p.x is Int {
+        let r = if c {
+            p
+        } else {
+            q
+        };
+        return r.y;
+    }
+    let s = if c {
+        p
+    } else {
+        q
+    };
+    s.y
+}
+
+// If every merged struct is narrowed, so is the field
+test fn merge_both_narrowed(p: Point, q: Point, c: Bool) -> Int {
+    if p.x is Int && q.x is Int {
+        let r = if c {
+            p
+        } else {
+            q
+        };
+        return r.x + r.y;
+    }
+    0
+}
+
+// The merged struct can be narrowed again
+test fn merge_then_narrow(p: Point, q: Point, c: Bool) -> Int {
+    if p.x is Int {
+        let r = if c {
+            p
+        } else {
+            q
+        };
+        if r.x is Int {
+            return r.x + r.y;
+        }
+        return r.y;
+    }
+    0
+}
+
+// The merged struct can be destructured
+test fn merge_destructure(p: Point, q: Point, c: Bool) -> Int {
+    if p.x is (Int, Int) {
+        let r = if c {
+            p
+        } else {
+            q
+        };
+        let { x, y } = r;
+        if x is Int {
+            return x + y;
+        }
+        return x.first + y;
+    }
+    0
+}
+
+// A struct with only a spread field is narrowed as a whole, but stays a struct
+test fn merge_spread(p: Wrapper, q: Wrapper, c: Bool) -> Int {
+    if p.value is Int && q.value is Int {
+        let r = if c {
+            p
+        } else {
+            q
+        };
+        return r.value;
+    }
+    0
+}
+
+fn pick<T>(a: T, b: T, c: Bool) -> T {
+    if c {
+        a
+    } else {
+        b
+    }
+}
+
+// Inferring a generic from a narrowed struct and one that isn't narrowed merges them
+test fn merge_inferred(p: Point, q: Point, c: Bool) -> Int {
+    if p.x is Int {
+        let r = pick(p, q, c);
+        return r.y;
+    }
+    0
+}

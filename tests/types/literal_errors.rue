@@ -17,3 +17,7 @@ test fn wrong_bool() -> true {
 test fn wrong_nil() -> true {
     nil
 }
+
+test fn wrong_odd_hex() -> 0x1 {
+    0x02
+}

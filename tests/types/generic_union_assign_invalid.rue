@@ -1,0 +1,47 @@
+type Opt<T> = T | nil;
+type Id<T> = T;
+
+fn to_int<T>(value: T) -> Int {
+    value
+}
+
+fn to_optional_int<T>(value: T) -> Int | nil {
+    value
+}
+
+fn to_other<T, U>(value: T) -> U {
+    value
+}
+
+fn to_other_optional<T, U>(value: T) -> U | nil {
+    value
+}
+
+fn to_other_alias<T, U>(value: T) -> Opt<U> {
+    value
+}
+
+fn from_optional<T>(value: T | nil) -> T {
+    value
+}
+
+fn from_alias<T>(value: Opt<T>) -> T {
+    value
+}
+
+fn from_identity_alias<T, U>(value: Id<T>) -> U {
+    value
+}
+
+fn main() -> List<Any> {
+    [
+        to_int(1),
+        to_optional_int(1),
+        to_other(1),
+        to_other_optional(1),
+        to_other_alias(1),
+        from_optional(1),
+        from_alias(1),
+        from_identity_alias(1),
+    ]
+}
