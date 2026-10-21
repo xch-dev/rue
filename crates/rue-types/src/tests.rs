@@ -296,7 +296,7 @@ mod functions {
     }
 
     #[test]
-    fn generic_function_types_are_rigid() {
+    fn generic_function_types_are_instantiated() {
         let mut db = Db::new();
         let int = db.builtins.int;
         let t = db.generic("T");
@@ -305,10 +305,12 @@ mod functions {
         let identity_u = db.function_with(&[u], &[u], true, u);
         let concrete = db.function(&[int], int);
 
+        // A generic function can be instantiated to a concrete or renamed function type, but a
+        // concrete function doesn't work for every type
         assert_eq!(db.cmp(identity_t, identity_t), Comparison::Assign);
         assert_eq!(db.cmp(concrete, identity_t), Comparison::Invalid);
-        assert_eq!(db.cmp(identity_t, concrete), Comparison::Invalid);
-        assert_eq!(db.cmp(identity_t, identity_u), Comparison::Invalid);
+        assert_eq!(db.cmp(identity_t, concrete), Comparison::Assign);
+        assert_eq!(db.cmp(identity_t, identity_u), Comparison::Assign);
     }
 
     #[test]

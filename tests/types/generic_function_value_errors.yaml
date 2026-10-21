@@ -1,0 +1,32 @@
+diagnostics:
+- 'Cannot assign `fn(value: T) -> T` to `fn(value: Int) -> Bytes32`, since they are incompatible at generic_function_value_errors.rue:27:40'
+- 'Cannot assign `fn(value: Int) -> Int` to `fn(value: U) -> U`, since they are incompatible at generic_function_value_errors.rue:30:35'
+- 'Cannot assign `fn(_value: T) -> Int` to `fn(value: U) -> U`, since they are incompatible at generic_function_value_errors.rue:31:35'
+- 'Cannot assign `fn(value: T) -> T` to `fn(value: U) -> Int`, since they are incompatible at generic_function_value_errors.rue:34:37'
+- 'Cannot assign `fn(value: T) -> T` to `fn(value: U) -> V`, since they are incompatible at generic_function_value_errors.rue:35:38'
+- 'Cannot assign `fn(a: A, _b: B) -> A` to `fn(a: X, b: Y) -> Y`, since they are incompatible at generic_function_value_errors.rue:36:40'
+- 'Cannot assign `fn(value: Int) -> Int` to `fn(value: U) -> U`, since they are incompatible at generic_function_value_errors.rue:39:19'
+- Cannot assign `Bytes32` to `Int` without a cast, since they are semantically different at generic_function_value_errors.rue:40:18
+- Unused function `identity` at generic_function_value_errors.rue:1:4
+- Unused function `first` at generic_function_value_errors.rue:5:4
+- Unused function `concrete` at generic_function_value_errors.rue:9:4
+- Unused function `constant` at generic_function_value_errors.rue:13:4
+- Unused function `apply` at generic_function_value_errors.rue:17:4
+- Unused function `twice` at generic_function_value_errors.rue:21:4
+- Unused binding `a` at generic_function_value_errors.rue:27:9
+- Unused binding `b` at generic_function_value_errors.rue:30:9
+- Unused binding `c` at generic_function_value_errors.rue:31:9
+- Unused binding `d` at generic_function_value_errors.rue:34:9
+- Unused binding `e` at generic_function_value_errors.rue:35:9
+- Unused binding `f` at generic_function_value_errors.rue:36:9
+- Unused binding `g` at generic_function_value_errors.rue:39:9
+- Unused binding `i` at generic_function_value_errors.rue:40:9
+- Unused generic type `B` at generic_function_value_errors.rue:5:13
+- Unused generic type `T` at generic_function_value_errors.rue:13:13
+- Unused generic type `U` at generic_function_value_errors.rue:30:15
+- Unused generic type `U` at generic_function_value_errors.rue:31:15
+- Unused generic type `U` at generic_function_value_errors.rue:34:15
+- Unused generic type `U` at generic_function_value_errors.rue:35:15
+- Unused generic type `V` at generic_function_value_errors.rue:35:18
+- Unused generic type `X` at generic_function_value_errors.rue:36:15
+- Unused generic type `Y` at generic_function_value_errors.rue:36:18
