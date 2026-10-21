@@ -1,0 +1,12 @@
+test fn bytes_exponent() -> PublicKey {
+    let bytes: Bytes = 0x01;
+    pubkey_for_exp(bytes)
+}
+
+test fn public_key_exponent() -> PublicKey {
+    pubkey_for_exp(INFINITY_G1)
+}
+
+test fn bool_exponent() -> PublicKey {
+    pubkey_for_exp(true)
+}

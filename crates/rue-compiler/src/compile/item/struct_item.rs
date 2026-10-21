@@ -132,6 +132,13 @@ pub fn compile_struct_item(
 
             if let Some(name) = field.name() {
                 ctx.insert_default_field(struct_type, name.text().to_string(), value.clone());
+
+                // Without a type annotation, the field keeps the exact type of its default value.
+                // This is intentional, since fields such as `opcode = 51` are used to distinguish
+                // between structs at runtime, but it's worth explaining when a value is rejected.
+                if expected_type.is_none() {
+                    ctx.insert_inferred_field(struct_type, name.text().to_string());
+                }
             }
 
             expected_type.unwrap_or(value.ty)

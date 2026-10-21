@@ -45,7 +45,7 @@ fn helper() -> Int {
             modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
             any [Function] fn(values: List<Bool>) -> Bool
             all [Function] fn(values: List<Bool>) -> Bool
-            pubkey_for_exp [Function] fn(exponent: Bytes32) -> PublicKey
+            pubkey_for_exp [Function] fn(exponent: Int | Bytes32) -> PublicKey
             g1_sum [Function] fn(values: List<PublicKey>) -> PublicKey
             g1_difference [Function] fn(values: List<PublicKey>) -> PublicKey
             g1_map [Function] fn(data: Bytes) -> PublicKey

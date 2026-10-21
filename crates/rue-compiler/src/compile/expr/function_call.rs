@@ -456,11 +456,12 @@ fn compile_builtin(ctx: &mut Compiler, call: &AstFunctionCallExpr, builtin: Buil
             }
 
             let hir = if args.len() == 1 {
-                ctx.assign_type(
-                    args[0].1.syntax(),
-                    args[0].0.ty,
-                    ctx.builtins().types.bytes32,
-                );
+                // The exponent is interpreted as a signed integer and reduced modulo the group
+                // order, so both integers and 32 byte secret keys are accepted.
+                let types = ctx.builtins().types;
+                let exponent =
+                    ctx.alloc_type(Type::Union(Union::new(vec![types.int, types.bytes32])));
+                ctx.assign_type(args[0].1.syntax(), args[0].0.ty, exponent);
                 ctx.alloc_hir(Hir::Unary(UnaryOp::PubkeyForExp, args[0].0.hir))
             } else {
                 ctx.builtins().unresolved.hir
