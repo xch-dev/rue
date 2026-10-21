@@ -26,3 +26,11 @@ clvmr = { workspace = true }
 rue-clvm = { workspace = true }
 wasm-bindgen = { workspace = true }
 console_error_panic_hook = { workspace = true }
+
+# Dependencies of clvmr that need a JS randomness backend on wasm32-unknown-unknown
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { workspace = true, features = ["wasm_js"] }
+getrandom_03 = { workspace = true, features = ["wasm_js"] }
+
+[package.metadata.cargo-machete]
+ignored = ["getrandom", "getrandom_03"]
