@@ -85,14 +85,26 @@ pub(crate) fn stringify_impl(
             with_generics(arena, &inner, &arguments, stack)
         }
         Type::Function(function) => {
+            let len = function.params.len();
             let params = function
                 .params
                 .iter()
-                .map(|(name, id)| format!("{}: {}", name, stringify_impl(arena, *id, stack)))
+                .enumerate()
+                .map(|(i, (name, id))| {
+                    let spread = if !function.nil_terminated && i == len - 1 {
+                        "..."
+                    } else {
+                        ""
+                    };
+                    format!("{spread}{name}: {}", stringify_impl(arena, *id, stack))
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
             let ret = stringify_impl(arena, function.ret, stack);
-            format!("fn({params}) -> {ret}")
+            format!(
+                "{}({params}) -> {ret}",
+                with_generics(arena, "fn", &function.generics, stack)
+            )
         }
         Type::Union(union) => union
             .types
