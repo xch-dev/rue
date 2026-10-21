@@ -446,6 +446,10 @@ impl Compiler {
                 self.diagnostic(node, DiagnosticKind::FunctionTypeCheck);
                 return Constraint::new(Check::Impossible);
             }
+            Err(CheckError::GenericType) => {
+                self.diagnostic(node, DiagnosticKind::GenericTypeCheck);
+                return Constraint::new(Check::Impossible);
+            }
         };
 
         let from_name = self.type_name(from);
@@ -526,9 +530,11 @@ impl Compiler {
                 let check =
                     match rue_types::check(self.db.types_mut(), &self.builtins.types, from, to) {
                         Ok(check) => check,
-                        Err(CheckError::DepthExceeded | CheckError::FunctionType) => {
-                            Check::Impossible
-                        }
+                        Err(
+                            CheckError::DepthExceeded
+                            | CheckError::FunctionType
+                            | CheckError::GenericType,
+                        ) => Check::Impossible,
                     };
 
                 let from = self.type_name(from);

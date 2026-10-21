@@ -31,7 +31,15 @@ impl Check {
             Check::Pair(first, rest) => {
                 let first = first.simplify();
                 let rest = rest.simplify();
-                Check::Pair(Box::new(first), Box::new(rest))
+
+                // Pair checks are only ever evaluated against values that are known to be pairs
+                if first == Check::Impossible || rest == Check::Impossible {
+                    Check::Impossible
+                } else if first == Check::None && rest == Check::None {
+                    Check::None
+                } else {
+                    Check::Pair(Box::new(first), Box::new(rest))
+                }
             }
             Check::IsAtom { can_be_truthy } => Check::IsAtom { can_be_truthy },
             Check::IsPair { can_be_truthy } => Check::IsPair { can_be_truthy },
@@ -120,18 +128,52 @@ impl Check {
                     Check::And(result)
                 }
             }
-            Check::Or(checks) => Check::Or(checks.into_iter().map(Check::simplify).collect()),
+            Check::Or(checks) => {
+                let mut result = Vec::new();
+
+                for check in checks {
+                    match check.simplify() {
+                        Check::None => {
+                            return Check::None;
+                        }
+                        Check::Impossible => {}
+                        Check::Or(inner) => {
+                            for check in inner {
+                                if !result.contains(&check) {
+                                    result.push(check);
+                                }
+                            }
+                        }
+                        check => {
+                            if !result.contains(&check) {
+                                result.push(check);
+                            }
+                        }
+                    }
+                }
+
+                if result.is_empty() {
+                    Check::Impossible
+                } else if result.len() == 1 {
+                    result.remove(0)
+                } else {
+                    Check::Or(result)
+                }
+            }
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum CheckError {
     #[error("Maximum type check depth reached")]
     DepthExceeded,
 
     #[error("Cannot check if value is of function type at runtime")]
     FunctionType,
+
+    #[error("Cannot check if value is of generic type at runtime")]
+    GenericType,
 }
 
 #[derive(Debug)]
@@ -200,7 +242,7 @@ fn check_each(
         return Ok(Check::None);
     }
 
-    let target_atoms = atoms_of(arena, rhs)?;
+    let target_atoms = atoms_of(arena, rhs, true)?;
 
     let mut overlap = IndexSet::new();
     let mut exceeds_overlap = false;
@@ -208,7 +250,7 @@ fn check_each(
     let mut can_be_truthy = false;
 
     for &id in lhs {
-        let atoms = atoms_of(arena, id)?;
+        let atoms = atoms_of(arena, id, false)?;
 
         if let Some(atoms) = &atoms {
             lhs_has_atom = true;
@@ -269,7 +311,16 @@ fn check_each(
                                 continue;
                             }
                         }
-                        AtomRestriction::Length(_) => {}
+                        AtomRestriction::Length(length) => {
+                            // Some values of this length may still be in the target
+                            for target_restriction in target_restrictions {
+                                if let AtomRestriction::Value(value) = target_restriction
+                                    && value.len() == length
+                                {
+                                    overlap.insert(target_restriction.clone());
+                                }
+                            }
+                        }
                     }
 
                     exceeds_overlap = true;
@@ -292,85 +343,58 @@ fn check_each(
         }
     });
 
-    let target_pairs = pairs_of(arena, builtins, rhs)?;
-
-    let mut checks = Vec::new();
-    let mut requires_check = false;
+    let target_pairs = pairs_of(arena, builtins, rhs, true)?;
 
     let mut pairs = Vec::new();
 
     for &lhs in lhs {
-        for pair in pairs_of(arena, builtins, lhs)? {
-            pairs.push(pair);
-        }
+        pairs.extend(pairs_of(arena, builtins, lhs, false)?);
     }
 
-    for target_pair in &target_pairs {
-        let pairs = pairs.clone();
-
+    let pair_result = if pairs.is_empty() {
+        None
+    } else {
         let firsts: Vec<TypeId> = pairs.iter().map(|pair| pair.first).collect();
-        let first = check_each(arena, builtins, ctx, &firsts, target_pair.first)?;
 
-        if first == Check::Impossible {
-            requires_check = true;
-            continue;
-        }
+        let mut checks = Vec::new();
 
-        let mut rests = Vec::new();
+        // For each target pair, the first check is exact for every possible first value. The rest
+        // check only runs if the first check passes, so it must be exact for the rest of every pair
+        // whose first could pass the first check (not just those whose first is assignable to the
+        // target's first). Each check in the resulting union is therefore exact for every pair.
+        for target_pair in &target_pairs {
+            let first = check_each(arena, builtins, ctx, &firsts, target_pair.first)?;
 
-        // TODO: We can do this in inverse (rest then first) as well and see which check is simpler
-        for pair in pairs {
-            if compare_impl(
-                arena,
-                builtins,
-                &mut ComparisonContext::default(),
-                target_pair.first,
-                pair.first,
-                None,
-                None,
-            ) > Comparison::Cast
-            {
+            if first == Check::Impossible {
                 continue;
             }
 
-            rests.push(pair.rest);
+            let rests: Vec<TypeId> = pairs
+                .iter()
+                .filter(|pair| {
+                    may_overlap(
+                        arena,
+                        builtins,
+                        pair.first,
+                        target_pair.first,
+                        &mut IndexSet::new(),
+                    )
+                })
+                .map(|pair| pair.rest)
+                .collect();
+
+            if rests.is_empty() {
+                continue;
+            }
+
+            let rest = check_each(arena, builtins, ctx, &rests, target_pair.rest)?;
+
+            checks.push(Check::Pair(Box::new(first), Box::new(rest)));
         }
 
-        if rests.is_empty() {
-            requires_check = true;
-            continue;
-        }
-
-        let rest = check_each(arena, builtins, ctx, &rests, target_pair.rest)?;
-
-        if rest == Check::Impossible {
-            requires_check = true;
-            continue;
-        }
-
-        if first == Check::None && rest == Check::None {
-            // TODO: Should this set requires_check to false and break?
-            continue;
-        }
-
-        requires_check = true;
-
-        checks.push(Check::Pair(Box::new(first), Box::new(rest)));
-    }
-
-    let pair_result = (!pairs.is_empty()).then(|| {
-        if target_pairs.is_empty() {
-            Check::Impossible
-        } else if !requires_check {
-            Check::None
-        } else if checks.is_empty() {
-            Check::Impossible
-        } else if checks.len() == 1 {
-            checks[0].clone()
-        } else {
-            Check::Or(checks)
-        }
-    });
+        // If any target pair accepts every pair, this simplifies to `Check::None`
+        Some(Check::Or(checks).simplify())
+    };
 
     let check = match (atom_result, pair_result) {
         (None, None) => Check::Impossible,
@@ -416,26 +440,31 @@ fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<
     }
 }
 
-fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Result<Option<Atoms>, CheckError> {
+/// Returns the atoms that a type can contain. If `target` is true, the type is the one being checked
+/// against, so generic types are an error since their values can't be known at runtime. Generic
+/// targets are still allowed if the value is already known to be assignable (see `check_each`).
+fn atoms_of(arena: &Arena<Type>, id: TypeId, target: bool) -> Result<Option<Atoms>, CheckError> {
     Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => atoms_of(arena, id)?,
+        Type::Ref(id) => atoms_of(arena, id, target)?,
         Type::Unresolved | Type::Never | Type::Pair(_) => None,
-        Type::Generic(_) | Type::Any => Some(Atoms::Unrestricted),
+        Type::Generic(_) if target => return Err(CheckError::GenericType),
+        Type::Generic(_) => Some(Atoms::Unrestricted),
+        Type::Any => Some(Atoms::Unrestricted),
         Type::Atom(atom) => {
             let Some(restriction) = atom.restriction else {
                 return Ok(Some(Atoms::Unrestricted));
             };
             Some(Atoms::Restricted(indexset![restriction]))
         }
-        Type::Alias(alias) => atoms_of(arena, alias.inner)?,
-        Type::Struct(ty) => atoms_of(arena, ty.inner)?,
+        Type::Alias(alias) => atoms_of(arena, alias.inner, target)?,
+        Type::Struct(ty) => atoms_of(arena, ty.inner, target)?,
         Type::Function(_) => return Err(CheckError::FunctionType),
         Type::Union(ty) => {
             let mut restrictions = IndexSet::new();
 
             for variant in ty.types {
-                match atoms_of(arena, variant)? {
+                match atoms_of(arena, variant, target)? {
                     None => {}
                     Some(Atoms::Unrestricted) => return Ok(Some(Atoms::Unrestricted)),
                     Some(Atoms::Restricted(new)) => {
@@ -470,30 +499,83 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId) -> Result<Option<Atoms>, CheckError
     })
 }
 
+/// Returns the pairs that a type can contain. See [`atoms_of`] for the meaning of `target`.
 fn pairs_of(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
     id: TypeId,
+    target: bool,
 ) -> Result<Vec<Pair>, CheckError> {
     Ok(match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => pairs_of(arena, builtins, id)?,
+        Type::Ref(id) => pairs_of(arena, builtins, id, target)?,
         Type::Unresolved | Type::Never | Type::Atom(_) => vec![],
         Type::Pair(pair) => vec![pair],
+        Type::Generic(_) if target => return Err(CheckError::GenericType),
         Type::Generic(_) | Type::Any => {
             vec![Pair::new(builtins.recursive_any, builtins.recursive_any)]
         }
-        Type::Alias(alias) => pairs_of(arena, builtins, alias.inner)?,
-        Type::Struct(ty) => pairs_of(arena, builtins, ty.inner)?,
+        Type::Alias(alias) => pairs_of(arena, builtins, alias.inner, target)?,
+        Type::Struct(ty) => pairs_of(arena, builtins, ty.inner, target)?,
         Type::Function(_) => return Err(CheckError::FunctionType),
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 
             for variant in ty.types {
-                pairs.extend(pairs_of(arena, builtins, variant)?);
+                pairs.extend(pairs_of(arena, builtins, variant, target)?);
             }
 
             pairs
         }
     })
+}
+
+/// Conservatively determines whether two types may have any values in common. This must return
+/// true if there is any overlap, but may also return true if there isn't.
+fn may_overlap(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs: TypeId,
+    rhs: TypeId,
+    stack: &mut IndexSet<(TypeId, TypeId)>,
+) -> bool {
+    if stack.len() > 25 || !stack.insert((lhs, rhs)) {
+        return true;
+    }
+
+    let rhs_variants = variants_of(arena, builtins, rhs);
+
+    let result = variants_of(arena, builtins, lhs).into_iter().any(|lhs| {
+        rhs_variants
+            .iter()
+            .any(|&rhs| match (&arena[lhs], &arena[rhs]) {
+                (Type::Atom(lhs), Type::Atom(rhs)) => match (&lhs.restriction, &rhs.restriction) {
+                    (None, _) | (_, None) => true,
+                    (Some(AtomRestriction::Value(lhs)), Some(AtomRestriction::Value(rhs))) => {
+                        lhs == rhs
+                    }
+                    (Some(AtomRestriction::Length(lhs)), Some(AtomRestriction::Length(rhs))) => {
+                        lhs == rhs
+                    }
+                    (
+                        Some(AtomRestriction::Value(value)),
+                        Some(AtomRestriction::Length(length)),
+                    )
+                    | (
+                        Some(AtomRestriction::Length(length)),
+                        Some(AtomRestriction::Value(value)),
+                    ) => value.len() == *length,
+                },
+                (Type::Pair(lhs), Type::Pair(rhs)) => {
+                    may_overlap(arena, builtins, lhs.first, rhs.first, stack)
+                        && may_overlap(arena, builtins, lhs.rest, rhs.rest, stack)
+                }
+                (Type::Atom(_), Type::Pair(_)) | (Type::Pair(_), Type::Atom(_)) => false,
+                _ => true,
+            })
+    });
+
+    stack.pop().unwrap();
+
+    result
 }
