@@ -41,6 +41,7 @@ pub struct InitArgs {
 
 #[derive(Debug, Parser)]
 #[allow(clippy::struct_excessive_bools)]
+#[clap(disable_help_flag = true)]
 pub struct BuildArgs {
     file: Option<String>,
     #[clap(short, long)]
@@ -55,6 +56,9 @@ pub struct BuildArgs {
     split: bool,
     #[clap(short, long)]
     all: bool,
+    /// Print help
+    #[clap(long, action = clap::ArgAction::Help)]
+    help: Option<bool>,
 }
 
 #[derive(Debug, Parser)]
@@ -518,4 +522,29 @@ fn debug(args: DebugArgs) -> Result<()> {
     println!("{output}");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Command;
+    use clap::{CommandFactory, Parser, error::ErrorKind};
+
+    #[test]
+    fn cli_debug_asserts() {
+        Command::command().debug_assert();
+    }
+
+    #[test]
+    fn build_short_flags_combine() {
+        let Ok(Command::Build(args)) = Command::try_parse_from(["rue", "build", "-sha"]) else {
+            panic!("expected build command");
+        };
+        assert!(args.split && args.hash && args.all);
+    }
+
+    #[test]
+    fn build_long_help() {
+        let err = Command::try_parse_from(["rue", "build", "--help"]).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::DisplayHelp);
+    }
 }
