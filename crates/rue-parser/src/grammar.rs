@@ -71,7 +71,8 @@ pub(crate) fn expect_semicolon(p: &mut Parser) {
 
     // Unlike other recovery points, commas don't end a statement
     skip_balanced(p, |p| {
-        p.at_any_quiet(&[T![;], T![')'], T![']'], T!['}']]).is_some()
+        p.at_any_quiet(&[T![;], T![')'], T![']'], T!['}']])
+            .is_some()
             || p.at_any_quiet(STATEMENT_KEYWORDS).is_some()
     });
     p.try_eat(T![;]);
