@@ -1,0 +1,34 @@
+type Opt<T> = T | nil;
+type Id<T> = T;
+
+fn to_optional<T>(value: T) -> T | nil {
+    value
+}
+
+fn to_alias<T>(value: T) -> Opt<T> {
+    value
+}
+
+fn from_alias<T>(value: Id<T>) -> T {
+    value
+}
+
+fn to_identity<T>(value: T) -> Id<T> {
+    value
+}
+
+test fn optional_int() -> Int | nil {
+    to_optional(42)
+}
+
+test fn optional_alias() -> Opt<Bytes32> {
+    to_alias(sha256("a"))
+}
+
+test fn unwrap_identity_alias() -> Int {
+    from_alias(42)
+}
+
+test fn wrap_identity_alias() -> Int {
+    to_identity(42)
+}
