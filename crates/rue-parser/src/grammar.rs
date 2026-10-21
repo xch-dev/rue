@@ -30,17 +30,16 @@ const ITEM_KEYWORDS: &[SyntaxKind] = &[
 /// Whether the parser is at the start of an item, as opposed to something that could be an
 /// expression (such as a lambda or `const` block).
 pub(crate) fn at_item_start(p: &mut Parser) -> bool {
-    if p.at_any_quiet(ITEM_KEYWORDS).is_some() {
+    // An `inline` modifier can come before other item modifiers (such as `test`) as well
+    let n = usize::from(p.at_quiet(T![inline]));
+
+    let kind = p.lookahead(n);
+
+    if ITEM_KEYWORDS.contains(&kind) {
         return true;
     }
 
-    let mut n = 0;
-
-    if p.at_quiet(T![inline]) {
-        n += 1;
-    }
-
-    matches!(p.lookahead(n), T![fn] | T![const]) && p.lookahead(n + 1) == SyntaxKind::Ident
+    matches!(kind, T![fn] | T![const]) && p.lookahead(n + 1) == SyntaxKind::Ident
 }
 
 /// Whether the parser is at a token that error recovery should stop at rather than skipping past.

@@ -430,6 +430,24 @@ fn test_missing_closing_brace_before_next_item() {
 }
 
 #[test]
+fn test_missing_closing_brace_before_inline_test() {
+    check(
+        "fn main() {\n    let x = 1;\n\ninline test fn other() {}",
+        expect![[r#"
+            Document
+              FunctionItem
+                Block
+                  LetStmt
+                    NamedBinding
+                    LiteralExpr
+              FunctionItem
+                Block
+        "#]],
+        expect!["Expected `}`, found `inline` at main.rue:4:1"],
+    );
+}
+
+#[test]
 fn test_missing_closing_brace_at_eof() {
     check(
         "fn main() {\n    let x = 1;\n",
