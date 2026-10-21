@@ -1,0 +1,58 @@
+export fn wrong_early_return(x: Int) -> Bytes32 {
+    if x > 1 {
+        return (x, x);
+    }
+    0x0000000000000000000000000000000000000000000000000000000000000000
+}
+
+export inline fn wrong_inline_early_return(x: Int) -> Bytes32 {
+    if x > 0 {
+        return x;
+    }
+    0x0000000000000000000000000000000000000000000000000000000000000000
+}
+
+export fn wrong_nested_return(x: Int) -> Int {
+    if x > 1 {
+        if x > 2 {
+            return (x, x);
+        }
+        return x;
+    }
+    x
+}
+
+export fn wrong_empty_return(x: Int) -> Int {
+    if x > 1 {
+        return;
+    }
+    x
+}
+
+export fn wrong_declared_lambda_return(x: Int) -> Int {
+    let f = fn(y: Int): Int => {
+        if y > 0 {
+            return (y, y);
+        }
+        y
+    };
+    f(x)
+}
+
+export fn wrong_inferred_lambda_return(x: Int) -> Bytes32 {
+    let f = fn(y: Int) => {
+        if y > 0 {
+            return (y, y);
+        }
+        0x0000000000000000000000000000000000000000000000000000000000000000
+    };
+    let g: fn(y: Int) -> Bytes32 = f;
+    g(x)
+}
+
+export fn missing_return_or_raise(x: Int) -> Int {
+    if x > 1 {
+        x
+    }
+    x
+}

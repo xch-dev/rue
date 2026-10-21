@@ -1,0 +1,120 @@
+fn classify(x: Int) -> Int {
+    if x > 10 {
+        if x > 100 {
+            return 2;
+        }
+        return 1;
+    }
+    0
+}
+
+inline fn inline_classify(x: Int) -> Int {
+    if x > 10 {
+        return 1;
+    }
+    0
+}
+
+fn nil_return(x: Int) {
+    if x > 1 {
+        return;
+    }
+    nil
+}
+
+fn lambda_returns(x: Int) -> Int {
+    let declared = fn(y: Int): Int => {
+        if y > 10 {
+            return 1;
+        }
+        0
+    };
+    let inferred = fn(y: Int) => {
+        if y > 10 {
+            return 1;
+        }
+        0
+    };
+    let checked: fn(y: Int) -> Int = inferred;
+    declared(x) + checked(x)
+}
+
+fn lambda_in_expression_block(x: Int) -> Bytes {
+    let value = {
+        let f = fn(y: Int) => {
+            if y > 10 {
+                return 1;
+            }
+            0
+        };
+        f(x)
+    };
+    if value == 1 {
+        return "big";
+    }
+    "small"
+}
+
+fn raise_in_expression_block(x: Int) -> Int {
+    let y = {
+        if x > 100 {
+            raise "too big";
+        }
+        x + 1
+    };
+    y
+        + const {
+            if 1 > 2 {
+                raise;
+            }
+            10
+        }
+}
+
+fn block_reference(x: Bytes, c: Bool) -> Bytes32 {
+    assert ({
+        if c {
+            raise;
+        }
+        x
+    }) is Bytes32;
+    x
+}
+
+test fn early_returns() {
+    assert classify(5) == 0;
+    assert classify(50) == 1;
+    assert classify(500) == 2;
+    assert inline_classify(5) == 0;
+    assert inline_classify(50) == 1;
+    assert nil_return(5) == nil;
+    assert lambda_returns(5) == 0;
+    assert lambda_returns(50) == 2;
+    assert lambda_in_expression_block(5) == "small";
+    assert lambda_in_expression_block(50) == "big";
+    assert raise_in_expression_block(5) == 16;
+    assert block_reference(
+        0x0000000000000000000000000000000000000000000000000000000000000000,
+        false,
+    ) == 0x0000000000000000000000000000000000000000000000000000000000000000;
+}
+
+fn block_reference_with_lambda(x: Bytes) -> Bytes32 {
+    assert ({
+        let f = fn(y: Int) => {
+            if y > 0 {
+                return 1;
+            }
+            2
+        };
+        assert f(1) == 1;
+        x
+    }) is Bytes32;
+    x
+}
+
+test fn lambda_returns_keep_block_reference() {
+    assert block_reference_with_lambda(
+        0x0000000000000000000000000000000000000000000000000000000000000000,
+    ) == 0x0000000000000000000000000000000000000000000000000000000000000000;
+}

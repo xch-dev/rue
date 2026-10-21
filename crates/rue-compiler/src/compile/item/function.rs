@@ -12,8 +12,8 @@ use rue_parser::SyntaxToken;
 use rue_types::{FunctionType, Type};
 
 use crate::{
-    Compiler, CompletionContext, SyntaxItemKind, compile_block, compile_generic_parameters,
-    compile_type, const_eval::decode_node, create_binding,
+    BlockKind, Compiler, CompletionContext, ReturnTarget, SyntaxItemKind, compile_block,
+    compile_generic_parameters, compile_type, const_eval::decode_node, create_binding,
 };
 
 pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> SymbolId {
@@ -189,13 +189,18 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
     let resolved_body = if let Some(source_path) = function.source_path() {
         compile_external_function(ctx, &source_path)
     } else if let Some(body) = function.body() {
+        ctx.push_return_target(Some(ReturnTarget {
+            expected_type: Some(return_type),
+            types: Vec::new(),
+        }));
         let value = compile_block(
             ctx,
             &body,
-            true,
+            BlockKind::Body,
             Some(return_type),
             function.return_type().is_some(),
         );
+        ctx.pop_return_target();
         ctx.assign_type(body.syntax(), value.ty, return_type);
         value.hir
     } else {
