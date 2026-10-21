@@ -1,0 +1,97 @@
+tests:
+- name: mul_one
+  program: (= (* 2) (q . 1))
+  debug_program: (= (* 2 (q . 1)) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 291
+  byte_cost: 156000
+  total_cost: 156291
+- name: one_mul
+  program: (= (* 2) (q . 1))
+  debug_program: (= (* (q . 1) 2) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 291
+  byte_cost: 156000
+  total_cost: 156291
+- name: mul_nested_one
+  program: (= (* 2 (q . 2)) (q . 2))
+  debug_program: (= (* (* 2 (q . 2)) (q . 1)) (q . 2))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 1214
+  byte_cost: 204000
+  total_cost: 205214
+- name: add_zero
+  program: (= (+ 2) (q . 1))
+  debug_program: (= (+ 2 ()) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 624
+  byte_cost: 156000
+  total_cost: 156624
+- name: sub_zero
+  program: (= (+ 2) (q . 1))
+  debug_program: (= (- 2 ()) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 624
+  byte_cost: 156000
+  total_cost: 156624
+- name: double_negation
+  program: (= (+ 2) (q . 1))
+  debug_program: (= (- () (- () 2)) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 624
+  byte_cost: 156000
+  total_cost: 156624
+- name: div_one
+  program: (= (/ 2 (q . 1)) (q . 1))
+  debug_program: (= (/ 2 (q . 1)) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 1219
+  byte_cost: 204000
+  total_cost: 205219
+- name: and_minus_one
+  program: (= (logand 2) (q . 1))
+  debug_program: (= (logand 2 (- () (q . 1))) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 569
+  byte_cost: 156000
+  total_cost: 156569
+- name: or_zero
+  program: (= (logior 2) (q . 1))
+  debug_program: (= (logior 2 ()) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 569
+  byte_cost: 156000
+  total_cost: 156569
+- name: xor_zero
+  program: (= (logxor 2 ()) (q . 1))
+  debug_program: (= (logxor 2 ()) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 877
+  byte_cost: 180000
+  total_cost: 180877
+- name: shift_left_zero
+  program: (= (ash 2 ()) (q . 1))
+  debug_program: (= (ash 2 ()) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 848
+  byte_cost: 180000
+  total_cost: 180848
+- name: shift_right_zero
+  program: (= (ash 2 ()) (q . 1))
+  debug_program: (= (ash 2 (- () ())) (q . 1))
+  solution: (0x0001)
+  output: '1'
+  runtime_cost: 848
+  byte_cost: 180000
+  total_cost: 180848

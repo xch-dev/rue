@@ -255,7 +255,9 @@ pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         return arena.alloc(Lir::Atom(vec![1]));
     }
 
-    if result.len() == 1 {
+    // A lone non-constant operand is kept as `(* x)`, since multiplication
+    // normalizes non-canonical integer atoms (e.g. `0x0001` to `1`)
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 
@@ -725,4 +727,27 @@ pub fn opt_op(arena: &mut Arena<Lir>, op: ClvmOp, arg: LirId) -> LirId {
 
 pub fn opt_debug_print(arena: &mut Arena<Lir>, srcloc: String, value: LirId) -> LirId {
     arena.alloc(Lir::DebugPrint(srcloc, value))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mul_by_one_keeps_mul() {
+        let mut arena = Arena::new();
+        let value = arena.alloc(Lir::Path(BigUint::from(2u8)));
+        let one = arena.alloc(Lir::Atom(vec![1]));
+        let result = opt_mul(&mut arena, vec![value, one]);
+        assert!(matches!(&arena[result], Lir::Mul(args) if *args == [value]));
+    }
+
+    #[test]
+    fn test_mul_constants_folds() {
+        let mut arena = Arena::new();
+        let two = arena.alloc(Lir::Atom(vec![2]));
+        let three = arena.alloc(Lir::Atom(vec![3]));
+        let result = opt_mul(&mut arena, vec![two, three]);
+        assert!(matches!(&arena[result], Lir::Atom(atom) if *atom == [6]));
+    }
 }
