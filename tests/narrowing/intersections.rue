@@ -1,0 +1,45 @@
+test fn pair_elements(x: Any) -> Int {
+    if x is (Int, Any) && x is (Any, Int) {
+        x.first + x.rest
+    } else {
+        0
+    }
+}
+
+test fn pair_elements_merged(x: Any) -> Int {
+    if (x is (Int, Any)) & (x is (Any, Int)) {
+        x.first + x.rest
+    } else {
+        0
+    }
+}
+
+test fn pair_variants(x: (Int, (Int, Int)) | (Bytes32, Int) | nil) -> Int {
+    if x is (Any, Int) {
+        x.rest
+    } else {
+        0
+    }
+}
+
+struct Point {
+    x: Int,
+    y: Int | (Int, Int),
+}
+
+test fn struct_fields(point: Point | nil) -> Int {
+    if point is Point && point is (Any, (Int, nil)) {
+        point.x + point.y
+    } else {
+        0
+    }
+}
+
+test fn recursive_alias(list: List<Int>) -> Int {
+    if list is (Any, nil) {
+        let item: (Int, nil) = list;
+        item.first
+    } else {
+        0
+    }
+}

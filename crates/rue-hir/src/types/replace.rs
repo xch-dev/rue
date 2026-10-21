@@ -1,6 +1,6 @@
 use rue_types::{Alias, Apply, BuiltinTypes, Pair, Struct, Type, TypeId, Union};
 
-use crate::{Database, TypePath, intersect_types};
+use crate::{Database, TypePath};
 
 /// Narrows the type at the given path within `from`, given that the value at that path is known
 /// to be of type `to`. The type at the path becomes the intersection of its current type and `to`,
@@ -13,7 +13,7 @@ pub fn replace_type(
     path: &[TypePath],
 ) -> TypeId {
     let Some(next) = path.first().copied() else {
-        return intersect_types(db, builtins, from, to);
+        return rue_types::intersect(db.types_mut(), builtins, from, to);
     };
 
     match db.ty(from).clone() {

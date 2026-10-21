@@ -1,0 +1,41 @@
+tests:
+- name: pair_elements
+  program: (a (i (a (i (a (i (l 2) (q 2 (i (l 4) (q) (q 1 . 1)) 1) (q)) 1) (q 2 (i (l 6) (q) (q 1 . 1)) 1) (q)) 1) (q 16 4 6) (q)) 1)
+  debug_program: (a (i (a (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (not (l (r 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 16 (f 2) (r 2)) (q)) 1)
+  solution: ((3 . 4))
+  output: '7'
+  runtime_cost: 2157
+  byte_cost: 1356000
+  total_cost: 1358157
+- name: pair_elements_merged
+  program: (a (i (all (a (i (l 2) (q 2 (i (l 4) (q) (q 1 . 1)) 1) (q)) 1) (a (i (l 2) (q 2 (i (l 6) (q) (q 1 . 1)) 1) (q)) 1)) (q 16 4 6) (q)) 1)
+  debug_program: (a (i (all (a (i (l 2) (q 2 (i (not (l (f 2))) (q 1 . 1) (q)) 1) (q)) 1) (a (i (l 2) (q 2 (i (not (l (r 2))) (q 1 . 1) (q)) 1) (q)) 1)) (q 16 (f 2) (r 2)) (q)) 1)
+  solution: ((3 . 4))
+  output: '7'
+  runtime_cost: 3026
+  byte_cost: 1476000
+  total_cost: 1479026
+- name: pair_variants
+  program: (a (i (a (i 2 (q 2 (i (l 6) (q) (q 1 . 1)) 1) (q)) 1) (q . 6) (q)) 1)
+  debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (r 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 6 2) (q)) 1)
+  solution: ((0x0000000000000000000000000000000000000000000000000000000000000000 . 5))
+  output: '5'
+  runtime_cost: 819
+  byte_cost: 732000
+  total_cost: 732819
+- name: struct_fields
+  program: (a (i (a (i 2 (q 2 (i (l 10) (q) (q 1 . 1)) 1) (q)) 1) (q 16 4 10) (q)) 1)
+  debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (f (r 2)))) (q 1 . 1) (q)) 1) (q)) 1) (q 16 (f 2) (f (r 2))) (q)) 1)
+  solution: ((3 4))
+  output: '7'
+  runtime_cost: 1635
+  byte_cost: 804000
+  total_cost: 805635
+- name: recursive_alias
+  program: (a (i (a (i 2 (q 2 (i 6 (q) (q 1 . 1)) 1) (q)) 1) (q . 4) (q)) 1)
+  debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (r 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (q 5 2) (c 2 1)) (q)) 1)
+  solution: ((7))
+  output: '7'
+  runtime_cost: 799
+  byte_cost: 684000
+  total_cost: 684799
