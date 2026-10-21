@@ -90,6 +90,7 @@ impl Types {
     fn function(&mut self) -> TypeId {
         let ret = self.builtins.nil;
         self.alloc(Type::Function(FunctionType {
+            generics: vec![],
             params: IndexMap::new(),
             nil_terminated: true,
             ret,
