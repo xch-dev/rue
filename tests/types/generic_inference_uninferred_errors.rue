@@ -14,5 +14,21 @@ fn main() -> Int {
     let no_arguments = get();
     let lambda = apply(fn(value) => value);
     let unchecked = identity(unchecked_cast(5));
-    no_arguments + lambda + unchecked
+    no_arguments + lambda + unchecked + partial()
+}
+
+fn wrap<A, B>(value: A) -> (A, B) {
+    (value, unchecked_cast(nil))
+}
+
+mod nested {
+    export fn get<T>() -> T {
+        unchecked_cast(nil)
+    }
+}
+
+fn partial() -> Int {
+    let pair = wrap::<Int>(1);
+    let path = nested::get();
+    pair.first + path
 }

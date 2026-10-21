@@ -131,6 +131,12 @@ pub fn compile_function_call_expr(
 
         let mut mappings = ctx.resolve_inference(&infer);
 
+        let has_generic_arguments = matches!(
+            call.expr(),
+            Some(AstExpr::PathExpr(path))
+                if path.segments().any(|segment| segment.generic_arguments().is_some())
+        );
+
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
                 continue;
@@ -152,15 +158,16 @@ pub fn compile_function_call_expr(
                 continue;
             }
 
-            let generic_name = ctx.type_name(generic);
-            let function_name = call
-                .expr()
-                .map_or_else(String::new, |expr| expr.syntax().text().to_string());
+            // If generic arguments were given, a mismatch in their number was already reported
+            if !has_generic_arguments {
+                let generic_name = ctx.type_name(generic);
+                let function_name = callee_name(call);
 
-            ctx.diagnostic(
-                call.syntax(),
-                DiagnosticKind::CannotInferGeneric(generic_name, function_name),
-            );
+                ctx.diagnostic(
+                    call.syntax(),
+                    DiagnosticKind::CannotInferGeneric(generic_name, function_name),
+                );
+            }
 
             mappings.insert(generic, ctx.builtins().unresolved.ty);
         }
@@ -202,6 +209,20 @@ pub fn compile_function_call_expr(
     }));
 
     Value::new(hir, ty)
+}
+
+/// The name of the function being called, without any generic arguments.
+fn callee_name(call: &AstFunctionCallExpr) -> String {
+    match call.expr() {
+        Some(AstExpr::PathExpr(path)) => path
+            .segments()
+            .filter_map(|segment| segment.name())
+            .map(|name| name.text().to_string())
+            .collect::<Vec<_>>()
+            .join("::"),
+        Some(expr) => expr.syntax().text().to_string(),
+        None => String::new(),
+    }
 }
 
 fn is_type_in_scope(ctx: &Compiler, ty: TypeId) -> bool {
