@@ -132,6 +132,7 @@ pub fn compile_lambda_expr(
     });
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
+        generics: vars.clone(),
         params,
         nil_terminated,
         ret: return_type,

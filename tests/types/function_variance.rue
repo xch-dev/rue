@@ -1,0 +1,25 @@
+fn takes_bytes(value: Bytes) -> Bytes32 {
+    sha256(value)
+}
+
+fn takes_int(value: Int) -> Int {
+    value + 1
+}
+
+fn call(function: fn(value: Bytes32) -> Bytes, value: Bytes32) -> Bytes {
+    function(value)
+}
+
+test fn contravariant_parameter() -> Bytes {
+    let function: fn(value: Bytes32) -> Bytes = takes_bytes;
+    function(sha256("hello"))
+}
+
+test fn pass_wider_function() -> Bytes {
+    call(takes_bytes, sha256("hello"))
+}
+
+test fn cast_parameter() -> Int {
+    let function = takes_int as fn(value: Bytes) -> Int;
+    function(0x01)
+}

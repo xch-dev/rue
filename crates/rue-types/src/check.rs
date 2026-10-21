@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::{
     AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Pair, Type, TypeId,
-    compare_impl, stringify_impl, substitute,
+    compare_impl, reaches_non_contractive_cycle, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,6 +189,12 @@ pub fn check(
 ) -> Result<Check, CheckError> {
     let lhs = substitute(arena, lhs);
     let rhs = substitute(arena, rhs);
+
+    // These should be rejected before reaching this point, but they would recurse forever
+    if reaches_non_contractive_cycle(arena, lhs) || reaches_non_contractive_cycle(arena, rhs) {
+        return Err(CheckError::DepthExceeded);
+    }
+
     let lhs_name = stringify_impl(arena, lhs, &mut IndexMap::new());
     let rhs_name = stringify_impl(arena, rhs, &mut IndexMap::new());
     trace!("Checking {lhs_name} to {rhs_name}");

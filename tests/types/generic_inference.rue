@@ -1,0 +1,43 @@
+fn map<T, U>(list: List<T>, function: fn(value: T) -> U) -> List<U> {
+    if list is nil {
+        return nil;
+    }
+
+    [function(list.first), ...map(list.rest, function)]
+}
+
+fn apply<T>(pair: (T, fn(value: T) -> Bytes32)) -> Bytes32 {
+    pair.rest(pair.first)
+}
+
+fn call<T>(function: fn(value: T) -> T, value: T) -> T {
+    function(value)
+}
+
+fn hash_bytes(value: Bytes) -> Bytes32 {
+    sha256(value)
+}
+
+test fn map_lambda() -> List<Int> {
+    map([1, 2, 3], fn(value: Int) => value * 2)
+}
+
+test fn map_function() -> List<Bytes32> {
+    map([sha256("a"), sha256("b")], hash_bytes)
+}
+
+test fn apply_consistent() -> Bytes32 {
+    apply((sha256("a"), hash_bytes))
+}
+
+test fn apply_wider_function() -> Bytes32 {
+    apply((0x01, hash_bytes))
+}
+
+test fn call_inferred_from_function() -> Bytes32 {
+    call(fn(value: Bytes32) => value, sha256("a"))
+}
+
+test fn call_inferred_from_value() -> Int {
+    call(fn(value: Int) => value + 1, 41)
+}

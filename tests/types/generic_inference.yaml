@@ -1,0 +1,43 @@
+tests:
+- name: map_lambda
+  program: (a (q 2 2 (c 2 (c (q 1 2 3) (q 18 2 (q . 2))))) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) ()))
+  debug_program: (a (q 2 2 (c 2 (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ())))))) (c (q 2 (i (not (l 5)) (q) (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) ()))
+  output: (2 4 6)
+  runtime_cost: 7073
+  byte_cost: 1284000
+  total_cost: 1291073
+- name: map_function
+  program: (a (q 2 2 (c 2 (c (c (sha256 (q . 97)) (c (sha256 (q . 98)) ())) (q 11 2)))) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) (q)) 1) ()))
+  debug_program: (a (q 2 4 (c 4 (c (c (sha256 (q . 97)) (c (sha256 (q . 98)) ())) (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ())))))) (c (c (q 2 (i (not (l 5)) (q) (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 11 2)) ()))
+  output: (0xbf5d3affb73efd2ec6c36ad3112dd933efed63c4e1cbffcfa88e2759c144f2d8 0x39361160903c6695c6804b7157c7bd10013e9ba89b1f954243bc8e3990b08db9)
+  runtime_cost: 5428
+  byte_cost: 1428000
+  total_cost: 1433428
+- name: apply_consistent
+  program: (a (q 2 2 (c (sha256 (q . 97)) (q 11 2))) (c (q 2 3 (c 2 ())) ()))
+  debug_program: (a (q 2 6 (c (sha256 (q . 97)) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q 11 2) (q 2 (r 1) (c (f 1) ()))) ()))
+  output: '0xbf5d3affb73efd2ec6c36ad3112dd933efed63c4e1cbffcfa88e2759c144f2d8'
+  runtime_cost: 1936
+  byte_cost: 636000
+  total_cost: 637936
+- name: apply_wider_function
+  program: (a (q 2 2 (c (q . 1) (q 11 2))) (c (q 2 3 (c 2 ())) ()))
+  debug_program: (a (q 2 6 (c (q . 1) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q 11 2) (q 2 (r 1) (c (f 1) ()))) ()))
+  output: '0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a'
+  runtime_cost: 1330
+  byte_cost: 588000
+  total_cost: 589330
+- name: call_inferred_from_function
+  program: (a (q . 2) (c (sha256 (q . 97)) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (sha256 (q . 97)))) (c (q 2 2 (c 3 ())) ()))
+  output: '0xca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb'
+  runtime_cost: 818
+  byte_cost: 252000
+  total_cost: 252818
+- name: call_inferred_from_value
+  program: (a (q 16 2 (q . 1)) (q 41))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 41))) (c (q 2 2 (c 3 ())) ()))
+  output: '42'
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955

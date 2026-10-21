@@ -1,0 +1,22 @@
+tests:
+- name: contravariant_parameter
+  program: (a (q 11 2) (c (sha256 (q . "hello")) ()))
+  debug_program: (a (q 2 (q 2 2 (c (sha256 (q . "hello")) ())) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 11 2) ()))
+  output: '0x9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50'
+  runtime_cost: 1432
+  byte_cost: 360000
+  total_cost: 361432
+- name: pass_wider_function
+  program: (a (q 11 2) (c (sha256 (q . "hello")) ()))
+  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (sha256 (q . "hello")))) (c (c (q 11 2) (q 2 2 (c 3 ()))) ()))
+  output: '0x9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50'
+  runtime_cost: 1432
+  byte_cost: 360000
+  total_cost: 361432
+- name: cast_parameter
+  program: (a (q 16 2 (q . 1)) (q 1))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 16 2 (q . 1)) ()))
+  output: '2'
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955

@@ -1,0 +1,4 @@
+diagnostics:
+- 'Cannot assign `fn(value: Bytes32) -> Bytes32` to `fn(value: Bytes) -> Bytes32`, since they are incompatible at function_param_variance.rue:6:49'
+- 'Cannot cast `fn(value: Bytes32) -> Bytes32` to `fn(value: Bytes) -> Bytes32`, since they have different runtime representations at function_param_variance.rue:7:16'
+- 'Cannot assign `fn(value: Bytes32) -> Bytes` to `fn(value: Bytes32) -> Bytes32`, since they are incompatible at function_param_variance.rue:8:55'

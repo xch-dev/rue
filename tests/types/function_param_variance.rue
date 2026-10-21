@@ -1,0 +1,10 @@
+fn takes_bytes32(value: Bytes32) -> Bytes32 {
+    value
+}
+
+fn main(value: Bytes) -> (Bytes32, (Bytes32, Bytes32)) {
+    let assigned: fn(value: Bytes) -> Bytes32 = takes_bytes32;
+    let cast = takes_bytes32 as fn(value: Bytes) -> Bytes32;
+    let wider_return: fn(value: Bytes32) -> Bytes32 = fn(value: Bytes32) => value as Bytes;
+    (assigned(value), (cast(value), wider_return(sha256(value))))
+}

@@ -103,6 +103,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
     let body = ctx.builtins().unresolved.hir;
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
+        generics: vars.clone(),
         params: param_types,
         nil_terminated,
         ret: return_type,

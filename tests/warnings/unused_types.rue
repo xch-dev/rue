@@ -1,5 +1,5 @@
-type Recursive = Recursive;
-type A = B;
+type Recursive = Int | (Recursive, Recursive);
+type A = Int | (B, B);
 type B = A;
 type Used = 42;
 type Unused = "Hello, world!";

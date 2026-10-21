@@ -9,9 +9,11 @@ use crate::{Compiler, compile_generic_parameters, compile_type};
 pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId {
     let scope = ctx.alloc_child_scope();
 
-    if let Some(generic_parameters) = lambda.generic_parameters() {
-        compile_generic_parameters(ctx, scope, &generic_parameters);
-    }
+    let generics = if let Some(generic_parameters) = lambda.generic_parameters() {
+        compile_generic_parameters(ctx, scope, &generic_parameters)
+    } else {
+        vec![]
+    };
 
     let range = lambda.syntax().text_range();
     ctx.push_scope(scope, range.start());
@@ -60,6 +62,7 @@ pub fn compile_lambda_type(ctx: &mut Compiler, lambda: &AstLambdaType) -> TypeId
     ctx.pop_scope(range.end());
 
     ctx.alloc_type(Type::Function(FunctionType {
+        generics,
         params,
         nil_terminated,
         ret,
