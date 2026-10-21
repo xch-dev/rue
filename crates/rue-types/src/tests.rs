@@ -7,10 +7,10 @@ use indexmap::{IndexMap, IndexSet};
 use rue_diagnostic::Name;
 
 use crate::{
-    Alias, Apply, BuiltinTypes, Comparison, FunctionType, Generic, Inference, InferenceCandidates,
-    Pair, Struct, Type, TypeId, Union, check, compare, compare_with_inference, extract_atoms,
-    extract_functions, extract_pairs, is_non_contractive, resolve_inference, stringify, substitute,
-    substitute_with_mappings, subtract, unwrap_semantic,
+    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionType,
+    Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union, check, compare,
+    compare_with_inference, extract_atoms, extract_functions, extract_pairs, is_non_contractive,
+    resolve_inference, stringify, substitute, substitute_with_mappings, subtract, unwrap_semantic,
 };
 
 struct Db {
@@ -149,6 +149,13 @@ impl Db {
 
     fn name(&mut self, id: TypeId) -> String {
         stringify(&mut self.arena, id)
+    }
+
+    fn literal(&mut self, semantic: AtomSemantic, value: &[u8]) -> TypeId {
+        self.alloc(Type::Atom(Atom::new(
+            semantic,
+            Some(AtomRestriction::Value(value.to_vec().into())),
+        )))
     }
 }
 
@@ -958,6 +965,81 @@ mod inference {
 
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert!(mappings.is_empty());
+    }
+
+    #[test]
+    fn widens_literal_candidates() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // Each argument of `pick(1, 2)` contributes a candidate, and both widen to `Int`
+        let one = db.literal(AtomSemantic::Int, &[1]);
+        let two = db.literal(AtomSemantic::Int, &[2]);
+        assert_eq!(db.infer(one, t, &mut infer), Comparison::Assign);
+        assert_eq!(db.infer(two, t, &mut infer), Comparison::Assign);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&t], int);
+    }
+
+    #[test]
+    fn widens_literals_to_base_type() {
+        let mut db = Db::new();
+
+        for (semantic, len, expected) in [
+            (AtomSemantic::Bytes, 1, db.builtins.bytes),
+            (AtomSemantic::Bytes, 32, db.builtins.bytes32),
+            (AtomSemantic::String, 1, db.builtins.string),
+            (AtomSemantic::PublicKey, 48, db.builtins.public_key),
+            (AtomSemantic::Bool, 1, db.builtins.bool),
+        ] {
+            let t = db.generic("T");
+            let mut infer = Inference::new([t]);
+            let literal = db.literal(semantic, &vec![1; len]);
+            db.infer(literal, t, &mut infer);
+
+            let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+            assert_eq!(mappings[&t], expected);
+        }
+    }
+
+    #[test]
+    fn keeps_nil_candidate() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        db.infer(nil, t, &mut infer);
+        db.infer(int, t, &mut infer);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(db.name(mappings[&t]), "nil | Int");
+    }
+
+    #[test]
+    fn keeps_literal_required_by_upper_bound() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // (5, fn(x: 5) -> Int) to (T, fn(x: T) -> Int)
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let takes_five = db.function(&[five], int);
+        let value = db.pair(five, takes_five);
+        let takes_t = db.function(&[t], int);
+        let param = db.pair(t, takes_t);
+        db.infer(value, param, &mut infer);
+
+        // Widening to `Int` would make the function argument invalid
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&t], five);
+
+        let param = substitute_with_mappings(&mut db.arena, param, &mappings);
+        assert_eq!(db.cmp(value, param), Comparison::Assign);
     }
 
     #[test]

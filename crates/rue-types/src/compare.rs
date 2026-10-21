@@ -133,10 +133,27 @@ pub fn resolve_inference(
     let mut mappings = HashMap::new();
 
     for (&generic, candidates) in &infer.generics {
-        let ty = if candidates.lower.len() == 1 {
-            candidates.lower[0]
-        } else if !candidates.lower.is_empty() {
-            arena.alloc(Type::Union(Union::new(candidates.lower.clone())))
+        let ty = if !candidates.lower.is_empty() {
+            // Literals are widened to their base type, so that `pick(1, 2)` infers `Int` and a
+            // lambda whose parameter type comes from `T` can accept more than the one literal.
+            // This is only done if the widened type still satisfies every upper bound, since
+            // otherwise something like `fn(x: 5) -> Int` couldn't be passed to `fn(x: T) -> Int`.
+            let widened: Vec<TypeId> = candidates
+                .lower
+                .iter()
+                .map(|&ty| widen_literal(arena, builtins, ty))
+                .collect();
+            let widened = union_of(arena, widened);
+
+            if candidates
+                .upper
+                .iter()
+                .all(|&upper| compare(arena, builtins, widened, upper) == Comparison::Assign)
+            {
+                widened
+            } else {
+                union_of(arena, candidates.lower.clone())
+            }
         } else if let Some(&first) = candidates.upper.first() {
             // Pick the most specific upper bound, if there is one
             candidates
@@ -159,6 +176,47 @@ pub fn resolve_inference(
     }
 
     mappings
+}
+
+fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = TypeId>) -> TypeId {
+    let types: IndexSet<TypeId> = types.into_iter().collect();
+
+    if types.len() == 1 {
+        types[0]
+    } else {
+        arena.alloc(Type::Union(Union::new(types.into_iter().collect())))
+    }
+}
+
+/// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`.
+fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -> TypeId {
+    let Type::Atom(atom) = &arena[ty] else {
+        return ty;
+    };
+
+    let Some(AtomRestriction::Value(value)) = &atom.restriction else {
+        return ty;
+    };
+
+    let widened = match (atom.semantic, value.len()) {
+        // `nil` is kept as is, since it's commonly used to represent the absence of a value
+        // (for example, `T | nil`), and widening it to `Bytes` would lose that
+        (AtomSemantic::Bytes, 0) => return ty,
+        (AtomSemantic::Bytes, 32) => builtins.bytes32,
+        (AtomSemantic::Bytes, _) => builtins.bytes,
+        (AtomSemantic::String, _) => builtins.string,
+        (AtomSemantic::Int, _) => builtins.int,
+        (AtomSemantic::Bool, _) => builtins.bool,
+        (AtomSemantic::PublicKey, 48) => builtins.public_key,
+        (AtomSemantic::Signature, 96) => builtins.signature,
+        _ => return ty,
+    };
+
+    if compare(arena, builtins, ty, widened) == Comparison::Assign {
+        widened
+    } else {
+        ty
+    }
 }
 
 pub(crate) fn compare_impl(

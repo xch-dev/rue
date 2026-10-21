@@ -1,5 +1,6 @@
 diagnostics:
 - 'Cannot assign `(Int, fn(value: Bytes32) -> Bytes32)` to `(Int, fn(value: Int) -> Bytes32)`, since they are incompatible at generic_inference_variance.rue:19:15'
-- Cannot compare `Int` to `Bytes32` without a type guard, since the runtime value must be constrained at generic_inference_variance.rue:21:33
-- Cannot compare `Int` to `Bytes32` without a type guard, since the runtime value must be constrained at generic_inference_variance.rue:22:48
+- 'Cannot assign `fn(value: Bytes32) -> Bytes32` to `fn(value: Bytes32 | Int) -> Bytes32 | Int`, since they are incompatible at generic_inference_variance.rue:21:18'
+- 'Cannot assign `fn(value: Bytes32) -> Bytes32` to `fn(value: Int | Bytes32) -> Int | Bytes32`, since they are incompatible at generic_inference_variance.rue:22:19'
 - 'Cannot assign `fn(value: Bytes32) -> Bytes32` to `fn(value: U) -> U`, since they are incompatible at generic_inference_variance.rue:22:69'
+- Cannot compare `(Bytes32, (Bytes32 | Int, (Int | Bytes32, Int)))` to `(Bytes32, (Bytes32, (Bytes32, Int)))` without a type guard, since the runtime value must be constrained at generic_inference_variance.rue:17:61
