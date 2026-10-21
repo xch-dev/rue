@@ -1,0 +1,23 @@
+const G1: PublicKey = 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb as PublicKey;
+
+// The order of the BLS12-381 group, which exponents are reduced by
+const GROUP_ORDER: Int = 52435875175126190479447740508185965837690552500527637822603658699938581184513;
+
+test fn int_exponent() {
+    let one: Int = 1;
+    assert pubkey_for_exp(one) == G1;
+    assert pubkey_for_exp(1) == G1;
+    assert pubkey_for_exp(0) == INFINITY_G1;
+    assert pubkey_for_exp(3) == G1 * 3;
+}
+
+test fn int_exponent_reduced() {
+    assert pubkey_for_exp(-1) == -G1;
+    assert pubkey_for_exp(GROUP_ORDER) == INFINITY_G1;
+    assert pubkey_for_exp(GROUP_ORDER + 1) == G1;
+}
+
+test fn bytes32_exponent() {
+    assert pubkey_for_exp(0x0000000000000000000000000000000000000000000000000000000000000001) == G1;
+    assert pubkey_for_exp(sha256(nil)) == G1 * sha256(nil) as Int;
+}

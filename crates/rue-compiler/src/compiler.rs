@@ -33,6 +33,7 @@ pub struct Compiler {
     module_stack: Vec<SymbolId>,
     builtins: Builtins,
     defaults: HashMap<TypeId, HashMap<String, Value>>,
+    inferred_fields: HashSet<(TypeId, String)>,
     declaration_stack: Vec<Declaration>,
     registered_scopes: HashSet<ScopeId>,
     external_programs: HashMap<PathBuf, Vec<u8>>,
@@ -79,6 +80,7 @@ impl Compiler {
             module_stack: Vec::new(),
             builtins,
             defaults: HashMap::new(),
+            inferred_fields: HashSet::new(),
             declaration_stack: Vec::new(),
             registered_scopes: HashSet::new(),
             external_programs: HashMap::new(),
@@ -565,6 +567,15 @@ impl Compiler {
         self.defaults
             .get(&ty)
             .and_then(|map| map.get(name).cloned())
+    }
+
+    /// Marks a struct field whose type was inferred from its default value rather than declared.
+    pub fn insert_inferred_field(&mut self, ty: TypeId, name: String) {
+        self.inferred_fields.insert((ty, name));
+    }
+
+    pub fn is_inferred_field(&self, ty: TypeId, name: &str) -> bool {
+        self.inferred_fields.contains(&(ty, name.to_string()))
     }
 
     pub fn push_declaration(&mut self, declaration: Declaration) {
