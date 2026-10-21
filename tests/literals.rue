@@ -37,3 +37,21 @@ test fn bool() -> true {
 test fn nil_value() -> nil {
     nil
 }
+
+type OddHex = 0x1;
+
+test fn hex_odd_length() -> OddHex {
+    0x1
+}
+
+test fn hex_odd_length_padded() -> OddHex {
+    0x01
+}
+
+test fn hex_odd_length_param() -> Bool {
+    odd_hex_param(0x123)
+}
+
+fn odd_hex_param(value: 0x123) -> Bool {
+    value == 0x0123
+}
