@@ -1,8 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use id_arena::Arena;
 
-use crate::{Type, TypeId, substitute};
+use crate::{Alias, Struct, Type, TypeId, substitute_with_mappings};
 
 /// Returns `true` if the type can reach itself without passing through a pair or function type.
 ///
@@ -13,7 +13,17 @@ use crate::{Type, TypeId, substitute};
 pub fn is_non_contractive(arena: &mut Arena<Type>, id: TypeId) -> bool {
     // Substitution expands generic applications, so a cycle that is only created once the
     // generic arguments are filled in (e.g. `type A<T> = T; type B = A<B>;`) is visible.
-    let root = substitute(arena, id);
+    // The generic parameters are mapped to themselves, since that's how recursive references
+    // such as `type A<T> = A<T> | nil;` substitute them, and in-progress types are tracked
+    // separately for each mapping.
+    let generics = match &arena[id] {
+        Type::Alias(Alias { generics, .. }) | Type::Struct(Struct { generics, .. }) => {
+            generics.iter().map(|&generic| (generic, generic)).collect()
+        }
+        _ => HashMap::new(),
+    };
+
+    let root = substitute_with_mappings(arena, id, &generics);
 
     let mut visited = HashSet::new();
     let mut stack = unguarded_edges(arena, root);
