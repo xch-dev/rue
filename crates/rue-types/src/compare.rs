@@ -389,8 +389,8 @@ pub(crate) fn compare_impl(
             ctx.candidates += 1;
             Comparison::Assign
         }
-        (_, Type::Generic(_)) => {
-            if let Type::Union(lhs) = arena[lhs].clone() {
+        (_, Type::Generic(_)) => match arena[lhs].clone() {
+            Type::Union(lhs) => {
                 let mut result = Comparison::Assign;
 
                 for &id in &lhs.types {
@@ -401,10 +401,18 @@ pub(crate) fn compare_impl(
                 }
 
                 result
-            } else {
-                Comparison::Invalid
             }
-        }
+            Type::Alias(lhs) => compare_impl(
+                arena,
+                builtins,
+                ctx,
+                lhs.inner,
+                rhs,
+                lhs_semantic,
+                rhs_semantic,
+            ),
+            _ => Comparison::Invalid,
+        },
         (Type::Struct(lhs), Type::Struct(rhs)) => max(
             compare_impl(arena, builtins, ctx, lhs.inner, rhs.inner, None, None),
             if lhs.semantic == rhs.semantic {
@@ -476,6 +484,36 @@ pub(crate) fn compare_impl(
             lhs_semantic,
             rhs_semantic,
         ),
+        (Type::Generic(_), Type::Union(rhs_union)) => {
+            // A generic is opaque, so it can only be assigned to a union if it's assignable to
+            // one of the members (such as `T` to `T | nil`). Otherwise, fall back to whatever
+            // the generic could be at runtime, as with any other type.
+            let mut result = Comparison::Invalid;
+
+            for &id in &rhs_union.types {
+                result = min(
+                    result,
+                    compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
+                );
+            }
+
+            if result == Comparison::Assign {
+                result
+            } else {
+                min(
+                    result,
+                    compare_impl(
+                        arena,
+                        builtins,
+                        ctx,
+                        builtins.recursive_any,
+                        rhs,
+                        lhs_semantic,
+                        rhs_semantic,
+                    ),
+                )
+            }
+        }
         (Type::Generic(_) | Type::Any, _) => compare_impl(
             arena,
             builtins,

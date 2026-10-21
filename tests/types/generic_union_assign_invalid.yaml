@@ -1,0 +1,9 @@
+diagnostics:
+- Cannot compare `T` to `Int` without a type guard, since the runtime value must be constrained at generic_union_assign_invalid.rue:4:31
+- Cannot compare `T` to `Int | nil` without a type guard, since the runtime value must be constrained at generic_union_assign_invalid.rue:8:46
+- Cannot assign `T` to `U`, since they are incompatible at generic_union_assign_invalid.rue:12:34
+- Cannot assign `T` to `U | nil`, since they are incompatible at generic_union_assign_invalid.rue:16:49
+- Cannot assign `T` to `Opt<U>`, since they are incompatible at generic_union_assign_invalid.rue:20:45
+- Cannot assign `T | nil` to `T`, since they are incompatible at generic_union_assign_invalid.rue:24:42
+- Cannot assign `Opt<T>` to `T`, since they are incompatible at generic_union_assign_invalid.rue:28:38
+- Cannot assign `Id<T>` to `U`, since they are incompatible at generic_union_assign_invalid.rue:32:49
