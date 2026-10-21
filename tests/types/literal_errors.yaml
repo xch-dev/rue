@@ -4,3 +4,4 @@ diagnostics:
 - Cannot assign `"Hello!"` to `"Hello, world!"`, since they are incompatible at literal_errors.rue:9:43
 - Cannot assign `false` to `true`, since they are incompatible at literal_errors.rue:13:30
 - Cannot assign `nil` to `true`, since they are incompatible at literal_errors.rue:17:29
+- Cannot assign `0x02` to `0x01`, since they are incompatible at literal_errors.rue:21:32
