@@ -3,7 +3,7 @@ use rue_ast::{AstIfExpr, AstNode};
 use rue_hir::{Hir, Value};
 use rue_types::{Type, TypeId, Union};
 
-use crate::{Compiler, compile_expr};
+use crate::{Compiler, InlineIf, compile_expr};
 
 pub fn compile_if_expr(
     ctx: &mut Compiler,
@@ -58,6 +58,11 @@ pub fn compile_if_expr(
         else_expr.hir,
         expr.inline().is_some(),
     ));
+
+    if expr.inline().is_some() {
+        let srcloc = ctx.srcloc(expr.syntax());
+        ctx.add_inline_if(srcloc, InlineIf::Expr(hir));
+    }
 
     Value::new(hir, ty)
 }

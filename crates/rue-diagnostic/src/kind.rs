@@ -286,6 +286,11 @@ pub enum DiagnosticKind {
         "Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages"
     )]
     DoubleNegationWarning,
+
+    #[error(
+        "A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead"
+    )]
+    InlineIfMayRaise,
 }
 
 impl DiagnosticKind {
@@ -381,7 +386,8 @@ impl DiagnosticKind {
             | Self::AlwaysTrueCondition
             | Self::UnusedStatementValue
             | Self::UnusedGlobImport
-            | Self::DoubleNegationWarning => DiagnosticSeverity::Warning,
+            | Self::DoubleNegationWarning
+            | Self::InlineIfMayRaise => DiagnosticSeverity::Warning,
         }
     }
 }

@@ -1,0 +1,172 @@
+// Branches which can raise
+
+test fn raise_stmt() -> Int {
+    raise_stmt_branch(1)
+}
+
+fn raise_stmt_branch(x: Int) -> Int {
+    inline if x > 5 {
+        raise;
+    }
+
+    x + 100
+}
+
+test fn raise_rest_of_block() -> Int {
+    raise_rest_of_block_branch(1)
+}
+
+fn raise_rest_of_block_branch(x: Int) -> Int {
+    inline if x > 5 {
+        return x;
+    }
+
+    assert x > 3;
+    x + 100
+}
+
+test fn raise_expr() -> Int {
+    raise_expr_branch(1)
+}
+
+fn raise_expr_branch(x: Int) -> Int {
+    inline if x > 5 {
+        x
+    } else {
+        raise "too small";
+    }
+}
+
+test fn assert_expr() -> Int {
+    assert_expr_branch(1)
+}
+
+fn assert_expr_branch(x: Int) -> Int {
+    inline if x > 5 {
+        assert x > 10;
+        x
+    } else {
+        0
+    }
+}
+
+test fn nested_if() -> Int {
+    nested_if_branch(20)
+}
+
+fn nested_if_branch(x: Int) -> Int {
+    inline if x > 5 {
+        if x > 10 {
+            raise;
+        }
+        x
+    } else {
+        0
+    }
+}
+
+test fn raising_call() -> Int {
+    raising_call_branch(1)
+}
+
+fn raising_call_branch(x: Int) -> Int {
+    inline if x > 5 { indirectly_checked(x) } else { 0 }
+}
+
+test fn verification() -> Bool {
+    verification_branch(1)
+}
+
+fn verification_branch(x: Int) -> Bool {
+    inline if x > 5 {
+        bls_pairing_identity(INFINITY_G1, INFINITY_G2);
+        true
+    } else {
+        false
+    }
+}
+
+fn checked(x: Int) -> Int {
+    assert x > 10;
+    x
+}
+
+fn indirectly_checked(x: Int) -> Int {
+    checked(x) + 1
+}
+
+// Branches which can't raise
+
+test fn pure_branches() -> Int {
+    pure_branches_inner(1, (1, 2))
+}
+
+fn pure_branches_inner(x: Int, list: (Int, Int)) -> Int {
+    inline if x > 5 { list.first * x + 1 } else { pure_call(list.rest) }
+}
+
+fn pure_call(x: Int) -> Int {
+    x * x
+}
+
+test fn pure_stmt() -> Int {
+    pure_stmt_branch(1)
+}
+
+fn pure_stmt_branch(x: Int) -> Int {
+    inline if x > 5 {
+        return x * 2;
+    }
+
+    x + 100
+}
+
+test fn lambda_branch() -> Int {
+    lambda_branch_inner(1)
+}
+
+fn lambda_branch_inner(x: Int) -> Int {
+    let f: fn(y: Int) -> Int = inline if x > 5 {
+        fn(y: Int) => checked(y)
+    } else {
+        fn(y: Int) => y
+    };
+    f(x)
+}
+
+test fn outer_binding() -> Int {
+    outer_binding_inner(20)
+}
+
+fn outer_binding_inner(x: Int) -> Int {
+    let value = checked(x);
+    inline if x > 5 { value } else { 0 }
+}
+
+test fn recursive_call() -> Int {
+    recursive_call_inner(3)
+}
+
+fn recursive_call_inner(x: Int) -> Int {
+    inline if x > 5 { recursive(x) } else { x }
+}
+
+fn recursive(x: Int) -> Int {
+    if x == 0 {
+        0
+    } else {
+        recursive(x - 1) + 1
+    }
+}
+
+test fn normal_if() -> Int {
+    normal_if_branch(1)
+}
+
+fn normal_if_branch(x: Int) -> Int {
+    if x > 5 {
+        raise;
+    }
+
+    x + 100
+}

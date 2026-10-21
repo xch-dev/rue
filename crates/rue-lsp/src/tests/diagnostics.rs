@@ -45,6 +45,18 @@ fn test_diagnostics_warning() {
 }
 
 #[test]
+fn test_diagnostics_inline_if_may_raise() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    expect![[r#"
+        main.rue:1:4-4:4 Warning: A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead
+    "#]].assert_eq(&project.change(
+        "main.rue",
+        Some("fn main(x: Int) -> Int {\n    inline if x > 5 {\n        raise;\n    }\n    x + 100\n}\n"),
+    ));
+}
+
+#[test]
 fn test_diagnostics_save_reverts_to_disk() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 

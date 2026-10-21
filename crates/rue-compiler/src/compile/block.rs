@@ -7,7 +7,8 @@ use rue_hir::{
 use rue_types::{Type, TypeId, Union};
 
 use crate::{
-    Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_type, create_binding,
+    Compiler, CompletionContext, InlineIf, SyntaxItemKind, compile_expr, compile_type,
+    create_binding,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +55,7 @@ pub fn compile_block(
     let mut return_value = None;
     let mut return_types = Vec::new();
     let mut implicit_return = false;
+    let mut inline_ifs = Vec::new();
 
     for stmt in block.items() {
         let stmt = match stmt {
@@ -173,6 +175,8 @@ pub fn compile_block(
 
                 if stmt.inline().is_none() {
                     ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
+                } else {
+                    inline_ifs.push((ctx.srcloc(stmt.syntax()), statements.len()));
                 }
 
                 Statement::If(IfStatement {
@@ -298,6 +302,10 @@ pub fn compile_block(
             .as_ref()
             .and_then(|value| implicit_return.then_some(value.hir)),
     }));
+
+    for (srcloc, index) in inline_ifs {
+        ctx.add_inline_if(srcloc, InlineIf::Statement(hir, index));
+    }
 
     ctx.revert_mappings(index, range.end());
 
