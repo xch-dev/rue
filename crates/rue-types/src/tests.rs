@@ -9,8 +9,9 @@ use rue_diagnostic::Name;
 use crate::{
     Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionType,
     Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union, check, compare,
-    compare_with_inference, extract_atoms, extract_functions, extract_pairs, is_non_contractive,
-    resolve_inference, stringify, substitute, substitute_with_mappings, subtract, unwrap_semantic,
+    compare_with_inference, extract_atoms, extract_functions, extract_pairs, extract_structs,
+    is_non_contractive, resolve_inference, stringify, substitute, substitute_with_mappings,
+    subtract, unwrap_semantic,
 };
 
 struct Db {
@@ -452,6 +453,43 @@ mod structs {
         assert_eq!(db.cmp(node, int), Comparison::Invalid);
         assert_eq!(db.name(node), "Node");
     }
+
+    #[test]
+    fn extract_narrowed_variants() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+
+        // struct A { x: Int | nil }, and a copy of it with `x` narrowed to `Int`
+        let field = db.union(&[int, nil]);
+        let shape = db.pair(field, nil);
+        let a = db.strukt("A", shape);
+        let Type::Struct(declared) = db.arena[a].clone() else {
+            panic!("expected a struct");
+        };
+        let narrowed_shape = db.pair(int, nil);
+        let narrowed = db.alloc(Type::Struct(Struct {
+            inner: narrowed_shape,
+            ..declared.clone()
+        }));
+
+        // Every instance of the same struct is extracted, even through aliases and nested unions
+        let alias = db.alias("Alias", &[], narrowed);
+        let nested = db.union(&[a, db.builtins.never]);
+        let union = db.union(&[alias, nested]);
+        let structs = extract_structs(&mut db.arena, union).unwrap();
+        assert_eq!(structs.len(), 2);
+        assert!(structs.iter().all(|ty| ty.semantic == declared.semantic));
+        assert_eq!(db.name(structs[0].inner), "(Int, nil)");
+        assert_eq!(db.name(structs[1].inner), "(Int | nil, nil)");
+
+        // But not if any variant is a different struct, or not a struct at all
+        let b = db.strukt("B", shape);
+        let different = db.union(&[a, b]);
+        assert!(extract_structs(&mut db.arena, different).is_none());
+
+        let optional = db.union(&[a, nil]);
+        assert!(extract_structs(&mut db.arena, optional).is_none());
+    }
 }
 
 mod aliases {
@@ -749,6 +787,7 @@ mod recursive {
             let _ = extract_pairs(&mut db.arena, ty, false);
             let _ = extract_pairs(&mut db.arena, ty, true);
             let _ = extract_functions(&mut db.arena, ty);
+            let _ = extract_structs(&mut db.arena, ty);
             let _ = check(&mut db.arena, &db.builtins, ty, bytes32);
             let _ = check(&mut db.arena, &db.builtins, int, ty);
             let _ = subtract(&mut db.arena, &db.builtins, ty, int);
@@ -803,6 +842,7 @@ mod recursive {
             let _ = extract_atoms(&mut db.arena, ty, false);
             let _ = extract_pairs(&mut db.arena, ty, false);
             let _ = extract_functions(&mut db.arena, ty);
+            let _ = extract_structs(&mut db.arena, ty);
             let _ = unwrap_semantic(&mut db.arena, ty, true);
         }
     }

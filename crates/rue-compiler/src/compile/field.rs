@@ -1,6 +1,6 @@
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, TypePath, UnaryOp, Value};
-use rue_types::{Type, Union};
+use rue_types::{Struct, Type, Union};
 
 use crate::{Compiler, GetTextRange};
 
@@ -40,6 +40,35 @@ pub fn compile_pair_fields(
 
 pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> FieldResult {
     let ty = rue_types::unwrap_semantic(ctx.types_mut(), expr.ty, true);
+
+    // Narrowing a field of a struct produces a copy of the struct with a narrower inner type, so
+    // the field of a union of these copies is the union of the field in each of them
+    if matches!(ctx.ty(ty), Type::Union(_))
+        && let Some(structs) = rue_types::extract_structs(ctx.types_mut(), ty)
+    {
+        let mut result: Option<Value> = None;
+        let mut types = Vec::new();
+
+        for ty in structs {
+            match compile_struct_field(ctx, expr.clone(), &ty, name) {
+                FieldResult::Value(value) => {
+                    if !types.contains(&value.ty) {
+                        types.push(value.ty);
+                    }
+                    result.get_or_insert(value);
+                }
+                result => return result,
+            }
+        }
+
+        let mut value = result.expect("there is at least one struct");
+
+        if types.len() > 1 {
+            value.ty = ctx.alloc_type(Type::Union(Union::new(types)));
+        }
+
+        return FieldResult::Value(value);
+    }
 
     match ctx.ty(ty).clone() {
         Type::Apply(_) | Type::Alias(_) | Type::Ref(_) => unreachable!(),
@@ -102,72 +131,79 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
                 _ => FieldResult::Unknown,
             }
         }
-        Type::Struct(ty) => {
-            let &Field::Named(name) = name else {
-                return FieldResult::Unknown;
-            };
+        Type::Struct(ty) => compile_struct_field(ctx, expr, &ty, name),
+    }
+}
 
-            let Some(index) = ty.fields.get_index_of(name) else {
-                return FieldResult::Unknown;
-            };
+fn compile_struct_field(
+    ctx: &mut Compiler,
+    expr: Value,
+    ty: &Struct,
+    name: &Field<'_>,
+) -> FieldResult {
+    let &Field::Named(name) = name else {
+        return FieldResult::Unknown;
+    };
 
-            let mut hir = expr.hir;
-            let mut field_type = ty.inner;
-            let mut reference = expr.reference;
+    let Some(index) = ty.fields.get_index_of(name) else {
+        return FieldResult::Unknown;
+    };
 
-            let needs_first = index + 1 < ty.fields.len() || ty.nil_terminated;
+    let mut hir = expr.hir;
+    let mut field_type = ty.inner;
+    let mut reference = expr.reference;
 
-            for i in 0..index {
-                hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, hir));
+    let needs_first = index + 1 < ty.fields.len() || ty.nil_terminated;
 
-                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
+    for i in 0..index {
+        hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, hir));
 
-                if pairs.is_empty() || (pairs.len() > 1 && (i + 1 < index || needs_first)) {
-                    return FieldResult::Error;
-                }
+        let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
 
-                field_type = if pairs.len() == 1 {
-                    pairs[0].rest
-                } else {
-                    ctx.alloc_type(Type::Union(Union::new(
-                        pairs.into_iter().map(|pair| pair.rest).collect(),
-                    )))
-                };
+        if pairs.is_empty() || (pairs.len() > 1 && (i + 1 < index || needs_first)) {
+            return FieldResult::Error;
+        }
 
-                if let Some(reference) = reference.as_mut() {
-                    reference.path.push(TypePath::Rest);
-                }
-            }
+        field_type = if pairs.len() == 1 {
+            pairs[0].rest
+        } else {
+            ctx.alloc_type(Type::Union(Union::new(
+                pairs.into_iter().map(|pair| pair.rest).collect(),
+            )))
+        };
 
-            if needs_first {
-                hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, hir));
-
-                let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
-
-                if pairs.is_empty() {
-                    return FieldResult::Error;
-                }
-
-                field_type = if pairs.len() == 1 {
-                    pairs[0].first
-                } else {
-                    ctx.alloc_type(Type::Union(Union::new(
-                        pairs.into_iter().map(|pair| pair.first).collect(),
-                    )))
-                };
-
-                if let Some(reference) = reference.as_mut() {
-                    reference.path.push(TypePath::First);
-                }
-            }
-
-            let mut value = Value::new(hir, field_type);
-
-            if let Some(reference) = reference {
-                value = value.with_reference(reference);
-            }
-
-            FieldResult::Value(value)
+        if let Some(reference) = reference.as_mut() {
+            reference.path.push(TypePath::Rest);
         }
     }
+
+    if needs_first {
+        hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, hir));
+
+        let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
+
+        if pairs.is_empty() {
+            return FieldResult::Error;
+        }
+
+        field_type = if pairs.len() == 1 {
+            pairs[0].first
+        } else {
+            ctx.alloc_type(Type::Union(Union::new(
+                pairs.into_iter().map(|pair| pair.first).collect(),
+            )))
+        };
+
+        if let Some(reference) = reference.as_mut() {
+            reference.path.push(TypePath::First);
+        }
+    }
+
+    let mut value = Value::new(hir, field_type);
+
+    if let Some(reference) = reference {
+        value = value.with_reference(reference);
+    }
+
+    FieldResult::Value(value)
 }
