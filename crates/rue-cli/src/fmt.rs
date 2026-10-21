@@ -9,7 +9,7 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use colored::Colorize;
 use glob::glob;
-use rue_formatter::{FormatOptions, format_source};
+use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_options::find_project;
 use walkdir::WalkDir;
 
@@ -32,8 +32,26 @@ pub fn format(args: &FmtArgs) -> Result<()> {
         let options = find_project(&path, false)
             .with_context(|| format!("Failed to resolve project for {}", path.display()))?
             .map_or_else(FormatOptions::default, |project| project.format_options);
-        let formatted = format_source(&source, &options)
-            .with_context(|| format!("Failed to format {}", path.display()))?;
+        let formatted = match format_source(&source, &options) {
+            Ok(formatted) => formatted,
+            // Files with syntax errors can't be formatted, but that shouldn't prevent formatting
+            // the rest of the files
+            Err(FormatError::Parse { .. }) => {
+                eprintln!(
+                    "{}",
+                    format!(
+                        "Skipped {}, since it contains syntax errors",
+                        display_path(&path, &current_dir)
+                    )
+                    .yellow()
+                    .bold()
+                );
+                continue;
+            }
+            Err(error) => {
+                return Err(error).with_context(|| format!("Failed to format {}", path.display()));
+            }
+        };
         if formatted != source {
             pending.push((path, formatted));
         }

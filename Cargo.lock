@@ -1839,7 +1839,6 @@ dependencies = [
  "derive_more",
  "expect-test",
  "indexmap",
- "itertools",
  "num-derive",
  "num-traits",
  "rowan",

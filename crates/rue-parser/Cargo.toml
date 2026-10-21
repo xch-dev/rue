@@ -22,7 +22,6 @@ derive_more = { workspace = true, features = ["display"] }
 num-traits = { workspace = true }
 num-derive = { workspace = true }
 indexmap = { workspace = true }
-itertools = { workspace = true }
 
 [dev-dependencies]
 expect-test = { workspace = true }

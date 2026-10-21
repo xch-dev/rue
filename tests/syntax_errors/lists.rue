@@ -1,0 +1,28 @@
+fn sum(a: Int, b: Int, c: Int) -> Int {
+    a + b + c
+}
+
+test fn call_missing_comma() -> Int {
+    sum(1 2, 3)
+}
+
+test fn call_missing_paren() -> Int {
+    let value = sum(1, 2, 3
+    value
+}
+
+test fn list_missing_comma() -> List<Int> {
+    [1, 2 3, 4]
+}
+
+test fn pair_missing_comma() -> (Int, Int) {
+    (1 2)
+}
+
+test fn generic_missing_close() -> List<Int {
+    [1, 2, 3]
+}
+
+test fn still_works() -> Int {
+    sum(1, 2, 3)
+}

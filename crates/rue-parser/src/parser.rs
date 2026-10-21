@@ -1,7 +1,6 @@
-use std::{cmp::Reverse, mem, ops::Range};
+use std::{mem, ops::Range};
 
 use indexmap::IndexSet;
-use itertools::Itertools;
 use rowan::{Checkpoint, GreenNodeBuilder, Language};
 use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SrcLoc};
 use rue_lexer::{Token, TokenKind};
@@ -25,7 +24,9 @@ pub struct Parser {
     source: Source,
     parse_tokens: Vec<ParseToken>,
     pos: usize,
-    expected: IndexSet<SyntaxKind>,
+    expected: IndexSet<String>,
+    last_error_pos: Option<usize>,
+    recovering: bool,
     diagnostics: Vec<Diagnostic>,
     builder: GreenNodeBuilder<'static>,
 }
@@ -35,12 +36,17 @@ impl Parser {
         let mut parse_tokens = Vec::with_capacity(tokens.len());
         let mut diagnostics = Vec::new();
 
+        // Unterminated strings and block comments extend to the end of the file, so any syntax
+        // errors at the end of the file are caused by them and aren't worth reporting
+        let mut unterminated_at_eof = false;
+
         for token in tokens {
             let kind = match token.kind {
                 TokenKind::Whitespace => SyntaxKind::Whitespace,
                 TokenKind::LineComment => SyntaxKind::LineComment,
                 TokenKind::BlockComment { is_terminated } => {
                     if !is_terminated {
+                        unterminated_at_eof = true;
                         diagnostics.push(Diagnostic::new(
                             SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedBlockComment,
@@ -50,6 +56,7 @@ impl Parser {
                 }
                 TokenKind::String { is_terminated } => {
                     if !is_terminated {
+                        unterminated_at_eof = true;
                         diagnostics.push(Diagnostic::new(
                             SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedString,
@@ -148,11 +155,15 @@ impl Parser {
             });
         }
 
+        let last_error_pos = unterminated_at_eof.then_some(parse_tokens.len());
+
         Self {
             source,
             parse_tokens,
             pos: 0,
             expected: IndexSet::new(),
+            last_error_pos,
+            recovering: false,
             diagnostics,
             builder: GreenNodeBuilder::new(),
         }
@@ -197,22 +208,51 @@ impl Parser {
         self.builder.finish_node();
     }
 
+    /// The index of the current token, which can be compared to detect whether progress was made.
+    pub(crate) fn pos(&mut self) -> usize {
+        self.eat_trivia();
+        self.pos
+    }
+
     pub(crate) fn at_any(&mut self, kinds: &[SyntaxKind]) -> Option<SyntaxKind> {
-        for kind in kinds
-            .iter()
-            .sorted_by_key(|kind| Reverse(kind.split().len()))
-        {
-            if self.at(*kind) {
-                return Some(*kind);
+        self.at_any_inner(kinds, true)
+    }
+
+    /// Like [`Self::at_any`], but doesn't add the kinds to the expected set for diagnostics.
+    pub(crate) fn at_any_quiet(&mut self, kinds: &[SyntaxKind]) -> Option<SyntaxKind> {
+        self.at_any_inner(kinds, false)
+    }
+
+    /// Prefers the longest match, so that for example `>>` is matched rather than `>`.
+    fn at_any_inner(&mut self, kinds: &[SyntaxKind], record: bool) -> Option<SyntaxKind> {
+        let mut found: Option<SyntaxKind> = None;
+
+        for &kind in kinds {
+            if self.at_inner(kind, record)
+                && found.is_none_or(|found| kind.split().len() > found.split().len())
+            {
+                found = Some(kind);
             }
         }
-        None
+
+        found
     }
 
     pub(crate) fn at(&mut self, kind: SyntaxKind) -> bool {
+        self.at_inner(kind, true)
+    }
+
+    /// Like [`Self::at`], but doesn't add the kind to the expected set for diagnostics.
+    pub(crate) fn at_quiet(&mut self, kind: SyntaxKind) -> bool {
+        self.at_inner(kind, false)
+    }
+
+    fn at_inner(&mut self, kind: SyntaxKind, record: bool) -> bool {
         self.eat_trivia();
 
-        self.expected.insert(kind);
+        if record {
+            self.expected.insert(kind.to_string());
+        }
 
         let split = kind.split();
 
@@ -225,6 +265,64 @@ impl Parser {
         true
     }
 
+    /// Returns the kind of the `n`th non-trivia token after the current position.
+    pub(crate) fn lookahead(&self, n: usize) -> SyntaxKind {
+        let mut remaining = n;
+        let mut i = 0;
+
+        loop {
+            let kind = self.nth(i);
+
+            if kind == SyntaxKind::Eof {
+                return kind;
+            }
+
+            if !kind.is_trivia() {
+                if remaining == 0 {
+                    return kind;
+                }
+                remaining -= 1;
+            }
+
+            i += 1;
+        }
+    }
+
+    /// Whether the current token is the first one on its line (ignoring trivia).
+    pub(crate) fn at_line_start(&mut self) -> bool {
+        self.eat_trivia();
+
+        self.parse_tokens[..self.pos]
+            .iter()
+            .rev()
+            .take_while(|token| token.kind.is_trivia())
+            .any(|token| self.source.text[token.span.clone()].contains('\n'))
+    }
+
+    /// Returns the kind of the first non-trivia token after the delimited group (such as `{...}`)
+    /// that starts at the current token, or the current token's kind if it doesn't start a group.
+    pub(crate) fn lookahead_past_group(&self) -> SyntaxKind {
+        let mut depth = 0usize;
+        let mut n = 0;
+
+        loop {
+            let kind = self.lookahead(n);
+
+            match kind {
+                T!['('] | T!['['] | T!['{'] => depth += 1,
+                T![')'] | T![']'] | T!['}'] => depth = depth.saturating_sub(1),
+                SyntaxKind::Eof => return kind,
+                _ => {}
+            }
+
+            n += 1;
+
+            if depth == 0 {
+                return self.lookahead(n);
+            }
+        }
+    }
+
     pub(crate) fn try_eat(&mut self, kind: SyntaxKind) -> bool {
         if self.at(kind) {
             self.bump(kind);
@@ -234,12 +332,27 @@ impl Parser {
         }
     }
 
-    pub(crate) fn expect(&mut self, kind: SyntaxKind) {
+    /// Consumes the token if it's present, otherwise reports an error without consuming anything.
+    /// This allows the caller to continue parsing as though the token was there, which prevents a
+    /// single missing token from swallowing the next valid construct.
+    pub(crate) fn expect(&mut self, kind: SyntaxKind) -> bool {
         if self.at(kind) {
             self.bump(kind);
+            true
         } else {
-            self.skip();
+            self.error_unexpected();
+            false
         }
+    }
+
+    /// Adds a description of what was expected (such as "expression") to the set of expected
+    /// items that will be included in the next diagnostic.
+    pub(crate) fn expected(&mut self, name: &str) {
+        self.expected.insert(name.to_string());
+    }
+
+    pub(crate) fn clear_expected(&mut self) {
+        self.expected.clear();
     }
 
     fn nth(&self, n: usize) -> SyntaxKind {
@@ -254,31 +367,33 @@ impl Parser {
         }
     }
 
-    pub(crate) fn skip(&mut self) {
+    /// Reports an unexpected token error at the current token, listing what was expected.
+    pub(crate) fn error_unexpected(&mut self) {
+        self.eat_trivia();
         let expected = mem::take(&mut self.expected);
-
-        let len = self.source.text.len();
-
-        let span = self
-            .parse_tokens
-            .get(self.pos)
-            .map_or(len..len, |token| token.span.clone());
-
-        self.diagnostics.push(Diagnostic::new(
-            SrcLoc::new(self.source.clone(), span),
-            DiagnosticKind::UnexpectedToken(
-                self.nth(0).to_string(),
-                expected.iter().map(ToString::to_string).collect(),
-            ),
+        let found = self.nth(0).to_string();
+        self.push_error(DiagnosticKind::UnexpectedToken(
+            found,
+            expected.into_iter().collect(),
         ));
-
-        if self.pos < self.parse_tokens.len() {
-            self.pos += 1;
-        }
     }
 
     pub(crate) fn error(&mut self, kind: DiagnosticKind) {
+        self.eat_trivia();
         self.expected.clear();
+        self.push_error(kind);
+    }
+
+    /// After an error, any further errors are suppressed until a token has been successfully
+    /// parsed, since they're almost always caused by the first error rather than being new
+    /// mistakes. For the same reason, only one error is reported per token.
+    fn push_error(&mut self, kind: DiagnosticKind) {
+        if self.recovering || self.last_error_pos == Some(self.pos) {
+            return;
+        }
+
+        self.recovering = true;
+        self.last_error_pos = Some(self.pos);
 
         let len = self.source.text.len();
 
@@ -293,8 +408,31 @@ impl Parser {
         ));
     }
 
+    /// Consumes the current token as an error token, so that it remains in the syntax tree. Does
+    /// nothing at the end of the file.
+    pub(crate) fn bump_as_error(&mut self) {
+        self.eat_trivia();
+
+        let Some(token) = self.parse_tokens.get(self.pos) else {
+            return;
+        };
+
+        self.expected.clear();
+
+        self.builder.token(
+            RueLang::kind_to_raw(SyntaxKind::Error),
+            &self.source.text[token.span.clone()],
+        );
+
+        self.pos += 1;
+    }
+
     fn bump(&mut self, kind: SyntaxKind) {
         self.expected.clear();
+
+        if !kind.is_trivia() {
+            self.recovering = false;
+        }
 
         let len = kind.split().len();
 
