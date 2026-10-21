@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
@@ -173,4 +173,42 @@ fn substitute_impl(
     ctx.memo.exit(frame, old_id, Some((old_id, scope)), result);
 
     result
+}
+
+/// Returns `true` if the generic is referenced anywhere in the type.
+pub fn contains_generic(arena: &mut Arena<Type>, id: TypeId, generic: TypeId) -> bool {
+    // Substitution expands generic applications, so the generic is only visible where it's used
+    let root = substitute(arena, id);
+
+    let mut visited = HashSet::new();
+    let mut stack = vec![root];
+
+    while let Some(id) = stack.pop() {
+        if id == generic {
+            return true;
+        }
+
+        if !visited.insert(id) {
+            continue;
+        }
+
+        match &arena[id] {
+            Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
+            Type::Ref(id) => stack.push(*id),
+            Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
+            Type::Alias(alias) => stack.push(alias.inner),
+            Type::Struct(ty) => stack.push(ty.inner),
+            Type::Apply(apply) => {
+                stack.push(apply.inner);
+                stack.extend(apply.generics.values().copied());
+            }
+            Type::Function(function) => {
+                stack.push(function.ret);
+                stack.extend(function.params.values().copied());
+            }
+            Type::Union(union) => stack.extend(union.types.iter().copied()),
+        }
+    }
+
+    false
 }

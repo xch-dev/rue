@@ -503,6 +503,17 @@ impl Compiler {
         );
     }
 
+    /// Collects inference candidates for the generics in `ty` from the type it's expected to be.
+    pub fn infer_from_expected(&mut self, ty: TypeId, expected: TypeId, infer: &mut Inference) {
+        rue_types::infer_from_expected(
+            self.db.types_mut(),
+            &self.builtins.types,
+            ty,
+            expected,
+            infer,
+        );
+    }
+
     pub fn resolve_inference(&mut self, infer: &Inference) -> HashMap<TypeId, TypeId> {
         rue_types::resolve_inference(self.db.types_mut(), &self.builtins.types, infer)
     }

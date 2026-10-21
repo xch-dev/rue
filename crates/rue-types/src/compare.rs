@@ -136,6 +136,34 @@ pub fn compare_with_inference(
     result
 }
 
+/// Collects inference candidates for the generics in `ty` from the type it's expected to be
+/// assignable to, such as a function's return type and the type expected of the call.
+pub fn infer_from_expected(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    ty: TypeId,
+    expected: TypeId,
+    infer: &mut Inference,
+) {
+    let ty = substitute(arena, ty);
+    let expected = substitute(arena, expected);
+
+    // The generics being inferred are on the left hand side, so the comparison starts flipped
+    compare_impl(
+        arena,
+        builtins,
+        &mut ComparisonContext {
+            infer: Some(infer),
+            flipped: true,
+            ..Default::default()
+        },
+        ty,
+        expected,
+        None,
+        None,
+    );
+}
+
 pub fn compare(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,

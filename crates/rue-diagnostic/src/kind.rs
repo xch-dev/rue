@@ -195,6 +195,9 @@ pub enum DiagnosticKind {
     #[error("Expected {0} arguments, but found {1}")]
     ExpectedArguments(usize, usize),
 
+    #[error("Cannot infer generic `{0}` for `{1}`; specify it explicitly, e.g. `{1}::<...>()`")]
+    CannotInferGeneric(String, String),
+
     #[error("Expected between {0} and {1} arguments, but found {1}")]
     ExpectedArgumentsBetween(usize, usize, usize),
 
@@ -346,6 +349,7 @@ impl DiagnosticKind {
             | Self::CannotDisambiguateFunctionTypes(..)
             | Self::InvalidFunctionCall(..)
             | Self::ExpectedArguments(..)
+            | Self::CannotInferGeneric(..)
             | Self::CannotDestructureParameter(..)
             | Self::NonFinalSpread
             | Self::InvalidSpread
