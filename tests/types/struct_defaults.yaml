@@ -1,0 +1,29 @@
+tests:
+- name: default_values
+  program: (a (q 2 (i 10 (q 8) (q 2 (i 22 (q . 4) (q 8)) 1)) 1) (c (q 100 () 1) 1))
+  debug_program: (a (q 2 (i (= (f (r 2)) ()) (q 2 (i (f (r (r 2))) (q 5 2) (q 8 (q . "assertion failed at struct_defaults.rue:19:5"))) 1) (q 8 (q . "assertion failed at struct_defaults.rue:18:5"))) 1) (c (c (q . 100) (c () (c (q . 1) ()))) 1))
+  output: '100'
+  runtime_cost: 812
+  byte_cost: 756000
+  total_cost: 756812
+- name: override_default
+  program: (f (q 5 () 1))
+  debug_program: (a (q 5 2) (c (c (q . 5) (c () (c (q . 1) ()))) 1))
+  output: '5'
+  runtime_cost: 51
+  byte_cost: 156000
+  total_cost: 156051
+- name: inferred_default
+  program: (+ (f (q 42)) (q . 1))
+  debug_program: (a (q 16 (f 2) (q . 1)) (c (c (q . 42) ()) 1))
+  output: '43'
+  runtime_cost: 827
+  byte_cost: 204000
+  total_cost: 204827
+- name: generic_with_default
+  program: (a (q 16 4 10) (c (q 5 1) 1))
+  debug_program: (a (q 16 (f 2) (f (r 2))) (c (c (q . 5) (c (q . 1) ())) 1))
+  output: '6'
+  runtime_cost: 1090
+  byte_cost: 324000
+  total_cost: 325090

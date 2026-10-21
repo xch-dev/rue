@@ -1,0 +1,36 @@
+struct Config {
+    amount: Int = 100,
+    hash: Bytes32 | nil = nil,
+    flag: Bool = true,
+}
+
+struct Inferred {
+    value = 42,
+}
+
+struct Box<T> {
+    value: T,
+    count: Int = 1,
+}
+
+test fn default_values() -> Int {
+    let config = Config {};
+    assert config.hash is nil;
+    assert config.flag;
+    config.amount
+}
+
+test fn override_default() -> Int {
+    let config = Config { amount: 5 };
+    config.amount
+}
+
+test fn inferred_default() -> Int {
+    let inferred = Inferred {};
+    inferred.value + 1
+}
+
+test fn generic_with_default() -> Int {
+    let box = Box::<Int> { value: 5 };
+    box.value + box.count
+}

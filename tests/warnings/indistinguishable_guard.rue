@@ -1,0 +1,14 @@
+test fn union_member() -> Bool {
+    let value: Bytes32 | Int = 42;
+    value is Int
+}
+
+test fn narrower_atom() -> Bool {
+    let value: Bytes32 = 0x0000000000000000000000000000000000000000000000000000000000000000;
+    value is Bytes
+}
+
+test fn distinguishable_member() -> Bool {
+    let value: Bytes32 | Int = 42;
+    !(value is Bytes32)
+}

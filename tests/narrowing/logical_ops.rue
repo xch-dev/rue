@@ -1,0 +1,143 @@
+test fn and_and(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if x is Int && y is Int {
+        x + y
+    } else {
+        0
+    }
+}
+
+test fn or_or(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if (x is (Int, Int)) || (y is (Int, Int)) {
+        0
+    } else {
+        x + y
+    }
+}
+
+test fn and_all(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if (x is Int) & (y is Int) {
+        x + y
+    } else {
+        0
+    }
+}
+
+test fn or_any(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if (x is (Int, Int)) | (y is (Int, Int)) {
+        0
+    } else {
+        x + y
+    }
+}
+
+test fn not_guard(x: Int | (Int, Int)) -> Int {
+    if !(x is (Int, Int)) {
+        x
+    } else {
+        0
+    }
+}
+
+test fn not_not_guard(x: Int | (Int, Int)) -> Int {
+    if !!(x is Int) {
+        x
+    } else {
+        0
+    }
+}
+
+test fn not_or(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if !((x is (Int, Int)) || (y is (Int, Int))) {
+        x + y
+    } else {
+        0
+    }
+}
+
+test fn not_any(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if !((x is (Int, Int)) | (y is (Int, Int))) {
+        x + y
+    } else {
+        0
+    }
+}
+
+test fn not_and(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if !(x is Int && y is Int) {
+        0
+    } else {
+        x + y
+    }
+}
+
+test fn nested_and(x: Int | (Int, Int), y: Int | (Int, Int), z: Int | (Int, Int)) -> Int {
+    if (x is Int && y is Int) && z is Int {
+        x + y + z
+    } else {
+        0
+    }
+}
+
+test fn nested_or(x: Int | (Int, Int), y: Int | (Int, Int), z: Int | (Int, Int)) -> Int {
+    if (x is (Int, Int)) || ((y is (Int, Int)) || (z is (Int, Int))) {
+        0
+    } else {
+        x + y + z
+    }
+}
+
+test fn nested_mixed(x: Int | (Int, Int), y: Int | (Int, Int), z: Int | (Int, Int)) -> Int {
+    if (x is (Int, Int)) | ((y is (Int, Int)) || (z is (Int, Int))) {
+        0
+    } else {
+        x + y + z
+    }
+}
+
+test fn nested_all_any(x: Int | (Int, Int), y: Int | (Int, Int), z: Int | (Int, Int)) -> Int {
+    if ((x is Int) & (y is Int)) & !((z is (Int, Int)) | (x is (Int, Int))) {
+        x + y + z
+    } else {
+        0
+    }
+}
+
+test fn and_right_uses_left(x: Int | (Int, Int)) -> Bool {
+    x is Int && x > 5
+}
+
+test fn or_right_uses_left(x: Int | (Int, Int)) -> Bool {
+    (x is (Int, Int)) || x > 5
+}
+
+test fn same_path_any(x: Bytes32 | nil | (Int, Int)) -> Bytes32 {
+    if (x is nil) | (x is (Int, Int)) {
+        sha256(nil)
+    } else {
+        x
+    }
+}
+
+test fn same_path_or(x: Bytes32 | nil | (Int, Int)) -> Bytes32 {
+    if (x is nil) || (x is (Int, Int)) {
+        sha256(nil)
+    } else {
+        x
+    }
+}
+
+test fn same_path_all(x: Bytes32 | nil | (Int, Int)) -> Bytes32 {
+    if (x is Bytes32) & (x is Atom) {
+        x
+    } else {
+        sha256(nil)
+    }
+}
+
+test fn same_path_and(x: Bytes32 | nil | (Int, Int)) -> Bytes32 {
+    if x is Atom && x is Bytes32 {
+        x
+    } else {
+        sha256(nil)
+    }
+}

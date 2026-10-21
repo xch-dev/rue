@@ -13,8 +13,8 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, ImportId, Scope, ScopeId, Symbol, SymbolId,
-    TypePath, Value, replace_type,
+    Builtins, Constraint, Database, Declaration, ImportId, Mappings, Scope, ScopeId, Symbol,
+    SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
@@ -355,6 +355,8 @@ impl Compiler {
     ) -> usize {
         let scope = self.alloc_child_scope();
 
+        let builtins = self.builtins.types;
+
         for (symbol, paths) in mappings {
             let mut ty = self.symbol_type(symbol);
 
@@ -362,7 +364,7 @@ impl Compiler {
             paths.sort_by_key(|(path, _)| (Reverse(path.len()), path.last().copied()));
 
             for (path, replacement) in paths {
-                ty = replace_type(&mut self.db, ty, replacement, &path);
+                ty = replace_type(&mut self.db, &builtins, ty, replacement, &path);
             }
 
             self.scope_mut(scope).override_symbol_type(symbol, ty);
@@ -371,6 +373,11 @@ impl Compiler {
         let index = self.scope_stack.len();
         self.push_scope(scope, start);
         index
+    }
+
+    pub fn merge_mappings(&mut self, a: &Mappings, b: &Mappings) -> Mappings {
+        let builtins = self.builtins.types;
+        merge_mappings(&mut self.db, &builtins, a, b)
     }
 
     /// Enters a context where `return` statements exit to the given target. If the target
@@ -455,7 +462,13 @@ impl Compiler {
         let from_name = self.type_name(from);
         let to_name = self.type_name(to);
 
-        if check == Check::None {
+        if check == Check::None && !self.is_assignable(from, to) {
+            // The types are different at compile time, but there's nothing to check at runtime
+            self.diagnostic(
+                node,
+                DiagnosticKind::IndistinguishableGuard(from_name, to_name),
+            );
+        } else if check == Check::None {
             self.diagnostic(node, DiagnosticKind::UnnecessaryGuard(from_name, to_name));
         } else if check == Check::Impossible {
             self.diagnostic(node, DiagnosticKind::IncompatibleGuard(from_name, to_name));

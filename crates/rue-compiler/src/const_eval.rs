@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
     DependencyGraph, Environment, FunctionKind, FunctionSymbol, Hir, HirId, Lowerer, LoweringMode,
-    Symbol,
+    Symbol, has_reachable_unresolved,
 };
 use rue_lir::{CLVM_FLAGS, CodegenOptions, codegen, optimize};
 use rue_options::CompilerOptions;
@@ -79,6 +79,19 @@ fn evaluate_const_expr(ctx: &mut Compiler, value: HirId) -> Result<Hir, ConstEva
     let max_cost = options.const_eval_max_cost;
 
     let graph = DependencyGraph::build(ctx, root, options);
+
+    let has_unresolved = has_reachable_unresolved(ctx, root);
+
+    debug_assert!(
+        !has_unresolved,
+        "unresolved code reached const evaluation without an error"
+    );
+
+    if has_unresolved {
+        return Err(ConstEvalError::Failed(
+            "internal error: unresolved code reached const evaluation".to_string(),
+        ));
+    }
 
     for dependency in graph.dependencies(root, true) {
         match ctx.symbol(dependency) {

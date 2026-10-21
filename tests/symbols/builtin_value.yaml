@@ -1,0 +1,8 @@
+diagnostics:
+- Cannot use builtin `sha256` as a value, it can only be called directly at builtin_value.rue:10:13
+- Cannot use builtin `sha256` as a value, it can only be called directly at builtin_value.rue:11:21
+- Cannot use builtin `sha256` as a value, it can only be called directly at builtin_value.rue:12:24
+- Cannot use builtin `sha256` as a value, it can only be called directly at builtin_value.rue:13:31
+- Cannot use builtin `sha256` as a value, it can only be called directly at builtin_value.rue:14:26
+- Unused function `call` at builtin_value.rue:5:4
+- Unused struct `Hasher` at builtin_value.rue:1:8

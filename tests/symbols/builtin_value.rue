@@ -1,0 +1,16 @@
+struct Hasher {
+    sha256: fn(value: Bytes) -> Bytes32,
+}
+
+fn call(f: fn(value: Bytes) -> Bytes32) -> Bytes32 {
+    f(nil)
+}
+
+fn main() -> Bytes32 {
+    let f = sha256;
+    let _grouped = (sha256)(nil);
+    let _passed = call(sha256);
+    let _shorthand = Hasher { sha256 };
+    let _const = const { sha256 };
+    f
+}

@@ -1,0 +1,88 @@
+// The else branch of a non-short-circuit `|` must use both operands' else maps
+fn any_else(x: Bytes32 | Int, y: Bytes32 | Int) -> Bytes32 {
+    if (x is Bytes32) | (y is Bytes32) {
+        return 0x0000000000000000000000000000000000000000000000000000000000000000;
+    }
+    x
+}
+
+// Negating a value must not narrow the original value
+fn not_reference(b: Bool) -> true {
+    if (!b) is false {
+        raise;
+    }
+    b
+}
+
+fn not_reference_true(b: Bool) -> false {
+    if (!b) is true {
+        return false;
+    }
+    b
+}
+
+// There is no else narrowing for `&&` or `&`, or then narrowing for `||` or `|`
+fn and_else(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if x is Int && y is Int {
+        0
+    } else {
+        x
+    }
+}
+
+fn all_else(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if (x is Int) & (y is Int) {
+        0
+    } else {
+        x
+    }
+}
+
+fn or_then(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if (x is Int) || (y is Int) {
+        x
+    } else {
+        0
+    }
+}
+
+fn any_then(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+    if (x is Int) | (y is Int) {
+        x
+    } else {
+        0
+    }
+}
+
+// The right operand of `&` and `|` is evaluated regardless of the left operand
+fn all_right(x: Int | (Int, Int)) -> Bool {
+    (x is Int) & (x > 5)
+}
+
+fn any_right(x: Int | (Int, Int)) -> Bool {
+    (x is (Int, Int)) | (x > 5)
+}
+
+// Narrowing the same path with `|` only excludes what both guards exclude
+fn same_path_any(x: Bytes32 | nil | (Int, Int)) -> Bytes32 {
+    if (x is nil) | (x is Bytes32) {
+        sha256(nil)
+    } else {
+        x
+    }
+}
+
+// Inline if expressions evaluate both branches eagerly, so they can't narrow
+fn inline_if(x: Int | (Int, Int)) -> Int {
+    inline if x is Int { x } else { 0 }
+}
+
+// Narrowing doesn't escape the branch it applies to
+fn if_expr_escape(x: Int | (Int, Int)) -> Int {
+    let y = if x is Int {
+        x
+    } else {
+        0
+    };
+    x + y
+}

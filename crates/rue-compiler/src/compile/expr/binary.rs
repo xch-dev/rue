@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstBinaryExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{BinaryOp, Hir, Mappings, Value, merge_mappings};
+use rue_hir::{BinaryOp, Hir, Mappings, Value};
 use rue_parser::T;
 
 use crate::{Compiler, compile_expr};
@@ -336,7 +336,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.bool);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::And, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().types.bool).with_mappings(
-                    merge_mappings(&left.then_map, &right.then_map),
+                    ctx.merge_mappings(&left.then_map, &right.then_map),
                     HashMap::new(),
                 );
             }
@@ -357,7 +357,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Or, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().types.bool).with_mappings(
                     HashMap::new(),
-                    merge_mappings(&left.else_map, &right.else_map),
+                    ctx.merge_mappings(&left.else_map, &right.else_map),
                 );
             }
 
@@ -376,7 +376,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.bool);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::All, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().types.bool).with_mappings(
-                    merge_mappings(&left.then_map, &right.then_map),
+                    ctx.merge_mappings(&left.then_map, &right.then_map),
                     HashMap::new(),
                 );
             }
@@ -403,7 +403,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Any, left.hir, right.hir));
                 return Value::new(hir, ctx.builtins().types.bool).with_mappings(
                     HashMap::new(),
-                    merge_mappings(&left.then_map, &right.then_map),
+                    ctx.merge_mappings(&left.else_map, &right.else_map),
                 );
             }
 
