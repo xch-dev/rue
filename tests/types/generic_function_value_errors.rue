@@ -40,3 +40,9 @@ fn main() -> Int {
     let i: Int = apply(identity, sha256("hello"));
     42
 }
+
+fn outer<T>() -> fn<U>(value: U) -> U {
+    // The inner function can't be instantiated to return the rigid `T` as an `Int`
+    let _function: fn() -> fn(value: T) -> Int = outer;
+    fn<U>(value: U): U => value
+}

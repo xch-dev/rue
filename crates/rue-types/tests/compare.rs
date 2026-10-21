@@ -175,6 +175,26 @@ fn generic_function_compared_to_its_own_generics() {
 }
 
 #[test]
+fn nested_bounds_use_rigid_generics() {
+    let mut db = Types::new();
+    let int = db.builtins.int;
+
+    // Inside the body of `fn outer<T>() -> fn<U>(value: U) -> U`, `outer`'s own `T` is rigid
+    let generic = db.generic();
+    let identity = db.identity();
+    let outer = db.function(&[generic], &[], identity);
+
+    // So the inner bound `T <: Int` must not be taken as a bound on the instantiated `T`
+    let rigid_to_int = db.function(&[], &[generic], int);
+    let returns_rigid_to_int = db.function(&[], &[], rigid_to_int);
+    assert_eq!(db.cmp(outer, returns_rigid_to_int), Comparison::Invalid);
+
+    let rigid = db.function(&[], &[generic], generic);
+    let returns_rigid = db.function(&[], &[], rigid);
+    assert_eq!(db.cmp(outer, returns_rigid), Comparison::Assign);
+}
+
+#[test]
 fn generic_function_in_contravariant_position() {
     let mut db = Types::new();
     let int = db.builtins.int;

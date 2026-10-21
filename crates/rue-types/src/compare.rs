@@ -323,6 +323,10 @@ pub(crate) fn compare_impl(
 
                 // There is an instantiation of each generic if every type that flows into it is
                 // assignable to every type it flows into (such as their union, or `Never`).
+                // The bounds come from the other side, where the generics of any enclosing
+                // functions being instantiated are rigid, so they're hidden while checking.
+                let instances = std::mem::take(&mut ctx.instances);
+
                 for candidates in bounds {
                     for &lower in &candidates.lower {
                         for &upper in &candidates.upper {
@@ -334,6 +338,7 @@ pub(crate) fn compare_impl(
                     }
                 }
 
+                ctx.instances = instances;
                 ctx.guards.pop().unwrap();
 
                 result
