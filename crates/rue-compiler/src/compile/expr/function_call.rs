@@ -79,23 +79,34 @@ pub fn compile_function_call_expr(ctx: &mut Compiler, call: &AstFunctionCallExpr
         }
 
         let mut infer = Inference::new(function.generics.iter().copied());
-        let mut results = Vec::new();
+        let mut results = vec![ctx.builtins().unresolved.hir; function.params.len()];
         let mut checks = Vec::new();
 
-        for (i, (_, param)) in function.params.iter().enumerate() {
+        // Lambdas are compiled after the other arguments, since their parameter types may
+        // need to be inferred from what the other arguments have contributed
+        let (lambdas, others): (Vec<_>, Vec<_>) = (0..function.params.len())
+            .filter(|&i| i < args.len())
+            .partition(|&i| matches!(args[i], AstExpr::LambdaExpr(_)));
+
+        for i in others.into_iter().chain(lambdas) {
+            let expr = &args[i];
+            let param = function.params[i];
+
             // Use what has been inferred from the previous arguments as the expected type
             let mappings = ctx.resolve_inference(&infer);
-            let expected = substitute_with_mappings(ctx.types_mut(), *param, &mappings);
+            let expected = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
-            if let Some(expr) = args.get(i) {
-                let value = compile_expr(ctx, expr, Some(expected));
-                results.push(value.hir);
-                ctx.infer_type(value.ty, expected, &mut infer);
-                checks.push((expr.clone(), value.ty, *param));
-            } else {
-                debug!("Unresolved function call argument");
-                results.push(ctx.builtins().unresolved.hir);
-            }
+            let value = compile_expr(ctx, expr, Some(expected));
+            results[i] = value.hir;
+
+            // Candidates are collected against the unsubstituted parameter type, so that every
+            // argument contributes to the generics rather than only the first one to mention them
+            ctx.infer_type(value.ty, param, &mut infer);
+            checks.push((expr.clone(), value.ty, param));
+        }
+
+        if args.len() < function.params.len() {
+            debug!("Unresolved function call argument");
         }
 
         let mappings = ctx.resolve_inference(&infer);
