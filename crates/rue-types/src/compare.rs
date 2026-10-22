@@ -8,8 +8,8 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, stringify_impl,
-    substitute,
+    AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, references_generic,
+    stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -87,6 +87,12 @@ pub(crate) struct ComparisonContext<'a> {
     /// maps to the value of `flipped` in which it's on the right hand side, and the bounds that
     /// have been collected for it. The bounds are checked against each other afterward.
     instances: IndexMap<TypeId, (bool, InferenceCandidates)>,
+    /// The rigid generics of functions in the type that the generics are being inferred from (the
+    /// right hand side unless flipped), such as `U` in a parameter of type `fn<U>(x: U) -> T`.
+    /// They aren't in scope where the inferred generics are used, so they can't be inferred as
+    /// them. They're kept afterward, since they can still reach the bounds of enclosing functions'
+    /// generics.
+    rigid: IndexSet<TypeId>,
     /// The number of inference candidates that have been collected.
     candidates: usize,
     /// Whether the value is already held by another member of a union being compared against,
@@ -113,6 +119,12 @@ impl ComparisonContext<'_> {
                 .infer
                 .as_ref()
                 .is_some_and(|infer| !infer.generics.is_empty())
+    }
+
+    fn references_rigid(&self, arena: &Arena<Type>, ty: TypeId) -> bool {
+        self.rigid
+            .iter()
+            .any(|&generic| references_generic(arena, ty, generic, |_| Vec::new()))
     }
 }
 
@@ -480,6 +492,9 @@ pub(crate) fn compare_impl(
                 Comparison::Invalid
             } else {
                 ctx.guards.push(ctx.stack.len() - 1);
+                if !ctx.flipped {
+                    ctx.rigid.extend(rhs.generics.iter().copied());
+                }
 
                 // The left hand side's generics are instantiated with whatever the right hand
                 // side needs, whereas the right hand side's generics stay rigid, since the
@@ -548,7 +563,9 @@ pub(crate) fn compare_impl(
             }
         }
         (Type::Generic(_), Type::Generic(_)) if lhs == rhs => Comparison::Assign,
-        (Type::Generic(_), _) if ctx.flipped && ctx.is_target(lhs) => {
+        (Type::Generic(_), _)
+            if ctx.flipped && ctx.is_target(lhs) && !ctx.references_rigid(arena, rhs) =>
+        {
             debug!(
                 "Inferring {} must be assignable to {}",
                 stringify_impl(arena, lhs, &mut IndexMap::new()),
@@ -559,7 +576,9 @@ pub(crate) fn compare_impl(
             ctx.candidates += 1;
             Comparison::Assign
         }
-        (_, Type::Generic(_)) if !ctx.flipped && ctx.is_target(rhs) => {
+        (_, Type::Generic(_))
+            if !ctx.flipped && ctx.is_target(rhs) && !ctx.references_rigid(arena, lhs) =>
+        {
             debug!(
                 "Inferring {} could include {}",
                 stringify_impl(arena, rhs, &mut IndexMap::new()),

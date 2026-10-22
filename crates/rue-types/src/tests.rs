@@ -989,6 +989,38 @@ mod inference {
     }
 
     #[test]
+    fn rigid_function_generics_are_not_inferred() {
+        let mut db = Db::new();
+        let t = db.generic("T");
+        let u = db.generic("U");
+        let v = db.generic("V");
+        let mut infer = Inference::new([t]);
+
+        // fn<V>(p0: V) -> V to fn<U>(p0: U) -> T
+        let identity = db.function_with(&[v], &[v], true, v);
+        let param = db.function_with(&[u], &[u], true, t);
+        db.infer(identity, param, &mut infer);
+
+        // `T` can't be inferred as `U`, since it's only in scope of the parameter's type
+        assert_eq!(candidates(&infer, t), InferenceCandidates::default());
+
+        // But a function returned to where `fn<U>(p0: U) -> U` is expected can be instantiated
+        // with `U`, since the expected type binds it for the whole value
+        let mut infer = Inference::new([t]);
+        let ret = db.function_with(&[], &[t], true, t);
+        let expected = db.function_with(&[u], &[u], true, u);
+        infer_from_expected(&mut db.arena, &db.builtins, ret, expected, &mut infer);
+        assert_eq!(
+            candidates(&infer, t),
+            InferenceCandidates {
+                lower: vec![u],
+                upper: vec![u],
+                held: vec![],
+            }
+        );
+    }
+
+    #[test]
     fn only_targets_are_inferred() {
         let mut db = Db::new();
         let (int, bytes32) = (db.builtins.int, db.builtins.bytes32);
@@ -1266,24 +1298,83 @@ mod substitution {
     }
 
     #[test]
-    fn with_mappings() {
+    fn function_generics_are_shadowed() {
         let mut db = Db::new();
         let (int, bytes32) = (db.builtins.int, db.builtins.bytes32);
         let t = db.generic("T");
         let u = db.generic("U");
-        let function = db.function_with(&[t, u], &[t], true, u);
+        let function = db.function_with(&[u], &[t], true, u);
 
-        let mappings = HashMap::from_iter([(t, int)]);
+        // `fn<U>(p0: T) -> U` with `T := Int` and `U := Bytes32`
+        let mappings = HashMap::from_iter([(t, int), (u, bytes32)]);
         let result = substitute_with_mappings(&mut db.arena, function, &mappings);
         let Type::Function(function) = db.arena[result].clone() else {
             panic!("expected a function");
         };
 
-        // The substituted generic is no longer a parameter of the function, but the other is
+        // The function's own generic is bound by it, so it isn't substituted
         assert_eq!(function.generics, vec![u]);
         assert_eq!(db.cmp(function.params[0], int), Comparison::Assign);
-        assert_eq!(db.cmp(bytes32, function.params[0]), Comparison::Cast);
         assert_eq!(function.ret, u);
+    }
+
+    #[test]
+    fn function_generics_are_not_captured() {
+        let mut db = Db::new();
+        let t = db.generic("T");
+        let u = db.generic("U");
+        let function = db.function_with(&[u], &[u], true, t);
+
+        // `fn<U>(p0: U) -> T` with `T := U` refers to the outer `U` in its return type
+        let mappings = HashMap::from_iter([(t, u)]);
+        let result = substitute_with_mappings(&mut db.arena, function, &mappings);
+        let Type::Function(function) = db.arena[result].clone() else {
+            panic!("expected a function");
+        };
+
+        assert_ne!(function.generics, vec![u]);
+        assert_eq!(function.params[0], function.generics[0]);
+        assert_eq!(function.ret, u);
+
+        // So it isn't the type of the identity function
+        let v = db.generic("V");
+        let identity = db.function_with(&[v], &[v], true, v);
+        assert_eq!(db.cmp(identity, result), Comparison::Invalid);
+    }
+
+    #[test]
+    fn recursive_function_generics_are_not_captured() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let any = db.alloc(Type::Any);
+
+        // type P<T> = fn<U>(x: U) -> (T, P<U>);
+        let t = db.generic("T");
+        let u = db.generic("U");
+        let alias = db.declare_alias("P", &[t]);
+        let p_u = db.apply(alias, &[(t, u)]);
+        let ret = db.pair(t, p_u);
+        let function = db.function_with(&[u], &[u], true, ret);
+        db.define(alias, function);
+        let p_int = db.apply(alias, &[(t, int)]);
+
+        // Calling the result of `P<Int>` returns a `P` of the argument's type
+        let v = db.generic("V");
+        let w = db.generic("W");
+        let inner = db.pair(v, any);
+        let inner = db.function_with(&[w], &[w], true, inner);
+        let outer = db.pair(int, inner);
+        let expected = db.function_with(&[v], &[v], true, outer);
+        assert_eq!(db.cmp(p_int, expected), Comparison::Assign);
+
+        // Not a `P` of the next argument's type
+        let v = db.generic("V");
+        let w = db.generic("W");
+        let inner = db.pair(w, any);
+        let inner = db.function_with(&[w], &[w], true, inner);
+        let outer = db.pair(int, inner);
+        let captured = db.function_with(&[v], &[v], true, outer);
+        assert_eq!(db.cmp(p_int, captured), Comparison::Invalid);
     }
 
     #[test]

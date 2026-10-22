@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use indexmap::IndexMap;
 use log::debug;
 use rue_ast::{AstExpr, AstLambdaExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Symbol, Value};
-use rue_types::{FunctionType, Type, TypeId, Union};
+use rue_types::{FunctionType, Type, TypeId, Union, substitute_with_mappings};
 
 use crate::{
     BlockKind, Compiler, CompletionContext, ReturnTarget, SyntaxItemKind, compile_block,
@@ -15,7 +17,7 @@ pub fn compile_lambda_expr(
     expr: &AstLambdaExpr,
     expected_type: Option<TypeId>,
 ) -> Value {
-    let expected_functions = if let Some(ty) = expected_type {
+    let mut expected_functions = if let Some(ty) = expected_type {
         rue_types::extract_functions(ctx.types_mut(), ty)
     } else {
         vec![]
@@ -26,7 +28,26 @@ pub fn compile_lambda_expr(
     let vars = if let Some(generic_parameters) = expr.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)
     } else {
-        vec![]
+        // If the parameter types come from a generic function type, the lambda is generic over
+        // its own copies of that function's generics, so that they don't leak out of it
+        let mut vars = Vec::new();
+
+        for function in &mut expected_functions {
+            let mut mappings = HashMap::new();
+
+            for &generic in &function.generics {
+                let copy = ctx.ty(generic).clone();
+                let copy = ctx.alloc_type(copy);
+                mappings.insert(generic, copy);
+                vars.push(copy);
+            }
+
+            for param in function.params.values_mut() {
+                *param = substitute_with_mappings(ctx.types_mut(), *param, &mappings);
+            }
+        }
+
+        vars
     };
 
     let range = expr.syntax().text_range();

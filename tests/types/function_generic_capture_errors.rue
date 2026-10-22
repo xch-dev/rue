@@ -1,0 +1,54 @@
+type P<T> = fn<U>(x: U) -> (T, P<U>);
+type PolyT<T> = fn<U>(x: U) -> T;
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn mkp<T>(t: T) -> P<T> {
+    fn<U>(x: U): (T, P<U>) => (t, mkp(x))
+}
+
+fn konst<T>(t: T) -> fn(y: T) -> T {
+    fn(_y: T): T => t
+}
+
+fn twice(f: fn<U>(x: U) -> U) -> Int {
+    let pair: (Int, Int) = f((1, 2));
+    pair.first + pair.rest + f(3)
+}
+
+fn apply2<T>(f: PolyT<T>) -> T {
+    f((1, 2))
+}
+
+fn get<T>(f: fn() -> fn<C>(y: C) -> T) -> T {
+    f()(1)
+}
+
+fn make_id<T>() -> fn(y: T) -> T {
+    fn(y: T): T => y
+}
+
+fn main() -> Int {
+    // `T` can't be inferred as the parameter's own generic `U`, which is out of scope
+    let _a = apply2(identity);
+    let _b = apply2::<Int>(identity);
+    let _c = get(make_id);
+
+    // The nested function returns a `P` of its own argument's type, not the one after it
+    let _d: fn<V>(x: V) -> (Int, fn<W>(y: W) -> (W, Any)) = mkp(5);
+
+    // The nested function's generic isn't replaced by the outer function's argument type
+    let q = mkp(5)((1, 2));
+    let _e: Bytes32 = q.rest(7);
+
+    // A lambda's parameter typed by `fn<U>` has the lambda's own generic, which isn't `U`
+    let _f = twice(
+        fn(x) => {
+            let _g = twice(konst(x));
+            x
+        },
+    );
+    0
+}

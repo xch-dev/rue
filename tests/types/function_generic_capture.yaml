@@ -1,0 +1,72 @@
+tests:
+- name: nested_function_keeps_its_generic
+  program: (a (q 2 (q 2 (q 16 4 6 9) (c (f (a 6 (q 7))) 1)) (c (a (a 2 (c 2 (q . 5))) (q (q . 2))) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 4 5 (a 2 (c 2 11)))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (q 2 (q 16 (+ (f 2) (r 2)) (f 11)) (c (f 2) 1)) (c (a (r 2) (c (q . 7) ())) 1)) (c (a 2 (c (c (q . 1) (q . 2)) ())) 1)) (c (a 2 (c 2 (q . 5))) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 4 5 (a 2 (c 2 11)))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) ()))
+  output: '8'
+  runtime_cost: 6828
+  byte_cost: 2388000
+  total_cost: 2394828
+- name: recursive_function_type_is_renamed
+  program: (a (q 2 (q 16 (f (a 6 (q (q . 2)))) 4) (c (a (a 2 (c 2 (q . 5))) (q 7)) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 4 5 (a 2 (c 2 11)))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (q 2 (q 16 2 (f 11)) (c (f 2) 1)) (c (a (r 2) (c (c (q . 1) (q . 2)) ())) 1)) (c (a 2 (c (q . 7) ())) 1)) (c (a 2 (c 2 (q . 5))) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 4 5 (a 2 (c 2 11)))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) ()))
+  output: '12'
+  runtime_cost: 6191
+  byte_cost: 2196000
+  total_cost: 2202191
+- name: recursive_function_type_without_mappings
+  program: (q . 42)
+  debug_program: (q . 42)
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: generic_function_result_is_inferred
+  program: (a (q 1 . 5) (q (q . 2)))
+  debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (q 2 1 (c (c (q . 1) (q . 2)) ())) ()))
+  output: '5'
+  runtime_cost: 151
+  byte_cost: 204000
+  total_cost: 204151
+- name: explicit_generic_arguments
+  program: (a (q . 2) (c (a (q 1 . 42) (q (q . 2))) ()))
+  debug_program: (a (q 2 (q 2 4 (c (a 6 (c (c (q . 1) (q . 2)) ())) ())) (c (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (a 4 (q . 42))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) (q . 2)) ()))
+  output: '42'
+  runtime_cost: 405
+  byte_cost: 372000
+  total_cost: 372405
+- name: closed_candidate_binds_same_generic
+  program: (a (q 2 (a (a 2 (a 2 (q . 5))) (q ())) (q 1)) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (q 2 2 (c (q . 1) ())) (c (a 27 2) 1)) (c (a 9 2) 1)) (c (a 4 (q . 5)) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) (q 2 1 (c () ()))) ()))
+  output: '5'
+  runtime_cost: 2614
+  byte_cost: 1332000
+  total_cost: 1334614
+- name: instantiate_with_expected_generic
+  program: (a (q . 2) (q 5))
+  debug_program: (a (q 2 (q 2 2 (c (q . 5) ())) (c (a 2 ()) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))
+  output: '5'
+  runtime_cost: 179
+  byte_cost: 156000
+  total_cost: 156179
+- name: nested_lambdas_have_their_own_generics
+  program: (a (q 1 . 5) (q (q . 2)))
+  debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (q 2 1 (c (c (q . 1) (q . 2)) ())) ()))
+  output: '5'
+  runtime_cost: 151
+  byte_cost: 204000
+  total_cost: 204151
+- name: polymorphic_recursion_through_generic_functions
+  program: (q . 42)
+  debug_program: (q . 42)
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+diagnostics:
+- Unused generic type `T` at function_generic_capture.rue:2:8
+- Unused type alias `G` at function_generic_capture.rue:4:6
+- Unused generic type `A` at function_generic_capture.rue:4:8
+- Unused generic type `B` at function_generic_capture.rue:4:11
+- Unused generic type `C` at function_generic_capture.rue:4:14
+- Unused generic type `B` at function_generic_capture.rue:5:11
+- Unused generic type `U` at function_generic_capture.rue:4:22
