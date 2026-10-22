@@ -1,13 +1,13 @@
 diagnostics:
-- 'Cannot assign `fn(value: T) -> T` to `fn(value: Int) -> Bytes32`, since they are incompatible at generic_function_value_errors.rue:27:40'
-- 'Cannot assign `fn(value: Int) -> Int` to `fn(value: U) -> U`, since they are incompatible at generic_function_value_errors.rue:30:35'
-- 'Cannot assign `fn(_value: T) -> Int` to `fn(value: U) -> U`, since they are incompatible at generic_function_value_errors.rue:31:35'
-- 'Cannot assign `fn(value: T) -> T` to `fn(value: U) -> Int`, since they are incompatible at generic_function_value_errors.rue:34:37'
-- 'Cannot assign `fn(value: T) -> T` to `fn(value: U) -> V`, since they are incompatible at generic_function_value_errors.rue:35:38'
-- 'Cannot assign `fn(a: A, _b: B) -> A` to `fn(a: X, b: Y) -> Y`, since they are incompatible at generic_function_value_errors.rue:36:40'
-- 'Cannot assign `fn(value: Int) -> Int` to `fn(value: U) -> U`, since they are incompatible at generic_function_value_errors.rue:39:19'
+- 'Cannot assign `fn<T>(value: T) -> T` to `fn(value: Int) -> Bytes32`, since they are incompatible at generic_function_value_errors.rue:27:40'
+- 'Cannot assign `fn(value: Int) -> Int` to `fn<U>(value: U) -> U`, since they are incompatible at generic_function_value_errors.rue:30:35'
+- 'Cannot assign `fn<T>(_value: T) -> Int` to `fn<U>(value: U) -> U`, since they are incompatible at generic_function_value_errors.rue:31:35'
+- 'Cannot assign `fn<T>(value: T) -> T` to `fn<U>(value: U) -> Int`, since they are incompatible at generic_function_value_errors.rue:34:37'
+- 'Cannot assign `fn<T>(value: T) -> T` to `fn<U, V>(value: U) -> V`, since they are incompatible at generic_function_value_errors.rue:35:38'
+- 'Cannot assign `fn<A, B>(a: A, _b: B) -> A` to `fn<X, Y>(a: X, b: Y) -> Y`, since they are incompatible at generic_function_value_errors.rue:36:40'
+- 'Cannot assign `fn(value: Int) -> Int` to `fn<U>(value: U) -> U`, since they are incompatible at generic_function_value_errors.rue:39:19'
 - Cannot assign `Bytes32` to `Int` without a cast, since they are semantically different at generic_function_value_errors.rue:40:18
-- 'Cannot assign `fn() -> fn(value: U) -> U` to `fn() -> fn(value: T) -> Int`, since they are incompatible at generic_function_value_errors.rue:46:50'
+- 'Cannot assign `fn<T>() -> fn<U>(value: U) -> U` to `fn() -> fn(value: T) -> Int`, since they are incompatible at generic_function_value_errors.rue:46:50'
 - Unused function `identity` at generic_function_value_errors.rue:1:4
 - Unused function `first` at generic_function_value_errors.rue:5:4
 - Unused function `concrete` at generic_function_value_errors.rue:9:4

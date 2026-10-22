@@ -1,0 +1,24 @@
+fn spread(a: Int, ..._b: List<Int>) -> Int {
+    a
+}
+
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn generic<T, U>(function: fn(value: U) -> T) -> fn<U>(value: U) -> T {
+    // The parameter isn't generic, but the return type is
+    function
+}
+
+fn main() -> Int {
+    // A spread parameter isn't the same as a nil-terminated one
+    let _a: fn(a: Int, b: List<Int>) -> Int = spread;
+    let _b: fn(a: Int, ...b: List<Int>) -> Int = fn(a: Int, _b: List<Int>) => a;
+
+    // A generic function type isn't the same as a non-generic one
+    let _c: fn<U>(value: U) -> Int = identity;
+    let _d = generic::<Int, Int>;
+
+    42
+}

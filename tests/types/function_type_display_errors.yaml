@@ -1,0 +1,10 @@
+diagnostics:
+- 'Cannot assign `fn(value: U) -> T` to `fn<U>(value: U) -> T`, since they are incompatible at function_type_display_errors.rue:9:71'
+- 'Cannot assign `fn(a: Int, ..._b: List<Int>) -> Int` to `fn(a: Int, b: List<Int>) -> Int`, since they are incompatible at function_type_display_errors.rue:16:47'
+- 'Cannot assign `fn(a: Int, _b: List<Int>) -> Int` to `fn(a: Int, ...b: List<Int>) -> Int`, since they are incompatible at function_type_display_errors.rue:17:50'
+- 'Cannot assign `fn<U>(value: U) -> U` to `fn<U>(value: U) -> Int`, since they are incompatible at function_type_display_errors.rue:20:38'
+- Unused function `spread` at function_type_display_errors.rue:1:4
+- Unused function `identity` at function_type_display_errors.rue:5:4
+- Unused function `generic` at function_type_display_errors.rue:9:4
+- Unused generic type `U` at function_type_display_errors.rue:9:53
+- Unused generic type `U` at function_type_display_errors.rue:20:16
