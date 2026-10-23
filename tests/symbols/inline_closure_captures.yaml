@@ -21,12 +21,12 @@ tests:
   byte_cost: 1044000
   total_cost: 1046127
 - name: captured_binding
-  program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q 16 (* 2 (q . 2)) (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) 2) (c (q . 10) 1))
+  program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (c (q . 4) (c (c (q . 1) (* 2 (q . 2))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ()) 2) (c (q . 10) 1))
   debug_program: (a (q 16 (a (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) 1)) (c (* 2 (q . 2)) 1)) 2) (c (q . 10) 1))
   output: '31'
-  runtime_cost: 3923
-  byte_cost: 1236000
-  total_cost: 1239923
+  runtime_cost: 4330
+  byte_cost: 1572000
+  total_cost: 1576330
 - name: captured_by_nested_closure
   program: (a (q 16 (a (c (q . 2) (c (c (q . 1) (q 2 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ())) (c (c (q . 4) (c (c (q . 1) (* 2 (q . 3))) (c () ()))) ()))) ()) 2) (c (q . 10) 1))
   debug_program: (a (q 16 (a (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1))) (c (c (q . 4) (c (c (q . 1) (* 2 (q . 3))) (c () ()))) ()))) 1)) 2) (c (q . 10) 1))

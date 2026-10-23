@@ -419,10 +419,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
 
             if self.should_inline(symbol) {
-                self.inline_symbols.push(args);
-                let result = self.lower_hir(env, function.body);
-                self.inline_symbols.pop().unwrap();
-                return result;
+                return self.lower_inline_call(env, &function, args);
             }
 
             let (capture_groups, param_group) = self.function_groups(symbol, &function);
@@ -472,6 +469,87 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         self.arena.alloc(Lir::Run(function, env))
+    }
+
+    fn lower_inline_call(
+        &mut self,
+        env: &Environment,
+        function: &FunctionSymbol,
+        mut args: HashMap<SymbolId, HirId>,
+    ) -> LirId {
+        // Explicitly inline functions substitute their arguments by design, but automatically
+        // inlining a function must not change when or how many times its arguments are evaluated.
+        // So any argument that would otherwise be dropped, deferred, or duplicated is bound to
+        // its parameter before the body, the same way a let binding would be.
+        let bound: Vec<SymbolId> = if function.kind == FunctionKind::Inline {
+            Vec::new()
+        } else {
+            function
+                .parameters
+                .values()
+                .copied()
+                .filter(|parameter| {
+                    args.get(parameter)
+                        .is_some_and(|&arg| !self.can_substitute_argument(*parameter, arg))
+                })
+                .collect()
+        };
+
+        let mut bound_args = HashMap::new();
+
+        for parameter in &bound {
+            let arg = args.remove(parameter).unwrap();
+            bound_args.insert(*parameter, self.lower_hir(env, arg));
+        }
+
+        let group = SymbolGroup::Sequential(bound);
+        let body_env = if group.is_empty() {
+            env.clone()
+        } else {
+            Self::apply_group(env.clone(), &group, true)
+        };
+
+        self.inline_symbols.push(args);
+        let mut result = self.lower_hir(&body_env, function.body);
+        self.inline_symbols.pop().unwrap();
+
+        if !group.is_empty() {
+            let rest = self.arena.alloc(Lir::Path(1u8.into()));
+            let group_env =
+                self.lower_group_environment(env, &group, rest, false, Some(&bound_args), true);
+            let body = self.arena.alloc(Lir::Quote(result));
+            result = self.arena.alloc(Lir::Run(body, group_env));
+        }
+
+        result
+    }
+
+    /// Whether an argument to an automatically inlined function can be substituted for its
+    /// parameter without changing whether, when, or how many times it's evaluated.
+    fn can_substitute_argument(&self, parameter: SymbolId, arg: HirId) -> bool {
+        self.is_static_hir(arg) || self.is_evaluated_once(parameter)
+    }
+
+    /// Whether the only reference to a symbol is evaluated exactly once whenever its definition
+    /// is, either directly or by being captured by value when a lambda is created.
+    fn is_evaluated_once(&self, symbol: SymbolId) -> bool {
+        self.graph.references(symbol) == 1
+            && (self.graph.unconditional_references(symbol) == 1
+                || self.graph.captured_references(symbol) == 1)
+    }
+
+    /// Whether a binding can be captured by value by the lambda that references it, rather than
+    /// being bound in the environment, without changing when or how many times it's evaluated.
+    fn is_captured_by_value(&self, symbol: SymbolId) -> bool {
+        match self.db.symbol(symbol) {
+            Symbol::Binding(binding) => {
+                self.options.auto_inline
+                    && !binding.inline
+                    && !self.should_inline(symbol)
+                    && self.is_evaluated_once(symbol)
+            }
+            _ => false,
+        }
     }
 
     fn lower_symbol_reference(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
@@ -592,12 +670,35 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             stmts.remove(0);
         }
 
+        // Bindings that are only referenced by a lambda can be captured by value when it's
+        // created, the same way as inline arguments, rather than being bound separately
+        let mut captured = HashMap::new();
+
+        symbols.retain(|&symbol| {
+            if !self.is_captured_by_value(symbol) {
+                return true;
+            }
+
+            let Symbol::Binding(binding) = self.db.symbol(symbol) else {
+                unreachable!();
+            };
+
+            captured.insert(symbol, binding.value.hir);
+            false
+        });
+
         let binding_groups = self.group_symbols(symbols, false, true);
 
         let mut body_env = env.clone();
 
         for group in &binding_groups {
             body_env = Self::apply_group(body_env, group, true);
+        }
+
+        let has_captured = !captured.is_empty();
+
+        if has_captured {
+            self.inline_symbols.push(captured);
         }
 
         let mut expr = self.lower_block(&body_env, stmts, body);
@@ -615,6 +716,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             let group_env = self.lower_group_environment(&bind_env, group, rest, false, None, true);
 
             expr = self.arena.alloc(Lir::Run(expr, group_env));
+        }
+
+        // The lambdas capturing these bindings may be part of the values of other bindings
+        if has_captured {
+            self.inline_symbols.pop().unwrap();
         }
 
         expr
@@ -918,7 +1024,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// Whether the value can be lowered in any environment, since it doesn't depend on it.
     fn is_static_hir(&self, hir: HirId) -> bool {
         match self.db.hir(hir) {
-            Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bool(_) | Hir::Bytes(_) => true,
+            Hir::Nil
+            | Hir::String(_)
+            | Hir::Int(_)
+            | Hir::Bool(_)
+            | Hir::Bytes(_)
+            | Hir::InfinityG1
+            | Hir::InfinityG2 => true,
             Hir::Pair(first, rest) => self.is_static_hir(*first) && self.is_static_hir(*rest),
             Hir::Reference(symbol) => {
                 if let Some(hir) = self.inline_argument(*symbol) {
@@ -985,14 +1097,38 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline
+                // Constants are otherwise evaluated up front in the environment of main, so
+                // they can only be moved to where they are referenced if that's evaluated exactly
+                // once, unconditionally, in the body of main (or another constant)
+                references <= 1
+                    && self.options.auto_inline
+                    && !self.graph.dependencies(symbol, false).contains(&symbol)
+                    && (self.is_static_hir(constant.value.hir)
+                        || (self.graph.unconditional_references(symbol) == 1
+                            && !self
+                                .graph
+                                .dependencies(self.main, false)
+                                .contains(&self.main)))
             }
             Symbol::Binding(binding) => {
                 if binding.inline {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline
+                // Bindings are otherwise evaluated where they are defined, so a value that could
+                // fail or is expensive can only be moved to its reference if that's evaluated
+                // exactly once, unconditionally, at the same point. References inside of
+                // branches, closures, and so on must use the binding instead.
+                // Unused bindings are never lowered, so they're inlined to avoid capturing them.
+                self.options.auto_inline
+                    && match references {
+                        0 => true,
+                        1 => {
+                            self.graph.unconditional_references(symbol) == 1
+                                || self.is_static_hir(binding.value.hir)
+                        }
+                        _ => false,
+                    }
             }
         }
     }
@@ -1000,9 +1136,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
 #[cfg(test)]
 mod tests {
+    use rue_lir::ClvmOp;
     use rue_types::BuiltinTypes;
 
-    use crate::{ParameterSymbol, Scope};
+    use crate::{Block, ParameterSymbol, Scope, Value};
 
     use super::*;
 
@@ -1115,5 +1252,174 @@ mod tests {
     fn closure_inlines_static_argument() {
         let captures = lambda_captures(|db, _| db.alloc_hir(Hir::Int(5.into())));
         assert!(captures.is_empty());
+    }
+
+    fn raise(db: &mut Database) -> HirId {
+        let nil = db.alloc_hir(Hir::Nil);
+        db.alloc_hir(Hir::ClvmOp(ClvmOp::Raise, nil))
+    }
+
+    fn lower_main(db: &mut Database, main: SymbolId, check: impl FnOnce(&Lowerer<'_, '_, '_>)) {
+        let options = CompilerOptions::default();
+        let graph = DependencyGraph::build(db, main, options);
+        let mut arena = Arena::new();
+        let mut lowerer = Lowerer::new(db, &mut arena, &graph, options, main, PathBuf::new());
+        check(&lowerer);
+        lowerer.lower_symbol_value(&Environment::default(), main);
+    }
+
+    // fn main(x: Int) -> Int { let y = <raise>; <body> }
+    // Returns whether `y` is inlined, and whether it's captured by value
+    fn binding_inlining(
+        inline: bool,
+        body: impl FnOnce(&mut Database, &BuiltinTypes, SymbolId, SymbolId) -> HirId,
+    ) -> (bool, bool) {
+        let mut db = Database::new();
+        let builtins = BuiltinTypes::new(db.types_mut());
+
+        let x = parameter(&mut db, &builtins);
+        let value = raise(&mut db);
+        let y = db.alloc_symbol(Symbol::Binding(BindingSymbol {
+            name: None,
+            value: Value::new(value, builtins.int),
+            inline,
+        }));
+        let body = body(&mut db, &builtins, x, y);
+        let main_body = db.alloc_hir(Hir::Block(Block {
+            statements: vec![Statement::Let(y)],
+            body: Some(body),
+        }));
+        let main = function(
+            &mut db,
+            &builtins,
+            IndexMap::from([("x".to_string(), x)]),
+            main_body,
+            FunctionKind::Sequential,
+        );
+        let main = db.alloc_symbol(Symbol::Function(main));
+
+        let mut result = (false, false);
+        lower_main(&mut db, main, |lowerer| {
+            result = (lowerer.should_inline(y), lowerer.is_captured_by_value(y));
+        });
+        result
+    }
+
+    // if x { <then> } else { 0 }
+    fn branch(db: &mut Database, x: SymbolId, then: HirId) -> HirId {
+        let condition = db.alloc_hir(Hir::Reference(x));
+        let zero = db.alloc_hir(Hir::Int(0.into()));
+        db.alloc_hir(Hir::If(condition, then, zero, false))
+    }
+
+    // (fn() => <body>)()
+    fn call_lambda(db: &mut Database, builtins: &BuiltinTypes, body: HirId) -> HirId {
+        let lambda = function(
+            db,
+            builtins,
+            IndexMap::new(),
+            body,
+            FunctionKind::Sequential,
+        );
+        let lambda = db.alloc_symbol(Symbol::Function(lambda));
+        let lambda = db.alloc_hir(Hir::Lambda(lambda));
+        db.alloc_hir(Hir::FunctionCall(FunctionCall {
+            function: lambda,
+            args: vec![],
+            nil_terminated: true,
+        }))
+    }
+
+    #[test]
+    fn unused_argument_is_evaluated() {
+        // fn ignore(a: Int, b: Int) -> Int { b }
+        // fn main() -> Int { ignore(<raise>, 5) }
+        let mut db = Database::new();
+        let builtins = BuiltinTypes::new(db.types_mut());
+
+        let a = parameter(&mut db, &builtins);
+        let b = parameter(&mut db, &builtins);
+        let ignore_body = db.alloc_hir(Hir::Reference(b));
+        let ignore = function(
+            &mut db,
+            &builtins,
+            IndexMap::from([("a".to_string(), a), ("b".to_string(), b)]),
+            ignore_body,
+            FunctionKind::Sequential,
+        );
+        let ignore = db.alloc_symbol(Symbol::Function(ignore));
+
+        let ignore_reference = db.alloc_hir(Hir::Reference(ignore));
+        let argument = raise(&mut db);
+        let five = db.alloc_hir(Hir::Int(5.into()));
+        let main_body = db.alloc_hir(Hir::FunctionCall(FunctionCall {
+            function: ignore_reference,
+            args: vec![argument, five],
+            nil_terminated: true,
+        }));
+        let main = function(
+            &mut db,
+            &builtins,
+            IndexMap::new(),
+            main_body,
+            FunctionKind::Sequential,
+        );
+        let main = db.alloc_symbol(Symbol::Function(main));
+
+        let options = CompilerOptions::default();
+        let graph = DependencyGraph::build(&db, main, options);
+        let mut arena = Arena::new();
+        let mut lowerer = Lowerer::new(&mut db, &mut arena, &graph, options, main, PathBuf::new());
+        assert!(lowerer.should_inline(ignore));
+        lowerer.lower_symbol_value(&Environment::default(), main);
+
+        assert!(
+            arena
+                .iter()
+                .any(|(_, lir)| matches!(lir, Lir::Op(ClvmOp::Raise, _)))
+        );
+    }
+
+    #[test]
+    fn unconditional_binding_is_inlined() {
+        let result = binding_inlining(false, |db, _, _, y| db.alloc_hir(Hir::Reference(y)));
+        assert_eq!(result, (true, false));
+    }
+
+    #[test]
+    fn conditional_binding_is_not_inlined() {
+        let result = binding_inlining(false, |db, _, x, y| {
+            let reference = db.alloc_hir(Hir::Reference(y));
+            branch(db, x, reference)
+        });
+        assert_eq!(result, (false, false));
+    }
+
+    #[test]
+    fn binding_in_lambda_is_captured_by_value() {
+        let result = binding_inlining(false, |db, builtins, _, y| {
+            let reference = db.alloc_hir(Hir::Reference(y));
+            call_lambda(db, builtins, reference)
+        });
+        assert_eq!(result, (false, true));
+    }
+
+    #[test]
+    fn binding_in_conditional_lambda_is_not_captured_by_value() {
+        let result = binding_inlining(false, |db, builtins, x, y| {
+            let reference = db.alloc_hir(Hir::Reference(y));
+            let call = call_lambda(db, builtins, reference);
+            branch(db, x, call)
+        });
+        assert_eq!(result, (false, false));
+    }
+
+    #[test]
+    fn explicit_inline_binding_is_inlined() {
+        let result = binding_inlining(true, |db, _, x, y| {
+            let reference = db.alloc_hir(Hir::Reference(y));
+            branch(db, x, reference)
+        });
+        assert_eq!(result, (true, false));
     }
 }

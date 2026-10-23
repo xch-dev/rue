@@ -1,0 +1,2 @@
+diagnostics:
+- 'Const expression failed to evaluate: clvm raise at auto_inline_const_eval.rue:15:5'
