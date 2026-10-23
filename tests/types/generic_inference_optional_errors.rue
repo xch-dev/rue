@@ -1,0 +1,15 @@
+fn or_default<T>(value: T | nil, default: T) -> T {
+    if value is nil {
+        default
+    } else {
+        value
+    }
+}
+
+fn main(value: Int | nil) -> (Int, (Int, (Int, Bytes))) {
+    let explicit: Int = or_default::<Int | nil>(nil, nil);
+    let nil_default: Int = or_default(value, nil);
+    let zero_and_nil: Int = or_default(0, nil);
+    let mismatch: Bytes = or_default(value, "a");
+    (explicit, (nil_default, (zero_and_nil, mismatch)))
+}

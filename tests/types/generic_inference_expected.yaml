@@ -55,5 +55,40 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: keep_literal_from_let_type
+  program: (q . 5)
+  debug_program: (a (q 2 (q . 2) (c (a 2 (q . 5)) 1)) (c (q . 1) ()))
+  output: '5'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: keep_literal_in_pair_from_let_type
+  program: (q 51)
+  debug_program: (a (q 2 (q . 2) (c (a 2 (q . 51)) 1)) (c (q 4 1 ()) ()))
+  output: (51)
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: keep_literal_from_return_type
+  program: (q . 51)
+  debug_program: (a (q 2 2 (q . 51)) (c (q . 1) ()))
+  output: '51'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: keep_literal_from_field_type
+  program: (c (q . 51) (c (sha256 (q . 97)) (q 1)))
+  debug_program: (a (q 4 (a 2 (q . 51)) (c (sha256 (q . 97)) (c (q . 1) ()))) (c (q . 1) ()))
+  output: (51 0xca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb 1)
+  runtime_cost: 706
+  byte_cost: 300000
+  total_cost: 300706
+- name: keep_literal_in_union_from_let_type
+  program: (q . 1)
+  debug_program: (a (q 2 (q . 2) (c (a 2 (q . 1)) 1)) (c (q . 1) ()))
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - Unused generic type `T` at generic_inference_expected.rue:25:19

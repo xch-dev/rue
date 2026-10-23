@@ -59,3 +59,26 @@ test fn recursive_generic_call() -> Int {
 test fn unreferenced_generic() -> Int {
     unused_generic()
 }
+
+test fn keep_literal_from_let_type() -> 5 {
+    let value: 5 = identity(5);
+    value
+}
+
+test fn keep_literal_in_pair_from_let_type() -> (51, Bytes | nil) {
+    let value: (51, Bytes | nil) = wrap(51);
+    value
+}
+
+test fn keep_literal_from_return_type() -> 51 {
+    identity(51)
+}
+
+test fn keep_literal_from_field_type() -> Condition {
+    CreateCoin { opcode: identity(CREATE_COIN), puzzle_hash: sha256("a"), amount: 1 }
+}
+
+test fn keep_literal_in_union_from_let_type() -> 1 | 2 {
+    let value: 1 | 2 = identity(1);
+    value
+}

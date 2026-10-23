@@ -9,7 +9,7 @@ fn apply<T>(value: T, function: fn(value: T) -> T) -> T {
 fn main(value: Int) -> (Int, (Int, (1, (Bytes32, Int)))) {
     let different_types: Int = pick(1, sha256("a"));
     let nil_second: Int = pick(value, nil);
-    let literal: 1 = pick(1, 1);
+    let literal: 1 = pick(1, 2);
     let lambda_mismatch: Bytes32 = apply(sha256("a"), fn(value) => value + 1);
     let explicit: Int = pick::<Int>(1, nil);
     (different_types, (nil_second, (literal, (lambda_mismatch, explicit))))

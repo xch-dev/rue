@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot assign `Callback<Int>` to `Callback<"a">` without a cast, since they are semantically different at generic_inference_struct_argument_errors.rue:22:25

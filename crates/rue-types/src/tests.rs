@@ -8,10 +8,10 @@ use rue_diagnostic::Name;
 
 use crate::{
     Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionType,
-    Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union, check, compare,
-    compare_with_inference, extract_atoms, extract_functions, extract_pairs, extract_structs,
-    is_non_contractive, resolve_inference, stringify, substitute, substitute_with_mappings,
-    subtract, unwrap_semantic,
+    Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
+    add_expected_bounds, check, compare, compare_with_inference, extract_atoms, extract_functions,
+    extract_pairs, extract_structs, infer_from_expected, is_non_contractive, resolve_inference,
+    stringify, substitute, substitute_with_mappings, subtract, unwrap_semantic,
 };
 
 struct Db {
@@ -870,6 +870,7 @@ mod inference {
             InferenceCandidates {
                 lower: vec![int],
                 upper: vec![],
+                held: vec![],
             }
         );
 
@@ -907,6 +908,7 @@ mod inference {
             InferenceCandidates {
                 lower: vec![],
                 upper: vec![bytes32],
+                held: vec![],
             }
         );
 
@@ -951,6 +953,7 @@ mod inference {
             InferenceCandidates {
                 lower: vec![int],
                 upper: vec![],
+                held: vec![],
             }
         );
     }
@@ -974,6 +977,7 @@ mod inference {
             InferenceCandidates {
                 lower: vec![int],
                 upper: vec![bytes32],
+                held: vec![],
             }
         );
 
@@ -1098,6 +1102,122 @@ mod inference {
 
         let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
         assert_eq!(mappings[&t], int);
+    }
+
+    #[test]
+    fn keeps_literal_required_by_expected_type() {
+        let mut db = Db::new();
+        let t = db.generic("T");
+        let (five, six) = (
+            db.literal(AtomSemantic::Int, &[5]),
+            db.literal(AtomSemantic::Int, &[6]),
+        );
+
+        // `let x: 5 = id(5);` keeps the literal
+        let mut expected = Inference::new([t]);
+        infer_from_expected(&mut db.arena, &db.builtins, t, five, &mut expected);
+
+        let mut infer = Inference::new([t]);
+        db.infer(five, t, &mut infer);
+        add_expected_bounds(&mut db.arena, &db.builtins, &mut infer, &expected);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&t], five);
+
+        // `let x: 5 = id(6);` doesn't satisfy the expected type, so it's left to be reported
+        let mut infer = Inference::new([t]);
+        db.infer(six, t, &mut infer);
+        add_expected_bounds(&mut db.arena, &db.builtins, &mut infer, &expected);
+        assert_eq!(candidates(&infer, t).upper, vec![]);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&t], db.builtins.int);
+    }
+
+    #[test]
+    fn skips_union_members_held_by_others() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `Int | nil` to `T | nil` only needs `T` to hold `Int`
+        let value = db.union(&[int, nil]);
+        let param = db.union(&[t, nil]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+        assert_eq!(
+            candidates(&infer, t),
+            InferenceCandidates {
+                lower: vec![int],
+                upper: vec![],
+                held: vec![nil],
+            }
+        );
+
+        // A value that is only castable to `nil` (such as `0`) still has to be held by `T`
+        let zero = db.literal(AtomSemantic::Int, &[]);
+        assert_eq!(db.infer(zero, param, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t).lower, vec![int, zero]);
+    }
+
+    #[test]
+    fn held_union_members_are_a_last_resort() {
+        let mut db = Db::new();
+        let nil = db.builtins.nil;
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+
+        // `nil` to `T | nil` doesn't constrain `T`, but it's better than nothing
+        let param = db.union(&[t, nil]);
+        assert_eq!(db.infer(nil, param, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t).lower, vec![]);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&t], nil);
+    }
+
+    #[test]
+    fn struct_contents_held_by_other_members() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let generic = db.generic("T");
+        let boxed = db.declare_struct("Box", &[generic]);
+        let inner = db.union(&[generic, nil]);
+        db.define(boxed, inner);
+
+        // `Box<Int>` to `Box<T>` infers `T` as `Int` rather than the `Int | nil` contents
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+        let value = db.apply(boxed, &[(generic, int)]);
+        let param = db.apply(boxed, &[(generic, t)]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, t).lower, vec![int]);
+    }
+
+    #[test]
+    fn nested_generic_held_by_other_members() {
+        let mut db = Db::new();
+        let (int, bytes32, nil) = (db.builtins.int, db.builtins.bytes32, db.builtins.nil);
+        let generic = db.generic("T");
+        let inner = db.union(&[generic, bytes32]);
+        let maybe = db.alias("Maybe", &[generic], inner);
+
+        // `Int | nil` to `Maybe<T> | nil` only needs `T` to hold `Int`, even though `nil` would
+        // also reach `T` through the alias
+        let t = db.generic("T");
+        let mut infer = Inference::new([t]);
+        let maybe_t = db.apply(maybe, &[(generic, t)]);
+        let param = db.union(&[maybe_t, nil]);
+        let value = db.union(&[int, nil]);
+        assert_eq!(db.infer(value, param, &mut infer), Comparison::Assign);
+        assert_eq!(
+            candidates(&infer, t),
+            InferenceCandidates {
+                lower: vec![int],
+                upper: vec![],
+                held: vec![nil],
+            }
+        );
     }
 }
 

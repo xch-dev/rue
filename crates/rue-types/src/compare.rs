@@ -30,6 +30,11 @@ pub struct InferenceCandidates {
     /// so the generic must be assignable to all of them. For example, passing a
     /// `fn(x: Bytes32) -> Bytes32` to a parameter of type `fn(x: T) -> Bytes32`.
     pub upper: Vec<TypeId>,
+
+    /// Types that flowed into a union containing the generic, but that the union's other members
+    /// already hold, such as `nil` when passing `Int | nil` to `T | nil`. They're only used if
+    /// nothing else constrains the generic.
+    pub held: Vec<TypeId>,
 }
 
 /// Tracks the candidates for the generic type parameters being inferred. Only the generics that
@@ -84,6 +89,12 @@ pub(crate) struct ComparisonContext<'a> {
     instances: IndexMap<TypeId, (bool, InferenceCandidates)>,
     /// The number of inference candidates that have been collected.
     candidates: usize,
+    /// Whether the value is already held by another member of a union being compared against,
+    /// so the generics being inferred only collect it as a last resort.
+    holding: bool,
+    /// The context for comparisons that leave the generics being inferred rigid, which is kept
+    /// so that its results are memoized for the whole comparison.
+    uninferred: Option<Box<ComparisonContext<'static>>>,
     /// Completed comparisons, keyed by the comparison and the semantics passed down to it.
     memo: Memo<ComparisonKey, (ComparisonKey, Option<TypeId>, Option<TypeId>), Comparison>,
 }
@@ -94,6 +105,40 @@ impl ComparisonContext<'_> {
             .as_ref()
             .is_some_and(|infer| infer.is_target(generic))
     }
+
+    /// Whether the generics being inferred are on the right hand side.
+    fn is_inferring(&self) -> bool {
+        !self.flipped
+            && self
+                .infer
+                .as_ref()
+                .is_some_and(|infer| !infer.generics.is_empty())
+    }
+}
+
+/// Returns `true` if the value is assignable to the type regardless of what the generics being
+/// inferred are.
+fn holds_without_inference(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut ComparisonContext<'_>,
+    lhs: TypeId,
+    rhs: TypeId,
+    lhs_semantic: Option<TypeId>,
+    rhs_semantic: Option<TypeId>,
+) -> bool {
+    let mut uninferred = ctx.uninferred.take().unwrap_or_default();
+    let result = compare_impl(
+        arena,
+        builtins,
+        &mut uninferred,
+        lhs,
+        rhs,
+        lhs_semantic,
+        rhs_semantic,
+    );
+    ctx.uninferred = Some(uninferred);
+    result == Comparison::Assign
 }
 
 pub fn compare_with_inference(
@@ -164,6 +209,34 @@ pub fn infer_from_expected(
     );
 }
 
+/// Adds the upper bounds that were inferred from the type expected of a call to the generics whose
+/// lower bounds satisfy them (as they do if there are none), so that `let x: 5 = id(5);` doesn't
+/// widen the literal to `Int`. A bound that isn't satisfied is left out, since the mismatch is
+/// reported where it's checked.
+pub fn add_expected_bounds(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    infer: &mut Inference,
+    expected: &Inference,
+) {
+    for (generic, candidates) in &mut infer.generics {
+        let Some(expected) = expected.candidates(*generic) else {
+            continue;
+        };
+
+        let lower =
+            (!candidates.lower.is_empty()).then(|| union_of(arena, candidates.lower.clone()));
+
+        for &upper in &expected.upper {
+            if lower
+                .is_none_or(|lower| compare(arena, builtins, lower, upper) == Comparison::Assign)
+            {
+                candidates.upper.push(upper);
+            }
+        }
+    }
+}
+
 pub fn compare(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
@@ -185,13 +258,20 @@ pub fn resolve_inference(
     let mut mappings = HashMap::new();
 
     for (&generic, candidates) in &infer.generics {
-        let ty = if !candidates.lower.is_empty() {
+        // The values that are already held by a union's other members are only used if nothing
+        // else constrains the generic
+        let lower = if candidates.lower.is_empty() && candidates.upper.is_empty() {
+            &candidates.held
+        } else {
+            &candidates.lower
+        };
+
+        let ty = if !lower.is_empty() {
             // Literals are widened to their base type, so that `pick(1, 2)` infers `Int` and a
             // lambda whose parameter type comes from `T` can accept more than the one literal.
             // This is only done if the widened type still satisfies every upper bound, since
             // otherwise something like `fn(x: 5) -> Int` couldn't be passed to `fn(x: T) -> Int`.
-            let widened: Vec<TypeId> = candidates
-                .lower
+            let widened: Vec<TypeId> = lower
                 .iter()
                 .map(|&ty| widen_literal(arena, builtins, ty))
                 .collect();
@@ -204,7 +284,7 @@ pub fn resolve_inference(
             {
                 widened
             } else {
-                union_of(arena, candidates.lower.clone())
+                union_of(arena, lower.clone())
             }
         } else if let Some(&first) = candidates.upper.first() {
             // Pick the most specific upper bound, if there is one
@@ -486,7 +566,14 @@ pub(crate) fn compare_impl(
                 stringify_impl(arena, lhs, &mut IndexMap::new())
             );
             let infer = ctx.infer.as_mut().unwrap();
-            infer.candidates_mut(rhs).lower.push(lhs);
+            let candidates = infer.candidates_mut(rhs);
+
+            if ctx.holding {
+                candidates.held.push(lhs);
+            } else {
+                candidates.lower.push(lhs);
+            }
+
             ctx.candidates += 1;
             Comparison::Assign
         }
@@ -666,6 +753,24 @@ pub(crate) fn compare_impl(
             result
         }
         (_, Type::Union(rhs)) => {
+            // A generic being inferred doesn't need to include a value that a member already
+            // holds regardless of the generic, such as `nil` when passing `Int | nil` to
+            // `T | nil` or `Tree<T> | nil`, so it's only collected as a last resort.
+            let holding = ctx.holding;
+
+            ctx.holding |= ctx.is_inferring()
+                && rhs.types.iter().any(|&id| {
+                    holds_without_inference(
+                        arena,
+                        builtins,
+                        ctx,
+                        lhs,
+                        id,
+                        lhs_semantic,
+                        rhs_semantic,
+                    )
+                });
+
             let mut result = Comparison::Invalid;
 
             for &id in &rhs.types {
@@ -674,6 +779,8 @@ pub(crate) fn compare_impl(
                     compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
                 );
             }
+
+            ctx.holding = holding;
 
             result
         }

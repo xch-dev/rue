@@ -534,6 +534,12 @@ impl Compiler {
         );
     }
 
+    /// Constrains the generics with what was inferred from the type expected of the call, where
+    /// the arguments satisfy it.
+    pub fn add_expected_bounds(&mut self, infer: &mut Inference, expected: &Inference) {
+        rue_types::add_expected_bounds(self.db.types_mut(), &self.builtins.types, infer, expected);
+    }
+
     pub fn resolve_inference(&mut self, infer: &Inference) -> HashMap<TypeId, TypeId> {
         rue_types::resolve_inference(self.db.types_mut(), &self.builtins.types, infer)
     }

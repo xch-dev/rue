@@ -84,12 +84,17 @@ pub fn compile_function_call_expr(
 
         let mut infer = Inference::new(function.generics.iter().copied());
 
-        // The type expected of the call is only used for the generics that the arguments
-        // don't constrain, such as `T` in `let value: Int = unchecked_cast(nil);`
-        let fallback = if let Some(expected_type) = expected_type {
-            let mut infer = infer.clone();
-            ctx.infer_from_expected(function.ret, expected_type, &mut infer);
-            ctx.resolve_inference(&infer)
+        // The type expected of the call is used for the generics that the arguments don't
+        // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
+        // ones they do from being widened past it
+        let expected = expected_type.map(|expected_type| {
+            let mut expected = infer.clone();
+            ctx.infer_from_expected(function.ret, expected_type, &mut expected);
+            expected
+        });
+
+        let fallback = if let Some(expected) = &expected {
+            ctx.resolve_inference(expected)
         } else {
             HashMap::new()
         };
@@ -127,6 +132,10 @@ pub fn compile_function_call_expr(
 
         if args.len() < function.params.len() {
             debug!("Unresolved function call argument");
+        }
+
+        if let Some(expected) = &expected {
+            ctx.add_expected_bounds(&mut infer, expected);
         }
 
         let mut mappings = ctx.resolve_inference(&infer);

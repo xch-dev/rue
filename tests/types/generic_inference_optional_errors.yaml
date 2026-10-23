@@ -1,0 +1,5 @@
+diagnostics:
+- Cannot assign `Int | nil` to `Int` without a cast, since they are semantically different at generic_inference_optional_errors.rue:10:25
+- Cannot assign `Int | nil` to `Int` without a cast, since they are semantically different at generic_inference_optional_errors.rue:11:28
+- Cannot assign `Int | nil` to `Int` without a cast, since they are semantically different at generic_inference_optional_errors.rue:12:29
+- Cannot assign `Int | String` to `Bytes` without a cast, since they are semantically different at generic_inference_optional_errors.rue:13:27

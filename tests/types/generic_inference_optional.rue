@@ -1,0 +1,65 @@
+fn or_default<T>(value: T | nil, default: T) -> T {
+    if value is nil {
+        default
+    } else {
+        value
+    }
+}
+
+fn unwrap_or_raise<T>(value: T | nil) -> T {
+    if value is nil {
+        raise;
+    }
+    value
+}
+
+test fn nil_value() -> Int {
+    or_default(nil, 42)
+}
+
+test fn optional_value() -> Int {
+    let value: Int | nil = 42;
+    or_default(value, 0)
+}
+
+test fn optional_bytes32() -> Bytes32 {
+    let value: Bytes32 | nil = nil;
+    or_default(value, sha256("a"))
+}
+
+test fn optional_value_alone() -> Int {
+    let value: Int | nil = 42;
+    unwrap_or_raise(value)
+}
+
+test fn zero_value() -> Int {
+    or_default(0, 42)
+}
+
+test fn nil_default() -> Int | nil {
+    let value: Int | nil = 42;
+    or_default(value, nil)
+}
+
+fn is_missing<T>(value: T | nil) -> Bool {
+    value is nil
+}
+
+test fn only_nil_value() -> Bool {
+    is_missing(nil)
+}
+
+type Optional<T> = T | nil;
+
+fn is_missing_nested<T>(value: Optional<T> | Bytes32) -> Bool {
+    value is nil
+}
+
+test fn only_nil_value_nested() -> Bool {
+    is_missing_nested(nil)
+}
+
+test fn optional_value_nested() -> Int {
+    let value: Int | nil = 42;
+    or_default(value, 0)
+}
