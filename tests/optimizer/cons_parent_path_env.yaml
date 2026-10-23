@@ -1,6 +1,0 @@
-program: (c 2 3)
-debug_program: (c (f 1) (r 1))
-solution: '5'
-byte_cost: 84000
-clvm_error: path into atom
-debug_clvm_error: 'InvalidOperatorArg: rest of non-cons'

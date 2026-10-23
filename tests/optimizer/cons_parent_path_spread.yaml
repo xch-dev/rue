@@ -1,6 +1,0 @@
-program: (a (q 16 (f (a 2 5)) (f (a 2 5))) (c (q 4 2 3) 1))
-debug_program: (a (q 2 (q 16 (f 4) (f 6)) (c (c (a 2 5) (a 2 5)) 1)) (c (q 4 (f 1) (r 1)) 1))
-solution: (5)
-byte_cost: 588000
-clvm_error: path into atom
-debug_clvm_error: 'InvalidOperatorArg: rest of non-cons'

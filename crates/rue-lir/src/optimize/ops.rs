@@ -9,7 +9,7 @@ use sha3::Keccak256;
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
     optimize::{ArgList, fold_atoms, opt_truthy, reads_env},
-    rest_path,
+    parent_path, rest_path,
 };
 
 // There's no way to optimize an atom
@@ -94,9 +94,22 @@ pub fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 }
 
 // TODO: Optimize pair of div and mod into divmod
-// Note that `(c (f p) (r p))` can't be simplified to `p`, since `p` may be an atom at runtime
-// (for example, if it comes from the solution), in which case the original fails but `p` wouldn't
+// If the first and rest are paths to the first and rest of the same parent, we can use the parent path
+// This assumes that the value at the parent path is a pair, as its type says it is. If it's actually
+// an atom (e.g. from a solution which doesn't match the declared types), the original would fail,
+// but the parent path wouldn't. Rue doesn't check values against their types at runtime anyway,
+// so this doesn't give the spender anything that a wrongly shaped pair couldn't.
 pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
+    if let Lir::Path(f_path) = arena[first].clone()
+        && let Lir::Path(r_path) = arena[rest].clone()
+        && let Some(parent) = parent_path(&f_path)
+        && parent_path(&r_path).as_ref() == Some(&parent)
+        && first_path(&parent) == f_path
+        && rest_path(&parent) == r_path
+    {
+        return arena.alloc(Lir::Path(parent));
+    }
+
     arena.alloc(Lir::Cons(first, rest))
 }
 
@@ -943,13 +956,12 @@ mod tests {
     }
 
     #[test]
-    fn test_cons_of_first_and_rest_is_kept() {
-        // `(c 2 3)` fails if the environment is an atom, but `1` wouldn't
+    fn test_cons_of_first_and_rest_uses_parent() {
         let mut arena = Arena::new();
-        let first = path(&mut arena, 2);
-        let rest = path(&mut arena, 3);
+        let first = path(&mut arena, 4);
+        let rest = path(&mut arena, 6);
         let result = opt_cons(&mut arena, first, rest);
-        assert!(matches!(arena[result], Lir::Cons(f, r) if f == first && r == rest));
+        assert!(matches!(&arena[result], Lir::Path(p) if *p == BigUint::from(2u8)));
     }
 
     #[test]
