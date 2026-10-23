@@ -1,0 +1,7 @@
+program: (c (logand 2 (q . 1)) (c (logand 2 (q . 1)) (c (= (% 2 (q . 2)) (q . 0x0001)) (c (= (q . 0x0001) (% 2 (q . 2))) ()))))
+debug_program: (c (= (% 2 (q . 2)) (q . 1)) (c (= (q . 1) (% 2 (q . 2))) (c (= (% 2 (q . 2)) (q . 0x0001)) (c (= (q . 0x0001) (% 2 (q . 2))) ()))))
+solution: (3)
+output: (1 1 () ())
+runtime_cost: 4106
+byte_cost: 924000
+total_cost: 928106
