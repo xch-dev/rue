@@ -1,0 +1,66 @@
+struct Inner {
+    ...value: Int,
+}
+
+struct Outer {
+    ...inner: Inner,
+}
+
+struct OtherInner {
+    ...value: Int,
+}
+
+struct OtherOuter {
+    ...inner: OtherInner,
+}
+
+struct Rewrapped {
+    ...inner: Inner,
+}
+
+struct Box<T> {
+    ...value: T,
+}
+
+type Alias = OtherOuter;
+
+fn to_alias(value: Outer) -> Alias {
+    value
+}
+
+fn to_optional(value: Outer) -> OtherOuter | nil {
+    value
+}
+
+fn to_rewrapped(value: Outer) -> Rewrapped | nil {
+    value
+}
+
+fn to_inner(value: Outer) -> Inner | nil {
+    value
+}
+
+fn to_pair(value: (Outer, Int)) -> (OtherOuter | nil, Int) {
+    value
+}
+
+fn to_box(value: Box<Outer>) -> Box<OtherOuter | nil> {
+    value
+}
+
+fn from_union(value: Outer | Alias) -> OtherOuter {
+    value
+}
+
+fn main() -> List<Any> {
+    let value = Outer { inner: Inner { value: 1 } };
+    [
+        to_alias(value),
+        to_optional(value),
+        to_rewrapped(value),
+        to_inner(value),
+        to_pair((value, 2)),
+        to_box(Box::<Outer> { value }),
+        from_union(value),
+    ]
+}

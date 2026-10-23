@@ -434,6 +434,116 @@ mod structs {
     }
 
     #[test]
+    fn nested() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+
+        // struct Inner { ...v: Int }
+        // struct Outer { ...i: Inner }
+        let inner = db.strukt("Inner", int);
+        let outer = db.strukt("Outer", inner);
+
+        // The same shape, but semantically different at either level
+        let other_inner = db.strukt("OtherInner", int);
+        let other_outer = db.strukt("OtherOuter", other_inner);
+        let rewrapped = db.strukt("Rewrapped", inner);
+
+        let t = db.generic("T");
+        let boxed = db.declare_struct("Box", &[t]);
+        let shape = db.pair(t, nil);
+        db.define(boxed, shape);
+
+        // Positions to compare the structs in, where the first three hold only the struct itself
+        let positions = |db: &mut Db, ty: TypeId| {
+            let alias = db.alias("A", &[], ty);
+            let nested_alias = db.alias("B", &[], alias);
+            let optional = db.union(&[ty, nil]);
+            let optional_alias = db.union(&[alias, nil]);
+            let alias_optional = db.alias("C", &[], optional);
+            let pair = db.pair(optional, int);
+            let applied = db.apply(boxed, &[(t, optional)]);
+            [
+                ty,
+                alias,
+                nested_alias,
+                optional,
+                optional_alias,
+                alias_optional,
+                pair,
+                applied,
+            ]
+        };
+
+        let lhs = positions(&mut db, outer);
+        let same = positions(&mut db, outer);
+        let different = [other_outer, rewrapped, inner].map(|ty| positions(&mut db, ty));
+
+        for (i, &lhs) in lhs.iter().enumerate() {
+            let targets = match i {
+                0..3 => 0..6,
+                3..6 => 3..6,
+                _ => i..i + 1,
+            };
+
+            for j in targets {
+                assert_eq!(db.cmp(lhs, same[j]), Comparison::Assign);
+
+                for different in &different {
+                    assert_eq!(db.cmp(lhs, different[j]), Comparison::Cast);
+                }
+            }
+        }
+
+        // An identical copy of an alias of nested structs
+        let copy = db.alias("A", &[], outer);
+        assert_eq!(db.cmp(same[1], copy), Comparison::Assign);
+        assert_eq!(db.cmp(copy, same[1]), Comparison::Assign);
+
+        // A union of the struct and an alias of it
+        let union = db.union(&[outer, same[1]]);
+        assert_eq!(db.cmp(union, outer), Comparison::Assign);
+
+        for different in &different {
+            assert_eq!(db.cmp(union, different[0]), Comparison::Cast);
+        }
+    }
+
+    #[test]
+    fn unions_of_instances() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+
+        // struct Box<T> { ...value: T }
+        let t = db.generic("T");
+        let boxed = db.declare_struct("Box", &[t]);
+        db.define(boxed, t);
+
+        // Like pairs, structs aren't distributed over unions
+        let optional = db.union(&[int, nil]);
+        let box_optional = db.apply(boxed, &[(t, optional)]);
+        let box_int = db.apply(boxed, &[(t, int)]);
+        let box_nil = db.apply(boxed, &[(t, nil)]);
+        let either = db.union(&[box_int, box_nil]);
+        assert_eq!(db.cmp(box_optional, either), Comparison::Cast);
+        assert_eq!(db.cmp(either, box_optional), Comparison::Assign);
+
+        // But they can still be cast to a union of their shape
+        let pair = db.pair(int, int);
+        let shape = db.union(&[int, pair]);
+        let w = db.strukt("W", shape);
+        assert_eq!(db.cmp(w, shape), Comparison::Cast);
+        assert_eq!(db.cmp(box_optional, optional), Comparison::Cast);
+
+        // Instances of different structs with the same shape
+        let a = db.strukt("A", int);
+        let b = db.strukt("B", int);
+        let box_a = db.apply(boxed, &[(t, a)]);
+        let box_b = db.apply(boxed, &[(t, b)]);
+        let optional_box_b = db.union(&[box_b, nil]);
+        assert_eq!(db.cmp(box_a, optional_box_b), Comparison::Cast);
+    }
+
+    #[test]
     fn recursive_through_pair() {
         let mut db = Db::new();
         let (int, nil) = (db.builtins.int, db.builtins.nil);

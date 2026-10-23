@@ -1,0 +1,43 @@
+tests:
+- name: alias
+  program: (q . 1)
+  debug_program: (a (q 2 2 (q . 1)) (c (q . 1) ()))
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: optional
+  program: (q . 2)
+  debug_program: (a (q 2 2 (q . 2)) (c (q . 1) ()))
+  output: '2'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: optional_alias
+  program: (q . 3)
+  debug_program: (a (q 2 2 (q . 3)) (c (q . 1) ()))
+  output: '3'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: pair
+  program: (q 4 . 5)
+  debug_program: (a (q 2 2 (c (q . 4) (q . 5))) (c (q . 1) ()))
+  output: (4 . 5)
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: boxed
+  program: (q . 6)
+  debug_program: (a (q 2 2 (q . 6)) (c (q . 1) ()))
+  output: '6'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: union
+  program: (q . 7)
+  debug_program: (a (q 2 2 (q . 7)) (c (q . 1) ()))
+  output: '7'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
