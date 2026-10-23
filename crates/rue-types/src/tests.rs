@@ -323,6 +323,78 @@ mod functions {
     }
 
     #[test]
+    fn free_generics_are_not_bound_by_function_types() {
+        let mut db = Db::new();
+        let u = db.generic("U");
+
+        // `fn(p0: U) -> U` with a free `U` (such as in the body of `fn foo<U>`), and the type
+        // of `foo` itself, which is generic over the same `U`
+        let free = db.function(&[u], u);
+        let identity = db.function_with(&[u], &[u], true, u);
+
+        // The free `U` is a single type, but the generic function can be instantiated with it
+        assert_eq!(db.cmp(free, identity), Comparison::Invalid);
+        assert_eq!(db.cmp(identity, free), Comparison::Assign);
+    }
+
+    #[test]
+    fn nested_function_generics_are_distinct() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+
+        // `fn<U>(p0: U) -> (U, fn<U>(p0: U) -> (U, Int))`, where the inner `U` shadows the outer
+        let u = db.generic("U");
+        let inner = db.pair(u, int);
+        let inner = db.function_with(&[u], &[u], true, inner);
+        let outer = db.pair(u, inner);
+        let expected = db.function_with(&[u], &[u], true, outer);
+
+        // `fn<V>(p0: V) -> (V, fn(p0: V) -> (V, Int))` only takes the outer argument's type again
+        let v = db.generic("V");
+        let inner = db.pair(v, int);
+        let inner = db.function(&[v], inner);
+        let outer = db.pair(v, inner);
+        let same = db.function_with(&[v], &[v], true, outer);
+        assert_eq!(db.cmp(same, expected), Comparison::Invalid);
+
+        // `fn<V>(p0: V) -> (V, fn<W>(p0: W) -> (W, Int))` takes any type
+        let w = db.generic("W");
+        let inner = db.pair(w, int);
+        let inner = db.function_with(&[w], &[w], true, inner);
+        let outer = db.pair(v, inner);
+        let distinct = db.function_with(&[v], &[v], true, outer);
+        assert_eq!(db.cmp(distinct, expected), Comparison::Assign);
+    }
+
+    #[test]
+    fn recursive_instantiations_are_checked() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let pair = db.pair(int, int);
+
+        // type F = fn<U>(x: U) -> (U, F);
+        let f = db.declare_alias("F", &[]);
+        let u = db.generic("U");
+        let ret = db.pair(u, f);
+        let function = db.function_with(&[u], &[u], true, ret);
+        db.define(f, function);
+
+        // type R = (Int, G2); type G2 = fn(x: X) -> R; type G = fn(x: Int) -> R;
+        for (param, expected) in [(int, Comparison::Assign), (pair, Comparison::Invalid)] {
+            let r = db.declare_alias("R", &[]);
+            let g2 = db.declare_alias("G2", &[]);
+            let inner = db.pair(int, g2);
+            db.define(r, inner);
+            let function = db.function(&[param], r);
+            db.define(g2, function);
+            let g = db.function(&[int], r);
+
+            // `U` is instantiated again for `G2`, where it must also be returned as an `Int`
+            assert_eq!(db.cmp(f, g), expected);
+        }
+    }
+
+    #[test]
     fn recursive_function_type() {
         let mut db = Db::new();
         let int = db.builtins.int;

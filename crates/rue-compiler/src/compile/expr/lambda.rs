@@ -25,30 +25,28 @@ pub fn compile_lambda_expr(
 
     let scope = ctx.alloc_child_scope();
 
-    let vars = if let Some(generic_parameters) = expr.generic_parameters() {
+    let mut vars = if let Some(generic_parameters) = expr.generic_parameters() {
         compile_generic_parameters(ctx, scope, &generic_parameters)
     } else {
-        // If the parameter types come from a generic function type, the lambda is generic over
-        // its own copies of that function's generics, so that they don't leak out of it
-        let mut vars = Vec::new();
+        Vec::new()
+    };
 
-        for function in &mut expected_functions {
-            let mut mappings = HashMap::new();
+    // If the parameter types come from a generic function type, the lambda is also generic over
+    // its own copies of that function's generics, so that they don't leak out of it
+    for function in &mut expected_functions {
+        let mut mappings = HashMap::new();
 
-            for &generic in &function.generics {
-                let copy = ctx.ty(generic).clone();
-                let copy = ctx.alloc_type(copy);
-                mappings.insert(generic, copy);
-                vars.push(copy);
-            }
-
-            for param in function.params.values_mut() {
-                *param = substitute_with_mappings(ctx.types_mut(), *param, &mappings);
-            }
+        for &generic in &function.generics {
+            let copy = ctx.ty(generic).clone();
+            let copy = ctx.alloc_type(copy);
+            mappings.insert(generic, copy);
+            vars.push(copy);
         }
 
-        vars
-    };
+        for param in function.params.values_mut() {
+            *param = substitute_with_mappings(ctx.types_mut(), *param, &mappings);
+        }
+    }
 
     let range = expr.syntax().text_range();
     ctx.push_scope(scope, range.start());

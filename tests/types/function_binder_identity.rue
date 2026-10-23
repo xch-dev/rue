@@ -1,0 +1,54 @@
+type Id = fn<U>(x: U) -> U;
+type P<T> = fn<U>(x: U) -> (U, T);
+type F = fn<U>(x: U) -> (U, F);
+type R = (Int, G2);
+type G2 = fn(x: Int) -> R;
+type G = fn(x: Int) -> R;
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn apply<T>(f: fn(x: T) -> T, x: T) -> T {
+    f(x)
+}
+
+fn keep<U>(x: U) -> U {
+    let f: fn(y: U) -> U = identity;
+    f(x)
+}
+
+fn ff<U>(x: U) -> (U, F) {
+    (x, ff)
+}
+
+fn ll<V>(x: V) -> (V, fn<W>(y: W) -> (W, Int)) {
+    (x, fn<W>(y: W): (W, Int) => (y, 0))
+}
+
+test fn generic_function_argument() -> Int {
+    apply(identity, 1)
+}
+
+test fn instantiate_with_free_generic() -> Int {
+    let pair: (Int, Int) = keep((1, 2));
+    pair.first + pair.rest
+}
+
+test fn lambda_with_explicit_generics() -> Int {
+    let f: Id = fn<V>(x) => x;
+    let g: Id = fn<V>(x: V): V => f(x);
+    g(5)
+}
+
+test fn nested_generic_functions() -> Int {
+    let p: P<P<Int>> = ll;
+    let pair: (Int, Int) = p(1).rest((2, 3)).first;
+    pair.first + pair.rest
+}
+
+test fn recursive_generic_function() -> Int {
+    let f: F = ff;
+    let g: G = f;
+    g(5).rest(6).first
+}

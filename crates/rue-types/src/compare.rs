@@ -1,6 +1,7 @@
 use std::{
     cmp::{max, min},
     collections::{HashMap, HashSet},
+    mem,
 };
 
 use id_arena::Arena;
@@ -8,8 +9,8 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, references_generic,
-    stringify_impl, substitute,
+    AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, free_generics,
+    references_generic, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -83,12 +84,51 @@ impl Inference {
     }
 }
 
-type ComparisonKey = (TypeId, TypeId, bool);
+/// The types being compared, whether the comparison is flipped, and what the generics they
+/// reference are bound to (interned in `ComparisonContext::bindings`).
+type ComparisonKey = (TypeId, TypeId, bool, usize);
+
+/// A bound of a generic being instantiated, along with the environment it's resolved in.
+type Bound = (TypeId, Option<usize>);
+
+/// What a generic referenced by a type being compared is bound to. The binders are numbered in
+/// the order they're referenced, so that a comparison can be revisited with other binders in
+/// their place (such as a recursive type that binds the same generic each time it's reached).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Binding {
+    Instance(usize),
+    Rigid(usize),
+}
+
+/// A generic bound by a function type that's being compared, which shadows any generic with the
+/// same id that's bound outside of it (or free) on the same side.
+#[derive(Debug, Clone, Copy)]
+struct Binder {
+    generic: TypeId,
+    /// The binder enclosing this one on the same side.
+    parent: Option<usize>,
+    /// The index in `ComparisonContext::instances` of the generic's instance, if it's on the left
+    /// hand side, since a generic function is assignable to a function type if it can be
+    /// instantiated to it. Otherwise it's rigid, since the function must work for any of them.
+    instance: Option<usize>,
+    /// The binder that this one was merged into, which it's treated as from then on.
+    merged: Option<usize>,
+}
+
+/// The bounds collected for a generic being instantiated, which are checked against each other
+/// once the comparison that bound it has finished.
+#[derive(Debug, Default)]
+struct Instance {
+    lower: Vec<Bound>,
+    upper: Vec<Bound>,
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct ComparisonContext<'a> {
     infer: Option<&'a mut Inference>,
     stack: IndexSet<ComparisonKey>,
+    /// The binders referenced by each comparison in `stack`, in the order they're numbered.
+    stack_binders: Vec<Vec<usize>>,
     /// The indices in `stack` of comparisons between pairs or functions. A cycle is only
     /// coinductively assignable if it passes through one of these, since otherwise the
     /// recursion isn't bounded by the structure of the value.
@@ -97,11 +137,25 @@ pub(crate) struct ComparisonContext<'a> {
     /// When this is set, the generics being inferred are on the left hand side rather than the
     /// right hand side.
     flipped: bool,
-    /// The generics of left hand side functions that are being instantiated, since a generic
-    /// function is assignable to a function type if it can be instantiated to it. Each generic
-    /// maps to the value of `flipped` in which it's on the right hand side, and the bounds that
-    /// have been collected for it. The bounds are checked against each other afterward.
-    instances: IndexMap<TypeId, (bool, InferenceCandidates)>,
+    /// Every binder that has been entered. Generics are resolved to them by scope rather than by
+    /// id, so that two generic functions are equivalent up to renaming of their generics, and a
+    /// generic bound by one is never confused with a free generic or one bound elsewhere.
+    binders: Vec<Binder>,
+    /// The innermost binders of the left and right hand sides.
+    lhs_env: Option<usize>,
+    rhs_env: Option<usize>,
+    /// The bounds of the generics being instantiated, indexed by `Binder::instance`.
+    instances: Vec<Instance>,
+    /// The instances before this index are rigid, since they belong to enclosing comparisons.
+    instantiable_from: usize,
+    /// The number of instances that are being instantiated.
+    instantiating: usize,
+    /// What the generics referenced by the types in each `ComparisonKey` are bound to, for each
+    /// side and generic.
+    bindings: IndexSet<Vec<(bool, TypeId, Binding)>>,
+    /// The generics that each type references, which are cached since the types don't change
+    /// while comparing.
+    references: HashMap<TypeId, Vec<TypeId>>,
     /// The rigid generics of functions in the type that the generics are being inferred from (the
     /// right hand side unless flipped), such as `U` in a parameter of type `fn<U>(x: U) -> T`.
     /// They aren't in scope where the inferred generics are used, so they can't be inferred as
@@ -121,10 +175,12 @@ pub(crate) struct ComparisonContext<'a> {
 }
 
 impl ComparisonContext<'_> {
-    fn is_target(&self, generic: TypeId) -> bool {
+    /// Whether the generic is free in the environment and being inferred.
+    fn is_target(&self, generic: TypeId, env: Option<usize>) -> bool {
         self.infer
             .as_ref()
             .is_some_and(|infer| infer.is_target(generic))
+            && self.resolve(generic, env).is_none()
     }
 
     /// Whether the generics being inferred are on the right hand side.
@@ -141,6 +197,152 @@ impl ComparisonContext<'_> {
             .iter()
             .any(|&generic| references_generic(arena, ty, generic, |_| Vec::new()))
     }
+
+    /// Pushes binders for a function's generics onto the environment, and returns the new one.
+    fn bind(
+        &mut self,
+        mut env: Option<usize>,
+        generics: &[TypeId],
+        instantiate: bool,
+    ) -> Option<usize> {
+        for &generic in generics {
+            let instance = instantiate.then(|| {
+                self.instances.push(Instance::default());
+                self.instances.len() - 1
+            });
+
+            self.binders.push(Binder {
+                generic,
+                parent: env,
+                instance,
+                merged: None,
+            });
+            env = Some(self.binders.len() - 1);
+        }
+
+        env
+    }
+
+    /// Returns the binder that the generic is bound to in the environment, or `None` if it's free.
+    fn resolve(&self, generic: TypeId, env: Option<usize>) -> Option<usize> {
+        resolve(&self.binders, generic, env)
+    }
+
+    /// Returns the instance of the binder, if it's being instantiated.
+    fn instance_of(&self, binder: usize) -> Option<usize> {
+        let instance = self.binders[binder].instance?;
+        (instance >= self.instantiable_from).then_some(instance)
+    }
+
+    /// Returns the bounds of the generic, if it's being instantiated.
+    fn instance(&mut self, generic: TypeId, env: Option<usize>) -> Option<&mut Instance> {
+        let instance = self.instance_of(self.resolve(generic, env)?)?;
+        Some(&mut self.instances[instance])
+    }
+
+    /// Merges two binders, so that they're the same generic from then on (and instantiated the
+    /// same way, if they're instances). They're merged into the one that was bound first, since
+    /// its comparison finishes last. Binders that are only rigid because their instances are
+    /// hidden aren't merged with ones that are always rigid, since they would be confused once
+    /// they're no longer hidden.
+    fn merge(&mut self, a: usize, b: usize) {
+        let (a, b) = (root(&self.binders, a), root(&self.binders, b));
+        let (into, from) = (a.min(b), a.max(b));
+
+        if into == from
+            || self.binders[into].instance.is_some() != self.binders[from].instance.is_some()
+        {
+            return;
+        }
+
+        self.binders[from].merged = Some(into);
+
+        if let (Some(into), Some(from)) = (self.binders[into].instance, self.binders[from].instance)
+        {
+            let Instance { lower, upper } = mem::take(&mut self.instances[from]);
+            self.instances[into].lower.extend(lower);
+            self.instances[into].upper.extend(upper);
+        }
+    }
+
+    /// Interns what the generics referenced by the types are bound to, and returns the binders in
+    /// the order they're numbered.
+    fn bindings(&mut self, arena: &Arena<Type>, lhs: TypeId, rhs: TypeId) -> (usize, Vec<usize>) {
+        let mut bindings = Vec::new();
+        let mut binders = Vec::new();
+
+        for (is_rhs, ty, env) in [(false, lhs, self.lhs_env), (true, rhs, self.rhs_env)] {
+            if env.is_none() {
+                continue;
+            }
+
+            self.references
+                .entry(ty)
+                .or_insert_with(|| referenced_generics(arena, ty));
+
+            for &generic in &self.references[&ty] {
+                let Some(binder) = self.resolve(generic, env) else {
+                    continue;
+                };
+
+                let index = number(&mut binders, binder);
+
+                let binding = if self.instance_of(binder).is_some() {
+                    Binding::Instance(index)
+                } else {
+                    Binding::Rigid(index)
+                };
+
+                bindings.push((is_rhs, generic, binding));
+            }
+        }
+
+        (self.bindings.insert_full(bindings).0, binders)
+    }
+}
+
+/// Returns the binder that the generic is bound to in the environment (or the one it was merged
+/// into), or `None` if it's free.
+fn resolve(binders: &[Binder], generic: TypeId, mut env: Option<usize>) -> Option<usize> {
+    while let Some(index) = env {
+        if binders[index].generic == generic {
+            return Some(root(binders, index));
+        }
+
+        env = binders[index].parent;
+    }
+
+    None
+}
+
+/// Returns the binder that the binder has been merged into, or itself if it hasn't been.
+fn root(binders: &[Binder], mut index: usize) -> usize {
+    while let Some(merged) = binders[index].merged {
+        index = merged;
+    }
+
+    index
+}
+
+/// Returns the generics that the type references, other than where they're bound by a function
+/// type, sorted by id.
+fn referenced_generics(arena: &Arena<Type>, ty: TypeId) -> Vec<TypeId> {
+    let mut generics: Vec<TypeId> = free_generics(arena, ty)
+        .into_iter()
+        .filter(|&generic| references_generic(arena, ty, generic, |_| Vec::new()))
+        .collect();
+    generics.sort_unstable();
+    generics
+}
+
+/// Returns the position of the id in the list, adding it if it's not there yet.
+fn number(ids: &mut Vec<usize>, id: usize) -> usize {
+    ids.iter()
+        .position(|&other| other == id)
+        .unwrap_or_else(|| {
+            ids.push(id);
+            ids.len() - 1
+        })
 }
 
 /// Returns `true` if the value is assignable to the type regardless of what the generics being
@@ -155,6 +357,14 @@ fn holds_without_inference(
     rhs_semantic: Option<TypeId>,
 ) -> bool {
     let mut uninferred = ctx.uninferred.take().unwrap_or_default();
+
+    // The binders are shared, but none of them are instantiated
+    mem::swap(&mut uninferred.binders, &mut ctx.binders);
+    mem::swap(&mut uninferred.instances, &mut ctx.instances);
+    uninferred.lhs_env = ctx.lhs_env;
+    uninferred.rhs_env = ctx.rhs_env;
+    uninferred.instantiable_from = uninferred.instances.len();
+
     let result = compare_impl(
         arena,
         builtins,
@@ -164,6 +374,8 @@ fn holds_without_inference(
         lhs_semantic,
         rhs_semantic,
     );
+    mem::swap(&mut uninferred.binders, &mut ctx.binders);
+    mem::swap(&mut uninferred.instances, &mut ctx.instances);
     ctx.uninferred = Some(uninferred);
     result == Comparison::Assign
 }
@@ -387,7 +599,8 @@ pub(crate) fn compare_impl(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
-    let key = (lhs, rhs, ctx.flipped);
+    let (bindings, binders) = ctx.bindings(arena, lhs, rhs);
+    let key = (lhs, rhs, ctx.flipped, bindings);
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
         ctx.memo.reached(index);
@@ -395,19 +608,22 @@ pub(crate) fn compare_impl(
         // Revisiting a comparison is only sound to treat as assignable if we've passed through
         // a pair or function since, otherwise a non-contractive type like `type A = B; type B = A;`
         // would be assignable to anything. Those should be rejected before reaching this point.
-        return if ctx.guards.last().is_some_and(|&guard| guard >= index) {
-            Comparison::Assign
-        } else {
-            Comparison::Invalid
-        };
+        if ctx.guards.last().is_none_or(|&guard| guard < index) {
+            return Comparison::Invalid;
+        }
+
+        // If it's revisited with other binders, the bounds that their instances would collect
+        // from it are only collected for the original ones, so they're merged
+        for (i, binder) in binders.into_iter().enumerate() {
+            ctx.merge(ctx.stack_binders[index][i], binder);
+        }
+
+        return Comparison::Assign;
     }
 
     // Generics that are being instantiated are compared differently and collect bounds as a side
     // effect, so results are only memoized while there aren't any
-    let memo_key = ctx
-        .instances
-        .is_empty()
-        .then_some((key, lhs_semantic, rhs_semantic));
+    let memo_key = (ctx.instantiating == 0).then_some((key, lhs_semantic, rhs_semantic));
 
     if let Some(memo_key) = &memo_key
         && let Some(result) = ctx.memo.get(memo_key, ctx.stack.iter().copied())
@@ -419,6 +635,7 @@ pub(crate) fn compare_impl(
     let candidates = ctx.candidates;
 
     ctx.stack.insert(key);
+    ctx.stack_binders.push(binders);
 
     let result = match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
@@ -431,22 +648,14 @@ pub(crate) fn compare_impl(
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Never, _) => Comparison::Assign,
         (_, Type::Any) => Comparison::Assign,
-        (Type::Generic(_), _)
-            if ctx
-                .instances
-                .get(&lhs)
-                .is_some_and(|&(flipped, _)| flipped != ctx.flipped) =>
-        {
-            ctx.instances[&lhs].1.upper.push(rhs);
+        (Type::Generic(_), _) if ctx.instance(lhs, ctx.lhs_env).is_some() => {
+            let bound = (rhs, ctx.rhs_env);
+            ctx.instance(lhs, ctx.lhs_env).unwrap().upper.push(bound);
             Comparison::Assign
         }
-        (_, Type::Generic(_))
-            if ctx
-                .instances
-                .get(&rhs)
-                .is_some_and(|&(flipped, _)| flipped == ctx.flipped) =>
-        {
-            ctx.instances[&rhs].1.lower.push(lhs);
+        (_, Type::Generic(_)) if ctx.instance(rhs, ctx.rhs_env).is_some() => {
+            let bound = (lhs, ctx.lhs_env);
+            ctx.instance(rhs, ctx.rhs_env).unwrap().lower.push(bound);
             Comparison::Assign
         }
         (Type::Atom(lhs), Type::Atom(rhs)) => {
@@ -513,16 +722,12 @@ pub(crate) fn compare_impl(
 
                 // The left hand side's generics are instantiated with whatever the right hand
                 // side needs, whereas the right hand side's generics stay rigid, since the
-                // function must work for any of them. Comparing two generic functions this way
-                // makes them equivalent up to renaming of their generics.
-                let previous: Vec<_> = lhs
-                    .generics
-                    .iter()
-                    .map(|&generic| {
-                        let instance = (!ctx.flipped, InferenceCandidates::default());
-                        (generic, ctx.instances.insert(generic, instance))
-                    })
-                    .collect();
+                // function must work for any of them.
+                let (lhs_env, rhs_env) = (ctx.lhs_env, ctx.rhs_env);
+                let first = ctx.binders.len();
+                ctx.lhs_env = ctx.bind(lhs_env, &lhs.generics, true);
+                ctx.rhs_env = ctx.bind(rhs_env, &rhs.generics, false);
+                ctx.instantiating += lhs.generics.len();
 
                 // The return type is covariant, since the value returned by the function flows
                 // out to whoever expects the right hand side's return type.
@@ -533,6 +738,7 @@ pub(crate) fn compare_impl(
                 // A `Cast` is still fine here, since casting a function's type just reinterprets
                 // its arguments (which requires the same representation) at the call site.
                 ctx.flipped = !ctx.flipped;
+                mem::swap(&mut ctx.lhs_env, &mut ctx.rhs_env);
 
                 for (i, param) in lhs.params.values().enumerate() {
                     result = max(
@@ -542,27 +748,30 @@ pub(crate) fn compare_impl(
                 }
 
                 ctx.flipped = !ctx.flipped;
+                ctx.instantiating -= lhs.generics.len();
 
+                // The instances that were merged into another are checked along with it
                 let mut bounds = Vec::new();
 
-                for (generic, previous) in previous.into_iter().rev() {
-                    let instance = if let Some(previous) = previous {
-                        ctx.instances.insert(generic, previous)
-                    } else {
-                        ctx.instances.shift_remove(&generic)
-                    };
-                    bounds.push(instance.unwrap().1);
+                for binder in &ctx.binders[first..first + lhs.generics.len()] {
+                    if binder.merged.is_none() {
+                        bounds.push(mem::take(&mut ctx.instances[binder.instance.unwrap()]));
+                    }
                 }
 
                 // There is an instantiation of each generic if every type that flows into it is
                 // assignable to every type it flows into (such as their union, or `Never`).
                 // The bounds come from the other side, where the generics of any enclosing
                 // functions being instantiated are rigid, so they're hidden while checking.
-                let instances = std::mem::take(&mut ctx.instances);
+                let instantiating = mem::take(&mut ctx.instantiating);
+                let instantiable_from =
+                    mem::replace(&mut ctx.instantiable_from, ctx.instances.len());
 
-                for candidates in bounds {
-                    for &lower in &candidates.lower {
-                        for &upper in &candidates.upper {
+                for instance in bounds {
+                    for &(lower, lower_env) in &instance.lower {
+                        for &(upper, upper_env) in &instance.upper {
+                            ctx.lhs_env = lower_env;
+                            ctx.rhs_env = upper_env;
                             result = max(
                                 result,
                                 compare_impl(arena, builtins, ctx, lower, upper, None, None),
@@ -571,15 +780,24 @@ pub(crate) fn compare_impl(
                     }
                 }
 
-                ctx.instances = instances;
+                ctx.instantiating = instantiating;
+                ctx.instantiable_from = instantiable_from;
+                ctx.lhs_env = lhs_env;
+                ctx.rhs_env = rhs_env;
                 ctx.guards.pop().unwrap();
 
                 result
             }
         }
-        (Type::Generic(_), Type::Generic(_)) if lhs == rhs => Comparison::Assign,
+        (Type::Generic(_), Type::Generic(_))
+            if lhs == rhs && ctx.resolve(lhs, ctx.lhs_env) == ctx.resolve(rhs, ctx.rhs_env) =>
+        {
+            Comparison::Assign
+        }
         (Type::Generic(_), _)
-            if ctx.flipped && ctx.is_target(lhs) && !ctx.references_rigid(arena, rhs) =>
+            if ctx.flipped
+                && ctx.is_target(lhs, ctx.lhs_env)
+                && !ctx.references_rigid(arena, rhs) =>
         {
             debug!(
                 "Inferring {} must be assignable to {}",
@@ -592,7 +810,9 @@ pub(crate) fn compare_impl(
             Comparison::Assign
         }
         (_, Type::Generic(_))
-            if !ctx.flipped && ctx.is_target(rhs) && !ctx.references_rigid(arena, lhs) =>
+            if !ctx.flipped
+                && ctx.is_target(rhs, ctx.rhs_env)
+                && !ctx.references_rigid(arena, lhs) =>
         {
             debug!(
                 "Inferring {} could include {}",
@@ -840,6 +1060,7 @@ pub(crate) fn compare_impl(
     };
 
     ctx.stack.pop().unwrap();
+    ctx.stack_binders.pop().unwrap();
 
     // Inference candidates are collected as a side effect of comparing, so a comparison that
     // collected any can't be skipped
