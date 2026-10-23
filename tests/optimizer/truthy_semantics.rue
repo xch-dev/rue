@@ -63,7 +63,8 @@ test fn pair_statement_raises(x: Int) -> Int {
     1
 }
 
-// The static type of a value isn't checked at runtime, so it can't be relied on
+// These assume that values match their static types, which isn't checked at runtime
+// For ill-typed solutions like these, the optimized program intentionally differs from debug
 test fn assert_ne_nil_pair(x: Bytes) -> Int {
     assert x != nil;
     2

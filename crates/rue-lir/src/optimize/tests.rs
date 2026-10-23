@@ -68,6 +68,11 @@ fn check(arena: &mut Arena<Lir>, lir: LirId, envs: &[&str], expect: Expect) {
 
 const ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "((1 . 2))", "(5 7)"];
 
+// Some rewrites assume that values match their static types, so these only contain
+// environments where the first argument is an atom or a list respectively
+const ATOM_ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "(5 7)"];
+const LIST_ENVS: &[&str] = &["()", "(())", "((1 . 2))", "((1 2) 3)"];
+
 #[test]
 fn test_not_ne_nil_is_not_value() {
     // (not (= x ())) must not be optimized to x
@@ -115,8 +120,8 @@ fn test_not_eq_boolean_nil() {
 }
 
 #[test]
-fn test_eq_nil_keeps_eq() {
-    // (= x ()) fails if x is a pair, so it can't become (not x) in a condition
+fn test_eq_nil_condition() {
+    // In a condition, (= x ()) is (not x), assuming that x is an atom
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
     let nil = atom(&mut arena, &[]);
@@ -127,14 +132,14 @@ fn test_eq_nil_keeps_eq() {
     check(
         &mut arena,
         lir,
-        ENVS,
-        expect!["(a (i (= () 2) (q 1 . 1) (q 1 . 2)) 1)"],
+        ATOM_ENVS,
+        expect!["(a (i 2 (q 1 . 2) (q 1 . 1)) 1)"],
     );
 }
 
 #[test]
-fn test_listp_no_type_assumption() {
-    // (l x) can't be replaced by x, even if x is supposed to be a list
+fn test_listp_condition() {
+    // In a condition, (l x) is x, assuming that x is a list
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
     let listp = arena.alloc(Lir::Listp(x, false));
@@ -144,8 +149,8 @@ fn test_listp_no_type_assumption() {
     check(
         &mut arena,
         lir,
-        ENVS,
-        expect!["(a (i (l 2) (q 1 . 1) (q 1 . 2)) 1)"],
+        LIST_ENVS,
+        expect!["(a (i 2 (q 1 . 1) (q 1 . 2)) 1)"],
     );
 }
 
@@ -351,24 +356,31 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
     let mut args = gen_args(arena, rng, 3);
     let mut next = || args.pop().unwrap();
 
-    let lir = match rng.below(18) {
+    let lir = match rng.below(19) {
         0 => Lir::Not(next()),
-        1 => Lir::Eq(next(), next()),
+        1 => eq(arena, next(), next()),
         2 => {
             let nil = atom(arena, &[]);
             if rng.below(2) == 0 {
-                Lir::Eq(next(), nil)
+                eq(arena, next(), nil)
             } else {
-                Lir::Eq(nil, next())
+                eq(arena, nil, next())
             }
         }
         3 => Lir::Cons(next(), next()),
-        4 => Lir::Listp(next(), rng.below(2) == 0),
-        5 => Lir::If(next(), next(), next(), rng.below(2) == 0),
-        6 => Lir::All(gen_args(arena, rng, 0)),
-        7 => Lir::Any(gen_args(arena, rng, 0)),
-        8 => Lir::Raise(vec![]),
-        9 | 10 => {
+        4 => Lir::Listp(next(), true),
+        // A value which is always either nil or a pair, as the type of a list says it is
+        5 => {
+            let pair = arena.alloc(Lir::Cons(next(), next()));
+            let nil = atom(arena, &[]);
+            let list = arena.alloc(Lir::If(next(), pair, nil, false));
+            Lir::Listp(list, false)
+        }
+        6 => Lir::If(next(), next(), next(), rng.below(2) == 0),
+        7 => Lir::All(gen_args(arena, rng, 0)),
+        8 => Lir::Any(gen_args(arena, rng, 0)),
+        9 => Lir::Raise(vec![]),
+        10 | 11 => {
             let mut value = next();
             while matches!(arena[value], Lir::Path(_)) {
                 value = generate(arena, rng, depth - 1);
@@ -379,24 +391,24 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
                 Lir::Rest(value)
             }
         }
-        11 => Lir::Gt(next(), next()),
-        12 => Lir::Add(gen_args(arena, rng, 1)),
+        12 => Lir::Gt(next(), next()),
+        13 => Lir::Add(gen_args(arena, rng, 1)),
         // The quoted program is itself optimized, so only quote atoms to keep the value the same
-        13 => {
+        14 => {
             let bytes = rng.pick(FUZZ_ATOMS);
             Lir::Quote(atom(arena, bytes))
         }
-        14 => Lir::Sub(gen_args(arena, rng, 1)),
-        15 => Lir::Mod(next(), next()),
+        15 => Lir::Sub(gen_args(arena, rng, 1)),
+        16 => Lir::Mod(next(), next()),
         // Checks whether a value is odd
-        16 => {
+        17 => {
             let two = atom(arena, &[2]);
             let one = atom(arena, &[1]);
             let value = arena.alloc(Lir::Mod(next(), two));
             Lir::Eq(value, one)
         }
         // Runs a program in either a nil or the current environment
-        17 => {
+        18 => {
             let program = arena.alloc(Lir::Quote(next()));
             let env = if rng.below(2) == 0 {
                 atom(arena, &[])
@@ -409,6 +421,14 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
     };
 
     arena.alloc(lir)
+}
+
+// Rewrites in conditions assume that `=` is only used on atoms, as Rue's types ensure
+// Either operand may become nil after it's optimized, so both are made atoms (+ fails on pairs)
+fn eq(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> Lir {
+    let left = arena.alloc(Lir::Add(vec![left]));
+    let right = arena.alloc(Lir::Add(vec![right]));
+    Lir::Eq(left, right)
 }
 
 fn generate_env(allocator: &mut Allocator, rng: &mut Rng) -> NodePtr {

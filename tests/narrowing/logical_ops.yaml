@@ -120,21 +120,21 @@ tests:
   byte_cost: 636000
   total_cost: 637077
 - name: same_path_any
-  program: (a (i (any (a (i (l 2) (q) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1)) 1) (l 2)) (q 11 ()) (q . 2)) 1)
+  program: (a (i (any (a (i (l 2) (q) (q 2 (i 2 (q) (q 1 . 1)) 1)) 1) (l 2)) (q 11 ()) (q . 2)) 1)
   debug_program: (a (i (any (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (l 2)) (q 11 ()) (q . 2)) 1)
   solution: (0xabababababababababababababababababababababababababababababababab)
   output: '0xabababababababababababababababababababababababababababababababab'
-  runtime_cost: 1898
-  byte_cost: 972000
-  total_cost: 973898
+  runtime_cost: 1704
+  byte_cost: 900000
+  total_cost: 901704
 - name: same_path_or
-  program: (a (i (a (i (a (i (l 2) (q) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q 2 (i (l 2) (q 1 . 1) (q)) 1)) 1) (q 11 ()) (q . 2)) 1)
+  program: (a (i (a (i (a (i (l 2) (q) (q 2 (i 2 (q) (q 1 . 1)) 1)) 1) (q 1 . 1) (q 2 (i (l 2) (q 1 . 1) (q)) 1)) 1) (q 11 ()) (q . 2)) 1)
   debug_program: (a (i (a (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q 2 (i (l 2) (q 1 . 1) (q)) 1)) 1) (q 11 ()) (q . 2)) 1)
   solution: (0xabababababababababababababababababababababababababababababababab)
   output: '0xabababababababababababababababababababababababababababababababab'
-  runtime_cost: 1559
-  byte_cost: 1380000
-  total_cost: 1381559
+  runtime_cost: 1365
+  byte_cost: 1308000
+  total_cost: 1309365
 - name: same_path_all
   program: (a (i (all (a (i (l 2) (q) (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q)) 1)) 1) (not (l 2))) (q . 2) (q 11 ())) 1)
   debug_program: (a (i (all (a (i (not (l 2)) (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q)) 1) (q)) 1) (not (l 2))) (q . 2) (q 11 ())) 1)

@@ -7,26 +7,26 @@ tests:
   byte_cost: 1068000
   total_cost: 1074623
 - name: chain
-  program: (a (q 2 2 (c 2 (q 1 2 3))) (c (q 2 (i (l 3) (q 16 5 (a 2 (c 2 7))) (q)) 1) ()))
+  program: (a (q 2 2 (c 2 (q 1 2 3))) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) (q)) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 3) ()))))) (c (q 2 (i (not (l 3)) (q) (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) ()))
   output: '6'
-  runtime_cost: 4927
-  byte_cost: 924000
-  total_cost: 928927
+  runtime_cost: 4847
+  byte_cost: 876000
+  total_cost: 880847
 - name: node
-  program: (a (q 2 2 (c 2 (q 1 2))) (c (q 2 (i (l 7) (q 16 5 (a 2 (c 2 7))) (q . 5)) 1) ()))
+  program: (a (q 2 2 (c 2 (q 1 2))) (c (q 2 (i 7 (q 16 5 (a 2 (c 2 7))) (q . 5)) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) ())))) (c (q 2 (i (not (l (r 3))) (q 5 3) (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) ()))
   output: '3'
-  runtime_cost: 2196
-  byte_cost: 900000
-  total_cost: 902196
+  runtime_cost: 2156
+  byte_cost: 852000
+  total_cost: 854156
 - name: list
-  program: (a (q 2 2 (c 2 (q 1 2 3 4))) (c (q 2 (i (l 3) (q 16 5 (a 2 (c 2 7))) (q)) 1) ()))
+  program: (a (q 2 2 (c 2 (q 1 2 3 4))) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) (q)) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ())))))) (c (q 2 (i (not (l 3)) (q) (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) ()))
   output: '10'
-  runtime_cost: 6302
-  byte_cost: 948000
-  total_cost: 954302
+  runtime_cost: 6202
+  byte_cost: 900000
+  total_cost: 906202
 - name: nested
   program: (q (q . 2) . 3)
   debug_program: (a (q . 2) (c (c (c (q . 1) (q . 2)) (q . 3)) 1))

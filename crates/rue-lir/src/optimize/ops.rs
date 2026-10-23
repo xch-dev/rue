@@ -374,14 +374,17 @@ pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match opt_truthy(arena, value) {
         Truthiness::Known(true) => arena.alloc(Lir::Atom(vec![])),
         Truthiness::Known(false) => arena.alloc(Lir::Atom(vec![1])),
-        Truthiness::Unknown(value) => {
-            if let Lir::Not(inner) = arena[value].clone()
-                && is_boolean(arena, inner)
-            {
-                return inner;
+        Truthiness::Unknown(replacement) => {
+            if let Lir::Not(inner) = arena[replacement].clone() {
+                if is_boolean(arena, inner) {
+                    return inner;
+                }
+
+                // Avoid adding a second not if it can't be removed
+                return arena.alloc(Lir::Not(value));
             }
 
-            arena.alloc(Lir::Not(value))
+            arena.alloc(Lir::Not(replacement))
         }
     }
 }

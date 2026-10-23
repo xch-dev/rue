@@ -21,32 +21,32 @@ pub enum Truthiness {
 // They accept pairs (which are truthy) and any atom (only the empty atom is falsy,
 // so non-canonical atoms like `0x00` are truthy) without failing.
 //
-// We intentionally don't make use of the static type of a value here (for example,
-// assuming that a `List` is never a non-nil atom, or that a `Bytes` is never a pair),
-// since a spender controls the solution and it isn't checked against the declared types
-// at runtime. Doing so would make the optimized program behave differently from the
-// unoptimized one.
+// Two of these rewrites assume that a value matches its static type, the same way opt_cons
+// does: `(l x)` on a `List` is truthy exactly when `x` is, and `(= x ())` is `(not x)` when `x`
+// is an atom type. If the solution doesn't match the declared types (an atom where a list is
+// expected, or a pair where an atom is expected), the optimized program can take a different
+// branch or skip the `=` failure. Rue doesn't check values against their types at runtime anyway,
+// so this doesn't give the spender anything that a wrongly shaped value couldn't, and it keeps
+// conditions cheaper. These rewrites are only applied where just the truthiness is observed.
 pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
     match arena[value].clone() {
         Lir::Atom(atom) => Truthiness::Known(!atom.is_empty()),
         // A pair is always truthy, but it can only be discarded if it can't fail
         Lir::Cons(..) if is_pure(arena, value) => Truthiness::Known(true),
-        // Since `not` accepts any value, `(not (not x))` has the same truthiness as `x`
-        Lir::Not(inner) => {
-            if let Lir::Not(inner) = arena[inner].clone() {
-                return opt_truthy(arena, inner);
-            }
-
-            Truthiness::Unknown(value)
-        }
-        // If the other operand is always an atom, `=` can't fail and `(= x ())` is `(not x)`
+        // Since `not` accepts any value, `(not x)` has the opposite truthiness of `x`
+        Lir::Not(inner) => opt_negated_truthy(arena, inner, Some(value)),
+        // A list is either nil or a pair, so it's truthy exactly when it's a pair
+        // This assumes that the value matches its type (see above)
+        Lir::Listp(inner, false) => opt_truthy(arena, inner),
+        // `(= x ())` is `(not x)` if `x` is an atom
+        // This assumes that the value matches its type (see above)
         Lir::Eq(left, right) => {
-            if is_nil(arena, left) && is_boolean(arena, right) {
-                return opt_negated_truthy(arena, right);
+            if is_nil(arena, left) {
+                return opt_negated_truthy(arena, right, None);
             }
 
-            if is_nil(arena, right) && is_boolean(arena, left) {
-                return opt_negated_truthy(arena, left);
+            if is_nil(arena, right) {
+                return opt_negated_truthy(arena, left, None);
             }
 
             Truthiness::Unknown(value)
@@ -55,16 +55,22 @@ pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
     }
 }
 
-// Computes the truthiness of `(not value)`
-fn opt_negated_truthy(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
+// Computes the truthiness of `(not value)`, reusing `negated` if it's already that expression
+fn opt_negated_truthy(arena: &mut Arena<Lir>, value: LirId, negated: Option<LirId>) -> Truthiness {
     match opt_truthy(arena, value) {
-        Truthiness::Known(value) => Truthiness::Known(!value),
-        Truthiness::Unknown(value) => {
-            if let Lir::Not(inner) = arena[value].clone() {
+        Truthiness::Known(known) => Truthiness::Known(!known),
+        Truthiness::Unknown(replacement) => {
+            if let Lir::Not(inner) = arena[replacement].clone() {
                 return opt_truthy(arena, inner);
             }
 
-            Truthiness::Unknown(arena.alloc(Lir::Not(value)))
+            if replacement == value
+                && let Some(negated) = negated
+            {
+                return Truthiness::Unknown(negated);
+            }
+
+            Truthiness::Unknown(arena.alloc(Lir::Not(replacement)))
         }
     }
 }

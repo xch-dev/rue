@@ -28,12 +28,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: narrow_struct
-  program: (a (i (l (q 42)) (q 2 (i (a (i (l (f (q 42))) (q) (q 2 (i (a (i (l (r (q 42))) (q) (q 2 (i (= (r (q 42)) ()) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1)
+  program: (a (i (l (q 42)) (q 2 (i (a (i (l (f (q 42))) (q) (q 2 (i (a (i (l (r (q 42))) (q) (q 2 (i (r (q 42)) (q) (q 1 . 1)) 1)) 1) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1)
   debug_program: (a (i (l (c (q . 42) ())) (q 2 (i (a (i (not (l (f (c (q . 42) ())))) (q 2 (i (a (i (not (l (r (c (q . 42) ())))) (q 2 (i (= (r (c (q . 42) ())) ()) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1)
   output: '1'
-  runtime_cost: 1709
-  byte_cost: 1932000
-  total_cost: 1933709
+  runtime_cost: 1547
+  byte_cost: 1860000
+  total_cost: 1861547
 - name: struct_to_alias
   program: (q . 1)
   debug_program: (q . 1)
