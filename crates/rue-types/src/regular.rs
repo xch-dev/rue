@@ -1,27 +1,33 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use id_arena::Arena;
 
-use crate::{Type, TypeId};
+use crate::{Alias, Struct, Type, TypeId, free_generics, resolve_refs};
 
-/// Returns `true` if the type is part of a cycle of type declarations where one of the
-/// declarations is referenced with generic arguments that aren't plain generic parameters.
+/// Returns `true` if the type is part of a cycle of type declarations that, once expanded, has
+/// infinitely many distinct generic arguments.
 ///
 /// Such a type (for example `type L<T> = nil | (T, L<(T, T)>);`) is non-regular, since each
 /// level of recursion has new generic arguments, so expanding it never reaches a type that has
-/// already been seen and it can't be represented as a finite (cyclic) type. Recursive references
-/// that pass the generic parameters through, possibly reordered (such as `List<T>` or the
-/// `Alt<B, A>` in `type Alt<A, B> = nil | (A, Alt<B, A>);`), only ever map the generic parameters
-/// to the arguments of the outermost reference, so they expand to a finite type.
+/// already been seen and it can't be represented as a finite (cyclic) type.
+///
+/// Each generic argument of a reference to a type declaration passes the generic parameters it
+/// refers to on to the referenced declaration's generic parameter. An argument that is just a
+/// generic parameter (such as the `B` in `type Alt<A, B> = nil | (A, Alt<B, A>);`) passes it on
+/// unchanged, and any other argument that refers to one (such as the `(T, T)` above) grows it.
+/// The generic arguments are only infinite if a generic parameter can be grown and passed back
+/// to itself. An argument that doesn't refer to any generic parameters (such as the `Int` in
+/// `type L<T> = nil | (T, L<Int>);`) is the same at every level, so it's fine.
 ///
 /// This must be checked before the type is substituted, since substituting a non-regular type
 /// would never terminate.
 pub fn is_non_regular(arena: &Arena<Type>, id: TypeId) -> bool {
-    let mut references = HashMap::new();
+    let mut edges = Vec::new();
+    let mut visited = HashSet::new();
     let mut stack = vec![id];
 
     while let Some(declaration) = stack.pop() {
-        if references.contains_key(&declaration) {
+        if !visited.insert(declaration) {
             continue;
         }
 
@@ -31,32 +37,42 @@ pub fn is_non_regular(arena: &Arena<Type>, id: TypeId) -> bool {
             _ => unreachable!(),
         };
 
-        let mut list = Vec::new();
-        collect_references(arena, inner, &mut list, &mut HashSet::new());
-
-        stack.extend(list.iter().map(|&(target, _)| target));
-        references.insert(declaration, list);
+        collect_references(arena, inner, &mut stack, &mut edges, &mut HashSet::new());
     }
 
-    let in_cycle: HashSet<TypeId> = references
-        .keys()
-        .copied()
-        .filter(|&declaration| reaches(&references, declaration, id))
-        .collect();
+    let (Type::Alias(Alias { generics, .. }) | Type::Struct(Struct { generics, .. })) = &arena[id]
+    else {
+        unreachable!()
+    };
 
-    in_cycle.iter().any(|declaration| {
-        references[declaration]
+    // Only cycles through this declaration's generic parameters are checked, since the others
+    // have already been checked when the declarations they belong to were compiled
+    generics.iter().any(|&generic| {
+        let forward = reachable(&edges, generic, |edge| (edge.from, edge.to));
+        let backward = reachable(&edges, generic, |edge| (edge.to, edge.from));
+
+        edges
             .iter()
-            .any(|&(target, regular)| !regular && in_cycle.contains(&target))
+            .any(|edge| edge.grows && forward.contains(&edge.from) && backward.contains(&edge.to))
     })
 }
 
-/// Collects the type declarations referenced by a declaration's inner type, along with whether
-/// the generic arguments of each reference are all generic parameters.
+/// A generic parameter that is passed on to another generic parameter by a generic argument.
+#[derive(Debug, Clone, Copy)]
+struct Edge {
+    from: TypeId,
+    to: TypeId,
+    /// Whether the argument is something other than the generic parameter itself.
+    grows: bool,
+}
+
+/// Collects the type declarations referenced by a declaration's inner type, along with how their
+/// generic arguments pass on the generic parameters they refer to.
 fn collect_references(
     arena: &Arena<Type>,
     id: TypeId,
-    references: &mut Vec<(TypeId, bool)>,
+    declarations: &mut Vec<TypeId>,
+    edges: &mut Vec<Edge>,
     visited: &mut HashSet<TypeId>,
 ) {
     if !visited.insert(id) {
@@ -64,71 +80,72 @@ fn collect_references(
     }
 
     match &arena[id] {
-        Type::Alias(_) | Type::Struct(_) => references.push((id, true)),
+        Type::Alias(_) | Type::Struct(_) => declarations.push(id),
         Type::Apply(apply) => {
             let inner = resolve_refs(arena, apply.inner);
 
             if matches!(arena[inner], Type::Alias(_) | Type::Struct(_)) {
-                let regular = apply
-                    .generics
-                    .values()
-                    .all(|&arg| matches!(arena[resolve_refs(arena, arg)], Type::Generic(_)));
+                declarations.push(inner);
 
-                references.push((inner, regular));
+                for (&to, &arg) in &apply.generics {
+                    let resolved = resolve_refs(arena, arg);
+
+                    edges.extend(free_generics(arena, arg).into_iter().map(|from| Edge {
+                        from,
+                        to,
+                        grows: from != resolved,
+                    }));
+                }
             } else {
-                collect_references(arena, inner, references, visited);
+                collect_references(arena, inner, declarations, edges, visited);
             }
 
             for &arg in apply.generics.values() {
-                collect_references(arena, arg, references, visited);
+                collect_references(arena, arg, declarations, edges, visited);
             }
         }
-        Type::Ref(id) => collect_references(arena, *id, references, visited),
+        Type::Ref(id) => collect_references(arena, *id, declarations, edges, visited),
         Type::Pair(pair) => {
-            collect_references(arena, pair.first, references, visited);
-            collect_references(arena, pair.rest, references, visited);
+            collect_references(arena, pair.first, declarations, edges, visited);
+            collect_references(arena, pair.rest, declarations, edges, visited);
         }
         Type::Union(union) => {
             for &id in &union.types {
-                collect_references(arena, id, references, visited);
+                collect_references(arena, id, declarations, edges, visited);
             }
         }
         Type::Function(function) => {
             for &id in function.params.values() {
-                collect_references(arena, id, references, visited);
+                collect_references(arena, id, declarations, edges, visited);
             }
 
-            collect_references(arena, function.ret, references, visited);
+            collect_references(arena, function.ret, declarations, edges, visited);
         }
         Type::Unresolved | Type::Generic(_) | Type::Atom(_) | Type::Never | Type::Any => {}
     }
 }
 
-fn resolve_refs(arena: &Arena<Type>, mut id: TypeId) -> TypeId {
-    while let Type::Ref(inner) = arena[id] {
-        id = inner;
-    }
-
-    id
-}
-
-fn reaches(references: &HashMap<TypeId, Vec<(TypeId, bool)>>, from: TypeId, to: TypeId) -> bool {
+/// Returns the generic parameters that can be reached from the given one along the edges, which
+/// are given as pairs of generic parameters to follow from and to.
+fn reachable(
+    edges: &[Edge],
+    from: TypeId,
+    direction: impl Fn(&Edge) -> (TypeId, TypeId),
+) -> HashSet<TypeId> {
     let mut visited = HashSet::new();
     let mut stack = vec![from];
 
-    while let Some(declaration) = stack.pop() {
-        if !visited.insert(declaration) {
+    while let Some(generic) = stack.pop() {
+        if !visited.insert(generic) {
             continue;
         }
 
-        for &(target, _) in &references[&declaration] {
-            if target == to {
-                return true;
+        for (source, target) in edges.iter().map(&direction) {
+            if source == generic {
+                stack.push(target);
             }
-
-            stack.push(target);
         }
     }
 
-    false
+    visited
 }

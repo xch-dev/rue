@@ -179,9 +179,9 @@ fn changed_arguments_are_non_regular() {
 }
 
 #[test]
-fn concrete_arguments_are_non_regular() {
+fn closed_arguments_are_regular() {
     let mut db = Types::new();
-    let int = db.builtins.int;
+    let (int, bytes32) = (db.builtins.int, db.builtins.bytes32);
 
     // type Fixed<T> = nil | (T, Fixed<Int>);
     let t = db.generic("T");
@@ -192,7 +192,133 @@ fn concrete_arguments_are_non_regular() {
     let inner = db.union(&[nil, pair]);
     db.define(fixed, inner);
 
-    assert!(is_non_regular(&db.arena, fixed));
+    assert!(!is_non_regular(&db.arena, fixed));
+    assert!(!is_non_contractive(&mut db.arena, fixed));
+
+    // Only the first item is a `Bytes32`, the rest are `Int`
+    let fixed_bytes32 = db.apply(fixed, &[(t, bytes32)]);
+    let right = db.list_of(&[bytes32, int, int]);
+    assert_eq!(db.cmp(right, fixed_bytes32), Comparison::Assign);
+
+    let wrong = db.list_of(&[int, int]);
+    assert_eq!(db.cmp(wrong, fixed_bytes32), Comparison::Invalid);
+}
+
+#[test]
+fn closed_arguments_that_are_rebuilt_at_each_level() {
+    let mut db = Types::new();
+    let (int, bytes32) = (db.builtins.int, db.builtins.bytes32);
+    let nil = db.builtins.nil;
+
+    // type Two<T, U> = nil | ((T, U), Two<Int, (T, T)>);
+    // The `(T, T)` is substituted into a new pair at each level, but is always `(Int, Int)`
+    // after the first two levels.
+    let t = db.generic("T");
+    let u = db.generic("U");
+    let two = db.declare_alias("Two", &[t, u]);
+    let twice = db.pair(t, t);
+    let rest = db.apply(two, &[(t, int), (u, twice)]);
+    let item = db.pair(t, u);
+    let pair = db.pair(item, rest);
+    let inner = db.union(&[nil, pair]);
+    db.define(two, inner);
+
+    assert!(!is_non_regular(&db.arena, two));
+    assert!(!is_non_contractive(&mut db.arena, two));
+
+    let two_bytes32_nil = db.apply(two, &[(t, bytes32), (u, nil)]);
+    let first = db.pair(bytes32, nil);
+    let bytes32_twice = db.pair(bytes32, bytes32);
+    let second = db.pair(int, bytes32_twice);
+    let int_twice = db.pair(int, int);
+    let third = db.pair(int, int_twice);
+    let right = db.list_of(&[first, second, third, third]);
+    assert_eq!(db.cmp(right, two_bytes32_nil), Comparison::Assign);
+
+    let wrong = db.list_of(&[first, third]);
+    assert_eq!(db.cmp(wrong, two_bytes32_nil), Comparison::Invalid);
+}
+
+#[test]
+fn recursive_closed_argument() {
+    let mut db = Types::new();
+    let (int, bytes32) = (db.builtins.int, db.builtins.bytes32);
+    let nil = db.builtins.nil;
+
+    // type Nest<T> = nil | (T, Nest<Nest<Int>>);
+    let t = db.generic("T");
+    let nest = db.declare_alias("Nest", &[t]);
+    let nest_int = db.apply(nest, &[(t, int)]);
+    let rest = db.apply(nest, &[(t, nest_int)]);
+    let pair = db.pair(t, rest);
+    let inner = db.union(&[nil, pair]);
+    db.define(nest, inner);
+
+    assert!(!is_non_regular(&db.arena, nest));
+    assert!(!is_non_contractive(&mut db.arena, nest));
+
+    let nest_bytes32 = db.apply(nest, &[(t, bytes32)]);
+    let ints = db.list_of(&[int]);
+    let right = db.list_of(&[bytes32, ints, nil]);
+    assert_eq!(db.cmp(right, nest_bytes32), Comparison::Assign);
+
+    // The items after the first are `Nest<Int>`, whose items after the first are `Nest<Int>`
+    let ints = db.list_of(&[int, int]);
+    let wrong = db.list_of(&[bytes32, ints]);
+    assert_eq!(db.cmp(wrong, nest_bytes32), Comparison::Invalid);
+}
+
+#[test]
+fn grown_argument_passed_to_another_parameter() {
+    let mut db = Types::new();
+    let nil = db.builtins.nil;
+
+    // type L<T, U> = nil | (T, L<U, (T, T)>);
+    let t = db.generic("T");
+    let u = db.generic("U");
+    let l = db.declare_alias("L", &[t, u]);
+    let twice = db.pair(t, t);
+    let rest = db.apply(l, &[(t, u), (u, twice)]);
+    let pair = db.pair(t, rest);
+    let inner = db.union(&[nil, pair]);
+    db.define(l, inner);
+
+    assert!(is_non_regular(&db.arena, l));
+}
+
+#[test]
+fn mutual_recursion_with_closed_argument() {
+    let mut db = Types::new();
+    let (int, bytes32) = (db.builtins.int, db.builtins.bytes32);
+    let nil = db.builtins.nil;
+
+    // type A<T> = nil | (T, B<Int>); type B<U> = (U, A<(U, U)>);
+    // The `(U, U)` only ever receives `Int`, so it's always `(Int, Int)`
+    let t = db.generic("T");
+    let u = db.generic("U");
+    let a = db.declare_alias("A", &[t]);
+    let b = db.declare_alias("B", &[u]);
+
+    let b_int = db.apply(b, &[(u, int)]);
+    let pair = db.pair(t, b_int);
+    let a_inner = db.union(&[nil, pair]);
+    db.define(a, a_inner);
+
+    let twice = db.pair(u, u);
+    let a_twice = db.apply(a, &[(t, twice)]);
+    let b_inner = db.pair(u, a_twice);
+    db.define(b, b_inner);
+
+    assert!(!is_non_regular(&db.arena, a));
+    assert!(!is_non_regular(&db.arena, b));
+
+    let a_bytes32 = db.apply(a, &[(t, bytes32)]);
+    let int_twice = db.pair(int, int);
+    let right = db.list_of(&[bytes32, int, int_twice, int]);
+    assert_eq!(db.cmp(right, a_bytes32), Comparison::Assign);
+
+    let wrong = db.list_of(&[bytes32, int, int, int]);
+    assert_eq!(db.cmp(wrong, a_bytes32), Comparison::Invalid);
 }
 
 #[test]

@@ -47,7 +47,7 @@ pub fn compile_type_item(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId, sco
     check_contractive(ctx, item, ty);
 }
 
-/// Rejects a type item that refers to itself with generic arguments that aren't its own generic
+/// Rejects a type item that refers to itself with generic arguments built from its own generic
 /// parameters, such as `type L<T> = nil | (T, L<(T, T)>);`. Each level of such a type has new
 /// generic arguments, so it can't be substituted into a finite type. The cycle is broken after
 /// reporting it, and this must happen before anything substitutes the type (including the

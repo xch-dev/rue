@@ -72,7 +72,8 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
 
     match ctx.ty(ty).clone() {
         Type::Apply(_) | Type::Alias(_) | Type::Ref(_) => unreachable!(),
-        Type::Unresolved => FieldResult::Unknown,
+        // An error has already been reported for the unresolved type
+        Type::Unresolved => FieldResult::Value(ctx.builtins().unresolved.clone()),
         Type::Generic(_) | Type::Function(_) | Type::Never | Type::Any => FieldResult::Unknown,
         Type::Atom(_) => {
             if let &Field::Named(name) = name
@@ -148,6 +149,12 @@ fn compile_struct_field(
     let Some(index) = ty.fields.get_index_of(name) else {
         return FieldResult::Unknown;
     };
+
+    // The struct's underlying type couldn't be resolved (for example, because its declaration was
+    // rejected), which has already been reported
+    if ctx.is_unresolved(ty.inner) {
+        return FieldResult::Value(ctx.builtins().unresolved.clone());
+    }
 
     let mut hir = expr.hir;
     let mut field_type = ty.inner;

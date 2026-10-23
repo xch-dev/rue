@@ -56,7 +56,7 @@ pub enum DiagnosticKind {
     NonContractiveType(String),
 
     #[error(
-        "Type `{0}` refers to itself with generic arguments other than its own generic parameters"
+        "Type `{0}` refers to itself with generic arguments built from its own generic parameters"
     )]
     NonRegularType(String),
 

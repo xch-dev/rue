@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{Alias, FunctionType, Pair, Struct, Type, TypeId, Union, stringify_impl};
@@ -24,9 +24,8 @@ pub fn substitute_with_mappings(
     let mut ctx = SubstitutionContext::default();
 
     // The mapped types belong to the caller's scope, so they're substituted without the mappings
-    let empty = HashMap::new();
-    let empty_scope = ctx.scope(&empty);
-    let mappings = mappings
+    let (empty_scope, empty) = ctx.scope(BTreeMap::new(), HashMap::new());
+    let mappings: HashMap<TypeId, TypeId> = mappings
         .iter()
         .map(|(&generic, &ty)| {
             let ty = substitute_impl(arena, ty, &empty, empty_scope, &mut ctx);
@@ -34,7 +33,11 @@ pub fn substitute_with_mappings(
         })
         .collect();
 
-    let scope = ctx.scope(&mappings);
+    let bindings = mappings
+        .iter()
+        .map(|(&generic, &ty)| (generic, Binding::Type(ty)))
+        .collect();
+    let (scope, mappings) = ctx.scope(bindings, mappings);
     let result = substitute_impl(arena, id, &mappings, scope, &mut ctx);
 
     if let Some(name) = &name {
@@ -45,6 +48,19 @@ pub fn substitute_with_mappings(
     result
 }
 
+/// Identifies what a generic is mapped to, so that substitutions can be keyed by it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Binding {
+    /// A type that was mapped to the generic before substituting.
+    Type(TypeId),
+    /// A generic argument that hasn't been substituted, along with the index of the mappings in
+    /// `scopes` (of only the generics it refers to) that it's substituted with. Keying arguments
+    /// by the type they're substituted into instead would make every level of a recursive type
+    /// with an argument other than a generic (such as `type L<T> = nil | (T, L<Int>);`) have new
+    /// mappings, even if the argument is the same at each level.
+    Argument(TypeId, usize),
+}
+
 #[derive(Debug, Default)]
 struct SubstitutionContext {
     /// The types currently being substituted (keyed by the type and the index of the mappings in
@@ -52,8 +68,9 @@ struct SubstitutionContext {
     /// under different mappings at the same time (for example, the inner `Alt<B, A>` in
     /// `type Alt<A, B> = nil | (A, Alt<B, A>)`), so it isn't keyed by the type alone.
     stack: IndexMap<(TypeId, usize), TypeId>,
-    /// The generic mappings that have been in effect, so that substitutions can be keyed by them.
-    scopes: IndexSet<BTreeMap<TypeId, TypeId>>,
+    /// The generic mappings that have been in effect, keyed by their bindings. Mappings with the
+    /// same bindings substitute to the same types, so the ones that were inserted first are used.
+    scopes: IndexMap<BTreeMap<TypeId, Binding>, HashMap<TypeId, TypeId>>,
     /// Completed substitutions, keyed by the type and the index of the mappings in `scopes`.
     memo: HashMap<(TypeId, usize), TypeId>,
     /// Copies of function generics, which they're renamed to when they would capture a mapped
@@ -63,10 +80,18 @@ struct SubstitutionContext {
 }
 
 impl SubstitutionContext {
-    fn scope(&mut self, map: &HashMap<TypeId, TypeId>) -> usize {
-        self.scopes
-            .insert_full(map.iter().map(|(&generic, &ty)| (generic, ty)).collect())
-            .0
+    fn scope(
+        &mut self,
+        bindings: BTreeMap<TypeId, Binding>,
+        map: HashMap<TypeId, TypeId>,
+    ) -> (usize, HashMap<TypeId, TypeId>) {
+        let entry = self.scopes.entry(bindings);
+        let index = entry.index();
+        (index, entry.or_insert(map).clone())
+    }
+
+    fn bindings(&self, scope: usize) -> &BTreeMap<TypeId, Binding> {
+        self.scopes.get_index(scope).unwrap().0
     }
 
     /// Returns `true` if the mapped type may reference the generic. A placeholder for a type that
@@ -115,13 +140,16 @@ fn substitute_impl(
 
     let result = match arena[old_id].clone() {
         Type::Apply(apply) => {
-            let mut new_map = apply.generics.clone();
+            let mut bindings = BTreeMap::new();
+            let mut new_map = HashMap::new();
 
-            for arg in new_map.values_mut() {
-                *arg = substitute_impl(arena, *arg, map, scope, ctx);
+            for (&generic, &arg) in &apply.generics {
+                let (binding, ty) = substitute_argument(arena, arg, map, scope, ctx);
+                bindings.insert(generic, binding);
+                new_map.insert(generic, ty);
             }
 
-            let new_scope = ctx.scope(&new_map);
+            let (new_scope, new_map) = ctx.scope(bindings, new_map);
             substitute_impl(arena, apply.inner, &new_map, new_scope, ctx)
         }
         // This may be the placeholder for a type that is still being substituted, in which case
@@ -168,6 +196,13 @@ fn substitute_impl(
                 .map(|(&generic, &ty)| (generic, ty))
                 .collect();
 
+            let mut inner_bindings: BTreeMap<TypeId, Binding> = ctx
+                .bindings(scope)
+                .iter()
+                .filter(|(generic, _)| !function.generics.contains(generic))
+                .map(|(&generic, binding)| (generic, binding.clone()))
+                .collect();
+
             let generics = function
                 .generics
                 .iter()
@@ -193,13 +228,14 @@ fn substitute_impl(
 
                     if renamed != generic {
                         inner_map.insert(generic, renamed);
+                        inner_bindings.insert(generic, Binding::Type(renamed));
                     }
 
                     renamed
                 })
                 .collect();
 
-            let inner_scope = ctx.scope(&inner_map);
+            let (inner_scope, inner_map) = ctx.scope(inner_bindings, inner_map);
             let params = function
                 .params
                 .iter()
@@ -233,6 +269,91 @@ fn substitute_impl(
     ctx.memo.insert((old_id, scope), result);
 
     result
+}
+
+/// Substitutes a generic argument, and returns it along with its binding. A generic that is passed
+/// through keeps its binding, and any other argument is substituted with only the mappings of the
+/// generics it refers to.
+fn substitute_argument(
+    arena: &mut Arena<Type>,
+    arg: TypeId,
+    map: &HashMap<TypeId, TypeId>,
+    scope: usize,
+    ctx: &mut SubstitutionContext,
+) -> (Binding, TypeId) {
+    let generic = resolve_refs(arena, arg);
+    let bindings = ctx.bindings(scope);
+
+    if let Some(binding) = bindings.get(&generic) {
+        return (binding.clone(), map[&generic]);
+    }
+
+    let generics = free_generics(arena, arg);
+
+    let bindings = bindings
+        .iter()
+        .filter(|(generic, _)| generics.contains(generic))
+        .map(|(&generic, binding)| (generic, binding.clone()))
+        .collect();
+
+    let map = map
+        .iter()
+        .filter(|(generic, _)| generics.contains(generic))
+        .map(|(&generic, &ty)| (generic, ty))
+        .collect();
+
+    let (arg_scope, map) = ctx.scope(bindings, map);
+    let ty = substitute_impl(arena, arg, &map, arg_scope, ctx);
+
+    (Binding::Argument(arg, arg_scope), ty)
+}
+
+/// Returns the generics that may be replaced when substituting the type. This over-approximates
+/// them (for example, it includes generics bound by function types), but excludes the inner type
+/// of a generic application, since that is only substituted with the application's arguments.
+pub(crate) fn free_generics(arena: &Arena<Type>, id: TypeId) -> HashSet<TypeId> {
+    let mut generics = HashSet::new();
+    let mut visited = HashSet::new();
+    let mut stack = vec![id];
+
+    while let Some(id) = stack.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+
+        match &arena[id] {
+            Type::Generic(_) => {
+                generics.insert(id);
+            }
+            Type::Unresolved | Type::Any | Type::Never | Type::Atom(_) => {}
+            Type::Ref(id) => stack.push(*id),
+            Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
+            Type::Alias(alias) => {
+                stack.push(alias.inner);
+                stack.extend(alias.generics.iter().copied());
+            }
+            Type::Struct(ty) => {
+                stack.push(ty.inner);
+                stack.extend(ty.generics.iter().copied());
+            }
+            Type::Apply(apply) => stack.extend(apply.generics.values().copied()),
+            Type::Function(function) => {
+                stack.push(function.ret);
+                stack.extend(function.params.values().copied());
+            }
+            Type::Union(union) => stack.extend(union.types.iter().copied()),
+        }
+    }
+
+    generics
+}
+
+pub(crate) fn resolve_refs(arena: &Arena<Type>, mut id: TypeId) -> TypeId {
+    while let Type::Ref(inner) = arena[id] {
+        id = inner;
+    }
+
+    id
 }
 
 /// Returns `true` if the generic is referenced anywhere in the type.
