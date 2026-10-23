@@ -1,0 +1,11 @@
+const A: Int = 10;
+const B: Int = A + 1;
+
+fn main(n: Int) -> List<Int> {
+    if n == 0 {
+        return [A, B, A, B];
+    }
+
+    let f = main;
+    f(0)
+}

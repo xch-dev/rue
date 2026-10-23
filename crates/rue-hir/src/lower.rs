@@ -168,7 +168,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     bind_env = Self::apply_group(bind_env, existing_group, true);
                 }
 
-                let rest = if param_group.is_empty() {
+                let rest = if i == 0 && param_group.is_empty() {
                     self.arena.alloc(Lir::Atom(vec![]))
                 } else {
                     self.arena.alloc(Lir::Path(1u8.into()))
@@ -494,17 +494,35 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         if let Symbol::Function(function) = self.db.symbol(symbol).clone()
             && function.kind != FunctionKind::External
         {
-            let captures: Vec<SymbolId> = self
-                .graph
-                .dependencies(symbol, true)
-                .into_iter()
-                .filter(|&symbol| self.is_capture(symbol))
-                .collect();
-
             let mut refs = Vec::new();
 
-            for capture in captures {
-                refs.push(self.lower_symbol_reference(env, capture));
+            if symbol == self.main {
+                // Main expects its captures in nested groups, with the last group first
+                let (capture_groups, _) = self.function_groups(symbol, &function);
+
+                for group in capture_groups.iter().rev() {
+                    match group {
+                        SymbolGroup::Sequential(symbols) => {
+                            for &capture in symbols {
+                                refs.push(self.lower_symbol_reference(env, capture));
+                            }
+                        }
+                        SymbolGroup::Tree(tree) => {
+                            refs.push(self.lower_tree(env, tree, true, None));
+                        }
+                    }
+                }
+            } else {
+                let captures: Vec<SymbolId> = self
+                    .graph
+                    .dependencies(symbol, true)
+                    .into_iter()
+                    .filter(|&symbol| self.is_capture(symbol))
+                    .collect();
+
+                for capture in captures {
+                    refs.push(self.lower_symbol_reference(env, capture));
+                }
             }
 
             reference = self.arena.alloc(Lir::Closure(
