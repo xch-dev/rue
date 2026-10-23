@@ -39,6 +39,7 @@ pub struct Compiler {
     external_programs: HashMap<PathBuf, Vec<u8>>,
     return_stack: Vec<(Option<ReturnTarget>, usize)>,
     return_count: usize,
+    inferred_generics_stack: Vec<Vec<TypeId>>,
     inline_ifs: Vec<(SrcLoc, InlineIf)>,
 }
 
@@ -97,6 +98,7 @@ impl Compiler {
             external_programs: HashMap::new(),
             return_stack: Vec::new(),
             return_count: 0,
+            inferred_generics_stack: Vec::new(),
             inline_ifs: Vec::new(),
         };
 
@@ -409,6 +411,22 @@ impl Compiler {
             .expect("return target stack is unbalanced");
         self.return_count = return_count;
         target
+    }
+
+    /// Enters the arguments of a call whose generics are being inferred from them.
+    pub fn push_inferred_generics(&mut self, generics: Vec<TypeId>) {
+        self.inferred_generics_stack.push(generics);
+    }
+
+    pub fn pop_inferred_generics(&mut self) {
+        self.inferred_generics_stack
+            .pop()
+            .expect("inferred generics stack is unbalanced");
+    }
+
+    /// The generics of the enclosing calls that are still being inferred.
+    pub fn inferred_generics(&self) -> Vec<TypeId> {
+        self.inferred_generics_stack.concat()
     }
 
     pub fn return_target_mut(&mut self) -> Option<&mut ReturnTarget> {

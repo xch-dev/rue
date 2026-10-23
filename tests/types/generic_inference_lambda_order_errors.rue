@@ -1,0 +1,7 @@
+fn feed<T>(function: fn(value: T) -> Int, make: fn() -> T) -> Int {
+    function(make())
+}
+
+fn main() -> Int {
+    feed(fn(value) => value + 1, fn() => "hello")
+}

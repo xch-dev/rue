@@ -1,6 +1,14 @@
 diagnostics:
 - Cannot infer generic `T` for `get`; specify it explicitly, e.g. `get::<...>()` at generic_inference_uninferred_errors.rue:14:24
 - Cannot infer generic `T` for `apply`; specify it explicitly, e.g. `apply::<...>()` at generic_inference_uninferred_errors.rue:15:18
-- Cannot infer generic `T` for `identity`; specify it explicitly, e.g. `identity::<...>()` at generic_inference_uninferred_errors.rue:16:21
-- Expected 2 generic arguments, but found 1 at generic_inference_uninferred_errors.rue:31:16
-- Cannot infer generic `T` for `nested::get`; specify it explicitly, e.g. `nested::get::<...>()` at generic_inference_uninferred_errors.rue:32:16
+- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at generic_inference_uninferred_errors.rue:16:30
+- Expected 2 generic arguments, but found 1 at generic_inference_uninferred_errors.rue:37:16
+- Cannot infer generic `T` for `nested::get`; specify it explicitly, e.g. `nested::get::<...>()` at generic_inference_uninferred_errors.rue:38:16
+- Unnecessary empty generic argument list specified at generic_inference_uninferred_errors.rue:43:22
+- Cannot infer generic `T` for `get`; specify it explicitly, e.g. `get::<...>()` at generic_inference_uninferred_errors.rue:43:17
+- Cannot infer generic `T` for `get`; specify it explicitly, e.g. `get::<...>()` at generic_inference_uninferred_errors.rue:52:26
+- Cannot infer generic `T` for `get`; specify it explicitly, e.g. `get::<...>()` at generic_inference_uninferred_errors.rue:53:21
+- Cannot infer generic `T` for `get`; specify it explicitly, e.g. `get::<...>()` at generic_inference_uninferred_errors.rue:53:37
+- Undeclared symbol `missing` at generic_inference_uninferred_errors.rue:54:28
+- Cannot infer generic `T` for `make_function`; specify it explicitly, e.g. `make_function::<...>()` at generic_inference_uninferred_errors.rue:68:19
+- Unused generic type `U` at generic_inference_uninferred_errors.rue:63:18

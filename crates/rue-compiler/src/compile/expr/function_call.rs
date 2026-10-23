@@ -5,7 +5,9 @@ use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{BinaryOp, Builtin, FunctionCall, Hir, Symbol, UnaryOp, Value};
 use rue_lir::ClvmOp;
-use rue_types::{Inference, Pair, Type, TypeId, Union, contains_generic, substitute_with_mappings};
+use rue_types::{
+    FunctionType, Inference, Pair, Type, TypeId, Union, contains_generic, substitute_with_mappings,
+};
 
 use crate::{Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_path_value};
 
@@ -90,6 +92,17 @@ pub fn compile_function_call_expr(
         let expected = expected_type.map(|expected_type| {
             let mut expected = infer.clone();
             ctx.infer_from_expected(function.ret, expected_type, &mut expected);
+
+            // The generics of an enclosing call that are still being inferred can't be inferred
+            // from this call, so they're no help in inferring its generics either
+            let enclosing = ctx.inferred_generics();
+            expected.retain_bounds(|ty| {
+                !enclosing.iter().any(|&generic| {
+                    !is_type_in_scope(ctx, generic)
+                        && contains_generic(ctx.types_mut(), ty, generic)
+                })
+            });
+
             expected
         });
 
@@ -104,16 +117,39 @@ pub fn compile_function_call_expr(
 
         // Lambdas are compiled after the other arguments, since their parameter types may
         // need to be inferred from what the other arguments have contributed
-        let (lambdas, others): (Vec<_>, Vec<_>) = (0..function.params.len())
+        let (mut lambdas, others): (Vec<_>, Vec<_>) = (0..function.params.len())
             .filter(|&i| i < args.len())
             .partition(|&i| matches!(args[i], AstExpr::LambdaExpr(_)));
 
-        for i in others.into_iter().chain(lambdas) {
+        let mut others = others.into_iter();
+
+        ctx.push_inferred_generics(function.generics.clone());
+
+        loop {
+            let inferred = ctx.resolve_inference(&infer);
+
+            let i = if let Some(i) = others.next() {
+                i
+            } else if lambdas.is_empty() {
+                break;
+            } else {
+                // A lambda's parameter types may only be inferred from a later lambda, so the
+                // first one whose parameter types have been inferred is compiled next
+                let index = lambdas
+                    .iter()
+                    .position(|&i| {
+                        !has_uninferred_parameters(ctx, function.params[i], function, &inferred)
+                    })
+                    .unwrap_or(0);
+
+                lambdas.remove(index)
+            };
+
             let expr = &args[i];
             let param = function.params[i];
 
             // Use what has been inferred from the previous arguments as the expected type
-            let mut mappings = ctx.resolve_inference(&infer);
+            let mut mappings = inferred;
 
             for (&generic, &ty) in &fallback {
                 mappings.entry(generic).or_insert(ty);
@@ -130,6 +166,8 @@ pub fn compile_function_call_expr(
             checks.push((expr.clone(), value.ty, param));
         }
 
+        ctx.pop_inferred_generics();
+
         if args.len() < function.params.len() {
             debug!("Unresolved function call argument");
         }
@@ -143,7 +181,9 @@ pub fn compile_function_call_expr(
         let has_generic_arguments = matches!(
             call.expr(),
             Some(AstExpr::PathExpr(path))
-                if path.segments().any(|segment| segment.generic_arguments().is_some())
+                if path.segments().any(|segment| segment
+                    .generic_arguments()
+                    .is_some_and(|generic_arguments| generic_arguments.types().next().is_some()))
         );
 
         for &generic in &function.generics {
@@ -167,8 +207,13 @@ pub fn compile_function_call_expr(
                 continue;
             }
 
+            // An argument that it would have been inferred from has already failed to compile
+            let from_unresolved_argument = checks.iter().any(|&(_, ty, param)| {
+                ctx.is_unresolved(ty) && contains_generic(ctx.types_mut(), param, generic)
+            });
+
             // If generic arguments were given, a mismatch in their number was already reported
-            if !has_generic_arguments {
+            if !has_generic_arguments && !from_unresolved_argument {
                 let generic_name = ctx.type_name(generic);
                 let function_name = callee_name(call);
 
@@ -232,6 +277,26 @@ fn callee_name(call: &AstFunctionCallExpr) -> String {
         Some(expr) => expr.syntax().text().to_string(),
         None => String::new(),
     }
+}
+
+/// Whether the parameters of the function type expected of a lambda reference any of the
+/// callee's generics that haven't been inferred yet.
+fn has_uninferred_parameters(
+    ctx: &mut Compiler,
+    param: TypeId,
+    callee: &FunctionType,
+    mappings: &HashMap<TypeId, TypeId>,
+) -> bool {
+    let expected = substitute_with_mappings(ctx.types_mut(), param, mappings);
+
+    rue_types::extract_functions(ctx.types_mut(), expected)
+        .into_iter()
+        .flat_map(|function| function.params.into_values())
+        .any(|ty| {
+            callee.generics.iter().any(|&generic| {
+                !mappings.contains_key(&generic) && contains_generic(ctx.types_mut(), ty, generic)
+            })
+        })
 }
 
 fn is_type_in_scope(ctx: &Compiler, ty: TypeId) -> bool {

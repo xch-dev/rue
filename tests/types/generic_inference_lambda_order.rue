@@ -1,0 +1,35 @@
+fn feed<T>(function: fn(value: T) -> Int, make: fn() -> T) -> Int {
+    function(make())
+}
+
+fn chain<A, B>(first: fn(value: A) -> B, second: fn(value: B) -> Int, make: fn() -> A) -> Int {
+    second(first(make()))
+}
+
+fn same<T>(function: fn(value: T) -> T, make: fn() -> T) -> T {
+    function(make())
+}
+
+test fn later_lambda_infers_earlier() -> Int {
+    feed(fn(value) => value + 1, fn() => 5)
+}
+
+test fn later_lambda_infers_pair() -> Int {
+    feed(fn(value) => value.first + value.rest, fn() => (1, 2))
+}
+
+test fn lambdas_infer_in_chain() -> Int {
+    chain(fn(value) => value * 2, fn(value) => value + 1, fn() => 10)
+}
+
+test fn independent_lambdas_keep_order() -> Int {
+    same(fn(value) => value, fn() => 5)
+}
+
+fn convert<T>(function: fn(value: T) -> Int, make: fn(value: Int) -> T) -> T {
+    make(function(make(1)))
+}
+
+test fn later_lambda_infers_earlier_with_expected_type() -> Int | nil {
+    convert(fn(value) => value + 1, fn(value) => value)
+}
