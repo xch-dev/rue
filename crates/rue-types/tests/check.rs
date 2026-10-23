@@ -552,6 +552,37 @@ fn test_recursive_types() {
 }
 
 #[test]
+fn test_mutually_recursive_types() {
+    let mut t = Types::new();
+    let int = t.builtins.int;
+    let nil = t.builtins.nil;
+    let one = t.int(1);
+
+    // `type N0 = nil | (N2, Int) | (N0, Int); type N2 = 1 | (N0, 1);`
+    let n0 = t.alloc(Type::Unresolved);
+    let n2 = t.alloc(Type::Unresolved);
+    let n2_int = t.pair(n2, int);
+    let n0_int = t.pair(n0, int);
+    let n0_inner = t.union(vec![nil, n2_int, n0_int]);
+    let n0_one = t.pair(n0, one);
+    let n2_inner = t.union(vec![one, n0_one]);
+    t.arena[n0] = Type::Alias(Alias {
+        name: None,
+        inner: n0_inner,
+        generics: vec![],
+    });
+    t.arena[n2] = Type::Alias(Alias {
+        name: None,
+        inner: n2_inner,
+        generics: vec![],
+    });
+
+    // Each level of the check used to repeat the types of the previous level twice
+    assert_eq!(t.check(n0, n2), Err(CheckError::DepthExceeded));
+    assert_eq!(t.check(n2, n0), Err(CheckError::DepthExceeded));
+}
+
+#[test]
 fn test_check_errors() {
     let mut t = Types::new();
     let any = t.builtins.permissive_any;

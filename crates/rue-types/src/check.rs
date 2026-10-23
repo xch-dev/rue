@@ -1,4 +1,4 @@
-use std::cmp::max;
+use std::{cmp::max, collections::HashMap};
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet, indexset};
@@ -201,7 +201,7 @@ pub fn check(
         trace!("Checking {lhs_name} to {rhs_name}");
     }
 
-    let result = check_impl(arena, builtins, 0, lhs, rhs);
+    let result = check_impl(arena, builtins, &mut CheckContext::default(), 0, lhs, rhs);
 
     if let Some((lhs_name, rhs_name)) = &names {
         trace!("Check from {lhs_name} to {rhs_name} yielded {result:?}");
@@ -210,26 +210,62 @@ pub fn check(
     result
 }
 
+#[derive(Debug, Default)]
+struct CheckContext {
+    /// Shared by every comparison, since they all start from an empty stack.
+    comparison: ComparisonContext<'static>,
+    /// Completed checks, keyed by the arguments to `check_each`. The same checks are reached
+    /// through every reference to a type, which is exponential in the depth of the type.
+    memo: HashMap<(Vec<TypeId>, TypeId, usize), Result<Check, CheckError>>,
+}
+
 fn check_impl(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
+    ctx: &mut CheckContext,
     depth: usize,
     lhs: TypeId,
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
     let variants = variants_of(arena, builtins, lhs);
-    check_each(arena, builtins, depth, &variants, rhs)
+    check_each(arena, builtins, ctx, depth, &variants, rhs)
 }
 
 fn check_each(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
+    ctx: &mut CheckContext,
     depth: usize,
     lhs: &[TypeId],
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
-    let depth = depth + 1;
+    // Repeating a type doesn't change the result, and the nested checks would otherwise repeat
+    // each type more times at every level
+    let lhs: Vec<TypeId> = lhs
+        .iter()
+        .copied()
+        .collect::<IndexSet<_>>()
+        .into_iter()
+        .collect();
+    let key = (lhs, rhs, depth);
 
+    if let Some(result) = ctx.memo.get(&key) {
+        return result.clone();
+    }
+
+    let result = check_each_impl(arena, builtins, ctx, depth + 1, &key.0, rhs);
+    ctx.memo.insert(key, result.clone());
+    result
+}
+
+fn check_each_impl(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut CheckContext,
+    depth: usize,
+    lhs: &[TypeId],
+    rhs: TypeId,
+) -> Result<Check, CheckError> {
     if depth > 25 {
         return Err(CheckError::DepthExceeded);
     }
@@ -239,15 +275,7 @@ fn check_each(
     for &id in lhs {
         result = max(
             result,
-            compare_impl(
-                arena,
-                builtins,
-                &mut ComparisonContext::default(),
-                id,
-                rhs,
-                None,
-                None,
-            ),
+            compare_impl(arena, builtins, &mut ctx.comparison, id, rhs, None, None),
         );
     }
 
@@ -376,7 +404,7 @@ fn check_each(
         // whose first could pass the first check (not just those whose first is assignable to the
         // target's first). Each check in the resulting union is therefore exact for every pair.
         for target_pair in &target_pairs {
-            let first = check_each(arena, builtins, depth, &firsts, target_pair.first)?;
+            let first = check_each(arena, builtins, ctx, depth, &firsts, target_pair.first)?;
 
             if first == Check::Impossible {
                 continue;
@@ -401,7 +429,7 @@ fn check_each(
                 continue;
             }
 
-            let rest = check_each(arena, builtins, depth, &rests, target_pair.rest)?;
+            let rest = check_each(arena, builtins, ctx, depth, &rests, target_pair.rest)?;
 
             checks.push(Check::Pair(Box::new(first), Box::new(rest)));
         }
