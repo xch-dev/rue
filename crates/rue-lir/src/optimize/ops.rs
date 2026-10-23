@@ -1,5 +1,3 @@
-use std::num::Saturating;
-
 use id_arena::Arena;
 use num_bigint::{BigInt, BigUint, Sign};
 use num_integer::Integer;
@@ -123,7 +121,13 @@ pub fn opt_listp(arena: &mut Arena<Lir>, value: LirId, can_be_truthy: bool) -> L
 
 // If the value is an atom, we can add it to a sum
 // We can collapse nested adds
+// If there's a nested subtraction, it's flattened along with the sum by `opt_sub`
 pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    if args.iter().any(|&arg| matches!(arena[arg], Lir::Sub(_))) {
+        let sum = arena.alloc(Lir::Add(args));
+        return opt_sub(arena, vec![sum]);
+    }
+
     let mut args = ArgList::new(args);
     let mut result = Vec::new();
     let mut sum = BigInt::from(0);
@@ -151,98 +155,81 @@ pub fn opt_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Add(result))
 }
 
-// Split the subtraction into minuends and subtrahends and sum them together,
-// then subtract the subtrahend from the minuend
+// Flatten nested additions and subtractions into a list of positive and negative
+// terms, folding constants together, then subtract the negative terms from the sum
+// of the positive terms
+//
+// Every term carries its own sign, since a nested subtraction in a negative position
+// (e.g. `a - (b - c)`) flips the signs of all of its operands
 pub fn opt_sub(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    let mut minuend_value = BigInt::from(0);
-    let mut other_minuends = Vec::new();
-    let mut other_subtrahends = Vec::new();
+    let mut constant = BigInt::from(0);
+    let mut positive = Vec::new();
+    let mut negative = Vec::new();
 
-    let mut args = ArgList::new(args);
-    let mut minuend_count = Saturating(1usize);
+    // This is a stack, so the arguments are pushed in reverse to preserve their order
+    let mut stack: Vec<(LirId, bool)> = Vec::new();
 
-    while let Some(arg) = args.next() {
+    for (i, arg) in args.into_iter().enumerate().rev() {
+        stack.push((arg, i == 0));
+    }
+
+    while let Some((arg, is_positive)) = stack.pop() {
         match arena[arg].clone() {
             Lir::Atom(atom) => {
-                let value = atom_bigint(atom);
-
-                if minuend_count > Saturating(0) {
-                    minuend_value += value;
+                if is_positive {
+                    constant += atom_bigint(atom);
                 } else {
-                    // Fold subtrahend values into the minuend as an optimization
-                    minuend_value -= value;
+                    constant -= atom_bigint(atom);
                 }
             }
             Lir::Add(items) => {
-                if minuend_count > Saturating(0) {
-                    minuend_count += items.len();
+                for item in items.into_iter().rev() {
+                    stack.push((item, is_positive));
                 }
-
-                args.prepend(items);
             }
             Lir::Sub(items) => {
-                if !items.is_empty() {
-                    if minuend_count > Saturating(0) {
-                        // Just unroll the inner subtraction into the outer subtraction
-                        // The first item is the new minuend, the rest are the subtrahends
-                        args.prepend(items);
-                        minuend_count += 1;
-                    } else {
-                        // The minuend of the inner subtraction is a subtrahend of the outer subtraction
-                        args.prepend(vec![items[0]]);
-
-                        // The subtrahends of the inner subtraction are minuends of the outer subtraction
-                        // One extra because minuend_count will be subtracted at the end of this iteration
-                        minuend_count += items.len();
-                        args.prepend(items.iter().skip(1).copied().collect());
-                    }
+                // The first item keeps the sign of the subtraction, the rest are flipped
+                for (i, item) in items.into_iter().enumerate().rev() {
+                    stack.push((item, if i == 0 { is_positive } else { !is_positive }));
                 }
             }
             _ => {
-                if minuend_count > Saturating(0) {
-                    other_minuends.push(arg);
+                if is_positive {
+                    positive.push(arg);
                 } else {
-                    other_subtrahends.push(arg);
+                    negative.push(arg);
                 }
             }
         }
-
-        minuend_count -= 1;
     }
 
-    if other_minuends.is_empty() && other_subtrahends.is_empty() {
-        return arena.alloc(Lir::Atom(bigint_atom(minuend_value)));
+    if positive.is_empty() && negative.is_empty() {
+        return arena.alloc(Lir::Atom(bigint_atom(constant)));
     }
 
-    if minuend_value > BigInt::from(0)
-        || (minuend_value != BigInt::from(0) && !other_subtrahends.is_empty())
+    // If there's nothing else to subtract from, the constant (even if it's negative) is the minuend
+    // Otherwise, the constant goes last, so that optimizing the output again is stable
+    if constant > BigInt::from(0)
+        || (positive.is_empty() && !negative.is_empty() && constant != BigInt::from(0))
     {
-        other_minuends.insert(0, arena.alloc(Lir::Atom(bigint_atom(minuend_value))));
-    } else if minuend_value < BigInt::from(0) {
-        other_subtrahends.insert(0, arena.alloc(Lir::Atom(bigint_atom(-minuend_value))));
+        positive.push(arena.alloc(Lir::Atom(bigint_atom(constant))));
+    } else if constant < BigInt::from(0) {
+        negative.push(arena.alloc(Lir::Atom(bigint_atom(-constant))));
     }
 
-    let minuend = if other_minuends.len() == 1
-        && (matches!(arena[other_minuends[0]], Lir::Atom(_)) || !other_subtrahends.is_empty())
-    {
-        other_minuends[0]
-    } else if other_minuends.is_empty() {
-        arena.alloc(Lir::Atom(vec![]))
-    } else {
-        arena.alloc(Lir::Add(other_minuends))
+    // A lone non-constant operand is kept as `(+ x)`, since addition
+    // normalizes non-canonical integer atoms (e.g. `0x0001` to `1`)
+    if negative.is_empty() {
+        return arena.alloc(Lir::Add(positive));
+    }
+
+    let minuend = match positive.len() {
+        0 => arena.alloc(Lir::Atom(vec![])),
+        1 => positive[0],
+        _ => arena.alloc(Lir::Add(positive)),
     };
 
-    if other_subtrahends.is_empty() {
-        return minuend;
-    }
-
-    let mut result = vec![minuend];
-
-    for subtrahend in other_subtrahends {
-        result.push(subtrahend);
-    }
-
-    arena.alloc(Lir::Sub(result))
+    arena.alloc(Lir::Sub([vec![minuend], negative].concat()))
 }
 
 // If the value is an atom, we can add it to a product
@@ -332,14 +319,28 @@ pub fn opt_modpow(arena: &mut Arena<Lir>, base: LirId, exponent: LirId, modulus:
     arena.alloc(Lir::Modpow(base, exponent, modulus))
 }
 
-pub fn opt_eq(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
-    if let Lir::Mod(lhs, rhs) = arena[left].clone()
+// If the value is `(% x 2)`, the result is canonical `0` or `1`
+// Since `=` compares bytes, this only matches the canonical encoding of `1`
+fn is_odd_check(arena: &Arena<Lir>, value: LirId, one: LirId) -> Option<LirId> {
+    if let Lir::Mod(lhs, rhs) = arena[value].clone()
         && let Lir::Atom(rhs) = arena[rhs].clone()
         && atom_bigint(rhs) == BigInt::from(2)
-        && let Lir::Atom(eq) = arena[right].clone()
-        && atom_bigint(eq) == BigInt::from(1)
+        && let Lir::Atom(one) = &arena[one]
+        && one.as_slice() == [1]
     {
-        return arena.alloc(Lir::Logand(vec![lhs, right]));
+        return Some(lhs);
+    }
+
+    None
+}
+
+pub fn opt_eq(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if let Some(value) = is_odd_check(arena, left, right) {
+        return opt_logand(arena, vec![value, right]);
+    }
+
+    if let Some(value) = is_odd_check(arena, right, left) {
+        return opt_logand(arena, vec![value, left]);
     }
 
     if let Some(folded) = fold_atoms(arena, ClvmOp::Eq, &[left, right]) {
@@ -884,7 +885,318 @@ pub fn opt_debug_print(arena: &mut Arena<Lir>, srcloc: String, value: LirId) -> 
 
 #[cfg(test)]
 mod tests {
+    use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
+
+    use rue_clvm::disassemble_program;
+
+    use crate::{CLVM_FLAGS, CodegenOptions, codegen, optimize};
+
     use super::*;
+
+    fn atom(arena: &mut Arena<Lir>, value: i64) -> LirId {
+        arena.alloc(Lir::Atom(bigint_atom(BigInt::from(value))))
+    }
+
+    fn path(arena: &mut Arena<Lir>, value: u32) -> LirId {
+        arena.alloc(Lir::Path(BigUint::from(value)))
+    }
+
+    fn run(allocator: &mut Allocator, program: NodePtr, env: NodePtr) -> Option<Vec<u8>> {
+        let dialect = ChiaDialect::new(CLVM_FLAGS);
+        let result = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
+        Some(node_to_bytes(allocator, result.1).unwrap())
+    }
+
+    fn compile(
+        arena: &Arena<Lir>,
+        allocator: &mut Allocator,
+        lir: LirId,
+        optimize: bool,
+    ) -> NodePtr {
+        codegen(
+            arena,
+            allocator,
+            lir,
+            CodegenOptions {
+                optimize_static_pairs: optimize,
+            },
+        )
+        .unwrap()
+    }
+
+    fn disassemble(arena: &Arena<Lir>, lir: LirId) -> String {
+        let mut allocator = Allocator::new();
+        let program = compile(arena, &mut allocator, lir, true);
+        disassemble_program(&allocator, program)
+    }
+
+    fn assert_equivalent(arena: &mut Arena<Lir>, lir: LirId, envs: &[Vec<Vec<u8>>]) -> LirId {
+        let optimized = optimize(arena, lir);
+
+        let mut allocator = Allocator::new();
+        let unoptimized_program = compile(arena, &mut allocator, lir, false);
+        let optimized_program = compile(arena, &mut allocator, optimized, true);
+
+        for env in envs {
+            let mut env_ptr = NodePtr::NIL;
+
+            for value in env.iter().rev() {
+                let value = allocator.new_atom(value).unwrap();
+                env_ptr = allocator.new_pair(value, env_ptr).unwrap();
+            }
+
+            assert_eq!(
+                run(&mut allocator, unoptimized_program, env_ptr),
+                run(&mut allocator, optimized_program, env_ptr),
+                "optimized program differs for environment {env:?}"
+            );
+        }
+
+        optimized
+    }
+
+    fn int_env(values: &[i64]) -> Vec<Vec<u8>> {
+        values
+            .iter()
+            .map(|value| bigint_atom(BigInt::from(*value)))
+            .collect()
+    }
+
+    // a - b + c - 1
+    #[test]
+    fn test_sub_inside_add_inside_sub() {
+        let mut arena = Arena::new();
+        let a = path(&mut arena, 2);
+        let b = path(&mut arena, 5);
+        let c = path(&mut arena, 11);
+        let one = atom(&mut arena, 1);
+        let a_minus_b = arena.alloc(Lir::Sub(vec![a, b]));
+        let plus_c = arena.alloc(Lir::Add(vec![a_minus_b, c]));
+        let lir = arena.alloc(Lir::Sub(vec![plus_c, one]));
+
+        let optimized = assert_equivalent(&mut arena, lir, &[int_env(&[100, 10, 1])]);
+        assert_eq!(disassemble(&arena, optimized), "(- (+ 2 11) 5 (q . 1))");
+    }
+
+    // -fee + amount - spent
+    #[test]
+    fn test_negation_inside_add_inside_sub() {
+        let mut arena = Arena::new();
+        let fee = path(&mut arena, 2);
+        let amount = path(&mut arena, 5);
+        let spent = path(&mut arena, 11);
+        let nil = arena.alloc(Lir::Atom(vec![]));
+        let neg_fee = arena.alloc(Lir::Sub(vec![nil, fee]));
+        let plus_amount = arena.alloc(Lir::Add(vec![neg_fee, amount]));
+        let lir = arena.alloc(Lir::Sub(vec![plus_amount, spent]));
+
+        assert_equivalent(&mut arena, lir, &[int_env(&[10, 1000, 100])]);
+    }
+
+    // a - (b - (c - d))
+    #[test]
+    fn test_sub_nested_in_negative_position() {
+        let mut arena = Arena::new();
+        let a = path(&mut arena, 2);
+        let b = path(&mut arena, 5);
+        let c = path(&mut arena, 11);
+        let d = path(&mut arena, 23);
+        let c_minus_d = arena.alloc(Lir::Sub(vec![c, d]));
+        let b_minus = arena.alloc(Lir::Sub(vec![b, c_minus_d]));
+        let lir = arena.alloc(Lir::Sub(vec![a, b_minus]));
+
+        let optimized = assert_equivalent(&mut arena, lir, &[int_env(&[1000, 100, 10, 1])]);
+        assert_eq!(disassemble(&arena, optimized), "(- (+ 2 11) 5 23)");
+    }
+
+    #[test]
+    fn test_sub_constants_fold() {
+        let mut arena = Arena::new();
+        let ten = atom(&mut arena, 10);
+        let twenty = atom(&mut arena, 20);
+        let thirty = atom(&mut arena, 30);
+        let one = atom(&mut arena, 1);
+        let inner = arena.alloc(Lir::Sub(vec![ten, twenty]));
+        let add = arena.alloc(Lir::Add(vec![inner, thirty]));
+        let lir = arena.alloc(Lir::Sub(vec![add, one]));
+        let result = opt_sub(&mut arena, vec![lir]);
+        assert!(matches!(&arena[result], Lir::Atom(atom) if *atom == [19]));
+    }
+
+    // 100 - x - 300
+    #[test]
+    fn test_sub_negative_constant_is_minuend() {
+        let mut arena = Arena::new();
+        let hundred = atom(&mut arena, 100);
+        let value = path(&mut arena, 2);
+        let three_hundred = atom(&mut arena, 300);
+        let lir = arena.alloc(Lir::Sub(vec![hundred, value, three_hundred]));
+
+        let optimized = assert_equivalent(&mut arena, lir, &[int_env(&[200])]);
+        assert_eq!(disassemble(&arena, optimized), "(- (q . -200) 2)");
+    }
+
+    // (a - b) + (c - 1)
+    #[test]
+    fn test_add_flattens_sub() {
+        let mut arena = Arena::new();
+        let a = path(&mut arena, 2);
+        let b = path(&mut arena, 5);
+        let c = path(&mut arena, 11);
+        let one = atom(&mut arena, 1);
+        let a_minus_b = arena.alloc(Lir::Sub(vec![a, b]));
+        let c_minus_one = arena.alloc(Lir::Sub(vec![c, one]));
+        let lir = arena.alloc(Lir::Add(vec![a_minus_b, c_minus_one]));
+
+        let optimized = assert_equivalent(&mut arena, lir, &[int_env(&[100, 10, 1])]);
+        assert_eq!(disassemble(&arena, optimized), "(- (+ 2 11) 5 (q . 1))");
+    }
+
+    #[test]
+    fn test_sub_lone_operand_keeps_add() {
+        let mut arena = Arena::new();
+        let value = path(&mut arena, 2);
+        let zero = arena.alloc(Lir::Atom(vec![]));
+        let result = opt_sub(&mut arena, vec![value, zero]);
+        assert!(matches!(&arena[result], Lir::Add(args) if *args == [value]));
+    }
+
+    #[test]
+    fn test_sub_is_stable() {
+        let mut arena = Arena::new();
+        let value = path(&mut arena, 2);
+        let other = path(&mut arena, 5);
+
+        for constant in [-1, 1] {
+            let constant = atom(&mut arena, constant);
+            for args in [vec![value, constant], vec![value, other, constant]] {
+                let lir = arena.alloc(Lir::Sub(args));
+                let once = optimize(&mut arena, lir);
+                let twice = optimize(&mut arena, once);
+
+                let mut allocator = Allocator::new();
+                let once = compile(&arena, &mut allocator, once, true);
+                let twice = compile(&arena, &mut allocator, twice, true);
+                assert_eq!(
+                    node_to_bytes(&allocator, once).unwrap(),
+                    node_to_bytes(&allocator, twice).unwrap()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_odd_check_requires_canonical_one() {
+        let mut arena = Arena::new();
+        let value = path(&mut arena, 2);
+        let two = atom(&mut arena, 2);
+        let one = atom(&mut arena, 1);
+        let non_canonical_one = arena.alloc(Lir::Atom(vec![0, 1]));
+
+        let modulo = arena.alloc(Lir::Mod(value, two));
+        let result = opt_eq(&mut arena, modulo, one);
+        assert_eq!(disassemble(&arena, result), "(logand 2 (q . 1))");
+
+        let result = opt_eq(&mut arena, one, modulo);
+        assert_eq!(disassemble(&arena, result), "(logand 2 (q . 1))");
+
+        let result = opt_eq(&mut arena, modulo, non_canonical_one);
+        assert_eq!(
+            disassemble(&arena, result),
+            "(= (% 2 (q . 2)) (q . 0x0001))"
+        );
+
+        let lir = arena.alloc(Lir::Eq(modulo, non_canonical_one));
+        assert_equivalent(&mut arena, lir, &[int_env(&[3]), int_env(&[4])]);
+    }
+
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    const ATOMS: &[&[u8]] = &[
+        &[],
+        &[1],
+        &[2],
+        &[0x00],
+        &[0x00, 0x01],
+        &[0xff],
+        &[0x80],
+        &[7],
+        &[0x01, 0x00],
+    ];
+
+    fn random_arith(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
+        if depth == 0 || rng.below(4) == 0 {
+            return match rng.below(3) {
+                0 => arena.alloc(Lir::Atom(ATOMS[rng.below(ATOMS.len())].to_vec())),
+                // Path 7 is a pair in the test environments, so operations on it fail
+                _ => path(arena, [2, 5, 11, 7][rng.below(4)]),
+            };
+        }
+
+        let len = rng.below(4);
+        let args = (0..len)
+            .map(|_| random_arith(arena, rng, depth - 1))
+            .collect();
+
+        match rng.below(5) {
+            0 | 1 => arena.alloc(Lir::Add(args)),
+            2 | 3 => arena.alloc(Lir::Sub(args)),
+            _ => {
+                let value = random_arith(arena, rng, depth - 1);
+                let two = atom(arena, 2);
+                let one = arena.alloc(Lir::Atom(ATOMS[rng.below(ATOMS.len())].to_vec()));
+                let modulo = arena.alloc(Lir::Mod(value, two));
+                if rng.below(2) == 0 {
+                    arena.alloc(Lir::Eq(modulo, one))
+                } else {
+                    arena.alloc(Lir::Eq(one, modulo))
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_random_arithmetic_equivalence() {
+        let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
+
+        for _ in 0..5000 {
+            let mut arena = Arena::new();
+            let lir = random_arith(&mut arena, &mut rng, 5);
+
+            let envs: Vec<Vec<Vec<u8>>> = (0..6)
+                .map(|_| {
+                    (0..3)
+                        .map(|_| ATOMS[rng.below(ATOMS.len())].to_vec())
+                        .collect()
+                })
+                .collect();
+
+            let optimized = assert_equivalent(&mut arena, lir, &envs);
+
+            // Optimizing a second time shouldn't change the output
+            let twice = optimize(&mut arena, optimized);
+            let mut allocator = Allocator::new();
+            let once = compile(&arena, &mut allocator, optimized, true);
+            let twice = compile(&arena, &mut allocator, twice, true);
+            assert_eq!(
+                node_to_bytes(&allocator, once).unwrap(),
+                node_to_bytes(&allocator, twice).unwrap()
+            );
+        }
+    }
 
     #[test]
     fn test_mul_by_one_keeps_mul() {
