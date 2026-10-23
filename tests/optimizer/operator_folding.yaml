@@ -1,0 +1,141 @@
+tests:
+- name: mul_identity
+  program: (q . 1)
+  debug_program: (* (q . 1) (q . 1))
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: eq_num
+  program: (q . 1)
+  debug_program: (= (q . 100) (q . 100))
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: not_eq_bytes
+  program: (q . 1)
+  debug_program: (not (= (q . "hello") (q . "world")))
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: gt_num
+  program: (q . 1)
+  debug_program: (> (q . 100) (q . 50))
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: gt_bytes
+  program: (q . 1)
+  debug_program: (>s (q . 98) (q . 97))
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: lognot_num
+  program: (q . -11)
+  debug_program: (lognot (q . 10))
+  output: '-11'
+  runtime_cost: 20
+  byte_cost: 48000
+  total_cost: 48020
+- name: logxor_num
+  program: (q . 7)
+  debug_program: (logxor (logxor (q . 12) (q . 10)) (q . 1))
+  output: '7'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: logxor_ref
+  program: (logxor 2 (q . 6))
+  debug_program: (logxor (logxor (q . 12) 2) (q . 10))
+  solution: (5)
+  output: '3'
+  runtime_cost: 713
+  byte_cost: 108000
+  total_cost: 108713
+- name: ash_left
+  program: (q . 200)
+  debug_program: (ash (q . 50) (q . 2))
+  output: '200'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: ash_right
+  program: (q . -13)
+  debug_program: (ash (- () (q . 50)) (- () (q . 2)))
+  output: '-13'
+  runtime_cost: 20
+  byte_cost: 48000
+  total_cost: 48020
+- name: lsh_num
+  program: (q . 103)
+  debug_program: (lsh (- () (q . 50)) (- () (q . 1)))
+  output: '103'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: ash_large_result
+  program: (ash (q . 1) (q . 1000))
+  debug_program: (ash (q . 1) (q . 1000))
+  output: '0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+  runtime_cost: 2278
+  byte_cost: 156000
+  total_cost: 158278
+- name: ash_shift_too_large
+  program: (ash (q . 1) (q . 65536))
+  debug_program: (ash (q . 1) (q . 65536))
+  byte_cost: 168000
+  clvm_error: Shift too large
+- name: substr_num
+  program: (q . 25964)
+  debug_program: (substr (q . "hello") (q . 1) (q . 3))
+  output: '25964'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: substr_out_of_range
+  program: (substr (q . "hello") (q . 2) (q . 10))
+  debug_program: (substr (q . "hello") (q . 2) (q . 10))
+  byte_cost: 240000
+  clvm_error: 'InvalidOperatorArg: Invalid Indices for Substring'
+- name: modpow_num
+  program: (q . 1)
+  debug_program: (modpow (q . 3) (q . 200) (q . 1000))
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: modpow_zero_modulus
+  program: (modpow (q . 3) (q . 200) ())
+  debug_program: (modpow (q . 3) (q . 200) ())
+  byte_cost: 180000
+  clvm_error: Division by zero
+- name: coinid_num
+  program: (q . 0x54ee3f3823e93f6246abf4285c9dd75c2f6779f371543b6831cf391a1bc0f18c)
+  debug_program: (coinid (q . 0x0000000000000000000000000000000000000000000000000000000000000001) (q . 0x0000000000000000000000000000000000000000000000000000000000000002) (q . 1000))
+  output: '0x54ee3f3823e93f6246abf4285c9dd75c2f6779f371543b6831cf391a1bc0f18c'
+  runtime_cost: 20
+  byte_cost: 420000
+  total_cost: 420020
+- name: coinid_invalid
+  program: (coinid (q . 1) (q . 2) (q . 1000))
+  debug_program: (coinid (q . 1) (q . 2) (q . 1000))
+  byte_cost: 204000
+  clvm_error: 'InvalidOperatorArg: CoinID Error: Invalid Parent Coin ID, not 32 bytes'
+- name: g1_negate_generator
+  program: (q . 0xb7f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb)
+  debug_program: (g1_negate (q . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb))
+  output: '0xb7f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb'
+  runtime_cost: 20
+  byte_cost: 612000
+  total_cost: 612020
+- name: g1_add_empty
+  program: (point_add)
+  debug_program: (a (q . 2) (c (point_add) ()))
+  output: '0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+  runtime_cost: 101575
+  byte_cost: 36000
+  total_cost: 137575

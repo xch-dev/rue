@@ -1,22 +1,22 @@
 tests:
 - name: int_exponent
-  program: (a (q 2 (i (= (pubkey_for_exp (q . 1)) 2) (q 2 (i (= (pubkey_for_exp (q . 1)) 2) (q 2 (i (= (pubkey_for_exp ()) (point_add)) (q 2 (i (= (pubkey_for_exp (q . 3)) (g1_multiply 2 (q . 3))) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb))
+  program: (a (q 2 (i (= (q . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) 2) (q 2 (i (= (q . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) 2) (q 2 (i (= (q . 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000) (point_add)) (q 2 (i (= (q . 0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224) (g1_multiply 2 (q . 3))) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb))
   debug_program: (a (q 2 (q 2 (i (= (pubkey_for_exp 2) 9) (q 2 (i (= (pubkey_for_exp (q . 1)) 9) (q 2 (i (= (pubkey_for_exp ()) 13) (q 2 (i (= (pubkey_for_exp (q . 3)) (g1_multiply 9 (q . 3))) (q) (q 8 (q . "assertion failed at pubkey_for_exp.rue:11:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:10:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:9:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:8:5"))) 1) (c (q . 1) 1)) (c (c (q . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) (point_add)) ()))
   output: ()
-  runtime_cost: 6114659
-  byte_cost: 2364000
-  total_cost: 8478659
+  runtime_cost: 809677
+  byte_cost: 4500000
+  total_cost: 5309677
 - name: int_exponent_reduced
-  program: (a (q 2 (i (= (pubkey_for_exp (q . -1)) (g1_negate 6)) (q 2 (i (= (pubkey_for_exp 4) (point_add)) (q 2 (i (= (pubkey_for_exp (+ 4 (q . 1))) 6) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q (0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001 . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb)))
+  program: (a (q 2 (i (= (q . 0xb7f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) (g1_negate 6)) (q 2 (i (= (pubkey_for_exp 4) (point_add)) (q 2 (i (= (pubkey_for_exp (+ 4 (q . 1))) 6) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q (0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001 . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb)))
   debug_program: (a (q 2 (i (= (pubkey_for_exp (- () (q . 1))) (g1_negate 10)) (q 2 (i (= (pubkey_for_exp 4) 14) (q 2 (i (= (pubkey_for_exp (+ 4 (q . 1))) 10) (q) (q 8 (q . "assertion failed at pubkey_for_exp.rue:17:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:16:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:15:5"))) 1) (c (c (q . 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001) (c (q . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) (point_add))) ()))
   output: ()
-  runtime_cost: 4086926
-  byte_cost: 2424000
-  total_cost: 6510926
+  runtime_cost: 2760677
+  byte_cost: 2940000
+  total_cost: 5700677
 - name: bytes32_exponent
-  program: (a (q 2 (i (= (pubkey_for_exp (q . 0x0000000000000000000000000000000000000000000000000000000000000001)) 2) (q 2 (i (= (pubkey_for_exp (sha256 ())) (g1_multiply 2 (sha256 ()))) (q) (q 8)) 1) (q 8)) 1) (q 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb))
+  program: (a (q 2 (i (= (q . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) 2) (q 2 (i (= (pubkey_for_exp (sha256 ())) (g1_multiply 2 (sha256 ()))) (q) (q 8)) 1) (q 8)) 1) (q 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb))
   debug_program: (a (q 2 (i (= (pubkey_for_exp (q . 0x0000000000000000000000000000000000000000000000000000000000000001)) 2) (q 2 (i (= (pubkey_for_exp (sha256 ())) (g1_multiply 2 (sha256 ()))) (q) (q 8 (q . "assertion failed at pubkey_for_exp.rue:22:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:21:5"))) 1) (c (q . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) ()))
   output: ()
-  runtime_cost: 3363464
-  byte_cost: 2028000
-  total_cost: 5391464
+  runtime_cost: 2036037
+  byte_cost: 2172000
+  total_cost: 4208037

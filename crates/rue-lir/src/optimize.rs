@@ -1,8 +1,10 @@
 mod arg_list;
+mod fold;
 mod ops;
 mod truthy;
 
 use arg_list::*;
+use fold::*;
 use ops::*;
 use truthy::*;
 

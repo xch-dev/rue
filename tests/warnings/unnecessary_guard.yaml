@@ -14,12 +14,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: narrow_atom
-  program: (= (q . 42) (q . 42))
+  program: (q . 1)
   debug_program: (= (q . 42) (q . 42))
   output: '1'
-  runtime_cost: 160
-  byte_cost: 132000
-  total_cost: 132160
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: unnecessary_struct
   program: (q . 1)
   debug_program: (q . 1)

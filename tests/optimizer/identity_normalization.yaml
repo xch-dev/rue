@@ -72,13 +72,13 @@ tests:
   byte_cost: 156000
   total_cost: 156569
 - name: xor_zero
-  program: (= (logxor 2 ()) (q . 1))
+  program: (= (logxor 2) (q . 1))
   debug_program: (= (logxor 2 ()) (q . 1))
   solution: (0x0001)
   output: '1'
-  runtime_cost: 877
-  byte_cost: 180000
-  total_cost: 180877
+  runtime_cost: 569
+  byte_cost: 156000
+  total_cost: 156569
 - name: shift_left_zero
   program: (= (ash 2 ()) (q . 1))
   debug_program: (= (ash 2 ()) (q . 1))

@@ -14,12 +14,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: distinguishable_member
-  program: (not (= (q . 1) (q . 32)))
+  program: (q . 1)
   debug_program: (a (q 32 (= (strlen 2) (q . 32))) (c (q . 42) 1))
   output: '1'
-  runtime_cost: 361
-  byte_cost: 180000
-  total_cost: 180361
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - Type guard from `Bytes32 | Int` to `Int` is always true, since every `Bytes32 | Int` value is also a valid `Int` at runtime; use a cast, or guard against a narrower type at indistinguishable_guard.rue:3:5
 - Unnecessary type guard from `Bytes32` to `Bytes`, since they are already compatible types at indistinguishable_guard.rue:8:5
