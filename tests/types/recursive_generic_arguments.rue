@@ -3,6 +3,11 @@ type Alt<A, B> = nil | (A, Alt<B, A>);
 type Even<T> = nil | (T, Odd<T>);
 type Odd<T> = (T, Even<T>);
 
+type Fixed<T> = nil | (T, Fixed<Int>);
+
+type Head<T> = nil | (T, Tail<Int>);
+type Tail<T> = (T, Head<(T, T)>);
+
 struct Swap<A, B> {
     first: A,
     ...rest: Swap<B, A> | nil,
@@ -10,6 +15,18 @@ struct Swap<A, B> {
 
 fn is_alt(value: (Int, (Bytes32, nil)) | (Int, (Int, nil))) -> Bool {
     value is Alt<Int, Bytes32>
+}
+
+fn is_fixed(value: (Bytes32 | Int, (Int | (Int, Int), nil))) -> Bool {
+    value is Fixed<Bytes32>
+}
+
+fn length<T>(fixed: Fixed<T>) -> Int {
+    if fixed is nil {
+        return 0;
+    }
+
+    1 + length(fixed.rest)
 }
 
 fn count<A, B>(alt: Alt<A, B>) -> Int {
@@ -58,4 +75,31 @@ test fn guard_invalid() -> Bool {
 
 test fn nested_generic_call() -> Int {
     nest(5, 3)
+}
+
+test fn fixed() -> Fixed<Bytes32> {
+    let fixed: Fixed<Bytes32> = (sha256("a"), (1, (2, nil)));
+    fixed
+}
+
+test fn fixed_length() -> Int {
+    let fixed: Fixed<Bytes32> = (sha256("a"), (1, (2, nil)));
+    length(fixed)
+}
+
+test fn fixed_guard_valid() -> Bool {
+    is_fixed((sha256("a"), (1, nil)))
+}
+
+test fn fixed_guard_invalid_first() -> Bool {
+    is_fixed((1, (1, nil)))
+}
+
+test fn fixed_guard_invalid_rest() -> Bool {
+    is_fixed((sha256("a"), ((1, 2), nil)))
+}
+
+test fn mutual_closed() -> Head<Bytes32> {
+    let head: Head<Bytes32> = (sha256("a"), (1, ((2, 3), (4, nil))));
+    head
 }

@@ -1,19 +1,22 @@
 diagnostics:
-- Type `Nested` refers to itself with generic arguments other than its own generic parameters at recursive_generic_argument_errors.rue:3:6
-- Type `Odd` refers to itself with generic arguments other than its own generic parameters at recursive_generic_argument_errors.rue:6:6
-- Type `Fixed` refers to itself with generic arguments other than its own generic parameters at recursive_generic_argument_errors.rue:8:6
-- Cannot assign `(T, 1)` to `Bytes`, since they are incompatible at recursive_generic_argument_errors.rue:15:25
-- Cannot assign `(1, (2, nil))` to `Alt<Int, Bytes32>`, since they are incompatible at recursive_generic_argument_errors.rue:20:34
-- Unused function `depth` at recursive_generic_argument_errors.rue:10:4
-- Unused parameter `nested` at recursive_generic_argument_errors.rue:19:9
-- Unused parameter `even` at recursive_generic_argument_errors.rue:19:30
-- Unused parameter `fixed` at recursive_generic_argument_errors.rue:19:47
-- Unused binding `nested` at recursive_generic_argument_errors.rue:15:9
+- Type `Nested` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:3:6
+- Type `Odd` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:6:6
+- Type `Grow` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:8:6
+- Type `Tree` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:10:8
+- Cannot assign `(T, 1)` to `Bytes`, since they are incompatible at recursive_generic_argument_errors.rue:20:25
+- Cannot assign `(1, (2, nil))` to `Alt<Int, Bytes32>`, since they are incompatible at recursive_generic_argument_errors.rue:30:34
+- Unused function `depth` at recursive_generic_argument_errors.rue:15:4
+- Unused function `tree` at recursive_generic_argument_errors.rue:24:4
+- Unused parameter `nested` at recursive_generic_argument_errors.rue:29:9
+- Unused parameter `even` at recursive_generic_argument_errors.rue:29:30
+- Unused parameter `grow` at recursive_generic_argument_errors.rue:29:47
+- Unused binding `nested` at recursive_generic_argument_errors.rue:20:9
 - Unused type alias `Nested` at recursive_generic_argument_errors.rue:3:6
 - Unused generic type `T` at recursive_generic_argument_errors.rue:3:13
 - Unused type alias `Even` at recursive_generic_argument_errors.rue:5:6
 - Unused generic type `T` at recursive_generic_argument_errors.rue:5:11
 - Unused type alias `Odd` at recursive_generic_argument_errors.rue:6:6
 - Unused generic type `T` at recursive_generic_argument_errors.rue:6:10
-- Unused type alias `Fixed` at recursive_generic_argument_errors.rue:8:6
-- Unused generic type `T` at recursive_generic_argument_errors.rue:8:12
+- Unused type alias `Grow` at recursive_generic_argument_errors.rue:8:6
+- Unused generic type `A` at recursive_generic_argument_errors.rue:8:11
+- Unused generic type `B` at recursive_generic_argument_errors.rue:8:14
