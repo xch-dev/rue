@@ -1,0 +1,150 @@
+tests:
+- name: unused_argument
+  program: (a (q 2 (q 1 . 5) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 6 (c (q . 5) (a 4 5))) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) (q . 2)) 1))
+  solution: (50)
+  byte_cost: 804000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: conditional_argument
+  program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 6 (c (a 4 5) 11)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) (q 2 (i 3 (q . 2) (q)) 1)) 1))
+  solution: (50 ())
+  byte_cost: 996000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: conditional_binding
+  program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 ())
+  byte_cost: 996000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: binding_after_early_return
+  program: (a (q 2 (q 2 (i 23 (q) (q . 2)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q) (q . 2)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 1)
+  byte_cost: 996000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: binding_in_short_circuit
+  program: (a (q 2 (q 2 (i 23 (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q)) 1) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q)) 1) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 ())
+  byte_cost: 1332000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: binding_in_closure
+  program: (a (q 2 (q 2 (i 23 (q 16 (a 2 (q 1)) (a 2 (q 2))) (q)) 1) (c (c (q . 2) (c (c (q . 1) (q 16 23 2)) (c (c (q . 4) (c (c (q . 1) (a 2 5)) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i (= 47 ()) (q) (q 16 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) 1) (c (c (q . 2) (c (c (q . 1) (q 16 23 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 0)
+  byte_cost: 2772000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: binding_through_binding
+  program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (+ (a 2 5) (q . 1)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 47 (q . 2) (q)) 1) (c (+ 2 (q . 1)) 1)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 ())
+  byte_cost: 1092000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: closure_evaluates_binding_once
+  program: (a (q 16 (a 2 (q 1)) (a 2 (q 2)) (a 2 (q 3))) (c (c (q . 2) (c (c (q . 1) (q 16 11 2)) (c (c (q . 4) (c (c (q . 1) (sha256 (sha256 (sha256 2)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ()))) (a 2 (c (q . 3) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 23 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (a 2 5) 1)) (c (q 11 (sha256 (sha256 1))) 1))
+  solution: (50)
+  output: '0x014666e9a61c00e9118d1bb994a59d916767432a308433505958977fa105fad719'
+  runtime_cost: 9797
+  byte_cost: 1908000
+  total_cost: 1917797
+- name: unconditional_binding
+  program: (a (q 16 (a 2 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50)
+  byte_cost: 708000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: conditional_constant
+  program: (a (q 2 (q 2 (i 11 (q . 2) (q)) 1) (c (a 2 (q . 50)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 11 (q . 2) (q)) 1) (c (a 2 (q . 50)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (())
+  byte_cost: 1020000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: constant_in_conditional_call
+  program: (a (q 2 (q 2 (i 11 (q . 2) (q)) 1) (c (a 2 (q . 50)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 9 (c (c 2 13) 11)) (c (a 6 (q . 50)) 1)) (c (c (q 2 (i 3 (q . 4) (q)) 1) (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1)) 1))
+  solution: (())
+  byte_cost: 1020000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: binding_into_inline_function
+  program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q . 2) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 ())
+  byte_cost: 996000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: binding_in_inline_if
+  program: (a (q 3 11 (a 2 5) ()) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 3 23 2 ()) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 ())
+  byte_cost: 708000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: unused_rest_argument
+  program: (a (q 2 (q 1 . 5) (c (c (a 2 5) ()) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 6 (c (q . 1) (c (a 4 5) ()))) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) (q 1 . 5)) 1))
+  solution: (50)
+  byte_cost: 876000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: closure_in_branch_argument
+  program: (a (q 2 (q 2 (i 23 (q 2 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 6 (c (a 4 5) 11)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) (q 2 (i 3 (q 2 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) (q)) 1)) 1))
+  solution: (50 ())
+  byte_cost: 1764000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: closure_in_branch_binding
+  program: (a (q 2 (q 2 (i 23 (q 2 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) ()))) ()) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 2 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) ()))) ()) (q)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 ())
+  byte_cost: 2436000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: destructured_binding
+  program: (a (q 2 (q 2 (i 23 (q . 4) (q . 6)) 1) (c (c (a 2 5) (q . 1)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 23 (q 5 2) (q 6 2)) 1) (c (c (a 2 5) (q . 1)) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 ())
+  byte_cost: 1092000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: nested_closure_binding
+  program: (a (q 2 (q 2 (i 23 (q 16 (a 2 (q 1)) (a 2 (q 2))) (q)) 1) (c (c (q . 2) (c (c (q . 1) (q 2 (c (q . 2) (c (c (q . 1) (q 16 23 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 23) (c () ()))) ()))) ()))) ()))) ()))) ())) (c (c (q . 4) (c (c (q . 1) (a 2 5)) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i (= 47 ()) (q) (q 16 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) 1) (c (c (q . 2) (c (c (q . 1) (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 16 23 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 23) (c () ()))) ()))) ()))) ()))) ()))) 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50 0)
+  byte_cost: 4548000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: closure_captures_once
+  program: (a (q 16 (a 2 (q 1)) (a 2 (q 2)) (a 2 (q 3))) (c (c (q . 2) (c (c (q . 1) (q 2 (c (q . 2) (c (c (q . 1) (q 16 11 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c () ()))) ()))) ()))) ()))) ())) (c (c (q . 4) (c (c (q . 1) (sha256 (sha256 (sha256 2)))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ()))) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ()))) (a 2 (c (q . 3) ()))) (c (c (q . 2) (c (c (q . 1) (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 16 23 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 23) (c () ()))) ()))) ()))) ()))) ()))) 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))) 1)) (c (a 2 5) 1)) (c (q 11 (sha256 (sha256 1))) 1))
+  solution: (50)
+  output: '0x014666e9a61c00e9118d1bb994a59d916767432a308433505958977fa105fad719'
+  runtime_cost: 15422
+  byte_cost: 3348000
+  total_cost: 3363422
+- name: conditional_closure_argument
+  program: (a (q 2 (q 2 (i 23 (q 2 2 (q 1)) (q)) 1) (c (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) (a 2 5)) (c (q . 1) ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i (= 23 ()) (q) (q 2 2 (c (q . 1) ()))) 1) (c (a 6 (a 4 5)) 1)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1) (q 4 (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ())))) 1))
+  solution: (50 0)
+  byte_cost: 1908000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")
+- name: recursive_argument
+  program: (a (q 2 4 (c 4 (c () (a 6 5)))) (c (c (q 2 (i 5 (q 16 (a 2 (c 2 (c (- 5 (q . 1)) 7))) 7) (q)) 1) (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1)) 1))
+  debug_program: (a (q 2 4 (c 4 (c () (a 6 5)))) (c (c (q 2 (i (= 5 ()) (q) (q 16 (a 2 (c 2 (c (- 5 (q . 1)) 7))) 7)) 1) (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at auto_inline_evaluation.rue:6:9") (q . "too big")) (q . 1)) 1)) 1))
+  solution: (50)
+  byte_cost: 1524000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at auto_inline_evaluation.rue:6:9" "too big")

@@ -1,0 +1,211 @@
+// Auto-inlining must never drop, defer, or repeat the evaluation of a value that could raise.
+// Each test below must raise for the given solution in both debug and optimized builds.
+
+fn check(x: Int) -> Int {
+    if x > 10 {
+        raise "too big";
+    }
+    x
+}
+
+fn ignore(_a: Int, b: Int) -> Int {
+    b
+}
+
+fn pick(a: Int, flag: Bool) -> Int {
+    if flag {
+        a
+    } else {
+        0
+    }
+}
+
+fn expensive(x: Int) -> Int {
+    sha256(sha256(sha256(x as Bytes))) as Int
+}
+
+test fn unused_argument(x: Int) -> Int {
+    ignore(check(x), 5)
+}
+
+test fn conditional_argument(x: Int, flag: Bool) -> Int {
+    pick(check(x), flag)
+}
+
+test fn conditional_binding(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    if flag {
+        y
+    } else {
+        0
+    }
+}
+
+test fn binding_after_early_return(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    if flag {
+        return 0;
+    }
+    y
+}
+
+test fn binding_in_short_circuit(x: Int, flag: Bool) -> Bool {
+    let y = check(x);
+    flag && y == 5
+}
+
+test fn binding_in_closure(x: Int, n: Int) -> Int {
+    let y = check(x);
+    let f = fn(i: Int) => i + y;
+    if n == 0 {
+        0
+    } else {
+        f(1) + f(2)
+    }
+}
+
+test fn binding_through_binding(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    let z = y + 1;
+    if flag {
+        z
+    } else {
+        0
+    }
+}
+
+test fn closure_evaluates_binding_once(x: Int) -> Int {
+    let y = expensive(x);
+    let f = fn(i: Int) => i + y;
+    f(1) + f(2) + f(3)
+}
+
+test fn unconditional_binding(x: Int) -> Int {
+    let y = check(x);
+    y + 1
+}
+
+inline fn select(a: Int, flag: Bool) -> Int {
+    if flag {
+        a
+    } else {
+        0
+    }
+}
+
+fn count(_first: Int, ..._rest: List<Int>) -> Int {
+    5
+}
+
+fn make_closure(a: Int, flag: Bool) -> Int {
+    if flag {
+        (fn() => a)()
+    } else {
+        0
+    }
+}
+
+const CHECKED: Int = check(50);
+
+fn use_checked(flag: Bool) -> Int {
+    if flag {
+        CHECKED
+    } else {
+        0
+    }
+}
+
+test fn conditional_constant(flag: Bool) -> Int {
+    if flag {
+        CHECKED
+    } else {
+        0
+    }
+}
+
+test fn constant_in_conditional_call(flag: Bool) -> Int {
+    use_checked(flag)
+}
+
+test fn binding_into_inline_function(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    select(y, flag)
+}
+
+test fn binding_in_inline_if(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    inline if flag { y } else { 0 }
+}
+
+test fn unused_rest_argument(x: Int) -> Int {
+    count(1, ...[check(x)])
+}
+
+test fn closure_in_branch_argument(x: Int, flag: Bool) -> Int {
+    make_closure(check(x), flag)
+}
+
+test fn closure_in_branch_binding(x: Int, flag: Bool) -> Int {
+    let y = check(x);
+    if flag {
+        (fn() => y)()
+    } else {
+        0
+    }
+}
+
+test fn destructured_binding(x: Int, flag: Bool) -> Int {
+    let (a, b) = (check(x), 1);
+    if flag {
+        a
+    } else {
+        b
+    }
+}
+
+test fn nested_closure_binding(x: Int, n: Int) -> Int {
+    let y = check(x);
+    let f = fn(i: Int) => {
+        let g = fn() => i + y;
+        g()
+    };
+    if n == 0 {
+        0
+    } else {
+        f(1) + f(2)
+    }
+}
+
+test fn closure_captures_once(x: Int) -> Int {
+    let y = expensive(x);
+    let f = fn(i: Int) => {
+        let g = fn() => i + y;
+        g()
+    };
+    f(1) + f(2) + f(3)
+}
+
+test fn conditional_closure_argument(x: Int, n: Int) -> Int {
+    let f = make_adder(check(x));
+    if n == 0 {
+        0
+    } else {
+        f(1)
+    }
+}
+
+fn make_adder(a: Int) -> fn(i: Int) -> Int {
+    fn(i: Int) => i + a
+}
+
+fn countdown(n: Int, x: Int) -> Int {
+    if n == 0 {
+        0
+    } else {
+        countdown(n - 1, x) + x
+    }
+}
+
+test fn recursive_argument(x: Int) -> Int {
+    countdown(0, check(x))
+}
