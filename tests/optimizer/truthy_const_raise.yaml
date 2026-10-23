@@ -1,0 +1,2 @@
+diagnostics:
+- 'Const expression failed to evaluate: clvm raise at truthy_const_raise.rue:10:5'

@@ -1,11 +1,11 @@
 tests:
 - name: optional_field
-  program: (a (q 2 2 (q 42)) (c (q 2 (i (a (i (l 2) (q) (q 2 (i 2 (q) (q 1 . 1)) 1)) 1) (q 8) (q . 2)) 1) ()))
+  program: (a (q 2 2 (q 42)) (c (q 2 (i (a (i (l 2) (q) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1)) 1) (q 8) (q . 2)) 1) ()))
   debug_program: (a (q 2 2 (c (q . 42) ())) (c (q 2 (i (a (i (not (l (f 1))) (q 2 (i (= (f 1) ()) (q 1 . 1) (q)) 1) (q)) 1) (q 8 (q . "raise called at generic_inference_struct_arguments.rue:18:9")) (q 5 1)) 1) ()))
   output: '42'
-  runtime_cost: 1220
-  byte_cost: 1068000
-  total_cost: 1069220
+  runtime_cost: 1383
+  byte_cost: 1140000
+  total_cost: 1141383
 - name: recursive_field
   program: (f (q 42 ()))
   debug_program: (a (q 2 2 (c (q . 42) (c () ()))) (c (q 5 1) ()))

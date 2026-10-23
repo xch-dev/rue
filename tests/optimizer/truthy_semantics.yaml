@@ -1,0 +1,79 @@
+tests:
+- name: ne_zero_value
+  program: (not (= 2 ()))
+  debug_program: (not (= 2 ()))
+  solution: (5)
+  output: '1'
+  runtime_cost: 412
+  byte_cost: 132000
+  total_cost: 132412
+- name: ne_zero_compare
+  program: (= (not (= 2 ())) (not (= 5 ())))
+  debug_program: (= (not (= 2 ())) (not (= 5 ())))
+  solution: (5 7)
+  output: '1'
+  runtime_cost: 948
+  byte_cost: 324000
+  total_cost: 324948
+- name: ne_nil_tree_hash
+  program: (a (q 2 2 (c 2 (not (= 5 ())))) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) 1))
+  debug_program: (a (q 2 2 (c 2 (not (= 5 ())))) (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) 1))
+  solution: (5)
+  output: '0x9dcf97a184f32623d11a73124ceb99a5709b083721e878a16d78f596718ba7b2'
+  runtime_cost: 1905
+  byte_cost: 1236000
+  total_cost: 1237905
+- name: ne_zero_const
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: double_not_atom
+  program: (= (not (not 2)) (q . 1))
+  debug_program: (a (q 2 2 5) (c (q 9 (not (not 1)) (q . 1)) 1))
+  solution: (5)
+  output: '1'
+  runtime_cost: 590
+  byte_cost: 204000
+  total_cost: 204590
+- name: double_not_pair
+  program: (= (not (not 2)) (q . 1))
+  debug_program: (a (q 2 2 5) (c (q 9 (not (not 1)) (q . 1)) 1))
+  solution: ((1 . 2))
+  output: '1'
+  runtime_cost: 590
+  byte_cost: 204000
+  total_cost: 204590
+- name: pair_condition_raises
+  program: (a (q 2 (i (l (c (a 2 5) ())) (q 1 . 2) (q 1 . 1)) 1) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i (not (l 2)) (q 1 . 1) (q 1 . 2)) 1) (c (c (a 2 5) ()) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at truthy_semantics.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (50)
+  byte_cost: 996000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at truthy_semantics.rue:7:9" "too big")
+- name: pair_statement_raises
+  program: (a (q 3 () (all (c (a 2 5) ()) 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 3 (q . 1) (i (q . 1) (q . 1) (a 4 5)) (a 10 (c 14 5))) (c (c (q . 1) (c (q 4 (a 2 3) ()) (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at truthy_semantics.rue:7:9") (q . "too big")) (q . 1)) 1))) 1))
+  solution: (50)
+  byte_cost: 876000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at truthy_semantics.rue:7:9" "too big")
+- name: assert_ne_nil_pair
+  program: (a (i (= 2 ()) (q 8) (q 1 . 2)) 1)
+  debug_program: (a (i (not (= 2 ())) (q 1 . 2) (q 8 (q . "assertion failed at truthy_semantics.rue:68:5"))) 1)
+  solution: ((1 . 2))
+  byte_cost: 348000
+  clvm_error: 'InvalidOperatorArg: = used on list'
+- name: list_is_nil_atom
+  program: (a (i (l 2) (q 1 . 2) (q 1 . 1)) 1)
+  debug_program: (a (i (not (l 2)) (q 1 . 1) (q 1 . 2)) 1)
+  solution: (5)
+  output: '1'
+  runtime_cost: 297
+  byte_cost: 324000
+  total_cost: 324297
+diagnostics:
+- Value returned by statement is unused at truthy_semantics.rue:61:5
+- Value returned by statement is unused at truthy_semantics.rue:62:5

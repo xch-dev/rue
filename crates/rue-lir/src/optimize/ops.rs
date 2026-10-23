@@ -8,7 +8,7 @@ use sha3::Keccak256;
 
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
-    optimize::{ArgList, fold_atoms, opt_truthy},
+    optimize::{ArgList, Truthiness, fold_atoms, is_boolean, opt_truthy},
     parent_path, rest_path,
 };
 
@@ -352,15 +352,19 @@ pub fn opt_gtbytes(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
     arena.alloc(Lir::GtBytes(left, right))
 }
 
-// If the value is another not, we can unwrap both
-// If it resolves to true or false, we know the result
+// If the value's truthiness is known, we know the result
+// Since not only looks at the truthiness of its operand, we can simplify the operand
+// We can only unwrap a double not if the inner value is already () or 1, since otherwise
+// the value would change (for example, (not (not 5)) is 1 rather than 5)
 pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match opt_truthy(arena, value) {
-        Ok(true) => arena.alloc(Lir::Atom(vec![])),
-        Ok(false) => arena.alloc(Lir::Atom(vec![1])),
-        Err(value) => {
-            if let Lir::Not(value) = arena[value].clone() {
-                return value;
+        Truthiness::Known(true) => arena.alloc(Lir::Atom(vec![])),
+        Truthiness::Known(false) => arena.alloc(Lir::Atom(vec![1])),
+        Truthiness::Unknown(value) => {
+            if let Lir::Not(inner) = arena[value].clone()
+                && is_boolean(arena, inner)
+            {
+                return inner;
             }
 
             arena.alloc(Lir::Not(value))
@@ -368,8 +372,10 @@ pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     }
 }
 
-// If one of the arguments is true, we can ignore it
-// If one of the arguments is false, we know the result is false
+// If one of the arguments is known to be true and can't fail, we can ignore it
+// If one of the arguments is known to be false, we know the result is false,
+// but the other arguments must still be evaluated in case they fail
+// Since all only looks at the truthiness of its arguments, we can simplify them
 // TODO: Collapse nested alls
 pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut result = Vec::new();
@@ -377,14 +383,14 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 
     for arg in args {
         match opt_truthy(arena, arg) {
-            Ok(true) => {}
-            Ok(false) => {
+            Truthiness::Known(true) => {}
+            Truthiness::Known(false) => {
                 if !has_false {
                     has_false = true;
                     result.push(arg);
                 }
             }
-            Err(arg) => {
+            Truthiness::Unknown(arg) => {
                 result.push(arg);
             }
         }
@@ -393,8 +399,10 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::All(result))
 }
 
-// If one of the arguments is false, we can ignore it
-// If one of the arguments is true, we know the result is true
+// If one of the arguments is known to be false and can't fail, we can ignore it
+// If one of the arguments is known to be true, we know the result is true,
+// but the other arguments must still be evaluated in case they fail
+// Since any only looks at the truthiness of its arguments, we can simplify them
 // TODO: Collapse nested anys
 pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     let mut result = Vec::new();
@@ -402,14 +410,14 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 
     for arg in args {
         match opt_truthy(arena, arg) {
-            Ok(false) => {}
-            Ok(true) => {
+            Truthiness::Known(false) => {}
+            Truthiness::Known(true) => {
                 if !has_true {
                     has_true = true;
                     result.push(arg);
                 }
             }
-            Err(arg) => {
+            Truthiness::Unknown(arg) => {
                 result.push(arg);
             }
         }
@@ -418,8 +426,9 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
     arena.alloc(Lir::Any(result))
 }
 
-// If the condition is true, we can return the then branch
-// If the condition is false, we can return the else branch
+// If the condition is known to be true or false and can't fail, we can return that branch
+// Inline ifs evaluate both branches eagerly, so we keep them but with a nil condition
+// Since the condition only matters for its truthiness, we can simplify it
 // If the condition is a not, we can flip the then and else branches
 pub fn opt_if(
     arena: &mut Arena<Lir>,
@@ -429,9 +438,9 @@ pub fn opt_if(
     inline: bool,
 ) -> LirId {
     match opt_truthy(arena, condition) {
-        Ok(true) if !inline => then,
-        Ok(false) if !inline => otherwise,
-        Ok(condition) => {
+        Truthiness::Known(true) if !inline => then,
+        Truthiness::Known(false) if !inline => otherwise,
+        Truthiness::Known(condition) => {
             let nil = arena.alloc(Lir::Atom(vec![]));
 
             if condition {
@@ -440,7 +449,7 @@ pub fn opt_if(
                 arena.alloc(Lir::If(nil, then, otherwise, inline))
             }
         }
-        Err(condition) => {
+        Truthiness::Unknown(condition) => {
             let (condition, then, otherwise) = if let Lir::Not(opposite) = arena[condition].clone()
             {
                 (opposite, otherwise, then)

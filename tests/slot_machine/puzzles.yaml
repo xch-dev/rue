@@ -2,25 +2,25 @@ diagnostics:
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:20:13
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:19:9
 puzzle_hashes:
-  actions/catalog/refund.rue: ad293a8ba7393b2d23760cf2bdae38ae6e1407a1b2a26b89b39b0fd0cb0127a9
-  actions/catalog/register.rue: ef66622bbd9ac5922df81baac96082e16f51ae0a8a69e40e93b13a44fff1f8cf
-  actions/shared/delegated_state.rue: '491ee66c8ffd29ef41bf820d3d4d766deb1b6f650932af09f26f807dab1a362f'
-  actions/xchandles/execute_update.rue: '5ab577e34135251486330c53c8c16ed2b50d1b3da58096019c745b7faa94a631'
-  actions/xchandles/expire.rue: ee1554255f27b737b73dbba2d3fc2e3d7e8de2954c35c8660341362410d5b4e0
-  actions/xchandles/extend.rue: '490522c6759f840a455ff5ca5a00f3eb83db2dfd3c4590553d7ff67d210bc353'
-  actions/xchandles/initiate_update.rue: '23eeec5ecd731c2822adf82f23a2e73fdd4ad08df56558ad15873c68cadf68f8'
-  actions/xchandles/oracle.rue: f6f82232ff1dead535602b757dcbe21ee6efb38ff01a0500e59c52161a582c1b
-  actions/xchandles/refund.rue: a11cc9b151475ef6cc4b6e1846089dcf9c042413b7a5a943e6b11c4e0f59fcc7
-  actions/xchandles/register.rue: '150ae295efe60fa049b87cff5c05c0031fa768959ba466b425ef5a58b4a95ee8'
-  default_puzzles/default_cat_maker.rue: d6693f7aacfeb7e6901cd71a00f5e4b318d73234fbffd5b4d84da2c1371b3181
-  default_puzzles/exponential_premium.rue: eec82d74678809577247f69adc8efdc5e8a342c4bb595e1dae00dc7f7aad1d10
-  default_puzzles/factor_pricing.rue: '8876f129e711da8776b746cc07ae65f8336e8b1b7f08169de55a200ab287d1a2'
-  default_puzzles/revocable_cat_maker.rue: f1b280e985d067fa79a86eca600d8fe9ca62bf2eaa5346a6ddaf23c7773ee955
+  actions/catalog/refund.rue: '893fe9f0717e5aaf77e0ba1d391bfa89b208d80246cf96754da4ef7e28b27d92'
+  actions/catalog/register.rue: '4420c740fa17acfdd8c9f95e09cd4d1dc28f6fcf65551b444667d1d3ea51aa5d'
+  actions/shared/delegated_state.rue: '1fcc6ae4f09fae3efa513ba140c6dc8f0d63eccd6b60d9d99124ed618c127fc8'
+  actions/xchandles/execute_update.rue: '673eec8c668543db8bc870706c17b83a56bb78f43e5e13c96275eed933ed8e67'
+  actions/xchandles/expire.rue: '0ae3d294e3cc46b46c079067a37fd72a3ee6b63e171359211cf6a1f5b4e5d60e'
+  actions/xchandles/extend.rue: '16f826e286d0c8af4536d261b52361736e623de9cbb618fa2c10f2b1e7de3844'
+  actions/xchandles/initiate_update.rue: '8f556ad4db30041a39e5484b69479a1cc0e10faeb681e7acf3837924cbfedf3b'
+  actions/xchandles/oracle.rue: bd2857ae7a622c856ac588ab05635e7e13ea6a1731919f8629bcef699cd57a2e
+  actions/xchandles/refund.rue: e463d4ed145c663b621dafe793978d9e69e2aca189086c1fed5311a68607a8f0
+  actions/xchandles/register.rue: f871906cb5aba020dba16450a65eaecb96c6230257535853c15008e6c071b273
+  default_puzzles/default_cat_maker.rue: '8fa4f29f9f3fecea56ca19141790da8fad7539acbc8eec39cd25007e85e5db6f'
+  default_puzzles/exponential_premium.rue: deb9e05733932fa01a0b7c61b0cc1c841165a2b0f706da6f1a9c1dd4f108bce6
+  default_puzzles/factor_pricing.rue: '2d84d00c017b3fea58918518fbcf3d2607b9f8124674a01a2df466e6469fb133'
+  default_puzzles/revocable_cat_maker.rue: '1d0343c8aff68b1278ecfcc25917f34277b3e9b369f546b8f2ab219f56c5ffb7'
   nft/uniqueness_prelauncher.rue: e7fa797a8537895c571ae9556abdd2ebaba2d36957f2c63f37aba130f8f0c5ff
-  singleton/action.rue: afa03f2903f9e4a293523237799074b13ab2361f250df10de5df884b0b09a22b
-  singleton/finalizer.rue: '9d274de59aeaa128d1b0a802b52911838420ef9720d605c78942e8dadfc0810b'
-  singleton/p2_delegated_by_singleton.rue: '3f2358e5141470a084ab2f68126f6f07269f01a690994f364e67c9624bb6e05e'
-  singleton/precommit.rue: '9b3be8822ce5583da2987336d59cf4bdded39d2747838249fd9afe0238cab6ea'
-  singleton/reserve_finalizer.rue: '5b406eb66d10998027924c9bdea4254966e27ca765a8992227f826cb0e868095'
-  singleton/slot.rue: '8ab9f3b57a65d7f7a0810f79f7bc1e96bda680d16dd6f51d51e868e13fc7bbb3'
-  singleton/state_scheduler.rue: '8811d56e9efd2c9f449ea10cb00e00417b372f46d9d3a00ddf632f292de7e2c3'
+  singleton/action.rue: caf6e4b341dc295caae36e014037a6139d3c9bb911b35d98bdb885e5e1a34928
+  singleton/finalizer.rue: '757d69687ce6ec65e719666922b27b2642d1a26c8fb727ee049e4661851b9a81'
+  singleton/p2_delegated_by_singleton.rue: '2fdd9c5c621a7c3cbaa29facb0194f608c30ed0167968a789bc988b961fe9bb5'
+  singleton/precommit.rue: '6b167b185373bdd9106811e02d94fb278fcf973d611e88b8a3269d140cf59bce'
+  singleton/reserve_finalizer.rue: '1fe86ddeb4c7e6f4be85033e4925bfa08bbdf099a9495823a3813ae23b65cae7'
+  singleton/slot.rue: '1b69fce0a81440bdbe9213d8b6545d4ff0b2310100477b8fe6401018d4f8f448'
+  singleton/state_scheduler.rue: '7e2999156e5cab11ca88277a8e6ee6641706a15ef26c300a7848dbaf500bb200'

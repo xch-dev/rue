@@ -1,11 +1,11 @@
 tests:
 - name: default_values
-  program: (a (q 2 (i 10 (q 8) (q 2 (i 22 (q . 4) (q 8)) 1)) 1) (c (q 100 () 1) 1))
+  program: (a (q 2 (i (= 10 ()) (q 2 (i 22 (q . 4) (q 8)) 1) (q 8)) 1) (c (q 100 () 1) 1))
   debug_program: (a (q 2 (i (= (f (r 2)) ()) (q 2 (i (f (r (r 2))) (q 5 2) (q 8 (q . "assertion failed at struct_defaults.rue:19:5"))) 1) (q 8 (q . "assertion failed at struct_defaults.rue:18:5"))) 1) (c (c (q . 100) (c () (c (q . 1) ()))) 1))
   output: '100'
-  runtime_cost: 812
-  byte_cost: 756000
-  total_cost: 756812
+  runtime_cost: 974
+  byte_cost: 828000
+  total_cost: 828974
 - name: override_default
   program: (f (q 5 () 1))
   debug_program: (a (q 5 2) (c (c (q . 5) (c () (c (q . 1) ()))) 1))
