@@ -36,9 +36,9 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:90:5"
 - name: verification
-  program: (i (> (q . 1) (q . 5)) (i () (bls_pairing_identity (point_add) (g2_add)) (q . 1)) ())
+  program: (i () (i () (bls_pairing_identity (point_add) (g2_add)) (q . 1)) ())
   debug_program: (a (q 2 4 (c (c 10 14) (q . 1))) (c (c (q 3 (> 3 (q . 5)) (i (q . 1) (q . 1) (bls_pairing_identity 6 4)) ()) (c (g2_add) (point_add))) ()))
-  byte_cost: 468000
+  byte_cost: 348000
   clvm_error: bls_pairing_identity failed
 - name: inline_binding
   program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (+ (a 2 3) (q . 1)) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
