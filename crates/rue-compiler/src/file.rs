@@ -14,8 +14,8 @@ use rowan::{TextRange, TextSize};
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Name, Source, SourceKind};
 use rue_hir::{
-    Declaration, DependencyGraph, Environment, Lowerer, LoweringMode, ModuleDeclarations,
-    ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
+    Declaration, DependencyGraph, Environment, Lowerer, ModuleDeclarations, ModuleSymbol, Scope,
+    ScopeId, Symbol, SymbolId, has_reachable_unresolved,
 };
 use rue_lexer::Lexer;
 use rue_lir::CodegenOptions;
@@ -743,15 +743,7 @@ fn codegen(
     let graph = DependencyGraph::build(ctx, symbol, options);
 
     let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(
-        ctx,
-        &mut arena,
-        &graph,
-        options,
-        LoweringMode::Program,
-        symbol,
-        base_path,
-    );
+    let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol, base_path);
     let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
 
     if options.optimize_lir {

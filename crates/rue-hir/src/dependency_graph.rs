@@ -21,6 +21,9 @@ pub struct DependencyGraph {
     // Keeps track of whether a symbol is ever used as a closure
     closures: HashSet<SymbolId>,
 
+    // Keeps track of the const expressions that are reachable
+    const_exprs: IndexSet<HirId>,
+
     // Keeps track of the current stack of symbols being visited
     stack: IndexSet<SymbolId>,
 
@@ -36,6 +39,7 @@ impl DependencyGraph {
             locals: HashMap::new(),
             references: HashMap::new(),
             closures: HashSet::new(),
+            const_exprs: IndexSet::new(),
             stack: IndexSet::new(),
             visited: IndexSet::new(),
         };
@@ -51,6 +55,10 @@ impl DependencyGraph {
 
     pub fn is_closure(&self, symbol: SymbolId) -> bool {
         self.closures.contains(&symbol)
+    }
+
+    pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
+        self.const_exprs.iter().copied()
     }
 
     pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {
@@ -91,7 +99,10 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *first, false);
             visit_hir(db, graph, *rest, false);
         }
-        Hir::Const(expr) => visit_hir(db, graph, expr.value, false),
+        Hir::Const(expr) => {
+            graph.const_exprs.insert(hir);
+            visit_hir(db, graph, expr.value, false);
+        }
         Hir::Reference(symbol) => {
             if !is_call {
                 graph.closures.insert(*symbol);

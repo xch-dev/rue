@@ -1,0 +1,29 @@
+test fn self_reference() -> Int {
+    const { self_reference() }
+}
+
+test fn cycle() -> Int {
+    cycle_a()
+}
+
+fn cycle_a() -> Int {
+    const { cycle_b() }
+}
+
+fn cycle_b() -> Int {
+    const { cycle_a() }
+}
+
+test fn failing_dependency() -> Int {
+    const { failing_inner() + 1 }
+}
+
+fn failing_inner() -> Int {
+    const {
+        raise 42;
+    }
+}
+
+test fn nested_runtime_dependency(value: Int) -> Int {
+    const { const { value } + 1 }
+}
