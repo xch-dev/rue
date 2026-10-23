@@ -1,0 +1,18 @@
+// shared.rue by yakuhito
+// Shared code for CATalog actions.
+
+export struct CatalogState {
+    Cat_Maker_Puzzle_Hash: Bytes32,
+    ...Registration_Price: Int,
+}
+
+export struct CatalogStateTruth {
+    Ephemeral_State: Any,
+    ...State: CatalogState,
+}
+
+export struct OtherPrecommitData {
+    tail_hash: Bytes32,
+    initial_nft_owner_ph: Bytes32,
+    ...refund_puzzle_hash_hash: Bytes32,
+}

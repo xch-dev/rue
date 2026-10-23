@@ -1,0 +1,20 @@
+// common_types.clsp by yakuhito
+// Contains structs of common types used in many puzzles
+
+export struct CompactCoinProof {
+    parent_info: Bytes32,
+    inner_puzzle_hash: Bytes32,
+    ...amount: Int,
+}
+
+export struct PuzzleHashes {
+    puzzle_hash_one: Bytes32,
+    ...puzzle_hash_two: Bytes32,
+}
+
+export struct CatMaker {
+    puzzle: CatMakerPuzzle,
+    ...solution: Any,
+}
+
+export type CatMakerPuzzle = fn(inner_puzzle_hash: Bytes32, ...solution: Any) -> Bytes32;

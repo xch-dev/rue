@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -6,13 +7,14 @@ use std::path::Path;
 use std::process;
 
 use anyhow::Result;
+use clvm_utils::tree_hash;
 use clvmr::error::EvalErr;
 use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
 use indexmap::IndexMap;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::normalize_path;
 use rue_compiler::{Compiler, FileTree};
-use rue_diagnostic::DiagnosticSeverity;
+use rue_diagnostic::{DiagnosticSeverity, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::CompilerOptions;
@@ -29,6 +31,9 @@ struct TestFile {
 
     #[serde(skip_serializing_if = "Vec::is_empty")]
     diagnostics: Vec<String>,
+
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    puzzle_hashes: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -327,13 +332,17 @@ fn handle_test_file(
         let rue_dir = parent.join(name);
         let unit = FileTree::compile_path(&mut ctx, &rue_dir, &mut HashMap::new())?;
         let debug_unit = FileTree::compile_path(&mut debug_ctx, &rue_dir, &mut HashMap::new())?;
-        let kind = normalize_path(&rue_dir.join("main.rue"))?;
+        let main_file = rue_dir.join("main.rue");
+        let kind = main_file
+            .try_exists()?
+            .then(|| normalize_path(&main_file))
+            .transpose()?;
         (unit, debug_unit, kind, rue_dir.canonicalize()?)
     } else {
         let rue_file = parent.join(format!("{name}.rue"));
         let unit = FileTree::compile_file(&mut ctx, &rue_file)?;
         let debug_unit = FileTree::compile_file(&mut debug_ctx, &rue_file)?;
-        let kind = normalize_path(&rue_file)?;
+        let kind = Some(normalize_path(&rue_file)?);
         (unit, debug_unit, kind, parent.canonicalize()?)
     };
 
@@ -349,12 +358,16 @@ fn handle_test_file(
         }
     }
 
-    let main = codegen
-        .then(|| unit.main(&mut ctx, &mut allocator, &kind, base_path.clone()))
+    let main = kind
+        .as_ref()
+        .filter(|_| codegen)
+        .map(|kind| unit.main(&mut ctx, &mut allocator, kind, base_path.clone()))
         .transpose()?
         .flatten();
-    let debug_main = codegen
-        .then(|| debug_unit.main(&mut debug_ctx, &mut allocator, &kind, base_path.clone()))
+    let debug_main = kind
+        .as_ref()
+        .filter(|_| codegen)
+        .map(|kind| debug_unit.main(&mut debug_ctx, &mut allocator, kind, base_path.clone()))
         .transpose()?
         .flatten();
 
@@ -377,6 +390,39 @@ fn handle_test_file(
         .unwrap_or_default();
 
     handle_test_case(&mut allocator, &mut file.main, main, debug_main)?;
+
+    file.puzzle_hashes = BTreeMap::new();
+
+    if is_dir && codegen {
+        for source in unit.all_files() {
+            let SourceKind::File(path) = &source.source.kind else {
+                continue;
+            };
+
+            if kind.as_ref() == Some(&source.source.kind) {
+                continue;
+            }
+
+            let Some(ptr) = unit.main(
+                &mut ctx,
+                &mut allocator,
+                &source.source.kind,
+                base_path.clone(),
+            )?
+            else {
+                continue;
+            };
+
+            let name = Path::new(path)
+                .strip_prefix(&base_path)
+                .unwrap_or(Path::new(path))
+                .to_string_lossy()
+                .to_string();
+
+            file.puzzle_hashes
+                .insert(name, tree_hash(&allocator, ptr).to_string());
+        }
+    }
 
     if file.tests.len() > tests.len() {
         file.tests.truncate(tests.len());
