@@ -2,13 +2,12 @@ diagnostics:
 - Expected 2 arguments, but found 0 at function_arguments.rue:6:5
 - Expected 2 arguments, but found 1 at function_arguments.rue:7:5
 - Expected 2 arguments, but found 3 at function_arguments.rue:8:5
-- Spread operator must be used on functions with spread parameters at function_arguments.rue:12:5
+- Cannot spread the last argument, since the function has no spread parameter at function_arguments.rue:12:5
 - Expected 2 arguments, but found 1 at function_arguments.rue:20:5
 - Expected 2 arguments, but found 3 at function_arguments.rue:21:5
-- Spread operator must be used on functions with spread parameters at function_arguments.rue:25:5
 - Expected 2 arguments, but found 0 at function_arguments.rue:25:5
-- Spread operator must be used on functions with spread parameters at function_arguments.rue:26:5
 - Expected 2 arguments, but found 1 at function_arguments.rue:26:5
-- Spread operator must be used on functions with spread parameters at function_arguments.rue:27:5
-- Spread operator must be used on functions with spread parameters at function_arguments.rue:28:5
+- The last argument must be spread, since the function has a spread parameter at function_arguments.rue:27:5
 - Expected 2 arguments, but found 3 at function_arguments.rue:28:5
+- Expected 1 arguments, but found 0 at function_arguments.rue:38:5
+- The last argument must be spread, since the function has a spread parameter at function_arguments.rue:39:5

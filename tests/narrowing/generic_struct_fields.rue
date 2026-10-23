@@ -1,0 +1,43 @@
+struct Box<T> {
+    value: T,
+}
+
+type Maybe<T> = T | nil;
+
+// Narrowing the field of a generic struct narrows its instantiated type
+test fn instantiated_field(b: Box<Int | nil>) -> Int {
+    if b.value is nil {
+        return 0;
+    }
+    let value: Int = b.value;
+    value
+}
+
+test fn alias_field(b: Box<Maybe<Int>>) -> Int {
+    if b.value is nil {
+        return 0;
+    }
+    let value: Int = b.value;
+    value
+}
+
+test fn nested_field(b: Box<Box<Int | nil>>) -> Int {
+    if b.value.value is nil {
+        return 0;
+    }
+    let value: Int = b.value.value;
+    value
+}
+
+// Generic parameters in the field are preserved
+fn generic_field<T>(b: Box<(T, T) | nil>) -> (T, T) | nil {
+    if b.value is (Any, Any) {
+        let value: (T, T) = b.value;
+        return value;
+    }
+    nil
+}
+
+test fn call_generic_field(b: Box<(Int, Int) | nil>) -> (Int, Int) | nil {
+    generic_field(b)
+}

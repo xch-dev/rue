@@ -22,7 +22,7 @@ pub fn create_list_binding(ctx: &mut Compiler, symbol: SymbolId, list_binding: &
             if i == len - 1 {
                 is_cons = false;
             } else {
-                ctx.diagnostic(&spread, DiagnosticKind::InvalidSpread);
+                ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread);
             }
         }
 

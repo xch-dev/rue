@@ -3,8 +3,8 @@ use indexmap::IndexMap;
 use log::trace;
 
 use crate::{
-    Alias, BuiltinTypes, Comparison, Struct, Type, TypeId, Union, compare,
-    reaches_non_contractive_cycle, stringify_impl, substitute,
+    Alias, BuiltinTypes, Comparison, Type, TypeId, Union, compare, reaches_non_contractive_cycle,
+    stringify_impl, substitute,
 };
 
 pub fn subtract(
@@ -41,10 +41,10 @@ fn subtract_impl(
     lhs_variants
         .retain(|variant| compare(arena, builtins, variant.type_id, rhs_id) > Comparison::Cast);
 
-    repackage(arena, lhs_variants)
+    repackage(arena, builtins, lhs_variants)
 }
 
-fn repackage(arena: &mut Arena<Type>, variants: Vec<Variant>) -> TypeId {
+fn repackage(arena: &mut Arena<Type>, builtins: &BuiltinTypes, variants: Vec<Variant>) -> TypeId {
     let mut collected = vec![];
     let mut semantic_type_id = None;
     let mut leftover = vec![];
@@ -85,11 +85,14 @@ fn repackage(arena: &mut Arena<Type>, variants: Vec<Variant>) -> TypeId {
 
     let semantic_type_id = semantic_type_id.unwrap();
 
-    let inner = repackage(arena, collected);
+    let inner = repackage(arena, builtins, collected);
 
     let result = match arena[semantic_type_id].clone() {
         Type::Alias(alias) => arena.alloc(Type::Alias(Alias { inner, ..alias })),
-        Type::Struct(ty) => arena.alloc(Type::Struct(Struct { inner, ..ty })),
+        Type::Struct(ty) => {
+            let ty = ty.narrow(arena, builtins, inner);
+            arena.alloc(Type::Struct(ty))
+        }
         _ => unreachable!(),
     };
 
@@ -97,7 +100,7 @@ fn repackage(arena: &mut Arena<Type>, variants: Vec<Variant>) -> TypeId {
         return result;
     }
 
-    let leftover = repackage(arena, leftover);
+    let leftover = repackage(arena, builtins, leftover);
 
     arena.alloc(Type::Union(Union::new(vec![result, leftover])))
 }

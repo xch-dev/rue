@@ -1,0 +1,6 @@
+diagnostics:
+- Cannot infer generic `T` for `get`; specify it explicitly, e.g. `get::<...>()` at always_condition_errors.rue:7:8
+- Unknown field `first` on type `(Int, Int) | nil` at always_condition_errors.rue:15:31
+- Unknown field `first` on type `(Int, Int) | nil` at always_condition_errors.rue:22:14
+- Unknown field `first` on type `(Int, Int) | nil` at always_condition_errors.rue:27:20
+- Condition always evaluates to `true` at always_condition_errors.rue:28:8

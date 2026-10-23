@@ -1,0 +1,33 @@
+fn get<T>() -> T {
+    unchecked_cast(5)
+}
+
+// The type of a condition that failed to compile isn't constant
+test fn uninferred_generic() -> Int {
+    if get() {
+        1
+    } else {
+        2
+    }
+}
+
+test fn unknown_field(x: (Int, Int) | nil) -> Int {
+    if (x is (Int, Int)) & (x.first == 1) {
+        return 1;
+    }
+    2
+}
+
+test fn unknown_field_assert(x: (Int, Int) | nil) {
+    assert x.first == 1;
+}
+
+// A constant condition is still reported next to unrelated errors
+test fn constant_with_errors(x: (Int, Int) | nil) -> Int {
+    let y: Int = x.first;
+    if true {
+        y
+    } else {
+        2
+    }
+}
