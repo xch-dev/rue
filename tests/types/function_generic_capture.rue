@@ -1,0 +1,90 @@
+type P<T> = fn<U>(x: U) -> (T, P<U>);
+type F<T> = fn<U>(x: U) -> F<U>;
+type PolyT<T> = fn<U>(x: U) -> T;
+type G<A, B, C> = fn<U>(p0: G<U, B, B>, p1: G<U, B, A>, p2: G<A, A, U>) -> B;
+type H<A, B> = fn<U>() -> fn<B>(p0: H<B, U>) -> H<U, A>;
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn konst<T>(value: T) -> fn<U>(other: U) -> T {
+    fn<U>(_other: U): T => value
+}
+
+fn mkp<T>(t: T) -> P<T> {
+    fn<U>(x: U): (T, P<U>) => (t, mkp(x))
+}
+
+fn apply2<T>(f: PolyT<T>) -> T {
+    f((1, 2))
+}
+
+fn make_id<T>() -> fn(x: T) -> T {
+    fn(x: T): T => x
+}
+
+fn get<T>(f: PolyT<T>) -> T {
+    f(nil)
+}
+
+test fn nested_function_keeps_its_generic() -> Int {
+    let p = mkp(5);
+    let q = p((1, 2));
+    let s = q.rest(7);
+    let pair: (Int, Int) = s.first;
+    pair.first + pair.rest + q.first
+}
+
+test fn recursive_function_type_is_renamed() -> Int {
+    let p: fn<V>(x: V) -> (Int, fn<W>(y: W) -> (V, Any)) = mkp(5);
+    let q = p(7);
+    let r = q.rest((1, 2));
+    let n: Int = r.first;
+    n + q.first
+}
+
+test fn recursive_function_type_without_mappings(f: F<Int>) -> Int {
+    let g = f((1, 2));
+    let _h = g(3);
+    42
+}
+
+test fn generic_function_result_is_inferred() -> Int {
+    apply2(fn<U>(_x: U): Int => 5)
+}
+
+test fn explicit_generic_arguments() -> Int {
+    let function = identity::<Int>;
+    let constant = konst::<Int>(42);
+    function(constant((1, 2)))
+}
+
+test fn closed_candidate_binds_same_generic() -> Int {
+    let inner: PolyT<Int> = konst(5);
+    let outer: PolyT<PolyT<Int>> = konst(inner);
+    let function = get(outer);
+    function(1)
+}
+
+test fn instantiate_with_expected_generic() -> Int {
+    let function: fn<U>(x: U) -> U = make_id();
+    function(5)
+}
+
+test fn nested_lambdas_have_their_own_generics() -> Int {
+    apply2(
+        fn(x) => {
+            let _y = apply2(fn(_y) => x);
+            5
+        },
+    )
+}
+
+test fn polymorphic_recursion_through_generic_functions(
+    _g: G<Int, Int, Int>,
+    h: H<Int, Int>,
+) -> Int {
+    let _h: H<Int, Int> = h;
+    42
+}

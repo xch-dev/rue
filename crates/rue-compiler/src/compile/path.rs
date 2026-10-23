@@ -6,7 +6,7 @@ use rue_ast::{AstGenericArguments, AstNode, AstPathSegment};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, ImportId, Symbol, SymbolId};
 use rue_parser::SyntaxToken;
-use rue_types::{Apply, Type, TypeId};
+use rue_types::{Apply, FunctionType, Type, TypeId};
 
 use crate::{Compiler, CompletionContext, GetTextRange, SyntaxItemKind, compile_generic_arguments};
 
@@ -280,6 +280,22 @@ where
 
                             map.insert(function.vars[i], *arg);
                         }
+
+                        // The instance no longer binds the generics that are given, so that
+                        // they're substituted throughout the function's type
+                        let ty = match ctx.ty(ty).clone() {
+                            Type::Function(function) => {
+                                ctx.alloc_type(Type::Function(FunctionType {
+                                    generics: function
+                                        .generics
+                                        .into_iter()
+                                        .filter(|generic| !map.contains_key(generic))
+                                        .collect(),
+                                    ..function
+                                }))
+                            }
+                            _ => ty,
+                        };
 
                         override_type = Some(ctx.alloc_type(Type::Apply(Apply::new(ty, map))));
                     } else {
