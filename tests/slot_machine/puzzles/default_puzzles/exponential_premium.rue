@@ -38,7 +38,7 @@ fn add_fractional_part(
                 premium * bits_list.first / PRECISION
             } else {
                 premium
-            }
+            },
         )
     }
 }
@@ -79,9 +79,9 @@ fn main(
             // fractional part of n with 16 bits of precision (2 ** 16 = 65536)
             (65536 * ((Buy_Time - Current_Expiration) % HALVING_PERIOD)) / HALVING_PERIOD,
             // premium from whole periods = START_PREMIUM / 2^p
-            START_PREMIUM / (1 >>> -((Buy_Time - Current_Expiration) / HALVING_PERIOD))
+            START_PREMIUM / (1 >>> -((Buy_Time - Current_Expiration) / HALVING_PERIOD)),
         ),
-        END_VALUE
+        END_VALUE,
     );
 
     (base_program_price + price_delta, base_program_registered_time)

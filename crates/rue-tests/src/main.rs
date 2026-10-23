@@ -176,10 +176,6 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
     Ok(failed)
 }
 
-/// Directories containing third-party Rue code that is kept verbatim, so it's
-/// not checked against the formatter.
-const FORMAT_EXCLUDED_DIRS: &[&str] = &["tests/slot_machine"];
-
 fn check_formatting_corpus(
     base_path: &Path,
     filter_arg: Option<&str>,
@@ -195,12 +191,6 @@ fn check_formatting_corpus(
 
     for path in files {
         let display = path.strip_prefix(base_path).unwrap_or(&path);
-        if FORMAT_EXCLUDED_DIRS
-            .iter()
-            .any(|dir| display.starts_with(dir))
-        {
-            continue;
-        }
         if let Some(filter) = filter_arg
             && !display.to_string_lossy().contains(filter)
         {

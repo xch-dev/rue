@@ -38,8 +38,7 @@ jobs:
         run: cargo fmt --all -- --files-with-diff --check
 
       - name: Rue fmt
-        # tests/slot_machine is third-party code that's kept verbatim
-        run: cargo run --quiet --package rue-cli -- fmt 'examples/**/*.rue' $(find tests -name '*.rue' -not -path 'tests/slot_machine/*') 'crates/rue-compiler/src/std/**/*.rue' --check
+        run: cargo run --quiet --package rue-cli -- fmt 'examples/**/*.rue' 'tests/**/*.rue' 'crates/rue-compiler/src/std/**/*.rue' --check
 
       - name: Publish (dry run)
         run: |

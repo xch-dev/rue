@@ -18,15 +18,10 @@ fn main(
         SendMessage {
             mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
             message: MESSAGE,
-            receiver: [
-                curry_tree_hash(
-                    SINGLETON_MOD_HASH,
-                    [
-                        RECEIVER_SINGLETON_STRUCT_HASH,
-                        other_singleton_inner_puzzle_hash,
-                    ]
-                )
-            ]
+            receiver: [curry_tree_hash(
+                SINGLETON_MOD_HASH,
+                [RECEIVER_SINGLETON_STRUCT_HASH, other_singleton_inner_puzzle_hash],
+            )],
         },
         ...INNER_PUZZLE(...inner_solution),
     ]

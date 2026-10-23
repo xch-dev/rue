@@ -10,11 +10,12 @@ export inline fn singleton_puzzle_hash(
     curry_tree_hash(
         SINGLETON_MOD_HASH,
         [
-            tree_hash(
-                (SINGLETON_MOD_HASH, (launcher_id, SINGLETON_LAUNCHER_PUZZLE_HASH)),
-            ), // tree hash of SINGLETON_STRUCT
+            tree_hash((
+                SINGLETON_MOD_HASH,
+                (launcher_id, SINGLETON_LAUNCHER_PUZZLE_HASH),
+            )), // tree hash of SINGLETON_STRUCT
             inner_puzzle_hash,
-        ]
+        ],
     )
 }
 
@@ -107,12 +108,10 @@ export struct PrecommitValueB {
     ...data: HandleSlotData,
 }
 
-
 export struct PrecommitValue {
     a: PrecommitValueA,
     ...b: PrecommitValueB,
 }
-
 
 export struct RegisterThisSlotInfo {
     this_counter: Int,

@@ -40,7 +40,7 @@ inline fn get_price_factor(length: Int, number_of_numbers: Int) -> Int {
         // length <= 2
         raise "Handle must be at least 3 characters long";
     };
-    let q = inline if number_of_numbers == 0 { 1 } else { 2};
+    let q = inline if number_of_numbers == 0 { 1 } else { 2 };
 
     p / q
 }
@@ -85,10 +85,9 @@ fn main(
     assert num_periods > 0;
 
     (
-        num_periods * BASE_PRICE * get_price_factor(
-            Handle.length,
-            count_numbers_and_validate(Handle)
-        ),
-        num_periods * REGISTRATION_PERIOD
+        num_periods
+            * BASE_PRICE
+            * get_price_factor(Handle.length, count_numbers_and_validate(Handle)),
+        num_periods * REGISTRATION_PERIOD,
     )
 }

@@ -25,10 +25,7 @@ fn singleton_full_puzzle_hash(
 ) -> Bytes32 {
     curry_tree_hash(
         CONTROLLER_SINGLETON_INFO.singleton_mod_hash,
-        [
-            CONTROLLER_SINGLETON_INFO.singleton_struct_hash,
-            inner_puzzle_hash,
-        ]
+        [CONTROLLER_SINGLETON_INFO.singleton_struct_hash, inner_puzzle_hash],
     )
 }
 
@@ -47,16 +44,20 @@ fn main(
         AssertMyParentId {
             parent_id: coinid(
                 parent_proof.parent_info,
-                singleton_full_puzzle_hash(CONTROLLER_SINGLETON_INFO, parent_proof.inner_puzzle_hash),
+                singleton_full_puzzle_hash(
+                    CONTROLLER_SINGLETON_INFO,
+                    parent_proof.inner_puzzle_hash,
+                ),
                 parent_proof.amount,
             ),
         },
         ReceiveMessage {
             mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
             message: nil,
-            sender: [
-                singleton_full_puzzle_hash(CONTROLLER_SINGLETON_INFO, spender_inner_puzzle_hash)
-            ],
-        }
+            sender: [singleton_full_puzzle_hash(
+                CONTROLLER_SINGLETON_INFO,
+                spender_inner_puzzle_hash,
+            )],
+        },
     ]
 }

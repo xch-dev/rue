@@ -14,24 +14,23 @@ export struct FinalizerTruths {
 
 export type Finalizer<S> = fn(
     truths: FinalizerTruths,
-    run_action_output: (S,List<List<Condition>>),
-    ...finalizer_solution: Any
+    run_action_output: (S, List<List<Condition>>),
+    ...finalizer_solution: Any,
 ) -> List<Condition>;
 
 fn flatten_list(list: List<List<Condition>>) -> List<Condition> {
-    inline let (first_thing, the_rest) = unchecked_cast::<(List<Condition>, List<List<Condition>>)>(list);
+    inline let (first_thing, the_rest) = unchecked_cast::<(List<Condition>, List<List<Condition>>)>(
+        list,
+    );
 
     if first_thing is nil {
-        if the_rest is nil { 
+        if the_rest is nil {
             nil
-         } else {
+        } else {
             flatten_list(the_rest)
         }
     } else {
-        (
-            first_thing.first,
-            flatten_list((first_thing.rest, the_rest))
-        )
+        (first_thing.first, flatten_list((first_thing.rest, the_rest)))
     }
 }
 
@@ -42,7 +41,7 @@ fn main(
     FINALIZER_SELF_HASH: Bytes32,
     Truth: FinalizerTruths,
     last_action_output: (StateTruth, List<List<Condition>>),
-    ..._my_solution: Any // not used here
+    ..._my_solution: Any, // not used here
 ) -> List<Condition> {
     let recreation_condition = CreateCoin {
         puzzle_hash: curry_tree_hash(
@@ -50,22 +49,15 @@ fn main(
             [
                 curry_tree_hash(
                     FINALIZER_SELF_HASH,
-                    [
-                        tree_hash_atom(FINALIZER_SELF_HASH),
-                    ]
+                    [tree_hash_atom(FINALIZER_SELF_HASH)],
                 ), // finalizer puzzle hash
                 tree_hash_atom(Truth.Merkle_Root),
-                tree_hash(last_action_output.first.actual_state)
-            ]
+                tree_hash(last_action_output.first.actual_state),
+            ],
         ), // new inner ph
         amount: 1,
-        memos: Memos {
-            value: [HINT],
-        }
+        memos: Memos { value: [HINT] },
     };
-    
-    [
-        recreation_condition,
-        ...flatten_list(last_action_output.rest)
-    ]
+
+    [recreation_condition, ...flatten_list(last_action_output.rest)]
 }

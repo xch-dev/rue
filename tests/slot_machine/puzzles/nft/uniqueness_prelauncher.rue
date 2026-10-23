@@ -13,12 +13,7 @@ fn main(
     VALUE: Bytes,
 ) -> List<Condition> {
     [
-        CreateCoin {
-            puzzle_hash: LAUNCHER_PH,
-            amount: 1,
-        },
-        CreatePuzzleAnnouncement {
-            message: VALUE,
-        },
+        CreateCoin { puzzle_hash: LAUNCHER_PH, amount: 1 },
+        CreatePuzzleAnnouncement { message: VALUE },
     ]
 }

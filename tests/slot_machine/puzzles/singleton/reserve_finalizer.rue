@@ -15,16 +15,14 @@ fn parse_conditions(
     conditions: List<Condition>,
     extracted_reserve_conditions: List<Condition>,
 ) -> (List<Condition>, List<Condition>) {
-    inline let (first_thing, the_rest) = unchecked_cast::<(List<Condition>, List<List<Condition>>)>(list_of_lists);
+    inline let (first_thing, the_rest) = unchecked_cast::<(List<Condition>, List<List<Condition>>)>(
+        list_of_lists,
+    );
     if first_thing is nil {
         if the_rest is nil {
             (conditions, extracted_reserve_conditions)
         } else {
-            parse_conditions(
-                the_rest,
-                conditions,
-                extracted_reserve_conditions
-            )
+            parse_conditions(the_rest, conditions, extracted_reserve_conditions)
         }
     } else {
         inline let (opcode, condition) = unchecked_cast::<(Int, Condition)>(first_thing.first);
@@ -32,13 +30,13 @@ fn parse_conditions(
             parse_conditions(
                 (first_thing.rest, the_rest),
                 conditions,
-                (condition, extracted_reserve_conditions)
+                (condition, extracted_reserve_conditions),
             )
         } else {
             parse_conditions(
                 (first_thing.rest, the_rest),
                 (first_thing.first, conditions),
-                extracted_reserve_conditions
+                extracted_reserve_conditions,
             )
         }
     }
@@ -56,32 +54,29 @@ fn main(
     last_action_output: (StateTruth, List<List<Condition>>),
     ...reserve_parent_id: Bytes32, // my_solution
 ) -> List<Condition> {
-    let (base_conditions, reserve_conditions) = parse_conditions(
-        last_action_output.rest, nil, nil
-    );
+    let (base_conditions, reserve_conditions) = parse_conditions(last_action_output.rest, nil, nil);
 
     let recreate_reserve = CreateCoin {
         puzzle_hash: RESERVE_INNER_PUZZLE_HASH,
         amount: RESERVE_AMOUNT_FROM_STATE_PROGRAM(...last_action_output.first.actual_state),
-        memos: Memos {
-            value: [RESERVE_INNER_PUZZLE_HASH],
-        }
+        memos: Memos { value: [RESERVE_INNER_PUZZLE_HASH] },
     };
 
     let reserve_send_message = SendMessage {
         mode: SENDER_PUZZLE | RECEIVER_COIN,
         message: tree_hash(
-            (1, // this is the leading 'q . ' in the delegated puzzle
-                (recreate_reserve, reserve_conditions)
-            )
+            (
+                1, // this is the leading 'q . ' in the delegated puzzle
+                (recreate_reserve, reserve_conditions),
+            ),
         ),
         receiver: [
             coinid(
                 reserve_parent_id,
                 RESERVE_FULL_PUZZLE_HASH,
-                RESERVE_AMOUNT_FROM_STATE_PROGRAM(...Truth.State) // initial state
-            )
-        ]
+                RESERVE_AMOUNT_FROM_STATE_PROGRAM(...Truth.State), // initial state
+            ),
+        ],
     };
 
     let recreate_singleton = CreateCoin {
@@ -90,23 +85,15 @@ fn main(
             [
                 curry_tree_hash(
                     FINALIZER_SELF_HASH,
-                    [
-                        tree_hash_atom(FINALIZER_SELF_HASH),
-                    ]
+                    [tree_hash_atom(FINALIZER_SELF_HASH)],
                 ), // finalizer puzzle hash
                 tree_hash_atom(Truth.Merkle_Root),
-                tree_hash(last_action_output.first.actual_state)
-            ]
+                tree_hash(last_action_output.first.actual_state),
+            ],
         ), // new inner ph
         amount: 1,
-        memos: Memos {
-            value: [HINT],
-        }
+        memos: Memos { value: [HINT] },
     };
 
-    [
-        recreate_singleton,
-        reserve_send_message,
-        ...base_conditions
-    ]
+    [recreate_singleton, reserve_send_message, ...base_conditions]
 }

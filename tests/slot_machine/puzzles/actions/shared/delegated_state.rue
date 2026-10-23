@@ -20,21 +20,14 @@ fn main(
     ...other_singleton_inner_puzzle_hash: Bytes32,
 ) -> (GeneralTruth, List<Condition>) {
     (
-        GeneralTruth {
-            Ephemeral_State: Truth.Ephemeral_State,
-            Actual_State: new_state,
-        },
-        [
-            ReceiveMessage {
-                mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
-                message: "s" + tree_hash(new_state),
-                sender: [
-                    curry_tree_hash(SINGLETON_MOD_HASH, [
-                        OTHER_SINGLETON_STRUCT_HASH,
-                        other_singleton_inner_puzzle_hash,
-                    ])
-                ]
-            }
-        ]
+        GeneralTruth { Ephemeral_State: Truth.Ephemeral_State, Actual_State: new_state },
+        [ReceiveMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
+            message: "s" + tree_hash(new_state),
+            sender: [curry_tree_hash(
+                SINGLETON_MOD_HASH,
+                [OTHER_SINGLETON_STRUCT_HASH, other_singleton_inner_puzzle_hash],
+            )],
+        }],
     )
 }

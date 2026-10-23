@@ -14,9 +14,5 @@ fn main(
     // Note: other CAT makers may have more arguments here
     // Puzzles using the maker should prepend Inner_Puzzle_Hash to user-supplied inputs
 ) -> Bytes32 {
-    curry_tree_hash(CAT_MOD_HASH, [
-        tree_hash_atom(CAT_MOD_HASH),
-        TAIL_HASH_HASH,
-        Inner_Puzzle_Hash,
-    ])
+    curry_tree_hash(CAT_MOD_HASH, [tree_hash_atom(CAT_MOD_HASH), TAIL_HASH_HASH, Inner_Puzzle_Hash])
 }

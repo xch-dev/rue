@@ -32,7 +32,7 @@ fn item_in_list(item: Int, list: List<Int>) -> Bool {
 export struct StateTruth {
     ephemeral_state: Any,
     ...actual_state: Any,
-} 
+}
 
 struct ActionOutput {
     state_truth: StateTruth,
@@ -59,7 +59,7 @@ fn reduce_and_verify_proofs(
             // treat selectors as ints for item_in_list
             item_in_list(
                 unchecked_cast::<Int>(selector),
-                unchecked_cast::<List<Int>>(selectors_so_far)
+                unchecked_cast::<List<Int>>(selectors_so_far),
             )
         } else {
             MERKLE_ROOT == simplify_merkle_proof(tree_hash(selector(...puzzles)), proof)
@@ -86,15 +86,14 @@ fn run_actions(
     inline let new_conditions = action_output.conditions;
 
     if pending_selectors is nil {
-        (
-            ephemeral_and_actual_state,
-            (new_conditions, current_conditions),
-        )
+        (ephemeral_and_actual_state, (new_conditions, current_conditions))
     } else {
         inline let selector = pending_selectors.first;
         inline let remaining_selectors = pending_selectors.rest;
-        inline let (solution, remaining_solutions) = unchecked_cast::<(Solution, List<Solution>)>(pending_solutions);
-        
+        inline let (solution, remaining_solutions) = unchecked_cast::<(Solution, List<Solution>)>(
+            pending_solutions,
+        );
+
         let puzzle = selector(...puzzles);
 
         run_actions(
@@ -118,21 +117,13 @@ fn main(
 ) -> List<Condition> {
     assert !(selectors_and_proofs is nil);
 
-    let selectors = reduce_and_verify_proofs(
-        MERKLE_ROOT,
-        puzzles,
-        nil,
-        selectors_and_proofs
-    );
+    let selectors = reduce_and_verify_proofs(MERKLE_ROOT, puzzles, nil, selectors_and_proofs);
 
     let run_action_output = run_actions(
         puzzles,
         nil,
         ActionOutput {
-            state_truth: StateTruth {
-                ephemeral_state: nil,
-                actual_state: STATE,
-            },
+            state_truth: StateTruth { ephemeral_state: nil, actual_state: STATE },
             conditions: nil,
         },
         selectors,
@@ -140,10 +131,7 @@ fn main(
     );
 
     FINALIZER(
-        FinalizerTruths {
-            Merkle_Root: MERKLE_ROOT,
-            State: STATE,
-        },
+        FinalizerTruths { Merkle_Root: MERKLE_ROOT, State: STATE },
         run_action_output,
         ...finalizer_solution,
     )
