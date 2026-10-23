@@ -1,0 +1,71 @@
+program: (a (q 2 (q 2 (i 23 (q 1 . 1) (q . 2)) 1) (c (a 2 5) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) 1))
+debug_program: (a (q 2 6 (c 11 (c (q . 1) (a 4 5)))) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_argument_evaluation.rue:6:5"))) 1) (q 2 (i 2 (q . 5) (q . 7)) 1)) 1))
+solution: (0 1)
+byte_cost: 996000
+clvm_error: clvm raise ()
+debug_clvm_error: clvm raise "assertion failed at inline_argument_evaluation.rue:6:5"
+tests:
+- name: ignored_argument_raises
+  program: (a (q 2 (q 1 . 5) (c (a 2 ()) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 13 (a 9 2)) (c () 1)) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_argument_evaluation.rue:6:5"))) 1) (q 1 . 5)) ()))
+  byte_cost: 780000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_argument_evaluation.rue:6:5"
+- name: conditional_argument_raises
+  program: (a (q 2 (q 2 (q 2 (i 5 (q . 2) (q 1 . 1)) 1) (c (a 5 2) 1)) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 13 (c (= 2 ()) (c (q . 1) (a 9 2)))) (c () 1)) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_argument_evaluation.rue:6:5"))) 1) (q 2 (i 2 (q . 5) (q . 7)) 1)) ()))
+  byte_cost: 1164000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_argument_evaluation.rue:6:5"
+- name: conditional_argument
+  program: (a (q 2 (q 2 (q 2 (i 5 (q . 2) (q 1 . 1)) 1) (c (a 5 2) 1)) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 13 (c (= 2 ()) (c (q . 1) (a 9 2)))) (c (q . 10) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_argument_evaluation.rue:6:5"))) 1) (q 2 (i 2 (q . 5) (q . 7)) 1)) ()))
+  output: '10'
+  runtime_cost: 2000
+  byte_cost: 1188000
+  total_cost: 1190000
+- name: conditional_inline_argument_raises
+  program: (a (q 2 (q 2 (q 2 (i 5 (q . 2) (q 1 . 1)) 1) (c (a 5 2) 1)) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (i (= 5 ()) (q 1 . 1) (q . 2)) 1) (c (a 5 2) 1)) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_argument_evaluation.rue:6:5"))) 1) ()))
+  byte_cost: 1164000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_argument_evaluation.rue:6:5"
+- name: conditional_binding_raises
+  program: (a (q 2 (q 2 (q 2 (i 5 (q . 2) (q 1 . 1)) 1) (c (a 5 2) 1)) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (i (= 5 ()) (q 1 . 1) (q . 2)) 1) (c (a 5 2) 1)) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_argument_evaluation.rue:6:5"))) 1) ()))
+  byte_cost: 1164000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_argument_evaluation.rue:6:5"
+- name: conditional_binding
+  program: (a (q 2 (q 2 (q 2 (i 5 (q . 2) (q 1 . 1)) 1) (c (a 5 2) 1)) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (i (= 5 ()) (q 1 . 1) (q . 2)) 1) (c (a 5 2) 1)) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_argument_evaluation.rue:6:5"))) 1) ()))
+  output: '10'
+  runtime_cost: 2000
+  byte_cost: 1188000
+  total_cost: 1190000
+- name: inline_binding_argument_raises
+  program: (a (q 2 (q 1 . 5) (c (a 2 ()) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 13 (a 9 2)) (c () 1)) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_argument_evaluation.rue:6:5"))) 1) (q 1 . 5)) ()))
+  byte_cost: 780000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_argument_evaluation.rue:6:5"
+- name: ignored_constant_raises
+  program: (a (q 2 (q 1 . 5) (c (a 2 (q . -1)) ())) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 2 13 2) (c (a 4 (- () (q . 1))) ())) (c (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_argument_evaluation.rue:6:5"))) 1) (q 1 . 5)) ()))
+  byte_cost: 816000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_argument_evaluation.rue:6:5"
+- name: nested_inline_arguments
+  program: (a (q 16 (a 2 (q . 1)) (a 2 (q . 2))) (c (q 2 (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (+ 1 (q . 1)) 1)) 1)) 1)) 1)) 1)) 1)) 1)) 1)) ()))
+  debug_program: (a (q 16 (a 2 (q . 1)) (a 2 (q . 2))) (c (q 2 (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (a (q 16 2 2) (c (+ 1 (q . 1)) 1)) 1)) 1)) 1)) 1)) 1)) 1)) 1)) ()))
+  output: '1280'
+  runtime_cost: 19968
+  byte_cost: 2484000
+  total_cost: 2503968
+- name: nested_same_inline_arguments
+  program: (a (q 16 (a 2 (q . 10)) (a 2 (q . 20))) (c (q 16 (a (q 16 2 2 3) (c (+ 1 (q . 1)) 1)) (a (q 16 (a (c (q . 2) (c (c (q . 1) (q 18 2 (q . 1000))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()) 2 3) (c (+ 1 (q . 1)) 1)) (q . 1003)) ()))
+  debug_program: (a (q 16 (a 2 (q . 10)) (a 2 (q . 20))) (c (q 16 (+ (+ (q . 1) (q . 1)) (a (q 16 (+ 2 2) 3) (c (+ 1 (q . 1)) 1))) (a (q 16 (+ (a 2 ()) (q . 1)) (a (q 2 (q 16 (+ (a 2 ()) 5) 15) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 1000))) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) (c (+ 3 (q . 1)) 1))) (c (c (q . 2) (c (c (q . 1) (q 18 (q . 1) (q . 1000))) (c () ()))) 1))) ()))
+  output: '34162'
+  runtime_cost: 16748
+  byte_cost: 2220000
+  total_cost: 2236748

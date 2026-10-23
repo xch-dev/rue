@@ -45,6 +45,18 @@ impl Visitor<'_> {
         }
     }
 
+    fn visit_inline_value(&mut self, symbol: SymbolId) -> bool {
+        if !self.visited.insert(symbol) {
+            return false;
+        }
+
+        match self.db.symbol(symbol) {
+            Symbol::Binding(binding) if binding.inline => self.visit_hir(binding.value.hir),
+            Symbol::Constant(constant) if constant.inline => self.visit_hir(constant.value.hir),
+            _ => false,
+        }
+    }
+
     fn visit_all(&mut self, hirs: impl IntoIterator<Item = HirId>) -> bool {
         hirs.into_iter().any(|hir| self.visit_hir(hir))
     }
@@ -82,10 +94,10 @@ impl Visitor<'_> {
             | Hir::InfinityG2
             // Constant expressions are evaluated at compile time
             | Hir::Const(_)
-            // Referenced values are evaluated where they are defined
-            | Hir::Reference(_)
             // Lambda bodies are only evaluated when called
             | Hir::Lambda(_) => false,
+            // Referenced values are evaluated where they are defined, unless they are inline
+            Hir::Reference(symbol) => self.visit_inline_value(symbol),
             Hir::BlsPairingIdentity(_)
             | Hir::BlsVerify(..)
             | Hir::Secp256K1Verify(..)

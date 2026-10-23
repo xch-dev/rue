@@ -11,7 +11,7 @@ use rue_options::CompilerOptions;
 use crate::{
     BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, ExprStatement,
     FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError, Statement,
-    Symbol, SymbolId, UnaryOp,
+    Symbol, SymbolId, UnaryOp, may_raise,
 };
 
 #[derive(Debug, Clone)]
@@ -35,7 +35,8 @@ pub struct Lowerer<'d, 'a, 'g> {
     db: &'d mut Database,
     arena: &'a mut Arena<Lir>,
     graph: &'g DependencyGraph,
-    inline_symbols: Vec<HashMap<SymbolId, HirId>>,
+    // Inline arguments by parameter, or `None` if the argument is bound in the environment
+    inline_symbols: Vec<HashMap<SymbolId, Option<HirId>>>,
     options: CompilerOptions,
     mode: LoweringMode,
     main: SymbolId,
@@ -71,10 +72,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     pub fn lower_symbol_value(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
-        for inline_symbols in self.inline_symbols.iter().rev() {
-            if let Some(hir) = inline_symbols.get(&symbol) {
-                return self.lower_hir(env, *hir);
-            }
+        if let Some(hir) = self.inline_argument(symbol) {
+            return self.lower_hir(env, hir);
         }
 
         match self.db.symbol(symbol).clone() {
@@ -141,7 +140,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .flat_map(HashMap::keys)
             .filter_map(|&symbol| {
                 let hir = self.inline_argument(symbol)?;
-                self.is_static_hir(hir).then_some((symbol, hir))
+                self.is_static_hir(hir).then_some((symbol, Some(hir)))
             })
             .collect();
         let inline_symbols = std::mem::replace(&mut self.inline_symbols, vec![static_arguments]);
@@ -433,10 +432,53 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
 
             if self.should_inline(symbol) {
-                self.inline_symbols.push(args);
-                let result = self.lower_hir(env, function.body);
+                // Arguments which may raise are evaluated eagerly, as they would be without
+                // inlining, and arguments used more than once are only evaluated once
+                let bound: Vec<SymbolId> = function
+                    .parameters
+                    .values()
+                    .copied()
+                    .filter(|parameter| {
+                        args.get(parameter).is_some_and(|&arg| {
+                            may_raise(self.db, arg)
+                                || (self.graph.references(*parameter) > 1
+                                    && !self.is_trivial_hir(arg))
+                        })
+                    })
+                    .collect();
+
+                let lir_args: HashMap<SymbolId, LirId> = bound
+                    .iter()
+                    .filter_map(|parameter| Some((*parameter, args.remove(parameter)?)))
+                    .map(|(parameter, arg)| (parameter, self.lower_hir(env, arg)))
+                    .collect();
+
+                let frame = args
+                    .into_iter()
+                    .map(|(parameter, arg)| (parameter, Some(arg)))
+                    .chain(bound.iter().map(|&parameter| (parameter, None)))
+                    .collect();
+
+                let group = self.create_group(bound, true);
+                let body_env = if group.is_empty() {
+                    env.clone()
+                } else {
+                    Self::apply_group(env.clone(), &group, true)
+                };
+
+                self.inline_symbols.push(frame);
+                let body = self.lower_hir(&body_env, function.body);
                 self.inline_symbols.pop().unwrap();
-                return result;
+
+                if group.is_empty() {
+                    return body;
+                }
+
+                let rest = self.arena.alloc(Lir::Path(1u8.into()));
+                let group_env =
+                    self.lower_group_environment(env, &group, rest, false, Some(&lir_args), true);
+                let body = self.arena.alloc(Lir::Quote(body));
+                return self.arena.alloc(Lir::Run(body, group_env));
             }
 
             let (capture_groups, param_group) = self.function_groups(symbol, &function);
@@ -489,10 +531,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_symbol_reference(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
-        for inline_symbols in self.inline_symbols.iter().rev() {
-            if let Some(hir) = inline_symbols.get(&symbol) {
-                return self.lower_hir(env, *hir);
-            }
+        if let Some(hir) = self.inline_argument(symbol) {
+            return self.lower_hir(env, hir);
         }
 
         self.lower_path(env, symbol)
@@ -909,6 +949,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .iter()
             .rev()
             .find_map(|symbols| symbols.get(&symbol).copied())
+            .flatten()
     }
 
     /// Whether the value can be lowered in any environment, since it doesn't depend on it.
@@ -932,6 +973,29 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 }
             }
             _ => false,
+        }
+    }
+
+    /// Whether the value is cheap enough to lower at every use, rather than binding it once.
+    fn is_trivial_hir(&self, hir: HirId) -> bool {
+        match self.db.hir(hir) {
+            Hir::Unary(UnaryOp::First | UnaryOp::Rest, hir) => self.is_trivial_hir(*hir),
+            Hir::Reference(symbol) => {
+                if let Some(hir) = self.inline_argument(*symbol) {
+                    return self.is_trivial_hir(hir);
+                }
+
+                if !self.should_inline(*symbol) {
+                    return true;
+                }
+
+                match self.db.symbol(*symbol) {
+                    Symbol::Constant(constant) => self.is_trivial_hir(constant.value.hir),
+                    Symbol::Binding(binding) => self.is_trivial_hir(binding.value.hir),
+                    _ => false,
+                }
+            }
+            _ => self.is_static_hir(hir),
         }
     }
 
@@ -981,14 +1045,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline
+                references <= 1
+                    && self.options.auto_inline
+                    && !may_raise(self.db, constant.value.hir)
             }
             Symbol::Binding(binding) => {
                 if binding.inline {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline
+                references <= 1
+                    && self.options.auto_inline
+                    && !may_raise(self.db, binding.value.hir)
             }
         }
     }
@@ -996,6 +1064,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
 #[cfg(test)]
 mod tests {
+    use rue_lir::ClvmOp;
     use rue_types::BuiltinTypes;
 
     use crate::{ParameterSymbol, Scope};
@@ -1107,6 +1176,126 @@ mod tests {
             .into_iter()
             .map(|capture| arena[capture].clone())
             .collect()
+    }
+
+    // fn main(x: Int) -> Int { f(<argument>) }
+    // fn f(y: Int) -> Int { <body> }
+    // Returns the lowered body of `main`
+    fn lower_call(
+        kind: FunctionKind,
+        body: impl FnOnce(&mut Database, SymbolId) -> HirId,
+        argument: impl FnOnce(&mut Database, SymbolId) -> HirId,
+    ) -> (Arena<Lir>, LirId) {
+        let mut db = Database::new();
+        let builtins = BuiltinTypes::new(db.types_mut());
+
+        let y = parameter(&mut db, &builtins);
+        let f_body = body(&mut db, y);
+        let f = function(
+            &mut db,
+            &builtins,
+            IndexMap::from([("y".to_string(), y)]),
+            f_body,
+            kind,
+        );
+        let f = db.alloc_symbol(Symbol::Function(f));
+
+        let x = parameter(&mut db, &builtins);
+        let f_reference = db.alloc_hir(Hir::Reference(f));
+        let argument = argument(&mut db, x);
+        let main_body = db.alloc_hir(Hir::FunctionCall(FunctionCall {
+            function: f_reference,
+            args: vec![argument],
+            nil_terminated: true,
+        }));
+        let main = function(
+            &mut db,
+            &builtins,
+            IndexMap::from([("x".to_string(), x)]),
+            main_body,
+            FunctionKind::Sequential,
+        );
+        let main = db.alloc_symbol(Symbol::Function(main));
+
+        let options = CompilerOptions::default();
+        let graph = DependencyGraph::build(&db, main, options);
+        let mut arena = Arena::new();
+        let mut lowerer = Lowerer::new(
+            &mut db,
+            &mut arena,
+            &graph,
+            options,
+            LoweringMode::Program,
+            main,
+            PathBuf::new(),
+        );
+        let lir = lowerer.lower_symbol_value(&Environment::default(), main);
+
+        (arena, lir)
+    }
+
+    fn double(db: &mut Database, y: SymbolId) -> HirId {
+        let y = db.alloc_hir(Hir::Reference(y));
+        db.alloc_hir(Hir::Binary(BinaryOp::Add, y, y))
+    }
+
+    fn increment(db: &mut Database, x: SymbolId) -> HirId {
+        let x = db.alloc_hir(Hir::Reference(x));
+        let one = db.alloc_hir(Hir::Int(1.into()));
+        db.alloc_hir(Hir::Binary(BinaryOp::Add, x, one))
+    }
+
+    // Returns the argument bound in the environment by `(a (q . body) (c argument 1))`
+    fn bound_argument(arena: &Arena<Lir>, lir: LirId) -> Option<&Lir> {
+        let Lir::Run(body, env) = arena[lir] else {
+            return None;
+        };
+        let Lir::Cons(argument, rest) = arena[env] else {
+            return None;
+        };
+        (matches!(arena[body], Lir::Quote(_))
+            && matches!(&arena[rest], Lir::Path(path) if *path == 1u8.into()))
+        .then_some(&arena[argument])
+    }
+
+    #[test]
+    fn inline_trivial_argument_is_substituted() {
+        let (arena, lir) = lower_call(FunctionKind::Inline, double, |db, x| {
+            db.alloc_hir(Hir::Reference(x))
+        });
+        assert!(matches!(&arena[lir], Lir::Add(args) if args.len() == 2));
+    }
+
+    #[test]
+    fn inline_argument_used_twice_is_bound() {
+        let (arena, lir) = lower_call(FunctionKind::Inline, double, increment);
+        assert!(matches!(bound_argument(&arena, lir), Some(Lir::Add(_))));
+    }
+
+    #[test]
+    fn inline_argument_used_once_is_substituted() {
+        let (arena, lir) = lower_call(
+            FunctionKind::Inline,
+            |db, y| db.alloc_hir(Hir::Reference(y)),
+            increment,
+        );
+        assert!(matches!(&arena[lir], Lir::Add(_)));
+    }
+
+    #[test]
+    fn auto_inlined_raising_argument_is_bound() {
+        let (arena, lir) = lower_call(
+            FunctionKind::Sequential,
+            |db, _| db.alloc_hir(Hir::Int(5.into())),
+            |db, _| {
+                let nil = db.alloc_hir(Hir::Nil);
+                db.alloc_hir(Hir::ClvmOp(ClvmOp::Raise, nil))
+            },
+        );
+        assert!(matches!(
+            bound_argument(&arena, lir),
+            Some(Lir::Op(ClvmOp::Raise, _))
+        ));
     }
 
     #[test]

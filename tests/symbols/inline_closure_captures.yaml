@@ -35,16 +35,16 @@ tests:
   byte_cost: 1908000
   total_cost: 1912196
 - name: argument_evaluated_once
-  program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_closure_captures.rue:39:5"))) 1) ()))
+  program: (a (q 2 (q 16 (a (q 2 (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) (c (a 5 2) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 16 (a (q 2 (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) (c (a 5 2) 1)) 2) (c (q . 10) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_closure_captures.rue:39:5"))) 1) ()))
   output: '30'
-  runtime_cost: 4805
-  byte_cost: 1932000
-  total_cost: 1936805
+  runtime_cost: 5059
+  byte_cost: 2100000
+  total_cost: 2105059
 - name: argument_raises
-  program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 16 (a (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (a 5 2)) (c () ()))) ()))) 1)) 2) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_closure_captures.rue:39:5"))) 1) ()))
-  byte_cost: 1908000
+  program: (a (q 2 (q 16 (a (q 2 (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) (c (a 5 2) 1)) 2) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 (q 16 (a (q 2 (q 16 (a 2 ()) (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) 1)) (c (a 5 2) 1)) 2) (c () 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at inline_closure_captures.rue:39:5"))) 1) ()))
+  byte_cost: 2076000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_closure_captures.rue:39:5"
 - name: auto_inlined_closure
