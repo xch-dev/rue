@@ -49,6 +49,7 @@ pub fn compile_struct_initializer_expr(
 
     let mut expected_field_types = HashMap::new();
     let mut current = struct_type.inner;
+    let mut unresolved = false;
 
     for (i, field) in struct_type.fields.iter().enumerate() {
         if i == struct_type.fields.len() - 1 && !struct_type.nil_terminated {
@@ -58,7 +59,10 @@ pub fn compile_struct_initializer_expr(
 
         let pairs = rue_types::extract_pairs(ctx.types_mut(), current, false);
 
+        // The struct's type is only unresolved if it was rejected, since every type has been
+        // resolved by the time expressions are compiled. The fields can't be checked against it.
         if pairs.is_empty() {
+            unresolved = true;
             break;
         }
 
@@ -171,6 +175,11 @@ pub fn compile_struct_initializer_expr(
                 DiagnosticKind::DuplicateField(name.text().to_string()),
             );
         }
+    }
+
+    if unresolved {
+        debug!("Unresolved struct initializer due to unresolved struct type");
+        return ctx.builtins().unresolved.clone();
     }
 
     let mut hir = ctx.builtins().nil.hir;

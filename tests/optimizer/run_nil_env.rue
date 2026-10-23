@@ -1,0 +1,6 @@
+// Calling a lambda with a spread nil argument runs it in a nil environment,
+// so it must not be inlined into the current environment (which is the solution)
+fn main(n: Int) -> Any {
+    let f = fn(...x: Any) => x;
+    f(...nil)
+}

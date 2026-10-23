@@ -1,0 +1,6 @@
+program: (q . 42)
+debug_program: (a (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 1 . 42)) (c () ()))) 1))
+output: '42'
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020

@@ -23,9 +23,9 @@ use rue_parser::Parser;
 use thiserror::Error;
 
 use crate::{
-    Compiler, ImportCache, SyntaxItemKind, check_inline_ifs, check_unused, compile_symbol_items,
-    compile_type_items, const_eval::evaluate_const_exprs, declare_module_items,
-    declare_symbol_items, declare_type_items, resolve_imports,
+    Compiler, ImportCache, SyntaxItemKind, check_inline_ifs, check_unused, compile_default_items,
+    compile_symbol_items, compile_type_items, const_eval::evaluate_const_exprs,
+    declare_module_items, declare_symbol_items, declare_type_items, resolve_imports,
 };
 
 #[derive(Debug, Error)]
@@ -278,6 +278,7 @@ impl FileTree {
         resolve_imports(ctx, modules.clone(), &mut cache, true);
 
         self.compile_types(ctx);
+        self.compile_defaults(ctx);
         self.compile_symbols(ctx);
         evaluate_const_exprs(ctx);
         check_inline_ifs(ctx);
@@ -490,6 +491,13 @@ impl FileTree {
         }
     }
 
+    fn compile_defaults(&self, ctx: &mut Compiler) {
+        match self {
+            Self::File(file) => file.compile_defaults(ctx),
+            Self::Directory(directory) => directory.compile_defaults(ctx),
+        }
+    }
+
     fn compile_symbols(&self, ctx: &mut Compiler) {
         match self {
             Self::File(file) => file.compile_symbols(ctx),
@@ -598,6 +606,12 @@ impl File {
         self.end(ctx, declarations);
     }
 
+    fn compile_defaults(&self, ctx: &mut Compiler) {
+        let declarations = self.begin(ctx);
+        compile_default_items(ctx, self.document.items(), &declarations);
+        self.end(ctx, declarations);
+    }
+
     fn compile_symbols(&self, ctx: &mut Compiler) {
         let declarations = self.begin(ctx);
         compile_symbol_items(ctx, self.document.items(), &declarations);
@@ -697,6 +711,14 @@ impl Directory {
         self.begin(ctx);
         for child in &self.children {
             child.compile_types(ctx);
+        }
+        self.end(ctx);
+    }
+
+    fn compile_defaults(&self, ctx: &mut Compiler) {
+        self.begin(ctx);
+        for child in &self.children {
+            child.compile_defaults(ctx);
         }
         self.end(ctx);
     }

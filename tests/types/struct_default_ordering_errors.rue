@@ -1,0 +1,49 @@
+// Default values must be checked against types that are declared later.
+fn first_of(pair: Later) -> Int {
+    pair.first
+}
+
+struct CallsLater {
+    value: Int = first_of(5),
+}
+
+type Later = (Int, Int);
+
+struct Outer {
+    inner: Inner = Inner { value: (1, 2) },
+}
+
+struct Inner {
+    value: Int,
+}
+
+// An inferred field type isn't known until its default value has been compiled, so nothing
+// can depend on it beforehand.
+fn make_inferred() -> Inferred {
+    Inferred {}
+}
+
+struct UsesInferred {
+    value: Int = make_inferred().value,
+}
+
+struct Inferred {
+    value = 5,
+}
+
+// An inferred field type can't make the struct refer to itself without passing through a pair.
+fn make_spread() -> Spread {
+    make_spread()
+}
+
+struct Spread {
+    ...rest = make_spread(),
+}
+
+fn main(spread: Spread) -> Int {
+    let calls_later = CallsLater {};
+    let outer = Outer {};
+    let uses_inferred = UsesInferred {};
+    let _spread = spread;
+    calls_later.value + outer.inner.value + uses_inferred.value
+}

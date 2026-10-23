@@ -2,9 +2,10 @@ use rue_ast::{AstItem, AstSymbolItem};
 use rue_hir::ModuleDeclarations;
 
 use crate::{
-    Compiler, compile_module_symbols, compile_module_types, compile_symbol_item, compile_type_item,
-    declare_import_item, declare_module, declare_module_symbols, declare_module_types,
-    declare_symbol_item, declare_type_item,
+    Compiler, compile_module_defaults, compile_module_symbols, compile_module_types,
+    compile_symbol_item, compile_type_item, compile_type_item_defaults, declare_import_item,
+    declare_module, declare_module_symbols, declare_module_types, declare_symbol_item,
+    declare_type_item,
 };
 
 pub fn declare_module_items(
@@ -87,6 +88,32 @@ pub fn compile_type_items(
             AstItem::SymbolItem(item) => {
                 if let AstSymbolItem::ModuleItem(item) = item {
                     compile_module_types(ctx, &item, declarations.modules[module]);
+                    module += 1;
+                }
+            }
+            AstItem::ImportItem(_) => {}
+        }
+    }
+}
+
+pub fn compile_default_items(
+    ctx: &mut Compiler,
+    items: impl Iterator<Item = AstItem>,
+    declarations: &ModuleDeclarations,
+) {
+    let mut index = 0;
+    let mut module = 0;
+
+    for item in items {
+        match item {
+            AstItem::TypeItem(item) => {
+                let (ty, scope) = declarations.types[index];
+                compile_type_item_defaults(ctx, &item, ty, scope);
+                index += 1;
+            }
+            AstItem::SymbolItem(item) => {
+                if let AstSymbolItem::ModuleItem(item) = item {
+                    compile_module_defaults(ctx, &item, declarations.modules[module]);
                     module += 1;
                 }
             }

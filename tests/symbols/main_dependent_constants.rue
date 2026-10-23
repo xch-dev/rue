@@ -1,0 +1,10 @@
+const A: Int = 10;
+const B: Int = A + 1;
+
+fn main() -> Int {
+    A + B + A + B
+}
+
+test fn dependent_constants() -> Int {
+    A + B + A + B
+}

@@ -1,0 +1,29 @@
+program: (c (- (+ 2 11) 5 (q . 1)) (c (- 5 2 11) (c (- (+ 2 11) 5 23) (c (- (+ 2 11) 5 23) (c (- (+ 2 23 (q . 1)) 5 11) (c (- 2 5 11) ()))))))
+debug_program: (c (- (+ (- 2 5) 11) (q . 1)) (c (- (+ (- () 2) 5) 11) (c (- (+ (- 2 5) 11) 23) (c (- 2 (- 5 (- 11 23))) (c (+ (- 2 (- (+ 5 11) 23)) (q . 1)) (c (+ (- (- (- 2 5) 11) (q . 1)) (q . 1)) ()))))))
+solution: (100 10 1 5)
+output: (90 -91 86 86 95 89)
+runtime_cost: 11327
+byte_cost: 1380000
+total_cost: 1391327
+tests:
+- name: const_sub_inside_add_inside_sub
+  program: (q . 19)
+  debug_program: (q . 19)
+  output: '19'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: const_negation_inside_add_inside_sub
+  program: (q . 890)
+  debug_program: (q . 890)
+  output: '890'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: const_sub_nested_in_negative_position
+  program: (q . 9090)
+  debug_program: (q . 9090)
+  output: '9090'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020

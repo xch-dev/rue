@@ -1,0 +1,14 @@
+const A: Int = 10;
+const B: Int = A + 1;
+
+fn main(n: Int) -> Int {
+    if n == 0 {
+        return B + B;
+    }
+
+    helper()(0) + A + A
+}
+
+fn helper() -> fn(n: Int) -> Int {
+    main
+}
