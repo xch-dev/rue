@@ -1,0 +1,24 @@
+struct Box<T> {
+    value: T | nil,
+}
+
+struct Callback<T> {
+    function: fn(value: T) -> Int,
+}
+
+fn unbox<T>(box: Box<T>) -> T {
+    if box.value is nil {
+        raise;
+    }
+    box.value
+}
+
+fn call<T>(callback: Callback<T>, value: T) -> Int {
+    callback.function(value)
+}
+
+fn main(box: Box<Int | nil>) -> (Int, Int) {
+    let nil_argument: Int = unbox(box);
+    let mismatch = call(Callback::<Int> { function: fn(value: Int) => value }, "a");
+    (nil_argument, mismatch)
+}

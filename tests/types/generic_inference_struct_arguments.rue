@@ -1,0 +1,41 @@
+struct Box<T> {
+    value: T | nil,
+}
+
+type Tree<T> = (Tree<T>, Tree<T>) | T;
+
+struct Node<T> {
+    left: Tree<T>,
+    right: Tree<T> | nil,
+}
+
+struct Tagged<T> {
+    value: Int,
+}
+
+fn unbox<T>(box: Box<T>) -> T {
+    if box.value is nil {
+        raise;
+    }
+    box.value
+}
+
+fn left<T>(node: Node<T>) -> Tree<T> {
+    node.left
+}
+
+fn untag<T>(_tagged: Tagged<T>, value: T) -> T {
+    value
+}
+
+test fn optional_field() -> Int {
+    unbox(Box::<Int> { value: 42 })
+}
+
+test fn recursive_field() -> Tree<Int> {
+    left(Node::<Int> { left: 42, right: nil })
+}
+
+test fn unused_generic() -> Bytes {
+    untag(Tagged::<Bytes> { value: 1 }, "a")
+}
