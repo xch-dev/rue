@@ -1,0 +1,14 @@
+program: (a (q 2 (q 16 5 2 5 2) (c (+ 2 (q . 1)) 1)) (q 10))
+debug_program: (a (q 2 (q 16 (+ (+ 5 2) 5) 2) (c (+ 2 (q . 1)) 1)) (c (q . 10) ()))
+output: '42'
+runtime_cost: 2763
+byte_cost: 540000
+total_cost: 542763
+tests:
+- name: dependent_constants
+  program: (a (q 2 (q 16 5 2 5 2) (c (+ 2 (q . 1)) 1)) (q 10))
+  debug_program: (a (q 2 (q 16 (+ (+ 5 2) 5) 2) (c (+ 2 (q . 1)) 1)) (c (q . 10) ()))
+  output: '42'
+  runtime_cost: 2763
+  byte_cost: 540000
+  total_cost: 542763
