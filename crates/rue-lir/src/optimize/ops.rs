@@ -8,7 +8,7 @@ use sha3::Keccak256;
 
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
-    optimize::{ArgList, fold_atoms, opt_truthy},
+    optimize::{ArgList, fold_atoms, opt_truthy, reads_env},
     parent_path, rest_path,
 };
 
@@ -29,7 +29,8 @@ pub fn opt_quote(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 
 // If the program is quoted, and the environment is the same as the parent,
 // we can skip both quoting and running the program, and just use it directly
-// We can also skip quoting if the program has no path, since it's not going to rely on the environment
+// We can also skip quoting if the environment is nil and the program never reads its environment,
+// since the result doesn't depend on which environment it's run in
 pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
     if let Lir::Quote(value) = arena[callee].clone() {
         if let Lir::Path(path) = arena[env].clone()
@@ -40,6 +41,7 @@ pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
 
         if let Lir::Atom(atom) = arena[env].clone()
             && atom.is_empty()
+            && !reads_env(arena, value)
         {
             return value;
         }
@@ -49,43 +51,54 @@ pub fn opt_run(arena: &mut Arena<Lir>, callee: LirId, env: LirId) -> LirId {
 }
 
 // If there are no captures, we don't need to create a closure
-// We can also skip the closure if the program has no path, since it's not going to rely on the captures
+// The closure would be `(a (q . F) 1)` if it has parameters, which is equivalent to `F`
+// Otherwise it would be `(a (q . F) ())`, which is only equivalent to `F` if it never reads its environment
 pub fn opt_closure(
     arena: &mut Arena<Lir>,
     callee: LirId,
     args: Vec<LirId>,
     has_parameters: bool,
 ) -> LirId {
-    if args.is_empty() {
+    if args.is_empty()
+        && (has_parameters
+            || matches!(arena[callee].clone(), Lir::Quote(value) if !reads_env(arena, value)))
+    {
         return callee;
     }
 
     arena.alloc(Lir::Closure(callee, args, has_parameters))
 }
 
-// If the value is a path, we can optimize it to a first path
+// If the value is a path, we can optimize it to a first path, since both fail if it's an atom
+// Path 0 is excluded, since it evaluates to nil rather than reading the environment
 // If the value is a cons, we can extract the first element out of it
 // If the value is a divmod, we can optimize it to a div since that's the first output
 pub fn opt_first(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
-        Lir::Path(path) => arena.alloc(Lir::Path(first_path(&path))),
+        Lir::Path(path) if path != BigUint::ZERO => arena.alloc(Lir::Path(first_path(&path))),
         Lir::Divmod(left, right) => opt_div(arena, left, right),
         _ => arena.alloc(Lir::First(value)),
     }
 }
 
-// If the value is a path, we can optimize it to a rest path
+// If the value is a path, we can optimize it to a rest path, since both fail if it's an atom
+// Path 0 is excluded, since it evaluates to nil rather than reading the environment
 // If the value is a cons, we can extract the rest element out of it
 // If the value is a divmod, we can optimize it to a remainder since that's the rest output
 pub fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
-        Lir::Path(path) => arena.alloc(Lir::Path(rest_path(&path))),
+        Lir::Path(path) if path != BigUint::ZERO => arena.alloc(Lir::Path(rest_path(&path))),
         Lir::Divmod(left, right) => opt_mod(arena, left, right),
         _ => arena.alloc(Lir::Rest(value)),
     }
 }
 
 // TODO: Optimize pair of div and mod into divmod
+// If the first and rest are paths to the first and rest of the same parent, we can use the parent path
+// This assumes that the value at the parent path is a pair, as its type says it is. If it's actually
+// an atom (e.g. from a solution which doesn't match the declared types), the original would fail,
+// but the parent path wouldn't. Rue doesn't check values against their types at runtime anyway,
+// so this doesn't give the spender anything that a wrongly shaped pair couldn't.
 pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
     if let Lir::Path(f_path) = arena[first].clone()
         && let Lir::Path(r_path) = arena[rest].clone()
@@ -889,5 +902,98 @@ mod tests {
         let three = arena.alloc(Lir::Atom(vec![3]));
         let result = opt_mul(&mut arena, vec![two, three]);
         assert!(matches!(&arena[result], Lir::Atom(atom) if *atom == [6]));
+    }
+
+    fn path(arena: &mut Arena<Lir>, path: u32) -> LirId {
+        arena.alloc(Lir::Path(BigUint::from(path)))
+    }
+
+    #[test]
+    fn test_run_nil_env_keeps_env_reads() {
+        let mut arena = Arena::new();
+        let value = path(&mut arena, 1);
+        let callee = arena.alloc(Lir::Quote(value));
+        let nil = arena.alloc(Lir::Atom(vec![]));
+        let result = opt_run(&mut arena, callee, nil);
+        assert!(matches!(arena[result], Lir::Run(c, e) if c == callee && e == nil));
+    }
+
+    #[test]
+    fn test_run_nil_env_keeps_implicit_env_reads() {
+        // `(a (q . (a (q . 2) 1)) ())` reads path 2 of the nil environment, which fails
+        let mut arena = Arena::new();
+        let inner = path(&mut arena, 2);
+        let inner = arena.alloc(Lir::Quote(inner));
+        let one = path(&mut arena, 1);
+        let value = arena.alloc(Lir::Run(inner, one));
+        let callee = arena.alloc(Lir::Quote(value));
+        let nil = arena.alloc(Lir::Atom(vec![]));
+        let result = opt_run(&mut arena, callee, nil);
+        assert!(matches!(arena[result], Lir::Run(..)));
+    }
+
+    #[test]
+    fn test_run_nil_env_without_env_reads() {
+        let mut arena = Arena::new();
+        let quoted = path(&mut arena, 2);
+        let quoted = arena.alloc(Lir::Quote(quoted));
+        let one = arena.alloc(Lir::Atom(vec![1]));
+        let value = arena.alloc(Lir::Cons(quoted, one));
+        let callee = arena.alloc(Lir::Quote(value));
+        let nil = arena.alloc(Lir::Atom(vec![]));
+        let result = opt_run(&mut arena, callee, nil);
+        assert_eq!(result, value);
+    }
+
+    #[test]
+    fn test_run_same_env() {
+        let mut arena = Arena::new();
+        let value = path(&mut arena, 2);
+        let callee = arena.alloc(Lir::Quote(value));
+        let env = path(&mut arena, 1);
+        let result = opt_run(&mut arena, callee, env);
+        assert_eq!(result, value);
+    }
+
+    #[test]
+    fn test_cons_of_first_and_rest_uses_parent() {
+        let mut arena = Arena::new();
+        let first = path(&mut arena, 4);
+        let rest = path(&mut arena, 6);
+        let result = opt_cons(&mut arena, first, rest);
+        assert!(matches!(&arena[result], Lir::Path(p) if *p == BigUint::from(2u8)));
+    }
+
+    #[test]
+    fn test_closure_without_parameters_keeps_env_reads() {
+        // `(a (q . F) ())` runs `F` in a nil environment, so it can't be replaced with `F`
+        let mut arena = Arena::new();
+        let body = path(&mut arena, 2);
+        let callee = arena.alloc(Lir::Quote(body));
+        let result = opt_closure(&mut arena, callee, vec![], false);
+        assert!(matches!(arena[result], Lir::Closure(..)));
+
+        let result = opt_closure(&mut arena, callee, vec![], true);
+        assert_eq!(result, callee);
+
+        let body = arena.alloc(Lir::Atom(vec![42]));
+        let callee = arena.alloc(Lir::Quote(body));
+        let result = opt_closure(&mut arena, callee, vec![], false);
+        assert_eq!(result, callee);
+    }
+
+    #[test]
+    fn test_first_and_rest_of_path_zero() {
+        // Path 0 evaluates to nil, so `(f ())` fails rather than reading path 2
+        let mut arena = Arena::new();
+        let zero = path(&mut arena, 0);
+        let result = opt_first(&mut arena, zero);
+        assert!(matches!(arena[result], Lir::First(_)));
+        let result = opt_rest(&mut arena, zero);
+        assert!(matches!(arena[result], Lir::Rest(_)));
+
+        let five = path(&mut arena, 5);
+        let result = opt_first(&mut arena, five);
+        assert!(matches!(&arena[result], Lir::Path(p) if *p == BigUint::from(9u8)));
     }
 }

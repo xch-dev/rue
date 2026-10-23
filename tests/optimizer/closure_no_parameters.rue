@@ -1,0 +1,5 @@
+// A function without parameters or captures is run in a nil environment
+fn main() -> Int {
+    let f = fn() => 42;
+    f()
+}
