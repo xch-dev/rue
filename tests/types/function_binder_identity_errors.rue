@@ -1,0 +1,58 @@
+type Id = fn<U>(x: U) -> U;
+type P<T> = fn<U>(x: U) -> (U, T);
+type F = fn<U>(x: U) -> (U, F);
+type R = (Int, G2);
+type G2 = fn(x: (Int, Int)) -> R;
+type G = fn(x: Int) -> R;
+
+fn mk<T>(_a: T) -> fn(b: T) -> T {
+    fn(b: T): T => b
+}
+
+fn foo<U>(x: U) -> U {
+    // The free `U` here is a single type, but `foo` works for any `U`
+    let _f = mk(foo)(fn(_y: U): U => x);
+    x
+}
+
+fn ll<V>(x: V) -> (V, fn(y: V) -> (V, Int)) {
+    (x, fn(_y: V): (V, Int) => (x, 0))
+}
+
+fn ff<U>(x: U) -> (U, F) {
+    (x, ff)
+}
+
+fn capture<T, S>(s: S, deep: Bool) -> fn(x: T) -> S {
+    fn(x: T): S => {
+        if deep {
+            // The result is generic over a copy of `T`, so it doesn't capture the `S := T`
+            let id: fn<U>(y: U) -> U = capture(x, false);
+            id(s)
+        } else {
+            s
+        }
+    }
+}
+
+fn main() -> Int {
+    let r: (Int, Int) = foo((1, 2));
+
+    // A lambda with its own generics still doesn't leak the expected type's generics
+    let _outer: Id = fn<V>(x) => {
+        let _inner: Id = fn<W>(_y) => x;
+        x
+    };
+
+    // The nested function's generic is its own, rather than the outer function's
+    let _p: P<P<Int>> = ll;
+
+    // `F` is instantiated again for `G2`, whose argument isn't an `Int`
+    let f: F = ff;
+    let _g: G = f;
+
+    let c: fn(x: (Int, Int)) -> Int = capture(7, true);
+    let n: Int = c((1, 2));
+
+    r.first + n
+}

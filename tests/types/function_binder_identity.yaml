@@ -1,0 +1,45 @@
+tests:
+- name: generic_function_argument
+  program: (a (q . 2) (q 1))
+  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  output: '1'
+  runtime_cost: 179
+  byte_cost: 156000
+  total_cost: 156179
+- name: instantiate_with_free_generic
+  program: (a (q 16 4 6) (c (a (q . 2) (q (q . 2))) 1))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 4 (c 6 (c (q . 1) (q . 2)))) 1)) (c (c (q 2 (q 2 2 (c 7 ())) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (q . 2)) ()))
+  output: '3'
+  runtime_cost: 1245
+  byte_cost: 420000
+  total_cost: 421245
+- name: lambda_with_explicit_generics
+  program: (a (q 2 (q . 2) (c 2 ())) (q 5))
+  debug_program: (a (q 2 (q 2 2 (c (q . 5) ())) (c (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) 1))
+  output: '5'
+  runtime_cost: 433
+  byte_cost: 324000
+  total_cost: 324433
+- name: nested_generic_functions
+  program: (a (q 16 4 6) (c (f (a (r (a (q 4 2 (q 4 2 ())) (q 1))) (q (a . 3)))) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (f 2) (r 2)) (c (f (a (r (a 2 (c (q . 1) ()))) (c (c (q . 2) (q . 3)) ()))) 1)) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q 4 2 (c (q . 2) (c (c (q . 1) (q 4 2 ())) (c (q . 1) ())))) ()))
+  output: '5'
+  runtime_cost: 1632
+  byte_cost: 804000
+  total_cost: 805632
+- name: recursive_generic_function
+  program: (a (q 5 (a (r (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 5))) (q 6))) (c (q 4 5 (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))) ()))
+  debug_program: (a (q 2 (q 2 (q 5 (a (r (a 2 (c (q . 5) ()))) (c (q . 6) ()))) (c 2 1)) (c (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q 4 5 (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))) ()))
+  output: '6'
+  runtime_cost: 3244
+  byte_cost: 2004000
+  total_cost: 2007244
+- name: instantiate_alias_with_expected_generic
+  program: (a (q 16 (f (a 2 (q (q . 2)))) (a 2 (q 5))) (c (q . 2) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (f 2) (a 5 (c (q . 5) ()))) (c (a 2 (c (c (q . 1) (q . 2)) ())) 1)) (c (a 2 ()) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))
+  output: '6'
+  runtime_cost: 1427
+  byte_cost: 588000
+  total_cost: 589427
+diagnostics:
+- Unused generic type `V` at function_binder_identity.rue:44:20

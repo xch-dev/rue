@@ -72,6 +72,8 @@ pub fn compile_function_call_expr(
         args.extend(arg.expr());
     }
 
+    let mut generalized = Vec::new();
+
     let (args, mappings) = if let Some(function) = expected_function {
         if function.nil_terminated && !nil_terminated {
             ctx.diagnostic(call.syntax(), DiagnosticKind::UnexpectedSpread);
@@ -229,6 +231,29 @@ pub fn compile_function_call_expr(
             mappings.insert(generic, ctx.builtins().unresolved.ty);
         }
 
+        // A generic that's only inferred as one of the generics of the function type expected of
+        // the call stays generic (as a copy, so that it doesn't capture anything), since the
+        // function that's returned works for any of them (as long as no parameter depends on it)
+        let ret = rue_types::unwrap_semantic(ctx.types_mut(), function.ret, true);
+
+        if matches!(ctx.ty(ret), Type::Function(_)) {
+            for &generic in &function.generics {
+                if mappings
+                    .get(&generic)
+                    .is_some_and(|&ty| is_expected_generic(ctx, expected_type, ty))
+                    && !function
+                        .params
+                        .values()
+                        .any(|&param| contains_generic(ctx.types_mut(), param, generic))
+                {
+                    let copy = ctx.ty(generic).clone();
+                    let copy = ctx.alloc_type(copy);
+                    mappings.insert(generic, copy);
+                    generalized.push(copy);
+                }
+            }
+        }
+
         // Inference only proposes types for the generics, so each argument must be checked
         // against the fully substituted parameter type. This catches arguments that constrain
         // a generic inconsistently, such as `(Int, fn(x: Bytes32) -> Bytes32)` being passed to
@@ -257,7 +282,15 @@ pub fn compile_function_call_expr(
         )))
     };
 
-    let ty = substitute_with_mappings(ctx.types_mut(), ty, &mappings);
+    let mut ty = substitute_with_mappings(ctx.types_mut(), ty, &mappings);
+
+    if !generalized.is_empty()
+        && let unwrapped = rue_types::unwrap_semantic(ctx.types_mut(), ty, true)
+        && let Type::Function(mut function) = ctx.ty(unwrapped).clone()
+    {
+        function.generics.extend(generalized);
+        ty = ctx.alloc_type(Type::Function(function));
+    }
 
     let hir = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
         function: expr.hir,
@@ -300,6 +333,15 @@ fn has_uninferred_parameters(
                 !mappings.contains_key(&generic) && contains_generic(ctx.types_mut(), ty, generic)
             })
         })
+}
+
+/// Whether the type is one of the generics of the function type expected of the call.
+fn is_expected_generic(ctx: &mut Compiler, expected_type: Option<TypeId>, ty: TypeId) -> bool {
+    expected_type.is_some_and(|expected_type| {
+        rue_types::extract_functions(ctx.types_mut(), expected_type)
+            .iter()
+            .any(|function| function.generics.contains(&ty))
+    })
 }
 
 fn is_type_in_scope(ctx: &Compiler, ty: TypeId) -> bool {
