@@ -1216,10 +1216,6 @@ mod tests {
         assert!(matches!(&arena[result], Lir::Atom(atom) if *atom == [6]));
     }
 
-    fn path(arena: &mut Arena<Lir>, path: u32) -> LirId {
-        arena.alloc(Lir::Path(BigUint::from(path)))
-    }
-
     #[test]
     fn test_run_nil_env_keeps_env_reads() {
         let mut arena = Arena::new();
