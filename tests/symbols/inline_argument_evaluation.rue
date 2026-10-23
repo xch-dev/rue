@@ -1,0 +1,110 @@
+fn main(x: Int, c: Bool) -> Int {
+    choose(c, 1, positive(x))
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+fn ignore(_value: Int) -> Int {
+    5
+}
+
+fn choose(c: Bool, a: Int, b: Int) -> Int {
+    if c {
+        a
+    } else {
+        b
+    }
+}
+
+inline fn choose_inline(c: Bool, a: Int, b: Int) -> Int {
+    if c {
+        a
+    } else {
+        b
+    }
+}
+
+inline fn double(value: Int) -> Int {
+    value + value
+}
+
+const NEGATIVE: Int = positive(-1);
+
+test fn ignored_argument_raises() -> Int {
+    let num = 0;
+    ignore(positive(num))
+}
+
+test fn conditional_argument_raises() -> Int {
+    let num = 0;
+    choose(num == 0, 1, positive(num))
+}
+
+test fn conditional_argument() -> Int {
+    let num = 10;
+    choose(num == 0, 1, positive(num))
+}
+
+test fn conditional_inline_argument_raises() -> Int {
+    let num = 0;
+    choose_inline(num == 0, 1, positive(num))
+}
+
+test fn conditional_binding_raises() -> Int {
+    let num = 0;
+    let value = positive(num);
+    if num == 0 {
+        1
+    } else {
+        value
+    }
+}
+
+test fn conditional_binding() -> Int {
+    let num = 10;
+    let value = positive(num);
+    if num == 0 {
+        1
+    } else {
+        value
+    }
+}
+
+test fn inline_binding_argument_raises() -> Int {
+    let num = 0;
+    inline let value = positive(num);
+    ignore(value)
+}
+
+test fn ignored_constant_raises() -> Int {
+    ignore(NEGATIVE)
+}
+
+fn nested_doubles(num: Int) -> Int {
+    double(double(double(double(double(double(double(double(num + 1))))))))
+}
+
+test fn nested_inline_arguments() -> Int {
+    nested_doubles(1) + nested_doubles(2)
+}
+
+inline fn double_plus(a: Int, b: Int) -> Int {
+    a + a + b
+}
+
+inline fn closure_double_plus(a: Int, b: Int) -> Int {
+    let g = fn() => a * 1000;
+    g() + a + b
+}
+
+fn nested_same_inline(num: Int) -> Int {
+    double_plus(1, double_plus(num + 1, num))
+        + closure_double_plus(1, closure_double_plus(num + 1, num))
+}
+
+test fn nested_same_inline_arguments() -> Int {
+    nested_same_inline(10) + nested_same_inline(20)
+}
