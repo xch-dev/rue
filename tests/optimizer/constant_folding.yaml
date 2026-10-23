@@ -52,7 +52,7 @@ tests:
   byte_cost: 60000
   total_cost: 60020
 - name: nest_sub_add_ref
-  program: (- (+ (q . 200) 2) 2)
+  program: (- (+ 2 (q . 200)) 2)
   debug_program: (- (+ 2 (q . 200)) 2)
   solution: (100)
   output: '200'

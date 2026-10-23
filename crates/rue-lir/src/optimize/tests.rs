@@ -325,9 +325,10 @@ const FUZZ_ATOMS: &[&[u8]] = &[
     &[0x01, 0x00],
 ];
 
-// These paths never share a parent, so the generated pairs of paths aren't
-// collapsed into a single path (which is out of scope for this test)
-const FUZZ_PATHS: &[u32] = &[2, 5, 11];
+// These paths never share a parent, since opt_cons intentionally collapses a pair of sibling
+// paths into their parent path, assuming that the parent is a pair (see its documentation)
+// For the same reason, first and rest are never applied directly to a path
+const FUZZ_PATHS: &[u32] = &[1, 2, 5, 11];
 
 fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
     if depth == 0 || rng.below(5) == 0 {
@@ -350,7 +351,7 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
     let mut args = gen_args(arena, rng, 3);
     let mut next = || args.pop().unwrap();
 
-    let lir = match rng.below(14) {
+    let lir = match rng.below(18) {
         0 => Lir::Not(next()),
         1 => Lir::Eq(next(), next()),
         2 => {
@@ -367,14 +368,42 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
         6 => Lir::All(gen_args(arena, rng, 0)),
         7 => Lir::Any(gen_args(arena, rng, 0)),
         8 => Lir::Raise(vec![]),
-        9 => Lir::First(next()),
-        10 => Lir::Rest(next()),
+        9 | 10 => {
+            let mut value = next();
+            while matches!(arena[value], Lir::Path(_)) {
+                value = generate(arena, rng, depth - 1);
+            }
+            if rng.below(2) == 0 {
+                Lir::First(value)
+            } else {
+                Lir::Rest(value)
+            }
+        }
         11 => Lir::Gt(next(), next()),
         12 => Lir::Add(gen_args(arena, rng, 1)),
         // The quoted program is itself optimized, so only quote atoms to keep the value the same
         13 => {
             let bytes = rng.pick(FUZZ_ATOMS);
             Lir::Quote(atom(arena, bytes))
+        }
+        14 => Lir::Sub(gen_args(arena, rng, 1)),
+        15 => Lir::Mod(next(), next()),
+        // Checks whether a value is odd
+        16 => {
+            let two = atom(arena, &[2]);
+            let one = atom(arena, &[1]);
+            let value = arena.alloc(Lir::Mod(next(), two));
+            Lir::Eq(value, one)
+        }
+        // Runs a program in either a nil or the current environment
+        17 => {
+            let program = arena.alloc(Lir::Quote(next()));
+            let env = if rng.below(2) == 0 {
+                atom(arena, &[])
+            } else {
+                path(arena, 1)
+            };
+            Lir::Run(program, env)
         }
         _ => unreachable!(),
     };

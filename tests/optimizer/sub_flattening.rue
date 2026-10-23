@@ -1,0 +1,26 @@
+fn main(a: Int, b: Int, c: Int, d: Int) -> List<Int> {
+    [
+        a - b + c - 1,
+        -a + b - c,
+        (a - b) + c - d,
+        a - (b - (c - d)),
+        a - (b + c - d) + 1,
+        a - b - c - 1 + 1,
+    ]
+}
+
+fn f(x: Int) -> Int {
+    x * 10
+}
+
+test fn const_sub_inside_add_inside_sub() -> Int {
+    const { f(1) - f(2) + f(3) - 1 }
+}
+
+test fn const_negation_inside_add_inside_sub() -> Int {
+    const { -f(1) + f(100) - f(10) }
+}
+
+test fn const_sub_nested_in_negative_position() -> Int {
+    const { f(1000) - (f(100) - (f(10) - f(1))) }
+}
