@@ -9,9 +9,6 @@ const MAX_FOLD_COST: u64 = 100_000_000;
 // The cost of each byte in the serialized program
 const COST_PER_BYTE: u64 = 12_000;
 
-// The cost of quoting the folded value
-const QUOTE_COST: u64 = 20;
-
 // If every argument is an atom, we can run the operator at compile time to get the result
 // This uses the same dialect as the runtime, so the result is always exactly the same
 // If the operator would fail, we leave it alone so that it still fails at runtime
@@ -35,13 +32,11 @@ pub fn fold_atoms(arena: &mut Arena<Lir>, op: ClvmOp, args: &[LirId]) -> Option<
 fn run_op(op: ClvmOp, atoms: &[Vec<u8>]) -> Option<Vec<u8>> {
     let mut allocator = Allocator::new();
 
-    let quote = allocator.one();
     let mut args = NodePtr::NIL;
 
     for atom in atoms.iter().rev() {
-        let atom = allocator.new_atom(atom).ok()?;
-        let quoted = allocator.new_pair(quote, atom).ok()?;
-        args = allocator.new_pair(quoted, args).ok()?;
+        let atom = constant(&mut allocator, atom)?;
+        args = allocator.new_pair(atom, args).ok()?;
     }
 
     let op = allocator.new_atom(&op.to_atom()).ok()?;
@@ -64,16 +59,66 @@ fn run_op(op: ClvmOp, atoms: &[Vec<u8>]) -> Option<Vec<u8>> {
 
     let output = allocator.atom(reduction.1).to_vec();
 
-    let folded = allocator.new_atom(&output).ok()?;
-    let folded = allocator.new_pair(quote, folded).ok()?;
+    let folded = constant(&mut allocator, &output)?;
+    let folded_reduction = run_program(
+        &mut allocator,
+        &dialect,
+        folded,
+        NodePtr::NIL,
+        MAX_FOLD_COST,
+    )
+    .ok()?;
 
     let original_cost = reduction.0 + serialized_cost(&allocator, program)?;
-    let folded_cost = QUOTE_COST + serialized_cost(&allocator, folded)?;
+    let folded_cost = folded_reduction.0 + serialized_cost(&allocator, folded)?;
 
     (folded_cost <= original_cost).then_some(output)
+}
+
+// Constants are generated the same way as codegen, so that the costs are accurate
+// Nil is left unquoted, and everything else is quoted
+fn constant(allocator: &mut Allocator, atom: &[u8]) -> Option<NodePtr> {
+    if atom.is_empty() {
+        return Some(NodePtr::NIL);
+    }
+
+    let quote = allocator.one();
+    let atom = allocator.new_atom(atom).ok()?;
+    allocator.new_pair(quote, atom).ok()
 }
 
 fn serialized_cost(allocator: &Allocator, node: NodePtr) -> Option<u64> {
     let length = node_to_bytes(allocator, node).ok()?.len() as u64;
     Some(length * COST_PER_BYTE)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bigint_atom;
+
+    #[test]
+    fn test_fold_nil_arguments_and_result() {
+        let mut arena = Arena::new();
+        let nil = arena.alloc(Lir::Atom(vec![]));
+        let result = fold_atoms(&mut arena, ClvmOp::GtBytes, &[nil, nil]);
+        assert!(matches!(result.map(|id| &arena[id]), Some(Lir::Atom(atom)) if atom.is_empty()));
+    }
+
+    #[test]
+    fn test_fold_skips_failing_operator() {
+        let mut arena = Arena::new();
+        let value = arena.alloc(Lir::Atom(b"hello".to_vec()));
+        let start = arena.alloc(Lir::Atom(vec![2]));
+        let end = arena.alloc(Lir::Atom(vec![10]));
+        assert!(fold_atoms(&mut arena, ClvmOp::Substr, &[value, start, end]).is_none());
+    }
+
+    #[test]
+    fn test_fold_skips_costlier_result() {
+        let mut arena = Arena::new();
+        let one = arena.alloc(Lir::Atom(vec![1]));
+        let shift = arena.alloc(Lir::Atom(bigint_atom(1000.into())));
+        assert!(fold_atoms(&mut arena, ClvmOp::Ash, &[one, shift]).is_none());
+    }
 }
