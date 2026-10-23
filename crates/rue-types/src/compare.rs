@@ -59,6 +59,21 @@ impl Inference {
         self.generics.get(&generic)
     }
 
+    /// Keeps only the bounds that satisfy the predicate. Since the held candidates are only used
+    /// if nothing else constrains the generic, they're dropped along with any bound.
+    pub fn retain_bounds(&mut self, mut f: impl FnMut(TypeId) -> bool) {
+        for candidates in self.generics.values_mut() {
+            let len = candidates.lower.len() + candidates.upper.len();
+
+            candidates.lower.retain(|&ty| f(ty));
+            candidates.upper.retain(|&ty| f(ty));
+
+            if candidates.lower.len() + candidates.upper.len() < len {
+                candidates.held.clear();
+            }
+        }
+    }
+
     fn is_target(&self, generic: TypeId) -> bool {
         self.generics.contains_key(&generic)
     }

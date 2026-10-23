@@ -1,0 +1,36 @@
+tests:
+- name: later_lambda_infers_earlier
+  program: (a (q 16 2 (q . 1)) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c () ()))))) (c (q 2 2 (c (a 3 ()) ())) ()))
+  output: '6'
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: later_lambda_infers_pair
+  program: (a (q 16 4 6) (q (q . 2)))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 (f 2) (r 2))) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 1) (q . 2))) (c () ()))))) (c (q 2 2 (c (a 3 ()) ())) ()))
+  output: '3'
+  runtime_cost: 991
+  byte_cost: 252000
+  total_cost: 252991
+- name: lambdas_infer_in_chain
+  program: (a (q 16 2 (q . 1)) (c (a (q 18 2 (q . 2)) (q 10)) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 10)) (c () ())))))) (c (q 2 5 (c (a 2 (c (a 7 ()) ())) ())) ()))
+  output: '21'
+  runtime_cost: 2229
+  byte_cost: 516000
+  total_cost: 518229
+- name: independent_lambdas_keep_order
+  program: (a (q . 2) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c () ()))))) (c (q 2 2 (c (a 3 ()) ())) ()))
+  output: '5'
+  runtime_cost: 179
+  byte_cost: 156000
+  total_cost: 156179
+- name: later_lambda_infers_earlier_with_expected_type
+  program: (a (q 2 2 (c (q . 2) (q 16 2 (q . 1)))) (c (q 2 2 (c (a 3 (c (a 2 (q 1)) ())) ())) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))))) (c (q 2 2 (c (a 3 (c (a 2 (c (q . 1) ())) ())) ())) ()))
+  output: '2'
+  runtime_cost: 2003
+  byte_cost: 900000
+  total_cost: 902003

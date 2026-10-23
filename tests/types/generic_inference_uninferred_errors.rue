@@ -14,7 +14,13 @@ fn main() -> Int {
     let no_arguments = get();
     let lambda = apply(fn(value) => value);
     let unchecked = identity(unchecked_cast(5));
-    no_arguments + lambda + unchecked + partial()
+    no_arguments
+        + lambda
+        + unchecked
+        + partial()
+        + empty_generic_arguments()
+        + nested_calls()
+        + nested_union()
 }
 
 fn wrap<A, B>(value: A) -> (A, B) {
@@ -31,4 +37,33 @@ fn partial() -> Int {
     let pair = wrap::<Int>(1);
     let path = nested::get();
     pair.first + path
+}
+
+fn empty_generic_arguments() -> Int {
+    let value = get::<>();
+    value
+}
+
+fn both<A, B>(first: A, second: B) -> (A, B) {
+    (first, second)
+}
+
+fn nested_calls() -> Int {
+    let inner = identity(get());
+    let pair = both(get(), identity(get()));
+    let missing = identity(missing);
+    let expected: Int = identity(identity(get()));
+    inner + pair.first + pair.rest + missing + expected
+}
+
+fn make_function<T>() -> fn(value: T | nil) -> Int {
+    fn(_value: T | nil) => 1
+}
+
+fn take_function<U>(_function: fn(value: U | nil) -> Int) -> Int {
+    1
+}
+
+fn nested_union() -> Int {
+    take_function(make_function())
 }

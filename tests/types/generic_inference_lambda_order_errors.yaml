@@ -1,0 +1,3 @@
+diagnostics:
+- Cannot assign `1` to `Bytes` without a cast, since they are semantically different at generic_inference_lambda_order_errors.rue:6:29
+- 'Cannot assign `fn(value: String) -> Bytes` to `fn(value: String) -> Int` without a cast, since they are semantically different at generic_inference_lambda_order_errors.rue:6:10'
