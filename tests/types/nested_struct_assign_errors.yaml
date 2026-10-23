@@ -1,0 +1,8 @@
+diagnostics:
+- Cannot assign `Outer` to `Alias` without a cast, since they are semantically different at nested_struct_assign_errors.rue:27:36
+- Cannot assign `Outer` to `OtherOuter | nil` without a cast, since they are semantically different at nested_struct_assign_errors.rue:31:50
+- Cannot assign `Outer` to `Rewrapped | nil` without a cast, since they are semantically different at nested_struct_assign_errors.rue:35:50
+- Cannot assign `Outer` to `Inner | nil` without a cast, since they are semantically different at nested_struct_assign_errors.rue:39:42
+- Cannot assign `(Outer, Int)` to `(OtherOuter | nil, Int)` without a cast, since they are semantically different at nested_struct_assign_errors.rue:43:60
+- Cannot assign `Box<Outer>` to `Box<OtherOuter | nil>` without a cast, since they are semantically different at nested_struct_assign_errors.rue:47:55
+- Cannot assign `Outer | Alias` to `OtherOuter` without a cast, since they are semantically different at nested_struct_assign_errors.rue:51:51

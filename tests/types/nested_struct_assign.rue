@@ -1,0 +1,61 @@
+struct Inner {
+    ...value: Int,
+}
+
+struct Outer {
+    ...inner: Inner,
+}
+
+struct Box<T> {
+    ...value: T,
+}
+
+type Alias = Outer;
+
+fn to_alias(value: Outer) -> Alias {
+    value
+}
+
+fn to_optional(value: Outer) -> Outer | nil {
+    value
+}
+
+fn to_optional_alias(value: Alias) -> Alias | nil {
+    value
+}
+
+fn to_pair(value: (Outer, Int)) -> (Outer | nil, Int) {
+    value
+}
+
+fn to_box(value: Box<Outer>) -> Box<Outer | nil> {
+    value
+}
+
+fn from_union(value: Outer | Alias) -> Outer {
+    value
+}
+
+test fn alias() -> Alias {
+    to_alias(Outer { inner: Inner { value: 1 } })
+}
+
+test fn optional() -> Outer | nil {
+    to_optional(Outer { inner: Inner { value: 2 } })
+}
+
+test fn optional_alias() -> Alias | nil {
+    to_optional_alias(Outer { inner: Inner { value: 3 } })
+}
+
+test fn pair() -> (Outer | nil, Int) {
+    to_pair((Outer { inner: Inner { value: 4 } }, 5))
+}
+
+test fn boxed() -> Box<Outer | nil> {
+    to_box(Box::<Outer> { value: Outer { inner: Inner { value: 6 } } })
+}
+
+test fn union() -> Outer {
+    from_union(Outer { inner: Inner { value: 7 } })
+}

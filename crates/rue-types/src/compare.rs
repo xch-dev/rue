@@ -635,6 +635,26 @@ pub(crate) fn compare_impl(
             ),
             _ => Comparison::Invalid,
         },
+        // Aliases are unwrapped before structs, so that structs are compared to each other
+        // directly rather than to each other's inner types, which would lose their semantics
+        (Type::Alias(lhs), _) => compare_impl(
+            arena,
+            builtins,
+            ctx,
+            lhs.inner,
+            rhs,
+            lhs_semantic,
+            rhs_semantic,
+        ),
+        (_, Type::Alias(rhs)) => compare_impl(
+            arena,
+            builtins,
+            ctx,
+            lhs,
+            rhs.inner,
+            lhs_semantic,
+            rhs_semantic,
+        ),
         (Type::Struct(lhs), Type::Struct(rhs)) => max(
             compare_impl(arena, builtins, ctx, lhs.inner, rhs.inner, None, None),
             if lhs.semantic == rhs.semantic {
@@ -643,27 +663,19 @@ pub(crate) fn compare_impl(
                 Comparison::Cast
             },
         ),
-        (Type::Struct(lhs), _) => {
-            let inner = compare_impl(
-                arena,
-                builtins,
-                ctx,
-                lhs.inner,
-                rhs,
-                Some(lhs.semantic),
-                rhs_semantic,
-            );
+        // Likewise, a union on the left hand side is split into its members before a struct on
+        // the right hand side is unwrapped
+        (Type::Union(lhs), _) => {
+            let mut result = Comparison::Assign;
 
-            let rhs_semantics = semantics_of(arena, rhs);
-
-            if rhs_semantic == Some(lhs.semantic)
-                || rhs_semantics.contains(&Some(Semantic::Id(lhs.semantic)))
-                || rhs_semantics.contains(&Some(Semantic::All))
-            {
-                inner
-            } else {
-                max(inner, Comparison::Cast)
+            for &id in &lhs.types {
+                result = max(
+                    result,
+                    compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
+                );
             }
+
+            result
         }
         (_, Type::Struct(rhs)) => {
             let inner = compare_impl(
@@ -688,24 +700,6 @@ pub(crate) fn compare_impl(
                 inner
             }
         }
-        (Type::Alias(lhs), _) => compare_impl(
-            arena,
-            builtins,
-            ctx,
-            lhs.inner,
-            rhs,
-            lhs_semantic,
-            rhs_semantic,
-        ),
-        (_, Type::Alias(rhs)) => compare_impl(
-            arena,
-            builtins,
-            ctx,
-            lhs,
-            rhs.inner,
-            lhs_semantic,
-            rhs_semantic,
-        ),
         (Type::Generic(_), Type::Union(rhs_union)) => {
             // A generic is opaque, so it can only be assigned to a union if it's assignable to
             // one of the members (such as `T` to `T | nil`). Otherwise, fall back to whatever
@@ -774,26 +768,14 @@ pub(crate) fn compare_impl(
                 ),
             )
         }
-        (Type::Union(lhs), _) => {
-            let mut result = Comparison::Assign;
-
-            for &id in &lhs.types {
-                result = max(
-                    result,
-                    compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
-                );
-            }
-
-            result
-        }
-        (_, Type::Union(rhs)) => {
+        (_, Type::Union(rhs_union)) => {
             // A generic being inferred doesn't need to include a value that a member already
             // holds regardless of the generic, such as `nil` when passing `Int | nil` to
             // `T | nil` or `Tree<T> | nil`, so it's only collected as a last resort.
             let holding = ctx.holding;
 
             ctx.holding |= ctx.is_inferring()
-                && rhs.types.iter().any(|&id| {
+                && rhs_union.types.iter().any(|&id| {
                     holds_without_inference(
                         arena,
                         builtins,
@@ -807,7 +789,7 @@ pub(crate) fn compare_impl(
 
             let mut result = Comparison::Invalid;
 
-            for &id in &rhs.types {
+            for &id in &rhs_union.types {
                 result = min(
                     result,
                     compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
@@ -816,7 +798,42 @@ pub(crate) fn compare_impl(
 
             ctx.holding = holding;
 
+            // A struct can still be cast to a union that holds its inner type as a whole, such as
+            // `struct W { ...value: Int | (Int, Int) }` to `Int | (Int, Int)`
+            if result == Comparison::Invalid
+                && let Type::Struct(lhs) = arena[lhs].clone()
+            {
+                result = max(
+                    compare_impl(arena, builtins, ctx, lhs.inner, rhs, None, None),
+                    Comparison::Cast,
+                );
+            }
+
             result
+        }
+        // A struct is only unwrapped once a union on the right hand side has been split into its
+        // members, so that it's compared to any struct among them directly
+        (Type::Struct(lhs), _) => {
+            let inner = compare_impl(
+                arena,
+                builtins,
+                ctx,
+                lhs.inner,
+                rhs,
+                Some(lhs.semantic),
+                rhs_semantic,
+            );
+
+            let rhs_semantics = semantics_of(arena, rhs);
+
+            if rhs_semantic == Some(lhs.semantic)
+                || rhs_semantics.contains(&Some(Semantic::Id(lhs.semantic)))
+                || rhs_semantics.contains(&Some(Semantic::All))
+            {
+                inner
+            } else {
+                max(inner, Comparison::Cast)
+            }
         }
         (_, Type::Never) => Comparison::Invalid,
         (_, Type::Function(_)) => Comparison::Invalid,
