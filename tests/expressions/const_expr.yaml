@@ -69,3 +69,24 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: forward_const_function_twice
+  program: (q . 84)
+  debug_program: (q . 84)
+  output: '84'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: forward_recursive_const
+  program: (q . 240)
+  debug_program: (q . 240)
+  output: '240'
+  runtime_cost: 20
+  byte_cost: 60000
+  total_cost: 60020
+- name: chained_const_functions
+  program: (q . 42)
+  debug_program: (q . 42)
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

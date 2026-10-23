@@ -37,15 +37,8 @@ pub struct Lowerer<'d, 'a, 'g> {
     graph: &'g DependencyGraph,
     inline_symbols: Vec<HashMap<SymbolId, HirId>>,
     options: CompilerOptions,
-    mode: LoweringMode,
     main: SymbolId,
     base_path: PathBuf,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoweringMode {
-    Program,
-    ConstEval,
 }
 
 impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
@@ -54,7 +47,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         arena: &'a mut Arena<Lir>,
         graph: &'g DependencyGraph,
         options: CompilerOptions,
-        mode: LoweringMode,
         main: SymbolId,
         base_path: PathBuf,
     ) -> Self {
@@ -64,7 +56,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             graph,
             inline_symbols: Vec::new(),
             options,
-            mode,
             main,
             base_path,
         }
@@ -220,12 +211,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let rest = self.lower_hir(env, rest);
                 self.arena.alloc(Lir::Cons(first, rest))
             }
-            Hir::Const(expr) => match self.mode {
-                LoweringMode::ConstEval => self.lower_hir(env, expr.value),
-                LoweringMode::Program => {
-                    unreachable!("unevaluated const expression reached program lowering")
-                }
-            },
+            Hir::Const(_) => unreachable!("unevaluated const expression reached lowering"),
             Hir::Reference(symbol) => self.lower_symbol(env, symbol, false),
             Hir::Block(block) => self.lower_block(env, block.statements, block.body),
             Hir::Lambda(lambda) => self.lower_symbol(env, lambda, true),
@@ -1082,15 +1068,7 @@ mod tests {
         let options = CompilerOptions::default();
         let graph = DependencyGraph::build(&db, main, options);
         let mut arena = Arena::new();
-        let mut lowerer = Lowerer::new(
-            &mut db,
-            &mut arena,
-            &graph,
-            options,
-            LoweringMode::Program,
-            main,
-            PathBuf::new(),
-        );
+        let mut lowerer = Lowerer::new(&mut db, &mut arena, &graph, options, main, PathBuf::new());
         lowerer.lower_symbol_value(&Environment::default(), main);
 
         let mut closures = arena

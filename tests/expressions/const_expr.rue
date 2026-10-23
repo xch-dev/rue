@@ -61,3 +61,27 @@ test fn debug_effect() -> Int {
         1
     }
 }
+
+test fn forward_const_function_twice() -> Int {
+    const { later_const() + later_const() }
+}
+
+fn later_recursive_const() -> Int {
+    const { factorial(5) }
+}
+
+test fn forward_recursive_const() -> Int {
+    const { later_recursive_const() * 2 }
+}
+
+test fn chained_const_functions() -> Int {
+    const { chained_outer() }
+}
+
+fn chained_outer() -> Int {
+    const { chained_inner() + 1 }
+}
+
+fn chained_inner() -> Int {
+    const { 41 }
+}

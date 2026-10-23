@@ -278,6 +278,9 @@ pub enum DiagnosticKind {
     #[error("Const expression exceeded the compile-time cost limit of {0}")]
     ConstEvalCostExceeded(u64),
 
+    #[error("Const expression depends on itself")]
+    RecursiveConstExpr,
+
     #[error("Unresolved import `{0}`")]
     UnresolvedImport(String),
 
@@ -376,6 +379,7 @@ impl DiagnosticKind {
             | Self::ConstRuntimeDependency(..)
             | Self::ConstEvalFailed(..)
             | Self::ConstEvalCostExceeded(..)
+            | Self::RecursiveConstExpr
             | Self::UnexpectedExplicitReturn
             | Self::ReturnInExpressionBlock
             | Self::UnresolvedImport(..)
