@@ -250,3 +250,36 @@ fn comments_between_conditional_branches_are_not_duplicated() {
         "#]],
     );
 }
+
+#[test]
+fn comments_before_closing_delimiters_are_indented() {
+    check(
+        "struct S{a:Int,\n// field\n}\nfn main(a:Int,\n// parameter\n// second\n)->List<Int>{let s=S{a:1,\n// value\n};let x=f(1,\n// argument\n);[a,x,\n// item\n]}",
+        expect![[r#"
+            struct S {
+                a: Int,
+                // field
+            }
+
+            fn main(
+                a: Int,
+                // parameter
+                // second
+            ) -> List<Int> {
+                let s = S {
+                    a: 1,
+                    // value
+                };
+                let x = f(
+                    1,
+                    // argument
+                );
+                [
+                    a,
+                    x,
+                    // item
+                ]
+            }
+        "#]],
+    );
+}

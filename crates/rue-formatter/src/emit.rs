@@ -343,17 +343,19 @@ impl<'a> Formatter<'a> {
         } else {
             self.gap_doc_with_comments(leading_gap, delimiter_separator, true, false)
         };
-        let trailing = if trailing_gap.comments.is_empty() {
-            separator_doc(delimiter_separator)
+        // Comments before the closing delimiter belong to the contents, so they're
+        // indented with them; only the final line break is at the delimiter's level.
+        let (trailing_comments, trailing) = if trailing_gap.comments.is_empty() {
+            (Doc::Nil, separator_doc(delimiter_separator))
         } else {
-            self.gap_doc(trailing_gap, delimiter_separator)
+            self.closing_gap_docs(trailing_gap, delimiter_separator)
         };
 
         Ok(match style {
             DelimiterStyle::Block | DelimiterStyle::Braced | DelimiterStyle::ConditionalBraced => {
                 Doc::concat([
                     open_doc,
-                    Doc::concat([leading, inner, comma]).indent(),
+                    Doc::concat([leading, inner, comma, trailing_comments]).indent(),
                     trailing,
                     close_doc,
                 ])
@@ -365,6 +367,7 @@ impl<'a> Formatter<'a> {
                 let flat_inner = Doc::concat([
                     leading.clone(),
                     inner.clone(),
+                    trailing_comments.clone(),
                     trailing.clone(),
                     closing_space,
                     close_doc.clone(),
@@ -373,6 +376,7 @@ impl<'a> Formatter<'a> {
                     leading,
                     inner,
                     comma,
+                    trailing_comments,
                     trailing,
                     Doc::concat([Doc::hard_line(), close_doc]).outdent(),
                 ]);
@@ -393,6 +397,7 @@ impl<'a> Formatter<'a> {
                     leading,
                     inner,
                     comma,
+                    trailing_comments,
                 ])
                 .indent(),
                 trailing,
@@ -523,6 +528,22 @@ impl<'a> Formatter<'a> {
         } else {
             self.gap_doc(gap, requested)
         }
+    }
+
+    /// Splits the gap before a closing delimiter into its comments and the line
+    /// break that follows them, so they can be emitted at different indentation.
+    fn closing_gap_docs(&mut self, gap: &Gap, requested: Separator) -> (Doc, Doc) {
+        let comments = self.gap_doc_with_comments(gap, requested, false, true);
+        let last = gap.comments.last().expect("comments are not empty");
+        let final_line = if gap.newlines > 1 {
+            Doc::empty_line()
+        } else if last.kind == SyntaxKind::LineComment || last.multiline || gap.newlines > 0 {
+            Doc::hard_line()
+        } else {
+            // An inline block comment is followed by a space before the delimiter.
+            Doc::space()
+        };
+        (comments, final_line)
     }
 
     fn gap_doc(&mut self, gap: &Gap, requested: Separator) -> Doc {
