@@ -1,0 +1,5 @@
+// The lambda's parameter must be nil (0), not the solution
+fn main(n: Int) -> Int {
+    let f = fn(...x: Int) => x + 1;
+    f(...0)
+}

@@ -1,0 +1,9 @@
+program: (a (q 16 1 (q . 1)) ())
+debug_program: (a (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 16 1 (q . 1))) (c (q . 1) ()))) 1))
+solution: (41)
+output: '1'
+runtime_cost: 972
+byte_cost: 204000
+total_cost: 204972
+diagnostics:
+- Unused parameter `n` at run_nil_env_int.rue:2:9

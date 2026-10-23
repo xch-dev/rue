@@ -1,9 +1,11 @@
 mod arg_list;
+mod env;
 mod fold;
 mod ops;
 mod truthy;
 
 use arg_list::*;
+use env::*;
 use fold::*;
 use ops::*;
 use truthy::*;

@@ -1,0 +1,11 @@
+// Parameters aren't checked against their types at runtime, so a spread argument
+// can be an atom where a pair is expected, and `(c (f p) (r p))` can't become `p`
+fn rebuild(...p: (Int, Int)) -> (Int, Int) {
+    (p.first, p.rest)
+}
+
+fn main(x: (Int, Int)) -> Int {
+    let a = rebuild(...x);
+    let b = rebuild(...x);
+    a.first + b.first
+}

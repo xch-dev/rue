@@ -1,0 +1,4 @@
+// `(c 2 3)` must not be simplified to `1`, since the whole solution may be an atom
+fn main(...p: (Int, Int)) -> (Int, Int) {
+    (p.first, p.rest)
+}

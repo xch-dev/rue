@@ -5,7 +5,7 @@ use std::{collections::HashMap, path::PathBuf};
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 use rue_diagnostic::SrcLoc;
-use rue_lir::{Lir, LirId, bigint_atom};
+use rue_lir::{Lir, LirId, bigint_atom, first_path, parent_path, rest_path};
 use rue_options::CompilerOptions;
 
 use crate::{
@@ -114,11 +114,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     ) -> LirId {
         let (capture_groups, param_group) = self.function_groups(symbol, &function);
 
-        let mut function_env = Self::apply_group(
+        // Parameters are provided by the caller, so their shape isn't guaranteed at runtime
+        let mut function_env = Environment::unchecked(Self::apply_group(
             Environment::Nil,
             &param_group,
             function.nil_terminated && matches!(param_group, SymbolGroup::Sequential(_)),
-        );
+        ));
 
         for group in &capture_groups {
             function_env = Self::apply_group(function_env, group, true);
@@ -644,7 +645,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     if !include_rest && i == 0 {
                         result = value;
                     } else {
-                        result = self.arena.alloc(Lir::Cons(value, result));
+                        result = self.lower_cons(env, value, result);
                     }
                 }
 
@@ -653,7 +654,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             SymbolGroup::Tree(tree) => {
                 let tree = self.lower_tree(env, tree, by_reference, map);
                 if include_rest {
-                    self.arena.alloc(Lir::Cons(tree, rest))
+                    self.lower_cons(env, tree, rest)
                 } else {
                     tree
                 }
@@ -682,9 +683,28 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Environment::Pair(first, rest) => {
                 let first = self.lower_tree(env, first, by_reference, map);
                 let rest = self.lower_tree(env, rest, by_reference, map);
-                self.arena.alloc(Lir::Cons(first, rest))
+                self.lower_cons(env, first, rest)
             }
+            Environment::Unchecked(_) => unreachable!(),
         }
+    }
+
+    /// Reuses the parent path instead of reconstructing `(c (f p) (r p))`, when the value at
+    /// `p` is a pair that the compiler constructed. This can't be done in general (such as by
+    /// the LIR optimizer), since if `p` were an atom the original would fail but `p` wouldn't.
+    fn lower_cons(&mut self, env: &Environment, first: LirId, rest: LirId) -> LirId {
+        if self.options.optimize_lir
+            && let Lir::Path(first_value) = &self.arena[first]
+            && let Lir::Path(rest_value) = &self.arena[rest]
+            && let Some(parent) = parent_path(first_value)
+            && first_path(&parent) == *first_value
+            && rest_path(&parent) == *rest_value
+            && env.is_pair(&parent)
+        {
+            return self.arena.alloc(Lir::Path(parent));
+        }
+
+        self.arena.alloc(Lir::Cons(first, rest))
     }
 
     fn lower_assert(

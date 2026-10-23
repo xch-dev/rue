@@ -1,0 +1,5 @@
+// `(c (f 2) (r 2))` must not be simplified to `2`, since the solution may
+// contain an atom where a pair is expected, and the original program fails
+fn main(p: (Int, Int)) -> (Int, Int) {
+    (p.first, p.rest)
+}

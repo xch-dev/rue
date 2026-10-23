@@ -12,6 +12,10 @@ pub enum Environment {
     Nil,
     Leaf(SymbolId),
     Pair(Box<Environment>, Box<Environment>),
+    /// A subtree which is provided by the caller (such as parameters), rather than constructed
+    /// by the compiler. Its shape isn't guaranteed at runtime, since values can come from the
+    /// solution or a spread argument without being checked against their types.
+    Unchecked(Box<Environment>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,6 +37,33 @@ impl Environment {
         }
 
         result
+    }
+
+    pub fn unchecked(env: Self) -> Self {
+        match env {
+            Self::Nil | Self::Unchecked(_) => env,
+            _ => Self::Unchecked(Box::new(env)),
+        }
+    }
+
+    /// Whether the value at the given path is guaranteed to be a pair at runtime,
+    /// because the compiler constructed it rather than it being provided by the caller.
+    pub fn is_pair(&self, path: &BigUint) -> bool {
+        if *path == BigUint::ZERO {
+            return false;
+        }
+
+        let mut env = self;
+
+        for i in 0..path.bits() - 1 {
+            let Self::Pair(first, rest) = env else {
+                return false;
+            };
+
+            env = if path.bit(i) { rest } else { first };
+        }
+
+        matches!(env, Self::Pair(..))
     }
 
     pub fn tree(referenced_symbols: IndexMap<SymbolId, usize>) -> Self {
@@ -128,6 +159,7 @@ impl Environment {
                     None
                 }
             }
+            Self::Unchecked(env) => env.get_pair_ops(symbol_id),
         }
     }
 }
