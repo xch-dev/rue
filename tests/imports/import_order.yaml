@@ -42,9 +42,9 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: globbed_declarations_are_used
-  program: (a (i (> (q . 2) ()) (q 1 . "used") (q 8)) 1)
+  program: (q . "used")
   debug_program: (a (q 2 4 (c 6 (q . "used"))) (c (c (q 2 (i (> 2 ()) (q . 3) (q 8 (q . "assertion failed at import_order.rue:40:9"))) 1) (q . 2)) ()))
   output: '"used"'
-  runtime_cost: 794
-  byte_cost: 420000
-  total_cost: 420794
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020

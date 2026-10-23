@@ -8,7 +8,7 @@ use sha3::Keccak256;
 
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
-    optimize::{ArgList, opt_truthy},
+    optimize::{ArgList, fold_atoms, opt_truthy},
     parent_path, rest_path,
 };
 
@@ -251,7 +251,7 @@ pub fn opt_mul(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
         result.push(arena.alloc(Lir::Atom(bigint_atom(product))));
     }
 
-    if result.is_empty() && matches!(arena[result[0]], Lir::Atom(_)) {
+    if result.is_empty() {
         return arena.alloc(Lir::Atom(vec![1]));
     }
 
@@ -312,6 +312,10 @@ pub fn opt_mod(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
 }
 
 pub fn opt_modpow(arena: &mut Arena<Lir>, base: LirId, exponent: LirId, modulus: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::Modpow, &[base, exponent, modulus]) {
+        return folded;
+    }
+
     arena.alloc(Lir::Modpow(base, exponent, modulus))
 }
 
@@ -325,14 +329,26 @@ pub fn opt_eq(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
         return arena.alloc(Lir::Logand(vec![lhs, right]));
     }
 
+    if let Some(folded) = fold_atoms(arena, ClvmOp::Eq, &[left, right]) {
+        return folded;
+    }
+
     arena.alloc(Lir::Eq(left, right))
 }
 
 pub fn opt_gt(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::Gt, &[left, right]) {
+        return folded;
+    }
+
     arena.alloc(Lir::Gt(left, right))
 }
 
 pub fn opt_gtbytes(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::GtBytes, &[left, right]) {
+        return folded;
+    }
+
     arena.alloc(Lir::GtBytes(left, right))
 }
 
@@ -491,6 +507,12 @@ pub fn opt_substr(
     start: LirId,
     end: Option<LirId>,
 ) -> LirId {
+    let args: Vec<LirId> = [string, start].into_iter().chain(end).collect();
+
+    if let Some(folded) = fold_atoms(arena, ClvmOp::Substr, &args) {
+        return folded;
+    }
+
     arena.alloc(Lir::Substr(string, start, end))
 }
 
@@ -551,70 +573,164 @@ pub fn opt_logior(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 }
 
 pub fn opt_logxor(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    arena.alloc(Lir::Logxor(args))
+    let mut args = ArgList::new(args);
+    let mut result = Vec::new();
+    let mut value = BigInt::from(0);
+
+    while let Some(arg) = args.next() {
+        match arena[arg].clone() {
+            Lir::Atom(atom) => value ^= atom_bigint(atom),
+            Lir::Logxor(items) => args.prepend(items),
+            _ => result.push(arg),
+        }
+    }
+
+    if value != BigInt::from(0) {
+        result.push(arena.alloc(Lir::Atom(bigint_atom(value))));
+    }
+
+    if result.is_empty() {
+        return arena.alloc(Lir::Atom(vec![]));
+    }
+
+    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
+        return result[0];
+    }
+
+    arena.alloc(Lir::Logxor(result))
 }
 
 pub fn opt_lognot(arena: &mut Arena<Lir>, value: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::Lognot, &[value]) {
+        return folded;
+    }
+
     arena.alloc(Lir::Lognot(value))
 }
 
 pub fn opt_ash(arena: &mut Arena<Lir>, value: LirId, shift: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::Ash, &[value, shift]) {
+        return folded;
+    }
+
     arena.alloc(Lir::Ash(value, shift))
 }
 
 pub fn opt_lsh(arena: &mut Arena<Lir>, value: LirId, shift: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::Lsh, &[value, shift]) {
+        return folded;
+    }
+
     arena.alloc(Lir::Lsh(value, shift))
 }
 
 pub fn opt_pubkey_for_exp(arena: &mut Arena<Lir>, exp: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::PubkeyForExp, &[exp]) {
+        return folded;
+    }
+
     arena.alloc(Lir::PubkeyForExp(exp))
 }
 
 pub fn opt_g1_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Add, &args) {
+        return folded;
+    }
+
     arena.alloc(Lir::G1Add(args))
 }
 
 pub fn opt_g1_subtract(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Subtract, &args) {
+        return folded;
+    }
+
     arena.alloc(Lir::G1Subtract(args))
 }
 
 pub fn opt_g1_multiply(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Multiply, &[left, right]) {
+        return folded;
+    }
+
     arena.alloc(Lir::G1Multiply(left, right))
 }
 
 pub fn opt_g1_negate(arena: &mut Arena<Lir>, value: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Negate, &[value]) {
+        return folded;
+    }
+
     arena.alloc(Lir::G1Negate(value))
 }
 
 pub fn opt_g1_map(arena: &mut Arena<Lir>, value: LirId, map: Option<LirId>) -> LirId {
+    let args: Vec<LirId> = [value].into_iter().chain(map).collect();
+
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G1Map, &args) {
+        return folded;
+    }
+
     arena.alloc(Lir::G1Map(value, map))
 }
 
 pub fn opt_g2_add(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Add, &args) {
+        return folded;
+    }
+
     arena.alloc(Lir::G2Add(args))
 }
 
 pub fn opt_g2_subtract(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Subtract, &args) {
+        return folded;
+    }
+
     arena.alloc(Lir::G2Subtract(args))
 }
 
 pub fn opt_g2_multiply(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Multiply, &[left, right]) {
+        return folded;
+    }
+
     arena.alloc(Lir::G2Multiply(left, right))
 }
 
 pub fn opt_g2_negate(arena: &mut Arena<Lir>, value: LirId) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Negate, &[value]) {
+        return folded;
+    }
+
     arena.alloc(Lir::G2Negate(value))
 }
 
 pub fn opt_g2_map(arena: &mut Arena<Lir>, value: LirId, map: Option<LirId>) -> LirId {
+    let args: Vec<LirId> = [value].into_iter().chain(map).collect();
+
+    if let Some(folded) = fold_atoms(arena, ClvmOp::G2Map, &args) {
+        return folded;
+    }
+
     arena.alloc(Lir::G2Map(value, map))
 }
 
 pub fn opt_bls_pairing_identity(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    if let Some(folded) = fold_atoms(arena, ClvmOp::BlsPairingIdentity, &args) {
+        return folded;
+    }
+
     arena.alloc(Lir::BlsPairingIdentity(args))
 }
 
 pub fn opt_bls_verify(arena: &mut Arena<Lir>, sig: LirId, args: Vec<LirId>) -> LirId {
+    let fold_args: Vec<LirId> = [sig].into_iter().chain(args.iter().copied()).collect();
+
+    if let Some(folded) = fold_atoms(arena, ClvmOp::BlsVerify, &fold_args) {
+        return folded;
+    }
+
     arena.alloc(Lir::BlsVerify(sig, args))
 }
 
@@ -700,6 +816,14 @@ pub fn opt_coin_id(
     puzzle_hash: LirId,
     amount: LirId,
 ) -> LirId {
+    if let Some(folded) = fold_atoms(
+        arena,
+        ClvmOp::CoinId,
+        &[parent_coin_info, puzzle_hash, amount],
+    ) {
+        return folded;
+    }
+
     arena.alloc(Lir::CoinId(parent_coin_info, puzzle_hash, amount))
 }
 
@@ -709,6 +833,14 @@ pub fn opt_k1_verify(
     message: LirId,
     signature: LirId,
 ) -> LirId {
+    if let Some(folded) = fold_atoms(
+        arena,
+        ClvmOp::Secp256K1Verify,
+        &[public_key, message, signature],
+    ) {
+        return folded;
+    }
+
     arena.alloc(Lir::K1Verify(public_key, message, signature))
 }
 
@@ -718,6 +850,14 @@ pub fn opt_r1_verify(
     message: LirId,
     signature: LirId,
 ) -> LirId {
+    if let Some(folded) = fold_atoms(
+        arena,
+        ClvmOp::Secp256R1Verify,
+        &[public_key, message, signature],
+    ) {
+        return folded;
+    }
+
     arena.alloc(Lir::R1Verify(public_key, message, signature))
 }
 

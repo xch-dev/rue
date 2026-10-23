@@ -1,0 +1,89 @@
+test fn mul_identity() -> Int {
+    1 * 1
+}
+
+test fn eq_num() -> Bool {
+    100 == 100
+}
+
+test fn not_eq_bytes() -> Bool {
+    "hello" != "world"
+}
+
+test fn gt_num() -> Bool {
+    100 > 50
+}
+
+test fn gt_bytes() -> Bool {
+    "b" > "a"
+}
+
+test fn lognot_num() -> Int {
+    ~10
+}
+
+test fn logxor_num() -> Int {
+    0b1100 ^ 0b1010 ^ 0b0001
+}
+
+test fn logxor_ref(num: Int) -> Int {
+    0b1100 ^ num ^ 0b1010
+}
+
+test fn ash_left() -> Int {
+    50 << 2
+}
+
+test fn ash_right() -> Int {
+    -50 >> 2
+}
+
+test fn lsh_num() -> Int {
+    -50 >>> 1
+}
+
+test fn ash_large_result() -> Int {
+    1 << 1000
+}
+
+test fn ash_shift_too_large() -> Int {
+    1 << 65536
+}
+
+test fn substr_num() -> Bytes {
+    substr("hello", 1, 3)
+}
+
+test fn substr_out_of_range() -> Bytes {
+    substr("hello", 2, 10)
+}
+
+test fn modpow_num() -> Int {
+    modpow(3, 200, 1000)
+}
+
+test fn modpow_zero_modulus() -> Int {
+    modpow(3, 200, 0)
+}
+
+test fn coinid_num() -> Bytes32 {
+    coinid(
+        0x0000000000000000000000000000000000000000000000000000000000000001,
+        0x0000000000000000000000000000000000000000000000000000000000000002,
+        1000,
+    )
+}
+
+test fn coinid_invalid() -> Bytes32 {
+    coinid(0x01, 0x02, 1000)
+}
+
+test fn g1_negate_generator() -> PublicKey {
+    -(
+        0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb as PublicKey
+    )
+}
+
+test fn g1_add_empty() -> PublicKey {
+    INFINITY_G1
+}

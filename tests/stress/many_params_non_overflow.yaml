@@ -8,16 +8,16 @@ tests:
   byte_cost: 1632000
   total_cost: 1632020
 - name: call_binary_tree
-  program: (i () (a (i (> (q . 351) ()) (q) (q 8)) 1) ())
+  program: (i () () ())
   debug_program: (a (q 3 (q . 1) () (a 2 (c (c (c (c (q . 1) (c (q . 2) (q . 3))) (c (q . 4) (c (q . 5) (q . 6)))) (c (c (q . 7) (c (q . 8) (q . 9))) (c (c (q . 10) (q . 11)) (c (q . 12) (q . 13))))) (c (c (c (q . 14) (c (q . 15) (q . 16))) (c (q . 17) (c (q . 18) (q . 19)))) (c (c (q . 20) (c (q . 21) (q . 22))) (c (c (q . 23) (q . 24)) (c (q . 25) (q . 26)))))))) (c (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 16 40) 56) 20) 44) 60) 18) 42) 58) 38) 54) 46) 62) 17) 41) 57) 21) 45) 61) 19) 43) 59) 39) 55) 47) 63) ()) (q) (q 8 (q . "assertion failed at many_params_non_overflow.rue:95:5"))) 1) ()))
   output: ()
-  runtime_cost: 942
-  byte_cost: 468000
-  total_cost: 468942
+  runtime_cost: 166
+  byte_cost: 108000
+  total_cost: 108166
 - name: call_extern
-  program: (i () (a (i (> (q . 351) ()) (q) (q 8)) 1) ())
+  program: (i () () ())
   debug_program: (a (q 3 (q . 1) () (a 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) (c (q . 6) (c (q . 7) (c (q . 8) (c (q . 9) (c (q . 10) (c (q . 11) (c (q . 12) (c (q . 13) (c (q . 14) (c (q . 15) (c (q . 16) (c (q . 17) (c (q . 18) (c (q . 19) (c (q . 20) (c (q . 21) (c (q . 22) (c (q . 23) (c (q . 24) (c (q . 25) (c (q . 26) ())))))))))))))))))))))))))))) (c (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 2 5) 11) 23) 47) 95) -65) 383) 767) 1535) 3071) 6143) 12287) 24575) -16385) 98303) 196607) 393215) 786431) 1572863) 3145727) 6291455) -4194305) 25165823) 50331647) 100663295) ()) (q) (q 8 (q . "assertion failed at many_params_non_overflow.rue:153:5"))) 1) ()))
   output: ()
-  runtime_cost: 942
-  byte_cost: 468000
-  total_cost: 468942
+  runtime_cost: 166
+  byte_cost: 108000
+  total_cost: 108166
