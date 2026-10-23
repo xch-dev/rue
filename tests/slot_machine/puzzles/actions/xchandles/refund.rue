@@ -1,0 +1,137 @@
+// refund.rue by yakuhito
+// Responsible for returning (i.e., sending back locked value from) invalid precommit coins.
+
+// A precommit coin is considered invalid if:
+// a) the CAT maker puzzle has changed
+// b) the amount is wrong
+// c) the pricing puzzle has changed
+// d) the handle has already been registered (and the registration is active -i.e., not expired)
+
+import xchandles::*;
+import super::super::slot::*;
+
+struct PrecommittedPricing {
+    puzzle_hash: Bytes32,
+    puzzle: fn(...solution: PricingSolution) -> PricingOutput,
+    ...solution: PricingSolution,
+}
+
+struct PricingSolution {
+    buy_time: Int,
+    current_expiration: Int,
+    precommitted_handle: String,
+    ...rest: Any,
+}
+
+struct PrecommittedCatMaker {
+    puzzle_hash: Bytes32,
+    puzzle: fn(inner_puzzle_hash: Bytes32, ...solution: Any) -> Bytes32,
+    ...solution: Any,
+}
+
+struct PricingOutput {
+    total_price: Int,
+    ... registered_time: Int,
+}
+
+fn main(
+    PRECOMMIT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    HANDLE_SLOT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    Truth: XchandlesStateTruth,
+    precommited_pricing: PrecommittedPricing,
+    precommitted_cat_maker: PrecommittedCatMaker,
+    handle: String,
+    precommit_amount: Int, // amount of the pre-commit coin
+    slot_value: XchandlesHandleSlotValue | nil,
+    ...other_precommit_data: OtherPrecommitData,
+) -> (XchandlesStateTruth, List<Condition>) {
+    let correct_slot = if slot_value is nil {
+        true
+    } else {
+        tree_hash_atom(handle) == slot_value.a.handle_hash
+    };
+
+    let cat_maker_matches = precommitted_cat_maker.puzzle_hash == tree_hash(precommitted_cat_maker.puzzle);
+    let pricing_matches = precommited_pricing.puzzle_hash == tree_hash(precommited_pricing.puzzle);
+
+    assert cat_maker_matches & pricing_matches & correct_slot;
+
+    let precommit_coin_inner_puzzle_hash = curry_tree_hash(PRECOMMIT_1ST_CURRY_HASH, [
+        other_precommit_data.refund_and_secret.refund_puzzle_hash_hash,
+        tree_hash_atom(tree_hash(PrecommitValue {
+            a: PrecommitValueA {
+                cat_maker_details: PuzzleDetails {
+                    puzzle_hash: precommitted_cat_maker.puzzle_hash,
+                    puzzle_solution: precommitted_cat_maker.solution,
+                },
+                pricing_puzzle_details: PuzzleDetails {
+                    puzzle_hash: precommited_pricing.puzzle_hash,
+                    puzzle_solution: precommited_pricing.solution,
+                },
+            },
+            b: PrecommitValueB {
+                handle_and_secret: PrecommitHandleAndSecret {
+                    handle: handle,
+                    secret: other_precommit_data.refund_and_secret.secret,
+                },
+                data: other_precommit_data.new_rest,
+            },
+        }))
+    ]);
+
+    let precommit_coin_full_puzzle_hash = precommitted_cat_maker.puzzle(precommit_coin_inner_puzzle_hash, ...precommitted_cat_maker.solution);
+    let pricing_output = precommited_pricing.puzzle(...precommited_pricing.solution);
+
+    let last_conds = if
+        // not (a)
+        (Truth.State.Cat_Maker_Puzzle_Hash == precommitted_cat_maker.puzzle_hash) &
+        // not (c)
+        (handle == precommited_pricing.solution.precommitted_handle) &
+        (
+            (precommited_pricing.puzzle_hash == Truth.State.Pricing_Puzzle_Hash) |
+            (precommited_pricing.puzzle_hash == Truth.State.Expired_Handle_Pricing_Puzzle_Hash)
+        ) &
+        // not (b)
+        (precommit_amount == pricing_output.total_price)
+    {
+        // if the precommit coin looks valid after checking (a), (b), (c) & it could be used for registration,
+        // we must check for (d)
+        inline let slot_value = unchecked_cast::<XchandlesHandleSlotValue>(slot_value);
+        [
+            AssertBeforeSecondsAbsolute {
+                seconds: slot_value.b.expiration,
+            },
+            spend_slot(
+                HANDLE_SLOT_1ST_CURRY_HASH,
+                tree_hash(slot_value),
+            ),
+            create_slot(
+                HANDLE_SLOT_1ST_CURRY_HASH,
+                tree_hash(XchandlesHandleSlotValue {
+                    counter: slot_value.counter + 1,
+                    a: slot_value.a,
+                    b: slot_value.b,
+                },),
+            ),
+        ]
+    } else {
+        []
+    };
+
+    (Truth, [
+        // consume precommit coin
+        SendMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE | RECEIVER_AMOUNT,
+            message: nil, // 0 = refund
+            receiver: [
+                precommit_coin_full_puzzle_hash,
+                precommit_amount,
+            ]
+        },
+        // announcement
+        CreatePuzzleAnnouncement {
+            message: "$" + precommit_coin_full_puzzle_hash,
+        },
+        ...last_conds
+    ])
+}

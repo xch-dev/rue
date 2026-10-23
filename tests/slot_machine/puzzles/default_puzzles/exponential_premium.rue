@@ -1,0 +1,88 @@
+// exponential_premium.rue by yakuhito
+// Expired handles are auctioned off to prevent snipers. This program adds a premium to the
+//   base price of a handle during the auction.
+
+// This program returns the premium by approximating START_PREMIUM * 0.5^n,
+//   where n is the number of days that have passed since the handle expired.
+// Note that n is fractional - the premium after 1 hour should be START_PREMIUM * 0.5^(1/24).
+
+// Inspired by ExponentialPremiumPirceOracle: https://github.com/ensdomains/ens-contracts/blob/master/contracts/ethregistrar/ExponentialPremiumPriceOracle.sol
+
+// Note: Truths (Buy_Time & Expiration) are trusted and should be verified by the outer puzzle.
+
+struct SolutionAndTruths {
+    // 'time now' - assumes user is interested in passing in a value as late as possible
+    Buy_Time: Int,
+    Current_Expiration: Int,
+    // pricing_program_solution passed to BASE_PROGRAM (e.g., (Handle . num_periods))
+    // premium INDEPENDENT of handle
+    ...rest_of_pricing_program_solution: Any,
+}
+
+fn add_fractional_part(
+    PRECISION: Int,
+    bits_list: List<Int>,
+    acc: Int,
+    fraction_part: Int,
+    premium: Int,
+) -> Int {
+    if bits_list is nil {
+        premium
+    } else {
+        add_fractional_part(
+            PRECISION,
+            bits_list.rest,
+            acc >>> -1,
+            fraction_part,
+            inline if (fraction_part & acc) != 0 {
+                premium * bits_list.first / PRECISION
+            } else {
+                premium
+            }
+        )
+    }
+}
+
+// if premium is lower than END_VALUE, auction's over
+fn correct_premium(premium: Int, END_VALUE: Int) -> Int {
+    if premium > END_VALUE {
+        premium - END_VALUE
+    } else {
+        0
+    }
+}
+
+// Returns (price . registered_time)
+fn main(
+    // compute base price using this program
+    BASE_PROGRAM: fn(...sol: SolutionAndTruths) -> (Int, Int),
+    // one day = 86400 = 60 * 60 * 24 seconds
+    HALVING_PERIOD: Int,
+    START_PREMIUM: Int,
+    // value returned by the premium function at the end of the reverse auction
+    // to make premium = 0 at the end, we subtract this small value from all
+    //   values returned by the function, effectively moving the graph a bit 
+    //   down on the y-axis so f(auction_end_time) = 0
+    END_VALUE: Int,
+    // 10 ** 18
+    PRECISION: Int,
+    BITS_LIST: List<Int>,
+    ...{ Buy_Time, Current_Expiration, ...solution }: SolutionAndTruths,
+) -> (Int, Int) {
+    let (base_program_price, base_program_registered_time) = BASE_PROGRAM(...solution);
+
+    let price_delta = correct_premium(
+        add_fractional_part(
+            PRECISION,
+            BITS_LIST,
+            1,
+            // fractional part of n with 16 bits of precision (2 ** 16 = 65536)
+            (65536 * ((Buy_Time - Current_Expiration) % HALVING_PERIOD)) / HALVING_PERIOD,
+            // premium from whole periods = START_PREMIUM / 2^p
+            START_PREMIUM / (1 >>> -((Buy_Time - Current_Expiration) / HALVING_PERIOD))
+        ),
+        END_VALUE
+    );
+
+    (base_program_price + price_delta, base_program_registered_time)
+}

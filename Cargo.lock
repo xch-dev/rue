@@ -1851,6 +1851,7 @@ name = "rue-tests"
 version = "0.11.0"
 dependencies = [
  "anyhow",
+ "clvm-utils",
  "clvmr",
  "env_logger",
  "indexmap",

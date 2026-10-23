@@ -1,0 +1,150 @@
+// expire.rue by yakuhito
+// When a handle expires, it goes into an 'auction' where the price is controlled by a puzzle
+//   in the registry's state.
+
+// Warning: Expired pricing puzzle is responsible for ensuring buy_time > 0
+
+import xchandles::*;
+import super::super::common_types::*;
+import super::super::slot::*;
+
+fn main(
+    SINGLETON_MOD_HASH: Bytes32,
+    SINGLETON_LAUNCHER_PUZZLE_HASH: Bytes32,
+    PRECOMMIT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    HANDLE_SLOT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    Truth: XchandlesStateTruth,
+    expired_handle_pricing: HandlePricing,
+    cat_maker: CatMaker,
+    other_precommit_data: OtherPrecommitData,
+    counter: Int,
+    neighbors: HandleSlotNeighbors,
+    old_rest: HandleSlotData,
+    ...new_inner_puzzle_hashes: PuzzleHashes,
+) -> (XchandlesStateTruth, List<Condition>) {
+    inline let {
+        refund_puzzle_hash_hash,
+        secret,
+    } = other_precommit_data.refund_and_secret;
+    inline let {
+        puzzle_hash_one: new_owner_inner_puzzle_hash,
+        puzzle_hash_two: new_resolved_inner_puzzle_hash,
+    } = new_inner_puzzle_hashes;
+    
+    assert (
+        (tree_hash(cat_maker.puzzle) == Truth.State.Cat_Maker_Puzzle_Hash) &
+        (tree_hash(expired_handle_pricing.puzzle) == Truth.State.Expired_Handle_Pricing_Puzzle_Hash)
+    );
+
+    let handle_hash = tree_hash_atom(expired_handle_pricing.solution.handle);
+    let { total_price, registered_time } = expired_handle_pricing.puzzle(...expired_handle_pricing.solution);
+
+    // These are calculated in the call to 'consume_precommit_assert_approvals_and_announce'
+    let precommit_coin_inner_puzzle_hash = curry_tree_hash(PRECOMMIT_1ST_CURRY_HASH, [
+        refund_puzzle_hash_hash,
+        tree_hash_atom(tree_hash(PrecommitValue {
+            a: PrecommitValueA {
+                cat_maker_details: PuzzleDetails {
+                    puzzle_hash: Truth.State.Cat_Maker_Puzzle_Hash,
+                    puzzle_solution: cat_maker.solution,
+                },
+                pricing_puzzle_details: PuzzleDetails {
+                    puzzle_hash: Truth.State.Expired_Handle_Pricing_Puzzle_Hash,
+                    puzzle_solution: expired_handle_pricing.solution,
+                },
+            },
+            b: PrecommitValueB {
+                handle_and_secret: PrecommitHandleAndSecret {
+                    handle: expired_handle_pricing.solution.handle,
+                    secret: secret,
+                },
+                data: other_precommit_data.new_rest,
+            },
+        }))
+    ]);
+    let precommit_coin_full_puzzle_hash = cat_maker.puzzle(precommit_coin_inner_puzzle_hash, ...cat_maker.solution);
+    let new_owner_puzzle_hash = singleton_puzzle_hash(
+        SINGLETON_MOD_HASH,
+        SINGLETON_LAUNCHER_PUZZLE_HASH,
+        other_precommit_data.new_rest.owner_launcher_id,
+        new_owner_inner_puzzle_hash,
+    );
+    
+    let base_conditions = [
+        AssertSecondsAbsolute {
+            seconds: expired_handle_pricing.solution.buy_time,
+        },
+        // assert handle actually expired
+        AssertSecondsAbsolute {
+            seconds: expired_handle_pricing.solution.current_expiration,
+        },
+        // spend_slot
+        spend_slot(
+            HANDLE_SLOT_1ST_CURRY_HASH,
+            tree_hash(XchandlesHandleSlotValue {
+                counter,
+                a: HandleSlotValueA {
+                    handle_hash: handle_hash,
+                    neighbors: neighbors,
+                },
+                b: HandleSlotValueB {
+                    expiration: expired_handle_pricing.solution.current_expiration,
+                    data: old_rest,
+                },
+            })
+        ),
+        // create new slot
+        create_slot(
+            HANDLE_SLOT_1ST_CURRY_HASH,
+            tree_hash(XchandlesHandleSlotValue {
+                counter: counter + 1,
+                a: HandleSlotValueA {
+                    handle_hash: handle_hash,
+                    neighbors: neighbors,
+                },
+                b: HandleSlotValueB {
+                    expiration: registered_time + expired_handle_pricing.solution.buy_time,
+                    data: other_precommit_data.new_rest,
+                },
+            })
+        ),
+        // spend precommit coin
+        SendMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE | RECEIVER_AMOUNT,
+            message: 0x01, // message = 1 = spend to payout puzzle hash
+            receiver: [
+                precommit_coin_full_puzzle_hash,
+                total_price,
+            ],
+        },
+        CreatePuzzleAnnouncement {
+            message: "x" + precommit_coin_full_puzzle_hash,
+        },
+        ReceiveMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
+            message: "e" + precommit_coin_full_puzzle_hash,
+            sender: [new_owner_puzzle_hash],
+        },
+    ];
+
+    let output_conds = if other_precommit_data.new_rest.owner_launcher_id == other_precommit_data.new_rest.resolved_launcher_id {
+        base_conditions
+    } else {
+        let new_resolved_puzzle_hash = singleton_puzzle_hash(
+            SINGLETON_MOD_HASH,
+            SINGLETON_LAUNCHER_PUZZLE_HASH,
+            other_precommit_data.new_rest.resolved_launcher_id,
+            new_resolved_inner_puzzle_hash,
+        );
+
+        [
+            ReceiveMessage {
+                mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
+                message: "f" + precommit_coin_full_puzzle_hash,
+                sender: [new_resolved_puzzle_hash],
+            },
+            ...base_conditions,
+        ]
+    };
+    (Truth, output_conds)
+}

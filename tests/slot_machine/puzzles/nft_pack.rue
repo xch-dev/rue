@@ -1,0 +1,78 @@
+// nft_pack.rue by yakuhito
+// NFT Pack definition & secure_nft function
+
+// NFT_PACK definition
+
+struct NftPackA {
+    LAUNCHER_MOD_HASH: Bytes32,
+    ...SINGLETON_MOD_HASH: Bytes32,
+}
+
+struct NftPackB {
+    NFT_STATE_LAYER_MOD_HASH: Bytes32,
+    ...METADATA_UPDATER_HASH_HASH: Bytes32,
+}
+
+struct NftPackC {
+    NFT_OWNERSHIP_MOD_HASH: Bytes32,
+    ...TRANSFER_PROGRAM_MOD_HASH: Bytes32,
+}
+
+struct NftPackD {
+    ROYALTY_ADDRESS_HASH: Bytes32,
+    ...TRADE_PRICE_PERCENTAGE: Int,
+}
+
+struct NftPackAB {
+    a: NftPackA,
+    ...b: NftPackB,
+}
+
+struct NftPackCD {
+    c: NftPackC,
+    ...d: NftPackD,
+}
+
+export struct NftPack {
+    ab: NftPackAB,
+    ...cd: NftPackCD,
+}
+
+export fn secure_nft(
+    NFT_PACK: NftPack,
+    inner_puzzle_hash: Bytes32,
+    launcher_id: Bytes32,
+) -> Condition {
+    let singleton_struct_hash = tree_hash(
+        (NFT_PACK.ab.a.SINGLETON_MOD_HASH, (launcher_id, NFT_PACK.ab.a.LAUNCHER_MOD_HASH)),
+    );
+    let ownership_layer_hash = curry_tree_hash(NFT_PACK.cd.c.NFT_OWNERSHIP_MOD_HASH, [
+        tree_hash_atom(NFT_PACK.cd.c.NFT_OWNERSHIP_MOD_HASH),
+        tree_hash_atom(nil),
+        // transfer program
+        curry_tree_hash(NFT_PACK.cd.c.TRANSFER_PROGRAM_MOD_HASH, [
+            singleton_struct_hash,
+            NFT_PACK.cd.d.ROYALTY_ADDRESS_HASH,
+            tree_hash_atom(NFT_PACK.cd.d.TRADE_PRICE_PERCENTAGE as Bytes)
+        ]),
+        inner_puzzle_hash
+    ]);
+    let singleton_inner_puzzle_hash = curry_tree_hash(NFT_PACK.ab.b.NFT_STATE_LAYER_MOD_HASH, [
+        tree_hash_atom(NFT_PACK.ab.b.NFT_STATE_LAYER_MOD_HASH),
+        tree_hash_atom(nil),
+        NFT_PACK.ab.b.METADATA_UPDATER_HASH_HASH,
+        ownership_layer_hash,
+    ]);
+    let full_puzzle_hash = curry_tree_hash(NFT_PACK.ab.a.SINGLETON_MOD_HASH, [
+        singleton_struct_hash,
+        singleton_inner_puzzle_hash
+    ]);
+
+    AssertConcurrentSpend {
+        coin_id: coinid(
+            launcher_id, // parent id
+            full_puzzle_hash,
+            1
+        ),
+    }
+}

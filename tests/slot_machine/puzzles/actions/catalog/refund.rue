@@ -1,0 +1,79 @@
+// refund.rue by yakuhito
+// Responsible for returning invalid precommit coins.
+
+// A precommit coin is considered invalid if:
+// a) the CAT maker puzzle has changed
+// b) the amount is wrong
+// c) the tail hash has already been registered
+
+import shared::*;
+import super::super::common_types::*;
+import super::super::slot::*;
+
+fn main(
+    PRECOMMIT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    SLOT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    Truth: CatalogStateTruth,
+    precommit_cat_maker: CatMaker,
+    other_precommit_data: OtherPrecommitData,
+    precommit_amount: Int,
+    neighbors: (Bytes32, Bytes32), // (left_tail_hash . right_tail_hash)
+    ...counter: Int, // required if slot spend is needed
+) -> (CatalogStateTruth, List<Condition>) {
+    // full TAIL in the reveal of the pre-commit coin
+    inline let tail_hash = other_precommit_data.tail_hash;
+    // also included in the pre-commit coin
+    inline let initial_nft_owner_ph = other_precommit_data.initial_nft_owner_ph;
+    // used to compute precommit coin puzzle hash
+    inline let refund_puzzle_hash_hash = other_precommit_data.refund_puzzle_hash_hash;
+
+    let precommit_cat_maker_hash = tree_hash(precommit_cat_maker.puzzle);
+
+    let precommit_inner_puzzle_hash = curry_tree_hash(PRECOMMIT_1ST_CURRY_HASH, [
+        refund_puzzle_hash_hash,
+        // full precommit value reveal is (TAIL . HASH)
+        // where HASH = (sha256tree initial_nft_owner_ph cat_maker_hash . cat_maker_solution)
+        tree_hash_pair(
+            tail_hash,
+            tree_hash_atom(tree_hash((
+                initial_nft_owner_ph,
+                (precommit_cat_maker_hash, precommit_cat_maker.solution),
+            ))),
+        ),
+    ]);
+
+    let base_conditions = [
+        // announcements
+        CreatePuzzleAnnouncement {
+            message: "$" + tree_hash((tail_hash, initial_nft_owner_ph))
+        },
+        // consume precommit coin
+        SendMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE | RECEIVER_AMOUNT,
+            message: nil, // 0 = refund
+            receiver: [
+                precommit_cat_maker.puzzle(
+                    precommit_inner_puzzle_hash,
+                    ...precommit_cat_maker.solution
+                ),
+                precommit_amount,
+            ]
+        },
+    ];
+
+    let conditions = if (Truth.State.Registration_Price == precommit_amount) &
+      (Truth.State.Cat_Maker_Puzzle_Hash == precommit_cat_maker_hash) {
+        let spent_slot_value_hash = tree_hash((counter, (tail_hash, neighbors)));
+        let created_slot_value_hash = tree_hash((counter + 1, (tail_hash, neighbors)));
+        
+        [
+            spend_slot(SLOT_1ST_CURRY_HASH, spent_slot_value_hash),
+            create_slot(SLOT_1ST_CURRY_HASH, created_slot_value_hash),
+            ...base_conditions
+        ]
+    } else {
+        base_conditions
+    };
+
+    (Truth, conditions)
+}

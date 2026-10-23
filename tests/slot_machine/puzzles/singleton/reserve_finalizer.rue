@@ -1,0 +1,112 @@
+// reserve_finalizer.rue by yakuhito
+// Reserve finalizer - does everything the normal finalizer does, but also
+//   manages a reserve whose amount is the first item in the state
+
+// Reserve output conditions can be added by any action by prepending them with
+//   -42 (i.e., (c -42 condition) will add 'condition' to the list of output conditions)
+
+// This puzzle handles reserve re-creation based on the new state
+
+import action::StateTruth;
+import finalizer::*;
+
+fn parse_conditions(
+    list_of_lists: List<List<Condition>>,
+    conditions: List<Condition>,
+    extracted_reserve_conditions: List<Condition>,
+) -> (List<Condition>, List<Condition>) {
+    inline let (first_thing, the_rest) = unchecked_cast::<(List<Condition>, List<List<Condition>>)>(list_of_lists);
+    if first_thing is nil {
+        if the_rest is nil {
+            (conditions, extracted_reserve_conditions)
+        } else {
+            parse_conditions(
+                the_rest,
+                conditions,
+                extracted_reserve_conditions
+            )
+        }
+    } else {
+        inline let (opcode, condition) = unchecked_cast::<(Int, Condition)>(first_thing.first);
+        if opcode == -42 {
+            parse_conditions(
+                (first_thing.rest, the_rest),
+                conditions,
+                (condition, extracted_reserve_conditions)
+            )
+        } else {
+            parse_conditions(
+                (first_thing.rest, the_rest),
+                (first_thing.first, conditions),
+                extracted_reserve_conditions
+            )
+        }
+    }
+}
+
+fn main(
+    ACTION_LAYER_MOD_HASH: Bytes32,
+    RESERVE_FULL_PUZZLE_HASH: Bytes32,
+    RESERVE_INNER_PUZZLE_HASH: Bytes32,
+    RESERVE_AMOUNT_FROM_STATE_PROGRAM: fn(...state: Any) -> Int, // default is 02 - i.e., (f State)
+    HINT: Bytes32,
+    // 2nd curry
+    FINALIZER_SELF_HASH: Bytes32,
+    Truth: FinalizerTruths,
+    last_action_output: (StateTruth, List<List<Condition>>),
+    ...reserve_parent_id: Bytes32, // my_solution
+) -> List<Condition> {
+    let (base_conditions, reserve_conditions) = parse_conditions(
+        last_action_output.rest, nil, nil
+    );
+
+    let recreate_reserve = CreateCoin {
+        puzzle_hash: RESERVE_INNER_PUZZLE_HASH,
+        amount: RESERVE_AMOUNT_FROM_STATE_PROGRAM(...last_action_output.first.actual_state),
+        memos: Memos {
+            value: [RESERVE_INNER_PUZZLE_HASH],
+        }
+    };
+
+    let reserve_send_message = SendMessage {
+        mode: SENDER_PUZZLE | RECEIVER_COIN,
+        message: tree_hash(
+            (1, // this is the leading 'q . ' in the delegated puzzle
+                (recreate_reserve, reserve_conditions)
+            )
+        ),
+        receiver: [
+            coinid(
+                reserve_parent_id,
+                RESERVE_FULL_PUZZLE_HASH,
+                RESERVE_AMOUNT_FROM_STATE_PROGRAM(...Truth.State) // initial state
+            )
+        ]
+    };
+
+    let recreate_singleton = CreateCoin {
+        puzzle_hash: curry_tree_hash(
+            ACTION_LAYER_MOD_HASH,
+            [
+                curry_tree_hash(
+                    FINALIZER_SELF_HASH,
+                    [
+                        tree_hash_atom(FINALIZER_SELF_HASH),
+                    ]
+                ), // finalizer puzzle hash
+                tree_hash_atom(Truth.Merkle_Root),
+                tree_hash(last_action_output.first.actual_state)
+            ]
+        ), // new inner ph
+        amount: 1,
+        memos: Memos {
+            value: [HINT],
+        }
+    };
+
+    [
+        recreate_singleton,
+        reserve_send_message,
+        ...base_conditions
+    ]
+}

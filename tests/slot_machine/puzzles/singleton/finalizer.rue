@@ -1,0 +1,71 @@
+// finalizer.rue by yakuhito
+// This puzzle is essentially used in the singleton action layer to 'finalize' a set of actions
+// The current one only re-creates the singleton, but advanced dApps could use it to create other
+//  conditions based on the final state - e.g., re-create the singleton's reserves or modify merkle root
+
+// Note: This finalizer assumes sets the next singleton's amount to 1.
+
+import action::StateTruth;
+
+export struct FinalizerTruths {
+    Merkle_Root: Bytes32,
+    ...State: Any,
+}
+
+export type Finalizer<S> = fn(
+    truths: FinalizerTruths,
+    run_action_output: (S,List<List<Condition>>),
+    ...finalizer_solution: Any
+) -> List<Condition>;
+
+fn flatten_list(list: List<List<Condition>>) -> List<Condition> {
+    inline let (first_thing, the_rest) = unchecked_cast::<(List<Condition>, List<List<Condition>>)>(list);
+
+    if first_thing is nil {
+        if the_rest is nil { 
+            nil
+         } else {
+            flatten_list(the_rest)
+        }
+    } else {
+        (
+            first_thing.first,
+            flatten_list((first_thing.rest, the_rest))
+        )
+    }
+}
+
+fn main(
+    ACTION_LAYER_MOD_HASH: Bytes32,
+    HINT: Bytes32,
+    // 2nd curry
+    FINALIZER_SELF_HASH: Bytes32,
+    Truth: FinalizerTruths,
+    last_action_output: (StateTruth, List<List<Condition>>),
+    ..._my_solution: Any // not used here
+) -> List<Condition> {
+    let recreation_condition = CreateCoin {
+        puzzle_hash: curry_tree_hash(
+            ACTION_LAYER_MOD_HASH,
+            [
+                curry_tree_hash(
+                    FINALIZER_SELF_HASH,
+                    [
+                        tree_hash_atom(FINALIZER_SELF_HASH),
+                    ]
+                ), // finalizer puzzle hash
+                tree_hash_atom(Truth.Merkle_Root),
+                tree_hash(last_action_output.first.actual_state)
+            ]
+        ), // new inner ph
+        amount: 1,
+        memos: Memos {
+            value: [HINT],
+        }
+    };
+    
+    [
+        recreation_condition,
+        ...flatten_list(last_action_output.rest)
+    ]
+}

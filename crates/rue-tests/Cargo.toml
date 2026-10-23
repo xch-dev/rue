@@ -23,6 +23,7 @@ rue-lir = { workspace = true }
 rue-formatter = { workspace = true }
 clvmr = { workspace = true }
 rue-clvm = { workspace = true }
+clvm-utils = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_yml = { workspace = true }

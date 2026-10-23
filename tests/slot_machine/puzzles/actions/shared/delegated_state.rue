@@ -1,0 +1,40 @@
+// delegated_state.rue by yakuhito
+// This action can be used to update the state of the current singleton
+// based on an announcement from another singleton.
+
+// For example, CAT registration fees might change based on block rewards. It makes sense
+// to have a separate singleton that contains the logic to determine the fee (i.e., schedule)
+// and then have the registration singleton trust it.
+
+struct GeneralTruth {
+    Ephemeral_State: Any,
+    ...Actual_State: Any,
+}
+
+fn main(
+    SINGLETON_MOD_HASH: Bytes32,
+    OTHER_SINGLETON_STRUCT_HASH: Bytes32,
+    Truth: GeneralTruth,
+    // solution
+    new_state: Any,
+    ...other_singleton_inner_puzzle_hash: Bytes32,
+) -> (GeneralTruth, List<Condition>) {
+    (
+        GeneralTruth {
+            Ephemeral_State: Truth.Ephemeral_State,
+            Actual_State: new_state,
+        },
+        [
+            ReceiveMessage {
+                mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
+                message: "s" + tree_hash(new_state),
+                sender: [
+                    curry_tree_hash(SINGLETON_MOD_HASH, [
+                        OTHER_SINGLETON_STRUCT_HASH,
+                        other_singleton_inner_puzzle_hash,
+                    ])
+                ]
+            }
+        ]
+    )
+}

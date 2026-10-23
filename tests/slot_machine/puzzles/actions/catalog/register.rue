@@ -1,0 +1,181 @@
+// register.rue by yakuhito
+// Responsible for registering new CATs into the regstry (CATalog)
+
+// Main idea: you're the owner of a CAT if you know the TAIL before it's published on-chain
+// To ensure uniqueness (i.e., that no CAT is registered twice), slots are used
+// A double-linked list is created, and a new item is inserted for every new CAT that is registered
+
+// Slots before insertion:
+// ---------------       ---------------
+// |  left slot  | <---> | right slot  | 
+// ---------------       ---------------
+
+// Slots after insertion:
+// ---------------       ---------------       ---------------
+// |  left slot  | <---> |  new slot   | <---> | right slot  |
+// ---------------       ---------------       ---------------
+
+// A slot's value is (counter . (my_value . (left_value . right_value)))
+// For CATalog, a slot's value is the tail hash of a registered CAT
+
+import shared::*;
+import super::super::nft_pack::*;
+import super::super::slot::*;
+import super::super::common_types::*;
+
+inline fn get_slot_value_hash(
+    counter: Int,
+    value: Bytes32,
+    left_value: Bytes32,
+    right_value: Bytes32
+) -> Bytes32 {
+    tree_hash((counter, (value, (left_value, right_value))))
+}
+
+fn main(
+    // NFT_PACK definition is in 'shared.rue'
+    NFT_PACK: NftPack,
+    // after 1st curry
+    UNIQUENESS_PRELAUNCHER_1ST_CURRY_HASH: Bytes32,
+    // after 1st curry
+    PRECOMMIT_1ST_CURRY_HASH: Bytes32,
+    // after 1st curry
+    SLOT_1ST_CURRY_HASH: Bytes32,
+    Truth: CatalogStateTruth,
+    my_id: Bytes32,
+    // left slot info
+    (left_counter, (left_tail_hash, left_left_tail_hash)): (Int, (Bytes32, Bytes32)),
+    // right slot info
+    (right_counter, (right_tail_hash, right_right_tail_hash)): (Int, (Bytes32, Bytes32)),
+    cat_maker: CatMaker,
+    ...{ tail_hash, initial_nft_owner_ph, refund_puzzle_hash_hash }: OtherPrecommitData,
+) -> (CatalogStateTruth, List<Condition>) {
+    inline let Current_State = Truth.State;
+    inline let Cat_Maker_Puzzle_Hash = Current_State.Cat_Maker_Puzzle_Hash;
+    inline let Registration_Price = Current_State.Registration_Price;
+
+    assert (tail_hash > left_tail_hash) & (right_tail_hash > tail_hash) & (tree_hash(cat_maker.puzzle) == Cat_Maker_Puzzle_Hash);
+
+    let prelauncher_full_puzzle_hash = curry_tree_hash(UNIQUENESS_PRELAUNCHER_1ST_CURRY_HASH, [
+        tree_hash_atom(tail_hash)
+    ]);
+
+    let prelauncher_id = coinid(
+        my_id,
+        prelauncher_full_puzzle_hash,
+        0
+    );
+
+    let launcher_id = coinid(
+        prelauncher_id,
+        NFT_PACK.ab.a.LAUNCHER_MOD_HASH,
+        1
+    );
+
+    let precommit_inner_puzzle_hash = curry_tree_hash(PRECOMMIT_1ST_CURRY_HASH, [
+        refund_puzzle_hash_hash,
+        // full precommit value reveal is (TAIL . HASH)
+        // where HASH = (sha256tree initial_nft_owner_ph cat_maker_hash . cat_maker_solution)
+        tree_hash_pair(
+            tail_hash,
+            tree_hash_atom(tree_hash((
+                initial_nft_owner_ph,
+                (Cat_Maker_Puzzle_Hash, cat_maker.solution),
+            ))),
+        )
+    ]);
+
+    let precommit_puzzle_hash = cat_maker.puzzle(
+        precommit_inner_puzzle_hash,
+        ...cat_maker.solution
+    );
+
+    (
+        // nothing changes
+        Truth,
+        [
+            // create uniqueness prelauncher
+            CreateCoin {
+                puzzle_hash: prelauncher_full_puzzle_hash,
+                amount: 0,
+            },
+
+            secure_nft(
+                NFT_PACK,
+                initial_nft_owner_ph,
+                // launcher id
+                launcher_id
+            ),
+
+            AssertMyCoinId {
+                coin_id: my_id,
+            },
+
+            CreatePuzzleAnnouncement {
+                message: "r" + tree_hash((tail_hash, initial_nft_owner_ph))
+            },
+
+            // spend left slot
+            spend_slot(
+                SLOT_1ST_CURRY_HASH,
+                get_slot_value_hash(
+                    left_counter,
+                    left_tail_hash,
+                    left_left_tail_hash,
+                    right_tail_hash
+                )
+            ),
+            // spend right slot
+            spend_slot(
+                SLOT_1ST_CURRY_HASH,
+                get_slot_value_hash(
+                    right_counter,
+                    right_tail_hash,
+                    left_tail_hash,
+                    right_right_tail_hash
+                )
+            ),
+
+            // create new slot
+            create_slot(
+                SLOT_1ST_CURRY_HASH,
+                get_slot_value_hash(
+                    0,
+                    tail_hash,
+                    left_tail_hash,
+                    right_tail_hash
+                )
+            ),
+            // create new left slot
+            create_slot(
+                SLOT_1ST_CURRY_HASH,
+                get_slot_value_hash(
+                    left_counter + 1,
+                    left_tail_hash,
+                    left_left_tail_hash,
+                    tail_hash
+                )
+            ),
+            // create new right slot
+            create_slot(
+                SLOT_1ST_CURRY_HASH,
+                get_slot_value_hash(
+                    right_counter + 1,
+                    right_tail_hash,
+                    tail_hash,
+                    right_right_tail_hash
+                )
+            ),
+
+            // consume precommit coin
+            SendMessage {
+                mode: SENDER_PUZZLE | RECEIVER_PUZZLE | RECEIVER_AMOUNT,
+                message: 0x01, // message = 1 = spend to payout puzzle hash
+                receiver: [
+                    precommit_puzzle_hash,
+                    Registration_Price
+                ]
+            }
+        ],
+    )
+}

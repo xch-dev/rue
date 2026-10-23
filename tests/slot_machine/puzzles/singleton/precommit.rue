@@ -1,0 +1,53 @@
+// precommit.rue by yakuhito
+// A pre-commit coin can be used to prove that a value has been pre-committed for a singleton
+//  some time ago
+
+fn main(
+   // 1st curry
+   SINGLETON_MOD_HASH: Bytes32,
+   SINGLETON_STRUCT_HASH: Bytes32, // owner/controller singleton
+   RELATIVE_BLOCK_HEIGHT: Int, // how many blocks to wait before this coin is spendable
+   PAYOUT_PUZZLE_HASH: Bytes32, // where the funds go if message=1 (use precommit to do something)
+   // 2nd curry
+   REFUND_PUZZLE_HASH: Bytes32, // where the funds go if message=0 (refund)
+   _VALUE: Any,
+   spend_mode: Bool, // 0 = refund, 1 = spend to payout puzzle hash
+   my_amount: Int,
+   // info about this coin's spender (singleton coin being spent)
+   ...singleton_inner_puzzle_hash: Bytes32,
+) -> List<Condition> {
+    inline let destination_puzzle_hash = inline if spend_mode {
+        PAYOUT_PUZZLE_HASH
+    } else {
+        REFUND_PUZZLE_HASH
+    };
+
+    [
+        AssertHeightRelative {
+            height: RELATIVE_BLOCK_HEIGHT,
+        },
+        AssertMyAmount {
+            amount: my_amount,
+        },
+        CreateCoin {
+            puzzle_hash: destination_puzzle_hash,
+            amount: my_amount,
+            memos: Memos {
+                value: [destination_puzzle_hash],
+            },
+        },
+        ReceiveMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE | RECEIVER_AMOUNT,
+            message: spend_mode as Bytes,
+            sender: [
+                curry_tree_hash(
+                    SINGLETON_MOD_HASH,
+                    [
+                        SINGLETON_STRUCT_HASH,
+                        singleton_inner_puzzle_hash
+                    ]
+                )
+            ],
+        }
+    ]
+}

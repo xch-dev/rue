@@ -1,0 +1,62 @@
+// slot.clsp by yakuhito
+// A singleton slot coin is created to store values that may be read at a later spend
+// To read the values, the singleton will spend the slot coin - so the values are only readable once
+// Might be helpful to think of this as a one-time ticket
+
+// Double currying allows the controller singleton to only care about the 1st curry hash, which means it
+//   only needs that and VALUE_HASH to build the full slot puzzle hash. This leads to more cost saved.
+// NONCE is used to differentiate between slot types - it avoids situations where slots representing
+//   two separate things but that hold the same value format (e.g., list of 3 numbers) can be confused.
+
+// Warning: Slots do not assure uniqueness - a double-linked sorted list structure on top is required for that
+//          An attacker might intentionally omit a given slot to trick the dApp that it doesn't exist
+//          For example, a naive handle reigstration app might be tricked into registering the same handle twice`
+
+import super::common_types::*;
+
+struct SingletonInfo {
+    singleton_mod_hash: Bytes32,
+    ...singleton_struct_hash: Bytes32, // treehash of full singleton struct
+}
+
+fn singleton_full_puzzle_hash(
+    CONTROLLER_SINGLETON_INFO: SingletonInfo,
+    inner_puzzle_hash: Bytes32,
+) -> Bytes32 {
+    curry_tree_hash(
+        CONTROLLER_SINGLETON_INFO.singleton_mod_hash,
+        [
+            CONTROLLER_SINGLETON_INFO.singleton_struct_hash,
+            inner_puzzle_hash,
+        ]
+    )
+}
+
+fn main(
+    CONTROLLER_SINGLETON_INFO: SingletonInfo,
+    // different nonces will hold different data types
+    _NONCE: Any,
+    // 2nd curry
+    _VALUE_HASH: Bytes32,
+    // info about this coin's parent (previous singleton coin)
+    parent_proof: CompactCoinProof,
+    // info about this coin's spender (current singleton coin - the one consuming the value)
+    ...spender_inner_puzzle_hash: Bytes32,
+) -> List<Condition> {
+    [
+        AssertMyParentId {
+            parent_id: coinid(
+                parent_proof.parent_info,
+                singleton_full_puzzle_hash(CONTROLLER_SINGLETON_INFO, parent_proof.inner_puzzle_hash),
+                parent_proof.amount,
+            ),
+        },
+        ReceiveMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
+            message: nil,
+            sender: [
+                singleton_full_puzzle_hash(CONTROLLER_SINGLETON_INFO, spender_inner_puzzle_hash)
+            ],
+        }
+    ]
+}

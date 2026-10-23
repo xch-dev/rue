@@ -1,0 +1,94 @@
+// factor_pricing.rue by yakuhito
+// Price a handle based on the number of characters it has. Inspired by ENS.
+
+// This is a pricing program and will return (price . registered_time) where 
+//  price is the total price of the handle and registered_time is the time
+//  that the user will own the handle for (e.g., 1 year, 2 years, and so on).
+
+// The price is determined by multiplying the base price by a factor. The factor is as follows:
+// - 6+ characters with no numbers: 2
+// - 5 characters with no numbers: 16
+// - 4 characters with no numbers: 64
+// - 3 characters with no numbers: 128
+// If the handle contains a number, the price is halved.
+
+// Note: Truths (Buy_Time, Current_Expiration, Handle) are trusted and should be verified by the outer puzzle.
+
+inline fn get_price_factor(length: Int, number_of_numbers: Int) -> Int {
+    let p = if length > 2 {
+        inline if length > 4 {
+            inline if length == 5 {
+                16
+            } else {
+                // length >= 6
+                if length > 63 {
+                    raise "Handle can be at most 63 characters long";
+                } else {
+                    2
+                }
+            }
+        } else {
+            // 2 < length < 5
+            inline if length == 3 {
+                128
+            } else {
+                // length = 4
+                64
+            }
+        }
+    } else {
+        // length <= 2
+        raise "Handle must be at least 3 characters long";
+    };
+    let q = inline if number_of_numbers == 0 { 1 } else { 2};
+
+    p / q
+}
+
+fn count_numbers_and_validate(handle: String | nil) -> Int {
+    if handle is nil {
+        0
+    } else {
+        let ch = substr(handle, 0, 1) as Int;
+        let handle_rest = substr(handle, 1);
+
+        if (ch > ("a" as Int - 1)) & (ch < ("z" as Int + 1)) {
+            count_numbers_and_validate(handle_rest)
+        } else {
+            assert (ch > ("0" as Int - 1)) & (ch < ("9" as Int + 1));
+            count_numbers_and_validate(handle_rest) + 1
+        }
+    }
+}
+
+// Returns (price . registered_time)
+fn main(
+    // base price = price per month of a 6+ character handle with at least one number
+    BASE_PRICE: Int,
+    // number of seconds to register a handle for, in seconds
+    // most likely 31622400 = 366 days * 24 hours/day * 60 minutes/hour * 60 seconds/minute
+    REGISTRATION_PERIOD: Int,
+    // 'time now' - assumes user is interested in passing in a value as late as possible
+    // This Truth is unused in this puzzle, but can be used to price handles differently
+    // Generally, the outer puzzle will just verify it with an ASSERT_SECONDS_ABSOLUTE
+    //   but with no matching ASSERT_BEFORE_SECONDS_ABSOLUTE & delay
+    _Buy_Time: Int,
+    // 0 if the handle is being registered, != 0 if extension
+    // this Truth is unused in this puzzle, but can be used to price renewals differently
+    //   in custom ones
+    _Current_Expiration: Int,
+    // handle to register
+    Handle: String,
+    // number of periods to register the handle for (e.g., 1 year, 2 years, and so on)
+    ...num_periods: Int,
+) -> (Int, Int) {
+    assert num_periods > 0;
+
+    (
+        num_periods * BASE_PRICE * get_price_factor(
+            Handle.length,
+            count_numbers_and_validate(Handle)
+        ),
+        num_periods * REGISTRATION_PERIOD
+    )
+}

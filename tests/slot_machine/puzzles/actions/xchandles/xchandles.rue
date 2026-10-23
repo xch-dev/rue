@@ -1,0 +1,141 @@
+// xchandles.rue by yakuhito
+// Shared functions for XCHandles
+
+export inline fn singleton_puzzle_hash(
+    SINGLETON_MOD_HASH: Bytes32,
+    SINGLETON_LAUNCHER_PUZZLE_HASH: Bytes32,
+    launcher_id: Bytes32,
+    inner_puzzle_hash: Bytes32,
+) -> Bytes32 {
+    curry_tree_hash(
+        SINGLETON_MOD_HASH,
+        [
+            tree_hash(
+                (SINGLETON_MOD_HASH, (launcher_id, SINGLETON_LAUNCHER_PUZZLE_HASH)),
+            ), // tree hash of SINGLETON_STRUCT
+            inner_puzzle_hash,
+        ]
+    )
+}
+
+export struct XchandlesState {
+    Cat_Maker_Puzzle_Hash: Bytes32,
+    Pricing_Puzzle_Hash: Bytes32,
+    ...Expired_Handle_Pricing_Puzzle_Hash: Bytes32,
+}
+
+export struct XchandlesStateTruth {
+    Ephemeral_State: Any,
+    ...State: XchandlesState,
+}
+
+// handle slot
+
+export struct HandleSlotNeighbors {
+    left_value: Bytes32,
+    ...right_value: Bytes32,
+}
+
+export struct HandleSlotValueA {
+    handle_hash: Bytes32,
+    ...neighbors: HandleSlotNeighbors,
+}
+
+export struct HandleSlotData {
+    owner_launcher_id: Bytes32,
+    ...resolved_launcher_id: Bytes32,
+}
+
+export struct HandleSlotValueB {
+    expiration: Int,
+    ...data: HandleSlotData,
+}
+
+export struct XchandlesHandleSlotValue {
+    counter: Int,
+    a: HandleSlotValueA,
+    ...b: HandleSlotValueB,
+}
+
+// update slot
+
+export struct UpdateSlotValueA {
+    initiator_coin_id: Bytes32,
+    ...min_execution_height: Int,
+}
+
+export struct UpdateSlotValueB {
+    handle_hash: Bytes32,
+    ...new_data: HandleSlotData,
+}
+
+export struct XchandlesUpdateSlotValue {
+    a: UpdateSlotValueA,
+    ...b: UpdateSlotValueB,
+}
+// OtherPrecommitData
+
+export struct PrecommitRefundAndSecret {
+    refund_puzzle_hash_hash: Bytes32,
+    ...secret: Bytes32,
+}
+
+export struct OtherPrecommitData {
+    new_rest: HandleSlotData,
+    ...refund_and_secret: PrecommitRefundAndSecret,
+}
+
+// precommit coin value
+
+export struct PuzzleDetails {
+    puzzle_hash: Bytes32,
+    ...puzzle_solution: Any,
+}
+
+export struct PrecommitValueA {
+    cat_maker_details: PuzzleDetails,
+    ...pricing_puzzle_details: PuzzleDetails,
+}
+
+export struct PrecommitHandleAndSecret {
+    handle: String,
+    ...secret: Any,
+}
+
+export struct PrecommitValueB {
+    handle_and_secret: PrecommitHandleAndSecret,
+    ...data: HandleSlotData,
+}
+
+
+export struct PrecommitValue {
+    a: PrecommitValueA,
+    ...b: PrecommitValueB,
+}
+
+
+export struct RegisterThisSlotInfo {
+    this_counter: Int,
+    this_this_value: Bytes32,
+    this_expiration: Int,
+    ...this_data: HandleSlotData,
+}
+
+// Shared types
+
+export struct HandlePricing {
+    puzzle: fn(...solution: HandlePricingSolution) -> HandlePricingOutput,
+    ...solution: HandlePricingSolution,
+}
+
+export struct HandlePricingSolution {
+    buy_time: Int,
+    current_expiration: Int,
+    handle: String,
+    ...rest: Any,
+}
+
+export struct HandlePricingOutput {
+    total_price: Int,
+    ...registered_time: Int,
+}

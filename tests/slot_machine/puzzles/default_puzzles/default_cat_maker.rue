@@ -1,0 +1,22 @@
+// default_cat_maker.rue by yakuhito
+// Given an inner puzzle and a user-supplied solution, CAT makers return the full puzzle of a CAT
+//   with the given inner puzzle. This allows the registry to support intermediary layers in
+//   future CATs, such as the recently-proposed revocation layer.
+
+// The default CAT maker assumes no intermediary layers between the CAT outer puzzle and the inner puzzle.
+
+// Note: Truths (Inner_Puzzle_Hash) are trusted and should be verified by the outer puzzle.
+
+fn main(
+    CAT_MOD_HASH: Bytes32,
+    TAIL_HASH_HASH: Bytes32, // (sha256 1 TAIL_HASH) / sha256(0x01 + CAT_MOD_HASH)
+    Inner_Puzzle_Hash: Bytes32,
+    // Note: other CAT makers may have more arguments here
+    // Puzzles using the maker should prepend Inner_Puzzle_Hash to user-supplied inputs
+) -> Bytes32 {
+    curry_tree_hash(CAT_MOD_HASH, [
+        tree_hash_atom(CAT_MOD_HASH),
+        TAIL_HASH_HASH,
+        Inner_Puzzle_Hash,
+    ])
+}

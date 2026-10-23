@@ -1,0 +1,150 @@
+// action.rue by yakuhito
+// Inner puzzle for a singleton that has a state and may run any of n actions
+// Each action will receive the current state + an ephemeral state and return new values
+// One or more actions may be run per spend
+
+// An action's solution will always be: (c (c Ephemeral_State Current_State) solution)
+//    (where capital first letters are used to denote Truths)
+// It returns three values: ((new_ephemeral_state . new_state) . new_conditions)
+//    state is passed from one action to the next and the latest value is saved between spends
+//        (it is persistent)
+//    ephemeral_state is not persistent - it's () for the first action of any new spend
+//        but passed from the previous action in the same spend
+//    new_conditions will be directly added to this puzzle's output conditions
+//    but the finalizer puzzle is able to filter them after all actions are run
+
+// Warning: This puzzle's finalizer likely assumes the singleton's amount is 1 (like the default one does).
+
+import finalizer::*;
+import merkle_utils::*;
+
+fn item_in_list(item: Int, list: List<Int>) -> Bool {
+    // if the item is not found in the whole list, (r ()) will
+    //  generate an exception anyway
+    inline let (first_list_item, remaining_list) = unchecked_cast::<(Int, List<Int>)>(list);
+    if first_list_item == item {
+        true
+    } else {
+        item_in_list(item, remaining_list)
+    }
+}
+
+export struct StateTruth {
+    ephemeral_state: Any,
+    ...actual_state: Any,
+} 
+
+struct ActionOutput {
+    state_truth: StateTruth,
+    ...conditions: List<Condition>,
+}
+
+type ActionPuzzles = Any;
+type ActionPuzzle = fn(state_truth: StateTruth, ...solutions: Solution) -> ActionOutput;
+type Solution = Any;
+type Selector = fn(...puzzles: ActionPuzzles) -> ActionPuzzle;
+
+fn reduce_and_verify_proofs(
+    MERKLE_ROOT: Bytes32,
+    puzzles: ActionPuzzles,
+    selectors_so_far: List<Selector>,
+    selectors_and_proofs: List<(Selector, MerkleProof | nil)>,
+) -> List<Selector> {
+    if selectors_and_proofs is nil {
+        selectors_so_far
+    } else {
+        inline let (selector, proof) = selectors_and_proofs.first;
+
+        let valid_selector = if proof is nil {
+            // treat selectors as ints for item_in_list
+            item_in_list(
+                unchecked_cast::<Int>(selector),
+                unchecked_cast::<List<Int>>(selectors_so_far)
+            )
+        } else {
+            MERKLE_ROOT == simplify_merkle_proof(tree_hash(selector(...puzzles)), proof)
+        };
+        assert valid_selector;
+
+        reduce_and_verify_proofs(
+            MERKLE_ROOT,
+            puzzles,
+            (selector, selectors_so_far),
+            selectors_and_proofs.rest,
+        )
+    }
+}
+
+fn run_actions(
+    puzzles: ActionPuzzles,
+    current_conditions: List<List<Condition>>,
+    action_output: ActionOutput,
+    pending_selectors: List<Selector>,
+    pending_solutions: List<Solution>,
+) -> (StateTruth, List<List<Condition>>) {
+    inline let ephemeral_and_actual_state = action_output.state_truth;
+    inline let new_conditions = action_output.conditions;
+
+    if pending_selectors is nil {
+        (
+            ephemeral_and_actual_state,
+            (new_conditions, current_conditions),
+        )
+    } else {
+        inline let selector = pending_selectors.first;
+        inline let remaining_selectors = pending_selectors.rest;
+        inline let (solution, remaining_solutions) = unchecked_cast::<(Solution, List<Solution>)>(pending_solutions);
+        
+        let puzzle = selector(...puzzles);
+
+        run_actions(
+            puzzles,
+            (new_conditions, current_conditions),
+            puzzle(ephemeral_and_actual_state, ...solution),
+            remaining_selectors,
+            remaining_solutions,
+        )
+    }
+}
+
+fn main(
+    FINALIZER: Finalizer<StateTruth>,
+    MERKLE_ROOT: Bytes32,
+    STATE: Any,
+    puzzles: ActionPuzzles,
+    selectors_and_proofs: List<(Selector, MerkleProof | nil)>,
+    solutions: List<Solution>,
+    ...finalizer_solution: Any,
+) -> List<Condition> {
+    assert !(selectors_and_proofs is nil);
+
+    let selectors = reduce_and_verify_proofs(
+        MERKLE_ROOT,
+        puzzles,
+        nil,
+        selectors_and_proofs
+    );
+
+    let run_action_output = run_actions(
+        puzzles,
+        nil,
+        ActionOutput {
+            state_truth: StateTruth {
+                ephemeral_state: nil,
+                actual_state: STATE,
+            },
+            conditions: nil,
+        },
+        selectors,
+        solutions,
+    );
+
+    FINALIZER(
+        FinalizerTruths {
+            Merkle_Root: MERKLE_ROOT,
+            State: STATE,
+        },
+        run_action_output,
+        ...finalizer_solution,
+    )
+}

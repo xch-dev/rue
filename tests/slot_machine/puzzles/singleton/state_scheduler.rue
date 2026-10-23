@@ -1,0 +1,33 @@
+// state_scheduler.rue by yakuhito
+// Used as the inner puzzle of a singleton that schedules state changes for another singleton.
+// Once 'committed' to a state schedule, the price singleton (which is really the state scheduler singleton)
+//   has to abide it, with the * that states may come into effect later than scheduled if users don't spend
+//   the scheduler on time.
+
+// For an example, see actions/shared/delegated_state.clsp (this is the trusted singleton).
+
+fn main(
+    SINGLETON_MOD_HASH: Bytes32,
+    RECEIVER_SINGLETON_STRUCT_HASH: Bytes32,
+    MESSAGE: Bytes,
+    INNER_PUZZLE: fn(...inner_solution: Any) -> List<Condition>,
+    other_singleton_inner_puzzle_hash: Bytes32,
+    ...inner_solution: Any,
+) -> List<Condition> {
+    [
+        SendMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
+            message: MESSAGE,
+            receiver: [
+                curry_tree_hash(
+                    SINGLETON_MOD_HASH,
+                    [
+                        RECEIVER_SINGLETON_STRUCT_HASH,
+                        other_singleton_inner_puzzle_hash,
+                    ]
+                )
+            ]
+        },
+        ...INNER_PUZZLE(...inner_solution),
+    ]
+}

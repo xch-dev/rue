@@ -1,0 +1,26 @@
+diagnostics:
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:20:13
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:19:9
+puzzle_hashes:
+  actions/catalog/refund.rue: ad293a8ba7393b2d23760cf2bdae38ae6e1407a1b2a26b89b39b0fd0cb0127a9
+  actions/catalog/register.rue: ef66622bbd9ac5922df81baac96082e16f51ae0a8a69e40e93b13a44fff1f8cf
+  actions/shared/delegated_state.rue: '491ee66c8ffd29ef41bf820d3d4d766deb1b6f650932af09f26f807dab1a362f'
+  actions/xchandles/execute_update.rue: '5ab577e34135251486330c53c8c16ed2b50d1b3da58096019c745b7faa94a631'
+  actions/xchandles/expire.rue: ee1554255f27b737b73dbba2d3fc2e3d7e8de2954c35c8660341362410d5b4e0
+  actions/xchandles/extend.rue: '490522c6759f840a455ff5ca5a00f3eb83db2dfd3c4590553d7ff67d210bc353'
+  actions/xchandles/initiate_update.rue: '23eeec5ecd731c2822adf82f23a2e73fdd4ad08df56558ad15873c68cadf68f8'
+  actions/xchandles/oracle.rue: f6f82232ff1dead535602b757dcbe21ee6efb38ff01a0500e59c52161a582c1b
+  actions/xchandles/refund.rue: a11cc9b151475ef6cc4b6e1846089dcf9c042413b7a5a943e6b11c4e0f59fcc7
+  actions/xchandles/register.rue: '150ae295efe60fa049b87cff5c05c0031fa768959ba466b425ef5a58b4a95ee8'
+  default_puzzles/default_cat_maker.rue: d6693f7aacfeb7e6901cd71a00f5e4b318d73234fbffd5b4d84da2c1371b3181
+  default_puzzles/exponential_premium.rue: eec82d74678809577247f69adc8efdc5e8a342c4bb595e1dae00dc7f7aad1d10
+  default_puzzles/factor_pricing.rue: '8876f129e711da8776b746cc07ae65f8336e8b1b7f08169de55a200ab287d1a2'
+  default_puzzles/revocable_cat_maker.rue: f1b280e985d067fa79a86eca600d8fe9ca62bf2eaa5346a6ddaf23c7773ee955
+  nft/uniqueness_prelauncher.rue: e7fa797a8537895c571ae9556abdd2ebaba2d36957f2c63f37aba130f8f0c5ff
+  singleton/action.rue: afa03f2903f9e4a293523237799074b13ab2361f250df10de5df884b0b09a22b
+  singleton/finalizer.rue: '9d274de59aeaa128d1b0a802b52911838420ef9720d605c78942e8dadfc0810b'
+  singleton/p2_delegated_by_singleton.rue: '3f2358e5141470a084ab2f68126f6f07269f01a690994f364e67c9624bb6e05e'
+  singleton/precommit.rue: '9b3be8822ce5583da2987336d59cf4bdded39d2747838249fd9afe0238cab6ea'
+  singleton/reserve_finalizer.rue: '5b406eb66d10998027924c9bdea4254966e27ca765a8992227f826cb0e868095'
+  singleton/slot.rue: '8ab9f3b57a65d7f7a0810f79f7bc1e96bda680d16dd6f51d51e868e13fc7bbb3'
+  singleton/state_scheduler.rue: '8811d56e9efd2c9f449ea10cb00e00417b372f46d9d3a00ddf632f292de7e2c3'

@@ -1,0 +1,33 @@
+// revocable_cat_maker.rue by yakuhito
+// Given an inner puzzle and a user-supplied solution, CAT makers return the full puzzle of a CAT
+// ;;   with the given inner puzzle. This allows the registry to support intermediary layers in
+// ;;   future CATs, such as the recently-proposed revocation layer.
+
+// ;; The revocable CAT maker assumes the revocation layer is the only layer separating the CAT outer puzzle
+// ;;   from the inner puzzle.
+
+// ;; Note: Truths (Inner_Puzzle_Hash) are trusted and should be verified by the outer puzzle.
+
+struct RevocableCatStruct {
+    CAT_MOD_HASH: Bytes32,
+    REVOCATION_LAYER_MOD_HASH: Bytes32,
+    ...HIDDEN_PUZZLE_HASH_HASH: Bytes32,
+}
+
+fn main(
+    REVOCABLE_CAT_STRUCT: RevocableCatStruct,
+    TAIL_HASH_HASH: Bytes32, // (sha256 1 TAIL_HASH) / sha256(0x01 + CAT_MOD_HASH)
+    Inner_Puzzle_Hash: Bytes32,
+    // Note: other CAT makers may have more arguments here
+    // Puzzles using the maker should prepend Inner_Puzzle_Hash to user-supplied inputs
+) -> Bytes32 {
+    curry_tree_hash(REVOCABLE_CAT_STRUCT.CAT_MOD_HASH, [
+        tree_hash_atom(REVOCABLE_CAT_STRUCT.CAT_MOD_HASH),
+        TAIL_HASH_HASH,
+        curry_tree_hash(REVOCABLE_CAT_STRUCT.REVOCATION_LAYER_MOD_HASH, [
+            tree_hash_atom(REVOCABLE_CAT_STRUCT.REVOCATION_LAYER_MOD_HASH),
+            REVOCABLE_CAT_STRUCT.HIDDEN_PUZZLE_HASH_HASH,
+            tree_hash_atom(Inner_Puzzle_Hash),
+        ]),
+    ])
+}

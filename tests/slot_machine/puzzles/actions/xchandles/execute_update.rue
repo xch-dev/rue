@@ -1,0 +1,121 @@
+// execute_update.rue by yakuhito
+// After an update is initiated and the appropriate number of blocks have passed,
+// this action can be used to execute the update.
+
+// Update slot format is (c (c update_initiator_coin_id . min_height) (c handle_hash (c new_owner_launcher_id new_resolved_launcher_id)))
+
+import xchandles::*;
+import super::super::common_types::*;
+import super::super::slot::*;
+
+fn main(
+    SINGLETON_MOD_HASH: Bytes32,
+    SINGLETON_LAUNCHER_PUZZLE_HASH: Bytes32,
+    HANDLE_SLOT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    UPDATE_SLOT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    Truth: XchandlesStateTruth,
+    min_execution_height: Int,
+    current_slot: XchandlesHandleSlotValue,
+    new_data: HandleSlotData,
+    current_owner_proof: CompactCoinProof,
+    ...inner_puzzle_hashes: PuzzleHashes,
+) -> (XchandlesStateTruth, List<Condition>) {
+    inline let {
+        owner_launcher_id: new_owner_launcher_id,
+        resolved_launcher_id: new_resolved_launcher_id,
+    } = new_data;
+    inline let {
+        parent_info: current_owner_parent_id,
+        inner_puzzle_hash: current_owner_inner_puzzle_hash,
+        amount: current_owner_amount,
+    } = current_owner_proof;
+    inline let {
+        puzzle_hash_one: new_owner_inner_puzzle_hash,
+        puzzle_hash_two: new_resolved_inner_puzzle_hash,
+    } = inner_puzzle_hashes;
+
+    let slot_value_hash = tree_hash(XchandlesUpdateSlotValue {
+        a: UpdateSlotValueA {
+            initiator_coin_id: current_owner_parent_id,
+            min_execution_height,
+        },
+        b: UpdateSlotValueB {
+            handle_hash: current_slot.a.handle_hash,
+            new_data,
+        },
+    });
+
+    let owner_coin_id = coinid(
+        current_owner_parent_id,
+        singleton_puzzle_hash(
+            SINGLETON_MOD_HASH,
+            SINGLETON_LAUNCHER_PUZZLE_HASH,
+            current_slot.b.data.owner_launcher_id,
+            current_owner_inner_puzzle_hash
+        ),
+        current_owner_amount
+    );
+    let new_owner_singleton_puzzle_hash = singleton_puzzle_hash(
+        SINGLETON_MOD_HASH,
+        SINGLETON_LAUNCHER_PUZZLE_HASH,
+        new_owner_launcher_id,
+        new_owner_inner_puzzle_hash
+    );
+    let new_resolved_singleton_puzzle_hash = singleton_puzzle_hash(
+        SINGLETON_MOD_HASH,
+        SINGLETON_LAUNCHER_PUZZLE_HASH,
+        new_resolved_launcher_id,
+        new_resolved_inner_puzzle_hash
+    );
+
+    (Truth, [
+        // can't update if expired
+        AssertBeforeSecondsAbsolute {
+            seconds: current_slot.b.expiration,
+        },
+        // min_execution_height has passed
+        AssertHeightAbsolute {
+            height: min_execution_height
+        },
+        // spend handle slot
+        spend_slot(
+            HANDLE_SLOT_1ST_CURRY_HASH,
+            tree_hash(current_slot)
+        ),
+        // create new handle slot
+        create_slot(
+            HANDLE_SLOT_1ST_CURRY_HASH,
+            tree_hash(XchandlesHandleSlotValue {
+                counter: current_slot.counter + 1,
+                a: current_slot.a,
+                b: HandleSlotValueB {
+                    expiration: current_slot.b.expiration,
+                    data: new_data,
+                }
+            })
+        ),
+        // assert message from current owner
+        ReceiveMessage {
+            mode: SENDER_COIN | RECEIVER_PUZZLE,
+            message: "u" + slot_value_hash,
+            sender: [owner_coin_id],
+        },
+        // approval from new owner
+        ReceiveMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
+            message: "o" + slot_value_hash,
+            sender: [new_owner_singleton_puzzle_hash],
+        },
+        // approval from resolved launcher id
+        ReceiveMessage {
+            mode: SENDER_PUZZLE | RECEIVER_PUZZLE,
+            message: "r" + slot_value_hash,
+            sender: [new_resolved_singleton_puzzle_hash],
+        },
+        // spend update slot
+        spend_slot(
+            UPDATE_SLOT_1ST_CURRY_HASH,
+            slot_value_hash,
+        ),
+    ])
+}

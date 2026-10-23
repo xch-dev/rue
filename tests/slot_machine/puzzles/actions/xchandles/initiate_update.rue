@@ -1,0 +1,92 @@
+// initiate_update.rue by yakuhito
+
+// An update is a 'rare' process through which the onwer of a record can
+// update the owner_launcher_id and/or resolved_launcher_id of that record
+
+// To complete the update, the child of the owner coin that initiated the update
+//  needs to finish it after a delay - otherwise, the update is invalidated.
+
+// Update slot format is (c (c update_initiator_coin_id . min_height) (c handle_hash (c new_owner_launcher_id new_resolved_launcher_id)))
+
+import xchandles::*;
+import super::super::common_types::*;
+import super::super::slot::*;
+
+fn main(
+    SINGLETON_MOD_HASH: Bytes32,
+    SINGLETON_LAUNCHER_PUZZLE_HASH: Bytes32,
+    // how many blocks to wait before the update can be executed
+    RELATIVE_BLOCK_HEIGHT: Int,
+    HANDLE_SLOT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    UPDATE_SLOT_1ST_CURRY_HASH: Bytes32, // after 1st curry
+    Truth: XchandlesStateTruth,
+    current_slot: XchandlesHandleSlotValue,
+    new_data: HandleSlotData,
+    current_owner_proof: CompactCoinProof,
+    ...min_height: Int,
+) -> (XchandlesStateTruth, List<Condition>) {
+    inline let {
+        parent_info: current_owner_parent_id,
+        inner_puzzle_hash: current_owner_inner_puzzle_hash,
+        amount: current_owner_amount,
+    } = current_owner_proof;
+
+    let initiator_coin_id = coinid(
+        current_owner_parent_id,
+        singleton_puzzle_hash(
+            SINGLETON_MOD_HASH,
+            SINGLETON_LAUNCHER_PUZZLE_HASH,
+            current_slot.b.data.owner_launcher_id,
+            current_owner_inner_puzzle_hash
+        ),
+        current_owner_amount
+    );
+
+    let slot_value_hash = tree_hash(XchandlesUpdateSlotValue {
+        a: UpdateSlotValueA {
+            initiator_coin_id,
+            min_execution_height: min_height + RELATIVE_BLOCK_HEIGHT,
+        },
+        b: UpdateSlotValueB {
+            handle_hash: current_slot.a.handle_hash,
+            new_data,
+        },
+    });
+
+    (Truth, [
+        // can't update if expired
+        AssertBeforeSecondsAbsolute {
+            seconds: current_slot.b.expiration,
+        },
+        // min_height is in the future
+        AssertBeforeHeightAbsolute {
+            height: min_height,
+        },
+        // spend handle slot
+        spend_slot(
+            HANDLE_SLOT_1ST_CURRY_HASH,
+            tree_hash(current_slot),
+        ),
+        // create new handle slot
+        create_slot(
+            HANDLE_SLOT_1ST_CURRY_HASH,
+            tree_hash(XchandlesHandleSlotValue {
+                counter: current_slot.counter + 1,
+                a: current_slot.a,
+                b: current_slot.b,
+            }),
+        ),
+        // assert message from current owner
+        ReceiveMessage {
+            mode: SENDER_COIN | RECEIVER_PUZZLE,
+            message: "i" + slot_value_hash,
+            sender: [initiator_coin_id],
+        },
+        // create update slot
+        create_slot_with_hint(
+            UPDATE_SLOT_1ST_CURRY_HASH,
+            slot_value_hash,
+            initiator_coin_id,
+        ),
+    ])
+}

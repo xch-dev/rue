@@ -1,0 +1,24 @@
+// uniqueness_prelauncher.rue by yakuhito
+// Allows easy verification that a singleton was created by another singleton to represent a value
+// e.g., To prove that an NFT presents info relating to an asset id, one can (either off-chain or in clsp)
+//  use the launcher id. The launcher parent should be validated to be a generation of the CAT registration
+//  singleton, the puzzle should contain the asset id as VALUE, and the amount should be 0.
+
+// Note: Create this coin with an amount of 0.
+
+fn main(
+    // 1st curry
+    LAUNCHER_PH: Bytes32,
+    // 2nd curry
+    VALUE: Bytes,
+) -> List<Condition> {
+    [
+        CreateCoin {
+            puzzle_hash: LAUNCHER_PH,
+            amount: 1,
+        },
+        CreatePuzzleAnnouncement {
+            message: VALUE,
+        },
+    ]
+}

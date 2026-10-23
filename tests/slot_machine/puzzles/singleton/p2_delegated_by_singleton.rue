@@ -1,0 +1,31 @@
+// p2_delegated_by_singleton.rue by yakuhito
+// https://github.com/greimela/chia-blockchain/blob/721b32003f455ace14a735554ee0f83092ef1265/chia/wallet/revocable_cats/p2_delegated_by_singleton.clsp
+// This puzzle is used to delegate a spend to a singleton.
+// The singleton will authorize the spend by sending a message via the SEND_MESSAGE condition.
+
+fn main(
+   SINGLETON_MOD_HASH: Bytes32,
+   // The hash of (SINGLETON_MOD_HASH . (LAUNCHER_ID . SINGLETON_LAUNCHER_HASH))
+   SINGLETON_STRUCT_HASH: Bytes32,
+   _NONCE: Any,
+   singleton_inner_puzzle_hash: Bytes32,
+   delegated_puzzle: fn(...delegated_solution: Any) -> List<Condition>,
+   ...delegated_solution: Any,
+) -> List<Condition> {
+    [
+        ReceiveMessage {
+            mode: SENDER_PUZZLE | RECEIVER_COIN,
+            message: tree_hash(delegated_puzzle),
+            sender: [
+                curry_tree_hash(
+                    SINGLETON_MOD_HASH,
+                    [
+                        SINGLETON_STRUCT_HASH,
+                        singleton_inner_puzzle_hash,
+                    ]
+                )
+            ]
+        },
+        ...delegated_puzzle(...delegated_solution),
+    ]
+}
