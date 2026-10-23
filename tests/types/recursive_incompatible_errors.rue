@@ -1,0 +1,14 @@
+type A0 = nil | ((A1, (1, A2)) | (A2 | A0 | 2, Int) | Int);
+type A1 = nil | (((1, A0), nil), 2);
+type A2 = 1 | 1 | (A0, 1 | 1);
+
+fn mutual(x: A0) -> A2 {
+    x
+}
+
+type B0 = (B2, B2) | (B2 | B0, Int);
+type B2 = 1 | (B0, 1);
+
+fn nested(x: B0) -> B2 {
+    x
+}

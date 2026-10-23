@@ -1,0 +1,5 @@
+diagnostics:
+- Cannot assign `A0` to `A2`, since they are incompatible at recursive_incompatible_errors.rue:5:24
+- Cannot assign `B0` to `B2`, since they are incompatible at recursive_incompatible_errors.rue:12:24
+- Unused function `mutual` at recursive_incompatible_errors.rue:5:4
+- Unused function `nested` at recursive_incompatible_errors.rue:12:4
