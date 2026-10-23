@@ -47,6 +47,17 @@ pub fn compile_type_item(ctx: &mut Compiler, item: &AstTypeItem, ty: TypeId, sco
     check_contractive(ctx, item, ty);
 }
 
+pub fn compile_type_item_defaults(
+    ctx: &mut Compiler,
+    item: &AstTypeItem,
+    ty: TypeId,
+    scope: ScopeId,
+) {
+    if let AstTypeItem::StructItem(struct_item) = item {
+        compile_struct_defaults(ctx, struct_item, ty, scope);
+    }
+}
+
 /// Rejects a type item that refers to itself with generic arguments built from its own generic
 /// parameters, such as `type L<T> = nil | (T, L<(T, T)>);`. Each level of such a type has new
 /// generic arguments, so it can't be substituted into a finite type. The cycle is broken after

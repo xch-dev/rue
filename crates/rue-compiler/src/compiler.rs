@@ -33,6 +33,7 @@ pub struct Compiler {
     module_stack: Vec<SymbolId>,
     builtins: Builtins,
     defaults: HashMap<TypeId, HashMap<String, Value>>,
+    field_types: HashMap<TypeId, Vec<TypeId>>,
     inferred_fields: HashSet<(TypeId, String)>,
     declaration_stack: Vec<Declaration>,
     registered_scopes: HashSet<ScopeId>,
@@ -92,6 +93,7 @@ impl Compiler {
             module_stack: Vec::new(),
             builtins,
             defaults: HashMap::new(),
+            field_types: HashMap::new(),
             inferred_fields: HashSet::new(),
             declaration_stack: Vec::new(),
             registered_scopes: HashSet::new(),
@@ -627,6 +629,16 @@ impl Compiler {
         self.defaults
             .get(&ty)
             .and_then(|map| map.get(name).cloned())
+    }
+
+    /// Stores the types of a struct's fields in declaration order, so that their default values
+    /// can be compiled against them once all types have been resolved.
+    pub fn insert_field_types(&mut self, ty: TypeId, field_types: Vec<TypeId>) {
+        self.field_types.insert(ty, field_types);
+    }
+
+    pub fn field_types(&self, ty: TypeId) -> Vec<TypeId> {
+        self.field_types[&ty].clone()
     }
 
     /// Marks a struct field whose type was inferred from its default value rather than declared.
