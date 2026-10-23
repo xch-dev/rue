@@ -1,0 +1,8 @@
+tests:
+- name: forward_references
+  program: (a (q 2 (q 16 8 10 38 110 94) (c (c (q 1) (c (q . 7) (c (a 2 ()) (c (a 2 ()) (q 51))))) 1)) (c (q 1 2 . 3) ()))
+  debug_program: (a (q 2 (q 16 (+ (+ (+ (f (f 2)) (f (r 2))) (f (f (r (r 2))))) (r (f (r (r (r 2)))))) (f (r (r (r (r 2)))))) (c (c (c (q . 1) ()) (c 6 (c (a 4 ()) (c (a 4 ()) (c (q . 51) ()))))) 1)) (c (c (q 4 (q . 2) (q . 3)) (q . 7)) ()))
+  output: '64'
+  runtime_cost: 3139
+  byte_cost: 1116000
+  total_cost: 1119139

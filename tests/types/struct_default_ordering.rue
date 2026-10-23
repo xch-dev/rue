@@ -1,0 +1,26 @@
+// Default values are compiled after all types have been resolved, so they can refer to types,
+// constants, and functions that are declared later.
+struct Outer {
+    inner: Inner = Inner { value: 1 },
+    amount: Int = AMOUNT,
+    pair: Later = make_pair(),
+    inferred = make_pair(),
+    opcode = 51,
+}
+
+struct Inner {
+    value: Int,
+}
+
+const AMOUNT: Int = 7;
+
+fn make_pair() -> Later {
+    (2, 3)
+}
+
+type Later = (Int, Int);
+
+test fn forward_references() -> Int {
+    let outer = Outer {};
+    outer.inner.value + outer.amount + outer.pair.first + outer.inferred.rest + outer.opcode
+}

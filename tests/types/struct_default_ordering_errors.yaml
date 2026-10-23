@@ -1,0 +1,6 @@
+diagnostics:
+- Cannot assign `5` to `Later`, since they are incompatible at struct_default_ordering_errors.rue:7:27
+- Cannot assign `(1, 2)` to `Int`, since they are incompatible at struct_default_ordering_errors.rue:13:28
+- Cannot compare `{inferred}` to `Int` without a type guard, since the runtime value must be constrained at struct_default_ordering_errors.rue:27:18
+- Type `Spread` refers to itself without passing through a pair at struct_default_ordering_errors.rue:39:8
+- Unused function `make_spread` at struct_default_ordering_errors.rue:35:4

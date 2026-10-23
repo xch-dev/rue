@@ -3,8 +3,8 @@ use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, ModuleDeclarations, ModuleSymbol, Symbol, SymbolId};
 
 use crate::{
-    Compiler, CompletionContext, SyntaxItemKind, compile_symbol_items, compile_type_items,
-    declare_module_items, declare_symbol_items, declare_type_items,
+    Compiler, CompletionContext, SyntaxItemKind, compile_default_items, compile_symbol_items,
+    compile_type_items, declare_module_items, declare_symbol_items, declare_type_items,
 };
 
 pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
@@ -131,6 +131,24 @@ pub fn compile_module_types(ctx: &mut Compiler, module: &AstModuleItem, symbol: 
     // ctx.push_module(symbol);
     compile_type_items(ctx, module.items(), &declarations);
     // ctx.pop_module();
+    ctx.pop_scope(range.end());
+}
+
+pub fn compile_module_defaults(ctx: &mut Compiler, module: &AstModuleItem, symbol: SymbolId) {
+    let (scope, declarations) = if let Symbol::Module(ModuleSymbol {
+        scope,
+        declarations,
+        ..
+    }) = ctx.symbol(symbol)
+    {
+        (*scope, declarations.clone())
+    } else {
+        unreachable!();
+    };
+
+    let range = module.syntax().text_range();
+    ctx.push_scope(scope, range.start());
+    compile_default_items(ctx, module.items(), &declarations);
     ctx.pop_scope(range.end());
 }
 
