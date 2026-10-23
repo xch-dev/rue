@@ -40,6 +40,24 @@ tests:
   debug_program: (a (q 2 4 (c (c 10 14) (q . 1))) (c (c (q 3 (> 3 (q . 5)) (i (q . 1) (q . 1) (bls_pairing_identity 6 4)) ()) (c (g2_add) (point_add))) ()))
   byte_cost: 468000
   clvm_error: bls_pairing_identity failed
+- name: inline_binding
+  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (+ (a 2 3) (q . 1)) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (+ (a 2 3) (q . 1)) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:90:5"))) 1)) ()))
+  byte_cost: 1164000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:90:5"
+- name: inline_constant
+  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a 2 ()) 3) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a 2 ()) 3) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:90:5"))) 1)) ()))
+  byte_cost: 1068000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:90:5"
+- name: inline_closure
+  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) (a 2 3)) (c (q . 1) ()))) ()))) (q 1)) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 10 14) (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a (a 6 (a 4 3)) (c (q . 1) ())) ()) (c (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:90:5"))) 1) (q 4 (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
+  byte_cost: 1980000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:90:5"
 - name: pure_branches
   program: (a (q 2 4 (c 6 (q 1 1 . 2))) (c (c (q 3 (> 5 (q . 5)) (+ (* 11 5) (q . 1)) (a 2 15)) (q 18 1 1)) ()))
   debug_program: (a (q 2 4 (c 6 (c (q . 1) (c (q . 1) (q . 2))))) (c (c (q 3 (> 5 (q . 5)) (+ (* (f 7) 5) (q . 1)) (a 2 (r 7))) (q 18 1 1)) ()))
@@ -77,11 +95,32 @@ tests:
   total_cost: 1291972
 - name: normal_if
   program: (a (q 2 2 (q . 1)) (c (q 2 (i (> 1 (q . 5)) (q 8) (q 16 1 (q . 100))) 1) ()))
-  debug_program: (a (q 2 2 (q . 1)) (c (q 2 (i (> 1 (q . 5)) (q 8 (q . "raise called at inline_if_may_raise.rue:168:9")) (q 16 1 (q . 100))) 1) ()))
+  debug_program: (a (q 2 2 (q . 1)) (c (q 2 (i (> 1 (q . 5)) (q 8 (q . "raise called at inline_if_may_raise.rue:201:9")) (q 16 1 (q . 100))) 1) ()))
   output: '101'
   runtime_cost: 1981
   byte_cost: 732000
   total_cost: 733981
+- name: pure_inline_binding
+  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a 2 3) ()) (q 18 1 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a 2 3) ()) (q 18 1 1)) ()))
+  output: ()
+  runtime_cost: 2487
+  byte_cost: 804000
+  total_cost: 806487
+- name: unused_inline_binding
+  program: (a (q 2 2 (q . 1)) (c (q 3 (> 1 (q . 5)) 1 (+ 1 (q . 100))) ()))
+  debug_program: (a (q 2 2 (q . 1)) (c (q 3 (> 1 (q . 5)) 1 (+ 1 (q . 100))) ()))
+  output: '101'
+  runtime_cost: 1850
+  byte_cost: 588000
+  total_cost: 589850
+- name: outer_binding_used_twice
+  program: (a (q 2 4 (c 6 (q . 20))) (c (c (q 2 (q 3 (> 7 (q . 5)) 2 (+ 2 (q . 1))) (c (a 2 3) 1)) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (q . 20))) (c (c (q 2 (q 3 (> 7 (q . 5)) 2 (+ 2 (q . 1))) (c (a 2 3) 1)) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:90:5"))) 1)) ()))
+  output: '20'
+  runtime_cost: 3257
+  byte_cost: 1332000
+  total_cost: 1335257
 diagnostics:
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:8:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:20:5
@@ -90,3 +129,6 @@ diagnostics:
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:58:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:73:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:81:5
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:105:5
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:113:5
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:124:5

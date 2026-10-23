@@ -95,6 +95,39 @@ fn indirectly_checked(x: Int) -> Int {
     checked(x) + 1
 }
 
+test fn inline_binding() -> Int {
+    inline_binding_branch(1)
+}
+
+fn inline_binding_branch(x: Int) -> Int {
+    inline let value = checked(x);
+    inline let incremented = value + 1;
+    inline if x > 5 { incremented } else { 0 }
+}
+
+test fn inline_constant() -> Int {
+    inline_constant_branch(1)
+}
+
+fn inline_constant_branch(x: Int) -> Int {
+    inline if x > 5 { CHECKED } else { x }
+}
+
+inline const CHECKED: Int = checked(0);
+
+test fn inline_closure() -> Int {
+    inline_closure_branch(1)
+}
+
+fn inline_closure_branch(x: Int) -> Int {
+    inline let add = adder(checked(x));
+    inline if x > 5 { add(1) } else { 0 }
+}
+
+fn adder(n: Int) -> fn(y: Int) -> Int {
+    fn(y: Int) => y + n
+}
+
 // Branches which can't raise
 
 test fn pure_branches() -> Int {
@@ -169,4 +202,35 @@ fn normal_if_branch(x: Int) -> Int {
     }
 
     x + 100
+}
+
+test fn pure_inline_binding() -> Int {
+    pure_inline_binding_branch(1)
+}
+
+fn pure_inline_binding_branch(x: Int) -> Int {
+    inline let value = pure_call(x);
+    inline if x > 5 { value } else { 0 }
+}
+
+test fn unused_inline_binding() -> Int {
+    unused_inline_binding_branch(1)
+}
+
+fn unused_inline_binding_branch(x: Int) -> Int {
+    inline if x > 5 {
+        return x;
+    }
+
+    inline let _unused = checked(x);
+    x + 100
+}
+
+test fn outer_binding_used_twice() -> Int {
+    outer_binding_used_twice_inner(20)
+}
+
+fn outer_binding_used_twice_inner(x: Int) -> Int {
+    let value = checked(x);
+    inline if x > 5 { value } else { value + 1 }
 }
