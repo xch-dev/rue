@@ -234,7 +234,9 @@ pub fn compile_function_call_expr(
         // A generic that's only inferred as one of the generics of the function type expected of
         // the call stays generic (as a copy, so that it doesn't capture anything), since the
         // function that's returned works for any of them (as long as no parameter depends on it)
-        if matches!(ctx.ty(function.ret), Type::Function(_)) {
+        let ret = rue_types::unwrap_semantic(ctx.types_mut(), function.ret, true);
+
+        if matches!(ctx.ty(ret), Type::Function(_)) {
             for &generic in &function.generics {
                 if mappings
                     .get(&generic)
@@ -283,7 +285,8 @@ pub fn compile_function_call_expr(
     let mut ty = substitute_with_mappings(ctx.types_mut(), ty, &mappings);
 
     if !generalized.is_empty()
-        && let Type::Function(mut function) = ctx.ty(ty).clone()
+        && let unwrapped = rue_types::unwrap_semantic(ctx.types_mut(), ty, true)
+        && let Type::Function(mut function) = ctx.ty(unwrapped).clone()
     {
         function.generics.extend(generalized);
         ty = ctx.alloc_type(Type::Function(function));

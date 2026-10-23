@@ -4,6 +4,7 @@ type F = fn<U>(x: U) -> (U, F);
 type R = (Int, G2);
 type G2 = fn(x: Int) -> R;
 type G = fn(x: Int) -> R;
+type Endo<T> = fn(x: T) -> T;
 
 fn identity<T>(value: T) -> T {
     value
@@ -16,6 +17,10 @@ fn apply<T>(f: fn(x: T) -> T, x: T) -> T {
 fn keep<U>(x: U) -> U {
     let f: fn(y: U) -> U = identity;
     f(x)
+}
+
+fn make_id<T>() -> Endo<T> {
+    fn(x: T): T => x
 }
 
 fn ff<U>(x: U) -> (U, F) {
@@ -51,4 +56,10 @@ test fn recursive_generic_function() -> Int {
     let f: F = ff;
     let g: G = f;
     g(5).rest(6).first
+}
+
+test fn instantiate_alias_with_expected_generic() -> Int {
+    let f: fn<U>(x: U) -> U = make_id();
+    let pair: (Int, Int) = f((1, 2));
+    pair.first + f(5)
 }
