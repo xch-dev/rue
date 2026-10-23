@@ -73,8 +73,11 @@ pub fn compile_function_call_expr(
     }
 
     let (args, mappings) = if let Some(function) = expected_function {
-        if function.nil_terminated != nil_terminated {
-            ctx.diagnostic(call.syntax(), DiagnosticKind::InvalidSpread);
+        if function.nil_terminated && !nil_terminated {
+            ctx.diagnostic(call.syntax(), DiagnosticKind::UnexpectedSpread);
+        } else if !function.nil_terminated && nil_terminated && function.params.len() == args.len()
+        {
+            ctx.diagnostic(call.syntax(), DiagnosticKind::MissingSpread);
         }
 
         if function.params.len() != args.len() {

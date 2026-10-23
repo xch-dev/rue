@@ -108,6 +108,7 @@ impl Db {
                 generics: generics.to_vec(),
                 fields: IndexSet::new(),
                 nil_terminated: true,
+                narrowed: false,
             }),
         );
         id

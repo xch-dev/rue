@@ -70,6 +70,7 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
         generics,
         fields,
         nil_terminated,
+        narrowed: false,
     });
 
     if let Some(name) = struct_item.name() {

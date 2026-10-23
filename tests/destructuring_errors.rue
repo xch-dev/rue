@@ -1,0 +1,4 @@
+test fn non_final_list_spread() -> Int {
+    let [...first, last] = [1, 2, 3];
+    first + last
+}

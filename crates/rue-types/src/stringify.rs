@@ -1,5 +1,5 @@
 use id_arena::Arena;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::{Alias, Struct, Type, TypeId, substitute};
 
@@ -45,8 +45,12 @@ pub(crate) fn stringify_impl(
             format!("({first}, {rest})")
         }
         Type::Struct(ty) => {
-            if let Some(name) = ty.name {
-                with_generics(arena, name.text(), &ty.generics, stack)
+            if let Some(name) = &ty.name {
+                if ty.narrowed {
+                    narrowed_struct(arena, name.text(), &ty, stack)
+                } else {
+                    with_generics(arena, name.text(), &ty.generics, stack)
+                }
             } else {
                 stringify_impl(arena, ty.inner, stack)
             }
@@ -106,10 +110,14 @@ pub(crate) fn stringify_impl(
                 with_generics(arena, "fn", &function.generics, stack)
             )
         }
-        Type::Union(union) => union
-            .types
-            .iter()
-            .map(|id| stringify_impl(arena, *id, stack))
+        // References to the same struct are substituted into distinct types, so variants which come
+        // from the same declaration and look the same are only displayed once
+        Type::Union(_) => union_variants(arena, id)
+            .into_iter()
+            .map(|id| (declaration(arena, id), stringify_impl(arena, id, stack)))
+            .collect::<IndexSet<_>>()
+            .into_iter()
+            .map(|(_, name)| name)
             .collect::<Vec<_>>()
             .join(" | "),
     };
@@ -144,4 +152,102 @@ fn with_generics(
         .join(", ");
 
     format!("{name}<{generics}>")
+}
+
+/// Renders a struct whose fields have been narrowed, e.g. `Box { value: Int }`, since its generic
+/// arguments no longer describe them.
+fn narrowed_struct(
+    arena: &Arena<Type>,
+    name: &str,
+    ty: &Struct,
+    stack: &mut IndexMap<TypeId, bool>,
+) -> String {
+    let Some(variants) = narrowed_fields(arena, ty, 0, ty.inner, stack) else {
+        return with_generics(arena, name, &ty.generics, stack);
+    };
+
+    variants
+        .into_iter()
+        .map(|fields| {
+            if fields.is_empty() {
+                name.to_string()
+            } else {
+                format!("{name} {{ {} }}", fields.join(", "))
+            }
+        })
+        .collect::<IndexSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+/// Renders the fields of a struct starting at `index`, where `current` is the type of the rest of
+/// the struct. If the fields are correlated, each variant is rendered separately. Returns `None` if
+/// the type doesn't have the structure of the fields.
+fn narrowed_fields(
+    arena: &Arena<Type>,
+    ty: &Struct,
+    index: usize,
+    mut current: TypeId,
+    stack: &mut IndexMap<TypeId, bool>,
+) -> Option<Vec<Vec<String>>> {
+    let Some(field) = ty.fields.get_index(index) else {
+        return Some(vec![vec![]]);
+    };
+
+    if !ty.nil_terminated && index == ty.fields.len() - 1 {
+        let value = stringify_impl(arena, current, stack);
+        return Some(vec![vec![format!("...{field}: {value}")]]);
+    }
+
+    while let Type::Ref(id) = arena[current] {
+        current = id;
+    }
+
+    match &arena[current] {
+        Type::Pair(pair) => {
+            let first = format!("{field}: {}", stringify_impl(arena, pair.first, stack));
+            let mut variants = narrowed_fields(arena, ty, index + 1, pair.rest, stack)?;
+
+            for fields in &mut variants {
+                fields.insert(0, first.clone());
+            }
+
+            Some(variants)
+        }
+        Type::Union(union) => {
+            let mut variants = Vec::new();
+
+            for &id in &union.types {
+                variants.extend(narrowed_fields(arena, ty, index, id, stack)?);
+            }
+
+            Some(variants)
+        }
+        _ => None,
+    }
+}
+
+/// The variants of a union, including those of directly nested unions.
+fn union_variants(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
+    match &arena[id] {
+        Type::Union(union) => union
+            .types
+            .iter()
+            .flat_map(|&id| union_variants(arena, id))
+            .collect(),
+        _ => vec![id],
+    }
+}
+
+/// The struct declaration that a type is an instance of, or the type itself otherwise.
+fn declaration(arena: &Arena<Type>, mut id: TypeId) -> TypeId {
+    loop {
+        match &arena[id] {
+            Type::Ref(inner) => id = *inner,
+            Type::Apply(apply) => id = apply.inner,
+            Type::Struct(ty) => return ty.semantic,
+            _ => return id,
+        }
+    }
 }

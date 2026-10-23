@@ -218,8 +218,11 @@ pub enum DiagnosticKind {
     #[error("Can only spread the last element in a list")]
     NonFinalSpread,
 
-    #[error("Spread operator must be used on functions with spread parameters")]
-    InvalidSpread,
+    #[error("Cannot spread the last argument, since the function has no spread parameter")]
+    UnexpectedSpread,
+
+    #[error("The last argument must be spread, since the function has a spread parameter")]
+    MissingSpread,
 
     #[error("Spread operator cannot be used on this builtin")]
     InvalidSpreadBuiltin,
@@ -363,7 +366,8 @@ impl DiagnosticKind {
             | Self::CannotInferGeneric(..)
             | Self::CannotDestructureParameter(..)
             | Self::NonFinalSpread
-            | Self::InvalidSpread
+            | Self::UnexpectedSpread
+            | Self::MissingSpread
             | Self::InvalidSpreadBuiltin
             | Self::MissingField(..)
             | Self::CannotDestructurePair(..)

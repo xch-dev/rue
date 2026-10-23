@@ -520,6 +520,11 @@ impl Compiler {
     }
 
     pub fn check_condition(&mut self, node: &impl GetTextRange, ty: TypeId) {
+        // An error has already been reported, and the type is compatible with everything
+        if self.is_unresolved(ty) {
+            return;
+        }
+
         if self.is_castable(ty, self.builtins().types.bool_true) {
             self.diagnostic(node, DiagnosticKind::AlwaysTrueCondition);
         } else if self.is_castable(ty, self.builtins().types.bool_false) {

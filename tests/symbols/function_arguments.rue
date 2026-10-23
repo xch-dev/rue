@@ -31,3 +31,10 @@ test fn spread_missing() {
 fn nil_terminated(_a: Int, _b: Int) {}
 
 fn spread(_a: Int, ..._b: Int) {}
+
+fn only_spread(..._a: Int) {}
+
+test fn only_spread_missing() {
+    only_spread();
+    only_spread(1);
+}

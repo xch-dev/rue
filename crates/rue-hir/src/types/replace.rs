@@ -1,4 +1,4 @@
-use rue_types::{Alias, Apply, BuiltinTypes, Pair, Struct, Type, TypeId, Union};
+use rue_types::{Alias, BuiltinTypes, Pair, Type, TypeId, Union};
 
 use crate::{Database, TypePath};
 
@@ -24,9 +24,10 @@ pub fn replace_type(
         | Type::Never
         | Type::Any => from,
         Type::Ref(id) => replace_type(db, builtins, id, to, path),
-        Type::Apply(apply) => {
-            let inner = replace_type(db, builtins, apply.inner, to, path);
-            db.alloc_type(Type::Apply(Apply::new(inner, apply.generics)))
+        // The instantiated type is narrowed, rather than the generic definition
+        Type::Apply(_) => {
+            let from = rue_types::substitute(db.types_mut(), from);
+            replace_type(db, builtins, from, to, path)
         }
         Type::Alias(alias) => {
             let inner = replace_type(db, builtins, alias.inner, to, path);
@@ -34,7 +35,8 @@ pub fn replace_type(
         }
         Type::Struct(ty) => {
             let inner = replace_type(db, builtins, ty.inner, to, path);
-            db.alloc_type(Type::Struct(Struct { inner, ..ty }))
+            let ty = ty.narrow(db.types_mut(), builtins, inner);
+            db.alloc_type(Type::Struct(ty))
         }
         Type::Union(ty) => {
             let mut new_variants = Vec::with_capacity(ty.types.len());
@@ -195,6 +197,7 @@ mod tests {
             generics: vec![],
             fields: IndexSet::from(["value".to_string()]),
             nil_terminated: true,
+            narrowed: false,
         });
 
         let ty = ctx.replace(semantic, b.bytes32, &[TypePath::First]);
@@ -236,8 +239,8 @@ mod tests {
             HashMap::from([(generic, b.int)]),
         )));
 
+        // The instantiated type is narrowed
         let ty = ctx.replace(from, b.bytes32, &[TypePath::First]);
-        assert!(matches!(ctx.db.ty(ty), Type::Apply(_)));
         assert_eq!(ctx.name(ty), "(Bytes32, Int)");
 
         // The value at a generic position can be narrowed as well

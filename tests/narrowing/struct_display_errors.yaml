@@ -1,0 +1,29 @@
+diagnostics:
+- 'Cannot assign `Box { value: Int }` to `Box<(Int, Int)>`, since they are incompatible at struct_display_errors.rue:17:16'
+- 'Cannot assign `Box<Int | (Int, Int)> | Box { value: Int } | Box { value: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:23:57'
+- Cannot assign `Box<Int | (Int, Int)>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:34:60
+- 'Cannot assign `Pair { left: nil, right: (Int, Int) | nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:45:16'
+- 'Cannot assign `Pair { left: (Int, Int), right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:48:16'
+- 'Cannot assign `Pair { left: (Int, Int), right: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:43:31'
+- 'Cannot assign `Pair { left: nil, right: (Int, Int) | nil } | Pair { left: (Int, Int) | nil, right: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:56:16'
+- Cannot assign `Pair` to `Bytes32`, since they are incompatible at struct_display_errors.rue:54:35
+- 'Cannot compare `Wrapper { ...value: Int }` to `Bytes32` without a type guard, since the runtime value must be constrained at struct_display_errors.rue:64:16'
+- 'Cannot assign `Wrapper { ...value: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:62:34'
+- 'Cannot assign `Triple { first: Int, second: nil, ...rest: (Int, Int) } | Triple { first: Int, second: (Int, Int), ...rest: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:78:16'
+- Cannot assign `Triple` to `Bytes32`, since they are incompatible at struct_display_errors.rue:76:42
+- 'Cannot assign `Box { value: Bytes32 }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:91:16'
+- Cannot assign `Box<Int | nil>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:89:44
+- 'Cannot assign `Node { value: Int, next: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:99:16'
+- Cannot assign `Node<Int>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:97:39
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_display_errors.rue:108:15
+- 'Cannot assign `Box<Int> | Box { value: Never }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:105:44'
+- Unused function `narrowed` at struct_display_errors.rue:15:4
+- Unused function `merged` at struct_display_errors.rue:23:4
+- Unused function `identical` at struct_display_errors.rue:34:4
+- Unused function `fields` at struct_display_errors.rue:43:4
+- Unused function `correlated` at struct_display_errors.rue:54:4
+- Unused function `spread` at struct_display_errors.rue:62:4
+- Unused function `correlated_rest` at struct_display_errors.rue:76:4
+- Unused function `unchanged` at struct_display_errors.rue:89:4
+- Unused function `recursive` at struct_display_errors.rue:97:4
+- Unused function `nested` at struct_display_errors.rue:105:4

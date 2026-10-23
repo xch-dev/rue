@@ -212,7 +212,8 @@ fn repackage_struct(
     } else if inner == ty.inner {
         original
     } else {
-        arena.alloc(Type::Struct(Struct { inner, ..ty }))
+        let ty = ty.narrow(arena, builtins, inner);
+        arena.alloc(Type::Struct(ty))
     }
 }
 
@@ -282,6 +283,7 @@ mod tests {
                 generics: vec![],
                 fields: IndexSet::new(),
                 nil_terminated: false,
+                narrowed: false,
             });
             id
         }

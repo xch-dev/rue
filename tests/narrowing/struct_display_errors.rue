@@ -1,0 +1,113 @@
+struct Box<T> {
+    value: T,
+}
+
+struct Pair {
+    left: (Int, Int) | nil,
+    right: (Int, Int) | nil,
+}
+
+struct Wrapper {
+    ...value: Int | (Int, Int),
+}
+
+// A narrowed struct is displayed with its narrowed fields
+fn narrowed(b: Box<Int | (Int, Int)>) -> Box<(Int, Int)> {
+    if b.value is Int {
+        return b;
+    }
+    b
+}
+
+// Narrowed and unnarrowed copies of the struct can be told apart
+fn merged(b: Box<Int | (Int, Int)>, c: Bool) -> Bytes32 {
+    if c {
+        b
+    } else if b.value is Int {
+        b
+    } else {
+        b
+    }
+}
+
+// Identical copies of the struct are only displayed once
+fn identical(b: Box<Int | (Int, Int)>, c: Bool) -> Bytes32 {
+    if c {
+        b
+    } else {
+        b
+    }
+}
+
+// Each narrowed field is displayed, even if the struct isn't generic
+fn fields(p: Pair) -> Bytes32 {
+    if p.left is nil {
+        return p;
+    }
+    if p.right is (Int, Int) {
+        return p;
+    }
+    p
+}
+
+// The fields of each variant are displayed separately if they're correlated
+fn correlated(p: Pair) -> Bytes32 {
+    if p is (nil, Any) | (Any, (nil, nil)) {
+        return p;
+    }
+    p
+}
+
+// The spread field of a narrowed struct is displayed as such
+fn spread(w: Wrapper) -> Bytes32 {
+    if w.value is Int {
+        return w;
+    }
+    w
+}
+
+struct Triple {
+    first: Int,
+    second: (Int, Int) | nil,
+    ...rest: (Int, Int) | nil,
+}
+
+// The preceding fields are kept when the remaining fields are correlated
+fn correlated_rest(t: Triple) -> Bytes32 {
+    if t is (Int, (nil, (Int, Int)) | ((Int, Int), nil)) {
+        return t;
+    }
+    t
+}
+
+struct Node<T> {
+    value: T,
+    next: Node<T> | nil,
+}
+
+// A struct is displayed as declared if a guard doesn't narrow it
+fn unchanged(b: Box<Int | nil>) -> Bytes32 {
+    if b.value is Bytes32 {
+        return b;
+    }
+    b
+}
+
+// Including when it's recursive
+fn recursive(n: Node<Int>) -> Bytes32 {
+    if n.next is nil {
+        return n;
+    }
+    n.next
+}
+
+// Copies of the struct in nested unions are only displayed once
+fn nested(b: Box<Int>, c: Bool) -> Bytes32 {
+    if c {
+        b
+    } else if b.value is Int {
+        b
+    } else {
+        b
+    }
+}

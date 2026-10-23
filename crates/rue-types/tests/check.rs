@@ -79,6 +79,7 @@ impl Types {
             generics: vec![],
             fields: IndexSet::new(),
             nil_terminated: true,
+            narrowed: false,
         });
         id
     }
