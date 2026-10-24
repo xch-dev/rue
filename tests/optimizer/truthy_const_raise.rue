@@ -1,0 +1,18 @@
+fn check(x: Int) -> Int {
+    if x > 10 {
+        raise "too big";
+    }
+    x
+}
+
+// A pair is truthy, but evaluating it fails, so the constant can't be evaluated
+fn main() -> Int {
+    const {
+        let v: List<Int> = [check(50)];
+        if v is nil {
+            1
+        } else {
+            2
+        }
+    }
+}

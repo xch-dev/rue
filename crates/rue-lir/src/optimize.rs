@@ -4,6 +4,9 @@ mod fold;
 mod ops;
 mod truthy;
 
+#[cfg(test)]
+mod tests;
+
 use arg_list::*;
 use env::*;
 use fold::*;
