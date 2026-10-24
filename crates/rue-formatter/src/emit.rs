@@ -230,6 +230,7 @@ impl<'a> Formatter<'a> {
             )?,
             false,
         )?];
+        let mut segments = Vec::with_capacity(operators.len());
         for (position, operator) in operators.iter().enumerate() {
             let operand_start = self.stream.next_token(operator.token).ok_or_else(|| {
                 FormatError::Internal("binary operator has no operand token".to_string())
@@ -242,21 +243,21 @@ impl<'a> Formatter<'a> {
                 self.gap_doc(self.stream.gap_before(operand_start), Separator::Space);
             let operand = self.span_inner(self.stream.span(operand_start, segment_end)?, false)?;
             let segment = Doc::concat([operator_doc, after_operator, operand]);
-            if is_comparison_operator(self.stream.token(operator.token).kind)
-                && self.stream.gap_before(operator.token).comments.is_empty()
-            {
-                let fills_at_root = position == 0 && operator.depth == 0;
-                let fill = Doc::fill(segment, if fills_at_root { 1 } else { operator.depth });
-                docs.push(if fills_at_root { fill } else { fill.indent() });
+            let fill = is_comparison_operator(self.stream.token(operator.token).kind)
+                && self.stream.gap_before(operator.token).comments.is_empty();
+            let before_operator = if fill {
+                Doc::Nil
             } else {
-                let before_operator =
-                    self.gap_doc(self.stream.gap_before(operator.token), Separator::Soft);
-                docs.push(indent_levels(
-                    Doc::concat([before_operator, segment]),
-                    operator.depth + 1,
-                ));
-            }
+                self.gap_doc(self.stream.gap_before(operator.token), Separator::Soft)
+            };
+            segments.push(BinarySegment {
+                depth: operator.depth,
+                fill,
+                before_operator,
+                segment,
+            });
         }
+        binary_segments(&segments, 0..segments.len(), 0, 0, &mut docs);
         Ok(Doc::concat(docs))
     }
 
@@ -612,6 +613,89 @@ impl GroupIf for Doc {
     fn group_if(self, condition: bool) -> Self {
         if condition { self.group() } else { self }
     }
+}
+
+struct BinarySegment {
+    depth: usize,
+    fill: bool,
+    before_operator: Doc,
+    segment: Doc,
+}
+
+/// Emits binary operator segments, indenting each by its precedence tier. Comparison operators
+/// are fills that only break when they don't fit, so the operators in their right operand are
+/// nested inside the fill and lose that comparison's tier of indentation when it stays flat.
+/// Indentation levels are absolute within the binary expression, and `reference` is the level
+/// that the emitted docs are already indented to.
+fn binary_segments(
+    segments: &[BinarySegment],
+    range: std::ops::Range<usize>,
+    reference: usize,
+    flat_comparisons: usize,
+    docs: &mut Vec<Doc>,
+) {
+    let mut index = range.start;
+    while index < range.end {
+        let segment = &segments[index];
+        let level = segment.depth + 1 - flat_comparisons;
+        if !segment.fill {
+            docs.push(shift_levels(
+                Doc::concat([segment.before_operator.clone(), segment.segment.clone()]),
+                level,
+                reference,
+            ));
+            index += 1;
+            continue;
+        }
+
+        // Operators are left associative, so the right operand is exactly the following
+        // operators with higher precedence
+        let end = (index + 1..range.end)
+            .find(|&next| segments[next].depth <= segment.depth)
+            .unwrap_or(range.end);
+        let flat_level = if index == 0 && segment.depth == 0 {
+            0
+        } else {
+            1usize.saturating_sub(flat_comparisons)
+        };
+        let mut flat = vec![segment.segment.clone()];
+        binary_segments(
+            segments,
+            index + 1..end,
+            flat_level,
+            flat_comparisons + 1,
+            &mut flat,
+        );
+        let mut broken = vec![segment.segment.clone()];
+        binary_segments(
+            segments,
+            index + 1..end,
+            level,
+            flat_comparisons,
+            &mut broken,
+        );
+        docs.push(shift_levels(
+            Doc::fill_choice(
+                Doc::concat(flat),
+                Doc::concat(broken),
+                true,
+                level - flat_level,
+            ),
+            flat_level,
+            reference,
+        ));
+        index = end;
+    }
+}
+
+fn shift_levels(mut doc: Doc, level: usize, reference: usize) -> Doc {
+    if level >= reference {
+        return indent_levels(doc, level - reference);
+    }
+    for _ in level..reference {
+        doc = doc.outdent();
+    }
+    doc
 }
 
 fn indent_levels(mut doc: Doc, levels: usize) -> Doc {
