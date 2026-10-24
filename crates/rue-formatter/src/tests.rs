@@ -324,6 +324,31 @@ fn flat_comparison_keeps_nested_operand_tiers() {
 }
 
 #[test]
+fn comparison_breaks_with_broken_left_operand() {
+    let options = FormatOptions {
+        max_width: 60,
+        ..FormatOptions::default()
+    };
+    let output = format_source(
+        "fn main(){assert first_value+second_value+third==fourth_value+fifth_value+sixth;}",
+        &options,
+    )
+    .unwrap();
+    expect![[r#"
+        fn main() {
+            assert first_value
+                    + second_value
+                    + third
+                == fourth_value
+                    + fifth_value
+                    + sixth;
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(format_source(&output, &options).unwrap(), output);
+}
+
+#[test]
 fn binary_precedence_tiers_stack_continuation_indents() {
     let options = FormatOptions {
         max_width: 24,

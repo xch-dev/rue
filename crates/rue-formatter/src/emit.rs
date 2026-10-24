@@ -674,6 +674,24 @@ fn binary_segments(
             flat_comparisons,
             &mut broken,
         );
+
+        // The left operand is exactly the preceding operators with higher precedence. If any of
+        // them break with the chain, the comparison breaks too so both operands share a tier
+        if segments[..index]
+            .iter()
+            .rev()
+            .take_while(|previous| previous.depth > segment.depth)
+            .any(|previous| !previous.fill)
+        {
+            docs.push(shift_levels(
+                Doc::concat([Doc::soft_line(), Doc::concat(broken)]),
+                level,
+                reference,
+            ));
+            index = end;
+            continue;
+        }
+
         docs.push(shift_levels(
             Doc::fill_choice(
                 Doc::concat(flat),
