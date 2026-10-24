@@ -21,8 +21,9 @@ use tower_lsp::lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentFormattingParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
     HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-    LanguageString, Location, MarkedString, MessageType, OneOf, Position, Range, ReferenceParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+    LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf, Position, Range,
+    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextEdit, Url,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -404,10 +405,13 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
     Diagnostic {
         range: offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
         message: diagnostic.kind.to_string(),
-        severity: Some(match diagnostic.kind.severity() {
+        severity: Some(match diagnostic.severity {
             rue_diagnostic::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
             rue_diagnostic::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
         }),
+        code: diagnostic
+            .lint()
+            .map(|lint| NumberOrString::String(lint.name().to_string())),
         ..Diagnostic::default()
     }
 }

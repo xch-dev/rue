@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::DiagnosticSeverity;
+use crate::{DiagnosticSeverity, Lint, LintLevels};
 
 #[derive(Debug, Clone, Error)]
 pub enum DiagnosticKind {
@@ -308,8 +308,26 @@ pub enum DiagnosticKind {
 }
 
 impl DiagnosticKind {
-    pub fn severity(&self) -> DiagnosticSeverity {
-        match self {
+    /// The lint this diagnostic belongs to, if any. Diagnostics that aren't lints are errors.
+    pub fn lint(&self) -> Option<Lint> {
+        Some(match self {
+            Self::UnusedFunction(..) => Lint::UnusedFunction,
+            Self::UnusedConstant(..) => Lint::UnusedConstant,
+            Self::UnusedBinding(..) => Lint::UnusedBinding,
+            Self::UnusedParameter(..) => Lint::UnusedParameter,
+            Self::UnusedStruct(..) => Lint::UnusedStruct,
+            Self::UnusedTypeAlias(..) => Lint::UnusedTypeAlias,
+            Self::UnusedGenericType(..) => Lint::UnusedGenericType,
+            Self::UnusedImport(..) | Self::UnusedGlobImport => Lint::UnusedImport,
+            Self::UnusedStatementValue => Lint::UnusedValue,
+            Self::EmptyGenericParameters | Self::EmptyGenericArguments => Lint::EmptyGenerics,
+            Self::UnnecessaryCast(..) => Lint::UnnecessaryCast,
+            Self::UnnecessaryGuard(..) => Lint::UnnecessaryGuard,
+            Self::IndistinguishableGuard(..) => Lint::IndistinguishableGuard,
+            Self::UnnecessaryPlus => Lint::UnnecessaryPlus,
+            Self::AlwaysFalseCondition | Self::AlwaysTrueCondition => Lint::ConstantCondition,
+            Self::DoubleNegationWarning => Lint::DoubleNegation,
+            Self::InlineIfMayRaise => Lint::InlineIfMayRaise,
             Self::UnknownToken(..)
             | Self::UnexpectedToken(..)
             | Self::UnterminatedBlockComment
@@ -385,27 +403,16 @@ impl DiagnosticKind {
             | Self::UnresolvedImport(..)
             | Self::UnresolvedSuper
             | Self::SuperAfterNamedImport
-            | Self::SuperAtEnd => DiagnosticSeverity::Error,
-            Self::EmptyGenericParameters
-            | Self::EmptyGenericArguments
-            | Self::UnnecessaryCast(..)
-            | Self::UnnecessaryGuard(..)
-            | Self::IndistinguishableGuard(..)
-            | Self::UnnecessaryPlus
-            | Self::UnusedFunction(..)
-            | Self::UnusedConstant(..)
-            | Self::UnusedBinding(..)
-            | Self::UnusedParameter(..)
-            | Self::UnusedStruct(..)
-            | Self::UnusedTypeAlias(..)
-            | Self::UnusedGenericType(..)
-            | Self::UnusedImport(..)
-            | Self::AlwaysFalseCondition
-            | Self::AlwaysTrueCondition
-            | Self::UnusedStatementValue
-            | Self::UnusedGlobImport
-            | Self::DoubleNegationWarning
-            | Self::InlineIfMayRaise => DiagnosticSeverity::Warning,
+            | Self::SuperAtEnd => return None,
+        })
+    }
+
+    /// The severity this diagnostic is reported with under the given lint levels, or `None` if
+    /// it's a lint that is allowed. Diagnostics that aren't lints are always errors.
+    pub fn severity(&self, lints: &LintLevels) -> Option<DiagnosticSeverity> {
+        match self.lint() {
+            Some(lint) => lints.get(lint).severity(),
+            None => Some(DiagnosticSeverity::Error),
         }
     }
 }

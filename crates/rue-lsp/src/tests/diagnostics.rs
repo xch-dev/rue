@@ -36,7 +36,7 @@ fn test_diagnostics_warning() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
     expect![[r#"
-        main.rue:1:8-1:14 Warning: Unused binding `unused`
+        main.rue:1:8-1:14 Warning[unused_binding]: Unused binding `unused`
     "#]]
     .assert_eq(&project.change(
         "main.rue",
@@ -45,11 +45,29 @@ fn test_diagnostics_warning() {
 }
 
 #[test]
+fn test_diagnostics_manifest_lints() {
+    let project = TestProject::with_manifest(
+        Some(
+            "[compiler]\nentrypoint = \".\"\nstd = false\n\n[lints]\nunused_binding = \"deny\"\ndouble_negation = \"allow\"\n",
+        ),
+        &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
+    );
+
+    expect![[r#"
+        main.rue:1:8-1:14 Error[unused_binding]: Unused binding `unused`
+    "#]]
+    .assert_eq(&project.change(
+        "main.rue",
+        Some("fn main() -> Int {\n    let unused = 1;\n    --42\n}\n"),
+    ));
+}
+
+#[test]
 fn test_diagnostics_inline_if_may_raise() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
     expect![[r#"
-        main.rue:1:4-4:4 Warning: A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead
+        main.rue:1:4-4:4 Warning[inline_if_may_raise]: A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead
     "#]].assert_eq(&project.change(
         "main.rue",
         Some("fn main(x: Int) -> Int {\n    inline if x > 5 {\n        raise;\n    }\n    x + 100\n}\n"),
@@ -88,7 +106,7 @@ fn test_diagnostics_across_files() {
     // Changing the signature in one file reports errors in the file that uses it.
     expect![[r#"
         main.rue:3:10-3:17 Error: Cannot assign `"world"` to `Int` without a cast, since they are semantically different
-        utils.rue:0:16-0:20 Warning: Unused parameter `name`
+        utils.rue:0:16-0:20 Warning[unused_parameter]: Unused parameter `name`
     "#]].assert_eq(&project.change(
         "utils.rue",
         Some("export fn greet(name: Int) -> String {\n    \"Hello\"\n}\n"),
@@ -140,7 +158,7 @@ fn test_diagnostics_after_non_ascii() {
 
     expect![[r#"
         main.rue:1:18-1:19 Error: Undeclared symbol `x`
-        main.rue:1:8-1:9 Warning: Unused binding `s`
+        main.rue:1:8-1:9 Warning[unused_binding]: Unused binding `s`
     "#]]
     .assert_eq(&project.change(
         "main.rue",

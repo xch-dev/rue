@@ -66,6 +66,7 @@ $ rue build
 | `rue test [file]`               | Run every `test fn` in the project (or a single file).                 |
 | `rue fmt [paths...] [--check]`  | Format Rue source files, or check that they're already formatted.      |
 | `rue debug <program> [solution]`| Run a CLVM program against a solution and print the result.            |
+| `rue lints`                     | List every lint, along with its default level.                         |
 
 Useful `build` flags:
 
@@ -74,6 +75,24 @@ Useful `build` flags:
 - `--hash` - output the tree hash of the compiled program
 - `--debug` - include debug information such as assertion messages
 - `--all` - compile every export in the project and write each one to a file (next to its source, or in `dist_dir` if set in `Rue.toml`)
+
+## Lints
+
+Warnings such as unused bindings or unnecessary casts are lints, which can be configured to be allowed, reported as warnings, or denied (which fails compilation). Run `rue lints` to see every lint and its default level.
+
+Levels can be set in `Rue.toml`:
+
+```toml
+[lints]
+unused_binding = "deny"
+unnecessary_cast = "allow"
+```
+
+They can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn` and `-D`/`--deny`, which take precedence over `Rue.toml`:
+
+```bash
+rue build -D unused_binding -A unused_import
+```
 
 ## Testing
 

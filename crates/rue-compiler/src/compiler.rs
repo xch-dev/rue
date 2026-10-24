@@ -187,7 +187,7 @@ impl Compiler {
     pub fn has_errors(&self) -> bool {
         self.diagnostics
             .iter()
-            .any(|diagnostic| diagnostic.kind.severity() == DiagnosticSeverity::Error)
+            .any(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error)
     }
 
     pub fn builtins(&self) -> &Builtins {
@@ -205,8 +205,15 @@ impl Compiler {
         }
     }
 
+    /// Reports a diagnostic. Lints are reported at their configured level, and are dropped if
+    /// they're allowed.
     pub fn diagnostic_at(&mut self, srcloc: SrcLoc, kind: DiagnosticKind) {
-        self.diagnostics.push(Diagnostic::new(srcloc, kind));
+        let Some(severity) = kind.severity(&self.options.lints) else {
+            return;
+        };
+
+        self.diagnostics
+            .push(Diagnostic::new(srcloc, kind, severity));
     }
 
     pub fn srcloc(&self, node: &impl GetTextRange) -> SrcLoc {

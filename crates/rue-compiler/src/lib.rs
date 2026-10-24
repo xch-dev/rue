@@ -12,3 +12,6 @@ pub use compile::*;
 pub use compiler::*;
 pub use file::*;
 pub use syntax_map::*;
+
+#[cfg(test)]
+mod lint_tests;

@@ -1742,6 +1742,7 @@ dependencies = [
 name = "rue-diagnostic"
 version = "0.11.0"
 dependencies = [
+ "serde",
  "thiserror 2.0.14",
 ]
 
@@ -1827,6 +1828,7 @@ dependencies = [
 name = "rue-options"
 version = "0.11.0"
 dependencies = [
+ "rue-diagnostic",
  "serde",
  "thiserror 2.0.14",
  "toml",
