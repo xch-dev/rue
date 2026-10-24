@@ -10,6 +10,7 @@ pub struct LintSites {
     pub guards: Vec<GuardSite>,
     pub conditions: Vec<ConditionSite>,
     pub expr_statements: Vec<ExprStatementSite>,
+    pub unary_plus: Vec<UnaryPlusSite>,
     pub inline_ifs: Vec<InlineIfSite>,
     /// The items of imports that resolved, but didn't bring anything into scope (for example,
     /// because everything they name is already declared there). For a glob import, this is the
@@ -54,6 +55,14 @@ pub struct ExprStatementSite {
     pub srcloc: SrcLoc,
     /// Whether the expression always evaluates to nil.
     pub always_nil: bool,
+}
+
+/// A unary `+` expression whose operand compiled successfully.
+#[derive(Debug, Clone)]
+pub struct UnaryPlusSite {
+    pub srcloc: SrcLoc,
+    /// The type of the operand.
+    pub operand: TypeId,
 }
 
 /// An `inline if`, whose branches are both evaluated regardless of the condition.

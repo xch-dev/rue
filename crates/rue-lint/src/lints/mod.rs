@@ -4,6 +4,7 @@ mod casts;
 mod conditions;
 mod guards;
 mod inline_ifs;
+mod operators;
 mod statements;
 mod syntax;
 mod unused;
@@ -14,6 +15,7 @@ pub(crate) type LintPass = fn(&mut LintContext<'_>, &LintInput<'_>);
 /// Every lint pass, in the order they run.
 pub(crate) const PASSES: &[LintPass] = &[
     syntax::check,
+    operators::check,
     casts::check,
     guards::check,
     conditions::check,

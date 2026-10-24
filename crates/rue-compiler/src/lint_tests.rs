@@ -8,6 +8,13 @@ use crate::{Compiler, File, FileTree};
 const SOURCE: &str = "fn main() -> Int {\n    let unused = 1;\n    --42\n}\n";
 
 fn compile(configure: impl FnOnce(&mut CompilerOptions)) -> (Vec<Diagnostic>, bool) {
+    compile_source(SOURCE, configure)
+}
+
+fn compile_source(
+    source: &str,
+    configure: impl FnOnce(&mut CompilerOptions),
+) -> (Vec<Diagnostic>, bool) {
     let mut options = CompilerOptions {
         std: false,
         ..CompilerOptions::default()
@@ -19,7 +26,7 @@ fn compile(configure: impl FnOnce(&mut CompilerOptions)) -> (Vec<Diagnostic>, bo
     let tree = FileTree::File(File::new(
         &mut ctx,
         "main".to_string(),
-        Source::new(Arc::from(SOURCE), SourceKind::File("main.rue".to_string())),
+        Source::new(Arc::from(source), SourceKind::File("main.rue".to_string())),
     ));
 
     tree.compile(&mut ctx);
@@ -88,4 +95,26 @@ fn warned_lints_are_warnings() {
         vec![(Some(Lint::UnusedBinding), DiagnosticSeverity::Warning)]
     );
     assert!(!has_errors);
+}
+
+#[test]
+fn unnecessary_plus_only_applies_to_ints() {
+    let (diagnostics, has_errors) = compile_source("fn main() -> Int {\n    +42\n}\n", |_| {});
+
+    assert_eq!(
+        severities(&diagnostics),
+        vec![(Some(Lint::UnnecessaryPlus), DiagnosticSeverity::Warning)]
+    );
+    assert!(!has_errors);
+
+    // `+` on anything else is a type error, so it isn't reported as having no effect
+    let (diagnostics, has_errors) =
+        compile_source("fn main() -> Int {\n    +\"hello\"\n}\n", |_| {});
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.lint().is_none())
+    );
+    assert!(has_errors);
 }
