@@ -52,6 +52,7 @@ rue-compiler = { path = "crates/rue-compiler", version = "0.11.0" }
 rue-options = { path = "crates/rue-options", version = "0.11.0" }
 rue-lir = { path = "crates/rue-lir", version = "0.11.0" }
 rue-hir = { path = "crates/rue-hir", version = "0.11.0" }
+rue-lint = { path = "crates/rue-lint", version = "0.11.0" }
 rue-types = { path = "crates/rue-types", version = "0.11.0" }
 rue-clvm = { path = "crates/rue-clvm", version = "0.11.0" }
 anyhow = "1.0.98"

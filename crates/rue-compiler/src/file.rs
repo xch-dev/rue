@@ -23,7 +23,7 @@ use rue_parser::Parser;
 use thiserror::Error;
 
 use crate::{
-    Compiler, ImportCache, SyntaxItemKind, check_inline_ifs, check_unused, compile_default_items,
+    Compiler, ImportCache, SyntaxItemKind, check_recursion, compile_default_items,
     compile_symbol_items, compile_type_items, const_eval::evaluate_const_exprs,
     declare_module_items, declare_symbol_items, declare_type_items, resolve_imports,
 };
@@ -262,7 +262,9 @@ impl FileTree {
         self.compile_impl(ctx, true);
     }
 
-    pub(crate) fn compile_impl(&self, ctx: &mut Compiler, unused_check: bool) {
+    /// Compiles every file in the tree. If `lint` is false (such as for the standard library),
+    /// recursion isn't checked and lints aren't run.
+    pub(crate) fn compile_impl(&self, ctx: &mut Compiler, lint: bool) {
         let mut cache = ImportCache::default();
 
         let modules = self.all_modules().into_iter().collect::<Vec<_>>();
@@ -281,11 +283,20 @@ impl FileTree {
         self.compile_defaults(ctx);
         self.compile_symbols(ctx);
         evaluate_const_exprs(ctx);
-        check_inline_ifs(ctx);
 
-        if unused_check {
+        if lint {
+            check_recursion(ctx);
+
             let entrypoints = self.entrypoints(ctx);
-            check_unused(ctx, &entrypoints);
+            let documents = self
+                .all_files()
+                .into_iter()
+                .map(|file| (&file.source, &file.document))
+                .collect();
+
+            ctx.run_lints(documents, &entrypoints);
+        } else {
+            ctx.discard_lint_sites();
         }
     }
 

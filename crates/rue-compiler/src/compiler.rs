@@ -8,14 +8,15 @@ use std::{
 };
 
 use rowan::{TextRange, TextSize};
-use rue_ast::AstNode;
+use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, HirId, ImportId, Mappings, Scope, ScopeId, Symbol,
+    Builtins, Constraint, Database, Declaration, ImportId, Mappings, Scope, ScopeId, Symbol,
     SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
+use rue_lint::{CastSite, ConditionSite, GuardSite, InlineIf, InlineIfSite, LintInput, LintSites};
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, CheckError, Comparison, Inference, Type, TypeId};
@@ -41,17 +42,7 @@ pub struct Compiler {
     return_stack: Vec<(Option<ReturnTarget>, usize)>,
     return_count: usize,
     inferred_generics_stack: Vec<Vec<TypeId>>,
-    inline_ifs: Vec<(SrcLoc, InlineIf)>,
-}
-
-/// An `inline if` whose branches need to be checked once every function has been compiled.
-#[derive(Debug, Clone, Copy)]
-pub enum InlineIf {
-    /// An `inline if` expression, which is the given [`Hir::If`](rue_hir::Hir::If).
-    Expr(HirId),
-    /// An `inline if` statement, at the given index in the statements of a
-    /// [`Hir::Block`](rue_hir::Hir::Block). The rest of the block is its else branch.
-    Statement(HirId, usize),
+    lint_sites: LintSites,
 }
 
 /// The function or lambda body that a `return` statement exits from.
@@ -101,7 +92,7 @@ impl Compiler {
             return_stack: Vec::new(),
             return_count: 0,
             inferred_generics_stack: Vec::new(),
-            inline_ifs: Vec::new(),
+            lint_sites: LintSites::default(),
         };
 
         if options.std {
@@ -205,15 +196,10 @@ impl Compiler {
         }
     }
 
-    /// Reports a diagnostic. Lints are reported at their configured level, and are dropped if
-    /// they're allowed.
+    /// Reports an error. Lints are reported separately, by the passes in [`rue_lint`].
     pub fn diagnostic_at(&mut self, srcloc: SrcLoc, kind: DiagnosticKind) {
-        let Some(severity) = kind.severity(&self.options.lints) else {
-            return;
-        };
-
         self.diagnostics
-            .push(Diagnostic::new(srcloc, kind, severity));
+            .push(Diagnostic::new(srcloc, kind, DiagnosticSeverity::Error));
     }
 
     pub fn srcloc(&self, node: &impl GetTextRange) -> SrcLoc {
@@ -320,16 +306,7 @@ impl Compiler {
     }
 
     pub fn type_name_in(&mut self, scope: ScopeId, ty: TypeId) -> String {
-        let mut current = Some(scope);
-
-        while let Some(scope) = current {
-            if let Some(name) = self.scope(scope).type_name(ty) {
-                return name.to_string();
-            }
-            current = self.scope(scope).parent();
-        }
-
-        rue_types::stringify(self.db.types_mut(), ty)
+        self.db.type_name_in(scope, ty)
     }
 
     pub fn symbol_name(&self, symbol: SymbolId) -> String {
@@ -456,11 +433,42 @@ impl Compiler {
     }
 
     pub fn add_inline_if(&mut self, srcloc: SrcLoc, inline_if: InlineIf) {
-        self.inline_ifs.push((srcloc, inline_if));
+        self.lint_sites
+            .inline_ifs
+            .push(InlineIfSite { srcloc, inline_if });
     }
 
-    pub fn take_inline_ifs(&mut self) -> Vec<(SrcLoc, InlineIf)> {
-        mem::take(&mut self.inline_ifs)
+    /// The sites recorded for lints while compiling, which are checked by [`rue_lint`] once
+    /// everything has been compiled.
+    pub fn lint_sites_mut(&mut self) -> &mut LintSites {
+        &mut self.lint_sites
+    }
+
+    /// Runs the lint passes over the sites recorded so far and the given documents.
+    pub fn run_lints(
+        &mut self,
+        documents: Vec<(&Source, &AstDocument)>,
+        entrypoints: &HashSet<Declaration>,
+    ) {
+        let input = LintInput {
+            sites: mem::take(&mut self.lint_sites),
+            documents,
+            entrypoints,
+        };
+
+        let diagnostics = rue_lint::run_lints(
+            &mut self.db,
+            &self.builtins.types,
+            self.options.lints,
+            &input,
+        );
+
+        self.diagnostics.extend(diagnostics);
+    }
+
+    /// Discards the sites recorded so far without linting them, such as for the standard library.
+    pub fn discard_lint_sites(&mut self) {
+        self.lint_sites = LintSites::default();
     }
 
     pub fn mapping_checkpoint(&self) -> usize {
@@ -508,19 +516,19 @@ impl Compiler {
             }
         };
 
-        let from_name = self.type_name(from);
-        let to_name = self.type_name(to);
-
-        if check == Check::None && !self.is_assignable(from, to) {
-            // The types are different at compile time, but there's nothing to check at runtime
-            self.diagnostic(
-                node,
-                DiagnosticKind::IndistinguishableGuard(from_name, to_name),
-            );
-        } else if check == Check::None {
-            self.diagnostic(node, DiagnosticKind::UnnecessaryGuard(from_name, to_name));
-        } else if check == Check::Impossible {
+        if check == Check::Impossible {
+            let from_name = self.type_name(from);
+            let to_name = self.type_name(to);
             self.diagnostic(node, DiagnosticKind::IncompatibleGuard(from_name, to_name));
+        } else {
+            let site = GuardSite {
+                srcloc: self.srcloc(node),
+                scope: self.last_scope_id(),
+                from,
+                to,
+                has_runtime_check: check != Check::None,
+            };
+            self.lint_sites.guards.push(site);
         }
 
         let else_id = rue_types::subtract(self.db.types_mut(), &self.builtins.types, from, to);
@@ -534,11 +542,17 @@ impl Compiler {
             return;
         }
 
-        if self.is_castable(ty, self.builtins().types.bool_true) {
-            self.diagnostic(node, DiagnosticKind::AlwaysTrueCondition);
-        } else if self.is_castable(ty, self.builtins().types.bool_false) {
-            self.diagnostic(node, DiagnosticKind::AlwaysFalseCondition);
-        } else {
+        let site = ConditionSite {
+            srcloc: self.srcloc(node),
+            ty,
+        };
+        self.lint_sites.conditions.push(site);
+
+        // Conditions that are always `true` or `false` don't need to be a `Bool`, and are reported
+        // by the `constant_condition` lint instead
+        if !self.is_castable(ty, self.builtins().types.bool_true)
+            && !self.is_castable(ty, self.builtins().types.bool_false)
+        {
             self.assign_type(node, ty, self.builtins().types.bool);
         }
     }
@@ -579,23 +593,19 @@ impl Compiler {
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
         let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
 
-        match comparison {
-            Comparison::Assign => {
-                if cast
-                    && rue_types::compare_with_inference(
-                        self.db.types_mut(),
-                        &self.builtins.types,
-                        to,
-                        from,
-                        None,
-                    ) == Comparison::Assign
-                {
-                    let from = self.type_name(from);
-                    let to = self.type_name(to);
+        if cast {
+            let site = CastSite {
+                srcloc: self.srcloc(node),
+                scope: self.last_scope_id(),
+                from,
+                to,
+                comparison,
+            };
+            self.lint_sites.casts.push(site);
+        }
 
-                    self.diagnostic(node, DiagnosticKind::UnnecessaryCast(from, to));
-                }
-            }
+        match comparison {
+            Comparison::Assign => {}
             Comparison::Cast => {
                 if !cast {
                     let from = self.type_name(from);

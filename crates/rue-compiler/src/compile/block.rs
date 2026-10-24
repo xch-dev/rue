@@ -6,9 +6,10 @@ use rue_hir::{
 };
 use rue_types::{Type, TypeId, Union};
 
+use rue_lint::{ExprStatementSite, InlineIf};
+
 use crate::{
-    Compiler, CompletionContext, InlineIf, SyntaxItemKind, compile_expr, compile_type,
-    create_binding,
+    Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_type, create_binding,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,9 +97,11 @@ pub fn compile_block(
 
                 let always_nil = ctx.is_castable(value.ty, ctx.builtins().types.nil);
 
-                if !always_nil {
-                    ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnusedStatementValue);
-                }
+                let site = ExprStatementSite {
+                    srcloc: ctx.srcloc(stmt.syntax()),
+                    always_nil,
+                };
+                ctx.lint_sites_mut().expr_statements.push(site);
 
                 Statement::Expr(ExprStatement {
                     hir: value.hir,

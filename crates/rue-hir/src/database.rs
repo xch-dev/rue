@@ -130,6 +130,21 @@ impl Database {
         &self.types
     }
 
+    /// The name of a type as seen from the given scope, which falls back to the structure of the
+    /// type if it isn't named in that scope or any of its parents.
+    pub fn type_name_in(&mut self, scope: ScopeId, ty: TypeId) -> String {
+        let mut current = Some(scope);
+
+        while let Some(scope) = current {
+            if let Some(name) = self.scope(scope).type_name(ty) {
+                return name.to_string();
+            }
+            current = self.scope(scope).parent();
+        }
+
+        rue_types::stringify(&mut self.types, ty)
+    }
+
     pub fn types_mut(&mut self) -> &mut Arena<Type> {
         &mut self.types
     }

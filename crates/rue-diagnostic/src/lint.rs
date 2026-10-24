@@ -234,27 +234,15 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_severity_follows_level() {
-        let kind = DiagnosticKind::UnusedBinding("x".to_string());
+    fn lint_diagnostics_carry_their_lint() {
+        let kind = DiagnosticKind::Lint {
+            lint: Lint::UnusedBinding,
+            message: "Unused binding `x`".to_string(),
+        };
+
         assert_eq!(kind.lint(), Some(Lint::UnusedBinding));
-
-        let mut levels = LintLevels::default();
-
-        for (level, severity) in [
-            (LintLevel::Allow, None),
-            (LintLevel::Warn, Some(DiagnosticSeverity::Warning)),
-            (LintLevel::Deny, Some(DiagnosticSeverity::Error)),
-        ] {
-            levels.set(Lint::UnusedBinding, level);
-            assert_eq!(kind.severity(&levels), severity);
-        }
-
-        // Diagnostics that aren't lints are errors regardless of the configured levels
+        assert_eq!(kind.to_string(), "Unused binding `x`");
         assert_eq!(DiagnosticKind::MissingReturn.lint(), None);
-        assert_eq!(
-            DiagnosticKind::MissingReturn.severity(&levels),
-            Some(DiagnosticSeverity::Error)
-        );
     }
 
     #[test]

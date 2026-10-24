@@ -1731,6 +1731,7 @@ dependencies = [
  "rue-diagnostic",
  "rue-hir",
  "rue-lexer",
+ "rue-lint",
  "rue-lir",
  "rue-options",
  "rue-parser",
@@ -1782,6 +1783,19 @@ name = "rue-lexer"
 version = "0.11.0"
 dependencies = [
  "expect-test",
+]
+
+[[package]]
+name = "rue-lint"
+version = "0.11.0"
+dependencies = [
+ "indexmap",
+ "rowan",
+ "rue-ast",
+ "rue-diagnostic",
+ "rue-hir",
+ "rue-parser",
+ "rue-types",
 ]
 
 [[package]]
