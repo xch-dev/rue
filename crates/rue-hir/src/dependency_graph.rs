@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    iter,
+};
 
 use indexmap::IndexSet;
 use rue_options::CompilerOptions;
@@ -12,8 +15,8 @@ pub struct DependencyGraph {
     // Keeps track of the direct dependencies of a symbol
     dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
 
-    // Keeps track of the locals of a symbol
-    locals: HashMap<SymbolId, IndexSet<SymbolId>>,
+    // Keeps track of the symbol that each local is defined in
+    owners: HashMap<SymbolId, SymbolId>,
 
     // Keeps track of the number of times a symbol is referenced
     references: HashMap<SymbolId, usize>,
@@ -36,7 +39,7 @@ impl DependencyGraph {
         let mut graph = Self {
             options,
             dependencies: HashMap::new(),
-            locals: HashMap::new(),
+            owners: HashMap::new(),
             references: HashMap::new(),
             closures: HashSet::new(),
             const_exprs: IndexSet::new(),
@@ -62,13 +65,20 @@ impl DependencyGraph {
     }
 
     pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {
-        let mut visited = IndexSet::new();
-        let mut result = IndexSet::new();
-        let mut locals = IndexSet::new();
-        let mut stack = vec![(symbol, false)];
+        // The locals of the scopes enclosing the symbol are captured, unless they are reached
+        // through the scope they're defined in (such as by a recursive call), so each path
+        // keeps track of which of these scopes it has entered
+        let scopes: Vec<SymbolId> = iter::successors(self.owners.get(&symbol).copied(), |owner| {
+            self.owners.get(owner).copied()
+        })
+        .collect();
 
-        while let Some((current, is_result)) = stack.pop() {
-            if !visited.insert((current, is_result)) {
+        let mut visited = HashSet::new();
+        let mut result = IndexSet::new();
+        let mut stack = vec![(symbol, false, vec![false; scopes.len()])];
+
+        while let Some((current, is_result, mut entered)) = stack.pop() {
+            if !visited.insert((current, is_result, entered.clone())) {
                 continue;
             }
 
@@ -76,10 +86,20 @@ impl DependencyGraph {
                 result.insert(current);
             }
 
-            locals.extend(self.locals.get(&current).cloned().unwrap_or_default());
+            if let Some(index) = scopes.iter().position(|&scope| scope == current) {
+                entered[index] = true;
+            }
 
             for dependency in self.dependencies.get(&current).cloned().unwrap_or_default() {
-                stack.push((dependency, !captures_only || !locals.contains(&dependency)));
+                // Any other local can only be reached through the scope it's defined in
+                let is_local = self.owners.get(&dependency).is_some_and(|owner| {
+                    scopes
+                        .iter()
+                        .position(|scope| scope == owner)
+                        .is_none_or(|index| entered[index])
+                });
+
+                stack.push((dependency, !captures_only || !is_local, entered.clone()));
             }
         }
 
@@ -114,7 +134,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 match stmt {
                     Statement::Let(stmt) => {
                         if let Some(last) = graph.stack.last() {
-                            graph.locals.entry(*last).or_default().insert(*stmt);
+                            graph.owners.insert(*stmt, *last);
                         }
                     }
                     Statement::Assert(stmt, _) => {
@@ -151,7 +171,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
         }
         Hir::Lambda(lambda) => {
             if let Some(last) = graph.stack.last() {
-                graph.locals.entry(*last).or_default().insert(*lambda);
+                graph.owners.insert(*lambda, *last);
             }
 
             graph.closures.insert(*lambda);
@@ -245,11 +265,9 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     match db.symbol(symbol) {
         Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {}
         Symbol::Function(function) => {
-            graph
-                .locals
-                .entry(symbol)
-                .or_default()
-                .extend(function.parameters.values().copied());
+            for &parameter in function.parameters.values() {
+                graph.owners.insert(parameter, symbol);
+            }
 
             visit_hir(db, graph, function.body, false);
         }

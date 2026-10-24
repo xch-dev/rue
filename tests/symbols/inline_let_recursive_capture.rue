@@ -1,0 +1,66 @@
+fn main(n: Int) -> Int {
+    let b = n * 2;
+    inline let c = b + 1;
+    let f = fn(k: Int) => c + main(k);
+    if n == 0 {
+        return 5;
+    }
+    f(n - 1)
+}
+
+fn capture_parameter(n: Int) -> Int {
+    inline let c = n + 1;
+    let f = fn(k: Int) => c + capture_parameter(k);
+    if n == 0 {
+        return 5;
+    }
+    f(n - 1)
+}
+
+fn capture_binding(n: Int) -> Int {
+    let b = n * 2;
+    inline let c = b + 1;
+    let f = fn(k: Int) => c + capture_binding(k);
+    if n == 0 {
+        return 5;
+    }
+    f(n - 1)
+}
+
+fn capture_in_inline_if(n: Int) -> Int {
+    let b = n * 2;
+    inline let c = b + 1;
+    let f = fn(k: Int) => inline if k > 0 { c + capture_in_inline_if(k - 1) } else { 0 };
+    if n == 0 {
+        return 5;
+    }
+    f(n) + b
+}
+
+fn capture_through_closure(n: Int) -> Int {
+    let g = fn(j: Int) => {
+        inline let x = n + j;
+        x
+    };
+    let f = fn(k: Int) => g(k) + capture_through_closure(k);
+    if n == 0 {
+        return 5;
+    }
+    f(n - 1)
+}
+
+test fn captured_parameter() -> Int {
+    capture_parameter(3)
+}
+
+test fn captured_binding() -> Int {
+    capture_binding(3)
+}
+
+test fn captured_in_inline_if() -> Int {
+    capture_in_inline_if(3)
+}
+
+test fn captured_through_closure() -> Int {
+    capture_through_closure(3)
+}
