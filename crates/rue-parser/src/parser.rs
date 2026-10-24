@@ -2,7 +2,7 @@ use std::{mem, ops::Range};
 
 use indexmap::IndexSet;
 use rowan::{Checkpoint, GreenNodeBuilder, Language};
-use rue_diagnostic::{Diagnostic, DiagnosticKind, Source, SrcLoc};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Source, SrcLoc};
 use rue_lexer::{Token, TokenKind};
 
 use crate::{RueLang, SyntaxKind, SyntaxNode, T, document};
@@ -50,6 +50,7 @@ impl Parser {
                         diagnostics.push(Diagnostic::new(
                             SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedBlockComment,
+                            DiagnosticSeverity::Error,
                         ));
                     }
                     SyntaxKind::BlockComment
@@ -60,6 +61,7 @@ impl Parser {
                         diagnostics.push(Diagnostic::new(
                             SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedString,
+                            DiagnosticSeverity::Error,
                         ));
                     }
                     SyntaxKind::String
@@ -69,6 +71,7 @@ impl Parser {
                         diagnostics.push(Diagnostic::new(
                             SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedHex,
+                            DiagnosticSeverity::Error,
                         ));
                     }
                     SyntaxKind::Hex
@@ -78,6 +81,7 @@ impl Parser {
                         diagnostics.push(Diagnostic::new(
                             SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedBinary,
+                            DiagnosticSeverity::Error,
                         ));
                     }
                     SyntaxKind::Binary
@@ -87,6 +91,7 @@ impl Parser {
                         diagnostics.push(Diagnostic::new(
                             SrcLoc::new(source.clone(), token.span.clone()),
                             DiagnosticKind::UnterminatedOctal,
+                            DiagnosticSeverity::Error,
                         ));
                     }
                     SyntaxKind::Octal
@@ -144,6 +149,7 @@ impl Parser {
                     diagnostics.push(Diagnostic::new(
                         SrcLoc::new(source.clone(), token.span.clone()),
                         DiagnosticKind::UnknownToken(source.text[token.span.clone()].to_string()),
+                        DiagnosticSeverity::Error,
                     ));
                     SyntaxKind::Error
                 }
@@ -405,6 +411,7 @@ impl Parser {
         self.diagnostics.push(Diagnostic::new(
             SrcLoc::new(self.source.clone(), span),
             kind,
+            DiagnosticSeverity::Error,
         ));
     }
 

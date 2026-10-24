@@ -1,9 +1,10 @@
 use std::borrow::Cow;
 
 use log::debug;
-use rue_ast::{AstExpr, AstNode, AstPrefixExpr};
+use rue_ast::{AstNode, AstPrefixExpr};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, UnaryOp, Value};
+use rue_lint::UnaryPlusSite;
 use rue_lir::{atom_bigint, bigint_atom};
 use rue_parser::T;
 use rue_types::{Atom, AtomRestriction, AtomSemantic, Atoms, Type};
@@ -49,19 +50,17 @@ pub fn compile_prefix_expr(ctx: &mut Compiler, prefix: &AstPrefixExpr) -> Value 
             }
         }
         T![+] => {
+            let site = UnaryPlusSite {
+                srcloc: ctx.srcloc(prefix.syntax()),
+                operand: value.ty,
+            };
+            ctx.lint_sites_mut().unary_plus.push(site);
+
             if ctx.is_assignable(value.ty, ctx.builtins().types.int) {
-                ctx.diagnostic(prefix.syntax(), DiagnosticKind::UnnecessaryPlus);
                 return Value::new(value.hir, ctx.builtins().types.int);
             }
         }
         T![-] => {
-            if let AstExpr::PrefixExpr(inner) = &expr
-                && let Some(op) = inner.op()
-                && op.kind() == T![-]
-            {
-                ctx.diagnostic(prefix.syntax(), DiagnosticKind::DoubleNegationWarning);
-            }
-
             if ctx.is_assignable(value.ty, ctx.builtins().types.int) {
                 let ty = if let Some(Atoms::Restricted(restrictions)) =
                     rue_types::extract_atoms(ctx.types_mut(), value.ty, true)

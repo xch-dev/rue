@@ -125,7 +125,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
     for diagnostic in ctx.take_diagnostics() {
         file.diagnostics.push(diagnostic.message(base_path));
 
-        if diagnostic.kind.severity() == DiagnosticSeverity::Error {
+        if diagnostic.severity == DiagnosticSeverity::Error {
             codegen = false;
         }
     }
@@ -353,7 +353,7 @@ fn handle_test_file(
     for diagnostic in ctx.take_diagnostics() {
         file.diagnostics.push(diagnostic.message(&base_path));
 
-        if diagnostic.kind.severity() == DiagnosticSeverity::Error {
+        if diagnostic.severity == DiagnosticSeverity::Error {
             codegen = false;
         }
     }

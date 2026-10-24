@@ -25,6 +25,8 @@ pub struct Project {
     pub options: CompilerOptions,
     pub format_options: FormatOptions,
     pub entrypoint: PathBuf,
+    /// Names in the manifest's `[lints]` section that don't refer to a known lint.
+    pub unknown_lints: Vec<String>,
 }
 
 pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> {
@@ -45,11 +47,14 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
             options.std = false;
         }
 
+        let unknown_lints = manifest.apply_lints(&mut options.lints);
+
         return Ok(Some(Project {
             format_options: manifest.formatter,
             manifest: Some(manifest),
             options,
             entrypoint,
+            unknown_lints,
         }));
     }
 
@@ -73,6 +78,7 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
             },
             format_options: FormatOptions::default(),
             entrypoint: path.to_path_buf(),
+            unknown_lints: Vec::new(),
         }));
     }
 
@@ -86,8 +92,38 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
             },
             format_options: FormatOptions::default(),
             entrypoint: path.to_path_buf(),
+            unknown_lints: Vec::new(),
         }));
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use rue_diagnostic::{Lint, LintLevel};
+
+    use super::*;
+
+    #[test]
+    fn applies_manifest_lints() -> Result<(), Error> {
+        let dir = std::env::temp_dir().join(format!("rue-options-lints-{}", std::process::id()));
+        fs::create_dir_all(dir.join("puzzles"))?;
+        fs::write(
+            dir.join("Rue.toml"),
+            "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\ntypo_lint = \"allow\"\n",
+        )?;
+
+        let project = find_project(&dir, false);
+        fs::remove_dir_all(&dir)?;
+        let project = project?.expect("project should be found");
+
+        assert_eq!(
+            project.options.lints.get(Lint::UnusedBinding),
+            LintLevel::Deny
+        );
+        assert_eq!(project.unknown_lints, vec!["typo_lint".to_string()]);
+
+        Ok(())
+    }
 }

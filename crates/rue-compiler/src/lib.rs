@@ -1,14 +1,15 @@
-mod check_inline_ifs;
-mod check_unused;
+mod check_recursion;
 mod compile;
 mod compiler;
 mod const_eval;
 mod file;
 mod syntax_map;
 
-pub use check_inline_ifs::*;
-pub use check_unused::*;
+pub use check_recursion::*;
 pub use compile::*;
 pub use compiler::*;
 pub use file::*;
 pub use syntax_map::*;
+
+#[cfg(test)]
+mod lint_tests;

@@ -21,6 +21,7 @@ rue-ast = { workspace = true }
 rue-diagnostic = { workspace = true }
 rue-options = { workspace = true }
 rue-hir = { workspace = true }
+rue-lint = { workspace = true }
 rue-lir = { workspace = true }
 rue-types = { workspace = true }
 id-arena = { workspace = true }
