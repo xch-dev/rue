@@ -56,6 +56,7 @@ impl Doc {
         Self::Line(LineKind::Soft)
     }
 
+    #[cfg(test)]
     pub fn fill(doc: Self, indent_levels_on_break: usize) -> Self {
         Self::Fill {
             flat: Box::new(doc.clone()),

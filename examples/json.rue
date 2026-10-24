@@ -503,34 +503,34 @@ test fn strings() {
     let string = parse(json("'tab\there\nquote\'backslash\\slash\/'"));
     assert string is JsonString;
     assert string.value == "tab"
-            + byte(9)
-            + "here"
-            + byte(10)
-            + "quote"
-            + QUOTE
-            + "backslash"
-            + BACKSLASH
-            + "slash/";
+        + byte(9)
+        + "here"
+        + byte(10)
+        + "quote"
+        + QUOTE
+        + "backslash"
+        + BACKSLASH
+        + "slash/";
 }
 
 test fn unicode() {
     let string = parse(json("'café € 😀'"));
     assert string is JsonString;
     assert string.value == "caf"
-            + 0xc3a9 as String
-            + " "
-            + 0xe282ac as String
-            + " "
-            + 0xf09f9880 as String;
+        + 0xc3a9 as String
+        + " "
+        + 0xe282ac as String
+        + " "
+        + 0xf09f9880 as String;
 
     // Non-ASCII bytes are passed through as is, and control characters are escaped on the way out
     assert stringify(string) == json("'caf")
-            + 0xc3a9 as String
-            + " "
-            + 0xe282ac as String
-            + " "
-            + 0xf09f9880 as String
-            + QUOTE;
+        + 0xc3a9 as String
+        + " "
+        + 0xe282ac as String
+        + " "
+        + 0xf09f9880 as String
+        + QUOTE;
     assert stringify(parse(json("'\u0001\u001F'"))) == json("'\u0001\u001f'");
 }
 
