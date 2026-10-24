@@ -100,7 +100,7 @@ rue test
 
 ## Examples
 
-The [`examples`](examples) directory contains small programs like [FizzBuzz](examples/fizz_buzz.rue) and a [Brainf\*ck interpreter](examples/brainfck.rue), as well as real-world [puzzles](examples/puzzles) such as a [CAT](examples/puzzles/cat.rue), [singleton](examples/puzzles/singleton.rue), and [royalty split](examples/puzzles/royalty_split.rue).
+The [`examples`](examples) directory contains small programs like [FizzBuzz](examples/fizz_buzz.rue), a [JSON parser](examples/json.rue), and a [Brainf\*ck interpreter](examples/brainfck.rue), as well as real-world [puzzles](examples/puzzles) such as a [CAT](examples/puzzles/cat.rue), [singleton](examples/puzzles/singleton.rue), and [royalty split](examples/puzzles/royalty_split.rue).
 
 > [!WARNING]
 > The example puzzles have not been audited and are for educational purposes only.
