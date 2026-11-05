@@ -113,6 +113,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         function: FunctionSymbol,
     ) -> LirId {
         let (capture_groups, param_group) = self.function_groups(symbol, &function);
+        for (name, &parameter) in &function.parameters {
+            self.db.debug.param_names.insert(parameter, name.clone());
+        }
 
         let mut function_env = Self::apply_group(
             Environment::Nil,
@@ -138,6 +141,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let inline_symbols = std::mem::replace(&mut self.inline_symbols, vec![static_arguments]);
         let mut expr = self.lower_hir(&function_env, function.body);
         self.inline_symbols = inline_symbols;
+        self.db
+            .debug
+            .function_roots
+            .insert(expr.index(), (symbol, function_env.clone()));
 
         if symbol == self.main && function.kind == FunctionKind::External {
             let entire_env = self.arena.alloc(Lir::Path(1u8.into()));
@@ -196,7 +203,28 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         self.lower_hir(env, binding.value.hir)
     }
 
+    // SPIKE: tag every LIR node allocated while lowering `hir` (and not already tagged by an
+    // inner HIR node) with the span of `hir`.
     fn lower_hir(&mut self, env: &Environment, hir: HirId) -> LirId {
+        let start = self.arena.len();
+        let lir = self.lower_hir_inner(env, hir);
+        if let Some(srcloc) = self.db.debug.hir_spans.get(&hir).cloned() {
+            self.tag_since(start, &srcloc);
+        }
+        lir
+    }
+
+    fn tag_since(&mut self, start: usize, srcloc: &SrcLoc) {
+        for index in start..self.arena.len() {
+            self.db
+                .debug
+                .lir_spans
+                .entry(index)
+                .or_insert_with(|| srcloc.clone());
+        }
+    }
+
+    fn lower_hir_inner(&mut self, env: &Environment, hir: HirId) -> LirId {
         match self.db.hir(hir).clone() {
             Hir::Unresolved => unreachable!(),
             Hir::Nil => self.arena.alloc(Lir::Atom(vec![])),
@@ -391,6 +419,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             && let Symbol::Function(function) = self.db.symbol(symbol).clone()
         {
             let mut args = HashMap::new();
+            for (name, &parameter) in &function.parameters {
+                self.db.debug.param_names.insert(parameter, name.clone());
+            }
 
             if function.nil_terminated {
                 for (i, arg) in call.args.into_iter().enumerate() {
@@ -601,6 +632,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         let mut expr = self.lower_block(&body_env, stmts, body);
+        self.db
+            .debug
+            .scope_roots
+            .insert(expr.index(), body_env.clone());
 
         for (i, group) in binding_groups.iter().enumerate().rev() {
             expr = self.arena.alloc(Lir::Quote(expr));
@@ -708,12 +743,23 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
         let condition = self.lower_hir(env, condition);
         let then_branch = self.lower_block(env, stmts, body);
+        let start = self.arena.len();
         let else_branch = self.arena.alloc(Lir::Raise(raise));
-        self.arena
-            .alloc(Lir::If(condition, then_branch, else_branch, false))
+        let lir = self
+            .arena
+            .alloc(Lir::If(condition, then_branch, else_branch, false));
+        self.tag_since(start, &srcloc);
+        lir
     }
 
     fn lower_raise(&mut self, env: &Environment, hir: Option<HirId>, srcloc: SrcLoc) -> LirId {
+        let start = self.arena.len();
+        let lir = self.lower_raise_inner(env, hir, srcloc.clone());
+        self.tag_since(start, &srcloc);
+        lir
+    }
+
+    fn lower_raise_inner(&mut self, env: &Environment, hir: Option<HirId>, srcloc: SrcLoc) -> LirId {
         if !self.options.debug_symbols {
             return self.arena.alloc(Lir::Raise(vec![]));
         }

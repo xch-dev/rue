@@ -1,5 +1,7 @@
 use clvm_traits::{ToClvm, clvm_list, clvm_quote, clvm_tuple};
-use clvmr::{Allocator, NodePtr};
+use std::{cell::RefCell, collections::HashMap};
+
+use clvmr::{Allocator, NodePtr, SExp};
 use id_arena::Arena;
 use num_bigint::BigUint;
 
@@ -19,7 +21,50 @@ pub fn codegen(
     codegen_impl(arena, allocator, lir, options)
 }
 
+/// SPIKE: maps LIR arena indices to opaque tags, and collects the tags of the CLVM pairs they
+/// produce. Inner LIR nodes tag first; outer nodes only fill pairs that are still untagged.
+#[derive(Debug, Default)]
+pub struct DebugTagging {
+    pub lir_spans: HashMap<usize, usize>,
+    pub lir_functions: HashMap<usize, usize>,
+    pub node_spans: HashMap<NodePtr, usize>,
+    pub node_functions: HashMap<NodePtr, usize>,
+}
+
+thread_local! {
+    pub static DEBUG_TAGGING: RefCell<Option<DebugTagging>> = const { RefCell::new(None) };
+}
+
 fn codegen_impl(
+    arena: &Arena<Lir>,
+    allocator: &mut Allocator,
+    lir: LirId,
+    options: CodegenOptions,
+) -> Result<NodePtr> {
+    let node = codegen_inner(arena, allocator, lir, options)?;
+    DEBUG_TAGGING.with_borrow_mut(|tagging| {
+        let Some(tagging) = tagging else { return };
+        if let Some(&function) = tagging.lir_functions.get(&lir.index()) {
+            tagging.node_functions.entry(node).or_insert(function);
+        }
+        let Some(&span) = tagging.lir_spans.get(&lir.index()) else {
+            return;
+        };
+        let mut stack = vec![node];
+        while let Some(node) = stack.pop() {
+            if let SExp::Pair(first, rest) = allocator.sexp(node)
+                && !tagging.node_spans.contains_key(&node)
+            {
+                tagging.node_spans.insert(node, span);
+                stack.push(first);
+                stack.push(rest);
+            }
+        }
+    });
+    Ok(node)
+}
+
+fn codegen_inner(
     arena: &Arena<Lir>,
     allocator: &mut Allocator,
     lir: LirId,

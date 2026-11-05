@@ -1,0 +1,140 @@
+program: (a (q 2 (q 2 5 (c 5 (c 23 2))) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 5) (q . 5) (q 8 (q . "assertion failed at closure_capture.rue:3:9"))) 1)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) 1)) (c (q 2 (i (not (l 5)) (q) (q 16 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) 1))
+program bytes: 252, sidecar bytes: 3080, spans: 13, functions: 3
+function[0] main params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Pair(Name { name: 1, path: [14], constraint: ProperList }, Nil)))
+function[1] <lambda> params=Pair(Name { name: 0, path: [2], constraint: Integer }, Pair(Name { name: 3, path: [6], constraint: Integer }, Nil))
+function[2] total params=Pair(Nil, Pair(Name { name: 1, path: [6], constraint: ProperList }, Name { name: 5, path: [7], constraint: Unknown }))
+declared types: limit: Int, items: List<Int>, limit: Int, item: Int, items: List<Int>, f: fn(item: Int) -> Int
+probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
+probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
+probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+error: Raise(NodePtr(Bytes, 0))  raw frames: 15  truncated: 0
+----- Python -----
+in <unknown:de036849b355a0dc86e095feb908411059aa5f485afc0f9179501d6b83401bc9>
+File "closure_capture.rue", line 1, column 46, in main
+  fn main(limit: Int, items: List<Int>) -> Int {
+                                               ^
+  limit = 10
+  items = (1 2 30 4)
+File "closure_capture.rue", line 6, column 5
+  total(check, items)
+  ^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 9, column 60, in total
+  fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+                                                             ^
+  items = (1 2 30 4)
+  f = (2 (1 2 (...) 1) (4 (...) 1))
+File "closure_capture.rue", line 13, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 13, column 22
+  f(items.first) + total(f, items.rest)
+                   ^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 9, column 60, in total
+  fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+                                                             ^
+  items = (2 30 4)
+  f = (2 (1 2 (...) 1) (4 (...) 1))
+File "closure_capture.rue", line 13, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 13, column 22
+  f(items.first) + total(f, items.rest)
+                   ^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 9, column 60, in total
+  fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+                                                             ^
+  items = (30 4)
+  f = (2 (1 2 (...) 1) (4 (...) 1))
+File "closure_capture.rue", line 13, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "closure_capture.rue", line 13, column 5
+  f(items.first) + total(f, items.rest)
+  ^^^^^^^^^^^^^^
+File "closure_capture.rue", line 3, column 9, in <lambda>  # bound: limit
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+  limit = 10
+  item = 30
+File "closure_capture.rue", line 3, column 9, in <lambda>
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+  limit = 10
+  item = 30
+File "closure_capture.rue", line 3, column 9
+  assert item < limit;
+  ^^^^^^^^^^^^^^^^^^^^
+----- Lisp -----
+(<unknown:de036849b355a0dc86e095feb908411059aa5f485afc0f9179501d6b83401bc9>)
+--> closure_capture.rue:1:46
+   |
+  1| fn main(limit: Int, items: List<Int>) -> Int {
+   |                                              ^
+(main (limit integer 10) (items proper-list (1 2 30 4)))
+--> closure_capture.rue:6:5
+   |
+  6|     total(check, items)
+   |     ^^^^^^^^^^^^^^^^^^^
+(<unknown:ba86d044dbe9912aa4c97efb88fae0c054375f2081686e58fc9932742afc3216>)
+--> closure_capture.rue:9:60
+   |
+  9| fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+   |                                                            ^
+(total (items proper-list (1 2 30 4)) (f unknown (2 (1 2 (...) 1) (4 (...) 1))))
+--> closure_capture.rue:13:5
+   |
+ 13|     f(items.first) + total(f, items.rest)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:52f75f37f33c0b30a9105314397ba895432942ce4642a80cf266a48b000006ae>)
+--> closure_capture.rue:13:22
+   |
+ 13|     f(items.first) + total(f, items.rest)
+   |                      ^^^^^^^^^^^^^^^^^^^^
+(<unknown:93e8fdf09d8006bfe5b2fe3c1b0af8c7568e1fd0f558a33c505f8b5d00b5015e>)
+--> closure_capture.rue:9:60
+   |
+  9| fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+   |                                                            ^
+(total (items proper-list (2 30 4)) (f unknown (2 (1 2 (...) 1) (4 (...) 1))))
+--> closure_capture.rue:13:5
+   |
+ 13|     f(items.first) + total(f, items.rest)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:52f75f37f33c0b30a9105314397ba895432942ce4642a80cf266a48b000006ae>)
+--> closure_capture.rue:13:22
+   |
+ 13|     f(items.first) + total(f, items.rest)
+   |                      ^^^^^^^^^^^^^^^^^^^^
+(<unknown:93e8fdf09d8006bfe5b2fe3c1b0af8c7568e1fd0f558a33c505f8b5d00b5015e>)
+--> closure_capture.rue:9:60
+   |
+  9| fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+   |                                                            ^
+(total (items proper-list (30 4)) (f unknown (2 (1 2 (...) 1) (4 (...) 1))))
+--> closure_capture.rue:13:5
+   |
+ 13|     f(items.first) + total(f, items.rest)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:52f75f37f33c0b30a9105314397ba895432942ce4642a80cf266a48b000006ae>)
+--> closure_capture.rue:13:5
+   |
+ 13|     f(items.first) + total(f, items.rest)
+   |     ^^^^^^^^^^^^^^
+(<unknown:c9cfa39499b54d8e935341b180c1f2734d0687b275a8c55fa5617dec7d05900e>)
+--> closure_capture.rue:3:9
+   |
+  3|         assert item < limit;
+   |         ^^^^^^^^^^^^^^^^^^^^
+(<lambda> (limit integer 10) (item integer 30)) ; bound: limit
+--> closure_capture.rue:3:9
+   |
+  3|         assert item < limit;
+   |         ^^^^^^^^^^^^^^^^^^^^
+(<lambda> (limit integer 10) (item integer 30))
+--> closure_capture.rue:3:9
+   |
+  3|         assert item < limit;
+   |         ^^^^^^^^^^^^^^^^^^^^
+(<unknown:e419da26a03440d3befd0bd5b5c26ef9e5091683a30ab617e9e33cfbc7b6a37c>)

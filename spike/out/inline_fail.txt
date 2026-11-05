@@ -1,0 +1,37 @@
+program: (a (q 18 2 (q . 2)) (c (a (i (> (q . 10) 2) (q 8 (q . "raise called at inline_fail.rue:8:9") (q . "underflow")) (q 17 2 (q . 10))) 1) 1))
+program bytes: 111, sidecar bytes: 1190, spans: 9, functions: 1
+function[0] main params=Pair(Name { name: 0, path: [2], constraint: Integer }, Nil)
+declared types: x: Int
+probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
+probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
+probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+error: Raise(NodePtr(Pair, 43))  raw frames: 4  truncated: 0
+----- Python -----
+File "inline_fail.rue", line 1, column 24, in main
+  fn main(x: Int) -> Int {
+                         ^
+  x = 5
+File "inline_fail.rue", line 6, column 46
+  inline fn checked_sub(a: Int, b: Int) -> Int {
+                                               ^
+File "inline_fail.rue", line 8, column 9
+  raise "underflow";
+  ^^^^^^^^^^^^^^^^^^
+----- Lisp -----
+--> inline_fail.rue:1:24
+   |
+  1| fn main(x: Int) -> Int {
+   |                        ^
+(main (x integer 5))
+--> inline_fail.rue:6:46
+   |
+  6| inline fn checked_sub(a: Int, b: Int) -> Int {
+   |                                              ^
+(<unknown:68decfc0380a54cea853c469afa76d6415c7c9f0b90bd5f089c52d572f8e1322>)
+--> inline_fail.rue:8:9
+   |
+  8|         raise "underflow";
+   |         ^^^^^^^^^^^^^^^^^^
+(<unknown:5e608ae80eacad1befedbf7cee05b88143b781872114ecde0e9430078346a48d>)

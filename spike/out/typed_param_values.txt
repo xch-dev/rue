@@ -1,0 +1,50 @@
+diagnostic: Cannot assign `PublicKey` to `Bytes` without a cast, since they are semantically different at typed_param.rue:7:29
+program: (a (q 2 2 (c (c 5 11) (c 23 (c 47 95)))) (c (q 2 (i 15 (q 2 (i (not (= 6 (sha256 4))) (q 2 (i (> (q . 5) (strlen 11)) (q . 5) (q 8 (q . "assertion failed at typed_param.rue:8:5"))) 1) (q 8 (q . "assertion failed at typed_param.rue:7:5"))) 1) (q 8 (q . "assertion failed at typed_param.rue:6:5"))) 1) 1))
+program bytes: 262, sidecar bytes: 2507, spans: 10, functions: 2
+function[0] main params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Bytes(48) }, Pair(Name { name: 1, path: [14], constraint: Bytes(32) }, Pair(Name { name: 2, path: [30], constraint: Integer }, Pair(Name { name: 3, path: [62], constraint: Atom }, Pair(Name { name: 4, path: [126], constraint: Atom }, Nil))))))
+function[1] validate params=Pair(Pair(Name { name: 0, path: [4], constraint: Bytes(48) }, Name { name: 1, path: [5], constraint: Bytes(32) }), Pair(Name { name: 2, path: [6], constraint: Integer }, Pair(Name { name: 3, path: [14], constraint: Atom }, Name { name: 4, path: [15], constraint: Atom })))
+declared types: owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: true | false, owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: true | false
+probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
+probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
+probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+error: Raise(NodePtr(Bytes, 2))  raw frames: 4  truncated: 0
+----- Python -----
+in <unknown:717767a52d3ee0edb7914cfa345c21497a731646eaebd7a7e93974f1242de8ce>
+File "typed_param.rue", line 2, column 5, in main
+  validate(owner, target, amount, memo, enabled)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = "hell"
+  memo = 26729
+  enabled = ()
+File "typed_param.rue", line 6, column 5, in validate  # bound: enabled
+  assert enabled;
+  ^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = "hell"
+  memo = 26729
+  enabled = ()
+File "typed_param.rue", line 6, column 5
+  assert enabled;
+  ^^^^^^^^^^^^^^^
+----- Lisp -----
+(<unknown:717767a52d3ee0edb7914cfa345c21497a731646eaebd7a7e93974f1242de8ce>)
+--> typed_param.rue:2:5
+   |
+  2|     validate(owner, target, amount, memo, enabled)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(main (owner bytes[48] 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) (target bytes[32] 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) (amount integer "hell") (memo atom 26729) (enabled atom ()))
+--> typed_param.rue:6:5
+   |
+  6|     assert enabled;
+   |     ^^^^^^^^^^^^^^^
+(validate (owner bytes[48] 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) (target bytes[32] 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) (amount integer "hell") (memo atom 26729) (enabled atom ())) ; bound: enabled
+--> typed_param.rue:6:5
+   |
+  6|     assert enabled;
+   |     ^^^^^^^^^^^^^^^
+(<unknown:4f0fc53025fa11004b82cc06ee3ba4aac5ba9c970485436e6397a4f250984d8c>)

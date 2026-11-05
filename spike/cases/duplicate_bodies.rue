@@ -1,0 +1,13 @@
+fn main(x: Int, y: Int) -> Int {
+    first(x) + second(y)
+}
+
+fn first(a: Int) -> Int {
+    assert a > 0;
+    a * a
+}
+
+fn second(b: Int) -> Int {
+    assert b > 0;
+    b * b
+}

@@ -1,0 +1,10 @@
+fn main(owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: Bool) -> Int {
+    validate(owner, target, amount, memo, enabled)
+}
+
+fn validate(owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: Bool) -> Int {
+    assert enabled;
+    assert target != sha256(owner);
+    assert memo.length < 5;
+    amount
+}
