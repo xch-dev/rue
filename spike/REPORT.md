@@ -3,13 +3,48 @@
 Spike: make Rue emit the #579 sidecar, run failing programs with `run_program_with_diagnostics`, render them with
 `format_captured_stack`, and record where the format cannot express what Rue needs.
 
-- **Currently tested:** chialisp `014255b9dbbcb4943b8e7fcecbcd09de1ea5fd9b` (#579 head after
-  `11c100fb` and `014255b9`). clvmr is still pinned at `05e31346` with `pre-eval`; chialisp didn't move it.
-- **Originally tested:** chialisp `d65c2f9f`. The original findings are kept below the re-test section. Every
-  output in `spike/out/` was regenerated against `014255b9`.
+- **Currently tested:** chialisp `69599b8ced1a9fdbcc66a533208281d59d13e6bd` (#579 head after `69599b8c`
+  "Allow additive debug metadata extensions within the compatibility version"). clvmr is still pinned at
+  `05e31346` with `pre-eval`; chialisp didn't move it. Every output in `spike/out/` was regenerated against it.
+- **Previously tested:** `014255b9` (see "Re-test against `014255b9`") and, originally, `d65c2f9f`. The original
+  findings are kept below the re-test sections.
 
 All tracebacks below are verbatim Python-style output. The full output for each case (both styles, the program,
 the function records and the probe results) is in `spike/out/*.txt`. Run `spike/run.sh` to regenerate it.
+
+## Re-test against `69599b8c`
+
+The only change is in the decoder, and the Rue emitter needed no changes. **Every traceback is byte-identical to
+`014255b9`.** The only lines that changed in `spike/out/*.txt` are the `probe:` lines.
+
+The probe now has a sixth mutation: it replaces the first named parameter's constraint with an unknown tag `(99)`.
+It also prints the constraints of the decoded first function. In every case (nested_assert shown):
+
+```
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer)")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
+```
+
+This is E1, implemented as asked. Details, from the source and the PR's own tests:
+- Every record now accepts trailing fields: the root, coordinates, files, spans, functions, parameters,
+  constraints and shadow nodes.
+- Unknown constraint tags decode as `Unknown`, and a union with an unknown member collapses to `Unknown`.
+- The version stays 1 and still rejects 2. Under the new policy the version only changes for breaking changes,
+  which covers the major/minor split this report asked for.
+- Still rejected:
+  - missing required fields;
+  - unknown *structural* tags (shadow node kind, parameter kind);
+  - a different magic.
+- Extension fields are dropped on decode: `DebugMetadata` has nowhere to keep them. A v1 reader can't use a newer
+  producer's extensions, but it no longer rejects the sidecar. That's the property that matters before merge.
+
+**Consequence:** every additive row in the proposed-changes table is now additive after merge. The ones that
+stay breaking change the meaning of an existing field or tag: replacing line/column with byte offsets, renaming
+the magic, changing the identity hash, or adding a new shadow-node or parameter kind instead of a field.
 
 ## Re-test against `014255b9`
 
@@ -38,7 +73,7 @@ field counts everywhere. All five probes are rejected with the same errors as be
 | H3c `()`-tail curry | unknown frame | **fixed** | `in <unknown:a723…>` → `in <lambda>  # bound: x` with `x = 3` (closure_no_params) |
 | H3d `Nil` = skip slot | undocumented | **unchanged** | spec text not touched |
 | H4 types | confirmed | **unchanged** | still `amount = "hell"`, `memo = 26729`, `enabled = ()` |
-| H5 strict decoder | confirmed | **unchanged** | 5/5 probes rejected, same error strings |
+| H5 strict decoder | confirmed | **unchanged in `014255b9`; fixed in `69599b8c`** | at `014255b9`, 5/5 probes rejected; at `69599b8c`, the 4 additive probes and an unknown constraint tag are accepted and version 2 is rejected by design |
 | H6a tab columns | confirmed | **unchanged** | Rue `7:3`, sidecar still `line 7, column 16` (recursion_tabs) |
 | H6b producer / magic | confirmed | **unchanged** | magic `CHIALISP_DEBUG`, 9-field root, no producer field (probe 1) |
 | H6c identity hash | confirmed | **unchanged** | still SHA-256 of serialized bytes (`program_sha256`) |
@@ -48,8 +83,8 @@ field counts everywhere. All five probes are rejected with the same errors as be
 | N4a `<unknown:hash>` plumbing frame | renderer issue | **unchanged** | first line of nested_assert, closure_capture, recursion, … |
 | N4b closure frame shown twice | renderer issue | **unchanged, now wider** | parameterless closures now also render `in <lambda>` twice (closure_no_params), a side effect of fixing H3c |
 | N5 size | informational | **unchanged** | sidecar byte counts identical (e.g. recursion 1616) |
-| E1 tolerant decoder | requested | **not done** | probes |
-| Table rows 1, 2, 3a, 4, 6a–6c, N2, N3 | requested | **not done** | no new fields or tags in the encoder or decoder |
+| E1 tolerant decoder | requested | **not done in `014255b9`; done in `69599b8c`** | see "Re-test against `69599b8c`" |
+| Table rows 1, 2, 3a, 4, 6a–6c, N2, N3 | requested | **not done** (still true at `69599b8c`, but now additive after merge where the table says "no" under "With E1") | no new fields or tags in the encoder or decoder |
 | Table rows 3b, 3c | requested | **done** | see H3b, H3c |
 | Table row N1 (report ambiguity) | requested | **done**, plus scoped search | see N1 |
 | Table row N4 | requested | **not done** | see N4a, N4b |
@@ -147,7 +182,8 @@ New gaps: structurally identical subtrees get misattributed (a failure in `first
 locals can't be shown; destructured parameters can't name both the whole value and its parts; plus some renderer
 issues (spurious `<unknown:…>` frames, closure frames shown twice).
 
-**The most important request is E1, a forward-compatible decoder, before #579 merges.** As written, every change
+**The most important request is E1, a forward-compatible decoder, before #579 merges.** (Done in `69599b8c`;
+see the re-test section.) As written, every change
 below is breaking after merge, because a v1 reader rejects any sidecar with an extra field. With E1 in place, most
 of them become additive.
 
@@ -339,7 +375,7 @@ open set (`int`, `bytes`, `string`, `bool`, `pubkey`, `fn`, …) that the render
 Struct field decoding can come later through the same extension point, e.g. a type table of
 `(name, ((field . path) …))`.
 
-### 5. No room to grow: confirmed (unchanged in `014255b9`)
+### 5. No room to grow: confirmed (unchanged in `014255b9`; fixed in `69599b8c`)
 
 The probe runs in every case (`probe:` lines in `out/*.txt`). It changes a real Rue sidecar and decodes it with
 the v1 reader:
@@ -460,11 +496,13 @@ debugging. It's only worth revisiting if sidecars get published next to puzzles.
 
 Status in `014255b9`: 3b, 3c and N1 are done in the renderer. Nothing else is done, E1 included, so the "without E1" column still applies.
 
+Status in `69599b8c`: **E1 is done**, so the "With E1" column now applies. Everything marked "no" there can be added after merge without breaking v1 readers. One caveat: a change that needs a new shadow-node or parameter *kind* (rather than a field) is still breaking, because unknown structural tags are still rejected. N3 should therefore be done as a field on `Name`, as proposed, not as a new parameter kind.
+
 "With E1" means E1 lands before merge.
 
 | ID | Change | Breaking after merge without E1 | With E1 |
 |---|---|---|---|
-| **E1** | Tolerant decoder: ignore extra fields, unknown tags → `Unknown`, major/minor version | (can only land before merge) | n/a |
+| **E1** | Tolerant decoder: ignore extra fields, unknown tags → `Unknown`, major/minor version | **done in `69599b8c`** (the version now only changes for breaking changes) | n/a |
 | 1 | `inlined_at` per node plus an inline-site table (call span, function, parent site, optional argument bindings) | yes | no |
 | 2 | `definition_span` on `DebugFunction` | yes | no |
 | 3a | Declaration ordinal on `Name`, or bind by stored paths | yes | no (bind-by-path changes reader behavior only) |

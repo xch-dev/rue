@@ -4,11 +4,12 @@ function[0] main params=Pair(Pair(Nil, Nil), Pair(Name { name: 0, path: [6], con
 function[1] outer params=Pair(Nil, Name { name: 2, path: [3], constraint: Integer })
 function[2] inner params=Pair(Name { name: 4, path: [2], constraint: Integer }, Name { name: 5, path: [3], constraint: Integer })
 declared types: amount: Int, value: Int, total: Int, base: Int
-probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer)")
 probe: version 2: Err("unsupported debug metadata version 2")
-probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
-probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
-probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
 error: Raise(NodePtr(Bytes, 0))  raw frames: 8  truncated: 0
 ----- Python -----
 in <unknown:81aec6350f224364e40b68e2940817285e105887e6d3b1c046c8255cdb787a6f>

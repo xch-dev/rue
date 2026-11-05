@@ -3,11 +3,12 @@ program bytes: 142, sidecar bytes: 1616, spans: 9, functions: 2
 function[0] main params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Nil))
 function[1] countdown params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Name { name: 2, path: [7], constraint: Integer }))
 declared types: n: Int, n: Int, acc: Int
-probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer)")
 probe: version 2: Err("unsupported debug metadata version 2")
-probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
-probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
-probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
 error: Raise(NodePtr(Pair, 129))  raw frames: 10  truncated: 0
 ----- Python -----
 in <unknown:7b66ec7ffe9c75268278990ad93ae24a839d78488de9f176066c6a6362a0681d>

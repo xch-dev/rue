@@ -4,11 +4,12 @@ function[0] main params=Pair(Pair(Nil, Nil), Pair(Name { name: 0, path: [6], con
 function[1] second params=Pair(Name { name: 3, path: [2], constraint: Integer }, Name { name: 4, path: [3], constraint: Integer })
 function[2] first params=Pair(Name { name: 3, path: [2], constraint: Integer }, Name { name: 4, path: [3], constraint: Integer })
 declared types: x: Int, y: Int, a: Int, b: Int, a: Int, b: Int
-probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer, integer)")
 probe: version 2: Err("unsupported debug metadata version 2")
-probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
-probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
-probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer, integer)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer, integer)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer, integer)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown, integer)")
 error: Raise(NodePtr(SmallAtom, 0))  raw frames: 5  truncated: 0
 ----- Python -----
 in <unknown:7bef588c78e5c0aff2c205ea331143b7c71ef397311ecedae7c5742db9023ed6>

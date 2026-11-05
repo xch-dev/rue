@@ -356,7 +356,7 @@ fn probe_forward_compat(sidecar: &[u8]) {
         node
     }
     type Mutation = fn(&mut Allocator, &mut Vec<NodePtr>);
-    let mutations: [(&str, Mutation); 5] = [
+    let mutations: [(&str, Mutation); 6] = [
         ("extra trailing root field (e.g. producer info)", |a, root| {
             let extra = a.new_atom(b"rue 0.11.0").unwrap();
             root.push(extra);
@@ -386,6 +386,36 @@ fn probe_forward_compat(sidecar: &[u8]) {
             functions[0] = make_list(a, &first);
             root[7] = make_list(a, &functions);
         }),
+        ("extra: unknown constraint tag 99 on first named parameter", |a, root| {
+            // Rewrite the first `(1 name path (tag ...))` parameter record found in the function table.
+            fn rewrite(a: &mut Allocator, node: NodePtr) -> Option<NodePtr> {
+                let SExp::Pair(..) = a.sexp(node) else { return None };
+                let items = list_items(a, node);
+                if items.len() >= 4 && a.atom(items[0]).as_ref() == [1] {
+                    if let SExp::Pair(..) = a.sexp(items[3]) {
+                        let tag = a.new_small_number(99).unwrap();
+                        let constraint = make_list(a, &[tag]);
+                        let mut items = items.clone();
+                        items[3] = constraint;
+                        return Some(make_list(a, &items));
+                    }
+                }
+                for (i, &item) in items.iter().enumerate() {
+                    if let Some(new) = rewrite(a, item) {
+                        let mut items = items.clone();
+                        items[i] = new;
+                        return Some(make_list(a, &items));
+                    }
+                }
+                None
+            }
+            let functions = list_items(a, root[7]);
+            let mut first = list_items(a, functions[0]);
+            first[2] = rewrite(a, first[2]).expect("named parameter");
+            let mut functions = functions.clone();
+            functions[0] = make_list(a, &first);
+            root[7] = make_list(a, &functions);
+        }),
     ];
     for (label, mutate) in mutations {
         let mut a = Allocator::new();
@@ -394,7 +424,26 @@ fn probe_forward_compat(sidecar: &[u8]) {
         mutate(&mut a, &mut root);
         let node = make_list(&mut a, &root);
         let bytes = node_to_bytes(&a, node).unwrap();
-        let result = DebugMetadata::decode(&bytes).map(|_| "accepted");
+        let result = DebugMetadata::decode(&bytes).map(|decoded| {
+            let constraints: Vec<String> = decoded
+                .functions
+                .first()
+                .map(|function| collect_constraints(&function.parameters))
+                .unwrap_or_default();
+            format!("accepted (first function constraints: {})", constraints.join(", "))
+        });
         println!("probe: {label}: {result:?}");
+    }
+}
+
+fn collect_constraints(parameter: &DebugParameter) -> Vec<String> {
+    match parameter {
+        DebugParameter::Nil => Vec::new(),
+        DebugParameter::Name { constraint, .. } => vec![constraint.to_string()],
+        DebugParameter::Pair(left, right) => {
+            let mut result = collect_constraints(left);
+            result.extend(collect_constraints(right));
+            result
+        }
     }
 }

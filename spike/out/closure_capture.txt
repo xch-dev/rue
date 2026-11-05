@@ -4,11 +4,12 @@ function[0] main params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: In
 function[1] <lambda> params=Pair(Name { name: 0, path: [2], constraint: Integer }, Pair(Name { name: 3, path: [6], constraint: Integer }, Nil))
 function[2] total params=Pair(Nil, Pair(Name { name: 1, path: [6], constraint: ProperList }, Name { name: 5, path: [7], constraint: Unknown }))
 declared types: limit: Int, items: List<Int>, limit: Int, item: Int, items: List<Int>, f: fn(item: Int) -> Int
-probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer, proper-list)")
 probe: version 2: Err("unsupported debug metadata version 2")
-probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
-probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
-probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer, proper-list)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer, proper-list)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer, proper-list)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown, proper-list)")
 error: Raise(NodePtr(Bytes, 0))  raw frames: 15  truncated: 0
 ----- Python -----
 in <unknown:de036849b355a0dc86e095feb908411059aa5f485afc0f9179501d6b83401bc9>

@@ -5,11 +5,12 @@ function[1] by_tuple params=Name { name: 3, path: [1], constraint: Pair }
 function[2] by_destructure params=Name { name: 5, path: [1], constraint: Unknown }
 function[3] by_struct params=Name { name: 0, path: [1], constraint: Unknown }
 declared types: payment: Payment, pair: (Int, Int), (low, high): (Int, Int), { puzzle_hash, amount }: Payment, payment: Payment
-probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: unknown, pair)")
 probe: version 2: Err("unsupported debug metadata version 2")
-probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
-probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
-probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: unknown, pair)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: unknown, pair)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: unknown, pair)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown, pair)")
 error: Raise(NodePtr(Bytes, 0))  raw frames: 5  truncated: 0
 ----- Python -----
 in <unknown:b7403ef0f8b7585f1cfc34206feb688b608e63374f6becd2c168070835c9cd47>

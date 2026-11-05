@@ -2,11 +2,12 @@ program: (a (q 18 2 (q . 2)) (c (a (i (> (q . 10) 2) (q 8 (q . "raise called at 
 program bytes: 111, sidecar bytes: 1190, spans: 9, functions: 1
 function[0] main params=Pair(Name { name: 0, path: [2], constraint: Integer }, Nil)
 declared types: x: Int
-probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer)")
 probe: version 2: Err("unsupported debug metadata version 2")
-probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
-probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
-probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
 error: Raise(NodePtr(Pair, 43))  raw frames: 4  truncated: 0
 ----- Python -----
 File "inline_fail.rue", line 1, column 24, in main
