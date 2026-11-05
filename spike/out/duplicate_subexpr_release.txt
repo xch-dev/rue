@@ -1,0 +1,52 @@
+program: (a (q 16 (a 6 (c 5 11)) (a 4 (c 11 5))) (c (c (q 2 (i (> 2 ()) (q 18 2 3) (q 8)) 1) (q 2 (i (> 2 ()) (q 16 2 3) (q 8)) 1)) 1))
+program bytes: 119, sidecar bytes: 1865, spans: 9, functions: 3
+function[0] main params=Pair(Pair(Nil, Nil), Pair(Name { name: 0, path: [6], constraint: Integer }, Pair(Name { name: 1, path: [14], constraint: Integer }, Nil)))
+function[1] second params=Pair(Name { name: 3, path: [2], constraint: Integer }, Name { name: 4, path: [3], constraint: Integer })
+function[2] first params=Pair(Name { name: 3, path: [2], constraint: Integer }, Name { name: 4, path: [3], constraint: Integer })
+declared types: x: Int, y: Int, a: Int, b: Int, a: Int, b: Int
+probe: extra trailing root field (e.g. producer info): Err("not Chialisp structural debug metadata")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Err("unknown or malformed debug shadow node")
+probe: extra field on a span entry (e.g. byte offsets): Err("malformed debug span entry")
+probe: extra field on a function record (e.g. definition span): Err("malformed debug function record")
+error: Raise(NodePtr(SmallAtom, 0))  raw frames: 5  truncated: 0
+----- Python -----
+in <unknown:7bef588c78e5c0aff2c205ea331143b7c71ef397311ecedae7c5742db9023ed6>
+File "duplicate_subexpr.rue", line 2, column 5, in main
+  first(x, y) + second(y, x)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  x = -1
+  y = 5
+File "duplicate_subexpr.rue", line 2, column 5
+  first(x, y) + second(y, x)
+  ^^^^^^^^^^^
+File "duplicate_subexpr.rue", line 6, column 5, in first
+  assert a > 0;
+  ^^^^^^^^^^^^^
+  a = -1
+  b = 5
+File "duplicate_subexpr.rue", line 6, column 5
+  assert a > 0;
+  ^^^^^^^^^^^^^
+----- Lisp -----
+(<unknown:7bef588c78e5c0aff2c205ea331143b7c71ef397311ecedae7c5742db9023ed6>)
+--> duplicate_subexpr.rue:2:5
+   |
+  2|     first(x, y) + second(y, x)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(main (x integer -1) (y integer 5))
+--> duplicate_subexpr.rue:2:5
+   |
+  2|     first(x, y) + second(y, x)
+   |     ^^^^^^^^^^^
+(<unknown:20342a30a42718e515b814ce306f5d0c7d2b21cbf2fc7baa65d2552f9723d9ab>)
+--> duplicate_subexpr.rue:6:5
+   |
+  6|     assert a > 0;
+   |     ^^^^^^^^^^^^^
+(first (a integer -1) (b integer 5))
+--> duplicate_subexpr.rue:6:5
+   |
+  6|     assert a > 0;
+   |     ^^^^^^^^^^^^^
+(<unknown:044ebff3ad6d351856fd37d38c599ad0e416aa8a22621d8c13c27e24561f7f77>)

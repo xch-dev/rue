@@ -1,13 +1,138 @@
 # Rue × chialisp #579 debug sidecar: gap report
 
-Spike: make Rue emit the #579 sidecar (chialisp `d65c2f9f`, clvmr `05e31346` with `pre-eval`), run failing
-programs with `run_program_with_diagnostics`, render them with `format_captured_stack`, and record where the
-format cannot express what Rue needs.
+Spike: make Rue emit the #579 sidecar, run failing programs with `run_program_with_diagnostics`, render them with
+`format_captured_stack`, and record where the format cannot express what Rue needs.
 
-All tracebacks below are verbatim Python-style output; the full output for each case (both styles, the program,
-the function records, and the probe results) is in `spike/out/*.txt`. Run `spike/run.sh` to regenerate it.
+- **Currently tested:** chialisp `014255b9dbbcb4943b8e7fcecbcd09de1ea5fd9b` (#579 head after
+  `11c100fb` and `014255b9`). clvmr is still pinned at `05e31346` with `pre-eval`; chialisp didn't move it.
+- **Originally tested:** chialisp `d65c2f9f`. The original findings are kept below the re-test section. Every
+  output in `spike/out/` was regenerated against `014255b9`.
 
-## Summary
+All tracebacks below are verbatim Python-style output. The full output for each case (both styles, the program,
+the function records and the probe results) is in `spike/out/*.txt`. Run `spike/run.sh` to regenerate it.
+
+## Re-test against `014255b9`
+
+The Rue emitter needed **no changes**. The public types (`DebugMetadata`, `DebugNode`, `DebugParameter`,
+`DebugFunction`, `ParameterConstraint`) and the encoding are unchanged. The only public API change is the new
+`FrameMatch::Ambiguous` variant.
+
+**Format, checked by the decoder probe:** still version 1, magic `CHIALISP_DEBUG`, coordinates `(1 8)`, and exact
+field counts everywhere. All five probes are rejected with the same errors as before, in every case
+(`grep probe out/*.txt`). The changes are all in the renderer:
+- frames that match more than one shadow node are reported as `Ambiguous`;
+- the search is scoped to the enclosing frame's subtree, falling back to the whole tree;
+- curries ending in `()` are accepted;
+- an empty tail parameter is no longer labeled `bound`;
+- a destructured parameter that receives an atom now renders its pattern instead of failing.
+
+### Status of every report item
+
+| ID | Before (`d65c2f9`) | After (`014255b9`) | Evidence |
+|---|---|---|---|
+| H1 inlining | confirmed | **unchanged** | `out/inline_fail.txt` identical: line 2 call site still missing, inline body still anonymous |
+| H2 function location | confirmed | **unchanged** | `in outer` still points at the `{` (5:29); `in inner` at the first assert (11:5) |
+| H3 calling convention | not a blocker | **unchanged (not a blocker)** | `closure_capture`, `nested_assert`, `struct_*` outputs identical |
+| H3a declaration order | open | **unchanged** | `total(f, items)` still lists `items` before `f` |
+| H3b `bound` on empty tail | renderer bug | **fixed** | `in countdown  # bound: acc` → `in countdown` (recursion*, typed_param_values) |
+| H3c `()`-tail curry | unknown frame | **fixed** | `in <unknown:a723…>` → `in <lambda>  # bound: x` with `x = 3` (closure_no_params) |
+| H3d `Nil` = skip slot | undocumented | **unchanged** | spec text not touched |
+| H4 types | confirmed | **unchanged** | still `amount = "hell"`, `memo = 26729`, `enabled = ()` |
+| H5 strict decoder | confirmed | **unchanged** | 5/5 probes rejected, same error strings |
+| H6a tab columns | confirmed | **unchanged** | Rue `7:3`, sidecar still `line 7, column 16` (recursion_tabs) |
+| H6b producer / magic | confirmed | **unchanged** | magic `CHIALISP_DEBUG`, 9-field root, no producer field (probe 1) |
+| H6c identity hash | confirmed | **unchanged** | still SHA-256 of serialized bytes (`program_sha256`) |
+| N1 identical subtrees | misattributed | **partly fixed** | identical bodies: `in second … b = -1` → `in <ambiguous: first \| second>` (no longer wrong, still unresolved); identical sub-expression in distinct bodies: leaf line 11 → line 6 (resolved) |
+| N2 `let` locals | only by faking a function | **unchanged** | `out/nested_assert_let_scopes.txt` identical |
+| N3 as-pattern parameters | not expressible | **unchanged** | `DebugParameter` still `Nil`/`Name`/`Pair`; struct_destructure identical |
+| N4a `<unknown:hash>` plumbing frame | renderer issue | **unchanged** | first line of nested_assert, closure_capture, recursion, … |
+| N4b closure frame shown twice | renderer issue | **unchanged, now wider** | parameterless closures now also render `in <lambda>` twice (closure_no_params), a side effect of fixing H3c |
+| N5 size | informational | **unchanged** | sidecar byte counts identical (e.g. recursion 1616) |
+| E1 tolerant decoder | requested | **not done** | probes |
+| Table rows 1, 2, 3a, 4, 6a–6c, N2, N3 | requested | **not done** | no new fields or tags in the encoder or decoder |
+| Table rows 3b, 3c | requested | **done** | see H3b, H3c |
+| Table row N1 (report ambiguity) | requested | **done**, plus scoped search | see N1 |
+| Table row N4 | requested | **not done** | see N4a, N4b |
+
+### N1 in detail
+
+**Identical function bodies** (`duplicate_bodies.rue`, release, `first(x)` fails with `x = -1`):
+
+Before:
+```
+File "duplicate_bodies.rue", line 2, column 5
+  first(x) + second(y)
+  ^^^^^^^^
+File "duplicate_bodies.rue", line 11, column 5, in second
+  assert b > 0;
+  ^^^^^^^^^^^^^
+  b = -1
+```
+After:
+```
+File "duplicate_bodies.rue", line 2, column 5
+  first(x) + second(y)
+  ^^^^^^^^
+in <ambiguous: first | second>
+  arguments = [-1]
+in <ambiguous>
+  arguments = [-1]
+```
+
+This is honest now, but still unresolved, and the leaf `assert` frame has lost its location along with its name.
+
+The enclosing-frame scope can't help here, because of how Rue lays out functions. A callee's body isn't inside
+its caller's subtree. All function bodies are quoted into `main`'s capture wrapper, `(c (c (q . A) (q . B)) 1)`,
+and `main`'s body only reaches them through environment paths (`(a 6 …)`). So the search finds nothing in the
+caller's scope, falls back to the whole tree, and finds both bodies. Chialisp's `defun`s have the same shape
+(they live in the left environment), so this probably affects Chialisp too.
+
+**What would resolve it:**
+- *Renderer:* follow the parent frame. Take the path the caller applied (`6`), resolve it in the caller's
+  environment, and find which quoted shadow subtree was bound into that slot.
+- *Format:* a per-node "bound at" link from each function record to the capture slot that carries it.
+
+**Identical sub-expression inside distinct bodies** (new case `duplicate_subexpr.rue`, release; `first(-1, 5)`
+fails). The bodies differ, but both contain the identical raise `(q 8)`.
+
+Before (`d65c2f9`, rebuilt for this comparison):
+```
+File "duplicate_subexpr.rue", line 6, column 5, in first
+  assert a > 0;
+  ...
+File "duplicate_subexpr.rue", line 11, column 5
+  assert a > 0;
+```
+After:
+```
+File "duplicate_subexpr.rue", line 6, column 5, in first
+  assert a > 0;
+  ...
+File "duplicate_subexpr.rue", line 6, column 5
+  assert a > 0;
+```
+
+The leaf frame used to land in `second` (line 11). With the enclosing `first` body as its scope, it now resolves
+correctly.
+
+### New problems introduced by the update
+
+- **Ambiguous frames lose their location.** An ambiguous leaf renders as a bare `in <ambiguous>` with no
+  file or line, even when every candidate shares a function or is in the same file. Before, it showed one
+  candidate's location, which could be wrong. Showing every candidate location, or the span they have in
+  common, would keep some information.
+- **Ambiguous frames list arguments as a raw positional list** (`arguments = [-1]`), even when every candidate's
+  parameter tree agrees on the names (here `a` and `b` have the same shape and constraint).
+- **N4b now also affects parameterless closures**, a consequence of fixing H3c.
+
+---
+
+# Original findings (`d65c2f9`)
+
+The sections below are the original analysis, unchanged except for status markers. Wherever they quote output
+that the update changed, the re-test section above has the new output.
+
+## Summary (as of `d65c2f9`)
 
 | # | Hypothesis | Verdict for Rue |
 |---|---|---|
@@ -87,7 +212,7 @@ Since this isn't "no spans at all", I added side tables to thread them through, 
 
 ## Hypotheses
 
-### 1. Inlining: confirmed
+### 1. Inlining: confirmed (unchanged in `014255b9`)
 
 `inline_fail.rue`: `let y = checked_sub(x, 10);` on line 2 calls `inline fn checked_sub`, which raises.
 
@@ -117,7 +242,7 @@ The same thing happens without `inline` whenever release builds auto-inline a fu
 `(call_span, function, parent_site)`. The renderer turns each site into a synthetic frame. Optionally, also give
 each inline site argument bindings, each either `(path P)` or `(const V)`.
 
-### 2. Function location: confirmed
+### 2. Function location: confirmed (unchanged in `014255b9`)
 
 A function frame's location is the span of its body's root node, and that depends on the body's shape:
 
@@ -130,7 +255,7 @@ moving the root node's span to the definition loses that node's own expression l
 
 **Smallest fix:** an optional `definition_span` on `DebugFunction`.
 
-### 3. Calling convention: not confirmed as a blocker
+### 3. Calling convention: not confirmed as a blocker (3b and 3c fixed in `014255b9`)
 
 The parameter tree mirrors the real environment and uses `Nil` for hidden slots. `top_level_parameters` plus
 tail reconstruction then turns out to be equivalent to structural destructuring. Every layout tested bound
@@ -186,7 +311,7 @@ Problems found:
 - **3d.** `Nil` means "consume a slot, bind nothing". That's what lets Rue hide plumbing, but the spec should say
   so explicitly, so readers don't treat it as "expects nil".
 
-### 4. Types: confirmed
+### 4. Types: confirmed (unchanged in `014255b9`)
 
 `typed_param.rue` with `amount: Int = 1751477356`, `memo: String = "hi"`, `enabled: Bool = false`:
 
@@ -214,7 +339,7 @@ open set (`int`, `bytes`, `string`, `bool`, `pubkey`, `fn`, …) that the render
 Struct field decoding can come later through the same extension point, e.g. a type table of
 `(name, ((field . path) …))`.
 
-### 5. No room to grow: confirmed
+### 5. No room to grow: confirmed (unchanged in `014255b9`)
 
 The probe runs in every case (`probe:` lines in `out/*.txt`). It changes a real Rue sidecar and decodes it with
 the v1 reader:
@@ -238,7 +363,7 @@ Constraint tags are also a closed set (unknown tag → error), and the coordinat
 
 This only helps if it lands **before merge**: readers already deployed can't be retrofitted.
 
-### 6. Smaller issues: confirmed
+### 6. Smaller issues: confirmed (unchanged in `014255b9`)
 
 - **6a. Columns.** In `recursion_tabs.rue`, `\t\traise "hit zero";` is reported by Rue as
   `raise called at recursion_tabs.rue:7:3`, while the sidecar stores and renders `line 7, column 16`. Columns are
@@ -256,7 +381,7 @@ This only helps if it lands **before merge**: readers already deployed can't be 
 
 ## New gaps
 
-### N1. Identical subtrees are misattributed
+### N1. Identical subtrees are misattributed (partly fixed in `014255b9`)
 
 `exact_tree_match` returns the first matching subtree in depth-first order. In release builds `first` and
 `second` compile to byte-identical bodies, `(2 (i (> 1 ()) (q 18 1 1) (q 8)) 1)`. In `duplicate_bodies.rue`
@@ -282,7 +407,7 @@ as ambiguous (`first | second`) rather than picking one.
 **Real fix (outside the format):** let frames carry their position, e.g. the path of the node inside its parent
 frame's program, so the renderer can follow the call chain.
 
-### N2. `let` locals can't be shown
+### N2. `let` locals can't be shown (unchanged in `014255b9`)
 
 Each Rue `let` group is a CLVM apply frame `(BINDINGS . PARENT_ENV)`. The only way to name its bindings is to
 pretend the scope is a function (`SPIKE_LET_SCOPES=1`, `out/nested_assert_let_scopes.txt`):
@@ -301,7 +426,7 @@ That works, but the result reads as an extra call. **Fix:** an optional `kind` o
 (`function` | `scope` | `inline`). The renderer folds `scope` frames into the enclosing function frame, as
 locals. The same field would cover hypothesis 1's inline sites.
 
-### N3. A destructured parameter can't name both the whole and its parts
+### N3. A destructured parameter can't name both the whole and its parts (unchanged in `014255b9`)
 
 `DebugParameter` is `Name` *or* `Pair`. Rue patterns like `{ x, ...point }`, and the common need to show
 `payment = …` alongside `amount = 100`, need a name with sub-structure (an as-pattern). Chialisp's `@` patterns
@@ -315,7 +440,7 @@ File "struct_param.rue", line 15, column 5, in by_destructure
 
 **Fix:** an optional `inner: DebugParameter` on `Name`, additive with E1.
 
-### N4. Renderer issues (no format change)
+### N4. Renderer issues (no format change; unchanged in `014255b9`, and the duplicate-frame issue now also affects parameterless closures)
 
 - A node that matches exactly but has no span, function or label renders as `in <unknown:hash>`, which looks
   like a symbolization failure. Rue's main capture wrapper produces this as the first line of almost every
@@ -325,13 +450,15 @@ File "struct_param.rue", line 15, column 5, in by_destructure
   the same location and arguments. Identical frames are collapsed only when the raw program and environment are
   identical; collapsing on (function, span, rendered arguments) would merge these.
 
-### N5. Size (informational)
+### N5. Size (informational; unchanged in `014255b9`)
 
 The shadow tree repeats every node and atom value, and each file's full source is embedded. A 142-byte program
 gives a 1616-byte sidecar (`recursion.rue`); the cases here range from 1.2 to 3.1 KB. That's fine for local
 debugging. It's only worth revisiting if sidecars get published next to puzzles.
 
 ## Proposed changes, and whether they break after #579 merges
+
+Status in `014255b9`: 3b, 3c and N1 are done in the renderer. Nothing else is done, E1 included, so the "without E1" column still applies.
 
 "With E1" means E1 lands before merge.
 
@@ -361,4 +488,4 @@ debugging. It's only worth revisiting if sidecars get published next to puzzles.
   - `rue-lir` `codegen.rs` (`DEBUG_TAGGING`) and `optimize.rs` (`OPT_TRACE`). `OPT_TRACE` is always on and never
     cleared, so it leaks in long-running processes such as the LSP. That's fine for a spike.
 - `spike/rue-debug-spike/src/main.rs`: sidecar builder, runner, renderer and forward-compatibility probe.
-- `spike/cases/*.rue`: the test programs. `spike/out/*.txt`: rendered output. `spike/run.sh`: regenerates `out/`.
+- `spike/cases/*.rue`: the test programs, including `duplicate_subexpr.rue`, added for the re-test. `spike/out/*.txt`: rendered output. `spike/run.sh`: regenerates `out/`.

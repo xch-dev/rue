@@ -20,13 +20,10 @@ File "duplicate_bodies.rue", line 2, column 5, in main
 File "duplicate_bodies.rue", line 2, column 5
   first(x) + second(y)
   ^^^^^^^^
-File "duplicate_bodies.rue", line 11, column 5, in second
-  assert b > 0;
-  ^^^^^^^^^^^^^
-  b = -1
-File "duplicate_bodies.rue", line 11, column 5
-  assert b > 0;
-  ^^^^^^^^^^^^^
+in <ambiguous: first | second>
+  arguments = [-1]
+in <ambiguous>
+  arguments = [-1]
 ----- Lisp -----
 (<unknown:f4ba7dfa361e76a742f7488faa16093787060f97c38e14eb5837aae093b28c93>)
 --> duplicate_bodies.rue:2:5
@@ -39,13 +36,5 @@ File "duplicate_bodies.rue", line 11, column 5
   2|     first(x) + second(y)
    |     ^^^^^^^^
 (<unknown:571f378c3ed74fd73ab3b2bffcd666fc8ea06feb0aea2657ad3e8df88f2711b2>)
---> duplicate_bodies.rue:11:5
-   |
- 11|     assert b > 0;
-   |     ^^^^^^^^^^^^^
-(second (b integer -1))
---> duplicate_bodies.rue:11:5
-   |
- 11|     assert b > 0;
-   |     ^^^^^^^^^^^^^
-(<unknown:044ebff3ad6d351856fd37d38c599ad0e416aa8a22621d8c13c27e24561f7f77>)
+(<ambiguous: first | second> (arguments unknown (-1)))
+(<ambiguous> (arguments unknown (-1)))

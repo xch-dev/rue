@@ -15,7 +15,7 @@ File "recursion.rue", line 2, column 5, in main
   countdown(n, 0)
   ^^^^^^^^^^^^^^^
   n = 3
-File "recursion.rue", line 5, column 39, in countdown  # bound: acc
+File "recursion.rue", line 5, column 39, in countdown
   fn countdown(n: Int, acc: Int) -> Int {
                                         ^
   n = 3
@@ -58,7 +58,7 @@ File "recursion.rue", line 7, column 9
    |
   5| fn countdown(n: Int, acc: Int) -> Int {
    |                                       ^
-(countdown (n integer 3) (acc integer ())) ; bound: acc
+(countdown (n integer 3) (acc integer ()))
 --> recursion.rue:9:5
    |
   9|     countdown(n - 1, acc + n)

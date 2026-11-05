@@ -15,7 +15,7 @@ File "recursion_tabs.rue", line 2, column 8, in main
   countdown(n, 0)
   ^^^^^^^^^^^^^^^
   n = 1
-File "recursion_tabs.rue", line 5, column 39, in countdown  # bound: acc
+File "recursion_tabs.rue", line 5, column 39, in countdown
   fn countdown(n: Int, acc: Int) -> Int {
                                         ^
   n = 1
@@ -42,7 +42,7 @@ File "recursion_tabs.rue", line 7, column 16
    |
   5| fn countdown(n: Int, acc: Int) -> Int {
    |                                       ^
-(countdown (n integer 1) (acc integer ())) ; bound: acc
+(countdown (n integer 1) (acc integer ()))
 --> recursion_tabs.rue:9:8
    |
   9|        countdown(n - 1, acc + n)

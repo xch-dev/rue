@@ -20,7 +20,7 @@ File "typed_param.rue", line 2, column 5, in main
   amount = "hell"
   memo = 26729
   enabled = ()
-File "typed_param.rue", line 6, column 5, in validate  # bound: enabled
+File "typed_param.rue", line 6, column 5, in validate
   assert enabled;
   ^^^^^^^^^^^^^^^
   owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -42,7 +42,7 @@ File "typed_param.rue", line 6, column 5
    |
   6|     assert enabled;
    |     ^^^^^^^^^^^^^^^
-(validate (owner bytes[48] 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) (target bytes[32] 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) (amount integer "hell") (memo atom 26729) (enabled atom ())) ; bound: enabled
+(validate (owner bytes[48] 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) (target bytes[32] 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) (amount integer "hell") (memo atom 26729) (enabled atom ()))
 --> typed_param.rue:6:5
    |
   6|     assert enabled;

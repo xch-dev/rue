@@ -22,4 +22,5 @@ run recursion cases/recursion.rue "(3)"
 run recursion_release cases/recursion.rue "(3)" release
 run recursion_tabs cases/recursion_tabs.rue "(1)"
 run duplicate_bodies_release cases/duplicate_bodies.rue "(-1 5)" release
+run duplicate_subexpr_release cases/duplicate_subexpr.rue "(-1 5)" release
 rm -f cases/*.sym.clvm

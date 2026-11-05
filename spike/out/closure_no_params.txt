@@ -29,7 +29,10 @@ File "closure_no_params.rue", line 10, column 5, in run
 File "closure_no_params.rue", line 10, column 5
   f() * 2
   ^^^
-in <unknown:a72366285622bb61ff75effd4a68e9f7d069dc8311b6126a7abecf9a544f9764>
+File "closure_no_params.rue", line 3, column 9, in <lambda>  # bound: x
+  assert x > 5;
+  ^^^^^^^^^^^^^
+  x = 3
 File "closure_no_params.rue", line 3, column 9, in <lambda>
   assert x > 5;
   ^^^^^^^^^^^^^
@@ -64,7 +67,11 @@ File "closure_no_params.rue", line 3, column 9
  10|     f() * 2
    |     ^^^
 (<unknown:85d2b8bdcd8aff6cab73e1be5c4418fe681905bf6f684ddade9123939168d0d5>)
-(<unknown:a72366285622bb61ff75effd4a68e9f7d069dc8311b6126a7abecf9a544f9764>)
+--> closure_no_params.rue:3:9
+   |
+  3|         assert x > 5;
+   |         ^^^^^^^^^^^^^
+(<lambda> (x integer 3)) ; bound: x
 --> closure_no_params.rue:3:9
    |
   3|         assert x > 5;
