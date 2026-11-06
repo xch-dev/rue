@@ -1,0 +1,61 @@
+program: (a (q 16 (+ (a 14 5) (a 10 5)) (a 4 11)) (c (c (q 2 (i (> (r 1) (f 1)) (q 17 (r 1) (f 1)) (q 8 (q . "assertion failed at struct_param.rue:20:5"))) 1) (c (q 2 (i (not (= (f 1) (sha256 (q . "burn")))) (q 5 (r 1)) (q 8 (q . "assertion failed at struct_param.rue:15:5"))) 1) (q 5 (r 1)))) 1))
+program bytes: 261, sidecar bytes: 3020, spans: 21, functions: 4
+function[0] main params=Pair(Pair(Nil, Pair(Nil, Nil)), Pair(Name { name: 0, path: [6], constraint: Unknown }, Pair(Name { name: 1, path: [14], constraint: Pair }, Nil)))
+function[1] by_tuple params=Name { name: 3, path: [1], constraint: Pair }
+function[2] by_destructure params=Name { name: 5, path: [1], constraint: Unknown }
+function[3] by_struct params=Name { name: 0, path: [1], constraint: Unknown }
+declared types: payment: Payment, pair: (Int, Int), (low, high): (Int, Int), { puzzle_hash, amount }: Payment, payment: Payment
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: unknown, pair)")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: unknown, pair)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: unknown, pair)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: unknown, pair)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown, pair)")
+error: Raise(NodePtr(Bytes, 2))  raw frames: 6  truncated: 0
+----- Python -----
+in <unknown:b7403ef0f8b7585f1cfc34206feb688b608e63374f6becd2c168070835c9cd47>
+File "struct_param.rue", line 7, column 5, in main
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  payment = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+  pair = (3 . 5)
+File "struct_param.rue", line 7, column 5
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "struct_param.rue", line 7, column 26
+  by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+                       ^^^^^^^^^^^^^^^^^^^^^^^
+File "struct_param.rue", line 15, column 5, in by_destructure
+  assert puzzle_hash != sha256("burn");
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  { puzzle_hash, amount } = (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)
+File "struct_param.rue", line 15, column 5
+  assert puzzle_hash != sha256("burn");
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+----- Lisp -----
+(<unknown:b7403ef0f8b7585f1cfc34206feb688b608e63374f6becd2c168070835c9cd47>)
+--> struct_param.rue:7:5
+   |
+  7|     by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(main (payment unknown (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)) (pair pair (3 . 5)))
+--> struct_param.rue:7:5
+   |
+  7|     by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:884d807273581a5c3538cf8b6ccbc0ef51b0b6e76099975cc5a3cd7e7753f7db>)
+--> struct_param.rue:7:26
+   |
+  7|     by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:adf38abccd386a76ca396d6d1d6bf6340cc9c45a85ed1bdce6898d905b33aaa6>)
+--> struct_param.rue:15:5
+   |
+ 15|     assert puzzle_hash != sha256("burn");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(by_destructure ({ puzzle_hash, amount } unknown (0x859facc5a4c9b80ac2eef78916c1953bcccaab6014bb11b9de8337430ea34f0c 100)))
+--> struct_param.rue:15:5
+   |
+ 15|     assert puzzle_hash != sha256("burn");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:06d8ce3f79256b9b3f3207ec28776f473ff3d91919a62b34c5d43f6a77a21271>)

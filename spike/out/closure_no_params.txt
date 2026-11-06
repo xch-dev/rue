@@ -1,0 +1,85 @@
+program: (a (q 2 (q 16 (a 5 2) (q . 1)) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 2 (q . 5)) (q . 2) (q 8 (q . "assertion failed at closure_no_params.rue:3:9"))) 1)) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) 1)) (c (q 18 (a 1 ()) (q . 2)) 1))
+program bytes: 194, sidecar bytes: 2185, spans: 12, functions: 3
+function[0] main params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Nil))
+function[1] <lambda> params=Pair(Name { name: 0, path: [2], constraint: Integer }, Nil)
+function[2] run params=Name { name: 3, path: [1], constraint: Unknown }
+declared types: x: Int, x: Int, f: fn() -> Int
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer)")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
+error: Raise(NodePtr(Bytes, 0))  raw frames: 9  truncated: 0
+----- Python -----
+in <unknown:73dad94bdd2cd2c24f76b673257dba31334a08e0b25b38478fa4cab75da1d8c5>
+File "closure_no_params.rue", line 1, column 24, in main
+  fn main(x: Int) -> Int {
+                         ^
+  x = 3
+File "closure_no_params.rue", line 6, column 5
+  run(check) + 1
+  ^^^^^^^^^^^^^^
+File "closure_no_params.rue", line 6, column 5
+  run(check) + 1
+  ^^^^^^^^^^
+File "closure_no_params.rue", line 10, column 5, in run
+  f() * 2
+  ^^^^^^^
+  f = (2 (1 2 (...) 1) (4 (...) ()))
+File "closure_no_params.rue", line 10, column 5
+  f() * 2
+  ^^^
+File "closure_no_params.rue", line 3, column 9, in <lambda>  # bound: x
+  assert x > 5;
+  ^^^^^^^^^^^^^
+  x = 3
+File "closure_no_params.rue", line 3, column 9, in <lambda>
+  assert x > 5;
+  ^^^^^^^^^^^^^
+  x = 3
+File "closure_no_params.rue", line 3, column 9
+  assert x > 5;
+  ^^^^^^^^^^^^^
+----- Lisp -----
+(<unknown:73dad94bdd2cd2c24f76b673257dba31334a08e0b25b38478fa4cab75da1d8c5>)
+--> closure_no_params.rue:1:24
+   |
+  1| fn main(x: Int) -> Int {
+   |                        ^
+(main (x integer 3))
+--> closure_no_params.rue:6:5
+   |
+  6|     run(check) + 1
+   |     ^^^^^^^^^^^^^^
+(<unknown:3c2eeea6f11e5e7e53df480e6fbf02bbe4aab8904cd3d20160de748bef4d8e99>)
+--> closure_no_params.rue:6:5
+   |
+  6|     run(check) + 1
+   |     ^^^^^^^^^^
+(<unknown:bbf68fcf17a2a00e2cc16d30a558734fc795a8ab0393d714a1ef57ce3a29c3ff>)
+--> closure_no_params.rue:10:5
+   |
+ 10|     f() * 2
+   |     ^^^^^^^
+(run (f unknown (2 (1 2 (...) 1) (4 (...) ()))))
+--> closure_no_params.rue:10:5
+   |
+ 10|     f() * 2
+   |     ^^^
+(<unknown:85d2b8bdcd8aff6cab73e1be5c4418fe681905bf6f684ddade9123939168d0d5>)
+--> closure_no_params.rue:3:9
+   |
+  3|         assert x > 5;
+   |         ^^^^^^^^^^^^^
+(<lambda> (x integer 3)) ; bound: x
+--> closure_no_params.rue:3:9
+   |
+  3|         assert x > 5;
+   |         ^^^^^^^^^^^^^
+(<lambda> (x integer 3))
+--> closure_no_params.rue:3:9
+   |
+  3|         assert x > 5;
+   |         ^^^^^^^^^^^^^
+(<unknown:aace31e89aa34284e68c8515ac2d0d70fa2db783f9524f21411b68817c362af9>)

@@ -1,0 +1,41 @@
+program: (a (q 16 (a 6 5) (a 4 11)) (c (c (q 2 (i (> 1 ()) (q 18 1 1) (q 8)) 1) (q 2 (i (> 1 ()) (q 18 1 1) (q 8)) 1)) 1))
+program bytes: 107, sidecar bytes: 1678, spans: 9, functions: 3
+function[0] main params=Pair(Pair(Nil, Nil), Pair(Name { name: 0, path: [6], constraint: Integer }, Pair(Name { name: 1, path: [14], constraint: Integer }, Nil)))
+function[1] second params=Name { name: 3, path: [1], constraint: Integer }
+function[2] first params=Name { name: 5, path: [1], constraint: Integer }
+declared types: x: Int, y: Int, b: Int, a: Int
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer, integer)")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer, integer)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer, integer)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer, integer)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown, integer)")
+error: Raise(NodePtr(SmallAtom, 0))  raw frames: 5  truncated: 0
+----- Python -----
+in <unknown:f4ba7dfa361e76a742f7488faa16093787060f97c38e14eb5837aae093b28c93>
+File "duplicate_bodies.rue", line 2, column 5, in main
+  first(x) + second(y)
+  ^^^^^^^^^^^^^^^^^^^^
+  x = -1
+  y = 5
+File "duplicate_bodies.rue", line 2, column 5
+  first(x) + second(y)
+  ^^^^^^^^
+in <ambiguous: first | second>
+  arguments = [-1]
+in <ambiguous>
+  arguments = [-1]
+----- Lisp -----
+(<unknown:f4ba7dfa361e76a742f7488faa16093787060f97c38e14eb5837aae093b28c93>)
+--> duplicate_bodies.rue:2:5
+   |
+  2|     first(x) + second(y)
+   |     ^^^^^^^^^^^^^^^^^^^^
+(main (x integer -1) (y integer 5))
+--> duplicate_bodies.rue:2:5
+   |
+  2|     first(x) + second(y)
+   |     ^^^^^^^^
+(<unknown:571f378c3ed74fd73ab3b2bffcd666fc8ea06feb0aea2657ad3e8df88f2711b2>)
+(<ambiguous: first | second> (arguments unknown (-1)))
+(<ambiguous> (arguments unknown (-1)))

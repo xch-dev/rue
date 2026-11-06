@@ -1,0 +1,11 @@
+fn main(x: Int) -> Int {
+    let y = checked_sub(x, 10);
+    y * 2
+}
+
+inline fn checked_sub(a: Int, b: Int) -> Int {
+    if a < b {
+        raise "underflow";
+    }
+    a - b
+}

@@ -1,0 +1,14 @@
+fn main(limit: Int, items: List<Int>) -> Int {
+    let check = fn(item: Int) => {
+        assert item < limit;
+        item
+    };
+    total(check, items)
+}
+
+fn total(f: fn(item: Int) -> Int, items: List<Int>) -> Int {
+    if items is nil {
+        return 0;
+    }
+    f(items.first) + total(f, items.rest)
+}

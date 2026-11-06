@@ -1,0 +1,13 @@
+fn main(amount: Int) -> Int {
+    outer(amount) + 1
+}
+
+fn outer(value: Int) -> Int {
+    let doubled = value * 2;
+    inner(doubled, value) + doubled
+}
+
+fn inner(total: Int, base: Int) -> Int {
+    assert total > 100;
+    total - base
+}
