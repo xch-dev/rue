@@ -187,6 +187,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 expr = self.arena.alloc(Lir::Run(expr, group_env));
             }
 
+            // Main capture setup is allocated outside lower_hir, so it needs its
+            // own source tag. Its environment differs from the function body;
+            // keep the function/parameter tag on the body only.
+            if let Some(srcloc) = self.db.debug.hir_spans.get(&function.body).cloned() {
+                self.db
+                    .debug
+                    .lir_spans
+                    .entry(expr.index())
+                    .or_insert(srcloc);
+            }
+
             expr
         } else if function.kind == FunctionKind::External {
             expr
@@ -759,7 +770,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         lir
     }
 
-    fn lower_raise_inner(&mut self, env: &Environment, hir: Option<HirId>, srcloc: SrcLoc) -> LirId {
+    fn lower_raise_inner(
+        &mut self,
+        env: &Environment,
+        hir: Option<HirId>,
+        srcloc: SrcLoc,
+    ) -> LirId {
         if !self.options.debug_symbols {
             return self.arena.alloc(Lir::Raise(vec![]));
         }
