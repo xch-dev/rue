@@ -276,6 +276,16 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
         }
         Symbol::Binding(binding) => {
             visit_hir(db, graph, binding.value.hir, false);
+
+            // Destructured bindings don't have a let statement of their own, so they're defined
+            // in the same scope as the symbol they destructure. Bindings from let statements
+            // already have an owner, which must be kept rather than replaced by the owner of the
+            // symbol they reference
+            if let Some(reference) = &binding.value.reference
+                && let Some(&owner) = graph.owners.get(&reference.symbol)
+            {
+                graph.owners.entry(symbol).or_insert(owner);
+            }
         }
     }
 
