@@ -1,0 +1,3 @@
+diagnostics:
+- Cannot assign `A0` to `Q<Int>`, since they are incompatible at function_binder_merge_errors.rue:30:22
+- Cannot assign `B0` to `Q<Int>`, since they are incompatible at function_binder_merge_errors.rue:34:22

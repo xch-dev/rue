@@ -1,0 +1,38 @@
+// `Q` binds a new `V` each time it's called, which `A0`'s `U` can't stand for
+type Q<T> = fn<V>(x: V) -> (T | Int, Q<V>);
+type A0 = fn<U>(x: U) -> (Int, A1<U>);
+type A1<U> = fn(x: Any) -> (U, A2<U>);
+type A2<U> = fn(x: U) -> (Int, A1<U>);
+
+// The same, except that only the first `V` flows into `U`
+type B0 = fn<U>(x: U) -> (Int, B1<U>);
+type B1<U> = fn(x: Any) -> (U, B2<U>);
+type B2<U> = fn(x: Any) -> (Int, B1<U>);
+
+fn a1<U>(saved: U) -> A1<U> {
+    fn(_x: Any): (U, A2<U>) => (saved, a2(saved))
+}
+
+fn a2<U>(saved: U) -> A2<U> {
+    fn(_y: U): (Int, A1<U>) => (0, a1(saved))
+}
+
+fn b1<U>(saved: U) -> B1<U> {
+    fn(_x: Any): (U, B2<U>) => (saved, b2(saved))
+}
+
+fn b2<U>(saved: U) -> B2<U> {
+    fn(_y: Any): (Int, B1<U>) => (0, b1(saved))
+}
+
+fn main() -> Int {
+    let a: A0 = fn<U>(x: U): (Int, A1<U>) => (0, a1(x));
+    let qa: Q<Int> = a;
+    let ra: Int = qa((1, 2)).rest(nil).rest(5).rest(nil).first;
+
+    let b: B0 = fn<U>(x: U): (Int, B1<U>) => (0, b1(x));
+    let qb: Q<Int> = b;
+    let rb: Int = qb((1, 2)).rest(nil).rest(5).rest(nil).first;
+
+    ra + rb
+}

@@ -5,6 +5,10 @@ type R = (Int, G2);
 type G2 = fn(x: Int) -> R;
 type G = fn(x: Int) -> R;
 type Endo<T> = fn(x: T) -> T;
+type Q<T> = fn<V>(x: V) -> (T | Int, Q<V>);
+type A0 = fn<U>(x: U) -> (Int, A1<U>);
+type A1<U> = fn(x: Any) -> (Int, A2<U>);
+type A2<U> = fn(x: U) -> (Int, A1<U>);
 
 fn identity<T>(value: T) -> T {
     value
@@ -25,6 +29,22 @@ fn make_id<T>() -> Endo<T> {
 
 fn ff<U>(x: U) -> (U, F) {
     (x, ff)
+}
+
+fn a1<U>(saved: U) -> A1<U> {
+    fn(_x: Any): (Int, A2<U>) => (1, a2(saved))
+}
+
+fn a2<U>(saved: U) -> A2<U> {
+    fn(_y: U): (Int, A1<U>) => (2, a1(saved))
+}
+
+fn is_present(f: Id | nil) -> Int {
+    if f is nil {
+        0
+    } else {
+        1
+    }
 }
 
 fn ll<V>(x: V) -> (V, fn<W>(y: W) -> (W, Int)) {
@@ -62,4 +82,15 @@ test fn instantiate_alias_with_expected_generic() -> Int {
     let f: fn<U>(x: U) -> U = make_id();
     let pair: (Int, Int) = f((1, 2));
     pair.first + f(5)
+}
+
+test fn instantiate_alias_with_optional_expected_generic() -> Int {
+    is_present(make_id())
+}
+
+test fn instance_reached_with_renamed_generics() -> Int {
+    // `U` stands for every `V` that `Q` binds, since they only flow into it
+    let a: A0 = fn<U>(x: U): (Int, A1<U>) => (0, a1(x));
+    let q: Q<Int> = a;
+    q((1, 2)).rest(nil).rest(5).rest(nil).first
 }

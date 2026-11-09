@@ -120,14 +120,15 @@ fn extract_pairs_impl(
     result
 }
 
-pub fn extract_functions(arena: &mut Arena<Type>, id: TypeId) -> Vec<FunctionType> {
+pub fn extract_functions(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Vec<FunctionType> {
     let id = substitute(arena, id);
-    extract_functions_impl(arena, id, &mut HashSet::new()).unwrap_or_default()
+    extract_functions_impl(arena, id, strict, &mut HashSet::new()).unwrap_or_default()
 }
 
 fn extract_functions_impl(
     arena: &Arena<Type>,
     id: TypeId,
+    strict: bool,
     stack: &mut HashSet<TypeId>,
 ) -> Option<Vec<FunctionType>> {
     // A non-contractive cycle doesn't contribute anything
@@ -137,20 +138,26 @@ fn extract_functions_impl(
 
     let result = match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => extract_functions_impl(arena, id, stack),
+        Type::Ref(id) => extract_functions_impl(arena, id, strict, stack),
         Type::Unresolved | Type::Never => Some(vec![]),
         Type::Generic(_) | Type::Atom(_) | Type::Pair(_) | Type::Any => None,
         Type::Function(function) => Some(vec![function]),
-        Type::Struct(ty) => extract_functions_impl(arena, ty.inner, stack),
-        Type::Alias(alias) => extract_functions_impl(arena, alias.inner, stack),
+        Type::Struct(ty) => extract_functions_impl(arena, ty.inner, strict, stack),
+        Type::Alias(alias) => extract_functions_impl(arena, alias.inner, strict, stack),
         Type::Union(ty) => {
-            let mut pairs = Vec::new();
+            let mut functions = Vec::new();
 
             for ty in ty.types {
-                pairs.extend(extract_functions_impl(arena, ty, stack)?);
+                let inner = extract_functions_impl(arena, ty, strict, stack);
+
+                if strict {
+                    functions.extend(inner?);
+                } else {
+                    functions.extend(inner.unwrap_or_default());
+                }
             }
 
-            Some(pairs)
+            Some(functions)
         }
     };
 

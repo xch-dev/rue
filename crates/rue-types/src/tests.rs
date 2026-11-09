@@ -971,7 +971,7 @@ mod recursive {
             let _ = extract_atoms(&mut db.arena, ty, true);
             let _ = extract_pairs(&mut db.arena, ty, false);
             let _ = extract_pairs(&mut db.arena, ty, true);
-            let _ = extract_functions(&mut db.arena, ty);
+            let _ = extract_functions(&mut db.arena, ty, true);
             let _ = extract_structs(&mut db.arena, ty);
             let _ = check(&mut db.arena, &db.builtins, ty, bytes32);
             let _ = check(&mut db.arena, &db.builtins, int, ty);
@@ -1026,7 +1026,7 @@ mod recursive {
             let _ = subtract(&mut db.arena, &db.builtins, pair, int_pair);
             let _ = extract_atoms(&mut db.arena, ty, false);
             let _ = extract_pairs(&mut db.arena, ty, false);
-            let _ = extract_functions(&mut db.arena, ty);
+            let _ = extract_functions(&mut db.arena, ty, true);
             let _ = extract_structs(&mut db.arena, ty);
             let _ = unwrap_semantic(&mut db.arena, ty, true);
         }
@@ -1558,6 +1558,53 @@ mod substitution {
         let outer = db.pair(int, inner);
         let captured = db.function_with(&[v], &[v], true, outer);
         assert_eq!(db.cmp(p_int, captured), Comparison::Invalid);
+    }
+
+    #[test]
+    fn recursive_rigid_generics_are_not_merged() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let any = db.alloc(Type::Any);
+
+        // type Q<T> = fn<V>(x: V) -> (T | Int, Q<V>);
+        let t = db.generic("T");
+        let v = db.generic("V");
+        let q = db.declare_alias("Q", &[t]);
+        let first = db.union(&[t, int]);
+        let q_v = db.apply(q, &[(t, v)]);
+        let ret = db.pair(first, q_v);
+        let function = db.function_with(&[v], &[v], true, ret);
+        db.define(q, function);
+        let q_int = db.apply(q, &[(t, int)]);
+
+        // type A0 = fn<U>(x: U) -> (Int, A1<U>);
+        // type A1<U> = fn(x: Any) -> (first, A2<U>);
+        // type A2<U> = fn(x: param) -> (Int, A1<U>);
+        let mut a0 = |first: fn(TypeId) -> Option<TypeId>, param: fn(TypeId) -> Option<TypeId>| {
+            let u = db.generic("U");
+            let a1 = db.declare_alias("A1", &[u]);
+            let a2 = db.declare_alias("A2", &[u]);
+            let a1_u = db.apply(a1, &[(u, u)]);
+            let a2_u = db.apply(a2, &[(u, u)]);
+            let ret = db.pair(first(u).unwrap_or(int), a2_u);
+            let function = db.function(&[any], ret);
+            db.define(a1, function);
+            let ret = db.pair(int, a1_u);
+            let function = db.function(&[param(u).unwrap_or(any)], ret);
+            db.define(a2, function);
+            let ret = db.pair(int, a1_u);
+            let a0 = db.function_with(&[u], &[u], true, ret);
+            db.cmp(a0, q_int)
+        };
+
+        // `U` would have to hold each `V` that `Q` binds, but be assignable to the first one
+        assert_eq!(a0(Some, Some), Comparison::Invalid);
+
+        // Even if only the first `V` flows into it, since it's returned again for the next one
+        assert_eq!(a0(Some, |_| None), Comparison::Invalid);
+
+        // But if it's never returned, it can hold all of them
+        assert_eq!(a0(|_| None, Some), Comparison::Assign);
     }
 
     #[test]
