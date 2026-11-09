@@ -1,5 +1,5 @@
 program: (a (q 16 (a 4 (c 6 5)) (q . 1)) (c (c (q 2 (q 16 (a 5 (c 2 7)) 2) (c (* 3 (q . 2)) 1)) (q 2 (i (> 2 (q . 100)) (q 17 2 3) (q 8 (q . "assertion failed at nested_assert.rue:11:5"))) 1)) 1))
-program bytes: 165, sidecar bytes: 2030, spans: 13, functions: 3
+program bytes: 165, sidecar bytes: 2042, spans: 14, functions: 3
 function[0] main params=Pair(Pair(Nil, Nil), Pair(Name { name: 0, path: [6], constraint: Integer }, Nil))
 function[1] outer params=Pair(Nil, Name { name: 2, path: [3], constraint: Integer })
 function[2] inner params=Pair(Name { name: 4, path: [2], constraint: Integer }, Name { name: 5, path: [3], constraint: Integer })
@@ -12,7 +12,9 @@ probe: extra field on a function record (e.g. definition span): Ok("accepted (fi
 probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
 error: Raise(NodePtr(Bytes, 0))  raw frames: 8  truncated: 0
 ----- Python -----
-in <unknown:81aec6350f224364e40b68e2940817285e105887e6d3b1c046c8255cdb787a6f>
+File "nested_assert.rue", line 1, column 29
+  fn main(amount: Int) -> Int {
+                              ^
 File "nested_assert.rue", line 2, column 5, in main
   outer(amount) + 1
   ^^^^^^^^^^^^^^^^^
@@ -39,6 +41,10 @@ File "nested_assert.rue", line 11, column 5
   assert total > 100;
   ^^^^^^^^^^^^^^^^^^^
 ----- Lisp -----
+--> nested_assert.rue:1:29
+   |
+  1| fn main(amount: Int) -> Int {
+   |                             ^
 (<unknown:81aec6350f224364e40b68e2940817285e105887e6d3b1c046c8255cdb787a6f>)
 --> nested_assert.rue:2:5
    |

@@ -13,7 +13,7 @@ rue-options = { path = "../../crates/rue-options" }
 rue-types = { path = "../../crates/rue-types" }
 rue-clvm = { path = "../../crates/rue-clvm" }
 clvmr = { version = "0.21.0", features = ["pre-eval"] }
-chialisp = { git = "https://github.com/Chia-Network/chialisp.git", rev = "69599b8ced1a9fdbcc66a533208281d59d13e6bd" }
+chialisp = { git = "https://github.com/Chia-Network/chialisp.git", rev = "1ba4c714a3bb52f5f808d5f4586db22c9ce24650" }
 sha2 = "0.11"
 id-arena = "2.2.1"
 num-bigint = "0.4.6"

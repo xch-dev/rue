@@ -3,14 +3,34 @@
 Spike: make Rue emit the #579 sidecar, run failing programs with `run_program_with_diagnostics`, render them with
 `format_captured_stack`, and record where the format cannot express what Rue needs.
 
-- **Currently tested:** chialisp `69599b8ced1a9fdbcc66a533208281d59d13e6bd` (#579 head after `69599b8c`
-  "Allow additive debug metadata extensions within the compatibility version"). clvmr is still pinned at
-  `05e31346` with `pre-eval`; chialisp didn't move it. Every output in `spike/out/` was regenerated against it.
-- **Previously tested:** `014255b9` (see "Re-test against `014255b9`") and, originally, `d65c2f9f`. The original
-  findings are kept below the re-test sections.
+- **Currently tested:** chialisp `1ba4c714a3bb52f5f808d5f4586db22c9ce24650` (#579 head, "Use published clvmr
+  0.22.0"), plus Rue #188 (Bram's main-wrapper source tag). chialisp now uses clvmr 0.22.0 from crates.io; the
+  Rue side stays on the `05e31346` patch because `clvm-traits` still requires clvmr 0.21, and the spike only
+  passes serialized bytes to chialisp, so the two versions coexist. Every output in `spike/out/` was regenerated.
+- **Previously tested:** `69599b8c`, `014255b9` and, originally, `d65c2f9f`. The original findings are kept below
+  the re-test sections.
 
 All tracebacks below are verbatim Python-style output. The full output for each case (both styles, the program,
 the function records and the probe results) is in `spike/out/*.txt`. Run `spike/run.sh` to regenerate it.
+
+## Re-test against `1ba4c714` (with Rue #188)
+
+Two changes affect the Rue traces: chialisp `4f61b787` collapses a verified curry wrapper into its body frame, and
+Rue #188 tags the main capture/setup wrapper with the main body's span (no function or parameters, since its
+environment differs from the body's). The emitter needed no changes. Probe results are unchanged.
+
+- **N4a fixed.** The leading `in <unknown:hash>` frame is gone from every Python trace. The wrapper now renders
+  as an unnamed expression frame at `main`'s body (e.g. `nested_assert.rue`, line 1, column 29, the `{`). Each
+  sidecar has one more span (e.g. recursion 1616 → 1628 bytes).
+- **N4b fixed.** Closures render one `in <lambda>` frame, keeping the `# bound:` annotation and captured values
+  (closure_capture, closure_no_params). The three recursive `total` calls remain.
+- **N1 unchanged.** Identical bodies still render `in <ambiguous: first | second>`. Bram accepts ambiguity as the
+  limit for #579; resolving it needs call-target provenance.
+- **H2 unchanged for Rue.** `4f61b787` fixes Chialisp's `*macros*` locations (frames now point at the user's
+  `if`), but Rue frames still use the body root's span. A `definition_span` is still a follow-up.
+- The Lisp style labels every unnamed expression frame `(<unknown:hash>)`, including the now-located wrapper.
+  This was already true of other expression frames and isn't new.
+- Everything else (H1, H3a, H4, H6, N2, N3) is byte-identical to `69599b8c`.
 
 ## Re-test against `69599b8c`
 
@@ -80,14 +100,14 @@ field counts everywhere. All five probes are rejected with the same errors as be
 | N1 identical subtrees | misattributed | **partly fixed** | identical bodies: `in second … b = -1` → `in <ambiguous: first \| second>` (no longer wrong, still unresolved); identical sub-expression in distinct bodies: leaf line 11 → line 6 (resolved) |
 | N2 `let` locals | only by faking a function | **unchanged** | `out/nested_assert_let_scopes.txt` identical |
 | N3 as-pattern parameters | not expressible | **unchanged** | `DebugParameter` still `Nil`/`Name`/`Pair`; struct_destructure identical |
-| N4a `<unknown:hash>` plumbing frame | renderer issue | **unchanged** | first line of nested_assert, closure_capture, recursion, … |
-| N4b closure frame shown twice | renderer issue | **unchanged, now wider** | parameterless closures now also render `in <lambda>` twice (closure_no_params), a side effect of fixing H3c |
+| N4a `<unknown:hash>` plumbing frame | renderer issue | **unchanged; fixed by Rue #188 + `4f61b787`** | was the first line of nested_assert, closure_capture, recursion, …; see "Re-test against `1ba4c714`" |
+| N4b closure frame shown twice | renderer issue | **unchanged, now wider; fixed in `4f61b787`** | at `014255b9`, parameterless closures also rendered `in <lambda>` twice (closure_no_params); one frame each at `1ba4c714` |
 | N5 size | informational | **unchanged** | sidecar byte counts identical (e.g. recursion 1616) |
 | E1 tolerant decoder | requested | **not done in `014255b9`; done in `69599b8c`** | see "Re-test against `69599b8c`" |
 | Table rows 1, 2, 3a, 4, 6a–6c, N2, N3 | requested | **not done** (still true at `69599b8c`, but now additive after merge where the table says "no" under "With E1") | no new fields or tags in the encoder or decoder |
 | Table rows 3b, 3c | requested | **done** | see H3b, H3c |
 | Table row N1 (report ambiguity) | requested | **done**, plus scoped search | see N1 |
-| Table row N4 | requested | **not done** | see N4a, N4b |
+| Table row N4 | requested | **done by `1ba4c714`** | see N4a, N4b |
 
 ### N1 in detail
 

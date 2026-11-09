@@ -1,5 +1,5 @@
 program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i 5 (q 2 2 (c 2 (c (- 5 (q . 1)) (+ 7 5)))) (q 8)) 1) 1))
-program bytes: 87, sidecar bytes: 1385, spans: 6, functions: 2
+program bytes: 87, sidecar bytes: 1397, spans: 7, functions: 2
 function[0] main params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Nil))
 function[1] countdown params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Name { name: 2, path: [7], constraint: Integer }))
 declared types: n: Int, n: Int, acc: Int
@@ -11,7 +11,9 @@ probe: extra field on a function record (e.g. definition span): Ok("accepted (fi
 probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
 error: Raise(NodePtr(SmallAtom, 0))  raw frames: 10  truncated: 0
 ----- Python -----
-in <unknown:9f3f4baeee86d25d50af097112e7a85d2a609d27556c80b24698679b2aa85719>
+File "recursion.rue", line 1, column 24
+  fn main(n: Int) -> Int {
+                         ^
 File "recursion.rue", line 2, column 5, in main
   countdown(n, 0)
   ^^^^^^^^^^^^^^^
@@ -49,6 +51,10 @@ File "recursion.rue", line 7, column 9
   raise "hit zero";
   ^^^^^^^^^^^^^^^^^
 ----- Lisp -----
+--> recursion.rue:1:24
+   |
+  1| fn main(n: Int) -> Int {
+   |                        ^
 (<unknown:9f3f4baeee86d25d50af097112e7a85d2a609d27556c80b24698679b2aa85719>)
 --> recursion.rue:2:5
    |

@@ -12,7 +12,9 @@ probe: extra field on a function record (e.g. definition span): Ok("accepted (fi
 probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown, proper-list)")
 error: Raise(NodePtr(Bytes, 0))  raw frames: 15  truncated: 0
 ----- Python -----
-in <unknown:de036849b355a0dc86e095feb908411059aa5f485afc0f9179501d6b83401bc9>
+File "closure_capture.rue", line 1, column 46
+  fn main(limit: Int, items: List<Int>) -> Int {
+                                               ^
 File "closure_capture.rue", line 1, column 46, in main
   fn main(limit: Int, items: List<Int>) -> Int {
                                                ^
@@ -59,15 +61,14 @@ File "closure_capture.rue", line 3, column 9, in <lambda>  # bound: limit
   ^^^^^^^^^^^^^^^^^^^^
   limit = 10
   item = 30
-File "closure_capture.rue", line 3, column 9, in <lambda>
-  assert item < limit;
-  ^^^^^^^^^^^^^^^^^^^^
-  limit = 10
-  item = 30
 File "closure_capture.rue", line 3, column 9
   assert item < limit;
   ^^^^^^^^^^^^^^^^^^^^
 ----- Lisp -----
+--> closure_capture.rue:1:46
+   |
+  1| fn main(limit: Int, items: List<Int>) -> Int {
+   |                                              ^
 (<unknown:de036849b355a0dc86e095feb908411059aa5f485afc0f9179501d6b83401bc9>)
 --> closure_capture.rue:1:46
    |
@@ -129,11 +130,6 @@ File "closure_capture.rue", line 3, column 9
   3|         assert item < limit;
    |         ^^^^^^^^^^^^^^^^^^^^
 (<lambda> (limit integer 10) (item integer 30)) ; bound: limit
---> closure_capture.rue:3:9
-   |
-  3|         assert item < limit;
-   |         ^^^^^^^^^^^^^^^^^^^^
-(<lambda> (limit integer 10) (item integer 30))
 --> closure_capture.rue:3:9
    |
   3|         assert item < limit;

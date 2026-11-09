@@ -118,6 +118,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
+name = "chacha20"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.1",
+ "rand_core 0.10.1",
+]
+
+[[package]]
 name = "chia-bls"
 version = "0.38.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -216,11 +227,11 @@ dependencies = [
 [[package]]
 name = "chialisp"
 version = "0.6.0"
-source = "git+https://github.com/Chia-Network/chialisp.git?rev=69599b8ced1a9fdbcc66a533208281d59d13e6bd#69599b8ced1a9fdbcc66a533208281d59d13e6bd"
+source = "git+https://github.com/Chia-Network/chialisp.git?rev=1ba4c714a3bb52f5f808d5f4586db22c9ce24650#1ba4c714a3bb52f5f808d5f4586db22c9ce24650"
 dependencies = [
  "binascii",
  "chia-bls 0.52.1",
- "clvmr",
+ "clvmr 0.22.0",
  "crypto-bigint",
  "ctutils",
  "do-notation",
@@ -245,7 +256,7 @@ version = "0.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7ea3eeec6cc601989e4b59e4a447d9b73698808e99dc9836651d3d33dab9d72"
 dependencies = [
- "clvmr",
+ "clvmr 0.21.0",
  "num-bigint",
  "thiserror 2.0.21",
 ]
@@ -264,12 +275,38 @@ dependencies = [
  "hex-literal",
  "k256",
  "lazy_static",
- "malachite-bigint",
+ "malachite-bigint 0.9.2",
  "num-bigint",
  "num-integer",
  "num-traits",
  "p256",
- "rand",
+ "rand 0.9.5",
+ "sha1",
+ "sha3",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "clvmr"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55aedaca2151e62383eb9dfd88e4be0ee1c1ceece5275987e6ff991fb514377c"
+dependencies = [
+ "bitflags",
+ "bitvec",
+ "bumpalo",
+ "chia-bls 0.52.1",
+ "chia-sha2 0.52.1",
+ "hex",
+ "hex-literal",
+ "k256",
+ "lazy_static",
+ "malachite-bigint 0.12.0",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "p256",
+ "rand 0.10.3",
  "sha1",
  "sha3",
  "thiserror 2.0.21",
@@ -860,13 +897,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "malachite-base"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f368e032195e6f046f237a982cd541cac7d4e17d5c680cac5534dfa71cd8879e"
+dependencies = [
+ "hashbrown 0.16.1",
+ "itertools",
+ "libm",
+ "ryu",
+]
+
+[[package]]
 name = "malachite-bigint"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc58206ba15e9c406e20c95c5f86efa07b12f94080945908e910b3a0faa23fef"
 dependencies = [
- "malachite-base",
- "malachite-nz",
+ "malachite-base 0.9.2",
+ "malachite-nz 0.9.2",
+ "num-integer",
+ "num-traits",
+ "paste",
+]
+
+[[package]]
+name = "malachite-bigint"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47d673b71d4521ba5ca045cd23d62eda6b321474ff231d6a1698cc9b892851f2"
+dependencies = [
+ "malachite-base 0.12.0",
+ "malachite-nz 0.12.0",
  "num-integer",
  "num-traits",
  "paste",
@@ -880,7 +942,19 @@ checksum = "a137660cdba20f136c8a223125f08088adb4e0b72fbb8466f08c43e31cc0427d"
 dependencies = [
  "itertools",
  "libm",
- "malachite-base",
+ "malachite-base 0.9.2",
+ "wide",
+]
+
+[[package]]
+name = "malachite-nz"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0b3ad1a8d2a722fbfad2e1fc7c5044f7ab38e027240cfbcb086a62ca95c9c2"
+dependencies = [
+ "itertools",
+ "libm",
+ "malachite-base 0.12.0",
  "wide",
 ]
 
@@ -1092,6 +1166,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
+dependencies = [
+ "chacha20",
+ "getrandom 0.4.3",
+ "rand_core 0.10.1",
+]
+
+[[package]]
 name = "rand_chacha"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1214,7 +1299,7 @@ dependencies = [
 name = "rue-clvm"
 version = "0.11.0"
 dependencies = [
- "clvmr",
+ "clvmr 0.21.0",
  "hex",
  "num-bigint",
  "thiserror 2.0.21",
@@ -1224,7 +1309,7 @@ dependencies = [
 name = "rue-compiler"
 version = "0.11.0"
 dependencies = [
- "clvmr",
+ "clvmr 0.21.0",
  "hex",
  "id-arena",
  "include_dir",
@@ -1249,7 +1334,7 @@ name = "rue-debug-spike"
 version = "0.0.0"
 dependencies = [
  "chialisp",
- "clvmr",
+ "clvmr 0.21.0",
  "id-arena",
  "num-bigint",
  "rue-clvm",
@@ -1294,7 +1379,7 @@ name = "rue-lir"
 version = "0.11.0"
 dependencies = [
  "clvm-traits",
- "clvmr",
+ "clvmr 0.21.0",
  "colored",
  "id-arena",
  "num-bigint",
@@ -1331,7 +1416,7 @@ dependencies = [
 name = "rue-types"
 version = "0.11.0"
 dependencies = [
- "clvmr",
+ "clvmr 0.21.0",
  "derive_more",
  "hex",
  "id-arena",

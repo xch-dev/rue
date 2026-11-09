@@ -1,5 +1,5 @@
 program: (a (q 16 (+ (a 14 5) (a 10 5)) (a 4 11)) (c (c (q 2 (i (> (r 1) (f 1)) (q 17 (r 1) (f 1)) (q 8 (q . "assertion failed at struct_param.rue:20:5"))) 1) (c (q 2 (i (not (= (f 1) (sha256 (q . "burn")))) (q 5 (r 1)) (q 8 (q . "assertion failed at struct_param.rue:15:5"))) 1) (q 5 (r 1)))) 1))
-program bytes: 261, sidecar bytes: 3020, spans: 21, functions: 4
+program bytes: 261, sidecar bytes: 3032, spans: 22, functions: 4
 function[0] main params=Pair(Pair(Nil, Pair(Nil, Nil)), Pair(Name { name: 0, path: [6], constraint: Unknown }, Pair(Name { name: 1, path: [14], constraint: Pair }, Nil)))
 function[1] by_tuple params=Name { name: 3, path: [1], constraint: Pair }
 function[2] by_destructure params=Name { name: 5, path: [1], constraint: Unknown }
@@ -13,7 +13,9 @@ probe: extra field on a function record (e.g. definition span): Ok("accepted (fi
 probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown, pair)")
 error: Raise(NodePtr(Bytes, 0))  raw frames: 5  truncated: 0
 ----- Python -----
-in <unknown:b7403ef0f8b7585f1cfc34206feb688b608e63374f6becd2c168070835c9cd47>
+File "struct_param.rue", line 6, column 52
+  fn main(payment: Payment, pair: (Int, Int)) -> Int {
+                                                     ^
 File "struct_param.rue", line 7, column 5, in main
   by_struct(payment) + by_destructure(payment) + by_tuple(pair)
   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -30,6 +32,10 @@ File "struct_param.rue", line 20, column 5
   assert low < high;
   ^^^^^^^^^^^^^^^^^^
 ----- Lisp -----
+--> struct_param.rue:6:52
+   |
+  6| fn main(payment: Payment, pair: (Int, Int)) -> Int {
+   |                                                    ^
 (<unknown:b7403ef0f8b7585f1cfc34206feb688b608e63374f6becd2c168070835c9cd47>)
 --> struct_param.rue:7:5
    |

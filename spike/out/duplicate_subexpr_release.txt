@@ -1,5 +1,5 @@
 program: (a (q 16 (a 6 (c 5 11)) (a 4 (c 11 5))) (c (c (q 2 (i (> 2 ()) (q 18 2 3) (q 8)) 1) (q 2 (i (> 2 ()) (q 16 2 3) (q 8)) 1)) 1))
-program bytes: 119, sidecar bytes: 1865, spans: 9, functions: 3
+program bytes: 119, sidecar bytes: 1877, spans: 10, functions: 3
 function[0] main params=Pair(Pair(Nil, Nil), Pair(Name { name: 0, path: [6], constraint: Integer }, Pair(Name { name: 1, path: [14], constraint: Integer }, Nil)))
 function[1] second params=Pair(Name { name: 3, path: [2], constraint: Integer }, Name { name: 4, path: [3], constraint: Integer })
 function[2] first params=Pair(Name { name: 3, path: [2], constraint: Integer }, Name { name: 4, path: [3], constraint: Integer })
@@ -12,7 +12,9 @@ probe: extra field on a function record (e.g. definition span): Ok("accepted (fi
 probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown, integer)")
 error: Raise(NodePtr(SmallAtom, 0))  raw frames: 5  truncated: 0
 ----- Python -----
-in <unknown:7bef588c78e5c0aff2c205ea331143b7c71ef397311ecedae7c5742db9023ed6>
+File "duplicate_subexpr.rue", line 1, column 32
+  fn main(x: Int, y: Int) -> Int {
+                                 ^
 File "duplicate_subexpr.rue", line 2, column 5, in main
   first(x, y) + second(y, x)
   ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -30,6 +32,10 @@ File "duplicate_subexpr.rue", line 6, column 5
   assert a > 0;
   ^^^^^^^^^^^^^
 ----- Lisp -----
+--> duplicate_subexpr.rue:1:32
+   |
+  1| fn main(x: Int, y: Int) -> Int {
+   |                                ^
 (<unknown:7bef588c78e5c0aff2c205ea331143b7c71ef397311ecedae7c5742db9023ed6>)
 --> duplicate_subexpr.rue:2:5
    |

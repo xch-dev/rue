@@ -1,5 +1,5 @@
 program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i (= 5 ()) (q 8 (q . "raise called at recursion_tabs.rue:7:3") (q . "hit zero")) (q 2 2 (c 2 (c (- 5 (q . 1)) (+ 7 5))))) 1) 1))
-program bytes: 147, sidecar bytes: 1608, spans: 9, functions: 2
+program bytes: 147, sidecar bytes: 1620, spans: 10, functions: 2
 function[0] main params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Nil))
 function[1] countdown params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Name { name: 2, path: [7], constraint: Integer }))
 declared types: n: Int, n: Int, acc: Int
@@ -11,7 +11,9 @@ probe: extra field on a function record (e.g. definition span): Ok("accepted (fi
 probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
 error: Raise(NodePtr(Pair, 91))  raw frames: 6  truncated: 0
 ----- Python -----
-in <unknown:a6985295e8ed0ba6443e2cf9faa149ec625d5821431ec3956dc0320578c77f93>
+File "recursion_tabs.rue", line 1, column 24
+  fn main(n: Int) -> Int {
+                         ^
 File "recursion_tabs.rue", line 2, column 8, in main
   countdown(n, 0)
   ^^^^^^^^^^^^^^^
@@ -33,6 +35,10 @@ File "recursion_tabs.rue", line 7, column 16
   raise "hit zero";
   ^^^^^^^^^^^^^^^^^
 ----- Lisp -----
+--> recursion_tabs.rue:1:24
+   |
+  1| fn main(n: Int) -> Int {
+   |                        ^
 (<unknown:a6985295e8ed0ba6443e2cf9faa149ec625d5821431ec3956dc0320578c77f93>)
 --> recursion_tabs.rue:2:8
    |

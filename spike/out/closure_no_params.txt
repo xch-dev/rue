@@ -12,7 +12,9 @@ probe: extra field on a function record (e.g. definition span): Ok("accepted (fi
 probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
 error: Raise(NodePtr(Bytes, 0))  raw frames: 9  truncated: 0
 ----- Python -----
-in <unknown:73dad94bdd2cd2c24f76b673257dba31334a08e0b25b38478fa4cab75da1d8c5>
+File "closure_no_params.rue", line 1, column 24
+  fn main(x: Int) -> Int {
+                         ^
 File "closure_no_params.rue", line 1, column 24, in main
   fn main(x: Int) -> Int {
                          ^
@@ -34,14 +36,14 @@ File "closure_no_params.rue", line 3, column 9, in <lambda>  # bound: x
   assert x > 5;
   ^^^^^^^^^^^^^
   x = 3
-File "closure_no_params.rue", line 3, column 9, in <lambda>
-  assert x > 5;
-  ^^^^^^^^^^^^^
-  x = 3
 File "closure_no_params.rue", line 3, column 9
   assert x > 5;
   ^^^^^^^^^^^^^
 ----- Lisp -----
+--> closure_no_params.rue:1:24
+   |
+  1| fn main(x: Int) -> Int {
+   |                        ^
 (<unknown:73dad94bdd2cd2c24f76b673257dba31334a08e0b25b38478fa4cab75da1d8c5>)
 --> closure_no_params.rue:1:24
    |
@@ -73,11 +75,6 @@ File "closure_no_params.rue", line 3, column 9
   3|         assert x > 5;
    |         ^^^^^^^^^^^^^
 (<lambda> (x integer 3)) ; bound: x
---> closure_no_params.rue:3:9
-   |
-  3|         assert x > 5;
-   |         ^^^^^^^^^^^^^
-(<lambda> (x integer 3))
 --> closure_no_params.rue:3:9
    |
   3|         assert x > 5;
