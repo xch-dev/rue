@@ -6,11 +6,20 @@ use crate::{Type, TypeId, substitute};
 
 pub fn unwrap_semantic(arena: &mut Arena<Type>, id: TypeId, resolve_aliases: bool) -> TypeId {
     let id = substitute(arena, id);
+    unwrap_semantic_without_substitution(arena, id, resolve_aliases)
+}
+
+/// Like `unwrap_semantic`, but for a type that has already been substituted.
+pub(crate) fn unwrap_semantic_without_substitution(
+    arena: &Arena<Type>,
+    id: TypeId,
+    resolve_aliases: bool,
+) -> TypeId {
     unwrap_semantic_impl(arena, id, resolve_aliases, &mut HashSet::new())
 }
 
 fn unwrap_semantic_impl(
-    arena: &mut Arena<Type>,
+    arena: &Arena<Type>,
     id: TypeId,
     resolve_aliases: bool,
     visited: &mut HashSet<TypeId>,

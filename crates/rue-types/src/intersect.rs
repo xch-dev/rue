@@ -1,10 +1,11 @@
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
-use log::trace;
+use log::{Level, log_enabled, trace};
 
 use crate::{
-    BuiltinTypes, Check, Comparison, Pair, Struct, Type, TypeId, Union, check, compare,
-    reaches_non_contractive_cycle, stringify_impl, substitute, unwrap_semantic,
+    BuiltinTypes, Comparison, ComparisonContext, Memo, OverlapMemo, Pair, Struct, Type, TypeId,
+    Union, compare, compare_impl, reaches_non_contractive_cycle, step, stringify_impl, substitute,
+    types_may_overlap, unwrap_semantic_without_substitution,
 };
 
 /// The maximum number of nested intersections before giving up on being more precise.
@@ -33,26 +34,83 @@ pub fn intersect(
         return rhs;
     }
 
-    let lhs_name = stringify_impl(arena, lhs, &mut IndexMap::new());
-    let rhs_name = stringify_impl(arena, rhs, &mut IndexMap::new());
-    trace!("Intersecting {lhs_name} with {rhs_name}");
-    let result = intersect_impl(arena, builtins, &mut IndexSet::new(), lhs, rhs);
-    let new_name = stringify_impl(arena, result, &mut IndexMap::new());
-    trace!("Intersection of {lhs_name} with {rhs_name} yielded {new_name}");
+    let names = log_enabled!(Level::Trace).then(|| {
+        (
+            stringify_impl(arena, lhs, &mut IndexMap::new()),
+            stringify_impl(arena, rhs, &mut IndexMap::new()),
+        )
+    });
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        trace!("Intersecting {lhs_name} with {rhs_name}");
+    }
+
+    let result = intersect_impl(arena, builtins, &mut IntersectContext::default(), lhs, rhs);
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        let new_name = stringify_impl(arena, result, &mut IndexMap::new());
+        trace!("Intersection of {lhs_name} with {rhs_name} yielded {new_name}");
+    }
+
     result
+}
+
+#[derive(Debug, Default)]
+struct IntersectContext {
+    stack: IndexSet<(TypeId, TypeId)>,
+    /// Completed intersections, keyed by the types and the depth (since the result falls back to
+    /// `rhs` past a certain depth). The same intersections are reached through every reference to
+    /// a type, which is exponential in the depth of the type.
+    memo: Memo<(TypeId, TypeId), (TypeId, TypeId, usize), TypeId>,
+    /// Shared by every comparison and overlap check, since they all start from an empty stack.
+    /// Otherwise each intersection would compare the whole of the types it's given again.
+    comparison: ComparisonContext<'static>,
+    overlap: OverlapMemo,
 }
 
 fn intersect_impl(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    stack: &mut IndexSet<(TypeId, TypeId)>,
+    ctx: &mut IntersectContext,
     lhs: TypeId,
     rhs: TypeId,
 ) -> TypeId {
+    step();
+
     if lhs == rhs {
         return lhs;
     }
 
+    let item = (lhs, rhs);
+
+    // Recursive types would otherwise be intersected forever. Falling back to `rhs` is sound,
+    // since it contains every value in the intersection. The checks below don't depend on the
+    // stack, so they would have returned early the first time if they were going to.
+    if let Some(index) = ctx.stack.get_index_of(&item) {
+        ctx.memo.reached(index);
+        return rhs;
+    }
+
+    let key = (lhs, rhs, ctx.stack.len());
+
+    if let Some(result) = ctx.memo.get(&key, ctx.stack.iter().copied()) {
+        return result;
+    }
+
+    let frame = ctx.memo.enter(ctx.stack.len());
+    let result = intersect_uncached(arena, builtins, ctx, lhs, rhs);
+    ctx.memo.exit(frame, item, Some(key), result);
+
+    result
+}
+
+fn intersect_uncached(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut IntersectContext,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> TypeId {
     // `Any` is permissive, so it's assignable to everything and can't be used for comparisons
     if is_any(arena, lhs) {
         return rhs;
@@ -62,27 +120,33 @@ fn intersect_impl(
         return lhs;
     }
 
-    if compare(arena, builtins, lhs, rhs) == Comparison::Assign {
+    // The types have already been substituted, so they can be compared directly
+    if compare_impl(arena, builtins, &mut ctx.comparison, lhs, rhs, None, None)
+        == Comparison::Assign
+    {
         return lhs;
     }
 
-    if compare(arena, builtins, rhs, lhs) == Comparison::Assign {
+    if compare_impl(arena, builtins, &mut ctx.comparison, rhs, lhs, None, None)
+        == Comparison::Assign
+    {
         return rhs;
     }
 
-    if is_disjoint(arena, builtins, lhs, rhs) || is_disjoint(arena, builtins, rhs, lhs) {
+    // This doesn't generate a check between the types, since that can be exponential in their
+    // depth if they reference the same type more than once
+    if !types_may_overlap(arena, builtins, lhs, rhs, &mut ctx.overlap) {
         return builtins.never;
     }
 
-    // Recursive types would otherwise be intersected forever. Falling back to `rhs` is sound,
-    // since it contains every value in the intersection.
-    if stack.len() >= MAX_DEPTH || !stack.insert((lhs, rhs)) {
+    // Falling back to `rhs` is sound for the same reason as for recursive types
+    if ctx.stack.len() >= MAX_DEPTH {
         return rhs;
     }
 
-    let result = intersect_structure(arena, builtins, stack, lhs, rhs);
-
-    stack.pop().unwrap();
+    ctx.stack.insert((lhs, rhs));
+    let result = intersect_structure(arena, builtins, ctx, lhs, rhs);
+    ctx.stack.pop().unwrap();
 
     result
 }
@@ -90,21 +154,21 @@ fn intersect_impl(
 fn intersect_structure(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    stack: &mut IndexSet<(TypeId, TypeId)>,
+    ctx: &mut IntersectContext,
     lhs: TypeId,
     rhs: TypeId,
 ) -> TypeId {
     match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
-        (Type::Ref(lhs), _) => intersect_impl(arena, builtins, stack, lhs, rhs),
-        (_, Type::Ref(rhs)) => intersect_impl(arena, builtins, stack, lhs, rhs),
-        (Type::Alias(alias), _) => intersect_impl(arena, builtins, stack, alias.inner, rhs),
-        (_, Type::Alias(alias)) => intersect_impl(arena, builtins, stack, lhs, alias.inner),
+        (Type::Ref(lhs), _) => intersect_impl(arena, builtins, ctx, lhs, rhs),
+        (_, Type::Ref(rhs)) => intersect_impl(arena, builtins, ctx, lhs, rhs),
+        (Type::Alias(alias), _) => intersect_impl(arena, builtins, ctx, alias.inner, rhs),
+        (_, Type::Alias(alias)) => intersect_impl(arena, builtins, ctx, lhs, alias.inner),
         (Type::Union(union), _) => {
             let variants = union
                 .types
                 .iter()
-                .map(|&variant| intersect_impl(arena, builtins, stack, variant, rhs))
+                .map(|&variant| intersect_impl(arena, builtins, ctx, variant, rhs))
                 .collect();
             repackage_union(arena, builtins, lhs, &union, variants)
         }
@@ -112,7 +176,7 @@ fn intersect_structure(
             let variants = union
                 .types
                 .iter()
-                .map(|&variant| intersect_impl(arena, builtins, stack, lhs, variant))
+                .map(|&variant| intersect_impl(arena, builtins, ctx, lhs, variant))
                 .collect();
             repackage_union(arena, builtins, rhs, &union, variants)
         }
@@ -120,7 +184,7 @@ fn intersect_structure(
         (Type::Unresolved | Type::Generic(_) | Type::Any | Type::Function(_), _)
         | (_, Type::Unresolved | Type::Generic(_) | Type::Any | Type::Function(_)) => rhs,
         (Type::Struct(lhs_struct), Type::Struct(rhs_struct)) => {
-            let inner = intersect_impl(arena, builtins, stack, lhs_struct.inner, rhs_struct.inner);
+            let inner = intersect_impl(arena, builtins, ctx, lhs_struct.inner, rhs_struct.inner);
 
             if lhs_struct.semantic == rhs_struct.semantic {
                 repackage_struct(arena, builtins, lhs, lhs_struct, inner)
@@ -133,16 +197,16 @@ fn intersect_structure(
             }
         }
         (Type::Struct(ty), _) => {
-            let inner = intersect_impl(arena, builtins, stack, ty.inner, rhs);
+            let inner = intersect_impl(arena, builtins, ctx, ty.inner, rhs);
             repackage_struct(arena, builtins, lhs, ty, inner)
         }
         (_, Type::Struct(ty)) => {
-            let inner = intersect_impl(arena, builtins, stack, lhs, ty.inner);
+            let inner = intersect_impl(arena, builtins, ctx, lhs, ty.inner);
             repackage_struct(arena, builtins, rhs, ty, inner)
         }
         (Type::Pair(lhs_pair), Type::Pair(rhs_pair)) => {
-            let first = intersect_impl(arena, builtins, stack, lhs_pair.first, rhs_pair.first);
-            let rest = intersect_impl(arena, builtins, stack, lhs_pair.rest, rhs_pair.rest);
+            let first = intersect_impl(arena, builtins, ctx, lhs_pair.first, rhs_pair.first);
+            let rest = intersect_impl(arena, builtins, ctx, lhs_pair.rest, rhs_pair.rest);
 
             if is_never(arena, first) || is_never(arena, rest) {
                 builtins.never
@@ -217,20 +281,16 @@ fn repackage_struct(
     }
 }
 
-fn is_any(arena: &mut Arena<Type>, id: TypeId) -> bool {
-    let id = unwrap_semantic(arena, id, true);
+// This and `is_never` don't substitute the type again, since it already has been and doing so
+// for every intersection would make it quadratic in the size of the types
+fn is_any(arena: &Arena<Type>, id: TypeId) -> bool {
+    let id = unwrap_semantic_without_substitution(arena, id, true);
     matches!(arena[id], Type::Any)
 }
 
-fn is_never(arena: &mut Arena<Type>, id: TypeId) -> bool {
-    let id = unwrap_semantic(arena, id, true);
+fn is_never(arena: &Arena<Type>, id: TypeId) -> bool {
+    let id = unwrap_semantic_without_substitution(arena, id, true);
     matches!(arena[id], Type::Never)
-}
-
-/// Whether no value of type `lhs` can also be a value of type `rhs`. If this can't be determined,
-/// the types are conservatively assumed to overlap.
-fn is_disjoint(arena: &mut Arena<Type>, builtins: &BuiltinTypes, lhs: TypeId, rhs: TypeId) -> bool {
-    check(arena, builtins, lhs, rhs).is_ok_and(|check| check.simplify() == Check::Impossible)
 }
 
 #[cfg(test)]

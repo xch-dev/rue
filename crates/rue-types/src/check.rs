@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::{
     AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Memo, Pair, Type, TypeId,
-    compare_impl, reaches_non_contractive_cycle, stringify_impl, substitute,
+    compare_impl, reaches_non_contractive_cycle, step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -266,6 +266,8 @@ fn check_each_impl(
     lhs: &[TypeId],
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
+    step();
+
     if depth > 25 {
         return Err(CheckError::DepthExceeded);
     }
@@ -572,16 +574,31 @@ fn pairs_of(
     })
 }
 
-/// Conservatively determines whether two types may have any values in common. This must return
-/// true if there is any overlap, but may also return true if there isn't.
+/// Completed overlap checks, which can be shared by checks that start from an empty stack.
+pub(crate) type OverlapMemo = Memo<(TypeId, TypeId), (TypeId, TypeId, usize), bool>;
+
+/// Conservatively determines whether two substituted types may have any values in common. This
+/// must return true if there is any overlap, but may also return true if there isn't.
+pub(crate) fn types_may_overlap(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs: TypeId,
+    rhs: TypeId,
+    memo: &mut OverlapMemo,
+) -> bool {
+    may_overlap(arena, builtins, lhs, rhs, &mut IndexSet::new(), memo)
+}
+
 fn may_overlap(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
     lhs: TypeId,
     rhs: TypeId,
     stack: &mut IndexSet<(TypeId, TypeId)>,
-    memo: &mut Memo<(TypeId, TypeId), (TypeId, TypeId, usize), bool>,
+    memo: &mut OverlapMemo,
 ) -> bool {
+    step();
+
     if stack.len() > 25 {
         return true;
     }
