@@ -102,7 +102,7 @@ enum Binding {
 
 /// A generic bound by a function type that's being compared, which shadows any generic with the
 /// same id that's bound outside of it (or free) on the same side.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Binder {
     generic: TypeId,
     /// The binder enclosing this one on the same side.
@@ -113,6 +113,10 @@ struct Binder {
     instance: Option<usize>,
     /// The binder that this one was merged into, which it's treated as from then on.
     merged: Option<usize>,
+    /// The rigid binders that are renamed in the bounds that flow into this binder's instance
+    /// once it's merged, from the ones on its side of the comparison it was merged at to the ones
+    /// on the other side.
+    renaming: Vec<(usize, usize)>,
 }
 
 /// The bounds collected for a generic being instantiated, which are checked against each other
@@ -121,14 +125,23 @@ struct Binder {
 struct Instance {
     lower: Vec<Bound>,
     upper: Vec<Bound>,
+    /// Set if a comparison was assumed to hold for it when it was revisited, so it's missing the
+    /// bounds that it would have collected from the revisit. Those are copies of its bounds in
+    /// which the binders from this index on (which were bound since the comparison was entered)
+    /// and the `renamed` ones are other generics, so it's also checked with them replaced by new
+    /// ones.
+    fresh: Option<usize>,
+    /// The binders that were renamed when it was revisited, which were bound before then.
+    renamed: Vec<usize>,
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct ComparisonContext<'a> {
     infer: Option<&'a mut Inference>,
     stack: IndexSet<ComparisonKey>,
-    /// The binders referenced by each comparison in `stack`, in the order they're numbered.
-    stack_binders: Vec<Vec<usize>>,
+    /// The number of binders when each comparison in `stack` was entered, and the binders it
+    /// references, in the order they're numbered.
+    stack_binders: Vec<(usize, Vec<usize>)>,
     /// The indices in `stack` of comparisons between pairs or functions. A cycle is only
     /// coinductively assignable if it passes through one of these, since otherwise the
     /// recursion isn't bounded by the structure of the value.
@@ -216,6 +229,7 @@ impl ComparisonContext<'_> {
                 parent: env,
                 instance,
                 merged: None,
+                renaming: Vec::new(),
             });
             env = Some(self.binders.len() - 1);
         }
@@ -234,35 +248,128 @@ impl ComparisonContext<'_> {
         (instance >= self.instantiable_from).then_some(instance)
     }
 
-    /// Returns the bounds of the generic, if it's being instantiated.
-    fn instance(&mut self, generic: TypeId, env: Option<usize>) -> Option<&mut Instance> {
-        let instance = self.instance_of(self.resolve(generic, env)?)?;
-        Some(&mut self.instances[instance])
+    /// Whether the generic is being instantiated.
+    fn is_instance(&self, generic: TypeId, env: Option<usize>) -> bool {
+        self.resolve(generic, env)
+            .is_some_and(|binder| self.instance_of(binder).is_some())
     }
 
-    /// Merges two binders, so that they're the same generic from then on (and instantiated the
-    /// same way, if they're instances). They're merged into the one that was bound first, since
-    /// its comparison finishes last. Binders that are only rigid because their instances are
-    /// hidden aren't merged with ones that are always rigid, since they would be confused once
-    /// they're no longer hidden.
-    fn merge(&mut self, a: usize, b: usize) {
-        let (a, b) = (root(&self.binders, a), root(&self.binders, b));
-        let (into, from) = (a.min(b), a.max(b));
+    /// Adds a bound to the instance of the generic, renaming it into the binders of each instance
+    /// that the generic's has been merged into.
+    fn add_bound(&mut self, generic: TypeId, env: Option<usize>, mut bound: Bound, upper: bool) {
+        let mut binder = binder_of(&self.binders, generic, env).unwrap();
 
-        if into == from
-            || self.binders[into].instance.is_some() != self.binders[from].instance.is_some()
-        {
+        while let Some(into) = self.binders[binder].merged {
+            bound.1 = self.rename(bound.1, binder);
+            binder = into;
+        }
+
+        let instance = &mut self.instances[self.binders[binder].instance.unwrap()];
+
+        if upper {
+            instance.upper.push(bound);
+        } else {
+            instance.lower.push(bound);
+        }
+    }
+
+    /// Returns an environment in which the rigid binders that the merged binder renames resolve
+    /// to the ones they're renamed to.
+    fn rename(&mut self, env: Option<usize>, binder: usize) -> Option<usize> {
+        let mut renamed = env;
+
+        for (from, into) in self.binders[binder].renaming.clone() {
+            let generic = self.binders[from].generic;
+
+            if self.resolve(generic, env) == Some(from) {
+                self.binders.push(Binder {
+                    generic,
+                    parent: renamed,
+                    instance: None,
+                    merged: Some(into),
+                    renaming: Vec::new(),
+                });
+                renamed = Some(self.binders.len() - 1);
+            }
+        }
+
+        renamed
+    }
+
+    /// Merges the instances of two binders, so that they're the same generic from then on. The
+    /// rigid binders that the comparison they're merged at renames from `b`'s side to `a`'s are
+    /// renamed in their bounds, since each instance's bounds are in terms of its own side's. They're
+    /// merged into the one that was bound first, since its comparison finishes last.
+    fn merge(&mut self, a: usize, b: usize, renaming: &[(usize, usize)]) {
+        let (a, b) = (root(&self.binders, a), root(&self.binders, b));
+
+        if a == b {
             return;
         }
 
-        self.binders[from].merged = Some(into);
+        let (into, from) = (a.min(b), a.max(b));
 
-        if let (Some(into), Some(from)) = (self.binders[into].instance, self.binders[from].instance)
-        {
-            let Instance { lower, upper } = mem::take(&mut self.instances[from]);
-            self.instances[into].lower.extend(lower);
-            self.instances[into].upper.extend(upper);
+        self.binders[from].merged = Some(into);
+        self.binders[from].renaming = if from == b {
+            renaming.to_vec()
+        } else {
+            renaming.iter().map(|&(new, old)| (old, new)).collect()
+        };
+
+        let instance = self.binders[from].instance.unwrap();
+        let Instance {
+            lower,
+            upper,
+            fresh,
+            mut renamed,
+        } = mem::take(&mut self.instances[instance]);
+        let generic = self.binders[from].generic;
+
+        // The bounds are renamed, so the binders they're renamed to may be renamed as well
+        if fresh.is_some() {
+            let renaming = &self.binders[from].renaming;
+            renamed.extend(renaming.iter().flat_map(|&(from, into)| [from, into]));
         }
+
+        let into = &mut self.instances[self.binders[into].instance.unwrap()];
+        into.fresh = into.fresh.into_iter().chain(fresh).min();
+        into.renamed.extend(renamed);
+
+        for (bounds, upper) in [(lower, false), (upper, true)] {
+            for bound in bounds {
+                self.add_bound(generic, Some(from), bound, upper);
+            }
+        }
+    }
+
+    /// Returns an environment in which the binders that the instance's missing bounds have other
+    /// generics in place of resolve to new rigid binders.
+    fn refresh(&mut self, env: Option<usize>, instance: &Instance) -> Option<usize> {
+        let (Some(fresh), mut refreshed, mut current) = (instance.fresh, env, env) else {
+            return env;
+        };
+
+        while let Some(index) = current {
+            let generic = self.binders[index].generic;
+            let binder = root(&self.binders, index);
+
+            if (binder >= fresh || instance.renamed.contains(&binder))
+                && binder_of(&self.binders, generic, env) == Some(index)
+            {
+                self.binders.push(Binder {
+                    generic,
+                    parent: refreshed,
+                    instance: None,
+                    merged: None,
+                    renaming: Vec::new(),
+                });
+                refreshed = Some(self.binders.len() - 1);
+            }
+
+            current = self.binders[index].parent;
+        }
+
+        refreshed
     }
 
     /// Interns what the generics referenced by the types are bound to, and returns the binders in
@@ -303,10 +410,16 @@ impl ComparisonContext<'_> {
 
 /// Returns the binder that the generic is bound to in the environment (or the one it was merged
 /// into), or `None` if it's free.
-fn resolve(binders: &[Binder], generic: TypeId, mut env: Option<usize>) -> Option<usize> {
+fn resolve(binders: &[Binder], generic: TypeId, env: Option<usize>) -> Option<usize> {
+    binder_of(binders, generic, env).map(|index| root(binders, index))
+}
+
+/// Returns the binder that the generic is bound to in the environment, even if it has since been
+/// merged into another one, or `None` if it's free.
+fn binder_of(binders: &[Binder], generic: TypeId, mut env: Option<usize>) -> Option<usize> {
     while let Some(index) = env {
         if binders[index].generic == generic {
-            return Some(root(binders, index));
+            return Some(index);
         }
 
         env = binders[index].parent;
@@ -615,9 +728,39 @@ pub(crate) fn compare_impl(
         }
 
         // If it's revisited with other binders, the bounds that their instances would collect
-        // from it are only collected for the original ones, so they're merged
-        for (i, binder) in binders.into_iter().enumerate() {
-            ctx.merge(ctx.stack_binders[index][i], binder);
+        // from it are only collected for the original ones, so they're merged. Rigid binders
+        // aren't merged, since they can be different types, but the comparison holds for them
+        // just the same as long as the instances' bounds are renamed to match. That's not
+        // possible for an instance that's revisited as itself, so it's marked instead.
+        let (bound, original_binders) = ctx.stack_binders[index].clone();
+        let mut instances = Vec::new();
+        let mut renaming = Vec::new();
+
+        for &(_, _, binding) in &ctx.bindings[bindings] {
+            let (Binding::Instance(i) | Binding::Rigid(i)) = binding;
+            let original = root(&ctx.binders, original_binders[i]);
+            let binder = root(&ctx.binders, binders[i]);
+
+            match binding {
+                Binding::Instance(_) => instances.push((original, binder)),
+                Binding::Rigid(_) if original != binder => renaming.push((binder, original)),
+                Binding::Rigid(_) => {}
+            }
+        }
+
+        for (original, binder) in instances {
+            // An earlier merge may have made them the same
+            if root(&ctx.binders, original) == root(&ctx.binders, binder) {
+                let instance = ctx.binders[root(&ctx.binders, original)].instance.unwrap();
+                let instance = &mut ctx.instances[instance];
+                instance.fresh = instance.fresh.into_iter().chain([bound]).min();
+                let renamed = renaming
+                    .iter()
+                    .flat_map(|&(binder, original)| [binder, original]);
+                instance.renamed.extend(renamed);
+            } else {
+                ctx.merge(original, binder, &renaming);
+            }
         }
 
         return Comparison::Assign;
@@ -637,7 +780,7 @@ pub(crate) fn compare_impl(
     let candidates = ctx.candidates;
 
     ctx.stack.insert(key);
-    ctx.stack_binders.push(binders);
+    ctx.stack_binders.push((ctx.binders.len(), binders));
 
     let result = match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
@@ -650,14 +793,12 @@ pub(crate) fn compare_impl(
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
         (Type::Never, _) => Comparison::Assign,
         (_, Type::Any) => Comparison::Assign,
-        (Type::Generic(_), _) if ctx.instance(lhs, ctx.lhs_env).is_some() => {
-            let bound = (rhs, ctx.rhs_env);
-            ctx.instance(lhs, ctx.lhs_env).unwrap().upper.push(bound);
+        (Type::Generic(_), _) if ctx.is_instance(lhs, ctx.lhs_env) => {
+            ctx.add_bound(lhs, ctx.lhs_env, (rhs, ctx.rhs_env), true);
             Comparison::Assign
         }
-        (_, Type::Generic(_)) if ctx.instance(rhs, ctx.rhs_env).is_some() => {
-            let bound = (lhs, ctx.lhs_env);
-            ctx.instance(rhs, ctx.rhs_env).unwrap().lower.push(bound);
+        (_, Type::Generic(_)) if ctx.is_instance(rhs, ctx.rhs_env) => {
+            ctx.add_bound(rhs, ctx.rhs_env, (lhs, ctx.lhs_env), false);
             Comparison::Assign
         }
         (Type::Atom(lhs), Type::Atom(rhs)) => {
@@ -772,12 +913,22 @@ pub(crate) fn compare_impl(
                 for instance in bounds {
                     for &(lower, lower_env) in &instance.lower {
                         for &(upper, upper_env) in &instance.upper {
-                            ctx.lhs_env = lower_env;
-                            ctx.rhs_env = upper_env;
-                            result = max(
-                                result,
-                                compare_impl(arena, builtins, ctx, lower, upper, None, None),
-                            );
+                            let mut envs = vec![(lower_env, upper_env)];
+
+                            // Each missing bound is checked against the others like the original
+                            if instance.fresh.is_some() {
+                                envs.push((ctx.refresh(lower_env, &instance), upper_env));
+                                envs.push((lower_env, ctx.refresh(upper_env, &instance)));
+                            }
+
+                            for (lower_env, upper_env) in envs {
+                                ctx.lhs_env = lower_env;
+                                ctx.rhs_env = upper_env;
+                                result = max(
+                                    result,
+                                    compare_impl(arena, builtins, ctx, lower, upper, None, None),
+                                );
+                            }
                         }
                     }
                 }

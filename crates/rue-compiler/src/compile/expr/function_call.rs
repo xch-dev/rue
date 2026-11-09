@@ -40,7 +40,7 @@ pub fn compile_function_call_expr(
 
     let is_unresolved = ctx.is_unresolved(expr.ty);
 
-    let expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty);
+    let expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty, true);
 
     if expected_functions.len() > 1 {
         let name = ctx.type_name(expr.ty);
@@ -325,7 +325,7 @@ fn has_uninferred_parameters(
 ) -> bool {
     let expected = substitute_with_mappings(ctx.types_mut(), param, mappings);
 
-    rue_types::extract_functions(ctx.types_mut(), expected)
+    rue_types::extract_functions(ctx.types_mut(), expected, true)
         .into_iter()
         .flat_map(|function| function.params.into_values())
         .any(|ty| {
@@ -335,10 +335,11 @@ fn has_uninferred_parameters(
         })
 }
 
-/// Whether the type is one of the generics of the function type expected of the call.
+/// Whether the type is one of the generics of a function type expected of the call, including the
+/// function members of a union such as `Id | nil`.
 fn is_expected_generic(ctx: &mut Compiler, expected_type: Option<TypeId>, ty: TypeId) -> bool {
     expected_type.is_some_and(|expected_type| {
-        rue_types::extract_functions(ctx.types_mut(), expected_type)
+        rue_types::extract_functions(ctx.types_mut(), expected_type, false)
             .iter()
             .any(|function| function.generics.contains(&ty))
     })

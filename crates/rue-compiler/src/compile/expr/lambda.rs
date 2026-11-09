@@ -18,7 +18,7 @@ pub fn compile_lambda_expr(
     expected_type: Option<TypeId>,
 ) -> Value {
     let mut expected_functions = if let Some(ty) = expected_type {
-        rue_types::extract_functions(ctx.types_mut(), ty)
+        rue_types::extract_functions(ctx.types_mut(), ty, true)
     } else {
         vec![]
     };

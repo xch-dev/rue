@@ -41,5 +41,33 @@ tests:
   runtime_cost: 1427
   byte_cost: 588000
   total_cost: 589427
+- name: instantiate_alias_with_optional_expected_generic
+  program: (a (q 2 2 (q . 2)) (c (q 2 (i (a (i (l 1) (q) (q 2 (i 1 (q) (q 1 . 1)) 1)) 1) (q) (q 1 . 1)) 1) ()))
+  debug_program: (a (q 2 6 (a 4 ())) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q) (q 1 . 1)) 1)) ()))
+  output: '1'
+  runtime_cost: 1184
+  byte_cost: 1044000
+  total_cost: 1045184
+- name: instance_reached_with_renamed_generics
+  program: (a (q 5 (a (r (a (r (a (r (a (c (q . 2) (c (c (q . 1) (q 4 () (a 2 (c (c 2 5) 11)))) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) (q (q . 2)))) (q ()))) (q 5))) (q ()))) (c (c (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 1) (a 5 (c (c 11 5) 2)))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ()))) (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 2) (a 5 (c (c 5 11) 2)))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) ())))) ()))
+  debug_program: (a (q 2 (q 2 (q 5 (a (r (a (r (a (r (a 2 (c (c (q . 1) (q . 2)) ()))) (c () ()))) (c (q . 5) ()))) (c () ()))) (c 2 1)) (c (c (q . 2) (c (c (q . 1) (q 4 () (a 2 (c (c 2 5) 11)))) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 1) (a 5 (c (c 11 5) 2)))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ()))) (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 2) (a 5 (c (c 5 11) 2)))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) ())))) ()))
+  output: '1'
+  runtime_cost: 10558
+  byte_cost: 5748000
+  total_cost: 5758558
+- name: instance_reached_with_unrelated_renamed_generics
+  program: (a (q 5 (a (r (r (a (r (r (a (r (a (c (q . 2) (c (c (q . 1) (q 4 () (a 2 (c (c 2 5) 11)))) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) (q 7))) (q ())))) (q ())))) (q ()))) (c (c (q 4 (q . 2) (c (c (q . 1) (q 4 11 (c () (a 2 (c (c 5 2) 11))))) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) ()))) (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 3) (c () (a 5 (c (c 5 11) 2))))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) ())))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (q 5 (a 2 (c () ()))) (c (r (r (a (r (r (a (r (a 2 (c (q . 7) ()))) (c () ())))) (c () ())))) 1)) (c 2 1)) (c (c (q . 2) (c (c (q . 1) (q 4 () (a 2 (c (c 2 5) 11)))) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q 4 11 (c () (a 2 (c (c 5 2) 11))))) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) ()))) (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 3) (c () (a 5 (c (c 5 11) 2))))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) ())))) ()))
+  output: '7'
+  runtime_cost: 10969
+  byte_cost: 5940000
+  total_cost: 5950969
+- name: instance_pinned_by_renamed_generics
+  program: (a (q 5 (a (r (a (r (a (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 5)) (q ()))) (q 7))) (q ()))) (c (q 4 (q . 2) (c (c (q . 1) (q 4 5 (a 2 (c 2 (c 5 ()))))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))
+  debug_program: (a (q 2 (q 2 (q 5 (a (r (a (r (a (a 2 (c (q . 5) ())) (c () ()))) (c (q . 7) ()))) (c () ()))) (c 2 1)) (c (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 4 5 (a 2 (c 2 (c 5 ()))))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))
+  output: '5'
+  runtime_cost: 8052
+  byte_cost: 2868000
+  total_cost: 2876052
 diagnostics:
-- Unused generic type `V` at function_binder_identity.rue:44:20
+- Unused generic type `V` at function_binder_identity.rue:81:20
