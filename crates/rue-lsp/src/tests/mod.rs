@@ -14,8 +14,9 @@ use tower_lsp::LspService;
 use tower_lsp::lsp_types::{
     CompletionParams, CompletionResponse, DocumentFormattingParams, FormattingOptions,
     GotoDefinitionParams, GotoDefinitionResponse, HoverContents, HoverParams, Location,
-    MarkedString, PartialResultParams, Position, Range, ReferenceContext, ReferenceParams,
-    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
+    MarkedString, NumberOrString, PartialResultParams, Position, Range, ReferenceContext,
+    ReferenceParams, TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Url,
+    WorkDoneProgressParams,
 };
 
 use crate::Backend;
@@ -289,9 +290,15 @@ impl TestProject {
             }
 
             for diagnostic in diagnostics {
+                let code = match diagnostic.code {
+                    Some(NumberOrString::String(code)) => format!("[{code}]"),
+                    Some(NumberOrString::Number(code)) => format!("[{code}]"),
+                    None => String::new(),
+                };
+
                 writeln!(
                     output,
-                    "{}:{} {:?}: {}",
+                    "{}:{} {:?}{code}: {}",
                     path.display(),
                     range_string(diagnostic.range),
                     diagnostic.severity.unwrap(),

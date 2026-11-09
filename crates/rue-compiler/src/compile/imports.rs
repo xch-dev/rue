@@ -210,13 +210,13 @@ pub fn resolve_imports(
 
         for unused_imports in cache.unused_imports.values() {
             for name in unused_imports.values() {
-                ctx.diagnostic_name(name, DiagnosticKind::UnusedImport(name.text().to_string()));
+                ctx.lint_sites_mut().empty_imports.push(name.clone());
             }
         }
 
         for (name, count) in cache.glob_import_counts.values() {
             if *count == 0 {
-                ctx.diagnostic_name(name, DiagnosticKind::UnusedGlobImport);
+                ctx.lint_sites_mut().empty_imports.push(name.clone());
             }
         }
     }

@@ -1,0 +1,24 @@
+[package]
+name = "rue-lint"
+version = "0.11.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Lints for the Rue programming language, which run as passes after compilation."
+authors = ["Brandon Haggstrom <me@rigidnetwork.com>"]
+homepage = "https://github.com/xch-dev/rue"
+repository = "https://github.com/xch-dev/rue"
+readme = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[lints]
+workspace = true
+
+[dependencies]
+rue-ast = { workspace = true }
+rue-diagnostic = { workspace = true }
+rue-hir = { workspace = true }
+rue-parser = { workspace = true }
+rue-types = { workspace = true }
+indexmap = { workspace = true }
+rowan = { workspace = true }

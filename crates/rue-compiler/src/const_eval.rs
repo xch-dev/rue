@@ -114,6 +114,7 @@ fn evaluate_const_expr(
         debug_symbols: false,
         optimize_static_pairs: true,
         const_eval_max_cost: outer_options.const_eval_max_cost,
+        lints: outer_options.lints,
     };
     let max_cost = options.const_eval_max_cost;
 

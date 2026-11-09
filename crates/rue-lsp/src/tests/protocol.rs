@@ -86,6 +86,18 @@ impl Client {
             }
         }
     }
+
+    /// Waits for the diagnostics published for the given file, skipping those for other files
+    /// (such as `Rue.toml`).
+    async fn diagnostics(&mut self, uri: &Value) -> Value {
+        loop {
+            let diagnostics = self.notification("textDocument/publishDiagnostics").await;
+
+            if &diagnostics["uri"] == uri {
+                return diagnostics;
+            }
+        }
+    }
 }
 
 #[tokio::test]
@@ -137,8 +149,7 @@ async fn test_protocol_session() {
         )
         .await;
 
-    let diagnostics = client.notification("textDocument/publishDiagnostics").await;
-    assert_eq!(diagnostics["uri"], json!(uri));
+    let diagnostics = client.diagnostics(&json!(uri)).await;
     assert_eq!(diagnostics["diagnostics"], json!([]));
 
     let response = client
@@ -185,8 +196,7 @@ async fn test_protocol_session() {
         )
         .await;
 
-    let diagnostics = client.notification("textDocument/publishDiagnostics").await;
-    assert_eq!(diagnostics["uri"], json!(uri));
+    let diagnostics = client.diagnostics(&json!(uri)).await;
     let diagnostics = diagnostics["diagnostics"].as_array().unwrap();
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0]["severity"], json!(1));

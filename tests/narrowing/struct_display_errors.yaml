@@ -15,8 +15,8 @@ diagnostics:
 - Cannot assign `Box<Int | nil>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:89:44
 - 'Cannot assign `Node { value: Int, next: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:99:16'
 - Cannot assign `Node<Int>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:97:39
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_display_errors.rue:108:15
 - 'Cannot assign `Box<Int> | Box { value: Never }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:105:44'
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_display_errors.rue:108:15
 - Unused function `narrowed` at struct_display_errors.rue:15:4
 - Unused function `merged` at struct_display_errors.rue:23:4
 - Unused function `identical` at struct_display_errors.rue:34:4

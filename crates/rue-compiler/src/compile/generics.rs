@@ -1,4 +1,4 @@
-use rue_ast::{AstGenericArguments, AstGenericParameters, AstNode};
+use rue_ast::{AstGenericArguments, AstGenericParameters};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Declaration, ScopeId};
 use rue_types::{Generic, Type, TypeId};
@@ -12,11 +12,7 @@ pub fn compile_generic_parameters(
 ) -> Vec<TypeId> {
     let mut vars = Vec::new();
 
-    let mut is_empty = true;
-
     for generic_parameter in generic_parameters.names() {
-        is_empty = false;
-
         let name = ctx.local_name(&generic_parameter);
 
         let ty = ctx.alloc_type(Type::Generic(Generic { name: Some(name) }));
@@ -40,13 +36,6 @@ pub fn compile_generic_parameters(
         ctx.pop_declaration();
     }
 
-    if is_empty {
-        ctx.diagnostic(
-            generic_parameters.syntax(),
-            DiagnosticKind::EmptyGenericParameters,
-        );
-    }
-
     vars
 }
 
@@ -56,18 +45,8 @@ pub fn compile_generic_arguments(
 ) -> Vec<TypeId> {
     let mut args = Vec::new();
 
-    let mut is_empty = true;
-
     for generic_argument in generic_arguments.types() {
-        is_empty = false;
         args.push(compile_type(ctx, &generic_argument));
-    }
-
-    if is_empty {
-        ctx.diagnostic(
-            generic_arguments.syntax(),
-            DiagnosticKind::EmptyGenericArguments,
-        );
     }
 
     args

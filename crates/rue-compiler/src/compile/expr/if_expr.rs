@@ -3,7 +3,9 @@ use rue_ast::{AstIfExpr, AstNode};
 use rue_hir::{Hir, Value};
 use rue_types::{Type, TypeId, Union};
 
-use crate::{Compiler, InlineIf, compile_expr};
+use rue_lint::InlineIf;
+
+use crate::{Compiler, compile_expr};
 
 pub fn compile_if_expr(
     ctx: &mut Compiler,

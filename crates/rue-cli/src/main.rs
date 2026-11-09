@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Arg, ArgAction, ArgMatches, Args, FromArgMatches, Parser, value_parser};
 use clvm_utils::tree_hash;
 use clvmr::{
     Allocator, NodePtr, SExp,
@@ -17,9 +17,9 @@ use clvmr::{
 use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, FileTree, normalize_path};
-use rue_diagnostic::{DiagnosticSeverity, SourceKind};
+use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Lint, LintLevel, LintLevels, SourceKind};
 use rue_lir::{CLVM_FLAGS, DebugDialect};
-use rue_options::{Manifest, find_project};
+use rue_options::{Manifest, Project, find_project};
 
 mod fmt;
 
@@ -32,6 +32,8 @@ pub enum Command {
     Test(TestArgs),
     Debug(DebugArgs),
     Fmt(FmtArgs),
+    /// List every lint, along with its default level
+    Lints,
 }
 
 #[derive(Debug, Parser)]
@@ -56,6 +58,8 @@ pub struct BuildArgs {
     split: bool,
     #[clap(short, long)]
     all: bool,
+    #[clap(flatten)]
+    lints: LintArgs,
     /// Print help
     #[clap(long, action = clap::ArgAction::Help)]
     help: Option<bool>,
@@ -64,6 +68,101 @@ pub struct BuildArgs {
 #[derive(Debug, Parser)]
 pub struct TestArgs {
     file: Option<String>,
+    #[clap(flatten)]
+    lints: LintArgs,
+}
+
+/// Overrides for lint levels, which take precedence over the `[lints]` section in `Rue.toml`.
+/// If a lint is passed more than once, the last flag wins.
+#[derive(Debug, Clone, Default)]
+pub struct LintArgs {
+    overrides: Vec<(Lint, LintLevel)>,
+}
+
+const LINT_FLAGS: [(&str, char, LintLevel, &str); 3] = [
+    (
+        "allow",
+        'A',
+        LintLevel::Allow,
+        "Allow a lint, so that it isn't reported (can be repeated)",
+    ),
+    (
+        "warn",
+        'W',
+        LintLevel::Warn,
+        "Report a lint as a warning (can be repeated)",
+    ),
+    (
+        "deny",
+        'D',
+        LintLevel::Deny,
+        "Report a lint as an error, which fails compilation (can be repeated)",
+    ),
+];
+
+impl LintArgs {
+    /// Applies the overrides, in the order they were passed.
+    fn apply(&self, levels: &mut LintLevels) {
+        for &(lint, level) in &self.overrides {
+            levels.set(lint, level);
+        }
+    }
+}
+
+// Implemented by hand rather than derived, since the derive doesn't keep track of the order of
+// values across different flags.
+impl Args for LintArgs {
+    fn augment_args(mut cmd: clap::Command) -> clap::Command {
+        for (name, short, _, help) in LINT_FLAGS {
+            cmd = cmd.arg(
+                Arg::new(name)
+                    .short(short)
+                    .long(name)
+                    .value_name("LINT")
+                    .value_parser(value_parser!(Lint))
+                    .action(ArgAction::Append)
+                    .help(help),
+            );
+        }
+
+        cmd
+    }
+
+    fn augment_args_for_update(cmd: clap::Command) -> clap::Command {
+        Self::augment_args(cmd)
+    }
+}
+
+impl FromArgMatches for LintArgs {
+    fn from_arg_matches(matches: &ArgMatches) -> Result<Self, clap::Error> {
+        let mut overrides = Vec::new();
+
+        for (name, _, level, _) in LINT_FLAGS {
+            if let (Some(lints), Some(indices)) =
+                (matches.get_many::<Lint>(name), matches.indices_of(name))
+            {
+                overrides.extend(
+                    indices
+                        .zip(lints)
+                        .map(|(index, &lint)| (index, lint, level)),
+                );
+            }
+        }
+
+        overrides.sort_by_key(|&(index, ..)| index);
+
+        Ok(Self {
+            overrides: overrides
+                .into_iter()
+                .map(|(_, lint, level)| (lint, level))
+                .collect(),
+        })
+    }
+
+    fn update_from_arg_matches(&mut self, matches: &ArgMatches) -> Result<(), clap::Error> {
+        *self = Self::from_arg_matches(matches)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Parser)]
@@ -83,7 +182,64 @@ fn main() -> Result<()> {
         Command::Test(args) => test(args),
         Command::Debug(args) => debug(args),
         Command::Fmt(args) => format(&args),
+        Command::Lints => {
+            lints();
+            Ok(())
+        }
     }
+}
+
+fn lints() {
+    let width = Lint::ALL
+        .iter()
+        .map(|lint| lint.name().len())
+        .max()
+        .unwrap_or_default();
+
+    for &lint in Lint::ALL {
+        println!(
+            "{:width$}  {:5}  {}",
+            lint.name(),
+            lint.default_level(),
+            lint.description()
+        );
+    }
+}
+
+/// Applies the CLI lint overrides to the project, and warns about unknown lints in `Rue.toml`.
+fn configure_lints(project: &mut Project, args: &LintArgs) {
+    for name in &project.unknown_lints {
+        eprintln!(
+            "{}",
+            format!("Warning: Unknown lint `{name}` in Rue.toml")
+                .yellow()
+                .bold()
+        );
+    }
+
+    args.apply(&mut project.options.lints);
+}
+
+/// Prints the diagnostics, and returns whether any of them are errors.
+fn report_diagnostics(diagnostics: Vec<Diagnostic>, base_path: &Path) -> bool {
+    let mut has_errors = false;
+
+    for diagnostic in diagnostics {
+        let message = diagnostic.message(base_path);
+        let lint = diagnostic
+            .lint()
+            .map(|lint| format!("[{lint}]"))
+            .unwrap_or_default();
+
+        if diagnostic.severity == DiagnosticSeverity::Error {
+            eprintln!("{}", format!("Error{lint}: {message}").red().bold());
+            has_errors = true;
+        } else {
+            eprintln!("{}", format!("Warning{lint}: {message}").yellow().bold());
+        }
+    }
+
+    has_errors
 }
 
 fn init(args: InitArgs) -> Result<()> {
@@ -119,10 +275,12 @@ fn build(args: BuildArgs) -> Result<()> {
     let search_path = &Path::new(args.file.as_deref().unwrap_or(".")).canonicalize()?;
     let project = find_project(search_path, args.debug)?;
 
-    let Some(project) = project else {
+    let Some(mut project) = project else {
         eprintln!("{}", "No project found".red().bold());
         process::exit(1);
     };
+
+    configure_lints(&mut project, &args.lints);
 
     if project.manifest.as_ref().is_some_and(|manifest| {
         manifest
@@ -157,21 +315,7 @@ fn build(args: BuildArgs) -> Result<()> {
         project.entrypoint.canonicalize()?
     };
 
-    let mut codegen = true;
-
-    for diagnostic in ctx.take_diagnostics() {
-        let message = diagnostic.message(&base_path);
-        let severity = diagnostic.kind.severity();
-
-        if severity == DiagnosticSeverity::Error {
-            eprintln!("{}", format!("Error: {message}").red().bold());
-            codegen = false;
-        } else {
-            eprintln!("{}", format!("Warning: {message}").yellow().bold());
-        }
-    }
-
-    if !codegen {
+    if report_diagnostics(ctx.take_diagnostics(), &base_path) {
         process::exit(1);
     }
 
@@ -389,10 +533,12 @@ fn test(args: TestArgs) -> Result<()> {
     let search_path = &Path::new(args.file.as_deref().unwrap_or(".")).canonicalize()?;
     let project = find_project(search_path, true)?;
 
-    let Some(project) = project else {
+    let Some(mut project) = project else {
         eprintln!("{}", "No project found".red().bold());
         process::exit(1);
     };
+
+    configure_lints(&mut project, &args.lints);
 
     let mut ctx = Compiler::new(project.options);
 
@@ -403,21 +549,7 @@ fn test(args: TestArgs) -> Result<()> {
         project.entrypoint.canonicalize()?
     };
 
-    let mut codegen = true;
-
-    for diagnostic in ctx.take_diagnostics() {
-        let message = diagnostic.message(&base_path);
-        let severity = diagnostic.kind.severity();
-
-        if severity == DiagnosticSeverity::Error {
-            eprintln!("{}", format!("Error: {message}").red().bold());
-            codegen = false;
-        } else {
-            eprintln!("{}", format!("Warning: {message}").yellow().bold());
-        }
-    }
-
-    if !codegen {
+    if report_diagnostics(ctx.take_diagnostics(), &base_path) {
         process::exit(1);
     }
 
@@ -528,6 +660,7 @@ fn debug(args: DebugArgs) -> Result<()> {
 mod tests {
     use super::Command;
     use clap::{CommandFactory, Parser, error::ErrorKind};
+    use rue_diagnostic::{Lint, LintLevel, LintLevels};
 
     #[test]
     fn cli_debug_asserts() {
@@ -540,6 +673,64 @@ mod tests {
             panic!("expected build command");
         };
         assert!(args.split && args.hash && args.all);
+    }
+
+    #[test]
+    fn lint_flags() {
+        let Ok(Command::Build(args)) = Command::try_parse_from([
+            "rue",
+            "build",
+            "-A",
+            "unused_binding",
+            "--deny",
+            "unused_function",
+            "-W",
+            "unnecessary_cast",
+            "-D",
+            "unused_binding",
+        ]) else {
+            panic!("expected build command");
+        };
+
+        let mut levels = LintLevels::default();
+        levels.set(Lint::UnnecessaryCast, LintLevel::Allow);
+        args.lints.apply(&mut levels);
+
+        assert_eq!(levels.get(Lint::UnusedFunction), LintLevel::Deny);
+        assert_eq!(levels.get(Lint::UnnecessaryCast), LintLevel::Warn);
+        // The last flag wins when a lint is passed more than once
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Deny);
+
+        let Ok(Command::Build(args)) = Command::try_parse_from([
+            "rue",
+            "build",
+            "-D",
+            "unused_binding",
+            "-A",
+            "unused_binding",
+        ]) else {
+            panic!("expected build command");
+        };
+
+        let mut levels = LintLevels::default();
+        args.lints.apply(&mut levels);
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+
+        let Ok(Command::Test(args)) =
+            Command::try_parse_from(["rue", "test", "-A", "unused_import"])
+        else {
+            panic!("expected test command");
+        };
+
+        let mut levels = LintLevels::default();
+        args.lints.apply(&mut levels);
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Allow);
+    }
+
+    #[test]
+    fn unknown_lint_flag() {
+        let err = Command::try_parse_from(["rue", "build", "-D", "not_a_lint"]).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::ValueValidation);
     }
 
     #[test]

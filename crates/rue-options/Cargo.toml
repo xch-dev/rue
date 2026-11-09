@@ -15,6 +15,7 @@ categories = { workspace = true }
 workspace = true
 
 [dependencies]
+rue-diagnostic = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 toml = { workspace = true }

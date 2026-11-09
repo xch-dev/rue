@@ -1,3 +1,5 @@
+use rue_diagnostic::LintLevels;
+
 #[derive(Debug, Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct CompilerOptions {
@@ -19,6 +21,9 @@ pub struct CompilerOptions {
 
     /// The maximum CLVM cost permitted while evaluating a const expression.
     pub const_eval_max_cost: u64,
+
+    /// The level each lint is reported at.
+    pub lints: LintLevels,
 }
 
 impl Default for CompilerOptions {
@@ -30,6 +35,7 @@ impl Default for CompilerOptions {
             debug_symbols: false,
             optimize_static_pairs: true,
             const_eval_max_cost: 11_000_000_000,
+            lints: LintLevels::default(),
         }
     }
 }
@@ -43,6 +49,7 @@ impl CompilerOptions {
             debug_symbols: true,
             optimize_static_pairs: false,
             const_eval_max_cost: 11_000_000_000,
+            lints: LintLevels::default(),
         }
     }
 }

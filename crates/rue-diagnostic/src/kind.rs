@@ -1,9 +1,13 @@
 use thiserror::Error;
 
-use crate::DiagnosticSeverity;
+use crate::Lint;
 
 #[derive(Debug, Clone, Error)]
 pub enum DiagnosticKind {
+    /// A diagnostic reported by a lint, whose severity depends on the lint's configured level.
+    #[error("{message}")]
+    Lint { lint: Lint, message: String },
+
     #[error("Unknown `{0}`")]
     UnknownToken(String),
 
@@ -66,12 +70,6 @@ pub enum DiagnosticKind {
     #[error("Undeclared type `{0}`")]
     UndeclaredType(String),
 
-    #[error("Unnecessary empty generic parameter list specified")]
-    EmptyGenericParameters,
-
-    #[error("Unnecessary empty generic argument list specified")]
-    EmptyGenericArguments,
-
     #[error("Duplicate field `{0}` specified")]
     DuplicateField(String),
 
@@ -95,19 +93,8 @@ pub enum DiagnosticKind {
     #[error("Cannot cast `{0}` to `{1}`, since they have different runtime representations")]
     IncompatibleCast(String, String),
 
-    #[error("Unnecessary cast from `{0}` to `{1}`, since they are compatible with each other")]
-    UnnecessaryCast(String, String),
-
     #[error("Cannot type guard from `{0}` to `{1}`, since they do not overlap")]
     IncompatibleGuard(String, String),
-
-    #[error("Unnecessary type guard from `{0}` to `{1}`, since they are already compatible types")]
-    UnnecessaryGuard(String, String),
-
-    #[error(
-        "Type guard from `{0}` to `{1}` is always true, since every `{0}` value is also a valid `{1}` at runtime; use a cast, or guard against a narrower type"
-    )]
-    IndistinguishableGuard(String, String),
 
     #[error(
         "Cannot compare `{0}` to `{1}` without a type guard, since the runtime value must be constrained"
@@ -129,9 +116,6 @@ pub enum DiagnosticKind {
     #[error("Cannot use `{0}` operator with `{1}`")]
     IncompatibleUnaryOp(String, String),
 
-    #[error("Value returned by statement is unused")]
-    UnusedStatementValue,
-
     #[error("Let bindings must have a value, since they cannot be reassigned")]
     MissingLetValue,
 
@@ -151,9 +135,6 @@ pub enum DiagnosticKind {
 
     #[error("Unknown field `{0}` on type `{1}`")]
     UnknownField(String, String),
-
-    #[error("Unnecessary `+` operator, since it has no effect")]
-    UnnecessaryPlus,
 
     #[error("Path separator `::` is not allowed in the first segment")]
     PathSeparatorInFirstSegment,
@@ -230,36 +211,6 @@ pub enum DiagnosticKind {
     #[error("Field `{0}` exists on struct `{1}`, but it's not present in the underlying type")]
     MissingField(String, String),
 
-    #[error("Unused function `{0}`")]
-    UnusedFunction(String),
-
-    #[error("Unused constant `{0}`")]
-    UnusedConstant(String),
-
-    #[error("Unused binding `{0}`")]
-    UnusedBinding(String),
-
-    #[error("Unused parameter `{0}`")]
-    UnusedParameter(String),
-
-    #[error("Unused struct `{0}`")]
-    UnusedStruct(String),
-
-    #[error("Unused type alias `{0}`")]
-    UnusedTypeAlias(String),
-
-    #[error("Unused generic type `{0}`")]
-    UnusedGenericType(String),
-
-    #[error("Unused import `{0}`")]
-    UnusedImport(String),
-
-    #[error("Condition always evaluates to `false`")]
-    AlwaysFalseCondition,
-
-    #[error("Condition always evaluates to `true`")]
-    AlwaysTrueCondition,
-
     #[error("Cannot destructure type `{0}` into a pair")]
     CannotDestructurePair(String),
 
@@ -284,9 +235,6 @@ pub enum DiagnosticKind {
     #[error("Unresolved import `{0}`")]
     UnresolvedImport(String),
 
-    #[error("Unused import `*`")]
-    UnusedGlobImport,
-
     #[error("Unresolved `super`, there is no parent module")]
     UnresolvedSuper,
 
@@ -295,117 +243,14 @@ pub enum DiagnosticKind {
 
     #[error("Cannot end path in `super`")]
     SuperAtEnd,
-
-    #[error(
-        "Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages"
-    )]
-    DoubleNegationWarning,
-
-    #[error(
-        "A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead"
-    )]
-    InlineIfMayRaise,
 }
 
 impl DiagnosticKind {
-    pub fn severity(&self) -> DiagnosticSeverity {
+    /// The lint this diagnostic was reported by, if any. Diagnostics that aren't lints are errors.
+    pub fn lint(&self) -> Option<Lint> {
         match self {
-            Self::UnknownToken(..)
-            | Self::UnexpectedToken(..)
-            | Self::UnterminatedBlockComment
-            | Self::UnterminatedString
-            | Self::UnterminatedHex
-            | Self::UnterminatedBinary
-            | Self::UnterminatedOctal
-            | Self::MissingFunctionBody
-            | Self::AbsoluteExternalPath
-            | Self::InvalidExternalExtension
-            | Self::ExternalFromNonFileSource
-            | Self::ExternalFileRead(..)
-            | Self::InvalidExternalHex(..)
-            | Self::InvalidExternalClvm(..)
-            | Self::DuplicateSymbol(..)
-            | Self::DuplicateType(..)
-            | Self::NonContractiveType(..)
-            | Self::NonRegularType(..)
-            | Self::UndeclaredSymbol(..)
-            | Self::UndeclaredType(..)
-            | Self::ExpectedGenericArguments(..)
-            | Self::ExpectedArgumentsBetween(..)
-            | Self::ExpectedEvenArguments
-            | Self::ExpectedOneArgumentEvenAdditional
-            | Self::DuplicateField(..)
-            | Self::UndeclaredSubtypeField(..)
-            | Self::IncompatibleType(..)
-            | Self::UnassignableType(..)
-            | Self::InferredFieldType(..)
-            | Self::IncompatibleCast(..)
-            | Self::IncompatibleGuard(..)
-            | Self::UnconstrainableComparison(..)
-            | Self::TypeCheckDepthExceeded
-            | Self::FunctionTypeCheck
-            | Self::GenericTypeCheck
-            | Self::IncompatibleBinaryOp(..)
-            | Self::IncompatibleUnaryOp(..)
-            | Self::MissingLetValue
-            | Self::UnexpectedImplicitReturn
-            | Self::MissingReturn
-            | Self::UnknownField(..)
-            | Self::PathSeparatorInFirstSegment
-            | Self::SubpathNotSupported(..)
-            | Self::PrivateSymbol(..)
-            | Self::PrivateType(..)
-            | Self::ExpectedSymbol(..)
-            | Self::ExpectedType(..)
-            | Self::CannotReferenceModule(..)
-            | Self::CannotReferenceBuiltin(..)
-            | Self::GenericArgumentsOnSymbolReference
-            | Self::NonStructInitializer(..)
-            | Self::MissingRequiredFields(..)
-            | Self::CannotInferParameterType
-            | Self::CannotDisambiguateFunctionTypes(..)
-            | Self::InvalidFunctionCall(..)
-            | Self::ExpectedArguments(..)
-            | Self::CannotInferGeneric(..)
-            | Self::CannotDestructureParameter(..)
-            | Self::NonFinalSpread
-            | Self::UnexpectedSpread
-            | Self::MissingSpread
-            | Self::InvalidSpreadBuiltin
-            | Self::MissingField(..)
-            | Self::CannotDestructurePair(..)
-            | Self::RecursiveInlineFunction(..)
-            | Self::RecursiveConstant(..)
-            | Self::ConstRuntimeDependency(..)
-            | Self::ConstEvalFailed(..)
-            | Self::ConstEvalCostExceeded(..)
-            | Self::RecursiveConstExpr
-            | Self::UnexpectedExplicitReturn
-            | Self::ReturnInExpressionBlock
-            | Self::UnresolvedImport(..)
-            | Self::UnresolvedSuper
-            | Self::SuperAfterNamedImport
-            | Self::SuperAtEnd => DiagnosticSeverity::Error,
-            Self::EmptyGenericParameters
-            | Self::EmptyGenericArguments
-            | Self::UnnecessaryCast(..)
-            | Self::UnnecessaryGuard(..)
-            | Self::IndistinguishableGuard(..)
-            | Self::UnnecessaryPlus
-            | Self::UnusedFunction(..)
-            | Self::UnusedConstant(..)
-            | Self::UnusedBinding(..)
-            | Self::UnusedParameter(..)
-            | Self::UnusedStruct(..)
-            | Self::UnusedTypeAlias(..)
-            | Self::UnusedGenericType(..)
-            | Self::UnusedImport(..)
-            | Self::AlwaysFalseCondition
-            | Self::AlwaysTrueCondition
-            | Self::UnusedStatementValue
-            | Self::UnusedGlobImport
-            | Self::DoubleNegationWarning
-            | Self::InlineIfMayRaise => DiagnosticSeverity::Warning,
+            Self::Lint { lint, .. } => Some(*lint),
+            _ => None,
         }
     }
 }
