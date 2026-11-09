@@ -274,19 +274,21 @@ fn steps(build: Build, depth: usize, op: fn(&mut Types, TypeId, TypeId, TypeId))
     count_steps(|| op(&mut t, ints, ints_copy, bytes32)).1
 }
 
-/// Asserts that the steps taken by the operation grow no faster than `depth^degree`, by comparing
-/// them at two depths. The depths are small enough that exponential growth still finishes quickly.
-fn assert_growth(degree: u32, op: fn(&mut Types, TypeId, TypeId, TypeId)) {
-    const DEPTH: usize = 8;
+/// Asserts that the steps taken by the operation grow linearly with the depth, by comparing them
+/// at two depths. The depths are small enough that exponential growth still finishes quickly, and
+/// that intersections don't reach their maximum depth (which would hide how they grow).
+fn assert_linear(op: fn(&mut Types, TypeId, TypeId, TypeId)) {
+    const DEPTH: usize = 4;
 
     for (name, build) in SHAPES {
         let small = steps(build, DEPTH, op);
         let large = steps(build, DEPTH * 2, op);
 
-        // Doubling the depth multiplies the steps by at most `2^degree`, plus some leeway for
-        // lower order terms. Exponential growth multiplies them by at least `2^DEPTH`.
+        // Doubling the depth at most doubles the steps, and constant terms only make that smaller.
+        // The leeway of 1.5x means quadratic growth (a factor of 4) fails, as does exponential
+        // growth (a factor of about `2^DEPTH`).
         assert!(
-            large <= small * 2usize.pow(degree + 1),
+            large <= small * 3,
             "{name}: {small} steps at depth {DEPTH}, but {large} at depth {}",
             DEPTH * 2
         );
@@ -295,15 +297,14 @@ fn assert_growth(degree: u32, op: fn(&mut Types, TypeId, TypeId, TypeId)) {
 
 #[test]
 fn test_growth_substitute() {
-    // Substituting generic arguments is quadratic (see `test_shared_generic_arguments`)
-    assert_growth(2, |t, ints, _, _| {
+    assert_linear(|t, ints, _, _| {
         substitute(&mut t.arena, ints);
     });
 }
 
 #[test]
 fn test_growth_compare() {
-    assert_growth(1, |t, ints, ints_copy, bytes32| {
+    assert_linear(|t, ints, ints_copy, bytes32| {
         t.compare(ints, ints);
         t.compare(ints, ints_copy);
         t.compare(ints, bytes32);
@@ -313,7 +314,7 @@ fn test_growth_compare() {
 
 #[test]
 fn test_growth_check() {
-    assert_growth(1, |t, ints, ints_copy, _| {
+    assert_linear(|t, ints, ints_copy, _| {
         let nil = t.builtins.nil;
         let any = t.builtins.permissive_any;
         let ints_or_nil = t.union(vec![ints, nil]);
@@ -324,7 +325,7 @@ fn test_growth_check() {
 
 #[test]
 fn test_growth_subtract() {
-    assert_growth(1, |t, ints, ints_copy, _| {
+    assert_linear(|t, ints, ints_copy, _| {
         let nil = t.builtins.nil;
         let ints_or_nil = t.union(vec![ints, nil]);
         subtract(&mut t.arena, &t.builtins, ints_or_nil, ints_copy);
@@ -333,7 +334,7 @@ fn test_growth_subtract() {
 
 #[test]
 fn test_growth_intersect() {
-    assert_growth(1, |t, ints, _, bytes32| {
+    assert_linear(|t, ints, _, bytes32| {
         let nil = t.builtins.nil;
         let ints_or_nil = t.union(vec![ints, nil]);
         intersect(&mut t.arena, &t.builtins, ints_or_nil, bytes32);

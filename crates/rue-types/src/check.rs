@@ -574,6 +574,9 @@ fn pairs_of(
     })
 }
 
+/// Completed overlap checks, which can be shared by checks that start from an empty stack.
+pub(crate) type OverlapMemo = Memo<(TypeId, TypeId), (TypeId, TypeId, usize), bool>;
+
 /// Conservatively determines whether two substituted types may have any values in common. This
 /// must return true if there is any overlap, but may also return true if there isn't.
 pub(crate) fn types_may_overlap(
@@ -581,15 +584,9 @@ pub(crate) fn types_may_overlap(
     builtins: &BuiltinTypes,
     lhs: TypeId,
     rhs: TypeId,
+    memo: &mut OverlapMemo,
 ) -> bool {
-    may_overlap(
-        arena,
-        builtins,
-        lhs,
-        rhs,
-        &mut IndexSet::new(),
-        &mut Memo::default(),
-    )
+    may_overlap(arena, builtins, lhs, rhs, &mut IndexSet::new(), memo)
 }
 
 fn may_overlap(
@@ -598,7 +595,7 @@ fn may_overlap(
     lhs: TypeId,
     rhs: TypeId,
     stack: &mut IndexSet<(TypeId, TypeId)>,
-    memo: &mut Memo<(TypeId, TypeId), (TypeId, TypeId, usize), bool>,
+    memo: &mut OverlapMemo,
 ) -> bool {
     step();
 

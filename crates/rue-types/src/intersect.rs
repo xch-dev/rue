@@ -3,9 +3,9 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    BuiltinTypes, Comparison, Memo, Pair, Struct, Type, TypeId, Union, compare,
-    reaches_non_contractive_cycle, step, stringify_impl, substitute, types_may_overlap,
-    unwrap_semantic,
+    BuiltinTypes, Comparison, ComparisonContext, Memo, OverlapMemo, Pair, Struct, Type, TypeId,
+    Union, compare, compare_impl, reaches_non_contractive_cycle, step, stringify_impl, substitute,
+    types_may_overlap, unwrap_semantic_without_substitution,
 };
 
 /// The maximum number of nested intersections before giving up on being more precise.
@@ -62,6 +62,10 @@ struct IntersectContext {
     /// `rhs` past a certain depth). The same intersections are reached through every reference to
     /// a type, which is exponential in the depth of the type.
     memo: Memo<(TypeId, TypeId), (TypeId, TypeId, usize), TypeId>,
+    /// Shared by every comparison and overlap check, since they all start from an empty stack.
+    /// Otherwise each intersection would compare the whole of the types it's given again.
+    comparison: ComparisonContext<'static>,
+    overlap: OverlapMemo,
 }
 
 fn intersect_impl(
@@ -116,17 +120,22 @@ fn intersect_uncached(
         return lhs;
     }
 
-    if compare(arena, builtins, lhs, rhs) == Comparison::Assign {
+    // The types have already been substituted, so they can be compared directly
+    if compare_impl(arena, builtins, &mut ctx.comparison, lhs, rhs, None, None)
+        == Comparison::Assign
+    {
         return lhs;
     }
 
-    if compare(arena, builtins, rhs, lhs) == Comparison::Assign {
+    if compare_impl(arena, builtins, &mut ctx.comparison, rhs, lhs, None, None)
+        == Comparison::Assign
+    {
         return rhs;
     }
 
     // This doesn't generate a check between the types, since that can be exponential in their
     // depth if they reference the same type more than once
-    if !types_may_overlap(arena, builtins, lhs, rhs) {
+    if !types_may_overlap(arena, builtins, lhs, rhs, &mut ctx.overlap) {
         return builtins.never;
     }
 
@@ -272,13 +281,15 @@ fn repackage_struct(
     }
 }
 
-fn is_any(arena: &mut Arena<Type>, id: TypeId) -> bool {
-    let id = unwrap_semantic(arena, id, true);
+// This and `is_never` don't substitute the type again, since it already has been and doing so
+// for every intersection would make it quadratic in the size of the types
+fn is_any(arena: &Arena<Type>, id: TypeId) -> bool {
+    let id = unwrap_semantic_without_substitution(arena, id, true);
     matches!(arena[id], Type::Any)
 }
 
-fn is_never(arena: &mut Arena<Type>, id: TypeId) -> bool {
-    let id = unwrap_semantic(arena, id, true);
+fn is_never(arena: &Arena<Type>, id: TypeId) -> bool {
+    let id = unwrap_semantic_without_substitution(arena, id, true);
     matches!(arena[id], Type::Never)
 }
 
