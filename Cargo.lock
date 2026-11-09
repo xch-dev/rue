@@ -1877,6 +1877,7 @@ dependencies = [
  "log",
  "rstest",
  "rue-diagnostic",
+ "rue-types",
  "thiserror 2.0.14",
 ]
 

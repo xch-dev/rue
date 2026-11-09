@@ -4,7 +4,7 @@ use id_arena::Arena;
 use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
-use crate::{Alias, FunctionType, Pair, Struct, Type, TypeId, Union, stringify_impl};
+use crate::{Alias, FunctionType, Pair, Struct, Type, TypeId, Union, step, stringify_impl};
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
     substitute_with_mappings(arena, id, &HashMap::new())
@@ -116,6 +116,8 @@ fn substitute_impl(
     scope: usize,
     ctx: &mut SubstitutionContext,
 ) -> TypeId {
+    step();
+
     // The mapped type has already been substituted in the scope it came from
     if let Some(&id) = map.get(&old_id) {
         return id;

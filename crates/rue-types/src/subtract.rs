@@ -1,10 +1,10 @@
 use id_arena::Arena;
 use indexmap::IndexMap;
-use log::trace;
+use log::{Level, log_enabled, trace};
 
 use crate::{
     Alias, BuiltinTypes, Comparison, Type, TypeId, Union, compare, reaches_non_contractive_cycle,
-    stringify_impl, substitute,
+    step, stringify_impl, substitute,
 };
 
 pub fn subtract(
@@ -21,12 +21,24 @@ pub fn subtract(
         return lhs_id;
     }
 
-    let lhs_name = stringify_impl(arena, lhs_id, &mut IndexMap::new());
-    let rhs_name = stringify_impl(arena, rhs_id, &mut IndexMap::new());
-    trace!("Subtracting {lhs_name} from {rhs_name}");
+    let names = log_enabled!(Level::Trace).then(|| {
+        (
+            stringify_impl(arena, lhs_id, &mut IndexMap::new()),
+            stringify_impl(arena, rhs_id, &mut IndexMap::new()),
+        )
+    });
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        trace!("Subtracting {lhs_name} from {rhs_name}");
+    }
+
     let result = subtract_impl(arena, builtins, lhs_id, rhs_id);
-    let new_name = stringify_impl(arena, result, &mut IndexMap::new());
-    trace!("Subtraction from {lhs_name} to {rhs_name} yielded {new_name}");
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        let new_name = stringify_impl(arena, result, &mut IndexMap::new());
+        trace!("Subtraction from {lhs_name} to {rhs_name} yielded {new_name}");
+    }
+
     result
 }
 
@@ -36,6 +48,8 @@ fn subtract_impl(
     lhs_id: TypeId,
     rhs_id: TypeId,
 ) -> TypeId {
+    step();
+
     let mut lhs_variants = variants_of(arena, builtins, lhs_id);
 
     lhs_variants

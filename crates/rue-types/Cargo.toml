@@ -14,6 +14,10 @@ categories = { workspace = true }
 [lints]
 workspace = true
 
+[features]
+# Counts the steps taken by the operations on types, for tests (see `count_steps`)
+step-counter = []
+
 [dependencies]
 rue-diagnostic = { workspace = true }
 id-arena = { workspace = true }
@@ -24,3 +28,8 @@ thiserror = { workspace = true }
 rstest = { workspace = true }
 derive_more = { workspace = true, features = ["display"] }
 log = { workspace = true }
+
+[dev-dependencies]
+# Enables the step counter for this crate's tests. Path-only dev-dependencies are removed when
+# publishing.
+rue-types = { path = ".", features = ["step-counter"] }

@@ -9,7 +9,8 @@ use id_arena::Arena;
 use indexmap::IndexMap;
 use rue_types::{
     Alias, Apply, BuiltinTypes, Check, Comparison, FunctionType, Generic, Inference, Pair, Type,
-    TypeId, Union, check, compare, compare_with_inference, substitute,
+    TypeId, Union, check, compare, compare_with_inference, count_steps, intersect, substitute,
+    subtract,
 };
 
 const DEPTH: usize = 32;
@@ -250,4 +251,92 @@ fn test_shared_inference() {
         Comparison::Assign
     );
     assert_eq!(infer.candidates(generic).unwrap().lower.len(), 4);
+}
+
+type Build = fn(&mut Types, TypeId, usize) -> TypeId;
+
+const SHAPES: [(&str, Build); 4] = [
+    ("pairs", Types::pairs),
+    ("functions", Types::functions),
+    ("generics", Types::generics),
+    ("lists", Types::lists),
+];
+
+/// Builds a type of the shape at the given depth from `Int`, and returns the number of steps that
+/// the operation takes on it (along with a copy of it, and the same shape built from `Bytes32`).
+fn steps(build: Build, depth: usize, op: fn(&mut Types, TypeId, TypeId, TypeId)) -> usize {
+    let mut t = Types::new();
+    let int = t.builtins.int;
+    let bytes32 = t.builtins.bytes32;
+    let ints = build(&mut t, int, depth);
+    let ints_copy = build(&mut t, int, depth);
+    let bytes32 = build(&mut t, bytes32, depth);
+    count_steps(|| op(&mut t, ints, ints_copy, bytes32)).1
+}
+
+/// Asserts that the steps taken by the operation grow no faster than `depth^degree`, by comparing
+/// them at two depths. The depths are small enough that exponential growth still finishes quickly.
+fn assert_growth(degree: u32, op: fn(&mut Types, TypeId, TypeId, TypeId)) {
+    const DEPTH: usize = 8;
+
+    for (name, build) in SHAPES {
+        let small = steps(build, DEPTH, op);
+        let large = steps(build, DEPTH * 2, op);
+
+        // Doubling the depth multiplies the steps by at most `2^degree`, plus some leeway for
+        // lower order terms. Exponential growth multiplies them by at least `2^DEPTH`.
+        assert!(
+            large <= small * 2usize.pow(degree + 1),
+            "{name}: {small} steps at depth {DEPTH}, but {large} at depth {}",
+            DEPTH * 2
+        );
+    }
+}
+
+#[test]
+fn test_growth_substitute() {
+    // Substituting generic arguments is quadratic (see `test_shared_generic_arguments`)
+    assert_growth(2, |t, ints, _, _| {
+        substitute(&mut t.arena, ints);
+    });
+}
+
+#[test]
+fn test_growth_compare() {
+    assert_growth(1, |t, ints, ints_copy, bytes32| {
+        t.compare(ints, ints);
+        t.compare(ints, ints_copy);
+        t.compare(ints, bytes32);
+        t.compare(bytes32, ints);
+    });
+}
+
+#[test]
+fn test_growth_check() {
+    assert_growth(1, |t, ints, ints_copy, _| {
+        let nil = t.builtins.nil;
+        let any = t.builtins.permissive_any;
+        let ints_or_nil = t.union(vec![ints, nil]);
+        let _ = check(&mut t.arena, &t.builtins, ints_or_nil, ints_copy);
+        let _ = check(&mut t.arena, &t.builtins, any, ints);
+    });
+}
+
+#[test]
+fn test_growth_subtract() {
+    assert_growth(1, |t, ints, ints_copy, _| {
+        let nil = t.builtins.nil;
+        let ints_or_nil = t.union(vec![ints, nil]);
+        subtract(&mut t.arena, &t.builtins, ints_or_nil, ints_copy);
+    });
+}
+
+#[test]
+#[ignore = "intersections aren't memoized yet, so this is exponential in the depth"]
+fn test_growth_intersect() {
+    assert_growth(1, |t, ints, _, bytes32| {
+        let nil = t.builtins.nil;
+        let ints_or_nil = t.union(vec![ints, nil]);
+        intersect(&mut t.arena, &t.builtins, ints_or_nil, bytes32);
+    });
 }

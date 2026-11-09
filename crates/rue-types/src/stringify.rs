@@ -1,7 +1,7 @@
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{Alias, Struct, Type, TypeId, substitute};
+use crate::{Alias, Struct, Type, TypeId, step, substitute};
 
 pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
     let id = substitute(arena, id);
@@ -17,6 +17,8 @@ pub(crate) fn stringify_impl(
     id: TypeId,
     stack: &mut IndexMap<TypeId, bool>,
 ) -> String {
+    step();
+
     let len = stack.len();
 
     if stack.contains_key(&id) {

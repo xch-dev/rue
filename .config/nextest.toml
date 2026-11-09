@@ -1,0 +1,9 @@
+[profile.default]
+# Fail a test that hangs (such as from a type operation becoming exponential) after 10 minutes,
+# rather than waiting for the CI job to time out. The slowest tests take a minute or two in debug
+# builds, so this leaves plenty of room for slower machines.
+slow-timeout = { period = "60s", terminate-after = 10 }
+
+[profile.ci]
+# Report every failure rather than stopping at the first
+fail-fast = false

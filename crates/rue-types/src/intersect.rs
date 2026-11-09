@@ -1,10 +1,10 @@
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
-use log::trace;
+use log::{Level, log_enabled, trace};
 
 use crate::{
     BuiltinTypes, Check, Comparison, Pair, Struct, Type, TypeId, Union, check, compare,
-    reaches_non_contractive_cycle, stringify_impl, substitute, unwrap_semantic,
+    reaches_non_contractive_cycle, step, stringify_impl, substitute, unwrap_semantic,
 };
 
 /// The maximum number of nested intersections before giving up on being more precise.
@@ -33,12 +33,24 @@ pub fn intersect(
         return rhs;
     }
 
-    let lhs_name = stringify_impl(arena, lhs, &mut IndexMap::new());
-    let rhs_name = stringify_impl(arena, rhs, &mut IndexMap::new());
-    trace!("Intersecting {lhs_name} with {rhs_name}");
+    let names = log_enabled!(Level::Trace).then(|| {
+        (
+            stringify_impl(arena, lhs, &mut IndexMap::new()),
+            stringify_impl(arena, rhs, &mut IndexMap::new()),
+        )
+    });
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        trace!("Intersecting {lhs_name} with {rhs_name}");
+    }
+
     let result = intersect_impl(arena, builtins, &mut IndexSet::new(), lhs, rhs);
-    let new_name = stringify_impl(arena, result, &mut IndexMap::new());
-    trace!("Intersection of {lhs_name} with {rhs_name} yielded {new_name}");
+
+    if let Some((lhs_name, rhs_name)) = &names {
+        let new_name = stringify_impl(arena, result, &mut IndexMap::new());
+        trace!("Intersection of {lhs_name} with {rhs_name} yielded {new_name}");
+    }
+
     result
 }
 
@@ -49,6 +61,8 @@ fn intersect_impl(
     lhs: TypeId,
     rhs: TypeId,
 ) -> TypeId {
+    step();
+
     if lhs == rhs {
         return lhs;
     }

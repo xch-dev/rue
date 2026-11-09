@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::{
     AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, Memo, Pair, Type, TypeId,
-    compare_impl, reaches_non_contractive_cycle, stringify_impl, substitute,
+    compare_impl, reaches_non_contractive_cycle, step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -266,6 +266,8 @@ fn check_each_impl(
     lhs: &[TypeId],
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
+    step();
+
     if depth > 25 {
         return Err(CheckError::DepthExceeded);
     }
@@ -582,6 +584,8 @@ fn may_overlap(
     stack: &mut IndexSet<(TypeId, TypeId)>,
     memo: &mut Memo<(TypeId, TypeId), (TypeId, TypeId, usize), bool>,
 ) -> bool {
+    step();
+
     if stack.len() > 25 {
         return true;
     }

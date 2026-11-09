@@ -10,7 +10,7 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, free_generics,
-    references_generic, stringify_impl, substitute,
+    references_generic, step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -599,6 +599,8 @@ pub(crate) fn compare_impl(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
+    step();
+
     let (bindings, binders) = ctx.bindings(arena, lhs, rhs);
     let key = (lhs, rhs, ctx.flipped, bindings);
 
