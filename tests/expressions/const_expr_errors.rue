@@ -12,3 +12,15 @@ test fn raises() -> Int {
         raise 42;
     }
 }
+
+test fn destructured_runtime_value(value: Int) -> Int {
+    const {
+        let (a, b) = (value, 4);
+        a + b
+    }
+}
+
+test fn outer_destructured_binding() -> Int {
+    let (a, b) = (3, 4);
+    const { a + b }
+}

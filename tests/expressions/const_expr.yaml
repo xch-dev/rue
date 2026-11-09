@@ -90,3 +90,24 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: destructured_pair
+  program: (q . 7)
+  debug_program: (q . 7)
+  output: '7'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: destructured_nested
+  program: (q . 30)
+  debug_program: (q . 30)
+  output: '30'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: destructured_lambda_parameter
+  program: (q . 42)
+  debug_program: (q . 42)
+  output: '42'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
