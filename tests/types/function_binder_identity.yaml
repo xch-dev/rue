@@ -62,5 +62,12 @@ tests:
   runtime_cost: 10969
   byte_cost: 5940000
   total_cost: 5950969
+- name: instance_pinned_by_renamed_generics
+  program: (a (q 5 (a (r (a (r (a (a (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 5)) (q ()))) (q 7))) (q ()))) (c (q 4 (q . 2) (c (c (q . 1) (q 4 5 (a 2 (c 2 (c 5 ()))))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))
+  debug_program: (a (q 2 (q 2 (q 5 (a (r (a (r (a (a 2 (c (q . 5) ())) (c () ()))) (c (q . 7) ()))) (c () ()))) (c 2 1)) (c (c (q . 2) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 4 5 (a 2 (c 2 (c 5 ()))))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))
+  output: '5'
+  runtime_cost: 8052
+  byte_cost: 2868000
+  total_cost: 2876052
 diagnostics:
-- Unused generic type `V` at function_binder_identity.rue:76:20
+- Unused generic type `V` at function_binder_identity.rue:81:20

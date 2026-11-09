@@ -10,6 +10,7 @@ type A0 = fn<U>(x: U) -> (Int, A1<U>);
 type A1<U> = fn(x: Any) -> (Int, A2<U>);
 type A2<U> = fn(x: U) -> (Int, A1<U>);
 type Pinned<T> = fn<V>(x: V) -> (Int, (T | nil, Pinned<V>));
+type Pinned2<U> = fn(x: Any) -> (U, Pinned2<U>);
 type B0 = fn<U>(x: U) -> (Int, B1<U>);
 type B1<U> = fn(x: Any) -> (U, (nil, B2<U>));
 type B2<U> = fn(x: Any) -> (Int, (nil, B1<U>));
@@ -49,6 +50,10 @@ fn b1<U>(saved: U) -> B1<U> {
 
 fn b2<U>(saved: U) -> B2<U> {
     fn(_y: Any): (Int, (nil, B1<U>)) => (3, (nil, b1(saved)))
+}
+
+fn pinned<U>(saved: U) -> fn(x: Any) -> (U, Pinned2<U>) {
+    fn(_x: Any): (U, Pinned2<U>) => (saved, pinned(saved))
 }
 
 fn is_present(f: Id | nil) -> Int {
@@ -113,4 +118,11 @@ test fn instance_reached_with_unrelated_renamed_generics() -> Int {
     let s: fn(x: Int) -> (Int, Pinned<Int>) = b;
     let next = s(7).rest(nil).rest.rest(nil).rest.rest;
     next(nil).first
+}
+
+test fn instance_pinned_by_renamed_generics() -> Int {
+    // `U` is only ever an `Int`, which is assignable to each `V | Int`
+    let f: fn<U>(x: U) -> Pinned2<U> = pinned;
+    let g: fn(x: Int) -> Q<Int> = f;
+    g(5)(nil).rest(7).rest(nil).first
 }

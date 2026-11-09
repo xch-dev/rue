@@ -1,3 +1,4 @@
 diagnostics:
-- Cannot assign `A0` to `Q<Int>`, since they are incompatible at function_binder_merge_errors.rue:30:22
-- Cannot assign `B0` to `Q<Int>`, since they are incompatible at function_binder_merge_errors.rue:34:22
+- Cannot assign `A0` to `Q<Int>`, since they are incompatible at function_binder_merge_errors.rue:38:22
+- Cannot assign `B0` to `Q<Int>`, since they are incompatible at function_binder_merge_errors.rue:42:22
+- 'Cannot assign `fn<U>(x: U) -> C1<U>` to `fn(x: Int) -> Q2`, since they are incompatible at function_binder_merge_errors.rue:46:32'

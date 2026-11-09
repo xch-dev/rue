@@ -1608,6 +1608,52 @@ mod substitution {
     }
 
     #[test]
+    fn recursive_shared_instances_are_checked_against_fresh_generics() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let any = db.alloc(Type::Any);
+
+        // type Q = fn<V>(x: V) -> (V | Int, Q);
+        let v = db.generic("V");
+        let q_alias = db.declare_alias("Q", &[]);
+        let first = db.union(&[v, int]);
+        let ret = db.pair(first, q_alias);
+        let function = db.function_with(&[v], &[v], true, ret);
+        db.define(q_alias, function);
+
+        // type P<T> = fn<V>(x: V) -> (T | Int, P<V>);
+        let t = db.generic("T");
+        let v = db.generic("V");
+        let p_alias = db.declare_alias("P", &[t]);
+        let first = db.union(&[t, int]);
+        let p_v = db.apply(p_alias, &[(t, v)]);
+        let ret = db.pair(first, p_v);
+        let function = db.function_with(&[v], &[v], true, ret);
+        db.define(p_alias, function);
+        let p_int = db.apply(p_alias, &[(t, int)]);
+
+        // type A1<U> = fn(x: param) -> (U, A1<U>);
+        // fn<U>(x: U) -> A1<U> compared to fn(x: Int) -> rhs
+        let mut cmp = |rhs: TypeId, param: Option<TypeId>| {
+            let u = db.generic("U");
+            let a1 = db.declare_alias("A1", &[u]);
+            let a1_u = db.apply(a1, &[(u, u)]);
+            let ret = db.pair(u, a1_u);
+            let function = db.function(&[param.unwrap_or(u)], ret);
+            db.define(a1, function);
+            let lhs = db.function_with(&[u], &[u], true, a1_u);
+            let rhs = db.function(&[int], rhs);
+            db.cmp(lhs, rhs)
+        };
+
+        // The `V` of one call would be returned as the `V` of the next
+        assert_eq!(cmp(q_alias, None), Comparison::Invalid);
+
+        // But if only an `Int` flows into `U`, it's assignable to each `V | Int`
+        assert_eq!(cmp(p_int, Some(any)), Comparison::Assign);
+    }
+
+    #[test]
     fn recursion() {
         let mut db = Db::new();
         let int = db.builtins.int;

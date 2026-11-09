@@ -125,10 +125,13 @@ struct Binder {
 struct Instance {
     lower: Vec<Bound>,
     upper: Vec<Bound>,
-    /// The rigid binders that a comparison was assumed to hold for it with renamed, so it's missing
-    /// the bounds that it would have collected with them. Those are copies of its other bounds
-    /// with the binders renamed, so they only matter if there are bounds on both sides and some
-    /// of them reference the binders.
+    /// Set if a comparison was assumed to hold for it when it was revisited, so it's missing the
+    /// bounds that it would have collected from the revisit. Those are copies of its bounds in
+    /// which the binders from this index on (which were bound since the comparison was entered)
+    /// and the `renamed` ones are other generics, so it's also checked with them replaced by new
+    /// ones.
+    fresh: Option<usize>,
+    /// The binders that were renamed when it was revisited, which were bound before then.
     renamed: Vec<usize>,
 }
 
@@ -136,8 +139,9 @@ struct Instance {
 pub(crate) struct ComparisonContext<'a> {
     infer: Option<&'a mut Inference>,
     stack: IndexSet<ComparisonKey>,
-    /// The binders referenced by each comparison in `stack`, in the order they're numbered.
-    stack_binders: Vec<Vec<usize>>,
+    /// The number of binders when each comparison in `stack` was entered, and the binders it
+    /// references, in the order they're numbered.
+    stack_binders: Vec<(usize, Vec<usize>)>,
     /// The indices in `stack` of comparisons between pairs or functions. A cycle is only
     /// coinductively assignable if it passes through one of these, since otherwise the
     /// recursion isn't bounded by the structure of the value.
@@ -316,12 +320,20 @@ impl ComparisonContext<'_> {
         let Instance {
             lower,
             upper,
-            renamed,
+            fresh,
+            mut renamed,
         } = mem::take(&mut self.instances[instance]);
         let generic = self.binders[from].generic;
-        self.instances[self.binders[into].instance.unwrap()]
-            .renamed
-            .extend(renamed);
+
+        // The bounds are renamed, so the binders they're renamed to may be renamed as well
+        if fresh.is_some() {
+            let renaming = &self.binders[from].renaming;
+            renamed.extend(renaming.iter().flat_map(|&(from, into)| [from, into]));
+        }
+
+        let into = &mut self.instances[self.binders[into].instance.unwrap()];
+        into.fresh = into.fresh.into_iter().chain(fresh).min();
+        into.renamed.extend(renamed);
 
         for (bounds, upper) in [(lower, false), (upper, true)] {
             for bound in bounds {
@@ -330,21 +342,34 @@ impl ComparisonContext<'_> {
         }
     }
 
-    /// Whether the type references any of the binders in the environment.
-    fn references_binders(
-        &mut self,
-        arena: &Arena<Type>,
-        (ty, env): Bound,
-        binders: &[usize],
-    ) -> bool {
-        self.references
-            .entry(ty)
-            .or_insert_with(|| referenced_generics(arena, ty));
+    /// Returns an environment in which the binders that the instance's missing bounds have other
+    /// generics in place of resolve to new rigid binders.
+    fn refresh(&mut self, env: Option<usize>, instance: &Instance) -> Option<usize> {
+        let (Some(fresh), mut refreshed, mut current) = (instance.fresh, env, env) else {
+            return env;
+        };
 
-        self.references[&ty].iter().any(|&generic| {
-            self.resolve(generic, env)
-                .is_some_and(|binder| binders.contains(&binder))
-        })
+        while let Some(index) = current {
+            let generic = self.binders[index].generic;
+            let binder = root(&self.binders, index);
+
+            if (binder >= fresh || instance.renamed.contains(&binder))
+                && binder_of(&self.binders, generic, env) == Some(index)
+            {
+                self.binders.push(Binder {
+                    generic,
+                    parent: refreshed,
+                    instance: None,
+                    merged: None,
+                    renaming: Vec::new(),
+                });
+                refreshed = Some(self.binders.len() - 1);
+            }
+
+            current = self.binders[index].parent;
+        }
+
+        refreshed
     }
 
     /// Interns what the generics referenced by the types are bound to, and returns the binders in
@@ -704,13 +729,14 @@ pub(crate) fn compare_impl(
         // from it are only collected for the original ones, so they're merged. Rigid binders
         // aren't merged, since they can be different types, but the comparison holds for them
         // just the same as long as the instances' bounds are renamed to match. That's not
-        // possible for an instance that's revisited as itself, so it's marked as renamed instead.
+        // possible for an instance that's revisited as itself, so it's marked instead.
+        let (bound, original_binders) = ctx.stack_binders[index].clone();
         let mut instances = Vec::new();
         let mut renaming = Vec::new();
 
         for &(_, _, binding) in &ctx.bindings[bindings] {
             let (Binding::Instance(i) | Binding::Rigid(i)) = binding;
-            let original = root(&ctx.binders, ctx.stack_binders[index][i]);
+            let original = root(&ctx.binders, original_binders[i]);
             let binder = root(&ctx.binders, binders[i]);
 
             match binding {
@@ -724,10 +750,12 @@ pub(crate) fn compare_impl(
             // An earlier merge may have made them the same
             if root(&ctx.binders, original) == root(&ctx.binders, binder) {
                 let instance = ctx.binders[root(&ctx.binders, original)].instance.unwrap();
+                let instance = &mut ctx.instances[instance];
+                instance.fresh = instance.fresh.into_iter().chain([bound]).min();
                 let renamed = renaming
                     .iter()
                     .flat_map(|&(binder, original)| [binder, original]);
-                ctx.instances[instance].renamed.extend(renamed);
+                instance.renamed.extend(renamed);
             } else {
                 ctx.merge(original, binder, &renaming);
             }
@@ -750,7 +778,7 @@ pub(crate) fn compare_impl(
     let candidates = ctx.candidates;
 
     ctx.stack.insert(key);
-    ctx.stack_binders.push(binders);
+    ctx.stack_binders.push((ctx.binders.len(), binders));
 
     let result = match (arena[lhs].clone(), arena[rhs].clone()) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
@@ -881,25 +909,24 @@ pub(crate) fn compare_impl(
                     mem::replace(&mut ctx.instantiable_from, ctx.instances.len());
 
                 for instance in bounds {
-                    if !instance.lower.is_empty()
-                        && !instance.upper.is_empty()
-                        && instance
-                            .lower
-                            .iter()
-                            .chain(&instance.upper)
-                            .any(|&bound| ctx.references_binders(arena, bound, &instance.renamed))
-                    {
-                        result = Comparison::Invalid;
-                    }
-
                     for &(lower, lower_env) in &instance.lower {
                         for &(upper, upper_env) in &instance.upper {
-                            ctx.lhs_env = lower_env;
-                            ctx.rhs_env = upper_env;
-                            result = max(
-                                result,
-                                compare_impl(arena, builtins, ctx, lower, upper, None, None),
-                            );
+                            let mut envs = vec![(lower_env, upper_env)];
+
+                            // Each missing bound is checked against the others like the original
+                            if instance.fresh.is_some() {
+                                envs.push((ctx.refresh(lower_env, &instance), upper_env));
+                                envs.push((lower_env, ctx.refresh(upper_env, &instance)));
+                            }
+
+                            for (lower_env, upper_env) in envs {
+                                ctx.lhs_env = lower_env;
+                                ctx.rhs_env = upper_env;
+                                result = max(
+                                    result,
+                                    compare_impl(arena, builtins, ctx, lower, upper, None, None),
+                                );
+                            }
                         }
                     }
                 }

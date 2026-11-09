@@ -9,6 +9,10 @@ type B0 = fn<U>(x: U) -> (Int, B1<U>);
 type B1<U> = fn(x: Any) -> (U, B2<U>);
 type B2<U> = fn(x: Any) -> (Int, B1<U>);
 
+// `Q2` doesn't pass its `V` on, but each `V` still flows into and out of `U`
+type Q2 = fn<V>(x: V) -> (V | Int, Q2);
+type C1<U> = fn(x: U) -> (U, C1<U>);
+
 fn a1<U>(saved: U) -> A1<U> {
     fn(_x: Any): (U, A2<U>) => (saved, a2(saved))
 }
@@ -25,6 +29,10 @@ fn b2<U>(saved: U) -> B2<U> {
     fn(_y: Any): (Int, B1<U>) => (0, b1(saved))
 }
 
+fn c1<U>(saved: U) -> C1<U> {
+    fn(x: U): (U, C1<U>) => (saved, c1(x))
+}
+
 fn main() -> Int {
     let a: A0 = fn<U>(x: U): (Int, A1<U>) => (0, a1(x));
     let qa: Q<Int> = a;
@@ -34,5 +42,9 @@ fn main() -> Int {
     let qb: Q<Int> = b;
     let rb: Int = qb((1, 2)).rest(nil).rest(5).rest(nil).first;
 
-    ra + rb
+    let c: fn<U>(x: U) -> C1<U> = c1;
+    let qc: fn(x: Int) -> Q2 = c;
+    let rc: Int = qc(5)((1, 2)).rest(7).first;
+
+    ra + rb + rc
 }
