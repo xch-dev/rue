@@ -13,26 +13,29 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
             continue;
         }
 
+        let lint = if cx.is_assignable(site.from, site.to) {
+            Lint::UnnecessaryGuard
+        } else {
+            // The types are different at compile time, but there's nothing to check at runtime
+            Lint::IndistinguishableGuard
+        };
+
+        if !cx.is_enabled(lint) {
+            continue;
+        }
+
         let from = cx.type_name(site.scope, site.from);
         let to = cx.type_name(site.scope, site.to);
 
-        if cx.is_assignable(site.from, site.to) {
-            cx.report(
-                Lint::UnnecessaryGuard,
-                site.srcloc.clone(),
-                format!(
-                    "Unnecessary type guard from `{from}` to `{to}`, since they are already compatible types"
-                ),
-            );
-        } else {
-            // The types are different at compile time, but there's nothing to check at runtime
-            cx.report(
-                Lint::IndistinguishableGuard,
-                site.srcloc.clone(),
-                format!(
-                    "Type guard from `{from}` to `{to}` is always true, since every `{from}` value is also a valid `{to}` at runtime; use a cast, or guard against a narrower type"
-                ),
-            );
-        }
+        let message = match lint {
+            Lint::UnnecessaryGuard => format!(
+                "Unnecessary type guard from `{from}` to `{to}`, since they are already compatible types"
+            ),
+            _ => format!(
+                "Type guard from `{from}` to `{to}` is always true, since every `{from}` value is also a valid `{to}` at runtime; use a cast, or guard against a narrower type"
+            ),
+        };
+
+        cx.report(lint, site.srcloc.clone(), message);
     }
 }

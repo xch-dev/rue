@@ -88,7 +88,7 @@ unused_binding = "deny"
 unnecessary_cast = "allow"
 ```
 
-They can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn` and `-D`/`--deny`, which take precedence over `Rue.toml`:
+They can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn` and `-D`/`--deny`, which take precedence over `Rue.toml`. If a lint is passed more than once, the last flag wins:
 
 ```bash
 rue build -D unused_binding -A unused_import

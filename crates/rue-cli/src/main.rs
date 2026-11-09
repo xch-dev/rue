@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::Result;
-use clap::{Args, Parser};
+use clap::{Arg, ArgAction, ArgMatches, Args, FromArgMatches, Parser, value_parser};
 use clvm_utils::tree_hash;
 use clvmr::{
     Allocator, NodePtr, SExp,
@@ -73,31 +73,95 @@ pub struct TestArgs {
 }
 
 /// Overrides for lint levels, which take precedence over the `[lints]` section in `Rue.toml`.
-#[derive(Debug, Clone, Default, Args)]
+/// If a lint is passed more than once, the last flag wins.
+#[derive(Debug, Clone, Default)]
 pub struct LintArgs {
-    /// Allow a lint, so that it isn't reported (can be repeated)
-    #[clap(short = 'A', long = "allow", value_name = "LINT")]
-    allow: Vec<Lint>,
-    /// Report a lint as a warning (can be repeated)
-    #[clap(short = 'W', long = "warn", value_name = "LINT")]
-    warn: Vec<Lint>,
-    /// Report a lint as an error, which fails compilation (can be repeated)
-    #[clap(short = 'D', long = "deny", value_name = "LINT")]
-    deny: Vec<Lint>,
+    overrides: Vec<(Lint, LintLevel)>,
 }
 
+const LINT_FLAGS: [(&str, char, LintLevel, &str); 3] = [
+    (
+        "allow",
+        'A',
+        LintLevel::Allow,
+        "Allow a lint, so that it isn't reported (can be repeated)",
+    ),
+    (
+        "warn",
+        'W',
+        LintLevel::Warn,
+        "Report a lint as a warning (can be repeated)",
+    ),
+    (
+        "deny",
+        'D',
+        LintLevel::Deny,
+        "Report a lint as an error, which fails compilation (can be repeated)",
+    ),
+];
+
 impl LintArgs {
-    /// Applies the overrides. If a lint is passed to more than one flag, the strictest level wins.
+    /// Applies the overrides, in the order they were passed.
     fn apply(&self, levels: &mut LintLevels) {
-        for (lints, level) in [
-            (&self.allow, LintLevel::Allow),
-            (&self.warn, LintLevel::Warn),
-            (&self.deny, LintLevel::Deny),
-        ] {
-            for &lint in lints {
-                levels.set(lint, level);
+        for &(lint, level) in &self.overrides {
+            levels.set(lint, level);
+        }
+    }
+}
+
+// Implemented by hand rather than derived, since the derive doesn't keep track of the order of
+// values across different flags.
+impl Args for LintArgs {
+    fn augment_args(mut cmd: clap::Command) -> clap::Command {
+        for (name, short, _, help) in LINT_FLAGS {
+            cmd = cmd.arg(
+                Arg::new(name)
+                    .short(short)
+                    .long(name)
+                    .value_name("LINT")
+                    .value_parser(value_parser!(Lint))
+                    .action(ArgAction::Append)
+                    .help(help),
+            );
+        }
+
+        cmd
+    }
+
+    fn augment_args_for_update(cmd: clap::Command) -> clap::Command {
+        Self::augment_args(cmd)
+    }
+}
+
+impl FromArgMatches for LintArgs {
+    fn from_arg_matches(matches: &ArgMatches) -> Result<Self, clap::Error> {
+        let mut overrides = Vec::new();
+
+        for (name, _, level, _) in LINT_FLAGS {
+            if let (Some(lints), Some(indices)) =
+                (matches.get_many::<Lint>(name), matches.indices_of(name))
+            {
+                overrides.extend(
+                    indices
+                        .zip(lints)
+                        .map(|(index, &lint)| (index, lint, level)),
+                );
             }
         }
+
+        overrides.sort_by_key(|&(index, ..)| index);
+
+        Ok(Self {
+            overrides: overrides
+                .into_iter()
+                .map(|(_, lint, level)| (lint, level))
+                .collect(),
+        })
+    }
+
+    fn update_from_arg_matches(&mut self, matches: &ArgMatches) -> Result<(), clap::Error> {
+        *self = Self::from_arg_matches(matches)?;
+        Ok(())
     }
 }
 
@@ -634,8 +698,23 @@ mod tests {
 
         assert_eq!(levels.get(Lint::UnusedFunction), LintLevel::Deny);
         assert_eq!(levels.get(Lint::UnnecessaryCast), LintLevel::Warn);
-        // The strictest level wins when a lint is passed to more than one flag
+        // The last flag wins when a lint is passed more than once
         assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Deny);
+
+        let Ok(Command::Build(args)) = Command::try_parse_from([
+            "rue",
+            "build",
+            "-D",
+            "unused_binding",
+            "-A",
+            "unused_binding",
+        ]) else {
+            panic!("expected build command");
+        };
+
+        let mut levels = LintLevels::default();
+        args.lints.apply(&mut levels);
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
 
         let Ok(Command::Test(args)) =
             Command::try_parse_from(["rue", "test", "-A", "unused_import"])

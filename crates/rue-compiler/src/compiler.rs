@@ -198,6 +198,11 @@ impl Compiler {
 
     /// Reports an error. Lints are reported separately, by the passes in [`rue_lint`].
     pub fn diagnostic_at(&mut self, srcloc: SrcLoc, kind: DiagnosticKind) {
+        debug_assert!(
+            kind.lint().is_none(),
+            "lints must be reported by a lint pass, so that their level is respected"
+        );
+
         self.diagnostics
             .push(Diagnostic::new(srcloc, kind, DiagnosticSeverity::Error));
     }
@@ -548,13 +553,9 @@ impl Compiler {
         };
         self.lint_sites.conditions.push(site);
 
-        // Conditions that are always `true` or `false` don't need to be a `Bool`, and are reported
-        // by the `constant_condition` lint instead
-        if !self.is_castable(ty, self.builtins().types.bool_true)
-            && !self.is_castable(ty, self.builtins().types.bool_false)
-        {
-            self.assign_type(node, ty, self.builtins().types.bool);
-        }
+        // Conditions that are always `true` or `false` are reported by the `constant_condition`
+        // lint, but they still need to be a `Bool` regardless of whether that lint is enabled
+        self.assign_type(node, ty, self.builtins().types.bool);
     }
 
     /// Collects inference candidates for the generics in `to`, without reporting diagnostics.

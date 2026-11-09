@@ -38,7 +38,7 @@ impl LintLevel {
 
 impl fmt::Display for LintLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
+        f.pad(self.name())
     }
 }
 
@@ -131,7 +131,7 @@ impl Lint {
 
 impl fmt::Display for Lint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
+        f.pad(self.name())
     }
 }
 
@@ -252,5 +252,11 @@ mod tests {
         }
 
         assert!("forbid".parse::<LintLevel>().is_err());
+    }
+
+    #[test]
+    fn display_respects_width() {
+        assert_eq!(format!("{:5}|", LintLevel::Warn), "warn |");
+        assert_eq!(format!("{:16}|", Lint::UnusedValue), "unused_value    |");
     }
 }

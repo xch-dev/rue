@@ -22,6 +22,8 @@ pub enum Error {
 #[derive(Debug, Clone)]
 pub struct Project {
     pub manifest: Option<Manifest>,
+    /// The path to the `Rue.toml` file, if there is one.
+    pub manifest_path: Option<PathBuf>,
     pub options: CompilerOptions,
     pub format_options: FormatOptions,
     pub entrypoint: PathBuf,
@@ -52,6 +54,7 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
         return Ok(Some(Project {
             format_options: manifest.formatter,
             manifest: Some(manifest),
+            manifest_path: Some(path.to_path_buf()),
             options,
             entrypoint,
             unknown_lints,
@@ -71,6 +74,7 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
     if path.is_dir() && path.join("main.rue").exists() {
         return Ok(Some(Project {
             manifest: None,
+            manifest_path: None,
             options: if debug {
                 CompilerOptions::debug()
             } else {
@@ -85,6 +89,7 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
     if path.is_file() && path.extension().is_some_and(|ext| ext == "rue") {
         return Ok(Some(Project {
             manifest: None,
+            manifest_path: None,
             options: if debug {
                 CompilerOptions::debug()
             } else {

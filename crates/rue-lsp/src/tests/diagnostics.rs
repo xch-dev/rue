@@ -9,6 +9,7 @@ fn test_diagnostics_clean() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
     expect![[r#"
+        Rue.toml: <none>
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    42\n}\n")));
@@ -19,6 +20,7 @@ fn test_diagnostics_update_on_change() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
     expect![[r#"
+        Rue.toml: <none>
         main.rue:0:17-2:1 Error: Cannot assign `"hello"` to `Int` without a cast, since they are semantically different
     "#]].assert_eq(&project.change(
         "main.rue",
@@ -26,6 +28,7 @@ fn test_diagnostics_update_on_change() {
     ));
 
     expect![[r#"
+        Rue.toml: <none>
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    42\n}\n")));
@@ -36,6 +39,7 @@ fn test_diagnostics_warning() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
     expect![[r#"
+        Rue.toml: <none>
         main.rue:1:8-1:14 Warning[unused_binding]: Unused binding `unused`
     "#]]
     .assert_eq(&project.change(
@@ -54,6 +58,7 @@ fn test_diagnostics_manifest_lints() {
     );
 
     expect![[r#"
+        Rue.toml: <none>
         main.rue:1:8-1:14 Error[unused_binding]: Unused binding `unused`
     "#]]
     .assert_eq(&project.change(
@@ -63,10 +68,28 @@ fn test_diagnostics_manifest_lints() {
 }
 
 #[test]
+fn test_diagnostics_manifest_unknown_lints() {
+    let project = TestProject::with_manifest(
+        Some(
+            "[compiler]\nentrypoint = \".\"\nstd = false\n\n[lints]\nunused_bindings = \"deny\"\n\"typo\" = \"allow\"\n",
+        ),
+        &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
+    );
+
+    expect![[r#"
+        Rue.toml:6:0-6:6 Warning: Unknown lint `typo`
+        Rue.toml:5:0-5:15 Warning: Unknown lint `unused_bindings`
+        main.rue: <none>
+    "#]]
+    .assert_eq(&project.change("main.rue", None));
+}
+
+#[test]
 fn test_diagnostics_inline_if_may_raise() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
     expect![[r#"
+        Rue.toml: <none>
         main.rue:1:4-4:4 Warning[inline_if_may_raise]: A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead
     "#]].assert_eq(&project.change(
         "main.rue",
@@ -79,12 +102,14 @@ fn test_diagnostics_save_reverts_to_disk() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
     expect![[r#"
+        Rue.toml: <none>
         main.rue:1:4-1:5 Error: Undeclared symbol `x`
     "#]]
     .assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    x\n}\n")));
 
     // Saving clears the in-memory contents, so the file on disk is used again.
     expect![[r#"
+        Rue.toml: <none>
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", None));
@@ -105,6 +130,7 @@ fn test_diagnostics_across_files() {
 
     // Changing the signature in one file reports errors in the file that uses it.
     expect![[r#"
+        Rue.toml: <none>
         main.rue:3:10-3:17 Error: Cannot assign `"world"` to `Int` without a cast, since they are semantically different
         utils.rue:0:16-0:20 Warning[unused_parameter]: Unused parameter `name`
     "#]].assert_eq(&project.change(
@@ -157,6 +183,7 @@ fn test_diagnostics_after_non_ascii() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
     expect![[r#"
+        Rue.toml: <none>
         main.rue:1:18-1:19 Error: Undeclared symbol `x`
         main.rue:1:8-1:9 Warning[unused_binding]: Unused binding `s`
     "#]]

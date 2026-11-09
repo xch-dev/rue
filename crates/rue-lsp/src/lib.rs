@@ -11,6 +11,7 @@ use rue_formatter::{FormatError, FormatOptions, format_source};
 
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use rue_options::find_project;
@@ -165,6 +166,13 @@ impl Backend {
             return IndexMap::new();
         };
 
+        let manifest_diagnostics = project.manifest_path.as_deref().and_then(|path| {
+            Some((
+                normalize_path(path).ok()?,
+                manifest_diagnostics(path, &project.unknown_lints),
+            ))
+        });
+
         let mut ctx = Compiler::new(project.options);
 
         let mut file_cache = self.file_cache.lock().unwrap();
@@ -210,6 +218,11 @@ impl Backend {
             );
 
             diagnostics.entry(file.source.kind.clone()).or_default();
+        }
+
+        // Always include the manifest, so that its diagnostics are cleared once they're fixed
+        if let Some((kind, manifest_diagnostics)) = manifest_diagnostics {
+            diagnostics.insert(kind, manifest_diagnostics);
         }
 
         diagnostics
@@ -414,6 +427,67 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
             .map(|lint| NumberOrString::String(lint.name().to_string())),
         ..Diagnostic::default()
     }
+}
+
+/// Reports names in the `[lints]` section of `Rue.toml` that don't refer to a known lint.
+fn manifest_diagnostics(path: &Path, unknown_lints: &[String]) -> Vec<Diagnostic> {
+    if unknown_lints.is_empty() {
+        return Vec::new();
+    }
+
+    let text = fs::read_to_string(path).unwrap_or_default();
+
+    unknown_lints
+        .iter()
+        .map(|name| Diagnostic {
+            range: find_lint_key(&text, name)
+                .map(|span| offsets_to_range(&text, span.start, span.end))
+                .unwrap_or_default(),
+            message: format!("Unknown lint `{name}`"),
+            severity: Some(DiagnosticSeverity::WARNING),
+            ..Diagnostic::default()
+        })
+        .collect()
+}
+
+/// Finds the span of a key in the `[lints]` section of a manifest, which may be quoted.
+fn find_lint_key(text: &str, name: &str) -> Option<std::ops::Range<usize>> {
+    let mut in_lints = false;
+    let mut offset = 0;
+
+    for line in text.split_inclusive('\n') {
+        let start = offset;
+        offset += line.len();
+
+        let trimmed = line.trim_start();
+
+        if trimmed.starts_with('[') {
+            in_lints = trimmed.trim_end() == "[lints]";
+            continue;
+        }
+
+        if !in_lints {
+            continue;
+        }
+
+        let key_start = start + (line.len() - trimmed.len());
+
+        for quote in ["", "\"", "'"] {
+            let Some(rest) = trimmed
+                .strip_prefix(quote)
+                .and_then(|rest| rest.strip_prefix(name))
+                .and_then(|rest| rest.strip_prefix(quote))
+            else {
+                continue;
+            };
+
+            if rest.trim_start().starts_with('=') {
+                return Some(key_start..key_start + name.len() + quote.len() * 2);
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]

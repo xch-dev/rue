@@ -118,3 +118,30 @@ fn unnecessary_plus_only_applies_to_ints() {
     );
     assert!(has_errors);
 }
+
+#[test]
+fn constant_conditions_must_still_be_bools() {
+    // `true` is always true, but it's a `Bool`, so it's only reported by the lint
+    let (diagnostics, has_errors) =
+        compile_source("fn main() -> Int {\n    assert true;\n    42\n}\n", |_| {});
+
+    assert_eq!(
+        severities(&diagnostics),
+        vec![(Some(Lint::ConstantCondition), DiagnosticSeverity::Warning)]
+    );
+    assert!(!has_errors);
+
+    // `1` is always true as well, but it isn't a `Bool`, so allowing the lint doesn't hide that
+    let (diagnostics, has_errors) = compile_source(
+        "fn main() -> Int {\n    assert 1;\n    42\n}\n",
+        |options| {
+            options.lints.set(Lint::ConstantCondition, LintLevel::Allow);
+        },
+    );
+
+    assert_eq!(
+        severities(&diagnostics),
+        vec![(None, DiagnosticSeverity::Error)]
+    );
+    assert!(has_errors);
+}
