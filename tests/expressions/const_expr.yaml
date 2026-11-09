@@ -104,6 +104,13 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
+- name: destructured_closure_capture
+  program: (q . 17)
+  debug_program: (q . 17)
+  output: '17'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: destructured_lambda_parameter
   program: (q . 42)
   debug_program: (q . 42)

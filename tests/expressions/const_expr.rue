@@ -107,6 +107,14 @@ test fn destructured_nested() -> Int {
     }
 }
 
+test fn destructured_closure_capture() -> Int {
+    const {
+        let (a, b) = (3, 4);
+        let add = fn(c: Int) => a + b + c;
+        add(1) + add(2)
+    }
+}
+
 test fn destructured_lambda_parameter() -> Int {
     const {
         let multiply = fn((a, b): (Int, Int)) => a * b;
