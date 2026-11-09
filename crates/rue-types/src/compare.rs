@@ -125,10 +125,11 @@ struct Binder {
 struct Instance {
     lower: Vec<Bound>,
     upper: Vec<Bound>,
-    /// Whether a comparison was assumed to hold for it with rigid binders renamed, so it's missing
+    /// The rigid binders that a comparison was assumed to hold for it with renamed, so it's missing
     /// the bounds that it would have collected with them. Those are copies of its other bounds
-    /// with the binders renamed, so they only matter if there are bounds on both sides.
-    renamed: bool,
+    /// with the binders renamed, so they only matter if there are bounds on both sides and some
+    /// of them reference the binders.
+    renamed: Vec<usize>,
 }
 
 #[derive(Debug, Default)]
@@ -317,14 +318,33 @@ impl ComparisonContext<'_> {
             upper,
             renamed,
         } = mem::take(&mut self.instances[instance]);
-        self.instances[self.binders[into].instance.unwrap()].renamed |= renamed;
+        let generic = self.binders[from].generic;
+        self.instances[self.binders[into].instance.unwrap()]
+            .renamed
+            .extend(renamed);
 
         for (bounds, upper) in [(lower, false), (upper, true)] {
             for bound in bounds {
-                let generic = self.binders[from].generic;
                 self.add_bound(generic, Some(from), bound, upper);
             }
         }
+    }
+
+    /// Whether the type references any of the binders in the environment.
+    fn references_binders(
+        &mut self,
+        arena: &Arena<Type>,
+        (ty, env): Bound,
+        binders: &[usize],
+    ) -> bool {
+        self.references
+            .entry(ty)
+            .or_insert_with(|| referenced_generics(arena, ty));
+
+        self.references[&ty].iter().any(|&generic| {
+            self.resolve(generic, env)
+                .is_some_and(|binder| binders.contains(&binder))
+        })
     }
 
     /// Interns what the generics referenced by the types are bound to, and returns the binders in
@@ -701,9 +721,13 @@ pub(crate) fn compare_impl(
         }
 
         for (original, binder) in instances {
-            if original == binder {
-                let instance = ctx.binders[original].instance.unwrap();
-                ctx.instances[instance].renamed |= !renaming.is_empty();
+            // An earlier merge may have made them the same
+            if root(&ctx.binders, original) == root(&ctx.binders, binder) {
+                let instance = ctx.binders[root(&ctx.binders, original)].instance.unwrap();
+                let renamed = renaming
+                    .iter()
+                    .flat_map(|&(binder, original)| [binder, original]);
+                ctx.instances[instance].renamed.extend(renamed);
             } else {
                 ctx.merge(original, binder, &renaming);
             }
@@ -857,7 +881,13 @@ pub(crate) fn compare_impl(
                     mem::replace(&mut ctx.instantiable_from, ctx.instances.len());
 
                 for instance in bounds {
-                    if instance.renamed && !instance.lower.is_empty() && !instance.upper.is_empty()
+                    if !instance.lower.is_empty()
+                        && !instance.upper.is_empty()
+                        && instance
+                            .lower
+                            .iter()
+                            .chain(&instance.upper)
+                            .any(|&bound| ctx.references_binders(arena, bound, &instance.renamed))
                     {
                         result = Comparison::Invalid;
                     }
