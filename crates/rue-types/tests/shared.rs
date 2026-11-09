@@ -332,7 +332,6 @@ fn test_growth_subtract() {
 }
 
 #[test]
-#[ignore = "intersections aren't memoized yet, so this is exponential in the depth"]
 fn test_growth_intersect() {
     assert_growth(1, |t, ints, _, bytes32| {
         let nil = t.builtins.nil;

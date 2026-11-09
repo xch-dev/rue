@@ -574,8 +574,24 @@ fn pairs_of(
     })
 }
 
-/// Conservatively determines whether two types may have any values in common. This must return
-/// true if there is any overlap, but may also return true if there isn't.
+/// Conservatively determines whether two substituted types may have any values in common. This
+/// must return true if there is any overlap, but may also return true if there isn't.
+pub(crate) fn types_may_overlap(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> bool {
+    may_overlap(
+        arena,
+        builtins,
+        lhs,
+        rhs,
+        &mut IndexSet::new(),
+        &mut Memo::default(),
+    )
+}
+
 fn may_overlap(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
