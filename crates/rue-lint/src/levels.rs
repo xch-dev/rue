@@ -35,6 +35,8 @@ struct Expectation {
     lint: Lint,
     /// The lint name in the attribute.
     srcloc: SrcLoc,
+    /// The range of the item or statement that the attribute is attached to.
+    range: Range<usize>,
     fulfilled: bool,
 }
 
@@ -126,6 +128,7 @@ impl ScopedLintLevels {
                         expectations.push(Expectation {
                             lint,
                             srcloc: srcloc(source, argument.text_range()),
+                            range: range.clone(),
                             fulfilled: false,
                         });
                         expectations.len() - 1
@@ -153,31 +156,46 @@ impl ScopedLintLevels {
         )
     }
 
-    /// The level of a lint reported at the given location, which is set by the innermost
-    /// attribute that encloses it, or by the project if there isn't one.
-    pub fn get(&self, lint: Lint, srcloc: &SrcLoc) -> LintLevel {
-        self.scope(lint, srcloc, None)
-            .map_or_else(|| self.project.get(lint), |scope| scope.level)
-    }
-
-    /// The level of a lint that is being reported at the given location, like [`Self::get`].
-    /// If the level is set by an `expect` attribute, this fulfills its expectation.
+    /// The level of a lint that is being reported at the given location, which is set by the
+    /// innermost attribute that encloses it, or by the project if there isn't one. If that's an
+    /// `expect` attribute, this fulfills its expectation.
     pub fn report(&mut self, lint: Lint, srcloc: &SrcLoc) -> LintLevel {
-        self.report_except(lint, srcloc, None)
+        self.report_outside(lint, srcloc, None)
     }
 
-    fn report_except(&mut self, lint: Lint, srcloc: &SrcLoc, except: Option<usize>) -> LintLevel {
-        let Some(scope) = self.scope(lint, srcloc, except) else {
+    /// Like [`Self::report`], but ignores the attributes on the item or statement with the given
+    /// range.
+    fn report_outside(
+        &mut self,
+        lint: Lint,
+        srcloc: &SrcLoc,
+        excluded: Option<&Range<usize>>,
+    ) -> LintLevel {
+        let Some(scopes) = self.scopes.get(&(srcloc.source.kind.clone(), lint)) else {
             return self.project.get(lint);
         };
 
-        let level = scope.level;
+        let Some(innermost) = scopes.iter().rev().find(|scope| {
+            scope.range.start <= srcloc.span.start
+                && srcloc.span.end <= scope.range.end
+                && excluded.is_none_or(|range| scope.range != *range)
+        }) else {
+            return self.project.get(lint);
+        };
 
-        if let Some(index) = scope.expectation {
-            self.expectations[index].fulfilled = true;
+        // The lint can be expected more than once on the same item or statement, and all of
+        // those expectations are fulfilled together
+        if innermost.expectation.is_some() {
+            for scope in scopes {
+                if scope.range == innermost.range
+                    && let Some(index) = scope.expectation
+                {
+                    self.expectations[index].fulfilled = true;
+                }
+            }
         }
 
-        level
+        innermost.level
     }
 
     /// Whether the lint is reported anywhere, so that passes can skip work for allowed lints.
@@ -217,27 +235,16 @@ impl ScopedLintLevels {
             let lint = expectation.lint;
             let srcloc = expectation.srcloc.clone();
 
-            // The attribute is inside of its own scope, but an expectation can't fulfill itself
-            let level = self.report_except(Lint::UnfulfilledLintExpectation, &srcloc, Some(index));
+            // The attribute is inside of its own scope, but an expectation can't fulfill itself or
+            // other expectations on the same item or statement
+            let range = expectation.range.clone();
+            let level =
+                self.report_outside(Lint::UnfulfilledLintExpectation, &srcloc, Some(&range));
 
             unfulfilled.push((lint, srcloc, level));
         }
 
         unfulfilled
-    }
-
-    /// The innermost attribute that sets the level of a lint at the given location, ignoring the
-    /// one with the given expectation.
-    fn scope(&self, lint: Lint, srcloc: &SrcLoc, except: Option<usize>) -> Option<&LintScope> {
-        self.scopes
-            .get(&(srcloc.source.kind.clone(), lint))
-            .and_then(|scopes| {
-                scopes.iter().rev().find(|scope| {
-                    scope.range.start <= srcloc.span.start
-                        && srcloc.span.end <= scope.range.end
-                        && (except.is_none() || scope.expectation != except)
-                })
-            })
     }
 }
 

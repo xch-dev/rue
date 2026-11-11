@@ -481,6 +481,7 @@ impl Compiler {
             sites: mem::take(&mut self.lint_sites),
             documents,
             entrypoints,
+            has_errors: self.has_errors(),
         };
 
         let diagnostics = rue_lint::run_lints(

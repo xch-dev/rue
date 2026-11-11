@@ -47,7 +47,7 @@ impl<'a> LintContext<'a> {
 
     /// Reports the `expect` attributes whose lint was never reported inside of them. This must be
     /// called after every pass has run.
-    pub fn report_unfulfilled_expectations(&mut self) {
+    pub(crate) fn report_unfulfilled_expectations(&mut self) {
         for (lint, srcloc, level) in self.levels.report_unfulfilled_expectations() {
             self.push(
                 Lint::UnfulfilledLintExpectation,

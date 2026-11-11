@@ -512,3 +512,100 @@ fn main() -> Int {
     );
     assert!(has_errors);
 }
+
+#[test]
+fn duplicate_expectations_are_fulfilled_together() {
+    let source = "\
+fn main() -> Int {
+    #[expect(unused_binding, unused_binding)]
+    let a = 1;
+    #[expect(unused_binding, unused_binding)]
+    let b = 2;
+    b
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 4: Expected lint `unused_binding` to be reported here, but it never was",
+            "Warning 4: Expected lint `unused_binding` to be reported here, but it never was",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn expectations_of_unfulfilled_expectations_on_the_same_item_are_independent() {
+    let source = "\
+#[expect(unfulfilled_lint_expectation, unfulfilled_lint_expectation)]
+fn main() -> Int {
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Expected lint `unfulfilled_lint_expectation` to be reported here, but it never was",
+            "Warning 1: Expected lint `unfulfilled_lint_expectation` to be reported here, but it never was",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn expectations_are_not_checked_if_compilation_fails() {
+    let source = "\
+fn main() -> Int {
+    #[expect(unnecessary_cast)]
+    let a = 1 as Int;
+    #[expect(unused_binding)]
+    let b = 2;
+    a + missing
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(reports, vec!["Error 6: Undeclared symbol `missing`"]);
+    assert!(has_errors);
+}
+
+#[test]
+fn invalid_expect_attributes_are_reported() {
+    let source = "\
+#[expect]
+fn helper() -> Int {
+    1
+}
+
+#[expect(unused_bindings)]
+fn main() -> Int {
+    #[expect(unused_binding)]
+    let a = 1;
+    #[expect(unused_value)]
+    a
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // Invalid attributes don't stop the expectations of valid ones from being checked, and
+    // misplaced ones don't expect anything
+    assert_eq!(
+        reports,
+        vec![
+            "Error 1: Attribute `expect` expects a list of lint names",
+            "Warning 2: Unused function `helper`",
+            "Warning 6: Unknown lint `unused_bindings`",
+            "Warning 8: Expected lint `unused_binding` to be reported here, but it never was",
+            "Error 10: Attributes can only be used on items and statements",
+        ]
+    );
+    assert!(has_errors);
+}

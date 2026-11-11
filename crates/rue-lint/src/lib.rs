@@ -28,6 +28,10 @@ pub struct LintInput<'a> {
     pub documents: Vec<(&'a Source, &'a AstDocument)>,
     /// The declarations that are used externally, such as `main`, tests and exports.
     pub entrypoints: &'a HashSet<Declaration>,
+    /// Whether compilation reported any errors. Code that failed to compile may not have recorded
+    /// all of its sites, so `expect` attributes aren't checked, since they could be reported as
+    /// unfulfilled by mistake.
+    pub has_errors: bool,
 }
 
 /// Runs every lint pass, and returns the diagnostics that should be reported at the given levels.
@@ -45,7 +49,9 @@ pub fn run_lints(
         pass(&mut cx, input);
     }
 
-    cx.report_unfulfilled_expectations();
+    if !input.has_errors {
+        cx.report_unfulfilled_expectations();
+    }
 
     diagnostics.extend(cx.into_diagnostics());
     diagnostics
