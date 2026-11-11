@@ -24,6 +24,7 @@ pub struct Test {
 pub struct Database {
     hir: Arena<Hir>,
     const_exprs: Vec<HirId>,
+    hir_types: HashMap<HirId, TypeId>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
     symbols: Arena<Symbol>,
@@ -62,6 +63,20 @@ impl Database {
 
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
         self.const_exprs.iter().copied()
+    }
+
+    /// Records the static type of a HIR node. An expression that compiles to the same node as
+    /// the expression inside of it (such as a cast) records its type afterward, so the node ends
+    /// up with the type of the outermost expression, which is the type the rest of the code sees.
+    pub fn set_hir_type(&mut self, hir: HirId, ty: TypeId) {
+        self.hir_types.insert(hir, ty);
+    }
+
+    /// The static type of a HIR node, if it was produced by compiling an expression. Nodes that
+    /// the compiler generates in other ways, such as the checks for a type guard or the
+    /// destructuring of a binding, don't have one.
+    pub fn hir_type(&self, hir: HirId) -> Option<TypeId> {
+        self.hir_types.get(&hir).copied()
     }
 
     pub fn alloc_scope(&mut self, scope: Scope) -> ScopeId {

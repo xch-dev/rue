@@ -38,6 +38,9 @@ pub fn compile_function_call_expr(
         return compile_builtin(ctx, call, builtin);
     }
 
+    // Paths are compiled directly rather than with `compile_expr`, so their type is recorded here
+    let expr = ctx.record_value(expr);
+
     let is_unresolved = ctx.is_unresolved(expr.ty);
 
     let expected_functions = rue_types::extract_functions(ctx.types_mut(), expr.ty, true);

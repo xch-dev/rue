@@ -459,6 +459,20 @@ impl Compiler {
         self.return_count += 1;
     }
 
+    /// Records the type of a compiled expression in the database, so that it's available after
+    /// compilation (such as to lints). The builtin values (such as `nil`) share a HIR node, so
+    /// the value is given a node of its own first, which is returned.
+    pub fn record_value(&mut self, mut value: Value) -> Value {
+        if self.builtins.is_shared_hir(value.hir) {
+            let hir = self.db.hir(value.hir).clone();
+            value = value.with_hir(self.db.alloc_hir(hir));
+        }
+
+        self.db.set_hir_type(value.hir, value.ty);
+
+        value
+    }
+
     pub fn add_inline_if(&mut self, srcloc: SrcLoc, inline_if: InlineIf) {
         self.lint_sites
             .inline_ifs

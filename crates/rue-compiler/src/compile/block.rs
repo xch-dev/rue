@@ -320,9 +320,13 @@ pub fn compile_block(
         ctx.pop_return_target();
     }
 
-    match return_value {
+    let value = match return_value {
         Some(return_value) if definitely_trailing => return_value.with_hir(hir),
         Some(return_value) => Value::new(hir, return_value.ty),
         None => Value::new(hir, return_type),
-    }
+    };
+
+    // Blocks aren't always compiled with `compile_expr` (such as function bodies), so their type is
+    // recorded here
+    ctx.record_value(value)
 }
