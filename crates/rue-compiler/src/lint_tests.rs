@@ -350,6 +350,47 @@ fn main() -> Int {
 }
 
 #[test]
+fn stacked_attributes_apply_to_statements_that_start_with_an_expression() {
+    let source = "\
+fn main() -> Int {
+    let c = true;
+    #[allow(inline_if_may_raise)]
+    #[allow(constant_condition)] #[allow(unused_value)]
+    inline if c { 1 } else { raise; };
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert!(reports.is_empty(), "{reports:?}");
+    assert!(!has_errors);
+}
+
+#[test]
+fn stacked_attributes_before_a_trailing_expression_are_reported() {
+    let source = "\
+fn main() -> Int {
+    let a = 1;
+    #[allow(unused_value)]
+    #[allow(unused_binding)]
+    a
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 3: Attributes can only be used on items and statements",
+            "Error 4: Attributes can only be used on items and statements",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
 fn attributes_after_a_parse_error_are_only_reported_once() {
     let (reports, has_errors) = reports("#[allow(unused_function)]\nlet x = 1;\n", |_| {});
 
@@ -488,6 +529,29 @@ fn main() -> Int {
 }
 
 #[test]
+fn stacked_attributes_cannot_change_a_lint_forbidden_by_an_earlier_one() {
+    let source = "\
+#[forbid(unused_binding)]
+#[allow(unused_binding)]
+fn main() -> Int {
+    let a = 1;
+    2
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 2: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1",
+            "Error 4: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
 fn stacked_attributes_apply_to_the_same_item() {
     let source = "\
 #[allow(unused_function)]
@@ -496,17 +560,24 @@ fn helper(value: Int) -> Int {
     1
 }
 
+#[allow(unused_function)] #[allow(unused_parameter)]
+fn other(value: Int) -> Int {
+    1
+}
+
 fn main() -> Int {
     #[allow(unused_binding)]
     #[deny(unused_binding)]
     let a = 1;
+    #[deny(unused_binding)] #[allow(unused_binding)]
+    let b = 2;
     0
 }
 ";
 
     let (reports, has_errors) = reports(source, |_| {});
 
-    assert_eq!(reports, vec!["Error 10: Unused binding `a`"]);
+    assert_eq!(reports, vec!["Error 15: Unused binding `a`"]);
     assert!(has_errors);
 }
 
