@@ -218,7 +218,8 @@ fn is_optional_trailing_comma(token: &rue_parser::SyntaxToken) -> bool {
     token.parent_ancestors().any(|node| {
         matches!(
             node.kind(),
-            SyntaxKind::FunctionItem
+            SyntaxKind::Attribute
+                | SyntaxKind::FunctionItem
                 | SyntaxKind::FunctionCallExpr
                 | SyntaxKind::LambdaExpr
                 | SyntaxKind::LambdaType

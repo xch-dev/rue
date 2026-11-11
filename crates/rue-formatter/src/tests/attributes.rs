@@ -181,3 +181,38 @@ fn misplaced_inner_attributes_on_modules_stay_attached() {
         "#]],
     );
 }
+
+#[test]
+fn long_inner_attributes_wrap_inside_the_brackets() {
+    check(
+        "#![allow(unused_function, unused_parameter, unused_generic_type, unnecessary_cast, unnecessary_guard)]\nmod m {\n#[allow(unused_function, unused_parameter, unused_generic_type, unnecessary_cast, unnecessary_guard)]\nmod n { #![allow(unused_function, unused_parameter, unused_generic_type, unnecessary_cast, unnecessary_guard)] }\n}",
+        expect![[r#"
+            #![allow(
+                unused_function,
+                unused_parameter,
+                unused_generic_type,
+                unnecessary_cast,
+                unnecessary_guard,
+            )]
+
+            mod m {
+                #[allow(
+                    unused_function,
+                    unused_parameter,
+                    unused_generic_type,
+                    unnecessary_cast,
+                    unnecessary_guard,
+                )]
+                mod n {
+                    #![allow(
+                        unused_function,
+                        unused_parameter,
+                        unused_generic_type,
+                        unnecessary_cast,
+                        unnecessary_guard,
+                    )]
+                }
+            }
+        "#]],
+    );
+}
