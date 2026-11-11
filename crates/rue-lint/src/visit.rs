@@ -3,19 +3,19 @@ use std::collections::HashSet;
 use rue_diagnostic::Lint;
 use rue_hir::{Block, Declaration, Hir, HirId, Statement, Symbol, SymbolId};
 
-use crate::{LintContext, LintInput};
+use crate::LintContext;
 
-/// A lint pass that runs over the HIR of the documents being linted. The walk visits every
-/// function, constant and struct field default declared in them (including lambdas), and calls
-/// the pass for each HIR node and statement once.
+/// A lint pass that runs over the HIR of the documents being linted. Every pass runs during the
+/// same walk, which visits every function, constant and struct field default declared in them
+/// (including lambdas), and calls each pass for each HIR node and statement once.
 ///
 /// The type and location of the expression that a node was compiled from are available from
 /// [`Database::hir_type`](rue_hir::Database::hir_type) and
 /// [`Database::hir_srcloc`](rue_hir::Database::hir_srcloc). Nodes that the compiler generated in
 /// other ways don't have either, so passes should skip them.
-pub trait HirLintPass: Default {
-    /// The lints the pass can report, so that the walk can be skipped if they're all allowed.
-    const LINTS: &'static [Lint];
+pub trait HirLintPass {
+    /// The lints the pass can report, so that the pass can be skipped if they're all allowed.
+    fn lints(&self) -> &'static [Lint];
 
     /// Called for each function and lambda, before its body.
     fn check_function(&mut self, _cx: &mut LintContext<'_>, _symbol: SymbolId, _body: HirId) {}
@@ -27,14 +27,16 @@ pub trait HirLintPass: Default {
     fn check_statement(&mut self, _cx: &mut LintContext<'_>, _block: &Block, _index: usize) {}
 }
 
-/// Runs a HIR lint pass, in the form of a pass in [`PASSES`](crate::lints::PASSES).
-pub(crate) fn run_hir_pass<P: HirLintPass>(cx: &mut LintContext<'_>, _input: &LintInput<'_>) {
-    if !P::LINTS.iter().any(|&lint| cx.is_enabled(lint)) {
+/// Runs the HIR lint passes whose lints could be reported, in a single walk over the HIR.
+pub(crate) fn run_hir_passes(cx: &mut LintContext<'_>, mut passes: Vec<Box<dyn HirLintPass>>) {
+    passes.retain(|pass| pass.lints().iter().any(|&lint| cx.is_enabled(lint)));
+
+    if passes.is_empty() {
         return;
     }
 
     let mut walker = Walker {
-        pass: P::default(),
+        passes,
         visited: HashSet::new(),
     };
 
@@ -74,12 +76,12 @@ fn roots(cx: &LintContext<'_>) -> Vec<Root> {
     roots
 }
 
-struct Walker<P> {
-    pass: P,
+struct Walker {
+    passes: Vec<Box<dyn HirLintPass>>,
     visited: HashSet<HirId>,
 }
 
-impl<P: HirLintPass> Walker<P> {
+impl Walker {
     fn visit_function(&mut self, cx: &mut LintContext<'_>, symbol: SymbolId) {
         let Symbol::Function(function) = cx.db().symbol(symbol) else {
             return;
@@ -92,7 +94,10 @@ impl<P: HirLintPass> Walker<P> {
             return;
         }
 
-        self.pass.check_function(cx, symbol, body);
+        for pass in &mut self.passes {
+            pass.check_function(cx, symbol, body);
+        }
+
         self.visit_hir(cx, body);
     }
 
@@ -105,7 +110,9 @@ impl<P: HirLintPass> Walker<P> {
 
         let node = cx.db().hir(hir).clone();
 
-        self.pass.check_hir(cx, hir, &node);
+        for pass in &mut self.passes {
+            pass.check_hir(cx, hir, &node);
+        }
 
         match node {
             Hir::Unresolved
@@ -170,7 +177,9 @@ impl<P: HirLintPass> Walker<P> {
 
     fn visit_block(&mut self, cx: &mut LintContext<'_>, block: &Block) {
         for (index, statement) in block.statements.iter().enumerate() {
-            self.pass.check_statement(cx, block, index);
+            for pass in &mut self.passes {
+                pass.check_statement(cx, block, index);
+            }
 
             match statement {
                 Statement::Let(symbol) => {

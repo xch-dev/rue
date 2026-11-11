@@ -50,9 +50,13 @@ pub fn run_lints(
 
     cx.report_unknown_lints();
 
-    for pass in lints::PASSES {
-        pass(&mut cx, input);
+    for pass in lints::INPUT_PASSES {
+        if pass.lints.iter().any(|&lint| cx.is_enabled(lint)) {
+            (pass.run)(&mut cx, input);
+        }
     }
+
+    run_hir_passes(&mut cx, lints::hir_passes());
 
     // Invalid lint attributes also stop expectations from being checked, as in Rust, but lints
     // reported as errors (such as denied lints) don't

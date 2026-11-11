@@ -9,7 +9,9 @@ use crate::{HirLintPass, LintContext};
 pub(crate) struct UnnecessaryPlus;
 
 impl HirLintPass for UnnecessaryPlus {
-    const LINTS: &'static [Lint] = &[Lint::UnnecessaryPlus];
+    fn lints(&self) -> &'static [Lint] {
+        &[Lint::UnnecessaryPlus]
+    }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
         let Hir::Unary(UnaryOp::Plus, operand) = *node else {

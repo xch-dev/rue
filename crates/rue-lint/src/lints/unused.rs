@@ -10,17 +10,20 @@ use rue_types::{Alias, Generic, Struct, Type};
 
 use crate::{LintContext, LintInput};
 
+pub(crate) const LINTS: &[Lint] = &[
+    Lint::UnusedImport,
+    Lint::UnusedFunction,
+    Lint::UnusedBinding,
+    Lint::UnusedConstant,
+    Lint::UnusedParameter,
+    Lint::UnusedGenericType,
+    Lint::UnusedStruct,
+    Lint::UnusedTypeAlias,
+];
+
 /// Reports imports and declarations that are never used. A declaration is used if it's reachable
 /// from an entrypoint, such as `main`, a test or an export. Names starting with `_` are exempt.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
-    // Finding unused declarations walks the whole reference graph, so skip it if it's not needed
-    if !Lint::ALL
-        .iter()
-        .any(|&lint| is_reported_here(lint) && cx.is_enabled(lint))
-    {
-        return;
-    }
-
     let db = cx.db();
 
     let mut reports = input
@@ -48,33 +51,6 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         if let Some(srcloc) = name.srcloc().cloned() {
             cx.report(lint, srcloc, message);
         }
-    }
-}
-
-/// Whether the lint is reported by this pass. This is exhaustive, so that a new lint has to be
-/// added here before it can be reported, rather than being skipped when the others are allowed.
-fn is_reported_here(lint: Lint) -> bool {
-    match lint {
-        Lint::UnusedImport
-        | Lint::UnusedFunction
-        | Lint::UnusedBinding
-        | Lint::UnusedConstant
-        | Lint::UnusedParameter
-        | Lint::UnusedGenericType
-        | Lint::UnusedStruct
-        | Lint::UnusedTypeAlias => true,
-        Lint::UnusedValue
-        | Lint::EmptyGenerics
-        | Lint::UnnecessaryCast
-        | Lint::UnnecessaryGuard
-        | Lint::IndistinguishableGuard
-        | Lint::UnnecessaryPlus
-        | Lint::UnnecessaryReturn
-        | Lint::ConstantCondition
-        | Lint::DoubleNegation
-        | Lint::InlineIfMayRaise
-        | Lint::UnknownLint
-        | Lint::UnfulfilledLintExpectation => false,
     }
 }
 

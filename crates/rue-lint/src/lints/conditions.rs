@@ -8,7 +8,9 @@ use crate::{HirLintPass, LintContext};
 pub(crate) struct ConstantCondition;
 
 impl HirLintPass for ConstantCondition {
-    const LINTS: &'static [Lint] = &[Lint::ConstantCondition];
+    fn lints(&self) -> &'static [Lint] {
+        &[Lint::ConstantCondition]
+    }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, _hir: HirId, node: &Hir) {
         if let Hir::If(condition, ..) = *node {

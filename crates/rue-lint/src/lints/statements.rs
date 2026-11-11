@@ -8,7 +8,9 @@ use crate::{HirLintPass, LintContext};
 pub(crate) struct UnusedValue;
 
 impl HirLintPass for UnusedValue {
-    const LINTS: &'static [Lint] = &[Lint::UnusedValue];
+    fn lints(&self) -> &'static [Lint] {
+        &[Lint::UnusedValue]
+    }
 
     fn check_statement(&mut self, cx: &mut LintContext<'_>, block: &Block, index: usize) {
         if let Statement::Expr(statement) = &block.statements[index]
