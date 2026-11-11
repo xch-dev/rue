@@ -5,7 +5,7 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Lint, LintLevel, LintLevels, Source,
     SourceKind, SrcLoc,
 };
-use rue_parser::SyntaxKind;
+use rue_parser::{SyntaxKind, SyntaxNode};
 
 use crate::srcloc;
 
@@ -14,14 +14,13 @@ use crate::srcloc;
 #[derive(Debug, Clone)]
 pub struct ScopedLintLevels {
     project: LintLevels,
-    scopes: HashMap<SourceKind, Vec<LintScope>>,
+    scopes: HashMap<(SourceKind, Lint), Vec<LintScope>>,
 }
 
 /// A lint level set by an attribute, which applies to the item or statement it's attached to.
 #[derive(Debug, Clone)]
 struct LintScope {
     range: Range<usize>,
-    lint: Lint,
     level: LintLevel,
 }
 
@@ -32,7 +31,7 @@ impl ScopedLintLevels {
         project: LintLevels,
         documents: &[(&Source, &AstDocument)],
     ) -> (Self, Vec<Diagnostic>) {
-        let mut scopes = HashMap::<SourceKind, Vec<LintScope>>::new();
+        let mut scopes = HashMap::<(SourceKind, Lint), Vec<LintScope>>::new();
         let mut diagnostics = Vec::new();
 
         for &(source, document) in documents {
@@ -51,15 +50,17 @@ impl ScopedLintLevels {
                     ));
                 };
 
-                let Some(parent) = attribute
-                    .syntax()
-                    .parent()
-                    .filter(|parent| accepts_attributes(parent.kind()))
-                else {
-                    error(
-                        DiagnosticKind::MisplacedAttribute,
-                        attribute.syntax().text_range(),
-                    );
+                let Some(target) = target(&attribute) else {
+                    // At the top level, this is after an item that failed to parse, which has
+                    // already been reported by the parser
+                    if attribute.syntax().parent().map(|parent| parent.kind())
+                        != Some(SyntaxKind::Document)
+                    {
+                        error(
+                            DiagnosticKind::MisplacedAttribute,
+                            attribute.syntax().text_range(),
+                        );
+                    }
                     continue;
                 };
 
@@ -86,7 +87,7 @@ impl ScopedLintLevels {
                     continue;
                 }
 
-                let range = parent.text_range();
+                let range = target.text_range();
                 let range = range.start().into()..range.end().into();
 
                 for argument in arguments {
@@ -100,11 +101,10 @@ impl ScopedLintLevels {
                     };
 
                     scopes
-                        .entry(source.kind.clone())
+                        .entry((source.kind.clone(), lint))
                         .or_default()
                         .push(LintScope {
                             range: range.clone(),
-                            lint,
                             level,
                         });
                 }
@@ -118,12 +118,10 @@ impl ScopedLintLevels {
     /// attribute that encloses it, or by the project if there isn't one.
     pub fn get(&self, lint: Lint, srcloc: &SrcLoc) -> LintLevel {
         self.scopes
-            .get(&srcloc.source.kind)
+            .get(&(srcloc.source.kind.clone(), lint))
             .and_then(|scopes| {
                 scopes.iter().rev().find(|scope| {
-                    scope.lint == lint
-                        && scope.range.start <= srcloc.span.start
-                        && srcloc.span.end <= scope.range.end
+                    scope.range.start <= srcloc.span.start && srcloc.span.end <= scope.range.end
                 })
             })
             .map_or_else(|| self.project.get(lint), |scope| scope.level)
@@ -132,12 +130,24 @@ impl ScopedLintLevels {
     /// Whether the lint is reported anywhere, so that passes can skip work for allowed lints.
     pub fn is_enabled_anywhere(&self, lint: Lint) -> bool {
         self.project.get(lint) != LintLevel::Allow
-            || self
-                .scopes
-                .values()
-                .flatten()
-                .any(|scope| scope.lint == lint && scope.level != LintLevel::Allow)
+            || self.scopes.iter().any(|((_, scope_lint), scopes)| {
+                *scope_lint == lint && scopes.iter().any(|scope| scope.level != LintLevel::Allow)
+            })
     }
+}
+
+/// The item or statement that an attribute applies to. Some statements (such as an `inline if`
+/// followed by a semicolon) begin with an expression that the attributes are parsed into, so this
+/// is the closest enclosing item or statement that starts with the attribute.
+fn target(attribute: &AstAttribute) -> Option<SyntaxNode> {
+    let start = attribute.syntax().text_range().start();
+
+    attribute
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .take_while(|node| node.text_range().start() == start)
+        .find(|node| accepts_attributes(node.kind()))
 }
 
 /// Whether attributes can be attached to nodes of the given kind.

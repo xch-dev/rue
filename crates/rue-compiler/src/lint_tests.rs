@@ -329,3 +329,28 @@ fn main() -> Int {
     );
     assert!(has_errors);
 }
+
+#[test]
+fn attributes_apply_to_statements_that_start_with_an_expression() {
+    let source = "\
+fn main() -> Int {
+    let c = true;
+    #[allow(inline_if_may_raise, constant_condition, unused_value)]
+    inline if c { 1 } else { raise; };
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert!(reports.is_empty(), "{reports:?}");
+    assert!(!has_errors);
+}
+
+#[test]
+fn attributes_after_a_parse_error_are_only_reported_once() {
+    let (reports, has_errors) = reports("#[allow(unused_function)]\nlet x = 1;\n", |_| {});
+
+    assert_eq!(reports, vec!["Error 2: Expected item, found `let`"]);
+    assert!(has_errors);
+}
