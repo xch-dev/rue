@@ -5,15 +5,19 @@ use std::{
 
 use thiserror::Error;
 
-use crate::{CompilerOptions, FormatOptions, Manifest};
+use crate::{CompilerOptions, FormatOptions, Manifest, UnknownLint};
 
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
 
-    #[error("TOML error: {0}")]
-    Toml(#[from] toml::de::Error),
+    /// The manifest at the given path couldn't be parsed.
+    #[error("TOML error: {error}")]
+    Toml {
+        path: PathBuf,
+        error: toml::de::Error,
+    },
 
     #[error("Missing parent directory")]
     MissingParent,
@@ -28,12 +32,16 @@ pub struct Project {
     pub format_options: FormatOptions,
     pub entrypoint: PathBuf,
     /// Names in the manifest's `[lints]` section that don't refer to a known lint.
-    pub unknown_lints: Vec<String>,
+    pub unknown_lints: Vec<UnknownLint>,
 }
 
 pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> {
     if path.is_file() && path.file_name().is_some_and(|name| name == "Rue.toml") {
-        let manifest: Manifest = toml::from_str(&fs::read_to_string(path)?)?;
+        let manifest: Manifest =
+            toml::from_str(&fs::read_to_string(path)?).map_err(|error| Error::Toml {
+                path: path.to_path_buf(),
+                error,
+            })?;
         let entrypoint = path
             .parent()
             .ok_or(Error::MissingParent)?
@@ -127,7 +135,14 @@ mod tests {
             project.options.lints.get(Lint::UnusedBinding),
             LintLevel::Deny
         );
-        assert_eq!(project.unknown_lints, vec!["typo_lint".to_string()]);
+        assert_eq!(
+            project
+                .unknown_lints
+                .iter()
+                .map(|lint| lint.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["typo_lint"]
+        );
 
         Ok(())
     }

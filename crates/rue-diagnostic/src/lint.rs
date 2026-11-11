@@ -1,12 +1,12 @@
 use std::{fmt, str::FromStr};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
 use crate::DiagnosticSeverity;
 
 /// How a lint is reported when it's triggered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LintLevel {
     /// The lint is not reported.
@@ -56,6 +56,27 @@ impl FromStr for LintLevel {
             "deny" => Ok(Self::Deny),
             _ => Err(UnknownLintLevel(s.to_string())),
         }
+    }
+}
+
+// Levels are parsed the same way everywhere, so that invalid ones have the same message
+impl<'de> Deserialize<'de> for LintLevel {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LevelVisitor;
+
+        impl de::Visitor<'_> for LevelVisitor {
+            type Value = LintLevel;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a lint level (`allow`, `warn` or `deny`)")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<LintLevel, E> {
+                value.parse().map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_str(LevelVisitor)
     }
 }
 
