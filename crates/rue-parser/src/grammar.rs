@@ -1,3 +1,4 @@
+mod attribute;
 mod binding;
 mod block;
 mod document;

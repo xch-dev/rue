@@ -2,6 +2,7 @@ use expect_test::{Expect, expect};
 
 use crate::{FormatError, FormatOptions, format_source};
 
+mod attributes;
 mod comments;
 mod imports;
 mod regressions;

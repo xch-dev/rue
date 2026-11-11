@@ -97,6 +97,7 @@ macro_rules! ast_enum {
 ast_nodes!(
     Document,
     ModuleItem,
+    Attribute,
     FunctionItem,
     FunctionParameter,
     ConstantItem,
@@ -198,6 +199,25 @@ ast_enum!(
 impl AstDocument {
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
         self.syntax().children().filter_map(AstItem::cast)
+    }
+}
+
+impl AstAttribute {
+    /// The name of the attribute, such as `allow` in `#[allow(unused_binding)]`.
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    /// The arguments in parentheses, such as `unused_binding` in `#[allow(unused_binding)]`.
+    pub fn arguments(&self) -> impl Iterator<Item = SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .filter(|token| token.kind() == SyntaxKind::Ident)
+            .skip(1)
     }
 }
 

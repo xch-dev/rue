@@ -224,12 +224,18 @@ pub enum SyntaxKind {
     #[display("`...`")]
     Spread,
 
+    #[display("`#`")]
+    Pound,
+
     // AST
     #[display("document")]
     Document,
 
     #[display("module item")]
     ModuleItem,
+
+    #[display("attribute")]
+    Attribute,
 
     #[display("function item")]
     FunctionItem,
@@ -457,6 +463,7 @@ macro_rules! T {
     [=>] => { $crate::SyntaxKind::FatArrow };
     [::] => { $crate::SyntaxKind::PathSeparator };
     [...] => { $crate::SyntaxKind::Spread };
+    [#] => { $crate::SyntaxKind::Pound };
 }
 
 impl SyntaxKind {
@@ -588,9 +595,11 @@ impl SyntaxKind {
             T![=>] => &[T![=], T![>]],
             T![::] => &[T![:], T![:]],
             T![...] => &[T![.], T![.], T![.]],
+            T![#] => &[T![#]],
             SyntaxKind::TurboFish => &[T![:], T![:], T![<]],
             SyntaxKind::Document => &[SyntaxKind::Document],
             SyntaxKind::ModuleItem => &[SyntaxKind::ModuleItem],
+            SyntaxKind::Attribute => &[SyntaxKind::Attribute],
             SyntaxKind::FunctionItem => &[SyntaxKind::FunctionItem],
             SyntaxKind::FunctionParameter => &[SyntaxKind::FunctionParameter],
             SyntaxKind::ConstantItem => &[SyntaxKind::ConstantItem],

@@ -232,6 +232,7 @@ impl Iterator for Lexer<'_> {
             ',' => TokenKind::Comma,
             ':' => TokenKind::Colon,
             ';' => TokenKind::Semicolon,
+            '#' => TokenKind::Pound,
             _ => TokenKind::Unknown,
         };
 

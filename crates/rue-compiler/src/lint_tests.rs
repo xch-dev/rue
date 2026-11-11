@@ -145,3 +145,187 @@ fn constant_conditions_must_still_be_bools() {
     );
     assert!(has_errors);
 }
+
+/// Renders each diagnostic as its severity, line and message, to check where lints are reported.
+fn reports(source: &str, configure: impl FnOnce(&mut CompilerOptions)) -> (Vec<String>, bool) {
+    let (diagnostics, has_errors) = compile_source(source, configure);
+
+    let reports = diagnostics
+        .iter()
+        .map(|diagnostic| {
+            format!(
+                "{:?} {}: {}",
+                diagnostic.severity,
+                diagnostic.start().line + 1,
+                diagnostic.kind
+            )
+        })
+        .collect();
+
+    (reports, has_errors)
+}
+
+#[test]
+fn attributes_set_each_level() {
+    let source = "\
+fn main() -> Int {
+    #[allow(unused_binding)]
+    let a = 1;
+    #[warn(unused_binding)]
+    let b = 2;
+    #[deny(unused_binding)]
+    let c = 3;
+    let d = 4;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 5: Unused binding `b`",
+            "Error 7: Unused binding `c`",
+            "Warning 8: Unused binding `d`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn nested_attributes_override_their_parents() {
+    let source = "\
+#[deny(unused_binding)]
+mod outer {
+    #[allow(unused_binding)]
+    fn allowed() -> Int {
+        let a = 1;
+        #[warn(unused_binding)]
+        let b = 2;
+        3
+    }
+
+    fn denied() -> Int {
+        let c = 1;
+        2
+    }
+
+    export fn main() -> Int {
+        allowed() + denied()
+    }
+}
+
+fn main() -> Int {
+    let d = 1;
+    outer::main()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 7: Unused binding `b`",
+            "Error 12: Unused binding `c`",
+            "Warning 22: Unused binding `d`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn attributes_override_project_levels() {
+    let source = "\
+#[warn(unused_binding)]
+fn main() -> Int {
+    let a = 1;
+    --42
+}
+";
+
+    let (reports, has_errors) = reports(source, |options| {
+        options.lints.set(Lint::UnusedBinding, LintLevel::Allow);
+        options.lints.set(Lint::DoubleNegation, LintLevel::Deny);
+    });
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 4: Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages",
+            "Warning 3: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn attributes_apply_to_items() {
+    let source = "\
+#[allow(unused_function, unused_parameter)]
+fn helper(value: Int) -> Int {
+    1
+}
+
+#[allow(unused_constant)]
+const VALUE: Int = 1;
+
+#[allow(unused_struct)]
+struct Point {
+    x: Int,
+}
+
+#[allow(unused_type_alias)]
+type Number = Int;
+
+fn unused() -> Int {
+    1
+}
+
+fn main() -> Int {
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(reports, vec!["Warning 17: Unused function `unused`"]);
+    assert!(!has_errors);
+}
+
+#[test]
+fn invalid_attributes_are_reported() {
+    let source = "\
+#[allow(unused_bindings, unused_function)]
+fn helper() -> Int {
+    1
+}
+
+#[expect(unused_function)]
+fn other() -> Int {
+    1
+}
+
+#[allow]
+fn main() -> Int {
+    let a = 1;
+    #[allow(unused_value)]
+    a
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unknown lint `unused_bindings`",
+            "Error 6: Unknown attribute `expect`",
+            "Error 11: Attribute `allow` expects a list of lint names",
+            "Error 14: Attributes can only be used on items and statements",
+            "Warning 7: Unused function `other`",
+        ]
+    );
+    assert!(has_errors);
+}

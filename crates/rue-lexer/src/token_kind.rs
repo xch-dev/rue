@@ -72,6 +72,7 @@ pub enum TokenKind {
     Comma,
     Colon,
     Semicolon,
+    Pound,
 
     Unknown,
 }
