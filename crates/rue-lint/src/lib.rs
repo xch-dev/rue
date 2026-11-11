@@ -1,16 +1,20 @@
 //! Lints run as passes after compilation. Each pass works from the HIR and the declaration graph
 //! in the [`Database`](rue_hir::Database), the parsed documents, and the [`LintSites`] that the
-//! compiler records while type checking. The compiler records those sites without judging them,
-//! so whether something is reported, and at what level, is decided entirely here.
+//! compiler records while type checking. Most passes are [`HirLintPass`]es, which are called for
+//! each node of the HIR, and can look up the type and location of the expression it was compiled
+//! from. The compiler records these facts without judging them, so whether something is
+//! reported, and at what level, is decided entirely here.
 
 mod context;
 mod levels;
 mod lints;
 mod sites;
+mod visit;
 
 pub use context::*;
 pub use levels::*;
 pub use sites::*;
+pub use visit::*;
 
 use std::collections::HashSet;
 

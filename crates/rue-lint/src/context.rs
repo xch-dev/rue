@@ -3,7 +3,7 @@ use std::ops::Range;
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Source, SrcLoc};
 use rue_hir::{Database, ScopeId};
-use rue_types::{BuiltinTypes, Comparison, TypeId};
+use rue_types::{BuiltinTypes, Comparison, Type, TypeId};
 
 use crate::ScopedLintLevels;
 
@@ -98,6 +98,12 @@ impl<'a> LintContext<'a> {
             self.compare(from, to),
             Comparison::Assign | Comparison::Cast
         )
+    }
+
+    /// Whether the type is unresolved, because an error has already been reported for it.
+    pub fn is_unresolved(&mut self, ty: TypeId) -> bool {
+        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
+        matches!(self.db.ty(semantic), Type::Unresolved)
     }
 
     /// The name of a type as it would be written in the given scope.

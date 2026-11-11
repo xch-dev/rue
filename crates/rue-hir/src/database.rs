@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use id_arena::Arena;
-use indexmap::IndexSet;
-use rue_diagnostic::SourceKind;
+use indexmap::{IndexMap, IndexSet};
+use rue_diagnostic::{SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
-use crate::{Hir, HirId, Import, ImportId, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId};
+use crate::{Hir, HirId, Import, ImportId, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Declaration {
@@ -23,7 +23,10 @@ pub struct Test {
 #[derive(Debug, Default, Clone)]
 pub struct Database {
     hir: Arena<Hir>,
-    const_exprs: Vec<HirId>,
+    const_exprs: IndexMap<HirId, HirId>,
+    hir_types: HashMap<HirId, TypeId>,
+    hir_srclocs: HashMap<HirId, SrcLoc>,
+    default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
     symbols: Arena<Symbol>,
@@ -42,11 +45,15 @@ impl Database {
     }
 
     pub fn alloc_hir(&mut self, hir: Hir) -> HirId {
-        let is_const = matches!(&hir, Hir::Const(_));
+        let const_value = match &hir {
+            Hir::Const(expr) => Some(expr.value),
+            _ => None,
+        };
+
         let hir = self.hir.alloc(hir);
 
-        if is_const {
-            self.const_exprs.push(hir);
+        if let Some(value) = const_value {
+            self.const_exprs.insert(hir, value);
         }
 
         hir
@@ -61,7 +68,62 @@ impl Database {
     }
 
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
-        self.const_exprs.iter().copied()
+        self.const_exprs.keys().copied()
+    }
+
+    /// The expression inside of a const expression. This is still available after the const
+    /// expression has been evaluated and replaced with its result.
+    pub fn const_expr_value(&self, hir: HirId) -> Option<HirId> {
+        self.const_exprs.get(&hir).copied()
+    }
+
+    /// Records the static type of a HIR node. An expression that compiles to the same node as
+    /// the expression inside of it (such as a cast) records its type afterward, so the node ends
+    /// up with the type of the outermost expression, which is the type the rest of the code sees.
+    pub fn set_hir_type(&mut self, hir: HirId, ty: TypeId) {
+        self.hir_types.insert(hir, ty);
+    }
+
+    /// The static type of a HIR node, if it was produced by compiling an expression. Nodes that
+    /// the compiler generates in other ways, such as the checks for a type guard or the
+    /// destructuring of a binding, don't have one.
+    pub fn hir_type(&self, hir: HirId) -> Option<TypeId> {
+        self.hir_types.get(&hir).copied()
+    }
+
+    /// Records the location of the source expression that a HIR node was compiled from. Like
+    /// [`set_hir_type`](Self::set_hir_type), this is the outermost expression, so the location of
+    /// a parenthesized expression includes the parentheses.
+    pub fn set_hir_srcloc(&mut self, hir: HirId, srcloc: SrcLoc) {
+        self.hir_srclocs.insert(hir, srcloc);
+    }
+
+    /// The location of the source expression that a HIR node was compiled from, which is only
+    /// available for the same nodes as [`hir_type`](Self::hir_type).
+    pub fn hir_srcloc(&self, hir: HirId) -> Option<&SrcLoc> {
+        self.hir_srclocs.get(&hir)
+    }
+
+    pub fn insert_default_field(&mut self, ty: TypeId, name: String, value: Value) {
+        self.default_fields
+            .entry(ty)
+            .or_default()
+            .insert(name, value);
+    }
+
+    pub fn default_field(&self, ty: TypeId, name: &str) -> Option<Value> {
+        self.default_fields
+            .get(&ty)
+            .and_then(|fields| fields.get(name).cloned())
+    }
+
+    /// The default values of a struct's fields, in the order they were compiled.
+    pub fn default_fields(&self, ty: TypeId) -> impl Iterator<Item = (&str, &Value)> {
+        self.default_fields
+            .get(&ty)
+            .into_iter()
+            .flatten()
+            .map(|(name, value)| (name.as_str(), value))
     }
 
     pub fn alloc_scope(&mut self, scope: Scope) -> ScopeId {

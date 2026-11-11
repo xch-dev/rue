@@ -6,8 +6,6 @@ use rue_hir::{
 };
 use rue_types::{Type, TypeId, Union};
 
-use rue_lint::{ExprStatementSite, InlineIf};
-
 use crate::{
     Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_type, create_binding,
 };
@@ -56,7 +54,6 @@ pub fn compile_block(
     let mut return_value = None;
     let mut return_types = Vec::new();
     let mut implicit_return = false;
-    let mut inline_ifs = Vec::new();
 
     for stmt in block.items() {
         let stmt = match stmt {
@@ -95,17 +92,10 @@ pub fn compile_block(
                     ctx.builtins().unresolved.clone()
                 };
 
-                let always_nil = ctx.is_castable(value.ty, ctx.builtins().types.nil);
-
-                let site = ExprStatementSite {
-                    srcloc: ctx.srcloc(stmt.syntax()),
-                    always_nil,
-                };
-                ctx.lint_sites_mut().expr_statements.push(site);
-
                 Statement::Expr(ExprStatement {
                     hir: value.hir,
-                    always_nil,
+                    always_nil: ctx.is_castable(value.ty, ctx.builtins().types.nil),
+                    srcloc: ctx.srcloc(stmt.syntax()),
                 })
             }
             AstStmt::LetStmt(stmt) => {
@@ -178,14 +168,13 @@ pub fn compile_block(
 
                 if stmt.inline().is_none() {
                     ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
-                } else {
-                    inline_ifs.push((ctx.srcloc(stmt.syntax()), statements.len()));
                 }
 
                 Statement::If(IfStatement {
                     condition: condition.hir,
                     then: then_block.hir,
                     inline: stmt.inline().is_some(),
+                    srcloc: ctx.srcloc(stmt.syntax()),
                 })
             }
             AstStmt::ReturnStmt(stmt) => {
@@ -306,10 +295,6 @@ pub fn compile_block(
             .and_then(|value| implicit_return.then_some(value.hir)),
     }));
 
-    for (srcloc, index) in inline_ifs {
-        ctx.add_inline_if(srcloc, InlineIf::Statement(hir, index));
-    }
-
     ctx.revert_mappings(index, range.end());
 
     // The trailing expression's reference and type guard mappings only describe the
@@ -320,9 +305,13 @@ pub fn compile_block(
         ctx.pop_return_target();
     }
 
-    match return_value {
+    let value = match return_value {
         Some(return_value) if definitely_trailing => return_value.with_hir(hir),
         Some(return_value) => Value::new(hir, return_value.ty),
         None => Value::new(hir, return_type),
-    }
+    };
+
+    // Blocks aren't always compiled with `compile_expr` (such as function bodies), so their type is
+    // recorded here
+    ctx.record_value(block.syntax(), value)
 }

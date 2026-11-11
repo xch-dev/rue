@@ -1,0 +1,166 @@
+use std::collections::HashSet;
+
+use rue_diagnostic::Lint;
+use rue_hir::{Block, Declaration, Hir, HirId, Statement, Symbol};
+
+use crate::{LintContext, LintInput};
+
+/// A lint pass that runs over the HIR of the documents being linted. The walk visits every
+/// function, constant and struct field default declared in them (including lambdas and the
+/// expressions inside of `const` expressions, which have already been evaluated), and calls the
+/// pass for each HIR node and statement once.
+///
+/// The type and location of the expression that a node was compiled from are available from
+/// [`Database::hir_type`](rue_hir::Database::hir_type) and
+/// [`Database::hir_srcloc`](rue_hir::Database::hir_srcloc). Nodes that the compiler generated in
+/// other ways don't have either, so passes should skip them.
+pub trait HirLintPass: Default {
+    /// The lints the pass can report, so that the walk can be skipped if they're all allowed.
+    const LINTS: &'static [Lint];
+
+    /// Called for each HIR node, before the nodes inside of it.
+    fn check_hir(&mut self, _cx: &mut LintContext<'_>, _hir: HirId, _node: &Hir) {}
+
+    /// Called for each statement of a block, before the nodes inside of it.
+    fn check_statement(&mut self, _cx: &mut LintContext<'_>, _block: &Block, _index: usize) {}
+}
+
+/// Runs a HIR lint pass, in the form of a pass in [`PASSES`](crate::lints::PASSES).
+pub(crate) fn run_hir_pass<P: HirLintPass>(cx: &mut LintContext<'_>, _input: &LintInput<'_>) {
+    if !P::LINTS.iter().any(|&lint| cx.is_enabled(lint)) {
+        return;
+    }
+
+    let mut walker = Walker {
+        pass: P::default(),
+        visited: HashSet::new(),
+    };
+
+    for root in roots(cx) {
+        walker.visit_hir(cx, root);
+    }
+}
+
+/// The HIR of every function, constant and struct field default declared in the documents being
+/// linted. Lambdas aren't declarations, so they're visited from the HIR they're declared in.
+fn roots(cx: &LintContext<'_>) -> Vec<HirId> {
+    let db = cx.db();
+    let mut roots = Vec::new();
+
+    for declaration in db.relevant_declarations() {
+        match declaration {
+            Declaration::Symbol(symbol) => match db.symbol(symbol) {
+                Symbol::Function(function) => roots.push(function.body),
+                Symbol::Constant(constant) => roots.push(constant.value.hir),
+                // Bindings are visited from their `let` statement, and the rest don't have HIR
+                _ => {}
+            },
+            Declaration::Type(ty) => {
+                roots.extend(db.default_fields(ty).map(|(_, value)| value.hir));
+            }
+        }
+    }
+
+    roots
+}
+
+struct Walker<P> {
+    pass: P,
+    visited: HashSet<HirId>,
+}
+
+impl<P: HirLintPass> Walker<P> {
+    fn visit_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId) {
+        // A node can be reachable more than once, such as a struct field default which is used
+        // by every struct initializer that leaves out the field
+        if !self.visited.insert(hir) {
+            return;
+        }
+
+        let node = cx.db().hir(hir).clone();
+
+        self.pass.check_hir(cx, hir, &node);
+
+        // Evaluating a const expression replaces it with the result, but the expression it was
+        // compiled from is still linted
+        if let Some(value) = cx.db().const_expr_value(hir) {
+            self.visit_hir(cx, value);
+        }
+
+        match node {
+            Hir::Unresolved
+            | Hir::Nil
+            | Hir::String(_)
+            | Hir::Int(_)
+            | Hir::Bytes(_)
+            | Hir::Bool(_)
+            | Hir::Reference(_)
+            | Hir::InfinityG1
+            | Hir::InfinityG2 => {}
+            Hir::Const(expr) => self.visit_hir(cx, expr.value),
+            Hir::Block(block) => self.visit_block(cx, &block),
+            Hir::Lambda(symbol) => {
+                if let Symbol::Function(function) = cx.db().symbol(symbol) {
+                    let body = function.body;
+                    self.visit_hir(cx, body);
+                }
+            }
+            Hir::Pair(first, rest) => self.visit_all(cx, [first, rest]),
+            Hir::If(condition, then, else_, _) => self.visit_all(cx, [condition, then, else_]),
+            Hir::FunctionCall(call) => {
+                self.visit_hir(cx, call.function);
+                self.visit_all(cx, call.args);
+            }
+            Hir::Unary(_, hir) | Hir::ClvmOp(_, hir) => self.visit_hir(cx, hir),
+            Hir::Binary(_, left, right) => self.visit_all(cx, [left, right]),
+            Hir::CoinId(a, b, c)
+            | Hir::Modpow(a, b, c)
+            | Hir::Secp256K1Verify(a, b, c)
+            | Hir::Secp256R1Verify(a, b, c) => self.visit_all(cx, [a, b, c]),
+            Hir::Substr(hir, start, end) => {
+                self.visit_all(cx, [hir, start]);
+                self.visit_all(cx, end);
+            }
+            Hir::G1Map(data, dst) | Hir::G2Map(data, dst) => {
+                self.visit_hir(cx, data);
+                self.visit_all(cx, dst);
+            }
+            Hir::BlsPairingIdentity(args) => self.visit_all(cx, args),
+            Hir::BlsVerify(sig, args) => {
+                self.visit_hir(cx, sig);
+                self.visit_all(cx, args);
+            }
+        }
+    }
+
+    fn visit_all(&mut self, cx: &mut LintContext<'_>, hirs: impl IntoIterator<Item = HirId>) {
+        for hir in hirs {
+            self.visit_hir(cx, hir);
+        }
+    }
+
+    fn visit_block(&mut self, cx: &mut LintContext<'_>, block: &Block) {
+        for (index, statement) in block.statements.iter().enumerate() {
+            self.pass.check_statement(cx, block, index);
+
+            match statement {
+                Statement::Let(symbol) => {
+                    if let Symbol::Binding(binding) = cx.db().symbol(*symbol) {
+                        let value = binding.value.hir;
+                        self.visit_hir(cx, value);
+                    }
+                }
+                Statement::Expr(statement) => self.visit_hir(cx, statement.hir),
+                Statement::If(statement) => {
+                    self.visit_all(cx, [statement.condition, statement.then]);
+                }
+                Statement::Return(hir) | Statement::Assert(hir, _) | Statement::Debug(hir, _) => {
+                    self.visit_hir(cx, *hir);
+                }
+                Statement::Raise(hir, _) => self.visit_all(cx, *hir),
+            }
+        }
+
+        self.visit_all(cx, block.body);
+    }
+}

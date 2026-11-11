@@ -17,6 +17,10 @@ pub enum UnaryOp {
     #[display("!")]
     Not,
 
+    /// A unary `+`, which has no effect. It's kept in the HIR so that lints can find it.
+    #[display("+")]
+    Plus,
+
     #[display("-")]
     Neg,
 

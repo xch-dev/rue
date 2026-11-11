@@ -74,8 +74,8 @@ impl Visitor<'_> {
                     }
                     _ => false,
                 },
-                Statement::Expr(stmt) => self.visit_hir(stmt.hir),
-                Statement::If(stmt) => self.visit_all([stmt.condition, stmt.then]),
+                Statement::Expr(ref stmt) => self.visit_hir(stmt.hir),
+                Statement::If(ref stmt) => self.visit_all([stmt.condition, stmt.then]),
                 Statement::Return(hir) | Statement::Debug(hir, _) => self.visit_hir(hir),
             };
 

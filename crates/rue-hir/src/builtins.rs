@@ -3,8 +3,8 @@ use rue_diagnostic::Name;
 use rue_types::{BuiltinTypes, FunctionType, Generic, Pair, Type, TypeId, Union};
 
 use crate::{
-    Builtin, ConstantSymbol, Database, FunctionKind, FunctionSymbol, Hir, ParameterSymbol, Scope,
-    ScopeId, Symbol, SymbolId, Value,
+    Builtin, ConstantSymbol, Database, FunctionKind, FunctionSymbol, Hir, HirId, ParameterSymbol,
+    Scope, ScopeId, Symbol, SymbolId, Value,
 };
 
 #[derive(Debug, Clone)]
@@ -244,6 +244,18 @@ impl Builtins {
             true_value: Value::new(true_hir, types.bool_true),
             false_value: Value::new(false_hir, types.bool_false),
         }
+    }
+
+    /// Whether the HIR node is shared by every use of one of the builtin values, rather than
+    /// belonging to a single expression.
+    pub fn is_shared_hir(&self, hir: HirId) -> bool {
+        [
+            self.unresolved.hir,
+            self.nil.hir,
+            self.true_value.hir,
+            self.false_value.hir,
+        ]
+        .contains(&hir)
     }
 }
 

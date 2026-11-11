@@ -179,11 +179,13 @@ mod tests {
                 Statement::Expr(ExprStatement {
                     hir: one,
                     always_nil: false,
+                    srcloc: srcloc(),
                 }),
                 Statement::Raise(None, srcloc()),
                 Statement::Expr(ExprStatement {
                     hir: unresolved,
                     always_nil: false,
+                    srcloc: srcloc(),
                 }),
             ],
             body: Some(unresolved),

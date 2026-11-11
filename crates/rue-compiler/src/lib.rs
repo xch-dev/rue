@@ -12,4 +12,6 @@ pub use file::*;
 pub use syntax_map::*;
 
 #[cfg(test)]
+mod hir_type_tests;
+#[cfg(test)]
 mod lint_tests;
