@@ -2,8 +2,8 @@ use std::{collections::HashMap, ops::Range};
 
 use rue_ast::{AstAttribute, AstDocument, AstNode};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticKind, DiagnosticSeverity, Lint, LintLevel, LintLevels, Source,
-    SourceKind, SrcLoc,
+    Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint, LintLevel,
+    LintLevels, Source, SourceKind, SrcLoc,
 };
 use rue_parser::{SyntaxKind, SyntaxNode};
 
@@ -22,6 +22,9 @@ pub struct ScopedLintLevels {
 struct LintScope {
     range: Range<usize>,
     level: LintLevel,
+    /// Where the attribute starts, which may be after the start of the range if there are earlier
+    /// attributes on the same node.
+    attribute: usize,
 }
 
 impl ScopedLintLevels {
@@ -100,13 +103,38 @@ impl ScopedLintLevels {
                         continue;
                     };
 
-                    scopes
-                        .entry((source.kind.clone(), lint))
-                        .or_default()
-                        .push(LintScope {
-                            range: range.clone(),
-                            level,
-                        });
+                    let scopes = scopes.entry((source.kind.clone(), lint)).or_default();
+
+                    // A forbidden lint can't be set to any other level, by the project or by an
+                    // enclosing attribute (including an earlier one on the same node)
+                    let (current, forbidden_by) = match enclosing_scope(scopes, &range) {
+                        Some(scope) => (
+                            scope.level,
+                            ForbiddenBy::Attribute {
+                                line: LineCol::new(&source.text, scope.attribute).line + 1,
+                            },
+                        ),
+                        None => (project.get(lint), ForbiddenBy::Project),
+                    };
+
+                    if !current.can_change_to(level) {
+                        diagnostics.push(Diagnostic::new(
+                            srcloc(source, argument.text_range()),
+                            DiagnosticKind::ForbiddenLintOverride {
+                                lint,
+                                level,
+                                forbidden_by,
+                            },
+                            DiagnosticSeverity::Error,
+                        ));
+                        continue;
+                    }
+
+                    scopes.push(LintScope {
+                        range: range.clone(),
+                        level,
+                        attribute: attribute.syntax().text_range().start().into(),
+                    });
                 }
             }
         }
@@ -119,11 +147,7 @@ impl ScopedLintLevels {
     pub fn get(&self, lint: Lint, srcloc: &SrcLoc) -> LintLevel {
         self.scopes
             .get(&(srcloc.source.kind.clone(), lint))
-            .and_then(|scopes| {
-                scopes.iter().rev().find(|scope| {
-                    scope.range.start <= srcloc.span.start && srcloc.span.end <= scope.range.end
-                })
-            })
+            .and_then(|scopes| enclosing_scope(scopes, &srcloc.span))
             .map_or_else(|| self.project.get(lint), |scope| scope.level)
     }
 
@@ -134,6 +158,14 @@ impl ScopedLintLevels {
                 *scope_lint == lint && scopes.iter().any(|scope| scope.level != LintLevel::Allow)
             })
     }
+}
+
+/// The innermost of a lint's scopes that encloses the given range, if there is one.
+fn enclosing_scope<'a>(scopes: &'a [LintScope], range: &Range<usize>) -> Option<&'a LintScope> {
+    scopes
+        .iter()
+        .rev()
+        .find(|scope| scope.range.start <= range.start && range.end <= scope.range.end)
 }
 
 /// The item or statement that an attribute applies to. Some statements (such as an `inline if`
