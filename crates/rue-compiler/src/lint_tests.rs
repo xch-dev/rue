@@ -49,8 +49,8 @@ fn lints_use_default_levels() {
     assert_eq!(
         severities(&diagnostics),
         vec![
-            (Some(Lint::DoubleNegation), DiagnosticSeverity::Warning),
             (Some(Lint::UnusedBinding), DiagnosticSeverity::Warning),
+            (Some(Lint::DoubleNegation), DiagnosticSeverity::Warning),
         ]
     );
     assert!(!has_errors);
@@ -76,8 +76,8 @@ fn denied_lints_are_errors() {
     assert_eq!(
         severities(&diagnostics),
         vec![
-            (Some(Lint::DoubleNegation), DiagnosticSeverity::Error),
             (Some(Lint::UnusedBinding), DiagnosticSeverity::Warning),
+            (Some(Lint::DoubleNegation), DiagnosticSeverity::Error),
         ]
     );
     assert!(has_errors);

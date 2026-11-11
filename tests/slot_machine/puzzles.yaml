@@ -1,6 +1,6 @@
 diagnostics:
-- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:20:13
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:19:9
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:20:13
 puzzle_hashes:
   actions/catalog/refund.rue: ad293a8ba7393b2d23760cf2bdae38ae6e1407a1b2a26b89b39b0fd0cb0127a9
   actions/catalog/register.rue: ef66622bbd9ac5922df81baac96082e16f51ae0a8a69e40e93b13a44fff1f8cf

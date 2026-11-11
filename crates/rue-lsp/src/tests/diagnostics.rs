@@ -231,8 +231,8 @@ fn test_diagnostics_after_non_ascii() {
 
     expect![[r#"
         Rue.toml: <none>
-        main.rue:1:18-1:19 Error: Undeclared symbol `x`
         main.rue:1:8-1:9 Warning[unused_binding]: Unused binding `s`
+        main.rue:1:18-1:19 Error: Undeclared symbol `x`
     "#]]
     .assert_eq(&project.change(
         "main.rue",

@@ -44,6 +44,6 @@ tests:
   total_cost: 12048
 diagnostics:
 - Unused parameter `value` at unused_parameters.rue:1:31
-- Unused parameter `value` at unused_parameters.rue:21:21
 - Unused generic type `T` at unused_parameters.rue:3:29
+- Unused parameter `value` at unused_parameters.rue:21:21
 - Unused generic type `T` at unused_parameters.rue:27:19

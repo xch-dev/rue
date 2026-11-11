@@ -171,8 +171,29 @@ impl Compiler {
             .add_item(SyntaxItem::new(kind, span, source_kind));
     }
 
+    /// Takes the diagnostics reported so far, in the order they appear in each file. Files are in
+    /// the order their first diagnostic was reported.
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
-        mem::take(&mut self.diagnostics)
+        let mut diagnostics = mem::take(&mut self.diagnostics);
+
+        let mut files = Vec::new();
+
+        for diagnostic in &diagnostics {
+            if !files.contains(&diagnostic.srcloc.source.kind) {
+                files.push(diagnostic.srcloc.source.kind.clone());
+            }
+        }
+
+        // The sort is stable, so diagnostics at the same position stay in the order they were
+        // reported
+        diagnostics.sort_by_key(|diagnostic| {
+            let file = files
+                .iter()
+                .position(|kind| *kind == diagnostic.srcloc.source.kind);
+            (file, diagnostic.srcloc.span.start)
+        });
+
+        diagnostics
     }
 
     pub fn has_errors(&self) -> bool {

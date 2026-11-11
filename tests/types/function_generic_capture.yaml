@@ -68,5 +68,5 @@ diagnostics:
 - Unused generic type `A` at function_generic_capture.rue:4:8
 - Unused generic type `B` at function_generic_capture.rue:4:11
 - Unused generic type `C` at function_generic_capture.rue:4:14
-- Unused generic type `B` at function_generic_capture.rue:5:11
 - Unused generic type `U` at function_generic_capture.rue:4:22
+- Unused generic type `B` at function_generic_capture.rue:5:11
