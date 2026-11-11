@@ -162,3 +162,22 @@ fn misplaced_inner_attributes_are_not_moved() {
         "#]],
     );
 }
+
+#[test]
+fn misplaced_inner_attributes_on_modules_stay_attached() {
+    check(
+        "fn g()->Int{1}\n#![allow(unused_function)]\nmod m { fn f()->Int{1} }",
+        expect![[r#"
+            fn g() -> Int {
+                1
+            }
+
+            #![allow(unused_function)]
+            mod m {
+                fn f() -> Int {
+                    1
+                }
+            }
+        "#]],
+    );
+}

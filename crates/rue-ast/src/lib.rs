@@ -203,8 +203,30 @@ impl AstDocument {
 
     /// The inner attributes (such as `#![allow(unused_binding)]`) at the start of the file.
     pub fn inner_attributes(&self) -> impl Iterator<Item = AstAttribute> {
-        self.syntax().children().filter_map(AstAttribute::cast)
+        leading_inner_attributes(self.syntax().children_with_tokens())
     }
+}
+
+impl AstItem {
+    /// The attributes before the item, such as `#[allow(unused_function)]` before a function.
+    /// This doesn't include the inner attributes at the start of a module's body.
+    pub fn attributes(&self) -> impl Iterator<Item = AstAttribute> {
+        self.syntax()
+            .children_with_tokens()
+            .filter(|element| !element.kind().is_trivia())
+            .map_while(|element| element.into_node().and_then(AstAttribute::cast))
+    }
+}
+
+/// The inner attributes at the start of a sequence of elements, ignoring trivia. Inner attributes
+/// after anything else (including outer attributes) aren't at the start, so they're misplaced.
+fn leading_inner_attributes(
+    elements: impl Iterator<Item = SyntaxElement>,
+) -> impl Iterator<Item = AstAttribute> {
+    elements
+        .filter(|element| !element.kind().is_trivia())
+        .map_while(|element| element.into_node().and_then(AstAttribute::cast))
+        .take_while(AstAttribute::is_inner)
 }
 
 impl AstAttribute {
@@ -252,6 +274,17 @@ impl AstModuleItem {
 
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
         self.syntax().children().filter_map(AstItem::cast)
+    }
+
+    /// The inner attributes (such as `#![allow(unused_binding)]`) at the start of the module's
+    /// body, after the opening brace.
+    pub fn inner_attributes(&self) -> impl Iterator<Item = AstAttribute> {
+        leading_inner_attributes(
+            self.syntax()
+                .children_with_tokens()
+                .skip_while(|element| element.kind() != T!['{'])
+                .skip(1),
+        )
     }
 }
 

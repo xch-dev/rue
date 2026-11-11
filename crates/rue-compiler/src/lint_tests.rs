@@ -1320,3 +1320,40 @@ fn main() -> Int {
     );
     assert!(has_errors);
 }
+
+#[test]
+fn misplaced_inner_attributes_are_still_checked() {
+    let source = "\
+fn main() -> Int {
+    #![allw(unused_binding)]
+    #![allow(unused_bindng)]
+    let a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 2: Inner attributes can only be used at the start of a file or module",
+            "Error 2: Unknown attribute `allw`",
+            "Error 3: Inner attributes can only be used at the start of a file or module",
+            "Warning 3: Unknown lint `unused_bindng`",
+            "Warning 4: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn inner_attributes_after_a_parse_error_are_only_reported_once() {
+    let (reports, has_errors) = reports(
+        "fn main() -> Int {\n    0\n}\n#![allow(unused_function)]\nlet x = 1;\n",
+        |_| {},
+    );
+
+    assert_eq!(reports, vec!["Error 5: Expected item, found `let`"]);
+    assert!(has_errors);
+}

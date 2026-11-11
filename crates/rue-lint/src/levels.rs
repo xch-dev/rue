@@ -1,12 +1,12 @@
 use std::{collections::HashMap, ops::Range};
 
 use rowan::Direction;
-use rue_ast::{AstAttribute, AstDocument, AstNode};
+use rue_ast::{AstAttribute, AstDocument, AstModuleItem, AstNode};
 use rue_diagnostic::{
     AttributeLevel, Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint,
     LintLevel, LintLevels, LintName, Source, SourceKind, SrcLoc,
 };
-use rue_parser::{SyntaxKind, SyntaxNode, T};
+use rue_parser::{SyntaxKind, SyntaxNode};
 
 use crate::srcloc;
 
@@ -71,33 +71,34 @@ impl ScopedLintLevels {
                     ));
                 };
 
-                let target = if attribute.is_inner() {
+                let inner = attribute.is_inner();
+
+                let target = if inner {
                     inner_target(&attribute)
                 } else {
                     target(&attribute)
                 };
 
-                let Some(target) = target else {
-                    if attribute.is_inner() {
-                        error(
-                            DiagnosticKind::MisplacedInnerAttribute,
-                            attribute.syntax().text_range(),
-                        );
-                        continue;
-                    }
-
+                if target.is_none() {
                     // At the top level, this is after an item that failed to parse, which has
                     // already been reported by the parser
                     if attribute.syntax().parent().map(|parent| parent.kind())
-                        != Some(SyntaxKind::Document)
+                        == Some(SyntaxKind::Document)
                     {
-                        error(
-                            DiagnosticKind::MisplacedAttribute,
-                            attribute.syntax().text_range(),
-                        );
+                        continue;
                     }
-                    continue;
-                };
+
+                    // The rest of the attribute is still checked, so that any other mistakes in
+                    // it are reported at the same time
+                    error(
+                        if inner {
+                            DiagnosticKind::MisplacedInnerAttribute
+                        } else {
+                            DiagnosticKind::MisplacedAttribute
+                        },
+                        attribute.syntax().text_range(),
+                    );
+                }
 
                 // Malformed attributes have already been reported by the parser
                 let Some(name) = attribute.name() else {
@@ -126,8 +127,10 @@ impl ScopedLintLevels {
                     continue;
                 }
 
-                let range = target.text_range();
-                let range = range.start().into()..range.end().into();
+                let range = target.map(|target| {
+                    let range = target.text_range();
+                    range.start().into()..range.end().into()
+                });
 
                 for argument in arguments {
                     let Some(name) = LintName::from_name(argument.text()) else {
@@ -136,6 +139,11 @@ impl ScopedLintLevels {
                             DiagnosticKind::UnknownLint(argument.text().to_string()),
                             DiagnosticSeverity::Warning,
                         ));
+                        continue;
+                    };
+
+                    // Misplaced attributes don't apply to anything
+                    let Some(range) = &range else {
                         continue;
                     };
 
@@ -167,7 +175,7 @@ impl ScopedLintLevels {
 
                         // A forbidden lint can't be set to any other level, by the project or by
                         // an enclosing attribute (including an earlier one on the same node)
-                        let (current, forbidden_by) = match enclosing_scope(scopes, &range) {
+                        let (current, forbidden_by) = match enclosing_scope(scopes, range) {
                             Some(scope) => (
                                 scope.level,
                                 ForbiddenBy::Attribute {
@@ -327,29 +335,19 @@ fn target(attribute: &AstAttribute) -> Option<SyntaxNode> {
         .find(|node| accepts_attributes(node.kind()))
 }
 
-/// The file or module that an inner attribute applies to, if it's at the start of one (only
-/// preceded by other inner attributes). Anywhere else, it's misplaced.
+/// The file or module that an inner attribute applies to, if it's at the start of one. Anywhere
+/// else, it's misplaced.
 fn inner_target(attribute: &AstAttribute) -> Option<SyntaxNode> {
     let parent = attribute.syntax().parent()?;
 
-    let mut previous = attribute
-        .syntax()
-        .siblings_with_tokens(Direction::Prev)
-        .skip(1)
-        .filter(|element| !element.kind().is_trivia())
-        .skip_while(|element| {
-            element
-                .as_node()
-                .and_then(|node| AstAttribute::cast(node.clone()))
-                .is_some_and(|attribute| attribute.is_inner())
-        });
+    let is_attribute = |inner: AstAttribute| inner.syntax() == attribute.syntax();
 
-    let at_start = match parent.kind() {
-        SyntaxKind::Document => previous.next().is_none(),
-        SyntaxKind::ModuleItem => previous
-            .next()
-            .is_some_and(|element| element.kind() == T!['{']),
-        _ => false,
+    let at_start = if let Some(document) = AstDocument::cast(parent.clone()) {
+        document.inner_attributes().any(is_attribute)
+    } else if let Some(module) = AstModuleItem::cast(parent.clone()) {
+        module.inner_attributes().any(is_attribute)
+    } else {
+        false
     };
 
     at_start.then_some(parent)

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Write};
 
-use rue_ast::{AstAttribute, AstDocument, AstFunctionItem, AstItem, AstNode};
+use rue_ast::{AstDocument, AstFunctionItem, AstItem, AstNode};
 use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::{
@@ -93,11 +93,7 @@ pub fn plan_document(
         // An import with a misplaced inner attribute isn't sorted, since moving it to the start of
         // the file would turn the attribute into one that applies to the whole file
         let is_import = matches!(&item, AstItem::ImportItem(_))
-            && !item
-                .syntax()
-                .children()
-                .filter_map(AstAttribute::cast)
-                .any(|attribute| attribute.is_inner());
+            && !item.attributes().any(|attribute| attribute.is_inner());
         let import_group = is_import.then(|| {
             if !previous_was_import
                 || (span.start().index() > 0 && gap_has_blank_line(stream.gap_before(span.start())))

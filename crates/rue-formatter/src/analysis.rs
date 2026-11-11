@@ -1,4 +1,4 @@
-use rue_ast::{AstAttribute, AstDocument, AstExpr, AstNode, AstNodeKind};
+use rue_ast::{AstDocument, AstExpr, AstModuleItem, AstNode, AstNodeKind};
 use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::{
@@ -482,29 +482,6 @@ fn analyze_boundaries(
         facts[id.index()].item_boundary = Some(ItemBoundary::Document);
     }
 
-    // Inner attributes at the start of a module are separated from its items by a blank line, like
-    // they are at the start of a file
-    for module in document
-        .syntax()
-        .descendants()
-        .filter(|node| node.kind() == SyntaxKind::ModuleItem)
-    {
-        let Some(last) = module
-            .children()
-            .filter_map(AstAttribute::cast)
-            .filter(AstAttribute::is_inner)
-            .last()
-        else {
-            continue;
-        };
-        if last.syntax().next_sibling().is_some()
-            && let Some(token) = significant_tokens(last.syntax()).last()
-        {
-            let id = token_id(&token, stream)?;
-            facts[id.index()].item_boundary = Some(ItemBoundary::ModuleInnerAttributes);
-        }
-    }
-
     for (kind, boundary) in [
         (SyntaxKind::ModuleItem, ItemBoundary::Module),
         (SyntaxKind::Block, ItemBoundary::Block),
@@ -521,6 +498,17 @@ fn analyze_boundaries(
                         facts[id.index()].item_boundary = Some(boundary);
                     }
                 }
+            }
+
+            // Inner attributes at the start of a module are separated from its items by a blank
+            // line, like they are at the start of a file
+            if let Some(module) = AstModuleItem::cast(container)
+                && let Some(last) = module.inner_attributes().last()
+                && last.syntax().next_sibling().is_some()
+                && let Some(token) = significant_tokens(last.syntax()).last()
+            {
+                let id = token_id(&token, stream)?;
+                facts[id.index()].item_boundary = Some(ItemBoundary::ModuleInnerAttributes);
             }
         }
     }
