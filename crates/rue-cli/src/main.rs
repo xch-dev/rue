@@ -18,7 +18,8 @@ use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticSeverity, LineCol, Lint, LintLevel, LintLevels, SourceKind,
+    Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint, LintLevel,
+    LintLevels, SourceKind,
 };
 use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::{Manifest, Project, find_project};
@@ -111,14 +112,19 @@ const LINT_FLAGS: [(&str, char, LintLevel, &str); 4] = [
 impl LintArgs {
     /// Applies the overrides, in the order they were passed. Overrides of lints that are already
     /// forbidden (by `Rue.toml` or an earlier flag) have no effect, and are returned instead.
-    fn apply(&self, levels: &mut LintLevels) -> Vec<(Lint, LintLevel)> {
+    fn apply(&self, levels: &mut LintLevels) -> Vec<(Lint, LintLevel, ForbiddenBy)> {
+        let manifest = *levels;
         let mut rejected = Vec::new();
 
         for &(lint, level) in &self.overrides {
-            if level != LintLevel::Forbid && levels.get(lint) == LintLevel::Forbid {
-                rejected.push((lint, level));
-            } else {
-                levels.set(lint, level);
+            if !levels.try_set(lint, level) {
+                let forbidden_by = if manifest.get(lint) == LintLevel::Forbid {
+                    ForbiddenBy::Manifest
+                } else {
+                    ForbiddenBy::Flag
+                };
+
+                rejected.push((lint, level, forbidden_by));
             }
         }
 
@@ -231,8 +237,9 @@ fn lints() {
 }
 
 /// Applies the CLI lint overrides to the project, and warns about unknown lints in `Rue.toml`.
-/// Exits if an override tries to change the level of a forbidden lint.
-fn configure_lints(project: &mut Project, args: &LintArgs) {
+/// Returns whether any errors were reported, such as an override that tries to change the level
+/// of a forbidden lint.
+fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
     let manifest = project
         .manifest_path
         .as_deref()
@@ -255,18 +262,17 @@ fn configure_lints(project: &mut Project, args: &LintArgs) {
 
     let rejected = args.apply(&mut project.options.lints);
 
-    for &(lint, level) in &rejected {
-        eprintln!(
-            "{}",
-            format!("Error: Cannot set lint `{lint}` to `{level}`, since it's forbidden")
-                .red()
-                .bold()
-        );
+    for &(lint, level, forbidden_by) in &rejected {
+        let kind = DiagnosticKind::ForbiddenLintOverride {
+            lint,
+            level,
+            forbidden_by,
+        };
+
+        eprintln!("{}", format!("Error: {kind}").red().bold());
     }
 
-    if !rejected.is_empty() {
-        process::exit(1);
-    }
+    !rejected.is_empty()
 }
 
 /// Prints the diagnostics, and returns whether any of them are errors.
@@ -329,7 +335,7 @@ fn build(args: BuildArgs) -> Result<()> {
         process::exit(1);
     };
 
-    configure_lints(&mut project, &args.lints);
+    let lint_errors = configure_lints(&mut project, &args.lints);
 
     if project.manifest.as_ref().is_some_and(|manifest| {
         manifest
@@ -364,7 +370,9 @@ fn build(args: BuildArgs) -> Result<()> {
         project.entrypoint.canonicalize()?
     };
 
-    if report_diagnostics(ctx.take_diagnostics(), &base_path) {
+    // Errors in the lint flags are reported before compiling, but don't stop it, so that every
+    // error is reported at once
+    if report_diagnostics(ctx.take_diagnostics(), &base_path) || lint_errors {
         process::exit(1);
     }
 
@@ -587,7 +595,7 @@ fn test(args: TestArgs) -> Result<()> {
         process::exit(1);
     };
 
-    configure_lints(&mut project, &args.lints);
+    let lint_errors = configure_lints(&mut project, &args.lints);
 
     let mut ctx = Compiler::new(project.options);
 
@@ -598,7 +606,9 @@ fn test(args: TestArgs) -> Result<()> {
         project.entrypoint.canonicalize()?
     };
 
-    if report_diagnostics(ctx.take_diagnostics(), &base_path) {
+    // Errors in the lint flags are reported before compiling, but don't stop it, so that every
+    // error is reported at once
+    if report_diagnostics(ctx.take_diagnostics(), &base_path) || lint_errors {
         process::exit(1);
     }
 
@@ -709,7 +719,7 @@ fn debug(args: DebugArgs) -> Result<()> {
 mod tests {
     use super::Command;
     use clap::{CommandFactory, Parser, error::ErrorKind};
-    use rue_diagnostic::{Lint, LintLevel, LintLevels};
+    use rue_diagnostic::{ForbiddenBy, Lint, LintLevel, LintLevels};
 
     #[test]
     fn cli_debug_asserts() {
@@ -802,8 +812,8 @@ mod tests {
         assert_eq!(
             args.lints.apply(&mut levels),
             vec![
-                (Lint::UnusedBinding, LintLevel::Warn),
-                (Lint::UnusedFunction, LintLevel::Deny),
+                (Lint::UnusedBinding, LintLevel::Warn, ForbiddenBy::Flag),
+                (Lint::UnusedFunction, LintLevel::Deny, ForbiddenBy::Flag),
             ]
         );
         assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Forbid);
@@ -820,7 +830,7 @@ mod tests {
         levels.set(Lint::UnusedImport, LintLevel::Forbid);
         assert_eq!(
             args.lints.apply(&mut levels),
-            vec![(Lint::UnusedImport, LintLevel::Allow)]
+            vec![(Lint::UnusedImport, LintLevel::Allow, ForbiddenBy::Manifest)]
         );
         assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Forbid);
         assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);

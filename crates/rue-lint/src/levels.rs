@@ -2,8 +2,8 @@ use std::{collections::HashMap, ops::Range};
 
 use rue_ast::{AstAttribute, AstDocument, AstNode};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticKind, DiagnosticSeverity, Lint, LintLevel, LintLevels, Source,
-    SourceKind, SrcLoc,
+    Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint, LintLevel,
+    LintLevels, Source, SourceKind, SrcLoc,
 };
 use rue_parser::{SyntaxKind, SyntaxNode};
 
@@ -22,6 +22,9 @@ pub struct ScopedLintLevels {
 struct LintScope {
     range: Range<usize>,
     level: LintLevel,
+    /// Where the attribute starts, which may be after the start of the range if there are earlier
+    /// attributes on the same node.
+    attribute: usize,
 }
 
 impl ScopedLintLevels {
@@ -104,12 +107,24 @@ impl ScopedLintLevels {
 
                     // A forbidden lint can't be set to any other level, by the project or by an
                     // enclosing attribute (including an earlier one on the same node)
-                    if level != LintLevel::Forbid
-                        && level_at(&project, scopes, lint, &range) == LintLevel::Forbid
-                    {
+                    let (current, forbidden_by) = match enclosing_scope(scopes, &range) {
+                        Some(scope) => (
+                            scope.level,
+                            ForbiddenBy::Attribute {
+                                line: LineCol::new(&source.text, scope.attribute).line + 1,
+                            },
+                        ),
+                        None => (project.get(lint), ForbiddenBy::Project),
+                    };
+
+                    if !current.can_change_to(level) {
                         diagnostics.push(Diagnostic::new(
                             srcloc(source, argument.text_range()),
-                            DiagnosticKind::ForbiddenLintOverride { lint, level },
+                            DiagnosticKind::ForbiddenLintOverride {
+                                lint,
+                                level,
+                                forbidden_by,
+                            },
                             DiagnosticSeverity::Error,
                         ));
                         continue;
@@ -118,6 +133,7 @@ impl ScopedLintLevels {
                     scopes.push(LintScope {
                         range: range.clone(),
                         level,
+                        attribute: attribute.syntax().text_range().start().into(),
                     });
                 }
             }
@@ -129,12 +145,10 @@ impl ScopedLintLevels {
     /// The level of a lint reported at the given location, which is set by the innermost
     /// attribute that encloses it, or by the project if there isn't one.
     pub fn get(&self, lint: Lint, srcloc: &SrcLoc) -> LintLevel {
-        let scopes = self
-            .scopes
+        self.scopes
             .get(&(srcloc.source.kind.clone(), lint))
-            .map_or(&[][..], Vec::as_slice);
-
-        level_at(&self.project, scopes, lint, &srcloc.span)
+            .and_then(|scopes| enclosing_scope(scopes, &srcloc.span))
+            .map_or_else(|| self.project.get(lint), |scope| scope.level)
     }
 
     /// Whether the lint is reported anywhere, so that passes can skip work for allowed lints.
@@ -146,19 +160,12 @@ impl ScopedLintLevels {
     }
 }
 
-/// The level of a lint over the given range, which is set by the innermost of the lint's scopes
-/// that encloses it, or by the project if there isn't one.
-fn level_at(
-    project: &LintLevels,
-    scopes: &[LintScope],
-    lint: Lint,
-    range: &Range<usize>,
-) -> LintLevel {
+/// The innermost of a lint's scopes that encloses the given range, if there is one.
+fn enclosing_scope<'a>(scopes: &'a [LintScope], range: &Range<usize>) -> Option<&'a LintScope> {
     scopes
         .iter()
         .rev()
         .find(|scope| scope.range.start <= range.start && range.end <= scope.range.end)
-        .map_or_else(|| project.get(lint), |scope| scope.level)
 }
 
 /// The item or statement that an attribute applies to. Some statements (such as an `inline if`

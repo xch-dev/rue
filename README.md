@@ -113,7 +113,7 @@ A `forbid` attribute works like `deny`, but nothing inside of it can change the 
 ```rs
 #[forbid(unused_binding)]
 fn strict() -> Int {
-    #[allow(unused_binding)] // Error: Cannot set lint `unused_binding` to `allow`, since it's forbidden
+    #[allow(unused_binding)] // Error: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1
     let unused = 1;
     42
 }

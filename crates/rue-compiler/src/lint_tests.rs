@@ -397,9 +397,9 @@ fn main() -> Int {
     assert_eq!(
         reports,
         vec![
-            "Error 1: Cannot set lint `unused_binding` to `allow`, since it's forbidden",
-            "Error 3: Cannot set lint `unused_binding` to `warn`, since it's forbidden",
-            "Error 5: Cannot set lint `unused_binding` to `deny`, since it's forbidden",
+            "Error 1: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the project",
+            "Error 3: Cannot set lint `unused_binding` to `warn`, since it's forbidden by the project",
+            "Error 5: Cannot set lint `unused_binding` to `deny`, since it's forbidden by the project",
             "Error 6: Unused binding `a`",
             "Error 8: Unused binding `b`",
             "Warning 9: Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages",
@@ -444,12 +444,42 @@ fn main() -> Int {
     assert_eq!(
         reports,
         vec![
-            "Error 5: Cannot set lint `unused_binding` to `allow`, since it's forbidden",
-            "Error 7: Cannot set lint `unused_binding` to `warn`, since it's forbidden",
+            "Error 5: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1",
+            "Error 7: Cannot set lint `unused_binding` to `warn`, since it's forbidden by the attribute on line 1",
             "Error 8: Unused binding `a`",
-            "Error 13: Cannot set lint `unused_binding` to `allow`, since it's forbidden",
+            "Error 13: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1",
             "Error 15: Unused binding `b`",
             "Error 24: Unused binding `d`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn forbidden_lint_errors_point_to_the_innermost_forbid() {
+    let source = "\
+#[allow(unused_binding)]
+mod outer {
+    #[forbid(unused_binding)]
+    export fn main() -> Int {
+        #[allow(unused_binding)]
+        let a = 1;
+        2
+    }
+}
+
+fn main() -> Int {
+    outer::main()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 5: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 3",
+            "Error 6: Unused binding `a`",
         ]
     );
     assert!(has_errors);
