@@ -16,20 +16,20 @@ pub fn compile_function_call_expr(
     call: &AstFunctionCallExpr,
     expected_type: Option<TypeId>,
 ) -> Value {
-    let Some(expr) = call.expr() else {
+    let Some(call_expr) = call.expr() else {
         debug!("Unresolved function call expr");
         return ctx.builtins().unresolved.clone();
     };
 
     // Builtins can only be referenced when they're called directly
-    let expr = if let AstExpr::PathExpr(path) = &expr {
+    let expr = if let AstExpr::PathExpr(path) = &call_expr {
         ctx.add_syntax(
             SyntaxItemKind::CompletionContext(CompletionContext::Expression),
             path.syntax().text_range(),
         );
         compile_path_value(ctx, path, true)
     } else {
-        compile_expr(ctx, &expr, None)
+        compile_expr(ctx, &call_expr, None)
     };
 
     if let Hir::Reference(symbol) = ctx.hir(expr.hir).clone()
@@ -39,7 +39,7 @@ pub fn compile_function_call_expr(
     }
 
     // Paths are compiled directly rather than with `compile_expr`, so their type is recorded here
-    let expr = ctx.record_value(expr);
+    let expr = ctx.record_value(call_expr.syntax(), expr);
 
     let is_unresolved = ctx.is_unresolved(expr.ty);
 

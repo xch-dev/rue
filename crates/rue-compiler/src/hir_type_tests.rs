@@ -7,7 +7,8 @@ use rue_options::CompilerOptions;
 
 use crate::{Compiler, File, FileTree};
 
-/// Compiles the source, and lists every HIR node in the body of `main` along with its type.
+/// Compiles the source, and lists every HIR node in the body of `main` along with its type and
+/// the source text it was compiled from.
 fn check(source: &str, expect: &Expect) {
     let mut ctx = Compiler::new(CompilerOptions {
         std: false,
@@ -42,12 +43,17 @@ fn list_types(ctx: &mut Compiler, hir: HirId, depth: usize, lines: &mut Vec<Stri
         .hir_type(hir)
         .map_or("-".to_string(), |ty| ctx.type_name(ty));
 
+    let text = ctx.hir_srcloc(hir).map_or("-".to_string(), |srcloc| {
+        let text = &srcloc.source.text[srcloc.span.clone()];
+        format!("`{}`", text.split_whitespace().collect::<Vec<_>>().join(" "))
+    });
+
     let hir_kind = match ctx.hir(hir) {
         Hir::Block(_) => "{ ... }".to_string(),
         _ => ctx.debug_hir(hir),
     };
 
-    lines.push(format!("{}{hir_kind}: {ty}", "  ".repeat(depth)));
+    lines.push(format!("{}{hir_kind}: {ty} at {text}", "  ".repeat(depth)));
 
     let children = match ctx.hir(hir).clone() {
         Hir::Block(block) => block
@@ -81,7 +87,7 @@ fn list_types(ctx: &mut Compiler, hir: HirId, depth: usize, lines: &mut Vec<Stri
 }
 
 #[test]
-fn records_expression_types() {
+fn records_expression_types_and_locations() {
     check(
         r#"
         fn double(value: Int) -> Int {
@@ -106,31 +112,31 @@ fn records_expression_types() {
         }
         "#,
         &expect![[r#"
-            { ... }: Int
-              double<30>(value<33>): Int
-                double<30>: fn(value: Int) -> Int
-                value<33>: Int
-              (doubled<35> > 0): Bool
-                doubled<35>: Int
-                0: 0
-              (listp list<34>): Bool
-                list<34>: List<Int>
-              { ... }: Never
-                (first list<34>): Int
-                  list<34>: (Int, List<Int>)
-              true: true
-              if (flag<36> && (nil == nil)) { (doubled<35> + 1) } else { (- doubled<35>) }: Int
-                (flag<36> && (nil == nil)): Bool
-                  flag<36>: true
-                  (nil == nil): Bool
-                    nil: nil
-                    nil: nil
-                { ... }: Int
-                  (doubled<35> + 1): Int
-                    doubled<35>: Int
-                    1: 1
-                { ... }: Int
-                  (- doubled<35>): Int
-                    doubled<35>: Int"#]],
+            { ... }: Int at `{ let doubled = double(value); assert doubled > 0; if list is (Int, List<Int>) { return list.first; } let flag = true; if flag && nil == nil { (doubled + 1) as Int } else { -doubled } }`
+              double<30>(value<33>): Int at `double(value)`
+                double<30>: fn(value: Int) -> Int at `double`
+                value<33>: Int at `value`
+              (doubled<35> > 0): Bool at `doubled > 0`
+                doubled<35>: Int at `doubled`
+                0: 0 at `0`
+              (listp list<34>): Bool at `list is (Int, List<Int>)`
+                list<34>: List<Int> at `list`
+              { ... }: Never at `{ return list.first; }`
+                (first list<34>): Int at `list.first`
+                  list<34>: (Int, List<Int>) at `list`
+              true: true at `true`
+              if (flag<36> && (nil == nil)) { (doubled<35> + 1) } else { (- doubled<35>) }: Int at `if flag && nil == nil { (doubled + 1) as Int } else { -doubled }`
+                (flag<36> && (nil == nil)): Bool at `flag && nil == nil`
+                  flag<36>: true at `flag`
+                  (nil == nil): Bool at `nil == nil`
+                    nil: nil at `nil`
+                    nil: nil at `nil`
+                { ... }: Int at `{ (doubled + 1) as Int }`
+                  (doubled<35> + 1): Int at `(doubled + 1) as Int`
+                    doubled<35>: Int at `doubled`
+                    1: 1 at `1`
+                { ... }: Int at `{ -doubled }`
+                  (- doubled<35>): Int at `-doubled`
+                    doubled<35>: Int at `doubled`"#]],
     );
 }

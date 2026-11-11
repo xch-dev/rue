@@ -1535,3 +1535,37 @@ fn main() -> Int {
     assert!(reports.is_empty(), "{reports:?}");
     assert!(!has_errors);
 }
+
+#[test]
+fn hir_passes_visit_every_expression() {
+    let source = "\
+struct Point {
+    x: Int = if true { 1 } else { 2 },
+}
+
+const VALUE: Int = const { if false { 1 } else { 2 } };
+
+fn main() -> Int {
+    let a = Point {};
+    let b = Point {};
+    let f = fn() => if true { 1 } else { 2 };
+    let c = if true { 1 } else { 2 };
+    a.x + b.x + f() + VALUE + c + (+1)
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // The struct field default is used twice, but it's only reported once
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 2: Condition always evaluates to `true`",
+            "Warning 5: Condition always evaluates to `false`",
+            "Warning 10: Condition always evaluates to `true`",
+            "Warning 11: Condition always evaluates to `true`",
+            "Warning 12: Unnecessary `+` operator, since it has no effect",
+        ]
+    );
+    assert!(!has_errors);
+}

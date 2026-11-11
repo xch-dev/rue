@@ -1,4 +1,4 @@
-use crate::{LintContext, LintInput};
+use crate::{LintContext, LintInput, run_hir_pass};
 
 mod casts;
 mod conditions;
@@ -15,11 +15,11 @@ pub(crate) type LintPass = fn(&mut LintContext<'_>, &LintInput<'_>);
 /// Every lint pass, in the order they run.
 pub(crate) const PASSES: &[LintPass] = &[
     syntax::check,
-    operators::check,
+    run_hir_pass::<operators::UnnecessaryPlus>,
     casts::check,
     guards::check,
-    conditions::check,
-    statements::check,
-    inline_ifs::check,
+    run_hir_pass::<conditions::ConstantCondition>,
+    run_hir_pass::<statements::UnusedValue>,
+    run_hir_pass::<inline_ifs::InlineIfMayRaise>,
     unused::check,
 ];

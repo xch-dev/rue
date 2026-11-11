@@ -61,5 +61,5 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::Block(block) => compile_block(ctx, block, BlockKind::Expr, expected_type, true),
     };
 
-    ctx.record_value(value)
+    ctx.record_value(expr.syntax(), value)
 }

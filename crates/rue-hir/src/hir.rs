@@ -61,17 +61,19 @@ pub enum Statement {
     Debug(HirId, SrcLoc),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ExprStatement {
     pub hir: HirId,
     pub always_nil: bool,
+    pub srcloc: SrcLoc,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct IfStatement {
     pub condition: HirId,
     pub then: HirId,
     pub inline: bool,
+    pub srcloc: SrcLoc,
 }
 
 #[derive(Debug, Clone)]

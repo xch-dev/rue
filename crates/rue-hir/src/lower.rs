@@ -232,6 +232,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     UnaryOp::Rest => self.arena.alloc(Lir::Rest(lir)),
                     UnaryOp::Strlen => self.arena.alloc(Lir::Strlen(lir)),
                     UnaryOp::Not => self.arena.alloc(Lir::Not(lir)),
+                    UnaryOp::Plus => lir,
                     UnaryOp::Neg => {
                         let zero = self.arena.alloc(Lir::Atom(vec![]));
                         self.arena.alloc(Lir::Sub(vec![zero, lir]))
@@ -920,6 +921,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         match self.db.hir(hir) {
             Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bool(_) | Hir::Bytes(_) => true,
             Hir::Pair(first, rest) => self.is_static_hir(*first) && self.is_static_hir(*rest),
+            Hir::Unary(UnaryOp::Plus, hir) => self.is_static_hir(*hir),
             Hir::Reference(symbol) => {
                 if let Some(hir) = self.inline_argument(*symbol) {
                     return self.is_static_hir(hir);

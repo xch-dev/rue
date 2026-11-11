@@ -16,7 +16,7 @@ use rue_hir::{
     Builtins, Constraint, Database, Declaration, ImportId, Mappings, Scope, ScopeId, Symbol,
     SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
-use rue_lint::{CastSite, ConditionSite, GuardSite, InlineIf, InlineIfSite, LintInput, LintSites};
+use rue_lint::{CastSite, GuardSite, LintInput, LintSites};
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, CheckError, Comparison, Inference, Type, TypeId};
@@ -33,7 +33,6 @@ pub struct Compiler {
     scope_stack: Vec<(TextSize, ScopeId)>,
     module_stack: Vec<SymbolId>,
     builtins: Builtins,
-    defaults: HashMap<TypeId, HashMap<String, Value>>,
     field_types: HashMap<TypeId, Vec<TypeId>>,
     inferred_fields: HashSet<(TypeId, String)>,
     declaration_stack: Vec<Declaration>,
@@ -83,7 +82,6 @@ impl Compiler {
             scope_stack: vec![(TextSize::from(0), builtins.scope)],
             module_stack: Vec::new(),
             builtins,
-            defaults: HashMap::new(),
             field_types: HashMap::new(),
             inferred_fields: HashSet::new(),
             declaration_stack: Vec::new(),
@@ -459,24 +457,20 @@ impl Compiler {
         self.return_count += 1;
     }
 
-    /// Records the type of a compiled expression in the database, so that it's available after
-    /// compilation (such as to lints). The builtin values (such as `nil`) share a HIR node, so
-    /// the value is given a node of its own first, which is returned.
-    pub fn record_value(&mut self, mut value: Value) -> Value {
+    /// Records the type and location of a compiled expression in the database, so that they're
+    /// available after compilation (such as to lints). The builtin values (such as `nil`) share
+    /// a HIR node, so the value is given a node of its own first, which is returned.
+    pub fn record_value(&mut self, node: &impl GetTextRange, mut value: Value) -> Value {
         if self.builtins.is_shared_hir(value.hir) {
             let hir = self.db.hir(value.hir).clone();
             value = value.with_hir(self.db.alloc_hir(hir));
         }
 
+        let srcloc = self.srcloc(node);
         self.db.set_hir_type(value.hir, value.ty);
+        self.db.set_hir_srcloc(value.hir, srcloc);
 
         value
-    }
-
-    pub fn add_inline_if(&mut self, srcloc: SrcLoc, inline_if: InlineIf) {
-        self.lint_sites
-            .inline_ifs
-            .push(InlineIfSite { srcloc, inline_if });
     }
 
     /// The sites recorded for lints while compiling, which are checked by [`rue_lint`] once
@@ -584,12 +578,6 @@ impl Compiler {
             return;
         }
 
-        let site = ConditionSite {
-            srcloc: self.srcloc(node),
-            ty,
-        };
-        self.lint_sites.conditions.push(site);
-
         // Conditions that are always `true` or `false` are reported by the `constant_condition`
         // lint, but they still need to be a `Bool` regardless of whether that lint is enabled
         self.assign_type(node, ty, self.builtins().types.bool);
@@ -674,16 +662,6 @@ impl Compiler {
                 }
             }
         }
-    }
-
-    pub fn insert_default_field(&mut self, ty: TypeId, name: String, value: Value) {
-        self.defaults.entry(ty).or_default().insert(name, value);
-    }
-
-    pub fn default_field(&self, ty: TypeId, name: &str) -> Option<Value> {
-        self.defaults
-            .get(&ty)
-            .and_then(|map| map.get(name).cloned())
     }
 
     /// Stores the types of a struct's fields in declaration order, so that their default values
