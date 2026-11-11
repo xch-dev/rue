@@ -211,11 +211,17 @@ impl AstItem {
     /// The attributes before the item, such as `#[allow(unused_function)]` before a function.
     /// This doesn't include the inner attributes at the start of a module's body.
     pub fn attributes(&self) -> impl Iterator<Item = AstAttribute> {
-        self.syntax()
-            .children_with_tokens()
-            .filter(|element| !element.kind().is_trivia())
-            .map_while(|element| element.into_node().and_then(AstAttribute::cast))
+        leading_attributes(self.syntax().children_with_tokens())
     }
+}
+
+/// The attributes at the start of a sequence of elements, ignoring trivia.
+fn leading_attributes(
+    elements: impl Iterator<Item = SyntaxElement>,
+) -> impl Iterator<Item = AstAttribute> {
+    elements
+        .filter(|element| !element.kind().is_trivia())
+        .map_while(|element| element.into_node().and_then(AstAttribute::cast))
 }
 
 /// The inner attributes at the start of a sequence of elements, ignoring trivia. Inner attributes
@@ -223,20 +229,20 @@ impl AstItem {
 fn leading_inner_attributes(
     elements: impl Iterator<Item = SyntaxElement>,
 ) -> impl Iterator<Item = AstAttribute> {
-    elements
-        .filter(|element| !element.kind().is_trivia())
-        .map_while(|element| element.into_node().and_then(AstAttribute::cast))
-        .take_while(AstAttribute::is_inner)
+    leading_attributes(elements).take_while(AstAttribute::is_inner)
 }
 
 impl AstAttribute {
     /// Whether this is an inner attribute (such as `#![allow(unused_binding)]`), which applies to
     /// the file or module that it's in rather than to the next item.
     pub fn is_inner(&self) -> bool {
+        // The `!` comes right after the `#`
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .any(|token| token.kind() == T![!])
+            .filter(|token| !token.kind().is_trivia())
+            .nth(1)
+            .is_some_and(|token| token.kind() == T![!])
     }
 
     /// The name of the attribute, such as `allow` in `#[allow(unused_binding)]`.

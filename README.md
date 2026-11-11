@@ -134,7 +134,7 @@ fn main() -> Int {
 }
 ```
 
-To set a level for a whole file, use an inner attribute (with a `!`) at the start of the file, before any items. Inner attributes can also go at the start of a `mod { ... }` body to apply to the whole module. Attributes on the items inside still override them:
+To set a level for a whole file, use an inner attribute (with a `!`) at the start of the file, before any items. Inner attributes can also go at the start of a `mod { ... }` body to apply to the whole module, where they come after the attributes on the `mod` itself, so they take precedence unless those forbid the lint. Attributes on the items inside still override them:
 
 ```rs
 #![allow(unused_function)]

@@ -6,7 +6,7 @@ use rue_diagnostic::{
     AttributeLevel, Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint,
     LintLevel, LintLevels, LintName, Source, SourceKind, SrcLoc,
 };
-use rue_parser::{SyntaxKind, SyntaxNode};
+use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::srcloc;
 
@@ -80,11 +80,9 @@ impl ScopedLintLevels {
                 };
 
                 if target.is_none() {
-                    // At the top level, this is after an item that failed to parse, which has
-                    // already been reported by the parser
-                    if attribute.syntax().parent().map(|parent| parent.kind())
-                        == Some(SyntaxKind::Document)
-                    {
+                    // This is after an item that failed to parse, which has already been reported
+                    // by the parser
+                    if is_after_failed_item(&attribute) {
                         continue;
                     }
 
@@ -351,6 +349,25 @@ fn inner_target(attribute: &AstAttribute) -> Option<SyntaxNode> {
     };
 
     at_start.then_some(parent)
+}
+
+/// Whether an attribute that doesn't apply to anything was left in the file or a module's body by
+/// an item that failed to parse, rather than being attached to the wrong kind of node.
+fn is_after_failed_item(attribute: &AstAttribute) -> bool {
+    let Some(parent) = attribute.syntax().parent() else {
+        return false;
+    };
+
+    match parent.kind() {
+        SyntaxKind::Document => true,
+        // The attributes before `mod` are attached to the module, and the ones in its body are
+        // after the opening brace
+        SyntaxKind::ModuleItem => attribute
+            .syntax()
+            .siblings_with_tokens(Direction::Prev)
+            .any(|element| element.kind() == T!['{']),
+        _ => false,
+    }
 }
 
 /// Whether attributes can be attached to nodes of the given kind.
