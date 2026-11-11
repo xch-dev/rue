@@ -112,8 +112,16 @@ impl Visitor<'_> {
                 self.visit_statements(&block.statements) || self.visit_all(block.body)
             }
             Hir::If(condition, then, else_, _) => self.visit_all([condition, then, else_]),
+            Hir::List(list) => self.visit_all(list.items),
+            Hir::Struct(initializer) => {
+                self.visit_all(initializer.fields.into_iter().map(|field| field.value))
+            }
+            Hir::FieldAccess(access) => self.visit_hir(access.value),
+            Hir::Cast(hir) => self.visit_hir(hir),
+            // The value is only evaluated if the check it's lowered to uses it
+            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
             Hir::FunctionCall(call) => {
-                (match *self.db.hir(call.function) {
+                (match *self.db.hir(self.db.without_casts(call.function)) {
                     Hir::Reference(symbol)
                         if matches!(self.db.symbol(symbol), Symbol::Function(_)) =>
                     {

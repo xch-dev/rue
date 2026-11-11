@@ -6,9 +6,7 @@ use rue_types::{Comparison, TypeId};
 /// in the HIR. The compiler records every site; the lints decide what to report.
 ///
 /// Most lints don't need sites, since they run as [`HirLintPass`](crate::HirLintPass)es over the
-/// HIR, which records the type and location of every expression. Casts and guards are sites
-/// because they don't produce a HIR node of their own: a cast compiles to the same node as its
-/// value, and a guard compiles to the check it performs, which doesn't say what it's checking.
+/// HIR, which records the type and location of every expression.
 #[derive(Debug, Default, Clone)]
 pub struct LintSites {
     pub casts: Vec<CastSite>,
