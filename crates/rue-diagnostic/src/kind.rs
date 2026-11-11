@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{ForbiddenBy, Lint, LintLevel};
+use crate::{ForbiddenBy, Lint, LintGroup, LintLevel};
 
 #[derive(Debug, Clone, Error)]
 pub enum DiagnosticKind {
@@ -25,6 +25,17 @@ pub enum DiagnosticKind {
 
     #[error("Cannot set lint `{lint}` to `{level}`, since it's forbidden by {forbidden_by}")]
     ForbiddenLintOverride {
+        lint: Lint,
+        level: LintLevel,
+        forbidden_by: ForbiddenBy,
+    },
+
+    #[error(
+        "Cannot set lint group `{group}` to `{level}`, since `{lint}` is forbidden by {forbidden_by}"
+    )]
+    ForbiddenLintGroupOverride {
+        group: LintGroup,
+        /// The first lint in the group that's forbidden.
         lint: Lint,
         level: LintLevel,
         forbidden_by: ForbiddenBy,

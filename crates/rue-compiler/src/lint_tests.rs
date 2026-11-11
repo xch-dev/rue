@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Lint, LintLevel, Source, SourceKind};
+use rue_diagnostic::{
+    Diagnostic, DiagnosticSeverity, Lint, LintGroup, LintLevel, LintName, Source, SourceKind,
+};
 use rue_options::CompilerOptions;
 
 use crate::{Compiler, File, FileTree};
@@ -480,6 +482,240 @@ fn main() -> Int {
         vec![
             "Error 5: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 3",
             "Error 6: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn stacked_attributes_apply_to_the_same_item() {
+    let source = "\
+#[allow(unused_function)]
+#[allow(unused_parameter)]
+fn helper(value: Int) -> Int {
+    1
+}
+
+fn main() -> Int {
+    #[allow(unused_binding)]
+    #[deny(unused_binding)]
+    let a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(reports, vec!["Error 10: Unused binding `a`"]);
+    assert!(has_errors);
+}
+
+#[test]
+fn groups_set_the_level_of_each_lint_in_them() {
+    let (reports, has_errors) = reports(SOURCE, |options| {
+        options
+            .lints
+            .apply(&[(LintName::Group(LintGroup::Unused), LintLevel::Deny)]);
+    });
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 2: Unused binding `unused`",
+            "Warning 3: Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn groups_in_attributes() {
+    let source = "\
+#[allow(unused)]
+fn helper(value: Int) -> Int {
+    let a = 1;
+    #[deny(unused_binding)]
+    let b = 2;
+    3
+}
+
+#[allow(unused_binding)]
+fn other() -> Int {
+    let c = 1;
+    #[warn(unused)]
+    let d = 2;
+    3
+}
+
+// On the same item or statement, the later attribute wins, whether it names a lint or a group
+#[allow(unused)]
+#[deny(unused_binding)]
+fn main() -> Int {
+    let e = 1;
+    #[deny(unused_binding)]
+    #[allow(unused)]
+    let f = 2;
+    other()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 5: Unused binding `b`",
+            "Warning 13: Unused binding `d`",
+            "Error 21: Unused binding `e`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn group_attributes_override_project_levels() {
+    let source = "\
+#[warn(unused)]
+fn main() -> Int {
+    let a = 1;
+    #[allow(unused)]
+    let b = 2;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |options| {
+        options.lints.apply(&[
+            (LintName::Group(LintGroup::Unused), LintLevel::Deny),
+            (LintName::Lint(Lint::UnusedBinding), LintLevel::Allow),
+        ]);
+    });
+
+    assert_eq!(reports, vec!["Warning 3: Unused binding `a`"]);
+    assert!(!has_errors);
+}
+
+#[test]
+fn unknown_group_names_are_reported() {
+    let source = "\
+#[allow(unuse)]
+fn main() -> Int {
+    let a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unknown lint `unuse`",
+            "Warning 3: Unused binding `a`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn group_attributes_cannot_change_forbidden_lints() {
+    let source = "\
+#[allow(unused)]
+fn helper(value: Int) -> Int {
+    let a = 1;
+    2
+}
+
+#[forbid(unused)]
+fn main() -> Int {
+    #[allow(unused_binding)]
+    let b = 1;
+    #[forbid(unused_binding)]
+    #[warn(unused)]
+    let c = 2;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |options| {
+        options.lints.set(Lint::UnusedBinding, LintLevel::Forbid);
+    });
+
+    // A group sets the lints in it that aren't forbidden, and reports the first one that is
+    assert_eq!(
+        reports,
+        vec![
+            "Error 1: Cannot set lint group `unused` to `allow`, since `unused_binding` is forbidden by the project",
+            "Error 3: Unused binding `a`",
+            "Error 9: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 7",
+            "Error 10: Unused binding `b`",
+            "Error 12: Cannot set lint group `unused` to `warn`, since `unused_function` is forbidden by the attribute on line 7",
+            "Error 13: Unused binding `c`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn group_attributes_enable_lints_the_project_allows() {
+    let source = "\
+#[warn(unused)]
+mod helpers {
+    fn helper(value: Int) -> Int {
+        1
+    }
+}
+
+fn main() -> Int {
+    #[deny(unused)]
+    let a = 1;
+    let b = 2;
+    0
+}
+";
+
+    // The unused pass is skipped when none of its lints are enabled, so it must still run when
+    // they're only enabled by a group attribute
+    let (reports, has_errors) = reports(source, |options| {
+        options
+            .lints
+            .apply(&[(LintName::Group(LintGroup::Unused), LintLevel::Allow)]);
+    });
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 3: Unused function `helper`",
+            "Warning 3: Unused parameter `value`",
+            "Error 10: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn group_attributes_cannot_change_lints_forbidden_on_the_same_item() {
+    let source = "\
+#[forbid(unused_binding)]
+#[allow(unused)]
+fn helper(value: Int) -> Int {
+    let a = 1;
+    2
+}
+
+fn main() -> Int {
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // The rest of the group is still allowed
+    assert_eq!(
+        reports,
+        vec![
+            "Error 2: Cannot set lint group `unused` to `allow`, since `unused_binding` is forbidden by the attribute on line 1",
+            "Error 4: Unused binding `a`",
         ]
     );
     assert!(has_errors);

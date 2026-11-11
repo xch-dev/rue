@@ -14,7 +14,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use rue_options::{UnknownLint, find_project};
+use rue_options::{Project, find_project};
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
@@ -185,7 +185,7 @@ impl Backend {
         let manifest_diagnostics = project.manifest_path.as_deref().and_then(|path| {
             Some((
                 normalize_path(path).ok()?,
-                manifest_diagnostics(path, &project.unknown_lints),
+                manifest_diagnostics(path, &project),
             ))
         });
 
@@ -471,23 +471,30 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
     }
 }
 
-/// Reports names in the `[lints]` section of `Rue.toml` that don't refer to a known lint.
-fn manifest_diagnostics(path: &Path, unknown_lints: &[UnknownLint]) -> Vec<Diagnostic> {
-    if unknown_lints.is_empty() {
+/// Reports problems with the `[lints]` section of `Rue.toml`, such as names that don't refer to a
+/// known lint or group.
+fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
+    if project.unknown_lints.is_empty() && project.forbidden_lints.is_empty() {
         return Vec::new();
     }
 
     let text = fs::read_to_string(path).unwrap_or_default();
 
-    unknown_lints
-        .iter()
-        .map(|lint| Diagnostic {
-            range: offsets_to_range(&text, lint.span.start, lint.span.end),
-            message: format!("Unknown lint `{}`", lint.name),
-            severity: Some(DiagnosticSeverity::WARNING),
-            ..Diagnostic::default()
-        })
-        .collect()
+    let unknown = project.unknown_lints.iter().map(|lint| Diagnostic {
+        range: offsets_to_range(&text, lint.span.start, lint.span.end),
+        message: format!("Unknown lint `{}`", lint.name),
+        severity: Some(DiagnosticSeverity::WARNING),
+        ..Diagnostic::default()
+    });
+
+    let forbidden = project.forbidden_lints.iter().map(|lint| Diagnostic {
+        range: offsets_to_range(&text, lint.span.start, lint.span.end),
+        message: lint.kind().to_string(),
+        severity: Some(DiagnosticSeverity::ERROR),
+        ..Diagnostic::default()
+    });
+
+    unknown.chain(forbidden).collect()
 }
 
 /// Reports why `Rue.toml` couldn't be parsed, such as an invalid lint level.

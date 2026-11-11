@@ -1,9 +1,10 @@
 use std::{collections::HashMap, ops::Range};
 
+use rowan::Direction;
 use rue_ast::{AstAttribute, AstDocument, AstNode};
 use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint, LintLevel,
-    LintLevels, Source, SourceKind, SrcLoc,
+    LintLevels, LintName, Source, SourceKind, SrcLoc,
 };
 use rue_parser::{SyntaxKind, SyntaxNode};
 
@@ -94,7 +95,7 @@ impl ScopedLintLevels {
                 let range = range.start().into()..range.end().into();
 
                 for argument in arguments {
-                    let Some(lint) = Lint::from_name(argument.text()) else {
+                    let Some(name) = LintName::from_name(argument.text()) else {
                         diagnostics.push(Diagnostic::new(
                             srcloc(source, argument.text_range()),
                             DiagnosticKind::UnknownLint(argument.text().to_string()),
@@ -103,38 +104,45 @@ impl ScopedLintLevels {
                         continue;
                     };
 
-                    let scopes = scopes.entry((source.kind.clone(), lint)).or_default();
+                    let mut forbidden = None;
 
-                    // A forbidden lint can't be set to any other level, by the project or by an
-                    // enclosing attribute (including an earlier one on the same node)
-                    let (current, forbidden_by) = match enclosing_scope(scopes, &range) {
-                        Some(scope) => (
-                            scope.level,
-                            ForbiddenBy::Attribute {
-                                line: LineCol::new(&source.text, scope.attribute).line + 1,
-                            },
-                        ),
-                        None => (project.get(lint), ForbiddenBy::Project),
-                    };
+                    // A group sets the level of each lint in it, so a later attribute on the same
+                    // node, or an attribute on a node inside it, overrides it for a single lint
+                    for &lint in name.lints() {
+                        let scopes = scopes.entry((source.kind.clone(), lint)).or_default();
 
-                    if !current.can_change_to(level) {
-                        diagnostics.push(Diagnostic::new(
-                            srcloc(source, argument.text_range()),
-                            DiagnosticKind::ForbiddenLintOverride {
-                                lint,
-                                level,
-                                forbidden_by,
-                            },
-                            DiagnosticSeverity::Error,
-                        ));
-                        continue;
+                        // A forbidden lint can't be set to any other level, by the project or by
+                        // an enclosing attribute (including an earlier one on the same node)
+                        let (current, forbidden_by) = match enclosing_scope(scopes, &range) {
+                            Some(scope) => (
+                                scope.level,
+                                ForbiddenBy::Attribute {
+                                    line: LineCol::new(&source.text, scope.attribute).line + 1,
+                                },
+                            ),
+                            None => (project.get(lint), ForbiddenBy::Project),
+                        };
+
+                        if !current.can_change_to(level) {
+                            forbidden.get_or_insert((lint, forbidden_by));
+                            continue;
+                        }
+
+                        scopes.push(LintScope {
+                            range: range.clone(),
+                            level,
+                            attribute: attribute.syntax().text_range().start().into(),
+                        });
                     }
 
-                    scopes.push(LintScope {
-                        range: range.clone(),
-                        level,
-                        attribute: attribute.syntax().text_range().start().into(),
-                    });
+                    // The other lints in a group are still set if some of them are forbidden
+                    if let Some((lint, forbidden_by)) = forbidden {
+                        diagnostics.push(Diagnostic::new(
+                            srcloc(source, argument.text_range()),
+                            name.forbidden_override(lint, level, forbidden_by),
+                            DiagnosticSeverity::Error,
+                        ));
+                    }
                 }
             }
         }
@@ -170,9 +178,17 @@ fn enclosing_scope<'a>(scopes: &'a [LintScope], range: &Range<usize>) -> Option<
 
 /// The item or statement that an attribute applies to. Some statements (such as an `inline if`
 /// followed by a semicolon) begin with an expression that the attributes are parsed into, so this
-/// is the closest enclosing item or statement that starts with the attribute.
+/// is the closest enclosing item or statement that starts with the attributes.
 fn target(attribute: &AstAttribute) -> Option<SyntaxNode> {
-    let start = attribute.syntax().text_range().start();
+    // An attribute can follow other attributes, so find where the first of them starts
+    let start = attribute
+        .syntax()
+        .siblings_with_tokens(Direction::Prev)
+        .filter(|element| !element.kind().is_trivia())
+        .take_while(|element| element.kind() == SyntaxKind::Attribute)
+        .last()?
+        .text_range()
+        .start();
 
     attribute
         .syntax()
