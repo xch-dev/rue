@@ -200,9 +200,23 @@ impl AstDocument {
     pub fn items(&self) -> impl Iterator<Item = AstItem> {
         self.syntax().children().filter_map(AstItem::cast)
     }
+
+    /// The inner attributes (such as `#![allow(unused_binding)]`) at the start of the file.
+    pub fn inner_attributes(&self) -> impl Iterator<Item = AstAttribute> {
+        self.syntax().children().filter_map(AstAttribute::cast)
+    }
 }
 
 impl AstAttribute {
+    /// Whether this is an inner attribute (such as `#![allow(unused_binding)]`), which applies to
+    /// the file or module that it's in rather than to the next item.
+    pub fn is_inner(&self) -> bool {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .any(|token| token.kind() == T![!])
+    }
+
     /// The name of the attribute, such as `allow` in `#[allow(unused_binding)]`.
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()

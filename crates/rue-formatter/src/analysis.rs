@@ -1,4 +1,4 @@
-use rue_ast::{AstDocument, AstExpr, AstNode, AstNodeKind};
+use rue_ast::{AstAttribute, AstDocument, AstExpr, AstNode, AstNodeKind};
 use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::{
@@ -29,6 +29,7 @@ enum SingleArgumentLayout {
 pub enum ItemBoundary {
     Document,
     Module,
+    ModuleInnerAttributes,
     Block,
 }
 
@@ -328,6 +329,9 @@ fn analyze_nodes(
                             facts[id.index()].flags.insert(TokenFlags::ATTACHED_OPENER);
                             facts[id.index()].flags.insert(TokenFlags::TRAILING_COMMA);
                         }
+                        // The `!` of an inner attribute is attached to the brackets like a
+                        // prefix operator, as in `#![allow(unused_import)]`
+                        T![!] => facts[id.index()].flags.insert(TokenFlags::PREFIX_OPERATOR),
                         T!['['] => facts[id.index()].delimiter_style = Some(DelimiterStyle::Fill),
                         T![']'] => facts[id.index()].flags.insert(TokenFlags::ATTRIBUTE_END),
                         _ => {}
@@ -476,6 +480,29 @@ fn analyze_boundaries(
             id = next;
         }
         facts[id.index()].item_boundary = Some(ItemBoundary::Document);
+    }
+
+    // Inner attributes at the start of a module are separated from its items by a blank line, like
+    // they are at the start of a file
+    for module in document
+        .syntax()
+        .descendants()
+        .filter(|node| node.kind() == SyntaxKind::ModuleItem)
+    {
+        let Some(last) = module
+            .children()
+            .filter_map(AstAttribute::cast)
+            .filter(AstAttribute::is_inner)
+            .last()
+        else {
+            continue;
+        };
+        if last.syntax().next_sibling().is_some()
+            && let Some(token) = significant_tokens(last.syntax()).last()
+        {
+            let id = token_id(&token, stream)?;
+            facts[id.index()].item_boundary = Some(ItemBoundary::ModuleInnerAttributes);
+        }
     }
 
     for (kind, boundary) in [

@@ -71,3 +71,94 @@ fn comments_between_attributes_are_preserved() {
         "#]],
     );
 }
+
+#[test]
+fn inner_attributes_stay_above_reordered_imports() {
+    check(
+        "// The file's header\n\n#![allow(unused_import)]   #![deny( unused_binding )]\nimport b::x;\nimport a::{z, y};\nfn main()->Int{0}",
+        expect![[r#"
+            // The file's header
+
+            #![allow(unused_import)]
+            #![deny(unused_binding)]
+
+            import a::{y, z};
+            import b::x;
+
+            fn main() -> Int {
+                0
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn inner_attributes_stay_below_the_header_comment() {
+    check(
+        "// The file's header\n#![allow(unused_import)] // why\n// The import\nimport b::x;\nimport a::y;",
+        expect![[r#"
+            // The file's header
+            #![allow(unused_import)] // why
+
+            import a::y;
+            // The import
+            import b::x;
+        "#]],
+    );
+}
+
+#[test]
+fn files_with_only_inner_attributes() {
+    check(
+        "  #![allow(unused_function)]  ",
+        expect![[r#"
+        #![allow(unused_function)]
+    "#]],
+    );
+}
+
+#[test]
+fn inner_attributes_at_the_start_of_modules() {
+    check(
+        "mod a {\n#![allow(unused_function)] // why\nfn f()->Int{1}\n}\nmod b { #![allow(unused_function)] }\nmod c { #![allow(unused_function)] #![deny(unused_binding)] import x::y; }",
+        expect![[r#"
+            mod a {
+                #![allow(unused_function)] // why
+
+                fn f() -> Int {
+                    1
+                }
+            }
+
+            mod b {
+                #![allow(unused_function)]
+            }
+
+            mod c {
+                #![allow(unused_function)]
+                #![deny(unused_binding)]
+
+                import x::y;
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn misplaced_inner_attributes_are_not_moved() {
+    check(
+        "import b::x;\n#![allow(unused_import)]\nimport a::y;\nfn main()->Int{#![allow(unused_binding)] let x=1;0}",
+        expect![[r#"
+            import b::x;
+
+            #![allow(unused_import)]
+            import a::y;
+
+            fn main() -> Int {
+                #![allow(unused_binding)]
+                let x = 1;
+                0
+            }
+        "#]],
+    );
+}

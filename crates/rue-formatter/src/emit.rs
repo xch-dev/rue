@@ -6,6 +6,7 @@ use crate::{
     document::Doc,
     ordering::ImportGroupPlan,
     token_stream::{Comment, CommentPlacement, Gap, TokenId, TokenSpan, TokenStream},
+    trivia::split_between,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,7 +190,12 @@ impl<'a> Formatter<'a> {
                 })?;
                 if !emitted_separator {
                     let separator = self.separator(atom_end, index);
-                    docs.push(self.gap_doc(self.stream.gap_before(index), separator));
+                    let gap = self.stream.gap_before(index);
+                    if separator == Separator::Empty {
+                        docs.push(self.item_gap_doc(gap));
+                    } else {
+                        docs.push(self.gap_doc(gap, separator));
+                    }
                 }
             } else {
                 break;
@@ -478,7 +484,7 @@ impl<'a> Formatter<'a> {
         let right = self.stream.token(next);
         if let Some(boundary) = self.layout.facts(previous).item_boundary {
             return match boundary {
-                ItemBoundary::Document => Separator::Empty,
+                ItemBoundary::Document | ItemBoundary::ModuleInnerAttributes => Separator::Empty,
                 ItemBoundary::Module | ItemBoundary::Block => Separator::Hard,
             };
         }
@@ -521,6 +527,16 @@ impl<'a> Formatter<'a> {
         } else {
             Separator::Space
         }
+    }
+
+    /// Separates two items with a blank line, keeping comments on the same line as the first item
+    /// attached to it, the same way as items in a document.
+    fn item_gap_doc(&mut self, gap: &Gap) -> Doc {
+        let (trailing, leading) = split_between(gap);
+        Doc::concat([
+            self.gap_doc_with_final_line(&trailing, Separator::None, false),
+            self.movable_leading_doc(&leading, Separator::Empty),
+        ])
     }
 
     fn movable_leading_doc(&mut self, gap: &Gap, requested: Separator) -> Doc {

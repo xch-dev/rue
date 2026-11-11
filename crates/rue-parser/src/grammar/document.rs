@@ -1,7 +1,11 @@
-use crate::{Parser, SyntaxKind, grammar::item::item};
+use crate::{
+    Parser, SyntaxKind,
+    grammar::{attribute::inner_attributes, item::item},
+};
 
 pub fn document(p: &mut Parser) {
     p.start_including_trivia(SyntaxKind::Document);
+    inner_attributes(p);
     while !p.at_quiet(SyntaxKind::Eof) {
         item(p);
     }

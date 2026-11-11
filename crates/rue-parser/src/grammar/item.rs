@@ -4,9 +4,14 @@ use rue_diagnostic::DiagnosticKind;
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
-        attribute::attributes, binding::binding, block::block, delimited_list,
-        delimited_list_with_stops, expect_semicolon, expr::expr, generics::generic_parameters,
-        skip_balanced, ty::ty,
+        attribute::{attributes, inner_attributes},
+        binding::binding,
+        block::block,
+        delimited_list, delimited_list_with_stops, expect_semicolon,
+        expr::expr,
+        generics::generic_parameters,
+        skip_balanced,
+        ty::ty,
     },
 };
 
@@ -61,6 +66,7 @@ fn module_item(p: &mut Parser, cp: Checkpoint) {
     p.expect(T![mod]);
     p.expect(SyntaxKind::Ident);
     if p.expect(T!['{']) {
+        inner_attributes(p);
         while !p.at(T!['}']) && !p.at_quiet(SyntaxKind::Eof) {
             item_with(p, false);
         }

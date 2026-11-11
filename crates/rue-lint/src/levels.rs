@@ -6,7 +6,7 @@ use rue_diagnostic::{
     AttributeLevel, Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint,
     LintLevel, LintLevels, LintName, Source, SourceKind, SrcLoc,
 };
-use rue_parser::{SyntaxKind, SyntaxNode};
+use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::srcloc;
 
@@ -20,7 +20,8 @@ pub struct ScopedLintLevels {
     expectations: Vec<Expectation>,
 }
 
-/// A lint level set by an attribute, which applies to the item or statement it's attached to.
+/// A lint level set by an attribute, which applies to the item or statement it's attached to, or
+/// to the whole file or module for an inner attribute.
 #[derive(Debug, Clone)]
 struct LintScope {
     range: Range<usize>,
@@ -70,7 +71,21 @@ impl ScopedLintLevels {
                     ));
                 };
 
-                let Some(target) = target(&attribute) else {
+                let target = if attribute.is_inner() {
+                    inner_target(&attribute)
+                } else {
+                    target(&attribute)
+                };
+
+                let Some(target) = target else {
+                    if attribute.is_inner() {
+                        error(
+                            DiagnosticKind::MisplacedInnerAttribute,
+                            attribute.syntax().text_range(),
+                        );
+                        continue;
+                    }
+
                     // At the top level, this is after an item that failed to parse, which has
                     // already been reported by the parser
                     if attribute.syntax().parent().map(|parent| parent.kind())
@@ -310,6 +325,34 @@ fn target(attribute: &AstAttribute) -> Option<SyntaxNode> {
         .skip(1)
         .take_while(|node| node.text_range().start() == start)
         .find(|node| accepts_attributes(node.kind()))
+}
+
+/// The file or module that an inner attribute applies to, if it's at the start of one (only
+/// preceded by other inner attributes). Anywhere else, it's misplaced.
+fn inner_target(attribute: &AstAttribute) -> Option<SyntaxNode> {
+    let parent = attribute.syntax().parent()?;
+
+    let mut previous = attribute
+        .syntax()
+        .siblings_with_tokens(Direction::Prev)
+        .skip(1)
+        .filter(|element| !element.kind().is_trivia())
+        .skip_while(|element| {
+            element
+                .as_node()
+                .and_then(|node| AstAttribute::cast(node.clone()))
+                .is_some_and(|attribute| attribute.is_inner())
+        });
+
+    let at_start = match parent.kind() {
+        SyntaxKind::Document => previous.next().is_none(),
+        SyntaxKind::ModuleItem => previous
+            .next()
+            .is_some_and(|element| element.kind() == T!['{']),
+        _ => false,
+    };
+
+    at_start.then_some(parent)
 }
 
 /// Whether attributes can be attached to nodes of the given kind.
