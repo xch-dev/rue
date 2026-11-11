@@ -113,7 +113,7 @@ mod strict {
 }
 ```
 
-A `forbid` attribute works like `deny`, but nothing inside of it can change the lint's level. The same goes for lints forbidden in `Rue.toml` or on the command line. An attribute that tries to change the level of a forbidden lint has no effect, and is reported as an error:
+A `forbid` attribute works like `deny`, but nothing inside of it can change the lint's level. The same goes for lints forbidden in `Rue.toml` or on the command line. An attribute or flag that tries to change the level of a forbidden lint has no effect on it, and is reported as an error. A group still sets the lints in it that aren't forbidden:
 
 ```rs
 #[forbid(unused_binding)]
