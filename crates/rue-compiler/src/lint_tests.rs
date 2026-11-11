@@ -253,8 +253,8 @@ fn main() -> Int {
     assert_eq!(
         reports,
         vec![
-            "Error 4: Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages",
             "Warning 3: Unused binding `a`",
+            "Error 4: Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages",
         ]
     );
     assert!(has_errors);
@@ -322,9 +322,9 @@ fn main() -> Int {
         vec![
             "Warning 1: Unknown lint `unused_bindings`",
             "Error 6: Unknown attribute `expect`",
+            "Warning 7: Unused function `other`",
             "Error 11: Attribute `allow` expects a list of lint names",
             "Error 14: Attributes can only be used on items and statements",
-            "Warning 7: Unused function `other`",
         ]
     );
     assert!(has_errors);
