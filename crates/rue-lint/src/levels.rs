@@ -181,6 +181,12 @@ impl ScopedLintLevels {
 
                     // The other lints in a group are still set if some of them are forbidden
                     if let Some((lint, forbidden_by)) = forbidden {
+                        // The attribute is already an error, and a forbidden lint can't fulfill
+                        // its expectation, so it isn't reported as unfulfilled as well
+                        if let Some(index) = expected {
+                            expectations[index].fulfilled = true;
+                        }
+
                         diagnostics.push(Diagnostic::new(
                             srcloc(source, argument.text_range()),
                             name.forbidden_override(lint, level_name, forbidden_by),
@@ -208,8 +214,8 @@ impl ScopedLintLevels {
         self.report_outside(lint, srcloc, None)
     }
 
-    /// Like [`Self::report`], but ignores the attributes on the item or statement with the given
-    /// range.
+    /// Like [`Self::report`], but ignores the `expect` attributes on the item or statement with
+    /// the given range.
     fn report_outside(
         &mut self,
         lint: Lint,
@@ -220,19 +226,25 @@ impl ScopedLintLevels {
             return self.project.get(lint);
         };
 
-        let Some(innermost) = enclosing_scope_outside(scopes, &srcloc.span, excluded) else {
+        let Some(position) = scopes.iter().rposition(|scope| {
+            encloses(&scope.range, &srcloc.span)
+                && !(scope.expectation.is_some() && excluded == Some(&scope.range))
+        }) else {
             return self.project.get(lint);
         };
 
-        // The lint can be expected more than once on the same item or statement, and all of
-        // those expectations are fulfilled together
-        if innermost.expectation.is_some() {
-            for scope in scopes {
-                if scope.range == innermost.range
-                    && let Some(index) = scope.expectation
-                {
-                    self.expectations[index].fulfilled = true;
-                }
+        let innermost = &scopes[position];
+
+        // The lint can be expected more than once on the same item or statement, and those
+        // expectations are fulfilled together, unless another attribute between them overrides
+        // the earlier ones. The scopes of a node's attributes are next to each other.
+        for scope in scopes[..=position].iter().rev().take_while(|scope| {
+            scope.range == innermost.range
+                && scope.expectation.is_some()
+                && excluded != Some(&scope.range)
+        }) {
+            if let Some(index) = scope.expectation {
+                self.expectations[index].fulfilled = true;
             }
         }
 
@@ -296,21 +308,14 @@ impl ScopedLintLevels {
 
 /// The innermost of a lint's scopes that encloses the given range, if there is one.
 fn enclosing_scope<'a>(scopes: &'a [LintScope], range: &Range<usize>) -> Option<&'a LintScope> {
-    enclosing_scope_outside(scopes, range, None)
+    scopes
+        .iter()
+        .rev()
+        .find(|scope| encloses(&scope.range, range))
 }
 
-/// Like [`enclosing_scope`], but ignores the scopes of attributes on the item or statement with
-/// the excluded range.
-fn enclosing_scope_outside<'a>(
-    scopes: &'a [LintScope],
-    range: &Range<usize>,
-    excluded: Option<&Range<usize>>,
-) -> Option<&'a LintScope> {
-    scopes.iter().rev().find(|scope| {
-        scope.range.start <= range.start
-            && range.end <= scope.range.end
-            && excluded.is_none_or(|excluded| scope.range != *excluded)
-    })
+fn encloses(outer: &Range<usize>, inner: &Range<usize>) -> bool {
+    outer.start <= inner.start && inner.end <= outer.end
 }
 
 /// The item or statement that an attribute applies to. Some statements (such as an `inline if`
