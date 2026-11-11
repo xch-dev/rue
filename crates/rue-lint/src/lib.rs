@@ -48,6 +48,8 @@ pub fn run_lints(
 
     let mut cx = LintContext::new(db, types, levels);
 
+    cx.report_unknown_lints();
+
     for pass in lints::PASSES {
         pass(&mut cx, input);
     }

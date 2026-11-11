@@ -77,8 +77,37 @@ fn test_diagnostics_manifest_unknown_lints() {
     );
 
     expect![[r#"
-        Rue.toml:6:0-6:6 Warning: Unknown lint `typo`
-        Rue.toml:5:0-5:15 Warning: Unknown lint `unused_bindings`
+        Rue.toml:6:0-6:6 Warning[unknown_lint]: Unknown lint `typo`
+        Rue.toml:5:0-5:15 Warning[unknown_lint]: Unknown lint `unused_bindings`
+        main.rue: <none>
+    "#]]
+    .assert_eq(&project.change("main.rue", None));
+}
+
+#[test]
+fn test_diagnostics_manifest_unknown_lint_levels() {
+    let project = TestProject::with_manifest(
+        Some(
+            "[compiler]\nentrypoint = \".\"\nstd = false\n\n[lints]\nunknown_lint = \"deny\"\ntypo = \"allow\"\n",
+        ),
+        &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
+    );
+
+    expect![[r#"
+        Rue.toml:6:0-6:4 Error[unknown_lint]: Unknown lint `typo`
+        main.rue: <none>
+    "#]]
+    .assert_eq(&project.change("main.rue", None));
+
+    let project = TestProject::with_manifest(
+        Some(
+            "[compiler]\nentrypoint = \".\"\nstd = false\n\n[lints]\nunknown_lint = \"allow\"\ntypo = \"allow\"\n",
+        ),
+        &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
+    );
+
+    expect![[r#"
+        Rue.toml: <none>
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", None));
@@ -113,7 +142,7 @@ fn test_diagnostics_manifest_unknown_lints_in_other_layouts() {
     );
 
     expect![[r#"
-        Rue.toml:0:6-0:17 Warning: Unknown lint `dotted_typo`
+        Rue.toml:0:6-0:17 Warning[unknown_lint]: Unknown lint `dotted_typo`
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", None));
@@ -126,7 +155,7 @@ fn test_diagnostics_manifest_unknown_lints_in_other_layouts() {
     );
 
     expect![[r#"
-        Rue.toml:0:10-0:21 Warning: Unknown lint `inline_typo`
+        Rue.toml:0:10-0:21 Warning[unknown_lint]: Unknown lint `inline_typo`
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", None));

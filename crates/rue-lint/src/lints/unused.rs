@@ -73,6 +73,7 @@ fn is_reported_here(lint: Lint) -> bool {
         | Lint::ConstantCondition
         | Lint::DoubleNegation
         | Lint::InlineIfMayRaise
+        | Lint::UnknownLint
         | Lint::UnfulfilledLintExpectation => false,
     }
 }

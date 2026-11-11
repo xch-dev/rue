@@ -1628,3 +1628,30 @@ test fn tests() {
     );
     assert!(has_errors);
 }
+
+#[test]
+fn unknown_lints_are_lints() {
+    let source = "\
+#[allow(typo)]
+fn main() -> Int {
+    #[allow(unknown_lint, other_typo)]
+    let _a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // The attribute that allows `unknown_lint` also allows it for the other names in itself
+    assert_eq!(reports, vec!["Warning 1: Unknown lint `typo`"]);
+    assert!(!has_errors);
+
+    let (reports, has_errors) = reports_with_level(source, Lint::UnknownLint, LintLevel::Deny);
+
+    assert_eq!(reports, vec!["Error 1: Unknown lint `typo`"]);
+    assert!(has_errors);
+}
+
+fn reports_with_level(source: &str, lint: Lint, level: LintLevel) -> (Vec<String>, bool) {
+    reports(source, |options| options.lints.set(lint, level))
+}

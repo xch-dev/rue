@@ -284,20 +284,6 @@ fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
         .and_then(|path| fs::read_to_string(path).ok())
         .unwrap_or_default();
 
-    for lint in &project.unknown_lints {
-        let location = LineCol::new(&manifest, lint.span.start);
-
-        eprintln!(
-            "{}",
-            format!(
-                "Warning: Unknown lint `{}` at Rue.toml:{location}",
-                lint.name
-            )
-            .yellow()
-            .bold()
-        );
-    }
-
     for lint in &project.forbidden_lints {
         let location = LineCol::new(&manifest, lint.span.start);
 
@@ -316,7 +302,31 @@ fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
         eprintln!("{}", format!("Error: {kind}").red().bold());
     }
 
-    !rejected.is_empty() || !project.forbidden_lints.is_empty()
+    // Unknown names are reported by the `unknown_lint` lint, at the level set by `Rue.toml` and the
+    // command line
+    let unknown_severity = project.options.lints.get(Lint::UnknownLint).severity();
+
+    if let Some(severity) = unknown_severity {
+        for lint in &project.unknown_lints {
+            let location = LineCol::new(&manifest, lint.span.start);
+            let message = format!(
+                "[{}]: Unknown lint `{}` at Rue.toml:{location}",
+                Lint::UnknownLint,
+                lint.name
+            );
+
+            if severity == DiagnosticSeverity::Error {
+                eprintln!("{}", format!("Error{message}").red().bold());
+            } else {
+                eprintln!("{}", format!("Warning{message}").yellow().bold());
+            }
+        }
+    }
+
+    let denied_unknown =
+        unknown_severity == Some(DiagnosticSeverity::Error) && !project.unknown_lints.is_empty();
+
+    !rejected.is_empty() || !project.forbidden_lints.is_empty() || denied_unknown
 }
 
 /// Prints the diagnostics, and returns whether any of them are errors.
