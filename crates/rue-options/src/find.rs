@@ -5,7 +5,7 @@ use std::{
 
 use thiserror::Error;
 
-use crate::{CompilerOptions, FormatOptions, Manifest, UnknownLint};
+use crate::{CompilerOptions, ForbiddenLint, FormatOptions, Manifest, UnknownLint};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -31,8 +31,11 @@ pub struct Project {
     pub options: CompilerOptions,
     pub format_options: FormatOptions,
     pub entrypoint: PathBuf,
-    /// Names in the manifest's `[lints]` section that don't refer to a known lint.
+    /// Names in the manifest's `[lints]` section that don't refer to a known lint or group.
     pub unknown_lints: Vec<UnknownLint>,
+    /// Entries in the manifest's `[lints]` section that try to change the level of a lint that a
+    /// group forbids, which are errors.
+    pub forbidden_lints: Vec<ForbiddenLint>,
 }
 
 pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> {
@@ -57,7 +60,7 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
             options.std = false;
         }
 
-        let unknown_lints = manifest.apply_lints(&mut options.lints);
+        let problems = manifest.apply_lints(&mut options.lints);
 
         return Ok(Some(Project {
             format_options: manifest.formatter,
@@ -65,7 +68,8 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
             manifest_path: Some(path.to_path_buf()),
             options,
             entrypoint,
-            unknown_lints,
+            unknown_lints: problems.unknown,
+            forbidden_lints: problems.forbidden,
         }));
     }
 
@@ -91,6 +95,7 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
             format_options: FormatOptions::default(),
             entrypoint: path.to_path_buf(),
             unknown_lints: Vec::new(),
+            forbidden_lints: Vec::new(),
         }));
     }
 
@@ -106,6 +111,7 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
             format_options: FormatOptions::default(),
             entrypoint: path.to_path_buf(),
             unknown_lints: Vec::new(),
+            forbidden_lints: Vec::new(),
         }));
     }
 
@@ -124,7 +130,7 @@ mod tests {
         fs::create_dir_all(dir.join("puzzles"))?;
         fs::write(
             dir.join("Rue.toml"),
-            "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\ntypo_lint = \"allow\"\n",
+            "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\nunused_import = \"forbid\"\ntypo_lint = \"allow\"\n",
         )?;
 
         let project = find_project(&dir, false);
@@ -134,6 +140,10 @@ mod tests {
         assert_eq!(
             project.options.lints.get(Lint::UnusedBinding),
             LintLevel::Deny
+        );
+        assert_eq!(
+            project.options.lints.get(Lint::UnusedImport),
+            LintLevel::Forbid
         );
         assert_eq!(
             project

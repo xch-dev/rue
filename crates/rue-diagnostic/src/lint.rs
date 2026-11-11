@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
-use crate::DiagnosticSeverity;
+use crate::{DiagnosticKind, DiagnosticSeverity};
 
 /// How a lint is reported when it's triggered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -15,6 +15,9 @@ pub enum LintLevel {
     Warn,
     /// The lint is reported as an error, which causes compilation to fail.
     Deny,
+    /// The lint is reported as an error like [`Deny`](Self::Deny), but it can't be set to any
+    /// other level afterwards, such as by an attribute.
+    Forbid,
 }
 
 impl LintLevel {
@@ -23,8 +26,14 @@ impl LintLevel {
         match self {
             Self::Allow => None,
             Self::Warn => Some(DiagnosticSeverity::Warning),
-            Self::Deny => Some(DiagnosticSeverity::Error),
+            Self::Deny | Self::Forbid => Some(DiagnosticSeverity::Error),
         }
+    }
+
+    /// Whether a lint at this level can be set to the given level. A forbidden lint can't be set
+    /// to anything other than `forbid`.
+    pub fn can_change_to(self, level: LintLevel) -> bool {
+        self != Self::Forbid || level == Self::Forbid
     }
 
     pub fn name(self) -> &'static str {
@@ -32,6 +41,7 @@ impl LintLevel {
             Self::Allow => "allow",
             Self::Warn => "warn",
             Self::Deny => "deny",
+            Self::Forbid => "forbid",
         }
     }
 }
@@ -42,8 +52,32 @@ impl fmt::Display for LintLevel {
     }
 }
 
+/// Where a lint was forbidden, so that attempts to change its level can explain why they failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ForbiddenBy {
+    /// The project's lint levels, which come from `Rue.toml` and the command line.
+    Project,
+    /// The `[lints]` section of `Rue.toml`.
+    Manifest,
+    /// An earlier `-F`/`--forbid` flag on the command line.
+    Flag,
+    /// A `#[forbid(...)]` attribute on the given line, numbered from 1.
+    Attribute { line: usize },
+}
+
+impl fmt::Display for ForbiddenBy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Project => f.write_str("the project"),
+            Self::Manifest => f.write_str("`Rue.toml`"),
+            Self::Flag => f.write_str("an earlier `--forbid` flag"),
+            Self::Attribute { line } => write!(f, "the attribute on line {line}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("Unknown lint level `{0}`, expected `allow`, `warn` or `deny`")]
+#[error("Unknown lint level `{0}`, expected `allow`, `warn`, `deny` or `forbid`")]
 pub struct UnknownLintLevel(pub String);
 
 impl FromStr for LintLevel {
@@ -54,6 +88,7 @@ impl FromStr for LintLevel {
             "allow" => Ok(Self::Allow),
             "warn" => Ok(Self::Warn),
             "deny" => Ok(Self::Deny),
+            "forbid" => Ok(Self::Forbid),
             _ => Err(UnknownLintLevel(s.to_string())),
         }
     }
@@ -68,7 +103,7 @@ impl<'de> Deserialize<'de> for LintLevel {
             type Value = LintLevel;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("a lint level (`allow`, `warn` or `deny`)")
+                f.write_str("a lint level (`allow`, `warn`, `deny` or `forbid`)")
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<LintLevel, E> {
@@ -169,6 +204,140 @@ impl FromStr for Lint {
     }
 }
 
+macro_rules! lint_groups {
+    ($( $variant:ident($name:literal, $description:literal, [$( $lint:ident ),* $(,)?]), )*) => {
+        /// Named groups of lints, which can be configured anywhere a lint can.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum LintGroup {
+            $( $variant, )*
+        }
+
+        impl LintGroup {
+            /// Every lint group in the registry.
+            pub const ALL: &[Self] = &[$( Self::$variant, )*];
+
+            /// The stable name used to configure the group, which can't be the name of a lint.
+            pub fn name(self) -> &'static str {
+                match self {
+                    $( Self::$variant => $name, )*
+                }
+            }
+
+            /// A short description of the lints in the group.
+            pub fn description(self) -> &'static str {
+                match self {
+                    $( Self::$variant => $description, )*
+                }
+            }
+
+            /// The lints in the group.
+            pub fn lints(self) -> &'static [Lint] {
+                match self {
+                    $( Self::$variant => &[$( Lint::$lint, )*], )*
+                }
+            }
+        }
+    };
+}
+
+lint_groups! {
+    Unused("unused", "Code that is never used", [
+        UnusedFunction,
+        UnusedConstant,
+        UnusedBinding,
+        UnusedParameter,
+        UnusedStruct,
+        UnusedTypeAlias,
+        UnusedGenericType,
+        UnusedImport,
+        UnusedValue,
+    ]),
+}
+
+impl LintGroup {
+    /// Looks up a lint group by its stable name.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|group| group.name() == name)
+    }
+}
+
+impl fmt::Display for LintGroup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.name())
+    }
+}
+
+/// A name that can be used to configure lints, which is either a single lint or a lint group.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LintName {
+    Lint(Lint),
+    Group(LintGroup),
+}
+
+impl LintName {
+    /// Looks up a lint or lint group by its stable name.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Lint::from_name(name)
+            .map(Self::Lint)
+            .or_else(|| LintGroup::from_name(name).map(Self::Group))
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Lint(lint) => lint.name(),
+            Self::Group(group) => group.name(),
+        }
+    }
+
+    /// The lints that this name refers to.
+    pub fn lints(self) -> &'static [Lint] {
+        match self {
+            Self::Lint(lint) => std::slice::from_ref(&Lint::ALL[lint.index()]),
+            Self::Group(group) => group.lints(),
+        }
+    }
+}
+
+impl fmt::Display for LintName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.name())
+    }
+}
+
+impl FromStr for LintName {
+    type Err = UnknownLint;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_name(s).ok_or_else(|| UnknownLint(s.to_string()))
+    }
+}
+
+impl LintName {
+    /// The diagnostic for trying to set this lint or group to a level, when the given lint (which
+    /// it refers to) is forbidden. A group is reported once, rather than once for each lint in it.
+    /// The level is named as it was written, since an `expect` attribute sets the lint to `allow`.
+    pub fn forbidden_override(
+        self,
+        lint: Lint,
+        level: &'static str,
+        forbidden_by: ForbiddenBy,
+    ) -> DiagnosticKind {
+        match self {
+            Self::Lint(_) => DiagnosticKind::ForbiddenLintOverride {
+                lint,
+                level,
+                forbidden_by,
+            },
+            Self::Group(group) => DiagnosticKind::ForbiddenLintGroupOverride {
+                group,
+                lint,
+                level,
+                forbidden_by,
+            },
+        }
+    }
+}
+
 /// The configured level of every lint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LintLevels([LintLevel; Lint::COUNT]);
@@ -190,8 +359,57 @@ impl LintLevels {
         self.0[lint.index()]
     }
 
+    /// Sets the level of a lint, even if it's forbidden. Use [`try_set`](Self::try_set) for
+    /// overrides that must respect `forbid`.
     pub fn set(&mut self, lint: Lint, level: LintLevel) {
         self.0[lint.index()] = level;
+    }
+
+    /// Sets the level of a lint, unless it's forbidden and the new level isn't `forbid`. Returns
+    /// whether the level was set.
+    #[must_use]
+    pub fn try_set(&mut self, lint: Lint, level: LintLevel) -> bool {
+        let allowed = self.get(lint).can_change_to(level);
+
+        if allowed {
+            self.set(lint, level);
+        }
+
+        allowed
+    }
+
+    /// Sets the level of each lint or group, such as from the `[lints]` section of `Rue.toml`. A
+    /// lint's own level takes precedence over the level of any group it's in, regardless of the
+    /// order they're given in, unless the group forbids it. Otherwise, the last level wins.
+    ///
+    /// Overrides that try to change the level of a forbidden lint are returned, along with the
+    /// first lint they couldn't change. The other lints in a group are still set.
+    pub fn apply(
+        &mut self,
+        overrides: &[(LintName, LintLevel)],
+    ) -> Vec<(LintName, Lint, LintLevel)> {
+        let groups = overrides
+            .iter()
+            .filter(|(name, _)| matches!(name, LintName::Group(_)));
+        let lints = overrides
+            .iter()
+            .filter(|(name, _)| matches!(name, LintName::Lint(_)));
+
+        let mut rejected = Vec::new();
+
+        for &(name, level) in groups.chain(lints) {
+            let mut forbidden = None;
+
+            for &lint in name.lints() {
+                if !self.try_set(lint, level) {
+                    forbidden.get_or_insert((name, lint, level));
+                }
+            }
+
+            rejected.extend(forbidden);
+        }
+
+        rejected
     }
 }
 
@@ -200,7 +418,6 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::DiagnosticKind;
 
     #[test]
     fn names_are_unique_and_round_trip() {
@@ -220,6 +437,99 @@ mod tests {
 
         assert_eq!(Lint::from_name("not_a_lint"), None);
         assert!("not_a_lint".parse::<Lint>().is_err());
+    }
+
+    #[test]
+    fn group_names_are_unique_and_round_trip() {
+        let mut names = Lint::ALL
+            .iter()
+            .map(|lint| lint.name())
+            .collect::<HashSet<_>>();
+
+        for &group in LintGroup::ALL {
+            assert!(
+                names.insert(group.name()),
+                "group `{group}` clashes with another lint or group"
+            );
+            assert_eq!(LintGroup::from_name(group.name()), Some(group));
+            assert_eq!(group.name().parse::<LintName>(), Ok(LintName::Group(group)));
+            assert!(!group.description().is_empty());
+            assert!(!group.lints().is_empty());
+        }
+
+        for &lint in Lint::ALL {
+            assert_eq!(lint.name().parse::<LintName>(), Ok(LintName::Lint(lint)));
+            assert_eq!(LintName::Lint(lint).lints(), &[lint]);
+        }
+
+        assert_eq!(
+            "not_a_lint".parse::<LintName>(),
+            Err(UnknownLint("not_a_lint".to_string()))
+        );
+    }
+
+    #[test]
+    fn unused_group_has_every_unused_lint() {
+        let expected = Lint::ALL
+            .iter()
+            .copied()
+            .filter(|lint| lint.name().starts_with("unused_"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(LintGroup::Unused.lints(), expected);
+    }
+
+    #[test]
+    fn lints_override_their_groups_in_any_order() {
+        for overrides in [
+            [
+                (LintName::Group(LintGroup::Unused), LintLevel::Deny),
+                (LintName::Lint(Lint::UnusedBinding), LintLevel::Allow),
+            ],
+            [
+                (LintName::Lint(Lint::UnusedBinding), LintLevel::Allow),
+                (LintName::Group(LintGroup::Unused), LintLevel::Deny),
+            ],
+        ] {
+            let mut levels = LintLevels::default();
+            levels.apply(&overrides);
+
+            assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+            assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Deny);
+            assert_eq!(
+                levels.get(Lint::DoubleNegation),
+                Lint::DoubleNegation.default_level()
+            );
+        }
+
+        // Unless the group forbids the lint
+        let mut levels = LintLevels::default();
+        assert_eq!(
+            levels.apply(&[
+                (LintName::Lint(Lint::UnusedBinding), LintLevel::Allow),
+                (LintName::Group(LintGroup::Unused), LintLevel::Forbid),
+                (LintName::Lint(Lint::UnusedImport), LintLevel::Forbid),
+            ]),
+            vec![(
+                LintName::Lint(Lint::UnusedBinding),
+                Lint::UnusedBinding,
+                LintLevel::Allow
+            )]
+        );
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Forbid);
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Forbid);
+
+        // Otherwise, the last level wins
+        let mut levels = LintLevels::default();
+        levels.apply(&[
+            (LintName::Lint(Lint::UnusedBinding), LintLevel::Deny),
+            (LintName::Group(LintGroup::Unused), LintLevel::Deny),
+            (LintName::Group(LintGroup::Unused), LintLevel::Allow),
+            (LintName::Lint(Lint::UnusedBinding), LintLevel::Warn),
+        ]);
+
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Warn);
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Allow);
     }
 
     #[test]
@@ -246,6 +556,20 @@ mod tests {
     }
 
     #[test]
+    fn forbidden_levels_can_only_be_forbidden_again() {
+        let mut levels = LintLevels::default();
+
+        assert!(levels.try_set(Lint::UnusedBinding, LintLevel::Forbid));
+        assert!(!levels.try_set(Lint::UnusedBinding, LintLevel::Allow));
+        assert!(!levels.try_set(Lint::UnusedBinding, LintLevel::Deny));
+        assert!(levels.try_set(Lint::UnusedBinding, LintLevel::Forbid));
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Forbid);
+
+        assert!(levels.try_set(Lint::UnusedFunction, LintLevel::Allow));
+        assert_eq!(levels.get(Lint::UnusedFunction), LintLevel::Allow);
+    }
+
+    #[test]
     fn level_severity() {
         assert_eq!(LintLevel::Allow.severity(), None);
         assert_eq!(
@@ -253,6 +577,10 @@ mod tests {
             Some(DiagnosticSeverity::Warning)
         );
         assert_eq!(LintLevel::Deny.severity(), Some(DiagnosticSeverity::Error));
+        assert_eq!(
+            LintLevel::Forbid.severity(),
+            Some(DiagnosticSeverity::Error)
+        );
     }
 
     #[test]
@@ -269,11 +597,16 @@ mod tests {
 
     #[test]
     fn level_parsing() {
-        for level in [LintLevel::Allow, LintLevel::Warn, LintLevel::Deny] {
+        for level in [
+            LintLevel::Allow,
+            LintLevel::Warn,
+            LintLevel::Deny,
+            LintLevel::Forbid,
+        ] {
             assert_eq!(level.name().parse::<LintLevel>(), Ok(level));
         }
 
-        assert!("forbid".parse::<LintLevel>().is_err());
+        assert!("expect".parse::<LintLevel>().is_err());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::Lint;
+use crate::{ForbiddenBy, Lint, LintGroup};
 
 #[derive(Debug, Clone, Error)]
 pub enum DiagnosticKind {
@@ -22,6 +22,26 @@ pub enum DiagnosticKind {
 
     #[error("Attribute `{0}` expects a list of lint names")]
     MissingLintNames(String),
+
+    #[error("Cannot set lint `{lint}` to `{level}`, since it's forbidden by {forbidden_by}")]
+    ForbiddenLintOverride {
+        lint: Lint,
+        /// The name of the level, which can also be `expect` in an attribute.
+        level: &'static str,
+        forbidden_by: ForbiddenBy,
+    },
+
+    #[error(
+        "Cannot set lint group `{group}` to `{level}`, since `{lint}` is forbidden by {forbidden_by}"
+    )]
+    ForbiddenLintGroupOverride {
+        group: LintGroup,
+        /// The first lint in the group that's forbidden.
+        lint: Lint,
+        /// The name of the level, which can also be `expect` in an attribute.
+        level: &'static str,
+        forbidden_by: ForbiddenBy,
+    },
 
     #[error("Expected {}, found {}", list_of(.1), .0)]
     UnexpectedToken(String, Vec<String>),

@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use rowan::TextRange;
-use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, LintLevel, Source, SrcLoc};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Source, SrcLoc};
 use rue_hir::{Database, ScopeId};
 use rue_types::{BuiltinTypes, Comparison, TypeId};
 
@@ -48,13 +48,17 @@ impl<'a> LintContext<'a> {
     /// Reports the `expect` attributes whose lint was never reported inside of them. This must be
     /// called after every pass has run.
     pub(crate) fn report_unfulfilled_expectations(&mut self) {
-        for (lint, srcloc, level) in self.levels.report_unfulfilled_expectations() {
-            self.push(
-                Lint::UnfulfilledLintExpectation,
-                srcloc,
-                format!("Expected lint `{lint}` to be reported here, but it never was"),
-                level,
-            );
+        for (name, srcloc, level) in self.levels.report_unfulfilled_expectations() {
+            let message = match name {
+                LintName::Lint(lint) => {
+                    format!("Expected lint `{lint}` to be reported here, but it never was")
+                }
+                LintName::Group(group) => format!(
+                    "Expected a lint in group `{group}` to be reported here, but none of them were"
+                ),
+            };
+
+            self.push(Lint::UnfulfilledLintExpectation, srcloc, message, level);
         }
     }
 

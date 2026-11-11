@@ -18,7 +18,8 @@ use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticSeverity, LineCol, Lint, LintLevel, LintLevels, SourceKind,
+    Diagnostic, DiagnosticSeverity, ForbiddenBy, LineCol, Lint, LintGroup, LintLevel, LintLevels,
+    LintName, SourceKind,
 };
 use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::{Manifest, Project, find_project};
@@ -34,7 +35,7 @@ pub enum Command {
     Test(TestArgs),
     Debug(DebugArgs),
     Fmt(FmtArgs),
-    /// List every lint, along with its default level
+    /// List every lint and lint group, along with each lint's default level
     Lints,
 }
 
@@ -75,39 +76,85 @@ pub struct TestArgs {
 }
 
 /// Overrides for lint levels, which take precedence over the `[lints]` section in `Rue.toml`.
-/// If a lint is passed more than once, the last flag wins.
+/// A lint's own flag takes precedence over the flag for any group it's in, unless the group is
+/// forbidden. Otherwise, if a lint is passed more than once, the last flag wins, unless the lint is
+/// already forbidden.
 #[derive(Debug, Clone, Default)]
 pub struct LintArgs {
-    overrides: Vec<(Lint, LintLevel)>,
+    overrides: Vec<(LintName, LintLevel)>,
 }
 
-const LINT_FLAGS: [(&str, char, LintLevel, &str); 3] = [
+const LINT_FLAGS: [(&str, char, LintLevel, &str); 4] = [
     (
         "allow",
         'A',
         LintLevel::Allow,
-        "Allow a lint, so that it isn't reported (can be repeated)",
+        "Allow a lint or lint group, so that it isn't reported (can be repeated)",
     ),
     (
         "warn",
         'W',
         LintLevel::Warn,
-        "Report a lint as a warning (can be repeated)",
+        "Report a lint or lint group as a warning (can be repeated)",
     ),
     (
         "deny",
         'D',
         LintLevel::Deny,
-        "Report a lint as an error, which fails compilation (can be repeated)",
+        "Report a lint or lint group as an error, which fails compilation (can be repeated)",
+    ),
+    (
+        "forbid",
+        'F',
+        LintLevel::Forbid,
+        "Report a lint or lint group as an error, and prevent it from being set to any other level (can be repeated)",
     ),
 ];
 
 impl LintArgs {
-    /// Applies the overrides, in the order they were passed.
-    fn apply(&self, levels: &mut LintLevels) {
-        for &(lint, level) in &self.overrides {
-            levels.set(lint, level);
+    /// Applies the overrides, in the order they were passed. A group's flag doesn't change the lints
+    /// in it that have their own flag, unless it forbids them. Overrides of lints that are already
+    /// forbidden (by `Rue.toml` or an earlier flag) have no effect, and are returned instead, along
+    /// with the first forbidden lint for each flag.
+    fn apply(&self, levels: &mut LintLevels) -> Vec<(LintName, Lint, LintLevel, ForbiddenBy)> {
+        let manifest = *levels;
+        let mut rejected = Vec::new();
+
+        let named = self
+            .overrides
+            .iter()
+            .filter_map(|&(name, _)| match name {
+                LintName::Lint(lint) => Some(lint),
+                LintName::Group(_) => None,
+            })
+            .collect::<HashSet<_>>();
+
+        for &(name, level) in &self.overrides {
+            let mut forbidden = None;
+
+            for &lint in name.lints() {
+                if matches!(name, LintName::Group(_))
+                    && level != LintLevel::Forbid
+                    && named.contains(&lint)
+                {
+                    continue;
+                }
+
+                if !levels.try_set(lint, level) {
+                    let forbidden_by = if manifest.get(lint) == LintLevel::Forbid {
+                        ForbiddenBy::Manifest
+                    } else {
+                        ForbiddenBy::Flag
+                    };
+
+                    forbidden.get_or_insert((name, lint, level, forbidden_by));
+                }
+            }
+
+            rejected.extend(forbidden);
         }
+
+        rejected
     }
 }
 
@@ -121,7 +168,7 @@ impl Args for LintArgs {
                     .short(short)
                     .long(name)
                     .value_name("LINT")
-                    .value_parser(value_parser!(Lint))
+                    .value_parser(value_parser!(LintName))
                     .action(ArgAction::Append)
                     .help(help),
             );
@@ -141,7 +188,7 @@ impl FromArgMatches for LintArgs {
 
         for (name, _, level, _) in LINT_FLAGS {
             if let (Some(lints), Some(indices)) =
-                (matches.get_many::<Lint>(name), matches.indices_of(name))
+                (matches.get_many::<LintName>(name), matches.indices_of(name))
             {
                 overrides.extend(
                     indices
@@ -194,7 +241,9 @@ fn main() -> Result<()> {
 fn lints() {
     let width = Lint::ALL
         .iter()
-        .map(|lint| lint.name().len())
+        .map(|lint| lint.name())
+        .chain(LintGroup::ALL.iter().map(|group| group.name()))
+        .map(str::len)
         .max()
         .unwrap_or_default();
 
@@ -206,10 +255,29 @@ fn lints() {
             lint.description()
         );
     }
+
+    println!();
+    println!("Levels:");
+    println!("  allow   The lint isn't reported");
+    println!("  warn    The lint is reported as a warning");
+    println!("  deny    The lint is reported as an error, which fails compilation");
+    println!("  forbid  Like deny, but attributes and later flags can't change the level");
+    println!();
+    println!("Groups:");
+
+    for &group in LintGroup::ALL {
+        println!("{:width$}  {}", group.name(), group.description());
+
+        for &lint in group.lints() {
+            println!("{:width$}  - {lint}", "");
+        }
+    }
 }
 
-/// Applies the CLI lint overrides to the project, and warns about unknown lints in `Rue.toml`.
-fn configure_lints(project: &mut Project, args: &LintArgs) {
+/// Applies the CLI lint overrides to the project, and reports problems with the lints in
+/// `Rue.toml`. Returns whether any errors were reported, such as an override that tries to change
+/// the level of a forbidden lint.
+fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
     let manifest = project
         .manifest_path
         .as_deref()
@@ -230,7 +298,25 @@ fn configure_lints(project: &mut Project, args: &LintArgs) {
         );
     }
 
-    args.apply(&mut project.options.lints);
+    for lint in &project.forbidden_lints {
+        let location = LineCol::new(&manifest, lint.span.start);
+
+        eprintln!(
+            "{}",
+            format!("Error: {} at Rue.toml:{location}", lint.kind())
+                .red()
+                .bold()
+        );
+    }
+
+    let rejected = args.apply(&mut project.options.lints);
+
+    for &(name, lint, level, forbidden_by) in &rejected {
+        let kind = name.forbidden_override(lint, level.name(), forbidden_by);
+        eprintln!("{}", format!("Error: {kind}").red().bold());
+    }
+
+    !rejected.is_empty() || !project.forbidden_lints.is_empty()
 }
 
 /// Prints the diagnostics, and returns whether any of them are errors.
@@ -293,7 +379,7 @@ fn build(args: BuildArgs) -> Result<()> {
         process::exit(1);
     };
 
-    configure_lints(&mut project, &args.lints);
+    let lint_errors = configure_lints(&mut project, &args.lints);
 
     if project.manifest.as_ref().is_some_and(|manifest| {
         manifest
@@ -328,7 +414,9 @@ fn build(args: BuildArgs) -> Result<()> {
         project.entrypoint.canonicalize()?
     };
 
-    if report_diagnostics(ctx.take_diagnostics(), &base_path) {
+    // Errors in the lint flags are reported before compiling, but don't stop it, so that every
+    // error is reported at once
+    if report_diagnostics(ctx.take_diagnostics(), &base_path) || lint_errors {
         process::exit(1);
     }
 
@@ -551,7 +639,7 @@ fn test(args: TestArgs) -> Result<()> {
         process::exit(1);
     };
 
-    configure_lints(&mut project, &args.lints);
+    let lint_errors = configure_lints(&mut project, &args.lints);
 
     let mut ctx = Compiler::new(project.options);
 
@@ -562,7 +650,9 @@ fn test(args: TestArgs) -> Result<()> {
         project.entrypoint.canonicalize()?
     };
 
-    if report_diagnostics(ctx.take_diagnostics(), &base_path) {
+    // Errors in the lint flags are reported before compiling, but don't stop it, so that every
+    // error is reported at once
+    if report_diagnostics(ctx.take_diagnostics(), &base_path) || lint_errors {
         process::exit(1);
     }
 
@@ -673,7 +763,7 @@ fn debug(args: DebugArgs) -> Result<()> {
 mod tests {
     use super::Command;
     use clap::{CommandFactory, Parser, error::ErrorKind};
-    use rue_diagnostic::{Lint, LintLevel, LintLevels};
+    use rue_diagnostic::{ForbiddenBy, Lint, LintGroup, LintLevel, LintLevels, LintName};
 
     #[test]
     fn cli_debug_asserts() {
@@ -707,7 +797,7 @@ mod tests {
 
         let mut levels = LintLevels::default();
         levels.set(Lint::UnnecessaryCast, LintLevel::Allow);
-        args.lints.apply(&mut levels);
+        assert!(args.lints.apply(&mut levels).is_empty());
 
         assert_eq!(levels.get(Lint::UnusedFunction), LintLevel::Deny);
         assert_eq!(levels.get(Lint::UnnecessaryCast), LintLevel::Warn);
@@ -726,7 +816,7 @@ mod tests {
         };
 
         let mut levels = LintLevels::default();
-        args.lints.apply(&mut levels);
+        assert!(args.lints.apply(&mut levels).is_empty());
         assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
 
         let Ok(Command::Test(args)) =
@@ -736,14 +826,190 @@ mod tests {
         };
 
         let mut levels = LintLevels::default();
-        args.lints.apply(&mut levels);
+        assert!(args.lints.apply(&mut levels).is_empty());
         assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Allow);
+    }
+
+    #[test]
+    fn forbid_flag() {
+        let Ok(Command::Build(args)) = Command::try_parse_from([
+            "rue",
+            "build",
+            "-A",
+            "unused_binding",
+            "--forbid",
+            "unused_binding",
+            "-W",
+            "unused_binding",
+            "-F",
+            "unused_function",
+            "-D",
+            "unused_function",
+            "-F",
+            "unused_function",
+        ]) else {
+            panic!("expected build command");
+        };
+
+        // A lint can be forbidden after another flag, but no other flag can change it afterwards
+        let mut levels = LintLevels::default();
+        assert_eq!(
+            args.lints.apply(&mut levels),
+            vec![
+                (
+                    LintName::Lint(Lint::UnusedBinding),
+                    Lint::UnusedBinding,
+                    LintLevel::Warn,
+                    ForbiddenBy::Flag
+                ),
+                (
+                    LintName::Lint(Lint::UnusedFunction),
+                    Lint::UnusedFunction,
+                    LintLevel::Deny,
+                    ForbiddenBy::Flag
+                ),
+            ]
+        );
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Forbid);
+        assert_eq!(levels.get(Lint::UnusedFunction), LintLevel::Forbid);
+
+        // Lints forbidden in `Rue.toml` can't be changed by flags either
+        let Ok(Command::Test(args)) =
+            Command::try_parse_from(["rue", "test", "-A", "unused_import", "-A", "unused_binding"])
+        else {
+            panic!("expected test command");
+        };
+
+        let mut levels = LintLevels::default();
+        levels.set(Lint::UnusedImport, LintLevel::Forbid);
+        assert_eq!(
+            args.lints.apply(&mut levels),
+            vec![(
+                LintName::Lint(Lint::UnusedImport),
+                Lint::UnusedImport,
+                LintLevel::Allow,
+                ForbiddenBy::Manifest
+            )]
+        );
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Forbid);
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+    }
+
+    #[test]
+    fn lint_group_flags() {
+        // A lint's own flag wins over its group's, in either order
+        for flags in [
+            ["-A", "unused_binding", "-D", "unused"],
+            ["--deny", "unused", "--allow", "unused_binding"],
+        ] {
+            let Ok(Command::Build(args)) =
+                Command::try_parse_from(["rue", "build"].into_iter().chain(flags))
+            else {
+                panic!("expected build command");
+            };
+
+            let mut levels = LintLevels::default();
+            assert!(args.lints.apply(&mut levels).is_empty());
+
+            assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+            assert_eq!(levels.get(Lint::UnusedFunction), LintLevel::Deny);
+            assert_eq!(levels.get(Lint::UnusedValue), LintLevel::Deny);
+            assert_eq!(
+                levels.get(Lint::DoubleNegation),
+                Lint::DoubleNegation.default_level()
+            );
+        }
+
+        // Flags take precedence over `Rue.toml`, including an individual lint set there
+        let Ok(Command::Test(args)) = Command::try_parse_from(["rue", "test", "-A", "unused"])
+        else {
+            panic!("expected test command");
+        };
+
+        let mut levels = LintLevels::default();
+        levels.set(Lint::UnusedImport, LintLevel::Deny);
+        assert!(args.lints.apply(&mut levels).is_empty());
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Allow);
+    }
+
+    #[test]
+    fn forbid_group_flags() {
+        // A group can forbid a lint after its own flag, but its own flag can't change it afterwards
+        for (flags, rejected) in [
+            (["-A", "unused_binding", "-F", "unused"], Vec::new()),
+            (
+                ["-F", "unused", "-A", "unused_binding"],
+                vec![(
+                    LintName::Lint(Lint::UnusedBinding),
+                    Lint::UnusedBinding,
+                    LintLevel::Allow,
+                    ForbiddenBy::Flag,
+                )],
+            ),
+        ] {
+            let Ok(Command::Build(args)) =
+                Command::try_parse_from(["rue", "build"].into_iter().chain(flags))
+            else {
+                panic!("expected build command");
+            };
+
+            let mut levels = LintLevels::default();
+            assert_eq!(args.lints.apply(&mut levels), rejected);
+            assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Forbid);
+            assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Forbid);
+        }
+
+        // A group can't change lints forbidden in `Rue.toml`, but still sets the others
+        let Ok(Command::Test(args)) = Command::try_parse_from(["rue", "test", "-A", "unused"])
+        else {
+            panic!("expected test command");
+        };
+
+        let mut levels = LintLevels::default();
+        levels.set(Lint::UnusedImport, LintLevel::Forbid);
+        assert_eq!(
+            args.lints.apply(&mut levels),
+            vec![(
+                LintName::Group(LintGroup::Unused),
+                Lint::UnusedImport,
+                LintLevel::Allow,
+                ForbiddenBy::Manifest
+            )]
+        );
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Forbid);
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+
+        // A group is rejected once, rather than once for each lint in it
+        let Ok(Command::Test(args)) =
+            Command::try_parse_from(["rue", "test", "-F", "unused", "-W", "unused"])
+        else {
+            panic!("expected test command");
+        };
+
+        let mut levels = LintLevels::default();
+        assert_eq!(
+            args.lints.apply(&mut levels),
+            vec![(
+                LintName::Group(LintGroup::Unused),
+                Lint::UnusedFunction,
+                LintLevel::Warn,
+                ForbiddenBy::Flag
+            )]
+        );
+        assert_eq!(levels.get(Lint::UnusedValue), LintLevel::Forbid);
     }
 
     #[test]
     fn unknown_lint_flag() {
         let err = Command::try_parse_from(["rue", "build", "-D", "not_a_lint"]).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::ValueValidation);
+
+        // Unknown group names are reported the same way as unknown lints
+        for flag in ["-A", "-W", "-D", "-F"] {
+            let err = Command::try_parse_from(["rue", "test", flag, "unuse"]).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::ValueValidation);
+            assert!(err.to_string().contains("Unknown lint `unuse`"), "{err}");
+        }
     }
 
     #[test]

@@ -66,7 +66,7 @@ $ rue build
 | `rue test [file]`               | Run every `test fn` in the project (or a single file).                 |
 | `rue fmt [paths...] [--check]`  | Format Rue source files, or check that they're already formatted.      |
 | `rue debug <program> [solution]`| Run a CLVM program against a solution and print the result.            |
-| `rue lints`                     | List every lint, along with its default level.                         |
+| `rue lints`                     | List every lint and its default level, and the lint groups.            |
 
 Useful `build` flags:
 
@@ -78,28 +78,33 @@ Useful `build` flags:
 
 ## Lints
 
-Warnings such as unused bindings or unnecessary casts are lints, which can be configured to be allowed, reported as warnings, or denied (which fails compilation). Run `rue lints` to see every lint and its default level.
+Warnings such as unused bindings or unnecessary casts are lints, which can be configured to be allowed, reported as warnings, denied (which fails compilation), or forbidden (which is like denied, but can't be changed by attributes or later flags). Run `rue lints` to see every lint and its default level.
+
+Related lints are also in groups, which can be configured anywhere a lint can. For example, `unused` contains every `unused_*` lint. Run `rue lints` to see the groups and the lints in them.
 
 Levels can be set in `Rue.toml`:
 
 ```toml
 [lints]
-unused_binding = "deny"
+unused = "deny"
+unused_binding = "allow"
 unnecessary_cast = "allow"
 ```
 
-They can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn` and `-D`/`--deny`, which take precedence over `Rue.toml`. If a lint is passed more than once, the last flag wins:
+Within `Rue.toml`, a lint's own level takes precedence over the level of its group, regardless of the order they're written in. Here every `unused_*` lint is denied, except for `unused_binding`. The exception is a forbidden group, whose lints can't be set to any other level, so `unused = "forbid"` with `unused_binding = "allow"` is an error.
+
+Levels can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn`, `-D`/`--deny` and `-F`/`--forbid`, which take precedence over `Rue.toml`, including a group flag over a lint set individually in `Rue.toml`. Among the flags, a lint's own flag takes precedence over its group's, unless the group is forbidden. Otherwise, if a lint is passed more than once, the last flag wins, unless the lint is already forbidden in `Rue.toml` or by an earlier flag (which is an error):
 
 ```bash
-rue build -D unused_binding -A unused_import
+rue build -D unused -A unused_import
 ```
 
-Levels can also be set in the source code, with an `allow`, `warn` or `deny` attribute on an item (such as a function, constant, struct, type alias, import or module) or a statement. The attribute applies to everything inside of what it's attached to, and the innermost one takes precedence over any outer attributes and the project's levels:
+Levels can also be set in the source code, with an `allow`, `warn`, `deny` or `forbid` attribute on an item (such as a function, constant, struct, type alias, import or module) or a statement. The attribute applies to everything inside of what it's attached to, and the innermost one takes precedence over any outer attributes and the project's levels, whether it names a lint or a group. If an item or statement has more than one attribute for the same lint, the last one wins:
 
 ```rs
 #[deny(unused_binding)]
 mod strict {
-    #[allow(unused_function, unused_parameter)]
+    #[allow(unused)]
     fn reserved(value: Int) -> Int {
         #[warn(unused_binding)]
         let unused = 1;
@@ -108,7 +113,18 @@ mod strict {
 }
 ```
 
-An `expect` attribute allows a lint like `allow` does, but also expects it to be reported inside of what it's attached to. If it never is, the attribute is reported with the `unfulfilled_lint_expectation` lint, so it doesn't stay around after the code it was written for changes:
+A `forbid` attribute works like `deny`, but nothing inside of it can change the lint's level. The same goes for lints forbidden in `Rue.toml` or on the command line. An attribute or flag that tries to change the level of a forbidden lint has no effect on it, and is reported as an error. A group still sets the lints in it that aren't forbidden:
+
+```rs
+#[forbid(unused_binding)]
+fn strict() -> Int {
+    #[allow(unused_binding)] // Error: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1
+    let unused = 1;
+    42
+}
+```
+
+An `expect` attribute allows a lint like `allow` does, but also expects it to be reported inside of what it's attached to. If it never is, the attribute is reported with the `unfulfilled_lint_expectation` lint, so it doesn't stay around after the code it was written for changes. An `expect` for a group is fulfilled by any lint in it, and like `allow`, it can't change a forbidden lint:
 
 ```rs
 fn main() -> Int {
