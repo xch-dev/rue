@@ -13,6 +13,11 @@ use crate::{LintContext, LintInput};
 /// Reports imports and declarations that are never used. A declaration is used if it's reachable
 /// from an entrypoint, such as `main`, a test or an export. Names starting with `_` are exempt.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
+    // Finding unused declarations walks the whole reference graph, so skip it if it's not needed
+    if !LINTS.iter().any(|&lint| cx.is_enabled(lint)) {
+        return;
+    }
+
     let db = cx.db();
 
     let mut reports = input
@@ -42,6 +47,18 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         }
     }
 }
+
+/// Every lint reported by this pass.
+const LINTS: &[Lint] = &[
+    Lint::UnusedImport,
+    Lint::UnusedFunction,
+    Lint::UnusedBinding,
+    Lint::UnusedConstant,
+    Lint::UnusedParameter,
+    Lint::UnusedGenericType,
+    Lint::UnusedStruct,
+    Lint::UnusedTypeAlias,
+];
 
 type Report = (Lint, Name, String);
 
