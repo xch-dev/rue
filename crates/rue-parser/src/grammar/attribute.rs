@@ -7,9 +7,22 @@ pub fn attributes(p: &mut Parser) {
     }
 }
 
+/// Parses the inner attributes (such as `#![allow(unused_binding)]`) at the start of a file or
+/// module, which apply to all of it rather than to the next item.
+pub fn inner_attributes(p: &mut Parser) {
+    while p.at_quiet(T![#]) && p.lookahead(1) == T![!] {
+        attribute(p);
+    }
+}
+
+/// Parses an outer or inner attribute. Inner attributes in other places are parsed the same way,
+/// so that they can be reported as misplaced rather than as syntax errors.
 fn attribute(p: &mut Parser) {
     p.start(SyntaxKind::Attribute);
     p.expect(T![#]);
+    if p.at_quiet(T![!]) {
+        p.try_eat(T![!]);
+    }
     if p.expect(T!['[']) {
         p.expect(SyntaxKind::Ident);
         if p.try_eat(T!['(']) {
@@ -26,7 +39,7 @@ fn attribute(p: &mut Parser) {
 mod tests {
     use expect_test::expect;
 
-    use crate::grammar::{block::block, item::item, tests::check};
+    use crate::grammar::{block::block, document::document, item::item, tests::check};
 
     #[test]
     fn test_item_attributes() {
@@ -158,6 +171,133 @@ mod tests {
                     CloseBrace@22..23 "}"
             "##]],
             expect!["Expected one of `,`, `)`, found `]` at main.rue:1:10"],
+        );
+    }
+
+    #[test]
+    fn test_inner_attributes() {
+        check(
+            document,
+            "// Header\n#![allow(a)] #![deny(b)]\nimport x::y;\n",
+            expect![[r##"
+                Document@0..48
+                  LineComment@0..10 "// Header\n"
+                  Attribute@10..22
+                    Pound@10..11 "#"
+                    Not@11..12 "!"
+                    OpenBracket@12..13 "["
+                    Ident@13..18 "allow"
+                    OpenParen@18..19 "("
+                    Ident@19..20 "a"
+                    CloseParen@20..21 ")"
+                    CloseBracket@21..22 "]"
+                  Whitespace@22..23 " "
+                  Attribute@23..34
+                    Pound@23..24 "#"
+                    Not@24..25 "!"
+                    OpenBracket@25..26 "["
+                    Ident@26..30 "deny"
+                    OpenParen@30..31 "("
+                    Ident@31..32 "b"
+                    CloseParen@32..33 ")"
+                    CloseBracket@33..34 "]"
+                  Whitespace@34..35 "\n"
+                  ImportItem@35..47
+                    Import@35..41 "import"
+                    Whitespace@41..42 " "
+                    ImportPath@42..46
+                      ImportPathSegment@42..43
+                        Ident@42..43 "x"
+                      ImportPathSegment@43..46
+                        PathSeparator@43..45 "::"
+                        Ident@45..46 "y"
+                    Semicolon@46..47 ";"
+                  Whitespace@47..48 "\n"
+            "##]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_module_inner_attributes() {
+        check(
+            item,
+            "mod m { #![allow(a)] fn f() {} }",
+            expect![[r##"
+                ModuleItem@0..32
+                  Mod@0..3 "mod"
+                  Whitespace@3..4 " "
+                  Ident@4..5 "m"
+                  Whitespace@5..6 " "
+                  OpenBrace@6..7 "{"
+                  Whitespace@7..8 " "
+                  Attribute@8..20
+                    Pound@8..9 "#"
+                    Not@9..10 "!"
+                    OpenBracket@10..11 "["
+                    Ident@11..16 "allow"
+                    OpenParen@16..17 "("
+                    Ident@17..18 "a"
+                    CloseParen@18..19 ")"
+                    CloseBracket@19..20 "]"
+                  Whitespace@20..21 " "
+                  FunctionItem@21..30
+                    Fn@21..23 "fn"
+                    Whitespace@23..24 " "
+                    Ident@24..25 "f"
+                    OpenParen@25..26 "("
+                    CloseParen@26..27 ")"
+                    Whitespace@27..28 " "
+                    Block@28..30
+                      OpenBrace@28..29 "{"
+                      CloseBrace@29..30 "}"
+                  Whitespace@30..31 " "
+                  CloseBrace@31..32 "}"
+            "##]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_misplaced_inner_attributes() {
+        check(
+            document,
+            "fn f() {}\n#![allow(a)] fn g() {}",
+            expect![[r##"
+                Document@0..32
+                  FunctionItem@0..9
+                    Fn@0..2 "fn"
+                    Whitespace@2..3 " "
+                    Ident@3..4 "f"
+                    OpenParen@4..5 "("
+                    CloseParen@5..6 ")"
+                    Whitespace@6..7 " "
+                    Block@7..9
+                      OpenBrace@7..8 "{"
+                      CloseBrace@8..9 "}"
+                  Whitespace@9..10 "\n"
+                  FunctionItem@10..32
+                    Attribute@10..22
+                      Pound@10..11 "#"
+                      Not@11..12 "!"
+                      OpenBracket@12..13 "["
+                      Ident@13..18 "allow"
+                      OpenParen@18..19 "("
+                      Ident@19..20 "a"
+                      CloseParen@20..21 ")"
+                      CloseBracket@21..22 "]"
+                    Whitespace@22..23 " "
+                    Fn@23..25 "fn"
+                    Whitespace@25..26 " "
+                    Ident@26..27 "g"
+                    OpenParen@27..28 "("
+                    CloseParen@28..29 ")"
+                    Whitespace@29..30 " "
+                    Block@30..32
+                      OpenBrace@30..31 "{"
+                      CloseBrace@31..32 "}"
+            "##]],
+            expect![""],
         );
     }
 }

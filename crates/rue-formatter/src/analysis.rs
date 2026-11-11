@@ -1,4 +1,4 @@
-use rue_ast::{AstDocument, AstExpr, AstNode, AstNodeKind};
+use rue_ast::{AstDocument, AstExpr, AstModuleItem, AstNode, AstNodeKind};
 use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::{
@@ -29,6 +29,7 @@ enum SingleArgumentLayout {
 pub enum ItemBoundary {
     Document,
     Module,
+    ModuleInnerAttributes,
     Block,
 }
 
@@ -328,6 +329,9 @@ fn analyze_nodes(
                             facts[id.index()].flags.insert(TokenFlags::ATTACHED_OPENER);
                             facts[id.index()].flags.insert(TokenFlags::TRAILING_COMMA);
                         }
+                        // The `!` of an inner attribute is attached to the brackets like a
+                        // prefix operator, as in `#![allow(unused_import)]`
+                        T![!] => facts[id.index()].flags.insert(TokenFlags::PREFIX_OPERATOR),
                         T!['['] => facts[id.index()].delimiter_style = Some(DelimiterStyle::Fill),
                         T![']'] => facts[id.index()].flags.insert(TokenFlags::ATTRIBUTE_END),
                         _ => {}
@@ -494,6 +498,17 @@ fn analyze_boundaries(
                         facts[id.index()].item_boundary = Some(boundary);
                     }
                 }
+            }
+
+            // Inner attributes at the start of a module are separated from its items by a blank
+            // line, like they are at the start of a file
+            if let Some(module) = AstModuleItem::cast(container)
+                && let Some(last) = module.inner_attributes().last()
+                && last.syntax().next_sibling().is_some()
+                && let Some(token) = significant_tokens(last.syntax()).last()
+            {
+                let id = token_id(&token, stream)?;
+                facts[id.index()].item_boundary = Some(ItemBoundary::ModuleInnerAttributes);
             }
         }
     }

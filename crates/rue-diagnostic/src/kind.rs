@@ -14,6 +14,9 @@ pub enum DiagnosticKind {
     #[error("Attributes can only be used on items and statements")]
     MisplacedAttribute,
 
+    #[error("Inner attributes can only be used at the start of a file or module")]
+    MisplacedInnerAttribute,
+
     #[error("Unknown attribute `{0}`")]
     UnknownAttribute(String),
 

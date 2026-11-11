@@ -6,6 +6,7 @@ use crate::{
     document::Doc,
     ordering::ImportGroupPlan,
     token_stream::{Comment, CommentPlacement, Gap, TokenId, TokenSpan, TokenStream},
+    trivia::split_between,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,7 +190,12 @@ impl<'a> Formatter<'a> {
                 })?;
                 if !emitted_separator {
                     let separator = self.separator(atom_end, index);
-                    docs.push(self.gap_doc(self.stream.gap_before(index), separator));
+                    let gap = self.stream.gap_before(index);
+                    if separator == Separator::Empty {
+                        docs.push(self.item_gap_doc(gap));
+                    } else {
+                        docs.push(self.gap_doc(gap, separator));
+                    }
                 }
             } else {
                 break;
@@ -478,7 +484,7 @@ impl<'a> Formatter<'a> {
         let right = self.stream.token(next);
         if let Some(boundary) = self.layout.facts(previous).item_boundary {
             return match boundary {
-                ItemBoundary::Document => Separator::Empty,
+                ItemBoundary::Document | ItemBoundary::ModuleInnerAttributes => Separator::Empty,
                 ItemBoundary::Module | ItemBoundary::Block => Separator::Hard,
             };
         }
@@ -523,6 +529,16 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Separates two items with a blank line, keeping comments on the same line as the first item
+    /// attached to it, the same way as items in a document.
+    fn item_gap_doc(&mut self, gap: &Gap) -> Doc {
+        let (trailing, leading) = split_between(gap);
+        Doc::concat([
+            self.gap_doc_with_final_line(&trailing, Separator::None, false),
+            self.movable_leading_doc(&leading, Separator::Empty),
+        ])
+    }
+
     fn movable_leading_doc(&mut self, gap: &Gap, requested: Separator) -> Doc {
         if gap.comments.is_empty() {
             separator_doc(requested)
@@ -538,8 +554,17 @@ impl<'a> Formatter<'a> {
         let last = gap.comments.last().expect("comments are not empty");
         let final_line = if gap.newlines > 1 {
             Doc::empty_line()
-        } else if last.kind == SyntaxKind::LineComment || last.multiline || gap.newlines > 0 {
+        } else if last.kind == SyntaxKind::LineComment
+            || last.multiline
+            || gap.newlines > 0
+            || requested == Separator::Hard
+        {
+            // A block's closing brace is always on its own line, even after an inline comment
             Doc::hard_line()
+        } else if requested == Separator::Soft {
+            // Braces that fit on one line keep the space before the closing brace, and otherwise
+            // it goes on its own line
+            Doc::soft_line()
         } else {
             // An inline block comment is followed by a space before the delimiter.
             Doc::space()
@@ -575,10 +600,22 @@ impl<'a> Formatter<'a> {
         }
 
         let mut docs = Vec::new();
+        let mut spaced = false;
         for (index, comment) in gap.comments.iter().enumerate() {
             self.consumed_comments += 1;
-            let before = if index == 0 {
+            let before = if index == 0
+                && requested == Separator::Empty
+                && comment.newlines_before == 1
+                && gap.newlines <= 1
+            {
+                // Comments directly before an item that's separated from the previous one by a
+                // blank line belong to it, so they go after the blank line
+                Doc::empty_line()
+            } else if index == 0 {
                 comment_separator(comment, requested, ignore_trailing)
+            } else if spaced {
+                // The previous comment is already followed by a space on the same line
+                Doc::Nil
             } else {
                 comment_separator(comment, Separator::Hard, false)
             };
@@ -588,7 +625,9 @@ impl<'a> Formatter<'a> {
                 Some(next) => next.newlines_before == 0,
                 None => gap.newlines == 0 && !suppress_final_line,
             };
-            if comment.kind == SyntaxKind::BlockComment && !comment.multiline && followed_inline {
+            spaced =
+                comment.kind == SyntaxKind::BlockComment && !comment.multiline && followed_inline;
+            if spaced {
                 docs.push(Doc::space());
             }
         }

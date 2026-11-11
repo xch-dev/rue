@@ -17,6 +17,7 @@ pub struct DocumentItem {
     pub leading: Gap,
     pub trailing: Gap,
     pub identity_key: String,
+    inner_attributes: bool,
     sort_key: String,
     original_index: usize,
 }
@@ -62,9 +63,37 @@ pub fn plan_document(
     let mut next_import_group = 0;
     let mut previous_was_import = false;
 
+    // The inner attributes at the start of the file are kept together as a single unit, which
+    // always stays first so that items (such as imports) aren't sorted above them
+    let inner_attributes = document.inner_attributes().collect::<Vec<_>>();
+    if let (Some(first), Some(last)) = (inner_attributes.first(), inner_attributes.last()) {
+        let start = node_span(first.syntax(), stream)?.start();
+        let last = significant_tokens(last.syntax()).last().ok_or_else(|| {
+            FormatError::Internal("inner attribute has no significant tokens".to_string())
+        })?;
+        let last = stream.token_id_at_offset(usize::from(last.text_range().start()))?;
+        items.push(DocumentItem {
+            span: stream.span_through(start, last)?,
+            import_group: None,
+            compact_group: None,
+            leading: Gap::default(),
+            trailing: Gap::default(),
+            identity_key: inner_attributes
+                .iter()
+                .map(|attribute| canonical_node_key(attribute.syntax()))
+                .collect(),
+            inner_attributes: true,
+            sort_key: String::new(),
+            original_index: 0,
+        });
+    }
+
     for (original_index, item) in document.items().enumerate() {
         let span = item_span(item.syntax(), stream)?;
-        let is_import = matches!(&item, AstItem::ImportItem(_));
+        // An import with a misplaced inner attribute isn't sorted, since moving it to the start of
+        // the file would turn the attribute into one that applies to the whole file
+        let is_import = matches!(&item, AstItem::ImportItem(_))
+            && !item.attributes().any(|attribute| attribute.is_inner());
         let import_group = is_import.then(|| {
             if !previous_was_import
                 || (span.start().index() > 0 && gap_has_blank_line(stream.gap_before(span.start())))
@@ -76,12 +105,8 @@ pub fn plan_document(
         previous_was_import = is_import;
 
         let compact_group = match item.syntax().kind() {
-            SyntaxKind::ConstantItem if !item.syntax().text().to_string().contains('\n') => {
-                Some(CompactGroup::Constant)
-            }
-            SyntaxKind::TypeAliasItem if !item.syntax().text().to_string().contains('\n') => {
-                Some(CompactGroup::TypeAlias)
-            }
+            SyntaxKind::ConstantItem if is_single_line(&item) => Some(CompactGroup::Constant),
+            SyntaxKind::TypeAliasItem if is_single_line(&item) => Some(CompactGroup::TypeAlias),
             SyntaxKind::FunctionItem
                 if AstFunctionItem::cast(item.syntax().clone()).is_some_and(|function| {
                     function.extern_kw().is_some() && function.body().is_none()
@@ -117,6 +142,7 @@ pub fn plan_document(
             leading: Gap::default(),
             trailing: Gap::default(),
             identity_key: canonical_node_key(item.syntax()),
+            inner_attributes: false,
             sort_key: format!("{path_key}\0{keyword_key}"),
             original_index,
         });
@@ -143,17 +169,20 @@ pub fn plan_document(
     let (trailing, footer) = split_between(stream.final_gap());
     last.trailing = trailing;
 
-    items.sort_by(
-        |left, right| match (left.import_group, right.import_group) {
-            (Some(left_group), Some(right_group)) => left_group
-                .cmp(&right_group)
-                .then_with(|| left.sort_key.cmp(&right.sort_key))
-                .then_with(|| left.original_index.cmp(&right.original_index)),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => left.original_index.cmp(&right.original_index),
-        },
-    );
+    items.sort_by(|left, right| {
+        right
+            .inner_attributes
+            .cmp(&left.inner_attributes)
+            .then_with(|| match (left.import_group, right.import_group) {
+                (Some(left_group), Some(right_group)) => left_group
+                    .cmp(&right_group)
+                    .then_with(|| left.sort_key.cmp(&right.sort_key))
+                    .then_with(|| left.original_index.cmp(&right.original_index)),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => left.original_index.cmp(&right.original_index),
+            })
+    });
 
     Ok(DocumentPlan {
         header,
@@ -267,6 +296,16 @@ fn node_span(node: &SyntaxNode, stream: &TokenStream) -> Result<TokenSpan, Forma
     let start = stream.token_id_at_offset(usize::from(first.text_range().start()))?;
     let last = stream.token_id_at_offset(usize::from(last.text_range().start()))?;
     stream.span_through(start, last)
+}
+
+/// Whether an item is on a single line, not counting its attributes, which are always formatted
+/// on their own lines.
+fn is_single_line(item: &AstItem) -> bool {
+    !item
+        .syntax()
+        .children_with_tokens()
+        .skip_while(|element| element.kind().is_trivia() || element.kind() == SyntaxKind::Attribute)
+        .any(|element| element.to_string().contains('\n'))
 }
 
 fn gap_has_blank_line(gap: &crate::token_stream::Gap) -> bool {

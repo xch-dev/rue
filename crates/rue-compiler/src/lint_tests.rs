@@ -1186,3 +1186,352 @@ fn main() -> Int {
     );
     assert!(has_errors);
 }
+
+#[test]
+fn inner_attributes_apply_to_the_whole_file() {
+    let source = "\
+// The file's header comment
+#![deny(unused_binding)]
+#![allow(unused_function)]
+
+fn unused() -> Int {
+    let a = 1;
+    2
+}
+
+#[warn(unused_binding)]
+fn main() -> Int {
+    let b = 1;
+    #[allow(unused_binding)]
+    let c = 2;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 6: Unused binding `a`",
+            "Warning 12: Unused binding `b`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn inner_attributes_override_project_levels() {
+    let source = "\
+#![warn(unused_binding)]
+
+fn main() -> Int {
+    let a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |options| {
+        options.lints.set(Lint::UnusedBinding, LintLevel::Allow);
+    });
+
+    assert_eq!(reports, vec!["Warning 4: Unused binding `a`"]);
+    assert!(!has_errors);
+}
+
+#[test]
+fn inner_attributes_apply_to_the_whole_module() {
+    let source = "\
+#![deny(unused_binding)]
+
+#[warn(unused_binding)]
+mod outer {
+    #![allow(unused_binding)]
+
+    export fn main() -> Int {
+        let a = 1;
+        #[deny(unused_binding)]
+        let b = 2;
+        0
+    }
+}
+
+fn main() -> Int {
+    let c = 1;
+    outer::main()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 10: Unused binding `b`",
+            "Error 16: Unused binding `c`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn misplaced_inner_attributes_are_reported() {
+    let source = "\
+fn helper() -> Int {
+    1
+}
+
+#![allow(unused_function)]
+fn other() -> Int {
+    #![allow(unused_binding)]
+    let a = 1;
+    2
+}
+
+#[allow(unused_function)] #![allow(unused_binding)]
+fn third() -> Int {
+    1
+}
+
+#![allow(unused_function)]
+mod inner {
+    export fn main() -> Int {
+        0
+    }
+}
+
+fn main() -> Int {
+    helper() + inner::main()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 5: Inner attributes can only be used at the start of a file or module",
+            "Warning 6: Unused function `other`",
+            "Error 7: Inner attributes can only be used at the start of a file or module",
+            "Warning 8: Unused binding `a`",
+            "Error 12: Inner attributes can only be used at the start of a file or module",
+            "Error 17: Inner attributes can only be used at the start of a file or module",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn misplaced_inner_attributes_are_still_checked() {
+    let source = "\
+fn main() -> Int {
+    #![allw(unused_binding)]
+    #![allow(unused_bindng)]
+    let a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 2: Inner attributes can only be used at the start of a file or module",
+            "Error 2: Unknown attribute `allw`",
+            "Error 3: Inner attributes can only be used at the start of a file or module",
+            "Warning 3: Unknown lint `unused_bindng`",
+            "Warning 4: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn inner_attributes_after_a_parse_error_are_only_reported_once() {
+    let (reports, has_errors) = reports(
+        "fn main() -> Int {\n    0\n}\n#![allow(unused_function)]\nlet x = 1;\n",
+        |_| {},
+    );
+
+    assert_eq!(reports, vec!["Error 5: Expected item, found `let`"]);
+    assert!(has_errors);
+}
+
+#[test]
+fn attributes_after_a_parse_error_in_a_module_are_only_reported_once() {
+    let source = "\
+mod m {
+    export fn main() -> Int {
+        0
+    }
+
+    #![allow(unused_binding)]
+    #[allow(unused_binding)]
+    let x = 1;
+}
+
+fn main() -> Int {
+    m::main()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(reports, vec!["Error 8: Expected item, found `let`"]);
+    assert!(has_errors);
+}
+
+#[test]
+fn misplaced_outer_attributes_are_still_checked() {
+    let source = "\
+fn main() -> Int {
+    let a = 1;
+    #[alow(unused_value)] #[allow(unused_bindng)]
+    a
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 3: Attributes can only be used on items and statements",
+            "Error 3: Unknown attribute `alow`",
+            "Error 3: Attributes can only be used on items and statements",
+            "Warning 3: Unknown lint `unused_bindng`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn inner_attributes_can_forbid_lints() {
+    let source = "\
+#![allow(unused_binding)]
+#![forbid(unused_binding)]
+#![allow(unused_binding)]
+
+#[allow(unused_binding)]
+fn main() -> Int {
+    let a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 3: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 2",
+            "Error 5: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 2",
+            "Error 7: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn inner_attributes_cant_change_lints_forbidden_outside_of_them() {
+    let source = "\
+#[forbid(unused_binding)]
+mod m {
+    #![allow(unused_binding)]
+
+    export fn main() -> Int {
+        let a = 1;
+        0
+    }
+}
+
+fn main() -> Int {
+    m::main()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 3: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1",
+            "Error 6: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn inner_attributes_cant_change_lints_forbidden_by_the_project() {
+    let (reports, has_errors) = reports("#![allow(unused_function)]\n", |options| {
+        options.lints.set(Lint::UnusedFunction, LintLevel::Forbid);
+    });
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 1: Cannot set lint `unused_function` to `allow`, since it's forbidden by the project"
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn inner_attributes_can_expect_lints() {
+    let source = "\
+#![expect(unused_binding)]
+
+#[expect(unused_binding)]
+mod m {
+    #![expect(unused_binding)]
+
+    export fn main() -> Int {
+        let a = 1;
+        0
+    }
+}
+
+fn main() -> Int {
+    m::main()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec!["Warning 1: Expected lint `unused_binding` to be reported here, but it never was"]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn inner_attributes_can_set_groups() {
+    let source = "\
+#![allow(unused)]
+
+fn unused(value: Int) -> Int {
+    let a = 1;
+    0
+}
+
+mod m {
+    #![expect(unused)]
+
+    fn helper() -> Int {
+        1
+    }
+}
+
+fn main() -> Int {
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert!(reports.is_empty(), "{reports:?}");
+    assert!(!has_errors);
+}
