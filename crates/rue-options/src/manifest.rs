@@ -156,6 +156,27 @@ mod tests {
     }
 
     #[test]
+    fn lints_override_forbidden_groups() {
+        // `forbid` only stops attributes and command line flags from changing a lint
+        let manifest: Manifest = toml::from_str(
+            r#"
+            [compiler]
+            entrypoint = "puzzles"
+
+            [lints]
+            unused = "forbid"
+            unused_binding = "allow"
+            "#,
+        )
+        .unwrap();
+
+        let mut levels = LintLevels::default();
+        assert!(manifest.apply_lints(&mut levels).is_empty());
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Forbid);
+    }
+
+    #[test]
     fn rejects_unknown_lint_level() {
         let result = toml::from_str::<Manifest>(
             r#"
@@ -163,7 +184,7 @@ mod tests {
             entrypoint = "puzzles"
 
             [lints]
-            unused_binding = "forbid"
+            unused_binding = "expect"
             "#,
         );
 
@@ -174,10 +195,13 @@ mod tests {
     fn invalid_lint_levels_list_the_valid_ones() {
         for (value, message) in [
             (
-                "\"forbid\"",
-                "Unknown lint level `forbid`, expected `allow`, `warn` or `deny`",
+                "\"expect\"",
+                "Unknown lint level `expect`, expected `allow`, `warn`, `deny` or `forbid`",
             ),
-            ("1", "expected a lint level (`allow`, `warn` or `deny`)"),
+            (
+                "1",
+                "expected a lint level (`allow`, `warn`, `deny` or `forbid`)",
+            ),
         ] {
             let error = toml::from_str::<Manifest>(&format!(
                 "[compiler]\n\n[lints]\nunused_binding = {value}\n"
