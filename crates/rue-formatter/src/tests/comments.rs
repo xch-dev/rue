@@ -283,3 +283,53 @@ fn comments_before_closing_delimiters_are_indented() {
         "#]],
     );
 }
+
+#[test]
+fn block_comments_after_items_have_no_trailing_space() {
+    check(
+        "fn g() {} /* c */ import x::y;\nconst A: Int = 1; /* d */",
+        expect![[r#"
+            import x::y;
+
+            fn g() {} /* c */
+
+            const A: Int = 1; /* d */
+        "#]],
+    );
+}
+
+#[test]
+fn block_comments_after_inner_attributes_have_no_trailing_space() {
+    check(
+        "#![allow(a)] /* c */ import x::y;",
+        expect![[r#"
+        #![allow(a)] /* c */
+
+        import x::y;
+    "#]],
+    );
+}
+
+#[test]
+fn closing_braces_go_on_their_own_line_after_block_comments() {
+    check(
+        "mod m { fn f() {} /* c */ }\nmod n { #![allow(a)] /* c */ }\nfn f() -> Int { 1 /* c */ }\nfn g() -> Int {\n    let x = 1; /* c */ }",
+        expect![[r#"
+            mod m {
+                fn f() {} /* c */
+            }
+
+            mod n {
+                #![allow(a)] /* c */
+            }
+
+            fn f() -> Int {
+                1 /* c */
+            }
+
+            fn g() -> Int {
+                let x = 1; /* c */
+            }
+        "#]],
+    );
+}

@@ -19,6 +19,9 @@ struct Command<'a> {
 pub fn render(doc: &Doc, options: &FormatOptions) -> String {
     let mut output = String::new();
     let mut column = 0;
+    // The end of the last text or line break, after which the output only contains the spaces
+    // added for indentation and separators, which are removed at the end of a line
+    let mut content_end = 0;
     let mut commands = vec![Command {
         indent: 0,
         mode: Mode::Broken,
@@ -31,6 +34,9 @@ pub fn render(doc: &Doc, options: &FormatOptions) -> String {
             Doc::Text(text) => {
                 output.push_str(text);
                 column += text.chars().count();
+                if !text.chars().all(|char| char == ' ') {
+                    content_end = output.len();
+                }
             }
             Doc::Concat(docs) => {
                 for doc in docs.iter().rev() {
@@ -71,7 +77,9 @@ pub fn render(doc: &Doc, options: &FormatOptions) -> String {
                         doc: flat,
                     });
                 } else {
+                    output.truncate(content_end);
                     output.push('\n');
+                    content_end = output.len();
                     let indent = command.indent + indent_levels_on_break * options.indent_width;
                     output.extend(std::iter::repeat_n(' ', indent));
                     column = indent;
@@ -83,10 +91,12 @@ pub fn render(doc: &Doc, options: &FormatOptions) -> String {
                 }
             }
             Doc::Line(kind) => {
+                output.truncate(content_end);
                 output.push('\n');
                 if *kind == LineKind::Empty && !output.ends_with("\n\n") {
                     output.push('\n');
                 }
+                content_end = output.len();
                 output.extend(std::iter::repeat_n(' ', command.indent));
                 column = command.indent;
             }

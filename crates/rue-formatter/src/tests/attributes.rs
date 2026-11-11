@@ -216,3 +216,21 @@ fn long_inner_attributes_wrap_inside_the_brackets() {
         "#]],
     );
 }
+
+#[test]
+fn attributes_dont_split_compact_groups() {
+    check(
+        "const A: Int = 1;\n#[allow(unused_constant)] const B: Int = 2;\nconst C: Int = 3;\ntype X = Int;\n#![allow(unused_type_alias)] type Y = Int;\ntype Z = Int;",
+        expect![[r#"
+            const A: Int = 1;
+            #[allow(unused_constant)]
+            const B: Int = 2;
+            const C: Int = 3;
+
+            type X = Int;
+            #![allow(unused_type_alias)]
+            type Y = Int;
+            type Z = Int;
+        "#]],
+    );
+}

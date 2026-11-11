@@ -554,7 +554,12 @@ impl<'a> Formatter<'a> {
         let last = gap.comments.last().expect("comments are not empty");
         let final_line = if gap.newlines > 1 {
             Doc::empty_line()
-        } else if last.kind == SyntaxKind::LineComment || last.multiline || gap.newlines > 0 {
+        } else if last.kind == SyntaxKind::LineComment
+            || last.multiline
+            || gap.newlines > 0
+            || requested == Separator::Hard
+        {
+            // A block's closing brace is always on its own line, even after an inline comment
             Doc::hard_line()
         } else {
             // An inline block comment is followed by a space before the delimiter.

@@ -105,12 +105,8 @@ pub fn plan_document(
         previous_was_import = is_import;
 
         let compact_group = match item.syntax().kind() {
-            SyntaxKind::ConstantItem if !item.syntax().text().to_string().contains('\n') => {
-                Some(CompactGroup::Constant)
-            }
-            SyntaxKind::TypeAliasItem if !item.syntax().text().to_string().contains('\n') => {
-                Some(CompactGroup::TypeAlias)
-            }
+            SyntaxKind::ConstantItem if is_single_line(&item) => Some(CompactGroup::Constant),
+            SyntaxKind::TypeAliasItem if is_single_line(&item) => Some(CompactGroup::TypeAlias),
             SyntaxKind::FunctionItem
                 if AstFunctionItem::cast(item.syntax().clone()).is_some_and(|function| {
                     function.extern_kw().is_some() && function.body().is_none()
@@ -300,6 +296,16 @@ fn node_span(node: &SyntaxNode, stream: &TokenStream) -> Result<TokenSpan, Forma
     let start = stream.token_id_at_offset(usize::from(first.text_range().start()))?;
     let last = stream.token_id_at_offset(usize::from(last.text_range().start()))?;
     stream.span_through(start, last)
+}
+
+/// Whether an item is on a single line, not counting its attributes, which are always formatted
+/// on their own lines.
+fn is_single_line(item: &AstItem) -> bool {
+    !item
+        .syntax()
+        .children_with_tokens()
+        .skip_while(|element| element.kind().is_trivia() || element.kind() == SyntaxKind::Attribute)
+        .any(|element| element.to_string().contains('\n'))
 }
 
 fn gap_has_blank_line(gap: &crate::token_stream::Gap) -> bool {
