@@ -354,3 +354,26 @@ fn attributes_after_a_parse_error_are_only_reported_once() {
     assert_eq!(reports, vec!["Error 2: Expected item, found `let`"]);
     assert!(has_errors);
 }
+
+#[test]
+fn stacked_attributes_apply_to_the_same_item() {
+    let source = "\
+#[allow(unused_function)]
+#[allow(unused_parameter)]
+fn helper(value: Int) -> Int {
+    1
+}
+
+fn main() -> Int {
+    #[allow(unused_binding)]
+    #[deny(unused_binding)]
+    let a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(reports, vec!["Error 10: Unused binding `a`"]);
+    assert!(has_errors);
+}

@@ -1,5 +1,6 @@
 use std::{collections::HashMap, ops::Range};
 
+use rowan::Direction;
 use rue_ast::{AstAttribute, AstDocument, AstNode};
 use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Lint, LintLevel, LintLevels, Source,
@@ -138,9 +139,17 @@ impl ScopedLintLevels {
 
 /// The item or statement that an attribute applies to. Some statements (such as an `inline if`
 /// followed by a semicolon) begin with an expression that the attributes are parsed into, so this
-/// is the closest enclosing item or statement that starts with the attribute.
+/// is the closest enclosing item or statement that starts with the attributes.
 fn target(attribute: &AstAttribute) -> Option<SyntaxNode> {
-    let start = attribute.syntax().text_range().start();
+    // An attribute can follow other attributes, so find where the first of them starts
+    let start = attribute
+        .syntax()
+        .siblings_with_tokens(Direction::Prev)
+        .filter(|element| !element.kind().is_trivia())
+        .take_while(|element| element.kind() == SyntaxKind::Attribute)
+        .last()?
+        .text_range()
+        .start();
 
     attribute
         .syntax()
