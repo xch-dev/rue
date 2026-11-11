@@ -3,8 +3,8 @@ use std::{collections::HashMap, ops::Range};
 use rowan::Direction;
 use rue_ast::{AstAttribute, AstDocument, AstNode};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint, LintLevel,
-    LintLevels, LintName, Source, SourceKind, SrcLoc,
+    AttributeLevel, Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, LineCol, Lint,
+    LintLevel, LintLevels, LintName, Source, SourceKind, SrcLoc,
 };
 use rue_parser::{SyntaxKind, SyntaxNode};
 
@@ -40,8 +40,6 @@ struct Expectation {
     name: LintName,
     /// The lint or group name in the attribute.
     srcloc: SrcLoc,
-    /// The range of the item or statement that the attribute is attached to.
-    range: Range<usize>,
     fulfilled: bool,
 }
 
@@ -91,14 +89,7 @@ impl ScopedLintLevels {
                     continue;
                 };
 
-                // An `expect` allows the lint, and also records whether it was reported
-                let (level, expect) = if name.text() == "expect" {
-                    (Ok(LintLevel::Allow), true)
-                } else {
-                    (name.text().parse::<LintLevel>(), false)
-                };
-
-                let Ok(level) = level else {
+                let Ok(attribute_level) = name.text().parse::<AttributeLevel>() else {
                     error(
                         DiagnosticKind::UnknownAttribute(name.text().to_string()),
                         name.text_range(),
@@ -106,8 +97,9 @@ impl ScopedLintLevels {
                     continue;
                 };
 
-                // The name of the level in the attribute, for reporting forbidden lints
-                let level_name = if expect { "expect" } else { level.name() };
+                // An `expect` allows the lint, and also records whether it was reported
+                let level = attribute_level.lint_level();
+                let expect = attribute_level == AttributeLevel::Expect;
 
                 let mut arguments = attribute.arguments().peekable();
 
@@ -131,6 +123,18 @@ impl ScopedLintLevels {
                         ));
                         continue;
                     };
+
+                    // `unfulfilled_lint_expectation` can't be expected, since reporting it would
+                    // fulfill its own expectation. As in Rust, the attribute doesn't allow it, and
+                    // it's always reported.
+                    if expect && name == LintName::Lint(Lint::UnfulfilledLintExpectation) {
+                        expectations.push(Expectation {
+                            name,
+                            srcloc: srcloc(source, argument.text_range()),
+                            fulfilled: false,
+                        });
+                        continue;
+                    }
 
                     let mut forbidden = None;
                     let mut expected = None;
@@ -164,7 +168,6 @@ impl ScopedLintLevels {
                                 expectations.push(Expectation {
                                     name,
                                     srcloc: srcloc(source, argument.text_range()),
-                                    range: range.clone(),
                                     fulfilled: false,
                                 });
                                 expectations.len() - 1
@@ -189,7 +192,7 @@ impl ScopedLintLevels {
 
                         diagnostics.push(Diagnostic::new(
                             srcloc(source, argument.text_range()),
-                            name.forbidden_override(lint, level_name, forbidden_by),
+                            name.forbidden_override(lint, attribute_level, forbidden_by),
                             DiagnosticSeverity::Error,
                         ));
                     }
@@ -211,25 +214,14 @@ impl ScopedLintLevels {
     /// innermost attribute that encloses it, or by the project if there isn't one. If that's an
     /// `expect` attribute, this fulfills its expectation.
     pub fn report(&mut self, lint: Lint, srcloc: &SrcLoc) -> LintLevel {
-        self.report_outside(lint, srcloc, None)
-    }
-
-    /// Like [`Self::report`], but ignores the `expect` attributes on the item or statement with
-    /// the given range.
-    fn report_outside(
-        &mut self,
-        lint: Lint,
-        srcloc: &SrcLoc,
-        excluded: Option<&Range<usize>>,
-    ) -> LintLevel {
         let Some(scopes) = self.scopes.get(&(srcloc.source.kind.clone(), lint)) else {
             return self.project.get(lint);
         };
 
-        let Some(position) = scopes.iter().rposition(|scope| {
-            encloses(&scope.range, &srcloc.span)
-                && !(scope.expectation.is_some() && excluded == Some(&scope.range))
-        }) else {
+        let Some(position) = scopes
+            .iter()
+            .rposition(|scope| encloses(&scope.range, &srcloc.span))
+        else {
             return self.project.get(lint);
         };
 
@@ -238,11 +230,11 @@ impl ScopedLintLevels {
         // The lint can be expected more than once on the same item or statement, and those
         // expectations are fulfilled together, unless another attribute between them overrides
         // the earlier ones. The scopes of a node's attributes are next to each other.
-        for scope in scopes[..=position].iter().rev().take_while(|scope| {
-            scope.range == innermost.range
-                && scope.expectation.is_some()
-                && excluded != Some(&scope.range)
-        }) {
+        for scope in scopes[..=position]
+            .iter()
+            .rev()
+            .take_while(|scope| scope.range == innermost.range && scope.expectation.is_some())
+        {
             if let Some(index) = scope.expectation {
                 self.expectations[index].fulfilled = true;
             }
@@ -264,45 +256,25 @@ impl ScopedLintLevels {
     }
 
     /// Reports the expectations that were never fulfilled as `unfulfilled_lint_expectation`, once
-    /// every other lint has been reported. Returns the expected lint, the location and the level
-    /// of each one.
+    /// every other lint has been reported. Returns the expected lint or group, the location and
+    /// the level of each one.
     pub(crate) fn report_unfulfilled_expectations(&mut self) -> Vec<(LintName, SrcLoc, LintLevel)> {
-        // Reporting an unfulfilled expectation can fulfill an expectation of
-        // `unfulfilled_lint_expectation` that encloses it, so those are checked last. They're in
-        // preorder, so they're checked in reverse to go from the innermost outwards.
-        let (mut last, mut order): (Vec<usize>, Vec<usize>) = (0..self.expectations.len())
-            .partition(|&index| {
-                self.expectations[index]
-                    .name
-                    .lints()
-                    .contains(&Lint::UnfulfilledLintExpectation)
-            });
+        let unfulfilled = self
+            .expectations
+            .iter()
+            .filter(|expectation| !expectation.fulfilled)
+            .map(|expectation| (expectation.name, expectation.srcloc.clone()))
+            .collect::<Vec<_>>();
 
-        last.reverse();
-        order.append(&mut last);
-
-        let mut unfulfilled = Vec::new();
-
-        for index in order {
-            let expectation = &self.expectations[index];
-
-            if expectation.fulfilled {
-                continue;
-            }
-
-            let name = expectation.name;
-            let srcloc = expectation.srcloc.clone();
-
-            // The attribute is inside of its own scope, but an expectation can't fulfill itself or
-            // other expectations on the same item or statement
-            let range = expectation.range.clone();
-            let level =
-                self.report_outside(Lint::UnfulfilledLintExpectation, &srcloc, Some(&range));
-
-            unfulfilled.push((name, srcloc, level));
-        }
-
+        // These reports can't fulfill any expectations, since `unfulfilled_lint_expectation`
+        // can't be expected
         unfulfilled
+            .into_iter()
+            .map(|(name, srcloc)| {
+                let level = self.report(Lint::UnfulfilledLintExpectation, &srcloc);
+                (name, srcloc, level)
+            })
+            .collect()
     }
 }
 

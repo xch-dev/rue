@@ -312,7 +312,7 @@ fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
     let rejected = args.apply(&mut project.options.lints);
 
     for &(name, lint, level, forbidden_by) in &rejected {
-        let kind = name.forbidden_override(lint, level.name(), forbidden_by);
+        let kind = name.forbidden_override(lint, level, forbidden_by);
         eprintln!("{}", format!("Error: {kind}").red().bold());
     }
 

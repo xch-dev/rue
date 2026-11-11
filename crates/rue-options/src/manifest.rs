@@ -38,7 +38,7 @@ pub struct ForbiddenLint {
 impl ForbiddenLint {
     pub fn kind(&self) -> DiagnosticKind {
         self.name
-            .forbidden_override(self.lint, self.level.name(), ForbiddenBy::Manifest)
+            .forbidden_override(self.lint, self.level, ForbiddenBy::Manifest)
     }
 }
 

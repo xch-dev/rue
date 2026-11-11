@@ -15,7 +15,7 @@ pub use sites::*;
 use std::collections::HashSet;
 
 use rue_ast::AstDocument;
-use rue_diagnostic::{Diagnostic, LintLevels, Source};
+use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, Source};
 use rue_hir::{Database, Declaration};
 use rue_types::BuiltinTypes;
 
@@ -29,8 +29,7 @@ pub struct LintInput<'a> {
     /// The declarations that are used externally, such as `main`, tests and exports.
     pub entrypoints: &'a HashSet<Declaration>,
     /// Whether compilation reported any errors. Code that failed to compile may not have recorded
-    /// all of its sites, so `expect` attributes aren't checked, since they could be reported as
-    /// unfulfilled by mistake.
+    /// all of its sites, so `expect` attributes aren't checked, as in Rust.
     pub has_errors: bool,
 }
 
@@ -49,7 +48,14 @@ pub fn run_lints(
         pass(&mut cx, input);
     }
 
-    if !input.has_errors {
+    // Invalid lint attributes also stop expectations from being checked, as in Rust, but lints
+    // reported as errors (such as denied lints) don't
+    let has_errors = input.has_errors
+        || diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error);
+
+    if !has_errors {
         cx.report_unfulfilled_expectations();
     }
 

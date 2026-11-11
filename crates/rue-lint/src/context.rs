@@ -50,6 +50,10 @@ impl<'a> LintContext<'a> {
     pub(crate) fn report_unfulfilled_expectations(&mut self) {
         for (name, srcloc, level) in self.levels.report_unfulfilled_expectations() {
             let message = match name {
+                LintName::Lint(Lint::UnfulfilledLintExpectation) => {
+                    "Lint `unfulfilled_lint_expectation` can't be expected, so this is always reported"
+                        .to_string()
+                }
                 LintName::Lint(lint) => {
                     format!("Expected lint `{lint}` to be reported here, but it never was")
                 }
