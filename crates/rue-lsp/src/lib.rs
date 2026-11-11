@@ -158,20 +158,28 @@ impl Backend {
             return IndexMap::new();
         };
 
+        let Ok(source_kind) = normalize_path(&uri_path) else {
+            return IndexMap::new();
+        };
+
+        // Keep track of the editor's text even if the project can't be compiled right now, so
+        // that it's used once it can be
+        {
+            let mut file_cache = self.file_cache.lock().unwrap();
+
+            if let Some(text) = text {
+                file_cache.insert(source_kind.clone(), text);
+            } else {
+                file_cache.remove(&source_kind);
+            }
+        }
+
         let project = match find_project(&uri_path, false) {
             Ok(Some(project)) => project,
             Err(rue_options::Error::Toml { path, error }) => {
-                // Nothing can be compiled without the manifest, so only report why it's invalid
-                let Ok(kind) = normalize_path(&path) else {
-                    return IndexMap::new();
-                };
-                return IndexMap::from([(kind, vec![manifest_error(&path, &error)])]);
+                return self.invalid_manifest_diagnostics(&path, &error, source_kind);
             }
             Ok(None) | Err(_) => return IndexMap::new(),
-        };
-
-        let Ok(source_kind) = normalize_path(&uri_path) else {
-            return IndexMap::new();
         };
 
         let manifest_diagnostics = project.manifest_path.as_deref().and_then(|path| {
@@ -184,12 +192,6 @@ impl Backend {
         let mut ctx = Compiler::new(project.options);
 
         let mut file_cache = self.file_cache.lock().unwrap();
-
-        if let Some(text) = text {
-            file_cache.insert(source_kind.clone(), text);
-        } else {
-            file_cache.remove(&source_kind);
-        }
 
         let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut file_cache);
 
@@ -232,6 +234,38 @@ impl Backend {
         if let Some((kind, manifest_diagnostics)) = manifest_diagnostics {
             diagnostics.insert(kind, manifest_diagnostics);
         }
+
+        diagnostics
+    }
+
+    /// Nothing can be compiled without the manifest, so this only reports why it's invalid. The
+    /// diagnostics of the project's files are cleared, since they're out of date.
+    fn invalid_manifest_diagnostics(
+        &self,
+        path: &Path,
+        error: &toml::de::Error,
+        changed: SourceKind,
+    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+        let mut diagnostics = IndexMap::new();
+
+        let Ok(manifest_kind) = normalize_path(path) else {
+            return diagnostics;
+        };
+
+        diagnostics.insert(changed, Vec::new());
+
+        if let Some(dir) = path.parent() {
+            for uri in self.cache.lock().unwrap().keys() {
+                if let Ok(file) = uri.to_file_path()
+                    && file.starts_with(dir)
+                    && let Ok(kind) = normalize_path(&file)
+                {
+                    diagnostics.insert(kind, Vec::new());
+                }
+            }
+        }
+
+        diagnostics.insert(manifest_kind, vec![manifest_error(path, error)]);
 
         diagnostics
     }

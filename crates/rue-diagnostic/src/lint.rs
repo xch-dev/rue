@@ -62,9 +62,21 @@ impl FromStr for LintLevel {
 // Levels are parsed the same way everywhere, so that invalid ones have the same message
 impl<'de> Deserialize<'de> for LintLevel {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        String::deserialize(deserializer)?
-            .parse()
-            .map_err(de::Error::custom)
+        struct LevelVisitor;
+
+        impl de::Visitor<'_> for LevelVisitor {
+            type Value = LintLevel;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a lint level (`allow`, `warn` or `deny`)")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<LintLevel, E> {
+                value.parse().map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_str(LevelVisitor)
     }
 }
 

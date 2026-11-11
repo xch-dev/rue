@@ -14,7 +14,10 @@ use crate::{LintContext, LintInput};
 /// from an entrypoint, such as `main`, a test or an export. Names starting with `_` are exempt.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     // Finding unused declarations walks the whole reference graph, so skip it if it's not needed
-    if !LINTS.iter().any(|&lint| cx.is_enabled(lint)) {
+    if !Lint::ALL
+        .iter()
+        .any(|&lint| is_reported_here(lint) && cx.is_enabled(lint))
+    {
         return;
     }
 
@@ -48,17 +51,29 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     }
 }
 
-/// Every lint reported by this pass.
-const LINTS: &[Lint] = &[
-    Lint::UnusedImport,
-    Lint::UnusedFunction,
-    Lint::UnusedBinding,
-    Lint::UnusedConstant,
-    Lint::UnusedParameter,
-    Lint::UnusedGenericType,
-    Lint::UnusedStruct,
-    Lint::UnusedTypeAlias,
-];
+/// Whether the lint is reported by this pass. This is exhaustive, so that a new lint has to be
+/// added here before it can be reported, rather than being skipped when the others are allowed.
+fn is_reported_here(lint: Lint) -> bool {
+    match lint {
+        Lint::UnusedImport
+        | Lint::UnusedFunction
+        | Lint::UnusedBinding
+        | Lint::UnusedConstant
+        | Lint::UnusedParameter
+        | Lint::UnusedGenericType
+        | Lint::UnusedStruct
+        | Lint::UnusedTypeAlias => true,
+        Lint::UnusedValue
+        | Lint::EmptyGenerics
+        | Lint::UnnecessaryCast
+        | Lint::UnnecessaryGuard
+        | Lint::IndistinguishableGuard
+        | Lint::UnnecessaryPlus
+        | Lint::ConstantCondition
+        | Lint::DoubleNegation
+        | Lint::InlineIfMayRaise => false,
+    }
+}
 
 type Report = (Lint, Name, String);
 

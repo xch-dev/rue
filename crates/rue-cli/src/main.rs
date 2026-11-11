@@ -17,7 +17,9 @@ use clvmr::{
 use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, FileTree, normalize_path};
-use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Lint, LintLevel, LintLevels, SourceKind};
+use rue_diagnostic::{
+    Diagnostic, DiagnosticSeverity, LineCol, Lint, LintLevel, LintLevels, SourceKind,
+};
 use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::{Manifest, Project, find_project};
 
@@ -208,12 +210,23 @@ fn lints() {
 
 /// Applies the CLI lint overrides to the project, and warns about unknown lints in `Rue.toml`.
 fn configure_lints(project: &mut Project, args: &LintArgs) {
+    let manifest = project
+        .manifest_path
+        .as_deref()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .unwrap_or_default();
+
     for lint in &project.unknown_lints {
+        let location = LineCol::new(&manifest, lint.span.start);
+
         eprintln!(
             "{}",
-            format!("Warning: Unknown lint `{}` in Rue.toml", lint.name)
-                .yellow()
-                .bold()
+            format!(
+                "Warning: Unknown lint `{}` at Rue.toml:{location}",
+                lint.name
+            )
+            .yellow()
+            .bold()
         );
     }
 

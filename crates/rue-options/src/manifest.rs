@@ -136,6 +136,24 @@ mod tests {
     }
 
     #[test]
+    fn invalid_lint_levels_list_the_valid_ones() {
+        for (value, message) in [
+            (
+                "\"forbid\"",
+                "Unknown lint level `forbid`, expected `allow`, `warn` or `deny`",
+            ),
+            ("1", "expected a lint level (`allow`, `warn` or `deny`)"),
+        ] {
+            let error = toml::from_str::<Manifest>(&format!(
+                "[compiler]\n\n[lints]\nunused_binding = {value}\n"
+            ))
+            .unwrap_err();
+
+            assert!(error.message().contains(message), "{}", error.message());
+        }
+    }
+
+    #[test]
     fn omits_empty_lints_section() {
         let manifest = Manifest::default();
         let text = toml::to_string(&manifest).unwrap();

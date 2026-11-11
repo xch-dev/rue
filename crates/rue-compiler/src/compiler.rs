@@ -176,21 +176,22 @@ impl Compiler {
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
         let mut diagnostics = mem::take(&mut self.diagnostics);
 
-        let mut files = Vec::new();
+        let mut files = HashMap::new();
 
         for diagnostic in &diagnostics {
-            if !files.contains(&diagnostic.srcloc.source.kind) {
-                files.push(diagnostic.srcloc.source.kind.clone());
-            }
+            let next = files.len();
+            files
+                .entry(diagnostic.srcloc.source.kind.clone())
+                .or_insert(next);
         }
 
         // The sort is stable, so diagnostics at the same position stay in the order they were
         // reported
-        diagnostics.sort_by_key(|diagnostic| {
-            let file = files
-                .iter()
-                .position(|kind| *kind == diagnostic.srcloc.source.kind);
-            (file, diagnostic.srcloc.span.start)
+        diagnostics.sort_by_cached_key(|diagnostic| {
+            (
+                files[&diagnostic.srcloc.source.kind],
+                diagnostic.srcloc.span.start,
+            )
         });
 
         diagnostics
