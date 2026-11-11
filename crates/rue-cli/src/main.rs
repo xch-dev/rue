@@ -992,6 +992,13 @@ mod tests {
     fn unknown_lint_flag() {
         let err = Command::try_parse_from(["rue", "build", "-D", "not_a_lint"]).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::ValueValidation);
+
+        // Unknown group names are reported the same way as unknown lints
+        for flag in ["-A", "-W", "-D", "-F"] {
+            let err = Command::try_parse_from(["rue", "test", flag, "unuse"]).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::ValueValidation);
+            assert!(err.to_string().contains("Unknown lint `unuse`"), "{err}");
+        }
     }
 
     #[test]

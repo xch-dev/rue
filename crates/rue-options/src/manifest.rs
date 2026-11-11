@@ -220,6 +220,24 @@ mod tests {
     }
 
     #[test]
+    fn unknown_group_names_are_reported_like_lints() {
+        let text = "[compiler]\n\n[lints]\nunuse = \"deny\"\nunused = \"allow\"\n";
+        let manifest: Manifest = toml::from_str(text).unwrap();
+
+        let mut levels = LintLevels::default();
+        let unknown = manifest.apply_lints(&mut levels);
+
+        assert_eq!(
+            unknown,
+            vec![UnknownLint {
+                name: "unuse".to_string(),
+                span: text.find("unuse ").unwrap()..text.find("unuse ").unwrap() + 5,
+            }]
+        );
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+    }
+
+    #[test]
     fn unknown_lints_have_spans_in_any_table_layout() {
         for text in [
             "[lints] # project lints\ntypo = \"allow\"\n",

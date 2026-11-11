@@ -655,3 +655,68 @@ fn main() -> Int {
     );
     assert!(has_errors);
 }
+
+#[test]
+fn group_attributes_enable_lints_the_project_allows() {
+    let source = "\
+#[warn(unused)]
+mod helpers {
+    fn helper(value: Int) -> Int {
+        1
+    }
+}
+
+fn main() -> Int {
+    #[deny(unused)]
+    let a = 1;
+    let b = 2;
+    0
+}
+";
+
+    // The unused pass is skipped when none of its lints are enabled, so it must still run when
+    // they're only enabled by a group attribute
+    let (reports, has_errors) = reports(source, |options| {
+        options
+            .lints
+            .apply(&[(LintName::Group(LintGroup::Unused), LintLevel::Allow)]);
+    });
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 3: Unused function `helper`",
+            "Warning 3: Unused parameter `value`",
+            "Error 10: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn group_attributes_cannot_change_lints_forbidden_on_the_same_item() {
+    let source = "\
+#[forbid(unused_binding)]
+#[allow(unused)]
+fn helper(value: Int) -> Int {
+    let a = 1;
+    2
+}
+
+fn main() -> Int {
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // The rest of the group is still allowed
+    assert_eq!(
+        reports,
+        vec![
+            "Error 2: Cannot set lint group `unused` to `allow`, since `unused_binding` is forbidden by the attribute on line 1",
+            "Error 4: Unused binding `a`",
+        ]
+    );
+    assert!(has_errors);
+}
