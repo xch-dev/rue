@@ -124,7 +124,7 @@ mod tests {
         fs::create_dir_all(dir.join("puzzles"))?;
         fs::write(
             dir.join("Rue.toml"),
-            "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\ntypo_lint = \"allow\"\n",
+            "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\nunused_import = \"forbid\"\ntypo_lint = \"allow\"\n",
         )?;
 
         let project = find_project(&dir, false);
@@ -134,6 +134,10 @@ mod tests {
         assert_eq!(
             project.options.lints.get(Lint::UnusedBinding),
             LintLevel::Deny
+        );
+        assert_eq!(
+            project.options.lints.get(Lint::UnusedImport),
+            LintLevel::Forbid
         );
         assert_eq!(
             project

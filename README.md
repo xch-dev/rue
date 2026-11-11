@@ -78,7 +78,7 @@ Useful `build` flags:
 
 ## Lints
 
-Warnings such as unused bindings or unnecessary casts are lints, which can be configured to be allowed, reported as warnings, or denied (which fails compilation). Run `rue lints` to see every lint and its default level.
+Warnings such as unused bindings or unnecessary casts are lints, which can be configured to be allowed, reported as warnings, denied (which fails compilation), or forbidden (which is like denied, but can't be changed by attributes or later flags). Run `rue lints` to see every lint and its default level.
 
 Levels can be set in `Rue.toml`:
 
@@ -88,13 +88,13 @@ unused_binding = "deny"
 unnecessary_cast = "allow"
 ```
 
-They can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn` and `-D`/`--deny`, which take precedence over `Rue.toml`. If a lint is passed more than once, the last flag wins:
+They can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn`, `-D`/`--deny` and `-F`/`--forbid`, which take precedence over `Rue.toml`. If a lint is passed more than once, the last flag wins, unless the lint is already forbidden in `Rue.toml` or by an earlier flag (which is an error):
 
 ```bash
 rue build -D unused_binding -A unused_import
 ```
 
-Levels can also be set in the source code, with an `allow`, `warn` or `deny` attribute on an item (such as a function, constant, struct, type alias, import or module) or a statement. The attribute applies to everything inside of what it's attached to, and the innermost one takes precedence over any outer attributes and the project's levels:
+Levels can also be set in the source code, with an `allow`, `warn`, `deny` or `forbid` attribute on an item (such as a function, constant, struct, type alias, import or module) or a statement. The attribute applies to everything inside of what it's attached to, and the innermost one takes precedence over any outer attributes and the project's levels:
 
 ```rs
 #[deny(unused_binding)]
@@ -105,6 +105,17 @@ mod strict {
         let unused = 1;
         42
     }
+}
+```
+
+A `forbid` attribute works like `deny`, but nothing inside of it can change the lint's level. The same goes for lints forbidden in `Rue.toml` or on the command line. An attribute that tries to change the level of a forbidden lint has no effect, and is reported as an error:
+
+```rs
+#[forbid(unused_binding)]
+fn strict() -> Int {
+    #[allow(unused_binding)] // Error: Cannot set lint `unused_binding` to `allow`, since it's forbidden
+    let unused = 1;
+    42
 }
 ```
 

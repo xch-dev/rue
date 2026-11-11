@@ -15,6 +15,9 @@ pub enum LintLevel {
     Warn,
     /// The lint is reported as an error, which causes compilation to fail.
     Deny,
+    /// The lint is reported as an error like [`Deny`](Self::Deny), but it can't be set to any
+    /// other level afterwards, such as by an attribute.
+    Forbid,
 }
 
 impl LintLevel {
@@ -23,7 +26,7 @@ impl LintLevel {
         match self {
             Self::Allow => None,
             Self::Warn => Some(DiagnosticSeverity::Warning),
-            Self::Deny => Some(DiagnosticSeverity::Error),
+            Self::Deny | Self::Forbid => Some(DiagnosticSeverity::Error),
         }
     }
 
@@ -32,6 +35,7 @@ impl LintLevel {
             Self::Allow => "allow",
             Self::Warn => "warn",
             Self::Deny => "deny",
+            Self::Forbid => "forbid",
         }
     }
 }
@@ -43,7 +47,7 @@ impl fmt::Display for LintLevel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("Unknown lint level `{0}`, expected `allow`, `warn` or `deny`")]
+#[error("Unknown lint level `{0}`, expected `allow`, `warn`, `deny` or `forbid`")]
 pub struct UnknownLintLevel(pub String);
 
 impl FromStr for LintLevel {
@@ -54,6 +58,7 @@ impl FromStr for LintLevel {
             "allow" => Ok(Self::Allow),
             "warn" => Ok(Self::Warn),
             "deny" => Ok(Self::Deny),
+            "forbid" => Ok(Self::Forbid),
             _ => Err(UnknownLintLevel(s.to_string())),
         }
     }
@@ -68,7 +73,7 @@ impl<'de> Deserialize<'de> for LintLevel {
             type Value = LintLevel;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("a lint level (`allow`, `warn` or `deny`)")
+                f.write_str("a lint level (`allow`, `warn`, `deny` or `forbid`)")
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<LintLevel, E> {
@@ -252,6 +257,10 @@ mod tests {
             Some(DiagnosticSeverity::Warning)
         );
         assert_eq!(LintLevel::Deny.severity(), Some(DiagnosticSeverity::Error));
+        assert_eq!(
+            LintLevel::Forbid.severity(),
+            Some(DiagnosticSeverity::Error)
+        );
     }
 
     #[test]
@@ -268,11 +277,16 @@ mod tests {
 
     #[test]
     fn level_parsing() {
-        for level in [LintLevel::Allow, LintLevel::Warn, LintLevel::Deny] {
+        for level in [
+            LintLevel::Allow,
+            LintLevel::Warn,
+            LintLevel::Deny,
+            LintLevel::Forbid,
+        ] {
             assert_eq!(level.name().parse::<LintLevel>(), Ok(level));
         }
 
-        assert!("forbid".parse::<LintLevel>().is_err());
+        assert!("expect".parse::<LintLevel>().is_err());
     }
 
     #[test]

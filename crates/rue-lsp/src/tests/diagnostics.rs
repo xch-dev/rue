@@ -117,13 +117,13 @@ fn test_diagnostics_manifest_unknown_lints_in_other_layouts() {
 fn test_diagnostics_manifest_invalid_lint_level() {
     let project = TestProject::with_manifest(
         Some(
-            "[compiler]\nentrypoint = \".\"\nstd = false\n\n[lints] # project lints\nunused_binding = \"forbid\"\n",
+            "[compiler]\nentrypoint = \".\"\nstd = false\n\n[lints] # project lints\nunused_binding = \"expect\"\n",
         ),
         &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
     );
 
     expect![[r#"
-        Rue.toml:5:17-5:25 Error: Unknown lint level `forbid`, expected `allow`, `warn` or `deny`
+        Rue.toml:5:17-5:25 Error: Unknown lint level `expect`, expected `allow`, `warn`, `deny` or `forbid`
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", None));
