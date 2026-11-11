@@ -227,7 +227,7 @@ impl Walker {
             }
 
             match statement {
-                Statement::Let(symbol) => {
+                Statement::Let(symbol, _) => {
                     if let Symbol::Binding(binding) = cx.db().symbol(*symbol) {
                         let value = binding.value.hir;
                         self.visit_hir(cx, value);

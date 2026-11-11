@@ -625,7 +625,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         };
 
         match stmt {
-            Statement::Let(_) => self.lower_let_stmts(env, stmts, body),
+            Statement::Let(..) => self.lower_let_stmts(env, stmts, body),
             Statement::Return(hir, _) => self.lower_block(env, vec![], Some(hir)),
             Statement::Assert(condition, srcloc) => {
                 self.lower_assert(env, stmts, condition, srcloc, body)
@@ -646,7 +646,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut symbols = IndexSet::new();
 
         while let Some(stmt) = stmts.first()
-            && let Statement::Let(symbol) = stmt
+            && let Statement::Let(symbol, _) = stmt
         {
             symbols.insert(*symbol);
             stmts.remove(0);

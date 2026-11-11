@@ -10,6 +10,7 @@ mod operators;
 mod returns;
 mod statements;
 mod syntax;
+mod unreachable;
 mod unused;
 
 /// A lint pass that runs once over the [`LintInput`], such as the syntax trees or the declaration
@@ -41,6 +42,7 @@ pub(crate) fn hir_passes() -> Vec<Box<dyn HirLintPass>> {
         Box::new(statements::UnusedValue),
         Box::new(inline_ifs::InlineIfMayRaise),
         Box::new(returns::UnnecessaryReturn),
+        Box::new(unreachable::UnreachableCode),
     ]
 }
 

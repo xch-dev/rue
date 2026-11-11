@@ -66,7 +66,7 @@ impl Visitor<'_> {
                 for stmt in block.statements {
                     match stmt {
                         // Bindings are only lowered if they're referenced
-                        Statement::Let(_) => {}
+                        Statement::Let(..) => {}
                         Statement::Expr(stmt) => {
                             if self.visit_hir(stmt.hir) {
                                 return true;

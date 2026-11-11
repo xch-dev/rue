@@ -346,3 +346,30 @@ fn test_code_actions_apply_suggestions() {
         "fn main() -> Int {\n    let value = +42;\n    return value;\n}\n",
     ));
 }
+
+#[test]
+fn test_diagnostics_unreachable_code() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    let text =
+        "fn main() -> Int {\n    if 1 > 2 {\n        raise;\n        debug 1;\n    }\n    42\n}\n";
+
+    expect![[r#"
+        Rue.toml: <none>
+        main.rue:3:8-3:16 Warning[unreachable_code]: Unreachable code
+            main.rue:2:8-2:14: Any code after this is never evaluated
+    "#]]
+    .assert_eq(&project.change("main.rue", Some(text)));
+
+    expect![[r#"
+        Remove the unreachable code (preferred: false):
+        fn main() -> Int {
+            if 1 > 2 {
+                raise;
+            }
+            42
+        }
+
+    "#]]
+    .assert_eq(&project.code_actions("main.rue", text));
+}

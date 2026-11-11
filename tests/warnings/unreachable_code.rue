@@ -1,0 +1,45 @@
+fn main() -> Int {
+    let value = first(1) + after_if(2) + after_lambda(3);
+    return value;
+    let unused = 0;
+    unused
+}
+
+fn first(value: Int) -> Int {
+    return value;
+    0
+}
+
+fn after_if(value: Int) -> Int {
+    if value > 100 {
+        raise "too large";
+        debug value;
+    }
+
+    value
+}
+
+fn after_lambda(value: Int) -> Int {
+    let add = fn(left: Int, right: Int): Int => {
+        return left + right;
+        0
+    };
+
+    add(value, 1)
+}
+
+fn after_never_binding(value: Int) -> Int {
+    if value > 100 {
+        let never = {
+            raise "failed";
+        };
+        return never;
+    }
+
+    value
+}
+
+test fn reachable() {
+    assert main() == 7;
+    assert after_never_binding(1) == 1;
+}

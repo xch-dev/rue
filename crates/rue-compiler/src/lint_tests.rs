@@ -1624,6 +1624,7 @@ test fn tests() {
         reports,
         vec![
             "Warning 7: Unnecessary `return` statement, since the function body can end in an expression instead",
+            "Warning 8: Unreachable code",
             "Error 13: Cannot use a `return` statement here, end the block with an expression instead",
         ]
     );
@@ -1720,6 +1721,7 @@ fn early(value: Int) -> Int {
         vec![
             "Warning 11: Unused function `early`",
             "Warning 12: Unnecessary `return` statement, since the function body can end in an expression instead",
+            "Warning 13: Unreachable code",
         ]
     );
     assert!(!has_errors);

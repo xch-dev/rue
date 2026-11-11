@@ -144,7 +144,7 @@ pub fn compile_block(
 
                 ctx.pop_declaration();
 
-                Statement::Let(symbol)
+                Statement::Let(symbol, ctx.trimmed_srcloc(stmt.syntax()))
             }
             AstStmt::IfStmt(stmt) => {
                 let condition = if let Some(condition) = stmt.condition() {

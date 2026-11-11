@@ -160,7 +160,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
         Hir::Block(block) => {
             for stmt in &block.statements {
                 match stmt {
-                    Statement::Let(stmt) => {
+                    Statement::Let(stmt, _) => {
                         if let Some(last) = graph.stack.last() {
                             graph.owners.insert(*stmt, *last);
                         }

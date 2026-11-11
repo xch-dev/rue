@@ -363,6 +363,16 @@ impl TestProject {
                     diagnostic.message
                 )
                 .unwrap();
+
+                for related in diagnostic.related_information.unwrap_or_default() {
+                    writeln!(
+                        output,
+                        "    {}: {}",
+                        self.location(&related.location.uri, related.location.range),
+                        related.message
+                    )
+                    .unwrap();
+                }
             }
         }
 

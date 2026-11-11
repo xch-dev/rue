@@ -68,7 +68,7 @@ impl Visitor<'_> {
             let raises = match *stmt {
                 Statement::Raise(..) | Statement::Assert(..) => true,
                 // Inline bindings are evaluated where they are referenced instead
-                Statement::Let(symbol) => match self.db.symbol(symbol) {
+                Statement::Let(symbol, _) => match self.db.symbol(symbol) {
                     Symbol::Binding(binding) if !binding.inline => {
                         self.visit_hir(binding.value.hir)
                     }
@@ -147,7 +147,13 @@ mod tests {
 
     use crate::{BindingSymbol, Block, ConstantSymbol, Value};
 
+    use rue_diagnostic::{Source, SourceKind, SrcLoc};
+
     use super::*;
+
+    fn srcloc() -> SrcLoc {
+        SrcLoc::new(Source::new("".into(), SourceKind::Std(String::new())), 0..0)
+    }
 
     fn raise(db: &mut Database) -> HirId {
         let nil = db.alloc_hir(Hir::Nil);
@@ -194,7 +200,7 @@ mod tests {
             let value = raise(&mut db);
             let binding = binding(&mut db, value, inline);
             let block = db.alloc_hir(Hir::Block(Block {
-                statements: vec![Statement::Let(binding)],
+                statements: vec![Statement::Let(binding, srcloc())],
                 body: None,
             }));
 
