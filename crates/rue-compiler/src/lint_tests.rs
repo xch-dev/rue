@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Lint, LintLevel, Source, SourceKind};
+use rue_diagnostic::{
+    Diagnostic, DiagnosticSeverity, Lint, LintGroup, LintLevel, LintName, Source, SourceKind,
+};
 use rue_options::CompilerOptions;
 
 use crate::{Compiler, File, FileTree};
@@ -376,4 +378,107 @@ fn main() -> Int {
 
     assert_eq!(reports, vec!["Error 10: Unused binding `a`"]);
     assert!(has_errors);
+}
+
+#[test]
+fn groups_set_the_level_of_each_lint_in_them() {
+    let (reports, has_errors) = reports(SOURCE, |options| {
+        options
+            .lints
+            .apply([(LintName::Group(LintGroup::Unused), LintLevel::Deny)]);
+    });
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 2: Unused binding `unused`",
+            "Warning 3: Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn groups_in_attributes() {
+    let source = "\
+#[allow(unused)]
+fn helper(value: Int) -> Int {
+    let a = 1;
+    #[deny(unused_binding)]
+    let b = 2;
+    3
+}
+
+#[allow(unused_binding)]
+fn other() -> Int {
+    let c = 1;
+    #[warn(unused)]
+    let d = 2;
+    3
+}
+
+#[allow(unused)]
+#[deny(unused_binding)]
+fn main() -> Int {
+    let e = 1;
+    other()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 5: Unused binding `b`",
+            "Warning 13: Unused binding `d`",
+            "Error 20: Unused binding `e`",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn group_attributes_override_project_levels() {
+    let source = "\
+#[warn(unused)]
+fn main() -> Int {
+    let a = 1;
+    #[allow(unused)]
+    let b = 2;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |options| {
+        options.lints.apply([
+            (LintName::Group(LintGroup::Unused), LintLevel::Deny),
+            (LintName::Lint(Lint::UnusedBinding), LintLevel::Allow),
+        ]);
+    });
+
+    assert_eq!(reports, vec!["Warning 3: Unused binding `a`"]);
+    assert!(!has_errors);
+}
+
+#[test]
+fn unknown_group_names_are_reported() {
+    let source = "\
+#[allow(unuse)]
+fn main() -> Int {
+    let a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unknown lint `unuse`",
+            "Warning 3: Unused binding `a`",
+        ]
+    );
+    assert!(!has_errors);
 }

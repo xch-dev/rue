@@ -18,7 +18,8 @@ use colored::Colorize;
 use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticSeverity, LineCol, Lint, LintLevel, LintLevels, SourceKind,
+    Diagnostic, DiagnosticSeverity, LineCol, Lint, LintGroup, LintLevel, LintLevels, LintName,
+    SourceKind,
 };
 use rue_lir::{CLVM_FLAGS, DebugDialect};
 use rue_options::{Manifest, Project, find_project};
@@ -34,7 +35,7 @@ pub enum Command {
     Test(TestArgs),
     Debug(DebugArgs),
     Fmt(FmtArgs),
-    /// List every lint, along with its default level
+    /// List every lint and lint group, along with each lint's default level
     Lints,
 }
 
@@ -75,10 +76,11 @@ pub struct TestArgs {
 }
 
 /// Overrides for lint levels, which take precedence over the `[lints]` section in `Rue.toml`.
-/// If a lint is passed more than once, the last flag wins.
+/// A lint's own flag takes precedence over the flag for any group it's in, and otherwise if a lint
+/// is passed more than once, the last flag wins.
 #[derive(Debug, Clone, Default)]
 pub struct LintArgs {
-    overrides: Vec<(Lint, LintLevel)>,
+    overrides: Vec<(LintName, LintLevel)>,
 }
 
 const LINT_FLAGS: [(&str, char, LintLevel, &str); 3] = [
@@ -86,28 +88,26 @@ const LINT_FLAGS: [(&str, char, LintLevel, &str); 3] = [
         "allow",
         'A',
         LintLevel::Allow,
-        "Allow a lint, so that it isn't reported (can be repeated)",
+        "Allow a lint or lint group, so that it isn't reported (can be repeated)",
     ),
     (
         "warn",
         'W',
         LintLevel::Warn,
-        "Report a lint as a warning (can be repeated)",
+        "Report a lint or lint group as a warning (can be repeated)",
     ),
     (
         "deny",
         'D',
         LintLevel::Deny,
-        "Report a lint as an error, which fails compilation (can be repeated)",
+        "Report a lint or lint group as an error, which fails compilation (can be repeated)",
     ),
 ];
 
 impl LintArgs {
     /// Applies the overrides, in the order they were passed.
     fn apply(&self, levels: &mut LintLevels) {
-        for &(lint, level) in &self.overrides {
-            levels.set(lint, level);
-        }
+        levels.apply(self.overrides.iter().copied());
     }
 }
 
@@ -121,7 +121,7 @@ impl Args for LintArgs {
                     .short(short)
                     .long(name)
                     .value_name("LINT")
-                    .value_parser(value_parser!(Lint))
+                    .value_parser(value_parser!(LintName))
                     .action(ArgAction::Append)
                     .help(help),
             );
@@ -141,7 +141,7 @@ impl FromArgMatches for LintArgs {
 
         for (name, _, level, _) in LINT_FLAGS {
             if let (Some(lints), Some(indices)) =
-                (matches.get_many::<Lint>(name), matches.indices_of(name))
+                (matches.get_many::<LintName>(name), matches.indices_of(name))
             {
                 overrides.extend(
                     indices
@@ -194,7 +194,9 @@ fn main() -> Result<()> {
 fn lints() {
     let width = Lint::ALL
         .iter()
-        .map(|lint| lint.name().len())
+        .map(|lint| lint.name())
+        .chain(LintGroup::ALL.iter().map(|group| group.name()))
+        .map(str::len)
         .max()
         .unwrap_or_default();
 
@@ -205,6 +207,16 @@ fn lints() {
             lint.default_level(),
             lint.description()
         );
+    }
+
+    println!("\nGroups:\n");
+
+    for &group in LintGroup::ALL {
+        println!("{:width$}  {}", group.name(), group.description());
+
+        for &lint in group.lints() {
+            println!("{:width$}  - {lint}", "");
+        }
     }
 }
 
@@ -736,6 +748,43 @@ mod tests {
         };
 
         let mut levels = LintLevels::default();
+        args.lints.apply(&mut levels);
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Allow);
+    }
+
+    #[test]
+    fn lint_group_flags() {
+        // A lint's own flag wins over its group's, in either order
+        for flags in [
+            ["-A", "unused_binding", "-D", "unused"],
+            ["--deny", "unused", "--allow", "unused_binding"],
+        ] {
+            let Ok(Command::Build(args)) =
+                Command::try_parse_from(["rue", "build"].into_iter().chain(flags))
+            else {
+                panic!("expected build command");
+            };
+
+            let mut levels = LintLevels::default();
+            args.lints.apply(&mut levels);
+
+            assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+            assert_eq!(levels.get(Lint::UnusedFunction), LintLevel::Deny);
+            assert_eq!(levels.get(Lint::UnusedValue), LintLevel::Deny);
+            assert_eq!(
+                levels.get(Lint::DoubleNegation),
+                Lint::DoubleNegation.default_level()
+            );
+        }
+
+        // Flags take precedence over `Rue.toml`, including an individual lint set there
+        let Ok(Command::Test(args)) = Command::try_parse_from(["rue", "test", "-A", "unused"])
+        else {
+            panic!("expected test command");
+        };
+
+        let mut levels = LintLevels::default();
+        levels.set(Lint::UnusedImport, LintLevel::Deny);
         args.lints.apply(&mut levels);
         assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Allow);
     }

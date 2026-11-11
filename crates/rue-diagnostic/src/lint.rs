@@ -168,6 +168,114 @@ impl FromStr for Lint {
     }
 }
 
+macro_rules! lint_groups {
+    ($( $variant:ident($name:literal, $description:literal, [$( $lint:ident ),* $(,)?]), )*) => {
+        /// Named groups of lints, which can be configured anywhere a lint can.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum LintGroup {
+            $( $variant, )*
+        }
+
+        impl LintGroup {
+            /// Every lint group in the registry.
+            pub const ALL: &[Self] = &[$( Self::$variant, )*];
+
+            /// The stable name used to configure the group, which can't be the name of a lint.
+            pub fn name(self) -> &'static str {
+                match self {
+                    $( Self::$variant => $name, )*
+                }
+            }
+
+            /// A short description of the lints in the group.
+            pub fn description(self) -> &'static str {
+                match self {
+                    $( Self::$variant => $description, )*
+                }
+            }
+
+            /// The lints in the group.
+            pub fn lints(self) -> &'static [Lint] {
+                match self {
+                    $( Self::$variant => &[$( Lint::$lint, )*], )*
+                }
+            }
+        }
+    };
+}
+
+lint_groups! {
+    Unused("unused", "Code that is never used", [
+        UnusedFunction,
+        UnusedConstant,
+        UnusedBinding,
+        UnusedParameter,
+        UnusedStruct,
+        UnusedTypeAlias,
+        UnusedGenericType,
+        UnusedImport,
+        UnusedValue,
+    ]),
+}
+
+impl LintGroup {
+    /// Looks up a lint group by its stable name.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|group| group.name() == name)
+    }
+}
+
+impl fmt::Display for LintGroup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.name())
+    }
+}
+
+/// A name that can be used to configure lints, which is either a single lint or a lint group.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LintName {
+    Lint(Lint),
+    Group(LintGroup),
+}
+
+impl LintName {
+    /// Looks up a lint or lint group by its stable name.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Lint::from_name(name)
+            .map(Self::Lint)
+            .or_else(|| LintGroup::from_name(name).map(Self::Group))
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Lint(lint) => lint.name(),
+            Self::Group(group) => group.name(),
+        }
+    }
+
+    /// The lints that this name refers to.
+    pub fn lints(self) -> &'static [Lint] {
+        match self {
+            Self::Lint(lint) => std::slice::from_ref(&Lint::ALL[lint.index()]),
+            Self::Group(group) => group.lints(),
+        }
+    }
+}
+
+impl fmt::Display for LintName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.name())
+    }
+}
+
+impl FromStr for LintName {
+    type Err = UnknownLint;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_name(s).ok_or_else(|| UnknownLint(s.to_string()))
+    }
+}
+
 /// The configured level of every lint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LintLevels([LintLevel; Lint::COUNT]);
@@ -191,6 +299,20 @@ impl LintLevels {
 
     pub fn set(&mut self, lint: Lint, level: LintLevel) {
         self.0[lint.index()] = level;
+    }
+
+    /// Sets the level of each lint or group, in order. A lint's own level takes precedence over
+    /// the level of any group it's in, regardless of the order they're given in.
+    pub fn apply(&mut self, overrides: impl IntoIterator<Item = (LintName, LintLevel)>) {
+        let (lints, groups): (Vec<_>, Vec<_>) = overrides
+            .into_iter()
+            .partition(|(name, _)| matches!(name, LintName::Lint(_)));
+
+        for (name, level) in groups.into_iter().chain(lints) {
+            for &lint in name.lints() {
+                self.set(lint, level);
+            }
+        }
     }
 }
 
@@ -219,6 +341,82 @@ mod tests {
 
         assert_eq!(Lint::from_name("not_a_lint"), None);
         assert!("not_a_lint".parse::<Lint>().is_err());
+    }
+
+    #[test]
+    fn group_names_are_unique_and_round_trip() {
+        let mut names = Lint::ALL
+            .iter()
+            .map(|lint| lint.name())
+            .collect::<HashSet<_>>();
+
+        for &group in LintGroup::ALL {
+            assert!(
+                names.insert(group.name()),
+                "group `{group}` clashes with another lint or group"
+            );
+            assert_eq!(LintGroup::from_name(group.name()), Some(group));
+            assert_eq!(group.name().parse::<LintName>(), Ok(LintName::Group(group)));
+            assert!(!group.description().is_empty());
+            assert!(!group.lints().is_empty());
+        }
+
+        for &lint in Lint::ALL {
+            assert_eq!(lint.name().parse::<LintName>(), Ok(LintName::Lint(lint)));
+            assert_eq!(LintName::Lint(lint).lints(), &[lint]);
+        }
+
+        assert_eq!(
+            "not_a_lint".parse::<LintName>(),
+            Err(UnknownLint("not_a_lint".to_string()))
+        );
+    }
+
+    #[test]
+    fn unused_group_has_every_unused_lint() {
+        let expected = Lint::ALL
+            .iter()
+            .copied()
+            .filter(|lint| lint.name().starts_with("unused_"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(LintGroup::Unused.lints(), expected);
+    }
+
+    #[test]
+    fn lints_override_their_groups_in_any_order() {
+        for overrides in [
+            [
+                (LintName::Group(LintGroup::Unused), LintLevel::Deny),
+                (LintName::Lint(Lint::UnusedBinding), LintLevel::Allow),
+            ],
+            [
+                (LintName::Lint(Lint::UnusedBinding), LintLevel::Allow),
+                (LintName::Group(LintGroup::Unused), LintLevel::Deny),
+            ],
+        ] {
+            let mut levels = LintLevels::default();
+            levels.apply(overrides);
+
+            assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+            assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Deny);
+            assert_eq!(
+                levels.get(Lint::DoubleNegation),
+                Lint::DoubleNegation.default_level()
+            );
+        }
+
+        // Otherwise, the last level wins
+        let mut levels = LintLevels::default();
+        levels.apply([
+            (LintName::Lint(Lint::UnusedBinding), LintLevel::Deny),
+            (LintName::Group(LintGroup::Unused), LintLevel::Deny),
+            (LintName::Group(LintGroup::Unused), LintLevel::Allow),
+            (LintName::Lint(Lint::UnusedBinding), LintLevel::Warn),
+        ]);
+
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Warn);
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Allow);
     }
 
     #[test]

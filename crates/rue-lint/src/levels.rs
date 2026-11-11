@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::Range};
 use rowan::Direction;
 use rue_ast::{AstAttribute, AstDocument, AstNode};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticKind, DiagnosticSeverity, Lint, LintLevel, LintLevels, Source,
+    Diagnostic, DiagnosticKind, DiagnosticSeverity, Lint, LintLevel, LintLevels, LintName, Source,
     SourceKind, SrcLoc,
 };
 use rue_parser::{SyntaxKind, SyntaxNode};
@@ -92,7 +92,7 @@ impl ScopedLintLevels {
                 let range = range.start().into()..range.end().into();
 
                 for argument in arguments {
-                    let Some(lint) = Lint::from_name(argument.text()) else {
+                    let Some(name) = LintName::from_name(argument.text()) else {
                         diagnostics.push(Diagnostic::new(
                             srcloc(source, argument.text_range()),
                             DiagnosticKind::UnknownLint(argument.text().to_string()),
@@ -101,13 +101,17 @@ impl ScopedLintLevels {
                         continue;
                     };
 
-                    scopes
-                        .entry((source.kind.clone(), lint))
-                        .or_default()
-                        .push(LintScope {
-                            range: range.clone(),
-                            level,
-                        });
+                    // A group sets the level of each lint in it, so a later attribute on the same
+                    // node, or an attribute on a node inside it, overrides it for a single lint
+                    for &lint in name.lints() {
+                        scopes
+                            .entry((source.kind.clone(), lint))
+                            .or_default()
+                            .push(LintScope {
+                                range: range.clone(),
+                                level,
+                            });
+                    }
                 }
             }
         }

@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, ops::Range};
 
-use rue_diagnostic::{Lint, LintLevel, LintLevels};
+use rue_diagnostic::{LintLevel, LintLevels, LintName};
 use serde::{Deserialize, Serialize};
 use toml::Spanned;
 
@@ -9,13 +9,13 @@ pub struct Manifest {
     pub compiler: CompilerSection,
     #[serde(default)]
     pub formatter: FormatOptions,
-    /// Overrides for the level of each lint, keyed by lint name. The span of each name is kept so
-    /// that unknown lints can be reported where they're written.
+    /// Overrides for the level of each lint or lint group, keyed by name. The span of each name is
+    /// kept so that unknown lints can be reported where they're written.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub lints: BTreeMap<Spanned<String>, LintLevel>,
 }
 
-/// A name in the `[lints]` section of a manifest that doesn't refer to a known lint.
+/// A name in the `[lints]` section of a manifest that doesn't refer to a known lint or group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownLint {
     pub name: String,
@@ -25,13 +25,14 @@ pub struct UnknownLint {
 
 impl Manifest {
     /// Applies the `[lints]` section to the given lint levels, and returns any lints that don't
-    /// exist.
+    /// exist. A lint's own level takes precedence over the level of any group it's in.
     pub fn apply_lints(&self, levels: &mut LintLevels) -> Vec<UnknownLint> {
+        let mut overrides = Vec::new();
         let mut unknown = Vec::new();
 
         for (name, &level) in &self.lints {
-            if let Some(lint) = Lint::from_name(name.get_ref()) {
-                levels.set(lint, level);
+            if let Some(lint) = LintName::from_name(name.get_ref()) {
+                overrides.push((lint, level));
             } else {
                 unknown.push(UnknownLint {
                     name: name.get_ref().clone(),
@@ -39,6 +40,8 @@ impl Manifest {
                 });
             }
         }
+
+        levels.apply(overrides);
 
         unknown
     }
@@ -85,6 +88,8 @@ impl Default for FormatOptions {
 
 #[cfg(test)]
 mod tests {
+    use rue_diagnostic::Lint;
+
     use super::*;
 
     #[test]
@@ -117,6 +122,36 @@ mod tests {
         assert_eq!(
             levels.get(Lint::UnusedParameter),
             Lint::UnusedParameter.default_level()
+        );
+    }
+
+    #[test]
+    fn lints_override_their_groups() {
+        // Keys are sorted, so `unused` comes after the lints in it regardless of where it's written
+        let manifest: Manifest = toml::from_str(
+            r#"
+            [compiler]
+            entrypoint = "puzzles"
+
+            [lints]
+            unused_binding = "allow"
+            unused = "deny"
+            unused_import = "warn"
+            "#,
+        )
+        .unwrap();
+
+        let mut levels = LintLevels::default();
+        let unknown = manifest.apply_lints(&mut levels);
+
+        assert!(unknown.is_empty());
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Warn);
+        assert_eq!(levels.get(Lint::UnusedFunction), LintLevel::Deny);
+        assert_eq!(levels.get(Lint::UnusedValue), LintLevel::Deny);
+        assert_eq!(
+            levels.get(Lint::UnnecessaryCast),
+            Lint::UnnecessaryCast.default_level()
         );
     }
 
