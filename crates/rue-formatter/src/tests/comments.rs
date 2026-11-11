@@ -333,3 +333,78 @@ fn closing_braces_go_on_their_own_line_after_block_comments() {
         "#]],
     );
 }
+
+#[test]
+fn closing_braces_of_wrapped_groups_go_on_their_own_line_after_block_comments() {
+    check(
+        "fn main() -> S {\n    S { a: 1111111111111111111111111111111111111111111111, b: 222222222222222222222222222222222 /* c */ }\n}\nfn h() -> S { S { a: 1, b: 2 /* c */ } }",
+        expect![[r#"
+            fn main() -> S {
+                S {
+                    a: 1111111111111111111111111111111111111111111111,
+                    b: 222222222222222222222222222222222, /* c */
+                }
+            }
+
+            fn h() -> S {
+                S { a: 1, b: 2 /* c */ }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn consecutive_block_comments_are_separated_by_one_space() {
+    check(
+        "fn f() {} /* a */ /* b */\nfn main() -> Int {\n    let x = 1; /* a */ /* b */\n    f(/* a */ /* b */ 1)\n}",
+        expect![[r#"
+            fn f() {} /* a */ /* b */
+
+            fn main() -> Int {
+                let x = 1; /* a */ /* b */
+                f(/* a */ /* b */ 1)
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn comments_before_items_go_after_the_blank_line() {
+    check(
+        "fn f() {}\n// doc\nfn g() {}\nconst A: Int = 1;\n// doc\nconst B: Int = 2;\nimport x::y;\n// doc\nimport x::z;\nmod m {\n    #![allow(a)]\n    // doc\n    fn f() {}\n}",
+        expect![[r#"
+            import x::y;
+            // doc
+            import x::z;
+
+            fn f() {}
+
+            // doc
+            fn g() {}
+
+            const A: Int = 1;
+            // doc
+            const B: Int = 2;
+
+            mod m {
+                #![allow(a)]
+
+                // doc
+                fn f() {}
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn comments_followed_by_a_blank_line_stay_after_the_previous_item() {
+    check(
+        "struct A {}\n// Section\n\nstruct B {}",
+        expect![[r#"
+            struct A {}
+            // Section
+
+            struct B {}
+        "#]],
+    );
+}

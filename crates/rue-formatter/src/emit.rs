@@ -561,6 +561,10 @@ impl<'a> Formatter<'a> {
         {
             // A block's closing brace is always on its own line, even after an inline comment
             Doc::hard_line()
+        } else if requested == Separator::Soft {
+            // Braces that fit on one line keep the space before the closing brace, and otherwise
+            // it goes on its own line
+            Doc::soft_line()
         } else {
             // An inline block comment is followed by a space before the delimiter.
             Doc::space()
@@ -596,10 +600,22 @@ impl<'a> Formatter<'a> {
         }
 
         let mut docs = Vec::new();
+        let mut spaced = false;
         for (index, comment) in gap.comments.iter().enumerate() {
             self.consumed_comments += 1;
-            let before = if index == 0 {
+            let before = if index == 0
+                && requested == Separator::Empty
+                && comment.newlines_before == 1
+                && gap.newlines <= 1
+            {
+                // Comments directly before an item that's separated from the previous one by a
+                // blank line belong to it, so they go after the blank line
+                Doc::empty_line()
+            } else if index == 0 {
                 comment_separator(comment, requested, ignore_trailing)
+            } else if spaced {
+                // The previous comment is already followed by a space on the same line
+                Doc::Nil
             } else {
                 comment_separator(comment, Separator::Hard, false)
             };
@@ -609,7 +625,9 @@ impl<'a> Formatter<'a> {
                 Some(next) => next.newlines_before == 0,
                 None => gap.newlines == 0 && !suppress_final_line,
             };
-            if comment.kind == SyntaxKind::BlockComment && !comment.multiline && followed_inline {
+            spaced =
+                comment.kind == SyntaxKind::BlockComment && !comment.multiline && followed_inline;
+            if spaced {
                 docs.push(Doc::space());
             }
         }
