@@ -124,6 +124,16 @@ fn strict() -> Int {
 }
 ```
 
+An `expect` attribute allows a lint like `allow` does, but also expects it to be reported inside of what it's attached to. If it never is, the attribute is reported with the `unfulfilled_lint_expectation` lint, so it doesn't stay around after the code it was written for changes. An `expect` for a group is fulfilled by any lint in it, and like `allow`, it can't change a forbidden lint. As in Rust, expectations aren't checked if there are any errors other than lints (since code that doesn't compile can't be fully linted), and `unfulfilled_lint_expectation` itself can't be expected:
+
+```rs
+fn main() -> Int {
+    #[expect(unused_binding)]
+    let unused = 1;
+    42
+}
+```
+
 ## Testing
 
 Tests are just functions marked with `test`, and they live right alongside your code:

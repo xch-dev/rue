@@ -52,6 +52,54 @@ impl fmt::Display for LintLevel {
     }
 }
 
+/// The level set by a lint attribute, which is either a [`LintLevel`] or `expect`. An `expect`
+/// attribute allows the lint, but expects it to be reported inside of what it's attached to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AttributeLevel {
+    Level(LintLevel),
+    Expect,
+}
+
+impl AttributeLevel {
+    /// The level that lints are reported at inside of the attribute.
+    pub fn lint_level(self) -> LintLevel {
+        match self {
+            Self::Level(level) => level,
+            Self::Expect => LintLevel::Allow,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Level(level) => level.name(),
+            Self::Expect => "expect",
+        }
+    }
+}
+
+impl From<LintLevel> for AttributeLevel {
+    fn from(level: LintLevel) -> Self {
+        Self::Level(level)
+    }
+}
+
+impl fmt::Display for AttributeLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.name())
+    }
+}
+
+impl FromStr for AttributeLevel {
+    type Err = UnknownLintLevel;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "expect" => Ok(Self::Expect),
+            _ => s.parse().map(Self::Level),
+        }
+    }
+}
+
 /// Where a lint was forbidden, so that attempts to change its level can explain why they failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ForbiddenBy {
@@ -169,6 +217,7 @@ lints! {
     ConstantCondition("constant_condition", Warn, "Conditions that always evaluate to the same value"),
     DoubleNegation("double_negation", Warn, "Use of `--`, which could be confused with a decrement operator"),
     InlineIfMayRaise("inline_if_may_raise", Warn, "`inline if` branches that can raise, even though both are always evaluated"),
+    UnfulfilledLintExpectation("unfulfilled_lint_expectation", Warn, "`expect` attributes whose lint is never reported inside of them"),
 }
 
 impl Lint {
@@ -317,19 +366,19 @@ impl LintName {
     pub fn forbidden_override(
         self,
         lint: Lint,
-        level: LintLevel,
+        level: impl Into<AttributeLevel>,
         forbidden_by: ForbiddenBy,
     ) -> DiagnosticKind {
         match self {
             Self::Lint(_) => DiagnosticKind::ForbiddenLintOverride {
                 lint,
-                level,
+                level: level.into(),
                 forbidden_by,
             },
             Self::Group(group) => DiagnosticKind::ForbiddenLintGroupOverride {
                 group,
                 lint,
-                level,
+                level: level.into(),
                 forbidden_by,
             },
         }
@@ -605,6 +654,25 @@ mod tests {
         }
 
         assert!("expect".parse::<LintLevel>().is_err());
+    }
+
+    #[test]
+    fn attribute_level_parsing() {
+        for level in [
+            LintLevel::Allow,
+            LintLevel::Warn,
+            LintLevel::Deny,
+            LintLevel::Forbid,
+        ] {
+            let attribute_level = AttributeLevel::from(level);
+            assert_eq!(attribute_level.name().parse(), Ok(attribute_level));
+            assert_eq!(attribute_level.lint_level(), level);
+        }
+
+        assert_eq!("expect".parse(), Ok(AttributeLevel::Expect));
+        assert_eq!(AttributeLevel::Expect.lint_level(), LintLevel::Allow);
+        assert_eq!(AttributeLevel::Expect.to_string(), "expect");
+        assert!("forbidden".parse::<AttributeLevel>().is_err());
     }
 
     #[test]

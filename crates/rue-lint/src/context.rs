@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use rowan::TextRange;
-use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, Source, SrcLoc};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Source, SrcLoc};
 use rue_hir::{Database, ScopeId};
 use rue_types::{BuiltinTypes, Comparison, TypeId};
 
@@ -41,7 +41,33 @@ impl<'a> LintContext<'a> {
 
     /// Reports a lint at its configured level. Nothing is reported if the lint is allowed.
     pub fn report(&mut self, lint: Lint, srcloc: SrcLoc, message: impl Into<String>) {
-        let Some(severity) = self.levels.get(lint, &srcloc).severity() else {
+        let level = self.levels.report(lint, &srcloc);
+        self.push(lint, srcloc, message, level);
+    }
+
+    /// Reports the `expect` attributes whose lint was never reported inside of them. This must be
+    /// called after every pass has run.
+    pub(crate) fn report_unfulfilled_expectations(&mut self) {
+        for (name, srcloc, level) in self.levels.report_unfulfilled_expectations() {
+            let message = match name {
+                LintName::Lint(Lint::UnfulfilledLintExpectation) => {
+                    "Lint `unfulfilled_lint_expectation` can't be expected, so this is always reported"
+                        .to_string()
+                }
+                LintName::Lint(lint) => {
+                    format!("Expected lint `{lint}` to be reported here, but it never was")
+                }
+                LintName::Group(group) => format!(
+                    "Expected a lint in group `{group}` to be reported here, but none of them were"
+                ),
+            };
+
+            self.push(Lint::UnfulfilledLintExpectation, srcloc, message, level);
+        }
+    }
+
+    fn push(&mut self, lint: Lint, srcloc: SrcLoc, message: impl Into<String>, level: LintLevel) {
+        let Some(severity) = level.severity() else {
             return;
         };
 
