@@ -1,0 +1,22 @@
+struct Payment {
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+fn main(payment: Payment, pair: (Int, Int)) -> Int {
+    by_struct(payment) + by_destructure(payment) + by_tuple(pair)
+}
+
+fn by_struct(payment: Payment) -> Int {
+    payment.amount
+}
+
+fn by_destructure({ puzzle_hash, amount }: Payment) -> Int {
+    assert puzzle_hash != sha256("burn");
+    amount
+}
+
+fn by_tuple((low, high): (Int, Int)) -> Int {
+    assert low < high;
+    high - low
+}

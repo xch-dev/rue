@@ -1,0 +1,103 @@
+program: (a (q 2 2 (c 2 (c 5 ()))) (c (q 2 (i (= 5 ()) (q 8 (q . "raise called at recursion.rue:7:9") (q . "hit zero")) (q 2 2 (c 2 (c (- 5 (q . 1)) (+ 7 5))))) 1) 1))
+program bytes: 142, sidecar bytes: 1628, spans: 10, functions: 2
+function[0] main params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Nil))
+function[1] countdown params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Integer }, Name { name: 2, path: [7], constraint: Integer }))
+declared types: n: Int, n: Int, acc: Int
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer)")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
+error: Raise(NodePtr(Pair, 129))  raw frames: 10  truncated: 0
+----- Python -----
+File "recursion.rue", line 1, column 24
+  fn main(n: Int) -> Int {
+                         ^
+File "recursion.rue", line 2, column 5, in main
+  countdown(n, 0)
+  ^^^^^^^^^^^^^^^
+  n = 3
+File "recursion.rue", line 5, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = 3
+  acc = ()
+File "recursion.rue", line 9, column 5
+  countdown(n - 1, acc + n)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "recursion.rue", line 5, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = 2
+  acc = 3
+File "recursion.rue", line 9, column 5
+  countdown(n - 1, acc + n)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "recursion.rue", line 5, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = 1
+  acc = 5
+File "recursion.rue", line 9, column 5
+  countdown(n - 1, acc + n)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "recursion.rue", line 5, column 39, in countdown
+  fn countdown(n: Int, acc: Int) -> Int {
+                                        ^
+  n = ()
+  acc = 6
+File "recursion.rue", line 7, column 9
+  raise "hit zero";
+  ^^^^^^^^^^^^^^^^^
+----- Lisp -----
+--> recursion.rue:1:24
+   |
+  1| fn main(n: Int) -> Int {
+   |                        ^
+(<unknown:7b66ec7ffe9c75268278990ad93ae24a839d78488de9f176066c6a6362a0681d>)
+--> recursion.rue:2:5
+   |
+  2|     countdown(n, 0)
+   |     ^^^^^^^^^^^^^^^
+(main (n integer 3))
+--> recursion.rue:5:39
+   |
+  5| fn countdown(n: Int, acc: Int) -> Int {
+   |                                       ^
+(countdown (n integer 3) (acc integer ()))
+--> recursion.rue:9:5
+   |
+  9|     countdown(n - 1, acc + n)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:92a7568af6784561df72d220721c7a5abc1b3ce1ed982e845cc02da46a350732>)
+--> recursion.rue:5:39
+   |
+  5| fn countdown(n: Int, acc: Int) -> Int {
+   |                                       ^
+(countdown (n integer 2) (acc integer 3))
+--> recursion.rue:9:5
+   |
+  9|     countdown(n - 1, acc + n)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:92a7568af6784561df72d220721c7a5abc1b3ce1ed982e845cc02da46a350732>)
+--> recursion.rue:5:39
+   |
+  5| fn countdown(n: Int, acc: Int) -> Int {
+   |                                       ^
+(countdown (n integer 1) (acc integer 5))
+--> recursion.rue:9:5
+   |
+  9|     countdown(n - 1, acc + n)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:92a7568af6784561df72d220721c7a5abc1b3ce1ed982e845cc02da46a350732>)
+--> recursion.rue:5:39
+   |
+  5| fn countdown(n: Int, acc: Int) -> Int {
+   |                                       ^
+(countdown (n integer ()) (acc integer 6))
+--> recursion.rue:7:9
+   |
+  7|         raise "hit zero";
+   |         ^^^^^^^^^^^^^^^^^
+(<unknown:abc4452feb987170c7028d550939a3c9e1ad21c4152536ca31b15f32049853a2>)

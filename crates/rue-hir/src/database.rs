@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use id_arena::Arena;
 use indexmap::IndexSet;
-use rue_diagnostic::SourceKind;
+use rue_diagnostic::{SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
 use crate::{Hir, HirId, Import, ImportId, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId};
@@ -34,6 +34,23 @@ pub struct Database {
     relevant_imports: IndexSet<ImportId>,
     import_references: HashMap<ImportId, IndexSet<Declaration>>,
     tests: Vec<Test>,
+    /// SPIKE: debug sidecar side tables.
+    pub debug: DebugTables,
+}
+
+/// SPIKE: source spans and function roots threaded through lowering for the debug sidecar.
+#[derive(Debug, Default, Clone)]
+pub struct DebugTables {
+    /// Innermost source expression for each HIR node.
+    pub hir_spans: HashMap<HirId, SrcLoc>,
+    /// Source span for each LIR node, keyed by arena index.
+    pub lir_spans: HashMap<usize, SrcLoc>,
+    /// LIR index of each lowered (non-inlined) function body, and its environment layout.
+    pub function_roots: HashMap<usize, (SymbolId, crate::Environment)>,
+    /// Source names of parameter symbols (`ParameterSymbol::name` is not populated).
+    pub param_names: HashMap<SymbolId, String>,
+    /// LIR index of each `let` body (a new CLVM apply frame), and its environment layout.
+    pub scope_roots: HashMap<usize, crate::Environment>,
 }
 
 impl Database {

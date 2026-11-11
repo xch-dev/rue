@@ -1,0 +1,86 @@
+program: (a (q 16 (a 4 (c 6 5)) (q . 1)) (c (c (q 2 (q 16 (a 5 (c 2 7)) 2) (c (* 3 (q . 2)) 1)) (q 2 (i (> 2 (q . 100)) (q 17 2 3) (q 8 (q . "assertion failed at nested_assert.rue:11:5"))) 1)) 1))
+program bytes: 165, sidecar bytes: 2106, spans: 14, functions: 4
+function[0] main params=Pair(Pair(Nil, Nil), Pair(Name { name: 0, path: [6], constraint: Integer }, Nil))
+function[1] outer params=Pair(Nil, Name { name: 2, path: [3], constraint: Integer })
+function[2] <let scope> params=Pair(Name { name: 4, path: [2], constraint: Integer }, Pair(Nil, Name { name: 2, path: [7], constraint: Integer }))
+function[3] inner params=Pair(Name { name: 6, path: [2], constraint: Integer }, Name { name: 7, path: [3], constraint: Integer })
+declared types: amount: Int, value: Int, doubled: Int, value: Int, total: Int, base: Int
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: integer)")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: integer)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: integer)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: integer)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown)")
+error: Raise(NodePtr(Bytes, 0))  raw frames: 8  truncated: 0
+----- Python -----
+File "nested_assert.rue", line 1, column 29
+  fn main(amount: Int) -> Int {
+                              ^
+File "nested_assert.rue", line 2, column 5, in main
+  outer(amount) + 1
+  ^^^^^^^^^^^^^^^^^
+  amount = 10
+File "nested_assert.rue", line 2, column 5
+  outer(amount) + 1
+  ^^^^^^^^^^^^^
+File "nested_assert.rue", line 5, column 29, in outer
+  fn outer(value: Int) -> Int {
+                              ^
+  value = 10
+File "nested_assert.rue", line 7, column 5, in <let scope>
+  inner(doubled, value) + doubled
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  doubled = 20
+  value = 10
+File "nested_assert.rue", line 7, column 5
+  inner(doubled, value) + doubled
+  ^^^^^^^^^^^^^^^^^^^^^
+File "nested_assert.rue", line 11, column 5, in inner
+  assert total > 100;
+  ^^^^^^^^^^^^^^^^^^^
+  total = 20
+  base = 10
+File "nested_assert.rue", line 11, column 5
+  assert total > 100;
+  ^^^^^^^^^^^^^^^^^^^
+----- Lisp -----
+--> nested_assert.rue:1:29
+   |
+  1| fn main(amount: Int) -> Int {
+   |                             ^
+(<unknown:81aec6350f224364e40b68e2940817285e105887e6d3b1c046c8255cdb787a6f>)
+--> nested_assert.rue:2:5
+   |
+  2|     outer(amount) + 1
+   |     ^^^^^^^^^^^^^^^^^
+(main (amount integer 10))
+--> nested_assert.rue:2:5
+   |
+  2|     outer(amount) + 1
+   |     ^^^^^^^^^^^^^
+(<unknown:93b250c8eda65e953d052919cbe8cde6d543379482894e2e1daa9a33ae3f1a1c>)
+--> nested_assert.rue:5:29
+   |
+  5| fn outer(value: Int) -> Int {
+   |                             ^
+(outer (value integer 10))
+--> nested_assert.rue:7:5
+   |
+  7|     inner(doubled, value) + doubled
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(<let scope> (doubled integer 20) (value integer 10))
+--> nested_assert.rue:7:5
+   |
+  7|     inner(doubled, value) + doubled
+   |     ^^^^^^^^^^^^^^^^^^^^^
+(<unknown:c75f772404c0e66ecad34ddc59000aa9904365a1a826b8e54e437bc51d083619>)
+--> nested_assert.rue:11:5
+   |
+ 11|     assert total > 100;
+   |     ^^^^^^^^^^^^^^^^^^^
+(inner (total integer 20) (base integer 10))
+--> nested_assert.rue:11:5
+   |
+ 11|     assert total > 100;
+   |     ^^^^^^^^^^^^^^^^^^^
+(<unknown:11f623732022a1d901dd4f04ca298f29f6ec54759861951b47365b71f0b76adc>)

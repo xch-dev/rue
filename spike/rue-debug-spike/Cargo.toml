@@ -1,0 +1,24 @@
+[package]
+name = "rue-debug-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rue-compiler = { path = "../../crates/rue-compiler" }
+rue-hir = { path = "../../crates/rue-hir" }
+rue-lir = { path = "../../crates/rue-lir" }
+rue-diagnostic = { path = "../../crates/rue-diagnostic" }
+rue-options = { path = "../../crates/rue-options" }
+rue-types = { path = "../../crates/rue-types" }
+rue-clvm = { path = "../../crates/rue-clvm" }
+clvmr = { version = "0.21.0", features = ["pre-eval"] }
+chialisp = { git = "https://github.com/Chia-Network/chialisp.git", rev = "1ba4c714a3bb52f5f808d5f4586db22c9ce24650" }
+sha2 = "0.11"
+id-arena = "2.2.1"
+num-bigint = "0.4.6"
+
+[workspace]
+
+[patch.crates-io]
+clvmr = { git = "https://github.com/Chia-Network/clvm_rs.git", rev = "05e31346107b7d0defc6c9055f7efd32ac81d498" }

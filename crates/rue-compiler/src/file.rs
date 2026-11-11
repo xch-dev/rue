@@ -783,6 +783,44 @@ fn codegen(
         lir = rue_lir::optimize(&mut arena, lir);
     }
 
+    // SPIKE: if a debug sidecar is being collected, tag LIR nodes by their own arena index so
+    // the caller can resolve them against `ctx.debug`.
+    rue_lir::DEBUG_TAGGING.with_borrow_mut(|tagging| {
+        if let Some(tagging) = tagging {
+            for &index in ctx.debug.lir_spans.keys() {
+                tagging.lir_spans.insert(index, index);
+            }
+            for &index in ctx.debug.function_roots.keys() {
+                tagging.lir_functions.insert(index, index);
+            }
+            if std::env::var_os("SPIKE_LET_SCOPES").is_some() {
+                for &index in ctx.debug.scope_roots.keys() {
+                    tagging.lir_functions.entry(index).or_insert(index);
+                }
+            }
+            // Optimized nodes inherit the tags of the node they were produced from.
+            rue_lir::OPT_TRACE.with_borrow(|(origins, results)| {
+                for (&new, &old) in origins {
+                    let mut origin = old;
+                    while !ctx.debug.lir_spans.contains_key(&origin) {
+                        match origins.get(&origin) {
+                            Some(&next) if next != origin => origin = next,
+                            _ => break,
+                        }
+                    }
+                    if ctx.debug.lir_spans.contains_key(&origin) {
+                        tagging.lir_spans.insert(new, origin);
+                    }
+                }
+                for &old in ctx.debug.function_roots.keys() {
+                    if let Some(&new) = results.get(&old) {
+                        tagging.lir_functions.insert(new, old);
+                    }
+                }
+            });
+        }
+    });
+
     Ok(rue_lir::codegen(
         &arena,
         allocator,

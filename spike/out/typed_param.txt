@@ -1,0 +1,65 @@
+diagnostic: Cannot assign `PublicKey` to `Bytes` without a cast, since they are semantically different at typed_param.rue:7:29
+program: (a (q 2 2 (c (c 5 11) (c 23 (c 47 95)))) (c (q 2 (i 15 (q 2 (i (not (= 6 (sha256 4))) (q 2 (i (> (q . 5) (strlen 11)) (q . 5) (q 8 (q . "assertion failed at typed_param.rue:8:5"))) 1) (q 8 (q . "assertion failed at typed_param.rue:7:5"))) 1) (q 8 (q . "assertion failed at typed_param.rue:6:5"))) 1) 1))
+program bytes: 262, sidecar bytes: 2519, spans: 11, functions: 2
+function[0] main params=Pair(Nil, Pair(Name { name: 0, path: [6], constraint: Bytes(48) }, Pair(Name { name: 1, path: [14], constraint: Bytes(32) }, Pair(Name { name: 2, path: [30], constraint: Integer }, Pair(Name { name: 3, path: [62], constraint: Atom }, Pair(Name { name: 4, path: [126], constraint: Atom }, Nil))))))
+function[1] validate params=Pair(Pair(Name { name: 0, path: [4], constraint: Bytes(48) }, Name { name: 1, path: [5], constraint: Bytes(32) }), Pair(Name { name: 2, path: [6], constraint: Integer }, Pair(Name { name: 3, path: [14], constraint: Atom }, Name { name: 4, path: [15], constraint: Atom })))
+declared types: owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: true | false, owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: true | false
+probe: extra trailing root field (e.g. producer info): Ok("accepted (first function constraints: bytes[48], bytes[32], integer, atom, atom)")
+probe: version 2: Err("unsupported debug metadata version 2")
+probe: extra field on a shadow node (e.g. inlined-from): Ok("accepted (first function constraints: bytes[48], bytes[32], integer, atom, atom)")
+probe: extra field on a span entry (e.g. byte offsets): Ok("accepted (first function constraints: bytes[48], bytes[32], integer, atom, atom)")
+probe: extra field on a function record (e.g. definition span): Ok("accepted (first function constraints: bytes[48], bytes[32], integer, atom, atom)")
+probe: extra: unknown constraint tag 99 on first named parameter: Ok("accepted (first function constraints: unknown, bytes[32], integer, atom, atom)")
+error: Raise(NodePtr(Bytes, 0))  raw frames: 6  truncated: 0
+----- Python -----
+File "typed_param.rue", line 1, column 93
+  fn main(owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: Bool) -> Int {
+                                                                                              ^
+File "typed_param.rue", line 2, column 5, in main
+  validate(owner, target, amount, memo, enabled)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = 100
+  memo = "hello world"
+  enabled = 1
+File "typed_param.rue", line 6, column 5, in validate
+  assert enabled;
+  ^^^^^^^^^^^^^^^
+  owner = 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  target = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  amount = 100
+  memo = "hello world"
+  enabled = 1
+File "typed_param.rue", line 7, column 5
+  assert target != sha256(owner);
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "typed_param.rue", line 8, column 5
+  assert memo.length < 5;
+  ^^^^^^^^^^^^^^^^^^^^^^^
+----- Lisp -----
+--> typed_param.rue:1:93
+   |
+  1| fn main(owner: PublicKey, target: Bytes32, amount: Int, memo: String, enabled: Bool) -> Int {
+   |                                                                                             ^
+(<unknown:717767a52d3ee0edb7914cfa345c21497a731646eaebd7a7e93974f1242de8ce>)
+--> typed_param.rue:2:5
+   |
+  2|     validate(owner, target, amount, memo, enabled)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(main (owner bytes[48] 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) (target bytes[32] 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) (amount integer 100) (memo atom "hello world") (enabled atom 1))
+--> typed_param.rue:6:5
+   |
+  6|     assert enabled;
+   |     ^^^^^^^^^^^^^^^
+(validate (owner bytes[48] 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) (target bytes[32] 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) (amount integer 100) (memo atom "hello world") (enabled atom 1))
+--> typed_param.rue:7:5
+   |
+  7|     assert target != sha256(owner);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:e13b451e1649ad2ff9983ee1b3f7dd8760a12a5fa82ac295ffa0ae3b53ac460b>)
+--> typed_param.rue:8:5
+   |
+  8|     assert memo.length < 5;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+(<unknown:ceffb2ad3b2909c11e1920fca015e9e36ebc064e2a0065bb90bbfcbf8b0cd7ac>)

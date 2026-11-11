@@ -17,7 +17,29 @@ use id_arena::Arena;
 
 use crate::{Lir, LirId};
 
+thread_local! {
+    /// SPIKE: for each optimized LIR node, the original node it was produced from (`origins`), and
+    /// for each original node, the node it was optimized into (`results`).
+    pub static OPT_TRACE: std::cell::RefCell<(
+        std::collections::HashMap<usize, usize>,
+        std::collections::HashMap<usize, usize>,
+    )> = std::cell::RefCell::default();
+}
+
 pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
+    let start = arena.len();
+    let result = optimize_inner(arena, lir);
+    let end = arena.len();
+    OPT_TRACE.with_borrow_mut(|(origins, results)| {
+        for index in start..end {
+            origins.entry(index).or_insert(lir.index());
+        }
+        results.insert(lir.index(), result.index());
+    });
+    result
+}
+
+fn optimize_inner(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
     match arena[lir].clone() {
         Lir::Atom(atom) => opt_atom(arena, atom),
         Lir::Path(path) => opt_path(arena, path),

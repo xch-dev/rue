@@ -1,0 +1,10 @@
+fn main(n: Int) -> Int {
+    countdown(n, 0)
+}
+
+fn countdown(n: Int, acc: Int) -> Int {
+    if n == 0 {
+        raise "hit zero";
+    }
+    countdown(n - 1, acc + n)
+}

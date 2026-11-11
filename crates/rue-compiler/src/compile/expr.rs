@@ -37,6 +37,14 @@ use rue_types::TypeId;
 use crate::{BlockKind, Compiler, CompletionContext, SyntaxItemKind, compile_block};
 
 pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<TypeId>) -> Value {
+    // SPIKE: remember the innermost expression span for each HIR node.
+    let value = compile_expr_inner(ctx, expr, expected_type);
+    let srcloc = ctx.srcloc(expr.syntax());
+    ctx.debug.hir_spans.entry(value.hir).or_insert(srcloc);
+    value
+}
+
+fn compile_expr_inner(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<TypeId>) -> Value {
     ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::Expression),
         expr.syntax().text_range(),

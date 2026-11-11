@@ -33,6 +33,20 @@ pub fn compile_block(
     expected_type: Option<TypeId>,
     require_return: bool,
 ) -> Value {
+    // SPIKE: remember the block span for its HIR node.
+    let value = compile_block_inner(ctx, block, kind, expected_type, require_return);
+    let srcloc = ctx.srcloc(block.syntax());
+    ctx.debug.hir_spans.entry(value.hir).or_insert(srcloc);
+    value
+}
+
+fn compile_block_inner(
+    ctx: &mut Compiler,
+    block: &AstBlock,
+    kind: BlockKind,
+    expected_type: Option<TypeId>,
+    require_return: bool,
+) -> Value {
     let is_expr = kind != BlockKind::Statement;
 
     if kind == BlockKind::Expr {

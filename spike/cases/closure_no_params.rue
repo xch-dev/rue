@@ -1,0 +1,11 @@
+fn main(x: Int) -> Int {
+    let check = fn() => {
+        assert x > 5;
+        x
+    };
+    run(check) + 1
+}
+
+fn run(f: fn() -> Int) -> Int {
+    f() * 2
+}
