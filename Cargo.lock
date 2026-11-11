@@ -1832,6 +1832,7 @@ dependencies = [
  "rue-parser",
  "rue-types",
  "send_wrapper",
+ "serde",
  "serde_json",
  "tokio",
  "toml",

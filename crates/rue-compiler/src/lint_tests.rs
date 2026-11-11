@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use rue_diagnostic::{
-    Diagnostic, DiagnosticSeverity, Lint, LintGroup, LintLevel, LintName, Source, SourceKind,
+    Applicability, Diagnostic, DiagnosticSeverity, Lint, LintGroup, LintLevel, LintName, Source,
+    SourceKind, apply_edits,
 };
 use rue_options::CompilerOptions;
 
@@ -1623,6 +1624,7 @@ test fn tests() {
         reports,
         vec![
             "Warning 7: Unnecessary `return` statement, since the function body can end in an expression instead",
+            "Warning 8: Unreachable code",
             "Error 13: Cannot use a `return` statement here, end the block with an expression instead",
         ]
     );
@@ -1654,4 +1656,73 @@ fn main() -> Int {
 
 fn reports_with_level(source: &str, lint: Lint, level: LintLevel) -> (Vec<String>, bool) {
     reports(source, |options| options.lints.set(lint, level))
+}
+
+/// Applies every suggestion that can be applied automatically.
+fn fix(source: &str) -> String {
+    let (diagnostics, _) = compile_source(source, |_| {});
+
+    let edits = diagnostics
+        .iter()
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    apply_edits(source, &edits)
+}
+
+#[test]
+fn suggestions_fix_lints() {
+    let source = "\
+fn main() -> Int {
+    let value = +42;
+    double(value) as Int
+}
+
+fn double(value: Int) -> Int {
+    let doubled = value * (+2);
+    return doubled;
+}
+
+fn early(value: Int) -> Int {
+    return value;
+    0
+}
+";
+
+    let fixed = fix(source);
+
+    // The `return` in `early` isn't the end of the body, so removing it would change the result
+    assert_eq!(
+        fixed,
+        "\
+fn main() -> Int {
+    let value = 42;
+    double(value)
+}
+
+fn double(value: Int) -> Int {
+    let doubled = value * 2;
+    doubled
+}
+
+fn early(value: Int) -> Int {
+    return value;
+    0
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 11: Unused function `early`",
+            "Warning 12: Unnecessary `return` statement, since the function body can end in an expression instead",
+            "Warning 13: Unreachable code",
+        ]
+    );
+    assert!(!has_errors);
 }

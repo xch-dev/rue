@@ -6,8 +6,9 @@ mod position;
 use cache::Cache;
 use indexmap::IndexMap;
 use rue_compiler::{Compiler, FileTree, normalize_path};
-use rue_diagnostic::{Lint, SourceKind};
+use rue_diagnostic::{Applicability, Lint, SourceKind, SrcLoc};
 use rue_formatter::{FormatError, FormatOptions, format_source};
+use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 use std::fs;
@@ -18,13 +19,15 @@ use rue_options::{Project, find_project};
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
-    CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
+    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+    CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
+    CompletionResponse, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentFormattingParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
     HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
     LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf, Position, Range,
     ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextEdit, Url,
+    TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -50,6 +53,7 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![
                         ".".to_string(),
@@ -117,6 +121,10 @@ impl LanguageServer for Backend {
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         self.on_formatting(&params).map(Some)
+    }
+
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        Ok(code_actions(&params))
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -454,12 +462,104 @@ fn document_end(source: &str) -> Position {
     Position::new(line.try_into().unwrap(), character.try_into().unwrap())
 }
 
+/// A suggestion, which is stored in the `data` of a diagnostic so that a code action can be
+/// created for it when the editor asks, without the server having to keep the diagnostics.
+#[derive(Debug, Serialize, Deserialize)]
+struct SuggestionData {
+    title: String,
+    preferred: bool,
+    edit: WorkspaceEdit,
+}
+
+fn location(srcloc: &SrcLoc) -> Option<Location> {
+    let SourceKind::File(path) = &srcloc.source.kind else {
+        return None;
+    };
+
+    Some(Location::new(
+        Url::from_file_path(path).ok()?,
+        offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
+    ))
+}
+
+fn suggestion_data(suggestion: &rue_diagnostic::Suggestion) -> Option<SuggestionData> {
+    let mut changes = HashMap::<Url, Vec<TextEdit>>::new();
+
+    for edit in &suggestion.edits {
+        let location = location(&edit.srcloc)?;
+
+        changes
+            .entry(location.uri)
+            .or_default()
+            .push(TextEdit::new(location.range, edit.replacement.clone()));
+    }
+
+    Some(SuggestionData {
+        title: suggestion.message.clone(),
+        preferred: suggestion.applicability == Applicability::MachineApplicable,
+        edit: WorkspaceEdit::new(changes),
+    })
+}
+
+/// The quick fixes for the suggestions of the diagnostics the editor sent.
+fn code_actions(params: &CodeActionParams) -> Option<CodeActionResponse> {
+    let mut actions = Vec::new();
+
+    for diagnostic in &params.context.diagnostics {
+        let Some(data) = &diagnostic.data else {
+            continue;
+        };
+
+        let Ok(suggestions) = serde_json::from_value::<Vec<SuggestionData>>(data.clone()) else {
+            continue;
+        };
+
+        for suggestion in suggestions {
+            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                title: suggestion.title,
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(suggestion.edit),
+                is_preferred: Some(suggestion.preferred),
+                ..CodeAction::default()
+            }));
+        }
+    }
+
+    (!actions.is_empty()).then_some(actions)
+}
+
 fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
     let srcloc = &diagnostic.srcloc;
 
+    let mut message = diagnostic.kind.to_string();
+    let mut related_information = Vec::new();
+
+    // Notes that point to a file are shown at that location, and the rest are part of the message
+    for note in &diagnostic.notes {
+        if let Some(location) = note.srcloc.as_ref().and_then(location) {
+            related_information.push(DiagnosticRelatedInformation {
+                location,
+                message: note.message.clone(),
+            });
+        } else {
+            message.push('\n');
+            message.push_str(&note.message);
+        }
+    }
+
+    let suggestions = diagnostic
+        .suggestions
+        .iter()
+        .filter_map(suggestion_data)
+        .collect::<Vec<_>>();
+
     Diagnostic {
         range: offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
-        message: diagnostic.kind.to_string(),
+        message,
+        related_information: (!related_information.is_empty()).then_some(related_information),
+        data: (!suggestions.is_empty())
+            .then(|| serde_json::to_value(suggestions).expect("suggestions are serializable")),
         severity: Some(match diagnostic.severity {
             rue_diagnostic::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
             rue_diagnostic::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,

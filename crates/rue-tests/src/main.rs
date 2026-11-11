@@ -123,7 +123,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
     let mut codegen = true;
 
     for diagnostic in ctx.take_diagnostics() {
-        file.diagnostics.push(diagnostic.message(base_path));
+        file.diagnostics.push(diagnostic.full_message(base_path));
 
         if diagnostic.severity == DiagnosticSeverity::Error {
             codegen = false;
@@ -351,7 +351,7 @@ fn handle_test_file(
     let mut codegen = true;
 
     for diagnostic in ctx.take_diagnostics() {
-        file.diagnostics.push(diagnostic.message(&base_path));
+        file.diagnostics.push(diagnostic.full_message(&base_path));
 
         if diagnostic.severity == DiagnosticSeverity::Error {
             codegen = false;

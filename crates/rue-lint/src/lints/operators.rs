@@ -1,4 +1,4 @@
-use rue_diagnostic::Lint;
+use rue_diagnostic::{Applicability, Lint, Suggestion};
 use rue_hir::{Hir, HirId, UnaryOp};
 
 use crate::{HirLintPass, LintContext};
@@ -18,19 +18,31 @@ impl HirLintPass for UnnecessaryPlus {
             return;
         };
 
-        let (Some(srcloc), Some(operand)) = (cx.db().hir_srcloc(hir), cx.db().hir_type(operand))
-        else {
+        let db = cx.db();
+
+        let (Some(srcloc), Some(ty), Some(operand)) = (
+            db.hir_srcloc(hir).cloned(),
+            db.hir_type(operand),
+            db.hir_srcloc(operand).cloned(),
+        ) else {
             return;
         };
 
-        let srcloc = srcloc.clone();
+        if !cx.is_assignable(ty, cx.builtin_types().int) {
+            return;
+        }
 
-        if cx.is_assignable(operand, cx.builtin_types().int) {
-            cx.report(
-                Lint::UnnecessaryPlus,
+        if let Some(diagnostic) = cx.report(
+            Lint::UnnecessaryPlus,
+            srcloc.clone(),
+            "Unnecessary `+` operator, since it has no effect",
+        ) {
+            diagnostic.suggestions.push(Suggestion::replace(
+                "Remove the `+`",
                 srcloc,
-                "Unnecessary `+` operator, since it has no effect",
-            );
+                operand.text(),
+                Applicability::MachineApplicable,
+            ));
         }
     }
 }

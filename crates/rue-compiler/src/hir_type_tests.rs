@@ -63,7 +63,7 @@ fn list_types(ctx: &mut Compiler, hir: HirId, depth: usize, lines: &mut Vec<Stri
             .statements
             .iter()
             .flat_map(|statement| match statement {
-                Statement::Let(symbol) => match ctx.symbol(*symbol) {
+                Statement::Let(symbol, _) => match ctx.symbol(*symbol) {
                     Symbol::Binding(binding) => vec![binding.value.hir],
                     _ => vec![],
                 },

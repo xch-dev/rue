@@ -217,6 +217,7 @@ lints! {
     UnnecessaryReturn("unnecessary_return", Warn, "`return` statements directly in a function body, which can end in an expression instead"),
     ConstantCondition("constant_condition", Warn, "Conditions that always evaluate to the same value"),
     DoubleNegation("double_negation", Warn, "Use of `--`, which could be confused with a decrement operator"),
+    UnreachableCode("unreachable_code", Warn, "Code after a `return`, `raise` or other expression that never finishes, which is never evaluated"),
     InlineIfMayRaise("inline_if_may_raise", Warn, "`inline if` branches that can raise, even though both are always evaluated"),
     UnknownLint("unknown_lint", Warn, "Lint names in attributes or `Rue.toml` that don't refer to a known lint or group"),
     UnfulfilledLintExpectation("unfulfilled_lint_expectation", Warn, "`expect` attributes whose lint is never reported inside of them"),

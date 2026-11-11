@@ -129,12 +129,27 @@ pub struct Block {
 #[derive(Debug, Clone)]
 pub enum Statement {
     Expr(ExprStatement),
-    Let(SymbolId),
+    Let(SymbolId, SrcLoc),
     If(IfStatement),
     Return(HirId, SrcLoc),
     Assert(HirId, SrcLoc),
     Raise(Option<HirId>, SrcLoc),
     Debug(HirId, SrcLoc),
+}
+
+impl Statement {
+    /// The location of the statement in the source code.
+    pub fn srcloc(&self) -> &SrcLoc {
+        match self {
+            Self::Expr(statement) => &statement.srcloc,
+            Self::If(statement) => &statement.srcloc,
+            Self::Let(_, srcloc)
+            | Self::Return(_, srcloc)
+            | Self::Assert(_, srcloc)
+            | Self::Raise(_, srcloc)
+            | Self::Debug(_, srcloc) => srcloc,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
