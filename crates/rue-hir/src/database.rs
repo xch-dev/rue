@@ -26,6 +26,7 @@ pub struct Database {
     const_exprs: Vec<HirId>,
     hir_types: HashMap<HirId, TypeId>,
     hir_srclocs: HashMap<HirId, SrcLoc>,
+    hir_scopes: HashMap<HirId, ScopeId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
@@ -101,6 +102,18 @@ impl Database {
     /// available for the same nodes as [`hir_type`](Self::hir_type).
     pub fn hir_srcloc(&self, hir: HirId) -> Option<&SrcLoc> {
         self.hir_srclocs.get(&hir)
+    }
+
+    /// Records the scope that the source expression of a HIR node is in, which is used to name
+    /// types as they're written there.
+    pub fn set_hir_scope(&mut self, hir: HirId, scope: ScopeId) {
+        self.hir_scopes.insert(hir, scope);
+    }
+
+    /// The scope that the source expression of a HIR node is in, which is only available for the
+    /// same nodes as [`hir_type`](Self::hir_type).
+    pub fn hir_scope(&self, hir: HirId) -> Option<ScopeId> {
+        self.hir_scopes.get(&hir).copied()
     }
 
     pub fn insert_default_field(&mut self, ty: TypeId, name: String, value: Value) {
