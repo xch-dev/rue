@@ -214,6 +214,7 @@ lints! {
     UnnecessaryGuard("unnecessary_guard", Warn, "Type guards between types that are already compatible"),
     IndistinguishableGuard("indistinguishable_guard", Warn, "Type guards that are always true at runtime"),
     UnnecessaryPlus("unnecessary_plus", Warn, "Unary `+` operators, which have no effect"),
+    UnnecessaryReturn("unnecessary_return", Warn, "`return` statements directly in a function body, which can end in an expression instead"),
     ConstantCondition("constant_condition", Warn, "Conditions that always evaluate to the same value"),
     DoubleNegation("double_negation", Warn, "Use of `--`, which could be confused with a decrement operator"),
     InlineIfMayRaise("inline_if_may_raise", Warn, "`inline if` branches that can raise, even though both are always evaluated"),

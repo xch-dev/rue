@@ -69,6 +69,7 @@ fn is_reported_here(lint: Lint) -> bool {
         | Lint::UnnecessaryGuard
         | Lint::IndistinguishableGuard
         | Lint::UnnecessaryPlus
+        | Lint::UnnecessaryReturn
         | Lint::ConstantCondition
         | Lint::DoubleNegation
         | Lint::InlineIfMayRaise

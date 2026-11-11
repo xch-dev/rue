@@ -191,7 +191,9 @@ pub fn compile_block(
                     ctx.builtins().nil.clone()
                 };
 
-                if is_expr {
+                // A `return` at the top level of a function body is allowed, but it's reported by
+                // the `unnecessary_return` lint, since the body can end in an expression instead
+                if kind == BlockKind::Expr {
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnexpectedExplicitReturn);
                 } else if !has_target {
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::ReturnInExpressionBlock);
@@ -215,7 +217,7 @@ pub fn compile_block(
                     return_value = Some(value.clone());
                 }
 
-                Statement::Return(value.hir)
+                Statement::Return(value.hir, ctx.srcloc(stmt.syntax()))
             }
             AstStmt::AssertStmt(stmt) => {
                 let value = if let Some(expr) = stmt.expr() {

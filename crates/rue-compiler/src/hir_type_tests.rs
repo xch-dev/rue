@@ -69,7 +69,9 @@ fn list_types(ctx: &mut Compiler, hir: HirId, depth: usize, lines: &mut Vec<Stri
                 },
                 Statement::Expr(statement) => vec![statement.hir],
                 Statement::If(statement) => vec![statement.condition, statement.then],
-                Statement::Return(hir) | Statement::Assert(hir, _) | Statement::Debug(hir, _) => {
+                Statement::Return(hir, _)
+                | Statement::Assert(hir, _)
+                | Statement::Debug(hir, _) => {
                     vec![*hir]
                 }
                 Statement::Raise(hir, _) => hir.iter().copied().collect(),

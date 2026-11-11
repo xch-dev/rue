@@ -179,7 +179,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                         visit_hir(db, graph, stmt.condition, false);
                         visit_hir(db, graph, stmt.then, false);
                     }
-                    Statement::Return(expr) => {
+                    Statement::Return(expr, _) => {
                         visit_hir(db, graph, *expr, false);
                     }
                     Statement::Expr(expr) => {

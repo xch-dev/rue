@@ -1590,3 +1590,41 @@ fn main(value: Int) -> Int {
     );
     assert!(!has_errors);
 }
+
+#[test]
+fn returns_in_function_bodies_are_lints() {
+    let source = "\
+fn main() -> Int {
+    #[allow(unnecessary_return)]
+    return 1;
+}
+
+fn early() -> Int {
+    return 1;
+    2
+}
+
+fn block() -> Int {
+    {
+        return 1;
+    }
+}
+
+test fn tests() {
+    assert main() == early();
+    assert block() == 1;
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // A `return` in an expression block would only exit the block, so it's still an error
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 7: Unnecessary `return` statement, since the function body can end in an expression instead",
+            "Error 13: Cannot use a `return` statement here, end the block with an expression instead",
+        ]
+    );
+    assert!(has_errors);
+}

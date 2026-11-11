@@ -83,7 +83,7 @@ impl Visitor<'_> {
                             }
                         }
                         // Nothing after these statements is lowered
-                        Statement::Return(hir) => return self.visit_hir(hir),
+                        Statement::Return(hir, _) => return self.visit_hir(hir),
                         Statement::Raise(hir, _) => return self.visit_all(hir),
                     }
                 }
@@ -217,7 +217,7 @@ mod tests {
         let unresolved = db.alloc_hir(Hir::Unresolved);
 
         let block = db.alloc_hir(Hir::Block(Block {
-            statements: vec![Statement::Return(one)],
+            statements: vec![Statement::Return(one, srcloc())],
             body: Some(unresolved),
         }));
         let symbol = binding(&mut db, block);

@@ -626,7 +626,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
         match stmt {
             Statement::Let(_) => self.lower_let_stmts(env, stmts, body),
-            Statement::Return(hir) => self.lower_block(env, vec![], Some(hir)),
+            Statement::Return(hir, _) => self.lower_block(env, vec![], Some(hir)),
             Statement::Assert(condition, srcloc) => {
                 self.lower_assert(env, stmts, condition, srcloc, body)
             }
