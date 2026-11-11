@@ -28,6 +28,7 @@ tower-lsp = { workspace = true }
 send_wrapper = { workspace = true }
 rowan = { workspace = true }
 indexmap = { workspace = true }
+toml = { workspace = true }
 
 [dev-dependencies]
 expect-test = { workspace = true }

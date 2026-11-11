@@ -14,7 +14,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use rue_options::find_project;
+use rue_options::{UnknownLint, find_project};
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
@@ -158,8 +158,16 @@ impl Backend {
             return IndexMap::new();
         };
 
-        let Ok(Some(project)) = find_project(&uri_path, false) else {
-            return IndexMap::new();
+        let project = match find_project(&uri_path, false) {
+            Ok(Some(project)) => project,
+            Err(rue_options::Error::Toml { path, error }) => {
+                // Nothing can be compiled without the manifest, so only report why it's invalid
+                let Ok(kind) = normalize_path(&path) else {
+                    return IndexMap::new();
+                };
+                return IndexMap::from([(kind, vec![manifest_error(&path, &error)])]);
+            }
+            Ok(None) | Err(_) => return IndexMap::new(),
         };
 
         let Ok(source_kind) = normalize_path(&uri_path) else {
@@ -430,7 +438,7 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
 }
 
 /// Reports names in the `[lints]` section of `Rue.toml` that don't refer to a known lint.
-fn manifest_diagnostics(path: &Path, unknown_lints: &[String]) -> Vec<Diagnostic> {
+fn manifest_diagnostics(path: &Path, unknown_lints: &[UnknownLint]) -> Vec<Diagnostic> {
     if unknown_lints.is_empty() {
         return Vec::new();
     }
@@ -439,55 +447,28 @@ fn manifest_diagnostics(path: &Path, unknown_lints: &[String]) -> Vec<Diagnostic
 
     unknown_lints
         .iter()
-        .map(|name| Diagnostic {
-            range: find_lint_key(&text, name)
-                .map(|span| offsets_to_range(&text, span.start, span.end))
-                .unwrap_or_default(),
-            message: format!("Unknown lint `{name}`"),
+        .map(|lint| Diagnostic {
+            range: offsets_to_range(&text, lint.span.start, lint.span.end),
+            message: format!("Unknown lint `{}`", lint.name),
             severity: Some(DiagnosticSeverity::WARNING),
             ..Diagnostic::default()
         })
         .collect()
 }
 
-/// Finds the span of a key in the `[lints]` section of a manifest, which may be quoted.
-fn find_lint_key(text: &str, name: &str) -> Option<std::ops::Range<usize>> {
-    let mut in_lints = false;
-    let mut offset = 0;
+/// Reports why `Rue.toml` couldn't be parsed, such as an invalid lint level.
+fn manifest_error(path: &Path, error: &toml::de::Error) -> Diagnostic {
+    let text = fs::read_to_string(path).unwrap_or_default();
 
-    for line in text.split_inclusive('\n') {
-        let start = offset;
-        offset += line.len();
-
-        let trimmed = line.trim_start();
-
-        if trimmed.starts_with('[') {
-            in_lints = trimmed.trim_end() == "[lints]";
-            continue;
-        }
-
-        if !in_lints {
-            continue;
-        }
-
-        let key_start = start + (line.len() - trimmed.len());
-
-        for quote in ["", "\"", "'"] {
-            let Some(rest) = trimmed
-                .strip_prefix(quote)
-                .and_then(|rest| rest.strip_prefix(name))
-                .and_then(|rest| rest.strip_prefix(quote))
-            else {
-                continue;
-            };
-
-            if rest.trim_start().starts_with('=') {
-                return Some(key_start..key_start + name.len() + quote.len() * 2);
-            }
-        }
+    Diagnostic {
+        range: error
+            .span()
+            .map(|span| offsets_to_range(&text, span.start, span.end))
+            .unwrap_or_default(),
+        message: error.message().to_string(),
+        severity: Some(DiagnosticSeverity::ERROR),
+        ..Diagnostic::default()
     }
-
-    None
 }
 
 #[cfg(test)]

@@ -1834,6 +1834,7 @@ dependencies = [
  "send_wrapper",
  "serde_json",
  "tokio",
+ "toml",
  "tower",
  "tower-lsp",
 ]

@@ -1,29 +1,42 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ops::Range};
 
 use rue_diagnostic::{Lint, LintLevel, LintLevels};
 use serde::{Deserialize, Serialize};
+use toml::Spanned;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub compiler: CompilerSection,
     #[serde(default)]
     pub formatter: FormatOptions,
-    /// Overrides for the level of each lint, keyed by lint name.
+    /// Overrides for the level of each lint, keyed by lint name. The span of each name is kept so
+    /// that unknown lints can be reported where they're written.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub lints: BTreeMap<String, LintLevel>,
+    pub lints: BTreeMap<Spanned<String>, LintLevel>,
+}
+
+/// A name in the `[lints]` section of a manifest that doesn't refer to a known lint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownLint {
+    pub name: String,
+    /// The span of the name in the manifest, including any quotes.
+    pub span: Range<usize>,
 }
 
 impl Manifest {
-    /// Applies the `[lints]` section to the given lint levels, and returns the names of any
-    /// lints that don't exist.
-    pub fn apply_lints(&self, levels: &mut LintLevels) -> Vec<String> {
+    /// Applies the `[lints]` section to the given lint levels, and returns any lints that don't
+    /// exist.
+    pub fn apply_lints(&self, levels: &mut LintLevels) -> Vec<UnknownLint> {
         let mut unknown = Vec::new();
 
         for (name, &level) in &self.lints {
-            if let Some(lint) = Lint::from_name(name) {
+            if let Some(lint) = Lint::from_name(name.get_ref()) {
                 levels.set(lint, level);
             } else {
-                unknown.push(name.clone());
+                unknown.push(UnknownLint {
+                    name: name.get_ref().clone(),
+                    span: name.span(),
+                });
             }
         }
 
@@ -91,7 +104,11 @@ mod tests {
         .unwrap();
 
         let mut levels = LintLevels::default();
-        let unknown = manifest.apply_lints(&mut levels);
+        let unknown = manifest
+            .apply_lints(&mut levels)
+            .into_iter()
+            .map(|lint| lint.name)
+            .collect::<Vec<_>>();
 
         assert_eq!(unknown, vec!["not_a_lint".to_string()]);
         assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
@@ -123,5 +140,28 @@ mod tests {
         let manifest = Manifest::default();
         let text = toml::to_string(&manifest).unwrap();
         assert!(!text.contains("[lints]"));
+    }
+
+    #[test]
+    fn unknown_lints_have_spans_in_any_table_layout() {
+        for text in [
+            "[lints] # project lints\ntypo = \"allow\"\n",
+            "lints = { typo = \"allow\" }\n",
+            "lints.typo = \"allow\"\n",
+            "[lints]\n\"typo\" = \"allow\"\n",
+        ] {
+            let manifest: Manifest = toml::from_str(&format!("{text}[compiler]\n")).unwrap();
+
+            let unknown = manifest.apply_lints(&mut LintLevels::default());
+
+            assert_eq!(unknown.len(), 1, "{text}");
+            assert_eq!(unknown[0].name, "typo");
+        }
+
+        let text = "[compiler]\n\n[lints]\nunused_binding = \"allow\"\n\"typo\" = \"deny\"\n";
+        let manifest: Manifest = toml::from_str(text).unwrap();
+        let unknown = manifest.apply_lints(&mut LintLevels::default());
+
+        assert_eq!(&text[unknown[0].span.clone()], "\"typo\"");
     }
 }

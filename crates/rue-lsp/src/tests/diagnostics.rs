@@ -85,6 +85,50 @@ fn test_diagnostics_manifest_unknown_lints() {
 }
 
 #[test]
+fn test_diagnostics_manifest_unknown_lints_in_other_layouts() {
+    let project = TestProject::with_manifest(
+        Some(
+            "lints.dotted_typo = \"allow\"\n\n[compiler] # options\nentrypoint = \".\"\nstd = false\n",
+        ),
+        &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
+    );
+
+    expect![[r#"
+        Rue.toml:0:6-0:17 Warning: Unknown lint `dotted_typo`
+        main.rue: <none>
+    "#]]
+    .assert_eq(&project.change("main.rue", None));
+
+    let project = TestProject::with_manifest(
+        Some(
+            "lints = { inline_typo = \"allow\" }\n\n[compiler]\nentrypoint = \".\"\nstd = false\n",
+        ),
+        &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
+    );
+
+    expect![[r#"
+        Rue.toml:0:10-0:21 Warning: Unknown lint `inline_typo`
+        main.rue: <none>
+    "#]]
+    .assert_eq(&project.change("main.rue", None));
+}
+
+#[test]
+fn test_diagnostics_manifest_invalid_lint_level() {
+    let project = TestProject::with_manifest(
+        Some(
+            "[compiler]\nentrypoint = \".\"\nstd = false\n\n[lints] # project lints\nunused_binding = \"forbid\"\n",
+        ),
+        &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
+    );
+
+    expect![[r#"
+        Rue.toml:5:17-5:25 Error: Unknown lint level `forbid`, expected `allow`, `warn` or `deny`
+    "#]]
+    .assert_eq(&project.change("main.rue", None));
+}
+
+#[test]
 fn test_diagnostics_inline_if_may_raise() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
@@ -153,7 +197,10 @@ fn test_diagnostics_invalid_manifest() {
         &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
     );
 
-    expect![[""]].assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    x\n}\n")));
+    expect![[r#"
+        Rue.toml:0:9-0:9 Error: unclosed table, expected `]`
+    "#]]
+    .assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    x\n}\n")));
 }
 
 #[test]

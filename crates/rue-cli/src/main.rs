@@ -208,10 +208,10 @@ fn lints() {
 
 /// Applies the CLI lint overrides to the project, and warns about unknown lints in `Rue.toml`.
 fn configure_lints(project: &mut Project, args: &LintArgs) {
-    for name in &project.unknown_lints {
+    for lint in &project.unknown_lints {
         eprintln!(
             "{}",
-            format!("Warning: Unknown lint `{name}` in Rue.toml")
+            format!("Warning: Unknown lint `{}` in Rue.toml", lint.name)
                 .yellow()
                 .bold()
         );
