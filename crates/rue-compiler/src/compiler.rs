@@ -236,6 +236,13 @@ impl Compiler {
         SrcLoc::new(self.source.clone(), span)
     }
 
+    /// The location of a node without any whitespace or comments at its start or end, which the
+    /// parser can include in it. This is exactly the code that was written, so it can be replaced
+    /// by a suggestion.
+    pub fn trimmed_srcloc(&self, node: &SyntaxNode) -> SrcLoc {
+        self.srcloc(&trimmed_range(node))
+    }
+
     pub fn local_name(&self, token: &SyntaxToken) -> Name {
         let srcloc = self.srcloc(token);
         Name::new(token.text().to_string(), Some(srcloc))
@@ -463,13 +470,13 @@ impl Compiler {
     /// Records the type, location and scope of a compiled expression in the database, so that
     /// they're available after compilation (such as to lints). The builtin values (such as `nil`) share
     /// a HIR node, so the value is given a node of its own first, which is returned.
-    pub fn record_value(&mut self, node: &impl GetTextRange, mut value: Value) -> Value {
+    pub fn record_value(&mut self, node: &SyntaxNode, mut value: Value) -> Value {
         if self.builtins.is_shared_hir(value.hir) {
             let hir = self.db.hir(value.hir).clone();
             value = value.with_hir(self.db.alloc_hir(hir));
         }
 
-        let srcloc = self.srcloc(node);
+        let srcloc = self.trimmed_srcloc(node);
         self.db.set_hir_type(value.hir, value.ty);
         self.db.set_hir_srcloc(value.hir, srcloc);
         self.db.set_hir_scope(value.hir, self.last_scope_id());
@@ -716,6 +723,32 @@ impl Compiler {
     pub fn is_unresolved(&mut self, ty: TypeId) -> bool {
         let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
         matches!(self.ty(semantic), Type::Unresolved)
+    }
+}
+
+/// The range of a node without any whitespace or comments at its start or end.
+pub fn trimmed_range(node: &SyntaxNode) -> TextRange {
+    let range = node.text_range();
+
+    let mut first = node.first_token();
+    while let Some(token) = first.as_ref().filter(|token| token.kind().is_trivia()) {
+        first = token
+            .next_token()
+            .filter(|next| next.text_range().end() <= range.end());
+    }
+
+    let mut last = node.last_token();
+    while let Some(token) = last.as_ref().filter(|token| token.kind().is_trivia()) {
+        last = token
+            .prev_token()
+            .filter(|prev| prev.text_range().start() >= range.start());
+    }
+
+    match (first, last) {
+        (Some(first), Some(last)) if first.text_range().start() <= last.text_range().end() => {
+            TextRange::new(first.text_range().start(), last.text_range().end())
+        }
+        _ => range,
     }
 }
 

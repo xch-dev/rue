@@ -63,10 +63,16 @@ impl<'a> LintContext<'a> {
         self.levels.is_enabled_anywhere(lint)
     }
 
-    /// Reports a lint at its configured level. Nothing is reported if the lint is allowed.
-    pub fn report(&mut self, lint: Lint, srcloc: SrcLoc, message: impl Into<String>) {
+    /// Reports a lint at its configured level, and returns the diagnostic so that notes and
+    /// suggestions can be added to it. Nothing is reported if the lint is allowed.
+    pub fn report(
+        &mut self,
+        lint: Lint,
+        srcloc: SrcLoc,
+        message: impl Into<String>,
+    ) -> Option<&mut Diagnostic> {
         let level = self.levels.report(lint, &srcloc);
-        self.push(lint, srcloc, message, level);
+        self.push(lint, srcloc, message, level)
     }
 
     /// Reports the names in attributes that don't refer to a known lint or group. An attribute
@@ -98,10 +104,14 @@ impl<'a> LintContext<'a> {
         }
     }
 
-    fn push(&mut self, lint: Lint, srcloc: SrcLoc, message: impl Into<String>, level: LintLevel) {
-        let Some(severity) = level.severity() else {
-            return;
-        };
+    fn push(
+        &mut self,
+        lint: Lint,
+        srcloc: SrcLoc,
+        message: impl Into<String>,
+        level: LintLevel,
+    ) -> Option<&mut Diagnostic> {
+        let severity = level.severity()?;
 
         self.diagnostics.push(Diagnostic::new(
             srcloc,
@@ -111,6 +121,8 @@ impl<'a> LintContext<'a> {
             },
             severity,
         ));
+
+        self.diagnostics.last_mut()
     }
 
     pub fn into_diagnostics(self) -> Vec<Diagnostic> {

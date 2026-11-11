@@ -13,7 +13,15 @@ tests:
   byte_cost: 1164000
   total_cost: 1167402
 diagnostics:
-- Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:3:9
-- Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:12:5
-- Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:17:5
-- Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:22:5
+- |-
+  Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:3:9
+    help: Replace the `return` statement with its value
+- |-
+  Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:12:5
+    help: Replace the `return` statement with its value
+- |-
+  Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:17:5
+    help: Replace the `return` statement with its value
+- |-
+  Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:22:5
+    help: Replace the `return` statement with its value

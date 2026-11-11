@@ -183,7 +183,7 @@ fn test_diagnostics_inline_if_may_raise() {
 
     expect![[r#"
         Rue.toml: <none>
-        main.rue:1:4-4:4 Warning[inline_if_may_raise]: A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead
+        main.rue:1:4-3:5 Warning[inline_if_may_raise]: A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead
     "#]].assert_eq(&project.change(
         "main.rue",
         Some("fn main(x: Int) -> Int {\n    inline if x > 5 {\n        raise;\n    }\n    x + 100\n}\n"),
@@ -320,5 +320,29 @@ fn test_diagnostics_after_non_ascii() {
     .assert_eq(&project.change(
         "main.rue",
         Some("fn main() -> Int {\n    let s = \"\u{1F600}\"; x\n}\n"),
+    ));
+}
+
+#[test]
+fn test_code_actions_apply_suggestions() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    expect![[r#"
+        Remove the `+` (preferred: true):
+        fn main() -> Int {
+            let value = 42;
+            return value;
+        }
+
+        Replace the `return` statement with its value (preferred: true):
+        fn main() -> Int {
+            let value = +42;
+            value
+        }
+
+    "#]]
+    .assert_eq(&project.code_actions(
+        "main.rue",
+        "fn main() -> Int {\n    let value = +42;\n    return value;\n}\n",
     ));
 }

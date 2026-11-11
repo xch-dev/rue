@@ -50,7 +50,7 @@ pub fn compile(source: String) -> Result<Compilation, JsError> {
     let diagnostics = ctx
         .take_diagnostics()
         .iter()
-        .map(|diagnostic| diagnostic.message(Path::new(".")))
+        .map(|diagnostic| diagnostic.full_message(Path::new(".")))
         .collect();
 
     Ok(Compilation {

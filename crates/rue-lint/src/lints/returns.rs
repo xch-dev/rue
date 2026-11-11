@@ -1,4 +1,4 @@
-use rue_diagnostic::Lint;
+use rue_diagnostic::{Applicability, Lint, Suggestion};
 use rue_hir::{Hir, HirId, Statement, SymbolId};
 
 use crate::{HirLintPass, LintContext};
@@ -18,21 +18,38 @@ impl HirLintPass for UnnecessaryReturn {
             return;
         };
 
-        let srclocs = block
-            .statements
-            .iter()
-            .filter_map(|statement| match statement {
-                Statement::Return(_, srcloc) => Some(srcloc.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
+        let block = block.clone();
 
-        for srcloc in srclocs {
-            cx.report(
+        for (index, statement) in block.statements.iter().enumerate() {
+            let Statement::Return(value, srcloc) = statement else {
+                continue;
+            };
+
+            // The `return` can only be replaced with its value if it's the last thing in the body.
+            // A `return` without a value returns nil.
+            let replacement =
+                (index == block.statements.len() - 1 && block.body.is_none()).then(|| {
+                    cx.db()
+                        .hir_srcloc(*value)
+                        .map_or("nil".to_string(), |value| value.text().to_string())
+                });
+
+            let Some(diagnostic) = cx.report(
                 Lint::UnnecessaryReturn,
-                srcloc,
+                srcloc.clone(),
                 "Unnecessary `return` statement, since the function body can end in an expression instead",
-            );
+            ) else {
+                continue;
+            };
+
+            if let Some(replacement) = replacement {
+                diagnostic.suggestions.push(Suggestion::replace(
+                    "Replace the `return` statement with its value",
+                    srcloc.clone(),
+                    replacement,
+                    Applicability::MachineApplicable,
+                ));
+            }
         }
     }
 }

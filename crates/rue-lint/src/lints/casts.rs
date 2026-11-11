@@ -1,4 +1,4 @@
-use rue_diagnostic::Lint;
+use rue_diagnostic::{Applicability, Lint, Suggestion};
 use rue_hir::{Hir, HirId};
 use rue_types::Comparison;
 
@@ -20,11 +20,12 @@ impl HirLintPass for UnnecessaryCast {
 
         let db = cx.db();
 
-        let (Some(from), Some(to), Some(srcloc), Some(scope)) = (
+        let (Some(from), Some(to), Some(srcloc), Some(scope), Some(value)) = (
             db.hir_type(value),
             db.hir_type(hir),
             db.hir_srcloc(hir).cloned(),
             db.hir_scope(hir),
+            db.hir_srcloc(value).cloned(),
         ) else {
             return;
         };
@@ -36,10 +37,17 @@ impl HirLintPass for UnnecessaryCast {
         let from = cx.type_name(scope, from);
         let to = cx.type_name(scope, to);
 
-        cx.report(
+        if let Some(diagnostic) = cx.report(
             Lint::UnnecessaryCast,
-            srcloc,
+            srcloc.clone(),
             format!("Unnecessary cast from `{from}` to `{to}`, since they are compatible with each other"),
-        );
+        ) {
+            diagnostic.suggestions.push(Suggestion::replace(
+                "Remove the cast",
+                srcloc,
+                value.text(),
+                Applicability::MachineApplicable,
+            ));
+        }
     }
 }

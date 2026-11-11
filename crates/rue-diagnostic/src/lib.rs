@@ -5,6 +5,7 @@ mod lint;
 mod name;
 mod severity;
 mod srcloc;
+mod suggestion;
 
 pub use diagnostic::*;
 pub use kind::*;
@@ -13,3 +14,4 @@ pub use lint::*;
 pub use name::*;
 pub use severity::*;
 pub use srcloc::*;
+pub use suggestion::*;

@@ -28,6 +28,8 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 diagnostics:
-- Unnecessary `+` operator, since it has no effect at operators.rue:2:12
+- |-
+  Unnecessary `+` operator, since it has no effect at operators.rue:2:12
+    help: Remove the `+`
 - Condition always evaluates to `true` at operators.rue:86:12
 - Condition always evaluates to `true` at operators.rue:87:12

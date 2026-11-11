@@ -54,6 +54,7 @@ pub fn compile_block(
     let mut return_value = None;
     let mut return_types = Vec::new();
     let mut implicit_return = false;
+    let mut trailing_expr = None;
 
     for stmt in block.items() {
         let stmt = match stmt {
@@ -73,6 +74,11 @@ pub fn compile_block(
                 let value = compile_expr(ctx, &expr, expected_type);
 
                 return_types.push(value.ty);
+
+                // The trailing expression is kept even if a `return` or `raise` comes before it, so
+                // that the HIR matches the code. It's never evaluated in that case, since lowering
+                // stops at the `return` or `raise`.
+                trailing_expr.get_or_insert(value.hir);
 
                 if return_value.is_none() {
                     return_value = Some(value);
@@ -95,7 +101,7 @@ pub fn compile_block(
                 Statement::Expr(ExprStatement {
                     hir: value.hir,
                     always_nil: ctx.is_castable(value.ty, ctx.builtins().types.nil),
-                    srcloc: ctx.srcloc(stmt.syntax()),
+                    srcloc: ctx.trimmed_srcloc(stmt.syntax()),
                 })
             }
             AstStmt::LetStmt(stmt) => {
@@ -174,7 +180,7 @@ pub fn compile_block(
                     condition: condition.hir,
                     then: then_block.hir,
                     inline: stmt.inline().is_some(),
-                    srcloc: ctx.srcloc(stmt.syntax()),
+                    srcloc: ctx.trimmed_srcloc(stmt.syntax()),
                 })
             }
             AstStmt::ReturnStmt(stmt) => {
@@ -217,7 +223,7 @@ pub fn compile_block(
                     return_value = Some(value.clone());
                 }
 
-                Statement::Return(value.hir, ctx.srcloc(stmt.syntax()))
+                Statement::Return(value.hir, ctx.trimmed_srcloc(stmt.syntax()))
             }
             AstStmt::AssertStmt(stmt) => {
                 let value = if let Some(expr) = stmt.expr() {
@@ -292,9 +298,7 @@ pub fn compile_block(
 
     let hir = ctx.alloc_hir(Hir::Block(Block {
         statements,
-        body: return_value
-            .as_ref()
-            .and_then(|value| implicit_return.then_some(value.hir)),
+        body: trailing_expr,
     }));
 
     ctx.revert_mappings(index, range.end());

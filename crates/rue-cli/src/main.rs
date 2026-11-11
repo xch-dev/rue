@@ -334,7 +334,7 @@ fn report_diagnostics(diagnostics: Vec<Diagnostic>, base_path: &Path) -> bool {
     let mut has_errors = false;
 
     for diagnostic in diagnostics {
-        let message = diagnostic.message(base_path);
+        let message = diagnostic.full_message(base_path);
         let lint = diagnostic
             .lint()
             .map(|lint| format!("[{lint}]"))
