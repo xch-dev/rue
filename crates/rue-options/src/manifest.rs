@@ -41,7 +41,7 @@ impl Manifest {
             }
         }
 
-        levels.apply(overrides);
+        levels.apply(&overrides);
 
         unknown
     }

@@ -303,12 +303,15 @@ impl LintLevels {
 
     /// Sets the level of each lint or group, in order. A lint's own level takes precedence over
     /// the level of any group it's in, regardless of the order they're given in.
-    pub fn apply(&mut self, overrides: impl IntoIterator<Item = (LintName, LintLevel)>) {
-        let (lints, groups): (Vec<_>, Vec<_>) = overrides
-            .into_iter()
-            .partition(|(name, _)| matches!(name, LintName::Lint(_)));
+    pub fn apply(&mut self, overrides: &[(LintName, LintLevel)]) {
+        let groups = overrides
+            .iter()
+            .filter(|(name, _)| matches!(name, LintName::Group(_)));
+        let lints = overrides
+            .iter()
+            .filter(|(name, _)| matches!(name, LintName::Lint(_)));
 
-        for (name, level) in groups.into_iter().chain(lints) {
+        for &(name, level) in groups.chain(lints) {
             for &lint in name.lints() {
                 self.set(lint, level);
             }
@@ -396,7 +399,7 @@ mod tests {
             ],
         ] {
             let mut levels = LintLevels::default();
-            levels.apply(overrides);
+            levels.apply(&overrides);
 
             assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Allow);
             assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Deny);
@@ -408,7 +411,7 @@ mod tests {
 
         // Otherwise, the last level wins
         let mut levels = LintLevels::default();
-        levels.apply([
+        levels.apply(&[
             (LintName::Lint(Lint::UnusedBinding), LintLevel::Deny),
             (LintName::Group(LintGroup::Unused), LintLevel::Deny),
             (LintName::Group(LintGroup::Unused), LintLevel::Allow),

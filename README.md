@@ -91,15 +91,15 @@ unused_binding = "allow"
 unnecessary_cast = "allow"
 ```
 
-A lint's own level takes precedence over the level of its group, regardless of the order they're written in. Here every `unused_*` lint is denied, except for `unused_binding`.
+Within `Rue.toml`, a lint's own level takes precedence over the level of its group, regardless of the order they're written in. Here every `unused_*` lint is denied, except for `unused_binding`.
 
-Levels can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn` and `-D`/`--deny`, which take precedence over `Rue.toml`. As in `Rue.toml`, a lint's own flag takes precedence over its group's. Otherwise, if a lint is passed more than once, the last flag wins:
+Levels can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn` and `-D`/`--deny`, which take precedence over `Rue.toml`, including a group flag over a lint set individually in `Rue.toml`. Among the flags, a lint's own flag takes precedence over its group's. Otherwise, if a lint is passed more than once, the last flag wins:
 
 ```bash
 rue build -D unused -A unused_import
 ```
 
-Levels can also be set in the source code, with an `allow`, `warn` or `deny` attribute on an item (such as a function, constant, struct, type alias, import or module) or a statement. The attribute applies to everything inside of what it's attached to, and the innermost one takes precedence over any outer attributes and the project's levels, whether it names a lint or a group:
+Levels can also be set in the source code, with an `allow`, `warn` or `deny` attribute on an item (such as a function, constant, struct, type alias, import or module) or a statement. The attribute applies to everything inside of what it's attached to, and the innermost one takes precedence over any outer attributes and the project's levels, whether it names a lint or a group. If an item or statement has more than one attribute for the same lint, the last one wins:
 
 ```rs
 #[deny(unused_binding)]

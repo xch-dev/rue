@@ -105,9 +105,10 @@ const LINT_FLAGS: [(&str, char, LintLevel, &str); 3] = [
 ];
 
 impl LintArgs {
-    /// Applies the overrides, in the order they were passed.
+    /// Applies the overrides on top of the given levels. Groups are applied before individual
+    /// lints, and otherwise the flags are applied in the order they were passed.
     fn apply(&self, levels: &mut LintLevels) {
-        levels.apply(self.overrides.iter().copied());
+        levels.apply(&self.overrides);
     }
 }
 

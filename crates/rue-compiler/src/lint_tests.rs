@@ -385,7 +385,7 @@ fn groups_set_the_level_of_each_lint_in_them() {
     let (reports, has_errors) = reports(SOURCE, |options| {
         options
             .lints
-            .apply([(LintName::Group(LintGroup::Unused), LintLevel::Deny)]);
+            .apply(&[(LintName::Group(LintGroup::Unused), LintLevel::Deny)]);
     });
 
     assert_eq!(
@@ -417,10 +417,14 @@ fn other() -> Int {
     3
 }
 
+// On the same item or statement, the later attribute wins, whether it names a lint or a group
 #[allow(unused)]
 #[deny(unused_binding)]
 fn main() -> Int {
     let e = 1;
+    #[deny(unused_binding)]
+    #[allow(unused)]
+    let f = 2;
     other()
 }
 ";
@@ -432,7 +436,7 @@ fn main() -> Int {
         vec![
             "Error 5: Unused binding `b`",
             "Warning 13: Unused binding `d`",
-            "Error 20: Unused binding `e`",
+            "Error 21: Unused binding `e`",
         ]
     );
     assert!(has_errors);
@@ -451,7 +455,7 @@ fn main() -> Int {
 ";
 
     let (reports, has_errors) = reports(source, |options| {
-        options.lints.apply([
+        options.lints.apply(&[
             (LintName::Group(LintGroup::Unused), LintLevel::Deny),
             (LintName::Lint(Lint::UnusedBinding), LintLevel::Allow),
         ]);
