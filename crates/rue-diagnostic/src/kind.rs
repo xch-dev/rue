@@ -11,6 +11,18 @@ pub enum DiagnosticKind {
     #[error("Unknown `{0}`")]
     UnknownToken(String),
 
+    #[error("Attributes can only be used on items and statements")]
+    MisplacedAttribute,
+
+    #[error("Unknown attribute `{0}`")]
+    UnknownAttribute(String),
+
+    #[error("Unknown lint `{0}`")]
+    UnknownLint(String),
+
+    #[error("Attribute `{0}` expects a list of lint names")]
+    MissingLintNames(String),
+
     #[error("Expected {}, found {}", list_of(.1), .0)]
     UnexpectedToken(String, Vec<String>),
 

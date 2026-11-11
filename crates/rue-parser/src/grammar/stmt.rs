@@ -3,6 +3,7 @@ use rowan::Checkpoint;
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
+        attribute::attributes,
         binding::binding,
         expect_semicolon,
         expr::{ExprOptions, expr, expr_with},
@@ -20,22 +21,33 @@ pub enum StatementKind {
 pub fn stmt(p: &mut Parser) -> StatementKind {
     let cp = p.checkpoint();
 
+    attributes(p);
+
+    // Expressions start after the attributes, so that the attributes belong to the statement
+    // rather than to its expression. An `if` statement is the statement node itself, so it
+    // includes them.
+    let expr_cp = if p.at_quiet(T![if]) || p.at_quiet(T![inline]) {
+        cp
+    } else {
+        p.checkpoint()
+    };
+
     let inline = p.at_quiet(T![inline]) && p.expect(T![inline]);
 
     if p.at_quiet(T![let]) {
         let_stmt(p, cp);
     } else if p.at_quiet(T![return]) && !inline {
-        return_stmt(p);
+        return_stmt(p, cp);
     } else if p.at_quiet(T![assert]) && !inline {
-        assert_stmt(p);
+        assert_stmt(p, cp);
     } else if p.at_quiet(T![raise]) && !inline {
-        raise_stmt(p);
+        raise_stmt(p, cp);
     } else if p.at_quiet(T![debug]) && !inline {
-        debug_stmt(p);
+        debug_stmt(p, cp);
     } else {
         if expr_with(
             p,
-            cp,
+            expr_cp,
             ExprOptions {
                 minimum_binding_power: 0,
                 allow_statement: true,
@@ -71,8 +83,8 @@ fn let_stmt(p: &mut Parser, cp: Checkpoint) {
     p.finish();
 }
 
-fn return_stmt(p: &mut Parser) {
-    p.start(SyntaxKind::ReturnStmt);
+fn return_stmt(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::ReturnStmt);
     p.expect(T![return]);
     if !p.at(T![;]) {
         expr(p);
@@ -81,16 +93,16 @@ fn return_stmt(p: &mut Parser) {
     p.finish();
 }
 
-fn assert_stmt(p: &mut Parser) {
-    p.start(SyntaxKind::AssertStmt);
+fn assert_stmt(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::AssertStmt);
     p.expect(T![assert]);
     expr(p);
     expect_semicolon(p);
     p.finish();
 }
 
-fn raise_stmt(p: &mut Parser) {
-    p.start(SyntaxKind::RaiseStmt);
+fn raise_stmt(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::RaiseStmt);
     p.expect(T![raise]);
     if !p.at(T![;]) {
         expr(p);
@@ -99,8 +111,8 @@ fn raise_stmt(p: &mut Parser) {
     p.finish();
 }
 
-fn debug_stmt(p: &mut Parser) {
-    p.start(SyntaxKind::DebugStmt);
+fn debug_stmt(p: &mut Parser, cp: Checkpoint) {
+    p.start_at(cp, SyntaxKind::DebugStmt);
     p.expect(T![debug]);
     expr(p);
     expect_semicolon(p);

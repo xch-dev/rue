@@ -4,8 +4,9 @@ use rue_diagnostic::DiagnosticKind;
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
-        binding::binding, block::block, delimited_list, delimited_list_with_stops,
-        expect_semicolon, expr::expr, generics::generic_parameters, skip_balanced, ty::ty,
+        attribute::attributes, binding::binding, block::block, delimited_list,
+        delimited_list_with_stops, expect_semicolon, expr::expr, generics::generic_parameters,
+        skip_balanced, ty::ty,
     },
 };
 
@@ -20,6 +21,8 @@ pub fn item(p: &mut Parser) {
 fn item_with(p: &mut Parser, top_level: bool) {
     let start = p.pos();
     let cp = p.checkpoint();
+
+    attributes(p);
 
     let export = p.try_eat(T![export]);
     let inline = p.try_eat(T![inline]);

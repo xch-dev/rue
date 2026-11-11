@@ -1,21 +1,23 @@
 use std::ops::Range;
 
 use rowan::TextRange;
-use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, LintLevel, LintLevels, Source, SrcLoc};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, Source, SrcLoc};
 use rue_hir::{Database, ScopeId};
 use rue_types::{BuiltinTypes, Comparison, TypeId};
+
+use crate::ScopedLintLevels;
 
 /// The state shared by lint passes, which collects the diagnostics they report.
 #[derive(Debug)]
 pub struct LintContext<'a> {
     db: &'a mut Database,
     types: &'a BuiltinTypes,
-    levels: LintLevels,
+    levels: ScopedLintLevels,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> LintContext<'a> {
-    pub fn new(db: &'a mut Database, types: &'a BuiltinTypes, levels: LintLevels) -> Self {
+    pub fn new(db: &'a mut Database, types: &'a BuiltinTypes, levels: ScopedLintLevels) -> Self {
         Self {
             db,
             types,
@@ -32,18 +34,14 @@ impl<'a> LintContext<'a> {
         self.types
     }
 
-    pub fn level(&self, lint: Lint) -> LintLevel {
-        self.levels.get(lint)
-    }
-
-    /// Whether the lint will be reported, so that passes can skip work for allowed lints.
+    /// Whether the lint could be reported anywhere, so that passes can skip work for allowed lints.
     pub fn is_enabled(&self, lint: Lint) -> bool {
-        self.level(lint) != LintLevel::Allow
+        self.levels.is_enabled_anywhere(lint)
     }
 
     /// Reports a lint at its configured level. Nothing is reported if the lint is allowed.
     pub fn report(&mut self, lint: Lint, srcloc: SrcLoc, message: impl Into<String>) {
-        let Some(severity) = self.level(lint).severity() else {
+        let Some(severity) = self.levels.get(lint, &srcloc).severity() else {
             return;
         };
 

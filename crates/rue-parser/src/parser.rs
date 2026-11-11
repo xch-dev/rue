@@ -145,6 +145,7 @@ impl Parser {
                 TokenKind::Comma => T![,],
                 TokenKind::Colon => T![:],
                 TokenKind::Semicolon => T![;],
+                TokenKind::Pound => T![#],
                 TokenKind::Unknown => {
                     diagnostics.push(Diagnostic::new(
                         SrcLoc::new(source.clone(), token.span.clone()),

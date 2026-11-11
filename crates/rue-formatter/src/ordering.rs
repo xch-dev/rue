@@ -91,13 +91,24 @@ pub fn plan_document(
             }
             _ => None,
         };
-        let path_key = stream
-            .tokens_in(span)
+        // Attributes don't affect the order of items, so they're left out of the sort key
+        let key_tokens = item
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .filter(|token| {
+                !token.kind().is_trivia()
+                    && !token
+                        .parent_ancestors()
+                        .any(|node| node.kind() == SyntaxKind::Attribute)
+            })
+            .collect::<Vec<_>>();
+        let path_key = key_tokens
             .iter()
-            .filter(|token| !matches!(token.kind, T![import] | T![export] | T![;]))
-            .map(|token| token.text.as_str())
+            .filter(|token| !matches!(token.kind(), T![import] | T![export] | T![;]))
+            .map(rue_parser::SyntaxToken::text)
             .collect::<String>();
-        let keyword_key = stream.token(span.start()).text.as_str();
+        let keyword_key = key_tokens.first().map_or("", rue_parser::SyntaxToken::text);
 
         items.push(DocumentItem {
             span,

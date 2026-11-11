@@ -482,7 +482,7 @@ impl<'a> Formatter<'a> {
                 ItemBoundary::Module | ItemBoundary::Block => Separator::Hard,
             };
         }
-        if left.kind == T![;] {
+        if left.kind == T![;] || self.layout.facts(previous).is_attribute_end() {
             return Separator::Hard;
         }
         if left.kind == T![,] {
@@ -747,7 +747,10 @@ fn comment_separator(comment: &Comment, requested: Separator, ignore_trailing: b
 }
 
 fn no_space_after(kind: SyntaxKind) -> bool {
-    matches!(kind, T!['('] | T!['['] | T![::] | T![.] | T![...] | T![,])
+    matches!(
+        kind,
+        T!['('] | T!['['] | T![::] | T![.] | T![...] | T![,] | T![#]
+    )
 }
 
 fn no_space_before(kind: SyntaxKind) -> bool {

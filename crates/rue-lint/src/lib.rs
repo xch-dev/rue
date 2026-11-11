@@ -4,10 +4,12 @@
 //! so whether something is reported, and at what level, is decided entirely here.
 
 mod context;
+mod levels;
 mod lints;
 mod sites;
 
 pub use context::*;
+pub use levels::*;
 pub use sites::*;
 
 use std::collections::HashSet;
@@ -35,11 +37,14 @@ pub fn run_lints(
     levels: LintLevels,
     input: &LintInput<'_>,
 ) -> Vec<Diagnostic> {
+    let (levels, mut diagnostics) = ScopedLintLevels::new(levels, &input.documents);
+
     let mut cx = LintContext::new(db, types, levels);
 
     for pass in lints::PASSES {
         pass(&mut cx, input);
     }
 
-    cx.into_diagnostics()
+    diagnostics.extend(cx.into_diagnostics());
+    diagnostics
 }

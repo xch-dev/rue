@@ -58,6 +58,7 @@ impl TokenFlags {
     const ATTACHED_OPENER: u8 = 1 << 3;
     const ABSOLUTE_PATH_START: u8 = 1 << 4;
     const CONDITIONAL_GROUP: u8 = 1 << 5;
+    const ATTRIBUTE_END: u8 = 1 << 6;
 
     fn insert(&mut self, flag: u8) {
         self.0 |= flag;
@@ -83,6 +84,10 @@ impl TokenFacts {
 
     pub fn is_attached_opener(&self) -> bool {
         self.flags.contains(TokenFlags::ATTACHED_OPENER)
+    }
+
+    pub fn is_attribute_end(&self) -> bool {
+        self.flags.contains(TokenFlags::ATTRIBUTE_END)
     }
 
     pub fn is_absolute_path_start(&self) -> bool {
@@ -311,6 +316,24 @@ fn analyze_nodes(
             | AstNodeKind::NamedBinding
             | AstNodeKind::ListBindingItem
             | AstNodeKind::StructFieldBinding => {}
+            AstNodeKind::Attribute => {
+                for token in node
+                    .children_with_tokens()
+                    .filter_map(rowan::NodeOrToken::into_token)
+                    .filter(|token| !token.kind().is_trivia())
+                {
+                    let id = token_id(&token, stream)?;
+                    match token.kind() {
+                        T!['('] => {
+                            facts[id.index()].flags.insert(TokenFlags::ATTACHED_OPENER);
+                            facts[id.index()].flags.insert(TokenFlags::TRAILING_COMMA);
+                        }
+                        T!['['] => facts[id.index()].delimiter_style = Some(DelimiterStyle::Fill),
+                        T![']'] => facts[id.index()].flags.insert(TokenFlags::ATTRIBUTE_END),
+                        _ => {}
+                    }
+                }
+            }
             AstNodeKind::IfExpr => {
                 if !is_inline_conditional(&node) {
                     continue;

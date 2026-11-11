@@ -94,6 +94,20 @@ They can also be overridden for a single `build` or `test` with `-A`/`--allow`, 
 rue build -D unused_binding -A unused_import
 ```
 
+Levels can also be set in the source code, with an `allow`, `warn` or `deny` attribute on an item (such as a function, constant, struct, type alias, import or module) or a statement. The attribute applies to everything inside of what it's attached to, and the innermost one takes precedence over any outer attributes and the project's levels:
+
+```rs
+#[deny(unused_binding)]
+mod strict {
+    #[allow(unused_function, unused_parameter)]
+    fn reserved(value: Int) -> Int {
+        #[warn(unused_binding)]
+        let unused = 1;
+        42
+    }
+}
+```
+
 ## Testing
 
 Tests are just functions marked with `test`, and they live right alongside your code:
