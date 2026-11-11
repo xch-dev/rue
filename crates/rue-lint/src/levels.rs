@@ -142,6 +142,12 @@ impl ScopedLintLevels {
                     // A group sets the level of each lint in it, so a later attribute on the same
                     // node, or an attribute on a node inside it, overrides it for a single lint
                     for &lint in name.lints() {
+                        // A group that contains `unfulfilled_lint_expectation` can't expect it
+                        // either, so its level is left unchanged
+                        if expect && lint == Lint::UnfulfilledLintExpectation {
+                            continue;
+                        }
+
                         let scopes = scopes.entry((source.kind.clone(), lint)).or_default();
 
                         // A forbidden lint can't be set to any other level, by the project or by
@@ -184,12 +190,6 @@ impl ScopedLintLevels {
 
                     // The other lints in a group are still set if some of them are forbidden
                     if let Some((lint, forbidden_by)) = forbidden {
-                        // The attribute is already an error, and a forbidden lint can't fulfill
-                        // its expectation, so it isn't reported as unfulfilled as well
-                        if let Some(index) = expected {
-                            expectations[index].fulfilled = true;
-                        }
-
                         diagnostics.push(Diagnostic::new(
                             srcloc(source, argument.text_range()),
                             name.forbidden_override(lint, attribute_level, forbidden_by),
