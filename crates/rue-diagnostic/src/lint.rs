@@ -134,6 +134,7 @@ lints! {
     ConstantCondition("constant_condition", Warn, "Conditions that always evaluate to the same value"),
     DoubleNegation("double_negation", Warn, "Use of `--`, which could be confused with a decrement operator"),
     InlineIfMayRaise("inline_if_may_raise", Warn, "`inline if` branches that can raise, even though both are always evaluated"),
+    UnfulfilledLintExpectation("unfulfilled_lint_expectation", Warn, "`expect` attributes whose lint is never reported inside of them"),
 }
 
 impl Lint {

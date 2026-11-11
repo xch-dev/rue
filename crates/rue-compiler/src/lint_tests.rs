@@ -302,7 +302,7 @@ fn helper() -> Int {
     1
 }
 
-#[expect(unused_function)]
+#[forbid(unused_function)]
 fn other() -> Int {
     1
 }
@@ -321,7 +321,7 @@ fn main() -> Int {
         reports,
         vec![
             "Warning 1: Unknown lint `unused_bindings`",
-            "Error 6: Unknown attribute `expect`",
+            "Error 6: Unknown attribute `forbid`",
             "Warning 7: Unused function `other`",
             "Error 11: Attribute `allow` expects a list of lint names",
             "Error 14: Attributes can only be used on items and statements",
@@ -352,5 +352,163 @@ fn attributes_after_a_parse_error_are_only_reported_once() {
     let (reports, has_errors) = reports("#[allow(unused_function)]\nlet x = 1;\n", |_| {});
 
     assert_eq!(reports, vec!["Error 2: Expected item, found `let`"]);
+    assert!(has_errors);
+}
+
+#[test]
+fn expectations_are_reported_if_unfulfilled() {
+    let source = "\
+#[expect(unused_function)]
+fn helper() -> Int {
+    1
+}
+
+#[expect(unused_function, unused_binding)]
+fn main() -> Int {
+    #[expect(unused_binding)]
+    let a = 1;
+    #[expect(double_negation)]
+    let b = 2;
+    --b
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 6: Expected lint `unused_function` to be reported here, but it never was",
+            "Warning 6: Expected lint `unused_binding` to be reported here, but it never was",
+            "Warning 10: Expected lint `double_negation` to be reported here, but it never was",
+            "Warning 12: Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn nested_expectations_are_fulfilled_by_the_innermost() {
+    let source = "\
+#[expect(unused_binding)]
+fn first() -> Int {
+    #[expect(unused_binding)]
+    let a = 1;
+    0
+}
+
+#[expect(unused_binding)]
+fn second() -> Int {
+    let b = 1;
+    #[expect(unused_binding)]
+    let c = 2;
+    0
+}
+
+#[expect(unused_binding)]
+fn third() -> Int {
+    #[warn(unused_binding)]
+    let d = 1;
+    0
+}
+
+#[expect(unused_binding)]
+fn fourth() -> Int {
+    #[allow(unused_binding)]
+    let e = 1;
+    0
+}
+
+fn main() -> Int {
+    first() + second() + third() + fourth()
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Expected lint `unused_binding` to be reported here, but it never was",
+            "Warning 16: Expected lint `unused_binding` to be reported here, but it never was",
+            "Warning 19: Unused binding `d`",
+            "Warning 23: Expected lint `unused_binding` to be reported here, but it never was",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn expectations_apply_to_lints_allowed_by_the_project() {
+    let source = "\
+fn main() -> Int {
+    #[expect(unused_binding)]
+    let a = 1;
+    #[expect(unused_binding)]
+    let b = 2;
+    let c = 3;
+    #[expect(double_negation)]
+    let d = --b;
+    d
+}
+";
+
+    let (reports, has_errors) = reports(source, |options| {
+        options.lints.set(Lint::UnusedBinding, LintLevel::Allow);
+        options.lints.set(Lint::DoubleNegation, LintLevel::Allow);
+    });
+
+    assert_eq!(
+        reports,
+        vec!["Warning 4: Expected lint `unused_binding` to be reported here, but it never was"]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn unfulfilled_expectations_can_be_configured() {
+    let source = "\
+#[allow(unfulfilled_lint_expectation)]
+fn helper() -> Int {
+    #[expect(unused_binding)]
+    let a = 1;
+    a
+}
+
+#[expect(unfulfilled_lint_expectation)]
+fn other() -> Int {
+    #[expect(unused_binding)]
+    let b = 1;
+    b
+}
+
+// The inner expectation of `unfulfilled_lint_expectation` can't fulfill itself, so it's reported
+// and fulfills the outer one instead
+#[expect(unfulfilled_lint_expectation)]
+fn third() -> Int {
+    #[expect(unused_value)]
+    let c = 1;
+    #[expect(unfulfilled_lint_expectation)]
+    let d = 2;
+    c + d
+}
+
+fn main() -> Int {
+    #[expect(unused_binding)]
+    let e = 1;
+    helper() + other() + third() + e
+}
+";
+
+    let (reports, has_errors) = reports(source, |options| {
+        options
+            .lints
+            .set(Lint::UnfulfilledLintExpectation, LintLevel::Deny);
+    });
+
+    assert_eq!(
+        reports,
+        vec!["Error 27: Expected lint `unused_binding` to be reported here, but it never was"]
+    );
     assert!(has_errors);
 }

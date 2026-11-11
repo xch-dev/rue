@@ -45,6 +45,8 @@ pub fn run_lints(
         pass(&mut cx, input);
     }
 
+    cx.report_unfulfilled_expectations();
+
     diagnostics.extend(cx.into_diagnostics());
     diagnostics
 }

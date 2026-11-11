@@ -108,6 +108,16 @@ mod strict {
 }
 ```
 
+An `expect` attribute allows a lint like `allow` does, but also expects it to be reported inside of what it's attached to. If it never is, the attribute is reported with the `unfulfilled_lint_expectation` lint, so it doesn't stay around after the code it was written for changes:
+
+```rs
+fn main() -> Int {
+    #[expect(unused_binding)]
+    let unused = 1;
+    42
+}
+```
+
 ## Testing
 
 Tests are just functions marked with `test`, and they live right alongside your code:
