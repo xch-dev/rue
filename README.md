@@ -91,7 +91,7 @@ unused_binding = "allow"
 unnecessary_cast = "allow"
 ```
 
-Within `Rue.toml`, a lint's own level takes precedence over the level of its group, regardless of the order they're written in, even if the group is forbidden. Here every `unused_*` lint is denied, except for `unused_binding`.
+Within `Rue.toml`, a lint's own level takes precedence over the level of its group, regardless of the order they're written in. Here every `unused_*` lint is denied, except for `unused_binding`. The exception is a forbidden group, whose lints can't be set to any other level, so `unused = "forbid"` with `unused_binding = "allow"` is an error.
 
 Levels can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn`, `-D`/`--deny` and `-F`/`--forbid`, which take precedence over `Rue.toml`, including a group flag over a lint set individually in `Rue.toml`. Among the flags, a lint's own flag takes precedence over its group's, unless the group is forbidden. Otherwise, if a lint is passed more than once, the last flag wins, unless the lint is already forbidden in `Rue.toml` or by an earlier flag (which is an error):
 

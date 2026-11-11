@@ -274,9 +274,9 @@ fn lints() {
     }
 }
 
-/// Applies the CLI lint overrides to the project, and warns about unknown lints in `Rue.toml`.
-/// Returns whether any errors were reported, such as an override that tries to change the level
-/// of a forbidden lint.
+/// Applies the CLI lint overrides to the project, and reports problems with the lints in
+/// `Rue.toml`. Returns whether any errors were reported, such as an override that tries to change
+/// the level of a forbidden lint.
 fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
     let manifest = project
         .manifest_path
@@ -298,6 +298,17 @@ fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
         );
     }
 
+    for lint in &project.forbidden_lints {
+        let location = LineCol::new(&manifest, lint.span.start);
+
+        eprintln!(
+            "{}",
+            format!("Error: {} at Rue.toml:{location}", lint.kind())
+                .red()
+                .bold()
+        );
+    }
+
     let rejected = args.apply(&mut project.options.lints);
 
     for &(name, lint, level, forbidden_by) in &rejected {
@@ -305,7 +316,7 @@ fn configure_lints(project: &mut Project, args: &LintArgs) -> bool {
         eprintln!("{}", format!("Error: {kind}").red().bold());
     }
 
-    !rejected.is_empty()
+    !rejected.is_empty() || !project.forbidden_lints.is_empty()
 }
 
 /// Prints the diagnostics, and returns whether any of them are errors.

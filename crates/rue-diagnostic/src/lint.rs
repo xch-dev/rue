@@ -378,8 +378,14 @@ impl LintLevels {
 
     /// Sets the level of each lint or group, such as from the `[lints]` section of `Rue.toml`. A
     /// lint's own level takes precedence over the level of any group it's in, regardless of the
-    /// order they're given in, even if the group is forbidden. Otherwise, the last level wins.
-    pub fn apply(&mut self, overrides: &[(LintName, LintLevel)]) {
+    /// order they're given in, unless the group forbids it. Otherwise, the last level wins.
+    ///
+    /// Overrides that try to change the level of a forbidden lint are returned, along with the
+    /// first lint they couldn't change. The other lints in a group are still set.
+    pub fn apply(
+        &mut self,
+        overrides: &[(LintName, LintLevel)],
+    ) -> Vec<(LintName, Lint, LintLevel)> {
         let groups = overrides
             .iter()
             .filter(|(name, _)| matches!(name, LintName::Group(_)));
@@ -387,11 +393,21 @@ impl LintLevels {
             .iter()
             .filter(|(name, _)| matches!(name, LintName::Lint(_)));
 
+        let mut rejected = Vec::new();
+
         for &(name, level) in groups.chain(lints) {
+            let mut forbidden = None;
+
             for &lint in name.lints() {
-                self.set(lint, level);
+                if !self.try_set(lint, level) {
+                    forbidden.get_or_insert((name, lint, level));
+                }
             }
+
+            rejected.extend(forbidden);
         }
+
+        rejected
     }
 }
 
@@ -483,6 +499,23 @@ mod tests {
                 Lint::DoubleNegation.default_level()
             );
         }
+
+        // Unless the group forbids the lint
+        let mut levels = LintLevels::default();
+        assert_eq!(
+            levels.apply(&[
+                (LintName::Lint(Lint::UnusedBinding), LintLevel::Allow),
+                (LintName::Group(LintGroup::Unused), LintLevel::Forbid),
+                (LintName::Lint(Lint::UnusedImport), LintLevel::Forbid),
+            ]),
+            vec![(
+                LintName::Lint(Lint::UnusedBinding),
+                Lint::UnusedBinding,
+                LintLevel::Allow
+            )]
+        );
+        assert_eq!(levels.get(Lint::UnusedBinding), LintLevel::Forbid);
+        assert_eq!(levels.get(Lint::UnusedImport), LintLevel::Forbid);
 
         // Otherwise, the last level wins
         let mut levels = LintLevels::default();
