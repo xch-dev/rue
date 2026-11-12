@@ -210,6 +210,7 @@ fn dou$0ble(num: Int) -> Int {
         expect![[r#"
             main.rue:2:4-2:10
             main.rue:2:11-2:17
+            main.rue:5:3-5:9
         "#]],
     );
 }
@@ -228,9 +229,10 @@ fn main(a: Amo$0unt, b: Amount) -> Amount {
 "#,
         )],
         expect![[r#"
-            main.rue:3:33-3:39
+            main.rue:1:5-1:11
             main.rue:3:11-3:17
             main.rue:3:22-3:28
+            main.rue:3:33-3:39
         "#]],
     );
 }
@@ -252,6 +254,7 @@ fn main(point: Point) -> Int {
 "#,
         )],
         expect![[r#"
+            main.rue:2:4-2:5
             main.rue:7:10-7:11
             main.rue:7:30-7:31
         "#]],
@@ -284,6 +287,7 @@ export fn gre$0et(name: String) -> String {
         expect![[r#"
             main.rue:1:14-1:19
             main.rue:4:4-4:9
+            utils.rue:1:10-1:15
         "#]],
     );
 }
@@ -297,6 +301,156 @@ fn test_definition_after_non_ascii() {
         )],
         expect![[r#"
             main.rue:1:22-1:27
+        "#]],
+    );
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn check_references_without_declaration(files: &[(&str, &str)], expect: Expect) {
+    let project = TestProject::new(files);
+    expect.assert_eq(&project.references_with(false));
+}
+
+#[test]
+fn test_references_without_declaration() {
+    check_references_without_declaration(
+        &[(
+            "main.rue",
+            r#"
+fn main() -> Int {
+    double(double(1))
+}
+
+fn dou$0ble(num: Int) -> Int {
+    num * 2
+}
+"#,
+        )],
+        expect![[r#"
+            main.rue:2:4-2:10
+            main.rue:2:11-2:17
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_without_declaration_from_reference() {
+    check_references_without_declaration(
+        &[(
+            "main.rue",
+            r#"
+type Amount = Int;
+
+fn main(a: Amount, b: Amount) -> Amo$0unt {
+    a + b
+}
+"#,
+        )],
+        expect![[r#"
+            main.rue:3:11-3:17
+            main.rue:3:22-3:28
+            main.rue:3:33-3:39
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_without_declaration_field() {
+    check_references_without_declaration(
+        &[(
+            "main.rue",
+            r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(point: Point) -> Int {
+    point.$0x + point.y
+}
+"#,
+        )],
+        expect![[r#"
+            main.rue:7:10-7:11
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_declaration_in_other_file() {
+    check_references(
+        &[
+            (
+                "main.rue",
+                r#"
+import utils::greet;
+
+fn main() -> String {
+    gre$0et("world")
+}
+"#,
+            ),
+            (
+                "utils.rue",
+                r#"
+export fn greet(name: String) -> String {
+    "Hello, " + name + "!"
+}
+"#,
+            ),
+        ],
+        expect![[r#"
+            main.rue:1:14-1:19
+            main.rue:4:4-4:9
+            utils.rue:1:10-1:15
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_file_module() {
+    // A file module's declaration is the whole file, so it isn't included as a reference.
+    check_references(
+        &[
+            (
+                "main.rue",
+                r#"
+import uti$0ls::greet;
+
+fn main() -> String {
+    utils::greet("world")
+}
+"#,
+            ),
+            (
+                "utils.rue",
+                r#"
+export fn greet(name: String) -> String {
+    "Hello, " + name + "!"
+}
+"#,
+            ),
+        ],
+        expect![[r#"
+            main.rue:1:7-1:12
+            main.rue:4:4-4:9
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_nothing() {
+    check_references(
+        &[(
+            "main.rue",
+            r#"
+fn main() -> Int {
+    4$02
+}
+"#,
+        )],
+        expect![[r#"
+            <none>
         "#]],
     );
 }

@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use indexmap::IndexMap;
 use rowan::{TextRange, TextSize, TokenAtOffset};
 use rue_ast::AstNode;
-use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItemKind, SyntaxMap};
+use rue_compiler::{
+    Compiler, CompletionContext, FileTree, SyntaxField, SyntaxItem, SyntaxItemKind, SyntaxMap,
+};
 use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{FunctionKind, ScopeId, Symbol, SymbolId};
 use rue_parser::{SyntaxKind, T};
@@ -17,7 +19,7 @@ use crate::position::{offsets_to_range, position_to_offset};
 #[derive(Debug, Clone)]
 pub struct Scopes(Vec<ScopeId>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HoverInfo {
     Symbol(SymbolHoverInfo),
     Module(ModuleHoverInfo),
@@ -26,13 +28,13 @@ pub enum HoverInfo {
     Field(FieldHoverInfo),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SymbolHoverInfo {
     pub name: String,
     pub kind: SymbolHoverKind,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolHoverKind {
     Binding {
         type_name: String,
@@ -50,28 +52,42 @@ pub enum SymbolHoverKind {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleHoverInfo {
     pub name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeHoverInfo {
     pub name: String,
     pub inner_name: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructHoverInfo {
     pub name: String,
     pub fields: Vec<FieldHoverInfo>,
     pub nil_terminated: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldHoverInfo {
     pub name: String,
     pub type_name: String,
+}
+
+/// Something that can be declared and referenced, which is what navigation queries are about.
+enum Target {
+    Symbol(SymbolId),
+    Type(TypeId),
+    /// A field, by the type that contains it and its name.
+    Field(TypeId, String),
+}
+
+impl Target {
+    fn field(field: &SyntaxField) -> Self {
+        Self::Field(field.container, field.name.clone())
+    }
 }
 
 /// A project's compile, which answers queries about one of its files at a time. Queries can
@@ -105,6 +121,8 @@ impl Cache<Compiler> {
         position_to_offset(&self.source.text, position)
     }
 
+    /// The scopes that contain the index, innermost first, so that a name that's shadowed
+    /// resolves to the innermost declaration.
     pub fn scopes(&self, index: usize) -> Scopes {
         let mut scopes = Vec::new();
 
@@ -118,11 +136,18 @@ impl Cache<Compiler> {
             };
 
             if contains(item.span, index) {
-                scopes.push(scope);
+                scopes.push((item.span, scope));
             }
         }
 
-        Scopes(scopes)
+        // Scopes are added to the syntax map when they're exited, which is innermost first within
+        // a function body, but the file's scopes are added before any of the bodies are compiled.
+        // Every scope that contains the index is nested in or equal to the others, so the narrower
+        // one is the inner one. The sort is stable, so scopes with the same span keep the order in
+        // which they were exited.
+        scopes.sort_by_key(|(span, _)| span.len());
+
+        Scopes(scopes.into_iter().map(|(_, scope)| scope).collect())
     }
 
     fn completion_context(&self, index: usize) -> (CompletionContext, CompletionContext) {
@@ -492,18 +517,14 @@ impl Cache<Compiler> {
     pub fn hover(&mut self, scopes: &Scopes, index: usize) -> Vec<HoverInfo> {
         let mut infos = Vec::new();
 
-        for item in self
-            .syntax_map
-            .items()
-            .filter(|item| item.source_kind == self.source.kind)
-            .map(Clone::clone)
-            .collect::<Vec<_>>()
-        {
-            if !contains(item.span, index) {
-                continue;
-            }
+        let items = self
+            .items_at(index)
+            .into_iter()
+            .map(|item| item.kind.clone())
+            .collect::<Vec<_>>();
 
-            match item.kind.clone() {
+        for kind in items {
+            match kind {
                 SyntaxItemKind::SymbolDeclaration(symbol)
                 | SyntaxItemKind::SymbolReference(symbol) => {
                     let Some(name) = self.symbol_name(scopes, symbol) else {
@@ -547,21 +568,149 @@ impl Cache<Compiler> {
             }
         }
 
-        infos
+        // The same item can be added more than once, such as when code is compiled for each place
+        // it's used, so it's only shown once
+        let mut unique = Vec::new();
+
+        for info in infos {
+            if !unique.contains(&info) {
+                unique.push(info);
+            }
+        }
+
+        unique
     }
 
+    /// Going to the definition of a reference lists its declarations, and going to the definition
+    /// of a declaration lists its references, so that either can be reached from the other.
     pub fn definitions(&self, index: usize) -> Vec<Location> {
-        self.locations(self.definitions_impl(index))
+        let Some((target, is_declaration)) = self.target_at(index) else {
+            return Vec::new();
+        };
+
+        if is_declaration {
+            self.locations(self.reference_items(&target))
+        } else {
+            self.locations(self.declaration_items(&target, true))
+        }
     }
 
-    pub fn references(&self, index: usize) -> Vec<Location> {
-        self.locations(self.references_impl(index))
+    pub fn references(&self, index: usize, include_declaration: bool) -> Vec<Location> {
+        let Some((target, _)) = self.target_at(index) else {
+            return Vec::new();
+        };
+
+        let mut spans = self.reference_items(&target);
+
+        if include_declaration {
+            // A file module's declaration is the whole file, which isn't a useful reference
+            spans.extend(self.declaration_items(&target, false));
+        }
+
+        self.locations(spans)
     }
 
-    /// Converts spans to locations in the editor, skipping those that aren't in a file on disk
-    /// (such as the standard library).
+    /// The items whose span is the narrowest one that contains the index, in the order they were
+    /// added. Several items can share a span, such as the binding and the field in the struct
+    /// initializer `Point { x }`. Since the end of a span counts as being inside it, so that the
+    /// cursor can be right after a name, a span the cursor is strictly inside of is preferred
+    /// over one that ends at the cursor.
+    fn items_at(&self, index: usize) -> Vec<&SyntaxItem> {
+        let items = self
+            .syntax_map
+            .items()
+            .filter(|item| {
+                item.source_kind == self.source.kind
+                    && contains(item.span, index)
+                    && match item.kind {
+                        SyntaxItemKind::SymbolDeclaration(_)
+                        | SyntaxItemKind::SymbolReference(_)
+                        | SyntaxItemKind::TypeDeclaration(_)
+                        | SyntaxItemKind::TypeReference(_)
+                        | SyntaxItemKind::FieldDeclaration(_)
+                        | SyntaxItemKind::FieldReference(_)
+                        | SyntaxItemKind::FieldInitializer(_) => true,
+                        SyntaxItemKind::FileModule(_)
+                        | SyntaxItemKind::Scope(_)
+                        | SyntaxItemKind::CompletionContext(_) => false,
+                    }
+            })
+            .collect::<Vec<_>>();
+
+        let Some(best) = items
+            .iter()
+            .min_by_key(|item| (usize::from(item.span.end()) == index, item.span.len()))
+            .map(|item| item.span)
+        else {
+            return Vec::new();
+        };
+
+        items.into_iter().filter(|item| item.span == best).collect()
+    }
+
+    /// What the item at the index refers to, and whether it's the declaration of it.
+    fn target_at(&self, index: usize) -> Option<(Target, bool)> {
+        self.items_at(index)
+            .into_iter()
+            .find_map(|item| match &item.kind {
+                SyntaxItemKind::SymbolDeclaration(symbol) => Some((Target::Symbol(*symbol), true)),
+                SyntaxItemKind::SymbolReference(symbol) => Some((Target::Symbol(*symbol), false)),
+                SyntaxItemKind::TypeDeclaration(ty) => Some((Target::Type(*ty), true)),
+                SyntaxItemKind::TypeReference(ty) => Some((Target::Type(*ty), false)),
+                SyntaxItemKind::FieldDeclaration(field) => Some((Target::field(field), true)),
+                SyntaxItemKind::FieldReference(field) => Some((Target::field(field), false)),
+                SyntaxItemKind::FieldInitializer(_)
+                | SyntaxItemKind::FileModule(_)
+                | SyntaxItemKind::Scope(_)
+                | SyntaxItemKind::CompletionContext(_) => None,
+            })
+    }
+
+    fn declaration_items(
+        &self,
+        target: &Target,
+        include_file_modules: bool,
+    ) -> Vec<(TextRange, SourceKind)> {
+        self.syntax_map
+            .items()
+            .filter(|item| match (&item.kind, target) {
+                (SyntaxItemKind::SymbolDeclaration(symbol), Target::Symbol(target)) => {
+                    symbol == target
+                }
+                (SyntaxItemKind::FileModule(symbol), Target::Symbol(target)) => {
+                    include_file_modules && symbol == target
+                }
+                (SyntaxItemKind::TypeDeclaration(ty), Target::Type(target)) => ty == target,
+                (SyntaxItemKind::FieldDeclaration(field), Target::Field(container, name)) => {
+                    field.container == *container && field.name == *name
+                }
+                _ => false,
+            })
+            .map(|item| (item.span, item.source_kind.clone()))
+            .collect()
+    }
+
+    fn reference_items(&self, target: &Target) -> Vec<(TextRange, SourceKind)> {
+        self.syntax_map
+            .items()
+            .filter(|item| match (&item.kind, target) {
+                (SyntaxItemKind::SymbolReference(symbol), Target::Symbol(target)) => {
+                    symbol == target
+                }
+                (SyntaxItemKind::TypeReference(ty), Target::Type(target)) => ty == target,
+                (SyntaxItemKind::FieldReference(field), Target::Field(container, name)) => {
+                    field.container == *container && field.name == *name
+                }
+                _ => false,
+            })
+            .map(|item| (item.span, item.source_kind.clone()))
+            .collect()
+    }
+
+    /// Converts spans to locations, sorted by file and position and without duplicates. Spans in
+    /// the standard library are left out, since it has no file the editor can open.
     fn locations(&self, spans: Vec<(TextRange, SourceKind)>) -> Vec<Location> {
-        spans
+        let mut locations = spans
             .into_iter()
             .filter_map(|(span, kind)| {
                 let SourceKind::File(path) = &kind else {
@@ -573,203 +722,18 @@ impl Cache<Compiler> {
 
                 Some(Location::new(Url::from_file_path(path).ok()?, range))
             })
-            .collect()
-    }
+            .collect::<Vec<_>>();
 
-    fn definitions_impl(&self, index: usize) -> Vec<(TextRange, SourceKind)> {
-        for item in self
-            .syntax_map
-            .items()
-            .filter(|item| item.source_kind == self.source.kind && contains(item.span, index))
-        {
-            match item.kind.clone() {
-                SyntaxItemKind::SymbolDeclaration(symbol) => {
-                    return self
-                        .syntax_map
-                        .items()
-                        .filter_map(|item| {
-                            let SyntaxItemKind::SymbolReference(declaration) = item.kind else {
-                                return None;
-                            };
+        locations.sort_by(|a, b| {
+            (a.uri.as_str(), a.range.start, a.range.end).cmp(&(
+                b.uri.as_str(),
+                b.range.start,
+                b.range.end,
+            ))
+        });
+        locations.dedup();
 
-                            if declaration == symbol {
-                                Some((item.span, item.source_kind.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                }
-                SyntaxItemKind::SymbolReference(symbol) => {
-                    return self
-                        .syntax_map
-                        .items()
-                        .filter_map(|item| {
-                            let (SyntaxItemKind::SymbolDeclaration(declaration)
-                            | SyntaxItemKind::FileModule(declaration)) = item.kind
-                            else {
-                                return None;
-                            };
-
-                            if declaration == symbol {
-                                Some((item.span, item.source_kind.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                }
-                SyntaxItemKind::TypeDeclaration(ty) => {
-                    return self
-                        .syntax_map
-                        .items()
-                        .filter_map(|item| {
-                            let SyntaxItemKind::TypeReference(declaration) = item.kind else {
-                                return None;
-                            };
-
-                            if declaration == ty {
-                                Some((item.span, item.source_kind.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                }
-                SyntaxItemKind::TypeReference(ty) => {
-                    return self
-                        .syntax_map
-                        .items()
-                        .filter_map(|item| {
-                            let SyntaxItemKind::TypeDeclaration(declaration) = item.kind else {
-                                return None;
-                            };
-
-                            if declaration == ty {
-                                Some((item.span, item.source_kind.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                }
-                SyntaxItemKind::FieldDeclaration(field) => {
-                    return self
-                        .syntax_map
-                        .items()
-                        .filter_map(|item| {
-                            let SyntaxItemKind::FieldReference(declaration) = &item.kind else {
-                                return None;
-                            };
-
-                            if declaration.container == field.container
-                                && declaration.name == field.name
-                            {
-                                Some((item.span, item.source_kind.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                }
-                SyntaxItemKind::FieldReference(field) => {
-                    return self
-                        .syntax_map
-                        .items()
-                        .filter_map(|item| {
-                            let SyntaxItemKind::FieldDeclaration(declaration) = &item.kind else {
-                                return None;
-                            };
-
-                            if declaration.container == field.container
-                                && declaration.name == field.name
-                            {
-                                Some((item.span, item.source_kind.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                }
-                SyntaxItemKind::FieldInitializer(_)
-                | SyntaxItemKind::Scope(_)
-                | SyntaxItemKind::CompletionContext(_)
-                | SyntaxItemKind::FileModule(_) => {}
-            }
-        }
-
-        Vec::new()
-    }
-
-    fn references_impl(&self, index: usize) -> Vec<(TextRange, SourceKind)> {
-        for item in self
-            .syntax_map
-            .items()
-            .filter(|item| item.source_kind == self.source.kind && contains(item.span, index))
-        {
-            match item.kind.clone() {
-                SyntaxItemKind::SymbolDeclaration(symbol)
-                | SyntaxItemKind::SymbolReference(symbol) => {
-                    return self
-                        .syntax_map
-                        .items()
-                        .filter_map(|item| {
-                            let SyntaxItemKind::SymbolReference(declaration) = item.kind else {
-                                return None;
-                            };
-
-                            if declaration == symbol {
-                                Some((item.span, item.source_kind.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                }
-                SyntaxItemKind::TypeDeclaration(ty) | SyntaxItemKind::TypeReference(ty) => {
-                    return self
-                        .syntax_map
-                        .items()
-                        .filter_map(|item| {
-                            let SyntaxItemKind::TypeReference(declaration) = item.kind else {
-                                return None;
-                            };
-
-                            if declaration == ty {
-                                Some((item.span, item.source_kind.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                }
-                SyntaxItemKind::FieldDeclaration(field) | SyntaxItemKind::FieldReference(field) => {
-                    return self
-                        .syntax_map
-                        .items()
-                        .filter_map(|item| {
-                            let SyntaxItemKind::FieldReference(declaration) = &item.kind else {
-                                return None;
-                            };
-
-                            if declaration.container == field.container
-                                && declaration.name == field.name
-                            {
-                                Some((item.span, item.source_kind.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                }
-                SyntaxItemKind::FieldInitializer(_)
-                | SyntaxItemKind::Scope(_)
-                | SyntaxItemKind::CompletionContext(_)
-                | SyntaxItemKind::FileModule(_) => {}
-            }
-        }
-
-        Vec::new()
+        locations
     }
 
     fn type_name(&mut self, scopes: &Scopes, ty: TypeId) -> String {

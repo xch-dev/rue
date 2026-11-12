@@ -285,6 +285,7 @@ impl LanguageServer for Backend {
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let ReferenceParams {
             text_document_position: params,
+            context,
             ..
         } = params;
 
@@ -294,7 +295,7 @@ impl LanguageServer for Backend {
             .query(Task::References, move |state| {
                 let shared = state.shared.clone();
                 let cache = state.cache(&params.text_document.uri, revision)?;
-                references(cache, &shared.paths, params.position)
+                references(cache, &shared.paths, params.position, context.include_declaration)
             })
             .await)
     }
@@ -531,11 +532,16 @@ fn definitions(
     }
 }
 
-fn references(cache: &Cache<Compiler>, paths: &Paths, position: Position) -> Option<Vec<Location>> {
+fn references(
+    cache: &Cache<Compiler>,
+    paths: &Paths,
+    position: Position,
+    include_declaration: bool,
+) -> Option<Vec<Location>> {
     let position = cache.position(position);
 
     let locations = cache
-        .references(position)
+        .references(position, include_declaration)
         .into_iter()
         .map(|location| paths.location(location))
         .collect::<Vec<_>>();

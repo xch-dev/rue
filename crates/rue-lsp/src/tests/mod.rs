@@ -1,4 +1,5 @@
 mod background;
+mod ambiguity;
 mod completion;
 mod diagnostics;
 mod formatting;
@@ -6,6 +7,7 @@ mod hover;
 mod lifecycle;
 mod navigation;
 mod protocol;
+mod shadowing;
 mod sweep;
 
 use std::fmt::Write;
@@ -228,6 +230,10 @@ impl TestProject {
     }
 
     pub fn references(&self) -> String {
+        self.references_with(true)
+    }
+
+    pub fn references_with(&self, include_declaration: bool) -> String {
         let (uri, position) = self.cursor();
 
         let locations = self
@@ -240,12 +246,23 @@ impl TestProject {
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: ReferenceContext {
-                    include_declaration: true,
+                    include_declaration,
                 },
             })
             .unwrap_or_default();
 
         self.locations(&locations)
+    }
+
+    /// Renders the hover, definitions and references at the cursor together, for tests that
+    /// check that all of them agree on which item the cursor is on.
+    pub fn queries(&self) -> String {
+        format!(
+            "hover:\n{}definitions:\n{}references:\n{}",
+            self.hover(),
+            self.definitions(),
+            self.references()
+        )
     }
 
     fn locations(&self, locations: &[Location]) -> String {

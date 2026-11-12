@@ -25,11 +25,11 @@ fn helper() -> Int {
 "#,
         expect![[r#"
             super [Module]
+            total [Variable] Int
+            amount [Variable] Int
             LIMIT [Constant] Int
             main [Function] fn(amount: Int) -> Int
             helper [Function] fn() -> Int
-            amount [Variable] Int
-            total [Variable] Int
             unchecked_cast [Function] fn<T>(value: Any) -> T
             sha256 [Function] fn(value: Bytes) -> Bytes32
             sha256_inline [Function] fn(value: Bytes) -> Bytes32
