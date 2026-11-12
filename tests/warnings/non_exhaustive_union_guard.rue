@@ -26,6 +26,8 @@ fn main(action: Action) -> Int {
         + shapes(action)
         + atoms(nil)
         + nested(action)
+        + three(action)
+        + several(action)
 }
 
 // `Transfer` isn't handled, so it falls into the `raise`
@@ -140,6 +142,34 @@ fn nested(action: Wrapped) -> Int {
         -action.amount
     } else if action is nil {
         0
+    } else {
+        raise;
+    }
+}
+
+// A chain of statements is reported once, at its `raise`
+fn three(action: Wrapped) -> Int {
+    if action is Spend {
+        return action.amount;
+    }
+
+    if action is Melt {
+        return -action.amount;
+    }
+
+    if action is nil {
+        return 0;
+    }
+
+    raise;
+}
+
+// Every type that isn't handled is listed
+fn several(action: Wrapped) -> Int {
+    if action is Spend {
+        action.amount
+    } else if action is Melt {
+        -action.amount
     } else {
         raise;
     }

@@ -32,7 +32,22 @@ fn main(puzzle_hash: Bytes32, amount: Int, flag: Bool) -> List<Condition> {
     let (destructured, _) = both;
     assert both.rest > 0;
 
-    [checked, made, destructured, ...rest]
+    // A condition that's only kept by a branch that's read from is never output either, and neither
+    // is the one in the other branch
+    let dropped = CreateCoin { puzzle_hash, amount: 2, memos: nil };
+    let picked = if flag {
+        dropped
+    } else {
+        CreateCoin { puzzle_hash, amount: 3, memos: nil }
+    };
+    assert picked.amount > 0;
+
+    // Values taken out of a list with `first` and `rest` are followed, but which part of the list
+    // they are isn't, so the conditions in a list that's partly output all count as output
+    let conditions = [ReserveFee { amount: 2 }, AssertMyAmount { amount }];
+    assert conditions.first.amount > 0;
+
+    [checked, made, destructured, conditions.rest.first, ...rest]
 }
 
 // Tests don't output anything, and often build conditions only to check them

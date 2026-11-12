@@ -78,9 +78,10 @@ pub(crate) fn follow(
                 // Any other statement discards the value
                 return Fate::Dropped;
             }
-            // The value of a lambda's body is returned when it's called, and a constant's value is
-            // evaluated at compile time
-            Hir::Lambda(_) | Hir::Const(_) => return Fate::Reached,
+            // The value of a lambda's body is returned when it's called (unless the lint decides
+            // otherwise), and a constant's value is evaluated at compile time
+            Hir::Lambda(_) => return step(db, parent, child).unwrap_or(Fate::Reached),
+            Hir::Const(_) => return Fate::Reached,
             // The condition of an `if` only decides which branch is taken, and the value of a
             // branch is the value of the `if`
             Hir::If(condition, ..) if *condition == child => return used(db, parent),
@@ -140,13 +141,14 @@ impl Bindings {
         }) {
             let mut hir = value;
 
-            // A part is a field of the value, or the first or rest of it
+            // A part is the value, a field of it, or the first or rest of it. The value of a named
+            // binding in a destructuring is a reference to the part it names.
             let whole = loop {
                 match db.hir(hir) {
                     Hir::Cast(inner)
                     | Hir::FieldAccess(FieldAccess { value: inner, .. })
                     | Hir::Unary(UnaryOp::First | UnaryOp::Rest, inner) => hir = *inner,
-                    Hir::Reference(whole) if hir != value => break Some(*whole),
+                    Hir::Reference(whole) => break Some(*whole),
                     _ => break None,
                 }
             };

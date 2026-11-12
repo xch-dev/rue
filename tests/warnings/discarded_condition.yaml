@@ -1,11 +1,11 @@
-program: (a (i (> (f (r (r (c (q . 51) (c 2 (c 5 ())))))) ()) (q 2 (q 2 (i (> 11 10) (q 2 (i (= (f (r (f (c (c (q . 73) (c 11 ())) ())))) 11) (q 2 (q 2 (i (> 6 ()) (q 4 (c (q . 72) (c 11 ())) (c (a (c (q . 2) (c (c (q . 1) (q 4 (q . 60) (c 2 ()))) (c (c (q . 4) (c (c (q . 1) 11) (c () ()))) ()))) ()) (c 4 (a (i 47 (q 4 (c (q . 60) (c 11 ())) (c 5 ())) (q 4 5 ())) 1)))) (q 8)) 1) (c (c (c (q . 51) (c 5 (q 1))) 11) 1)) (q 8)) 1) (q 8)) 1) (c (q 52 1) 1)) (q 8)) 1)
-debug_program: (a (q 2 (q 2 (i (> (f (r (r 2))) ()) (q 2 (q 2 (i (> 47 (f (r 2))) (q 2 (q 2 (q 2 (i (= (f (r (f 13))) -65) (q 2 (q 2 (q 2 (i (> (r 9) ()) (q 4 4 (c 10 (c (f 14) 11))) (q 8 (q . "assertion failed at discarded_condition.rue:33:5"))) 1) (c (c (a 95 10) (c (a 14 ()) 4)) 1)) (c (c (c (c (q . 51) (c 95 (c (q . 1) ()))) -65) (c (c (q . 72) (c 95 ())) (c (q . 2) (c (c (q . 1) (q 4 (q . 60) (c 2 ()))) (c (c (q . 4) (c (c (q . 1) 95) (c () ()))) ()))))) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:20:5"))) 1) (c (a (i -65 (q 4 4 (c 5 ())) (q 4 5 ())) 1) 1)) (c (c (c (q . 60) (c 23 ())) (c (c (q . 73) (c 47 ())) ())) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:8:5"))) 1) (c (c (q . 52) (c (q . 1) ())) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:4:5"))) 1) (c (c (q . 51) (c 5 (c 11 ()))) 1)) (c (q . 1) 1))
-byte_cost: 4644000
+program: (a (i (> (f (r (r (c (q . 51) (c 2 (c 5 ())))))) ()) (q 2 (q 2 (i (> 11 10) (q 2 (i (= (f (r (f (c (c (q . 73) (c 11 ())) ())))) 11) (q 2 (q 2 (i (> 6 ()) (q 2 (i (> (f (r (r (a (i 47 (q 4 (q . 51) (c 11 (q 2))) (q 4 (q . 51) (c 11 (q 3)))) 1)))) ()) (q 2 (q 2 (i (> 20 ()) (q 4 (c (q . 72) (c 23 ())) (c (a (c (q . 2) (c (c (q . 1) (q 4 (q . 60) (c 2 ()))) (c (c (q . 4) (c (c (q . 1) 23) (c () ()))) ()))) ()) (c 9 (c 10 (a (i 95 (q 4 (c (q . 60) (c 23 ())) (c 11 ())) (q 4 11 ())) 1))))) (q 8)) 1) (c (c (q 52 2) (c (c (q . 73) (c 23 ())) ())) 1)) (q 8)) 1) (q 8)) 1) (c (c (c (q . 51) (c 5 (q 1))) 11) 1)) (q 8)) 1) (q 8)) 1) (c (q 52 1) 1)) (q 8)) 1)
+debug_program: (a (q 2 (q 2 (i (> (f (r (r 2))) ()) (q 2 (q 2 (i (> 47 (f (r 2))) (q 2 (q 2 (q 2 (i (= (f (r (f 13))) -65) (q 2 (q 2 (q 2 (i (> (r 9) ()) (q 2 (q 2 (q 2 (i (> (f (r (r 2))) ()) (q 2 (q 2 (i (> (f (r (f 2))) ()) (q 4 39 (c 87 (c (f 119) (c (f (r 2)) 95)))) (q 8 (q . "assertion failed at discarded_condition.rue:48:5"))) 1) (c (c (c (q . 52) (c (q . 2) ())) (c (c (q . 73) (c 3071 ())) ())) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:43:5"))) 1) (c (a (i 3071 (q . 2) (q 4 (q . 51) (c 767 (c (q . 3) ())))) 1) 1)) (c (c (q . 51) (c 383 (c (q . 2) ()))) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:33:5"))) 1) (c (c (a 95 10) (c (a 14 ()) 4)) 1)) (c (c (c (c (q . 51) (c 95 (c (q . 1) ()))) -65) (c (c (q . 72) (c 95 ())) (c (q . 2) (c (c (q . 1) (q 4 (q . 60) (c 2 ()))) (c (c (q . 4) (c (c (q . 1) 95) (c () ()))) ()))))) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:20:5"))) 1) (c (a (i -65 (q 4 4 (c 5 ())) (q 4 5 ())) 1) 1)) (c (c (c (q . 60) (c 23 ())) (c (c (q . 73) (c 47 ())) ())) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:8:5"))) 1) (c (c (q . 52) (c (q . 1) ())) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:4:5"))) 1) (c (c (q . 51) (c 5 (c 11 ()))) 1)) (c (q . 1) 1))
+byte_cost: 6684000
 clvm_error: path into atom
 tests:
 - name: checks_a_condition
   program: (a (i (= (f (r (q 52 1))) (q . 1)) (q) (q 8)) 1)
-  debug_program: (a (q 2 (i (= (f (r 2)) (q . 1)) (q) (q 8 (q . "assertion failed at discarded_condition.rue:41:5"))) 1) (c (c (q . 52) (c (q . 1) ())) 1))
+  debug_program: (a (q 2 (i (= (f (r 2)) (q . 1)) (q) (q 8 (q . "assertion failed at discarded_condition.rue:56:5"))) 1) (c (c (q . 52) (c (q . 1) ())) 1))
   output: ()
   runtime_cost: 475
   byte_cost: 516000
@@ -18,4 +18,12 @@ diagnostics:
 - |-
   This condition is used, but it's never output, so it has no effect at discarded_condition.rue:19:17
     note: It's only read from here at discarded_condition.rue:20:12
+    note: Add it to the conditions that are returned, or remove it if it isn't needed
+- |-
+  This condition is used, but it's never output, so it has no effect at discarded_condition.rue:37:19
+    note: It's only read from here at discarded_condition.rue:43:12
+    note: Add it to the conditions that are returned, or remove it if it isn't needed
+- |-
+  This condition is used, but it's never output, so it has no effect at discarded_condition.rue:41:9
+    note: It's only read from here at discarded_condition.rue:43:12
     note: Add it to the conditions that are returned, or remove it if it isn't needed

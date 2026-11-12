@@ -112,8 +112,9 @@ fn output_fate(cx: &LintContext<'_>, hir: HirId) -> Fate {
             | Hir::Cast(_)
             | Hir::FieldAccess(_)
             | Hir::Unary(UnaryOp::First | UnaryOp::Rest, _) => None,
-            // Passing the value to a function could output it, which isn't followed
-            Hir::FunctionCall(_) => Some(Fate::Reached),
+            // Passing the value to a function could output it, which isn't followed, and the body
+            // of a lambda is what it returns
+            Hir::FunctionCall(_) | Hir::Lambda(_) => Some(Fate::Reached),
             // Anything else reads the value, such as a guard or a comparison
             _ => Some(used(db, parent)),
         }

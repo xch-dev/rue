@@ -14,11 +14,14 @@ fn main(
     SCREAMING: Puzzle,
     #[allow(unchecked_puzzle_call)] allowed: Puzzle,
     signed: Puzzle,
+    in_lambda: Puzzle,
+    in_branch: Puzzle,
+    combined: Puzzle,
     listed: Puzzle,
     #[curried] PUBLIC_KEY: K1PublicKey,
     signature: K1Signature,
     solution: Any,
-) -> List<List<Condition>> {
+) -> List<Any> {
     // Parameters that are curried into the puzzle are trusted
     let a = curried(...solution);
     let b = SCREAMING(...solution);
@@ -40,7 +43,8 @@ fn main(
     let f = wrapped(...solution);
 
     // A parameter passed to another function could be checked there
-    let g = check_and_run(passed, solution);
+    assert check(passed);
+    let g = passed(...solution);
 
     // Computing the hash without comparing it doesn't check anything
     let _ = tree_hash(hashed_only);
@@ -68,7 +72,22 @@ fn main(
     assert is_allowed(tree_hash(listed));
     let o = listed(...solution);
 
-    [a, b, c, d, e, f, g, h, i, j, k, m, n, o]
+    // A hash computed in a lambda isn't compared
+    let hash = fn() => tree_hash(in_lambda);
+    let p = in_lambda(...solution);
+
+    // A hash can go through an `if` branch, or be combined with something, before it's compared
+    let branch_hash = if PUZZLE_HASH == nil {
+        tree_hash(in_branch)
+    } else {
+        PUZZLE_HASH
+    };
+    assert branch_hash == PUZZLE_HASH;
+    let q = in_branch(...solution);
+    assert sha256(tree_hash(combined) + PUZZLE_HASH) == PUZZLE_HASH;
+    let r = combined(...solution);
+
+    [a, b, c, d, e, f, g, h, i, j, k, m, n, o, p, q, r, [hash()]]
 }
 
 // Exported functions are programs of their own
@@ -76,9 +95,8 @@ export fn exported(inner_puzzle: Puzzle, solution: Any) -> List<Condition> {
     inner_puzzle(...solution)
 }
 
-fn check_and_run(puzzle: Puzzle, solution: Any) -> List<Condition> {
-    assert tree_hash(puzzle) == 0x0000000000000000000000000000000000000000000000000000000000000000;
-    puzzle(...solution)
+fn check(puzzle: Puzzle) -> Bool {
+    tree_hash(puzzle) == 0x0000000000000000000000000000000000000000000000000000000000000000
 }
 
 // Tests aren't run with a solution

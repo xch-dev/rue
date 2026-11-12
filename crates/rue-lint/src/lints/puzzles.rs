@@ -237,7 +237,8 @@ fn hash_fate(cx: &LintContext<'_>, hir: HirId) -> Fate {
             | Hir::BlsVerify(..)
             | Hir::Secp256K1Verify(..)
             | Hir::Secp256R1Verify(..) => Some(Fate::Reached),
-            Hir::Guard(_) => Some(used(db, parent)),
+            // A hash computed in a lambda isn't the entrypoint's output, and isn't compared
+            Hir::Guard(_) | Hir::Lambda(_) => Some(used(db, parent)),
             // Anything else computes a value from it, which is followed in turn
             _ => None,
         }
