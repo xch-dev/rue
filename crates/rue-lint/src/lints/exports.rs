@@ -7,8 +7,7 @@ use rue_types::{Type, TypeId};
 
 use crate::{
     LintContext, LintInput, NameKey, name_key, srcloc_key,
-    text::{encloses, keyword_srcloc},
-    token_key,
+    text::{encloses, keyword_locations},
 };
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UnusedExport];
@@ -365,32 +364,16 @@ fn type_name(db: &Database, ty: TypeId) -> Option<Name> {
 /// The location of the `export` keyword (and the space after it) of each item, by the location of
 /// the item's name.
 fn export_keywords(input: &LintInput<'_>) -> HashMap<NameKey, SrcLoc> {
-    let mut keywords = HashMap::new();
+    keyword_locations(input, |node| {
+        let (export, name) = match AstItem::cast(node.clone())? {
+            AstItem::SymbolItem(AstSymbolItem::FunctionItem(item)) => (item.export(), item.name()),
+            AstItem::SymbolItem(AstSymbolItem::ConstantItem(item)) => (item.export(), item.name()),
+            AstItem::SymbolItem(AstSymbolItem::ModuleItem(item)) => (item.export(), item.name()),
+            AstItem::TypeItem(AstTypeItem::StructItem(item)) => (item.export(), item.name()),
+            AstItem::TypeItem(AstTypeItem::TypeAliasItem(item)) => (item.export(), item.name()),
+            AstItem::ImportItem(_) => return None,
+        };
 
-    for &(source, document) in &input.documents {
-        for item in document.syntax().descendants().filter_map(AstItem::cast) {
-            let (export, name) = match item {
-                AstItem::SymbolItem(AstSymbolItem::FunctionItem(item)) => {
-                    (item.export(), item.name())
-                }
-                AstItem::SymbolItem(AstSymbolItem::ConstantItem(item)) => {
-                    (item.export(), item.name())
-                }
-                AstItem::SymbolItem(AstSymbolItem::ModuleItem(item)) => {
-                    (item.export(), item.name())
-                }
-                AstItem::TypeItem(AstTypeItem::StructItem(item)) => (item.export(), item.name()),
-                AstItem::TypeItem(AstTypeItem::TypeAliasItem(item)) => (item.export(), item.name()),
-                AstItem::ImportItem(_) => continue,
-            };
-
-            let (Some(export), Some(name)) = (export, name) else {
-                continue;
-            };
-
-            keywords.insert(token_key(source, &name), keyword_srcloc(source, &export));
-        }
-    }
-
-    keywords
+        Some((export?, name?))
+    })
 }

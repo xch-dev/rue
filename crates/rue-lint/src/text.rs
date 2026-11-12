@@ -1,13 +1,16 @@
 //! Helpers for writing the code in suggestions, from the locations of the HIR nodes that are
 //! being replaced.
 
+use std::collections::HashMap;
+
 use rowan::TextRange;
+use rue_ast::AstNode;
 use rue_diagnostic::{Source, SrcLoc, Suggestion};
 use rue_hir::{BinaryOp, Database, Hir, HirId, Statement, UnaryOp};
 use rue_lexer::{Lexer, TokenKind};
-use rue_parser::{SyntaxKind, SyntaxToken};
+use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 
-use crate::{LintContext, srcloc};
+use crate::{LintContext, LintInput, NameKey, srcloc, token_key};
 
 /// Where an expression is, which decides whether the code that replaces it needs parentheses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,14 +247,16 @@ pub(crate) fn without_parens(mut text: &str) -> &str {
     text
 }
 
-/// Whether there's a comment in the code, which a suggestion that replaces it would remove.
-pub(crate) fn has_comment(text: &str) -> bool {
-    Lexer::new(text).any(|token| {
-        matches!(
-            token.kind,
-            TokenKind::LineComment | TokenKind::BlockComment { .. }
-        )
-    })
+/// The number of comments in the code.
+pub(crate) fn comment_count(text: &str) -> usize {
+    Lexer::new(text)
+        .filter(|token| {
+            matches!(
+                token.kind,
+                TokenKind::LineComment | TokenKind::BlockComment { .. }
+            )
+        })
+        .count()
 }
 
 /// A suggestion that removes a statement or item, along with the rest of its line if nothing else
@@ -283,9 +288,29 @@ pub(crate) fn remove_line(
     )
 }
 
+/// The location of a keyword (and the space after it) of each declaration that has it, by the
+/// location of the declaration's name, for suggestions that remove the keyword. The function
+/// returns the keyword and name of a syntax node, if it's a declaration with the keyword.
+pub(crate) fn keyword_locations(
+    input: &LintInput<'_>,
+    keyword: impl Fn(&SyntaxNode) -> Option<(SyntaxToken, SyntaxToken)>,
+) -> HashMap<NameKey, SrcLoc> {
+    let mut keywords = HashMap::new();
+
+    for &(source, document) in &input.documents {
+        for node in document.syntax().descendants() {
+            if let Some((keyword, name)) = keyword(&node) {
+                keywords.insert(token_key(source, &name), keyword_srcloc(source, &keyword));
+            }
+        }
+    }
+
+    keywords
+}
+
 /// The location of a keyword along with the whitespace after it, for a suggestion that removes
 /// it. Only whitespace is included, so a comment after it is kept.
-pub(crate) fn keyword_srcloc(source: &Source, keyword: &SyntaxToken) -> SrcLoc {
+fn keyword_srcloc(source: &Source, keyword: &SyntaxToken) -> SrcLoc {
     let end = keyword
         .next_token()
         .filter(|token| token.kind() == SyntaxKind::Whitespace)

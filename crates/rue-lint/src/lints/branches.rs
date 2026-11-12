@@ -4,9 +4,7 @@ use rue_hir::{BinaryOp, Block, Hir, HirId, Statement, UnaryOp};
 use crate::{
     HirLintPass, LintContext,
     equality::hir_eq,
-    text::{
-        Position, has_comment, negated_text, negated_text_at, position, text_at, without_parens,
-    },
+    text::{Position, negated_text, negated_text_at, position, text_at, without_parens},
 };
 
 /// An `if` whose branches are the same evaluates to the same value whatever the condition is.
@@ -205,12 +203,6 @@ impl HirLintPass for NeedlessBool {
             return;
         };
 
-        let applicability = if has_comment(srcloc.text()) {
-            Applicability::MaybeIncorrect
-        } else {
-            Applicability::MachineApplicable
-        };
-
         let Some(diagnostic) = cx.report(
             Lint::NeedlessBool,
             srcloc.clone(),
@@ -227,7 +219,7 @@ impl HirLintPass for NeedlessBool {
             },
             srcloc,
             replacement,
-            applicability,
+            Applicability::MachineApplicable,
         ));
     }
 }
@@ -373,17 +365,11 @@ impl HirLintPass for ManualAssert {
             return;
         };
 
-        let applicability = if has_comment(srcloc.text()) {
-            Applicability::MaybeIncorrect
-        } else {
-            Applicability::MachineApplicable
-        };
-
         diagnostic.suggestions.push(Suggestion::replace(
             "Replace it with an `assert`",
             srcloc,
             format!("assert {replacement};"),
-            applicability,
+            Applicability::MachineApplicable,
         ));
     }
 }

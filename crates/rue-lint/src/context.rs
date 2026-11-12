@@ -2,12 +2,13 @@ use std::ops::Range;
 
 use rowan::TextRange;
 use rue_diagnostic::{
-    Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Name, Source, SourceKind, SrcLoc,
+    Applicability, Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Name, Source, SourceKind,
+    SrcLoc,
 };
 use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
 use rue_types::{BuiltinTypes, Comparison, Type, TypeId};
 
-use crate::{ScopedLintLevels, WalkState};
+use crate::{ScopedLintLevels, WalkState, text::comment_count};
 
 /// The state shared by lint passes, which collects the diagnostics they report.
 #[derive(Debug)]
@@ -133,7 +134,24 @@ impl<'a> LintContext<'a> {
         self.diagnostics.last_mut()
     }
 
-    pub fn into_diagnostics(self) -> Vec<Diagnostic> {
+    /// The diagnostics that were reported. A suggestion that would remove a comment (because the
+    /// code it replaces has more comments than its replacement) isn't applied automatically, since
+    /// the comment might matter.
+    pub fn into_diagnostics(mut self) -> Vec<Diagnostic> {
+        for suggestion in self
+            .diagnostics
+            .iter_mut()
+            .flat_map(|diagnostic| &mut diagnostic.suggestions)
+        {
+            if suggestion
+                .edits
+                .iter()
+                .any(|edit| comment_count(edit.srcloc.text()) > comment_count(&edit.replacement))
+            {
+                suggestion.applicability = Applicability::MaybeIncorrect;
+            }
+        }
+
         self.diagnostics
     }
 

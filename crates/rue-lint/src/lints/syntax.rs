@@ -11,7 +11,7 @@ use rue_diagnostic::{Applicability, Lint, Source, Suggestion};
 use rue_lexer::Lexer;
 use rue_parser::{Parser, SyntaxKind, SyntaxNode, T};
 
-use crate::{LintContext, LintInput, srcloc, text::has_comment};
+use crate::{LintContext, LintInput, srcloc};
 
 pub(crate) const LINTS: &[Lint] = &[
     Lint::EmptyGenerics,
@@ -119,12 +119,6 @@ fn report_redundant_field_name(
 ) {
     let srcloc = srcloc(source, trimmed_range(field));
 
-    let applicability = if has_comment(srcloc.text()) {
-        Applicability::MaybeIncorrect
-    } else {
-        Applicability::MachineApplicable
-    };
-
     if let Some(diagnostic) = cx.report(
         Lint::RedundantFieldNames,
         srcloc.clone(),
@@ -134,7 +128,7 @@ fn report_redundant_field_name(
             "Use the shorthand instead",
             srcloc,
             name,
-            applicability,
+            Applicability::MachineApplicable,
         ));
     }
 }
@@ -206,19 +200,6 @@ fn check_parens(cx: &mut LintContext<'_>, source: &Source, group: &AstGroupExpr)
         return;
     }
 
-    // Anything between the parentheses and the expression (such as a comment) would be removed
-    let outside = format!(
-        "{}{}",
-        &text[start..inner_range.start().into()],
-        &text[inner_range.end().into()..end]
-    );
-
-    let applicability = if has_comment(&outside) {
-        Applicability::MaybeIncorrect
-    } else {
-        Applicability::MachineApplicable
-    };
-
     if let Some(diagnostic) = cx.report(
         Lint::UnnecessaryParens,
         srcloc.clone(),
@@ -228,7 +209,7 @@ fn check_parens(cx: &mut LintContext<'_>, source: &Source, group: &AstGroupExpr)
             "Remove the parentheses",
             srcloc,
             replacement,
-            applicability,
+            Applicability::MachineApplicable,
         ));
     }
 }
@@ -399,17 +380,6 @@ fn check_collapsible_if(cx: &mut LintContext<'_>, source: &Source, if_expr: &Ast
     let inner_range = trimmed_range(inner.syntax());
 
     let text = &source.text;
-    let outside = format!(
-        "{}{}",
-        &text[usize::from(block_range.start())..usize::from(inner_range.start())],
-        &text[usize::from(inner_range.end())..usize::from(block_range.end())]
-    );
-
-    let applicability = if has_comment(&outside) {
-        Applicability::MaybeIncorrect
-    } else {
-        Applicability::MachineApplicable
-    };
 
     let srcloc = srcloc(source, block_range);
     let replacement =
@@ -424,7 +394,7 @@ fn check_collapsible_if(cx: &mut LintContext<'_>, source: &Source, if_expr: &Ast
             "Collapse it into an `else if`",
             srcloc,
             replacement,
-            applicability,
+            Applicability::MachineApplicable,
         ));
     }
 }

@@ -2074,22 +2074,31 @@ fn main(a: Int, flag: Bool) -> Int {
         return 1;
     }
 
-    if (a == 2 // note
-    ) == false {
+    if (a /* x /* { */ */ == 2) == true {
         return 2;
     }
 
-    if (!flag // note
+    if (a == 3 // note
     ) == false {
         return 3;
     }
 
-    doubled + ONCE
+    if (!flag // note
+    ) == false {
+        return 4;
+    }
+
+    let cast = a /* keep */ as Int;
+    let plus = + /* keep */ 1;
+    doubled + ONCE + cast + plus + early(a)
+}
+
+fn early(a: Int) -> Int {
+    return /* keep */ a;
 }
 ";
 
-    // Removing `inline` keeps the comment after it, and the comparisons can't be removed without
-    // moving or removing the comments inside of them, so they aren't fixed automatically
+    // Fixes that keep every comment are applied, but the rest would remove one, so they aren't
     let fixed = fix(source);
 
     assert_eq!(
@@ -2103,25 +2112,49 @@ fn main(a: Int, flag: Bool) -> Int {
     let doubled = a * 2;
 
     if (a == 1 // note
-    ) == true {
+    ) {
         return 1;
     }
 
-    if (a == 2 // note
-    ) == false {
+    if a /* x /* { */ */ == 2 {
         return 2;
     }
 
-    if (!flag // note
+    if (a == 3 // note
     ) == false {
         return 3;
     }
 
-    doubled + ONCE
+    if (!flag // note
+    ) == false {
+        return 4;
+    }
+
+    let cast = a /* keep */ as Int;
+    let plus = + /* keep */ 1;
+    doubled + ONCE + cast + plus + early(a)
+}
+
+fn early(a: Int) -> Int {
+    return /* keep */ a;
 }
 "
     );
 
-    let (_, has_errors) = reports(&fixed, |_| {});
+    assert_eq!(fix(&fixed), fixed);
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 8: Unnecessary parentheses",
+            "Warning 17: Unnecessary comparison with `false`",
+            "Warning 22: Unnecessary comparison with `false`",
+            "Warning 27: Unnecessary cast from `Int` to `Int`, since they are compatible with each other",
+            "Warning 28: Unnecessary `+` operator, since it has no effect",
+            "Warning 33: Unnecessary `return` statement, since the function body can end in an expression instead",
+        ]
+    );
     assert!(!has_errors);
 }

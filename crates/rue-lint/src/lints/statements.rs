@@ -1,10 +1,7 @@
 use rue_diagnostic::{Applicability, Lint, SrcLoc, Suggestion};
 use rue_hir::{Block, Hir, HirId, Statement, Symbol};
 
-use crate::{
-    HirLintPass, LintContext,
-    text::{has_comment, remove_line},
-};
+use crate::{HirLintPass, LintContext, text::remove_line};
 
 /// Expression statements discard their value, so it should always be nil.
 #[derive(Debug, Default)]
@@ -102,11 +99,6 @@ impl HirLintPass for NeedlessLetReturn {
         let annotated = db.hir_type(binding.value.hir) != Some(binding.value.ty);
         let has_attributes = let_srcloc.text().starts_with('#');
         let replacement = value_srcloc.text().to_string();
-        let applicability = if has_comment(span.text()) {
-            Applicability::MaybeIncorrect
-        } else {
-            Applicability::MachineApplicable
-        };
 
         let Some(diagnostic) = cx.report(
             Lint::NeedlessLetReturn,
@@ -124,7 +116,7 @@ impl HirLintPass for NeedlessLetReturn {
                 "Return the value directly",
                 span,
                 replacement,
-                applicability,
+                Applicability::MachineApplicable,
             ));
         }
     }
