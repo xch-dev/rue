@@ -822,12 +822,18 @@ impl Cache<Compiler> {
         format!("{name}<{}>", generics.join(", "))
     }
 
+    /// The detail of a completion, which for functions is their signature as shown on hover.
     fn symbol_detail(&mut self, scopes: &Scopes, symbol: SymbolId, ty: TypeId) -> String {
-        if let Symbol::Builtin(builtin) = self.ctx.symbol(symbol) {
-            return format!("fn{}", builtin.signatures()[0]);
+        match self.ctx.symbol(symbol).clone() {
+            Symbol::Builtin(builtin) => format!("fn{}", builtin.signatures()[0]),
+            Symbol::Function(function) => self
+                .function_signature(scopes, &function.vars, ty)
+                .map_or_else(
+                    || self.type_name(scopes, ty),
+                    |signature| format!("fn{signature}"),
+                ),
+            _ => self.type_name(scopes, ty),
         }
-
-        self.type_name(scopes, ty)
     }
 
     fn symbol_hover_kind(&mut self, scopes: &Scopes, symbol: SymbolId) -> SymbolHoverKind {

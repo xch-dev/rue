@@ -11,6 +11,7 @@ mod protocol;
 mod shadowing;
 mod sweep;
 mod syntax_errors;
+mod workspace;
 
 use std::fmt::Write;
 use std::fs;
