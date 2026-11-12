@@ -10,6 +10,7 @@ mod navigation;
 mod protocol;
 mod shadowing;
 mod sweep;
+mod syntax_errors;
 
 use std::fmt::Write;
 use std::fs;

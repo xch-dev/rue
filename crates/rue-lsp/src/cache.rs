@@ -8,6 +8,7 @@ use rue_compiler::{
 };
 use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{FunctionKind, ScopeId, Symbol, SymbolId};
+use rue_lexer::{Lexer, TokenKind};
 use rue_parser::{SyntaxKind, T};
 use rue_types::{Type, TypeId, Union};
 use tower_lsp::lsp_types::{
@@ -178,53 +179,100 @@ impl Cache<Compiler> {
             }
         }
 
-        // When a type is missing entirely, there's no type node to provide a completion context.
-        if !matches!(first, CompletionContext::Type) && self.expects_type(index) {
-            return (CompletionContext::Type, first);
+        // When a type or expression is missing entirely, there's no node to provide a completion
+        // context, so it's worked out from the token before the cursor.
+        match self.expected_context(index) {
+            Some(CompletionContext::Type) if !matches!(first, CompletionContext::Type) => {
+                (CompletionContext::Type, first)
+            }
+            Some(CompletionContext::Expression)
+                if matches!(
+                    first,
+                    CompletionContext::Document
+                        | CompletionContext::Item
+                        | CompletionContext::Statement
+                ) =>
+            {
+                (CompletionContext::Expression, first)
+            }
+            _ => (first, second),
         }
-
-        (first, second)
     }
 
-    /// Whether the token before the cursor is one that must be followed by a type.
-    fn expects_type(&self, index: usize) -> bool {
+    /// The context that the token before the cursor must be followed by, if it's a type or an
+    /// expression.
+    fn expected_context(&self, index: usize) -> Option<CompletionContext> {
+        let file = self.tree.find(&self.source.kind)?;
+
+        let offset = TextSize::from(index as u32);
+
+        let mut token = match file.document.syntax().token_at_offset(offset) {
+            TokenAtOffset::None => return None,
+            TokenAtOffset::Single(token) | TokenAtOffset::Between(token, _) => token,
+        };
+
+        while token.kind().is_trivia() || token.text_range().end() > offset {
+            token = token.prev_token()?;
+        }
+
+        let parent = token.parent().map(|parent| parent.kind());
+
+        match token.kind() {
+            T![->] | T![as] | T![is] => Some(CompletionContext::Type),
+            T![:]
+                if matches!(
+                    parent,
+                    Some(
+                        SyntaxKind::FunctionParameter
+                            | SyntaxKind::LambdaParameter
+                            | SyntaxKind::LambdaExpr
+                            | SyntaxKind::ConstantItem
+                            | SyntaxKind::LetStmt
+                            | SyntaxKind::StructField
+                    )
+                ) =>
+            {
+                Some(CompletionContext::Type)
+            }
+            T![=] if parent == Some(SyntaxKind::TypeAliasItem) => Some(CompletionContext::Type),
+            T![=] if matches!(parent, Some(SyntaxKind::LetStmt | SyntaxKind::ConstantItem)) => {
+                Some(CompletionContext::Expression)
+            }
+            T![return] | T![assert] | T![raise] | T![if] => Some(CompletionContext::Expression),
+            _ => None,
+        }
+    }
+
+    /// Whether the index is inside a string or a comment, where names aren't completed. The end
+    /// of a line comment, or of a string or block comment that isn't terminated, is still inside
+    /// of it.
+    fn in_string_or_comment(&self, index: usize) -> bool {
         let Some(file) = self.tree.find(&self.source.kind) else {
             return false;
         };
 
         let offset = TextSize::from(index as u32);
 
-        let mut token = match file.document.syntax().token_at_offset(offset) {
-            TokenAtOffset::None => return false,
-            TokenAtOffset::Single(token) | TokenAtOffset::Between(token, _) => token,
-        };
-
-        while token.kind().is_trivia() || token.text_range().end() > offset {
-            let Some(prev) = token.prev_token() else {
+        file.document.syntax().token_at_offset(offset).any(|token| {
+            if !matches!(
+                token.kind(),
+                SyntaxKind::String | SyntaxKind::LineComment | SyntaxKind::BlockComment
+            ) {
                 return false;
+            }
+
+            // The parser doesn't keep whether a token is terminated, so it's lexed again
+            let terminated = match Lexer::new(token.text()).next().map(|token| token.kind) {
+                Some(
+                    TokenKind::String { is_terminated } | TokenKind::BlockComment { is_terminated },
+                ) => is_terminated,
+                _ => false,
             };
 
-            token = prev;
-        }
+            let range = token.text_range();
 
-        let parent = token.parent().map(|parent| parent.kind());
-
-        match token.kind() {
-            T![->] | T![as] | T![is] => true,
-            T![:] => matches!(
-                parent,
-                Some(
-                    SyntaxKind::FunctionParameter
-                        | SyntaxKind::LambdaParameter
-                        | SyntaxKind::LambdaExpr
-                        | SyntaxKind::ConstantItem
-                        | SyntaxKind::LetStmt
-                        | SyntaxKind::StructField
-                )
-            ),
-            T![=] => parent == Some(SyntaxKind::TypeAliasItem),
-            _ => false,
-        }
+            range.start() < offset && (offset < range.end() || !terminated)
+        })
     }
 
     fn partial_identifier(&self, index: usize) -> Option<String> {
@@ -247,6 +295,10 @@ impl Cache<Compiler> {
     }
 
     pub fn completions(&mut self, scopes: &Scopes, index: usize) -> Vec<CompletionItem> {
+        if self.in_string_or_comment(index) {
+            return vec![];
+        }
+
         let (context, subcontext) = self.completion_context(index);
 
         let before = self.source.text.get(..index).unwrap_or_default();

@@ -144,6 +144,22 @@ fn main(value: Int) -> Bool {
 }
 
 #[test]
+fn test_shadowing_parameter_completion_in_initializer() {
+    // The binding isn't in scope in its own value, so the parameter is offered.
+    check_completions(
+        r#"
+fn main(value: Int) -> Bool {
+    let value = val$0 > 1;
+    value
+}
+"#,
+        expect![[r#"
+            value [Variable] Int
+        "#]],
+    );
+}
+
+#[test]
 fn test_shadowing_twice_in_one_block() {
     check_queries(
         r#"
