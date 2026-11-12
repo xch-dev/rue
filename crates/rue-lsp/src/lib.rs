@@ -40,7 +40,7 @@ use tower_lsp::{Client, LanguageServer};
 
 use crate::cache::{HoverInfo, SymbolHoverKind};
 use crate::paths::{Paths, document, uri_to_path};
-use crate::position::offsets_to_range;
+use crate::position::{offset_to_position, offsets_to_range};
 use crate::worker::{Diagnostics, Shared, State, Worker};
 use tokio::sync::oneshot;
 
@@ -594,14 +594,7 @@ fn formatting_edits(
 }
 
 fn document_end(source: &str) -> Position {
-    let line = source.bytes().filter(|byte| *byte == b'\n').count();
-    let last_line = source
-        .rsplit_once('\n')
-        .map_or(source, |(_, last_line)| last_line);
-    let last_line = last_line.strip_suffix('\r').unwrap_or(last_line);
-    let character = last_line.encode_utf16().count();
-
-    Position::new(line.try_into().unwrap(), character.try_into().unwrap())
+    offset_to_position(source, source.len())
 }
 
 /// A suggestion, which is stored in the `data` of a diagnostic so that a code action can be

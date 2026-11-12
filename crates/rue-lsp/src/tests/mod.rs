@@ -5,6 +5,7 @@ mod diagnostics;
 mod formatting;
 mod hover;
 mod lifecycle;
+mod line_endings;
 mod navigation;
 mod protocol;
 mod shadowing;
@@ -27,7 +28,8 @@ use tower_lsp::lsp_types::{
     TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
 };
 
-use crate::{Backend, code_actions, position::position_to_offset};
+use crate::position::{offset_to_position, position_to_offset};
+use crate::{Backend, code_actions};
 
 const CURSOR: &str = "$0";
 
@@ -148,7 +150,7 @@ impl TestProject {
                 assert!(cursor.is_none(), "only one cursor is allowed");
                 cursor = Some((
                     Url::from_file_path(&path).unwrap(),
-                    position_of(text, index),
+                    offset_to_position(text, index),
                 ));
                 text.replacen(CURSOR, "", 1)
             } else {
@@ -480,14 +482,6 @@ fn hover(backend: &Backend, uri: Url, position: Position) -> String {
     }
 
     output
-}
-
-fn position_of(text: &str, index: usize) -> Position {
-    let before = &text[..index];
-    let line = before.matches('\n').count();
-    let line_start = before.rfind('\n').map_or(0, |i| i + 1);
-    let character = before[line_start..].encode_utf16().count();
-    Position::new(line as u32, character as u32)
 }
 
 fn range_string(range: Range) -> String {
