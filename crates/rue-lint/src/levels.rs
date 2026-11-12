@@ -10,6 +10,10 @@ use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::srcloc;
 
+/// The attribute that marks a parameter as curried into the program, which lints use to tell
+/// trusted values from ones that come from the solution.
+pub(crate) const CURRIED: &str = "curried";
+
 /// The level of every lint at each location, which combines the project's levels with the
 /// attributes that override them in the source code (such as `#[allow(unused_binding)]`).
 #[derive(Debug, Clone)]
@@ -106,6 +110,33 @@ impl ScopedLintLevels {
                 let Some(name) = attribute.name() else {
                     continue;
                 };
+
+                // `curried` marks a parameter that's curried into the program, which lints use to
+                // know which values are trusted, rather than setting a lint level
+                if name.text() == CURRIED {
+                    let on_parameter = target.as_ref().is_some_and(|target| {
+                        target.kind() == SyntaxKind::FunctionParameter
+                            && target
+                                .parent()
+                                .is_some_and(|parent| parent.kind() == SyntaxKind::FunctionItem)
+                    });
+
+                    if target.is_some() && (inner || !on_parameter) {
+                        error(
+                            DiagnosticKind::MisplacedCurriedAttribute,
+                            attribute.syntax().text_range(),
+                        );
+                    }
+
+                    if attribute.arguments().next().is_some() {
+                        error(
+                            DiagnosticKind::CurriedAttributeArguments,
+                            attribute.syntax().text_range(),
+                        );
+                    }
+
+                    continue;
+                }
 
                 let Ok(attribute_level) = name.text().parse::<AttributeLevel>() else {
                     error(
@@ -405,6 +436,7 @@ fn accepts_attributes(kind: SyntaxKind) -> bool {
         kind,
         SyntaxKind::ModuleItem
             | SyntaxKind::FunctionItem
+            | SyntaxKind::FunctionParameter
             | SyntaxKind::ConstantItem
             | SyntaxKind::TypeAliasItem
             | SyntaxKind::StructItem

@@ -234,3 +234,28 @@ fn attributes_dont_split_compact_groups() {
         "#]],
     );
 }
+
+#[test]
+fn parameter_attributes_stay_on_the_same_line() {
+    check(
+        "fn main(#[curried]   puzzle: Int,#[ allow( unused_parameter ) ]unused: Int) -> Int { puzzle }\nfn wide(#[curried] first_parameter: Bytes32, #[curried] second_parameter: Bytes32, third: Int) -> Int { third }\nfn lambda() -> Int { let f = fn(#[allow(unused_parameter)] x: Int) => 1; f(2) }",
+        expect![[r#"
+            fn main(#[curried] puzzle: Int, #[allow(unused_parameter)] unused: Int) -> Int {
+                puzzle
+            }
+
+            fn wide(
+                #[curried] first_parameter: Bytes32,
+                #[curried] second_parameter: Bytes32,
+                third: Int,
+            ) -> Int {
+                third
+            }
+
+            fn lambda() -> Int {
+                let f = fn(#[allow(unused_parameter)] x: Int) => 1;
+                f(2)
+            }
+        "#]],
+    );
+}

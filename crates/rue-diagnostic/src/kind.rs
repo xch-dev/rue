@@ -11,7 +11,7 @@ pub enum DiagnosticKind {
     #[error("Unknown `{0}`")]
     UnknownToken(String),
 
-    #[error("Attributes can only be used on items and statements")]
+    #[error("Attributes can only be used on items, statements and parameters")]
     MisplacedAttribute,
 
     #[error("Inner attributes can only be used at the start of a file or module")]
@@ -22,6 +22,12 @@ pub enum DiagnosticKind {
 
     #[error("Attribute `{0}` expects a list of lint names")]
     MissingLintNames(String),
+
+    #[error("The `curried` attribute can only be used on a parameter of a function item")]
+    MisplacedCurriedAttribute,
+
+    #[error("The `curried` attribute doesn't take any arguments")]
+    CurriedAttributeArguments,
 
     #[error("Cannot set lint `{lint}` to `{level}`, since it's forbidden by {forbidden_by}")]
     ForbiddenLintOverride {

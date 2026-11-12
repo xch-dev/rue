@@ -3,6 +3,7 @@ use rowan::Checkpoint;
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
+        attribute::attributes,
         binding::binding,
         block::block,
         delimited_list,
@@ -122,6 +123,7 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
         if p.expect(T!['(']) {
             delimited_list(p, T![')'], |p| {
                 p.start(SyntaxKind::FunctionParameter);
+                attributes(p);
                 p.try_eat(T![...]);
                 binding(p);
                 if p.try_eat(T![:]) {

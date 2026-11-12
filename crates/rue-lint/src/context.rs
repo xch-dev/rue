@@ -190,8 +190,13 @@ impl<'a> LintContext<'a> {
     /// Whether the type is `Never`, so a value of it is never produced, such as because the
     /// expression always raises.
     pub fn is_never(&mut self, ty: TypeId) -> bool {
-        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
+        let semantic = self.without_aliases(ty);
         matches!(self.db.ty(semantic), Type::Never)
+    }
+
+    /// The type that an alias refers to, or the type itself if it isn't an alias.
+    pub fn without_aliases(&mut self, ty: TypeId) -> TypeId {
+        rue_types::unwrap_semantic(self.db.types_mut(), ty, true)
     }
 
     /// Whether the type is unresolved, or contains an unresolved type anywhere inside of it,

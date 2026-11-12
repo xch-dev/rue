@@ -318,6 +318,10 @@ fn analyze_nodes(
             | AstNodeKind::ListBindingItem
             | AstNodeKind::StructFieldBinding => {}
             AstNodeKind::Attribute => {
+                let is_parameter_attribute = node
+                    .parent()
+                    .is_some_and(|parent| parent.kind() == SyntaxKind::FunctionParameter);
+
                 for token in node
                     .children_with_tokens()
                     .filter_map(rowan::NodeOrToken::into_token)
@@ -333,7 +337,10 @@ fn analyze_nodes(
                         // prefix operator, as in `#![allow(unused_import)]`
                         T![!] => facts[id.index()].flags.insert(TokenFlags::PREFIX_OPERATOR),
                         T!['['] => facts[id.index()].delimiter_style = Some(DelimiterStyle::Fill),
-                        T![']'] => facts[id.index()].flags.insert(TokenFlags::ATTRIBUTE_END),
+                        // A parameter's attributes are on the same line as it, as in Rust
+                        T![']'] if !is_parameter_attribute => {
+                            facts[id.index()].flags.insert(TokenFlags::ATTRIBUTE_END);
+                        }
                         _ => {}
                     }
                 }

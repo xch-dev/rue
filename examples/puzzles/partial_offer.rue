@@ -20,12 +20,12 @@ struct CreateCoinRest {
 type CatMaker = fn(inner_puzzle_hash: Bytes32, ...inner_solution: Any) -> Bytes32;
 
 fn main(
-    cat_maker: CatMaker,
-    other_asset_offer_mod: Bytes32,
-    receiver_puzzle_hash: Bytes32,
-    inner_puzzle: fn(...inner_solution: Any) -> List<Condition>,
-    min_other_asset_amount_minus_one: Int,
-    precisions: Precisions,
+    #[curried] cat_maker: CatMaker,
+    #[curried] other_asset_offer_mod: Bytes32,
+    #[curried] receiver_puzzle_hash: Bytes32,
+    #[curried] inner_puzzle: fn(...inner_solution: Any) -> List<Condition>,
+    #[curried] min_other_asset_amount_minus_one: Int,
+    #[curried] precisions: Precisions,
     proof: CoinProof,
     other_asset_amount: Int,
     create_coin_rest: CreateCoinRest | nil,

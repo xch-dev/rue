@@ -1,0 +1,152 @@
+type Puzzle = fn(...solution: Any) -> List<Condition>;
+
+fn main(
+    #[curried] curried: Puzzle,
+    #[curried] PUZZLE_HASH: Bytes32,
+    unchecked: Puzzle,
+    checked: Puzzle,
+    bound: Puzzle,
+    wrapped: Puzzle,
+    passed: Puzzle,
+    hashed_only: Puzzle,
+    not_equal: Puzzle,
+    output: Puzzle,
+    SCREAMING: Puzzle,
+    #[allow(unchecked_puzzle_call)] allowed: Puzzle,
+    signed: Puzzle,
+    in_lambda: Puzzle,
+    in_branch: Puzzle,
+    combined: Puzzle,
+    if_statement: Puzzle,
+    if_expression: Puzzle,
+    validated: Puzzle,
+    listed: Puzzle,
+    #[curried] PUBLIC_KEY: K1PublicKey,
+    signature: K1Signature,
+    solution: Any,
+) -> List<Any> {
+    // Parameters that are curried into the puzzle are trusted
+    let a = curried(...solution);
+    let b = SCREAMING(...solution);
+
+    // A parameter that comes from the solution can be anything
+    let c = unchecked(...solution);
+
+    // Comparing its tree hash with a trusted hash checks it
+    assert tree_hash(checked) == PUZZLE_HASH;
+    let d = checked(...solution);
+
+    // The hash can be stored in a binding first
+    let hash = tree_hash(bound);
+    assert hash == PUZZLE_HASH;
+    let e = bound(...solution);
+
+    // Or used to compute another hash that's checked
+    assert curry_tree_hash(PUZZLE_HASH, [tree_hash(wrapped)]) == PUZZLE_HASH;
+    let f = wrapped(...solution);
+
+    // A parameter passed to another function could be checked there
+    assert check(passed);
+    let g = passed(...solution);
+
+    // Computing the hash without comparing it doesn't check anything
+    let _ = tree_hash(hashed_only);
+    let h = hashed_only(...solution);
+
+    // `!=` checks the hash just as well as `==`
+    let i = if tree_hash(not_equal) != PUZZLE_HASH {
+        nil
+    } else {
+        not_equal(...solution)
+    };
+
+    // A hash that's output (such as in a condition) is assumed to be checked by it
+    let j = output(...solution);
+    let k = [AssertMyPuzzleHash { puzzle_hash: tree_hash(output) }];
+
+    // The lint can be allowed on the parameter
+    let m = allowed(...solution);
+
+    // Verifying a signature of the hash checks it
+    secp256k1_verify(PUBLIC_KEY, tree_hash(signed), signature);
+    let n = signed(...solution);
+
+    // So does asserting something computed from it
+    assert is_allowed(tree_hash(listed));
+    let o = listed(...solution);
+
+    // A hash computed in a lambda isn't compared
+    let hash = fn() => tree_hash(in_lambda);
+    let p = in_lambda(...solution);
+
+    // A hash can go through an `if` branch, or be combined with something, before it's compared
+    let branch_hash = if PUZZLE_HASH == nil {
+        tree_hash(in_branch)
+    } else {
+        PUZZLE_HASH
+    };
+    assert branch_hash == PUZZLE_HASH;
+    let q = in_branch(...solution);
+    assert sha256(tree_hash(combined) + PUZZLE_HASH) == PUZZLE_HASH;
+    let r = combined(...solution);
+
+    // An `if` on something computed from the hash checks it too, as does passing the hash to a
+    // function of the program
+    if !is_allowed(tree_hash(if_statement)) {
+        raise "not allowed";
+    }
+    let t = if_statement(...solution);
+    let u = if is_allowed(tree_hash(if_expression)) {
+        if_expression(...solution)
+    } else {
+        raise "not allowed";
+    };
+    validate(tree_hash(validated));
+    let v = validated(...solution);
+
+    [a, b, c, d, e, f, g, h, i, j, k, m, n, o, p, q, r, t, u, v, [hash()]]
+}
+
+// Exported functions are programs of their own
+export fn exported(inner_puzzle: Puzzle, solution: Any) -> List<Condition> {
+    inner_puzzle(...solution)
+}
+
+fn check(puzzle: Puzzle) -> Bool {
+    tree_hash(puzzle) == 0x0000000000000000000000000000000000000000000000000000000000000000
+}
+
+// Tests aren't run with a solution
+test fn runs(puzzle: Puzzle) {
+    let _ = puzzle(...nil);
+}
+
+fn is_allowed(hash: Bytes32) -> Bool {
+    hash == 0x0000000000000000000000000000000000000000000000000000000000000000
+}
+
+fn validate(hash: Bytes32) {
+    assert is_allowed(hash);
+}
+
+// Passing the hash to the puzzle itself, a function from the solution, or a lambda doesn't check it
+type HashedPuzzle = fn(my_hash: Bytes32, ...solution: Any) -> List<Condition>;
+
+export fn self_hashed(inner: HashedPuzzle, solution: Any) -> List<Condition> {
+    inner(tree_hash(inner), ...solution)
+}
+
+export fn logged(
+    other: Puzzle,
+    #[allow(unchecked_puzzle_call)] logger: fn(hash: Bytes32) -> Any,
+    solution: Any,
+) -> List<Condition> {
+    let _ = logger(tree_hash(other));
+    other(...solution)
+}
+
+export fn lambda_checked(puzzle: Puzzle, solution: Any) -> List<Condition> {
+    let check = fn(hash: Bytes32) => hash;
+    let _ = check(tree_hash(puzzle));
+    puzzle(...solution)
+}

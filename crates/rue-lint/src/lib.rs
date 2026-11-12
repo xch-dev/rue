@@ -8,6 +8,7 @@
 mod context;
 mod cost;
 mod equality;
+mod flow;
 mod levels;
 mod lints;
 mod measure;
@@ -47,6 +48,9 @@ pub struct LintInput<'a> {
     programs: OnceCell<Vec<SymbolId>>,
     /// The tests, which are computed the first time a pass needs them.
     tests: OnceCell<HashSet<SymbolId>>,
+    /// The bindings that each binding is destructured into, which are computed the first time a
+    /// pass needs them.
+    binding_parts: OnceCell<flow::Parts>,
 }
 
 impl<'a> LintInput<'a> {
@@ -66,6 +70,7 @@ impl<'a> LintInput<'a> {
             live: OnceCell::new(),
             programs: OnceCell::new(),
             tests: OnceCell::new(),
+            binding_parts: OnceCell::new(),
         }
     }
 
@@ -94,6 +99,11 @@ impl<'a> LintInput<'a> {
             programs.sort_by_key(id_arena::Id::index);
             programs
         })
+    }
+
+    /// The bindings that each binding is destructured into.
+    pub(crate) fn binding_parts(&self, db: &Database) -> &flow::Parts {
+        self.binding_parts.get_or_init(|| flow::binding_parts(db))
     }
 
     /// The `test fn`s.

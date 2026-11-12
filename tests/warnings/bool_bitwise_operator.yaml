@@ -1,0 +1,13 @@
+program: (a (q 2 (i (a (i (a (i (all (> 5 ()) (> 11 ())) (q 2 (i (all 11 (> (a 2 (c 11 5)) (q . 1))) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (any (not 5) (= (pubkey_for_exp 23) 47)) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (a (i 11 (q 2 (i (> (a 2 (c 11 5)) (q . 1)) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (c (q 2 (i 2 (q 19 3 2) (q 8)) 1) 1))
+debug_program: (a (q 2 (q 2 (i (a (i (a (i 8 (q 2 (i 12 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 10 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 14 (q 1 . 1) (q)) 1) (q)) 1) (c (c (c (all (> 5 ()) (> 11 ())) (all (not (= 11 ())) (> (a 2 (c 11 5)) (q . 1)))) (c (any (= 5 ()) (= (pubkey_for_exp 23) 47)) (a (i (not (= 11 ())) (q 2 (i (> (a 2 (c 11 5)) (q . 1)) (q 1 . 1) (q)) 1) (q)) 1))) 1)) (c (q 2 (i (not (= 2 ())) (q 19 3 2) (q 8 (q . "assertion failed at bool_bitwise_operator.rue:18:5"))) 1) 1))
+byte_cost: 3348000
+clvm_error: path into atom
+diagnostics:
+- |-
+  The right side of `&` is evaluated even when the left side is false, and it can raise at bool_bitwise_operator.rue:6:27
+    note: `&&` only evaluates the right side when it's needed
+    help: Use `&&` instead
+- |-
+  The right side of `|` is evaluated even when the left side is true, and it has an estimated cost of 1327183 at bool_bitwise_operator.rue:9:30
+    note: `||` only evaluates the right side when it's needed
+    help: Use `||` instead

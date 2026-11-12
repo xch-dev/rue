@@ -2,16 +2,21 @@ use rue_diagnostic::Lint;
 
 use crate::{HirLintPass, LintContext, LintInput};
 
+mod bitwise;
 mod branches;
 mod casts;
 mod comparisons;
 mod conditions;
+mod discarded;
+mod entrypoints;
+mod exhaustive;
 mod exports;
 mod guards;
 mod inline_ifs;
 mod inlining;
 mod naming;
 mod operators;
+mod puzzles;
 mod recursion;
 mod repeated;
 mod returns;
@@ -53,6 +58,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
         lints: shadowing::LINTS,
         run: shadowing::check,
     },
+    InputPass {
+        lints: entrypoints::LINTS,
+        run: entrypoints::check,
+    },
 ];
 
 /// Every [`HirLintPass`], which all run during the same walk over the HIR.
@@ -78,6 +87,10 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(casts::BytesIntConfusion),
         Box::new(recursion::UnconditionalRecursion),
         Box::new(repeated::RepeatedExpensiveCall::new(input)),
+        Box::new(bitwise::BoolBitwiseOperator::default()),
+        Box::new(exhaustive::NonExhaustiveUnionGuard),
+        Box::new(discarded::DiscardedCondition::new(input)),
+        Box::new(puzzles::UncheckedPuzzleCall::new(input)),
         Box::new(inlining::Inlining::new(input)),
         Box::new(unused_fields::UnusedStructField::new(input)),
     ]

@@ -173,6 +173,11 @@ impl Database {
         &self.symbols[id]
     }
 
+    /// Every symbol, including the ones in the standard library.
+    pub fn symbols(&self) -> impl Iterator<Item = (SymbolId, &Symbol)> {
+        self.symbols.iter()
+    }
+
     pub fn symbol_mut(&mut self, id: SymbolId) -> &mut Symbol {
         &mut self.symbols[id]
     }

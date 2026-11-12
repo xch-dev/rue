@@ -328,7 +328,7 @@ fn main() -> Int {
             "Warning 7: Unused function `other`",
             "Error 11: Attribute `allow` expects a list of lint names",
             "Warning 13: Binding `a` is returned directly after it's declared",
-            "Error 14: Attributes can only be used on items and statements",
+            "Error 14: Attributes can only be used on items, statements and parameters",
         ]
     );
     assert!(has_errors);
@@ -386,8 +386,8 @@ fn main() -> Int {
         reports,
         vec![
             "Warning 2: Binding `a` is returned directly after it's declared",
-            "Error 3: Attributes can only be used on items and statements",
-            "Error 4: Attributes can only be used on items and statements",
+            "Error 3: Attributes can only be used on items, statements and parameters",
+            "Error 4: Attributes can only be used on items, statements and parameters",
         ]
     );
     assert!(has_errors);
@@ -1055,7 +1055,7 @@ fn main() -> Int {
             "Warning 2: Unused function `helper`",
             "Warning 6: Unknown lint `unused_bindings`",
             "Warning 8: Binding `a` is returned directly after it's declared",
-            "Error 10: Attributes can only be used on items and statements",
+            "Error 10: Attributes can only be used on items, statements and parameters",
         ]
     );
     assert!(has_errors);
@@ -1410,9 +1410,9 @@ fn main() -> Int {
         reports,
         vec![
             "Warning 2: Binding `a` is returned directly after it's declared",
-            "Error 3: Attributes can only be used on items and statements",
+            "Error 3: Attributes can only be used on items, statements and parameters",
             "Error 3: Unknown attribute `alow`",
-            "Error 3: Attributes can only be used on items and statements",
+            "Error 3: Attributes can only be used on items, statements and parameters",
             "Warning 3: Unknown lint `unused_bindng`",
         ]
     );
@@ -1672,12 +1672,17 @@ fn reports_with_level(source: &str, lint: Lint, level: LintLevel) -> (Vec<String
 
 /// Applies every suggestion that can be applied automatically.
 fn fix(source: &str) -> String {
+    fix_with(source, &[Applicability::MachineApplicable])
+}
+
+/// Applies every suggestion with one of the given applicabilities.
+fn fix_with(source: &str, applicabilities: &[Applicability]) -> String {
     let (diagnostics, _) = compile_source(source, |_| {});
 
     let edits = diagnostics
         .iter()
         .flat_map(|diagnostic| &diagnostic.suggestions)
-        .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
+        .filter(|suggestion| applicabilities.contains(&suggestion.applicability))
         .flat_map(|suggestion| &suggestion.edits)
         .collect::<Vec<_>>();
 
@@ -2620,5 +2625,79 @@ fn main(a: Int, b: Int) -> Int {
         vec![
             "Warning 1: Inline function `mid` is large, and its body is duplicated in each of the 2 places it's used"
         ]
+    );
+}
+
+#[test]
+fn curried_attributes_mark_parameters() {
+    let source = "\
+#[curried]
+fn helper(#[curried(value)] value: Int) -> Int {
+    let lambda = fn(#[curried] x: Int) => x;
+    lambda(value)
+}
+
+fn main(
+    #[curried] puzzle: fn(...solution: Any) -> Int,
+    #[allow(unused_parameter)] unused: Int,
+    solution: Any,
+) -> Int {
+    #[curried]
+    let total = puzzle(...solution) + helper(1);
+    total + 1
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Error 1: The `curried` attribute can only be used on a parameter of a function item",
+            "Error 2: The `curried` attribute doesn't take any arguments",
+            "Error 3: The `curried` attribute can only be used on a parameter of a function item",
+            "Error 12: The `curried` attribute can only be used on a parameter of a function item",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn bool_bitwise_operator_suggestions_keep_the_meaning() {
+    let source = "\
+fn main(a: Bool, b: Bool, x: Int) -> Bool {
+    let first = a | check(x) && b;
+    let second = a & check(x) == b;
+    let third = !(a & check(x));
+    let fourth = a & check(x);
+    let fifth = a && b | check(x);
+    let sixth = b == a & check(x);
+    first && second && third && fourth && fifth && sixth
+}
+
+fn check(x: Int) -> Bool {
+    assert x > 0;
+    true
+}
+";
+
+    assert_eq!(
+        fix_with(source, &[Applicability::MaybeIncorrect]),
+        "\
+fn main(a: Bool, b: Bool, x: Int) -> Bool {
+    let first = (a || check(x)) && b;
+    let second = (a && check(x)) == b;
+    let third = !(a && check(x));
+    let fourth = a && check(x);
+    let fifth = a && (b || check(x));
+    let sixth = b == (a && check(x));
+    first && second && third && fourth && fifth && sixth
+}
+
+fn check(x: Int) -> Bool {
+    assert x > 0;
+    true
+}
+"
     );
 }

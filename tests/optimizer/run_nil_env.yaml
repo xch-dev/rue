@@ -6,4 +6,7 @@ runtime_cost: 199
 byte_cost: 108000
 total_cost: 108199
 diagnostics:
+- |-
+  Entrypoint `main` can return any value, so what it outputs isn't checked at run_nil_env.rue:3:4
+    note: Declare the type that it returns instead, such as `List<Condition>`
 - Unused parameter `n` at run_nil_env.rue:3:9
