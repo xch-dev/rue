@@ -114,8 +114,8 @@ impl HirLintPass for RepeatedExpensiveCall {
     }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
-        // `debug` statements aren't part of a release build
-        if !is_expensive(node) || in_debug_statement(cx, hir) {
+        // `debug` statements and `raise` messages aren't part of a release build
+        if !is_expensive(node) || in_debug_only_code(cx, hir) {
             return;
         }
 
@@ -276,8 +276,9 @@ impl RepeatedExpensiveCall {
     }
 }
 
-/// Whether the node is inside of a `debug` statement.
-fn in_debug_statement(cx: &LintContext<'_>, hir: HirId) -> bool {
+/// Whether the node is inside of a `debug` statement or the message of a `raise`, which release
+/// builds leave out.
+fn in_debug_only_code(cx: &LintContext<'_>, hir: HirId) -> bool {
     let db = cx.db();
     let parents = cx.parents();
 
@@ -288,9 +289,10 @@ fn in_debug_statement(cx: &LintContext<'_>, hir: HirId) -> bool {
         .iter()
         .zip(children)
         .any(|(&parent, &child)| match db.hir(parent) {
-            Hir::Block(block) => block.statements.iter().any(
-                |statement| matches!(statement, Statement::Debug(value, _) if *value == child),
-            ),
+            Hir::Block(block) => block.statements.iter().any(|statement| match statement {
+                Statement::Debug(value, _) | Statement::Raise(Some(value), _) => *value == child,
+                _ => false,
+            }),
             _ => false,
         })
 }

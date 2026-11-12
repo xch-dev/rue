@@ -82,6 +82,12 @@ fn scopes(value: Bytes) -> Bytes32 {
     let traced = tree_hash(value + inner);
     debug tree_hash(value + traced);
 
+    // Neither are `raise` messages
+    let raised = tree_hash(value + after);
+    if raised == after {
+        raise tree_hash(value + after);
+    }
+
     // A binding of another type can't be used in place of the call
     let annotated: Bytes = tree_hash(after + value);
     let typed: Bytes32 = tree_hash(after + value);
@@ -94,6 +100,8 @@ fn scopes(value: Bytes) -> Bytes32 {
             + again
             + reused
             + traced
+            + raised
+            + raised
             + annotated
             + annotated
             + typed,
