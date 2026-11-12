@@ -1,4 +1,5 @@
 mod builtins;
+mod codegen;
 mod database;
 mod dependency_graph;
 mod environment;
@@ -14,6 +15,7 @@ mod unresolved;
 mod value;
 
 pub use builtins::*;
+pub use codegen::*;
 pub use database::*;
 pub use dependency_graph::*;
 pub use environment::*;

@@ -2,12 +2,12 @@ use std::{collections::HashMap, mem::Discriminant};
 
 use indexmap::IndexMap;
 use rue_diagnostic::{Lint, Note, SrcLoc};
-use rue_hir::{BinaryOp, Database, Hir, HirId, ScopeId, Statement, Symbol, SymbolId, UnaryOp};
+use rue_hir::{BinaryOp, Database, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
 use rue_lir::ClvmOp;
 
 use crate::{
     HirLintPass, LintContext,
-    cost::{BINDING_SIZE, COST_PER_BYTE, Cost, CostModel},
+    cost::{BINDING_SIZE, COST_PER_BYTE, Cost, CostModel, REFERENCE},
     equality::hir_eq,
     text::encloses,
 };
@@ -78,7 +78,7 @@ type Branch = (HirId, usize);
 impl RepeatedExpensiveCall {
     pub(crate) fn new(min_savings: u64) -> Self {
         Self {
-            min_savings,
+            min_savings: min_savings.max(1),
             functions: Vec::new(),
             costs: HashMap::new(),
             references: HashMap::new(),
@@ -102,7 +102,10 @@ impl HirLintPass for RepeatedExpensiveCall {
     }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
-        if let Hir::Reference(symbol) = node {
+        // References in `debug` statements aren't part of a release build
+        if let Hir::Reference(symbol) = node
+            && !in_debug_statement(cx, hir)
+        {
             *self.references.entry(*symbol).or_default() += 1;
         }
 
@@ -152,17 +155,11 @@ impl HirLintPass for RepeatedExpensiveCall {
 
                 let cost = CostModel::new(db, &mut self.costs).estimate(earlier.hir);
 
-                // Using the result costs about as much as using a parameter
-                let reference = Cost {
-                    size: 1,
-                    runtime: 44,
-                };
-
                 entry.insert(Repeated {
                     first,
                     binding: earlier.binding.clone(),
                     repeats: Vec::new(),
-                    savings: cost.total().saturating_sub(reference.total()),
+                    savings: cost.total().saturating_sub(REFERENCE.total()),
                 })
             }
         };
@@ -172,7 +169,9 @@ impl HirLintPass for RepeatedExpensiveCall {
         let in_scope = repeated.binding.as_ref().is_some_and(|binding| {
             cx.parents().contains(&binding.block)
                 && cx.db().hir_scope(hir).is_some_and(|scope| {
-                    resolve(cx.db(), scope, &binding.name) == Some(binding.symbol)
+                    cx.db()
+                        .resolve_symbol_in(scope, &binding.name)
+                        .is_some_and(|(symbol, _)| symbol == binding.symbol)
                 })
         });
 
@@ -192,6 +191,14 @@ impl RepeatedExpensiveCall {
                     .filter(|(_, other)| *other == bound)
                     .count() as u64
             };
+
+            // A binding that's never referenced isn't evaluated, so the calls after it aren't
+            // evaluated again
+            if let Some(binding) = &repeated.binding
+                && !self.references.contains_key(&binding.symbol)
+            {
+                continue;
+            }
 
             let new_binding = BINDING_SIZE * COST_PER_BYTE;
 
@@ -218,7 +225,7 @@ impl RepeatedExpensiveCall {
                     ),
                 };
 
-                if savings >= self.min_savings.max(1) {
+                if savings >= self.min_savings {
                     reports.push((srcloc.clone(), repeated.first.clone(), help, savings));
                 }
             }
@@ -251,19 +258,19 @@ impl RepeatedExpensiveCall {
     }
 }
 
-/// The symbol that a name refers to in a scope.
-fn resolve(db: &Database, scope: ScopeId, name: &str) -> Option<SymbolId> {
-    let mut current = Some(scope);
+/// Whether the node is inside of a `debug` statement.
+fn in_debug_statement(cx: &LintContext<'_>, hir: HirId) -> bool {
+    let db = cx.db();
 
-    while let Some(scope) = current {
-        if let Some(symbol) = db.scope(scope).symbol(name) {
-            return Some(symbol);
-        }
-
-        current = db.scope(scope).parent();
-    }
-
-    None
+    cx.parents()
+        .iter()
+        .zip(cx.parents().iter().skip(1).chain([&hir]))
+        .any(|(&parent, &child)| match db.hir(parent) {
+            Hir::Block(block) => block.statements.iter().any(
+                |statement| matches!(statement, Statement::Debug(value, _) if *value == child),
+            ),
+            _ => false,
+        })
 }
 
 /// The binding whose value is the call, if the call is the whole value of a binding.

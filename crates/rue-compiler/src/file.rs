@@ -7,18 +7,16 @@ use std::{
 };
 
 use clvmr::{Allocator, NodePtr};
-use id_arena::Arena;
 use include_dir::{Dir, DirEntry, include_dir};
 use indexmap::{IndexMap, IndexSet, indexset};
 use rowan::{TextRange, TextSize};
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{Name, Source, SourceKind};
 use rue_hir::{
-    Declaration, DependencyGraph, Environment, Lowerer, ModuleDeclarations, ModuleSymbol, Scope,
-    ScopeId, Symbol, SymbolId, has_reachable_unresolved,
+    Declaration, ModuleDeclarations, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId,
+    has_reachable_unresolved,
 };
 use rue_lexer::Lexer;
-use rue_lir::CodegenOptions;
 use rue_parser::Parser;
 use thiserror::Error;
 
@@ -779,22 +777,7 @@ fn codegen(
         return Err(Error::UnresolvedCodegen);
     }
 
-    let graph = DependencyGraph::build(ctx, symbol, options);
-
-    let mut arena = Arena::new();
-    let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol, base_path);
-    let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
-
-    if options.optimize_lir {
-        lir = rue_lir::optimize(&mut arena, lir);
-    }
-
-    Ok(rue_lir::codegen(
-        &arena,
-        allocator,
-        lir,
-        CodegenOptions {
-            optimize_static_pairs: options.optimize_static_pairs,
-        },
+    Ok(rue_hir::codegen(
+        ctx, allocator, symbol, options, base_path,
     )?)
 }

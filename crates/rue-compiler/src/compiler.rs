@@ -301,40 +301,6 @@ impl Compiler {
         &self.module_stack[..self.module_stack.len() - 1]
     }
 
-    pub fn resolve_symbol_in(
-        &self,
-        scope: ScopeId,
-        name: &str,
-    ) -> Option<(SymbolId, Option<ImportId>)> {
-        let mut current = Some(scope);
-
-        while let Some(scope) = current {
-            if let Some(symbol) = self.scope(scope).symbol(name) {
-                return Some((symbol, self.scope(scope).symbol_import(symbol)));
-            }
-            current = self.scope(scope).parent();
-        }
-
-        None
-    }
-
-    pub fn resolve_type_in(
-        &self,
-        scope: ScopeId,
-        name: &str,
-    ) -> Option<(TypeId, Option<ImportId>)> {
-        let mut current = Some(scope);
-
-        while let Some(scope) = current {
-            if let Some(ty) = self.scope(scope).ty(name) {
-                return Some((ty, self.scope(scope).type_import(ty)));
-            }
-            current = self.scope(scope).parent();
-        }
-
-        None
-    }
-
     pub fn type_name(&mut self, ty: TypeId) -> String {
         let current = self.last_scope_id();
         self.type_name_in(current, ty)

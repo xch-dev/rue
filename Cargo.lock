@@ -1765,6 +1765,7 @@ dependencies = [
 name = "rue-hir"
 version = "0.11.0"
 dependencies = [
+ "clvmr",
  "derive_more",
  "expect-test",
  "hex",
