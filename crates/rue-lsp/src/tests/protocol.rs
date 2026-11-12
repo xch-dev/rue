@@ -316,6 +316,14 @@ impl TempProject {
         fs::write(path, text).unwrap();
     }
 
+    /// Creates a symlink at `name` to `target`, relative to the symlink's directory.
+    #[cfg(unix)]
+    pub(super) fn symlink(&self, name: &str, target: &str) {
+        let path = self.root.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(target, path).unwrap();
+    }
+
     /// Removes a file or a directory.
     pub(super) fn remove(&self, name: &str) {
         let path = self.root.join(name);
@@ -437,6 +445,9 @@ pub(super) const SOURCE: &str = "fn main() -> Int {\n    let value = +42;\n    v
 
 /// Has a type error, which is the only error these tests expect.
 pub(super) const MISMATCH: &str = "fn main() -> Int {\n    \"hello\"\n}\n";
+
+/// Declares an unused function (a warning) with a type error.
+const OTHER_MISMATCH: &str = "fn other() -> Int {\n    \"hello\"\n}\n";
 
 /// Asserts that the only diagnostic is the type error in `MISMATCH`.
 fn assert_mismatch(diagnostics: &Value) {
@@ -613,14 +624,10 @@ async fn test_uri_spelling_is_kept() {
     client.open(&uri, SOURCE).await;
 
     // The diagnostics are only published to the URI the editor used
-    let mut published = client
-        .sync()
-        .await
-        .iter()
-        .map(|message| message.params().unwrap()["uri"].clone())
-        .collect::<Vec<_>>();
-    published.sort_by_key(ToString::to_string);
-    assert_eq!(published, [json!(uri), json!(project.uri("Rue.toml"))]);
+    assert_eq!(
+        published_uris(&client.sync().await),
+        uri_entries(&[(&uri, &[2]), (&project.uri("Rue.toml"), &[])])
+    );
 
     assert_hover(&mut client, &uri).await;
 
@@ -672,23 +679,35 @@ async fn test_workspace_folder_paths() {
     }
 }
 
-/// Renders the URIs that diagnostics were published to, and how many there were for each, in no
-/// particular order.
+/// Renders the URIs that diagnostics were published to, with their severities, sorted.
 fn published_uris(messages: &[Request]) -> Vec<String> {
     let mut published = messages
         .iter()
         .map(|message| {
             let params = message.params().unwrap();
-            format!(
-                "{} {}",
-                params["uri"].as_str().unwrap(),
-                params["diagnostics"].as_array().unwrap().len()
-            )
+            let severities = params["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|diagnostic| diagnostic["severity"].as_u64().unwrap())
+                .collect::<Vec<_>>();
+            format!("{} {severities:?}", params["uri"].as_str().unwrap())
         })
         .collect::<Vec<_>>();
 
     published.sort();
     published
+}
+
+/// Renders URIs and severities like `published_uris`.
+fn uri_entries(entries: &[(&Url, &[u64])]) -> Vec<String> {
+    let mut entries = entries
+        .iter()
+        .map(|(uri, severities)| format!("{uri} {severities:?}"))
+        .collect::<Vec<_>>();
+
+    entries.sort();
+    entries
 }
 
 #[cfg(unix)]
@@ -701,47 +720,114 @@ async fn test_file_open_through_two_uris() {
 
     let mut client = Client::initialized().await;
 
-    let expected = |entries: &[(&Url, usize)]| {
-        let mut entries = entries
-            .iter()
-            .map(|(uri, count)| format!("{uri} {count}"))
-            .collect::<Vec<_>>();
-        entries.sort();
-        entries
-    };
-
+    // The unsaved text has a type error, and the file on disk has a warning
     client.open(&link, MISMATCH).await;
     assert_eq!(
         published_uris(&client.sync().await),
-        expected(&[(&link, 1), (&manifest, 0)])
+        uri_entries(&[(&link, &[1]), (&manifest, &[])])
     );
 
     // Both documents get the diagnostics
     client.open(&real, MISMATCH).await;
     assert_eq!(
         published_uris(&client.sync().await),
-        expected(&[(&link, 1), (&real, 1), (&manifest, 0)])
+        uri_entries(&[(&link, &[1]), (&real, &[1]), (&manifest, &[])])
     );
 
-    // Once one is closed, its diagnostics are cleared, and only the other one gets new ones
+    // Once one is closed, its diagnostics are cleared, and the other one's text is still used
     client.close(&link).await;
     assert_eq!(
         published_uris(&client.sync().await),
-        expected(&[(&link, 0), (&real, 1), (&manifest, 0)])
+        uri_entries(&[(&link, &[]), (&real, &[1]), (&manifest, &[])])
     );
 
-    client.change(&real, 2, &[SOURCE]).await;
+    client
+        .change(&real, 2, &["fn main() -> Int {\n    42\n}\n"])
+        .await;
     assert_eq!(
         published_uris(&client.sync().await),
-        expected(&[(&real, 1), (&manifest, 0)])
+        uri_entries(&[(&real, &[]), (&manifest, &[])])
     );
 
-    // Once neither is open, the diagnostics go to the path the client used for the project
+    // Once neither is open, the file on disk is compiled, and its diagnostics go to the path the
+    // client used for the project
     client.close(&real).await;
     assert_eq!(
         published_uris(&client.sync().await),
-        expected(&[(&link, 1), (&real, 0), (&manifest, 0)])
+        uri_entries(&[(&link, &[2]), (&real, &[]), (&manifest, &[])])
     );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_shared_manifest_symlink() {
+    // Two projects share their configuration through a symlinked manifest
+    let project = TempProject::with_manifest(
+        None,
+        &[
+            ("shared/Rue.toml", MANIFEST),
+            ("a/main.rue", MISMATCH),
+            ("b/main.rue", MISMATCH),
+        ],
+    );
+    project.symlink("a/Rue.toml", "../shared/Rue.toml");
+    project.symlink("b/Rue.toml", "../shared/Rue.toml");
+
+    let a = project.uri("a/main.rue");
+    let b = project.uri("b/main.rue");
+
+    let mut client = Client::initialized().await;
+
+    client.open(&a, MISMATCH).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["a/Rue.toml: []", "a/main.rue: [1]"]
+    );
+
+    // They're separate projects, so neither clears the other's diagnostics. The manifest's
+    // diagnostics are published to both of the paths the client uses for it.
+    client.open(&b, MISMATCH).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["a/Rue.toml: []", "b/Rue.toml: []", "b/main.rue: [1]"]
+    );
+    assert_ne!(client.hover(&a, 0, 4).await, Value::Null);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_project_found_through_symlink() {
+    // `outer/sub` is part of the project in `outer`, but through `side/link` it's on its own
+    let project = TempProject::with_manifest(
+        None,
+        &[
+            ("outer/Rue.toml", MANIFEST),
+            ("outer/sub/x.rue", OTHER_MISMATCH),
+            ("side/y.rue", OTHER_MISMATCH),
+        ],
+    );
+    project.symlink("side/link", "../outer/sub");
+
+    let x = project.uri("side/link/x.rue");
+    let y = project.uri("side/y.rue");
+
+    let mut client = Client::initialized().await;
+
+    client.open(&x, OTHER_MISMATCH).await;
+    client.close(&x).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["side/link/x.rue: [2, 1]", "side/link/x.rue: [2, 1]"]
+    );
+
+    // It's still the same project when it's looked up again, so it's left alone
+    let compiles = client.compiles();
+    client.open(&y, OTHER_MISMATCH).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["side/y.rue: [2, 1]"]
+    );
+    assert_eq!(client.compiles(), compiles + 1);
 }
 
 #[cfg(unix)]

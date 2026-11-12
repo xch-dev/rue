@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use rue_compiler::normalize_path;
 use rue_diagnostic::SourceKind;
 use tower_lsp::lsp_types::{Location, Url};
 
@@ -22,6 +21,9 @@ pub struct Paths {
     /// The URIs of the documents open in the editor. The same file can be open through more than
     /// one URI (for example, through a symlink and through its target).
     documents: Mutex<HashMap<SourceKind, Vec<Url>>>,
+    /// The paths the client uses for files that are symlinks, which the directories they're in
+    /// don't give (for example, a manifest shared between projects).
+    aliases: Mutex<HashMap<SourceKind, Vec<PathBuf>>>,
     /// The URIs that diagnostics were last published to for each file.
     published: Mutex<HashMap<SourceKind, Vec<Url>>>,
 }
@@ -38,6 +40,21 @@ impl Paths {
 
         if !roots.iter().any(|(root, _)| *root == canonical) {
             roots.push((canonical, client.to_path_buf()));
+        }
+    }
+
+    /// Remembers the path the client uses for a file, which may be a symlink.
+    pub fn add_alias(&self, client: &Path) {
+        let Some(canonical) = canonical(client) else {
+            return;
+        };
+
+        let kind = SourceKind::File(canonical.to_string_lossy().to_string());
+        let mut aliases = lock(&self.aliases);
+        let paths = aliases.entry(kind).or_default();
+
+        if !paths.iter().any(|path| path == client) {
+            paths.push(client.to_path_buf());
         }
     }
 
@@ -64,6 +81,11 @@ impl Paths {
         });
     }
 
+    /// Whether a file is open in the editor, through any URI.
+    pub fn is_open(&self, kind: &SourceKind) -> bool {
+        lock(&self.documents).contains_key(kind)
+    }
+
     /// The path the client uses for a file that's open in the editor.
     pub fn open_path(&self, kind: &SourceKind) -> Option<PathBuf> {
         uri_to_path(lock(&self.documents).get(kind)?.first()?)
@@ -75,7 +97,8 @@ impl Paths {
     }
 
     /// The URIs that the client uses for a file: those of the documents open for it, or if there
-    /// are none, its path in the innermost directory the client used.
+    /// are none, the paths the client used for it, or its path in the innermost directory the
+    /// client used.
     pub fn uris(&self, kind: &SourceKind) -> Vec<Url> {
         let SourceKind::File(path) = kind else {
             return Vec::new();
@@ -83,6 +106,13 @@ impl Paths {
 
         if let Some(uris) = lock(&self.documents).get(kind) {
             return uris.clone();
+        }
+
+        if let Some(paths) = lock(&self.aliases).get(kind) {
+            return paths
+                .iter()
+                .filter_map(|path| Url::from_file_path(path).ok())
+                .collect();
         }
 
         let path = Path::new(path);
@@ -160,13 +190,7 @@ fn decode_drive_letter(uri: &Url) -> Url {
 /// nearest directory that does is canonicalized instead.
 pub fn document(uri: &Url) -> Option<(PathBuf, SourceKind)> {
     let path = uri_to_path(uri)?;
-
-    if let Ok(kind) = normalize_path(&path) {
-        return Some((path, kind));
-    }
-
     let kind = SourceKind::File(canonical(&path)?.to_string_lossy().to_string());
-
     Some((path, kind))
 }
 

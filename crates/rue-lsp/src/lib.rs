@@ -54,7 +54,7 @@ pub struct Backend {
     /// The files that each project last published diagnostics for, keyed by its manifest (or its
     /// entrypoint, if it doesn't have one), so that they can be cleared once a file isn't part of
     /// the project anymore.
-    published: Mutex<HashMap<PathBuf, HashSet<SourceKind>>>,
+    published: Mutex<HashMap<PathBuf, Tracked>>,
     /// The paths the client uses, which can differ from the compiler's.
     paths: Paths,
     /// Whether the client can register file watchers when asked to.
@@ -227,9 +227,14 @@ impl LanguageServer for Backend {
 
     /// The file's unsaved changes are discarded, so the project is compiled with what's on disk.
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.paths.close(&params.text_document.uri);
-
-        self.on_change(params.text_document.uri, None).await;
+        if let Some(diagnostics) = self
+            .catch_panic(Task::Compile, || {
+                self.on_close_impl(&params.text_document.uri)
+            })
+            .await
+        {
+            self.publish(diagnostics).await;
+        }
     }
 
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
@@ -393,6 +398,20 @@ impl Backend {
         self.recompile(&[], Some(&uri_path))
     }
 
+    /// Discards the document's unsaved changes, unless the file is still open through another URI
+    /// (for example, through a symlink and through its target), and recompiles its project.
+    fn on_close_impl(&self, uri: &Url) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+        self.paths.close(uri);
+
+        if let Some((path, kind)) = document(uri)
+            && self.paths.is_open(&kind)
+        {
+            return self.recompile(&[], Some(&path));
+        }
+
+        self.on_change_impl(uri, None)
+    }
+
     /// Recompiles the projects that files changed on disk belong to, outside of the editor (for
     /// example, by switching branches).
     fn on_watched_files_impl(
@@ -427,14 +446,19 @@ impl Backend {
         // A project may not exist anymore, or may have become part of another one (for example,
         // if a manifest was deleted, or created in a parent directory). Its files are cleared, and
         // those open in the editor are compiled with whichever project they're part of now.
-        for (key, files) in &published {
-            if FoundProject::find(key).is_some_and(|project| &project.key == key) {
+        for (key, tracked) in &published {
+            if FoundProject::find(&tracked.path).is_some_and(|project| &project.key == key) {
                 continue;
             }
 
             removed.push(key.clone());
 
-            lookups.extend(files.iter().filter_map(|kind| self.paths.open_path(kind)));
+            lookups.extend(
+                tracked
+                    .files
+                    .iter()
+                    .filter_map(|kind| self.paths.open_path(kind)),
+            );
         }
 
         // Each project is only compiled once, no matter how many of its files changed
@@ -469,15 +493,15 @@ impl Backend {
                 published
                     .get(&compiled.key)
                     .into_iter()
-                    .flatten()
+                    .flat_map(|tracked| &tracked.files)
                     .filter(|kind| !compiled.diagnostics.contains_key(*kind))
             })
             .collect::<HashSet<_>>();
 
-        for (key, files) in &published {
+        for (key, tracked) in &published {
             if !compiled.iter().any(|compiled| &compiled.key == key)
-                && files.iter().any(|kind| dropped.contains(kind))
-                && let Some(project) = FoundProject::find(key)
+                && tracked.files.iter().any(|kind| dropped.contains(kind))
+                && let Some(project) = FoundProject::find(&tracked.path)
             {
                 compiled.push(self.compile(&project));
             }
@@ -499,15 +523,21 @@ impl Backend {
         #[cfg(test)]
         self.compiles.fetch_add(1, Ordering::Relaxed);
 
-        // The project's files are reported with the paths the client uses for them
+        // The project's files are reported with the paths the client uses for them, including
+        // its manifest, which can be a symlink
         self.paths.add_root(&found.root);
+
+        if found.path.is_symlink() {
+            self.paths.add_alias(&found.path);
+        }
 
         let project = match &found.project {
             Ok(project) => project,
             Err(error) => {
                 return Compiled {
                     key: found.key.clone(),
-                    diagnostics: invalid_manifest_diagnostics(&found.root.join("Rue.toml"), error),
+                    path: found.path.clone(),
+                    diagnostics: invalid_manifest_diagnostics(&found.path, error),
                     caches: Vec::new(),
                     removed: false,
                 };
@@ -565,6 +595,7 @@ impl Backend {
 
         Compiled {
             key: found.key.clone(),
+            path: found.path.clone(),
             diagnostics,
             caches,
             removed: false,
@@ -578,6 +609,7 @@ impl Backend {
     fn update_project(&self, compiled: Compiled) -> IndexMap<SourceKind, Vec<Diagnostic>> {
         let Compiled {
             key,
+            path,
             mut diagnostics,
             caches,
             removed,
@@ -589,15 +621,19 @@ impl Backend {
             let previous = if removed {
                 published.remove(&key)
             } else {
-                published.insert(key, diagnostics.keys().cloned().collect())
+                let files = diagnostics.keys().cloned().collect();
+                published.insert(key, Tracked { path, files })
             };
 
             previous
+                .map(|tracked| tracked.files)
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|kind| {
                     !diagnostics.contains_key(kind)
-                        && !published.values().any(|files| files.contains(kind))
+                        && !published
+                            .values()
+                            .any(|tracked| tracked.files.contains(kind))
                 })
                 .collect::<Vec<_>>()
         };
@@ -1003,6 +1039,8 @@ struct FoundProject {
     /// The canonical path of the project's manifest, or its entrypoint if it doesn't have one,
     /// which identifies it however the client reaches it.
     key: PathBuf,
+    /// The project's manifest or entrypoint, as the client reaches it.
+    path: PathBuf,
     /// The directory the project is in, as the client reaches it.
     root: PathBuf,
     /// The project, or why its manifest is invalid.
@@ -1029,17 +1067,37 @@ impl FoundProject {
             path.parent().unwrap_or(&path).to_path_buf()
         };
 
+        // Only the directory is canonicalized, since a manifest can be a symlink that's shared
+        // between projects
+        let key = if path.is_dir() {
+            paths::canonical(&path)?
+        } else {
+            paths::canonical(&root)?.join(path.file_name()?)
+        };
+
         Some(Self {
-            key: paths::canonical(&path)?,
+            key,
+            path,
             root,
             project,
         })
     }
 }
 
+/// A project that diagnostics were published for.
+#[derive(Debug, Clone)]
+struct Tracked {
+    /// The path the project was found from, as the client reaches it, which is used to find it
+    /// again.
+    path: PathBuf,
+    /// The files whose diagnostics were published.
+    files: HashSet<SourceKind>,
+}
+
 /// The result of compiling a project, which hasn't been recorded yet.
 struct Compiled {
     key: PathBuf,
+    path: PathBuf,
     diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>,
     caches: Vec<(SourceKind, SendWrapper<Cache<Arc<Compiler>>>)>,
     /// Whether the project doesn't exist anymore, so it's no longer tracked.
@@ -1049,6 +1107,7 @@ struct Compiled {
 impl Compiled {
     fn removed(key: PathBuf) -> Self {
         Self {
+            path: key.clone(),
             key,
             diagnostics: IndexMap::new(),
             caches: Vec::new(),
