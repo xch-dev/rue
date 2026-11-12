@@ -2185,3 +2185,87 @@ fn main(a: Int) -> Int {
 "
     );
 }
+
+#[test]
+fn imports_are_used_if_any_namespace_is_used() {
+    let source = |main: &str| {
+        format!(
+            "\
+import module::X;
+
+mod module {{
+    export const X: Int = 42;
+    export type X = 42;
+}}
+
+{main}
+"
+        )
+    };
+
+    // Only the type is used, so the import is still needed
+    let (type_reports, has_errors) = reports(&source("fn main() -> X {\n    42\n}"), |_| {});
+
+    assert_eq!(type_reports, vec!["Warning 4: Unused constant `X`"]);
+    assert!(!has_errors);
+
+    // Neither is used, so the import is only reported once
+    let (reports, has_errors) = reports(&source("fn main() -> Int {\n    42\n}"), |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused import `X`",
+            "Warning 4: Unused constant `X`",
+            "Warning 5: Unused type alias `X`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn types_used_by_unused_functions_are_unused() {
+    let source = "\
+struct Foo {
+    a: Int,
+}
+
+fn main() -> Int {
+    1
+}
+
+fn unused() -> Int {
+    let value: Foo = Foo { a: 1 };
+    value.a
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused struct `Foo`",
+            "Warning 9: Unused function `unused`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn casts_and_guards_of_unresolved_values_are_not_reported() {
+    for source in [
+        "fn main() -> Int {\n    nope as Int\n}\n",
+        "fn main() -> Int {\n    if nope is Int {\n        1\n    } else {\n        2\n    }\n}\n",
+    ] {
+        let (diagnostics, has_errors) = compile_source(source, |_| {});
+
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.lint().is_none()),
+            "{source}"
+        );
+        assert!(has_errors);
+    }
+}

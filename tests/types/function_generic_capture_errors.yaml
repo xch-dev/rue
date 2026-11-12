@@ -1,4 +1,5 @@
 diagnostics:
+- Unused type alias `PolyT` at function_generic_capture_errors.rue:2:6
 - Unused function `identity` at function_generic_capture_errors.rue:4:4
 - Unused function `mkp` at function_generic_capture_errors.rue:8:4
 - Unused function `konst` at function_generic_capture_errors.rue:12:4

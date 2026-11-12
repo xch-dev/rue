@@ -31,6 +31,11 @@ impl HirLintPass for UnnecessaryCast {
             return;
         };
 
+        // An error has already been reported, and the type is compatible with everything
+        if cx.is_unresolved(from) || cx.is_unresolved(to) {
+            return;
+        }
+
         if cx.compare(from, to) != Comparison::Assign || !cx.is_assignable(to, from) {
             return;
         }

@@ -85,22 +85,31 @@ fn unused_imports(db: &Database) -> Vec<Report> {
             Items::Named(item) => item,
         };
 
-        for (name, declaration) in &import.declarations {
-            if !references.contains(declaration) && item.text() == name {
-                reports.push((
-                    Lint::UnusedImport,
-                    item.clone(),
-                    format!("Unused import `{}`", item.text()),
-                ));
-            }
+        // An item can import declarations from more than one namespace (such as a type and a
+        // constant with the same name), so it's only unused if none of them are referenced
+        let mut declarations = import
+            .declarations
+            .iter()
+            .filter(|(name, _)| item.text() == name)
+            .peekable();
+
+        if declarations.peek().is_some()
+            && declarations.all(|(_, declaration)| !references.contains(declaration))
+        {
+            reports.push((
+                Lint::UnusedImport,
+                item.clone(),
+                format!("Unused import `{}`", item.text()),
+            ));
         }
     }
 
     reports
 }
 
+/// The declarations that are never used, with symbols before types.
 fn unused_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> IndexSet<Declaration> {
-    let mut used_declarations = IndexSet::new();
+    let mut used_symbols = HashSet::new();
     let mut unused_declarations = IndexSet::new();
 
     for declaration in db.relevant_declarations() {
@@ -108,83 +117,115 @@ fn unused_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> Ind
             continue;
         };
 
-        if !db.declaration_parents(declaration).is_empty()
-            && !db.reference_parents(declaration).is_empty()
-        {
-            used_declarations.insert(declaration);
-            continue;
-        }
+        // A local symbol (such as a binding or parameter) is used if anything references it, so
+        // that it isn't reported along with the unused function it's declared in
+        let is_local_and_referenced = !db.declaration_parents(declaration).is_empty()
+            && !db.reference_parents(declaration).is_empty();
 
-        let mut visited = HashSet::new();
-        let mut stack = vec![declaration];
-
-        while let Some(current) = stack.pop() {
-            if !visited.insert(current) {
-                continue;
-            }
-
-            for parent in db.reference_parents(current) {
-                stack.push(parent);
-
-                if entrypoints.contains(&parent) {
-                    used_declarations.insert(declaration);
-                }
-            }
-        }
-
-        if entrypoints.contains(&declaration) {
-            used_declarations.insert(declaration);
-            continue;
-        }
-
-        if !used_declarations.contains(&declaration) {
+        if is_local_and_referenced || is_reachable(db, entrypoints, declaration) {
+            used_symbols.insert(declaration);
+        } else {
             unused_declarations.insert(declaration);
         }
     }
 
+    // The used symbols whose code is evaluated, which excludes the local symbols of unused
+    // functions, since they count as used so that they aren't reported along with the function
+    let live_symbols = used_symbols
+        .iter()
+        .copied()
+        .filter(|&symbol| {
+            let parents = db.declaration_parents(symbol);
+
+            parents.is_empty()
+                || parents
+                    .into_iter()
+                    .any(|parent| is_live(db, entrypoints, parent, &mut HashSet::new()))
+        })
+        .collect::<HashSet<_>>();
+
     for declaration in db.relevant_declarations() {
-        if !matches!(declaration, Declaration::Type(_)) {
+        let Declaration::Type(ty) = declaration else {
             continue;
-        }
+        };
 
-        if entrypoints.contains(&declaration) {
-            used_declarations.insert(declaration);
-            continue;
-        }
+        // A generic type is used if a used symbol references it, such as a parameter of a used
+        // function, so that it isn't reported along with an unused function. Anything else, such
+        // as a struct, must be referenced by a used symbol of a live function, so that a struct
+        // that's only used by an unused function is reported as well.
+        let used = if matches!(db.ty(ty), Type::Generic(_)) {
+            is_referenced_by(db, entrypoints, &used_symbols, declaration)
+        } else {
+            is_referenced_by(db, entrypoints, &live_symbols, declaration)
+        };
 
-        let mut visited = HashSet::new();
-        let mut stack = vec![declaration];
-
-        while let Some(current) = stack.pop() {
-            if !visited.insert(current) {
-                continue;
-            }
-
-            for parent in db.reference_parents(current) {
-                stack.push(parent);
-
-                let used = match parent {
-                    Declaration::Symbol(_) => used_declarations.contains(&parent),
-                    Declaration::Type(_) => entrypoints.contains(&parent),
-                };
-
-                if used {
-                    used_declarations.insert(declaration);
-                    break;
-                }
-            }
-
-            if used_declarations.contains(&declaration) {
-                break;
-            }
-        }
-
-        if !used_declarations.contains(&declaration) {
+        if !used {
             unused_declarations.insert(declaration);
         }
     }
 
     unused_declarations
+}
+
+/// Whether the declaration is an entrypoint, or is referenced by one through any number of other
+/// declarations.
+fn is_reachable(
+    db: &Database,
+    entrypoints: &HashSet<Declaration>,
+    declaration: Declaration,
+) -> bool {
+    is_referenced_by(db, entrypoints, &HashSet::new(), declaration)
+}
+
+/// Whether the declaration's code is evaluated, because it's reachable from an entrypoint, or it's
+/// declared inside of something live (such as a lambda in a live function).
+fn is_live(
+    db: &Database,
+    entrypoints: &HashSet<Declaration>,
+    declaration: Declaration,
+    visited: &mut HashSet<Declaration>,
+) -> bool {
+    if !visited.insert(declaration) {
+        return false;
+    }
+
+    is_reachable(db, entrypoints, declaration)
+        || db
+            .declaration_parents(declaration)
+            .into_iter()
+            .any(|parent| is_live(db, entrypoints, parent, visited))
+}
+
+/// Whether the declaration is an entrypoint, or is referenced by an entrypoint or one of the
+/// symbols through any number of other declarations.
+fn is_referenced_by(
+    db: &Database,
+    entrypoints: &HashSet<Declaration>,
+    symbols: &HashSet<Declaration>,
+    declaration: Declaration,
+) -> bool {
+    if entrypoints.contains(&declaration) {
+        return true;
+    }
+
+    let mut visited = HashSet::new();
+    let mut stack = vec![declaration];
+
+    while let Some(current) = stack.pop() {
+        if !visited.insert(current) {
+            continue;
+        }
+
+        for parent in db.reference_parents(current) {
+            if entrypoints.contains(&parent) || symbols.contains(&parent) {
+                return true;
+            }
+
+            stack.push(parent);
+        }
+    }
+
+    false
 }
 
 fn unused_declaration(db: &Database, declaration: Declaration) -> Option<Report> {
