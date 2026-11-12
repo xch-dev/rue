@@ -3,11 +3,12 @@ use std::collections::{HashMap, HashSet};
 use rue_ast::{AstItem, AstNode, AstSymbolItem, AstTypeItem};
 use rue_diagnostic::{Applicability, Lint, Name, SrcLoc, Suggestion};
 use rue_hir::{Database, Declaration, Items, ScopeId, Symbol, SymbolId};
-use rue_parser::SyntaxKind;
 use rue_types::{Type, TypeId};
 
 use crate::{
-    LintContext, LintInput, NameKey, name_key, srcloc, srcloc_key, text::encloses, token_key,
+    LintContext, LintInput, NameKey, name_key, srcloc_key,
+    text::{encloses, keyword_srcloc},
+    token_key,
 };
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UnusedExport];
@@ -387,16 +388,7 @@ fn export_keywords(input: &LintInput<'_>) -> HashMap<NameKey, SrcLoc> {
                 continue;
             };
 
-            let start = export.text_range().start();
-            let end = export
-                .next_token()
-                .filter(|token| token.kind() == SyntaxKind::Whitespace)
-                .map_or(export.text_range().end(), |token| token.text_range().end());
-
-            keywords.insert(
-                token_key(source, &name),
-                srcloc(source, rowan::TextRange::new(start, end)),
-            );
+            keywords.insert(token_key(source, &name), keyword_srcloc(source, &export));
         }
     }
 

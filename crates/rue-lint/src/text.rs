@@ -1,11 +1,13 @@
 //! Helpers for writing the code in suggestions, from the locations of the HIR nodes that are
 //! being replaced.
 
-use rue_diagnostic::{SrcLoc, Suggestion};
+use rowan::TextRange;
+use rue_diagnostic::{Source, SrcLoc, Suggestion};
 use rue_hir::{BinaryOp, Database, Hir, HirId, Statement, UnaryOp};
 use rue_lexer::{Lexer, TokenKind};
+use rue_parser::{SyntaxKind, SyntaxToken};
 
-use crate::LintContext;
+use crate::{LintContext, srcloc};
 
 /// Where an expression is, which decides whether the code that replaces it needs parentheses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,7 +97,7 @@ pub(crate) fn negated_text_at(db: &Database, hir: HirId, position: Position) -> 
         return negated_text_at(db, hir, Position::Whole).map(condition);
     }
 
-    let text = strip_parens(db.hir_srcloc(hir)?.text());
+    let text = without_parens(db.hir_srcloc(hir)?.text());
 
     match *db.hir(hir) {
         Hir::Unary(UnaryOp::Not, inner) if text.starts_with('!') => {
@@ -177,11 +179,18 @@ fn is_atomic(db: &Database, hir: HirId) -> bool {
 /// Whether the whole text is wrapped in one pair of parentheses, such as `(a + b)` but not
 /// `(a) + (b)`.
 pub(crate) fn is_parenthesized(text: &str) -> bool {
+    parens(text).is_some()
+}
+
+/// The text inside of the parentheses around the whole of it, if there are any, along with
+/// whether it ends in a line comment.
+fn parens(text: &str) -> Option<(&str, bool)> {
     if !text.starts_with('(') || !text.ends_with(')') {
-        return false;
+        return None;
     }
 
     let mut depth = 0;
+    let mut ends_in_line_comment = false;
 
     // The text is tokenized like the compiler would, so parentheses in strings and comments
     // aren't counted
@@ -192,14 +201,18 @@ pub(crate) fn is_parenthesized(text: &str) -> bool {
                 depth -= 1;
 
                 if depth == 0 {
-                    return token.span.end == text.len();
+                    return (token.span.end == text.len())
+                        .then(|| (text[1..text.len() - 1].trim(), ends_in_line_comment));
                 }
             }
+            TokenKind::Whitespace => continue,
             _ => {}
         }
+
+        ends_in_line_comment = token.kind == TokenKind::LineComment;
     }
 
-    false
+    None
 }
 
 /// Whether the code has a `{` outside of strings and comments, which could be a struct
@@ -208,13 +221,12 @@ fn has_code_brace(text: &str) -> bool {
     Lexer::new(text).any(|token| token.kind == TokenKind::OpenBrace)
 }
 
-/// The text without any parentheses around the whole of it. Parentheses around a line comment
-/// are kept, since without them the comment would continue onto the code after it.
+/// The text without any parentheses around the whole of it, so that it can replace a whole
+/// expression. Parentheses around code that ends in a line comment are kept, since without them
+/// the comment would continue onto the code after it.
 pub(crate) fn strip_parens(mut text: &str) -> &str {
-    while is_parenthesized(text) {
-        let inner = text[1..text.len() - 1].trim();
-
-        if Lexer::new(inner).any(|token| token.kind == TokenKind::LineComment) {
+    while let Some((inner, ends_in_line_comment)) = parens(text) {
+        if ends_in_line_comment {
             break;
         }
 
@@ -223,9 +235,23 @@ pub(crate) fn strip_parens(mut text: &str) -> &str {
     text
 }
 
+/// The text without any parentheses around the whole of it, even around a line comment, so that
+/// it can be inspected (but not written back, unlike [`strip_parens`]).
+pub(crate) fn without_parens(mut text: &str) -> &str {
+    while let Some((inner, _)) = parens(text) {
+        text = inner;
+    }
+    text
+}
+
 /// Whether there's a comment in the code, which a suggestion that replaces it would remove.
 pub(crate) fn has_comment(text: &str) -> bool {
-    text.contains("//") || text.contains("/*")
+    Lexer::new(text).any(|token| {
+        matches!(
+            token.kind,
+            TokenKind::LineComment | TokenKind::BlockComment { .. }
+        )
+    })
 }
 
 /// A suggestion that removes a statement or item, along with the rest of its line if nothing else
@@ -257,24 +283,41 @@ pub(crate) fn remove_line(
     )
 }
 
-/// The location of the keyword directly before the name of a declaration (along with the space
-/// after it), such as the `inline` in `inline const NAME`, where `after` is the keyword between
-/// them (such as `const`).
-pub(crate) fn keyword_before(name: &SrcLoc, keyword: &str, after: &str) -> Option<SrcLoc> {
-    let text = &name.source.text[..name.span.start];
-    let before_name = text.trim_end().strip_suffix(after)?.trim_end();
-    let start = before_name.strip_suffix(keyword)?.len();
+/// The location of a keyword along with the whitespace after it, for a suggestion that removes
+/// it. Only whitespace is included, so a comment after it is kept.
+pub(crate) fn keyword_srcloc(source: &Source, keyword: &SyntaxToken) -> SrcLoc {
+    let end = keyword
+        .next_token()
+        .filter(|token| token.kind() == SyntaxKind::Whitespace)
+        .map_or(keyword.text_range().end(), |token| token.text_range().end());
 
-    if before_name[..start]
-        .chars()
-        .next_back()
-        .is_some_and(|char| char.is_alphanumeric() || char == '_')
-    {
-        return None;
+    srcloc(source, TextRange::new(keyword.text_range().start(), end))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_code_brace() {
+        assert!(has_code_brace("Point { x: 1 }.x == 1"));
+        assert!(!has_code_brace("s == \"{\""));
+        assert!(!has_code_brace("a /* x /* { */ */ == 1"));
+        assert!(!has_code_brace("a == 1 // {"));
+
+        // Strings don't have escapes, so the string ends at the second quote
+        assert!(has_code_brace("\"\\\" != Point { s: a }.s"));
     }
 
-    let end = start + keyword.len();
-    let end = end + (text.len() - end - text[end..].trim_start().len());
+    #[test]
+    fn test_strip_parens() {
+        assert_eq!(strip_parens("((a + b))"), "a + b");
+        assert_eq!(strip_parens("(a) + (b)"), "(a) + (b)");
+        assert_eq!(strip_parens("(a /* ) */)"), "a /* ) */");
 
-    Some(SrcLoc::new(name.source.clone(), start..end))
+        // Without the parentheses, the comment would continue onto the code after it
+        assert_eq!(strip_parens("(a // note\n)"), "(a // note\n)");
+        assert_eq!(strip_parens("(a // note\n + 1)"), "a // note\n + 1");
+        assert_eq!(without_parens("(a // note\n)"), "a // note");
+    }
 }

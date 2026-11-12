@@ -17,6 +17,15 @@ fn main(value: Int, flag: Bool) -> Int {
         2
     };
 
+    // The negation is found inside of parentheses, even around a comment
+    let commented = if (
+        !flag // note
+    ) {
+        1
+    } else {
+        2
+    };
+
     // An `else if` chain would be reordered by swapping the branches
     let chain = if !flag {
         1
@@ -26,5 +35,5 @@ fn main(value: Int, flag: Bool) -> Int {
         3
     };
 
-    negated + not_equal + grouped + chain
+    negated + not_equal + grouped + commented + chain
 }

@@ -4,7 +4,9 @@ use rue_hir::{BinaryOp, Block, Hir, HirId, Statement, UnaryOp};
 use crate::{
     HirLintPass, LintContext,
     equality::hir_eq,
-    text::{Position, has_comment, negated_text, negated_text_at, position, strip_parens, text_at},
+    text::{
+        Position, has_comment, negated_text, negated_text_at, position, text_at, without_parens,
+    },
 };
 
 /// An `if` whose branches are the same evaluates to the same value whatever the condition is.
@@ -279,7 +281,7 @@ impl HirLintPass for NegatedCondition {
         };
 
         let negated = match *db.hir(condition) {
-            Hir::Unary(UnaryOp::Not, _) => strip_parens(condition_srcloc.text()).starts_with('!'),
+            Hir::Unary(UnaryOp::Not, _) => without_parens(condition_srcloc.text()).starts_with('!'),
             Hir::Binary(BinaryOp::Ne, ..) => true,
             _ => false,
         };

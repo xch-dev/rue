@@ -4,7 +4,7 @@ use rue_hir::{BinaryOp, Hir, HirId};
 use crate::{
     HirLintPass, LintContext,
     equality::hir_eq,
-    text::{negated_text_at, position, text_at},
+    text::{has_comment, negated_text_at, position, text_at},
 };
 
 /// Comparisons and operations between an expression and itself always have the same result.
@@ -110,6 +110,13 @@ impl HirLintPass for BoolComparison {
             return;
         };
 
+        // Rebuilding the comparison can remove comments inside of it
+        let applicability = if has_comment(srcloc.text()) {
+            Applicability::MaybeIncorrect
+        } else {
+            Applicability::MachineApplicable
+        };
+
         let Some(diagnostic) = cx.report(
             Lint::BoolComparison,
             srcloc.clone(),
@@ -126,7 +133,7 @@ impl HirLintPass for BoolComparison {
             },
             srcloc,
             replacement,
-            Applicability::MachineApplicable,
+            applicability,
         ));
     }
 }

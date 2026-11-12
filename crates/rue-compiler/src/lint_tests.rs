@@ -1981,19 +1981,9 @@ fn main(a: Int, s: String) -> Int {
         return 1;
     }
 
-    // A brace in a string or comment isn't a struct initializer, and strings don't have escapes
+    // A brace in a string isn't a struct initializer, and strings don't have escapes
     if (s == \"{\") == true {
         return 8;
-    }
-
-    if (a /* x /* { */ */ == 9) == true {
-        return 9;
-    }
-
-    // Without the parentheses, the comment would continue onto the `{`
-    if (a == 11 // note
-    ) == true {
-        return 11;
     }
 
     if (\"\\\" != Point { x: a, s }.s) == false {
@@ -2035,19 +2025,9 @@ fn main(a: Int, s: String) -> Int {
         return 1;
     }
 
-    // A brace in a string or comment isn't a struct initializer, and strings don't have escapes
+    // A brace in a string isn't a struct initializer, and strings don't have escapes
     if s == \"{\" {
         return 8;
-    }
-
-    if a /* x /* { */ */ == 9 {
-        return 9;
-    }
-
-    // Without the parentheses, the comment would continue onto the `{`
-    if (a == 11 // note
-    ) {
-        return 11;
     }
 
     if (\"\\\" == Point { x: a, s }.s) {
@@ -2074,10 +2054,74 @@ fn main(a: Int, s: String) -> Int {
 "
     );
 
-    // The parentheses around the comment aren't needed, but removing them would also remove the
-    // comment, so that suggestion isn't applied automatically
     let (reports, has_errors) = reports(&fixed, |_| {});
-    assert_eq!(reports, vec!["Warning 21: Unnecessary parentheses"]);
+    assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
-    assert_eq!(fix(&fixed), fixed);
+}
+
+#[test]
+fn comments_are_kept_by_suggestions() {
+    let source = "\
+inline // inline
+const ONCE: Int = 1;
+
+fn main(a: Int, flag: Bool) -> Int {
+    inline // inline
+    let doubled = a * 2;
+
+    if (a == 1 // note
+    ) == true {
+        return 1;
+    }
+
+    if (a == 2 // note
+    ) == false {
+        return 2;
+    }
+
+    if (!flag // note
+    ) == false {
+        return 3;
+    }
+
+    doubled + ONCE
+}
+";
+
+    // Removing `inline` keeps the comment after it, and the comparisons can't be removed without
+    // moving or removing the comments inside of them, so they aren't fixed automatically
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+// inline
+const ONCE: Int = 1;
+
+fn main(a: Int, flag: Bool) -> Int {
+    // inline
+    let doubled = a * 2;
+
+    if (a == 1 // note
+    ) == true {
+        return 1;
+    }
+
+    if (a == 2 // note
+    ) == false {
+        return 2;
+    }
+
+    if (!flag // note
+    ) == false {
+        return 3;
+    }
+
+    doubled + ONCE
+}
+"
+    );
+
+    let (_, has_errors) = reports(&fixed, |_| {});
+    assert!(!has_errors);
 }

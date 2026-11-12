@@ -3,7 +3,12 @@ use std::collections::{HashMap, HashSet};
 use rue_diagnostic::{Applicability, Lint, Name, Note, Suggestion};
 use rue_hir::{Database, Declaration, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId};
 
-use crate::{HirLintPass, LintContext, LintInput, text::keyword_before};
+use rue_ast::{AstBinding, AstConstantItem, AstLetStmt, AstNode};
+use rue_diagnostic::SrcLoc;
+
+use crate::{
+    HirLintPass, LintContext, LintInput, NameKey, name_key, text::keyword_srcloc, token_key,
+};
 
 /// The number of HIR nodes that an inline function's body can be duplicated by (its size, for
 /// each use after the first) before it's reported by `large_inline`.
@@ -22,6 +27,9 @@ pub(crate) struct Inlining<'a> {
     references: HashMap<SymbolId, Vec<Reference>>,
     /// The `inline let` bindings, along with the function they're declared in.
     bindings: Vec<(SymbolId, Option<SymbolId>)>,
+    /// The location of the `inline` keyword (and the space after it) of each inline constant and
+    /// binding, by the location of its name.
+    keywords: HashMap<NameKey, SrcLoc>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +46,7 @@ impl<'a> Inlining<'a> {
             entrypoints: input.entrypoints,
             references: HashMap::new(),
             bindings: Vec::new(),
+            keywords: inline_keywords(input),
         }
     }
 }
@@ -91,7 +100,7 @@ impl HirLintPass for Inlining<'_> {
                 && let [reference] = self.references(symbol)
                 && reference.function == function
             {
-                reports.push(Report::Redundant(name, "binding", "let"));
+                reports.push(Report::Redundant(name, "binding"));
             }
         }
 
@@ -110,7 +119,7 @@ impl HirLintPass for Inlining<'_> {
                         && let [reference] = self.references(symbol)
                         && !reference.duplicated
                     {
-                        reports.push(Report::Redundant(name, "constant", "const"));
+                        reports.push(Report::Redundant(name, "constant"));
                     }
                 }
                 Symbol::Function(function) if function.kind == FunctionKind::Inline => {
@@ -135,7 +144,7 @@ impl HirLintPass for Inlining<'_> {
         }
 
         for report in reports {
-            report.emit(cx);
+            report.emit(cx, &self.keywords);
         }
     }
 }
@@ -147,17 +156,16 @@ impl Inlining<'_> {
 }
 
 enum Report {
-    /// An inline constant or binding that's only used once, along with what it is and the keyword
-    /// that comes after `inline`.
-    Redundant(Name, &'static str, &'static str),
+    /// An inline constant or binding that's only used once, along with what it is.
+    Redundant(Name, &'static str),
     /// A large inline function, along with the number of places it's used.
     Large(Name, usize),
 }
 
 impl Report {
-    fn emit(self, cx: &mut LintContext<'_>) {
+    fn emit(self, cx: &mut LintContext<'_>, keywords: &HashMap<NameKey, SrcLoc>) {
         match self {
-            Self::Redundant(name, kind, keyword) => {
+            Self::Redundant(name, kind) => {
                 let Some(srcloc) = name.srcloc().cloned() else {
                     return;
                 };
@@ -173,10 +181,10 @@ impl Report {
                     return;
                 };
 
-                if let Some(inline) = keyword_before(&srcloc, "inline", keyword) {
+                if let Some(inline) = name_key(&name).and_then(|key| keywords.get(&key)) {
                     diagnostic.suggestions.push(Suggestion::replace(
                         "Remove `inline`",
-                        inline,
+                        inline.clone(),
                         "",
                         Applicability::MachineApplicable,
                     ));
@@ -239,4 +247,32 @@ fn body_size(db: &Database, body: HirId) -> usize {
     }
 
     visited.len()
+}
+
+/// The location of the `inline` keyword (and the space after it) of each inline constant and
+/// binding with a name, by the location of the name.
+fn inline_keywords(input: &LintInput<'_>) -> HashMap<NameKey, SrcLoc> {
+    let mut keywords = HashMap::new();
+
+    for &(source, document) in &input.documents {
+        for node in document.syntax().descendants() {
+            let (inline, name) = if let Some(item) = AstConstantItem::cast(node.clone()) {
+                (item.inline(), item.name())
+            } else if let Some(stmt) = AstLetStmt::cast(node) {
+                let name = match stmt.binding() {
+                    Some(AstBinding::NamedBinding(binding)) => binding.name(),
+                    _ => None,
+                };
+                (stmt.inline(), name)
+            } else {
+                continue;
+            };
+
+            if let (Some(inline), Some(name)) = (inline, name) {
+                keywords.insert(token_key(source, &name), keyword_srcloc(source, &inline));
+            }
+        }
+    }
+
+    keywords
 }
