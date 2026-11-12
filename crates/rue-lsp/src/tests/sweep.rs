@@ -54,7 +54,8 @@ struct Coverage {
     /// Files larger than this many bytes aren't edited, since each edit compiles the whole file
     /// again (and a few of the larger files take seconds to compile in debug mode).
     edit_size_limit: usize,
-    /// Whether to print each file as it's finished (shown with `--nocapture`).
+    /// Whether to print each file as it's finished, and each panic as it's found (shown with
+    /// `--nocapture`), so that a long run's results aren't lost if it's stopped.
     progress: bool,
 }
 
@@ -110,7 +111,7 @@ fn run(coverage: &Coverage) {
         let workers = (0..threads)
             .map(|_| {
                 scope.spawn(|| {
-                    let mut sweep = Sweep::new();
+                    let mut sweep = Sweep::new(coverage.progress);
 
                     while let Some(path) = files.get(next.fetch_add(1, Ordering::Relaxed)) {
                         let name = path
@@ -247,10 +248,11 @@ struct Sweep {
     uri: Url,
     /// Keyed by file, request and panic message, so that one bug doesn't flood the report.
     failures: BTreeMap<(String, &'static str, String), Failure>,
+    progress: bool,
 }
 
 impl Sweep {
-    fn new() -> Self {
+    fn new(progress: bool) -> Self {
         let project = TestProject::with_manifest(Some(MANIFEST), &[("main.rue", "")]);
         let uri = project.uri("main.rue");
 
@@ -258,6 +260,7 @@ impl Sweep {
             project,
             uri,
             failures: BTreeMap::new(),
+            progress,
         }
     }
 
@@ -366,16 +369,27 @@ impl Sweep {
     ) {
         // A panic while a lock is held poisons it, so the server is started again
         *self = Self {
-            failures: std::mem::take(&mut self.failures),
-            ..Self::new()
+            failures: mem::take(&mut self.failures),
+            ..Self::new(self.progress)
         };
+
+        let progress = self.progress;
 
         self.failures
             .entry((name.to_string(), request, message))
-            .or_insert_with(|| Failure {
-                edit: edit.to_string(),
-                position,
-                count: 0,
+            .or_insert_with_key(|(_, _, message)| {
+                if progress {
+                    eprintln!(
+                        "panic in {name} ({edit}): {request} at {}:{}\n    {message}",
+                        position.line, position.character
+                    );
+                }
+
+                Failure {
+                    edit: edit.to_string(),
+                    position,
+                    count: 0,
+                }
             })
             .count += 1;
     }
