@@ -1,18 +1,4 @@
 diagnostics:
-- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:19:9
-- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:20:13
-- |-
-  This `else` block only contains an `if`, so it can be written as `else if` at default_puzzles/factor_pricing.rue:22:20
-    help: Collapse it into an `else if`
-- |-
-  Field `registered_time` of struct `PricingOutput` is never read at actions/xchandles/refund.rue:34:8
-    note: If it's only needed for the layout of the struct, prefix its name with `_`
-- |-
-  Redundant field name, since `handle: handle` can be written as `handle` at actions/xchandles/refund.rue:78:25
-    help: Use the shorthand instead
-- |-
-  Unnecessary parentheses at actions/xchandles/extend.rue:26:12
-    help: Remove the parentheses
 - |-
   Unnecessary parentheses at actions/xchandles/expire.rue:31:12
     help: Remove the parentheses
@@ -32,8 +18,22 @@ diagnostics:
   Redundant field name, since `neighbors: neighbors` can be written as `neighbors` at actions/xchandles/expire.rue:103:65
     help: Use the shorthand instead
 - |-
+  Unnecessary parentheses at actions/xchandles/extend.rue:26:12
+    help: Remove the parentheses
+- |-
+  Field `registered_time` of struct `PricingOutput` is never read at actions/xchandles/refund.rue:34:8
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
+- |-
+  Redundant field name, since `handle: handle` can be written as `handle` at actions/xchandles/refund.rue:78:25
+    help: Use the shorthand instead
+- |-
   Redundant field name, since `handle_hash: handle_hash` can be written as `handle_hash` at actions/xchandles/register.rue:152:43
     help: Use the shorthand instead
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:19:9
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at default_puzzles/factor_pricing.rue:20:13
+- |-
+  This `else` block only contains an `if`, so it can be written as `else if` at default_puzzles/factor_pricing.rue:22:20
+    help: Collapse it into an `else if`
 - |-
   Binding `Current_State` should be named in snake_case at actions/catalog/register.rue:53:16
     note: Consider renaming it to `current_state`
@@ -51,13 +51,13 @@ diagnostics:
     note: It's first evaluated here at nft_pack.rue:54:13
     note: Store the result in a `let` binding and use that instead
 - |-
+  Unnecessary `inline`, since binding `refund_puzzle_hash_hash` is only used once, so it's inlined anyway at actions/catalog/refund.rue:28:16
+    help: Remove `inline`
+- |-
   Unnecessary `inline`, since binding `selector` is only used once, so it's inlined anyway at singleton/action.rue:91:20
     help: Remove `inline`
 - |-
   Unnecessary `inline`, since binding `remaining_selectors` is only used once, so it's inlined anyway at singleton/action.rue:92:20
-    help: Remove `inline`
-- |-
-  Unnecessary `inline`, since binding `refund_puzzle_hash_hash` is only used once, so it's inlined anyway at actions/catalog/refund.rue:28:16
     help: Remove `inline`
 puzzle_hashes:
   actions/catalog/refund.rue: ad293a8ba7393b2d23760cf2bdae38ae6e1407a1b2a26b89b39b0fd0cb0127a9
