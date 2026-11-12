@@ -5,32 +5,14 @@ diagnostics:
   This `else` block only contains an `if`, so it can be written as `else if` at default_puzzles/factor_pricing.rue:22:20
     help: Collapse it into an `else if`
 - |-
-  Parameter `_Buy_Time` should be named in snake_case or SCREAMING_SNAKE_CASE at default_puzzles/factor_pricing.rue:75:5
-    note: Consider renaming it to `_buy_time`
-- |-
-  Parameter `_Current_Expiration` should be named in snake_case or SCREAMING_SNAKE_CASE at default_puzzles/factor_pricing.rue:79:5
-    note: Consider renaming it to `_current_expiration`
-- |-
-  Parameter `Handle` should be named in snake_case or SCREAMING_SNAKE_CASE at default_puzzles/factor_pricing.rue:81:5
-    note: Consider renaming it to `handle`
-- |-
   Field `registered_time` of struct `PricingOutput` is never read at actions/xchandles/refund.rue:34:8
     note: If it's only needed for the layout of the struct, prefix its name with `_`
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/refund.rue:40:5
-    note: Consider renaming it to `truth`
 - |-
   Redundant field name, since `handle: handle` can be written as `handle` at actions/xchandles/refund.rue:78:25
     help: Use the shorthand instead
 - |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/extend.rue:14:5
-    note: Consider renaming it to `truth`
-- |-
   Unnecessary parentheses at actions/xchandles/extend.rue:26:12
     help: Remove the parentheses
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/expire.rue:16:5
-    note: Consider renaming it to `truth`
 - |-
   Unnecessary parentheses at actions/xchandles/expire.rue:31:12
     help: Remove the parentheses
@@ -50,56 +32,8 @@ diagnostics:
   Redundant field name, since `neighbors: neighbors` can be written as `neighbors` at actions/xchandles/expire.rue:103:65
     help: Use the shorthand instead
 - |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/register.rue:29:5
-    note: Consider renaming it to `truth`
-- |-
   Redundant field name, since `handle_hash: handle_hash` can be written as `handle_hash` at actions/xchandles/register.rue:152:43
     help: Use the shorthand instead
-- |-
-  Parameter `Inner_Puzzle_Hash` should be named in snake_case or SCREAMING_SNAKE_CASE at default_puzzles/revocable_cat_maker.rue:20:5
-    note: Consider renaming it to `inner_puzzle_hash`
-- |-
-  Parameter `Inner_Puzzle_Hash` should be named in snake_case or SCREAMING_SNAKE_CASE at default_puzzles/default_cat_maker.rue:13:5
-    note: Consider renaming it to `inner_puzzle_hash`
-- |-
-  Field `Buy_Time` should be named in snake_case or SCREAMING_SNAKE_CASE at default_puzzles/exponential_premium.rue:15:5
-    note: Consider renaming it to `buy_time`
-- |-
-  Field `Current_Expiration` should be named in snake_case or SCREAMING_SNAKE_CASE at default_puzzles/exponential_premium.rue:16:5
-    note: Consider renaming it to `current_expiration`
-- |-
-  Field `Merkle_Root` should be named in snake_case or SCREAMING_SNAKE_CASE at singleton/finalizer.rue:11:5
-    note: Consider renaming it to `merkle_root`
-- |-
-  Field `State` should be named in snake_case or SCREAMING_SNAKE_CASE at singleton/finalizer.rue:12:8
-    note: Consider renaming it to `state`
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at singleton/finalizer.rue:42:5
-    note: Consider renaming it to `truth`
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at singleton/reserve_finalizer.rue:53:5
-    note: Consider renaming it to `truth`
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/catalog/refund.rue:16:5
-    note: Consider renaming it to `truth`
-- |-
-  Unnecessary `inline`, since binding `refund_puzzle_hash_hash` is only used once, so it's inlined anyway at actions/catalog/refund.rue:28:16
-    help: Remove `inline`
-- |-
-  Field `Cat_Maker_Puzzle_Hash` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/catalog/shared.rue:5:5
-    note: Consider renaming it to `cat_maker_puzzle_hash`
-- |-
-  Field `Registration_Price` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/catalog/shared.rue:6:8
-    note: Consider renaming it to `registration_price`
-- |-
-  Field `Ephemeral_State` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/catalog/shared.rue:10:5
-    note: Consider renaming it to `ephemeral_state`
-- |-
-  Field `State` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/catalog/shared.rue:11:8
-    note: Consider renaming it to `state`
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/catalog/register.rue:44:5
-    note: Consider renaming it to `truth`
 - |-
   Binding `Current_State` should be named in snake_case at actions/catalog/register.rue:53:16
     note: Consider renaming it to `current_state`
@@ -113,39 +47,6 @@ diagnostics:
   Unnecessary `inline`, since binding `Registration_Price` is only used once, so it's inlined anyway at actions/catalog/register.rue:55:16
     help: Remove `inline`
 - |-
-  Field `Ephemeral_State` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/shared/delegated_state.rue:10:5
-    note: Consider renaming it to `ephemeral_state`
-- |-
-  Field `Actual_State` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/shared/delegated_state.rue:11:8
-    note: Consider renaming it to `actual_state`
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/shared/delegated_state.rue:17:5
-    note: Consider renaming it to `truth`
-- |-
-  Field `Cat_Maker_Puzzle_Hash` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/xchandles.rue:23:5
-    note: Consider renaming it to `cat_maker_puzzle_hash`
-- |-
-  Field `Pricing_Puzzle_Hash` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/xchandles.rue:24:5
-    note: Consider renaming it to `pricing_puzzle_hash`
-- |-
-  Field `Expired_Handle_Pricing_Puzzle_Hash` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/xchandles.rue:25:8
-    note: Consider renaming it to `expired_handle_pricing_puzzle_hash`
-- |-
-  Field `Ephemeral_State` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/xchandles.rue:29:5
-    note: Consider renaming it to `ephemeral_state`
-- |-
-  Field `State` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/xchandles.rue:30:8
-    note: Consider renaming it to `state`
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/oracle.rue:9:5
-    note: Consider renaming it to `truth`
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/initiate_update.rue:22:5
-    note: Consider renaming it to `truth`
-- |-
-  Parameter `Truth` should be named in snake_case or SCREAMING_SNAKE_CASE at actions/xchandles/execute_update.rue:16:5
-    note: Consider renaming it to `truth`
-- |-
   This call is evaluated again with the same arguments, which costs as much as the first time at nft_pack.rue:71:13
     note: It's first evaluated here at nft_pack.rue:54:13
     note: Store the result in a `let` binding and use that instead
@@ -154,6 +55,9 @@ diagnostics:
     help: Remove `inline`
 - |-
   Unnecessary `inline`, since binding `remaining_selectors` is only used once, so it's inlined anyway at singleton/action.rue:92:20
+    help: Remove `inline`
+- |-
+  Unnecessary `inline`, since binding `refund_puzzle_hash_hash` is only used once, so it's inlined anyway at actions/catalog/refund.rue:28:16
     help: Remove `inline`
 puzzle_hashes:
   actions/catalog/refund.rue: ad293a8ba7393b2d23760cf2bdae38ae6e1407a1b2a26b89b39b0fd0cb0127a9

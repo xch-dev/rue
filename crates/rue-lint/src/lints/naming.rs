@@ -17,9 +17,11 @@ enum Case {
     UpperCamel,
     /// `SCREAMING_SNAKE_CASE`, for constants.
     ScreamingSnake,
-    /// Either `snake_case` or `SCREAMING_SNAKE_CASE`, for parameters and fields. Curried parameters
-    /// (and the fields of structs that hold them) are conventionally in `SCREAMING_SNAKE_CASE`.
-    SnakeOrScreamingSnake,
+    /// `snake_case`, `SCREAMING_SNAKE_CASE` or `Title_Snake_Case`, for parameters and fields.
+    /// Curried parameters (and the fields of structs that hold them) are conventionally in
+    /// `SCREAMING_SNAKE_CASE`, and truths (such as a `Truth` parameter, and fields like
+    /// `Ephemeral_State`) are conventionally in `Title_Snake_Case`.
+    Parameter,
 }
 
 impl Case {
@@ -28,7 +30,7 @@ impl Case {
             Self::Snake => "snake_case",
             Self::UpperCamel => "UpperCamelCase",
             Self::ScreamingSnake => "SCREAMING_SNAKE_CASE",
-            Self::SnakeOrScreamingSnake => "snake_case or SCREAMING_SNAKE_CASE",
+            Self::Parameter => "snake_case, SCREAMING_SNAKE_CASE or Title_Snake_Case",
         }
     }
 
@@ -36,8 +38,10 @@ impl Case {
         match self {
             Self::Snake => !name.chars().any(char::is_uppercase),
             Self::ScreamingSnake => !name.chars().any(char::is_lowercase),
-            Self::SnakeOrScreamingSnake => {
-                Self::Snake.matches(name) || Self::ScreamingSnake.matches(name)
+            Self::Parameter => {
+                Self::Snake.matches(name)
+                    || Self::ScreamingSnake.matches(name)
+                    || is_title_snake(name)
             }
             Self::UpperCamel => {
                 name.chars().next().is_none_or(char::is_uppercase) && !name.contains('_')
@@ -49,7 +53,7 @@ impl Case {
         let words = words(name);
 
         match self {
-            Self::Snake | Self::SnakeOrScreamingSnake => words.join("_").to_lowercase(),
+            Self::Snake | Self::Parameter => words.join("_").to_lowercase(),
             Self::ScreamingSnake => words.join("_").to_uppercase(),
             Self::UpperCamel => words
                 .iter()
@@ -65,6 +69,20 @@ impl Case {
                 .collect(),
         }
     }
+}
+
+/// Whether the name starts with an uppercase letter, and every word of it starts with an uppercase
+/// letter or a digit, followed by lowercase letters and digits, such as `Ephemeral_State` or
+/// `Slot_1st_Hash`.
+fn is_title_snake(name: &str) -> bool {
+    name.chars().next().is_some_and(char::is_uppercase)
+        && name.split('_').all(|word| {
+            let mut chars = word.chars();
+            chars
+                .next()
+                .is_some_and(|char| char.is_uppercase() || char.is_ascii_digit())
+                && chars.all(|char| char.is_lowercase() || char.is_ascii_digit())
+        })
 }
 
 /// Splits a name into words, at underscores and where it changes from lowercase to uppercase
@@ -117,13 +135,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
             } else if let Some(item) = AstTypeAliasItem::cast(node.clone()) {
                 check_name(cx, source, item.name(), Case::UpperCamel, "Type alias");
             } else if let Some(field) = AstStructField::cast(node.clone()) {
-                check_name(
-                    cx,
-                    source,
-                    field.name(),
-                    Case::SnakeOrScreamingSnake,
-                    "Field",
-                );
+                check_name(cx, source, field.name(), Case::Parameter, "Field");
             } else if let Some(parameters) = AstGenericParameters::cast(node.clone()) {
                 for name in parameters.names() {
                     check_name(cx, source, Some(name), Case::UpperCamel, "Generic type");
@@ -134,13 +146,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                     .iter()
                     .flat_map(|binding| binding_names(binding, false))
                 {
-                    check_name(
-                        cx,
-                        source,
-                        Some(name),
-                        Case::SnakeOrScreamingSnake,
-                        "Parameter",
-                    );
+                    check_name(cx, source, Some(name), Case::Parameter, "Parameter");
                 }
             } else if let Some(stmt) = AstLetStmt::cast(node.clone()) {
                 for name in stmt
@@ -251,8 +257,13 @@ mod tests {
         assert!(Case::UpperCamel.matches("T"));
         assert!(!Case::UpperCamel.matches("coin"));
         assert!(!Case::UpperCamel.matches("Coin_Info"));
-        assert!(Case::SnakeOrScreamingSnake.matches("MOD_HASH"));
-        assert!(Case::SnakeOrScreamingSnake.matches("mod_hash"));
-        assert!(!Case::SnakeOrScreamingSnake.matches("Mod_Hash"));
+        assert!(Case::Parameter.matches("MOD_HASH"));
+        assert!(Case::Parameter.matches("mod_hash"));
+        assert!(Case::Parameter.matches("Truth"));
+        assert!(Case::Parameter.matches("Ephemeral_State"));
+        assert!(Case::Parameter.matches("Slot_1st_Hash"));
+        assert!(!Case::Parameter.matches("ParentCoin"));
+        assert!(!Case::Parameter.matches("parent_Coin"));
+        assert!(!Case::Parameter.matches("Mod__Hash"));
     }
 }
