@@ -13,12 +13,13 @@ What the change is for:
 Read the change with `git diff <base>...HEAD` (and `git log <base>..HEAD` for the commit messages). Read the surrounding code as needed. <For round 2+: "Since the last round, these areas changed: <files/functions>. Look closely there, but review the whole diff.">
 
 Your focus this round: <Correctness | Tests and snapshots | Simplification and reuse>. Other reviewers cover the other areas, so stay on yours.
+<Or, with a single reviewer: "You cover all three focuses: correctness, tests and snapshots, and simplification and reuse.">
 
-<the checklist for that focus, from below>
+<the checklist for that focus, from below, or all three for a single reviewer>
 
 Rules:
 - Don't edit files in the repo. You may write scratch files to <scratchpad>/review-loop/scratch/ and run the compiler or tests to check a claim (`cargo run --quiet -p rue-cli -- build <file>` prints diagnostics and suggestions, `-W <lint>` turns a lint on; `cargo test -p <crate> <name>`).
-- Judge the change against the goal above. Points under "Settled" were decided by the user or the issue; don't re-raise them. Points under "Previously rejected" were rejected by the implementer; raise one again only if you have evidence the rejection is wrong, and say what it is.
+- Judge the change against the goal above. Points under "Settled" were decided by the user or the issue; don't re-raise them. Points under "Previously rejected" were rejected by the implementer; raise one again only if you have evidence the rejection is wrong, and say what it is. Decisions marked "provisional, pending the user" are already waiting on the user; don't raise them again.
 - Prefer a few findings you're confident in over many guesses. If you aren't sure, say so in the finding.
 - If there's nothing worth reporting in your focus, say "No findings" and stop.
 
