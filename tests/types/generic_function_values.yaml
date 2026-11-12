@@ -63,7 +63,4 @@ tests:
   byte_cost: 684000
   total_cost: 685068
 diagnostics:
-- Unused generic type `B` at generic_function_values.rue:5:13
 - Unused function `konst` at generic_function_values.rue:9:4
-- Unused generic type `U` at generic_function_values.rue:9:29
-- Unused generic type `U` at generic_function_values.rue:10:8

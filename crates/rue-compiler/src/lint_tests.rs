@@ -2257,6 +2257,9 @@ fn casts_and_guards_of_unresolved_values_are_not_reported() {
     for source in [
         "fn main() -> Int {\n    nope as Int\n}\n",
         "fn main() -> Int {\n    if nope is Int {\n        1\n    } else {\n        2\n    }\n}\n",
+        // The unresolved type can also be inside of another type
+        "fn main() -> Int {\n    let pair = (nope, 1) as (Int, Int);\n    pair.first\n}\n",
+        "fn main() -> Int {\n    if (nope, 1) is (Int, Int) {\n        1\n    } else {\n        2\n    }\n}\n",
     ] {
         let (diagnostics, has_errors) = compile_source(source, |_| {});
 
@@ -2268,4 +2271,88 @@ fn casts_and_guards_of_unresolved_values_are_not_reported() {
         );
         assert!(has_errors);
     }
+}
+
+#[test]
+fn imports_used_by_unused_functions_are_unused() {
+    let source = "\
+import module::Value;
+
+mod module {
+    export type Value = Int;
+}
+
+fn main() -> Int {
+    1
+}
+
+fn unused() -> Value {
+    1
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused import `Value`",
+            "Warning 4: Unused type alias `Value`",
+            "Warning 11: Unused function `unused`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn types_in_the_signature_of_a_live_function_are_used() {
+    let source = "\
+import module::Value;
+
+mod module {
+    export struct Value {
+        inner: Int,
+    }
+}
+
+fn main(_value: Value) -> Int {
+    1
+}
+";
+
+    // The parameter is unused, but the signature still needs its type
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+#[test]
+fn generics_are_used_if_anything_references_them() {
+    let source = "\
+struct Unused<T> {
+    value: T,
+}
+
+struct UnusedGeneric<T> {
+    value: Int,
+}
+
+fn main() -> Int {
+    let value = UnusedGeneric::<Int> { value: 1 };
+    value.value
+}
+";
+
+    // The generic of an unused struct is still used by it, so only the struct is reported
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused struct `Unused`",
+            "Warning 5: Unused generic type `T`",
+        ]
+    );
+    assert!(!has_errors);
 }

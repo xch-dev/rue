@@ -64,9 +64,5 @@ tests:
   total_cost: 36020
 diagnostics:
 - Unused generic type `T` at function_generic_capture.rue:2:8
-- Unused type alias `G` at function_generic_capture.rue:4:6
-- Unused generic type `A` at function_generic_capture.rue:4:8
-- Unused generic type `B` at function_generic_capture.rue:4:11
 - Unused generic type `C` at function_generic_capture.rue:4:14
-- Unused generic type `U` at function_generic_capture.rue:4:22
 - Unused generic type `B` at function_generic_capture.rue:5:11

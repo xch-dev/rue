@@ -1,6 +1,5 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use indexmap::IndexSet;
 use rue_diagnostic::{Lint, Name};
 use rue_hir::{
     BindingSymbol, ConstantSymbol, Database, Declaration, FunctionSymbol, Items, ParameterSymbol,
@@ -21,10 +20,12 @@ pub(crate) const LINTS: &[Lint] = &[
     Lint::UnusedTypeAlias,
 ];
 
-/// Reports imports and declarations that are never used. A declaration is used if it's reachable
-/// from an entrypoint, such as `main`, a test or an export. Names starting with `_` are exempt.
+/// Reports imports and declarations that are never used. A declaration is used if it's live,
+/// meaning reachable from an entrypoint, such as `main`, a test or an export. Names starting with
+/// `_` are exempt.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     let db = cx.db();
+    let live = live_declarations(db, input.entrypoints);
 
     let mut reports = input
         .sites
@@ -39,9 +40,9 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         })
         .collect::<Vec<_>>();
 
-    reports.extend(unused_imports(db));
+    reports.extend(unused_imports(db, &live));
 
-    for declaration in unused_declarations(db, input.entrypoints) {
+    for declaration in unused_declarations(db, input.entrypoints, &live) {
         if let Some(report) = unused_declaration(db, declaration) {
             reports.push(report);
         }
@@ -56,18 +57,25 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 
 type Report = (Lint, Name, String);
 
-fn unused_imports(db: &Database) -> Vec<Report> {
+/// Reports the imports whose declarations are never used by live code. A use from an unused
+/// function doesn't count, so that the import is reported along with the declarations it imports.
+/// Modules are only used in the paths of other imports, which aren't part of any declaration, so
+/// any use of an imported module counts.
+fn unused_imports(db: &Database, live: &HashSet<Declaration>) -> Vec<Report> {
     let mut reports = Vec::new();
 
     for import in db.relevant_imports() {
         let references = db
             .import_references(import)
             .into_iter()
+            .filter(|&declaration| live.contains(&declaration) || is_module(db, declaration))
             .collect::<HashSet<_>>();
 
         let import = db.import(import);
 
-        if import.exported {
+        // Unused declarations aren't reported in the standard library either, and its functions
+        // are only live if they're called, so its imports would be reported as unused otherwise
+        if import.exported || !import.source.kind.check_unused() {
             continue;
         }
 
@@ -108,124 +116,105 @@ fn unused_imports(db: &Database) -> Vec<Report> {
 }
 
 /// The declarations that are never used, with symbols before types.
-fn unused_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> IndexSet<Declaration> {
-    let mut used_symbols = HashSet::new();
-    let mut unused_declarations = IndexSet::new();
-
-    for declaration in db.relevant_declarations() {
-        let Declaration::Symbol(_) = declaration else {
-            continue;
-        };
-
-        // A local symbol (such as a binding or parameter) is used if anything references it, so
-        // that it isn't reported along with the unused function it's declared in
-        let is_local_and_referenced = !db.declaration_parents(declaration).is_empty()
-            && !db.reference_parents(declaration).is_empty();
-
-        if is_local_and_referenced || is_reachable(db, entrypoints, declaration) {
-            used_symbols.insert(declaration);
-        } else {
-            unused_declarations.insert(declaration);
+///
+/// A local declaration (a binding, parameter or generic type) is used if anything references it,
+/// so that the locals of an unused function aren't reported along with it. Anything else is used
+/// if it's live.
+fn unused_declarations(
+    db: &Database,
+    entrypoints: &HashSet<Declaration>,
+    live: &HashSet<Declaration>,
+) -> Vec<Declaration> {
+    let is_used = |declaration: Declaration| {
+        if entrypoints.contains(&declaration) {
+            return true;
         }
-    }
 
-    // The used symbols whose code is evaluated, which excludes the local symbols of unused
-    // functions, since they count as used so that they aren't reported along with the function
-    let live_symbols = used_symbols
-        .iter()
-        .copied()
-        .filter(|&symbol| {
-            let parents = db.declaration_parents(symbol);
-
-            parents.is_empty()
-                || parents
-                    .into_iter()
-                    .any(|parent| is_live(db, entrypoints, parent, &mut HashSet::new()))
-        })
-        .collect::<HashSet<_>>();
-
-    for declaration in db.relevant_declarations() {
-        let Declaration::Type(ty) = declaration else {
-            continue;
-        };
-
-        // A generic type is used if a used symbol references it, such as a parameter of a used
-        // function, so that it isn't reported along with an unused function. Anything else, such
-        // as a struct, must be referenced by a used symbol of a live function, so that a struct
-        // that's only used by an unused function is reported as well.
-        let used = if matches!(db.ty(ty), Type::Generic(_)) {
-            is_referenced_by(db, entrypoints, &used_symbols, declaration)
+        if db.declaration_parents(declaration).is_empty() {
+            live.contains(&declaration)
         } else {
-            is_referenced_by(db, entrypoints, &live_symbols, declaration)
-        };
-
-        if !used {
-            unused_declarations.insert(declaration);
+            !db.reference_parents(declaration).is_empty()
         }
-    }
+    };
 
-    unused_declarations
+    let symbols = db
+        .relevant_declarations()
+        .filter(|declaration| matches!(declaration, Declaration::Symbol(_)));
+
+    let types = db
+        .relevant_declarations()
+        .filter(|declaration| matches!(declaration, Declaration::Type(_)));
+
+    symbols
+        .chain(types)
+        .filter(|&declaration| !is_used(declaration))
+        .collect()
 }
 
-/// Whether the declaration is an entrypoint, or is referenced by one through any number of other
-/// declarations.
-fn is_reachable(
-    db: &Database,
-    entrypoints: &HashSet<Declaration>,
-    declaration: Declaration,
-) -> bool {
-    is_referenced_by(db, entrypoints, &HashSet::new(), declaration)
-}
-
-/// Whether the declaration's code is evaluated, because it's reachable from an entrypoint, or it's
-/// declared inside of something live (such as a lambda in a live function).
-fn is_live(
-    db: &Database,
-    entrypoints: &HashSet<Declaration>,
-    declaration: Declaration,
-    visited: &mut HashSet<Declaration>,
-) -> bool {
-    if !visited.insert(declaration) {
-        return false;
-    }
-
-    is_reachable(db, entrypoints, declaration)
-        || db
-            .declaration_parents(declaration)
-            .into_iter()
-            .any(|parent| is_live(db, entrypoints, parent, visited))
-}
-
-/// Whether the declaration is an entrypoint, or is referenced by an entrypoint or one of the
-/// symbols through any number of other declarations.
-fn is_referenced_by(
-    db: &Database,
-    entrypoints: &HashSet<Declaration>,
-    symbols: &HashSet<Declaration>,
-    declaration: Declaration,
-) -> bool {
-    if entrypoints.contains(&declaration) {
-        return true;
-    }
-
+/// The declarations whose code is evaluated, starting from the entrypoints. A declaration is live
+/// if something live references it, and the parameters and generic types of a live function or
+/// type are live, since its signature needs their types. A binding is only live if something live
+/// references it, since it's only evaluated if it's referenced.
+fn live_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> HashSet<Declaration> {
+    // The database only stores the edges from a declaration to the ones that reference or
+    // declare it, so the edges in the other direction are collected first. Every declaration on
+    // a path from an entrypoint to a relevant or imported declaration is an ancestor of it.
+    let mut children = HashMap::<Declaration, Vec<Declaration>>::new();
     let mut visited = HashSet::new();
-    let mut stack = vec![declaration];
 
-    while let Some(current) = stack.pop() {
-        if !visited.insert(current) {
+    let mut stack = db
+        .relevant_declarations()
+        .chain(
+            db.relevant_imports()
+                .flat_map(|import| db.import_references(import)),
+        )
+        .collect::<Vec<_>>();
+
+    while let Some(declaration) = stack.pop() {
+        if !visited.insert(declaration) {
             continue;
         }
 
-        for parent in db.reference_parents(current) {
-            if entrypoints.contains(&parent) || symbols.contains(&parent) {
-                return true;
-            }
-
+        for parent in db.reference_parents(declaration) {
+            children.entry(parent).or_default().push(declaration);
             stack.push(parent);
         }
+
+        if is_signature_local(db, declaration) {
+            for parent in db.declaration_parents(declaration) {
+                children.entry(parent).or_default().push(declaration);
+                stack.push(parent);
+            }
+        }
     }
 
-    false
+    let mut live = HashSet::new();
+    let mut stack = entrypoints.iter().copied().collect::<Vec<_>>();
+
+    while let Some(declaration) = stack.pop() {
+        if !live.insert(declaration) {
+            continue;
+        }
+
+        if let Some(children) = children.get(&declaration) {
+            stack.extend(children.iter().copied());
+        }
+    }
+
+    live
+}
+
+fn is_module(db: &Database, declaration: Declaration) -> bool {
+    matches!(declaration, Declaration::Symbol(symbol) if matches!(db.symbol(symbol), Symbol::Module(_)))
+}
+
+/// Whether the declaration is part of the signature of the function or type that declares it, so
+/// that it's live whenever its parent is.
+fn is_signature_local(db: &Database, declaration: Declaration) -> bool {
+    match declaration {
+        Declaration::Symbol(symbol) => matches!(db.symbol(symbol), Symbol::Parameter(_)),
+        Declaration::Type(ty) => matches!(db.ty(ty), Type::Generic(_)),
+    }
 }
 
 fn unused_declaration(db: &Database, declaration: Declaration) -> Option<Report> {

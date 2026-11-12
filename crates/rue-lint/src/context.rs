@@ -183,10 +183,11 @@ impl<'a> LintContext<'a> {
         matches!(self.db.ty(semantic), Type::Never)
     }
 
-    /// Whether the type is unresolved, because an error has already been reported for it.
+    /// Whether the type is unresolved, or contains an unresolved type anywhere inside of it,
+    /// because an error has already been reported for it. Such types are compatible with
+    /// everything, so lints that compare them would report errors twice.
     pub fn is_unresolved(&mut self, ty: TypeId) -> bool {
-        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
-        matches!(self.db.ty(semantic), Type::Unresolved)
+        rue_types::contains_unresolved(self.db.types(), ty)
     }
 
     /// The name of a type as it would be written in the given scope.
