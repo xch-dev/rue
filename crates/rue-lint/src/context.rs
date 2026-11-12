@@ -1,7 +1,9 @@
 use std::ops::Range;
 
 use rowan::TextRange;
-use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Source, SrcLoc};
+use rue_diagnostic::{
+    Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Name, Source, SourceKind, SrcLoc,
+};
 use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
 use rue_types::{BuiltinTypes, Comparison, Type, TypeId};
 
@@ -172,4 +174,21 @@ impl<'a> LintContext<'a> {
 pub(crate) fn srcloc(source: &Source, range: TextRange) -> SrcLoc {
     let span: Range<usize> = range.start().into()..range.end().into();
     SrcLoc::new(source.clone(), span)
+}
+
+/// Identifies a declaration by the location of its name, which every copy of it (such as a struct
+/// for generic arguments or narrowing) shares.
+pub(crate) type NameKey = (SourceKind, usize);
+
+pub(crate) fn name_key(name: &Name) -> Option<NameKey> {
+    name.srcloc().map(srcloc_key)
+}
+
+pub(crate) fn srcloc_key(srcloc: &SrcLoc) -> NameKey {
+    (srcloc.source.kind.clone(), srcloc.span.start)
+}
+
+/// The key of a name, from the token it's written as in the syntax tree.
+pub(crate) fn token_key(source: &Source, token: &rue_parser::SyntaxToken) -> NameKey {
+    (source.kind.clone(), token.text_range().start().into())
 }

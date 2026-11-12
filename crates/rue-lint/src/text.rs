@@ -127,7 +127,7 @@ pub(crate) fn negated_text_at(db: &Database, hir: HirId, position: Position) -> 
 /// Code that's written as the condition of an `if`, in parentheses if it could contain a struct
 /// initializer, which can't be written there without them.
 fn condition(text: String) -> String {
-    if text.contains('{') && !is_parenthesized(&text) {
+    if has_code_brace(&text) && !is_parenthesized(&text) {
         format!("({text})")
     } else {
         text
@@ -203,6 +203,45 @@ pub(crate) fn is_parenthesized(text: &str) -> bool {
 
                 if depth == 0 {
                     return index == text.len() - 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+/// Whether the code has a `{` outside of strings and comments, which could be a struct
+/// initializer.
+fn has_code_brace(text: &str) -> bool {
+    let mut chars = text.chars().peekable();
+
+    while let Some(char) = chars.next() {
+        match char {
+            '{' => return true,
+            '"' => {
+                while let Some(char) = chars.next() {
+                    match char {
+                        '\\' => {
+                            chars.next();
+                        }
+                        '"' => break,
+                        _ => {}
+                    }
+                }
+            }
+            '/' if chars.peek() == Some(&'/') => {
+                chars.by_ref().find(|&char| char == '\n');
+            }
+            '/' if chars.peek() == Some(&'*') => {
+                chars.next();
+                let mut previous = ' ';
+                for char in chars.by_ref() {
+                    if previous == '*' && char == '/' {
+                        break;
+                    }
+                    previous = char;
                 }
             }
             _ => {}

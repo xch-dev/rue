@@ -4,20 +4,11 @@ use std::{
 };
 
 use rue_ast::{AstNode, AstStructItem};
-use rue_diagnostic::{Lint, Name, Note, SourceKind, SrcLoc};
+use rue_diagnostic::{Lint, Note, SrcLoc};
 use rue_hir::{Database, Declaration, FunctionKind, Hir, HirId, Statement, Symbol};
 use rue_types::{Type, TypeId};
 
-use crate::{HirLintPass, LintContext, LintInput, srcloc};
-
-/// Identifies a struct by the location of its name, which every copy of it (such as for generic
-/// arguments or narrowing) shares.
-type StructKey = (SourceKind, usize);
-
-fn struct_key(name: &Name) -> Option<StructKey> {
-    let srcloc = name.srcloc()?;
-    Some((srcloc.source.kind.clone(), srcloc.span.start))
-}
+use crate::{HirLintPass, LintContext, LintInput, NameKey, name_key, srcloc, token_key};
 
 /// Reports the fields of structs that are never read.
 ///
@@ -29,12 +20,12 @@ fn struct_key(name: &Name) -> Option<StructKey> {
 pub(crate) struct UnusedStructField<'a> {
     entrypoints: &'a HashSet<Declaration>,
     /// The fields that are read in each struct.
-    reads: HashMap<StructKey, HashSet<String>>,
+    reads: HashMap<NameKey, HashSet<String>>,
     /// The location of each field's name in each struct, in the order they're declared.
-    fields: HashMap<StructKey, Vec<(String, SrcLoc)>>,
+    fields: HashMap<NameKey, Vec<(String, SrcLoc)>>,
     /// The structs declared in the documents being linted, once they've been found, along with
     /// the index that identifies each of them in the rest of the pass.
-    candidates: Option<HashMap<StructKey, usize>>,
+    candidates: Option<HashMap<NameKey, usize>>,
     /// The structs that a value of each type can contain, for the types seen so far.
     mentions: HashMap<TypeId, Rc<[usize]>>,
     /// The structs whose values escape, so their fields can be read in other ways.
@@ -46,15 +37,15 @@ pub(crate) struct UnusedStructField<'a> {
 
 impl<'a> UnusedStructField<'a> {
     pub(crate) fn new(input: &'a LintInput<'_>) -> Self {
-        let mut reads: HashMap<StructKey, HashSet<String>> = HashMap::new();
+        let mut reads: HashMap<NameKey, HashSet<String>> = HashMap::new();
 
         for read in &input.sites.field_reads {
-            if let Some(key) = struct_key(&read.struct_name) {
+            if let Some(key) = name_key(&read.struct_name) {
                 reads.entry(key).or_default().insert(read.field.clone());
             }
         }
 
-        let mut fields: HashMap<StructKey, Vec<(String, SrcLoc)>> = HashMap::new();
+        let mut fields: HashMap<NameKey, Vec<(String, SrcLoc)>> = HashMap::new();
 
         for &(source, document) in &input.documents {
             for item in document
@@ -66,7 +57,7 @@ impl<'a> UnusedStructField<'a> {
                     continue;
                 };
 
-                let key = (source.kind.clone(), usize::from(name.text_range().start()));
+                let key = token_key(source, &name);
 
                 fields.insert(
                     key,
@@ -89,12 +80,12 @@ impl<'a> UnusedStructField<'a> {
         }
     }
 
-    fn candidates(&mut self, db: &Database) -> &HashMap<StructKey, usize> {
+    fn candidates(&mut self, db: &Database) -> &HashMap<NameKey, usize> {
         self.candidates.get_or_insert_with(|| {
             db.relevant_declarations()
                 .filter_map(|declaration| match declaration {
                     Declaration::Type(ty) => match db.ty(ty) {
-                        Type::Struct(ty) => ty.name.as_ref().and_then(struct_key),
+                        Type::Struct(ty) => ty.name.as_ref().and_then(name_key),
                         _ => None,
                     },
                     Declaration::Symbol(_) => None,
@@ -281,7 +272,7 @@ impl HirLintPass for UnusedStructField<'_> {
                 continue;
             };
 
-            let Some(key) = struct_key(&name) else {
+            let Some(key) = name_key(&name) else {
                 continue;
             };
 
@@ -328,7 +319,7 @@ impl HirLintPass for UnusedStructField<'_> {
 fn collect_structs(
     db: &Database,
     ty: TypeId,
-    keys: &mut HashSet<StructKey>,
+    keys: &mut HashSet<NameKey>,
     visited: &mut HashSet<TypeId>,
 ) {
     if !visited.insert(ty) {
@@ -337,7 +328,7 @@ fn collect_structs(
 
     match db.ty(ty) {
         Type::Struct(ty) => {
-            if let Some(key) = ty.name.as_ref().and_then(struct_key) {
+            if let Some(key) = ty.name.as_ref().and_then(name_key) {
                 keys.insert(key);
             }
 

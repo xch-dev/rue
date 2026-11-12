@@ -1975,9 +1975,14 @@ struct Point {
     x: Int,
 }
 
-fn main(a: Int) -> Int {
+fn main(a: Int, s: String) -> Int {
     if (Point { x: a }.x == 1) == true {
         return 1;
+    }
+
+    // A brace in a string isn't a struct initializer
+    if (s == \"{\") == true {
+        return 8;
     }
 
     if (Point { x: a }.x == 5 == true) {
@@ -2009,9 +2014,14 @@ struct Point {
     x: Int,
 }
 
-fn main(a: Int) -> Int {
+fn main(a: Int, s: String) -> Int {
     if (Point { x: a }.x == 1) {
         return 1;
+    }
+
+    // A brace in a string isn't a struct initializer
+    if s == \"{\" {
+        return 8;
     }
 
     if (Point { x: a }.x == 5) {
@@ -2034,6 +2044,7 @@ fn main(a: Int) -> Int {
 "
     );
 
-    let (_, has_errors) = reports(&fixed, |_| {});
+    let (reports, has_errors) = reports(&fixed, |_| {});
+    assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
 }

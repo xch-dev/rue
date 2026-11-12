@@ -249,7 +249,8 @@ where
             );
         }
 
-        if qualified {
+        // The standard library can't reference the modules being linted
+        if qualified && ctx.source().kind.check_unused() {
             let declaration = match initial {
                 PathResult::Symbol(symbol, _, _) => Some(Declaration::Symbol(symbol)),
                 PathResult::Type(ty, _) => Some(Declaration::Type(ty)),

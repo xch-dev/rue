@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use rue_ast::{AstItem, AstNode, AstSymbolItem, AstTypeItem};
-use rue_diagnostic::{Applicability, Lint, Name, SourceKind, SrcLoc, Suggestion};
+use rue_diagnostic::{Applicability, Lint, Name, SrcLoc, Suggestion};
 use rue_hir::{Database, Declaration, Items, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxKind;
 use rue_types::{Type, TypeId};
 
-use crate::{LintContext, LintInput, srcloc, text::encloses};
+use crate::{
+    LintContext, LintInput, NameKey, name_key, srcloc, srcloc_key, text::encloses, token_key,
+};
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UnusedExport];
 
@@ -85,9 +87,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                     "`{}` is exported, but is never used outside of module `{module_name}`",
                     name.text()
                 ),
-                export_keywords
-                    .get(&(name_srcloc.source.kind.clone(), name_srcloc.span.start))
-                    .cloned(),
+                export_keywords.get(&srcloc_key(name_srcloc)).cloned(),
             ));
         }
     }
@@ -179,7 +179,7 @@ fn used_exports(
     let types = exports
         .iter()
         .filter(|(declaration, ..)| matches!(declaration, Declaration::Type(_)))
-        .filter_map(|(declaration, name, _)| Some((name_key(name.srcloc()?), *declaration)))
+        .filter_map(|(declaration, name, _)| Some((name_key(name)?, *declaration)))
         .collect::<HashMap<_, _>>();
 
     let mut stack = used.iter().copied().collect::<Vec<_>>();
@@ -192,11 +192,10 @@ fn used_exports(
             reached_names(db, ty, &mut reached, &mut visited);
         }
 
+        // A type that refers to itself (such as a recursive struct) is already used, so it isn't
+        // kept exported by its own signature
         for key in reached {
-            // A type that refers to itself (such as a recursive struct) isn't kept exported by
-            // its own signature
             if let Some(&export) = types.get(&key)
-                && export != declaration
                 && used.insert(export)
             {
                 stack.push(export);
@@ -284,13 +283,6 @@ fn signature_types(db: &Database, declaration: Declaration) -> Vec<TypeId> {
     }
 }
 
-/// Identifies a struct or alias by the location of its name.
-type NameKey = (SourceKind, usize);
-
-fn name_key(srcloc: &SrcLoc) -> NameKey {
-    (srcloc.source.kind.clone(), srcloc.span.start)
-}
-
 /// Adds the names of the structs and aliases that the type is or contains.
 fn reached_names(
     db: &Database,
@@ -302,39 +294,52 @@ fn reached_names(
         return;
     }
 
-    let mut add = |name: &Option<Name>| {
-        if let Some(srcloc) = name.as_ref().and_then(Name::srcloc) {
-            reached.insert(name_key(srcloc));
-        }
+    let mut walk = |ty: TypeId, reached: &mut HashSet<NameKey>| {
+        reached_names(db, ty, reached, visited);
     };
 
-    let inner: Vec<TypeId> = match db.ty(ty) {
+    match db.ty(ty) {
         Type::Struct(ty) => {
-            add(&ty.name);
-            std::iter::once(ty.inner)
-                .chain(ty.generics.iter().copied())
-                .collect()
+            reached.extend(ty.name.as_ref().and_then(name_key));
+            walk(ty.inner, reached);
+
+            for &generic in &ty.generics {
+                walk(generic, reached);
+            }
         }
         Type::Alias(alias) => {
-            add(&alias.name);
-            std::iter::once(alias.inner)
-                .chain(alias.generics.iter().copied())
-                .collect()
-        }
-        Type::Ref(inner) => vec![*inner],
-        Type::Pair(pair) => vec![pair.first, pair.rest],
-        Type::Union(union) => union.types.clone(),
-        Type::Apply(apply) => std::iter::once(apply.inner)
-            .chain(apply.generics.values().copied())
-            .collect(),
-        Type::Function(function) => std::iter::once(function.ret)
-            .chain(function.params.values().copied())
-            .collect(),
-        Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => Vec::new(),
-    };
+            reached.extend(alias.name.as_ref().and_then(name_key));
+            walk(alias.inner, reached);
 
-    for ty in inner {
-        reached_names(db, ty, reached, visited);
+            for &generic in &alias.generics {
+                walk(generic, reached);
+            }
+        }
+        Type::Ref(inner) => walk(*inner, reached),
+        Type::Pair(pair) => {
+            walk(pair.first, reached);
+            walk(pair.rest, reached);
+        }
+        Type::Union(union) => {
+            for &ty in &union.types {
+                walk(ty, reached);
+            }
+        }
+        Type::Apply(apply) => {
+            walk(apply.inner, reached);
+
+            for &generic in apply.generics.values() {
+                walk(generic, reached);
+            }
+        }
+        Type::Function(function) => {
+            walk(function.ret, reached);
+
+            for &param in function.params.values() {
+                walk(param, reached);
+            }
+        }
+        Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
     }
 }
 
@@ -358,7 +363,7 @@ fn type_name(db: &Database, ty: TypeId) -> Option<Name> {
 
 /// The location of the `export` keyword (and the space after it) of each item, by the location of
 /// the item's name.
-fn export_keywords(input: &LintInput<'_>) -> HashMap<(SourceKind, usize), SrcLoc> {
+fn export_keywords(input: &LintInput<'_>) -> HashMap<NameKey, SrcLoc> {
     let mut keywords = HashMap::new();
 
     for &(source, document) in &input.documents {
@@ -389,7 +394,7 @@ fn export_keywords(input: &LintInput<'_>) -> HashMap<(SourceKind, usize), SrcLoc
                 .map_or(export.text_range().end(), |token| token.text_range().end());
 
             keywords.insert(
-                (source.kind.clone(), usize::from(name.text_range().start())),
+                token_key(source, &name),
                 srcloc(source, rowan::TextRange::new(start, end)),
             );
         }
