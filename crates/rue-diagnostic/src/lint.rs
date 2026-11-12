@@ -239,6 +239,7 @@ lints! {
     RedundantInline("redundant_inline", Warn, "`inline` constants and bindings that are only used once, which are already inlined"),
     LargeInline("large_inline", Warn, "`inline` functions whose body is duplicated in enough places that calling them instead would make the program cheaper"),
     RepeatedExpensiveCall("repeated_expensive_call", Warn, "Calls that are evaluated more than once with the same arguments, where reusing the result would make the program cheaper"),
+    BoolBitwiseOperator("bool_bitwise_operator", Warn, "`&` and `|` on `Bool` values whose right side can raise or is expensive, which `&&` and `||` would only evaluate when needed"),
     BytesIntConfusion("bytes_int_confusion", Warn, "Casts of byte literals to `Int` whose value is negative or not in canonical form"),
     UnknownLint("unknown_lint", Warn, "Lint names in attributes or `Rue.toml` that don't refer to a known lint or group"),
     UnfulfilledLintExpectation("unfulfilled_lint_expectation", Warn, "`expect` attributes whose lint is never reported inside of them"),
@@ -354,6 +355,7 @@ lint_groups! {
         DuplicateCondition,
         UnconditionalRecursion,
         BytesIntConfusion,
+        BoolBitwiseOperator,
     ]),
     Cost("cost", "Code that costs more to run or is larger than it needs to be", [
         RedundantInline,
@@ -621,6 +623,7 @@ mod tests {
                 Lint::DuplicateCondition,
                 Lint::UnconditionalRecursion,
                 Lint::BytesIntConfusion,
+                Lint::BoolBitwiseOperator,
             ]
         );
         assert_eq!(

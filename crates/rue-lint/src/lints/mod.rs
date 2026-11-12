@@ -2,6 +2,7 @@ use rue_diagnostic::Lint;
 
 use crate::{HirLintPass, LintContext, LintInput};
 
+mod bitwise;
 mod branches;
 mod casts;
 mod comparisons;
@@ -78,6 +79,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(casts::BytesIntConfusion),
         Box::new(recursion::UnconditionalRecursion),
         Box::new(repeated::RepeatedExpensiveCall::new(input)),
+        Box::new(bitwise::BoolBitwiseOperator::default()),
         Box::new(inlining::Inlining::new(input)),
         Box::new(unused_fields::UnusedStructField::new(input)),
     ]

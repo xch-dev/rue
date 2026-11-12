@@ -1,0 +1,20 @@
+fn main(a: Int, b: Int, key: Bytes32, expected: PublicKey) -> Bool {
+    // Both sides are cheap, so evaluating both is cheaper than branching
+    let cheap = (a > 0) & (b > 0);
+
+    // The right side raises even when the left side is false
+    let raises = (b != 0) & (checked_div(a, b) > 1);
+
+    // The right side is expensive, so it's only worth evaluating when it's needed
+    let expensive = (a == 0) | (pubkey_for_exp(key) == expected);
+
+    // Short-circuiting operators only evaluate the right side when it's needed
+    let short_circuit = b != 0 && checked_div(a, b) > 1;
+
+    cheap && raises && expensive && short_circuit
+}
+
+fn checked_div(a: Int, b: Int) -> Int {
+    assert b != 0;
+    a / b
+}
