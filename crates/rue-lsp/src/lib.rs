@@ -42,11 +42,6 @@ use crate::position::offsets_to_range;
 /// Logged once the client says it's initialized.
 const INITIALIZED: &str = "Rue language server initialized.";
 
-/// Logged for the `rue/sync` notification, which tests use to know that the server has handled
-/// everything sent before it.
-#[cfg(test)]
-const SYNCED: &str = "Synced.";
-
 #[derive(Debug)]
 pub struct Backend {
     client: Client,
@@ -64,6 +59,9 @@ pub struct Backend {
     /// A task that panics on purpose, to test that the server survives panics.
     #[cfg(test)]
     injected_panic: Mutex<Option<Task>>,
+    /// How many times a project was compiled.
+    #[cfg(test)]
+    compiles: std::sync::atomic::AtomicUsize,
 }
 
 /// The work the server does in response to the editor, used to say what failed when it panics.
@@ -282,6 +280,8 @@ impl Backend {
             related_information: AtomicBool::new(true),
             #[cfg(test)]
             injected_panic: Mutex::default(),
+            #[cfg(test)]
+            compiles: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -304,11 +304,6 @@ impl Backend {
         self.client.log_message(MessageType::ERROR, message).await;
 
         None
-    }
-
-    #[cfg(test)]
-    async fn sync(&self) {
-        self.client.log_message(MessageType::INFO, SYNCED).await;
     }
 
     #[cfg(test)]
@@ -355,7 +350,8 @@ impl Backend {
             return IndexMap::new();
         };
 
-        let Ok(source_kind) = normalize_path(&uri_path) else {
+        // The file may have been deleted, for example before the editor closes it
+        let Some(source_kind) = source_kind(&uri_path) else {
             return IndexMap::new();
         };
 
@@ -365,13 +361,19 @@ impl Backend {
             let mut file_cache = lock(&self.file_cache);
 
             if let Some(text) = text {
-                file_cache.insert(source_kind.clone(), text);
+                file_cache.insert(source_kind, text);
             } else {
                 file_cache.remove(&source_kind);
             }
         }
 
-        self.compile_project(&uri_path, Some(source_kind))
+        let Some(project) = FoundProject::find(&uri_path) else {
+            return IndexMap::new();
+        };
+
+        let compiled = self.compile(&project);
+
+        self.update_project(compiled)
     }
 
     /// Recompiles the projects that files changed on disk belong to, outside of the editor (for
@@ -380,57 +382,84 @@ impl Backend {
         &self,
         changes: &[FileEvent],
     ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let mut diagnostics = IndexMap::new();
-        let mut compiled = HashSet::new();
+        let changed = changes
+            .iter()
+            .filter_map(|change| change.uri.to_file_path().ok())
+            .collect::<Vec<_>>();
 
-        for change in changes {
-            let Ok(path) = change.uri.to_file_path() else {
-                continue;
+        let mut lookups = changed.clone();
+        let mut removed = Vec::new();
+
+        // A project that a changed file was part of may not exist anymore, or may have become
+        // part of another one (for example, if its manifest was deleted or created). Its files
+        // are cleared, and compiled with whichever project they're part of now.
+        for (key, files) in lock(&self.published).iter() {
+            let scope = if is_manifest(key) {
+                key.parent().unwrap_or(key)
+            } else {
+                key
             };
 
-            // The files of a project whose manifest was deleted aren't part of it anymore
-            if is_manifest(&path) && !path.exists() {
-                diagnostics.extend(self.update_project(path.clone(), IndexMap::new(), Vec::new()));
+            if !changed.iter().any(|path| path.starts_with(scope)) {
+                continue;
             }
 
-            // Each project is only compiled once, no matter how many of its files changed
-            if let Some(key) = project_key(&path)
-                && compiled.insert(key)
-            {
-                diagnostics.extend(self.compile_project(&path, None));
+            if FoundProject::find(key).is_some_and(|project| &project.key == key) {
+                continue;
             }
+
+            removed.push(key.clone());
+
+            lookups.extend(files.iter().filter_map(|kind| match kind {
+                SourceKind::File(path) => Some(PathBuf::from(path)),
+                SourceKind::Std(_) => None,
+            }));
+        }
+
+        // Each project is only compiled once, no matter how many of its files changed
+        let mut projects = IndexMap::new();
+
+        for path in lookups {
+            if let Some(project) = FoundProject::find(&path) {
+                projects.entry(project.key.clone()).or_insert(project);
+            }
+        }
+
+        // Everything is compiled before any state is updated, so that a panic leaves the results
+        // of the last compile in place
+        let compiled = projects
+            .values()
+            .map(|project| self.compile(project))
+            .collect::<Vec<_>>();
+
+        let mut diagnostics = IndexMap::new();
+
+        for key in removed {
+            diagnostics.extend(self.update_project(Compiled::empty(key)));
+        }
+
+        for compiled in compiled {
+            diagnostics.extend(self.update_project(compiled));
         }
 
         diagnostics
     }
 
-    /// Compiles the project that a file belongs to, and returns the diagnostics to publish.
-    /// `changed` is the file that the editor changed, if any.
-    fn compile_project(
-        &self,
-        path: &Path,
-        changed: Option<SourceKind>,
-    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let project = match find_project(path, false) {
-            Ok(Some(project)) => project,
-            Err(rue_options::Error::Toml { path, error }) => {
-                let diagnostics = invalid_manifest_diagnostics(&path, &error, changed);
-                return self.update_project(path, diagnostics, Vec::new());
+    /// Compiles a project, without updating any state.
+    fn compile(&self, found: &FoundProject) -> Compiled {
+        #[cfg(test)]
+        self.compiles.fetch_add(1, Ordering::Relaxed);
+
+        let project = match &found.project {
+            Ok(project) => project,
+            Err(error) => {
+                return Compiled {
+                    key: found.key.clone(),
+                    diagnostics: invalid_manifest_diagnostics(&found.key, error),
+                    caches: Vec::new(),
+                };
             }
-            Ok(None) | Err(_) => return IndexMap::new(),
         };
-
-        let key = project
-            .manifest_path
-            .clone()
-            .unwrap_or_else(|| project.entrypoint.clone());
-
-        let manifest_diagnostics = project.manifest_path.as_deref().and_then(|path| {
-            Some((
-                normalize_path(path).ok()?,
-                manifest_diagnostics(path, &project),
-            ))
-        });
 
         let mut diagnostics = IndexMap::<SourceKind, Vec<Diagnostic>>::new();
         let mut caches = Vec::new();
@@ -478,42 +507,54 @@ impl Backend {
         }
 
         // Always include the manifest, so that its diagnostics are cleared once they're fixed
-        if let Some((kind, manifest_diagnostics)) = manifest_diagnostics {
-            diagnostics.insert(kind, manifest_diagnostics);
+        if let Some(path) = &project.manifest_path
+            && let Ok(kind) = normalize_path(path)
+        {
+            diagnostics.insert(kind, manifest_diagnostics(path, project));
         }
 
-        self.update_project(key, diagnostics, caches)
+        Compiled {
+            key: found.key.clone(),
+            diagnostics,
+            caches,
+        }
     }
 
-    /// Records the result of compiling a project: the files it published diagnostics for last time
-    /// but not this time get theirs cleared, and their caches are removed, since they're not part
-    /// of the project anymore. This is only called once nothing else can fail, so that a panic
-    /// leaves the results of the last compile in place.
-    fn update_project(
-        &self,
-        key: PathBuf,
-        mut diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>,
-        caches: Vec<(Url, SendWrapper<Cache<Arc<Compiler>>>)>,
-    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+    /// Records the result of compiling a project, and returns the diagnostics to publish. The
+    /// files it published diagnostics for last time but not this time get theirs cleared, and
+    /// their caches are removed, since they're not part of the project anymore (unless another
+    /// project published them).
+    fn update_project(&self, compiled: Compiled) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+        let Compiled {
+            key,
+            mut diagnostics,
+            caches,
+        } = compiled;
+
         let files = diagnostics.keys().cloned().collect::<HashSet<_>>();
 
-        let previous = {
+        let removed = {
             let mut published = lock(&self.published);
 
-            if files.is_empty() {
+            let previous = if files.is_empty() {
                 published.remove(&key)
             } else {
                 published.insert(key, files)
-            }
+            };
+
+            previous
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|kind| {
+                    !diagnostics.contains_key(kind)
+                        && !published.values().any(|files| files.contains(kind))
+                })
+                .collect::<Vec<_>>()
         };
 
         let mut cache = lock(&self.cache);
 
-        for kind in previous.unwrap_or_default() {
-            if diagnostics.contains_key(&kind) {
-                continue;
-            }
-
+        for kind in removed {
             if let SourceKind::File(path) = &kind
                 && let Ok(uri) = Url::from_file_path(path)
             {
@@ -894,21 +935,15 @@ fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
     unknown.chain(forbidden).collect()
 }
 
-/// Nothing can be compiled without the manifest, so this only reports why it's invalid. The
-/// diagnostics of the project's files are cleared, since they're out of date.
+/// Nothing can be compiled without the manifest, so this only reports why it's invalid.
 fn invalid_manifest_diagnostics(
     path: &Path,
     error: &toml::de::Error,
-    changed: Option<SourceKind>,
 ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
     let mut diagnostics = IndexMap::new();
 
-    if let Some(changed) = changed {
-        diagnostics.insert(changed, Vec::new());
-    }
-
-    if let Ok(manifest_kind) = normalize_path(path) {
-        diagnostics.insert(manifest_kind, vec![manifest_error(path, error)]);
+    if let Ok(kind) = normalize_path(path) {
+        diagnostics.insert(kind, vec![manifest_error(path, error)]);
     }
 
     diagnostics
@@ -918,13 +953,65 @@ fn is_manifest(path: &Path) -> bool {
     path.file_name().is_some_and(|name| name == "Rue.toml")
 }
 
-/// The manifest of the project that a file belongs to, or its entrypoint if it doesn't have one,
-/// which identifies the project.
-fn project_key(path: &Path) -> Option<PathBuf> {
-    match find_project(path, false) {
-        Ok(Some(project)) => Some(project.manifest_path.unwrap_or(project.entrypoint)),
-        Err(rue_options::Error::Toml { path, .. }) => Some(path),
-        Ok(None) | Err(_) => None,
+/// The source kind of a file, which the compiler identifies by its canonical path. If the file
+/// doesn't exist (anymore), its directory is canonicalized instead.
+fn source_kind(path: &Path) -> Option<SourceKind> {
+    if let Ok(kind) = normalize_path(path) {
+        return Some(kind);
+    }
+
+    let directory = path.parent()?.canonicalize().ok()?;
+
+    Some(SourceKind::File(
+        directory
+            .join(path.file_name()?)
+            .to_string_lossy()
+            .to_string(),
+    ))
+}
+
+/// The project that a file belongs to.
+struct FoundProject {
+    /// The project's manifest, or its entrypoint if it doesn't have one, which identifies it.
+    key: PathBuf,
+    /// The project, or why its manifest is invalid.
+    project: std::result::Result<Project, toml::de::Error>,
+}
+
+impl FoundProject {
+    fn find(path: &Path) -> Option<Self> {
+        match find_project(path, false) {
+            Ok(Some(project)) => Some(Self {
+                key: project
+                    .manifest_path
+                    .clone()
+                    .unwrap_or_else(|| project.entrypoint.clone()),
+                project: Ok(project),
+            }),
+            Err(rue_options::Error::Toml { path, error }) => Some(Self {
+                key: path,
+                project: Err(error),
+            }),
+            Ok(None) | Err(_) => None,
+        }
+    }
+}
+
+/// The result of compiling a project, which hasn't been recorded yet.
+struct Compiled {
+    key: PathBuf,
+    diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>,
+    caches: Vec<(Url, SendWrapper<Cache<Arc<Compiler>>>)>,
+}
+
+impl Compiled {
+    /// A project that doesn't exist anymore.
+    fn empty(key: PathBuf) -> Self {
+        Self {
+            key,
+            diagnostics: IndexMap::new(),
+            caches: Vec::new(),
+        }
     }
 }
 

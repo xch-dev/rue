@@ -14,7 +14,19 @@ use tower_lsp::LspService;
 use tower_lsp::jsonrpc::{Request, Response};
 use tower_lsp::lsp_types::Url;
 
-use crate::{Backend, INITIALIZED, SYNCED, Task, lock};
+use tower_lsp::lsp_types::MessageType;
+
+use crate::{Backend, INITIALIZED, Task, lock};
+
+/// Logged for the `rue/sync` notification, which only exists in tests, so that they know that the
+/// server has handled everything sent before it.
+const SYNCED: &str = "Synced.";
+
+impl Backend {
+    async fn sync(&self) {
+        self.client.log_message(MessageType::INFO, SYNCED).await;
+    }
+}
 
 /// How long to wait for a message from the server before failing the test, rather than hanging.
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -59,11 +71,7 @@ impl Client {
         }
     }
 
-    pub(super) async fn request(
-        &mut self,
-        method: &'static str,
-        params: Option<Value>,
-    ) -> Response {
+    async fn request(&mut self, method: &'static str, params: Option<Value>) -> Response {
         self.next_id += 1;
 
         let mut request = Request::build(method).id(self.next_id);
@@ -77,7 +85,7 @@ impl Client {
         self.call(request).await.expect("expected a response")
     }
 
-    pub(super) async fn notify(&mut self, method: &'static str, params: Value) {
+    async fn notify(&mut self, method: &'static str, params: Value) {
         let mut request = Request::build(method);
 
         if !params.is_null() {
@@ -100,8 +108,13 @@ impl Client {
             .unwrap()
     }
 
-    pub(super) fn backend(&self) -> &Backend {
+    fn backend(&self) -> &Backend {
         self.service.inner()
+    }
+
+    /// How many times the server compiled a project.
+    pub(super) fn compiles(&self) -> usize {
+        self.backend().compiles.load(Ordering::Relaxed)
     }
 
     pub(super) fn inject_panic(&self, task: Option<Task>) {
@@ -175,7 +188,7 @@ impl Client {
         response.result().unwrap().clone()
     }
 
-    pub(super) async fn change(&mut self, uri: &Url, version: i32, changes: &[&str]) {
+    async fn change(&mut self, uri: &Url, version: i32, changes: &[&str]) {
         let changes = changes
             .iter()
             .map(|text| json!({ "text": text }))
@@ -210,7 +223,7 @@ impl Client {
 
     /// Waits for the diagnostics published for the given file, skipping those for other files
     /// (such as `Rue.toml`).
-    pub(super) async fn diagnostics(&mut self, uri: &Url) -> Value {
+    async fn diagnostics(&mut self, uri: &Url) -> Value {
         loop {
             let diagnostics = self.notification("textDocument/publishDiagnostics").await;
 
@@ -271,10 +284,10 @@ pub(super) struct TempProject {
 
 impl TempProject {
     pub(super) fn new(files: &[(&str, &str)]) -> Self {
-        Self::with_manifest("[compiler]\nentrypoint = \".\"\nstd = false\n", files)
+        Self::with_manifest(Some("[compiler]\nentrypoint = \".\"\nstd = false\n"), files)
     }
 
-    pub(super) fn with_manifest(manifest: &str, files: &[(&str, &str)]) -> Self {
+    pub(super) fn with_manifest(manifest: Option<&str>, files: &[(&str, &str)]) -> Self {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         let root = std::env::temp_dir().join(format!(
@@ -287,7 +300,9 @@ impl TempProject {
 
         let project = Self { root };
 
-        project.write("Rue.toml", manifest);
+        if let Some(manifest) = manifest {
+            project.write("Rue.toml", manifest);
+        }
 
         for (name, text) in files {
             project.write(name, text);
@@ -374,11 +389,8 @@ async fn test_protocol_session() {
     let diagnostics = client.diagnostics(&uri).await;
     assert_eq!(diagnostics["diagnostics"], json!([]));
 
-    let response = client
-        .request("textDocument/hover", Some(position(&uri, 2, 6)))
-        .await;
     assert_eq!(
-        response.result().unwrap()["contents"],
+        client.hover(&uri, 2, 6).await["contents"],
         json!([{ "language": "rue", "value": "let value: 42" }])
     );
 
@@ -408,7 +420,7 @@ async fn test_protocol_session() {
     assert!(response.is_ok());
 }
 
-pub(super) fn position(uri: &Url, line: u32, character: u32) -> Value {
+fn position(uri: &Url, line: u32, character: u32) -> Value {
     json!({
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character },
@@ -440,11 +452,8 @@ fn assert_mismatch(diagnostics: &Value) {
 }
 
 async fn assert_hover(client: &mut Client, uri: &Url) {
-    let response = client
-        .request("textDocument/hover", Some(position(uri, 2, 6)))
-        .await;
     assert_eq!(
-        response.result().unwrap()["contents"],
+        client.hover(uri, 2, 6).await["contents"],
         json!([{ "language": "rue", "value": "let value: Int" }])
     );
 }
