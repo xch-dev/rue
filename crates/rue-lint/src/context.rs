@@ -56,6 +56,10 @@ impl<'a> LintContext<'a> {
         self.walk.parents.last().copied()
     }
 
+    pub(crate) fn db_mut(&mut self) -> &mut Database {
+        self.db
+    }
+
     pub fn db(&self) -> &Database {
         self.db
     }

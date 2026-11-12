@@ -1765,6 +1765,7 @@ dependencies = [
 name = "rue-hir"
 version = "0.11.0"
 dependencies = [
+ "clvmr",
  "derive_more",
  "expect-test",
  "hex",
@@ -1789,6 +1790,8 @@ dependencies = [
 name = "rue-lint"
 version = "0.11.0"
 dependencies = [
+ "clvmr",
+ "id-arena",
  "indexmap",
  "num-bigint",
  "rowan",
@@ -1796,6 +1799,8 @@ dependencies = [
  "rue-diagnostic",
  "rue-hir",
  "rue-lexer",
+ "rue-lir",
+ "rue-options",
  "rue-parser",
  "rue-types",
 ]

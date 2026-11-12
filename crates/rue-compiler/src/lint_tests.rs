@@ -1911,7 +1911,7 @@ fn main(value: Int) -> Int {
     assert_eq!(
         fixed,
         "\
-inline const ONCE: Int = 1;
+const ONCE: Int = 1;
 
 mod helpers {
     fn inner() -> Int {
@@ -1924,7 +1924,7 @@ mod helpers {
 }
 
 fn main(value: Int) -> Int {
-    inline let doubled = value * 2;
+    let doubled = value * 2;
     doubled + ONCE + helpers::outer()
 }
 "
@@ -2104,11 +2104,11 @@ fn early(a: Int) -> Int {
     assert_eq!(
         fixed,
         "\
-inline // inline
+// inline
 const ONCE: Int = 1;
 
 fn main(a: Int, flag: Bool) -> Int {
-    inline // inline
+    // inline
     let doubled = a * 2;
 
     if (a == 1 // note
@@ -2549,4 +2549,76 @@ fn main() -> Int {
         ]
     );
     assert!(!has_errors);
+}
+
+#[test]
+fn lint_options_change_when_cost_lints_are_reported() {
+    let source = "\
+inline fn mix(a: Int, b: Int) -> Int {
+    let c = a * b + a - b;
+    let d = c * c + a * 3 - b * 7;
+    d * c + d - c + a * b
+}
+
+fn main(a: Int, b: Int, key: Bytes32) -> (Int, List<PublicKey>) {
+    let x = mix(a, b) + mix(b, a) + mix(a, a);
+    (x, [pubkey_for_exp(key), pubkey_for_exp(key)])
+}
+";
+
+    let lints = |configure: fn(&mut CompilerOptions)| {
+        reports(source, configure)
+            .0
+            .into_iter()
+            .map(|report| report.split(':').next().unwrap_or_default().to_string())
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(lints(|_| {}), vec!["Warning 1", "Warning 9"]);
+
+    // Both are in the `cost` group
+    assert_eq!(
+        lints(|options| {
+            options
+                .lints
+                .apply(&[(LintName::Group(LintGroup::Cost), LintLevel::Allow)]);
+        }),
+        Vec::<String>::new()
+    );
+
+    // The savings of each are well below these
+    assert_eq!(
+        lints(|options| {
+            options.lint_options.large_inline_min_savings = 100_000_000;
+            options.lint_options.repeated_expensive_call_min_savings = 100_000_000;
+        }),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn large_inline_reports_savings_above_min_savings() {
+    // Removing `inline` saves 10 bytes, less the cost of calling it twice
+    let source = "\
+inline fn mid(a: Int, b: Int) -> Int {
+    a * b + a - b * 3 + a * a + b * b - a * 5 + b * 7
+}
+
+fn main(a: Int, b: Int) -> Int {
+    mid(a, b) + mid(b, a)
+}
+";
+
+    let (default, _) = reports(source, |_| {});
+    assert_eq!(default, Vec::<String>::new());
+
+    let (lowered, _) = reports(source, |options| {
+        options.lint_options.large_inline_min_savings = 100_000;
+    });
+    assert_eq!(
+        lowered,
+        vec![
+            "Warning 1: Inline function `mid` is large, and its body is duplicated in each of the 2 places it's used"
+        ]
+    );
 }

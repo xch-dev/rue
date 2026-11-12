@@ -13,3 +13,7 @@ tests:
   runtime_cost: 1288216
   byte_cost: 17160000
   total_cost: 18448216
+diagnostics:
+- |-
+  Inline function `singleton_puzzle_hash` is large, and its body is duplicated in each of the 3 places it's used at singleton.rue:69:11
+    note: Removing `inline` would define it once and call it instead, which saves an estimated cost of 503184

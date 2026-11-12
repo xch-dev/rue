@@ -6,9 +6,11 @@
 //! reported, and at what level, is decided entirely here.
 
 mod context;
+mod cost;
 mod equality;
 mod levels;
 mod lints;
+mod measure;
 mod sites;
 mod text;
 mod visit;
@@ -21,8 +23,8 @@ pub use visit::*;
 use std::{cell::OnceCell, collections::HashSet};
 
 use rue_ast::AstDocument;
-use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, Source};
-use rue_hir::{Database, Declaration};
+use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, LintOptions, Source};
+use rue_hir::{Database, Declaration, FunctionKind, Symbol, SymbolId};
 use rue_types::BuiltinTypes;
 
 /// Everything the lint passes need beyond the database.
@@ -34,11 +36,17 @@ pub struct LintInput<'a> {
     pub documents: Vec<(&'a Source, &'a AstDocument)>,
     /// The declarations that are used externally, such as `main`, tests and exports.
     pub entrypoints: &'a HashSet<Declaration>,
+    /// The options that change when some lints are reported.
+    pub options: LintOptions,
     /// Whether compilation reported any errors. Code that failed to compile may not have recorded
     /// all of its sites, so `expect` attributes aren't checked, as in Rust.
     pub has_errors: bool,
     /// The declarations that are live, which are computed the first time a pass needs them.
     live: OnceCell<HashSet<Declaration>>,
+    /// The programs, which are computed the first time a pass needs them.
+    programs: OnceCell<Vec<SymbolId>>,
+    /// The tests, which are computed the first time a pass needs them.
+    tests: OnceCell<HashSet<SymbolId>>,
 }
 
 impl<'a> LintInput<'a> {
@@ -46,15 +54,52 @@ impl<'a> LintInput<'a> {
         sites: LintSites,
         documents: Vec<(&'a Source, &'a AstDocument)>,
         entrypoints: &'a HashSet<Declaration>,
+        options: LintOptions,
         has_errors: bool,
     ) -> Self {
         Self {
             sites,
             documents,
             entrypoints,
+            options,
             has_errors,
             live: OnceCell::new(),
+            programs: OnceCell::new(),
+            tests: OnceCell::new(),
         }
+    }
+
+    /// The functions that are compiled into programs of their own, which are the entrypoints
+    /// other than tests (`main` and exported functions), in a stable order.
+    pub(crate) fn programs(&self, db: &Database) -> &[SymbolId] {
+        self.programs.get_or_init(|| {
+            let tests = self.tests(db);
+
+            let mut programs = self
+                .entrypoints
+                .iter()
+                .filter_map(|declaration| match *declaration {
+                    Declaration::Symbol(symbol) => Some(symbol),
+                    Declaration::Type(_) => None,
+                })
+                .filter(|symbol| {
+                    !tests.contains(symbol)
+                        && matches!(
+                            db.symbol(*symbol),
+                            Symbol::Function(function) if function.kind != FunctionKind::Inline
+                        )
+                })
+                .collect::<Vec<_>>();
+
+            programs.sort_by_key(id_arena::Id::index);
+            programs
+        })
+    }
+
+    /// The `test fn`s.
+    pub(crate) fn tests(&self, db: &Database) -> &HashSet<SymbolId> {
+        self.tests
+            .get_or_init(|| db.tests().map(|test| test.symbol).collect())
     }
 
     /// The declarations whose code is evaluated, or is needed by code that's kept, starting from

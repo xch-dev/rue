@@ -1,0 +1,113 @@
+fn main(value: Bytes, flag: Bool) -> Bytes32 {
+    let scoped = scopes(value);
+
+    let first = sha256(value);
+    let second = sha256(value);
+
+    // Calls in different branches are only evaluated once
+    let branches = if flag {
+        tree_hash(value)
+    } else {
+        tree_hash(value) + first
+    };
+
+    // A call before a branch is evaluated whenever the one inside of it is
+    let hashed = coinid(first, second, 1);
+    let inside = if flag {
+        coinid(first, second, 1)
+    } else {
+        hashed
+    };
+
+    // The calls inside of a repeated call aren't reported again
+    let nested = sha256(sha256(value) + value);
+    let nested_again = sha256(sha256(value) + value);
+
+    // A short call costs less to evaluate again than a new binding would add to the program
+    let short = sha256(first + second) + sha256(first + second);
+
+    // Reusing a binding that's only used once would make it a binding rather than being inlined,
+    // which costs more than evaluating it again
+    let once = sha256(first + value);
+    let again = once + sha256(first + value);
+
+    // A function that calls itself is assumed to be fairly cheap to call again, since it depends on
+    // the value, but calling it several times is worth a binding
+    let recursive = tree_hash(nested) + tree_hash(nested) + tree_hash(nested) + tree_hash(nested);
+
+    sha256(
+        first
+            + second
+            + branches
+            + hashed
+            + inside
+            + nested
+            + nested_again
+            + short
+            + again
+            + recursive
+            + scoped,
+    )
+}
+
+// The binding is only suggested where it's in scope, and refers to the same value
+fn scopes(value: Bytes) -> Bytes32 {
+    // A binding that's never referenced isn't evaluated, so this isn't evaluated again, but the call
+    // after it is
+    let unused = tree_hash(value);
+    let first = tree_hash(value);
+    let third = tree_hash(value);
+
+    // A binding declared in an inner block isn't in scope after it
+    let inner = {
+        let hashed = tree_hash(value + value);
+        hashed + hashed
+    };
+    let after = tree_hash(value + value);
+
+    // A binding that's shadowed refers to another value
+    let shadowed = tree_hash(value + first);
+    let kept = shadowed;
+    let shadowed = sha256(kept);
+    let repeated = tree_hash(value + first);
+
+    // A binding that's only referenced in a `debug` statement isn't referenced in a release build
+    let debugged = tree_hash(first + value);
+    debug debugged;
+    let again = tree_hash(first + value);
+
+    // An `inline` binding is inlined wherever it's used, so using it doesn't save anything
+    inline let inlined = tree_hash(first + first);
+    let reused = inlined + inlined + tree_hash(first + first);
+
+    // Calls in `debug` statements aren't part of a release build
+    debug tree_hash(value + inner);
+    let traced = tree_hash(value + inner);
+    debug tree_hash(value + traced);
+
+    // Neither are `raise` messages
+    let raised = tree_hash(value + after);
+    if raised == after {
+        raise tree_hash(value + after);
+    }
+
+    // A binding of another type can't be used in place of the call
+    let annotated: Bytes = tree_hash(after + value);
+    let typed: Bytes32 = tree_hash(after + value);
+
+    sha256(
+        third
+            + inner
+            + after
+            + shadowed
+            + repeated
+            + again
+            + reused
+            + traced
+            + raised
+            + raised
+            + annotated
+            + annotated
+            + typed,
+    )
+}

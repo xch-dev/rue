@@ -43,6 +43,18 @@ diagnostics:
 - |-
   Binding `Registration_Price` should be named in snake_case at actions/catalog/register.rue:55:16
     note: Consider renaming it to `registration_price`
+- |-
+  Unnecessary `inline`, since binding `Registration_Price` is only used once, so it's inlined anyway at actions/catalog/register.rue:55:16
+    help: Remove `inline`
+- |-
+  Unnecessary `inline`, since binding `refund_puzzle_hash_hash` is only used once, so it's inlined anyway at actions/catalog/refund.rue:28:16
+    help: Remove `inline`
+- |-
+  Unnecessary `inline`, since binding `selector` is only used once, so it's inlined anyway at singleton/action.rue:91:20
+    help: Remove `inline`
+- |-
+  Unnecessary `inline`, since binding `remaining_selectors` is only used once, so it's inlined anyway at singleton/action.rue:92:20
+    help: Remove `inline`
 puzzle_hashes:
   actions/catalog/refund.rue: ad293a8ba7393b2d23760cf2bdae38ae6e1407a1b2a26b89b39b0fd0cb0127a9
   actions/catalog/register.rue: ef66622bbd9ac5922df81baac96082e16f51ae0a8a69e40e93b13a44fff1f8cf

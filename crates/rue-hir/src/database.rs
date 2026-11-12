@@ -207,6 +207,42 @@ impl Database {
         &self.types
     }
 
+    /// The symbol that a name refers to in a scope, and the import it comes from, if any.
+    pub fn resolve_symbol_in(
+        &self,
+        scope: ScopeId,
+        name: &str,
+    ) -> Option<(SymbolId, Option<ImportId>)> {
+        let mut current = Some(scope);
+
+        while let Some(scope) = current {
+            if let Some(symbol) = self.scope(scope).symbol(name) {
+                return Some((symbol, self.scope(scope).symbol_import(symbol)));
+            }
+            current = self.scope(scope).parent();
+        }
+
+        None
+    }
+
+    /// The type that a name refers to in a scope, and the import it comes from, if any.
+    pub fn resolve_type_in(
+        &self,
+        scope: ScopeId,
+        name: &str,
+    ) -> Option<(TypeId, Option<ImportId>)> {
+        let mut current = Some(scope);
+
+        while let Some(scope) = current {
+            if let Some(ty) = self.scope(scope).ty(name) {
+                return Some((ty, self.scope(scope).type_import(ty)));
+            }
+            current = self.scope(scope).parent();
+        }
+
+        None
+    }
+
     /// The name of a type as seen from the given scope, which falls back to the structure of the
     /// type if it isn't named in that scope or any of its parents.
     pub fn type_name_in(&mut self, scope: ScopeId, ty: TypeId) -> String {

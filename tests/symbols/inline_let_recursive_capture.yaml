@@ -38,3 +38,6 @@ diagnostics:
 - |-
   Binding `x` is returned directly after it's declared at inline_let_recursive_capture.rue:42:9
     help: Return the value directly
+- |-
+  Unnecessary `inline`, since binding `x` is only used once, so it's inlined anyway at inline_let_recursive_capture.rue:42:20
+    help: Remove `inline`
