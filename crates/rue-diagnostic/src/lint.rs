@@ -582,6 +582,45 @@ mod tests {
     }
 
     #[test]
+    fn groups_have_the_lints_they_describe() {
+        assert_eq!(
+            LintGroup::Style.lints(),
+            [
+                Lint::EmptyGenerics,
+                Lint::UnnecessaryCast,
+                Lint::UnnecessaryGuard,
+                Lint::UnnecessaryPlus,
+                Lint::UnnecessaryReturn,
+                Lint::BoolComparison,
+                Lint::NeedlessBool,
+                Lint::NegatedCondition,
+                Lint::CollapsibleIf,
+                Lint::ManualAssert,
+                Lint::NeedlessLetReturn,
+                Lint::RedundantFieldNames,
+                Lint::UnnecessaryParens,
+                Lint::NamingConvention,
+                Lint::ShadowedBinding,
+            ]
+        );
+        assert_eq!(
+            LintGroup::Suspicious.lints(),
+            [
+                Lint::IndistinguishableGuard,
+                Lint::ConstantCondition,
+                Lint::DoubleNegation,
+                Lint::UnreachableCode,
+                Lint::InlineIfMayRaise,
+                Lint::SelfComparison,
+                Lint::IdenticalBranches,
+                Lint::DuplicateCondition,
+                Lint::UnconditionalRecursion,
+                Lint::BytesIntConfusion,
+            ]
+        );
+    }
+
+    #[test]
     fn lints_are_in_at_most_one_group() {
         for &lint in Lint::ALL {
             let groups = LintGroup::ALL
