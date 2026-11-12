@@ -172,14 +172,7 @@ impl Walker<'_> {
     fn visit_children(&mut self, cx: &mut LintContext<'_>, node: &Hir) {
         match node {
             // Default values are visited from the struct declaration instead
-            Hir::Struct(initializer) => self.visit_all(
-                cx,
-                initializer
-                    .fields
-                    .iter()
-                    .filter(|field| !field.is_default)
-                    .map(|field| field.value),
-            ),
+            Hir::Struct(initializer) => self.visit_all(cx, initializer.written_values()),
             Hir::Block(block) => self.visit_block(cx, block),
             Hir::Lambda(symbol) => self.visit_function(cx, *symbol),
             _ => self.visit_all(cx, node.children()),

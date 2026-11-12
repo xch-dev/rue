@@ -120,13 +120,7 @@ impl Search<'_> {
             // The right side of `&&` and `||` is only evaluated in some cases
             Hir::Binary(BinaryOp::And | BinaryOp::Or, left, _) => self.expr(left),
             // Default values are generated, and evaluated wherever the struct is initialized
-            Hir::Struct(initializer) => self.any(
-                initializer
-                    .fields
-                    .into_iter()
-                    .filter(|field| !field.is_default)
-                    .map(|field| field.value),
-            ),
+            Hir::Struct(initializer) => self.any(initializer.written_values()),
             Hir::Block(block) => self.block(&block.statements, block.body),
             // Everything else evaluates all of the nodes inside of it
             _ => self.any(node.children()),

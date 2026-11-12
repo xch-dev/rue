@@ -153,6 +153,18 @@ pub struct StructInitializer {
     pub nil_terminated: bool,
 }
 
+impl StructInitializer {
+    /// The values of the fields that were written in the initializer, without the default values
+    /// of the fields that were left out. Those are shared by every initializer that uses them, so
+    /// they belong to the struct declaration instead.
+    pub fn written_values(&self) -> impl Iterator<Item = HirId> + '_ {
+        self.fields
+            .iter()
+            .filter(|field| !field.is_default)
+            .map(|field| field.value)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct StructField {
     pub name: String,
