@@ -1,5 +1,5 @@
 use rue_diagnostic::{Applicability, Lint, Note, SrcLoc, Suggestion};
-use rue_hir::{Block, Declaration, Hir, HirId, Statement, Symbol};
+use rue_hir::{Block, Hir, HirId, Statement};
 
 use crate::{HirLintPass, LintContext};
 
@@ -82,28 +82,21 @@ impl HirLintPass for UnreachableCode {
 }
 
 /// Whether evaluating the statement never finishes, so nothing after it is evaluated.
+///
+/// A `let` whose value never finishes isn't included. Bindings are only evaluated if they're
+/// referenced by code that's lowered, which depends on how the code after it is lowered, so the
+/// code after it can still be evaluated.
 fn diverges(cx: &mut LintContext<'_>, statement: &Statement) -> bool {
-    let hir = match statement {
-        Statement::Return(..) | Statement::Raise(..) => return true,
-        Statement::Expr(statement) => statement.hir,
-        // Inline bindings are evaluated where they're referenced instead, and bindings that are
-        // never referenced aren't evaluated at all
-        Statement::Let(symbol, _) => match cx.db().symbol(*symbol) {
-            Symbol::Binding(binding)
-                if !binding.inline
-                    && !cx
-                        .db()
-                        .reference_parents(Declaration::Symbol(*symbol))
-                        .is_empty() =>
-            {
-                binding.value.hir
-            }
-            _ => return false,
-        },
-        Statement::If(_) | Statement::Assert(..) | Statement::Debug(..) => return false,
-    };
-
-    cx.db().hir_type(hir).is_some_and(|ty| cx.is_never(ty))
+    match statement {
+        Statement::Return(..) | Statement::Raise(..) => true,
+        Statement::Expr(statement) => cx
+            .db()
+            .hir_type(statement.hir)
+            .is_some_and(|ty| cx.is_never(ty)),
+        Statement::Let(..) | Statement::If(_) | Statement::Assert(..) | Statement::Debug(..) => {
+            false
+        }
+    }
 }
 
 /// The locations of the first and last statement or expression after the statement at the index.

@@ -566,8 +566,21 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic, supports_related: bool) -
             message.push('\n');
             message.push_str(&note.message);
 
+            // The location is shown like it is on the command line, relative to the file that has
+            // the diagnostic
             if let Some(srcloc) = &note.srcloc {
-                write!(message, " at {}", srcloc.start()).unwrap();
+                let relative_to = match &diagnostic.srcloc.source.kind {
+                    SourceKind::File(path) => Path::new(path).parent().unwrap_or(Path::new("")),
+                    SourceKind::Std(_) => Path::new(""),
+                };
+
+                write!(
+                    message,
+                    " at {}:{}",
+                    srcloc.source.kind.display(relative_to),
+                    srcloc.start()
+                )
+                .unwrap();
             }
         }
     }

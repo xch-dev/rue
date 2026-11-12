@@ -126,6 +126,44 @@ pub struct Block {
     pub body: Option<HirId>,
 }
 
+impl Block {
+    /// The statements that are evaluated. See [`reachable_statements`].
+    pub fn reachable_statements(&self) -> &[Statement] {
+        reachable_statements(&self.statements)
+    }
+
+    /// The body, if it's evaluated. See [`reachable_body`].
+    pub fn reachable_body(&self) -> Option<HirId> {
+        reachable_body(&self.statements, self.body)
+    }
+}
+
+/// The statements that are evaluated, which end at the first `return` or `raise`. Nothing after it
+/// is lowered, so analyses that follow lowering (such as the dependency graph) should only look at
+/// these statements.
+pub fn reachable_statements(statements: &[Statement]) -> &[Statement] {
+    match first_exit(statements) {
+        Some(index) => &statements[..=index],
+        None => statements,
+    }
+}
+
+/// The body that follows the statements, if it's evaluated, which it isn't if one of the
+/// statements is a `return` or `raise`.
+pub fn reachable_body(statements: &[Statement], body: Option<HirId>) -> Option<HirId> {
+    if first_exit(statements).is_some() {
+        None
+    } else {
+        body
+    }
+}
+
+fn first_exit(statements: &[Statement]) -> Option<usize> {
+    statements
+        .iter()
+        .position(|statement| matches!(statement, Statement::Return(..) | Statement::Raise(..)))
+}
+
 #[derive(Debug, Clone)]
 pub enum Statement {
     Expr(ExprStatement),

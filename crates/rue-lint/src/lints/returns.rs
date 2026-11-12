@@ -27,7 +27,9 @@ impl HirLintPass for UnnecessaryReturn {
 
             // The `return` can only be replaced with its value if it's the last thing in the body.
             // A `return` without a value returns nil. Attributes can't be on an expression, so a
-            // `return` with attributes is left alone, rather than removing them.
+            // `return` with attributes is left alone, rather than removing them. A statement's
+            // location starts at its attributes (and comments before them are trimmed), so it
+            // starts with `#` exactly when it has attributes.
             let is_last = index == block.statements.len() - 1 && block.body.is_none();
             let has_attributes = srcloc.text().starts_with('#');
 

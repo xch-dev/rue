@@ -1,6 +1,7 @@
 use expect_test::expect;
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::LanguageServer;
+use tower_lsp::lsp_types::{InitializeParams, Url};
 
 use super::TestProject;
 
@@ -372,4 +373,22 @@ fn test_diagnostics_unreachable_code() {
 
     "#]]
     .assert_eq(&project.code_actions("main.rue", text));
+}
+
+#[test]
+fn test_diagnostics_notes_without_related_information() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    // Clients that don't say they support related information get the notes in the message
+    futures::executor::block_on(project.backend().initialize(InitializeParams::default())).unwrap();
+
+    let text =
+        "fn main() -> Int {\n    if 1 > 2 {\n        raise;\n        debug 1;\n    }\n    42\n}\n";
+
+    expect![[r#"
+        Rue.toml: <none>
+        main.rue:3:8-3:16 Warning[unreachable_code]: Unreachable code
+        Any code after this is never evaluated at main.rue:3:9
+    "#]]
+    .assert_eq(&project.change("main.rue", Some(text)));
 }

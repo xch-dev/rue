@@ -63,7 +63,7 @@ impl Visitor<'_> {
             // The value is only evaluated if the check it's lowered to uses it
             Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
             Hir::Block(block) => {
-                for stmt in block.statements {
+                for stmt in block.reachable_statements().to_vec() {
                     match stmt {
                         // Bindings are only lowered if they're referenced
                         Statement::Let(..) => {}
@@ -82,13 +82,12 @@ impl Visitor<'_> {
                                 return true;
                             }
                         }
-                        // Nothing after these statements is lowered
                         Statement::Return(hir, _) => return self.visit_hir(hir),
                         Statement::Raise(hir, _) => return self.visit_all(hir),
                     }
                 }
 
-                self.visit_all(block.body)
+                self.visit_all(block.reachable_body())
             }
             Hir::If(condition, then, else_, _) => self.visit_all([condition, then, else_]),
             Hir::FunctionCall(call) => self.visit_hir(call.function) || self.visit_all(call.args),

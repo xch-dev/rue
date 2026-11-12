@@ -28,6 +28,8 @@ fn after_lambda(value: Int) -> Int {
     add(value, 1)
 }
 
+// Bindings are only evaluated if they're referenced, so a binding that never finishes doesn't make
+// the code after it unreachable
 fn after_never_binding(value: Int) -> Int {
     if value > 100 {
         let never = {

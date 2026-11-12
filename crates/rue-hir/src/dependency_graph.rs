@@ -158,7 +158,8 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_symbol_reference(db, graph, *symbol);
         }
         Hir::Block(block) => {
-            for stmt in &block.statements {
+            // Nothing after a `return` or `raise` is lowered, so it doesn't reference anything
+            for stmt in block.reachable_statements() {
                 match stmt {
                     Statement::Let(stmt, _) => {
                         if let Some(last) = graph.stack.last() {
@@ -174,9 +175,6 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                         {
                             visit_hir(db, graph, *stmt, false);
                         }
-
-                        // Nothing after this is lowered, so it doesn't reference anything
-                        return;
                     }
                     Statement::If(stmt) => {
                         visit_hir(db, graph, stmt.condition, false);
@@ -184,9 +182,6 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                     }
                     Statement::Return(expr, _) => {
                         visit_hir(db, graph, *expr, false);
-
-                        // Nothing after this is lowered, so it doesn't reference anything
-                        return;
                     }
                     Statement::Expr(expr) => {
                         visit_hir(db, graph, expr.hir, false);
@@ -199,7 +194,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 }
             }
 
-            if let Some(body) = block.body {
+            if let Some(body) = block.reachable_body() {
                 visit_hir(db, graph, body, false);
             }
         }

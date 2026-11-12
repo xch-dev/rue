@@ -2,7 +2,9 @@ use std::collections::HashSet;
 
 use rue_lir::ClvmOp;
 
-use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
+use crate::{
+    Database, Hir, HirId, Statement, Symbol, SymbolId, reachable_body, reachable_statements,
+};
 
 /// Whether evaluating the given HIR could explicitly raise an error.
 ///
@@ -27,7 +29,7 @@ pub fn statements_may_raise(db: &Database, statements: &[Statement], body: Optio
         db,
         visited: HashSet::new(),
     };
-    visitor.visit_statements(statements) || visitor.visit_all(body)
+    visitor.visit_statements(statements) || visitor.visit_all(reachable_body(statements, body))
 }
 
 struct Visitor<'a> {
@@ -64,7 +66,8 @@ impl Visitor<'_> {
     }
 
     fn visit_statements(&mut self, statements: &[Statement]) -> bool {
-        for stmt in statements {
+        // Nothing after a `return` or `raise` is evaluated
+        for stmt in reachable_statements(statements) {
             let raises = match *stmt {
                 Statement::Raise(..) | Statement::Assert(..) => true,
                 // Inline bindings are evaluated where they are referenced instead
@@ -109,7 +112,7 @@ impl Visitor<'_> {
             | Hir::Secp256R1Verify(..)
             | Hir::ClvmOp(ClvmOp::Raise, _) => true,
             Hir::Block(block) => {
-                self.visit_statements(&block.statements) || self.visit_all(block.body)
+                self.visit_statements(&block.statements) || self.visit_all(block.reachable_body())
             }
             Hir::If(condition, then, else_, _) => self.visit_all([condition, then, else_]),
             Hir::List(list) => self.visit_all(list.items),
