@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use rowan::TextRange;
 use rue_diagnostic::{
-    Applicability, Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Name, Source, SourceKind,
-    SrcLoc,
+    Applicability, Diagnostic, DiagnosticKind, Edit, Lint, LintLevel, LintName, Name, Source,
+    SourceKind, SrcLoc,
 };
 use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
 use rue_types::{BuiltinTypes, Comparison, Type, TypeId};
@@ -136,13 +136,19 @@ impl<'a> LintContext<'a> {
 
     /// The diagnostics that were reported. A suggestion that would remove a comment (because the
     /// code it replaces has more comments than its replacement) isn't applied automatically, since
-    /// the comment might matter.
+    /// the comment might matter. Replacements that would join a word to the code around them (such
+    /// as `return+a` becoming `returna`) get a space.
     pub fn into_diagnostics(mut self) -> Vec<Diagnostic> {
         for suggestion in self
             .diagnostics
             .iter_mut()
             .flat_map(|diagnostic| &mut diagnostic.suggestions)
+            .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
         {
+            for edit in &mut suggestion.edits {
+                separate_words(edit);
+            }
+
             if suggestion
                 .edits
                 .iter()
@@ -209,4 +215,29 @@ pub(crate) fn srcloc_key(srcloc: &SrcLoc) -> NameKey {
 /// The key of a name, from the token it's written as in the syntax tree.
 pub(crate) fn token_key(source: &Source, token: &rue_parser::SyntaxToken) -> NameKey {
     (source.kind.clone(), token.text_range().start().into())
+}
+
+/// Adds a space to either side of an edit's replacement that would otherwise join a word with the
+/// code next to it.
+fn separate_words(edit: &mut Edit) {
+    let is_word = |char: char| char.is_alphanumeric() || char == '_';
+    let text = &edit.srcloc.source.text;
+
+    if text[..edit.srcloc.span.start]
+        .chars()
+        .next_back()
+        .is_some_and(is_word)
+        && edit.replacement.chars().next().is_some_and(is_word)
+    {
+        edit.replacement.insert(0, ' ');
+    }
+
+    if text[edit.srcloc.span.end..]
+        .chars()
+        .next()
+        .is_some_and(is_word)
+        && edit.replacement.chars().next_back().is_some_and(is_word)
+    {
+        edit.replacement.push(' ');
+    }
 }

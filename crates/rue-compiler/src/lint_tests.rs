@@ -2158,3 +2158,30 @@ fn early(a: Int) -> Int {
     );
     assert!(!has_errors);
 }
+
+#[test]
+fn suggestions_dont_join_words() {
+    let source = "\
+fn main(a: Int) -> Int {
+    if a > 1 {
+        return+a;
+    }
+
+    0
+}
+";
+
+    // Removing the `+` would otherwise join `return` and `a` into one name
+    assert_eq!(
+        fix(source),
+        "\
+fn main(a: Int) -> Int {
+    if a > 1 {
+        return a;
+    }
+
+    0
+}
+"
+    );
+}
