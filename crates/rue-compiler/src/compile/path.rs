@@ -256,9 +256,15 @@ where
                 PathResult::Unresolved => None,
             };
 
-            ctx.lint_sites_mut()
-                .qualified_references
-                .extend(declaration);
+            if let Some(declaration) = declaration {
+                let srcloc = ctx.srcloc(&name);
+
+                ctx.lint_sites_mut()
+                    .qualified_references
+                    .entry(declaration)
+                    .or_default()
+                    .push(srcloc);
+            }
         }
 
         match initial {

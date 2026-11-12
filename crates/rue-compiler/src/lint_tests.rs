@@ -1958,7 +1958,7 @@ fn main(flag: Bool, a: Bool, b: Bool) -> Bool {
         "\
 fn main(flag: Bool, a: Bool, b: Bool) -> Bool {
     let compared = flag && (a || b);
-    let flipped = flag && !(a == b);
+    let flipped = flag && (a != b);
     let needless = flag && (!a || b);
     let cast = (!flag) as Int;
     let guarded = (!flag) is Bool;
@@ -1978,6 +1978,18 @@ struct Point {
 fn main(a: Int) -> Int {
     if (Point { x: a }.x == 1) == true {
         return 1;
+    }
+
+    if (Point { x: a }.x == 5 == true) {
+        return 5;
+    }
+
+    if (Point { x: a }.x != 6 == false) {
+        return 6;
+    }
+
+    if (a != 7) == false {
+        return 7;
     }
 
     let compared = if (Point { x: a }.x == 2) == true { 1 } else { 2 };
@@ -2000,6 +2012,18 @@ struct Point {
 fn main(a: Int) -> Int {
     if (Point { x: a }.x == 1) {
         return 1;
+    }
+
+    if (Point { x: a }.x == 5) {
+        return 5;
+    }
+
+    if (Point { x: a }.x == 6) {
+        return 6;
+    }
+
+    if a == 7 {
+        return 7;
     }
 
     let compared = if (Point { x: a }.x == 2) { 1 } else { 2 };

@@ -1,9 +1,9 @@
-program: (a (q 16 (f (q 1)) (f (q 1)) (a 2 ()) (a 2 ()) (f (q 1 ())) (f (q 1)) (f (q 1)) (q . 51)) (c (q 1 . 1) ()))
-debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (a 46 (c (c 94 126) ())) (a 86 (c 118 ()))) (a 122 (c 38 ()))) (a 42 (c 90 ()))) (a 34 (c 50 ()))) (f (a 124 ()))) (a 92 ())) (a 44 (c 16 ()))) (a 84 (c (c 16 116) ()))) (a 36 ())) (f (a 120 ()))) (a 40 (c 88 ()))) (c (c (c (c (q 1 . 1) (c (q 5 (a 2 ())) (c (q 4 (q . 1) ()) (q 4 (q . 1) ())))) (c (c (q 5 (c (q . 1) (c () ()))) (c (q 16 (a 4 ()) (a 6 ())) (q 1 . 2))) (c (q 16 (a 2 ()) (q . 1)) (c (q 5 (c (q . 1) ())) (q 4 (q . 1) ()))))) (c (c (c (q 2 2 ()) (q 1 . 1)) (c (q 2 2 ()) (c (q 1 . 1) (q 2 2 ())))) (c (c (q 1 . 1) (c (q 2 2 ()) (q 1 . 2))) (c (q 16 (a 4 (c 6 ())) (q . 1)) (c (q . 2) (q . 42)))))) ()))
-output: '58'
-runtime_cost: 3601
-byte_cost: 1116000
-total_cost: 1119601
+program: (a (q 16 (f (q 1)) (f (q 1)) (a 2 ()) (a 2 ()) (f (q 1 ())) (f (q 1)) (f (q 1)) (f (q 1)) (f (q 1)) (q . 51)) (c (q 1 . 1) ()))
+debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (a 110 (c (c 94 126) ())) (a 118 (c 78 ()))) (a 38 (c 86 ()))) (a 90 (c 122 ()))) (a 114 (c 42 ()))) (f (a 82 ()))) (a 34 ())) (a 124 (c 32 ()))) (a 44 (c (c 32 92) ()))) (a 116 ())) (f (a 84 ()))) (a 120 (c 36 ()))) (a 40 (c 88 ()))) (f (a 48 ()))) (c (c (c (c (c (q 1 . 1) (q 4 (q . 1) ())) (c (q 5 (a 2 ())) (c (q 4 (q . 1) ()) (q 5 (a 2 ()))))) (c (c (q 4 (q . 1) ()) (c (q 4 (q . 1) ()) (q 5 (c (q . 1) (c () ()))))) (c (q 16 (a 4 ()) (a 6 ())) (c (q 1 . 2) (q 16 (a 2 ()) (q . 1)))))) (c (c (c (q 5 (c (q . 1) ())) (c (q 4 (q . 1) ()) (q 2 2 ()))) (c (q 1 . 1) (c (q 2 2 ()) (q 1 . 1)))) (c (c (q 2 2 ()) (c (q 1 . 1) (q 2 2 ()))) (c (c (q 1 . 2) (q 16 (a 4 (c 6 ())) (q . 1))) (c (q . 2) (q . 42)))))) ()))
+output: '60'
+runtime_cost: 4349
+byte_cost: 1356000
+total_cost: 1360349
 diagnostics:
 - |-
   `only_inside` is exported, but is never used outside of module `helpers` at unused_export.rue:8:15
@@ -28,4 +28,7 @@ diagnostics:
     help: Remove `export`
 - |-
   `make` is exported, but is never used outside of module `chain` at unused_export.rue:132:15
+    help: Remove `export`
+- |-
+  `Value` is exported, but is never used outside of module `internal` at unused_export.rue:144:19
     help: Remove `export`

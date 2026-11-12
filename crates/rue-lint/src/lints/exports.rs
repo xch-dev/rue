@@ -6,7 +6,7 @@ use rue_hir::{Database, Declaration, Items, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxKind;
 use rue_types::{Type, TypeId};
 
-use crate::{LintContext, LintInput, srcloc};
+use crate::{LintContext, LintInput, srcloc, text::encloses};
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UnusedExport];
 
@@ -23,7 +23,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 
     let scopes = modules
         .iter()
-        .map(|&module| (db.module(module).scope, module))
+        .map(|&(module, _)| (db.module(module).scope, module))
         .collect::<HashMap<ScopeId, SymbolId>>();
 
     let qualified = &input.sites.qualified_references;
@@ -32,7 +32,9 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 
     let mut reports = Vec::new();
 
-    for &module in modules {
+    for (module, module_srcloc) in modules {
+        let module = *module;
+
         if is_public(db, &scopes, module) {
             continue;
         }
@@ -40,12 +42,26 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         let module_symbol = db.module(module);
         let module_name = module_symbol.name.as_ref().map_or("", |name| name.text());
 
-        // The exports of modules that are exported from this one are what it exports too
+        // The exports of modules that are exported from this one (and the items it re-exports)
+        // are what it exports too
         let mut exports = Vec::new();
-        collect_exports(db, module, true, &mut exports);
+        collect_exports(db, module, true, &mut exports, &mut HashSet::new());
 
-        let used = used_exports(db, &exports, |declaration| {
-            qualified.contains(&declaration) || imported.contains(&declaration)
+        // Any use of the module's own items through a path or import needs them to be exported,
+        // but the items of nested modules only need this module to export them if they're used
+        // outside of it
+        let used = used_exports(db, &exports, |declaration, direct| {
+            let mut uses = qualified
+                .get(&declaration)
+                .into_iter()
+                .chain(imported.get(&declaration))
+                .flatten();
+
+            if direct {
+                uses.next().is_some()
+            } else {
+                uses.any(|srcloc| !encloses(module_srcloc, srcloc))
+            }
         });
 
         for &(declaration, ref name, direct) in &exports {
@@ -93,36 +109,54 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 }
 
 /// The exported items of the module, along with their names and whether they're declared in it
-/// directly (rather than in a module that it exports).
+/// directly (rather than in a module that it exports, or re-exported from somewhere else).
 fn collect_exports(
     db: &Database,
     module: SymbolId,
     direct: bool,
     exports: &mut Vec<(Declaration, Name, bool)>,
+    seen: &mut HashSet<Declaration>,
 ) {
     let module = db.module(module);
     let scope = db.scope(module.scope);
     let declarations = &module.declarations;
 
-    for &symbol in &declarations.symbols {
-        if scope.is_symbol_exported(symbol)
-            && let Some(name) = symbol_name(db, symbol)
-        {
-            exports.push((Declaration::Symbol(symbol), name, direct));
-        }
-    }
+    let declared = declarations
+        .symbols
+        .iter()
+        .map(|&symbol| Declaration::Symbol(symbol))
+        .chain(
+            declarations
+                .types
+                .iter()
+                .map(|&(ty, _)| Declaration::Type(ty)),
+        )
+        .collect::<HashSet<_>>();
 
-    for &(ty, _) in &declarations.types {
-        if scope.is_type_exported(ty)
-            && let Some(name) = type_name(db, ty)
+    let exported = scope
+        .exported_symbols()
+        .map(|(_, symbol)| symbol)
+        .filter(|&symbol| !matches!(db.symbol(symbol), Symbol::Module(_)))
+        .map(Declaration::Symbol)
+        .chain(scope.exported_types().map(|(_, ty)| Declaration::Type(ty)))
+        .collect::<Vec<_>>();
+
+    for declaration in exported {
+        let name = match declaration {
+            Declaration::Symbol(symbol) => symbol_name(db, symbol),
+            Declaration::Type(ty) => type_name(db, ty),
+        };
+
+        if let Some(name) = name
+            && seen.insert(declaration)
         {
-            exports.push((Declaration::Type(ty), name, direct));
+            exports.push((declaration, name, direct && declared.contains(&declaration)));
         }
     }
 
     for &nested in &declarations.modules {
         if scope.is_symbol_exported(nested) {
-            collect_exports(db, nested, false, exports);
+            collect_exports(db, nested, false, exports, seen);
         }
     }
 }
@@ -133,34 +167,39 @@ fn collect_exports(
 fn used_exports(
     db: &Database,
     exports: &[(Declaration, Name, bool)],
-    is_used: impl Fn(Declaration) -> bool,
+    is_used: impl Fn(Declaration, bool) -> bool,
 ) -> HashSet<Declaration> {
     let mut used = exports
         .iter()
+        .filter(|&&(declaration, _, direct)| is_used(declaration, direct))
         .map(|&(declaration, ..)| declaration)
-        .filter(|&declaration| is_used(declaration))
         .collect::<HashSet<_>>();
+
+    // The types are found by the location of their names, which every copy of them shares
+    let types = exports
+        .iter()
+        .filter(|(declaration, ..)| matches!(declaration, Declaration::Type(_)))
+        .filter_map(|(declaration, name, _)| Some((name_key(name.srcloc()?), *declaration)))
+        .collect::<HashMap<_, _>>();
 
     let mut stack = used.iter().copied().collect::<Vec<_>>();
 
     while let Some(declaration) = stack.pop() {
-        for ty in signature_types(db, declaration) {
-            for (export, name, _) in exports {
-                // A type that refers to itself (such as a recursive struct) isn't kept exported
-                // by its own signature
-                if *export == declaration
-                    || used.contains(export)
-                    || !matches!(export, Declaration::Type(_))
-                {
-                    continue;
-                }
+        let mut reached = HashSet::new();
+        let mut visited = HashSet::new();
 
-                if let Some(srcloc) = name.srcloc()
-                    && type_reaches(db, ty, srcloc, &mut HashSet::new())
-                {
-                    used.insert(*export);
-                    stack.push(*export);
-                }
+        for ty in signature_types(db, declaration) {
+            reached_names(db, ty, &mut reached, &mut visited);
+        }
+
+        for key in reached {
+            // A type that refers to itself (such as a recursive struct) isn't kept exported by
+            // its own signature
+            if let Some(&export) = types.get(&key)
+                && export != declaration
+                && used.insert(export)
+            {
+                stack.push(export);
             }
         }
     }
@@ -186,24 +225,35 @@ fn is_public(db: &Database, scopes: &HashMap<ScopeId, SymbolId>, module: SymbolI
     }
 }
 
-/// The declarations that an import (or re-export) resolves to, which it can only do if they're
-/// exported. A glob import that isn't exported only needs the items that are used through it.
-fn imported(db: &Database) -> HashSet<Declaration> {
-    let mut imported = HashSet::new();
+/// Where each declaration is imported (or re-exported), which it can only be if it's exported. A
+/// glob import that isn't exported only needs the items that are used through it.
+fn imported(db: &Database) -> HashMap<Declaration, Vec<SrcLoc>> {
+    let mut imported: HashMap<Declaration, Vec<SrcLoc>> = HashMap::new();
 
     for id in db.relevant_imports() {
         let import = db.import(id);
 
-        match &import.items {
-            Items::All(_) if !import.exported => imported.extend(db.import_references(id)),
-            Items::All(_) | Items::Named(_) => {
-                imported.extend(
-                    import
-                        .declarations
-                        .iter()
-                        .map(|&(_, declaration)| declaration),
-                );
-            }
+        let (item, declarations) = match &import.items {
+            Items::All(star) if !import.exported => (star, db.import_references(id)),
+            Items::All(item) | Items::Named(item) => (
+                item,
+                import
+                    .declarations
+                    .iter()
+                    .map(|&(_, declaration)| declaration)
+                    .collect(),
+            ),
+        };
+
+        let Some(srcloc) = item.srcloc() else {
+            continue;
+        };
+
+        for declaration in declarations {
+            imported
+                .entry(declaration)
+                .or_default()
+                .push(srcloc.clone());
         }
     }
 
@@ -234,62 +284,57 @@ fn signature_types(db: &Database, declaration: Declaration) -> Vec<TypeId> {
     }
 }
 
-/// Whether the type is (or contains) the struct or alias declared with the given name.
-fn type_reaches(db: &Database, ty: TypeId, name: &SrcLoc, visited: &mut HashSet<TypeId>) -> bool {
+/// Identifies a struct or alias by the location of its name.
+type NameKey = (SourceKind, usize);
+
+fn name_key(srcloc: &SrcLoc) -> NameKey {
+    (srcloc.source.kind.clone(), srcloc.span.start)
+}
+
+/// Adds the names of the structs and aliases that the type is or contains.
+fn reached_names(
+    db: &Database,
+    ty: TypeId,
+    reached: &mut HashSet<NameKey>,
+    visited: &mut HashSet<TypeId>,
+) {
     if !visited.insert(ty) {
-        return false;
+        return;
     }
 
-    let is_named = |declared: &Option<Name>| {
-        declared
-            .as_ref()
-            .and_then(Name::srcloc)
-            .is_some_and(|srcloc| {
-                srcloc.source.kind == name.source.kind && srcloc.span == name.span
-            })
+    let mut add = |name: &Option<Name>| {
+        if let Some(srcloc) = name.as_ref().and_then(Name::srcloc) {
+            reached.insert(name_key(srcloc));
+        }
     };
 
-    match db.ty(ty) {
+    let inner: Vec<TypeId> = match db.ty(ty) {
         Type::Struct(ty) => {
-            is_named(&ty.name)
-                || type_reaches(db, ty.inner, name, visited)
-                || ty
-                    .generics
-                    .iter()
-                    .any(|&generic| type_reaches(db, generic, name, visited))
+            add(&ty.name);
+            std::iter::once(ty.inner)
+                .chain(ty.generics.iter().copied())
+                .collect()
         }
         Type::Alias(alias) => {
-            is_named(&alias.name)
-                || type_reaches(db, alias.inner, name, visited)
-                || alias
-                    .generics
-                    .iter()
-                    .any(|&generic| type_reaches(db, generic, name, visited))
+            add(&alias.name);
+            std::iter::once(alias.inner)
+                .chain(alias.generics.iter().copied())
+                .collect()
         }
-        Type::Ref(inner) => type_reaches(db, *inner, name, visited),
-        Type::Pair(pair) => {
-            type_reaches(db, pair.first, name, visited)
-                || type_reaches(db, pair.rest, name, visited)
-        }
-        Type::Union(union) => union
-            .types
-            .iter()
-            .any(|&ty| type_reaches(db, ty, name, visited)),
-        Type::Apply(apply) => {
-            type_reaches(db, apply.inner, name, visited)
-                || apply
-                    .generics
-                    .values()
-                    .any(|&generic| type_reaches(db, generic, name, visited))
-        }
-        Type::Function(function) => {
-            type_reaches(db, function.ret, name, visited)
-                || function
-                    .params
-                    .values()
-                    .any(|&param| type_reaches(db, param, name, visited))
-        }
-        Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => false,
+        Type::Ref(inner) => vec![*inner],
+        Type::Pair(pair) => vec![pair.first, pair.rest],
+        Type::Union(union) => union.types.clone(),
+        Type::Apply(apply) => std::iter::once(apply.inner)
+            .chain(apply.generics.values().copied())
+            .collect(),
+        Type::Function(function) => std::iter::once(function.ret)
+            .chain(function.params.values().copied())
+            .collect(),
+        Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => Vec::new(),
+    };
+
+    for ty in inner {
+        reached_names(db, ty, reached, visited);
     }
 }
 

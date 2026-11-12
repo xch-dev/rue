@@ -35,7 +35,8 @@ pub fn declare_module(ctx: &mut Compiler, module: &AstModuleItem) -> SymbolId {
     ctx.module_mut(symbol).declarations = declarations;
 
     if ctx.source().kind.check_unused() {
-        ctx.lint_sites_mut().modules.push(symbol);
+        let srcloc = ctx.srcloc(module.syntax());
+        ctx.lint_sites_mut().modules.push((symbol, srcloc));
     }
 
     if let Some(name) = module.name() {

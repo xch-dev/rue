@@ -1,6 +1,6 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
-use rue_diagnostic::Name;
+use rue_diagnostic::{Name, SrcLoc};
 use rue_hir::{Declaration, SymbolId};
 
 /// Facts recorded by the compiler while compiling, for lints that need something that isn't kept
@@ -18,12 +18,12 @@ pub struct LintSites {
     /// binding's fields are only in the HIR through the bindings they create, which aren't
     /// visited unless they're referenced, so the reads are recorded as they're compiled.
     pub field_reads: Vec<FieldRead>,
-    /// The declarations that are referenced through a module (such as `module::name`), rather
-    /// than from the scope they're written in, which only resolves if they're exported.
-    pub qualified_references: HashSet<Declaration>,
-    /// The `mod` items declared in the documents being linted. Modules aren't declarations, so
-    /// they can't be found from the HIR.
-    pub modules: Vec<SymbolId>,
+    /// Where each declaration is referenced through a module (such as `module::name`), rather
+    /// than from the scope it's written in, which only resolves if it's exported.
+    pub qualified_references: HashMap<Declaration, Vec<SrcLoc>>,
+    /// The `mod` items declared in the documents being linted, along with the location of the
+    /// whole item. Modules aren't declarations, so they can't be found from the HIR.
+    pub modules: Vec<(SymbolId, SrcLoc)>,
 }
 
 /// A read of a struct's field. The struct is identified by its name, which every copy of it (such

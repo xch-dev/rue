@@ -138,6 +138,39 @@ mod chain {
     }
 }
 
+// A type in the signature of a nested module's export is only kept exported if that export is
+// used outside of this module
+mod internal {
+    export struct Value {
+        value: Int,
+    }
+
+    export mod inner {
+        export fn make() -> Value {
+            Value { value: 1 }
+        }
+    }
+
+    export fn total() -> Int {
+        inner::make().value
+    }
+}
+
+// A type in the signature of an item that's re-exported is part of what the module exports
+mod reexporting {
+    export struct Item {
+        value: Int,
+    }
+
+    mod inner {
+        export fn make() -> Item {
+            Item { value: 1 }
+        }
+    }
+
+    export inner::make;
+}
+
 fn main() -> Int {
     helpers::used_outside()
         + helpers::calls_private()
@@ -151,4 +184,6 @@ fn main() -> Int {
         + recursive::total()
         + parent::child::make().value
         + chain::used()
+        + internal::total()
+        + reexporting::make().value
 }

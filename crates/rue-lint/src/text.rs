@@ -68,19 +68,7 @@ pub(crate) fn text_at(db: &Database, hir: HirId, position: Position) -> Option<S
 
     let needs_parens = match position {
         Position::Whole => return Some(strip_parens(text).to_string()),
-        // The parentheses could be what allows a struct initializer in the condition, so they're
-        // only removed if there can't be one inside of them
-        Position::Condition => {
-            let stripped = strip_parens(text);
-            return Some(
-                if stripped.contains('{') {
-                    text
-                } else {
-                    stripped
-                }
-                .to_string(),
-            );
-        }
+        Position::Condition => return Some(condition(strip_parens(text).to_string())),
         Position::Operand => !is_atomic(db, hir),
         Position::Postfix => !is_atomic(db, hir) || matches!(db.hir(hir), Hir::Unary(..)),
     };
@@ -102,26 +90,29 @@ pub(crate) fn negated_text(db: &Database, hir: HirId) -> Option<String> {
 /// position. A `!` is removed or `==` and `!=` are flipped, rather than adding another `!` if
 /// possible.
 pub(crate) fn negated_text_at(db: &Database, hir: HirId, position: Position) -> Option<String> {
-    let srcloc = db.hir_srcloc(hir)?;
+    if position == Position::Condition {
+        return negated_text_at(db, hir, Position::Whole).map(condition);
+    }
 
-    if !is_parenthesized(srcloc.text()) {
-        match *db.hir(hir) {
-            Hir::Unary(UnaryOp::Not, inner) if srcloc.text().starts_with('!') => {
-                return text_at(db, inner, position);
-            }
-            Hir::Binary(op @ (BinaryOp::Eq | BinaryOp::Ne), left, right) => {
-                let op = if op == BinaryOp::Eq { "!=" } else { "==" };
-                let left = text_at(db, left, Position::Operand)?;
-                let right = text_at(db, right, Position::Operand)?;
-                let text = format!("{left} {op} {right}");
+    let text = strip_parens(db.hir_srcloc(hir)?.text());
 
-                return Some(match position {
-                    Position::Whole | Position::Condition => text,
-                    Position::Operand | Position::Postfix => format!("({text})"),
-                });
-            }
-            _ => {}
+    match *db.hir(hir) {
+        Hir::Unary(UnaryOp::Not, inner) if text.starts_with('!') => {
+            return text_at(db, inner, position);
         }
+        Hir::Binary(op @ (BinaryOp::Eq | BinaryOp::Ne), left, right) => {
+            let op = if op == BinaryOp::Eq { "!=" } else { "==" };
+            let left = text_at(db, left, Position::Operand)?;
+            let right = text_at(db, right, Position::Operand)?;
+            let text = format!("{left} {op} {right}");
+
+            return Some(if position == Position::Whole {
+                text
+            } else {
+                format!("({text})")
+            });
+        }
+        _ => {}
     }
 
     let text = format!("!{}", text_at(db, hir, Position::Postfix)?);
@@ -131,6 +122,16 @@ pub(crate) fn negated_text_at(db: &Database, hir: HirId, position: Position) -> 
     } else {
         text
     })
+}
+
+/// Code that's written as the condition of an `if`, in parentheses if it could contain a struct
+/// initializer, which can't be written there without them.
+fn condition(text: String) -> String {
+    if text.contains('{') && !is_parenthesized(&text) {
+        format!("({text})")
+    } else {
+        text
+    }
 }
 
 /// Whether one location is inside of another (or the same as it).
@@ -211,7 +212,8 @@ pub(crate) fn is_parenthesized(text: &str) -> bool {
     false
 }
 
-fn strip_parens(mut text: &str) -> &str {
+/// The text without any parentheses around the whole of it.
+pub(crate) fn strip_parens(mut text: &str) -> &str {
     while is_parenthesized(text) {
         text = text[1..text.len() - 1].trim();
     }
