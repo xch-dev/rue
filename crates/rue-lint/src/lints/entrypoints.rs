@@ -1,7 +1,5 @@
-use std::collections::HashSet;
-
 use rue_diagnostic::{Lint, Note};
-use rue_hir::{Declaration, Symbol};
+use rue_hir::Symbol;
 
 use crate::{LintContext, LintInput};
 
@@ -11,22 +9,7 @@ pub(crate) const LINTS: &[Lint] = &[Lint::MissingEntrypointReturnType];
 /// return type accepts any value, so the type checker can't check what the program outputs.
 /// Tests aren't programs, so they're left alone.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
-    let db = cx.db();
-    let tests = db.tests().map(|test| test.symbol).collect::<HashSet<_>>();
-
-    let mut entrypoints = input
-        .entrypoints
-        .iter()
-        .filter_map(|declaration| match declaration {
-            Declaration::Symbol(symbol) if !tests.contains(symbol) => Some(*symbol),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    // The entrypoints are a set, so they're sorted to report them in a stable order
-    entrypoints.sort_by_key(id_arena::Id::index);
-
-    for symbol in entrypoints {
+    for &symbol in input.programs(cx.db()) {
         let Symbol::Function(function) = cx.db().symbol(symbol) else {
             continue;
         };
@@ -45,7 +28,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
             continue;
         }
 
-        let any = cx.types().recursive_any;
+        let any = cx.builtin_types().recursive_any;
 
         if !cx.is_assignable(any, return_type) {
             continue;

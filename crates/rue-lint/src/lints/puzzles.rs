@@ -1,13 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
-use rue_ast::{AstFunctionItem, AstNode};
+use rue_ast::{AstBinding, AstFunctionParameter, AstNode};
 use rue_diagnostic::{Lint, Note, SourceKind, SrcLoc};
 use rue_hir::{BinaryOp, Declaration, Hir, HirId, Symbol, SymbolId};
 
 use crate::{
-    HirLintPass, LintContext, LintInput, NameKey,
+    CURRIED, HirLintPass, LintContext, LintInput, NameKey,
     flow::{Bindings, Fate, follow, used},
-    name_key, token_key,
+    lints::naming::is_screaming_snake,
+    name_key,
+    text::keyword_locations,
 };
 
 /// Reports parameters of an entrypoint (`main` or an exported function) that are called as
@@ -21,11 +23,10 @@ use crate::{
 /// false positives, a parameter that's passed to another function is assumed to be checked there,
 /// and a hash that's part of the output (such as in a condition) is assumed to be checked by it.
 #[derive(Debug)]
-pub(crate) struct UncheckedPuzzleCall {
-    /// The parameters of entrypoints marked `#[curried]`, by the location of their names.
-    curried: HashSet<NameKey>,
-    /// The entrypoints of the program.
-    programs: HashSet<SymbolId>,
+pub(crate) struct UncheckedPuzzleCall<'a> {
+    input: &'a LintInput<'a>,
+    /// The parameters marked `#[curried]`, by the location of their names.
+    curried: HashMap<NameKey, SrcLoc>,
     /// The entrypoints that have been walked, and the parameters of each of them.
     entrypoints: HashMap<SymbolId, HashSet<SymbolId>>,
     /// Where each parameter of an entrypoint is called.
@@ -37,47 +38,24 @@ pub(crate) struct UncheckedPuzzleCall {
     bindings: Bindings,
 }
 
-impl UncheckedPuzzleCall {
-    pub(crate) fn new(input: &LintInput<'_>) -> Self {
-        let mut curried = HashSet::new();
+impl<'a> UncheckedPuzzleCall<'a> {
+    pub(crate) fn new(input: &'a LintInput<'a>) -> Self {
+        let curried = keyword_locations(input, |node| {
+            let parameter = AstFunctionParameter::cast(node.clone())?;
 
-        for (source, document) in &input.documents {
-            for function in document
-                .syntax()
-                .descendants()
-                .filter_map(AstFunctionItem::cast)
-            {
-                for parameter in function.parameters() {
-                    let is_curried = parameter.attributes().any(|attribute| {
-                        attribute
-                            .name()
-                            .is_some_and(|name| name.text() == "curried")
-                    });
+            let attribute = parameter
+                .attributes()
+                .find_map(|attribute| attribute.name().filter(|name| name.text() == CURRIED))?;
 
-                    let name = parameter.binding().and_then(|binding| match binding {
-                        rue_ast::AstBinding::NamedBinding(binding) => binding.name(),
-                        _ => None,
-                    });
-
-                    if is_curried && let Some(name) = name {
-                        curried.insert(token_key(source, &name));
-                    }
-                }
+            match parameter.binding()? {
+                AstBinding::NamedBinding(binding) => Some((attribute, binding.name()?)),
+                _ => None,
             }
-        }
-
-        let programs = input
-            .entrypoints
-            .iter()
-            .filter_map(|declaration| match *declaration {
-                Declaration::Symbol(symbol) => Some(symbol),
-                Declaration::Type(_) => None,
-            })
-            .collect();
+        });
 
         Self {
+            input,
             curried,
-            programs,
             entrypoints: HashMap::new(),
             calls: HashMap::new(),
             hashes: HashMap::new(),
@@ -87,7 +65,7 @@ impl UncheckedPuzzleCall {
     }
 }
 
-impl HirLintPass for UncheckedPuzzleCall {
+impl HirLintPass for UncheckedPuzzleCall<'_> {
     fn lints(&self) -> &'static [Lint] {
         &[Lint::UncheckedPuzzleCall]
     }
@@ -96,10 +74,7 @@ impl HirLintPass for UncheckedPuzzleCall {
         let db = cx.db();
 
         // Only the entrypoint itself, not the lambdas inside of it, is called with the solution
-        if cx.walk.functions.len() != 1
-            || !self.programs.contains(&symbol)
-            || db.tests().any(|test| test.symbol == symbol)
-        {
+        if cx.walk.functions.len() != 1 || !self.input.programs(db).contains(&symbol) {
             return;
         }
 
@@ -183,17 +158,16 @@ impl HirLintPass for UncheckedPuzzleCall {
                 continue;
             };
 
-            if name_key(&name).is_some_and(|key| self.curried.contains(&key))
-                || is_screaming_snake_case(name.text())
+            if name_key(&name).is_some_and(|key| self.curried.contains_key(&key))
+                || is_screaming_snake(name.text()) && name.text().chars().any(char::is_uppercase)
             {
                 continue;
             }
 
-            let checked = self.hashes.get(&parameter).is_some_and(|fates| {
-                fates
-                    .iter()
-                    .any(|fate| self.bindings.reaches(fate, &mut Vec::new()))
-            });
+            let checked = self
+                .hashes
+                .get(&parameter)
+                .is_some_and(|fates| fates.iter().any(|fate| self.bindings.reaches(fate, None)));
 
             if checked {
                 continue;
@@ -217,15 +191,6 @@ impl HirLintPass for UncheckedPuzzleCall {
             }
         }
     }
-}
-
-/// Whether a name is in `SCREAMING_SNAKE_CASE`, which is the convention for curried parameters
-/// in Chialisp, so parameters named that way are treated as curried.
-fn is_screaming_snake_case(name: &str) -> bool {
-    name.chars().any(|char| char.is_ascii_uppercase())
-        && name
-            .chars()
-            .all(|char| char.is_ascii_uppercase() || char.is_ascii_digit() || char == '_')
 }
 
 /// Whether the function is the standard library's `tree_hash`.

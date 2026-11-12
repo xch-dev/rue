@@ -1,5 +1,7 @@
 use rue_diagnostic::{Lint, Note, SrcLoc};
-use rue_hir::{Declaration, Hir, HirId, UnaryOp};
+use std::collections::HashSet;
+
+use rue_hir::{Declaration, Hir, HirId, SymbolId, UnaryOp};
 use rue_types::TypeId;
 
 use crate::{
@@ -17,6 +19,8 @@ pub(crate) struct DiscardedCondition {
     /// Each condition that's built, along with where its value goes.
     conditions: Vec<(SrcLoc, Fate)>,
     bindings: Bindings,
+    /// The tests, which are skipped.
+    tests: Option<HashSet<SymbolId>>,
 }
 
 impl HirLintPass for DiscardedCondition {
@@ -36,8 +40,12 @@ impl HirLintPass for DiscardedCondition {
                 };
 
                 // Tests don't output anything, and often build conditions only to check them
+                let tests = self
+                    .tests
+                    .get_or_insert_with(|| cx.db().tests().map(|test| test.symbol).collect());
+
                 if let Some(Declaration::Symbol(symbol)) = cx.enclosing_declaration()
-                    && cx.db().tests().any(|test| test.symbol == symbol)
+                    && tests.contains(&symbol)
                 {
                     return;
                 }
@@ -60,7 +68,7 @@ impl HirLintPass for DiscardedCondition {
         for (srcloc, fate) in std::mem::take(&mut self.conditions) {
             let mut uses = Vec::new();
 
-            if self.bindings.reaches(&fate, &mut uses) {
+            if self.bindings.reaches(&fate, Some(&mut uses)) {
                 continue;
             }
 

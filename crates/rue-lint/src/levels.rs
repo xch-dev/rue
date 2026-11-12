@@ -10,6 +10,10 @@ use rue_parser::{SyntaxKind, SyntaxNode, T};
 
 use crate::srcloc;
 
+/// The attribute that marks a parameter as curried into the program, which lints use to tell
+/// trusted values from ones that come from the solution.
+pub(crate) const CURRIED: &str = "curried";
+
 /// The level of every lint at each location, which combines the project's levels with the
 /// attributes that override them in the source code (such as `#[allow(unused_binding)]`).
 #[derive(Debug, Clone)]
@@ -109,7 +113,7 @@ impl ScopedLintLevels {
 
                 // `curried` marks a parameter that's curried into the program, which lints use to
                 // know which values are trusted, rather than setting a lint level
-                if name.text() == "curried" {
+                if name.text() == CURRIED {
                     let on_parameter = target.as_ref().is_some_and(|target| {
                         target.kind() == SyntaxKind::FunctionParameter
                             && target

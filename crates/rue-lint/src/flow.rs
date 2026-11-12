@@ -105,17 +105,17 @@ impl Bindings {
         }
     }
 
-    /// Whether a value with the given fate reaches what the lint is looking for, along with the
-    /// places it's used on the way.
-    pub(crate) fn reaches(&self, fate: &Fate, uses: &mut Vec<SrcLoc>) -> bool {
-        self.reaches_impl(fate, &mut HashSet::new(), uses)
+    /// Whether a value with the given fate reaches what the lint is looking for, collecting the
+    /// places it's used on the way if `uses` is given.
+    pub(crate) fn reaches(&self, fate: &Fate, mut uses: Option<&mut Vec<SrcLoc>>) -> bool {
+        self.reaches_impl(fate, &mut HashSet::new(), &mut uses)
     }
 
     fn reaches_impl(
         &self,
         fate: &Fate,
         visited: &mut HashSet<SymbolId>,
-        uses: &mut Vec<SrcLoc>,
+        uses: &mut Option<&mut Vec<SrcLoc>>,
     ) -> bool {
         match fate {
             Fate::Reached => true,
@@ -136,7 +136,9 @@ impl Bindings {
                 reached
             }
             Fate::Used(srcloc) => {
-                uses.push(srcloc.clone());
+                if let Some(uses) = uses {
+                    uses.push(srcloc.clone());
+                }
                 false
             }
             Fate::Dropped => false,
