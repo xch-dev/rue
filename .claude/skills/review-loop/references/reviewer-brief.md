@@ -19,7 +19,7 @@ Your focus this round: <Correctness | Tests and snapshots | Simplification and r
 
 Rules:
 - Don't edit files in the repo. You may write scratch files to <scratchpad>/review-loop/scratch/ and run the compiler or tests to check a claim (`cargo run --quiet -p rue-cli -- build <file>` prints diagnostics and suggestions, `-W <lint>` turns a lint on; `cargo test -p <crate> <name>`).
-- Judge the change against the goal above. Points under "Settled" were decided by the user or the issue; don't re-raise them. Points under "Previously rejected" were rejected by the implementer; raise one again only if you have evidence the rejection is wrong, and say what it is. Decisions marked "provisional, pending the user" are already waiting on the user; don't raise them again.
+- Judge the change against the goal above. Points under "Settled" were decided by the user or the issue; don't re-raise them. Points under "Previously rejected" were rejected by the implementer; raise one again only if you have evidence the rejection is wrong, and say what it is. Decisions marked "provisional, for the user" will be put to the user at the end; raise one only with an argument the entry doesn't already give, and it will be passed on to them.
 - Prefer a few findings you're confident in over many guesses. If you aren't sure, say so in the finding.
 - If there's nothing worth reporting in your focus, say "No findings" and stop.
 
@@ -30,14 +30,14 @@ Report each finding in this format:
 - Where: <path:line>
 - Scenario: <a concrete input (Rue source, config, flags) and the wrong result it gives, or for a non-bug, what's wrong and what it costs>
 - Fix: <what to change>
-- Needs a user decision: yes/no (see "When a finding needs the user" below)
+- For the user: yes/no (see "Choices for the user" below)
 ```
 
 Severities: **blocker** means wrong output, a crash, or a suggestion that breaks code that's applied automatically; **major** means a real bug in a less common case, a missing test for core behaviour, or a design that will clearly need redoing; **minor** means a small bug in a rare case, a missing edge-case test, or a clear simplification; **nit** means style or naming.
 
-## When a finding needs the user
+## Choices for the user
 
-Mark "Needs a user decision: yes" only when the fix depends on a choice that isn't the implementer's to make, and that Settled doesn't already answer:
+Mark "For the user: yes" when the fix depends on a choice the user should confirm, and that Settled doesn't already answer. The implementer makes a provisional choice and the user picks at the end, so this doesn't block anything:
 
 - Rue language design or syntax, and what the compiler accepts or rejects.
 - Public formats: `Rue.toml`, CLI flags, and LSP behaviour users configure.

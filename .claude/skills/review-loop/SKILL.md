@@ -13,14 +13,14 @@ The loop is: **scope and write the brief → implement → review → verify and
 
 Read the source first: `gh issue view <n> --comments` or `gh pr view <n> --comments`, plus the code it touches.
 
-**Tracking issues.** If the issue lists several independent items (like #235), don't put them all on one branch. Ask the user which items to do, unless they already said. Give each item its own branch, state file and loop, stack the branches with `gh stack`, and link the issue with "Part of #n" rather than "Closes #n".
+**Tracking issues.** If the issue lists several independent items (like #235), don't put them all on one branch. Do the items the request points to. If it names only the issue, ask which items: that's the one question worth asking up front, since a wrong guess wastes the whole run. Give each item its own branch, state file and loop, stack the branches with `gh stack`, and link the issue with "Part of #n" rather than "Closes #n".
 
-**Open choices.** If the source leaves open anything on the reviewer brief's "needs the user" list (language design, public formats, a lint's name, level or group, scope), ask before implementing, since changing it after review costs a rewrite. #235's `bool_bitwise_operator`, for example, leaves open whether it's `allow` by default or only fires on expensive operands. If you can't ask, decide as in section 5.
+**Open choices.** The user prefers that you make decisions and bring them up at the end, rather than stopping to ask. When the source leaves open anything on the reviewer brief's "for the user" list (language design, public formats, a lint's name, level or group, scope), make the call: pick what fits the issue's intent and the neighbouring code, and the more conservative option when it's close. Record it under Decisions as provisional (see the template), and keep going. #235's `bool_bitwise_operator`, for example, leaves open whether it's `allow` by default or only fires on expensive operands; pick one, and the report offers the other. Ask up front only when no reasonable choice exists, such as an issue whose goals contradict each other.
 
 **Follow-ups to an open PR.** Do what the user asked; if they didn't say, continue on their own `rigidity/` branches and stack on anyone else's. Base is set so that reviewers see only the new work.
 
 - *Continuing on the PR's branch* (`gh pr checkout <n>`): keep its branch name, set Base to the commit the follow-up starts from, and push to that PR in section 7.
-- *Stacking on top*: if the PR is already in a stack, `gh stack checkout <n>`; otherwise `gh pr checkout <n>` first, so its branch exists locally at the PR's head, then adopt it with `gh stack init <pr-branch>`. Then `gh stack add rigidity/<slug>`. Base is the parent branch, which stays right after a restack. The new branch gets its own draft PR in section 7, linking the original. A PR from a fork can't be stacked this way; continue on a new branch from its head instead, and ask the user how they want it submitted.
+- *Stacking on top*: if the PR is already in a stack, `gh stack checkout <n>`; otherwise `gh pr checkout <n>` first, so its branch exists locally at the PR's head, then adopt it with `gh stack init <pr-branch>`. Then `gh stack add rigidity/<slug>`. Base is the parent branch, which stays right after a restack. The new branch gets its own draft PR in section 7, linking the original. A PR from a fork can't be stacked this way; continue on a new branch from its head, open a draft PR against the original PR's base that links it, and say so in the report.
 
 The state file is the memory of the loop. Reviewers start with fresh context, and after a few rounds the implementer's own context is long, so without it later rounds re-raise settled points or undo earlier decisions. Write it to the session scratchpad (not the repo), at `<scratchpad>/review-loop/<branch-slug>.md`. Every review round reads it, and every fix round updates it.
 
@@ -32,12 +32,13 @@ The state file is the memory of the loop. Reviewers start with fresh context, an
 - Serves: <issue/PR link>
 - Base: <origin/main, the parent branch in a gh stack, or the commit a PR follow-up starts from>
 - Branch: <rigidity/...>
-- Decisions: <each decision and why, noting who made it: the issue, the user, the implementer, or "provisional, pending the user" (section 5). Include intended changes to unrelated snapshots and why.>
+- Decisions: <each decision and why, noting who made it: the issue, the user, or the implementer. Mark choices that are the user's to confirm as "provisional, for the user: X, because Y; the alternative is Z". Include intended changes to unrelated snapshots and why.>
 - Out of scope: <things deliberately left alone, and why>
 - Settled: <points the user or the issue decided; not open for review>
 - Previously rejected: <findings the implementer rejected in earlier rounds: the claim and the evidence>
 
-## Open questions for the user
+## Decisions for the user
+- <each provisional decision: the options, what you picked and why, and what switching would take>
 
 ## Review log (implementer only)
 ### Round 1
@@ -50,7 +51,7 @@ The state file is the memory of the loop. Reviewers start with fresh context, an
 
 Work on a `rigidity/` branch (lowercase; never `Rigidity/`), unless you're continuing someone else's PR branch. For a bug fix, write the failing regression test first. For a new lint, the usual places are:
 
-- Register it in `crates/rue-diagnostic/src/lint.rs` (the `lints!` macro: name, default level, description; add it to a `lint_groups!` group if it belongs in one). Take the name and level from the issue or the user. If neither gives them, ask as in section 1; if you can't ask, follow the neighbouring lints and record the choice as provisional (section 5).
+- Register it in `crates/rue-diagnostic/src/lint.rs` (the `lints!` macro: name, default level, description; add it to a `lint_groups!` group if it belongs in one). Take the name and level from the issue or the user. If neither gives them, pick as in section 1, following the neighbouring lints, and record the choice as provisional.
 - Write the pass in `crates/rue-lint/src/lints/<area>.rs` and list it in `crates/rue-lint/src/lints/mod.rs` (`INPUT_PASSES` for whole-input passes, `hir_passes` for the HIR walk). The `every_lint_is_reported_by_one_pass` test fails if you forget.
 - Use what's already there before writing helpers: `crates/rue-lint/src/visit.rs` (the HIR walk), `context.rs` (`LintContext::report`, levels, type queries), `text.rs` (source text, parentheses, negation, comments, keyword locations), and `Hir::children` / `Statement::hirs` in `crates/rue-hir/src/hir.rs`.
 - Add a snapshot test `tests/warnings/<lint>.rue` (starting with `#![warn(<lint>)]` if it isn't on by default). Cover the cases where the lint should *not* fire, not only where it should.
@@ -77,7 +78,7 @@ Each round, launch three reviewers **in parallel** with the Agent tool (`general
 
 For a small diff (roughly under 100 changed lines), one reviewer covering all three focuses is enough; three reviewers on a ten-line change mostly produce nits.
 
-Build each prompt from [references/reviewer-brief.md](references/reviewer-brief.md), which holds the template, the Rue checklist for each focus, the severities, and when a finding needs the user. Give reviewers the Brief section, the base ref, and the focus, and nothing else: not your summary of the change, your reasoning about why it's correct, or the review log. They read the diff (`git diff <base>...HEAD`) and form their own view, and that independence is what makes a round worth running. From round 2 they still review the whole diff against the base, since fixes break things elsewhere; name the areas that changed since the last round so they look closely there.
+Build each prompt from [references/reviewer-brief.md](references/reviewer-brief.md), which holds the template, the Rue checklist for each focus, the severities, and which choices are for the user. Give reviewers the Brief section, the base ref, and the focus, and nothing else: not your summary of the change, your reasoning about why it's correct, or the review log. They read the diff (`git diff <base>...HEAD`) and form their own view, and that independence is what makes a round worth running. From round 2 they still review the whole diff against the base, since fixes break things elsewhere; name the areas that changed since the last round so they look closely there.
 
 The built-in `code-review` skill is an alternative for the correctness focus on a large diff (`/code-review high`), but it doesn't see the Brief, so check its findings against the goal and the Settled points yourself.
 
@@ -88,7 +89,7 @@ Reviewers are sometimes confidently wrong. Before acting on a finding, check it:
 - For a claimed bug, reproduce it: write the Rue snippet the finding describes to the scratchpad and run it (`cargo run --quiet -p rue-cli -- build <file>` prints the diagnostics, suggestions and compiled program; `-W <lint>` turns a lint on), or add the failing test first. A finding you can't reproduce is rejected unless you can see from the code that it's right.
 - For a claimed missing test, check whether an existing case already covers it.
 - For a simplification, check that the suggested helper does what the reviewer thinks.
-- For a finding marked "needs a user decision", it's confirmed if the choice really is open: neither the source nor Settled answers it. Handle it as in section 5.
+- For a finding marked "for the user", it's confirmed if the choice really is open: neither the source nor Settled answers it. Handle it as in section 5.
 
 Mark each finding in the review log as **confirmed**, **rejected** (with the evidence), or **deferred** (real but out of scope, with where it's recorded), and add rejected ones to the Brief's Previously rejected list and deferred ones to Out of scope (with where they're recorded), so later rounds don't raise them again. Fix every confirmed blocker and major finding, and minor ones when they're cheap. Each confirmed correctness finding gets a regression test. Nits are optional.
 
@@ -101,7 +102,7 @@ Then run the quick checks for what you touched (`cargo test -p <crate>`, and `ca
 
 Whatever the stop, still run the final checks and open or update the draft PR, so the user has the work in hand.
 
-**Decisions during the loop.** These don't end the loop. When a confirmed finding of minor or above needs a decision only the user can make (the list is in the reviewer brief), ask with AskUserQuestion, giving the options and your recommendation, then record the answer under Settled and carry on. If you can't ask (a non-interactive run), take the more conservative option, record it under Decisions as "provisional, pending the user: X, because Y" so later reviewers don't raise it again, and list it under Open questions; the draft PR and the report carry the question.
+**Decisions during the loop.** These don't end the loop or interrupt the user. When a confirmed finding raises a choice that's the user's to confirm (the list is in the reviewer brief), make it as in section 1: keep the current choice or switch, whichever the evidence favours, record it under Decisions as provisional so later reviewers don't raise it again, and add it to Decisions for the user. A reviewer's new argument against a provisional decision goes into that entry, so the user sees both sides. The draft PR and the report carry every provisional decision, and the user picks at the end.
 
 ## 6. Final checks
 
@@ -126,7 +127,7 @@ cargo nextest run --all-features --workspace   # if `cargo nextest --version` wo
 
 **Commits.** One focused commit per logical change. Messages follow the git log: a plain sentence as the subject that says what changed ("Keep comments in suggestions"), or "Address review findings in <area>" with a `-` bulleted body when one round fixes several small things. No prefix like `feat:`. No AI attribution of any kind: no `Co-Authored-By`, no "Generated with" line.
 
-**PR.** Push and open a draft PR with `gh pr create --draft --base <branch>`, where the branch is Base without the `origin/` prefix (`main`, not `origin/main`), or push to the existing PR when continuing on its branch. The title follows the same style; the body says what changed and why, links the issue ("Closes #n", or "Part of #n" for a tracking issue) or the PR it follows up, and lists any open questions. For stacked work, use `gh stack` rather than setting PR bases by hand: `gh stack submit --auto` creates draft PRs with generated titles, so set each title and body afterwards with `gh pr edit <n> --title ... --body ...`, and don't pass `--open`, which marks them ready for review.
+**PR.** Push and open a draft PR with `gh pr create --draft --base <branch>`, where the branch is Base without the `origin/` prefix (`main`, not `origin/main`), or push to the existing PR when continuing on its branch. The title follows the same style; the body says what changed and why, links the issue ("Closes #n", or "Part of #n" for a tracking issue) or the PR it follows up, and lists the provisional decisions for the user. For stacked work, use `gh stack` rather than setting PR bases by hand: `gh stack submit --auto` creates draft PRs with generated titles, so set each title and body afterwards with `gh pr edit <n> --title ... --body ...`, and don't pass `--open`, which marks them ready for review.
 
 **Report.** End with this, in the reply to the user:
 
@@ -144,7 +145,7 @@ cargo nextest run --all-features --workspace   # if `cargo nextest --version` wo
 - <finding> — <why it was rejected>
 
 ### Left for you
-- <decisions only the user can make, with the options and your recommendation>
+- <each provisional decision: what you picked and why, the alternatives, and what switching would take>
 - <confirmed findings left unfixed, if the loop ran out of rounds>
 
 ### Checks
