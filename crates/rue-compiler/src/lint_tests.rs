@@ -2184,6 +2184,34 @@ fn main(a: Int) -> Int {
 }
 "
     );
+    let source = "\
+fn main(a: Int) -> Int {
+    assert(a > 0);
+
+    if a > 1 {
+        return(a);
+    }
+
+    0
+}
+";
+
+    // The parentheses are only reported if the code still parses without them, which it only
+    // does once the keywords are separated from the expressions
+    assert_eq!(
+        fix(source),
+        "\
+fn main(a: Int) -> Int {
+    assert a > 0;
+
+    if a > 1 {
+        return a;
+    }
+
+    0
+}
+"
+    );
 }
 
 #[test]
