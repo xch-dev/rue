@@ -2,7 +2,7 @@ use std::{collections::HashMap, mem::Discriminant};
 
 use indexmap::IndexMap;
 use rue_diagnostic::{Lint, Note, SrcLoc};
-use rue_hir::{BinaryOp, Database, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
+use rue_hir::{BinaryOp, Database, Hir, HirId, ScopeId, Statement, Symbol, SymbolId, UnaryOp};
 use rue_lir::ClvmOp;
 
 use crate::{
@@ -24,6 +24,8 @@ pub(crate) struct RepeatedExpensiveCall {
     functions: Vec<Function>,
     /// The estimated cost of each function body.
     costs: HashMap<SymbolId, Option<Cost>>,
+    /// The number of references to each symbol seen so far.
+    references: HashMap<SymbolId, usize>,
 }
 
 #[derive(Debug, Default)]
@@ -40,15 +42,24 @@ struct Function {
 struct Call {
     hir: HirId,
     path: Vec<Branch>,
-    /// The binding whose value is the call, along with the block it's declared in.
-    binding: Option<(String, HirId)>,
+    /// The binding whose value is the call.
+    binding: Option<Binding>,
+}
+
+/// A binding whose value is a call, which the calls that repeat it could use instead.
+#[derive(Debug, Clone)]
+struct Binding {
+    name: String,
+    symbol: SymbolId,
+    /// The block that the binding is declared in.
+    block: HirId,
 }
 
 #[derive(Debug)]
 struct Repeated {
     first: SrcLoc,
-    /// The binding whose value is the first call, along with the block it's declared in.
-    binding: Option<(String, HirId)>,
+    /// The binding whose value is the first call.
+    binding: Option<Binding>,
     /// The calls that repeat it, and whether each of them could use the binding instead.
     repeats: Vec<(SrcLoc, bool)>,
     /// What each repeat would save by using the result of the first call, rather than evaluating
@@ -70,6 +81,7 @@ impl RepeatedExpensiveCall {
             min_savings,
             functions: Vec::new(),
             costs: HashMap::new(),
+            references: HashMap::new(),
         }
     }
 }
@@ -90,6 +102,10 @@ impl HirLintPass for RepeatedExpensiveCall {
     }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
+        if let Hir::Reference(symbol) = node {
+            *self.references.entry(*symbol).or_default() += 1;
+        }
+
         if !is_expensive(node) {
             return;
         }
@@ -151,11 +167,14 @@ impl HirLintPass for RepeatedExpensiveCall {
             }
         };
 
-        // The binding can only be used inside of the block it's declared in
-        let in_scope = repeated
-            .binding
-            .as_ref()
-            .is_some_and(|(_, block)| cx.parents().contains(block));
+        // The binding can only be used inside of the block it's declared in, where another binding
+        // with the same name doesn't shadow it
+        let in_scope = repeated.binding.as_ref().is_some_and(|binding| {
+            cx.parents().contains(&binding.block)
+                && cx.db().hir_scope(hir).is_some_and(|scope| {
+                    resolve(cx.db(), scope, &binding.name) == Some(binding.symbol)
+                })
+        });
 
         repeated.repeats.push((srcloc, in_scope));
     }
@@ -166,15 +185,33 @@ impl RepeatedExpensiveCall {
         let mut reports = Vec::new();
 
         for repeated in function.repeated.into_values() {
-            let unbound = repeated.repeats.iter().filter(|(_, bound)| !bound).count() as u64;
+            let count = |bound: bool| {
+                repeated
+                    .repeats
+                    .iter()
+                    .filter(|(_, other)| *other == bound)
+                    .count() as u64
+            };
+
+            let new_binding = BINDING_SIZE * COST_PER_BYTE;
 
             // The repeats that can't use an existing binding share a new one
-            let unbound_savings =
-                (repeated.savings * unbound).saturating_sub(BINDING_SIZE * COST_PER_BYTE);
+            let unbound_savings = (repeated.savings * count(false)).saturating_sub(new_binding);
+
+            // A binding that's only referenced once is inlined into where it's used, so using it
+            // again makes it a binding, which costs as much as a new one
+            let bound_savings = match &repeated.binding {
+                Some(binding) if self.references.get(&binding.symbol).copied().unwrap_or(0) < 2 => {
+                    (repeated.savings * count(true)).saturating_sub(new_binding)
+                }
+                _ => repeated.savings,
+            };
 
             for (srcloc, bound) in &repeated.repeats {
                 let (savings, help) = match (&repeated.binding, bound) {
-                    (Some((name, _)), true) => (repeated.savings, format!("Use `{name}` instead")),
+                    (Some(binding), true) => {
+                        (bound_savings, format!("Use `{}` instead", binding.name))
+                    }
                     _ => (
                         unbound_savings,
                         "Store the result in a `let` binding and use that instead".to_string(),
@@ -214,9 +251,23 @@ impl RepeatedExpensiveCall {
     }
 }
 
-/// The name of the binding whose value is the call, and the block it's declared in, if the call
-/// is the whole value of a binding.
-fn binding_of(cx: &LintContext<'_>, call: HirId) -> Option<(String, HirId)> {
+/// The symbol that a name refers to in a scope.
+fn resolve(db: &Database, scope: ScopeId, name: &str) -> Option<SymbolId> {
+    let mut current = Some(scope);
+
+    while let Some(scope) = current {
+        if let Some(symbol) = db.scope(scope).symbol(name) {
+            return Some(symbol);
+        }
+
+        current = db.scope(scope).parent();
+    }
+
+    None
+}
+
+/// The binding whose value is the call, if the call is the whole value of a binding.
+fn binding_of(cx: &LintContext<'_>, call: HirId) -> Option<Binding> {
     let db = cx.db();
 
     // The value of a binding is visited from the block it's declared in
@@ -239,14 +290,19 @@ fn binding_of(cx: &LintContext<'_>, call: HirId) -> Option<(String, HirId)> {
             return None;
         };
 
-        if db.without_casts(binding.value.hir) != call {
+        // An inline binding is inlined wherever it's used, so using it doesn't save anything
+        if binding.inline || db.without_casts(binding.value.hir) != call {
             return None;
         }
 
         let name = binding.name.as_ref()?.text().to_string();
 
         // A name starting with `_` is unused on purpose, and destructuring doesn't have a name
-        (!name.starts_with('_')).then_some((name, *block))
+        (!name.starts_with('_')).then_some(Binding {
+            name,
+            symbol: *symbol,
+            block: *block,
+        })
     })
 }
 

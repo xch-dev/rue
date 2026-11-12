@@ -14,7 +14,7 @@ fn main(value: Bytes, flag: Bool) -> Bytes32 {
     let inside = if flag {
         coinid(first, second, 1)
     } else {
-        first
+        hashed
     };
 
     // The calls inside of a repeated call aren't reported again
@@ -24,8 +24,24 @@ fn main(value: Bytes, flag: Bool) -> Bytes32 {
     // A short call costs less to evaluate again than a new binding would add to the program
     let short = sha256(first + second) + sha256(first + second);
 
+    // Reusing a binding that's only used once would make it a binding rather than being inlined,
+    // which costs more than evaluating it again
+    let once = sha256(first + value);
+    let again = once + sha256(first + value);
+
     // A function that calls itself is expensive to call again
     let recursive = tree_hash(nested) + tree_hash(nested);
 
-    sha256(first + second + branches + hashed + inside + nested + nested_again + short + recursive)
+    sha256(
+        first
+            + second
+            + branches
+            + hashed
+            + inside
+            + nested
+            + nested_again
+            + short
+            + again
+            + recursive,
+    )
 }

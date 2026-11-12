@@ -17,9 +17,9 @@ fn options() -> CompilerOptions {
     CompilerOptions::default()
 }
 
-/// Whether the program uses the symbol.
-pub(crate) fn program_uses(db: &Database, program: SymbolId, symbol: SymbolId) -> bool {
-    DependencyGraph::build(db, program, options()).references(symbol) > 0
+/// The symbols that the program depends on, and how many times each of them is referenced.
+pub(crate) fn program_graph(db: &Database, program: SymbolId) -> DependencyGraph {
+    DependencyGraph::build(db, program, options())
 }
 
 /// The number of bytes that the program is serialized to, or `None` if it can't be generated.

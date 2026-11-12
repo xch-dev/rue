@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use rue_diagnostic::{Applicability, Lint, Name, Note, Suggestion};
-use rue_hir::{Database, Declaration, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId};
+use rue_hir::{
+    Database, Declaration, DependencyGraph, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
+};
 
 use rue_ast::{AstBinding, AstConstantItem, AstLetStmt, AstNode};
 use rue_diagnostic::SrcLoc;
@@ -9,7 +11,7 @@ use rue_diagnostic::SrcLoc;
 use crate::{
     HirLintPass, LintContext, LintInput, NameKey,
     cost::{COST_PER_BYTE, call_overhead},
-    measure::{program_size, program_uses},
+    measure::{program_graph, program_size},
     name_key,
     text::keyword_locations,
 };
@@ -81,7 +83,6 @@ impl HirLintPass for Inlining<'_> {
     fn finish(&mut self, cx: &mut LintContext<'_>) {
         let mut reports = Vec::new();
         let mut large = Vec::new();
-        let mut sizes = HashMap::new();
 
         for &(symbol, function) in &self.bindings {
             let Symbol::Binding(binding) = cx.db().symbol(symbol) else {
@@ -132,16 +133,35 @@ impl HirLintPass for Inlining<'_> {
         // Measuring the programs requires code that compiled without errors
         if !self.input.has_errors && !large.is_empty() && cx.is_enabled(Lint::LargeInline) {
             let min_savings = self.input.options.large_inline_min_savings.max(1);
+            let mut programs = None;
 
             for (symbol, name, uses, parameters) in large {
-                let savings = removing_inline_saves(
-                    cx,
-                    self.input.entrypoints,
-                    symbol,
-                    uses,
-                    parameters,
-                    &mut sizes,
-                );
+                // The programs aren't measured for functions where the lint is allowed
+                if !name
+                    .srcloc()
+                    .is_some_and(|srcloc| cx.is_enabled_at(Lint::LargeInline, srcloc))
+                {
+                    continue;
+                }
+
+                // The inline functions that use it are inlined along with it
+                let inline_users = self
+                    .references(symbol)
+                    .iter()
+                    .filter_map(|reference| reference.function)
+                    .filter(|&function| {
+                        matches!(
+                            cx.db().symbol(function),
+                            Symbol::Function(function) if function.kind == FunctionKind::Inline
+                        )
+                    })
+                    .collect::<HashSet<_>>();
+
+                let programs =
+                    programs.get_or_insert_with(|| Programs::new(cx.db(), self.input.entrypoints));
+
+                let savings =
+                    programs.removing_inline_saves(cx, symbol, &inline_users, uses, parameters);
 
                 if savings >= min_savings {
                     reports.push(Report::Large(name, uses, savings));
@@ -229,71 +249,94 @@ impl Report {
     }
 }
 
-/// The cost that removing `inline` from a function would save, from the difference in the size
-/// of each program that uses it (besides tests), less the cost of calling it in each place it's
-/// used. The size of each program as it is is remembered, since it's the same for every function.
-fn removing_inline_saves(
-    cx: &mut LintContext<'_>,
-    entrypoints: &HashSet<Declaration>,
-    symbol: SymbolId,
-    uses: usize,
-    parameters: usize,
-    sizes: &mut HashMap<SymbolId, Option<u64>>,
-) -> u64 {
-    let tests = cx
-        .db()
-        .tests()
-        .map(|test| test.symbol)
-        .collect::<HashSet<_>>();
+/// The programs that are compiled from the entrypoints (besides tests), which are measured to
+/// find out what removing `inline` from a function would save.
+struct Programs {
+    /// Each program, along with its dependencies.
+    graphs: Vec<(SymbolId, DependencyGraph)>,
+    /// The size of each program as it is, which is the same for every function.
+    sizes: HashMap<SymbolId, Option<u64>>,
+}
 
-    let mut programs = Vec::new();
+impl Programs {
+    fn new(db: &Database, entrypoints: &HashSet<Declaration>) -> Self {
+        let tests = db.tests().map(|test| test.symbol).collect::<HashSet<_>>();
 
-    for &declaration in entrypoints {
-        let Declaration::Symbol(program) = declaration else {
-            continue;
-        };
+        let mut programs = entrypoints
+            .iter()
+            .filter_map(|declaration| match *declaration {
+                Declaration::Symbol(symbol) => Some(symbol),
+                Declaration::Type(_) => None,
+            })
+            .filter(|program| {
+                !tests.contains(program)
+                    && matches!(
+                        db.symbol(*program),
+                        Symbol::Function(function) if function.kind != FunctionKind::Inline
+                    )
+            })
+            .collect::<Vec<_>>();
 
-        if tests.contains(&program)
-            || !matches!(
-                cx.db().symbol(program),
-                Symbol::Function(function) if function.kind != FunctionKind::Inline
-            )
-            || !program_uses(cx.db(), program, symbol)
-        {
-            continue;
+        // The order of the entrypoints doesn't matter, but it's kept stable for the measurements
+        programs.sort_by_key(id_arena::Id::index);
+
+        Self {
+            graphs: programs
+                .into_iter()
+                .map(|program| (program, program_graph(db, program)))
+                .collect(),
+            sizes: HashMap::new(),
         }
-
-        programs.push(program);
     }
 
-    // The order of the entrypoints doesn't matter, but it's kept stable for the measurements
-    programs.sort_by_key(id_arena::Id::index);
+    /// The cost that removing `inline` from a function would save, from the difference in the
+    /// size of each program that uses it, less the cost of calling it in each place it's used.
+    fn removing_inline_saves(
+        &mut self,
+        cx: &mut LintContext<'_>,
+        symbol: SymbolId,
+        inline_users: &HashSet<SymbolId>,
+        uses: usize,
+        parameters: usize,
+    ) -> u64 {
+        let mut saved_bytes: i64 = 0;
 
-    let mut saved_bytes: i64 = 0;
+        for (program, graph) in &self.graphs {
+            let program = *program;
 
-    for program in programs {
-        let before = *sizes
-            .entry(program)
-            .or_insert_with(|| program_size(cx.db_mut(), program));
+            // A function that's only used once in a program is inlined whether it's marked as
+            // `inline` or not, unless it's used by an inline function that's inlined in several
+            // places, so the program is only measured if it could change
+            if graph.references(symbol) < 2
+                && !inline_users.iter().any(|&user| graph.references(user) > 0)
+            {
+                continue;
+            }
 
-        let after = with_kind(cx.db_mut(), symbol, FunctionKind::BinaryTree, |db| {
-            program_size(db, program)
-        });
+            let before = *self
+                .sizes
+                .entry(program)
+                .or_insert_with(|| program_size(cx.db_mut(), program));
 
-        let (Some(before), Some(after)) = (before, after) else {
+            let after = with_kind(cx.db_mut(), symbol, FunctionKind::BinaryTree, |db| {
+                program_size(db, program)
+            });
+
+            let (Some(before), Some(after)) = (before, after) else {
+                return 0;
+            };
+
+            saved_bytes += before.cast_signed() - after.cast_signed();
+        }
+
+        let Ok(saved_bytes) = u64::try_from(saved_bytes) else {
             return 0;
         };
 
-        saved_bytes += before.cast_signed() - after.cast_signed();
+        saved_bytes
+            .saturating_mul(COST_PER_BYTE)
+            .saturating_sub(call_overhead(parameters).runtime * uses as u64)
     }
-
-    let Ok(saved_bytes) = u64::try_from(saved_bytes) else {
-        return 0;
-    };
-
-    saved_bytes
-        .saturating_mul(COST_PER_BYTE)
-        .saturating_sub(call_overhead(parameters).runtime * uses as u64)
 }
 
 /// Runs the closure with the function changed to the given kind, and changes it back afterward.
