@@ -1,0 +1,28 @@
+fn unnamed(Int, Int) -> Int {
+    1
+}
+
+test fn calls_unnamed() -> Int {
+    unnamed(1, 2)
+}
+
+test fn unnamed_lambda() -> Int {
+    let lambda = fn(Int, Int) => 1;
+    lambda(1, 2)
+}
+
+test fn unnamed_function_type_parameters() -> Int {
+    apply_unnamed(fn(a: Int, b: Int) => a - b)
+}
+
+fn apply_unnamed(f: fn(Int, Int) -> Int) -> Int {
+    f(5, 2)
+}
+
+fn missing(: Int, : Int) -> Int {
+    1
+}
+
+test fn calls_missing() -> Int {
+    missing(1, 2)
+}

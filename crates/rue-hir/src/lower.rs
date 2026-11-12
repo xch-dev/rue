@@ -97,7 +97,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         );
 
         let param_group = self.create_group(
-            function.parameters.values().copied().collect(),
+            function.parameters.clone(),
             function.kind == FunctionKind::BinaryTree
                 && !self.graph.is_closure(symbol)
                 && symbol != self.main,
@@ -474,7 +474,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 }
 
                 if let Some(last_param) = function.parameters.last() {
-                    args.insert(*last_param.1, last_arg);
+                    args.insert(*last_param, last_arg);
                 }
             }
 
@@ -1041,7 +1041,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
-                for (_, parameter) in &function.parameters {
+                for parameter in &function.parameters {
                     if self.graph.references(*parameter) > 1 {
                         return false;
                     }
@@ -1078,7 +1078,7 @@ mod tests {
     fn function(
         db: &mut Database,
         builtins: &BuiltinTypes,
-        parameters: IndexMap<String, SymbolId>,
+        parameters: Vec<SymbolId>,
         body: HirId,
         kind: FunctionKind,
     ) -> FunctionSymbol {
@@ -1114,20 +1114,14 @@ mod tests {
         let lambda = function(
             &mut db,
             &builtins,
-            IndexMap::new(),
+            vec![],
             lambda_body,
             FunctionKind::Sequential,
         );
         let lambda = db.alloc_symbol(Symbol::Function(lambda));
 
         let f_body = db.alloc_hir(Hir::Lambda(lambda));
-        let f = function(
-            &mut db,
-            &builtins,
-            IndexMap::from([("y".to_string(), y)]),
-            f_body,
-            FunctionKind::Inline,
-        );
+        let f = function(&mut db, &builtins, vec![y], f_body, FunctionKind::Inline);
         let f = db.alloc_symbol(Symbol::Function(f));
 
         let x = parameter(&mut db, &builtins);
@@ -1146,7 +1140,7 @@ mod tests {
         let main = function(
             &mut db,
             &builtins,
-            IndexMap::from([("x".to_string(), x)]),
+            vec![x],
             main_body,
             FunctionKind::Sequential,
         );

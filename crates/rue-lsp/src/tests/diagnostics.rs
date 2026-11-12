@@ -394,3 +394,21 @@ fn test_diagnostics_notes_without_related_information() {
     "#]]
     .assert_eq(&project.change("main.rue", Some(text)));
 }
+
+#[test]
+fn test_diagnostics_unnamed_parameters() {
+    // Parameters without names used to collapse into one, which panicked when compiling the body
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    expect![[r#"
+        Rue.toml: <none>
+        main.rue:4:3-4:4 Warning[unused_function]: Unused function `f`
+        main.rue:4:6-4:9 Warning[unused_parameter]: Unused parameter `Int`
+        main.rue:4:9-4:10 Error: Expected `:`, found `,`
+        main.rue:4:11-4:14 Error: Duplicate symbol `Int` found in scope
+        main.rue:4:14-4:15 Error: Expected `:`, found `)`
+    "#]].assert_eq(&project.change(
+        "main.rue",
+        Some("fn main() -> Int {\n    42\n}\n\nfn f (Int, Int) {}\n"),
+    ));
+}

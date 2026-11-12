@@ -9,7 +9,7 @@ use std::{borrow::Cow, collections::HashMap};
 
 use clvmr::{Allocator, NodePtr, SExp};
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 use rue_types::{
     Alias, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Check, CheckError, FunctionType,
     Generic, Pair, Struct, Type, TypeId, Union, check, stringify, subtract,
@@ -92,7 +92,7 @@ impl Types {
         let ret = self.builtins.nil;
         self.alloc(Type::Function(FunctionType {
             generics: vec![],
-            params: IndexMap::new(),
+            params: vec![],
             nil_terminated: true,
             ret,
         }))

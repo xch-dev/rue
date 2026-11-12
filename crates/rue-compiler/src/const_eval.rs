@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use clvmr::error::EvalErr;
 use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program};
 use id_arena::Arena;
-use indexmap::IndexMap;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
     DependencyGraph, Environment, FunctionKind, FunctionSymbol, Hir, HirId, Lowerer, Symbol,
@@ -111,7 +110,7 @@ fn evaluate_const_expr(
         ty: unresolved.ty,
         scope,
         vars: Vec::new(),
-        parameters: IndexMap::new(),
+        parameters: Vec::new(),
         nil_terminated: true,
         return_type: unresolved.ty,
         body: value,

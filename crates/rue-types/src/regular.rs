@@ -115,7 +115,7 @@ fn collect_references(
             }
         }
         Type::Function(function) => {
-            for &id in function.params.values() {
+            for id in function.params.iter().map(|param| param.ty) {
                 collect_references(arena, id, declarations, edges, visited);
             }
 

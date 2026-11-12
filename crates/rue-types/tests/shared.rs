@@ -6,11 +6,10 @@
 use std::collections::HashMap;
 
 use id_arena::Arena;
-use indexmap::IndexMap;
 use rue_types::{
-    Alias, Apply, BuiltinTypes, Check, Comparison, FunctionType, Generic, Inference, Pair, Type,
-    TypeId, Union, check, compare, compare_with_inference, count_steps, intersect, substitute,
-    subtract,
+    Alias, Apply, BuiltinTypes, Check, Comparison, FunctionParameter, FunctionType, Generic,
+    Inference, Pair, Type, TypeId, Union, check, compare, compare_with_inference, count_steps,
+    intersect, substitute, subtract,
 };
 
 const DEPTH: usize = 32;
@@ -66,7 +65,10 @@ impl Types {
         for _ in 0..depth {
             let function = self.alloc(Type::Function(FunctionType {
                 generics: vec![],
-                params: IndexMap::from_iter([("a".to_string(), ty), ("b".to_string(), ty)]),
+                params: vec![
+                    FunctionParameter::new("a", ty),
+                    FunctionParameter::new("b", ty),
+                ],
                 nil_terminated: true,
                 ret: ty,
             }));

@@ -885,14 +885,18 @@ impl Cache<Compiler> {
             .params
             .iter()
             .enumerate()
-            .map(|(i, (name, &ty))| {
+            .map(|(i, param)| {
                 let spread = if !function.nil_terminated && i == len - 1 {
                     "..."
                 } else {
                     ""
                 };
 
-                format!("{spread}{name}: {}", self.type_name(scopes, ty))
+                format!(
+                    "{spread}{}: {}",
+                    param.name,
+                    self.type_name(scopes, param.ty)
+                )
             })
             .collect::<Vec<_>>()
             .join(", ");

@@ -3,12 +3,12 @@
 use std::collections::HashMap;
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 use rue_diagnostic::Name;
 
 use crate::{
-    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionType,
-    Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
+    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
+    FunctionType, Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
     add_expected_bounds, check, compare, compare_with_inference, extract_atoms, extract_functions,
     extract_pairs, extract_structs, infer_from_expected, is_non_contractive, resolve_inference,
     stringify, substitute, substitute_with_mappings, subtract, unwrap_semantic,
@@ -68,8 +68,8 @@ impl Db {
             params: params
                 .iter()
                 .enumerate()
-                .map(|(i, &ty)| (format!("p{i}"), ty))
-                .collect::<IndexMap<_, _>>(),
+                .map(|(i, &ty)| FunctionParameter::new(format!("p{i}"), ty))
+                .collect(),
             nil_terminated,
             ret,
         }))
@@ -1497,7 +1497,7 @@ mod substitution {
 
         // The function's own generic is bound by it, so it isn't substituted
         assert_eq!(function.generics, vec![u]);
-        assert_eq!(db.cmp(function.params[0], int), Comparison::Assign);
+        assert_eq!(db.cmp(function.params[0].ty, int), Comparison::Assign);
         assert_eq!(function.ret, u);
     }
 
@@ -1516,7 +1516,7 @@ mod substitution {
         };
 
         assert_ne!(function.generics, vec![u]);
-        assert_eq!(function.params[0], function.generics[0]);
+        assert_eq!(function.params[0].ty, function.generics[0]);
         assert_eq!(function.ret, u);
 
         // So it isn't the type of the identity function
