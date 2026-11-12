@@ -45,6 +45,14 @@ impl<'a> LintContext<'a> {
         self.push(lint, srcloc, message, level);
     }
 
+    /// Reports the names in attributes that don't refer to a known lint or group. An attribute
+    /// can allow `unknown_lint` for the names in itself, as in Rust.
+    pub(crate) fn report_unknown_lints(&mut self) {
+        for (name, srcloc) in self.levels.take_unknown_lints() {
+            self.report(Lint::UnknownLint, srcloc, format!("Unknown lint `{name}`"));
+        }
+    }
+
     /// Reports the `expect` attributes whose lint was never reported inside of them. This must be
     /// called after every pass has run.
     pub(crate) fn report_unfulfilled_expectations(&mut self) {

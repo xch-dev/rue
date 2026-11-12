@@ -131,7 +131,7 @@ pub enum Statement {
     Expr(ExprStatement),
     Let(SymbolId),
     If(IfStatement),
-    Return(HirId),
+    Return(HirId, SrcLoc),
     Assert(HirId, SrcLoc),
     Raise(Option<HirId>, SrcLoc),
     Debug(HirId, SrcLoc),

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use rue_diagnostic::Lint;
-use rue_hir::{Block, Declaration, Hir, HirId, Statement, Symbol};
+use rue_hir::{Block, Declaration, Hir, HirId, Statement, Symbol, SymbolId};
 
 use crate::{LintContext, LintInput};
 
@@ -16,6 +16,9 @@ use crate::{LintContext, LintInput};
 pub trait HirLintPass: Default {
     /// The lints the pass can report, so that the walk can be skipped if they're all allowed.
     const LINTS: &'static [Lint];
+
+    /// Called for each function and lambda, before its body.
+    fn check_function(&mut self, _cx: &mut LintContext<'_>, _symbol: SymbolId, _body: HirId) {}
 
     /// Called for each HIR node, before the nodes inside of it.
     fn check_hir(&mut self, _cx: &mut LintContext<'_>, _hir: HirId, _node: &Hir) {}
@@ -36,26 +39,34 @@ pub(crate) fn run_hir_pass<P: HirLintPass>(cx: &mut LintContext<'_>, _input: &Li
     };
 
     for root in roots(cx) {
-        walker.visit_hir(cx, root);
+        match root {
+            Root::Function(symbol) => walker.visit_function(cx, symbol),
+            Root::Hir(hir) => walker.visit_hir(cx, hir),
+        }
     }
 }
 
-/// The HIR of every function, constant and struct field default declared in the documents being
-/// linted. Lambdas aren't declarations, so they're visited from the HIR they're declared in.
-fn roots(cx: &LintContext<'_>) -> Vec<HirId> {
+enum Root {
+    Function(SymbolId),
+    Hir(HirId),
+}
+
+/// Every function, constant and struct field default declared in the documents being linted.
+/// Lambdas aren't declarations, so they're visited from the HIR they're declared in.
+fn roots(cx: &LintContext<'_>) -> Vec<Root> {
     let db = cx.db();
     let mut roots = Vec::new();
 
     for declaration in db.relevant_declarations() {
         match declaration {
             Declaration::Symbol(symbol) => match db.symbol(symbol) {
-                Symbol::Function(function) => roots.push(function.body),
-                Symbol::Constant(constant) => roots.push(constant.value.hir),
+                Symbol::Function(_) => roots.push(Root::Function(symbol)),
+                Symbol::Constant(constant) => roots.push(Root::Hir(constant.value.hir)),
                 // Bindings are visited from their `let` statement, and the rest don't have HIR
                 _ => {}
             },
             Declaration::Type(ty) => {
-                roots.extend(db.default_fields(ty).map(|(_, value)| value.hir));
+                roots.extend(db.default_fields(ty).map(|(_, value)| Root::Hir(value.hir)));
             }
         }
     }
@@ -69,6 +80,22 @@ struct Walker<P> {
 }
 
 impl<P: HirLintPass> Walker<P> {
+    fn visit_function(&mut self, cx: &mut LintContext<'_>, symbol: SymbolId) {
+        let Symbol::Function(function) = cx.db().symbol(symbol) else {
+            return;
+        };
+
+        let body = function.body;
+
+        // The body is only visited once, so the function is too
+        if self.visited.contains(&body) {
+            return;
+        }
+
+        self.pass.check_function(cx, symbol, body);
+        self.visit_hir(cx, body);
+    }
+
     fn visit_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId) {
         // A few nodes that the compiler generates are shared, such as the `nil` of a `return`
         // without a value, so each node is only visited once
@@ -106,12 +133,7 @@ impl<P: HirLintPass> Walker<P> {
             Hir::Cast(hir) => self.visit_hir(cx, hir),
             Hir::Guard(guard) => self.visit_hir(cx, guard.value),
             Hir::Block(block) => self.visit_block(cx, &block),
-            Hir::Lambda(symbol) => {
-                if let Symbol::Function(function) = cx.db().symbol(symbol) {
-                    let body = function.body;
-                    self.visit_hir(cx, body);
-                }
-            }
+            Hir::Lambda(symbol) => self.visit_function(cx, symbol),
             Hir::Pair(first, rest) => self.visit_all(cx, [first, rest]),
             Hir::If(condition, then, else_, _) => self.visit_all(cx, [condition, then, else_]),
             Hir::FunctionCall(call) => {
@@ -161,7 +183,9 @@ impl<P: HirLintPass> Walker<P> {
                 Statement::If(statement) => {
                     self.visit_all(cx, [statement.condition, statement.then]);
                 }
-                Statement::Return(hir) | Statement::Assert(hir, _) | Statement::Debug(hir, _) => {
+                Statement::Return(hir, _)
+                | Statement::Assert(hir, _)
+                | Statement::Debug(hir, _) => {
                     self.visit_hir(cx, *hir);
                 }
                 Statement::Raise(hir, _) => self.visit_all(cx, *hir),

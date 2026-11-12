@@ -1,0 +1,19 @@
+program: (a (q 2 (i (> 2 (q . 100)) (q) (q . 2)) 1) (c (+ (a (q 18 2 (q . 2)) (q 10)) (q . 1)) 1))
+debug_program: (a (q 2 (q 2 (q 2 (i (> 2 (q . 100)) (q) (q . 2)) 1) (c (a 5 (c (a 2 (c (q . 10) ())) (q . 1))) 1)) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) 1)) (c (q 2 (q . 2) (c (+ 2 3) 1)) ()))
+output: '21'
+runtime_cost: 3009
+byte_cost: 828000
+total_cost: 831009
+tests:
+- name: early_exit
+  program: (a (i (= (a (q 2 (i (> 2 (q . 100)) (q) (q . 2)) 1) (c (+ (a (q 18 2 (q . 2)) (q 10)) (q . 1)) 1)) (q . 21)) (q) (q 8)) 1)
+  debug_program: (a (q 2 (i (= (a 4 (c 6 ())) (q . 21)) (q) (q 8 (q . "assertion failed at unnecessary_return.rue:21:5"))) 1) (c (c (q 2 (q 2 (q 2 (i (> 2 (q . 100)) (q) (q . 2)) 1) (c (a 5 (c (a 2 (c (q . 10) ())) (q . 1))) 1)) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) 1)) (q 2 (q . 2) (c (+ 2 3) 1))) ()))
+  output: ()
+  runtime_cost: 3402
+  byte_cost: 1164000
+  total_cost: 1167402
+diagnostics:
+- Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:3:9
+- Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:12:5
+- Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:17:5
+- Unnecessary `return` statement, since the function body can end in an expression instead at unnecessary_return.rue:22:5

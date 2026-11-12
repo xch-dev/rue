@@ -5,6 +5,7 @@ mod conditions;
 mod guards;
 mod inline_ifs;
 mod operators;
+mod returns;
 mod statements;
 mod syntax;
 mod unused;
@@ -21,5 +22,6 @@ pub(crate) const PASSES: &[LintPass] = &[
     run_hir_pass::<conditions::ConstantCondition>,
     run_hir_pass::<statements::UnusedValue>,
     run_hir_pass::<inline_ifs::InlineIfMayRaise>,
+    run_hir_pass::<returns::UnnecessaryReturn>,
     unused::check,
 ];

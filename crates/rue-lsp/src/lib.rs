@@ -6,7 +6,7 @@ mod position;
 use cache::Cache;
 use indexmap::IndexMap;
 use rue_compiler::{Compiler, FileTree, normalize_path};
-use rue_diagnostic::SourceKind;
+use rue_diagnostic::{Lint, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 
 use std::collections::HashMap;
@@ -480,12 +480,28 @@ fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
 
     let text = fs::read_to_string(path).unwrap_or_default();
 
-    let unknown = project.unknown_lints.iter().map(|lint| Diagnostic {
-        range: offsets_to_range(&text, lint.span.start, lint.span.end),
-        message: format!("Unknown lint `{}`", lint.name),
-        severity: Some(DiagnosticSeverity::WARNING),
-        ..Diagnostic::default()
-    });
+    // Unknown names are reported by the `unknown_lint` lint, at the level set by `Rue.toml`
+    let severity = project
+        .options
+        .lints
+        .get(Lint::UnknownLint)
+        .severity()
+        .map(|severity| match severity {
+            rue_diagnostic::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
+            rue_diagnostic::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
+        });
+
+    let unknown = project
+        .unknown_lints
+        .iter()
+        .filter(|_| severity.is_some())
+        .map(|lint| Diagnostic {
+            range: offsets_to_range(&text, lint.span.start, lint.span.end),
+            message: format!("Unknown lint `{}`", lint.name),
+            severity,
+            code: Some(NumberOrString::String(Lint::UnknownLint.name().to_string())),
+            ..Diagnostic::default()
+        });
 
     let forbidden = project.forbidden_lints.iter().map(|lint| Diagnostic {
         range: offsets_to_range(&text, lint.span.start, lint.span.end),

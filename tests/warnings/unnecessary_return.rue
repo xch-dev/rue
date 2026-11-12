@@ -1,0 +1,23 @@
+fn main() -> Int {
+    let double = fn(value: Int): Int => {
+        return value * 2;
+    };
+
+    let total = add(double(10), 1);
+
+    if total > 100 {
+        return 0;
+    }
+
+    return total;
+}
+
+fn add(left: Int, right: Int) -> Int {
+    let sum = left + right;
+    return sum;
+}
+
+test fn early_exit() {
+    assert main() == 21;
+    return nil;
+}
