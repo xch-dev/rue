@@ -295,7 +295,12 @@ impl LanguageServer for Backend {
             .query(Task::References, move |state| {
                 let shared = state.shared.clone();
                 let cache = state.cache(&params.text_document.uri, revision)?;
-                references(cache, &shared.paths, params.position, context.include_declaration)
+                references(
+                    cache,
+                    &shared.paths,
+                    params.position,
+                    context.include_declaration,
+                )
             })
             .await)
     }

@@ -1,5 +1,5 @@
-mod background;
 mod ambiguity;
+mod background;
 mod completion;
 mod diagnostics;
 mod formatting;

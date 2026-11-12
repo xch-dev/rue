@@ -973,36 +973,30 @@ fn fuzzy_match(query: &str, candidate: &str) -> Option<u32> {
         return Some(1000);
     }
 
+    // Positions are counted in characters, since lowercasing can change the length of the text in
+    // bytes, and identifiers that aren't ASCII would otherwise be sliced inside a character
+    let candidate = candidate.chars().collect::<Vec<_>>();
+
     // Check if all query chars appear in order in the candidate
     let mut last_matched_pos = 0;
     let mut consecutive_matches = 0;
     let mut total_matches = 0;
-    // Check if all query chars appear in order in the candidate
+
     for query_char in query.chars() {
-        let mut found = false;
-
         // Look for the next query char in remaining candidate chars
-        for (i, candidate_char) in candidate[last_matched_pos..].char_indices() {
-            if query_char == candidate_char {
-                // Found a match
-                found = true;
+        let i = candidate[last_matched_pos..]
+            .iter()
+            .position(|&candidate_char| candidate_char == query_char)?;
 
-                // Check if this match is consecutive with the last match
-                if i == 0 {
-                    consecutive_matches += 1;
-                } else {
-                    consecutive_matches = 1;
-                }
-
-                total_matches += 1;
-                last_matched_pos += i + 1;
-                break;
-            }
+        // Check if this match is consecutive with the last match
+        if i == 0 {
+            consecutive_matches += 1;
+        } else {
+            consecutive_matches = 1;
         }
 
-        if !found {
-            return None;
-        }
+        total_matches += 1;
+        last_matched_pos += i + 1;
     }
 
     // Calculate score based on:
@@ -1063,5 +1057,20 @@ mod tests {
         let far = fuzzy_match("ab", "x_long_name_a_b").unwrap();
         assert!(close > far);
         assert!(close < 1000);
+    }
+
+    #[test]
+    fn test_fuzzy_match_non_ascii() {
+        // Matches after a multi-byte character used to slice the candidate inside a character.
+        assert!(fuzzy_match("\u{e9}b", "x\u{e9}b").is_some());
+        assert!(fuzzy_match("\u{1F600}b", "a\u{1F600}xb").is_some());
+        assert_eq!(fuzzy_match("\u{e9}", "\u{c9}t\u{e9}"), Some(1000));
+        assert_eq!(fuzzy_match("b\u{e9}", "abc"), None);
+
+        // `İ` lowercases to two characters, which changes the length of the candidate.
+        assert!(fuzzy_match("ix", "\u{130}ax").is_some());
+
+        // The score counts characters rather than bytes, so it's the same as for ASCII.
+        assert_eq!(fuzzy_match("ab", "x\u{e9}ab"), fuzzy_match("ab", "xeab"));
     }
 }

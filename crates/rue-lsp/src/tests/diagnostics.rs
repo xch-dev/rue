@@ -1,9 +1,19 @@
+use std::fmt::Write;
+use std::sync::Arc;
+
 use expect_test::expect;
 
+use rue_diagnostic::{
+    Applicability, DiagnosticKind, Edit, Lint, Source, SourceKind, SrcLoc, Suggestion,
+};
 use tower_lsp::LanguageServer;
-use tower_lsp::lsp_types::{InitializeParams, Url};
+use tower_lsp::lsp_types::{
+    CodeActionContext, CodeActionOrCommand, CodeActionParams, InitializeParams,
+    PartialResultParams, Range, TextDocumentIdentifier, Url, WorkDoneProgressParams,
+};
 
 use super::TestProject;
+use crate::{code_actions, position::position_to_offset};
 
 #[test]
 fn test_diagnostics_clean() {
@@ -412,4 +422,154 @@ fn test_diagnostics_unnamed_parameters() {
         "main.rue",
         Some("fn main() -> Int {\n    42\n}\n\nfn f (Int, Int) {}\n"),
     ));
+}
+
+/// Renders the code actions for a diagnostic, along with the text of each file after applying the
+/// edits of each action to it.
+fn render_code_actions(
+    project: &TestProject,
+    diagnostic: &rue_diagnostic::Diagnostic,
+    files: &[(&str, &str)],
+) -> String {
+    let actions = code_actions(&CodeActionParams {
+        text_document: TextDocumentIdentifier::new(project.uri(files[0].0)),
+        range: Range::default(),
+        context: CodeActionContext {
+            diagnostics: vec![crate::diagnostic(
+                diagnostic,
+                true,
+                &project.backend().shared.paths,
+            )],
+            only: None,
+            trigger_kind: None,
+        },
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    })
+    .unwrap_or_default();
+
+    let mut output = String::new();
+
+    for action in actions {
+        let CodeActionOrCommand::CodeAction(action) = action else {
+            panic!("unexpected command: {action:?}");
+        };
+
+        writeln!(
+            output,
+            "{} (preferred: {}):",
+            action.title,
+            action.is_preferred.unwrap()
+        )
+        .unwrap();
+
+        let mut changes = action.edit.unwrap().changes.unwrap();
+
+        for (name, text) in files {
+            let Some(mut edits) = changes.remove(&project.uri(name)) else {
+                continue;
+            };
+
+            // The edits of a file don't overlap, so they're applied from the end of the file, which
+            // keeps the positions of the earlier ones valid.
+            edits.sort_by_key(|edit| edit.range.start);
+
+            let mut fixed = (*text).to_string();
+
+            for edit in edits.into_iter().rev() {
+                let start = position_to_offset(text, edit.range.start);
+                let end = position_to_offset(text, edit.range.end);
+                fixed.replace_range(start..end, &edit.new_text);
+            }
+
+            // Carriage returns are shown, since they'd be invisible in the snapshot
+            writeln!(output, "{name}:\n{}", fixed.replace('\r', "\\r")).unwrap();
+        }
+
+        assert!(changes.is_empty(), "edits to unexpected files: {changes:?}");
+    }
+
+    output
+}
+
+fn source(project: &TestProject, name: &str, text: &str) -> Source {
+    Source::new(
+        Arc::from(text),
+        SourceKind::File(project.path(name).to_string_lossy().into_owned()),
+    )
+}
+
+#[test]
+fn test_code_actions_multiple_edits_and_files() {
+    let main = "fn main() -> Int {\r\n    first() + second()\r\n}\r\n";
+    let utils = "export fn first() -> Int { 1 }\n\nexport fn second() -> Int { 2 }\n";
+    let files = [("main.rue", main), ("utils.rue", utils)];
+    let project = TestProject::new(&files);
+
+    let main_source = source(&project, "main.rue", main);
+    let utils_source = source(&project, "utils.rue", utils);
+    let std_source = Source::new(Arc::from("fn x() {}"), SourceKind::Std("std".to_string()));
+
+    let mut diagnostic = rue_diagnostic::Diagnostic::new(
+        SrcLoc::new(main_source.clone(), 24..31),
+        DiagnosticKind::Lint {
+            lint: Lint::UnusedFunction,
+            message: "Rename the functions".to_string(),
+        },
+        rue_diagnostic::DiagnosticSeverity::Warning,
+    );
+
+    // The edits are out of order, and span both files
+    diagnostic.suggestions.push(Suggestion::new(
+        "Rename `first` and `second`",
+        vec![
+            Edit::new(SrcLoc::new(main_source.clone(), 34..40), "two"),
+            Edit::new(SrcLoc::new(utils_source.clone(), 10..15), "one"),
+            Edit::new(SrcLoc::new(main_source.clone(), 24..29), "one"),
+            Edit::new(SrcLoc::new(utils_source.clone(), 42..48), "two"),
+        ],
+        Applicability::MaybeIncorrect,
+    ));
+
+    // A suggestion with an edit that can't be made in the editor is left out entirely, rather
+    // than being applied partially
+    diagnostic.suggestions.push(Suggestion::new(
+        "Edit the standard library",
+        vec![
+            Edit::new(SrcLoc::new(main_source.clone(), 24..29), "one"),
+            Edit::new(SrcLoc::new(std_source, 3..4), "y"),
+        ],
+        Applicability::MachineApplicable,
+    ));
+
+    // Two edits at the same position insert both texts
+    diagnostic.suggestions.push(Suggestion::new(
+        "Wrap the call",
+        vec![
+            Edit::new(SrcLoc::new(main_source.clone(), 24..24), "("),
+            Edit::new(SrcLoc::new(main_source, 31..31), ")"),
+        ],
+        Applicability::MachineApplicable,
+    ));
+
+    expect![[r#"
+        Rename `first` and `second` (preferred: false):
+        main.rue:
+        fn main() -> Int {\r
+            one() + two()\r
+        }\r
+
+        utils.rue:
+        export fn one() -> Int { 1 }
+
+        export fn two() -> Int { 2 }
+
+        Wrap the call (preferred: true):
+        main.rue:
+        fn main() -> Int {\r
+            (first()) + second()\r
+        }\r
+
+    "#]]
+    .assert_eq(&render_code_actions(&project, &diagnostic, &files));
 }
