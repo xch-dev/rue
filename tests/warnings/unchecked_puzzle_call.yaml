@@ -31,3 +31,18 @@ diagnostics:
     note: It's called here at unchecked_puzzle_call.rue:112:5
     note: Compare `tree_hash(inner_puzzle)` with a hash that the puzzle trusts, such as one that's curried in
     note: If `inner_puzzle` is curried into the puzzle, mark the parameter with `#[curried]`
+- |-
+  `inner` comes from the solution and is called, but its tree hash is never checked, so whoever spends the coin can choose what it does at unchecked_puzzle_call.rue:135:23
+    note: It's called here at unchecked_puzzle_call.rue:136:5
+    note: Compare `tree_hash(inner)` with a hash that the puzzle trusts, such as one that's curried in
+    note: If `inner` is curried into the puzzle, mark the parameter with `#[curried]`
+- |-
+  `other` comes from the solution and is called, but its tree hash is never checked, so whoever spends the coin can choose what it does at unchecked_puzzle_call.rue:140:5
+    note: It's called here at unchecked_puzzle_call.rue:145:5
+    note: Compare `tree_hash(other)` with a hash that the puzzle trusts, such as one that's curried in
+    note: If `other` is curried into the puzzle, mark the parameter with `#[curried]`
+- |-
+  `puzzle` comes from the solution and is called, but its tree hash is never checked, so whoever spends the coin can choose what it does at unchecked_puzzle_call.rue:148:26
+    note: It's called here at unchecked_puzzle_call.rue:151:5
+    note: Compare `tree_hash(puzzle)` with a hash that the puzzle trusts, such as one that's curried in
+    note: If `puzzle` is curried into the puzzle, mark the parameter with `#[curried]`

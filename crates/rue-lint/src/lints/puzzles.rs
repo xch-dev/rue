@@ -210,17 +210,28 @@ fn is_curried_name(name: &str) -> bool {
 
 /// Whether the function is one that the standard library declares.
 fn is_std_function(db: &Database, function: HirId) -> bool {
+    declared_in_std(db, function) == Some(true)
+}
+
+/// Whether the function is one that the program declares, rather than the standard library, a
+/// parameter or a lambda (which could come from the solution, or don't check anything).
+fn is_program_function(db: &Database, function: HirId) -> bool {
+    declared_in_std(db, function) == Some(false)
+}
+
+/// Whether a called function is declared in the standard library, or `None` if it isn't a declared
+/// function (such as a parameter or a lambda).
+fn declared_in_std(db: &Database, function: HirId) -> Option<bool> {
     let Hir::Reference(symbol) = db.hir(db.without_casts(function)) else {
-        return false;
+        return None;
     };
 
-    matches!(
-        db.symbol(*symbol),
-        Symbol::Function(function)
-            if function.name.as_ref().and_then(|name| name.srcloc()).is_some_and(|srcloc| {
-                matches!(srcloc.source.kind, SourceKind::Std(_))
-            })
-    )
+    let Symbol::Function(function) = db.symbol(*symbol) else {
+        return None;
+    };
+
+    let srcloc = function.name.as_ref()?.srcloc()?;
+    Some(matches!(srcloc.source.kind, SourceKind::Std(_)))
 }
 
 /// Whether the function is the standard library's `tree_hash`.
@@ -257,7 +268,14 @@ fn hash_fate(cx: &LintContext<'_>, hir: HirId) -> Fate {
             Hir::Guard(_) | Hir::Lambda(_) => Some(used(db, parent)),
             // Passing the hash to a function of the program could check it there, as with passing the
             // parameter itself, but the standard library's functions only compute other values from it
-            Hir::FunctionCall(call) if !is_std_function(db, call.function) => Some(Fate::Reached),
+            Hir::FunctionCall(call) if is_program_function(db, call.function) => {
+                Some(Fate::Reached)
+            }
+            // A function from the solution or a lambda doesn't check anything, and what it returns
+            // isn't a value computed from the hash
+            Hir::FunctionCall(call) if !is_std_function(db, call.function) => {
+                Some(used(db, parent))
+            }
             // Anything else computes a value from it, which is followed in turn
             _ => None,
         }

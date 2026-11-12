@@ -128,3 +128,25 @@ fn is_allowed(hash: Bytes32) -> Bool {
 fn validate(hash: Bytes32) {
     assert is_allowed(hash);
 }
+
+// Passing the hash to the puzzle itself, a function from the solution, or a lambda doesn't check it
+type HashedPuzzle = fn(my_hash: Bytes32, ...solution: Any) -> List<Condition>;
+
+export fn self_hashed(inner: HashedPuzzle, solution: Any) -> List<Condition> {
+    inner(tree_hash(inner), ...solution)
+}
+
+export fn logged(
+    other: Puzzle,
+    #[allow(unchecked_puzzle_call)] logger: fn(hash: Bytes32) -> Any,
+    solution: Any,
+) -> List<Condition> {
+    let _ = logger(tree_hash(other));
+    other(...solution)
+}
+
+export fn lambda_checked(puzzle: Puzzle, solution: Any) -> List<Condition> {
+    let check = fn(hash: Bytes32) => hash;
+    let _ = check(tree_hash(puzzle));
+    puzzle(...solution)
+}
