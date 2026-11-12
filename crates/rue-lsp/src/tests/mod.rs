@@ -2,6 +2,7 @@ mod completion;
 mod diagnostics;
 mod formatting;
 mod hover;
+mod lifecycle;
 mod navigation;
 mod protocol;
 

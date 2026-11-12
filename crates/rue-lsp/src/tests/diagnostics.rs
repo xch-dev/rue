@@ -294,7 +294,11 @@ fn test_diagnostics_missing_entrypoint() {
         &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
     );
 
-    expect![[""]].assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    x\n}\n")));
+    // The project can't be compiled, so only the manifest's diagnostics are reported
+    expect![[r#"
+        Rue.toml: <none>
+    "#]]
+    .assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    x\n}\n")));
 }
 
 #[test]

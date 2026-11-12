@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use futures::StreamExt;
+use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
@@ -14,26 +14,38 @@ use tower_lsp::LspService;
 use tower_lsp::jsonrpc::{Request, Response};
 use tower_lsp::lsp_types::Url;
 
-use crate::{Backend, INITIALIZED, Task, lock};
+use crate::{Backend, INITIALIZED, SYNCED, Task, lock};
 
 /// How long to wait for a message from the server before failing the test, rather than hanging.
 const TIMEOUT: Duration = Duration::from_secs(30);
 
-struct Client {
+pub(super) struct Client {
     service: LspService<Backend>,
     notifications: mpsc::UnboundedReceiver<Request>,
     next_id: i64,
 }
 
 impl Client {
-    fn new() -> Self {
-        let (service, mut socket) = LspService::new(Backend::new);
+    pub(super) fn new() -> Self {
+        let (service, socket) = LspService::build(Backend::new)
+            .custom_method("rue/sync", Backend::sync)
+            .finish();
         let (sender, notifications) = mpsc::unbounded_channel();
 
         // The server blocks on sending messages to the client, so they must be drained
-        // concurrently.
+        // concurrently. Requests from the server (such as registering file watchers) succeed.
         tokio::spawn(async move {
-            while let Some(message) = socket.next().await {
+            let (mut requests, mut responses) = socket.split();
+
+            while let Some(message) = requests.next().await {
+                if let Some(id) = message.id() {
+                    let response = Response::from_ok(id.clone(), Value::Null);
+
+                    if responses.send(response).await.is_err() {
+                        break;
+                    }
+                }
+
                 if sender.send(message).is_err() {
                     break;
                 }
@@ -47,7 +59,11 @@ impl Client {
         }
     }
 
-    async fn request(&mut self, method: &'static str, params: Option<Value>) -> Response {
+    pub(super) async fn request(
+        &mut self,
+        method: &'static str,
+        params: Option<Value>,
+    ) -> Response {
         self.next_id += 1;
 
         let mut request = Request::build(method).id(self.next_id);
@@ -61,8 +77,14 @@ impl Client {
         self.call(request).await.expect("expected a response")
     }
 
-    async fn notify(&mut self, method: &'static str, params: Value) {
-        let request = Request::build(method).params(params).finish();
+    pub(super) async fn notify(&mut self, method: &'static str, params: Value) {
+        let mut request = Request::build(method);
+
+        if !params.is_null() {
+            request = request.params(params);
+        }
+
+        let request = request.finish();
 
         let response = self.call(request).await;
         assert!(response.is_none(), "notifications don't have responses");
@@ -78,25 +100,37 @@ impl Client {
             .unwrap()
     }
 
-    fn backend(&self) -> &Backend {
+    pub(super) fn backend(&self) -> &Backend {
         self.service.inner()
     }
 
-    fn inject_panic(&self, task: Option<Task>) {
+    pub(super) fn inject_panic(&self, task: Option<Task>) {
         *lock(&self.backend().injected_panic) = task;
     }
 
-    /// Sends `initialize` and `initialized`.
-    async fn initialize(&mut self) {
+    /// Sends `initialize` with the given client capabilities and `initialized`, and returns the
+    /// messages the server sent in response, other than the log message saying it's initialized.
+    pub(super) async fn initialize_with(&mut self, capabilities: Value) -> Vec<Request> {
         let response = self
-            .request("initialize", Some(json!({ "capabilities": {} })))
+            .request("initialize", Some(json!({ "capabilities": capabilities })))
             .await;
         assert!(response.is_ok());
 
-        self.assert_no_messages().await;
+        self.notify("initialized", json!({})).await;
+
+        let mut messages = self.sync().await;
+        let initialized = messages.remove(0);
+        assert_eq!(initialized.params().unwrap()["message"], json!(INITIALIZED));
+
+        messages
     }
 
-    async fn open(&mut self, uri: &Url, text: &str) {
+    pub(super) async fn initialize(&mut self) {
+        let messages = self.initialize_with(json!({})).await;
+        assert!(messages.is_empty(), "unexpected messages: {messages:?}");
+    }
+
+    pub(super) async fn open(&mut self, uri: &Url, text: &str) {
         self.notify(
             "textDocument/didOpen",
             json!({
@@ -111,7 +145,37 @@ impl Client {
         .await;
     }
 
-    async fn change(&mut self, uri: &Url, version: i32, changes: &[&str]) {
+    pub(super) async fn close(&mut self, uri: &Url) {
+        self.notify(
+            "textDocument/didClose",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    }
+
+    /// Tells the server that files changed on disk, with the LSP's change types (1 is created, 2
+    /// is changed and 3 is deleted).
+    pub(super) async fn watched(&mut self, changes: &[(&Url, u8)]) {
+        let changes = changes
+            .iter()
+            .map(|(uri, kind)| json!({ "uri": uri, "type": kind }))
+            .collect::<Vec<_>>();
+
+        self.notify(
+            "workspace/didChangeWatchedFiles",
+            json!({ "changes": changes }),
+        )
+        .await;
+    }
+
+    pub(super) async fn hover(&mut self, uri: &Url, line: u32, character: u32) -> Value {
+        let response = self
+            .request("textDocument/hover", Some(position(uri, line, character)))
+            .await;
+        response.result().unwrap().clone()
+    }
+
+    pub(super) async fn change(&mut self, uri: &Url, version: i32, changes: &[&str]) {
         let changes = changes
             .iter()
             .map(|text| json!({ "text": text }))
@@ -146,7 +210,7 @@ impl Client {
 
     /// Waits for the diagnostics published for the given file, skipping those for other files
     /// (such as `Rue.toml`).
-    async fn diagnostics(&mut self, uri: &Url) -> Value {
+    pub(super) async fn diagnostics(&mut self, uri: &Url) -> Value {
         loop {
             let diagnostics = self.notification("textDocument/publishDiagnostics").await;
 
@@ -158,12 +222,12 @@ impl Client {
 
     /// Returns the messages the server sent since the last one that was received.
     ///
-    /// The server logs a message for `initialized`, and messages arrive in the order they were
-    /// sent, so the ones before it are all of those sent for earlier notifications. This relies on
-    /// the server finishing its work for a notification before it returns, and on `initialized`
-    /// doing nothing but logging (a request to the client would wait for a response forever).
-    async fn sync(&mut self) -> Vec<Request> {
-        self.notify("initialized", json!({})).await;
+    /// The server logs a message for `rue/sync` (which only exists in tests), and messages arrive
+    /// in the order they were sent, so the ones before it are all of those sent for earlier
+    /// notifications. This relies on the server finishing its work for a notification before it
+    /// returns.
+    pub(super) async fn sync(&mut self) -> Vec<Request> {
+        self.notify("rue/sync", Value::Null).await;
 
         let mut messages = Vec::new();
 
@@ -171,7 +235,7 @@ impl Client {
             let message = self.recv().await;
 
             if message.method() == "window/logMessage"
-                && message.params().unwrap()["message"] == json!(INITIALIZED)
+                && message.params().unwrap()["message"] == json!(SYNCED)
             {
                 return messages;
             }
@@ -180,14 +244,14 @@ impl Client {
         }
     }
 
-    async fn assert_no_messages(&mut self) {
+    pub(super) async fn assert_no_messages(&mut self) {
         let messages = self.sync().await;
         assert!(messages.is_empty(), "unexpected messages: {messages:?}");
     }
 
     /// Returns the error the server logs when it catches a panic, which must be the only message
     /// it sent.
-    async fn panic_message(&mut self) -> String {
+    pub(super) async fn panic_message(&mut self) -> String {
         let messages = self.sync().await;
         assert_eq!(messages.len(), 1, "expected one message: {messages:?}");
 
@@ -201,12 +265,16 @@ impl Client {
 }
 
 /// A temporary project directory with the given files, which is removed when dropped.
-struct TempProject {
+pub(super) struct TempProject {
     root: PathBuf,
 }
 
 impl TempProject {
-    fn new(files: &[(&str, &str)]) -> Self {
+    pub(super) fn new(files: &[(&str, &str)]) -> Self {
+        Self::with_manifest("[compiler]\nentrypoint = \".\"\nstd = false\n", files)
+    }
+
+    pub(super) fn with_manifest(manifest: &str, files: &[(&str, &str)]) -> Self {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         let root = std::env::temp_dir().join(format!(
@@ -217,21 +285,57 @@ impl TempProject {
         fs::create_dir_all(&root).unwrap();
         let root = root.canonicalize().unwrap();
 
-        fs::write(
-            root.join("Rue.toml"),
-            "[compiler]\nentrypoint = \".\"\nstd = false\n",
-        )
-        .unwrap();
+        let project = Self { root };
+
+        project.write("Rue.toml", manifest);
 
         for (name, text) in files {
-            fs::write(root.join(name), text).unwrap();
+            project.write(name, text);
         }
 
-        Self { root }
+        project
     }
 
-    fn uri(&self, name: &str) -> Url {
+    pub(super) fn uri(&self, name: &str) -> Url {
         Url::from_file_path(self.root.join(name)).unwrap()
+    }
+
+    pub(super) fn write(&self, name: &str, text: &str) {
+        fs::write(self.root.join(name), text).unwrap();
+    }
+
+    pub(super) fn remove(&self, name: &str) {
+        fs::remove_file(self.root.join(name)).unwrap();
+    }
+
+    /// Renders the diagnostics published in the given messages as `file: [severities]`, sorted by
+    /// file, since the order they're cleared in isn't defined.
+    pub(super) fn published(&self, messages: &[Request]) -> Vec<String> {
+        let mut published = messages
+            .iter()
+            .map(|message| {
+                assert_eq!(message.method(), "textDocument/publishDiagnostics");
+
+                let params = message.params().unwrap();
+                let path = Url::parse(params["uri"].as_str().unwrap())
+                    .unwrap()
+                    .to_file_path()
+                    .unwrap();
+                let name = path.strip_prefix(&self.root).unwrap().display();
+
+                let severities = params["diagnostics"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|diagnostic| diagnostic["severity"].as_u64().unwrap())
+                    .collect::<Vec<_>>();
+
+                format!("{name}: {severities:?}")
+            })
+            .collect::<Vec<_>>();
+
+        published.sort();
+        published
     }
 }
 
@@ -304,7 +408,7 @@ async fn test_protocol_session() {
     assert!(response.is_ok());
 }
 
-fn position(uri: &Url, line: u32, character: u32) -> Value {
+pub(super) fn position(uri: &Url, line: u32, character: u32) -> Value {
     json!({
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character },
@@ -319,10 +423,10 @@ fn formatting(uri: &Url) -> Value {
 }
 
 /// Has a warning with a suggestion (the redundant `+`), so that there's a code action.
-const SOURCE: &str = "fn main() -> Int {\n    let value = +42;\n    value + 1\n}\n";
+pub(super) const SOURCE: &str = "fn main() -> Int {\n    let value = +42;\n    value + 1\n}\n";
 
 /// Has a type error, which is the only error these tests expect.
-const MISMATCH: &str = "fn main() -> Int {\n    \"hello\"\n}\n";
+pub(super) const MISMATCH: &str = "fn main() -> Int {\n    \"hello\"\n}\n";
 
 /// Asserts that the only diagnostic is the type error in `MISMATCH`.
 fn assert_mismatch(diagnostics: &Value) {

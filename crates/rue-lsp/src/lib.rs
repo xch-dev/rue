@@ -10,11 +10,11 @@ use rue_diagnostic::{Applicability, Lint, SourceKind, SrcLoc};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Write};
 use std::fs;
 use std::panic::{self, AssertUnwindSafe};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -25,12 +25,14 @@ use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
     CompletionResponse, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    DocumentFormattingParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-    LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf, Position, Range,
-    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextEdit, Url, WorkspaceEdit,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams, FileEvent,
+    FileSystemWatcher, GlobPattern, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf,
+    Position, Range, ReferenceParams, Registration, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -40,11 +42,22 @@ use crate::position::offsets_to_range;
 /// Logged once the client says it's initialized.
 const INITIALIZED: &str = "Rue language server initialized.";
 
+/// Logged for the `rue/sync` notification, which tests use to know that the server has handled
+/// everything sent before it.
+#[cfg(test)]
+const SYNCED: &str = "Synced.";
+
 #[derive(Debug)]
 pub struct Backend {
     client: Client,
     cache: Mutex<HashMap<Url, SendWrapper<Cache<Arc<Compiler>>>>>,
     file_cache: Mutex<HashMap<SourceKind, String>>,
+    /// The files that each project last published diagnostics for, keyed by its manifest (or its
+    /// entrypoint, if it doesn't have one), so that they can be cleared once a file isn't part of
+    /// the project anymore.
+    published: Mutex<HashMap<PathBuf, HashSet<SourceKind>>>,
+    /// Whether the client can register file watchers when asked to.
+    watch_files: AtomicBool,
     /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
     /// added to the message instead. This is assumed until the client says otherwise.
     related_information: AtomicBool,
@@ -85,12 +98,22 @@ impl LanguageServer for Backend {
         let related_information = params
             .capabilities
             .text_document
-            .and_then(|capabilities| capabilities.publish_diagnostics)
+            .as_ref()
+            .and_then(|capabilities| capabilities.publish_diagnostics.as_ref())
             .and_then(|capabilities| capabilities.related_information)
             .unwrap_or(false);
 
         self.related_information
             .store(related_information, Ordering::Relaxed);
+
+        let watch_files = params
+            .capabilities
+            .workspace
+            .and_then(|capabilities| capabilities.did_change_watched_files)
+            .and_then(|capabilities| capabilities.dynamic_registration)
+            .unwrap_or(false);
+
+        self.watch_files.store(watch_files, Ordering::Relaxed);
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -129,6 +152,36 @@ impl LanguageServer for Backend {
         self.client
             .log_message(MessageType::INFO, INITIALIZED)
             .await;
+
+        // Changes made outside of the editor (such as switching branches) are only seen if the
+        // client watches the files
+        if self.watch_files.load(Ordering::Relaxed) {
+            let watchers = ["**/*.rue", "**/Rue.toml"]
+                .into_iter()
+                .map(|pattern| FileSystemWatcher {
+                    glob_pattern: GlobPattern::String(pattern.to_string()),
+                    kind: None,
+                })
+                .collect();
+
+            let registration = Registration {
+                id: "rue-watched-files".to_string(),
+                method: "workspace/didChangeWatchedFiles".to_string(),
+                register_options: Some(
+                    serde_json::to_value(DidChangeWatchedFilesRegistrationOptions { watchers })
+                        .expect("registration options are serializable"),
+                ),
+            };
+
+            if let Err(error) = self.client.register_capability(vec![registration]).await {
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!("Couldn't watch files for changes: {error}"),
+                    )
+                    .await;
+            }
+        }
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
@@ -148,6 +201,22 @@ impl LanguageServer for Backend {
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         self.on_change(params.text_document.uri, None).await;
+    }
+
+    /// The file's unsaved changes are discarded, so the project is compiled with what's on disk.
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        self.on_change(params.text_document.uri, None).await;
+    }
+
+    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        if let Some(diagnostics) = self
+            .catch_panic(Task::Compile, || {
+                self.on_watched_files_impl(&params.changes)
+            })
+            .await
+        {
+            self.publish(diagnostics).await;
+        }
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -208,6 +277,8 @@ impl Backend {
             client,
             cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
+            published: Mutex::new(HashMap::new()),
+            watch_files: AtomicBool::new(false),
             related_information: AtomicBool::new(true),
             #[cfg(test)]
             injected_panic: Mutex::default(),
@@ -236,6 +307,11 @@ impl Backend {
     }
 
     #[cfg(test)]
+    async fn sync(&self) {
+        self.client.log_message(MessageType::INFO, SYNCED).await;
+    }
+
+    #[cfg(test)]
     fn inject_panic(&self, task: Task) {
         let injected = *lock(&self.injected_panic);
         assert!(injected != Some(task), "injected panic");
@@ -246,13 +322,15 @@ impl Backend {
     fn inject_panic(&self, _task: Task) {}
 
     async fn on_change(&self, uri: Url, text: Option<String>) {
-        let Some(diagnostics) = self
+        if let Some(diagnostics) = self
             .catch_panic(Task::Compile, || self.on_change_impl(&uri, text))
             .await
-        else {
-            return;
-        };
+        {
+            self.publish(diagnostics).await;
+        }
+    }
 
+    async fn publish(&self, diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>) {
         for (kind, diagnostics) in diagnostics {
             let SourceKind::File(path) = kind else {
                 continue;
@@ -293,13 +371,59 @@ impl Backend {
             }
         }
 
-        let project = match find_project(&uri_path, false) {
+        self.compile_project(&uri_path, Some(source_kind))
+    }
+
+    /// Recompiles the projects that files changed on disk belong to, outside of the editor (for
+    /// example, by switching branches).
+    fn on_watched_files_impl(
+        &self,
+        changes: &[FileEvent],
+    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+        let mut diagnostics = IndexMap::new();
+        let mut compiled = HashSet::new();
+
+        for change in changes {
+            let Ok(path) = change.uri.to_file_path() else {
+                continue;
+            };
+
+            // The files of a project whose manifest was deleted aren't part of it anymore
+            if is_manifest(&path) && !path.exists() {
+                diagnostics.extend(self.update_project(path.clone(), IndexMap::new(), Vec::new()));
+            }
+
+            // Each project is only compiled once, no matter how many of its files changed
+            if let Some(key) = project_key(&path)
+                && compiled.insert(key)
+            {
+                diagnostics.extend(self.compile_project(&path, None));
+            }
+        }
+
+        diagnostics
+    }
+
+    /// Compiles the project that a file belongs to, and returns the diagnostics to publish.
+    /// `changed` is the file that the editor changed, if any.
+    fn compile_project(
+        &self,
+        path: &Path,
+        changed: Option<SourceKind>,
+    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+        let project = match find_project(path, false) {
             Ok(Some(project)) => project,
             Err(rue_options::Error::Toml { path, error }) => {
-                return self.invalid_manifest_diagnostics(&path, &error, source_kind);
+                let diagnostics = invalid_manifest_diagnostics(&path, &error, changed);
+                return self.update_project(path, diagnostics, Vec::new());
             }
             Ok(None) | Err(_) => return IndexMap::new(),
         };
+
+        let key = project
+            .manifest_path
+            .clone()
+            .unwrap_or_else(|| project.entrypoint.clone());
 
         let manifest_diagnostics = project.manifest_path.as_deref().and_then(|path| {
             Some((
@@ -307,6 +431,9 @@ impl Backend {
                 manifest_diagnostics(path, &project),
             ))
         });
+
+        let mut diagnostics = IndexMap::<SourceKind, Vec<Diagnostic>>::new();
+        let mut caches = Vec::new();
 
         let mut ctx = Compiler::new(project.options);
 
@@ -316,86 +443,87 @@ impl Backend {
 
         self.inject_panic(Task::Compile);
 
-        let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut sources);
+        // If the project can't be compiled (for example, because its entrypoint was deleted), only
+        // the manifest's diagnostics are reported, and those of its files are cleared
+        if let Ok(tree) = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut sources) {
+            for item in ctx.take_diagnostics() {
+                diagnostics
+                    .entry(item.srcloc.source.kind.clone())
+                    .or_default()
+                    .push(diagnostic(
+                        &item,
+                        self.related_information.load(Ordering::Relaxed),
+                    ));
+            }
 
-        let Ok(tree) = tree else {
-            return IndexMap::new();
-        };
+            let ctx = Arc::new(ctx);
+            let tree = Arc::new(SendWrapper::new(tree));
 
-        let mut diagnostics = IndexMap::<SourceKind, Vec<Diagnostic>>::new();
+            for file in tree.all_files() {
+                let SourceKind::File(path) = &file.source.kind else {
+                    continue;
+                };
 
-        for item in ctx.take_diagnostics() {
-            diagnostics
-                .entry(item.srcloc.source.kind.clone())
-                .or_default()
-                .push(diagnostic(
-                    &item,
-                    self.related_information.load(Ordering::Relaxed),
+                diagnostics.entry(file.source.kind.clone()).or_default();
+
+                let Ok(uri) = Url::from_file_path(path) else {
+                    continue;
+                };
+
+                caches.push((
+                    uri,
+                    SendWrapper::new(Cache::new(ctx.clone(), tree.clone(), file.source.clone())),
                 ));
+            }
         }
-
-        let ctx = Arc::new(ctx);
-        let tree = Arc::new(SendWrapper::new(tree));
-
-        let mut caches = Vec::new();
-
-        for file in tree.all_files() {
-            let SourceKind::File(path) = &file.source.kind else {
-                continue;
-            };
-
-            diagnostics.entry(file.source.kind.clone()).or_default();
-
-            let Ok(uri) = Url::from_file_path(path) else {
-                continue;
-            };
-
-            caches.push((
-                uri,
-                SendWrapper::new(Cache::new(ctx.clone(), tree.clone(), file.source.clone())),
-            ));
-        }
-
-        // The caches are only updated once everything else succeeded, so that a panic leaves the
-        // results of the last compile in place
-        lock(&self.cache).extend(caches);
 
         // Always include the manifest, so that its diagnostics are cleared once they're fixed
         if let Some((kind, manifest_diagnostics)) = manifest_diagnostics {
             diagnostics.insert(kind, manifest_diagnostics);
         }
 
-        diagnostics
+        self.update_project(key, diagnostics, caches)
     }
 
-    /// Nothing can be compiled without the manifest, so this only reports why it's invalid. The
-    /// diagnostics of the project's files are cleared, since they're out of date.
-    fn invalid_manifest_diagnostics(
+    /// Records the result of compiling a project: the files it published diagnostics for last time
+    /// but not this time get theirs cleared, and their caches are removed, since they're not part
+    /// of the project anymore. This is only called once nothing else can fail, so that a panic
+    /// leaves the results of the last compile in place.
+    fn update_project(
         &self,
-        path: &Path,
-        error: &toml::de::Error,
-        changed: SourceKind,
+        key: PathBuf,
+        mut diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>,
+        caches: Vec<(Url, SendWrapper<Cache<Arc<Compiler>>>)>,
     ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let mut diagnostics = IndexMap::new();
+        let files = diagnostics.keys().cloned().collect::<HashSet<_>>();
 
-        let Ok(manifest_kind) = normalize_path(path) else {
-            return diagnostics;
+        let previous = {
+            let mut published = lock(&self.published);
+
+            if files.is_empty() {
+                published.remove(&key)
+            } else {
+                published.insert(key, files)
+            }
         };
 
-        diagnostics.insert(changed, Vec::new());
+        let mut cache = lock(&self.cache);
 
-        if let Some(dir) = path.parent() {
-            for uri in lock(&self.cache).keys() {
-                if let Ok(file) = uri.to_file_path()
-                    && file.starts_with(dir)
-                    && let Ok(kind) = normalize_path(&file)
-                {
-                    diagnostics.insert(kind, Vec::new());
-                }
+        for kind in previous.unwrap_or_default() {
+            if diagnostics.contains_key(&kind) {
+                continue;
             }
+
+            if let SourceKind::File(path) = &kind
+                && let Ok(uri) = Url::from_file_path(path)
+            {
+                cache.remove(&uri);
+            }
+
+            diagnostics.insert(kind, Vec::new());
         }
 
-        diagnostics.insert(manifest_kind, vec![manifest_error(path, error)]);
+        cache.extend(caches);
 
         diagnostics
     }
@@ -764,6 +892,40 @@ fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
     });
 
     unknown.chain(forbidden).collect()
+}
+
+/// Nothing can be compiled without the manifest, so this only reports why it's invalid. The
+/// diagnostics of the project's files are cleared, since they're out of date.
+fn invalid_manifest_diagnostics(
+    path: &Path,
+    error: &toml::de::Error,
+    changed: Option<SourceKind>,
+) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+    let mut diagnostics = IndexMap::new();
+
+    if let Some(changed) = changed {
+        diagnostics.insert(changed, Vec::new());
+    }
+
+    if let Ok(manifest_kind) = normalize_path(path) {
+        diagnostics.insert(manifest_kind, vec![manifest_error(path, error)]);
+    }
+
+    diagnostics
+}
+
+fn is_manifest(path: &Path) -> bool {
+    path.file_name().is_some_and(|name| name == "Rue.toml")
+}
+
+/// The manifest of the project that a file belongs to, or its entrypoint if it doesn't have one,
+/// which identifies the project.
+fn project_key(path: &Path) -> Option<PathBuf> {
+    match find_project(path, false) {
+        Ok(Some(project)) => Some(project.manifest_path.unwrap_or(project.entrypoint)),
+        Err(rue_options::Error::Toml { path, .. }) => Some(path),
+        Ok(None) | Err(_) => None,
+    }
 }
 
 /// Reports why `Rue.toml` couldn't be parsed, such as an invalid lint level.
