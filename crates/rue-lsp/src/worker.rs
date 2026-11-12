@@ -350,7 +350,6 @@ pub struct State {
     pub published: HashMap<PathBuf, Tracked>,
     /// The last compile of each project, which answers queries about its files.
     pub projects: HashMap<PathBuf, Cache<Compiler>>,
-    /// The project whose compile answers queries about each file, and the file's source.
     /// The project whose compile answers queries about each file, the file's source, and the
     /// revision of the editor's text that was compiled, if it's open.
     pub files: HashMap<SourceKind, (PathBuf, Source, Option<u64>)>,
