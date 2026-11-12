@@ -208,10 +208,17 @@ fn has_code_brace(text: &str) -> bool {
     Lexer::new(text).any(|token| token.kind == TokenKind::OpenBrace)
 }
 
-/// The text without any parentheses around the whole of it.
+/// The text without any parentheses around the whole of it. Parentheses around a line comment
+/// are kept, since without them the comment would continue onto the code after it.
 pub(crate) fn strip_parens(mut text: &str) -> &str {
     while is_parenthesized(text) {
-        text = text[1..text.len() - 1].trim();
+        let inner = text[1..text.len() - 1].trim();
+
+        if Lexer::new(inner).any(|token| token.kind == TokenKind::LineComment) {
+            break;
+        }
+
+        text = inner;
     }
     text
 }

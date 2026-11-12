@@ -78,7 +78,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn eat_line_comment(&mut self) -> TokenKind {
-        while self.peek() != '\n' {
+        // A comment at the end of the source doesn't have a newline after it
+        while !self.at_end() && self.peek() != '\n' {
             self.bump();
         }
         self.bump();
@@ -307,6 +308,16 @@ mod tests {
             "//first\n//second\n",
             expect![[r#"
                 LineComment
+                LineComment
+            "#]],
+        );
+
+        // Line comment at the end of the source, without a newline
+        check(
+            "1 // end",
+            expect![[r#"
+                Integer
+                Whitespace
                 LineComment
             "#]],
         );

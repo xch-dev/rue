@@ -1990,6 +1990,12 @@ fn main(a: Int, s: String) -> Int {
         return 9;
     }
 
+    // Without the parentheses, the comment would continue onto the `{`
+    if (a == 11 // note
+    ) == true {
+        return 11;
+    }
+
     if (\"\\\" != Point { x: a, s }.s) == false {
         return 10;
     }
@@ -2038,6 +2044,12 @@ fn main(a: Int, s: String) -> Int {
         return 9;
     }
 
+    // Without the parentheses, the comment would continue onto the `{`
+    if (a == 11 // note
+    ) {
+        return 11;
+    }
+
     if (\"\\\" == Point { x: a, s }.s) {
         return 10;
     }
@@ -2062,7 +2074,10 @@ fn main(a: Int, s: String) -> Int {
 "
     );
 
+    // The parentheses around the comment aren't needed, but removing them would also remove the
+    // comment, so that suggestion isn't applied automatically
     let (reports, has_errors) = reports(&fixed, |_| {});
-    assert_eq!(reports, Vec::<String>::new());
+    assert_eq!(reports, vec!["Warning 21: Unnecessary parentheses"]);
     assert!(!has_errors);
+    assert_eq!(fix(&fixed), fixed);
 }
