@@ -161,7 +161,7 @@ impl Walker<'_> {
         }
 
         cx.walk.parents.push(hir);
-        self.visit_children(cx, node.clone());
+        self.visit_children(cx, &node);
         cx.walk.parents.pop();
 
         for pass in &mut self.passes {
@@ -169,19 +169,19 @@ impl Walker<'_> {
         }
     }
 
-    fn visit_children(&mut self, cx: &mut LintContext<'_>, node: Hir) {
+    fn visit_children(&mut self, cx: &mut LintContext<'_>, node: &Hir) {
         match node {
             // Default values are visited from the struct declaration instead
             Hir::Struct(initializer) => self.visit_all(
                 cx,
                 initializer
                     .fields
-                    .into_iter()
+                    .iter()
                     .filter(|field| !field.is_default)
                     .map(|field| field.value),
             ),
-            Hir::Block(block) => self.visit_block(cx, &block),
-            Hir::Lambda(symbol) => self.visit_function(cx, symbol),
+            Hir::Block(block) => self.visit_block(cx, block),
+            Hir::Lambda(symbol) => self.visit_function(cx, *symbol),
             _ => self.visit_all(cx, node.children()),
         }
     }
