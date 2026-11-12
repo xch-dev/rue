@@ -207,8 +207,6 @@ impl Database {
         &self.types
     }
 
-    /// The name of a type as seen from the given scope, which falls back to the structure of the
-    /// type if it isn't named in that scope or any of its parents.
     /// The symbol that a name refers to in a scope, and the import it comes from, if any.
     pub fn resolve_symbol_in(
         &self,
@@ -245,6 +243,8 @@ impl Database {
         None
     }
 
+    /// The name of a type as seen from the given scope, which falls back to the structure of the
+    /// type if it isn't named in that scope or any of its parents.
     pub fn type_name_in(&mut self, scope: ScopeId, ty: TypeId) -> String {
         let mut current = Some(scope);
 

@@ -11,8 +11,7 @@ use std::collections::HashMap;
 use rue_hir::{BinaryOp, Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
 use rue_lir::ClvmOp;
 
-/// The cost of each byte of a program, which is usually much more than the cost of running it.
-pub(crate) const COST_PER_BYTE: u64 = 12_000;
+pub(crate) use rue_lir::COST_PER_BYTE;
 
 /// The size of a new `let` binding, which wraps the code that uses it in a function that it's
 /// passed to. Referencing the binding is about one byte, like referencing a parameter. A binding

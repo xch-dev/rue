@@ -157,8 +157,8 @@ impl HirLintPass for Inlining<'_> {
                     })
                     .collect::<HashSet<_>>();
 
-                let programs =
-                    programs.get_or_insert_with(|| Programs::new(cx.db(), self.input.entrypoints));
+                let programs = programs
+                    .get_or_insert_with(|| Programs::new(cx.db(), self.input.programs(cx.db())));
 
                 let savings =
                     programs.removing_inline_saves(cx, symbol, &inline_users, uses, parameters);
@@ -259,31 +259,11 @@ struct Programs {
 }
 
 impl Programs {
-    fn new(db: &Database, entrypoints: &HashSet<Declaration>) -> Self {
-        let tests = db.tests().map(|test| test.symbol).collect::<HashSet<_>>();
-
-        let mut programs = entrypoints
-            .iter()
-            .filter_map(|declaration| match *declaration {
-                Declaration::Symbol(symbol) => Some(symbol),
-                Declaration::Type(_) => None,
-            })
-            .filter(|program| {
-                !tests.contains(program)
-                    && matches!(
-                        db.symbol(*program),
-                        Symbol::Function(function) if function.kind != FunctionKind::Inline
-                    )
-            })
-            .collect::<Vec<_>>();
-
-        // The order of the entrypoints doesn't matter, but it's kept stable for the measurements
-        programs.sort_by_key(id_arena::Id::index);
-
+    fn new(db: &Database, programs: &[SymbolId]) -> Self {
         Self {
             graphs: programs
-                .into_iter()
-                .map(|program| (program, program_graph(db, program)))
+                .iter()
+                .map(|&program| (program, program_graph(db, program)))
                 .collect(),
             sizes: HashMap::new(),
         }

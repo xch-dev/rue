@@ -2,13 +2,17 @@ use std::{collections::HashMap, mem::Discriminant};
 
 use indexmap::IndexMap;
 use rue_diagnostic::{Lint, Note, SrcLoc};
-use rue_hir::{BinaryOp, Database, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
+use rue_hir::{
+    BinaryOp, Database, DependencyGraph, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
+};
 use rue_lir::ClvmOp;
+use rue_types::TypeId;
 
 use crate::{
     HirLintPass, LintContext,
     cost::{BINDING_SIZE, COST_PER_BYTE, Cost, CostModel, REFERENCE},
     equality::hir_eq,
+    measure::program_graph,
     text::encloses,
 };
 
@@ -24,8 +28,9 @@ pub(crate) struct RepeatedExpensiveCall {
     functions: Vec<Function>,
     /// The estimated cost of each function body.
     costs: HashMap<SymbolId, Option<Cost>>,
-    /// The number of references to each symbol seen so far.
-    references: HashMap<SymbolId, usize>,
+    /// The dependencies of the outermost function being walked, which say how many times each
+    /// binding in it is referenced in a release build.
+    graph: Option<DependencyGraph>,
 }
 
 #[derive(Debug, Default)]
@@ -51,6 +56,8 @@ struct Call {
 struct Binding {
     name: String,
     symbol: SymbolId,
+    /// The type of the binding, which may be different from the call's (such as with a cast).
+    ty: TypeId,
     /// The block that the binding is declared in.
     block: HirId,
 }
@@ -81,7 +88,7 @@ impl RepeatedExpensiveCall {
             min_savings: min_savings.max(1),
             functions: Vec::new(),
             costs: HashMap::new(),
-            references: HashMap::new(),
+            graph: None,
         }
     }
 }
@@ -91,7 +98,12 @@ impl HirLintPass for RepeatedExpensiveCall {
         &[Lint::RepeatedExpensiveCall]
     }
 
-    fn check_function(&mut self, _cx: &mut LintContext<'_>, _symbol: SymbolId, _body: HirId) {
+    fn check_function(&mut self, cx: &mut LintContext<'_>, symbol: SymbolId, _body: HirId) {
+        // The compiler inlines a binding that's only referenced once, which this decides from
+        if cx.walk.functions.len() == 1 {
+            self.graph = Some(program_graph(cx.db(), symbol));
+        }
+
         self.functions.push(Function::default());
     }
 
@@ -102,14 +114,8 @@ impl HirLintPass for RepeatedExpensiveCall {
     }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
-        // References in `debug` statements aren't part of a release build
-        if let Hir::Reference(symbol) = node
-            && !in_debug_statement(cx, hir)
-        {
-            *self.references.entry(*symbol).or_default() += 1;
-        }
-
-        if !is_expensive(node) {
+        // `debug` statements aren't part of a release build
+        if !is_expensive(node) || in_debug_statement(cx, hir) {
             return;
         }
 
@@ -165,14 +171,18 @@ impl HirLintPass for RepeatedExpensiveCall {
         };
 
         // The binding can only be used inside of the block it's declared in, where another binding
-        // with the same name doesn't shadow it
-        let in_scope = repeated.binding.as_ref().is_some_and(|binding| {
+        // with the same name doesn't shadow it, and its type must be usable where the call is
+        let binding = repeated.binding.clone();
+        let call_type = cx.db().hir_type(hir);
+
+        let in_scope = binding.is_some_and(|binding| {
             cx.parents().contains(&binding.block)
                 && cx.db().hir_scope(hir).is_some_and(|scope| {
                     cx.db()
                         .resolve_symbol_in(scope, &binding.name)
                         .is_some_and(|(symbol, _)| symbol == binding.symbol)
                 })
+                && call_type.is_some_and(|call_type| cx.is_assignable(binding.ty, call_type))
         });
 
         repeated.repeats.push((srcloc, in_scope));
@@ -180,6 +190,14 @@ impl HirLintPass for RepeatedExpensiveCall {
 }
 
 impl RepeatedExpensiveCall {
+    /// The number of times a binding is referenced, which leaves out `debug` statements and code
+    /// that isn't reached, as the compiler does.
+    fn references(&self, symbol: SymbolId) -> usize {
+        self.graph
+            .as_ref()
+            .map_or(0, |graph| graph.references(symbol))
+    }
+
     fn report(&self, cx: &mut LintContext<'_>, function: Function) {
         let mut reports = Vec::new();
 
@@ -195,7 +213,7 @@ impl RepeatedExpensiveCall {
             // A binding that's never referenced isn't evaluated, so the calls after it aren't
             // evaluated again
             if let Some(binding) = &repeated.binding
-                && !self.references.contains_key(&binding.symbol)
+                && self.references(binding.symbol) == 0
             {
                 continue;
             }
@@ -208,7 +226,7 @@ impl RepeatedExpensiveCall {
             // A binding that's only referenced once is inlined into where it's used, so using it
             // again makes it a binding, which costs as much as a new one
             let bound_savings = match &repeated.binding {
-                Some(binding) if self.references.get(&binding.symbol).copied().unwrap_or(0) < 2 => {
+                Some(binding) if self.references(binding.symbol) < 2 => {
                     (repeated.savings * count(true)).saturating_sub(new_binding)
                 }
                 _ => repeated.savings,
@@ -261,10 +279,14 @@ impl RepeatedExpensiveCall {
 /// Whether the node is inside of a `debug` statement.
 fn in_debug_statement(cx: &LintContext<'_>, hir: HirId) -> bool {
     let db = cx.db();
+    let parents = cx.parents();
 
-    cx.parents()
+    // Each enclosing node, along with the child of it that the node is in
+    let children = parents.iter().skip(1).chain([&hir]);
+
+    parents
         .iter()
-        .zip(cx.parents().iter().skip(1).chain([&hir]))
+        .zip(children)
         .any(|(&parent, &child)| match db.hir(parent) {
             Hir::Block(block) => block.statements.iter().any(
                 |statement| matches!(statement, Statement::Debug(value, _) if *value == child),
@@ -308,6 +330,7 @@ fn binding_of(cx: &LintContext<'_>, call: HirId) -> Option<Binding> {
         (!name.starts_with('_')).then_some(Binding {
             name,
             symbol: *symbol,
+            ty: binding.value.ty,
             block: *block,
         })
     })

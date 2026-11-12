@@ -77,5 +77,25 @@ fn scopes(value: Bytes) -> Bytes32 {
     inline let inlined = tree_hash(first + first);
     let reused = inlined + inlined + tree_hash(first + first);
 
-    sha256(inner + after + shadowed + repeated + again + reused)
+    // Calls in `debug` statements aren't part of a release build
+    debug tree_hash(value + inner);
+    let traced = tree_hash(value + inner);
+    debug tree_hash(value + traced);
+
+    // A binding of another type can't be used in place of the call
+    let annotated: Bytes = tree_hash(after + value);
+    let typed: Bytes32 = tree_hash(after + value);
+
+    sha256(
+        inner
+            + after
+            + shadowed
+            + repeated
+            + again
+            + reused
+            + traced
+            + annotated
+            + annotated
+            + typed,
+    )
 }

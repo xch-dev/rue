@@ -4,6 +4,8 @@ mod fold;
 mod ops;
 mod truthy;
 
+pub use fold::COST_PER_BYTE;
+
 #[cfg(test)]
 mod tests;
 

@@ -24,7 +24,7 @@ use std::{cell::OnceCell, collections::HashSet};
 
 use rue_ast::AstDocument;
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, LintOptions, Source};
-use rue_hir::{Database, Declaration};
+use rue_hir::{Database, Declaration, FunctionKind, Symbol, SymbolId};
 use rue_types::BuiltinTypes;
 
 /// Everything the lint passes need beyond the database.
@@ -43,6 +43,8 @@ pub struct LintInput<'a> {
     pub has_errors: bool,
     /// The declarations that are live, which are computed the first time a pass needs them.
     live: OnceCell<HashSet<Declaration>>,
+    /// The programs, which are computed the first time a pass needs them.
+    programs: OnceCell<Vec<SymbolId>>,
 }
 
 impl<'a> LintInput<'a> {
@@ -60,11 +62,39 @@ impl<'a> LintInput<'a> {
             options,
             has_errors,
             live: OnceCell::new(),
+            programs: OnceCell::new(),
         }
     }
 
     /// The declarations whose code is evaluated, or is needed by code that's kept, starting from
     /// the entrypoints.
+    /// The functions that are compiled into programs of their own, which are the entrypoints
+    /// other than tests (`main` and exported functions), in a stable order.
+    pub(crate) fn programs(&self, db: &Database) -> &[SymbolId] {
+        self.programs.get_or_init(|| {
+            let tests = db.tests().map(|test| test.symbol).collect::<HashSet<_>>();
+
+            let mut programs = self
+                .entrypoints
+                .iter()
+                .filter_map(|declaration| match *declaration {
+                    Declaration::Symbol(symbol) => Some(symbol),
+                    Declaration::Type(_) => None,
+                })
+                .filter(|symbol| {
+                    !tests.contains(symbol)
+                        && matches!(
+                            db.symbol(*symbol),
+                            Symbol::Function(function) if function.kind != FunctionKind::Inline
+                        )
+                })
+                .collect::<Vec<_>>();
+
+            programs.sort_by_key(id_arena::Id::index);
+            programs
+        })
+    }
+
     pub(crate) fn live_declarations(&self, db: &Database) -> &HashSet<Declaration> {
         self.live
             .get_or_init(|| lints::live_declarations(db, self.entrypoints))
