@@ -1,0 +1,63 @@
+struct Spend {
+    amount: Int,
+}
+
+struct Melt {
+    amount: Int,
+    reason: Bytes,
+}
+
+struct Transfer {
+    to: Bytes32,
+    amount: Int,
+    memo: Bytes,
+}
+
+type Action = Spend | Melt | Transfer;
+
+fn main(action: Action) -> Int {
+    expression(action) + statements(action) + different(action, action) + rejected(action)
+}
+
+// `Transfer` isn't handled, so it falls into the `raise`
+fn expression(action: Action) -> Int {
+    if action is Spend {
+        action.amount
+    } else if action is Melt {
+        -action.amount
+    } else {
+        raise "unknown action";
+    }
+}
+
+fn statements(action: Action) -> Int {
+    if action is Spend {
+        return action.amount;
+    }
+
+    if action is Melt {
+        return -action.amount;
+    }
+
+    raise;
+}
+
+// Guards on different values aren't handling the types of one of them
+fn different(action: Action, other: Action) -> Int {
+    if action is Spend {
+        action.amount
+    } else if other is Melt {
+        -other.amount
+    } else {
+        raise;
+    }
+}
+
+// A single guard is a check that rejects everything else
+fn rejected(action: Action) -> Int {
+    if action is Spend {
+        action.amount
+    } else {
+        raise;
+    }
+}

@@ -8,6 +8,7 @@ mod casts;
 mod comparisons;
 mod conditions;
 mod entrypoints;
+mod exhaustive;
 mod exports;
 mod guards;
 mod inline_ifs;
@@ -85,6 +86,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(recursion::UnconditionalRecursion),
         Box::new(repeated::RepeatedExpensiveCall::new(input)),
         Box::new(bitwise::BoolBitwiseOperator::default()),
+        Box::new(exhaustive::NonExhaustiveUnionGuard),
         Box::new(inlining::Inlining::new(input)),
         Box::new(unused_fields::UnusedStructField::new(input)),
     ]
