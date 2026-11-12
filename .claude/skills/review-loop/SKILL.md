@@ -17,10 +17,10 @@ Read the source first: `gh issue view <n> --comments` or `gh pr view <n> --comme
 
 **Open choices.** If the source leaves open anything on the reviewer brief's "needs the user" list (language design, public formats, a lint's name, level or group, scope), ask before implementing, since changing it after review costs a rewrite. #235's `bool_bitwise_operator`, for example, leaves open whether it's `allow` by default or only fires on expensive operands. If you can't ask, decide as in section 5.
 
-**Follow-ups to an open PR.** Do what the user asked; if they didn't say, continue on their own `rigidity/` branches and stack on anyone else's. Set Base to the commit the follow-up starts from, so reviewers see only the new work.
+**Follow-ups to an open PR.** Do what the user asked; if they didn't say, continue on their own `rigidity/` branches and stack on anyone else's. Base is set so that reviewers see only the new work.
 
-- *Continuing on the PR's branch* (`gh pr checkout <n>`): keep its branch name, and push to that PR in section 7.
-- *Stacking on top*: if the PR is already in a stack, `gh stack checkout <n>`; otherwise adopt its branch with `gh stack init <pr-branch>`. Then `gh stack add rigidity/<slug>`. The new branch gets its own draft PR in section 7, linking the original.
+- *Continuing on the PR's branch* (`gh pr checkout <n>`): keep its branch name, set Base to the commit the follow-up starts from, and push to that PR in section 7.
+- *Stacking on top*: if the PR is already in a stack, `gh stack checkout <n>`; otherwise `gh pr checkout <n>` first, so its branch exists locally at the PR's head, then adopt it with `gh stack init <pr-branch>`. Then `gh stack add rigidity/<slug>`. Base is the parent branch, which stays right after a restack. The new branch gets its own draft PR in section 7, linking the original. A PR from a fork can't be stacked this way; continue on a new branch from its head instead, and ask the user how they want it submitted.
 
 The state file is the memory of the loop. Reviewers start with fresh context, and after a few rounds the implementer's own context is long, so without it later rounds re-raise settled points or undo earlier decisions. Write it to the session scratchpad (not the repo), at `<scratchpad>/review-loop/<branch-slug>.md`. Every review round reads it, and every fix round updates it.
 
@@ -50,7 +50,7 @@ The state file is the memory of the loop. Reviewers start with fresh context, an
 
 Work on a `rigidity/` branch (lowercase; never `Rigidity/`), unless you're continuing someone else's PR branch. For a bug fix, write the failing regression test first. For a new lint, the usual places are:
 
-- Register it in `crates/rue-diagnostic/src/lint.rs` (the `lints!` macro: name, default level, description; add it to a `lint_groups!` group if it belongs in one). Take the name and level from the issue if it gives them; otherwise follow the neighbouring lints and record the choice under Decisions.
+- Register it in `crates/rue-diagnostic/src/lint.rs` (the `lints!` macro: name, default level, description; add it to a `lint_groups!` group if it belongs in one). Take the name and level from the issue or the user. If neither gives them, ask as in section 1; if you can't ask, follow the neighbouring lints and record the choice as provisional (section 5).
 - Write the pass in `crates/rue-lint/src/lints/<area>.rs` and list it in `crates/rue-lint/src/lints/mod.rs` (`INPUT_PASSES` for whole-input passes, `hir_passes` for the HIR walk). The `every_lint_is_reported_by_one_pass` test fails if you forget.
 - Use what's already there before writing helpers: `crates/rue-lint/src/visit.rs` (the HIR walk), `context.rs` (`LintContext::report`, levels, type queries), `text.rs` (source text, parentheses, negation, comments, keyword locations), and `Hir::children` / `Statement::hirs` in `crates/rue-hir/src/hir.rs`.
 - Add a snapshot test `tests/warnings/<lint>.rue` (starting with `#![warn(<lint>)]` if it isn't on by default). Cover the cases where the lint should *not* fire, not only where it should.
@@ -90,7 +90,7 @@ Reviewers are sometimes confidently wrong. Before acting on a finding, check it:
 - For a simplification, check that the suggested helper does what the reviewer thinks.
 - For a finding marked "needs a user decision", it's confirmed if the choice really is open: neither the source nor Settled answers it. Handle it as in section 5.
 
-Mark each finding in the review log as **confirmed**, **rejected** (with the evidence), or **deferred** (real but out of scope, with where it's recorded), and add rejected ones to the Brief's Previously rejected list. Fix every confirmed blocker and major finding, and minor ones when they're cheap. Each confirmed correctness finding gets a regression test. Nits are optional.
+Mark each finding in the review log as **confirmed**, **rejected** (with the evidence), or **deferred** (real but out of scope, with where it's recorded), and add rejected ones to the Brief's Previously rejected list and deferred ones to Out of scope (with where they're recorded), so later rounds don't raise them again. Fix every confirmed blocker and major finding, and minor ones when they're cheap. Each confirmed correctness finding gets a regression test. Nits are optional.
 
 Then run the quick checks for what you touched (`cargo test -p <crate>`, and `cargo run -p rue-tests --release -- <filter>` while iterating), regenerate every snapshot as in section 2, update the Brief, and commit (section 7).
 
