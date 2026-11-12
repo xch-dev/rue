@@ -107,15 +107,47 @@ impl<'de> Deserialize<'de> for LintConfig {
 }
 
 /// Parses the `[lints]` section, and checks that each lint's options are ones it has. Unknown
-/// names aren't errors, since they're reported as lints instead.
+/// names aren't errors, since they're reported as lints instead. Each entry is checked while it's
+/// parsed, so that an error is reported where the entry is written.
 fn deserialize_lints<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<BTreeMap<Spanned<String>, LintConfig>, D::Error> {
-    let lints = BTreeMap::<Spanned<String>, LintConfig>::deserialize(deserializer)?;
+    struct LintsVisitor;
 
-    for (name, config) in &lints {
+    impl<'de> de::Visitor<'de> for LintsVisitor {
+        type Value = BTreeMap<Spanned<String>, LintConfig>;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("a table of lints")
+        }
+
+        fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut lints = BTreeMap::new();
+
+            while let Some(name) = map.next_key::<Spanned<String>>()? {
+                let name_kind = LintName::from_name(name.get_ref());
+                let config = map.next_value_seed(ConfigSeed(name_kind))?;
+                lints.insert(name, config);
+            }
+
+            Ok(lints)
+        }
+    }
+
+    deserializer.deserialize_map(LintsVisitor)
+}
+
+/// Parses the configuration of a lint or group, and checks its options against it.
+struct ConfigSeed(Option<LintName>);
+
+impl<'de> de::DeserializeSeed<'de> for ConfigSeed {
+    type Value = LintConfig;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<LintConfig, D::Error> {
+        let config = LintConfig::deserialize(deserializer)?;
+
         for (option, value) in config.options() {
-            match LintName::from_name(name.get_ref()) {
+            match self.0 {
                 Some(LintName::Lint(lint)) => {
                     LintOptions::default()
                         .set(lint, option, value)
@@ -129,9 +161,9 @@ fn deserialize_lints<'de, D: Deserializer<'de>>(
                 None => {}
             }
         }
-    }
 
-    Ok(lints)
+        Ok(config)
+    }
 }
 
 /// A name in the `[lints]` section of a manifest that doesn't refer to a known lint or group.
@@ -462,10 +494,18 @@ mod tests {
                 "Unknown lint level `often`",
             ),
         ] {
-            let error = toml::from_str::<Manifest>(&format!("[compiler]\n\n[lints]\n{entry}\n"))
-                .unwrap_err();
+            let text = format!("[compiler]\n\n[lints]\n{entry}\n");
+            let error = toml::from_str::<Manifest>(&text).unwrap_err();
 
             assert!(error.message().contains(message), "{}", error.message());
+
+            // The error is reported at the entry, rather than at the `[lints]` header
+            let span = error.span().expect("the error should have a location");
+            let entry_start = text.find(entry).unwrap();
+            assert!(
+                span.start >= entry_start && span.end <= entry_start + entry.len(),
+                "{entry}: {span:?}"
+            );
         }
 
         // Options of unknown lints are ignored, since the name is reported instead

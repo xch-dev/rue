@@ -76,6 +76,27 @@ inline fn only_in_tests(a: Int) -> Int {
     c * c + b * a - c * 13
 }
 
+// Removing `inline` would save a little, but less than the default `min_savings`
+inline fn just_under(a: Int, b: Int) -> Int {
+    a * b + a - b * 3 + a * a + b * b - a * 5 + b * 7
+}
+
+// A function that's used once in `main`, but by an inline function that's used in several places,
+// is duplicated along with it
+inline fn transitive(a: Int, b: Int) -> Int {
+    let c = a * b + a - b;
+    let d = c * c + a * 3 - b * 7;
+    let e = d * c + d - c + a * b;
+    let f = e * e - d * d + c * c - a;
+    let g = f * e + d - c * b + a * 11;
+    let h = g * g - f * e + d * c - b * a;
+    h - g + f - e
+}
+
+inline fn wrapper(a: Int) -> Int {
+    transitive(a, a) + 1
+}
+
 inline fn small(a: Int) -> Int {
     a + 1
 }
@@ -91,6 +112,11 @@ fn main(a: Int, b: Int) -> Int {
         + folded(a)
         + folded(b)
         + folded(a + b)
+        + just_under(a, b)
+        + just_under(b, a)
+        + wrapper(a)
+        + wrapper(b)
+        + wrapper(a + b)
 }
 
 test fn first_test() {
@@ -99,4 +125,8 @@ test fn first_test() {
 
 test fn second_test() {
     assert only_in_tests(3) + only_in_tests(4) > 0;
+}
+
+test fn uses_transitive() {
+    assert transitive(1, 2) != 0;
 }

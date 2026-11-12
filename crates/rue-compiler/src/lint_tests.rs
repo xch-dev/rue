@@ -2576,6 +2576,16 @@ fn main(a: Int, b: Int, key: Bytes32) -> (Int, List<PublicKey>) {
 
     assert_eq!(lints(|_| {}), vec!["Warning 1", "Warning 9"]);
 
+    // Both are in the `cost` group
+    assert_eq!(
+        lints(|options| {
+            options
+                .lints
+                .apply(&[(LintName::Group(LintGroup::Cost), LintLevel::Allow)]);
+        }),
+        Vec::<String>::new()
+    );
+
     // The savings of each are well below these
     assert_eq!(
         lints(|options| {
@@ -2583,5 +2593,32 @@ fn main(a: Int, b: Int, key: Bytes32) -> (Int, List<PublicKey>) {
             options.lint_options.repeated_expensive_call_min_savings = 100_000_000;
         }),
         Vec::<String>::new()
+    );
+}
+
+#[test]
+fn large_inline_reports_savings_above_min_savings() {
+    // Removing `inline` saves 10 bytes, less the cost of calling it twice
+    let source = "\
+inline fn mid(a: Int, b: Int) -> Int {
+    a * b + a - b * 3 + a * a + b * b - a * 5 + b * 7
+}
+
+fn main(a: Int, b: Int) -> Int {
+    mid(a, b) + mid(b, a)
+}
+";
+
+    let (default, _) = reports(source, |_| {});
+    assert_eq!(default, Vec::<String>::new());
+
+    let (lowered, _) = reports(source, |options| {
+        options.lint_options.large_inline_min_savings = 100_000;
+    });
+    assert_eq!(
+        lowered,
+        vec![
+            "Warning 1: Inline function `mid` is large, and its body is duplicated in each of the 2 places it's used"
+        ]
     );
 }
