@@ -61,8 +61,3 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
-diagnostics:
-- |-
-  This call is evaluated again with the same arguments, which costs as much as the first time at inline_closure_captures.rue:35:11
-    note: It's first evaluated here at inline_closure_captures.rue:35:5
-    note: Store the result in a `let` binding and use that instead

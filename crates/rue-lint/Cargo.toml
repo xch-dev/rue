@@ -20,8 +20,11 @@ rue-diagnostic = { workspace = true }
 rue-hir = { workspace = true }
 rue-lexer = { workspace = true }
 rue-lir = { workspace = true }
+rue-options = { workspace = true }
 rue-parser = { workspace = true }
 rue-types = { workspace = true }
 indexmap = { workspace = true }
+clvmr = { workspace = true }
+id-arena = { workspace = true }
 num-bigint = { workspace = true }
 rowan = { workspace = true }

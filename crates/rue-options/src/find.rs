@@ -61,6 +61,7 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
         }
 
         let problems = manifest.apply_lints(&mut options.lints);
+        manifest.apply_lint_options(&mut options.lint_options);
 
         return Ok(Some(Project {
             format_options: manifest.formatter,

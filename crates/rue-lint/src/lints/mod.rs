@@ -77,7 +77,9 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(statements::NeedlessLetReturn),
         Box::new(casts::BytesIntConfusion),
         Box::new(recursion::UnconditionalRecursion),
-        Box::new(repeated::RepeatedExpensiveCall::default()),
+        Box::new(repeated::RepeatedExpensiveCall::new(
+            input.options.repeated_expensive_call_min_savings,
+        )),
         Box::new(inlining::Inlining::new(input)),
         Box::new(unused_fields::UnusedStructField::new(input)),
     ]
@@ -101,7 +103,13 @@ mod tests {
         }
 
         let entrypoints = std::collections::HashSet::new();
-        let input = LintInput::new(crate::LintSites::default(), Vec::new(), &entrypoints, false);
+        let input = LintInput::new(
+            crate::LintSites::default(),
+            Vec::new(),
+            &entrypoints,
+            rue_diagnostic::LintOptions::default(),
+            false,
+        );
 
         for pass in hir_passes(&input) {
             lints.extend(pass.lints());

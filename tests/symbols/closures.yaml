@@ -76,4 +76,4 @@ diagnostics:
 - |-
   This call is evaluated again with the same arguments, which costs as much as the first time at closures.rue:43:18
     note: It's first evaluated here at closures.rue:43:5
-    note: Store the result in a `let` binding and use that instead
+    note: Store the result in a `let` binding and use that instead, which saves an estimated cost of 268

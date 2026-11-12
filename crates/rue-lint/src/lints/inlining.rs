@@ -6,15 +6,13 @@ use rue_hir::{Database, Declaration, FunctionKind, Hir, HirId, Statement, Symbol
 use rue_ast::{AstBinding, AstConstantItem, AstLetStmt, AstNode};
 use rue_diagnostic::SrcLoc;
 
-use crate::{HirLintPass, LintContext, LintInput, NameKey, name_key, text::keyword_locations};
-
-/// The number of HIR nodes that an inline function's body can be duplicated by (its size, for
-/// each use after the first) before it's reported by `large_inline`.
-const LARGE_INLINE_DUPLICATION: usize = 200;
-
-/// The smallest body that `large_inline` reports, however many times it's used, since inlining a
-/// small function is usually cheaper than calling it.
-const LARGE_INLINE_SIZE: usize = 40;
+use crate::{
+    HirLintPass, LintContext, LintInput, NameKey,
+    cost::{COST_PER_BYTE, call_overhead},
+    measure::{program_size, program_uses},
+    name_key,
+    text::keyword_locations,
+};
 
 /// Reports inline constants and bindings that are only used once, which the compiler would
 /// inline anyway, and large inline functions that are used in several places.
@@ -82,6 +80,8 @@ impl HirLintPass for Inlining<'_> {
 
     fn finish(&mut self, cx: &mut LintContext<'_>) {
         let mut reports = Vec::new();
+        let mut large = Vec::new();
+        let mut sizes = HashMap::new();
 
         for &(symbol, function) in &self.bindings {
             let Symbol::Binding(binding) = cx.db().symbol(symbol) else {
@@ -119,21 +119,33 @@ impl HirLintPass for Inlining<'_> {
                 Symbol::Function(function) if function.kind == FunctionKind::Inline => {
                     let uses = self.references(symbol).len();
 
-                    let Some(name) = function.name.clone() else {
-                        continue;
-                    };
-
-                    if uses < 2 {
-                        continue;
-                    }
-
-                    let size = body_size(cx.db(), function.body);
-
-                    if size >= LARGE_INLINE_SIZE && size * (uses - 1) >= LARGE_INLINE_DUPLICATION {
-                        reports.push(Report::Large(name, uses));
+                    if uses >= 2
+                        && let Some(name) = function.name.clone()
+                    {
+                        large.push((symbol, name, uses, function.parameters.len()));
                     }
                 }
                 _ => {}
+            }
+        }
+
+        // Measuring the programs requires code that compiled without errors
+        if !self.input.has_errors && !large.is_empty() && cx.is_enabled(Lint::LargeInline) {
+            let min_savings = self.input.options.large_inline_min_savings.max(1);
+
+            for (symbol, name, uses, parameters) in large {
+                let savings = removing_inline_saves(
+                    cx,
+                    self.input.entrypoints,
+                    symbol,
+                    uses,
+                    parameters,
+                    &mut sizes,
+                );
+
+                if savings >= min_savings {
+                    reports.push(Report::Large(name, uses, savings));
+                }
             }
         }
 
@@ -160,8 +172,9 @@ impl Inlining<'_> {
 enum Report {
     /// An inline constant or binding that's only used once, along with what it is.
     Redundant(Name, &'static str),
-    /// A large inline function, along with the number of places it's used.
-    Large(Name, usize),
+    /// A large inline function, along with the number of places it's used, and the estimated cost
+    /// that removing `inline` would save.
+    Large(Name, usize, u64),
 }
 
 impl Report {
@@ -192,7 +205,7 @@ impl Report {
                     ));
                 }
             }
-            Self::Large(name, uses) => {
+            Self::Large(name, uses, savings) => {
                 let Some(srcloc) = name.srcloc().cloned() else {
                     return;
                 };
@@ -208,47 +221,100 @@ impl Report {
                     return;
                 };
 
-                diagnostic.notes.push(Note::new(
-                    "Removing `inline` would define it once and call it instead, which is usually smaller",
-                ));
+                diagnostic.notes.push(Note::new(format!(
+                    "Removing `inline` would define it once and call it instead, which saves an estimated cost of {savings}"
+                )));
             }
         }
     }
 }
 
-/// The number of HIR nodes in a function's body, including the values of its bindings.
-fn body_size(db: &Database, body: HirId) -> usize {
-    let mut visited = HashSet::new();
-    let mut stack = vec![body];
+/// The cost that removing `inline` from a function would save, from the difference in the size
+/// of each program that uses it (besides tests), less the cost of calling it in each place it's
+/// used. The size of each program as it is is remembered, since it's the same for every function.
+fn removing_inline_saves(
+    cx: &mut LintContext<'_>,
+    entrypoints: &HashSet<Declaration>,
+    symbol: SymbolId,
+    uses: usize,
+    parameters: usize,
+    sizes: &mut HashMap<SymbolId, Option<u64>>,
+) -> u64 {
+    let tests = cx
+        .db()
+        .tests()
+        .map(|test| test.symbol)
+        .collect::<HashSet<_>>();
 
-    while let Some(hir) = stack.pop() {
-        if !visited.insert(hir) {
+    let mut programs = Vec::new();
+
+    for &declaration in entrypoints {
+        let Declaration::Symbol(program) = declaration else {
+            continue;
+        };
+
+        if tests.contains(&program)
+            || !matches!(
+                cx.db().symbol(program),
+                Symbol::Function(function) if function.kind != FunctionKind::Inline
+            )
+            || !program_uses(cx.db(), program, symbol)
+        {
             continue;
         }
 
-        let node = db.hir(hir);
-
-        // A const expression is replaced by its result, which is all that's duplicated
-        if let Hir::Const(expr) = node {
-            stack.push(expr.result.unwrap_or(expr.value));
-            continue;
-        }
-
-        // The values of bindings are stored in their symbols, but they're part of the body
-        if let Hir::Block(block) = node {
-            for statement in &block.statements {
-                if let Statement::Let(symbol, _) = statement
-                    && let Symbol::Binding(binding) = db.symbol(*symbol)
-                {
-                    stack.push(binding.value.hir);
-                }
-            }
-        }
-
-        stack.extend(node.children());
+        programs.push(program);
     }
 
-    visited.len()
+    // The order of the entrypoints doesn't matter, but it's kept stable for the measurements
+    programs.sort_by_key(id_arena::Id::index);
+
+    let mut saved_bytes: i64 = 0;
+
+    for program in programs {
+        let before = *sizes
+            .entry(program)
+            .or_insert_with(|| program_size(cx.db_mut(), program));
+
+        let after = with_kind(cx.db_mut(), symbol, FunctionKind::BinaryTree, |db| {
+            program_size(db, program)
+        });
+
+        let (Some(before), Some(after)) = (before, after) else {
+            return 0;
+        };
+
+        saved_bytes += before.cast_signed() - after.cast_signed();
+    }
+
+    let Ok(saved_bytes) = u64::try_from(saved_bytes) else {
+        return 0;
+    };
+
+    saved_bytes
+        .saturating_mul(COST_PER_BYTE)
+        .saturating_sub(call_overhead(parameters).runtime * uses as u64)
+}
+
+/// Runs the closure with the function changed to the given kind, and changes it back afterward.
+fn with_kind<T>(
+    db: &mut Database,
+    symbol: SymbolId,
+    kind: FunctionKind,
+    f: impl FnOnce(&mut Database) -> T,
+) -> T {
+    let Symbol::Function(function) = db.symbol_mut(symbol) else {
+        return f(db);
+    };
+
+    let original = std::mem::replace(&mut function.kind, kind);
+    let result = f(db);
+
+    if let Symbol::Function(function) = db.symbol_mut(symbol) {
+        function.kind = original;
+    }
+
+    result
 }
 
 /// The location of the `inline` keyword (and the space after it) of each inline constant and

@@ -100,6 +100,21 @@ unnecessary_cast = "allow"
 
 Within `Rue.toml`, a lint's own level takes precedence over the level of its group, regardless of the order they're written in. Here every `unused_*` lint is denied, except for `unused_binding`. The exception is a forbidden group, whose lints can't be set to any other level, so `unused = "forbid"` with `unused_binding = "allow"` is an error.
 
+Some lints also have options, which are set by writing the lint as a table, like in Cargo. The level can be left out to keep the default:
+
+```toml
+[lints]
+large_inline = { level = "deny", min_savings = 500000 }
+repeated_expensive_call.min_savings = 100000
+```
+
+| Lint                      | Option        | Default   | Description                                                                                     |
+| ------------------------- | ------------- | --------- | ----------------------------------------------------------------------------------------------- |
+| `large_inline`            | `min_savings` | `120000`  | The smallest cost that removing `inline` must save for the function to be reported.             |
+| `repeated_expensive_call` | `min_savings` | `1`       | The smallest cost that storing the result of a repeated call must save for it to be reported.   |
+
+Costs are in CLVM cost units, where each byte of a program costs 12,000. `large_inline` compiles each program (other than tests) with and without the function being inline, and compares their size. `repeated_expensive_call` estimates the size and cost of the call from the code, since reusing its result changes the code.
+
 Levels can also be overridden for a single `build` or `test` with `-A`/`--allow`, `-W`/`--warn`, `-D`/`--deny` and `-F`/`--forbid`, which take precedence over `Rue.toml`, including a group flag over a lint set individually in `Rue.toml`. Among the flags, a lint's own flag takes precedence over its group's, unless the group is forbidden. Otherwise, if a lint is passed more than once, the last flag wins, unless the lint is already forbidden in `Rue.toml` or by an earlier flag (which is an error):
 
 ```bash

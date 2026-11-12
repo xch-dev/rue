@@ -500,6 +500,7 @@ impl Compiler {
             mem::take(&mut self.lint_sites),
             documents,
             entrypoints,
+            self.options.lint_options,
             self.has_errors(),
         );
 

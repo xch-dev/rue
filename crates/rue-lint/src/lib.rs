@@ -6,9 +6,11 @@
 //! reported, and at what level, is decided entirely here.
 
 mod context;
+mod cost;
 mod equality;
 mod levels;
 mod lints;
+mod measure;
 mod sites;
 mod text;
 mod visit;
@@ -21,7 +23,7 @@ pub use visit::*;
 use std::{cell::OnceCell, collections::HashSet};
 
 use rue_ast::AstDocument;
-use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, Source};
+use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, LintOptions, Source};
 use rue_hir::{Database, Declaration};
 use rue_types::BuiltinTypes;
 
@@ -34,6 +36,8 @@ pub struct LintInput<'a> {
     pub documents: Vec<(&'a Source, &'a AstDocument)>,
     /// The declarations that are used externally, such as `main`, tests and exports.
     pub entrypoints: &'a HashSet<Declaration>,
+    /// The options that change when some lints are reported.
+    pub options: LintOptions,
     /// Whether compilation reported any errors. Code that failed to compile may not have recorded
     /// all of its sites, so `expect` attributes aren't checked, as in Rust.
     pub has_errors: bool,
@@ -46,12 +50,14 @@ impl<'a> LintInput<'a> {
         sites: LintSites,
         documents: Vec<(&'a Source, &'a AstDocument)>,
         entrypoints: &'a HashSet<Declaration>,
+        options: LintOptions,
         has_errors: bool,
     ) -> Self {
         Self {
             sites,
             documents,
             entrypoints,
+            options,
             has_errors,
             live: OnceCell::new(),
         }

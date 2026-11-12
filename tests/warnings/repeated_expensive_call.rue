@@ -21,5 +21,11 @@ fn main(value: Bytes, flag: Bool) -> Bytes32 {
     let nested = sha256(sha256(value) + value);
     let nested_again = sha256(sha256(value) + value);
 
-    sha256(first + second + branches + hashed + inside + nested + nested_again)
+    // A short call costs less to evaluate again than a new binding would add to the program
+    let short = sha256(first + second) + sha256(first + second);
+
+    // A function that calls itself is expensive to call again
+    let recursive = tree_hash(nested) + tree_hash(nested);
+
+    sha256(first + second + branches + hashed + inside + nested + nested_again + short + recursive)
 }

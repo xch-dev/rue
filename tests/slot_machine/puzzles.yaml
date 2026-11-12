@@ -47,10 +47,6 @@ diagnostics:
   Unnecessary `inline`, since binding `Registration_Price` is only used once, so it's inlined anyway at actions/catalog/register.rue:55:16
     help: Remove `inline`
 - |-
-  This call is evaluated again with the same arguments, which costs as much as the first time at nft_pack.rue:71:13
-    note: It's first evaluated here at nft_pack.rue:54:13
-    note: Store the result in a `let` binding and use that instead
-- |-
   Unnecessary `inline`, since binding `refund_puzzle_hash_hash` is only used once, so it's inlined anyway at actions/catalog/refund.rue:28:16
     help: Remove `inline`
 - |-

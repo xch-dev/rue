@@ -69,6 +69,13 @@ inline fn folded(a: Int) -> Int {
         }
 }
 
+// Tests aren't deployed, so their cost doesn't matter
+inline fn only_in_tests(a: Int) -> Int {
+    let b = a * a + a * 3 - 7;
+    let c = b * b - a * b + 11;
+    c * c + b * a - c * 13
+}
+
 inline fn small(a: Int) -> Int {
     a + 1
 }
@@ -84,4 +91,12 @@ fn main(a: Int, b: Int) -> Int {
         + folded(a)
         + folded(b)
         + folded(a + b)
+}
+
+test fn first_test() {
+    assert only_in_tests(1) + only_in_tests(2) > 0;
+}
+
+test fn second_test() {
+    assert only_in_tests(3) + only_in_tests(4) > 0;
 }

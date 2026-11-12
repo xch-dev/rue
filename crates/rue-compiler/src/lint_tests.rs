@@ -2550,3 +2550,38 @@ fn main() -> Int {
     );
     assert!(!has_errors);
 }
+
+#[test]
+fn lint_options_change_when_cost_lints_are_reported() {
+    let source = "\
+inline fn mix(a: Int, b: Int) -> Int {
+    let c = a * b + a - b;
+    let d = c * c + a * 3 - b * 7;
+    d * c + d - c + a * b
+}
+
+fn main(a: Int, b: Int, key: Bytes32) -> (Int, List<PublicKey>) {
+    let x = mix(a, b) + mix(b, a) + mix(a, a);
+    (x, [pubkey_for_exp(key), pubkey_for_exp(key)])
+}
+";
+
+    let lints = |configure: fn(&mut CompilerOptions)| {
+        reports(source, configure)
+            .0
+            .into_iter()
+            .map(|report| report.split(':').next().unwrap_or_default().to_string())
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(lints(|_| {}), vec!["Warning 1", "Warning 9"]);
+
+    // The savings of each are well below these
+    assert_eq!(
+        lints(|options| {
+            options.lint_options.large_inline_min_savings = 100_000_000;
+            options.lint_options.repeated_expensive_call_min_savings = 100_000_000;
+        }),
+        Vec::<String>::new()
+    );
+}

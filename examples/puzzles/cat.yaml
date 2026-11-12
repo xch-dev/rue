@@ -5,3 +5,7 @@ output: ((70 0x615236766bed52d7abaa41d270407f3ec852981852334b213bd8515924459a5d)
 runtime_cost: 297874
 byte_cost: 17472000
 total_cost: 17769874
+diagnostics:
+- |-
+  Inline function `cat_puzzle_hash` is large, and its body is duplicated in each of the 3 places it's used at cat.rue:83:11
+    note: Removing `inline` would define it once and call it instead, which saves an estimated cost of 1583184

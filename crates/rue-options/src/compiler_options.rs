@@ -1,4 +1,4 @@
-use rue_diagnostic::LintLevels;
+use rue_diagnostic::{LintLevels, LintOptions};
 
 #[derive(Debug, Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)]
@@ -24,6 +24,9 @@ pub struct CompilerOptions {
 
     /// The level each lint is reported at.
     pub lints: LintLevels,
+
+    /// The options that change when some lints are reported.
+    pub lint_options: LintOptions,
 }
 
 impl Default for CompilerOptions {
@@ -36,6 +39,7 @@ impl Default for CompilerOptions {
             optimize_static_pairs: true,
             const_eval_max_cost: 11_000_000_000,
             lints: LintLevels::default(),
+            lint_options: LintOptions::default(),
         }
     }
 }
@@ -50,6 +54,7 @@ impl CompilerOptions {
             optimize_static_pairs: false,
             const_eval_max_cost: 11_000_000_000,
             lints: LintLevels::default(),
+            lint_options: LintOptions::default(),
         }
     }
 }

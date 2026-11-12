@@ -1,7 +1,9 @@
-use std::{collections::BTreeMap, ops::Range};
+use std::{collections::BTreeMap, fmt, ops::Range};
 
-use rue_diagnostic::{DiagnosticKind, ForbiddenBy, Lint, LintLevel, LintLevels, LintName};
-use serde::{Deserialize, Serialize};
+use rue_diagnostic::{
+    DiagnosticKind, ForbiddenBy, Lint, LintLevel, LintLevels, LintName, LintOptions,
+};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use toml::Spanned;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -9,10 +11,127 @@ pub struct Manifest {
     pub compiler: CompilerSection,
     #[serde(default)]
     pub formatter: FormatOptions,
-    /// Overrides for the level of each lint or lint group, keyed by name. The span of each name is
-    /// kept so that problems with it can be reported where it's written.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub lints: BTreeMap<Spanned<String>, LintLevel>,
+    /// Overrides for the level and options of each lint or lint group, keyed by name. The span of
+    /// each name is kept so that problems with it can be reported where it's written.
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "deserialize_lints"
+    )]
+    pub lints: BTreeMap<Spanned<String>, LintConfig>,
+}
+
+/// How a lint or group is configured in the `[lints]` section of a manifest, which is either its
+/// level (such as `unused = "deny"`), or a table with its level and options (such as
+/// `large_inline = { level = "warn", min_savings = 50000 }`), like in Cargo.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum LintConfig {
+    Level(LintLevel),
+    Table {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        level: Option<LintLevel>,
+        #[serde(flatten)]
+        options: BTreeMap<String, u64>,
+    },
+}
+
+impl LintConfig {
+    pub fn level(&self) -> Option<LintLevel> {
+        match self {
+            Self::Level(level) => Some(*level),
+            Self::Table { level, .. } => *level,
+        }
+    }
+
+    pub fn options(&self) -> impl Iterator<Item = (&str, u64)> {
+        let options = match self {
+            Self::Level(_) => None,
+            Self::Table { options, .. } => Some(options),
+        };
+
+        options
+            .into_iter()
+            .flatten()
+            .map(|(option, &value)| (option.as_str(), value))
+    }
+}
+
+impl<'de> Deserialize<'de> for LintConfig {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ConfigVisitor;
+
+        impl<'de> de::Visitor<'de> for ConfigVisitor {
+            type Value = LintConfig;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(
+                    "a lint level (`allow`, `warn`, `deny` or `forbid`), or a table with a `level` and options",
+                )
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<LintConfig, E> {
+                value.parse().map(LintConfig::Level).map_err(E::custom)
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<LintConfig, A::Error> {
+                let mut level = None;
+                let mut options = BTreeMap::new();
+
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "level" {
+                        level = Some(map.next_value::<LintLevel>()?);
+                        continue;
+                    }
+
+                    let value = map.next_value::<toml::Value>()?;
+
+                    let Some(value) = value
+                        .as_integer()
+                        .and_then(|value| u64::try_from(value).ok())
+                    else {
+                        return Err(de::Error::custom(format!(
+                            "Expected lint option `{key}` to be a non-negative integer"
+                        )));
+                    };
+
+                    options.insert(key, value);
+                }
+
+                Ok(LintConfig::Table { level, options })
+            }
+        }
+
+        deserializer.deserialize_any(ConfigVisitor)
+    }
+}
+
+/// Parses the `[lints]` section, and checks that each lint's options are ones it has. Unknown
+/// names aren't errors, since they're reported as lints instead.
+fn deserialize_lints<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<Spanned<String>, LintConfig>, D::Error> {
+    let lints = BTreeMap::<Spanned<String>, LintConfig>::deserialize(deserializer)?;
+
+    for (name, config) in &lints {
+        for (option, value) in config.options() {
+            match LintName::from_name(name.get_ref()) {
+                Some(LintName::Lint(lint)) => {
+                    LintOptions::default()
+                        .set(lint, option, value)
+                        .map_err(de::Error::custom)?;
+                }
+                Some(LintName::Group(group)) => {
+                    return Err(de::Error::custom(format!(
+                        "Lint group `{group}` can't have options, but the lints in it can"
+                    )));
+                }
+                None => {}
+            }
+        }
+    }
+
+    Ok(lints)
 }
 
 /// A name in the `[lints]` section of a manifest that doesn't refer to a known lint or group.
@@ -60,10 +179,12 @@ impl Manifest {
         let mut spans = Vec::new();
         let mut problems = LintProblems::default();
 
-        for (name, &level) in &self.lints {
+        for (name, config) in &self.lints {
             if let Some(lint) = LintName::from_name(name.get_ref()) {
-                overrides.push((lint, level));
-                spans.push((lint, name.span()));
+                if let Some(level) = config.level() {
+                    overrides.push((lint, level));
+                    spans.push((lint, name.span()));
+                }
             } else {
                 problems.unknown.push(UnknownLint {
                     name: name.get_ref().clone(),
@@ -89,6 +210,18 @@ impl Manifest {
         }
 
         problems
+    }
+
+    /// Applies the options set in the `[lints]` section. Options of unknown lints are ignored,
+    /// and the rest were checked when the manifest was parsed.
+    pub fn apply_lint_options(&self, options: &mut LintOptions) {
+        for (name, config) in &self.lints {
+            if let Some(LintName::Lint(lint)) = LintName::from_name(name.get_ref()) {
+                for (option, value) in config.options() {
+                    let _ = options.set(lint, option, value);
+                }
+            }
+        }
     }
 }
 
@@ -269,6 +402,90 @@ mod tests {
 
             assert!(error.message().contains(message), "{}", error.message());
         }
+    }
+
+    #[test]
+    fn lints_can_set_options_in_a_table() {
+        let manifest: Manifest = toml::from_str(
+            r#"
+            [compiler]
+            entrypoint = "puzzles"
+
+            [lints]
+            large_inline = { level = "deny", min_savings = 50000 }
+            repeated_expensive_call.min_savings = 0
+            "#,
+        )
+        .unwrap();
+
+        let mut levels = LintLevels::default();
+        assert_eq!(manifest.apply_lints(&mut levels), LintProblems::default());
+        assert_eq!(levels.get(Lint::LargeInline), LintLevel::Deny);
+
+        // A table without a level leaves the level as it is
+        assert_eq!(
+            levels.get(Lint::RepeatedExpensiveCall),
+            Lint::RepeatedExpensiveCall.default_level()
+        );
+
+        let mut options = LintOptions::default();
+        manifest.apply_lint_options(&mut options);
+        assert_eq!(options.large_inline_min_savings, 50000);
+        assert_eq!(options.repeated_expensive_call_min_savings, 0);
+    }
+
+    #[test]
+    fn invalid_lint_options_are_errors() {
+        for (entry, message) in [
+            (
+                "large_inline = { min_saving = 1 }",
+                "Unknown option `min_saving` for lint `large_inline`, expected `min_savings`",
+            ),
+            (
+                "unused_binding = { level = \"deny\", min_savings = 1 }",
+                "Unknown option `min_savings` for lint `unused_binding`, which doesn't have any options",
+            ),
+            (
+                "cost = { min_savings = 1 }",
+                "Lint group `cost` can't have options, but the lints in it can",
+            ),
+            (
+                "large_inline = { min_savings = -1 }",
+                "Expected lint option `min_savings` to be a non-negative integer",
+            ),
+            (
+                "large_inline = { min_savings = \"many\" }",
+                "Expected lint option `min_savings` to be a non-negative integer",
+            ),
+            (
+                "large_inline = { level = \"often\" }",
+                "Unknown lint level `often`",
+            ),
+        ] {
+            let error = toml::from_str::<Manifest>(&format!("[compiler]\n\n[lints]\n{entry}\n"))
+                .unwrap_err();
+
+            assert!(error.message().contains(message), "{}", error.message());
+        }
+
+        // Options of unknown lints are ignored, since the name is reported instead
+        let manifest: Manifest =
+            toml::from_str("[compiler]\n\n[lints]\ntypo = { min_savings = 1 }\n").unwrap();
+        let mut options = LintOptions::default();
+        manifest.apply_lint_options(&mut options);
+        assert_eq!(options, LintOptions::default());
+    }
+
+    #[test]
+    fn lint_tables_round_trip() {
+        let text = "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nlarge_inline = { level = \"deny\", min_savings = 50000 }\nunused = \"allow\"\n";
+        let manifest: Manifest = toml::from_str(text).unwrap();
+        let reparsed: Manifest = toml::from_str(&toml::to_string(&manifest).unwrap()).unwrap();
+
+        assert_eq!(
+            reparsed.lints.values().collect::<Vec<_>>(),
+            manifest.lints.values().collect::<Vec<_>>()
+        );
     }
 
     #[test]
