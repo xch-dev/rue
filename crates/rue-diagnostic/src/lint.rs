@@ -326,6 +326,35 @@ lint_groups! {
         UnusedStructField,
         UnusedExport,
     ]),
+    Style("style", "Code that works, but could be written more simply or idiomatically", [
+        EmptyGenerics,
+        UnnecessaryCast,
+        UnnecessaryGuard,
+        UnnecessaryPlus,
+        UnnecessaryReturn,
+        BoolComparison,
+        NeedlessBool,
+        NegatedCondition,
+        CollapsibleIf,
+        ManualAssert,
+        NeedlessLetReturn,
+        RedundantFieldNames,
+        UnnecessaryParens,
+        NamingConvention,
+        ShadowedBinding,
+    ]),
+    Suspicious("suspicious", "Code that's likely to be a mistake", [
+        IndistinguishableGuard,
+        ConstantCondition,
+        DoubleNegation,
+        UnreachableCode,
+        InlineIfMayRaise,
+        SelfComparison,
+        IdenticalBranches,
+        DuplicateCondition,
+        UnconditionalRecursion,
+        BytesIntConfusion,
+    ]),
 }
 
 impl LintGroup {
@@ -550,6 +579,21 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(LintGroup::Unused.lints(), expected);
+    }
+
+    #[test]
+    fn lints_are_in_at_most_one_group() {
+        for &lint in Lint::ALL {
+            let groups = LintGroup::ALL
+                .iter()
+                .filter(|group| group.lints().contains(&lint))
+                .collect::<Vec<_>>();
+
+            assert!(
+                groups.len() <= 1,
+                "lint `{lint}` is in more than one group: {groups:?}"
+            );
+        }
     }
 
     #[test]

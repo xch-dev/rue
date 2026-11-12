@@ -80,7 +80,13 @@ Useful `build` flags:
 
 Warnings such as unused bindings or unnecessary casts are lints, which can be configured to be allowed, reported as warnings, denied (which fails compilation), or forbidden (which is like denied, but can't be changed by attributes or later flags). Run `rue lints` to see every lint and its default level.
 
-Related lints are also in groups, which can be configured anywhere a lint can. For example, `unused` contains every `unused_*` lint. Run `rue lints` to see the groups and the lints in them.
+Related lints are also in groups, which can be configured anywhere a lint can. Run `rue lints` to see the lints in each group:
+
+- `unused` contains every `unused_*` lint.
+- `style` contains lints for code that works, but could be written more simply, such as `unnecessary_parens` and `collapsible_if`.
+- `suspicious` contains lints for code that's likely to be a mistake, such as `self_comparison` and `unconditional_recursion`.
+
+A group sets the level of every lint in it, including the ones that are allowed by default, so `style = "warn"` also enables `negated_condition` and `shadowed_binding`.
 
 Levels can be set in `Rue.toml`:
 
