@@ -549,7 +549,9 @@ async fn test_registers_file_watchers() {
 
     let messages = client
         .initialize_with(json!({
-            "workspace": { "didChangeWatchedFiles": { "dynamicRegistration": true } },
+            "capabilities": {
+                "workspace": { "didChangeWatchedFiles": { "dynamicRegistration": true } },
+            },
         }))
         .await;
 

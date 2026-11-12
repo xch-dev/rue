@@ -354,17 +354,11 @@ impl Backend {
 
     async fn publish(&self, diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>) {
         for (kind, diagnostics) in diagnostics {
-            let SourceKind::File(path) = kind else {
-                continue;
-            };
-
-            let Some(uri) = self.paths.uri(&path) else {
-                continue;
-            };
-
-            self.client
-                .publish_diagnostics(uri, diagnostics, None)
-                .await;
+            for uri in self.paths.uris(&kind) {
+                self.client
+                    .publish_diagnostics(uri, diagnostics.clone(), None)
+                    .await;
+            }
         }
     }
 
@@ -417,7 +411,6 @@ impl Backend {
         edited: Option<&Path>,
     ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
         let published = lock(&self.published).clone();
-        let open = self.paths.documents();
 
         let mut lookups = edited
             .map(Path::to_path_buf)
@@ -435,11 +428,7 @@ impl Backend {
 
             removed.push(key.clone());
 
-            lookups.extend(
-                files
-                    .iter()
-                    .filter_map(|kind| open.get(kind).and_then(uri_to_path)),
-            );
+            lookups.extend(files.iter().filter_map(|kind| self.paths.open_path(kind)));
         }
 
         // Each project is only compiled once, no matter how many of its files changed
@@ -828,12 +817,8 @@ struct SuggestionData {
 }
 
 fn location(srcloc: &SrcLoc, paths: &Paths) -> Option<Location> {
-    let SourceKind::File(path) = &srcloc.source.kind else {
-        return None;
-    };
-
     Some(Location::new(
-        paths.uri(path)?,
+        paths.uri(&srcloc.source.kind)?,
         offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
     ))
 }

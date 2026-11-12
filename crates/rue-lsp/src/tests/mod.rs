@@ -11,6 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use rue_compiler::normalize_path;
 use tower_lsp::LspService;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
@@ -19,8 +20,6 @@ use tower_lsp::lsp_types::{
     Position, Range, ReferenceContext, ReferenceParams, TextDocumentIdentifier,
     TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
 };
-
-use rue_compiler::normalize_path;
 
 use crate::{Backend, code_actions, position::position_to_offset};
 
@@ -373,8 +372,8 @@ impl TestProject {
             .into_iter()
             .filter_map(|(kind, diagnostics)| match kind {
                 // Files are reported with the paths the client uses
-                rue_diagnostic::SourceKind::File(path) => Some((
-                    self.backend().paths.uri(&path)?.to_file_path().ok()?,
+                rue_diagnostic::SourceKind::File(_) => Some((
+                    self.backend().paths.uri(&kind)?.to_file_path().ok()?,
                     diagnostics,
                 )),
                 rue_diagnostic::SourceKind::Std(_) => None,

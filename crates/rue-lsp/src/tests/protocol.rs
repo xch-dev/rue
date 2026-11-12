@@ -120,12 +120,10 @@ impl Client {
         *lock(&self.backend().injected_panic) = task;
     }
 
-    /// Sends `initialize` with the given client capabilities and `initialized`, and returns the
-    /// messages the server sent in response, other than the log message saying it's initialized.
-    pub(super) async fn initialize_with(&mut self, capabilities: Value) -> Vec<Request> {
-        let response = self
-            .request("initialize", Some(json!({ "capabilities": capabilities })))
-            .await;
+    /// Sends `initialize` with the given parameters and `initialized`, and returns the messages
+    /// the server sent in response, other than the log message saying it's initialized.
+    pub(super) async fn initialize_with(&mut self, params: Value) -> Vec<Request> {
+        let response = self.request("initialize", Some(params)).await;
         assert!(response.is_ok());
 
         self.notify("initialized", json!({})).await;
@@ -140,7 +138,7 @@ impl Client {
     /// A client that has initialized the server, with no capabilities.
     pub(super) async fn initialized() -> Self {
         let mut client = Self::new();
-        let messages = client.initialize_with(json!({})).await;
+        let messages = client.initialize_with(json!({ "capabilities": {} })).await;
         assert!(messages.is_empty(), "unexpected messages: {messages:?}");
         client
     }
@@ -614,13 +612,15 @@ async fn test_uri_spelling_is_kept() {
     let mut client = Client::initialized().await;
     client.open(&uri, SOURCE).await;
 
-    let messages = client.sync().await;
-    assert!(
-        messages
-            .iter()
-            .any(|message| message.params().unwrap()["uri"] == json!(uri)),
-        "{messages:?}"
-    );
+    // The diagnostics are only published to the URI the editor used
+    let mut published = client
+        .sync()
+        .await
+        .iter()
+        .map(|message| message.params().unwrap()["uri"].clone())
+        .collect::<Vec<_>>();
+    published.sort_by_key(ToString::to_string);
+    assert_eq!(published, [json!(uri), json!(project.uri("Rue.toml"))]);
 
     assert_hover(&mut client, &uri).await;
 
@@ -628,4 +628,40 @@ async fn test_uri_spelling_is_kept() {
         .request("textDocument/definition", Some(position(&uri, 2, 6)))
         .await;
     assert_eq!(response.result().unwrap()["uri"], json!(uri));
+}
+
+#[tokio::test]
+async fn test_workspace_folder_paths() {
+    // The project's entrypoint is outside of its directory, but inside the workspace
+    let project = TempProject::with_manifest(
+        None,
+        &[
+            (
+                "proj/Rue.toml",
+                "[compiler]\nentrypoint = \"../lib\"\nstd = false\n",
+            ),
+            ("lib/main.rue", MISMATCH),
+        ],
+    );
+    let manifest = project.uri("proj/Rue.toml");
+
+    let mut client = Client::new();
+    let messages = client
+        .initialize_with(json!({
+            "capabilities": {},
+            "workspaceFolders": [{ "uri": project.uri(""), "name": "workspace" }],
+        }))
+        .await;
+    assert!(messages.is_empty(), "{messages:?}");
+
+    client
+        .open(
+            &manifest,
+            "[compiler]\nentrypoint = \"../lib\"\nstd = false\n",
+        )
+        .await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["lib/main.rue: [1]", "proj/Rue.toml: []"]
+    );
 }
