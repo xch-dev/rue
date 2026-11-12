@@ -24,18 +24,6 @@ impl Diagnostic {
         }
     }
 
-    #[must_use]
-    pub fn with_note(mut self, note: Note) -> Self {
-        self.notes.push(note);
-        self
-    }
-
-    #[must_use]
-    pub fn with_suggestion(mut self, suggestion: Suggestion) -> Self {
-        self.suggestions.push(suggestion);
-        self
-    }
-
     /// The lint this diagnostic belongs to, if any.
     pub fn lint(&self) -> Option<Lint> {
         self.kind.lint()

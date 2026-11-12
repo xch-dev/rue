@@ -1,6 +1,6 @@
 use log::debug;
 use rue_ast::{AstBlock, AstNode, AstStmt, AstStmtOrExpr};
-use rue_diagnostic::{DiagnosticKind, SrcLoc};
+use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, Hir, IfStatement, Statement, Symbol, Value,
 };
@@ -237,10 +237,7 @@ pub fn compile_block(
 
                 ctx.push_mappings(value.then_map, stmt.syntax().text_range().end());
 
-                Statement::Assert(
-                    value.hir,
-                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
-                )
+                Statement::Assert(value.hir, ctx.trimmed_srcloc(stmt.syntax()))
             }
             AstStmt::RaiseStmt(stmt) => {
                 let value = stmt.expr().map(|expr| compile_expr(ctx, &expr, None));
@@ -254,7 +251,7 @@ pub fn compile_block(
 
                 Statement::Raise(
                     value.map(|value| value.hir),
-                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
+                    ctx.trimmed_srcloc(stmt.syntax()),
                 )
             }
             AstStmt::DebugStmt(stmt) => {
@@ -265,10 +262,7 @@ pub fn compile_block(
                     ctx.builtins().unresolved.clone()
                 };
 
-                Statement::Debug(
-                    value.hir,
-                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
-                )
+                Statement::Debug(value.hir, ctx.trimmed_srcloc(stmt.syntax()))
             }
         };
 

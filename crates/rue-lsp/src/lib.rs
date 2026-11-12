@@ -11,8 +11,10 @@ use rue_formatter::{FormatError, FormatOptions, format_source};
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rue_options::{Project, find_project};
@@ -39,11 +41,24 @@ pub struct Backend {
     client: Client,
     cache: Mutex<HashMap<Url, SendWrapper<Cache<Arc<Compiler>>>>>,
     file_cache: Mutex<HashMap<SourceKind, String>>,
+    /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
+    /// added to the message instead. This is assumed until the client says otherwise.
+    related_information: AtomicBool,
 }
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let related_information = params
+            .capabilities
+            .text_document
+            .and_then(|capabilities| capabilities.publish_diagnostics)
+            .and_then(|capabilities| capabilities.related_information)
+            .unwrap_or(false);
+
+        self.related_information
+            .store(related_information, Ordering::Relaxed);
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -138,6 +153,7 @@ impl Backend {
             client,
             cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
+            related_information: AtomicBool::new(true),
         }
     }
 
@@ -215,7 +231,10 @@ impl Backend {
             diagnostics
                 .entry(item.srcloc.source.kind.clone())
                 .or_default()
-                .push(diagnostic(&item));
+                .push(diagnostic(
+                    &item,
+                    self.related_information.load(Ordering::Relaxed),
+                ));
         }
 
         let mut cache = self.cache.lock().unwrap();
@@ -529,15 +548,16 @@ fn code_actions(params: &CodeActionParams) -> Option<CodeActionResponse> {
     (!actions.is_empty()).then_some(actions)
 }
 
-fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
+fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic, supports_related: bool) -> Diagnostic {
     let srcloc = &diagnostic.srcloc;
 
     let mut message = diagnostic.kind.to_string();
     let mut related_information = Vec::new();
 
-    // Notes that point to a file are shown at that location, and the rest are part of the message
+    // Notes that point to a file are shown at that location if the client supports it, and the
+    // rest are part of the message
     for note in &diagnostic.notes {
-        if let Some(location) = note.srcloc.as_ref().and_then(location) {
+        if supports_related && let Some(location) = note.srcloc.as_ref().and_then(location) {
             related_information.push(DiagnosticRelatedInformation {
                 location,
                 message: note.message.clone(),
@@ -545,6 +565,10 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
         } else {
             message.push('\n');
             message.push_str(&note.message);
+
+            if let Some(srcloc) = &note.srcloc {
+                write!(message, " at {}", srcloc.start()).unwrap();
+            }
         }
     }
 

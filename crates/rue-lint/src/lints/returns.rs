@@ -26,13 +26,16 @@ impl HirLintPass for UnnecessaryReturn {
             };
 
             // The `return` can only be replaced with its value if it's the last thing in the body.
-            // A `return` without a value returns nil.
-            let replacement =
-                (index == block.statements.len() - 1 && block.body.is_none()).then(|| {
-                    cx.db()
-                        .hir_srcloc(*value)
-                        .map_or("nil".to_string(), |value| value.text().to_string())
-                });
+            // A `return` without a value returns nil. Attributes can't be on an expression, so a
+            // `return` with attributes is left alone, rather than removing them.
+            let is_last = index == block.statements.len() - 1 && block.body.is_none();
+            let has_attributes = srcloc.text().starts_with('#');
+
+            let replacement = (is_last && !has_attributes).then(|| {
+                cx.db()
+                    .hir_srcloc(*value)
+                    .map_or("nil".to_string(), |value| value.text().to_string())
+            });
 
             let Some(diagnostic) = cx.report(
                 Lint::UnnecessaryReturn,

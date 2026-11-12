@@ -39,7 +39,19 @@ fn after_never_binding(value: Int) -> Int {
     value
 }
 
+// The binding is only referenced after the `return`, so it's never evaluated
+fn dead_reference() -> Int {
+    let value = fails();
+    return 1;
+    value
+}
+
+fn fails() -> Int {
+    raise "failed";
+}
+
 test fn reachable() {
+    assert dead_reference() == 1;
     assert main() == 7;
     assert after_never_binding(1) == 1;
 }

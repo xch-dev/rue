@@ -1726,3 +1726,63 @@ fn early(value: Int) -> Int {
     );
     assert!(!has_errors);
 }
+
+#[test]
+fn unreachable_code_is_reported_once_at_its_start() {
+    let source = "\
+fn main() -> Int {
+    allowed() + expected() + nested() + unused()
+}
+
+fn allowed() -> Int {
+    raise \"x\";
+    #[allow(unreachable_code)]
+    let a = 1;
+    a
+}
+
+fn expected() -> Int {
+    raise \"x\";
+    #[expect(unreachable_code)]
+    let a = 1;
+    a
+}
+
+fn nested() -> Int {
+    raise \"x\";
+    let a = {
+        raise \"y\";
+        1
+    };
+    a
+}
+
+fn unused() -> Int {
+    let _a = {
+        raise \"x\";
+    };
+    1
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // The block inside the unreachable code isn't reported separately, and an unused binding is
+    // never evaluated, so the code after it is reachable
+    assert_eq!(reports, vec!["Warning 21: Unreachable code"]);
+    assert!(!has_errors);
+}
+
+#[test]
+fn returns_with_attributes_are_not_fixed() {
+    let source = "\
+fn main() -> Int {
+    let value = 1;
+    #[allow(unused_value)]
+    return value;
+}
+";
+
+    // The attribute can't be kept on an expression, and removing it would change what's reported
+    assert_eq!(fix(source), source);
+}

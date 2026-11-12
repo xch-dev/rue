@@ -42,7 +42,7 @@ pub(crate) fn hir_passes() -> Vec<Box<dyn HirLintPass>> {
         Box::new(statements::UnusedValue),
         Box::new(inline_ifs::InlineIfMayRaise),
         Box::new(returns::UnnecessaryReturn),
-        Box::new(unreachable::UnreachableCode),
+        Box::new(unreachable::UnreachableCode::default()),
     ]
 }
 

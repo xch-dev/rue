@@ -738,6 +738,7 @@ pub fn trimmed_range(node: &SyntaxNode) -> TextRange {
     }
 
     let mut last = node.last_token();
+
     while let Some(token) = last.as_ref().filter(|token| token.kind().is_trivia()) {
         last = token
             .prev_token()
