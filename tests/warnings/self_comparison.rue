@@ -1,0 +1,29 @@
+fn main(a: Int, b: Int, bytes: Bytes) -> Bool {
+    let same = a == a;
+    let different = a != a;
+    let ordered = a < a;
+    let bytes_ordered = bytes >= bytes;
+    let difference = a - a;
+    let xor = a ^ a;
+    let and = a & a;
+
+    // Casts don't change the value, and bindings with the same value are the same
+    let copy = a;
+    let cast = (a as Int) > a;
+    let through_binding = copy == a;
+
+    // Different operands aren't reported
+    let unrelated = a == b;
+    let sum = a + a;
+
+    same
+        && different
+        && ordered
+        && bytes_ordered
+        && difference == xor
+        && and == 0
+        && cast
+        && through_binding
+        && unrelated
+        && sum > 0
+}

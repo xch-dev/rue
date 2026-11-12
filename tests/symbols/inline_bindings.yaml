@@ -20,3 +20,7 @@ tests:
   runtime_cost: 1078
   byte_cost: 276000
   total_cost: 277078
+diagnostics:
+- |-
+  Binding `num` is returned directly after it's declared at inline_bindings.rue:2:5
+    help: Return the value directly

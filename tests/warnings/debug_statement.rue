@@ -1,0 +1,6 @@
+#![warn(debug_statement)]
+
+fn main(value: Int) -> Int {
+    debug value;
+    value + 1
+}

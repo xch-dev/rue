@@ -1,0 +1,16 @@
+program: (q . 255)
+debug_program: (a (q 16 (+ (+ (+ 8 12) 10) 22) 30) (c (c (c (q . -1) (q . 0x0001)) (c (q . 0x00) (c (q . 127) (q . 128)))) 1))
+output: '255'
+runtime_cost: 20
+byte_cost: 60000
+total_cost: 60020
+diagnostics:
+- |-
+  `0xff` is the negative number `-1` as an `Int`, since integers are signed at bytes_int_confusion.rue:2:20
+    help: Write the number `255` instead
+- |-
+  `0x0001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at bytes_int_confusion.rue:3:24
+    help: Write the number `1` instead
+- |-
+  `0x00` has a leading zero byte, so it isn't equal to the `Int` `0`, since integers are compared by their bytes at bytes_int_confusion.rue:4:16
+    help: Write the number `0` instead

@@ -92,3 +92,12 @@ tests:
   total_cost: 36020
 diagnostics:
 - Unused generic type `T` at generic_inference_expected.rue:25:19
+- |-
+  Binding `value` is returned directly after it's declared at generic_inference_expected.rue:30:5
+    help: Return the value directly
+- |-
+  Binding `value` is returned directly after it's declared at generic_inference_expected.rue:51:5
+    help: Return the value directly
+- Binding `value` is returned directly after it's declared at generic_inference_expected.rue:64:5
+- Binding `value` is returned directly after it's declared at generic_inference_expected.rue:69:5
+- Binding `value` is returned directly after it's declared at generic_inference_expected.rue:82:5

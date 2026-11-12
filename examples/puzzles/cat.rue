@@ -199,7 +199,7 @@ fn morph_conditions(
 ) -> Morph {
     // If there are no conditions, return an empty morph.
     if conditions is nil {
-        return Morph { conditions: nil, sum: 0, tail_info: tail_info };
+        return Morph { conditions: nil, sum: 0, tail_info };
     }
 
     inline let condition = conditions.first;

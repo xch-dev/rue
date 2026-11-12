@@ -32,6 +32,10 @@ pub trait HirLintPass {
     /// Called for each statement of a block, before the nodes inside of it. The block is the
     /// innermost of [`LintContext::parents`].
     fn check_statement(&mut self, _cx: &mut LintContext<'_>, _block: &Block, _index: usize) {}
+
+    /// Called once after the whole HIR has been walked, for passes that report what they found
+    /// across every declaration.
+    fn finish(&mut self, _cx: &mut LintContext<'_>) {}
 }
 
 /// Where the walk over the HIR currently is, which passes can read from the [`LintContext`].
@@ -43,7 +47,10 @@ pub(crate) struct WalkState {
 }
 
 /// Runs the HIR lint passes whose lints could be reported, in a single walk over the HIR.
-pub(crate) fn run_hir_passes(cx: &mut LintContext<'_>, mut passes: Vec<Box<dyn HirLintPass>>) {
+pub(crate) fn run_hir_passes<'p>(
+    cx: &mut LintContext<'_>,
+    mut passes: Vec<Box<dyn HirLintPass + 'p>>,
+) {
     passes.retain(|pass| pass.lints().iter().any(|&lint| cx.is_enabled(lint)));
 
     if passes.is_empty() {
@@ -68,6 +75,10 @@ pub(crate) fn run_hir_passes(cx: &mut LintContext<'_>, mut passes: Vec<Box<dyn H
     }
 
     cx.walk = WalkState::default();
+
+    for pass in &mut walker.passes {
+        pass.finish(cx);
+    }
 }
 
 enum Root {
@@ -103,12 +114,12 @@ fn roots(cx: &LintContext<'_>) -> Vec<(Declaration, Root)> {
     roots
 }
 
-struct Walker {
-    passes: Vec<Box<dyn HirLintPass>>,
+struct Walker<'p> {
+    passes: Vec<Box<dyn HirLintPass + 'p>>,
     visited: HashSet<HirId>,
 }
 
-impl Walker {
+impl Walker<'_> {
     fn visit_function(&mut self, cx: &mut LintContext<'_>, symbol: SymbolId) {
         let Symbol::Function(function) = cx.db().symbol(symbol) else {
             return;

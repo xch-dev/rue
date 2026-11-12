@@ -1790,10 +1790,12 @@ name = "rue-lint"
 version = "0.11.0"
 dependencies = [
  "indexmap",
+ "num-bigint",
  "rowan",
  "rue-ast",
  "rue-diagnostic",
  "rue-hir",
+ "rue-lir",
  "rue-parser",
  "rue-types",
 ]

@@ -8,3 +8,6 @@ diagnostics:
 - Unused function `unused_binding` at unused_children.rue:13:4
 - Unused binding `x` at unused_children.rue:14:9
 - Unused function `used_binding` at unused_children.rue:17:4
+- |-
+  Binding `x` is returned directly after it's declared at unused_children.rue:18:5
+    help: Return the value directly

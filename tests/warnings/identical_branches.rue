@@ -1,0 +1,24 @@
+fn main(condition: Bool, value: Int) -> Int {
+    let same = if condition {
+        value + 1
+    } else {
+        value + 1
+    };
+
+    // Bindings with the same value in each branch are the same
+    let blocks = if condition {
+        let doubled = value * 2;
+        doubled + 1
+    } else {
+        let doubled = value * 2;
+        doubled + 1
+    };
+
+    let different = if condition {
+        value
+    } else {
+        value + 1
+    };
+
+    same + blocks + different
+}

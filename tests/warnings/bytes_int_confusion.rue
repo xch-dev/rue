@@ -1,0 +1,11 @@
+fn main() -> Int {
+    let negative = 0xff as Int;
+    let leading_zero = 0x0001 as Int;
+    let zero = 0x00 as Int;
+
+    // These are the same as the number they're written as
+    let positive = 0x7f as Int;
+    let needed_zero = 0x0080 as Int;
+
+    negative + leading_zero + zero + positive + needed_zero
+}

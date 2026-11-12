@@ -90,3 +90,11 @@ tests:
   runtime_cost: 635
   byte_cost: 276000
   total_cost: 276635
+diagnostics:
+- Binding `alt` is returned directly after it's declared at recursive_generic_arguments.rue:49:5
+- Binding `even` is returned directly after it's declared at recursive_generic_arguments.rue:59:5
+- |-
+  Redundant field name, since `rest: rest` can be written as `rest` at recursive_generic_arguments.rue:65:38
+    help: Use the shorthand instead
+- Binding `fixed` is returned directly after it's declared at recursive_generic_arguments.rue:81:5
+- Binding `head` is returned directly after it's declared at recursive_generic_arguments.rue:103:5

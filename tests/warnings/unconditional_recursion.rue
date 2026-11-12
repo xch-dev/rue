@@ -1,0 +1,30 @@
+fn main(value: Int) -> Int {
+    forever(value) + through_branches(value) + terminates(value) + guarded(value)
+}
+
+fn forever(value: Int) -> Int {
+    forever(value + 1)
+}
+
+fn through_branches(value: Int) -> Int {
+    if value > 5 {
+        through_branches(value - 1)
+    } else {
+        through_branches(value + 1) * 2
+    }
+}
+
+// There's a path that returns without calling itself
+fn terminates(value: Int) -> Int {
+    if value > 0 {
+        terminates(value - 1)
+    } else {
+        0
+    }
+}
+
+// The assertion raises on some path before the call
+fn guarded(value: Int) -> Int {
+    assert value > 0;
+    guarded(value - 1)
+}

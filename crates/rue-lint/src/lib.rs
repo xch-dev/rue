@@ -6,9 +6,11 @@
 //! reported, and at what level, is decided entirely here.
 
 mod context;
+mod equality;
 mod levels;
 mod lints;
 mod sites;
+mod text;
 mod visit;
 
 pub use context::*;
@@ -56,7 +58,7 @@ pub fn run_lints(
         }
     }
 
-    run_hir_passes(&mut cx, lints::hir_passes());
+    run_hir_passes(&mut cx, lints::hir_passes(input));
 
     // Invalid lint attributes also stop expectations from being checked, as in Rust, but lints
     // reported as errors (such as denied lints) don't

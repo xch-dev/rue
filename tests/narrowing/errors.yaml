@@ -3,6 +3,9 @@ diagnostics:
 - Cannot compare `Int` to `Bytes32` without a type guard, since the runtime value must be constrained at errors.rue:2:60
 - Unused function `not_reference` at errors.rue:10:4
 - Cannot compare `Bool` to `true` without a type guard, since the runtime value must be constrained at errors.rue:10:35
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at errors.rue:11:5
+    help: Replace it with an `assert`
 - Unused function `not_reference_true` at errors.rue:17:4
 - Cannot compare `Bool` to `false` without a type guard, since the runtime value must be constrained at errors.rue:17:41
 - Unused function `and_else` at errors.rue:25:4

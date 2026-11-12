@@ -1,0 +1,34 @@
+mod helpers {
+    export fn used_outside() -> Int {
+        only_inside() + 1
+    }
+
+    export fn only_inside() -> Int {
+        CONSTANT
+    }
+
+    export const CONSTANT: Int = 42;
+
+    fn private() -> Int {
+        2
+    }
+
+    export fn calls_private() -> Int {
+        private()
+    }
+}
+
+// Items of an exported module can be used by anything that imports the file
+export mod public {
+    export fn only_inside() -> Int {
+        1
+    }
+
+    export fn exported() -> Int {
+        only_inside()
+    }
+}
+
+fn main() -> Int {
+    helpers::used_outside() + helpers::calls_private() + public::exported()
+}

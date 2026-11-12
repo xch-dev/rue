@@ -1,2 +1,3 @@
 diagnostics:
+- Both sides of `==` are the same, so it always evaluates to `true` at return_type_check.rue:2:8
 - Cannot assign `42` to `nil`, since they are incompatible at return_type_check.rue:3:16

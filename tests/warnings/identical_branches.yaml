@@ -1,0 +1,13 @@
+program: (+ (a (i 2 (q 16 5 (q . 1)) (q 16 5 (q . 1))) 1) (a (i 2 (q 16 (* 5 (q . 2)) (q . 1)) (q 16 (* 5 (q . 2)) (q . 1))) 1) (a (i 2 (q . 5) (q 16 5 (q . 1))) 1))
+debug_program: (a (q 16 (+ 4 10) 14) (c (c (a (i 2 (q 16 5 (q . 1)) (q 16 5 (q . 1))) 1) (c (a (i 2 (q 2 (q 16 2 (q . 1)) (c (* 5 (q . 2)) 1)) (q 2 (q 16 2 (q . 1)) (c (* 5 (q . 2)) 1))) 1) (a (i 2 (q . 5) (q 16 5 (q . 1))) 1))) 1))
+byte_cost: 1428000
+clvm_error: path into atom
+diagnostics:
+- |-
+  Both branches of this `if` are the same, so the condition has no effect at identical_branches.rue:2:16
+    note: The `else` branch is the same at identical_branches.rue:4:12
+    help: Replace the `if` with one of its branches
+- |-
+  Both branches of this `if` are the same, so the condition has no effect at identical_branches.rue:9:18
+    note: The `else` branch is the same at identical_branches.rue:12:12
+    help: Replace the `if` with one of its branches

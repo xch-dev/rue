@@ -1,0 +1,22 @@
+fn main(value: Int, flag: Bool) -> Int {
+    let grouped = (value + 1);
+    let atomic = (value) * 2;
+    let nested = ((value + 1)) * 2;
+    assert (value > 0);
+    let call = add((value * 2), 1);
+    let list = [(value + 1), 2];
+
+    if (flag) {
+        return (grouped);
+    }
+
+    // Parentheses that change how the expression is evaluated are needed
+    let needed = (value + 1) * 2;
+    let negated = -(value + 1);
+
+    atomic + nested + call + list.first + needed + negated
+}
+
+fn add(a: Int, b: Int) -> Int {
+    a + b
+}

@@ -16,6 +16,9 @@ diagnostics:
 - Unused binding `nested` at recursive_generic_argument_errors.rue:20:9
 - Cannot assign `(T, 1)` to `Bytes`, since they are incompatible at recursive_generic_argument_errors.rue:20:25
 - Unused function `tree` at recursive_generic_argument_errors.rue:24:4
+- |-
+  Redundant field name, since `value: value` can be written as `value` at recursive_generic_argument_errors.rue:25:37
+    help: Use the shorthand instead
 - Unused parameter `nested` at recursive_generic_argument_errors.rue:29:9
 - Unused parameter `even` at recursive_generic_argument_errors.rue:29:30
 - Unused parameter `grow` at recursive_generic_argument_errors.rue:29:47

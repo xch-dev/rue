@@ -1,0 +1,24 @@
+fn main(value: Int) -> Int {
+    assert annotated(value) is Int;
+    let doubled = value * 2;
+    doubled + returned(value) + nested(value)
+}
+
+fn returned(value: Int) -> Int {
+    let result = value + 1;
+    result
+}
+
+// The annotation changes the type of the block, so it can't be removed
+fn annotated(value: Int) -> Int | nil {
+    let result: Int | nil = value;
+    result
+}
+
+fn nested(value: Int) -> Int {
+    let inner = {
+        let tripled = value * 3;
+        tripled
+    };
+    inner + 1
+}

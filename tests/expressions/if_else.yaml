@@ -23,3 +23,7 @@ tests:
   runtime_cost: 647
   byte_cost: 372000
   total_cost: 372647
+diagnostics:
+- |-
+  Unnecessary parentheses at if_else.rue:10:5
+    help: Remove the parentheses

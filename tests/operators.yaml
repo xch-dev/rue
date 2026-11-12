@@ -31,5 +31,19 @@ diagnostics:
 - |-
   Unnecessary `+` operator, since it has no effect at operators.rue:2:12
     help: Remove the `+`
+- Both sides of `==` are the same, so it always evaluates to `true` at operators.rue:50:12
+- Both sides of `!=` are the same, so it always evaluates to `false` at operators.rue:53:13
+- Both sides of `>=` are the same, so it always evaluates to `true` at operators.rue:58:12
+- Both sides of `<=` are the same, so it always evaluates to `true` at operators.rue:63:12
+- Both sides of `==` are the same, so it always evaluates to `true` at operators.rue:68:12
+- Both sides of `!=` are the same, so it always evaluates to `false` at operators.rue:71:13
+- Both sides of `>=` are the same, so it always evaluates to `true` at operators.rue:76:12
+- Both sides of `<=` are the same, so it always evaluates to `true` at operators.rue:81:12
 - Condition always evaluates to `true` at operators.rue:86:12
 - Condition always evaluates to `true` at operators.rue:87:12
+- |-
+  This operand of `&&` is the same as an earlier one, so it has no effect at operators.rue:88:20
+    note: The same condition is checked here first at operators.rue:88:12
+- |-
+  This operand of `&` is the same as an earlier one, so it has no effect at operators.rue:89:19
+    note: The same condition is checked here first at operators.rue:89:12

@@ -107,7 +107,7 @@ async fn test_protocol_session() {
     let root = root.canonicalize().unwrap();
 
     let path = root.join("main.rue");
-    let text = "fn main() -> Int {\n    let value = 42;\n    value\n}\n";
+    let text = "fn main() -> Int {\n    let value = 42;\n    value + 1\n}\n";
     fs::write(
         root.join("Rue.toml"),
         "[compiler]\nentrypoint = \".\"\nstd = false\n",

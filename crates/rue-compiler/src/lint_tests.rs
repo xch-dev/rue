@@ -327,6 +327,7 @@ fn main() -> Int {
             "Error 6: Unknown attribute `warning`",
             "Warning 7: Unused function `other`",
             "Error 11: Attribute `allow` expects a list of lint names",
+            "Warning 13: Binding `a` is returned directly after it's declared",
             "Error 14: Attributes can only be used on items and statements",
         ]
     );
@@ -384,6 +385,7 @@ fn main() -> Int {
     assert_eq!(
         reports,
         vec![
+            "Warning 2: Binding `a` is returned directly after it's declared",
             "Error 3: Attributes can only be used on items and statements",
             "Error 4: Attributes can only be used on items and statements",
         ]
@@ -898,7 +900,10 @@ fn main() -> Int {
 
     assert_eq!(
         reports,
-        vec!["Warning 4: Expected lint `unused_binding` to be reported here, but it never was"]
+        vec![
+            "Warning 4: Expected lint `unused_binding` to be reported here, but it never was",
+            "Warning 7: Binding `d` is returned directly after it's declared",
+        ]
     );
     assert!(!has_errors);
 }
@@ -928,7 +933,10 @@ fn main() -> Int {
 
     assert_eq!(
         reports,
-        vec!["Error 9: Expected lint `unused_binding` to be reported here, but it never was"]
+        vec![
+            "Warning 3: Binding `a` is returned directly after it's declared",
+            "Error 9: Expected lint `unused_binding` to be reported here, but it never was",
+        ]
     );
     assert!(has_errors);
 }
@@ -995,6 +1003,7 @@ fn main() -> Int {
         reports,
         vec![
             "Warning 1: Lint `unfulfilled_lint_expectation` can't be expected, so this is always reported",
+            "Warning 3: Binding `a` is returned directly after it's declared",
             "Warning 3: Expected lint `unused_binding` to be reported here, but it never was",
         ]
     );
@@ -1045,6 +1054,7 @@ fn main() -> Int {
             "Error 1: Attribute `expect` expects a list of lint names",
             "Warning 2: Unused function `helper`",
             "Warning 6: Unknown lint `unused_bindings`",
+            "Warning 8: Binding `a` is returned directly after it's declared",
             "Error 10: Attributes can only be used on items and statements",
         ]
     );
@@ -1182,7 +1192,8 @@ fn main() -> Int {
     assert_eq!(
         reports,
         vec![
-            "Error 3: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1"
+            "Warning 3: Binding `a` is returned directly after it's declared",
+            "Error 3: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1",
         ]
     );
     assert!(has_errors);
@@ -1398,6 +1409,7 @@ fn main() -> Int {
     assert_eq!(
         reports,
         vec![
+            "Warning 2: Binding `a` is returned directly after it's declared",
             "Error 3: Attributes can only be used on items and statements",
             "Error 3: Unknown attribute `alow`",
             "Error 3: Attributes can only be used on items and statements",
@@ -1719,6 +1731,7 @@ fn early(value: Int) -> Int {
     assert_eq!(
         reports,
         vec![
+            "Warning 7: Binding `doubled` is returned directly after it's declared",
             "Warning 11: Unused function `early`",
             "Warning 12: Unnecessary `return` statement, since the function body can end in an expression instead",
             "Warning 13: Unreachable code",
@@ -1769,7 +1782,15 @@ fn unused() -> Int {
 
     // The block inside the unreachable code isn't reported separately, and an unused binding is
     // never evaluated, so the code after it is reachable
-    assert_eq!(reports, vec!["Warning 21: Unreachable code"]);
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 7: Binding `a` is returned directly after it's declared",
+            "Warning 14: Binding `a` is returned directly after it's declared",
+            "Warning 21: Unreachable code",
+            "Warning 21: Binding `a` is returned directly after it's declared",
+        ]
+    );
     assert!(!has_errors);
 }
 
@@ -1785,4 +1806,134 @@ fn main() -> Int {
 
     // The attribute can't be kept on an expression, and removing it would change what's reported
     assert_eq!(fix(source), source);
+}
+
+#[test]
+fn style_suggestions_fix_lints() {
+    let source = "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(flag: Bool, value: Int | nil) -> Int {
+    if value is nil {
+        raise;
+    }
+
+    if flag == false {
+        raise;
+    }
+
+    let x = (value + 1);
+    let point = Point { x: x, y: 2 };
+    let positive = if point.x > 0 { false } else { true };
+    let checked = flag && if positive || flag { true } else { false };
+
+    let result = if checked {
+        point.y
+    } else {
+        if positive { 1 } else { 2 }
+    };
+    result
+}
+";
+
+    // Suggestions that overlap are applied on the next pass, as they would be by an editor
+    let fixed = fix(&fix(source));
+
+    assert_eq!(
+        fixed,
+        "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(flag: Bool, value: Int | nil) -> Int {
+    assert !(value is nil);
+
+    assert flag;
+
+    let x = value + 1;
+    let point = Point { x, y: 2 };
+    let positive = !(point.x > 0);
+    let checked = flag && (positive || flag);
+
+    if checked {
+        point.y
+    } else if positive { 1 } else { 2 }
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+#[test]
+fn removal_suggestions_fix_lints() {
+    let source = "\
+inline const ONCE: Int = 1;
+
+mod helpers {
+    export fn inner() -> Int {
+        1
+    }
+
+    export fn outer() -> Int {
+        inner() + 1
+    }
+}
+
+fn main(value: Int) -> Int {
+    inline let doubled = value * 2;
+    debug value;
+    doubled + ONCE + helpers::outer()
+}
+";
+
+    let (diagnostics, _) = compile_source(source, |options| {
+        options.lints.set(Lint::DebugStatement, LintLevel::Warn);
+    });
+
+    let edits = diagnostics
+        .iter()
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    let fixed = apply_edits(source, &edits);
+
+    assert_eq!(
+        fixed,
+        "\
+const ONCE: Int = 1;
+
+mod helpers {
+    fn inner() -> Int {
+        1
+    }
+
+    export fn outer() -> Int {
+        inner() + 1
+    }
+}
+
+fn main(value: Int) -> Int {
+    let doubled = value * 2;
+    doubled + ONCE + helpers::outer()
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |options| {
+        options.lints.set(Lint::DebugStatement, LintLevel::Warn);
+    });
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
 }

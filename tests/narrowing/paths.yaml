@@ -55,3 +55,7 @@ tests:
   runtime_cost: 325
   byte_cost: 276000
   total_cost: 276325
+diagnostics:
+- |-
+  Unnecessary parentheses at paths.rue:52:8
+    help: Remove the parentheses

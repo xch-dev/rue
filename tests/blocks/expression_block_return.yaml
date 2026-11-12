@@ -1,6 +1,9 @@
 diagnostics:
 - Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:4:13
 - Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:14:13
+- |-
+  Binding `y` is returned directly after it's declared at expression_block_return.rue:21:5
+    help: Return the value directly
 - Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:24:17
 - Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:36:13
 - Cannot use a `return` statement inside of an expression block, since it would only exit the block rather than the function at expression_block_return.rue:47:13

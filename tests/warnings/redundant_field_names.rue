@@ -1,0 +1,11 @@
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(x: Int, y: Int) -> Int {
+    let point = Point { x: x, y: y + 1 };
+    let shorthand = Point { x, y };
+    let { x: x, y: other } = point;
+    x + other + shorthand.x + shorthand.y
+}
