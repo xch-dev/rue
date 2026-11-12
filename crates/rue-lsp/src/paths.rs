@@ -108,14 +108,16 @@ impl Paths {
             return uris.clone();
         }
 
-        if let Some(paths) = lock(&self.aliases).get(kind) {
-            return paths
-                .iter()
-                .filter_map(|path| Url::from_file_path(path).ok())
-                .collect();
-        }
-
         let path = Path::new(path);
+
+        // Aliases that aren't symlinks to the file anymore are forgotten
+        let mut paths = lock(&self.aliases)
+            .get_mut(kind)
+            .map(|aliases| {
+                aliases.retain(|alias| canonical(alias).is_some_and(|alias| alias == path));
+                aliases.clone()
+            })
+            .unwrap_or_default();
 
         let client = lock(&self.roots)
             .iter()
@@ -124,9 +126,22 @@ impl Paths {
                 Some((canonical.components().count(), client.join(rest)))
             })
             .max_by_key(|(depth, _)| *depth)
-            .map_or_else(|| path.to_path_buf(), |(_, client)| client);
+            .map(|(_, client)| client);
 
-        Url::from_file_path(client).into_iter().collect()
+        if let Some(client) = client
+            && !paths.contains(&client)
+        {
+            paths.push(client);
+        }
+
+        if paths.is_empty() {
+            paths.push(path.to_path_buf());
+        }
+
+        paths
+            .iter()
+            .filter_map(|path| Url::from_file_path(path).ok())
+            .collect()
     }
 
     /// The URIs to publish a file's diagnostics to, and those that it was published to last time
@@ -330,6 +345,36 @@ mod tests {
         assert_eq!(
             paths.uri(&kind(outer.path())),
             Some(Url::from_file_path(outer.path().join("a.rue")).unwrap())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_aliases_are_rechecked() {
+        let dir = TempDir::new("rue-lsp-paths");
+        fs::write(dir.path().join("shared.toml"), "").unwrap();
+        std::os::unix::fs::symlink("shared.toml", dir.path().join("a.toml")).unwrap();
+
+        let shared = SourceKind::File(
+            canonical(&dir.path().join("shared.toml"))
+                .unwrap()
+                .to_string_lossy()
+                .to_string(),
+        );
+
+        let paths = Paths::default();
+        paths.add_alias(&dir.path().join("a.toml"));
+        assert_eq!(
+            paths.uris(&shared),
+            [Url::from_file_path(dir.path().join("a.toml")).unwrap()]
+        );
+
+        // Once it's a file of its own, it isn't an alias anymore
+        fs::remove_file(dir.path().join("a.toml")).unwrap();
+        fs::write(dir.path().join("a.toml"), "").unwrap();
+        assert_eq!(
+            paths.uris(&shared),
+            [Url::from_file_path(canonical(&dir.path().join("shared.toml")).unwrap()).unwrap()]
         );
     }
 
