@@ -22,6 +22,8 @@ mod unreachable;
 mod unused;
 mod unused_fields;
 
+pub(crate) use unused::live_declarations;
+
 /// A lint pass that runs once over the [`LintInput`], such as the syntax trees or the declaration
 /// graph, rather than over each node of the HIR.
 pub(crate) struct InputPass {
@@ -98,12 +100,8 @@ mod tests {
             lints.extend(pass.lints);
         }
 
-        let input = LintInput {
-            sites: crate::LintSites::default(),
-            documents: Vec::new(),
-            entrypoints: &std::collections::HashSet::new(),
-            has_errors: false,
-        };
+        let entrypoints = std::collections::HashSet::new();
+        let input = LintInput::new(crate::LintSites::default(), Vec::new(), &entrypoints, false);
 
         for pass in hir_passes(&input) {
             lints.extend(pass.lints());

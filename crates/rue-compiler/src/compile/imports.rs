@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use rowan::TextRange;
 use rue_ast::{AstImportItem, AstImportPathSegment};
 use rue_diagnostic::{DiagnosticKind, Name};
-use rue_hir::{Declaration, Import, ImportId, Items, ScopeId, Symbol, SymbolId};
+use rue_hir::{Declaration, Import, ImportId, ImportUser, Items, ScopeId, Symbol, SymbolId};
 
 use crate::{Compiler, SyntaxItemKind};
 
@@ -319,8 +319,11 @@ fn resolve_import(
         };
 
         if let Some(import) = import {
-            // Paths of imports aren't in any declaration
-            ctx.add_import_reference(import, Declaration::Symbol(symbol), None);
+            ctx.add_import_reference(
+                import,
+                Declaration::Symbol(symbol),
+                ImportUser::Import(import_id),
+            );
         }
 
         if diagnostics && let Some(srcloc) = name.srcloc() {

@@ -13,8 +13,8 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, ImportId, Mappings, Scope, ScopeId, Symbol,
-    SymbolId, TypePath, Value, merge_mappings, replace_type,
+    Builtins, Constraint, Database, Declaration, ImportId, ImportUser, Mappings, Scope, ScopeId,
+    Symbol, SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
 use rue_lint::{LintInput, LintSites};
 use rue_options::CompilerOptions;
@@ -496,12 +496,12 @@ impl Compiler {
         documents: Vec<(&Source, &AstDocument)>,
         entrypoints: &HashSet<Declaration>,
     ) {
-        let input = LintInput {
-            sites: mem::take(&mut self.lint_sites),
+        let input = LintInput::new(
+            mem::take(&mut self.lint_sites),
             documents,
             entrypoints,
-            has_errors: self.has_errors(),
-        };
+            self.has_errors(),
+        );
 
         let diagnostics = rue_lint::run_lints(
             &mut self.db,
@@ -696,7 +696,11 @@ impl Compiler {
         }
 
         if let Some(import) = import {
-            let user = self.declaration_stack.last().copied();
+            let user = self
+                .declaration_stack
+                .last()
+                .map_or(ImportUser::Other, |&last| ImportUser::Declaration(last));
+
             self.db.add_import_reference(import, reference, user);
         }
     }

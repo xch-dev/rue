@@ -5,6 +5,17 @@ use crate::{Declaration, ScopeId};
 
 pub type ImportId = Id<Import>;
 
+/// Where a declaration was referenced through an import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ImportUser {
+    /// A reference in the declaration, such as a function's body.
+    Declaration(Declaration),
+    /// A reference in the path of another import.
+    Import(ImportId),
+    /// A reference outside of any declaration or import.
+    Other,
+}
+
 #[derive(Debug, Clone)]
 pub struct Import {
     pub base_scope: ScopeId,

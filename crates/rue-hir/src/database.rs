@@ -5,7 +5,9 @@ use indexmap::{IndexMap, IndexSet};
 use rue_diagnostic::{SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
-use crate::{Hir, HirId, Import, ImportId, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, Value};
+use crate::{
+    Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, Value,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Declaration {
@@ -36,9 +38,8 @@ pub struct Database {
     declared_by: HashMap<Declaration, IndexSet<Declaration>>,
     referenced_by: HashMap<Declaration, IndexSet<Declaration>>,
     relevant_imports: IndexSet<ImportId>,
-    /// The declarations referenced through each import, along with the declaration each
-    /// reference is in, which is `None` for a reference from the path of another import.
-    import_references: HashMap<ImportId, IndexSet<(Declaration, Option<Declaration>)>>,
+    /// The declarations referenced through each import, along with where they were referenced.
+    import_references: HashMap<ImportId, IndexMap<Declaration, IndexSet<ImportUser>>>,
     tests: Vec<Test>,
 }
 
@@ -271,33 +272,34 @@ impl Database {
         &mut self,
         import: ImportId,
         declaration: Declaration,
-        user: Option<Declaration>,
+        user: ImportUser,
     ) {
         self.import_references
             .entry(import)
             .or_default()
-            .insert((declaration, user));
+            .entry(declaration)
+            .or_default()
+            .insert(user);
     }
 
     /// The declarations referenced through the import.
     pub fn import_references(&self, import: ImportId) -> Vec<Declaration> {
-        self.import_uses(import)
-            .into_iter()
-            .map(|(declaration, _)| declaration)
-            .collect::<IndexSet<_>>()
-            .into_iter()
-            .collect()
-    }
-
-    /// The declarations referenced through the import, along with the declaration each reference
-    /// is in, which is `None` for a reference from the path of another import.
-    pub fn import_uses(&self, import: ImportId) -> Vec<(Declaration, Option<Declaration>)> {
         self.import_references
             .get(&import)
-            .cloned()
+            .map(|references| references.keys().copied().collect())
             .unwrap_or_default()
+    }
+
+    /// The declarations referenced through the import, along with where they were referenced.
+    pub fn import_uses(
+        &self,
+        import: ImportId,
+    ) -> impl Iterator<Item = (Declaration, ImportUser)> + '_ {
+        self.import_references
+            .get(&import)
             .into_iter()
-            .collect()
+            .flatten()
+            .flat_map(|(&declaration, users)| users.iter().map(move |&user| (declaration, user)))
     }
 
     pub fn add_test(&mut self, test: Test) {

@@ -1,15 +1,6 @@
 diagnostics:
 - Unused struct `Point` at struct_merging_errors.rue:1:8
-- |-
-  Field `y` of struct `Point` is never read at struct_merging_errors.rue:3:5
-    note: If it's only needed for the layout of the struct, prefix its name with `_`
 - Unused struct `Other` at struct_merging_errors.rue:6:8
-- |-
-  Field `x` of struct `Other` is never read at struct_merging_errors.rue:7:5
-    note: If it's only needed for the layout of the struct, prefix its name with `_`
-- |-
-  Field `y` of struct `Other` is never read at struct_merging_errors.rue:8:5
-    note: If it's only needed for the layout of the struct, prefix its name with `_`
 - Unused struct `Wrapper` at struct_merging_errors.rue:11:8
 - Unused function `merge_one_narrowed` at struct_merging_errors.rue:16:4
 - Cannot compare `Int | (Int, Int)` to `Int` without a type guard, since the runtime value must be constrained at struct_merging_errors.rue:23:16

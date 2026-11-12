@@ -2418,3 +2418,54 @@ fn _helper() -> Bar {
     );
     assert!(!has_errors);
 }
+
+#[test]
+fn unused_code_is_reported_all_at_once() {
+    let source = "\
+import m::inner;
+import inner::f;
+import m::helper;
+
+mod m {
+    export mod inner {
+        export fn f() -> Int {
+            1
+        }
+    }
+
+    export fn helper() -> Int {
+        1
+    }
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main() -> Int {
+    let (_q, _r) = (helper(), 1);
+    1
+}
+
+fn dead(p: Point) -> Int {
+    p.x
+}
+";
+
+    // Both imports in the chain are reported together, `helper` is kept by the bindings
+    // destructured from it, and the fields of an unused struct aren't reported along with it
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused import `inner`",
+            "Warning 2: Unused import `f`",
+            "Warning 7: Unused function `f`",
+            "Warning 17: Unused struct `Point`",
+            "Warning 27: Unused function `dead`",
+        ]
+    );
+    assert!(!has_errors);
+}

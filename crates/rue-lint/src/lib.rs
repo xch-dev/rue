@@ -18,7 +18,7 @@ pub use levels::*;
 pub use sites::*;
 pub use visit::*;
 
-use std::collections::HashSet;
+use std::{cell::OnceCell, collections::HashSet};
 
 use rue_ast::AstDocument;
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, Source};
@@ -37,6 +37,32 @@ pub struct LintInput<'a> {
     /// Whether compilation reported any errors. Code that failed to compile may not have recorded
     /// all of its sites, so `expect` attributes aren't checked, as in Rust.
     pub has_errors: bool,
+    /// The declarations that are live, which are computed the first time a pass needs them.
+    live: OnceCell<HashSet<Declaration>>,
+}
+
+impl<'a> LintInput<'a> {
+    pub fn new(
+        sites: LintSites,
+        documents: Vec<(&'a Source, &'a AstDocument)>,
+        entrypoints: &'a HashSet<Declaration>,
+        has_errors: bool,
+    ) -> Self {
+        Self {
+            sites,
+            documents,
+            entrypoints,
+            has_errors,
+            live: OnceCell::new(),
+        }
+    }
+
+    /// The declarations whose code is evaluated, or is needed by code that's kept, starting from
+    /// the entrypoints.
+    pub(crate) fn live_declarations(&self, db: &Database) -> &HashSet<Declaration> {
+        self.live
+            .get_or_init(|| lints::live_declarations(db, self.entrypoints))
+    }
 }
 
 /// Runs every lint pass, and returns the diagnostics that should be reported at the given levels.

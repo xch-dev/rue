@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use rue_diagnostic::{Lint, Name};
 use rue_hir::{
-    BindingSymbol, ConstantSymbol, Database, Declaration, FunctionSymbol, Items, ParameterSymbol,
-    Symbol,
+    BindingSymbol, ConstantSymbol, Database, Declaration, FunctionSymbol, ImportId, ImportUser,
+    Items, ParameterSymbol, Symbol,
 };
 use rue_types::{Alias, Generic, Struct, Type};
 
@@ -25,7 +25,7 @@ pub(crate) const LINTS: &[Lint] = &[
 /// `_` are exempt.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     let db = cx.db();
-    let live = live_declarations(db, input.entrypoints);
+    let live = input.live_declarations(db);
 
     let mut reports = input
         .sites
@@ -40,9 +40,9 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         })
         .collect::<Vec<_>>();
 
-    reports.extend(unused_imports(db, &live));
+    reports.extend(unused_imports(db, live));
 
-    for declaration in unused_declarations(db, input.entrypoints, &live) {
+    for declaration in unused_declarations(db, input.entrypoints, live) {
         if let Some(report) = unused_declaration(db, declaration) {
             reports.push(report);
         }
@@ -58,59 +58,88 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 type Report = (Lint, Name, String);
 
 /// Reports the imports that are never used by live code. A use from an unused function doesn't
-/// count, so that the import is reported along with the declarations it imports. A use from the
-/// path of another import always counts, since it isn't in any declaration.
+/// count, so that the import is reported along with the declarations it imports, and neither does
+/// a use from the path of another import that's unused.
 fn unused_imports(db: &Database, live: &HashSet<Declaration>) -> Vec<Report> {
-    let mut reports = Vec::new();
+    let imports = db.relevant_imports().collect::<Vec<_>>();
+    let relevant = imports.iter().copied().collect::<HashSet<_>>();
 
-    for import in db.relevant_imports() {
-        let references = db
-            .import_uses(import)
-            .into_iter()
-            .filter(|(_, user)| user.is_none_or(|user| live.contains(&user)))
-            .map(|(declaration, _)| declaration)
-            .collect::<HashSet<_>>();
+    // An import that's only used by other imports is used once they are, so this repeats until
+    // no more imports are found to be used
+    let mut used = HashSet::new();
 
-        let import = db.import(import);
+    loop {
+        let count = used.len();
 
-        if import.exported {
-            continue;
+        for &import in &imports {
+            if !used.contains(&import) && is_import_used(db, live, &relevant, &used, import) {
+                used.insert(import);
+            }
         }
 
-        let item = match &import.items {
-            Items::All(star) => {
-                if !import.declarations.is_empty() && references.is_empty() {
-                    reports.push((
-                        Lint::UnusedImport,
-                        star.clone(),
-                        "Unused import `*`".to_string(),
-                    ));
-                }
-                continue;
-            }
-            Items::Named(item) => item,
-        };
-
-        // An item can import declarations from more than one namespace (such as a type and a
-        // constant with the same name), so it's only unused if none of them are referenced
-        let mut declarations = import
-            .declarations
-            .iter()
-            .filter(|(name, _)| item.text() == name)
-            .peekable();
-
-        if declarations.peek().is_some()
-            && declarations.all(|(_, declaration)| !references.contains(declaration))
-        {
-            reports.push((
-                Lint::UnusedImport,
-                item.clone(),
-                format!("Unused import `{}`", item.text()),
-            ));
+        if used.len() == count {
+            break;
         }
     }
 
-    reports
+    imports
+        .into_iter()
+        .filter(|import| !used.contains(import))
+        .map(|import| {
+            let name = match &db.import(import).items {
+                Items::All(name) | Items::Named(name) => name,
+            };
+
+            (
+                Lint::UnusedImport,
+                name.clone(),
+                format!("Unused import `{}`", name.text()),
+            )
+        })
+        .collect()
+}
+
+/// Whether the import is used, given the imports that are already known to be used. An import
+/// that doesn't bring anything into scope is reported from the [`LintSites`](crate::LintSites)
+/// instead, so it counts as used here.
+fn is_import_used(
+    db: &Database,
+    live: &HashSet<Declaration>,
+    relevant: &HashSet<ImportId>,
+    used: &HashSet<ImportId>,
+    id: ImportId,
+) -> bool {
+    let import = db.import(id);
+
+    if import.exported {
+        return true;
+    }
+
+    let references = db
+        .import_uses(id)
+        .filter(|&(_, user)| match user {
+            ImportUser::Declaration(declaration) => live.contains(&declaration),
+            ImportUser::Import(import) => used.contains(&import) || !relevant.contains(&import),
+            ImportUser::Other => true,
+        })
+        .map(|(declaration, _)| declaration)
+        .collect::<HashSet<_>>();
+
+    match &import.items {
+        Items::All(_) => import.declarations.is_empty() || !references.is_empty(),
+        // An item can import declarations from more than one namespace (such as a type and a
+        // constant with the same name), so it's used if any of them are
+        Items::Named(item) => {
+            let mut declarations = import
+                .declarations
+                .iter()
+                .filter(|(name, _)| item.text() == name)
+                .peekable();
+
+            declarations.peek().is_none()
+                || declarations.any(|(_, declaration)| references.contains(declaration))
+        }
+    }
 }
 
 /// The declarations that are never used, with symbols before types.
@@ -147,7 +176,12 @@ fn unused_declarations(
 /// of a live function or type are live, since its signature needs their types, but a binding is
 /// only evaluated if something live references it. Declarations whose names start with `_` aren't
 /// reported, so they're kept (along with what they need) as if they were used.
-fn live_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> HashSet<Declaration> {
+pub(crate) fn live_declarations(
+    db: &Database,
+    entrypoints: &HashSet<Declaration>,
+) -> HashSet<Declaration> {
+    let kept = kept_bindings(db);
+
     // The database only stores the edges from a declaration to the ones that reference or
     // declare it, so the edges in the other direction are collected first. Every declaration on
     // a path from an entrypoint to a relevant or imported declaration is an ancestor of it.
@@ -172,7 +206,7 @@ fn live_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> HashS
             stack.push(parent);
         }
 
-        if is_live_with_parent(db, declaration) {
+        if is_live_with_parent(db, &kept, declaration) {
             for parent in db.declaration_parents(declaration) {
                 children.entry(parent).or_default().push(declaration);
                 stack.push(parent);
@@ -203,17 +237,51 @@ fn live_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> HashS
     live
 }
 
+/// The bindings that are kept whenever the function they're in is live, which are the bindings
+/// whose names start with `_`, along with the unnamed bindings they're destructured from (such as
+/// the value of `let (_a, _b) = pair;`).
+fn kept_bindings(db: &Database) -> HashSet<Declaration> {
+    let mut kept = HashSet::new();
+
+    let mut stack = db
+        .relevant_declarations()
+        .filter(|&declaration| is_binding(db, declaration) && is_exempt(db, declaration))
+        .collect::<Vec<_>>();
+
+    while let Some(declaration) = stack.pop() {
+        if !kept.insert(declaration) {
+            continue;
+        }
+
+        stack.extend(
+            db.declaration_parents(declaration)
+                .into_iter()
+                .filter(|&parent| is_binding(db, parent) && describe(db, parent).is_none()),
+        );
+    }
+
+    kept
+}
+
 /// Whether the declaration is live whenever the function or type that declares it is, because
-/// it's part of its signature, or it's a binding whose name starts with `_`.
-fn is_live_with_parent(db: &Database, declaration: Declaration) -> bool {
+/// it's part of its signature, or it's a kept binding.
+fn is_live_with_parent(
+    db: &Database,
+    kept: &HashSet<Declaration>,
+    declaration: Declaration,
+) -> bool {
     match declaration {
         Declaration::Symbol(symbol) => match db.symbol(symbol) {
             Symbol::Parameter(_) => true,
-            Symbol::Binding(_) => is_exempt(db, declaration),
+            Symbol::Binding(_) => kept.contains(&declaration),
             _ => false,
         },
         Declaration::Type(ty) => matches!(db.ty(ty), Type::Generic(_)),
     }
+}
+
+fn is_binding(db: &Database, declaration: Declaration) -> bool {
+    matches!(declaration, Declaration::Symbol(symbol) if matches!(db.symbol(symbol), Symbol::Binding(_)))
 }
 
 /// Whether the declaration's name starts with `_`, so that it isn't reported as unused.
@@ -222,42 +290,43 @@ fn is_exempt(db: &Database, declaration: Declaration) -> bool {
 }
 
 fn unused_declaration(db: &Database, declaration: Declaration) -> Option<Report> {
-    let (lint, kind, name) = describe(db, declaration)?;
-
-    if name.text().starts_with('_') {
+    if is_exempt(db, declaration) {
         return None;
     }
 
+    let (lint, kind, name) = describe(db, declaration)?;
     let message = format!("Unused {kind} `{}`", name.text());
 
-    Some((lint, name, message))
+    Some((lint, name.clone(), message))
 }
 
 /// The lint that reports the declaration as unused, along with what kind of declaration it is and
 /// its name, if it can be reported.
-fn describe(db: &Database, declaration: Declaration) -> Option<(Lint, &'static str, Name)> {
+fn describe(db: &Database, declaration: Declaration) -> Option<(Lint, &'static str, &Name)> {
     Some(match declaration {
         Declaration::Symbol(symbol) => match db.symbol(symbol) {
             Symbol::Function(FunctionSymbol { name, .. }) => {
-                (Lint::UnusedFunction, "function", name.clone()?)
+                (Lint::UnusedFunction, "function", name.as_ref()?)
             }
             Symbol::Binding(BindingSymbol { name, .. }) => {
-                (Lint::UnusedBinding, "binding", name.clone()?)
+                (Lint::UnusedBinding, "binding", name.as_ref()?)
             }
             Symbol::Constant(ConstantSymbol { name, .. }) => {
-                (Lint::UnusedConstant, "constant", name.clone()?)
+                (Lint::UnusedConstant, "constant", name.as_ref()?)
             }
             Symbol::Parameter(ParameterSymbol { name, .. }) => {
-                (Lint::UnusedParameter, "parameter", name.clone()?)
+                (Lint::UnusedParameter, "parameter", name.as_ref()?)
             }
             Symbol::Unresolved | Symbol::Module(_) | Symbol::Builtin(_) => return None,
         },
         Declaration::Type(ty) => match db.ty(ty) {
             Type::Generic(Generic { name, .. }) => {
-                (Lint::UnusedGenericType, "generic type", name.clone()?)
+                (Lint::UnusedGenericType, "generic type", name.as_ref()?)
             }
-            Type::Struct(Struct { name, .. }) => (Lint::UnusedStruct, "struct", name.clone()?),
-            Type::Alias(Alias { name, .. }) => (Lint::UnusedTypeAlias, "type alias", name.clone()?),
+            Type::Struct(Struct { name, .. }) => (Lint::UnusedStruct, "struct", name.as_ref()?),
+            Type::Alias(Alias { name, .. }) => {
+                (Lint::UnusedTypeAlias, "type alias", name.as_ref()?)
+            }
             _ => return None,
         },
     })
