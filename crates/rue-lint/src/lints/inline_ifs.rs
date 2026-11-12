@@ -10,7 +10,9 @@ use crate::{HirLintPass, LintContext};
 pub(crate) struct InlineIfMayRaise;
 
 impl HirLintPass for InlineIfMayRaise {
-    const LINTS: &'static [Lint] = &[Lint::InlineIfMayRaise];
+    fn lints(&self) -> &'static [Lint] {
+        &[Lint::InlineIfMayRaise]
+    }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
         let Hir::If(_, then, else_, true) = *node else {

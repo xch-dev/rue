@@ -9,7 +9,9 @@ use crate::{HirLintPass, LintContext};
 pub(crate) struct UnnecessaryReturn;
 
 impl HirLintPass for UnnecessaryReturn {
-    const LINTS: &'static [Lint] = &[Lint::UnnecessaryReturn];
+    fn lints(&self) -> &'static [Lint] {
+        &[Lint::UnnecessaryReturn]
+    }
 
     fn check_function(&mut self, cx: &mut LintContext<'_>, _symbol: SymbolId, body: HirId) {
         let Hir::Block(block) = cx.db().hir(body) else {

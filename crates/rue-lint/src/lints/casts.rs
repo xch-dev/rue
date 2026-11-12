@@ -9,7 +9,9 @@ use crate::{HirLintPass, LintContext};
 pub(crate) struct UnnecessaryCast;
 
 impl HirLintPass for UnnecessaryCast {
-    const LINTS: &'static [Lint] = &[Lint::UnnecessaryCast];
+    fn lints(&self) -> &'static [Lint] {
+        &[Lint::UnnecessaryCast]
+    }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
         let Hir::Cast(value) = *node else {

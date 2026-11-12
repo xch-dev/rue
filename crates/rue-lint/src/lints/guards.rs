@@ -9,7 +9,9 @@ use crate::{HirLintPass, LintContext};
 pub(crate) struct UnnecessaryGuard;
 
 impl HirLintPass for UnnecessaryGuard {
-    const LINTS: &'static [Lint] = &[Lint::UnnecessaryGuard, Lint::IndistinguishableGuard];
+    fn lints(&self) -> &'static [Lint] {
+        &[Lint::UnnecessaryGuard, Lint::IndistinguishableGuard]
+    }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
         let Hir::Guard(guard) = node else {

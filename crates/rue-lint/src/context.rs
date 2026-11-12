@@ -2,10 +2,10 @@ use std::ops::Range;
 
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Source, SrcLoc};
-use rue_hir::{Database, ScopeId};
+use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
 use rue_types::{BuiltinTypes, Comparison, Type, TypeId};
 
-use crate::ScopedLintLevels;
+use crate::{ScopedLintLevels, WalkState};
 
 /// The state shared by lint passes, which collects the diagnostics they report.
 #[derive(Debug)]
@@ -14,6 +14,7 @@ pub struct LintContext<'a> {
     types: &'a BuiltinTypes,
     levels: ScopedLintLevels,
     diagnostics: Vec<Diagnostic>,
+    pub(crate) walk: WalkState,
 }
 
 impl<'a> LintContext<'a> {
@@ -23,7 +24,30 @@ impl<'a> LintContext<'a> {
             types,
             levels,
             diagnostics: Vec::new(),
+            walk: WalkState::default(),
         }
+    }
+
+    /// The function, constant or struct being walked by the [`HirLintPass`](crate::HirLintPass)es.
+    /// For a struct, this is one of its field defaults.
+    pub fn enclosing_declaration(&self) -> Option<Declaration> {
+        self.walk.declaration
+    }
+
+    /// The innermost function or lambda being walked, if any.
+    pub fn enclosing_function(&self) -> Option<SymbolId> {
+        self.walk.functions.last().copied()
+    }
+
+    /// The HIR nodes that enclose the current one, from the outermost to the innermost. During
+    /// [`check_statement`](crate::HirLintPass::check_statement), the innermost is the block.
+    pub fn parents(&self) -> &[HirId] {
+        &self.walk.parents
+    }
+
+    /// The HIR node that directly encloses the current one, if any.
+    pub fn parent(&self) -> Option<HirId> {
+        self.walk.parents.last().copied()
     }
 
     pub fn db(&self) -> &Database {

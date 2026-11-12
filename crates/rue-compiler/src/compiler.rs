@@ -183,12 +183,15 @@ impl Compiler {
                 .or_insert(next);
         }
 
-        // The sort is stable, so diagnostics at the same position stay in the order they were
-        // reported
+        // Lints are ordered by where they're reported and then by lint, so that the order doesn't
+        // depend on which pass reports them. Other diagnostics come before lints at the same
+        // location, and the sort is stable, so they stay in the order they were reported.
         diagnostics.sort_by_cached_key(|diagnostic| {
             (
                 files[&diagnostic.srcloc.source.kind],
                 diagnostic.srcloc.span.start,
+                diagnostic.srcloc.span.end,
+                diagnostic.lint(),
             )
         });
 

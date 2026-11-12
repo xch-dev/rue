@@ -6,11 +6,9 @@ use rue_parser::T;
 
 use crate::{LintContext, LintInput, srcloc};
 
-pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
-    if !cx.is_enabled(Lint::EmptyGenerics) && !cx.is_enabled(Lint::DoubleNegation) {
-        return;
-    }
+pub(crate) const LINTS: &[Lint] = &[Lint::EmptyGenerics, Lint::DoubleNegation];
 
+pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     for &(source, document) in &input.documents {
         for node in document.syntax().descendants() {
             if let Some(parameters) = AstGenericParameters::cast(node.clone()) {
