@@ -1,0 +1,13 @@
+program: (a (i (> (f (r (r (c (q . 51) (c 2 (c 5 ())))))) ()) (q 2 (q 2 (i (> 11 10) (q 2 (i (= (f (r (f (c (c (q . 73) (c 11 ())) ())))) 11) (q 4 (c (q . 72) (c 5 ())) (a (i 23 (q 4 (c (q . 60) (c 5 ())) (c 2 ())) (q 4 2 ())) 1)) (q 8)) 1) (q 8)) 1) (c (q 52 1) 1)) (q 8)) 1)
+debug_program: (a (q 2 (q 2 (i (> (f (r (r 2))) ()) (q 2 (q 2 (i (> 47 (f (r 2))) (q 2 (q 2 (q 2 (i (= (f (r (f 13))) -65) (q 2 (q 2 (q 4 2 11) (c (a 95 2) 1)) (c (c (q . 72) (c 95 ())) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:20:5"))) 1) (c (a (i -65 (q 4 4 (c 5 ())) (q 4 5 ())) 1) 1)) (c (c (c (q . 60) (c 23 ())) (c (c (q . 73) (c 47 ())) ())) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:8:5"))) 1) (c (c (q . 52) (c (q . 1) ())) 1)) (q 8 (q . "assertion failed at discarded_condition.rue:4:5"))) 1) (c (c (q . 51) (c 5 (c 11 ()))) 1)) (c (q . 1) 1))
+byte_cost: 2796000
+clvm_error: path into atom
+diagnostics:
+- |-
+  This condition is used, but it's never output, so it has no effect at discarded_condition.rue:3:16
+    note: It's only read from here at discarded_condition.rue:4:12
+    note: Add it to the conditions that are returned, or remove it if it isn't needed
+- |-
+  This condition is used, but it's never output, so it has no effect at discarded_condition.rue:19:17
+    note: It's only read from here at discarded_condition.rue:20:12
+    note: Add it to the conditions that are returned, or remove it if it isn't needed

@@ -7,6 +7,7 @@ mod branches;
 mod casts;
 mod comparisons;
 mod conditions;
+mod discarded;
 mod entrypoints;
 mod exhaustive;
 mod exports;
@@ -87,6 +88,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(repeated::RepeatedExpensiveCall::new(input)),
         Box::new(bitwise::BoolBitwiseOperator::default()),
         Box::new(exhaustive::NonExhaustiveUnionGuard),
+        Box::new(discarded::DiscardedCondition::default()),
         Box::new(inlining::Inlining::new(input)),
         Box::new(unused_fields::UnusedStructField::new(input)),
     ]

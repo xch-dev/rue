@@ -1,0 +1,31 @@
+fn main(puzzle_hash: Bytes32, amount: Int, flag: Bool) -> List<Condition> {
+    // The condition is only read from, so it's never output
+    let coin = CreateCoin { puzzle_hash, amount, memos: nil };
+    assert coin.amount > 0;
+
+    // A condition that's output is fine, even if it's also read from
+    let fee = ReserveFee { amount: 1 };
+    assert fee.amount < amount;
+
+    // A condition that's output in one branch and dropped in the other is fine
+    let announcement = CreateCoinAnnouncement { message: puzzle_hash };
+    let rest = if flag {
+        [announcement, fee]
+    } else {
+        [fee]
+    };
+
+    // A condition in a list that's only read from isn't output either
+    let pair = [AssertMyAmount { amount }];
+    assert pair.first.amount == amount;
+
+    // Conditions passed to a function could be output by it
+    let child = AssertMyPuzzleHash { puzzle_hash };
+    let checked = check(child);
+
+    [checked, ...rest]
+}
+
+fn check(condition: AssertMyPuzzleHash) -> AssertMyPuzzleHash {
+    condition
+}
