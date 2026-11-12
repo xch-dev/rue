@@ -6,7 +6,7 @@ use tower_lsp::lsp_types::{Position, Range};
 pub fn offset_to_position(text: &str, offset: usize) -> Position {
     let offset = floor_char_boundary(text, offset);
 
-    let mut line = 0;
+    let mut line = 0usize;
     let mut line_start = 0;
 
     for start in line_starts(text).take_while(|&start| start <= offset) {
