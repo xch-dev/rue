@@ -354,7 +354,13 @@ impl Backend {
 
     async fn publish(&self, diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>) {
         for (kind, diagnostics) in diagnostics {
-            for uri in self.paths.uris(&kind) {
+            let (uris, stale) = self.paths.publish(&kind);
+
+            for uri in stale {
+                self.client.publish_diagnostics(uri, Vec::new(), None).await;
+            }
+
+            for uri in uris {
                 self.client
                     .publish_diagnostics(uri, diagnostics.clone(), None)
                     .await;
@@ -494,20 +500,14 @@ impl Backend {
         self.compiles.fetch_add(1, Ordering::Relaxed);
 
         // The project's files are reported with the paths the client uses for them
-        let root = if found.key.is_dir() {
-            &found.key
-        } else {
-            found.key.parent().unwrap_or(&found.key)
-        };
-
-        self.paths.add_root(root);
+        self.paths.add_root(&found.root);
 
         let project = match &found.project {
             Ok(project) => project,
             Err(error) => {
                 return Compiled {
                     key: found.key.clone(),
-                    diagnostics: invalid_manifest_diagnostics(&found.key, error),
+                    diagnostics: invalid_manifest_diagnostics(&found.root.join("Rue.toml"), error),
                     caches: Vec::new(),
                     removed: false,
                 };
@@ -1000,28 +1000,40 @@ fn invalid_manifest_diagnostics(
 
 /// The project that a file belongs to.
 struct FoundProject {
-    /// The project's manifest, or its entrypoint if it doesn't have one, which identifies it.
+    /// The canonical path of the project's manifest, or its entrypoint if it doesn't have one,
+    /// which identifies it however the client reaches it.
     key: PathBuf,
+    /// The directory the project is in, as the client reaches it.
+    root: PathBuf,
     /// The project, or why its manifest is invalid.
     project: std::result::Result<Project, toml::de::Error>,
 }
 
 impl FoundProject {
     fn find(path: &Path) -> Option<Self> {
-        match find_project(path, false) {
-            Ok(Some(project)) => Some(Self {
-                key: project
+        let (path, project) = match find_project(path, false) {
+            Ok(Some(project)) => (
+                project
                     .manifest_path
                     .clone()
                     .unwrap_or_else(|| project.entrypoint.clone()),
-                project: Ok(project),
-            }),
-            Err(rue_options::Error::Toml { path, error }) => Some(Self {
-                key: path,
-                project: Err(error),
-            }),
-            Ok(None) | Err(_) => None,
-        }
+                Ok(project),
+            ),
+            Err(rue_options::Error::Toml { path, error }) => (path, Err(error)),
+            Ok(None) | Err(_) => return None,
+        };
+
+        let root = if path.is_dir() {
+            path.clone()
+        } else {
+            path.parent().unwrap_or(&path).to_path_buf()
+        };
+
+        Some(Self {
+            key: paths::canonical(&path)?,
+            root,
+            project,
+        })
     }
 }
 

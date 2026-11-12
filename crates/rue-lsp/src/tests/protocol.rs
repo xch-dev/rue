@@ -632,36 +632,136 @@ async fn test_uri_spelling_is_kept() {
 
 #[tokio::test]
 async fn test_workspace_folder_paths() {
-    // The project's entrypoint is outside of its directory, but inside the workspace
-    let project = TempProject::with_manifest(
-        None,
-        &[
-            (
-                "proj/Rue.toml",
+    // The project's entrypoint is outside of its directory, but inside the workspace, which
+    // clients send as workspace folders or (in older clients) as the root URI
+    for root in ["workspaceFolders", "rootUri"] {
+        let project = TempProject::with_manifest(
+            None,
+            &[
+                (
+                    "proj/Rue.toml",
+                    "[compiler]\nentrypoint = \"../lib\"\nstd = false\n",
+                ),
+                ("lib/main.rue", MISMATCH),
+            ],
+        );
+        let manifest = project.uri("proj/Rue.toml");
+
+        let mut params = json!({ "capabilities": {} });
+        params[root] = if root == "rootUri" {
+            json!(project.uri(""))
+        } else {
+            json!([{ "uri": project.uri(""), "name": "workspace" }])
+        };
+
+        let mut client = Client::new();
+        let messages = client.initialize_with(params).await;
+        assert!(messages.is_empty(), "{messages:?}");
+
+        client
+            .open(
+                &manifest,
                 "[compiler]\nentrypoint = \"../lib\"\nstd = false\n",
-            ),
-            ("lib/main.rue", MISMATCH),
-        ],
+            )
+            .await;
+        assert_eq!(
+            project.published(&client.sync().await),
+            ["lib/main.rue: [1]", "proj/Rue.toml: []"],
+            "{root}"
+        );
+    }
+}
+
+/// Renders the URIs that diagnostics were published to, and how many there were for each, in no
+/// particular order.
+fn published_uris(messages: &[Request]) -> Vec<String> {
+    let mut published = messages
+        .iter()
+        .map(|message| {
+            let params = message.params().unwrap();
+            format!(
+                "{} {}",
+                params["uri"].as_str().unwrap(),
+                params["diagnostics"].as_array().unwrap().len()
+            )
+        })
+        .collect::<Vec<_>>();
+
+    published.sort();
+    published
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_file_open_through_two_uris() {
+    let project = TempProject::new(&[("main.rue", SOURCE)]);
+    let link = project.uri("main.rue");
+    let real = Url::from_file_path(project.root.canonicalize().unwrap().join("main.rue")).unwrap();
+    let manifest = project.uri("Rue.toml");
+
+    let mut client = Client::initialized().await;
+
+    let expected = |entries: &[(&Url, usize)]| {
+        let mut entries = entries
+            .iter()
+            .map(|(uri, count)| format!("{uri} {count}"))
+            .collect::<Vec<_>>();
+        entries.sort();
+        entries
+    };
+
+    client.open(&link, MISMATCH).await;
+    assert_eq!(
+        published_uris(&client.sync().await),
+        expected(&[(&link, 1), (&manifest, 0)])
     );
-    let manifest = project.uri("proj/Rue.toml");
 
-    let mut client = Client::new();
-    let messages = client
-        .initialize_with(json!({
-            "capabilities": {},
-            "workspaceFolders": [{ "uri": project.uri(""), "name": "workspace" }],
-        }))
-        .await;
-    assert!(messages.is_empty(), "{messages:?}");
+    // Both documents get the diagnostics
+    client.open(&real, MISMATCH).await;
+    assert_eq!(
+        published_uris(&client.sync().await),
+        expected(&[(&link, 1), (&real, 1), (&manifest, 0)])
+    );
 
-    client
-        .open(
-            &manifest,
-            "[compiler]\nentrypoint = \"../lib\"\nstd = false\n",
-        )
-        .await;
+    // Once one is closed, its diagnostics are cleared, and only the other one gets new ones
+    client.close(&link).await;
+    assert_eq!(
+        published_uris(&client.sync().await),
+        expected(&[(&link, 0), (&real, 1), (&manifest, 0)])
+    );
+
+    client.change(&real, 2, &[SOURCE]).await;
+    assert_eq!(
+        published_uris(&client.sync().await),
+        expected(&[(&real, 1), (&manifest, 0)])
+    );
+
+    // Once neither is open, the diagnostics go to the path the client used for the project
+    client.close(&real).await;
+    assert_eq!(
+        published_uris(&client.sync().await),
+        expected(&[(&link, 1), (&real, 0), (&manifest, 0)])
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_watched_files_through_canonical_path() {
+    let project = TempProject::new(&[("main.rue", SOURCE)]);
+    let main = project.uri("main.rue");
+    let real = project.root.canonicalize().unwrap();
+
+    let mut client = Client::initialized().await;
+
+    client.open(&main, SOURCE).await;
+    client.sync().await;
+
+    // The watcher reports the file's real path, but it's the same project
+    project.write("other.rue", MISMATCH.replace("main", "other"));
+    let other = Url::from_file_path(real.join("other.rue")).unwrap();
+    client.watched(&[(&other, FileChangeType::CREATED)]).await;
     assert_eq!(
         project.published(&client.sync().await),
-        ["lib/main.rue: [1]", "proj/Rue.toml: []"]
+        ["Rue.toml: []", "main.rue: [2]", "other.rue: [2, 1]"]
     );
 }

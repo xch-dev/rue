@@ -22,6 +22,8 @@ pub struct Paths {
     /// The URIs of the documents open in the editor. The same file can be open through more than
     /// one URI (for example, through a symlink and through its target).
     documents: Mutex<HashMap<SourceKind, Vec<Url>>>,
+    /// The URIs that diagnostics were last published to for each file.
+    published: Mutex<HashMap<SourceKind, Vec<Url>>>,
 }
 
 impl Paths {
@@ -41,13 +43,9 @@ impl Paths {
 
     /// Remembers the URI of a document the editor opened.
     pub fn open(&self, uri: &Url) {
-        let Some((path, kind)) = document(uri) else {
+        let Some((_, kind)) = document(uri) else {
             return;
         };
-
-        if let Some(parent) = path.parent() {
-            self.add_root(parent);
-        }
 
         let mut documents = lock(&self.documents);
         let uris = documents.entry(kind).or_default();
@@ -101,6 +99,24 @@ impl Paths {
         Url::from_file_path(client).into_iter().collect()
     }
 
+    /// The URIs to publish a file's diagnostics to, and those that it was published to last time
+    /// but won't be anymore, whose diagnostics need to be cleared (for example, after the editor
+    /// closed a document that it had opened through a symlink).
+    pub fn publish(&self, kind: &SourceKind) -> (Vec<Url>, Vec<Url>) {
+        let uris = self.uris(kind);
+
+        let previous = lock(&self.published)
+            .insert(kind.clone(), uris.clone())
+            .unwrap_or_default();
+
+        let stale = previous
+            .into_iter()
+            .filter(|uri| !uris.contains(uri))
+            .collect();
+
+        (uris, stale)
+    }
+
     /// Converts a location in a file, which the compiler reports with its canonical path, to the
     /// path that the client uses.
     pub fn location(&self, location: Location) -> Location {
@@ -149,16 +165,24 @@ pub fn document(uri: &Url) -> Option<(PathBuf, SourceKind)> {
         return Some((path, kind));
     }
 
-    let (canonical, rest) = path.ancestors().skip(1).find_map(|ancestor| {
-        Some((
-            ancestor.canonicalize().ok()?,
-            path.strip_prefix(ancestor).ok()?,
-        ))
-    })?;
-
-    let kind = SourceKind::File(canonical.join(rest).to_string_lossy().to_string());
+    let kind = SourceKind::File(canonical(&path)?.to_string_lossy().to_string());
 
     Some((path, kind))
+}
+
+/// The canonical form of a path, even if it doesn't exist (anymore): the nearest directory that
+/// does is canonicalized, and the rest of the path is kept as it is.
+pub fn canonical(path: &Path) -> Option<PathBuf> {
+    path.ancestors().find_map(|ancestor| {
+        let rest = path.strip_prefix(ancestor).ok()?;
+        let ancestor = ancestor.canonicalize().ok()?;
+
+        Some(if rest.as_os_str().is_empty() {
+            ancestor
+        } else {
+            ancestor.join(rest)
+        })
+    })
 }
 
 #[cfg(test)]
@@ -245,18 +269,17 @@ mod tests {
         assert_eq!(paths.uris(&file), [client_uri]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_uri_uses_innermost_root() {
         let outer = TempDir::new("rue-lsp-paths");
-        let inner = TempDir::new("rue-lsp-paths");
+        let other = TempDir::new("rue-lsp-paths");
 
-        // The inner directory is inside the outer one, but the client reaches it another way
+        // `nested` is inside `outer`, but the client also reaches it through a symlink in `other`
         let nested = outer.path().join("nested");
+        let link = other.path().join("link");
         fs::create_dir_all(&nested).unwrap();
-
-        let paths = Paths::default();
-        paths.add_root(outer.path());
-        paths.add_root(inner.path());
+        std::os::unix::fs::symlink(&nested, &link).unwrap();
 
         let kind = |path: &Path| {
             SourceKind::File(
@@ -268,26 +291,33 @@ mod tests {
             )
         };
 
+        let paths = Paths::default();
+        paths.add_root(outer.path());
         assert_eq!(
             paths.uri(&kind(&nested)),
             Some(Url::from_file_path(nested.join("a.rue")).unwrap())
         );
 
-        // Once the client uses another path for the nested directory, that's used
-        let link = inner.path().join("link");
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&nested, &link).unwrap();
-        #[cfg(unix)]
-        {
-            paths.add_root(&link);
-            assert_eq!(
-                paths.uri(&kind(&nested)),
-                Some(Url::from_file_path(link.join("a.rue")).unwrap())
-            );
-            assert_eq!(
-                paths.uri(&kind(outer.path())),
-                Some(Url::from_file_path(outer.path().join("a.rue")).unwrap())
-            );
-        }
+        paths.add_root(&link);
+        assert_eq!(
+            paths.uri(&kind(&nested)),
+            Some(Url::from_file_path(link.join("a.rue")).unwrap())
+        );
+        assert_eq!(
+            paths.uri(&kind(outer.path())),
+            Some(Url::from_file_path(outer.path().join("a.rue")).unwrap())
+        );
+    }
+
+    #[test]
+    fn test_canonical() {
+        let dir = TempDir::new("rue-lsp-paths");
+        let real = dir.path().canonicalize().unwrap();
+
+        assert_eq!(canonical(dir.path()), Some(real.clone()));
+        assert_eq!(
+            canonical(&dir.path().join("missing/a.rue")),
+            Some(real.join("missing/a.rue"))
+        );
     }
 }
