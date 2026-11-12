@@ -9,6 +9,7 @@ mod line_endings;
 mod navigation;
 mod protocol;
 mod shadowing;
+mod std_library;
 mod sweep;
 mod syntax_errors;
 mod workspace;
