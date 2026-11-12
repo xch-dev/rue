@@ -1,12 +1,10 @@
 use rue_diagnostic::{Lint, Note, SrcLoc};
-use std::collections::HashSet;
-
-use rue_hir::{Declaration, Hir, HirId, SymbolId, UnaryOp};
+use rue_hir::{Declaration, Hir, HirId, UnaryOp};
 use rue_types::TypeId;
 
 use crate::{
-    HirLintPass, LintContext,
-    flow::{Bindings, Fate, follow, used},
+    HirLintPass, LintContext, LintInput,
+    flow::{Asserted, Bindings, Fate, follow, used},
 };
 
 /// Reports conditions (values of the standard library's `Condition` type) that are built and used,
@@ -14,16 +12,25 @@ use crate::{
 /// it's output by the puzzle, so one that's only read from (or only used in a branch that drops
 /// it) is likely a mistake. Conditions that aren't used at all are already reported by
 /// `unused_binding` and `unused_value`.
-#[derive(Debug, Default)]
-pub(crate) struct DiscardedCondition {
+#[derive(Debug)]
+pub(crate) struct DiscardedCondition<'a> {
     /// Each condition that's built, along with where its value goes.
     conditions: Vec<(SrcLoc, Fate)>,
     bindings: Bindings,
-    /// The tests, which are skipped.
-    tests: Option<HashSet<SymbolId>>,
+    input: &'a LintInput<'a>,
 }
 
-impl HirLintPass for DiscardedCondition {
+impl<'a> DiscardedCondition<'a> {
+    pub(crate) fn new(input: &'a LintInput<'a>) -> Self {
+        Self {
+            conditions: Vec::new(),
+            bindings: Bindings::default(),
+            input,
+        }
+    }
+}
+
+impl HirLintPass for DiscardedCondition<'_> {
     fn lints(&self) -> &'static [Lint] {
         &[Lint::DiscardedCondition]
     }
@@ -40,9 +47,7 @@ impl HirLintPass for DiscardedCondition {
                 };
 
                 // Tests don't output anything, and often build conditions only to check them
-                let tests = self
-                    .tests
-                    .get_or_insert_with(|| cx.db().tests().map(|test| test.symbol).collect());
+                let tests = self.input.tests(cx.db());
 
                 if let Some(Declaration::Symbol(symbol)) = cx.enclosing_declaration()
                     && tests.contains(&symbol)
@@ -65,6 +70,8 @@ impl HirLintPass for DiscardedCondition {
     }
 
     fn finish(&mut self, cx: &mut LintContext<'_>) {
+        self.bindings.find_parts(cx.db());
+
         for (srcloc, fate) in std::mem::take(&mut self.conditions) {
             let mut uses = Vec::new();
 
@@ -95,25 +102,21 @@ impl HirLintPass for DiscardedCondition {
 
 /// Whether the value of the current node reaches the output of the function.
 fn output_fate(cx: &LintContext<'_>, hir: HirId) -> Fate {
-    follow(cx, hir, |db, parent, child| match db.hir(parent) {
-        // The value is part of a larger value, which goes wherever that does, or part of it is
-        // taken out (which may be the condition itself, such as `pair.first`)
-        Hir::Pair(..)
-        | Hir::List(_)
-        | Hir::Struct(_)
-        | Hir::Cast(_)
-        | Hir::FieldAccess(_)
-        | Hir::Unary(UnaryOp::First | UnaryOp::Rest, _) => None,
-        // The value of a branch is the value of the `if`
-        Hir::If(condition, ..) => (*condition == child).then(|| used(db, parent)),
-        // Passing the value to a function could output it, which isn't followed
-        Hir::FunctionCall(call) => Some(if call.function == child {
-            used(db, parent)
-        } else {
-            Fate::Reached
-        }),
-        // Anything else reads the value, such as a guard or a comparison
-        _ => Some(used(db, parent)),
+    follow(cx, hir, Asserted::Used, |db, parent, _child| {
+        match db.hir(parent) {
+            // The value is part of a larger value, which goes wherever that does, or part of it is
+            // taken out (which may be the condition itself, such as `pair.first`)
+            Hir::Pair(..)
+            | Hir::List(_)
+            | Hir::Struct(_)
+            | Hir::Cast(_)
+            | Hir::FieldAccess(_)
+            | Hir::Unary(UnaryOp::First | UnaryOp::Rest, _) => None,
+            // Passing the value to a function could output it, which isn't followed
+            Hir::FunctionCall(_) => Some(Fate::Reached),
+            // Anything else reads the value, such as a guard or a comparison
+            _ => Some(used(db, parent)),
+        }
     })
 }
 

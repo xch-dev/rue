@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use rue_diagnostic::SrcLoc;
-use rue_hir::{Database, Hir, HirId, Statement, Symbol, SymbolId};
+use rue_hir::{Database, FieldAccess, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
 
 use crate::LintContext;
 
@@ -21,16 +21,27 @@ pub(crate) enum Fate {
     Dropped,
 }
 
+/// What it means for a value to be checked by an `assert`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Asserted {
+    /// The `assert` is what the lint is looking for, such as a check of a value.
+    Reached,
+    /// The `assert` only uses the value.
+    Used,
+}
+
 /// Follows the value of the current node outward through the nodes that enclose it. `step` is
 /// called with each enclosing node and the child that the value is in, and returns the fate of the
 /// value if that node decides it, or `None` if the value goes on to the enclosing node.
 ///
-/// Some nodes are handled the same way for every lint: a block passes its body's value on, and a
-/// value bound by `let` goes wherever the binding does. A value that's returned, or that's the body
-/// of the function, a lambda, or a constant, reaches the output.
+/// Some nodes are handled the same way for every lint: a block passes its body's value on, a value
+/// bound by `let` goes wherever the binding does, and an `if` passes its branches' values on. A
+/// value that's returned, or that's the body of the function, a lambda, or a constant, reaches the
+/// output. A value that's an `if` condition or that's called is used there.
 pub(crate) fn follow(
     cx: &LintContext<'_>,
     hir: HirId,
+    asserted: Asserted,
     mut step: impl FnMut(&Database, HirId, HirId) -> Option<Fate>,
 ) -> Fate {
     let db = cx.db();
@@ -54,16 +65,28 @@ pub(crate) fn follow(
                             }
                         }
                         Statement::Return(value, _) if *value == child => return Fate::Reached,
+                        Statement::Assert(value, srcloc) if *value == child => {
+                            return match asserted {
+                                Asserted::Reached => Fate::Reached,
+                                Asserted::Used => Fate::Used(srcloc.clone()),
+                            };
+                        }
                         _ => {}
                     }
                 }
 
-                // Any other statement discards the value, or only reads it (such as `assert`)
+                // Any other statement discards the value
                 return Fate::Dropped;
             }
             // The value of a lambda's body is returned when it's called, and a constant's value is
             // evaluated at compile time
             Hir::Lambda(_) | Hir::Const(_) => return Fate::Reached,
+            // The condition of an `if` only decides which branch is taken, and the value of a
+            // branch is the value of the `if`
+            Hir::If(condition, ..) if *condition == child => return used(db, parent),
+            Hir::If(..) => {}
+            // Calling the value uses it, rather than passing it on
+            Hir::FunctionCall(call) if call.function == child => return used(db, parent),
             _ => {
                 if let Some(fate) = step(db, parent, child) {
                     return fate;
@@ -90,6 +113,9 @@ pub(crate) fn used(db: &Database, hir: HirId) -> Fate {
 #[derive(Debug, Default)]
 pub(crate) struct Bindings {
     references: HashMap<SymbolId, Vec<Fate>>,
+    /// The bindings that each binding is destructured into, such as `a` and `b` in
+    /// `let (a, b) = value`, whose values are parts of it.
+    parts: HashMap<SymbolId, Vec<SymbolId>>,
 }
 
 impl Bindings {
@@ -102,6 +128,34 @@ impl Bindings {
     ) {
         if matches!(db.symbol(symbol), Symbol::Binding(_)) {
             self.references.entry(symbol).or_default().push(fate());
+        }
+    }
+
+    /// Finds the bindings that other bindings are destructured into, which must be done before
+    /// following any values. The values of the parts are generated, so they aren't walked.
+    pub(crate) fn find_parts(&mut self, db: &Database) {
+        for (symbol, value) in db.symbols().filter_map(|(symbol, binding)| match binding {
+            Symbol::Binding(binding) => Some((symbol, binding.value.hir)),
+            _ => None,
+        }) {
+            let mut hir = value;
+
+            // A part is a field of the value, or the first or rest of it
+            let whole = loop {
+                match db.hir(hir) {
+                    Hir::Cast(inner)
+                    | Hir::FieldAccess(FieldAccess { value: inner, .. })
+                    | Hir::Unary(UnaryOp::First | UnaryOp::Rest, inner) => hir = *inner,
+                    Hir::Reference(whole) if hir != value => break Some(*whole),
+                    _ => break None,
+                }
+            };
+
+            if let Some(whole) = whole
+                && matches!(db.symbol(whole), Symbol::Binding(_))
+            {
+                self.parts.entry(whole).or_default().push(symbol);
+            }
         }
     }
 
@@ -125,12 +179,18 @@ impl Bindings {
                 }
 
                 let fates = self.references.get(symbol).map_or(&[][..], Vec::as_slice);
+                let parts = self.parts.get(symbol).map_or(&[][..], Vec::as_slice);
 
-                // Every reference is followed, so that all of the places it's used are collected
+                // Every reference is followed, so that all of the places it's used are collected,
+                // and so is every binding it's destructured into
                 let mut reached = false;
 
                 for fate in fates {
                     reached |= self.reaches_impl(fate, visited, uses);
+                }
+
+                for &part in parts {
+                    reached |= self.reaches_impl(&Fate::Bound(part), visited, uses);
                 }
 
                 reached

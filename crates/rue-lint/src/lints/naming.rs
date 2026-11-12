@@ -37,7 +37,7 @@ impl Case {
     fn matches(self, name: &str) -> bool {
         match self {
             Self::Snake => !name.chars().any(char::is_uppercase),
-            Self::ScreamingSnake => is_screaming_snake(name),
+            Self::ScreamingSnake => !name.chars().any(char::is_lowercase),
             Self::Parameter => {
                 Self::Snake.matches(name)
                     || Self::ScreamingSnake.matches(name)
@@ -228,12 +228,6 @@ fn collect_binding_names(binding: &AstBinding, shorthand: bool, names: &mut Vec<
             }
         }
     }
-}
-
-/// Whether a name is in `SCREAMING_SNAKE_CASE`, which is also the convention for curried
-/// parameters.
-pub(crate) fn is_screaming_snake(name: &str) -> bool {
-    !name.chars().any(char::is_lowercase)
 }
 
 #[cfg(test)]

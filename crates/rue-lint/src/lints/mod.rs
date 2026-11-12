@@ -89,7 +89,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(repeated::RepeatedExpensiveCall::new(input)),
         Box::new(bitwise::BoolBitwiseOperator::default()),
         Box::new(exhaustive::NonExhaustiveUnionGuard),
-        Box::new(discarded::DiscardedCondition::default()),
+        Box::new(discarded::DiscardedCondition::new(input)),
         Box::new(puzzles::UncheckedPuzzleCall::new(input)),
         Box::new(inlining::Inlining::new(input)),
         Box::new(unused_fields::UnusedStructField::new(input)),

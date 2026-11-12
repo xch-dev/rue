@@ -13,6 +13,10 @@ fn main(
     output: Puzzle,
     SCREAMING: Puzzle,
     #[allow(unchecked_puzzle_call)] allowed: Puzzle,
+    signed: Puzzle,
+    listed: Puzzle,
+    #[curried] PUBLIC_KEY: K1PublicKey,
+    signature: K1Signature,
     solution: Any,
 ) -> List<List<Condition>> {
     // Parameters that are curried into the puzzle are trusted
@@ -56,7 +60,15 @@ fn main(
     // The lint can be allowed on the parameter
     let m = allowed(...solution);
 
-    [a, b, c, d, e, f, g, h, i, j, k, m]
+    // Verifying a signature of the hash checks it
+    secp256k1_verify(PUBLIC_KEY, tree_hash(signed), signature);
+    let n = signed(...solution);
+
+    // So does asserting something computed from it
+    assert is_allowed(tree_hash(listed));
+    let o = listed(...solution);
+
+    [a, b, c, d, e, f, g, h, i, j, k, m, n, o]
 }
 
 // Exported functions are programs of their own
@@ -72,4 +84,8 @@ fn check_and_run(puzzle: Puzzle, solution: Any) -> List<Condition> {
 // Tests aren't run with a solution
 test fn runs(puzzle: Puzzle) {
     let _ = puzzle(...nil);
+}
+
+fn is_allowed(hash: Bytes32) -> Bool {
+    hash == 0x0000000000000000000000000000000000000000000000000000000000000000
 }
