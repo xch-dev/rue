@@ -1,0 +1,2 @@
+diagnostics:
+- Cannot type guard from `Melt | Transfer` to `Bytes32`, since they do not overlap at non_exhaustive_union_guard_errors.rue:20:15

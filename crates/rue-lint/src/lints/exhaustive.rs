@@ -101,11 +101,11 @@ fn check_chain(cx: &mut LintContext<'_>, guards: &[Guarded], raise: SrcLoc) {
         return;
     };
 
-    // Every guard must be on the same value
-    let guards = guards
-        .iter()
-        .take_while(|guard| guard.symbol == first.symbol)
-        .collect::<Vec<_>>();
+    // Every guard must be on the same value, since a guard on another value could catch it before
+    // the `raise`
+    if guards.iter().any(|guard| guard.symbol != first.symbol) {
+        return;
+    }
 
     if guards.len() < MIN_GUARDS {
         return;

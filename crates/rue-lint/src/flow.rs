@@ -21,13 +21,22 @@ pub(crate) enum Fate {
     Dropped,
 }
 
-/// What it means for a value to be checked by an `assert`.
+/// What it means for a value to decide something, as the condition of an `assert` or an `if`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Asserted {
-    /// The `assert` is what the lint is looking for, such as a check of a value.
+pub(crate) enum Checks {
+    /// Deciding something is what the lint is looking for, such as a check of a value.
     Reached,
-    /// The `assert` only uses the value.
+    /// Deciding something only uses the value.
     Used,
+}
+
+impl Checks {
+    fn fate(self, srcloc: Option<&SrcLoc>) -> Fate {
+        match self {
+            Self::Reached => Fate::Reached,
+            Self::Used => srcloc.cloned().map_or(Fate::Dropped, Fate::Used),
+        }
+    }
 }
 
 /// Follows the value of the current node outward through the nodes that enclose it. `step` is
@@ -41,7 +50,7 @@ pub(crate) enum Asserted {
 pub(crate) fn follow(
     cx: &LintContext<'_>,
     hir: HirId,
-    asserted: Asserted,
+    checks: Checks,
     mut step: impl FnMut(&Database, HirId, HirId) -> Option<Fate>,
 ) -> Fate {
     let db = cx.db();
@@ -66,10 +75,10 @@ pub(crate) fn follow(
                         }
                         Statement::Return(value, _) if *value == child => return Fate::Reached,
                         Statement::Assert(value, srcloc) if *value == child => {
-                            return match asserted {
-                                Asserted::Reached => Fate::Reached,
-                                Asserted::Used => Fate::Used(srcloc.clone()),
-                            };
+                            return checks.fate(Some(srcloc));
+                        }
+                        Statement::If(statement) if statement.condition == child => {
+                            return checks.fate(Some(&statement.srcloc));
                         }
                         _ => {}
                     }
@@ -84,7 +93,9 @@ pub(crate) fn follow(
             Hir::Const(_) => return Fate::Reached,
             // The condition of an `if` only decides which branch is taken, and the value of a
             // branch is the value of the `if`
-            Hir::If(condition, ..) if *condition == child => return used(db, parent),
+            Hir::If(condition, ..) if *condition == child => {
+                return checks.fate(db.hir_srcloc(parent));
+            }
             Hir::If(..) => {}
             // Calling the value uses it, rather than passing it on
             Hir::FunctionCall(call) if call.function == child => return used(db, parent),
@@ -114,10 +125,11 @@ pub(crate) fn used(db: &Database, hir: HirId) -> Fate {
 #[derive(Debug, Default)]
 pub(crate) struct Bindings {
     references: HashMap<SymbolId, Vec<Fate>>,
-    /// The bindings that each binding is destructured into, such as `a` and `b` in
-    /// `let (a, b) = value`, whose values are parts of it.
-    parts: HashMap<SymbolId, Vec<SymbolId>>,
 }
+
+/// The bindings that each binding is destructured into, such as `a` and `b` in
+/// `let (a, b) = value`, whose values are parts of it.
+pub(crate) type Parts = HashMap<SymbolId, Vec<SymbolId>>;
 
 impl Bindings {
     /// Records the fate of the value at a reference, if it's a reference to a binding.
@@ -132,44 +144,21 @@ impl Bindings {
         }
     }
 
-    /// Finds the bindings that other bindings are destructured into, which must be done before
-    /// following any values. The values of the parts are generated, so they aren't walked.
-    pub(crate) fn find_parts(&mut self, db: &Database) {
-        for (symbol, value) in db.symbols().filter_map(|(symbol, binding)| match binding {
-            Symbol::Binding(binding) => Some((symbol, binding.value.hir)),
-            _ => None,
-        }) {
-            let mut hir = value;
-
-            // A part is the value, a field of it, or the first or rest of it. The value of a named
-            // binding in a destructuring is a reference to the part it names.
-            let whole = loop {
-                match db.hir(hir) {
-                    Hir::Cast(inner)
-                    | Hir::FieldAccess(FieldAccess { value: inner, .. })
-                    | Hir::Unary(UnaryOp::First | UnaryOp::Rest, inner) => hir = *inner,
-                    Hir::Reference(whole) => break Some(*whole),
-                    _ => break None,
-                }
-            };
-
-            if let Some(whole) = whole
-                && matches!(db.symbol(whole), Symbol::Binding(_))
-            {
-                self.parts.entry(whole).or_default().push(symbol);
-            }
-        }
-    }
-
     /// Whether a value with the given fate reaches what the lint is looking for, collecting the
     /// places it's used on the way if `uses` is given.
-    pub(crate) fn reaches(&self, fate: &Fate, mut uses: Option<&mut Vec<SrcLoc>>) -> bool {
-        self.reaches_impl(fate, &mut HashSet::new(), &mut uses)
+    pub(crate) fn reaches(
+        &self,
+        fate: &Fate,
+        parts: &Parts,
+        mut uses: Option<&mut Vec<SrcLoc>>,
+    ) -> bool {
+        self.reaches_impl(fate, parts, &mut HashSet::new(), &mut uses)
     }
 
     fn reaches_impl(
         &self,
         fate: &Fate,
+        parts: &Parts,
         visited: &mut HashSet<SymbolId>,
         uses: &mut Option<&mut Vec<SrcLoc>>,
     ) -> bool {
@@ -181,18 +170,18 @@ impl Bindings {
                 }
 
                 let fates = self.references.get(symbol).map_or(&[][..], Vec::as_slice);
-                let parts = self.parts.get(symbol).map_or(&[][..], Vec::as_slice);
+                let symbol_parts = parts.get(symbol).map_or(&[][..], Vec::as_slice);
 
                 // Every reference is followed, so that all of the places it's used are collected,
                 // and so is every binding it's destructured into
                 let mut reached = false;
 
                 for fate in fates {
-                    reached |= self.reaches_impl(fate, visited, uses);
+                    reached |= self.reaches_impl(fate, parts, visited, uses);
                 }
 
-                for &part in parts {
-                    reached |= self.reaches_impl(&Fate::Bound(part), visited, uses);
+                for &part in symbol_parts {
+                    reached |= self.reaches_impl(&Fate::Bound(part), parts, visited, uses);
                 }
 
                 reached
@@ -206,4 +195,37 @@ impl Bindings {
             Fate::Dropped => false,
         }
     }
+}
+
+/// Finds the bindings that other bindings are destructured into. The values of the parts are
+/// generated, so they aren't walked.
+pub(crate) fn binding_parts(db: &Database) -> Parts {
+    let mut parts = Parts::new();
+
+    for (symbol, value) in db.symbols().filter_map(|(symbol, binding)| match binding {
+        Symbol::Binding(binding) => Some((symbol, binding.value.hir)),
+        _ => None,
+    }) {
+        let mut hir = value;
+
+        // A part is the value, a field of it, or the first or rest of it. The value of a named
+        // binding in a destructuring is a reference to the part it names.
+        let whole = loop {
+            match db.hir(hir) {
+                Hir::Cast(inner)
+                | Hir::FieldAccess(FieldAccess { value: inner, .. })
+                | Hir::Unary(UnaryOp::First | UnaryOp::Rest, inner) => hir = *inner,
+                Hir::Reference(whole) => break Some(*whole),
+                _ => break None,
+            }
+        };
+
+        if let Some(whole) = whole
+            && matches!(db.symbol(whole), Symbol::Binding(_))
+        {
+            parts.entry(whole).or_default().push(symbol);
+        }
+    }
+
+    parts
 }

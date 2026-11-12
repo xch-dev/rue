@@ -17,6 +17,9 @@ fn main(
     in_lambda: Puzzle,
     in_branch: Puzzle,
     combined: Puzzle,
+    if_statement: Puzzle,
+    if_expression: Puzzle,
+    validated: Puzzle,
     listed: Puzzle,
     #[curried] PUBLIC_KEY: K1PublicKey,
     signature: K1Signature,
@@ -87,7 +90,21 @@ fn main(
     assert sha256(tree_hash(combined) + PUZZLE_HASH) == PUZZLE_HASH;
     let r = combined(...solution);
 
-    [a, b, c, d, e, f, g, h, i, j, k, m, n, o, p, q, r, [hash()]]
+    // An `if` on something computed from the hash checks it too, as does passing the hash to a
+    // function of the program
+    if !is_allowed(tree_hash(if_statement)) {
+        raise "not allowed";
+    }
+    let t = if_statement(...solution);
+    let u = if is_allowed(tree_hash(if_expression)) {
+        if_expression(...solution)
+    } else {
+        raise "not allowed";
+    };
+    validate(tree_hash(validated));
+    let v = validated(...solution);
+
+    [a, b, c, d, e, f, g, h, i, j, k, m, n, o, p, q, r, t, u, v, [hash()]]
 }
 
 // Exported functions are programs of their own
@@ -106,4 +123,8 @@ test fn runs(puzzle: Puzzle) {
 
 fn is_allowed(hash: Bytes32) -> Bool {
     hash == 0x0000000000000000000000000000000000000000000000000000000000000000
+}
+
+fn validate(hash: Bytes32) {
+    assert is_allowed(hash);
 }

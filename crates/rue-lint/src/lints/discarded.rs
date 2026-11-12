@@ -4,7 +4,7 @@ use rue_types::TypeId;
 
 use crate::{
     HirLintPass, LintContext, LintInput,
-    flow::{Asserted, Bindings, Fate, follow, used},
+    flow::{Bindings, Checks, Fate, follow, used},
 };
 
 /// Reports conditions (values of the standard library's `Condition` type) that are built and used,
@@ -70,12 +70,13 @@ impl HirLintPass for DiscardedCondition<'_> {
     }
 
     fn finish(&mut self, cx: &mut LintContext<'_>) {
-        self.bindings.find_parts(cx.db());
-
         for (srcloc, fate) in std::mem::take(&mut self.conditions) {
             let mut uses = Vec::new();
 
-            if self.bindings.reaches(&fate, Some(&mut uses)) {
+            if self
+                .bindings
+                .reaches(&fate, self.input.binding_parts(cx.db()), Some(&mut uses))
+            {
                 continue;
             }
 
@@ -102,7 +103,7 @@ impl HirLintPass for DiscardedCondition<'_> {
 
 /// Whether the value of the current node reaches the output of the function.
 fn output_fate(cx: &LintContext<'_>, hir: HirId) -> Fate {
-    follow(cx, hir, Asserted::Used, |db, parent, _child| {
+    follow(cx, hir, Checks::Used, |db, parent, _child| {
         match db.hir(parent) {
             // The value is part of a larger value, which goes wherever that does, or part of it is
             // taken out (which may be the condition itself, such as `pair.first`)

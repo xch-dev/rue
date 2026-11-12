@@ -28,6 +28,7 @@ fn main(action: Action) -> Int {
         + nested(action)
         + three(action)
         + several(action)
+        + mixed(action, action)
 }
 
 // `Transfer` isn't handled, so it falls into the `raise`
@@ -51,6 +52,19 @@ fn statements(action: Action) -> Int {
     }
 
     raise;
+}
+
+// A guard on another value can catch it before the `raise`
+fn mixed(action: Action, other: Action) -> Int {
+    if action is Spend {
+        action.amount
+    } else if action is Melt {
+        -action.amount
+    } else if other is Spend {
+        other.amount
+    } else {
+        raise;
+    }
 }
 
 // Guards on different values aren't handling the types of one of them

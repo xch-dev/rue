@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use rue_ast::{AstBinding, AstFunctionParameter, AstNode};
 use rue_diagnostic::{Lint, Note, SourceKind, SrcLoc};
-use rue_hir::{BinaryOp, Declaration, Hir, HirId, Symbol, SymbolId};
+use rue_hir::{BinaryOp, Database, Declaration, Hir, HirId, Symbol, SymbolId};
 
 use crate::{
     CURRIED, HirLintPass, LintContext, LintInput, NameKey,
-    flow::{Asserted, Bindings, Fate, follow, used},
+    flow::{Bindings, Checks, Fate, follow, used},
     name_key,
     text::keyword_locations,
 };
@@ -136,8 +136,6 @@ impl HirLintPass for UncheckedPuzzleCall<'_> {
     }
 
     fn finish(&mut self, cx: &mut LintContext<'_>) {
-        self.bindings.find_parts(cx.db());
-
         let mut parameters = self
             .entrypoints
             .values()
@@ -146,6 +144,8 @@ impl HirLintPass for UncheckedPuzzleCall<'_> {
             .collect::<Vec<_>>();
 
         parameters.sort_by_key(id_arena::Id::index);
+
+        let parts = self.input.binding_parts(cx.db());
 
         for parameter in parameters {
             let Some(call) = self.calls.get(&parameter) else {
@@ -166,10 +166,11 @@ impl HirLintPass for UncheckedPuzzleCall<'_> {
                 continue;
             }
 
-            let checked = self
-                .hashes
-                .get(&parameter)
-                .is_some_and(|fates| fates.iter().any(|fate| self.bindings.reaches(fate, None)));
+            let checked = self.hashes.get(&parameter).is_some_and(|fates| {
+                fates
+                    .iter()
+                    .any(|fate| self.bindings.reaches(fate, parts, None))
+            });
 
             if checked {
                 continue;
@@ -207,6 +208,21 @@ fn is_curried_name(name: &str) -> bool {
     name.chars().any(char::is_uppercase) && !name.chars().any(char::is_lowercase)
 }
 
+/// Whether the function is one that the standard library declares.
+fn is_std_function(db: &Database, function: HirId) -> bool {
+    let Hir::Reference(symbol) = db.hir(db.without_casts(function)) else {
+        return false;
+    };
+
+    matches!(
+        db.symbol(*symbol),
+        Symbol::Function(function)
+            if function.name.as_ref().and_then(|name| name.srcloc()).is_some_and(|srcloc| {
+                matches!(srcloc.source.kind, SourceKind::Std(_))
+            })
+    )
+}
+
 /// Whether the function is the standard library's `tree_hash`.
 fn is_tree_hash(cx: &LintContext<'_>, function: HirId) -> bool {
     let db = cx.db();
@@ -229,8 +245,8 @@ fn is_tree_hash(cx: &LintContext<'_>, function: HirId) -> bool {
 
 /// Whether a hash (or a value computed from it) reaches a comparison, or the output.
 fn hash_fate(cx: &LintContext<'_>, hir: HirId) -> Fate {
-    // An `assert` on a value computed from the hash checks it, such as an allow-list lookup
-    follow(cx, hir, Asserted::Reached, |db, parent, _child| {
+    // An `assert` or `if` on a value computed from the hash checks it, such as an allow-list lookup
+    follow(cx, hir, Checks::Reached, |db, parent, _child| {
         match db.hir(parent) {
             // A comparison checks the hash, and so does verifying a signature of it
             Hir::Binary(BinaryOp::Eq | BinaryOp::Ne, ..)
@@ -239,6 +255,9 @@ fn hash_fate(cx: &LintContext<'_>, hir: HirId) -> Fate {
             | Hir::Secp256R1Verify(..) => Some(Fate::Reached),
             // A hash computed in a lambda isn't the entrypoint's output, and isn't compared
             Hir::Guard(_) | Hir::Lambda(_) => Some(used(db, parent)),
+            // Passing the hash to a function of the program could check it there, as with passing the
+            // parameter itself, but the standard library's functions only compute other values from it
+            Hir::FunctionCall(call) if !is_std_function(db, call.function) => Some(Fate::Reached),
             // Anything else computes a value from it, which is followed in turn
             _ => None,
         }

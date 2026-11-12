@@ -1,0 +1,25 @@
+struct Spend {
+    amount: Int,
+}
+
+struct Melt {
+    amount: Int,
+    reason: Bytes,
+}
+
+struct Transfer {
+    to: Bytes32,
+    amount: Int,
+    memo: Bytes,
+}
+
+// A guard that can never be true is an error, so the chain isn't checked as well
+fn main(action: Spend | Melt | Transfer) -> Int {
+    if action is Spend {
+        action.amount
+    } else if action is Bytes32 {
+        0
+    } else {
+        raise;
+    }
+}
