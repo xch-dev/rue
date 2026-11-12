@@ -6,6 +6,7 @@ mod hover;
 mod lifecycle;
 mod navigation;
 mod protocol;
+mod sweep;
 
 use std::fmt::Write;
 use std::fs;
