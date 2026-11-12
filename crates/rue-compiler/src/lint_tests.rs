@@ -1911,7 +1911,7 @@ fn main(value: Int) -> Int {
     assert_eq!(
         fixed,
         "\
-const ONCE: Int = 1;
+inline const ONCE: Int = 1;
 
 mod helpers {
     fn inner() -> Int {
@@ -1924,7 +1924,7 @@ mod helpers {
 }
 
 fn main(value: Int) -> Int {
-    let doubled = value * 2;
+    inline let doubled = value * 2;
     doubled + ONCE + helpers::outer()
 }
 "
@@ -2104,11 +2104,11 @@ fn early(a: Int) -> Int {
     assert_eq!(
         fixed,
         "\
-// inline
+inline // inline
 const ONCE: Int = 1;
 
 fn main(a: Int, flag: Bool) -> Int {
-    // inline
+    inline // inline
     let doubled = a * 2;
 
     if (a == 1 // note
@@ -2176,6 +2176,34 @@ fn main(a: Int) -> Int {
         fix(source),
         "\
 fn main(a: Int) -> Int {
+    if a > 1 {
+        return a;
+    }
+
+    0
+}
+"
+    );
+    let source = "\
+fn main(a: Int) -> Int {
+    assert(a > 0);
+
+    if a > 1 {
+        return(a);
+    }
+
+    0
+}
+";
+
+    // The parentheses are only reported if the code still parses without them, which it only
+    // does once the keywords are separated from the expressions
+    assert_eq!(
+        fix(source),
+        "\
+fn main(a: Int) -> Int {
+    assert a > 0;
+
     if a > 1 {
         return a;
     }

@@ -54,8 +54,8 @@ impl Hir {
     /// are included (see [`Statement::hirs`]), but the values of its bindings and a lambda's body
     /// are stored in their symbols, so they aren't. A struct initializer includes the default
     /// values of the fields that were left out.
-    pub fn children(&self) -> Vec<HirId> {
-        match self {
+    pub fn children(&self) -> impl Iterator<Item = HirId> + '_ {
+        let children = match self {
             Self::Unresolved
             | Self::Nil
             | Self::String(_)
@@ -65,36 +65,76 @@ impl Hir {
             | Self::Reference(_)
             | Self::Lambda(_)
             | Self::InfinityG1
-            | Self::InfinityG2 => Vec::new(),
+            | Self::InfinityG2 => Children::default(),
             // The result of a const expression is generated, so only the expression is included
-            Self::Const(expr) => vec![expr.value],
-            Self::List(list) => list.items.clone(),
-            Self::Struct(initializer) => {
-                initializer.fields.iter().map(|field| field.value).collect()
+            Self::Const(expr) => Children::fixed([Some(expr.value), None, None]),
+            Self::List(list) => Children::list(None, &list.items),
+            Self::Struct(initializer) => Children {
+                fields: &initializer.fields,
+                ..Children::default()
+            },
+            Self::FieldAccess(access) => Children::fixed([Some(access.value), None, None]),
+            Self::Guard(guard) => Children::fixed([Some(guard.value), None, None]),
+            Self::Cast(hir) | Self::Unary(_, hir) | Self::ClvmOp(_, hir) => {
+                Children::fixed([Some(*hir), None, None])
             }
-            Self::FieldAccess(access) => vec![access.value],
-            Self::Guard(guard) => vec![guard.value],
-            Self::Cast(hir) | Self::Unary(_, hir) | Self::ClvmOp(_, hir) => vec![*hir],
-            Self::Block(block) => block
-                .statements
-                .iter()
-                .flat_map(Statement::hirs)
-                .chain(block.body)
-                .collect(),
-            Self::Pair(a, b) | Self::Binary(_, a, b) => vec![*a, *b],
+            Self::Block(block) => Children {
+                statements: &block.statements,
+                body: block.body,
+                ..Children::default()
+            },
+            Self::Pair(a, b) | Self::Binary(_, a, b) => Children::fixed([Some(*a), Some(*b), None]),
             Self::If(a, b, c, _)
             | Self::CoinId(a, b, c)
             | Self::Modpow(a, b, c)
             | Self::Secp256K1Verify(a, b, c)
-            | Self::Secp256R1Verify(a, b, c) => vec![*a, *b, *c],
-            Self::FunctionCall(call) => std::iter::once(call.function)
-                .chain(call.args.iter().copied())
-                .collect(),
-            Self::Substr(a, b, c) => [*a, *b].into_iter().chain(*c).collect(),
-            Self::G1Map(a, b) | Self::G2Map(a, b) => std::iter::once(*a).chain(*b).collect(),
-            Self::BlsPairingIdentity(args) => args.clone(),
-            Self::BlsVerify(a, args) => std::iter::once(*a).chain(args.iter().copied()).collect(),
+            | Self::Secp256R1Verify(a, b, c) => Children::fixed([Some(*a), Some(*b), Some(*c)]),
+            Self::FunctionCall(call) => Children::list(Some(call.function), &call.args),
+            Self::Substr(a, b, c) => Children::fixed([Some(*a), Some(*b), *c]),
+            Self::G1Map(a, b) | Self::G2Map(a, b) => Children::fixed([Some(*a), *b, None]),
+            Self::BlsPairingIdentity(args) => Children::list(None, args),
+            Self::BlsVerify(a, args) => Children::list(Some(*a), args),
+        };
+
+        children.into_iter()
+    }
+}
+
+/// The parts that the children of a node are made of, in the order they're written, so that they
+/// can be iterated over without collecting them.
+#[derive(Default)]
+struct Children<'a> {
+    fixed: [Option<HirId>; 3],
+    list: &'a [HirId],
+    fields: &'a [StructField],
+    statements: &'a [Statement],
+    body: Option<HirId>,
+}
+
+impl<'a> Children<'a> {
+    fn fixed(fixed: [Option<HirId>; 3]) -> Self {
+        Self {
+            fixed,
+            ..Self::default()
         }
+    }
+
+    fn list(first: Option<HirId>, list: &'a [HirId]) -> Self {
+        Self {
+            fixed: [first, None, None],
+            list,
+            ..Self::default()
+        }
+    }
+
+    fn into_iter(self) -> impl Iterator<Item = HirId> + 'a {
+        self.fixed
+            .into_iter()
+            .flatten()
+            .chain(self.list.iter().copied())
+            .chain(self.fields.iter().map(|field| field.value))
+            .chain(self.statements.iter().flat_map(Statement::hirs))
+            .chain(self.body)
     }
 }
 
@@ -111,6 +151,18 @@ pub struct StructInitializer {
     /// Every field of the struct, in the order they're declared.
     pub fields: Vec<StructField>,
     pub nil_terminated: bool,
+}
+
+impl StructInitializer {
+    /// The values of the fields that were written in the initializer, without the default values
+    /// of the fields that were left out. Those are shared by every initializer that uses them, so
+    /// they belong to the struct declaration instead.
+    pub fn written_values(&self) -> impl Iterator<Item = HirId> + '_ {
+        self.fields
+            .iter()
+            .filter(|field| !field.is_default)
+            .map(|field| field.value)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -227,14 +279,16 @@ pub enum Statement {
 impl Statement {
     /// The nodes directly inside of the statement, in the order they're written. A binding's
     /// value is stored in its symbol, so a `let` statement doesn't have any.
-    pub fn hirs(&self) -> Vec<HirId> {
-        match self {
-            Self::Let(..) => Vec::new(),
-            Self::Expr(statement) => vec![statement.hir],
-            Self::If(statement) => vec![statement.condition, statement.then],
-            Self::Return(hir, _) | Self::Assert(hir, _) | Self::Debug(hir, _) => vec![*hir],
-            Self::Raise(hir, _) => hir.iter().copied().collect(),
-        }
+    pub fn hirs(&self) -> impl Iterator<Item = HirId> + use<> {
+        let hirs = match self {
+            Self::Let(..) => [None, None],
+            Self::Expr(statement) => [Some(statement.hir), None],
+            Self::If(statement) => [Some(statement.condition), Some(statement.then)],
+            Self::Return(hir, _) | Self::Assert(hir, _) | Self::Debug(hir, _) => [Some(*hir), None],
+            Self::Raise(hir, _) => [*hir, None],
+        };
+
+        hirs.into_iter().flatten()
     }
 
     /// The location of the statement in the source code.

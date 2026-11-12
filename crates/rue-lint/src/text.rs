@@ -1,7 +1,7 @@
 //! Helpers for writing the code in suggestions, from the locations of the HIR nodes that are
 //! being replaced.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
 
 use rowan::TextRange;
 use rue_ast::AstNode;
@@ -245,6 +245,25 @@ pub(crate) fn without_parens(mut text: &str) -> &str {
         text = inner;
     }
     text
+}
+
+/// Adds a space to either side of the code that replaces a range of the text, where it would
+/// otherwise join a word with the code next to it (for example, removing the parentheses of
+/// `return(x)`).
+pub(crate) fn separate_words(text: &str, range: Range<usize>, replacement: &mut String) {
+    let is_word = |char: char| char.is_alphanumeric() || char == '_';
+
+    if text[..range.start].chars().next_back().is_some_and(is_word)
+        && replacement.chars().next().is_some_and(is_word)
+    {
+        replacement.insert(0, ' ');
+    }
+
+    if text[range.end..].chars().next().is_some_and(is_word)
+        && replacement.chars().next_back().is_some_and(is_word)
+    {
+        replacement.push(' ');
+    }
 }
 
 /// The number of comments in the code.

@@ -11,7 +11,7 @@ use rue_diagnostic::{Applicability, Lint, Source, Suggestion};
 use rue_lexer::Lexer;
 use rue_parser::{Parser, SyntaxKind, SyntaxNode, T};
 
-use crate::{LintContext, LintInput, srcloc};
+use crate::{LintContext, LintInput, srcloc, text::separate_words};
 
 pub(crate) const LINTS: &[Lint] = &[
     Lint::EmptyGenerics,
@@ -167,24 +167,14 @@ fn check_parens(cx: &mut LintContext<'_>, source: &Source, group: &AstGroupExpr)
     let inner_range = trimmed_range(inner.syntax());
     let text = &source.text;
 
-    // Removing the parentheses can't join the expression to the tokens around it
     let start: usize = group_range.start().into();
     let end: usize = group_range.end().into();
-    let inner_text = &text[usize::from(inner_range.start())..usize::from(inner_range.end())];
 
-    let mut replacement = inner_text.to_string();
-
-    if text[..start].chars().next_back().is_some_and(is_word_char)
-        && inner_text.chars().next().is_some_and(is_word_char)
-    {
-        replacement.insert(0, ' ');
-    }
-
-    if text[end..].chars().next().is_some_and(is_word_char)
-        && inner_text.chars().next_back().is_some_and(is_word_char)
-    {
-        replacement.push(' ');
-    }
+    // The code is parsed again with the replacement below, so it's separated from the words
+    // around it here rather than when the suggestion is reported
+    let mut replacement =
+        text[usize::from(inner_range.start())..usize::from(inner_range.end())].to_string();
+    separate_words(text, start..end, &mut replacement);
 
     let srcloc = srcloc(source, group_range);
 
@@ -352,10 +342,6 @@ fn is_whole_expression(node: &SyntaxNode) -> bool {
         SyntaxKind::IfStmt | SyntaxKind::IfExpr => is_condition_of(&parent, node),
         _ => false,
     }
-}
-
-fn is_word_char(char: char) -> bool {
-    char.is_alphanumeric() || char == '_'
 }
 
 /// An `else` block that only contains an `if` can be written as `else if`.

@@ -4,12 +4,3 @@ output: '18'
 runtime_cost: 2527
 byte_cost: 756000
 total_cost: 758527
-diagnostics:
-- |-
-  This call is evaluated again with the same arguments, which costs as much as the first time at mutual_export.rue:18:23
-    note: It's first evaluated here at mutual_export.rue:18:14
-    note: Store the result in a `let` binding and use that instead
-- |-
-  This call is evaluated again with the same arguments, which costs as much as the first time at mutual_export.rue:18:32
-    note: It's first evaluated here at mutual_export.rue:18:5
-    note: Store the result in a `let` binding and use that instead
