@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use indexmap::IndexMap;
 use rowan::{TextRange, TextSize, TokenAtOffset};
@@ -8,7 +8,6 @@ use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{FunctionKind, ScopeId, Symbol, SymbolId};
 use rue_parser::{SyntaxKind, T};
 use rue_types::{Type, TypeId, Union};
-use send_wrapper::SendWrapper;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position, Url,
 };
@@ -75,16 +74,18 @@ pub struct FieldHoverInfo {
     pub type_name: String,
 }
 
-#[derive(Debug, Clone)]
+/// A project's compile, which answers queries about one of its files at a time. Queries can
+/// allocate types, so they need the compiler mutably, and they run on the thread that owns it.
+#[derive(Debug)]
 pub struct Cache<T> {
     ctx: T,
-    tree: Arc<SendWrapper<FileTree>>,
+    tree: FileTree,
     source: Source,
     syntax_map: SyntaxMap,
 }
 
-impl Cache<Arc<Compiler>> {
-    pub fn new(ctx: Arc<Compiler>, tree: Arc<SendWrapper<FileTree>>, source: Source) -> Self {
+impl Cache<Compiler> {
+    pub fn new(ctx: Compiler, tree: FileTree, source: Source) -> Self {
         let syntax_map = ctx.syntax_map().clone();
 
         Self {
@@ -95,17 +96,11 @@ impl Cache<Arc<Compiler>> {
         }
     }
 
-    pub fn to_cloned(&self) -> Cache<Compiler> {
-        Cache {
-            ctx: self.ctx.as_ref().clone(),
-            tree: self.tree.clone(),
-            source: self.source.clone(),
-            syntax_map: self.syntax_map.clone(),
-        }
+    /// Sets the file that queries are about.
+    pub fn set_source(&mut self, source: Source) {
+        self.source = source;
     }
-}
 
-impl Cache<Compiler> {
     pub fn position(&self, position: Position) -> usize {
         position_to_offset(&self.source.text, position)
     }

@@ -3,26 +3,26 @@
 mod cache;
 mod paths;
 mod position;
+mod project;
+mod worker;
 
 use cache::Cache;
 use indexmap::IndexMap;
-use rue_compiler::{Compiler, FileTree, normalize_path};
+use rue_compiler::{Compiler, normalize_path};
 use rue_diagnostic::{Applicability, Lint, SourceKind, SrcLoc};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use serde::{Deserialize, Serialize};
 
-use std::collections::{HashMap, HashSet};
+use std::any::Any;
+use std::collections::HashMap;
 use std::fmt::{self, Write};
 use std::fs;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-#[cfg(test)]
-use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rue_options::{Project, find_project};
-use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
@@ -30,7 +30,7 @@ use tower_lsp::lsp_types::{
     CompletionResponse, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
     DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams, FileEvent,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
     FileSystemWatcher, GlobPattern, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
     InitializedParams, LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf,
@@ -42,32 +42,19 @@ use tower_lsp::{Client, LanguageServer};
 use crate::cache::{HoverInfo, SymbolHoverKind};
 use crate::paths::{Paths, document, uri_to_path};
 use crate::position::offsets_to_range;
+use crate::worker::{Diagnostics, Shared, State, Worker};
+use tokio::sync::oneshot;
 
 /// Logged once the client says it's initialized.
 const INITIALIZED: &str = "Rue language server initialized.";
 
 #[derive(Debug)]
 pub struct Backend {
-    client: Client,
-    cache: Mutex<HashMap<SourceKind, SendWrapper<Cache<Arc<Compiler>>>>>,
-    file_cache: Mutex<HashMap<SourceKind, String>>,
-    /// The files that each project last published diagnostics for, keyed by its manifest (or its
-    /// entrypoint, if it doesn't have one), so that they can be cleared once a file isn't part of
-    /// the project anymore.
-    published: Mutex<HashMap<PathBuf, Tracked>>,
-    /// The paths the client uses, which can differ from the compiler's.
-    paths: Paths,
+    shared: Arc<Shared>,
+    /// Compiles projects and answers queries about them, on a thread of its own.
+    worker: Worker,
     /// Whether the client can register file watchers when asked to.
     watch_files: AtomicBool,
-    /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
-    /// added to the message instead. This is assumed until the client says otherwise.
-    related_information: AtomicBool,
-    /// A task that panics on purpose, to test that the server survives panics.
-    #[cfg(test)]
-    injected_panic: Mutex<Option<Task>>,
-    /// How many times a project was compiled.
-    #[cfg(test)]
-    compiles: AtomicUsize,
 }
 
 /// The work the server does in response to the editor, used to say what failed when it panics.
@@ -107,7 +94,8 @@ impl LanguageServer for Backend {
             .and_then(|capabilities| capabilities.related_information)
             .unwrap_or(false);
 
-        self.related_information
+        self.shared
+            .related_information
             .store(related_information, Ordering::Relaxed);
 
         let watch_files = params
@@ -131,7 +119,7 @@ impl LanguageServer for Backend {
             .chain(root_uri)
         {
             if let Some(path) = uri_to_path(uri) {
-                self.paths.add_root(&path);
+                self.shared.paths.add_root(&path);
             }
         }
 
@@ -169,9 +157,9 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        self.client
-            .log_message(MessageType::INFO, INITIALIZED)
-            .await;
+        let client = &self.shared.client;
+
+        client.log_message(MessageType::INFO, INITIALIZED).await;
 
         // Changes made outside of the editor (such as switching branches) are only seen if the
         // client watches the files
@@ -193,8 +181,8 @@ impl LanguageServer for Backend {
                 ),
             };
 
-            if let Err(error) = self.client.register_capability(vec![registration]).await {
-                self.client
+            if let Err(error) = client.register_capability(vec![registration]).await {
+                client
                     .log_message(
                         MessageType::WARNING,
                         format!("Couldn't watch files for changes: {error}"),
@@ -204,11 +192,12 @@ impl LanguageServer for Backend {
         }
     }
 
-    async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.paths.open(&params.text_document.uri);
+    // Compiles happen in the background, and publish their diagnostics once they're done, so
+    // these don't wait for them
 
-        self.on_change(params.text_document.uri, Some(params.text_document.text))
-            .await;
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        self.shared.paths.open(&params.text_document.uri);
+        drop(self.change(&params.text_document.uri, Some(params.text_document.text)));
     }
 
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
@@ -217,66 +206,102 @@ impl LanguageServer for Backend {
             return;
         };
 
-        self.on_change(params.text_document.uri, Some(change.text))
-            .await;
+        // Edits are compiled once they stop
+        if let Some(path) = self.set_text(&params.text_document.uri, Some(change.text)) {
+            self.worker.edit(path);
+        }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        self.on_change(params.text_document.uri, None).await;
+        drop(self.change(&params.text_document.uri, None));
     }
 
-    /// The file's unsaved changes are discarded, so the project is compiled with what's on disk.
+    /// The file's unsaved changes are discarded, so the project is compiled with what's on disk,
+    /// unless the file is still open through another URI (for example, through a symlink and
+    /// through its target).
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        if let Some(diagnostics) = self
-            .catch_panic(Task::Compile, || {
-                self.on_close_impl(&params.text_document.uri)
-            })
-            .await
+        let uri = &params.text_document.uri;
+        self.shared.paths.close(uri);
+
+        if let Some((path, kind)) = document(uri)
+            && self.shared.paths.is_open(&kind)
         {
-            self.publish(diagnostics).await;
+            drop(self.worker.compile(Vec::new(), vec![path]));
+            return;
         }
+
+        drop(self.change(uri, None));
     }
 
+    /// Recompiles the projects that files changed on disk belong to, outside of the editor (for
+    /// example, by switching branches).
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        if let Some(diagnostics) = self
-            .catch_panic(Task::Compile, || {
-                self.on_watched_files_impl(&params.changes)
-            })
-            .await
-        {
-            self.publish(diagnostics).await;
-        }
+        let changed = params
+            .changes
+            .iter()
+            .filter_map(|change| uri_to_path(&change.uri))
+            .collect();
+
+        drop(self.worker.compile(changed, Vec::new()));
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        let HoverParams {
+            text_document_position_params: params,
+            ..
+        } = params;
+
         Ok(self
-            .catch_panic(Task::Hover, || self.on_hover(&params))
-            .await
-            .flatten())
+            .query(Task::Hover, move |state| {
+                hover(state.cache(&params.text_document.uri)?, params.position)
+            })
+            .await)
     }
 
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
+        let GotoDefinitionParams {
+            text_document_position_params: params,
+            ..
+        } = params;
+
         Ok(self
-            .catch_panic(Task::Definition, || self.on_goto_definition(&params))
-            .await
-            .flatten())
+            .query(Task::Definition, move |state| {
+                let shared = state.shared.clone();
+                let cache = state.cache(&params.text_document.uri)?;
+                definitions(cache, &shared.paths, params.position)
+            })
+            .await)
     }
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let ReferenceParams {
+            text_document_position: params,
+            ..
+        } = params;
+
         Ok(self
-            .catch_panic(Task::References, || self.on_references(&params))
-            .await
-            .flatten())
+            .query(Task::References, move |state| {
+                let shared = state.shared.clone();
+                let cache = state.cache(&params.text_document.uri)?;
+                references(cache, &shared.paths, params.position)
+            })
+            .await)
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let CompletionParams {
+            text_document_position: params,
+            ..
+        } = params;
+
         Ok(self
-            .catch_panic(Task::Completion, || self.on_completion(&params))
-            .await
-            .flatten())
+            .query(Task::Completion, move |state| {
+                completions(state.cache(&params.text_document.uri)?, params.position)
+            })
+            .await)
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
@@ -288,7 +313,7 @@ impl LanguageServer for Backend {
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         Ok(self
             .catch_panic(Task::CodeAction, || {
-                self.inject_panic(Task::CodeAction);
+                self.shared.inject_panic(Task::CodeAction);
                 code_actions(&params)
             })
             .await
@@ -302,364 +327,85 @@ impl LanguageServer for Backend {
 
 impl Backend {
     pub fn new(client: Client) -> Self {
+        let shared = Arc::new(Shared::new(client));
+
         Self {
-            client,
-            cache: Mutex::new(HashMap::new()),
-            file_cache: Mutex::new(HashMap::new()),
-            published: Mutex::new(HashMap::new()),
-            paths: Paths::default(),
+            worker: Worker::new(shared.clone()),
+            shared,
             watch_files: AtomicBool::new(false),
-            related_information: AtomicBool::new(true),
-            #[cfg(test)]
-            injected_panic: Mutex::default(),
-            #[cfg(test)]
-            compiles: AtomicUsize::new(0),
         }
     }
 
     /// Runs a task, and if it panics, logs the panic to the client and returns `None` instead of
     /// taking down the server.
     async fn catch_panic<T>(&self, task: Task, f: impl FnOnce() -> T) -> Option<T> {
-        let payload = match panic::catch_unwind(AssertUnwindSafe(f)) {
-            Ok(value) => return Some(value),
-            Err(payload) => payload,
-        };
+        match panic::catch_unwind(AssertUnwindSafe(f)) {
+            Ok(value) => Some(value),
+            Err(payload) => {
+                self.shared.log_panic(task, &panic_message(&*payload)).await;
+                None
+            }
+        }
+    }
 
-        let message = payload
-            .downcast_ref::<&str>()
-            .copied()
-            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-            .unwrap_or("unknown panic");
+    /// Answers a query with the compiler's state, once the compiles before it are done. If it
+    /// panics, the panic is logged and there's no answer.
+    async fn query<T: Send + 'static>(
+        &self,
+        task: Task,
+        f: impl FnOnce(&mut State) -> Option<T> + Send + 'static,
+    ) -> Option<T> {
+        let result = self
+            .worker
+            .run(move |state| {
+                state.shared.inject_panic(task);
+                f(state)
+            })
+            .await;
 
-        let message = format!("Internal error while {task}: {message}");
+        match result {
+            Ok(Ok(value)) => value,
+            Ok(Err(message)) => {
+                self.shared.log_panic(task, &message).await;
+                None
+            }
+            Err(_) => None,
+        }
+    }
 
-        self.client.log_message(MessageType::ERROR, message).await;
+    /// Records the editor's text for a document (or that it should be read from disk), and
+    /// returns its path. The text is kept even if the project can't be compiled right now, so
+    /// that it's used once it can be.
+    fn set_text(&self, uri: &Url, text: Option<String>) -> Option<PathBuf> {
+        // The file may have been deleted, for example before the editor closes it
+        let (path, kind) = document(uri)?;
+        self.shared.set_text(kind, text);
+        Some(path)
+    }
 
-        None
+    /// Records the editor's text for a document, and compiles its project right away. The
+    /// diagnostics are published once they're ready, and the receiver gets them too.
+    fn change(&self, uri: &Url, text: Option<String>) -> Option<oneshot::Receiver<Diagnostics>> {
+        let path = self.set_text(uri, text)?;
+        Some(self.worker.compile(Vec::new(), vec![path]))
     }
 
     #[cfg(test)]
-    fn inject_panic(&self, task: Task) {
-        let injected = *lock(&self.injected_panic);
-        assert!(injected != Some(task), "injected panic");
-    }
-
-    #[cfg(not(test))]
-    #[allow(clippy::unused_self)]
-    fn inject_panic(&self, _task: Task) {}
-
-    async fn on_change(&self, uri: Url, text: Option<String>) {
-        if let Some(diagnostics) = self
-            .catch_panic(Task::Compile, || self.on_change_impl(&uri, text))
-            .await
-        {
-            self.publish(diagnostics).await;
-        }
-    }
-
-    async fn publish(&self, diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>) {
-        for (kind, diagnostics) in diagnostics {
-            let (uris, stale) = self.paths.publish(&kind);
-
-            for uri in stale {
-                self.client.publish_diagnostics(uri, Vec::new(), None).await;
-            }
-
-            for uri in uris {
-                self.client
-                    .publish_diagnostics(uri, diagnostics.clone(), None)
-                    .await;
-            }
-        }
-    }
-
-    fn on_change_impl(
-        &self,
-        uri: &Url,
-        text: Option<String>,
-    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        // The file may have been deleted, for example before the editor closes it
-        let Some((uri_path, source_kind)) = document(uri) else {
-            return IndexMap::new();
-        };
-
-        // Keep track of the editor's text even if the project can't be compiled right now, so
-        // that it's used once it can be
-        {
-            let mut file_cache = lock(&self.file_cache);
-
-            if let Some(text) = text {
-                file_cache.insert(source_kind, text);
-            } else {
-                file_cache.remove(&source_kind);
-            }
-        }
-
-        self.recompile(&[], Some(&uri_path))
-    }
-
-    /// Discards the document's unsaved changes, unless the file is still open through another URI
-    /// (for example, through a symlink and through its target), and recompiles its project.
-    fn on_close_impl(&self, uri: &Url) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        self.paths.close(uri);
-
-        if let Some((path, kind)) = document(uri)
-            && self.paths.is_open(&kind)
-        {
-            return self.recompile(&[], Some(&path));
-        }
-
-        self.on_change_impl(uri, None)
-    }
-
-    /// Recompiles the projects that files changed on disk belong to, outside of the editor (for
-    /// example, by switching branches).
-    fn on_watched_files_impl(
-        &self,
-        changes: &[FileEvent],
-    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let changed = changes
-            .iter()
-            .filter_map(|change| uri_to_path(&change.uri))
-            .collect::<Vec<_>>();
-
-        self.recompile(&changed, None)
-    }
-
-    /// Recompiles the projects that the changed files belong to, if diagnostics were reported for
-    /// them, and the project of the file the editor changed, if any. Projects that aren't the
-    /// editor's are only compiled once the user opened one of their files, so that the server
-    /// doesn't report diagnostics for the whole workspace.
-    fn recompile(
-        &self,
-        changed: &[PathBuf],
-        edited: Option<&Path>,
-    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let published = lock(&self.published).clone();
-
-        let mut lookups = edited
-            .map(Path::to_path_buf)
-            .into_iter()
-            .collect::<Vec<_>>();
-        let mut removed = Vec::new();
-
-        // A project may not exist anymore, or may have become part of another one (for example,
-        // if a manifest was deleted, or created in a parent directory). Its files are cleared, and
-        // those open in the editor are compiled with whichever project they're part of now.
-        for (key, tracked) in &published {
-            if FoundProject::find(&tracked.path).is_some_and(|project| &project.key == key) {
-                continue;
-            }
-
-            removed.push(key.clone());
-
-            lookups.extend(
-                tracked
-                    .files
-                    .iter()
-                    .filter_map(|kind| self.paths.open_path(kind)),
-            );
-        }
-
-        // Each project is only compiled once, no matter how many of its files changed
-        let mut projects = IndexMap::new();
-
-        for path in lookups {
-            if let Some(project) = FoundProject::find(&path) {
-                projects.entry(project.key.clone()).or_insert(project);
-            }
-        }
-
-        for path in changed {
-            if let Some(project) = FoundProject::find(path)
-                && published.contains_key(&project.key)
-            {
-                projects.entry(project.key.clone()).or_insert(project);
-            }
-        }
-
-        let mut compiled = removed
-            .into_iter()
-            .map(Compiled::removed)
-            .chain(projects.values().map(|project| self.compile(project)))
-            .collect::<Vec<_>>();
-
-        // A file that a project stops including keeps the diagnostics and cache of whichever
-        // project was compiled last, so the other projects that include it are compiled too, and
-        // recorded last, to replace them
-        let dropped = compiled
-            .iter()
-            .flat_map(|compiled| {
-                published
-                    .get(&compiled.key)
-                    .into_iter()
-                    .flat_map(|tracked| &tracked.files)
-                    .filter(|kind| !compiled.diagnostics.contains_key(*kind))
-            })
-            .collect::<HashSet<_>>();
-
-        for (key, tracked) in &published {
-            if !compiled.iter().any(|compiled| &compiled.key == key)
-                && tracked.files.iter().any(|kind| dropped.contains(kind))
-                && let Some(project) = FoundProject::find(&tracked.path)
-            {
-                compiled.push(self.compile(&project));
-            }
-        }
-
-        // Everything is compiled before any state is updated, so that a panic leaves the results
-        // of the last compile in place
-        let mut diagnostics = IndexMap::new();
-
-        for compiled in compiled {
-            diagnostics.extend(self.update_project(compiled));
-        }
-
-        diagnostics
-    }
-
-    /// Compiles a project, without updating any state.
-    fn compile(&self, found: &FoundProject) -> Compiled {
-        #[cfg(test)]
-        self.compiles.fetch_add(1, Ordering::Relaxed);
-
-        // The project's files are reported with the paths the client uses for them, including
-        // its manifest, which can be a symlink
-        self.paths.add_root(&found.root);
-
-        if found.path.is_symlink() {
-            self.paths.add_alias(&found.path);
-        }
-
-        let project = match &found.project {
-            Ok(project) => project,
-            Err(error) => {
-                return Compiled {
-                    key: found.key.clone(),
-                    path: found.path.clone(),
-                    diagnostics: invalid_manifest_diagnostics(&found.path, error),
-                    caches: Vec::new(),
-                    removed: false,
-                };
-            }
-        };
-
-        let mut diagnostics = IndexMap::<SourceKind, Vec<Diagnostic>>::new();
-        let mut caches = Vec::new();
-
-        let mut ctx = Compiler::new(project.options);
-
-        // The compiler gets its own copy of the editor's text, so that the lock isn't held while
-        // compiling, which could panic
-        let mut sources = lock(&self.file_cache).clone();
-
-        self.inject_panic(Task::Compile);
-
-        // If the project can't be compiled (for example, because its entrypoint was deleted), only
-        // the manifest's diagnostics are reported, and those of its files are cleared
-        if let Ok(tree) = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut sources) {
-            for item in ctx.take_diagnostics() {
-                diagnostics
-                    .entry(item.srcloc.source.kind.clone())
-                    .or_default()
-                    .push(diagnostic(
-                        &item,
-                        self.related_information.load(Ordering::Relaxed),
-                        &self.paths,
-                    ));
-            }
-
-            let ctx = Arc::new(ctx);
-            let tree = Arc::new(SendWrapper::new(tree));
-
-            for file in tree.all_files() {
-                if !matches!(file.source.kind, SourceKind::File(_)) {
-                    continue;
-                }
-
-                diagnostics.entry(file.source.kind.clone()).or_default();
-
-                caches.push((
-                    file.source.kind.clone(),
-                    SendWrapper::new(Cache::new(ctx.clone(), tree.clone(), file.source.clone())),
-                ));
-            }
-        }
-
-        // Always include the manifest, so that its diagnostics are cleared once they're fixed
-        if let Some(path) = &project.manifest_path
-            && let Ok(kind) = normalize_path(path)
-        {
-            diagnostics.insert(kind, manifest_diagnostics(path, project));
-        }
-
-        Compiled {
-            key: found.key.clone(),
-            path: found.path.clone(),
-            diagnostics,
-            caches,
-            removed: false,
-        }
-    }
-
-    /// Records the result of compiling a project, and returns the diagnostics to publish. The
-    /// files it published diagnostics for last time but not this time get theirs cleared, and
-    /// their caches are removed, since they're not part of the project anymore (unless another
-    /// project includes them).
-    fn update_project(&self, compiled: Compiled) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let Compiled {
-            key,
-            path,
-            mut diagnostics,
-            caches,
-            removed,
-        } = compiled;
-
-        let removed = {
-            let mut published = lock(&self.published);
-
-            let previous = if removed {
-                published.remove(&key)
-            } else {
-                let files = diagnostics.keys().cloned().collect();
-                published.insert(key, Tracked { path, files })
-            };
-
-            previous
-                .map(|tracked| tracked.files)
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|kind| {
-                    !diagnostics.contains_key(kind)
-                        && !published
-                            .values()
-                            .any(|tracked| tracked.files.contains(kind))
-                })
-                .collect::<Vec<_>>()
-        };
-
-        let mut cache = lock(&self.cache);
-
-        for kind in removed {
-            cache.remove(&kind);
-            diagnostics.insert(kind, Vec::new());
-        }
-
-        cache.extend(caches);
-
-        diagnostics
+    fn on_change_impl(&self, uri: &Url, text: Option<String>) -> Diagnostics {
+        self.change(uri, text)
+            .and_then(|receiver| receiver.blocking_recv().ok())
+            .unwrap_or_default()
     }
 
     fn on_formatting(&self, params: &DocumentFormattingParams) -> Result<Vec<TextEdit>> {
-        self.inject_panic(Task::Formatting);
+        self.shared.inject_panic(Task::Formatting);
 
         let (path, source_kind) = document(&params.text_document.uri)
             .ok_or_else(|| Error::invalid_params("document URI is not a file"))?;
         let project =
             find_project(&path, false).map_err(|error| Error::invalid_params(error.to_string()))?;
         let options = project.map_or_else(FormatOptions::default, |project| project.format_options);
-        let source = lock(&self.file_cache).get(&source_kind).cloned();
-        let source = match source {
+        let source = match self.shared.text(&source_kind) {
             Some(source) => source,
             None => fs::read_to_string(&path)
                 .map_err(|error| Error::invalid_params(error.to_string()))?,
@@ -668,147 +414,133 @@ impl Backend {
         formatting_edits(&source, &options)
             .map_err(|error| Error::invalid_params(error.to_string()))
     }
+}
 
-    fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
-        self.inject_panic(Task::Hover);
+fn hover(cache: &mut Cache<Compiler>, position: Position) -> Option<Hover> {
+    let position = cache.position(position);
 
-        let (_, kind) = document(&params.text_document_position_params.text_document.uri)?;
-        let mut cache = lock(&self.cache).get(&kind)?.to_cloned();
-        let position = cache.position(params.text_document_position_params.position);
+    let scopes = cache.scopes(position);
+    let infos = cache.hover(&scopes, position);
 
-        let scopes = cache.scopes(position);
-        let infos = cache.hover(&scopes, position);
+    if infos.is_empty() {
+        return None;
+    }
 
-        if infos.is_empty() {
-            return None;
-        }
-
-        let content = infos
-            .into_iter()
-            .map(|info| {
-                MarkedString::LanguageString(LanguageString {
-                    language: "rue".to_string(),
-                    value: match &info {
-                        HoverInfo::Symbol(info) => match &info.kind {
-                            SymbolHoverKind::Binding { type_name } => {
-                                format!("let {}: {type_name}", info.name)
-                            }
-                            SymbolHoverKind::Parameter { type_name } => {
-                                format!("{}: {type_name}", info.name)
-                            }
-                            SymbolHoverKind::Constant { type_name, inline } => format!(
-                                "{}const {}: {type_name}",
-                                if *inline { "inline " } else { "" },
-                                info.name
-                            ),
-                            SymbolHoverKind::Function { signatures, inline } => signatures
-                                .iter()
-                                .map(|signature| {
-                                    format!(
-                                        "{}fn {}{signature}",
-                                        if *inline { "inline " } else { "" },
-                                        info.name
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                                .join("\n"),
-                        },
-                        HoverInfo::Module(info) => format!("mod {}", info.name),
-                        HoverInfo::Type(info) => {
-                            if let Some(inner) = &info.inner_name {
-                                format!("type {} = {}", info.name, inner)
-                            } else {
-                                format!("type {}", info.name)
-                            }
+    let content = infos
+        .into_iter()
+        .map(|info| {
+            MarkedString::LanguageString(LanguageString {
+                language: "rue".to_string(),
+                value: match &info {
+                    HoverInfo::Symbol(info) => match &info.kind {
+                        SymbolHoverKind::Binding { type_name } => {
+                            format!("let {}: {type_name}", info.name)
                         }
-                        HoverInfo::Struct(info) => format!(
-                            "struct {} {{\n{}\n}}",
-                            info.name,
-                            info.fields
-                                .iter()
-                                .enumerate()
-                                .map(|(i, field)| {
-                                    let spread =
-                                        if !info.nil_terminated && i == info.fields.len() - 1 {
-                                            "..."
-                                        } else {
-                                            ""
-                                        };
-                                    format!("    {spread}{}: {},", field.name, field.type_name)
-                                })
-                                .collect::<Vec<String>>()
-                                .join("\n")
+                        SymbolHoverKind::Parameter { type_name } => {
+                            format!("{}: {type_name}", info.name)
+                        }
+                        SymbolHoverKind::Constant { type_name, inline } => format!(
+                            "{}const {}: {type_name}",
+                            if *inline { "inline " } else { "" },
+                            info.name
                         ),
-                        HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
+                        SymbolHoverKind::Function { signatures, inline } => signatures
+                            .iter()
+                            .map(|signature| {
+                                format!(
+                                    "{}fn {}{signature}",
+                                    if *inline { "inline " } else { "" },
+                                    info.name
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
                     },
-                })
+                    HoverInfo::Module(info) => format!("mod {}", info.name),
+                    HoverInfo::Type(info) => {
+                        if let Some(inner) = &info.inner_name {
+                            format!("type {} = {}", info.name, inner)
+                        } else {
+                            format!("type {}", info.name)
+                        }
+                    }
+                    HoverInfo::Struct(info) => format!(
+                        "struct {} {{\n{}\n}}",
+                        info.name,
+                        info.fields
+                            .iter()
+                            .enumerate()
+                            .map(|(i, field)| {
+                                let spread = if !info.nil_terminated && i == info.fields.len() - 1 {
+                                    "..."
+                                } else {
+                                    ""
+                                };
+                                format!("    {spread}{}: {},", field.name, field.type_name)
+                            })
+                            .collect::<Vec<String>>()
+                            .join("\n")
+                    ),
+                    HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
+                },
             })
-            .collect();
-
-        Some(Hover {
-            contents: HoverContents::Array(content),
-            range: None,
         })
+        .collect();
+
+    Some(Hover {
+        contents: HoverContents::Array(content),
+        range: None,
+    })
+}
+
+fn definitions(
+    cache: &Cache<Compiler>,
+    paths: &Paths,
+    position: Position,
+) -> Option<GotoDefinitionResponse> {
+    let position = cache.position(position);
+
+    let mut locations = cache
+        .definitions(position)
+        .into_iter()
+        .map(|location| paths.location(location))
+        .collect::<Vec<_>>();
+
+    if locations.len() > 1 {
+        Some(GotoDefinitionResponse::Array(locations))
+    } else {
+        locations.pop().map(GotoDefinitionResponse::Scalar)
     }
+}
 
-    fn on_goto_definition(&self, params: &GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
-        self.inject_panic(Task::Definition);
+fn references(cache: &Cache<Compiler>, paths: &Paths, position: Position) -> Option<Vec<Location>> {
+    let position = cache.position(position);
 
-        let (_, kind) = document(&params.text_document_position_params.text_document.uri)?;
-        let cache = lock(&self.cache).get(&kind)?.to_cloned();
-        let position = cache.position(params.text_document_position_params.position);
+    let locations = cache
+        .references(position)
+        .into_iter()
+        .map(|location| paths.location(location))
+        .collect::<Vec<_>>();
 
-        let locations = cache
-            .definitions(position)
-            .into_iter()
-            .map(|location| self.paths.location(location))
-            .collect::<Vec<_>>();
+    (!locations.is_empty()).then_some(locations)
+}
 
-        if locations.is_empty() {
-            None
-        } else if locations.len() == 1 {
-            Some(GotoDefinitionResponse::Scalar(locations[0].clone()))
-        } else {
-            Some(GotoDefinitionResponse::Array(locations))
-        }
-    }
+fn completions(cache: &mut Cache<Compiler>, position: Position) -> Option<CompletionResponse> {
+    let position = cache.position(position);
 
-    fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
-        self.inject_panic(Task::References);
+    let scopes = cache.scopes(position);
+    let completions = cache.completions(&scopes, position);
 
-        let (_, kind) = document(&params.text_document_position.text_document.uri)?;
-        let cache = lock(&self.cache).get(&kind)?.to_cloned();
-        let position = cache.position(params.text_document_position.position);
+    (!completions.is_empty()).then_some(CompletionResponse::Array(completions))
+}
 
-        let locations = cache
-            .references(position)
-            .into_iter()
-            .map(|location| self.paths.location(location))
-            .collect::<Vec<_>>();
-
-        if locations.is_empty() {
-            None
-        } else {
-            Some(locations)
-        }
-    }
-
-    fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
-        self.inject_panic(Task::Completion);
-
-        let (_, kind) = document(&params.text_document_position.text_document.uri)?;
-        let mut cache = lock(&self.cache).get(&kind)?.to_cloned();
-        let position = cache.position(params.text_document_position.position);
-
-        let scopes = cache.scopes(position);
-        let completions = cache.completions(&scopes, position);
-
-        if completions.is_empty() {
-            return None;
-        }
-
-        Some(CompletionResponse::Array(completions))
-    }
+/// The message of a panic's payload.
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(ToString::to_string)
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".to_string())
 }
 
 /// Locks a mutex, even if a panic poisoned it. Panics are caught so that the server keeps running,
@@ -1032,88 +764,6 @@ fn invalid_manifest_diagnostics(
     }
 
     diagnostics
-}
-
-/// The project that a file belongs to.
-struct FoundProject {
-    /// The canonical path of the project's manifest, or its entrypoint if it doesn't have one,
-    /// which identifies it however the client reaches it.
-    key: PathBuf,
-    /// The project's manifest or entrypoint, as the client reaches it.
-    path: PathBuf,
-    /// The directory the project is in, as the client reaches it.
-    root: PathBuf,
-    /// The project, or why its manifest is invalid.
-    project: std::result::Result<Project, toml::de::Error>,
-}
-
-impl FoundProject {
-    fn find(path: &Path) -> Option<Self> {
-        let (path, project) = match find_project(path, false) {
-            Ok(Some(project)) => (
-                project
-                    .manifest_path
-                    .clone()
-                    .unwrap_or_else(|| project.entrypoint.clone()),
-                Ok(project),
-            ),
-            Err(rue_options::Error::Toml { path, error }) => (path, Err(error)),
-            Ok(None) | Err(_) => return None,
-        };
-
-        let root = if path.is_dir() {
-            path.clone()
-        } else {
-            path.parent().unwrap_or(&path).to_path_buf()
-        };
-
-        // Only the directory is canonicalized, since a manifest can be a symlink that's shared
-        // between projects
-        let key = if path.is_dir() {
-            paths::canonical(&path)?
-        } else {
-            paths::canonical(&root)?.join(path.file_name()?)
-        };
-
-        Some(Self {
-            key,
-            path,
-            root,
-            project,
-        })
-    }
-}
-
-/// A project that diagnostics were published for.
-#[derive(Debug, Clone)]
-struct Tracked {
-    /// The path the project was found from, as the client reaches it, which is used to find it
-    /// again.
-    path: PathBuf,
-    /// The files whose diagnostics were published.
-    files: HashSet<SourceKind>,
-}
-
-/// The result of compiling a project, which hasn't been recorded yet.
-struct Compiled {
-    key: PathBuf,
-    path: PathBuf,
-    diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>,
-    caches: Vec<(SourceKind, SendWrapper<Cache<Arc<Compiler>>>)>,
-    /// Whether the project doesn't exist anymore, so it's no longer tracked.
-    removed: bool,
-}
-
-impl Compiled {
-    fn removed(key: PathBuf) -> Self {
-        Self {
-            path: key.clone(),
-            key,
-            diagnostics: IndexMap::new(),
-            caches: Vec::new(),
-            removed: true,
-        }
-    }
 }
 
 /// Reports why `Rue.toml` couldn't be parsed, such as an invalid lint level.

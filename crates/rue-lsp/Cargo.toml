@@ -25,7 +25,7 @@ rue-hir = { workspace = true }
 rue-types = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tower-lsp = { workspace = true }
-send_wrapper = { workspace = true }
+futures = { workspace = true }
 rowan = { workspace = true }
 indexmap = { workspace = true }
 toml = { workspace = true }
@@ -34,5 +34,4 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 expect-test = { workspace = true }
-futures = { workspace = true }
 tower = { workspace = true, features = ["util"] }

@@ -1,3 +1,4 @@
+mod background;
 mod completion;
 mod diagnostics;
 mod formatting;
@@ -11,7 +12,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use futures::executor::block_on;
 use rue_compiler::normalize_path;
+use tower_lsp::LanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
@@ -76,6 +79,25 @@ impl Drop for TempDir {
         }
 
         fs::remove_dir_all(&self.real).ok();
+    }
+}
+
+/// Blocking versions of the request handlers, for tests that call the server directly.
+impl Backend {
+    fn on_hover(&self, params: &HoverParams) -> Option<tower_lsp::lsp_types::Hover> {
+        block_on(self.hover(params.clone())).unwrap()
+    }
+
+    fn on_goto_definition(&self, params: &GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
+        block_on(self.goto_definition(params.clone())).unwrap()
+    }
+
+    fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
+        block_on(self.references(params.clone())).unwrap()
+    }
+
+    fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
+        block_on(self.completion(params.clone())).unwrap()
     }
 }
 
@@ -373,7 +395,12 @@ impl TestProject {
             .filter_map(|(kind, diagnostics)| match kind {
                 // Files are reported with the paths the client uses
                 rue_diagnostic::SourceKind::File(_) => Some((
-                    self.backend().paths.uri(&kind)?.to_file_path().ok()?,
+                    self.backend()
+                        .shared
+                        .paths
+                        .uri(&kind)?
+                        .to_file_path()
+                        .ok()?,
                     diagnostics,
                 )),
                 rue_diagnostic::SourceKind::Std(_) => None,

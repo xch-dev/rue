@@ -22,8 +22,14 @@ use crate::{Backend, INITIALIZED, Task, lock};
 const SYNCED: &str = "Synced.";
 
 impl Backend {
+    /// Waits for the worker to finish everything sent before, including edits that it's waiting
+    /// to compile, and logs [`SYNCED`].
     async fn sync(&self) {
-        self.client.log_message(MessageType::INFO, SYNCED).await;
+        self.worker.run(|_| ()).await.ok();
+        self.shared
+            .client
+            .log_message(MessageType::INFO, SYNCED)
+            .await;
     }
 }
 
@@ -70,7 +76,11 @@ impl Client {
         }
     }
 
-    async fn request(&mut self, method: &'static str, params: Option<Value>) -> Response {
+    pub(super) async fn request(
+        &mut self,
+        method: &'static str,
+        params: Option<Value>,
+    ) -> Response {
         self.next_id += 1;
 
         let mut request = Request::build(method).id(self.next_id);
@@ -111,13 +121,24 @@ impl Client {
         self.service.inner()
     }
 
+    /// Makes the next compile wait once it has started. The first channel says when it started,
+    /// and sending to the second lets it continue.
+    pub(super) fn hold_compile(
+        &self,
+    ) -> (std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>) {
+        let (started, started_receiver) = std::sync::mpsc::channel();
+        let (release_sender, release) = std::sync::mpsc::channel();
+        *lock(&self.backend().shared.gate) = Some(crate::worker::Gate { started, release });
+        (started_receiver, release_sender)
+    }
+
     /// How many times the server compiled a project.
     pub(super) fn compiles(&self) -> usize {
-        self.backend().compiles.load(Ordering::Relaxed)
+        self.backend().shared.compiles.load(Ordering::Relaxed)
     }
 
     pub(super) fn inject_panic(&self, task: Option<Task>) {
-        *lock(&self.backend().injected_panic) = task;
+        *lock(&self.backend().shared.injected_panic) = task;
     }
 
     /// Sends `initialize` with the given parameters and `initialized`, and returns the messages
@@ -187,7 +208,7 @@ impl Client {
         response.result().unwrap().clone()
     }
 
-    async fn change(&mut self, uri: &Url, version: i32, changes: &[&str]) {
+    pub(super) async fn change(&mut self, uri: &Url, version: i32, changes: &[&str]) {
         let changes = changes
             .iter()
             .map(|text| json!({ "text": text }))
@@ -222,7 +243,7 @@ impl Client {
 
     /// Waits for the diagnostics published for the given file, skipping those for other files
     /// (such as `Rue.toml`).
-    async fn diagnostics(&mut self, uri: &Url) -> Value {
+    pub(super) async fn diagnostics(&mut self, uri: &Url) -> Value {
         loop {
             let diagnostics = self.notification("textDocument/publishDiagnostics").await;
 
@@ -426,7 +447,7 @@ async fn test_protocol_session() {
     assert!(response.is_ok());
 }
 
-fn position(uri: &Url, line: u32, character: u32) -> Value {
+pub(super) fn position(uri: &Url, line: u32, character: u32) -> Value {
     json!({
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character },
@@ -460,7 +481,7 @@ fn assert_mismatch(diagnostics: &Value) {
     );
 }
 
-async fn assert_hover(client: &mut Client, uri: &Url) {
+pub(super) async fn assert_hover(client: &mut Client, uri: &Url) {
     assert_eq!(
         client.hover(uri, 2, 6).await["contents"],
         json!([{ "language": "rue", "value": "let value: Int" }])
@@ -572,16 +593,16 @@ async fn test_poisoned_locks_are_recovered() {
     std::thread::scope(|scope| {
         scope
             .spawn(|| {
-                let _cache = backend.cache.lock();
-                let _file_cache = backend.file_cache.lock();
+                let _documents = backend.shared.documents.lock();
+                let _injected_panic = backend.shared.injected_panic.lock();
                 panic!("poisoning the locks");
             })
             .join()
             .unwrap_err();
     });
 
-    assert!(backend.cache.is_poisoned());
-    assert!(backend.file_cache.is_poisoned());
+    assert!(backend.shared.documents.is_poisoned());
+    assert!(backend.shared.injected_panic.is_poisoned());
 
     client.change(&uri, 2, &[MISMATCH]).await;
     assert_mismatch(&client.diagnostics(&uri).await);
@@ -814,10 +835,11 @@ async fn test_project_found_through_symlink() {
     let mut client = Client::initialized().await;
 
     client.open(&x, OTHER_MISMATCH).await;
+    client.sync().await;
     client.close(&x).await;
     assert_eq!(
         project.published(&client.sync().await),
-        ["side/link/x.rue: [2, 1]", "side/link/x.rue: [2, 1]"]
+        ["side/link/x.rue: [2, 1]"]
     );
 
     // It's still the same project when it's looked up again, so it's left alone
