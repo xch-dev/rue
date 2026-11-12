@@ -3,13 +3,11 @@ use std::collections::HashSet;
 use indexmap::IndexMap;
 use rowan::{TextRange, TextSize, TokenAtOffset};
 use rue_ast::AstNode;
-use rue_compiler::{
-    Compiler, CompletionContext, FileTree, SyntaxField, SyntaxItem, SyntaxItemKind, SyntaxMap,
-};
+use rue_compiler::{Compiler, CompletionContext, FileTree, SyntaxItem, SyntaxItemKind, SyntaxMap};
 use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{FunctionKind, ScopeId, Symbol, SymbolId};
 use rue_lexer::{Lexer, TokenKind};
-use rue_parser::{SyntaxKind, T};
+use rue_parser::{SyntaxKind, SyntaxToken, T};
 use rue_types::{Type, TypeId, Union};
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position, Url,
@@ -78,16 +76,43 @@ pub struct FieldHoverInfo {
 }
 
 /// Something that can be declared and referenced, which is what navigation queries are about.
-enum Target {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Target<'a> {
     Symbol(SymbolId),
     Type(TypeId),
     /// A field, by the type that contains it and its name.
-    Field(TypeId, String),
+    Field(TypeId, &'a str),
 }
 
-impl Target {
-    fn field(field: &SyntaxField) -> Self {
-        Self::Field(field.container, field.name.clone())
+/// Whether an item declares or refers to its target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Role {
+    Declaration,
+    /// A file that declares a module, whose span is the whole file.
+    FileModule,
+    Reference,
+}
+
+/// What an item is about and its role, for the items that navigation queries can go to.
+fn classify(kind: &SyntaxItemKind) -> Option<(Target<'_>, Role)> {
+    match kind {
+        SyntaxItemKind::SymbolDeclaration(symbol) => {
+            Some((Target::Symbol(*symbol), Role::Declaration))
+        }
+        SyntaxItemKind::FileModule(symbol) => Some((Target::Symbol(*symbol), Role::FileModule)),
+        SyntaxItemKind::SymbolReference(symbol) => Some((Target::Symbol(*symbol), Role::Reference)),
+        SyntaxItemKind::TypeDeclaration(ty) => Some((Target::Type(*ty), Role::Declaration)),
+        SyntaxItemKind::TypeReference(ty) => Some((Target::Type(*ty), Role::Reference)),
+        SyntaxItemKind::FieldDeclaration(field) => Some((
+            Target::Field(field.container, &field.name),
+            Role::Declaration,
+        )),
+        SyntaxItemKind::FieldReference(field) => {
+            Some((Target::Field(field.container, &field.name), Role::Reference))
+        }
+        SyntaxItemKind::FieldInitializer(_)
+        | SyntaxItemKind::Scope(_)
+        | SyntaxItemKind::CompletionContext(_) => None,
     }
 }
 
@@ -199,14 +224,21 @@ impl Cache<Compiler> {
         }
     }
 
+    /// The tokens that touch the offset, of which there are two if it's between them.
+    fn tokens_at(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken> {
+        self.tree
+            .find(&self.source.kind)
+            .map_or(TokenAtOffset::None, |file| {
+                file.document.syntax().token_at_offset(offset)
+            })
+    }
+
     /// The context that the token before the cursor must be followed by, if it's a type or an
     /// expression.
     fn expected_context(&self, index: usize) -> Option<CompletionContext> {
-        let file = self.tree.find(&self.source.kind)?;
-
         let offset = TextSize::from(index as u32);
 
-        let mut token = match file.document.syntax().token_at_offset(offset) {
+        let mut token = match self.tokens_at(offset) {
             TokenAtOffset::None => return None,
             TokenAtOffset::Single(token) | TokenAtOffset::Between(token, _) => token,
         };
@@ -247,13 +279,9 @@ impl Cache<Compiler> {
     /// of a line comment, or of a string or block comment that isn't terminated, is still inside
     /// of it.
     fn in_string_or_comment(&self, index: usize) -> bool {
-        let Some(file) = self.tree.find(&self.source.kind) else {
-            return false;
-        };
-
         let offset = TextSize::from(index as u32);
 
-        file.document.syntax().token_at_offset(offset).any(|token| {
+        self.tokens_at(offset).any(|token| {
             if !matches!(
                 token.kind(),
                 SyntaxKind::String | SyntaxKind::LineComment | SyntaxKind::BlockComment
@@ -261,11 +289,13 @@ impl Cache<Compiler> {
                 return false;
             }
 
-            // The parser doesn't keep whether a token is terminated, so it's lexed again
+            // The parser doesn't keep whether a token is terminated, so it's lexed again. A line
+            // comment includes the line break, so the start of the next line isn't inside of it.
             let terminated = match Lexer::new(token.text()).next().map(|token| token.kind) {
                 Some(
                     TokenKind::String { is_terminated } | TokenKind::BlockComment { is_terminated },
                 ) => is_terminated,
+                Some(TokenKind::LineComment) => token.text().ends_with('\n'),
                 _ => false,
             };
 
@@ -512,7 +542,9 @@ impl Cache<Compiler> {
                         || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
                             && matches!(context, CompletionContext::Type))
                     {
-                        let ty = self.ctx.symbol_type_in(*scope, symbol);
+                        // The type is looked up from the cursor's scopes, like on hover, so
+                        // that it's narrowed by the conditions the cursor is inside of
+                        let ty = self.symbol_type(scopes, symbol);
                         let detail = self.symbol_detail(scopes, symbol, ty);
                         let kind = symbol_kind(self.ctx.symbol(symbol));
                         scored_items
@@ -636,15 +668,16 @@ impl Cache<Compiler> {
     /// Going to the definition of a reference lists its declarations, and going to the definition
     /// of a declaration lists its references, so that either can be reached from the other.
     pub fn definitions(&self, index: usize) -> Vec<Location> {
-        let Some((target, is_declaration)) = self.target_at(index) else {
+        let Some((target, role)) = self.target_at(index) else {
             return Vec::new();
         };
 
-        if is_declaration {
-            self.locations(self.reference_items(&target))
-        } else {
-            self.locations(self.declaration_items(&target, true))
-        }
+        let roles: &[Role] = match role {
+            Role::Reference => &[Role::Declaration, Role::FileModule],
+            Role::Declaration | Role::FileModule => &[Role::Reference],
+        };
+
+        self.locations(target, roles)
     }
 
     pub fn references(&self, index: usize, include_declaration: bool) -> Vec<Location> {
@@ -652,21 +685,18 @@ impl Cache<Compiler> {
             return Vec::new();
         };
 
-        let mut spans = self.reference_items(&target);
+        // A file module's declaration is the whole file, which isn't a useful reference
+        let roles: &[Role] = if include_declaration {
+            &[Role::Reference, Role::Declaration]
+        } else {
+            &[Role::Reference]
+        };
 
-        if include_declaration {
-            // A file module's declaration is the whole file, which isn't a useful reference
-            spans.extend(self.declaration_items(&target, false));
-        }
-
-        self.locations(spans)
+        self.locations(target, roles)
     }
 
-    /// The items whose span is the narrowest one that contains the index, in the order they were
-    /// added. Several items can share a span, such as the binding and the field in the struct
-    /// initializer `Point { x }`. Since the end of a span counts as being inside it, so that the
-    /// cursor can be right after a name, a span the cursor is strictly inside of is preferred
-    /// over one that ends at the cursor.
+    /// The items at the index, in the order they were added. Several items can share a span, such
+    /// as the binding and the field in the struct initializer `Point { x }`.
     fn items_at(&self, index: usize) -> Vec<&SyntaxItem> {
         let items = self
             .syntax_map
@@ -689,88 +719,39 @@ impl Cache<Compiler> {
             })
             .collect::<Vec<_>>();
 
-        let Some(best) = items
-            .iter()
-            .min_by_key(|item| (usize::from(item.span.end()) == index, item.span.len()))
-            .map(|item| item.span)
-        else {
+        let Some(span) = best_span(items.iter().map(|item| item.span), index) else {
             return Vec::new();
         };
 
-        items.into_iter().filter(|item| item.span == best).collect()
+        items.into_iter().filter(|item| item.span == span).collect()
     }
 
-    /// What the item at the index refers to, and whether it's the declaration of it.
-    fn target_at(&self, index: usize) -> Option<(Target, bool)> {
+    /// What the item at the index refers to, and whether it's a declaration or a reference.
+    fn target_at(&self, index: usize) -> Option<(Target<'_>, Role)> {
         self.items_at(index)
             .into_iter()
-            .find_map(|item| match &item.kind {
-                SyntaxItemKind::SymbolDeclaration(symbol) => Some((Target::Symbol(*symbol), true)),
-                SyntaxItemKind::SymbolReference(symbol) => Some((Target::Symbol(*symbol), false)),
-                SyntaxItemKind::TypeDeclaration(ty) => Some((Target::Type(*ty), true)),
-                SyntaxItemKind::TypeReference(ty) => Some((Target::Type(*ty), false)),
-                SyntaxItemKind::FieldDeclaration(field) => Some((Target::field(field), true)),
-                SyntaxItemKind::FieldReference(field) => Some((Target::field(field), false)),
-                SyntaxItemKind::FieldInitializer(_)
-                | SyntaxItemKind::FileModule(_)
-                | SyntaxItemKind::Scope(_)
-                | SyntaxItemKind::CompletionContext(_) => None,
-            })
+            .find_map(|item| classify(&item.kind))
     }
 
-    fn declaration_items(
-        &self,
-        target: &Target,
-        include_file_modules: bool,
-    ) -> Vec<(TextRange, SourceKind)> {
-        self.syntax_map
+    /// The locations of the items with the target and one of the roles, sorted by file and
+    /// position and without duplicates. Items in the standard library are left out, since it has
+    /// no file the editor can open.
+    fn locations(&self, target: Target<'_>, roles: &[Role]) -> Vec<Location> {
+        let mut locations = self
+            .syntax_map
             .items()
-            .filter(|item| match (&item.kind, target) {
-                (SyntaxItemKind::SymbolDeclaration(symbol), Target::Symbol(target)) => {
-                    symbol == target
-                }
-                (SyntaxItemKind::FileModule(symbol), Target::Symbol(target)) => {
-                    include_file_modules && symbol == target
-                }
-                (SyntaxItemKind::TypeDeclaration(ty), Target::Type(target)) => ty == target,
-                (SyntaxItemKind::FieldDeclaration(field), Target::Field(container, name)) => {
-                    field.container == *container && field.name == *name
-                }
-                _ => false,
+            .filter(|item| {
+                classify(&item.kind)
+                    .is_some_and(|(other, role)| other == target && roles.contains(&role))
             })
-            .map(|item| (item.span, item.source_kind.clone()))
-            .collect()
-    }
-
-    fn reference_items(&self, target: &Target) -> Vec<(TextRange, SourceKind)> {
-        self.syntax_map
-            .items()
-            .filter(|item| match (&item.kind, target) {
-                (SyntaxItemKind::SymbolReference(symbol), Target::Symbol(target)) => {
-                    symbol == target
-                }
-                (SyntaxItemKind::TypeReference(ty), Target::Type(target)) => ty == target,
-                (SyntaxItemKind::FieldReference(field), Target::Field(container, name)) => {
-                    field.container == *container && field.name == *name
-                }
-                _ => false,
-            })
-            .map(|item| (item.span, item.source_kind.clone()))
-            .collect()
-    }
-
-    /// Converts spans to locations, sorted by file and position and without duplicates. Spans in
-    /// the standard library are left out, since it has no file the editor can open.
-    fn locations(&self, spans: Vec<(TextRange, SourceKind)>) -> Vec<Location> {
-        let mut locations = spans
-            .into_iter()
-            .filter_map(|(span, kind)| {
-                let SourceKind::File(path) = &kind else {
+            .filter_map(|item| {
+                let SourceKind::File(path) = &item.source_kind else {
                     return None;
                 };
 
-                let text = &self.tree.find(&kind)?.source.text;
-                let range = offsets_to_range(text, span.start().into(), span.end().into());
+                let text = &self.tree.find(&item.source_kind)?.source.text;
+                let range =
+                    offsets_to_range(text, item.span.start().into(), item.span.end().into());
 
                 Some(Location::new(Url::from_file_path(path).ok()?, range))
             })
@@ -1013,6 +994,16 @@ impl Cache<Compiler> {
     }
 }
 
+/// The span that a query at the index is about, out of the spans that contain it. Names are always
+/// separated by at least one character, so today every span that contains the index is the same
+/// one. The choice is still made deterministic in case that changes: the narrowest span wins, and
+/// since the end of a span counts as being inside it so that the cursor can be right after a name,
+/// a span the cursor is strictly inside of wins over one that ends at the cursor. Ties go to the
+/// first span.
+fn best_span(spans: impl Iterator<Item = TextRange>, index: usize) -> Option<TextRange> {
+    spans.min_by_key(|span| (usize::from(span.end()) == index, span.len()))
+}
+
 fn contains(range: TextRange, index: usize) -> bool {
     TextRange::new(range.start(), range.end().checked_add(1.into()).unwrap())
         .contains(TextSize::from(index as u32))
@@ -1101,6 +1092,7 @@ fn symbol_kind(symbol: &Symbol) -> Option<CompletionItemKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestProject;
 
     #[test]
     fn test_fuzzy_match() {
@@ -1115,6 +1107,80 @@ mod tests {
         let far = fuzzy_match("ab", "x_long_name_a_b").unwrap();
         assert!(close > far);
         assert!(close < 1000);
+    }
+
+    fn span(start: u32, end: u32) -> TextRange {
+        TextRange::new(start.into(), end.into())
+    }
+
+    #[test]
+    fn test_best_span() {
+        assert_eq!(best_span(std::iter::empty(), 0), None);
+
+        // The narrowest span wins, whichever order they're in
+        let outer = span(0, 10);
+        let inner = span(2, 5);
+        assert_eq!(best_span([outer, inner].into_iter(), 3), Some(inner));
+        assert_eq!(best_span([inner, outer].into_iter(), 3), Some(inner));
+
+        // A span that starts at the cursor wins over one that ends there, even if it's wider
+        let before = span(0, 3);
+        let after = span(3, 10);
+        assert_eq!(best_span([before, after].into_iter(), 3), Some(after));
+        assert_eq!(best_span([after, before].into_iter(), 3), Some(after));
+
+        // A span that ends at the cursor is used if it's the only one
+        assert_eq!(best_span([before].into_iter(), 3), Some(before));
+
+        // Ties go to the first span
+        let other = span(1, 4);
+        assert_eq!(best_span([before, other].into_iter(), 2), Some(before));
+    }
+
+    #[test]
+    fn test_duplicate_items() {
+        // Each item is only shown once, even if it's in the syntax map more than once
+        let project = TestProject::new(&[(
+            "main.rue",
+            "struct Point {\n    x: Int,\n}\n\nfn main(point: Point) -> Int {\n    point.$0x + point.x\n}\n",
+        )]);
+
+        let (uri, position) = project.cursor();
+
+        // The compile is only reachable from the worker thread, so the queries run there and the
+        // results are checked here
+        let (before, duplicated) = project
+            .backend()
+            .worker
+            .run(None, move |state| {
+                let cache = state.cache(&uri, None).unwrap();
+                let index = cache.position(position);
+
+                let query = |cache: &mut Cache<Compiler>| {
+                    let scopes = cache.scopes(index);
+                    (
+                        cache.hover(&scopes, index),
+                        cache.definitions(index),
+                        cache.references(index, true),
+                    )
+                };
+
+                let before = query(cache);
+
+                for item in cache.syntax_map.items().cloned().collect::<Vec<_>>() {
+                    cache.syntax_map.add_item(item);
+                }
+
+                (before, query(cache))
+            })
+            .blocking_recv()
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(before.0.len(), 1);
+        assert_eq!(before.1.len(), 1);
+        assert_eq!(before.2.len(), 3);
+        assert_eq!(duplicated, before);
     }
 
     #[test]

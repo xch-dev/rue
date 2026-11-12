@@ -1,6 +1,8 @@
-//! Cursors at the boundary between two adjacent items, or inside an item that's nested in another,
-//! resolve to a single item: the narrowest one that contains the cursor, preferring the one that
-//! starts at the cursor over the one that ends there.
+//! Cursors next to punctuation between two names (`a.b`, `f(x)`, `x+y`, `List<T>`, `a::b`), and on
+//! names that more than one item is recorded for, resolve to one item, which hover, definitions
+//! and references agree on. Names are always separated by at least one character, so the end of one
+//! name is never the start of another; the rule for choosing between different spans is tested on
+//! its own in `cache.rs`.
 
 use expect_test::{Expect, expect};
 
@@ -90,7 +92,7 @@ fn main(point: Point) -> Int {
 }
 
 #[test]
-fn test_field_access_end() {
+fn test_field_access_after_field() {
     check(
         &with_point(
             r#"
@@ -112,7 +114,7 @@ fn main(point: Point) -> Int {
 }
 
 #[test]
-fn test_call_boundary_callee() {
+fn test_call_before_parenthesis() {
     check(
         r#"
 fn main(value: Int) -> Int {
@@ -136,7 +138,7 @@ fn double(num: Int) -> Int {
 }
 
 #[test]
-fn test_call_boundary_argument() {
+fn test_call_after_parenthesis() {
     check(
         r#"
 fn main(value: Int) -> Int {
@@ -160,8 +162,8 @@ fn double(num: Int) -> Int {
 }
 
 #[test]
-fn test_binary_boundary() {
-    // `x+y`: the cursor is at the end of `x` and the start of `+`, which isn't an item.
+fn test_binary_before_operator() {
+    // The cursor is at the end of `x` and the start of `+`, which isn't an item.
     check(
         r#"
 fn main(x: Int, y: Int) -> Int {
@@ -181,7 +183,7 @@ fn main(x: Int, y: Int) -> Int {
 }
 
 #[test]
-fn test_binary_boundary_right() {
+fn test_binary_after_operator() {
     check(
         r#"
 fn main(x: Int, y: Int) -> Int {
@@ -201,7 +203,7 @@ fn main(x: Int, y: Int) -> Int {
 }
 
 #[test]
-fn test_generic_boundary_type() {
+fn test_generic_before_angle_bracket() {
     check(
         r#"
 struct Wrapper<T> {
@@ -229,7 +231,7 @@ fn main(wrapper: Wrapper$0<Amount>) -> Amount {
 }
 
 #[test]
-fn test_generic_boundary_argument() {
+fn test_generic_after_angle_bracket() {
     check(
         r#"
 struct Wrapper<T> {
@@ -256,7 +258,7 @@ fn main(wrapper: Wrapper<$0Amount>) -> Amount {
 }
 
 #[test]
-fn test_generic_boundary_end() {
+fn test_generic_before_closing_angle_bracket() {
     check(
         r#"
 struct Wrapper<T> {

@@ -118,6 +118,44 @@ fn main(condition: CreateCoin) -> Int {
 }
 
 #[test]
+fn test_std_type_alias() {
+    check(
+        r#"
+fn main(condition: Condi$0tion) -> Bool {
+    condition is CreateCoin
+}
+"#,
+        expect![[r#"
+            hover:
+            type Condition = Remark | AggSigParent | AggSigPuzzle | AggSigAmount | AggSigPuzzleAmount | AggSigParentAmount | AggSigParentPuzzle | AggSigUnsafe | AggSigMe | CreateCoin | ReserveFee | CreateCoinAnnouncement | AssertCoinAnnouncement | CreatePuzzleAnnouncement | AssertPuzzleAnnouncement | AssertConcurrentSpend | AssertConcurrentPuzzle | SendMessage | ReceiveMessage | AssertMyCoinId | AssertMyParentId | AssertMyPuzzleHash | AssertMyAmount | AssertMyBirthSeconds | AssertMyBirthHeight | AssertEphemeral | AssertSecondsRelative | AssertSecondsAbsolute | AssertHeightRelative | AssertHeightAbsolute | AssertBeforeSecondsRelative | AssertBeforeSecondsAbsolute | AssertBeforeHeightRelative | AssertBeforeHeightAbsolute | Softfork
+            definitions:
+            <none>
+            references:
+            main.rue:1:19-1:28
+        "#]],
+    );
+}
+
+#[test]
+fn test_std_constant() {
+    check(
+        r#"
+fn main() -> Int {
+    CREATE_CO$0IN
+}
+"#,
+        expect![[r#"
+            hover:
+            inline const CREATE_COIN: 51
+            definitions:
+            <none>
+            references:
+            main.rue:2:4-2:15
+        "#]],
+    );
+}
+
+#[test]
 fn test_std_completion() {
     let project = TestProject::with_manifest(
         Some("[compiler]\nentrypoint = \".\"\n"),

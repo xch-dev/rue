@@ -372,6 +372,88 @@ fn test_cursor_after_string() {
 }
 
 #[test]
+fn test_cursor_before_string() {
+    // Right before the opening quote is outside of the string.
+    check(
+        "fn main() -> Int {\n    let value = 42;\n    let s = $0\"val\";\n    value\n}\n",
+        expect![[r#"
+            hover:
+            <none>
+            definitions:
+            <none>
+            references:
+            <none>
+            completions:
+            super [Module]
+            value [Variable] 42
+            main [Function] fn() -> Int
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            ...
+        "#]],
+    );
+}
+
+#[test]
+fn test_cursor_after_line_comment() {
+    // A line comment ends with its line break, but the start of the next line isn't inside it.
+    check(
+        "fn main() -> Int {\n    let value = 42;\n    // comment\n$0\n}\n",
+        expect![[r#"
+            hover:
+            <none>
+            definitions:
+            <none>
+            references:
+            <none>
+            completions:
+            super [Module]
+            value [Variable] 42
+            main [Function] fn() -> Int
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            ...
+        "#]],
+    );
+}
+
+#[test]
+fn test_cursor_after_line_comment_crlf() {
+    check(
+        "fn main() -> Int {\r\n    let value = 42;\r\n    // comment\r\n$0\r\n}\r\n",
+        expect![[r#"
+            hover:
+            <none>
+            definitions:
+            <none>
+            references:
+            <none>
+            completions:
+            super [Module]
+            value [Variable] 42
+            main [Function] fn() -> Int
+            unchecked_cast [Function] fn<T>(value: Any) -> T
+            ...
+        "#]],
+    );
+}
+
+#[test]
+fn test_cursor_at_end_of_line_comment() {
+    check(
+        "fn main() -> Int {\n    let value = 42;\n    // val$0\n    value\n}\n",
+        expect![[r#"
+            hover:
+            <none>
+            definitions:
+            <none>
+            references:
+            <none>
+            completions:
+            <none>
+        "#]],
+    );
+}
+
+#[test]
 fn test_cursor_inside_line_comment() {
     check(
         "fn main() -> Int {\n    let value = 42;\n    // val$0\n    value\n}\n",

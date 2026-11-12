@@ -14,6 +14,12 @@ fn check_references(files: &[(&str, &str)], expect: Expect) {
     expect.assert_eq(&project.references());
 }
 
+#[allow(clippy::needless_pass_by_value)]
+fn check_references_without_declaration(files: &[(&str, &str)], expect: Expect) {
+    let project = TestProject::new(files);
+    expect.assert_eq(&project.references_with(false));
+}
+
 #[test]
 fn test_definition_function() {
     check_definitions(
@@ -305,12 +311,6 @@ fn test_definition_after_non_ascii() {
     );
 }
 
-#[allow(clippy::needless_pass_by_value)]
-fn check_references_without_declaration(files: &[(&str, &str)], expect: Expect) {
-    let project = TestProject::new(files);
-    expect.assert_eq(&project.references_with(false));
-}
-
 #[test]
 fn test_references_without_declaration() {
     check_references_without_declaration(
@@ -451,6 +451,36 @@ fn main() -> Int {
         )],
         expect![[r#"
             <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_without_declaration_in_other_file() {
+    check_references_without_declaration(
+        &[
+            (
+                "main.rue",
+                r#"
+import utils::greet;
+
+fn main() -> String {
+    gre$0et("world")
+}
+"#,
+            ),
+            (
+                "utils.rue",
+                r#"
+export fn greet(name: String) -> String {
+    "Hello, " + name + "!"
+}
+"#,
+            ),
+        ],
+        expect![[r#"
+            main.rue:1:14-1:19
+            main.rue:4:4-4:9
         "#]],
     );
 }

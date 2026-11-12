@@ -254,7 +254,7 @@ fn main(value: Int) -> Int {
 
 #[test]
 fn test_shadowing_type_alias_in_module() {
-    // A type declared in an inner module shadows the outer one, so hover names it by the inner
+    // A type declared in an inner module shadows the outer one, so the name refers to the inner
     // declaration.
     check_queries(
         r#"
@@ -302,6 +302,24 @@ fn main(value: Int) -> Int {
             references:
             main.rue:2:15-2:20
             main.rue:2:34-2:39
+        "#]],
+    );
+}
+
+#[test]
+fn test_narrowed_binding_completion() {
+    // Completion shows the type narrowed by the condition, like hover does.
+    check_completions(
+        r#"
+fn main(value: Int | nil) -> Int {
+    if value is nil {
+        return 0;
+    }
+    val$0
+}
+"#,
+        expect![[r#"
+            value [Variable] Int
         "#]],
     );
 }
