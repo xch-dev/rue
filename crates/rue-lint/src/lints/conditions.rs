@@ -36,7 +36,7 @@ fn check_condition(cx: &mut LintContext<'_>, condition: HirId) {
     let srcloc = srcloc.clone();
 
     // An error has already been reported, and the type is compatible with everything
-    if cx.is_unresolved(ty) {
+    if cx.contains_unresolved(ty) {
         return;
     }
 

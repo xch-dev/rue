@@ -1,16 +1,13 @@
 diagnostics:
 - Cannot assign `5` to `Bytes32`, since they are incompatible at struct_default_errors.rue:2:22
-- Unused struct `PairMismatch` at struct_default_errors.rue:5:8
 - |-
   Field `value` of struct `PairMismatch` is never read at struct_default_errors.rue:6:5
     note: If it's only needed for the layout of the struct, prefix its name with `_`
 - Cannot assign `5` to `(Int, Int)`, since they are incompatible at struct_default_errors.rue:6:25
-- Unused struct `GenericInt` at struct_default_errors.rue:10:8
 - |-
   Field `value` of struct `GenericInt` is never read at struct_default_errors.rue:11:5
     note: If it's only needed for the layout of the struct, prefix its name with `_`
 - Cannot assign `5` to `T`, since they are incompatible at struct_default_errors.rue:11:16
-- Unused struct `GenericNil` at struct_default_errors.rue:14:8
 - |-
   Field `value` of struct `GenericNil` is never read at struct_default_errors.rue:15:5
     note: If it's only needed for the layout of the struct, prefix its name with `_`

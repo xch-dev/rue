@@ -32,7 +32,7 @@ impl HirLintPass for UnnecessaryCast {
         };
 
         // An error has already been reported, and the type is compatible with everything
-        if cx.is_unresolved(from) || cx.is_unresolved(to) {
+        if cx.contains_unresolved(from) || cx.contains_unresolved(to) {
             return;
         }
 
@@ -96,7 +96,7 @@ impl HirLintPass for BytesIntConfusion {
 
         let int = cx.builtin_types().int;
 
-        if cx.is_unresolved(ty) || !cx.is_assignable(ty, int) || !cx.is_assignable(int, ty) {
+        if cx.contains_unresolved(ty) || !cx.is_assignable(ty, int) || !cx.is_assignable(int, ty) {
             return;
         }
 

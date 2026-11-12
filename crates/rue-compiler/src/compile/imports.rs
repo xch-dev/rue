@@ -319,7 +319,8 @@ fn resolve_import(
         };
 
         if let Some(import) = import {
-            ctx.add_import_reference(import, Declaration::Symbol(symbol));
+            // Paths of imports aren't in any declaration
+            ctx.add_import_reference(import, Declaration::Symbol(symbol), None);
         }
 
         if diagnostics && let Some(srcloc) = name.srcloc() {

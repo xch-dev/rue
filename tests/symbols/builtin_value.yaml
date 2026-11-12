@@ -1,9 +1,7 @@
 diagnostics:
-- Unused struct `Hasher` at builtin_value.rue:1:8
 - |-
   Field `sha256` of struct `Hasher` is never read at builtin_value.rue:2:5
     note: If it's only needed for the layout of the struct, prefix its name with `_`
-- Unused function `call` at builtin_value.rue:5:4
 - Cannot use builtin `sha256` as a value, it can only be called directly at builtin_value.rue:10:13
 - |-
   Unnecessary parentheses at builtin_value.rue:11:20

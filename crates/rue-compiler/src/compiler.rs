@@ -696,7 +696,16 @@ impl Compiler {
         }
 
         if let Some(import) = import {
-            self.db.add_import_reference(import, reference);
+            let user = self.declaration_stack.last().copied();
+            self.db.add_import_reference(import, reference, user);
+        }
+    }
+
+    /// Records an import that's checked for being unused, unless it's in the standard library,
+    /// as with declarations.
+    pub fn add_relevant_import(&mut self, import: ImportId) {
+        if self.source.kind.check_unused() {
+            self.db.add_relevant_import(import);
         }
     }
 

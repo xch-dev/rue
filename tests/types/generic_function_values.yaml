@@ -62,5 +62,3 @@ tests:
   runtime_cost: 1068
   byte_cost: 684000
   total_cost: 685068
-diagnostics:
-- Unused function `konst` at generic_function_values.rue:9:4

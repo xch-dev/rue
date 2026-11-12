@@ -57,25 +57,23 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 
 type Report = (Lint, Name, String);
 
-/// Reports the imports whose declarations are never used by live code. A use from an unused
-/// function doesn't count, so that the import is reported along with the declarations it imports.
-/// Modules are only used in the paths of other imports, which aren't part of any declaration, so
-/// any use of an imported module counts.
+/// Reports the imports that are never used by live code. A use from an unused function doesn't
+/// count, so that the import is reported along with the declarations it imports. A use from the
+/// path of another import always counts, since it isn't in any declaration.
 fn unused_imports(db: &Database, live: &HashSet<Declaration>) -> Vec<Report> {
     let mut reports = Vec::new();
 
     for import in db.relevant_imports() {
         let references = db
-            .import_references(import)
+            .import_uses(import)
             .into_iter()
-            .filter(|&declaration| live.contains(&declaration) || is_module(db, declaration))
+            .filter(|(_, user)| user.is_none_or(|user| live.contains(&user)))
+            .map(|(declaration, _)| declaration)
             .collect::<HashSet<_>>();
 
         let import = db.import(import);
 
-        // Unused declarations aren't reported in the standard library either, and its functions
-        // are only live if they're called, so its imports would be reported as unused otherwise
-        if import.exported || !import.source.kind.check_unused() {
+        if import.exported {
             continue;
         }
 
@@ -125,36 +123,30 @@ fn unused_declarations(
     entrypoints: &HashSet<Declaration>,
     live: &HashSet<Declaration>,
 ) -> Vec<Declaration> {
-    let is_used = |declaration: Declaration| {
-        if entrypoints.contains(&declaration) {
-            return true;
-        }
-
-        if db.declaration_parents(declaration).is_empty() {
-            live.contains(&declaration)
-        } else {
-            !db.reference_parents(declaration).is_empty()
-        }
-    };
-
-    let symbols = db
+    let mut unused = db
         .relevant_declarations()
-        .filter(|declaration| matches!(declaration, Declaration::Symbol(_)));
+        .filter(|&declaration| {
+            if entrypoints.contains(&declaration) {
+                return false;
+            }
 
-    let types = db
-        .relevant_declarations()
-        .filter(|declaration| matches!(declaration, Declaration::Type(_)));
+            if db.declaration_parents(declaration).is_empty() {
+                !live.contains(&declaration)
+            } else {
+                db.reference_parents(declaration).is_empty()
+            }
+        })
+        .collect::<Vec<_>>();
 
-    symbols
-        .chain(types)
-        .filter(|&declaration| !is_used(declaration))
-        .collect()
+    unused.sort_by_key(|declaration| matches!(declaration, Declaration::Type(_)));
+    unused
 }
 
-/// The declarations whose code is evaluated, starting from the entrypoints. A declaration is live
-/// if something live references it, and the parameters and generic types of a live function or
-/// type are live, since its signature needs their types. A binding is only live if something live
-/// references it, since it's only evaluated if it's referenced.
+/// The declarations whose code is evaluated, or is needed by code that's kept. A declaration is
+/// live if it's an entrypoint, or something live references it. The parameters and generic types
+/// of a live function or type are live, since its signature needs their types, but a binding is
+/// only evaluated if something live references it. Declarations whose names start with `_` aren't
+/// reported, so they're kept (along with what they need) as if they were used.
 fn live_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> HashSet<Declaration> {
     // The database only stores the edges from a declaration to the ones that reference or
     // declare it, so the edges in the other direction are collected first. Every declaration on
@@ -180,7 +172,7 @@ fn live_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> HashS
             stack.push(parent);
         }
 
-        if is_signature_local(db, declaration) {
+        if is_live_with_parent(db, declaration) {
             for parent in db.declaration_parents(declaration) {
                 children.entry(parent).or_default().push(declaration);
                 stack.push(parent);
@@ -189,7 +181,14 @@ fn live_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> HashS
     }
 
     let mut live = HashSet::new();
-    let mut stack = entrypoints.iter().copied().collect::<Vec<_>>();
+
+    let mut stack = entrypoints
+        .iter()
+        .copied()
+        .chain(db.relevant_declarations().filter(|&declaration| {
+            db.declaration_parents(declaration).is_empty() && is_exempt(db, declaration)
+        }))
+        .collect::<Vec<_>>();
 
     while let Some(declaration) = stack.pop() {
         if !live.insert(declaration) {
@@ -204,21 +203,40 @@ fn live_declarations(db: &Database, entrypoints: &HashSet<Declaration>) -> HashS
     live
 }
 
-fn is_module(db: &Database, declaration: Declaration) -> bool {
-    matches!(declaration, Declaration::Symbol(symbol) if matches!(db.symbol(symbol), Symbol::Module(_)))
-}
-
-/// Whether the declaration is part of the signature of the function or type that declares it, so
-/// that it's live whenever its parent is.
-fn is_signature_local(db: &Database, declaration: Declaration) -> bool {
+/// Whether the declaration is live whenever the function or type that declares it is, because
+/// it's part of its signature, or it's a binding whose name starts with `_`.
+fn is_live_with_parent(db: &Database, declaration: Declaration) -> bool {
     match declaration {
-        Declaration::Symbol(symbol) => matches!(db.symbol(symbol), Symbol::Parameter(_)),
+        Declaration::Symbol(symbol) => match db.symbol(symbol) {
+            Symbol::Parameter(_) => true,
+            Symbol::Binding(_) => is_exempt(db, declaration),
+            _ => false,
+        },
         Declaration::Type(ty) => matches!(db.ty(ty), Type::Generic(_)),
     }
 }
 
+/// Whether the declaration's name starts with `_`, so that it isn't reported as unused.
+fn is_exempt(db: &Database, declaration: Declaration) -> bool {
+    describe(db, declaration).is_some_and(|(_, _, name)| name.text().starts_with('_'))
+}
+
 fn unused_declaration(db: &Database, declaration: Declaration) -> Option<Report> {
-    let (lint, kind, name) = match declaration {
+    let (lint, kind, name) = describe(db, declaration)?;
+
+    if name.text().starts_with('_') {
+        return None;
+    }
+
+    let message = format!("Unused {kind} `{}`", name.text());
+
+    Some((lint, name, message))
+}
+
+/// The lint that reports the declaration as unused, along with what kind of declaration it is and
+/// its name, if it can be reported.
+fn describe(db: &Database, declaration: Declaration) -> Option<(Lint, &'static str, Name)> {
+    Some(match declaration {
         Declaration::Symbol(symbol) => match db.symbol(symbol) {
             Symbol::Function(FunctionSymbol { name, .. }) => {
                 (Lint::UnusedFunction, "function", name.clone()?)
@@ -242,13 +260,5 @@ fn unused_declaration(db: &Database, declaration: Declaration) -> Option<Report>
             Type::Alias(Alias { name, .. }) => (Lint::UnusedTypeAlias, "type alias", name.clone()?),
             _ => return None,
         },
-    };
-
-    if name.text().starts_with('_') {
-        return None;
-    }
-
-    let message = format!("Unused {kind} `{}`", name.text());
-
-    Some((lint, name, message))
+    })
 }

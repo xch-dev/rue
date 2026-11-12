@@ -90,7 +90,7 @@ impl HirLintPass for BoolComparison {
             return;
         };
 
-        if cx.is_unresolved(ty) || !cx.is_assignable(ty, cx.builtin_types().bool) {
+        if cx.contains_unresolved(ty) || !cx.is_assignable(ty, cx.builtin_types().bool) {
             return;
         }
 

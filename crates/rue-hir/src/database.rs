@@ -36,7 +36,9 @@ pub struct Database {
     declared_by: HashMap<Declaration, IndexSet<Declaration>>,
     referenced_by: HashMap<Declaration, IndexSet<Declaration>>,
     relevant_imports: IndexSet<ImportId>,
-    import_references: HashMap<ImportId, IndexSet<Declaration>>,
+    /// The declarations referenced through each import, along with the declaration each
+    /// reference is in, which is `None` for a reference from the path of another import.
+    import_references: HashMap<ImportId, IndexSet<(Declaration, Option<Declaration>)>>,
     tests: Vec<Test>,
 }
 
@@ -265,14 +267,31 @@ impl Database {
         self.relevant_imports.iter().copied()
     }
 
-    pub fn add_import_reference(&mut self, import: ImportId, declaration: Declaration) {
+    pub fn add_import_reference(
+        &mut self,
+        import: ImportId,
+        declaration: Declaration,
+        user: Option<Declaration>,
+    ) {
         self.import_references
             .entry(import)
             .or_default()
-            .insert(declaration);
+            .insert((declaration, user));
     }
 
+    /// The declarations referenced through the import.
     pub fn import_references(&self, import: ImportId) -> Vec<Declaration> {
+        self.import_uses(import)
+            .into_iter()
+            .map(|(declaration, _)| declaration)
+            .collect::<IndexSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    /// The declarations referenced through the import, along with the declaration each reference
+    /// is in, which is `None` for a reference from the path of another import.
+    pub fn import_uses(&self, import: ImportId) -> Vec<(Declaration, Option<Declaration>)> {
         self.import_references
             .get(&import)
             .cloned()

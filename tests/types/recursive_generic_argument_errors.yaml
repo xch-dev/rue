@@ -3,11 +3,9 @@ diagnostics:
 - Type `Odd` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:6:6
 - Type `Grow` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:8:6
 - Type `Tree` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:10:8
-- Unused struct `Tree` at recursive_generic_argument_errors.rue:10:8
 - Unused function `depth` at recursive_generic_argument_errors.rue:15:4
 - Unused binding `nested` at recursive_generic_argument_errors.rue:20:9
 - Cannot assign `(T, 1)` to `Bytes`, since they are incompatible at recursive_generic_argument_errors.rue:20:25
-- Unused function `tree` at recursive_generic_argument_errors.rue:24:4
 - |-
   Redundant field name, since `value: value` can be written as `value` at recursive_generic_argument_errors.rue:25:37
     help: Use the shorthand instead

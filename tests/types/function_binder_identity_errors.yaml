@@ -1,14 +1,5 @@
 diagnostics:
-- Unused type alias `Id` at function_binder_identity_errors.rue:1:6
-- Unused type alias `P` at function_binder_identity_errors.rue:2:6
-- Unused type alias `F` at function_binder_identity_errors.rue:3:6
-- Unused type alias `R` at function_binder_identity_errors.rue:4:6
-- Unused type alias `G2` at function_binder_identity_errors.rue:5:6
-- Unused type alias `G` at function_binder_identity_errors.rue:6:6
-- Unused function `mk` at function_binder_identity_errors.rue:8:4
 - 'Cannot assign `fn<U>(_y: U) -> U` to `fn<U>(x: U) -> U`, since they are incompatible at function_binder_identity_errors.rue:14:22'
-- Unused function `ll` at function_binder_identity_errors.rue:18:4
-- Unused function `ff` at function_binder_identity_errors.rue:22:4
 - 'Cannot assign `fn<T>(x: T) -> T` to `fn<U>(y: U) -> U`, since they are incompatible at function_binder_identity_errors.rue:30:40'
 - Unused generic type `V` at function_binder_identity_errors.rue:42:25
 - 'Cannot assign `fn<W, U>(_y: U) -> U` to `Id`, since they are incompatible at function_binder_identity_errors.rue:43:26'

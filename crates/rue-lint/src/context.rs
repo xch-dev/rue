@@ -186,7 +186,7 @@ impl<'a> LintContext<'a> {
     /// Whether the type is unresolved, or contains an unresolved type anywhere inside of it,
     /// because an error has already been reported for it. Such types are compatible with
     /// everything, so lints that compare them would report errors twice.
-    pub fn is_unresolved(&mut self, ty: TypeId) -> bool {
+    pub fn contains_unresolved(&self, ty: TypeId) -> bool {
         rue_types::contains_unresolved(self.db.types(), ty)
     }
 

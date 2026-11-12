@@ -2356,3 +2356,65 @@ fn main() -> Int {
     );
     assert!(!has_errors);
 }
+
+#[test]
+fn imports_are_used_where_they_are_used_by_live_code() {
+    let source = "\
+mod module {
+    export fn helper() -> Int {
+        1
+    }
+}
+
+mod live {
+    import module::helper;
+
+    export fn run() -> Int {
+        helper()
+    }
+}
+
+mod dead {
+    import module::helper;
+
+    export fn unused() -> Int {
+        helper()
+    }
+}
+
+import live::run;
+
+struct Foo {
+    a: Int,
+}
+
+struct Bar {
+    a: Int,
+}
+
+fn main() -> Int {
+    let _probe: Foo = Foo { a: 1 };
+    run()
+}
+
+fn _helper() -> Bar {
+    Bar { a: 1 }
+}
+";
+
+    // The `helper` imported into `dead` is live through `live`, but `dead` only uses it from an
+    // unused function. `Foo` and `Bar` are only used by `_probe` and `_helper`, which aren't
+    // reported, so they're kept along with what they need.
+    let (reports, has_errors) = reports(source, |options| {
+        options.lints.set(Lint::UnusedStructField, LintLevel::Allow);
+    });
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 16: Unused import `helper`",
+            "Warning 18: Unused function `unused`",
+        ]
+    );
+    assert!(!has_errors);
+}

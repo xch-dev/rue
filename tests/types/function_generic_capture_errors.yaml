@@ -1,13 +1,4 @@
 diagnostics:
-- Unused type alias `P` at function_generic_capture_errors.rue:1:6
-- Unused type alias `PolyT` at function_generic_capture_errors.rue:2:6
-- Unused function `identity` at function_generic_capture_errors.rue:4:4
-- Unused function `mkp` at function_generic_capture_errors.rue:8:4
-- Unused function `konst` at function_generic_capture_errors.rue:12:4
-- Unused function `twice` at function_generic_capture_errors.rue:16:4
-- Unused function `apply2` at function_generic_capture_errors.rue:21:4
-- Unused function `get` at function_generic_capture_errors.rue:25:4
-- Unused function `make_id` at function_generic_capture_errors.rue:29:4
 - Cannot infer generic `T` for `apply2`; specify it explicitly, e.g. `apply2::<...>()` at function_generic_capture_errors.rue:35:14
 - |-
   This call is evaluated again with the same arguments, which costs as much as the first time at function_generic_capture_errors.rue:36:14
