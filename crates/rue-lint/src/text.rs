@@ -4,6 +4,8 @@
 use rue_diagnostic::{SrcLoc, Suggestion};
 use rue_hir::{BinaryOp, Database, Hir, HirId, UnaryOp};
 
+use crate::LintContext;
+
 /// The code that an expression was compiled from, without any parentheses around it, so that it
 /// can be used where any expression is allowed (such as an `assert` or a `let` value).
 pub(crate) fn expr_text(db: &Database, hir: HirId) -> Option<String> {
@@ -26,24 +28,75 @@ pub(crate) fn operand_text(db: &Database, hir: HirId) -> Option<String> {
 /// The code for the negation of a boolean expression, which removes a `!` or flips `==` and `!=`
 /// rather than adding another `!` if possible.
 pub(crate) fn negated_text(db: &Database, hir: HirId) -> Option<String> {
+    negated(db, hir, false)
+}
+
+/// Like [`negated_text`], but in parentheses if it could otherwise be split up by the operators
+/// around it, so that it can be used as an operand.
+pub(crate) fn negated_operand_text(db: &Database, hir: HirId) -> Option<String> {
+    negated(db, hir, true)
+}
+
+fn negated(db: &Database, hir: HirId, operand: bool) -> Option<String> {
     let srcloc = db.hir_srcloc(hir)?;
 
     if !is_parenthesized(srcloc.text()) {
         match *db.hir(hir) {
             Hir::Unary(UnaryOp::Not, inner) if srcloc.text().starts_with('!') => {
-                return expr_text(db, inner);
+                return if operand {
+                    operand_text(db, inner)
+                } else {
+                    expr_text(db, inner)
+                };
             }
             Hir::Binary(op @ (BinaryOp::Eq | BinaryOp::Ne), left, right) => {
                 let op = if op == BinaryOp::Eq { "!=" } else { "==" };
                 let left = operand_text(db, left)?;
                 let right = operand_text(db, right)?;
-                return Some(format!("{left} {op} {right}"));
+                let text = format!("{left} {op} {right}");
+                return Some(if operand { format!("({text})") } else { text });
             }
             _ => {}
         }
     }
 
     Some(format!("!{}", operand_text(db, hir)?))
+}
+
+/// Whether the current node is an operand of an operator, rather than a whole expression (such as
+/// an argument or the value of a binding), so replacing it might need parentheses.
+pub(crate) fn is_operand(cx: &LintContext<'_>, hir: HirId) -> bool {
+    let Some(parent) = cx.parent() else {
+        return false;
+    };
+
+    match cx.db().hir(parent) {
+        Hir::Block(_)
+        | Hir::List(_)
+        | Hir::Struct(_)
+        | Hir::Pair(..)
+        | Hir::Lambda(_)
+        | Hir::FunctionCall(_)
+        | Hir::CoinId(..)
+        | Hir::Substr(..)
+        | Hir::G1Map(..)
+        | Hir::G2Map(..)
+        | Hir::Modpow(..)
+        | Hir::BlsPairingIdentity(_)
+        | Hir::BlsVerify(..)
+        | Hir::Secp256K1Verify(..)
+        | Hir::Secp256R1Verify(..)
+        | Hir::ClvmOp(..) => false,
+        Hir::If(condition, ..) => *condition != hir,
+        _ => true,
+    }
+}
+
+/// Whether one location is inside of another (or the same as it).
+pub(crate) fn encloses(outer: &SrcLoc, inner: &SrcLoc) -> bool {
+    outer.source.kind == inner.source.kind
+        && outer.span.start <= inner.span.start
+        && inner.span.end <= outer.span.end
 }
 
 /// Whether nothing can bind more tightly to an expression than it already does, so that it never

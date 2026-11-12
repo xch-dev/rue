@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use rue_ast::{AstItem, AstNode, AstSymbolItem, AstTypeItem};
 use rue_diagnostic::{Applicability, Lint, Name, SourceKind, SrcLoc, Suggestion};
-use rue_hir::{Database, Declaration, ScopeId, Symbol, SymbolId};
+use rue_hir::{Database, Declaration, Items, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxKind;
 use rue_types::Type;
 
-use crate::{LintContext, LintInput, srcloc};
+use crate::{LintContext, LintInput, srcloc, text::encloses};
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UnusedExport];
 
@@ -24,6 +24,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         .collect::<HashMap<ScopeId, SymbolId>>();
 
     let export_keywords = export_keywords(input);
+    let imports = imports(db);
 
     let mut reports = Vec::new();
 
@@ -37,6 +38,17 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         let module_name = module_symbol.name.as_ref().map_or("", |name| name.text());
 
         let declarations = &module_symbol.declarations;
+
+        // Code in a module nested inside of this one can only use its items if they're exported
+        let nested = modules
+            .iter()
+            .filter(|(other, srcloc)| other != module && encloses(module_srcloc, srcloc))
+            .map(|(_, srcloc)| srcloc)
+            .collect::<Vec<_>>();
+
+        let inside = |srcloc: &SrcLoc| {
+            encloses(module_srcloc, srcloc) && !nested.iter().any(|nested| encloses(nested, srcloc))
+        };
 
         let items = declarations
             .symbols
@@ -67,9 +79,28 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                 continue;
             }
 
-            if users
-                .iter()
-                .any(|&user| !is_inside(db, user, module_srcloc, &mut HashSet::new()))
+            if users.iter().any(|&user| {
+                declaration_srcloc(db, user, &mut HashSet::new())
+                    .is_none_or(|srcloc| !inside(&srcloc))
+            }) {
+                continue;
+            }
+
+            // An import (or re-export) of the item can only resolve if it's exported
+            if imports
+                .get(&declaration)
+                .is_some_and(|imports| imports.iter().any(|srcloc| !inside(srcloc)))
+            {
+                continue;
+            }
+
+            // A type in the signature of another export is part of what the module exports, even
+            // if nothing outside of it names the type
+            if matches!(declaration, Declaration::Type(_))
+                && users.iter().any(|&user| match user {
+                    Declaration::Symbol(symbol) => scope.is_symbol_exported(symbol),
+                    Declaration::Type(ty) => scope.is_type_exported(ty),
+                })
             {
                 continue;
             }
@@ -121,16 +152,15 @@ fn is_public(db: &Database, scopes: &HashMap<ScopeId, SymbolId>, module: SymbolI
     }
 }
 
-/// Whether the declaration is inside of the module, by where it's declared (or for a declaration
-/// without a name, where the declaration it's inside of is).
-fn is_inside(
+/// Where the declaration is declared, by its name (or for a declaration without a name, where
+/// the declaration it's inside of is declared).
+fn declaration_srcloc(
     db: &Database,
     declaration: Declaration,
-    module: &SrcLoc,
     visited: &mut HashSet<Declaration>,
-) -> bool {
+) -> Option<SrcLoc> {
     if !visited.insert(declaration) {
-        return false;
+        return None;
     }
 
     let name = match declaration {
@@ -139,17 +169,38 @@ fn is_inside(
     };
 
     if let Some(srcloc) = name.as_ref().and_then(Name::srcloc) {
-        return srcloc.source.kind == module.source.kind
-            && module.span.start <= srcloc.span.start
-            && srcloc.span.end <= module.span.end;
+        return Some(srcloc.clone());
     }
 
-    let parents = db.declaration_parents(declaration);
+    db.declaration_parents(declaration)
+        .into_iter()
+        .find_map(|parent| declaration_srcloc(db, parent, visited))
+}
 
-    !parents.is_empty()
-        && parents
-            .into_iter()
-            .all(|parent| is_inside(db, parent, module, visited))
+/// Where each declaration is imported, by the location of the import's item. A glob import that
+/// isn't exported only needs the items that are used through it, which are references instead.
+fn imports(db: &Database) -> HashMap<Declaration, Vec<SrcLoc>> {
+    let mut imports: HashMap<Declaration, Vec<SrcLoc>> = HashMap::new();
+
+    for import in db.relevant_imports() {
+        let import = db.import(import);
+
+        let item = match &import.items {
+            Items::Named(item) => item,
+            Items::All(star) if import.exported => star,
+            Items::All(_) => continue,
+        };
+
+        let Some(srcloc) = item.srcloc() else {
+            continue;
+        };
+
+        for &(_, declaration) in &import.declarations {
+            imports.entry(declaration).or_default().push(srcloc.clone());
+        }
+    }
+
+    imports
 }
 
 fn symbol_name(db: &Database, symbol: SymbolId) -> Option<Name> {

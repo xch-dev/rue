@@ -1937,3 +1937,28 @@ fn main(value: Int) -> Int {
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
 }
+
+#[test]
+fn negations_are_parenthesized_as_operands() {
+    let source = "\
+fn main(flag: Bool, a: Bool, b: Bool) -> Bool {
+    let compared = flag && !(a || b) == false;
+    let flipped = flag && (a == b) == false;
+    let needless = flag && if !(!a || b) { false } else { true };
+    compared && flipped && needless
+}
+";
+
+    // Removing the comparison or the `if` can't let the `&&` split up what's left of it
+    assert_eq!(
+        fix(source),
+        "\
+fn main(flag: Bool, a: Bool, b: Bool) -> Bool {
+    let compared = flag && (a || b);
+    let flipped = flag && !(a == b);
+    let needless = flag && (!a || b);
+    compared && flipped && needless
+}
+"
+    );
+}

@@ -1,16 +1,19 @@
+use std::{collections::HashMap, mem::Discriminant};
+
 use rue_diagnostic::{Lint, Note, SrcLoc};
-use rue_hir::{BinaryOp, Hir, HirId, Statement, SymbolId, UnaryOp};
+use rue_hir::{BinaryOp, Database, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp};
 use rue_lir::ClvmOp;
 
-use crate::{HirLintPass, LintContext, equality::hir_eq};
+use crate::{HirLintPass, LintContext, equality::hir_eq, text::encloses};
 
 /// The compiler doesn't reuse the result of an expression that's evaluated more than once, so an
 /// expensive call (such as a hash, or a call to a function) that's evaluated again with the same
 /// arguments costs as much as the first time.
 #[derive(Debug, Default)]
 pub(crate) struct RepeatedExpensiveCall {
-    /// The calls seen so far in each function being walked, from the outermost to the innermost.
-    functions: Vec<Vec<Call>>,
+    /// The calls seen so far in each function being walked, from the outermost to the innermost,
+    /// grouped by their [`CallKey`] so that each call is only compared with similar ones.
+    functions: Vec<HashMap<CallKey, Vec<Call>>>,
     /// The calls that have been reported, so that the calls inside of them aren't reported again.
     reported: Vec<SrcLoc>,
 }
@@ -20,6 +23,10 @@ struct Call {
     hir: HirId,
     path: Vec<Branch>,
 }
+
+/// What a call is, which calls must share to be equal: the kind of node, the function it calls
+/// (if it's a named function), and the number of arguments.
+type CallKey = (Discriminant<Hir>, Option<SymbolId>, usize);
 
 /// One of the branches that a node is inside of, which is only evaluated in some cases. A call is
 /// only evaluated whenever another one is if it's inside of all the same branches.
@@ -31,7 +38,7 @@ impl HirLintPass for RepeatedExpensiveCall {
     }
 
     fn check_function(&mut self, _cx: &mut LintContext<'_>, _symbol: SymbolId, _body: HirId) {
-        self.functions.push(Vec::new());
+        self.functions.push(HashMap::new());
     }
 
     fn check_function_post(&mut self, _cx: &mut LintContext<'_>, _symbol: SymbolId, _: HirId) {
@@ -43,6 +50,8 @@ impl HirLintPass for RepeatedExpensiveCall {
             return;
         }
 
+        let key = call_key(cx.db(), node);
+
         let Some(srcloc) = cx.db().hir_srcloc(hir).cloned() else {
             return;
         };
@@ -51,7 +60,11 @@ impl HirLintPass for RepeatedExpensiveCall {
             return;
         };
 
-        let Some(calls) = self.functions.last_mut() else {
+        let Some(calls) = self
+            .functions
+            .last_mut()
+            .map(|calls| calls.entry(key).or_default())
+        else {
             return;
         };
 
@@ -89,6 +102,24 @@ impl HirLintPass for RepeatedExpensiveCall {
             ));
         }
     }
+}
+
+fn call_key(db: &Database, node: &Hir) -> CallKey {
+    let (function, args) = match node {
+        Hir::FunctionCall(call) => {
+            let function = match db.hir(db.without_casts(call.function)) {
+                Hir::Reference(symbol) if matches!(db.symbol(*symbol), Symbol::Function(_)) => {
+                    Some(*symbol)
+                }
+                _ => None,
+            };
+
+            (function, call.args.len())
+        }
+        _ => (None, 0),
+    };
+
+    (std::mem::discriminant(node), function, args)
 }
 
 fn is_expensive(node: &Hir) -> bool {
@@ -162,10 +193,4 @@ fn branch_path(cx: &LintContext<'_>, hir: HirId) -> Option<Vec<Branch>> {
     }
 
     Some(path)
-}
-
-fn encloses(outer: &SrcLoc, inner: &SrcLoc) -> bool {
-    outer.source.kind == inner.source.kind
-        && outer.span.start <= inner.span.start
-        && inner.span.end <= outer.span.end
 }

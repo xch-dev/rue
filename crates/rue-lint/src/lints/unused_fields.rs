@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use rue_ast::{AstNode, AstStructItem};
 use rue_diagnostic::{Lint, Name, Note, SourceKind, SrcLoc};
@@ -23,25 +26,26 @@ fn struct_key(name: &Name) -> Option<StructKey> {
 /// program. A struct's fields are only reported if every value of it is only ever read by field
 /// (or passed to a function that takes the struct), rather than escaping somewhere else.
 #[derive(Debug)]
-pub(crate) struct UnusedStructField {
-    entrypoints: HashSet<Declaration>,
+pub(crate) struct UnusedStructField<'a> {
+    entrypoints: &'a HashSet<Declaration>,
     /// The fields that are read in each struct.
     reads: HashMap<StructKey, HashSet<String>>,
     /// The location of each field's name in each struct, in the order they're declared.
     fields: HashMap<StructKey, Vec<(String, SrcLoc)>>,
-    /// The structs declared in the documents being linted, once they've been found.
-    candidates: Option<HashSet<StructKey>>,
+    /// The structs declared in the documents being linted, once they've been found, along with
+    /// the index that identifies each of them in the rest of the pass.
+    candidates: Option<HashMap<StructKey, usize>>,
     /// The structs that a value of each type can contain, for the types seen so far.
-    mentions: HashMap<TypeId, Vec<StructKey>>,
+    mentions: HashMap<TypeId, Rc<[usize]>>,
     /// The structs whose values escape, so their fields can be read in other ways.
-    escaped: HashSet<StructKey>,
+    escaped: HashSet<usize>,
     /// The structs that have a value somewhere, rather than only being used as a type (such as in
     /// the signature of an external function).
-    seen: HashSet<StructKey>,
+    seen: HashSet<usize>,
 }
 
-impl UnusedStructField {
-    pub(crate) fn new(input: &LintInput<'_>) -> Self {
+impl<'a> UnusedStructField<'a> {
+    pub(crate) fn new(input: &'a LintInput<'_>) -> Self {
         let mut reads: HashMap<StructKey, HashSet<String>> = HashMap::new();
 
         for read in &input.sites.field_reads {
@@ -75,7 +79,7 @@ impl UnusedStructField {
         }
 
         Self {
-            entrypoints: input.entrypoints.clone(),
+            entrypoints: input.entrypoints,
             reads,
             fields,
             candidates: None,
@@ -85,7 +89,7 @@ impl UnusedStructField {
         }
     }
 
-    fn candidates(&mut self, db: &Database) -> &HashSet<StructKey> {
+    fn candidates(&mut self, db: &Database) -> &HashMap<StructKey, usize> {
         self.candidates.get_or_insert_with(|| {
             db.relevant_declarations()
                 .filter_map(|declaration| match declaration {
@@ -95,12 +99,14 @@ impl UnusedStructField {
                     },
                     Declaration::Symbol(_) => None,
                 })
+                .enumerate()
+                .map(|(index, key)| (key, index))
                 .collect()
         })
     }
 
     /// The structs declared in the documents being linted that a value of the type can contain.
-    fn mentions(&mut self, db: &Database, ty: TypeId) -> Vec<StructKey> {
+    fn mentions(&mut self, db: &Database, ty: TypeId) -> Rc<[usize]> {
         if let Some(mentions) = self.mentions.get(&ty) {
             return mentions.clone();
         }
@@ -110,21 +116,21 @@ impl UnusedStructField {
 
         let candidates = self.candidates(db);
         let mentions = keys
-            .into_iter()
-            .filter(|key| candidates.contains(key))
-            .collect::<Vec<_>>();
+            .iter()
+            .filter_map(|key| candidates.get(key).copied())
+            .collect::<Rc<[usize]>>();
 
         self.mentions.insert(ty, mentions.clone());
         mentions
     }
 
-    fn type_mentions(&mut self, db: &Database, ty: TypeId, key: &StructKey) -> bool {
-        self.mentions(db, ty).contains(key)
+    fn type_mentions(&mut self, db: &Database, ty: TypeId, key: usize) -> bool {
+        self.mentions(db, ty).contains(&key)
     }
 
     /// Whether the value of the current node can be read other than by field, by following it
     /// through the nodes that only pass it along.
-    fn escapes(&mut self, cx: &LintContext<'_>, hir: HirId, key: &StructKey) -> bool {
+    fn escapes(&mut self, cx: &LintContext<'_>, hir: HirId, key: usize) -> bool {
         let db = cx.db();
         let mut child = hir;
 
@@ -162,7 +168,7 @@ impl UnusedStructField {
         db: &Database,
         statements: &[Statement],
         child: HirId,
-        key: &StructKey,
+        key: usize,
     ) -> bool {
         for statement in statements {
             match statement {
@@ -193,7 +199,7 @@ impl UnusedStructField {
         db: &Database,
         call: &rue_hir::FunctionCall,
         child: HirId,
-        key: &StructKey,
+        key: usize,
     ) -> bool {
         let Hir::Reference(function) = db.hir(db.without_casts(call.function)) else {
             return false;
@@ -228,7 +234,7 @@ impl UnusedStructField {
     }
 }
 
-impl HirLintPass for UnusedStructField {
+impl HirLintPass for UnusedStructField<'_> {
     fn lints(&self) -> &'static [Lint] {
         &[Lint::UnusedStructField]
     }
@@ -237,16 +243,16 @@ impl HirLintPass for UnusedStructField {
         // A type guard checks every field of the struct
         if let Hir::Guard(guard) = node {
             let mentions = self.mentions(cx.db(), guard.ty);
-            self.escaped.extend(mentions);
+            self.escaped.extend(mentions.iter().copied());
         }
 
         let Some(ty) = cx.db().hir_type(hir) else {
             return;
         };
 
-        for key in self.mentions(cx.db(), ty) {
-            if !self.escaped.contains(&key) && self.escapes(cx, hir, &key) {
-                self.escaped.insert(key.clone());
+        for &key in self.mentions(cx.db(), ty).iter() {
+            if !self.escaped.contains(&key) && self.escapes(cx, hir, key) {
+                self.escaped.insert(key);
             }
 
             self.seen.insert(key);
@@ -256,6 +262,11 @@ impl HirLintPass for UnusedStructField {
     fn finish(&mut self, cx: &mut LintContext<'_>) {
         let mut reports = Vec::new();
         let db = cx.db();
+        self.candidates(db);
+        let candidates = self
+            .candidates
+            .as_ref()
+            .expect("candidates were just found");
 
         for declaration in db.relevant_declarations() {
             let Declaration::Type(ty) = declaration else {
@@ -274,13 +285,17 @@ impl HirLintPass for UnusedStructField {
                 continue;
             };
 
+            let Some(&index) = candidates.get(&key) else {
+                continue;
+            };
+
             // A struct that's never used is reported by `unused_struct` instead, and the fields
             // of exported structs can be read by anything that imports them
             if name.text().starts_with('_')
                 || self.entrypoints.contains(&declaration)
                 || db.reference_parents(declaration).is_empty()
-                || self.escaped.contains(&key)
-                || !self.seen.contains(&key)
+                || self.escaped.contains(&index)
+                || !self.seen.contains(&index)
             {
                 continue;
             }

@@ -16,8 +16,8 @@ const LARGE_INLINE_SIZE: usize = 40;
 /// Reports inline constants and bindings that are only used once, which the compiler would
 /// inline anyway, and large inline functions that are used in several places.
 #[derive(Debug)]
-pub(crate) struct Inlining {
-    entrypoints: HashSet<Declaration>,
+pub(crate) struct Inlining<'a> {
+    entrypoints: &'a HashSet<Declaration>,
     /// Where each symbol is referenced.
     references: HashMap<SymbolId, Vec<Reference>>,
     /// The `inline let` bindings, along with the function they're declared in.
@@ -32,17 +32,17 @@ struct Reference {
     duplicated: bool,
 }
 
-impl Inlining {
-    pub(crate) fn new(input: &LintInput<'_>) -> Self {
+impl<'a> Inlining<'a> {
+    pub(crate) fn new(input: &'a LintInput<'_>) -> Self {
         Self {
-            entrypoints: input.entrypoints.clone(),
+            entrypoints: input.entrypoints,
             references: HashMap::new(),
             bindings: Vec::new(),
         }
     }
 }
 
-impl HirLintPass for Inlining {
+impl HirLintPass for Inlining<'_> {
     fn lints(&self) -> &'static [Lint] {
         &[Lint::RedundantInline, Lint::LargeInline]
     }
@@ -140,7 +140,7 @@ impl HirLintPass for Inlining {
     }
 }
 
-impl Inlining {
+impl Inlining<'_> {
     fn references(&self, symbol: SymbolId) -> &[Reference] {
         self.references.get(&symbol).map_or(&[], Vec::as_slice)
     }
@@ -216,69 +216,20 @@ fn body_size(db: &Database, body: HirId) -> usize {
             continue;
         }
 
-        match db.hir(hir).clone() {
-            Hir::Unresolved
-            | Hir::Nil
-            | Hir::String(_)
-            | Hir::Int(_)
-            | Hir::Bytes(_)
-            | Hir::Bool(_)
-            | Hir::Reference(_)
-            | Hir::Lambda(_)
-            | Hir::InfinityG1
-            | Hir::InfinityG2 => {}
-            Hir::Const(expr) => stack.extend(expr.result.or(Some(expr.value))),
-            Hir::List(list) => stack.extend(list.items),
-            Hir::Struct(initializer) => {
-                stack.extend(initializer.fields.into_iter().map(|field| field.value));
-            }
-            Hir::FieldAccess(access) => stack.push(access.value),
-            Hir::Guard(guard) => stack.push(guard.value),
-            Hir::Cast(hir) | Hir::Unary(_, hir) | Hir::ClvmOp(_, hir) => stack.push(hir),
-            Hir::Block(block) => {
-                for statement in block.statements {
-                    match statement {
-                        Statement::Let(symbol, _) => {
-                            if let Symbol::Binding(binding) = db.symbol(symbol) {
-                                stack.push(binding.value.hir);
-                            }
-                        }
-                        Statement::Expr(statement) => stack.push(statement.hir),
-                        Statement::If(statement) => {
-                            stack.extend([statement.condition, statement.then]);
-                        }
-                        Statement::Return(hir, _)
-                        | Statement::Assert(hir, _)
-                        | Statement::Debug(hir, _) => stack.push(hir),
-                        Statement::Raise(hir, _) => stack.extend(hir),
-                    }
+        let node = db.hir(hir);
+
+        // The values of bindings are stored in their symbols, but they're part of the body
+        if let Hir::Block(block) = node {
+            for statement in &block.statements {
+                if let Statement::Let(symbol, _) = statement
+                    && let Symbol::Binding(binding) = db.symbol(*symbol)
+                {
+                    stack.push(binding.value.hir);
                 }
-                stack.extend(block.body);
-            }
-            Hir::Pair(a, b) | Hir::Binary(_, a, b) => stack.extend([a, b]),
-            Hir::If(a, b, c, _)
-            | Hir::CoinId(a, b, c)
-            | Hir::Modpow(a, b, c)
-            | Hir::Secp256K1Verify(a, b, c)
-            | Hir::Secp256R1Verify(a, b, c) => stack.extend([a, b, c]),
-            Hir::FunctionCall(call) => {
-                stack.push(call.function);
-                stack.extend(call.args);
-            }
-            Hir::Substr(a, b, c) => {
-                stack.extend([a, b]);
-                stack.extend(c);
-            }
-            Hir::G1Map(a, b) | Hir::G2Map(a, b) => {
-                stack.push(a);
-                stack.extend(b);
-            }
-            Hir::BlsPairingIdentity(args) => stack.extend(args),
-            Hir::BlsVerify(a, args) => {
-                stack.push(a);
-                stack.extend(args);
             }
         }
+
+        stack.extend(node.children());
     }
 
     visited.len()

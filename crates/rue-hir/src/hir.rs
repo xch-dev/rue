@@ -49,6 +49,55 @@ pub enum Hir {
     ClvmOp(ClvmOp, HirId),
 }
 
+impl Hir {
+    /// The nodes directly inside of this one, in the order they're written. A block's statements
+    /// are included (see [`Statement::hirs`]), but the values of its bindings and a lambda's body
+    /// are stored in their symbols, so they aren't. A struct initializer includes the default
+    /// values of the fields that were left out.
+    pub fn children(&self) -> Vec<HirId> {
+        match self {
+            Self::Unresolved
+            | Self::Nil
+            | Self::String(_)
+            | Self::Int(_)
+            | Self::Bytes(_)
+            | Self::Bool(_)
+            | Self::Reference(_)
+            | Self::Lambda(_)
+            | Self::InfinityG1
+            | Self::InfinityG2 => Vec::new(),
+            // The result of a const expression is generated, so only the expression is included
+            Self::Const(expr) => vec![expr.value],
+            Self::List(list) => list.items.clone(),
+            Self::Struct(initializer) => {
+                initializer.fields.iter().map(|field| field.value).collect()
+            }
+            Self::FieldAccess(access) => vec![access.value],
+            Self::Guard(guard) => vec![guard.value],
+            Self::Cast(hir) | Self::Unary(_, hir) | Self::ClvmOp(_, hir) => vec![*hir],
+            Self::Block(block) => block
+                .statements
+                .iter()
+                .flat_map(Statement::hirs)
+                .chain(block.body)
+                .collect(),
+            Self::Pair(a, b) | Self::Binary(_, a, b) => vec![*a, *b],
+            Self::If(a, b, c, _)
+            | Self::CoinId(a, b, c)
+            | Self::Modpow(a, b, c)
+            | Self::Secp256K1Verify(a, b, c)
+            | Self::Secp256R1Verify(a, b, c) => vec![*a, *b, *c],
+            Self::FunctionCall(call) => std::iter::once(call.function)
+                .chain(call.args.iter().copied())
+                .collect(),
+            Self::Substr(a, b, c) => [*a, *b].into_iter().chain(*c).collect(),
+            Self::G1Map(a, b) | Self::G2Map(a, b) => std::iter::once(*a).chain(*b).collect(),
+            Self::BlsPairingIdentity(args) => args.clone(),
+            Self::BlsVerify(a, args) => std::iter::once(*a).chain(args.iter().copied()).collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct List {
     pub items: Vec<HirId>,
@@ -176,6 +225,18 @@ pub enum Statement {
 }
 
 impl Statement {
+    /// The nodes directly inside of the statement, in the order they're written. A binding's
+    /// value is stored in its symbol, so a `let` statement doesn't have any.
+    pub fn hirs(&self) -> Vec<HirId> {
+        match self {
+            Self::Let(..) => Vec::new(),
+            Self::Expr(statement) => vec![statement.hir],
+            Self::If(statement) => vec![statement.condition, statement.then],
+            Self::Return(hir, _) | Self::Assert(hir, _) | Self::Debug(hir, _) => vec![*hir],
+            Self::Raise(hir, _) => hir.iter().copied().collect(),
+        }
+    }
+
     /// The location of the statement in the source code.
     pub fn srcloc(&self) -> &SrcLoc {
         match self {

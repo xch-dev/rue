@@ -1,13 +1,13 @@
-program: (q . 46)
-debug_program: (a (q 16 (+ (a 26 (c (c 22 30) ())) (a 28 (c 18 ()))) (a 8 (c 20 ()))) (c (c (c (q 2 2 ()) (c (q 1 . 1) (q 2 2 ()))) (c (c (q 1 . 2) (q 16 (a 4 (c 6 ())) (q . 1))) (c (q . 2) (q . 42)))) ()))
-output: '46'
-runtime_cost: 20
-byte_cost: 36000
-total_cost: 36020
+program: (+ (f (q 1)) (q . 48))
+debug_program: (a (q 16 (+ (+ (+ (+ (a 22 (c (c 46 62) ())) (a 42 (c 58 ()))) (a 60 (c 18 ()))) (a 20 (c 44 ()))) (a 40 (c 56 ()))) (f (a 16 ()))) (c (c (c (c (q 4 (q . 1) ()) (c (q 2 2 ()) (q 1 . 1))) (c (q 2 2 ()) (c (q 1 . 1) (q 2 2 ())))) (c (c (q 1 . 1) (c (q 2 2 ()) (q 1 . 2))) (c (q 16 (a 4 (c 6 ())) (q . 1)) (c (q . 2) (q . 42))))) ()))
+output: '49'
+runtime_cost: 827
+byte_cost: 204000
+total_cost: 204827
 diagnostics:
 - |-
-  `only_inside` is exported, but is only used inside of module `helpers` at unused_export.rue:6:15
+  `only_inside` is exported, but is only used inside of module `helpers` at unused_export.rue:8:15
     help: Remove `export`
 - |-
-  `CONSTANT` is exported, but is only used inside of module `helpers` at unused_export.rue:10:18
+  `CONSTANT` is exported, but is only used inside of module `helpers` at unused_export.rue:12:18
     help: Remove `export`

@@ -171,18 +171,6 @@ impl Walker<'_> {
 
     fn visit_children(&mut self, cx: &mut LintContext<'_>, node: Hir) {
         match node {
-            Hir::Unresolved
-            | Hir::Nil
-            | Hir::String(_)
-            | Hir::Int(_)
-            | Hir::Bytes(_)
-            | Hir::Bool(_)
-            | Hir::Reference(_)
-            | Hir::InfinityG1
-            | Hir::InfinityG2 => {}
-            // The result of a const expression is generated, so only the expression is visited
-            Hir::Const(expr) => self.visit_hir(cx, expr.value),
-            Hir::List(list) => self.visit_all(cx, list.items),
             // Default values are visited from the struct declaration instead
             Hir::Struct(initializer) => self.visit_all(
                 cx,
@@ -192,36 +180,9 @@ impl Walker<'_> {
                     .filter(|field| !field.is_default)
                     .map(|field| field.value),
             ),
-            Hir::FieldAccess(access) => self.visit_hir(cx, access.value),
-            Hir::Cast(hir) => self.visit_hir(cx, hir),
-            Hir::Guard(guard) => self.visit_hir(cx, guard.value),
             Hir::Block(block) => self.visit_block(cx, &block),
             Hir::Lambda(symbol) => self.visit_function(cx, symbol),
-            Hir::Pair(first, rest) => self.visit_all(cx, [first, rest]),
-            Hir::If(condition, then, else_, _) => self.visit_all(cx, [condition, then, else_]),
-            Hir::FunctionCall(call) => {
-                self.visit_hir(cx, call.function);
-                self.visit_all(cx, call.args);
-            }
-            Hir::Unary(_, hir) | Hir::ClvmOp(_, hir) => self.visit_hir(cx, hir),
-            Hir::Binary(_, left, right) => self.visit_all(cx, [left, right]),
-            Hir::CoinId(a, b, c)
-            | Hir::Modpow(a, b, c)
-            | Hir::Secp256K1Verify(a, b, c)
-            | Hir::Secp256R1Verify(a, b, c) => self.visit_all(cx, [a, b, c]),
-            Hir::Substr(hir, start, end) => {
-                self.visit_all(cx, [hir, start]);
-                self.visit_all(cx, end);
-            }
-            Hir::G1Map(data, dst) | Hir::G2Map(data, dst) => {
-                self.visit_hir(cx, data);
-                self.visit_all(cx, dst);
-            }
-            Hir::BlsPairingIdentity(args) => self.visit_all(cx, args),
-            Hir::BlsVerify(sig, args) => {
-                self.visit_hir(cx, sig);
-                self.visit_all(cx, args);
-            }
+            _ => self.visit_all(cx, node.children()),
         }
     }
 
@@ -237,23 +198,13 @@ impl Walker<'_> {
                 pass.check_statement(cx, block, index);
             }
 
-            match statement {
-                Statement::Let(symbol, _) => {
-                    if let Symbol::Binding(binding) = cx.db().symbol(*symbol) {
-                        let value = binding.value.hir;
-                        self.visit_hir(cx, value);
-                    }
+            if let Statement::Let(symbol, _) = statement {
+                if let Symbol::Binding(binding) = cx.db().symbol(*symbol) {
+                    let value = binding.value.hir;
+                    self.visit_hir(cx, value);
                 }
-                Statement::Expr(statement) => self.visit_hir(cx, statement.hir),
-                Statement::If(statement) => {
-                    self.visit_all(cx, [statement.condition, statement.then]);
-                }
-                Statement::Return(hir, _)
-                | Statement::Assert(hir, _)
-                | Statement::Debug(hir, _) => {
-                    self.visit_hir(cx, *hir);
-                }
-                Statement::Raise(hir, _) => self.visit_all(cx, *hir),
+            } else {
+                self.visit_all(cx, statement.hirs());
             }
         }
 

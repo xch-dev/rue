@@ -164,22 +164,18 @@ fn check_parens(cx: &mut LintContext<'_>, source: &Source, group: &AstGroupExpr)
 
     let is_condition = group.syntax().parent().is_some_and(|parent| {
         matches!(parent.kind(), SyntaxKind::IfExpr | SyntaxKind::IfStmt)
-            && parent
-                .children()
-                .find_map(AstExpr::cast)
-                .is_some_and(|condition| condition.syntax() == group.syntax())
+            && is_condition_of(&parent, group.syntax())
     });
 
-    // A condition can't start with a struct initializer, block or `if` without parentheses,
-    // since it would be parsed as the body of the `if` instead
-    if is_condition
+    // A condition can't start with a block or `if` without parentheses, since it would be parsed
+    // as the body of the `if` instead. Struct initializers aren't allowed anywhere in a condition
+    // (outside of parentheses), so they can't be written without them as part of one either.
+    if (is_condition
         && matches!(
             inner,
-            AstExpr::StructInitializerExpr(_)
-                | AstExpr::Block(_)
-                | AstExpr::IfExpr(_)
-                | AstExpr::LambdaExpr(_)
-        )
+            AstExpr::Block(_) | AstExpr::IfExpr(_) | AstExpr::LambdaExpr(_)
+        ))
+        || (matches!(inner, AstExpr::StructInitializerExpr(_)) && is_in_condition(group.syntax()))
     {
         return;
     }
@@ -257,6 +253,38 @@ fn is_atomic(expr: &AstExpr) -> bool {
     )
 }
 
+/// Whether the node is the condition of the `if` expression or statement.
+fn is_condition_of(if_node: &SyntaxNode, node: &SyntaxNode) -> bool {
+    if_node
+        .children()
+        .find_map(AstExpr::cast)
+        .is_some_and(|condition| condition.syntax() == node)
+}
+
+/// Whether the node is part of the condition of an `if`, where struct initializers aren't allowed
+/// unless they're inside of delimiters, such as parentheses, a block, a list or arguments.
+fn is_in_condition(node: &SyntaxNode) -> bool {
+    let mut child = node.clone();
+
+    while let Some(parent) = child.parent() {
+        match parent.kind() {
+            SyntaxKind::IfExpr | SyntaxKind::IfStmt if is_condition_of(&parent, &child) => {
+                return true;
+            }
+            SyntaxKind::GroupExpr
+            | SyntaxKind::PairExpr
+            | SyntaxKind::Block
+            | SyntaxKind::ListExpr
+            | SyntaxKind::FunctionCallExpr
+            | SyntaxKind::StructInitializerExpr
+            | SyntaxKind::Document => return false,
+            _ => child = parent,
+        }
+    }
+
+    false
+}
+
 /// Whether the expression is already a whole expression by itself, rather than an operand of
 /// something else.
 fn is_whole_expression(node: &SyntaxNode) -> bool {
@@ -279,10 +307,7 @@ fn is_whole_expression(node: &SyntaxNode) -> bool {
         | SyntaxKind::GroupExpr
         | SyntaxKind::LambdaExpr => true,
         // Only the condition of an `if` is a whole expression, since a branch must be a block
-        SyntaxKind::IfStmt | SyntaxKind::IfExpr => parent
-            .children()
-            .find_map(AstExpr::cast)
-            .is_some_and(|condition| condition.syntax() == node),
+        SyntaxKind::IfStmt | SyntaxKind::IfExpr => is_condition_of(&parent, node),
         _ => false,
     }
 }

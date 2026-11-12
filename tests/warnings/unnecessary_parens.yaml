@@ -1,6 +1,6 @@
-program: (a (i (> 2 ()) (q 2 (i 5 (q 16 2 (q . 1)) (q 17 (+ (* 2 (q . 2)) (* (+ 2 (q . 1)) (q . 2)) (* 2 (q . 2)) (f (c (+ 2 (q . 1)) (q 2))) (* (+ 2 (q . 1)) (q . 2))) 2)) 1) (q 8)) 1)
-debug_program: (a (q 2 (q 2 (i (> 11 ()) (q 2 (q 2 (i 47 (q . 9) (q 2 (q 16 (+ (+ (+ (+ 43 59) 9) (f 13)) 4) 6) (c (c (* (+ 23 (q . 1)) (q . 2)) (- () (+ 23 (q . 1)))) 1))) 1) (c (c (a 5 (c (* 11 (q . 2)) (q . 1))) (c (+ 11 (q . 1)) (c (q . 2) ()))) 1)) (q 8 (q . "assertion failed at unnecessary_parens.rue:5:5"))) 1) (c (c (+ 5 (q . 1)) (c (* 5 (q . 2)) (* (+ 5 (q . 1)) (q . 2)))) 1)) (c (q 16 2 3) 1))
-byte_cost: 1692000
+program: (a (i (> 2 ()) (q 2 (i 5 (q 16 2 (q . 1)) (q 2 (i (> (f (c 2 (q 1))) (q . 100)) (q) (q 17 (+ (* 2 (q . 2)) (* (+ 2 (q . 1)) (q . 2)) (* 2 (q . 2)) (f (c (+ 2 (q . 1)) (q 2))) (* (+ 2 (q . 1)) (q . 2))) 2)) 1)) 1) (q 8)) 1)
+debug_program: (a (q 2 (q 2 (i (> 11 ()) (q 2 (q 2 (i 47 (q . 9) (q 2 (q 2 (i (> (f (c 47 (c (q . 1) ()))) (q . 100)) (q) (q 16 (+ (+ (+ (+ 43 59) 9) (f 13)) 4) 6)) 1) (c (c (* (+ 23 (q . 1)) (q . 2)) (- () (+ 23 (q . 1)))) 1))) 1) (c (c (a 5 (c (* 11 (q . 2)) (q . 1))) (c (+ 11 (q . 1)) (c (q . 2) ()))) 1)) (q 8 (q . "assertion failed at unnecessary_parens.rue:5:5"))) 1) (c (c (+ 5 (q . 1)) (c (* 5 (q . 2)) (* (+ 5 (q . 1)) (q . 2)))) 1)) (c (q 16 2 3) 1))
+byte_cost: 2172000
 clvm_error: path into atom
 diagnostics:
 - |-
@@ -27,3 +27,6 @@ diagnostics:
 - |-
   Unnecessary parentheses at unnecessary_parens.rue:10:16
     help: Remove the parentheses
+- |-
+  Field `y` of struct `Point` is never read at unnecessary_parens.rue:27:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`

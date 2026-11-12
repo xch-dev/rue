@@ -14,7 +14,17 @@ fn main(value: Int, flag: Bool) -> Int {
     let needed = (value + 1) * 2;
     let negated = -(value + 1);
 
+    // A struct initializer can't be written without parentheses in a condition
+    if (Point { x: value, y: 1 }).x > 100 {
+        return 0;
+    }
+
     atomic + nested + call + list.first + needed + negated
+}
+
+struct Point {
+    x: Int,
+    y: Int,
 }
 
 fn add(a: Int, b: Int) -> Int {

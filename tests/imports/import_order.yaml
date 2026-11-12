@@ -48,7 +48,3 @@ tests:
   runtime_cost: 20
   byte_cost: 84000
   total_cost: 84020
-diagnostics:
-- |-
-  `Choice` is exported, but is only used inside of module `globbed` at import_order.rue:37:17
-    help: Remove `export`

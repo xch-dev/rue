@@ -4,7 +4,7 @@ use rue_hir::{BinaryOp, Hir, HirId};
 use crate::{
     HirLintPass, LintContext,
     equality::hir_eq,
-    text::{negated_text, operand_text},
+    text::{is_operand, negated_operand_text, negated_text, operand_text},
 };
 
 /// Comparisons and operations between an expression and itself always have the same result.
@@ -96,10 +96,12 @@ impl HirLintPass for BoolComparison {
 
         let negate = (op == BinaryOp::Eq) != literal;
 
-        let replacement = if negate {
-            negated_text(cx.db(), value)
-        } else {
-            operand_text(cx.db(), value)
+        // The comparison binds more loosely than a negation, so it can only be replaced by one
+        // without parentheses if it isn't an operand itself
+        let replacement = match (negate, is_operand(cx, hir)) {
+            (true, true) => negated_operand_text(cx.db(), value),
+            (true, false) => negated_text(cx.db(), value),
+            (false, _) => operand_text(cx.db(), value),
         };
 
         let Some(replacement) = replacement else {

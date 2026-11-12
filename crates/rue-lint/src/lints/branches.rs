@@ -4,7 +4,7 @@ use rue_hir::{BinaryOp, Block, Hir, HirId, Statement, UnaryOp};
 use crate::{
     HirLintPass, LintContext,
     equality::hir_eq,
-    text::{expr_text, has_comment, negated_text, operand_text},
+    text::{expr_text, has_comment, is_operand, negated_operand_text, negated_text, operand_text},
 };
 
 /// An `if` whose branches are the same evaluates to the same value whatever the condition is.
@@ -191,20 +191,14 @@ impl HirLintPass for NeedlessBool {
             return;
         };
 
-        let replacement = if then {
-            if is_operand(cx, hir) {
-                operand_text(cx.db(), condition)
-            } else {
-                expr_text(cx.db(), condition)
-            }
-        } else {
-            negated_text(cx.db(), condition).map(|text| {
-                if is_operand(cx, hir) && !text.starts_with('!') {
-                    format!("({text})")
-                } else {
-                    text
-                }
-            })
+        let operand = is_operand(cx, hir);
+        let db = cx.db();
+
+        let replacement = match (then, operand) {
+            (true, true) => operand_text(db, condition),
+            (true, false) => expr_text(db, condition),
+            (false, true) => negated_operand_text(db, condition),
+            (false, false) => negated_text(db, condition),
         };
 
         let Some(replacement) = replacement else {
@@ -250,35 +244,6 @@ fn bool_value(cx: &LintContext<'_>, hir: HirId) -> Option<bool> {
             body: Some(body),
         }) if statements.is_empty() => bool_value(cx, *body),
         _ => None,
-    }
-}
-
-/// Whether the current node is an operand of an operator, rather than a whole expression (such as
-/// an argument or the value of a binding), so replacing it might need parentheses.
-fn is_operand(cx: &LintContext<'_>, hir: HirId) -> bool {
-    let Some(parent) = cx.parent() else {
-        return false;
-    };
-
-    match cx.db().hir(parent) {
-        Hir::Block(_)
-        | Hir::List(_)
-        | Hir::Struct(_)
-        | Hir::Pair(..)
-        | Hir::Lambda(_)
-        | Hir::FunctionCall(_)
-        | Hir::CoinId(..)
-        | Hir::Substr(..)
-        | Hir::G1Map(..)
-        | Hir::G2Map(..)
-        | Hir::Modpow(..)
-        | Hir::BlsPairingIdentity(_)
-        | Hir::BlsVerify(..)
-        | Hir::Secp256K1Verify(..)
-        | Hir::Secp256R1Verify(..)
-        | Hir::ClvmOp(..) => false,
-        Hir::If(condition, ..) => *condition != hir,
-        _ => true,
     }
 }
 

@@ -54,7 +54,7 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
 ];
 
 /// Every [`HirLintPass`], which all run during the same walk over the HIR.
-pub(crate) fn hir_passes(input: &LintInput<'_>) -> Vec<Box<dyn HirLintPass>> {
+pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPass + 'a>> {
     vec![
         Box::new(operators::UnnecessaryPlus),
         Box::new(casts::UnnecessaryCast),

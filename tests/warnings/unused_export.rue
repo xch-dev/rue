@@ -1,3 +1,5 @@
+export reexported::item;
+
 mod helpers {
     export fn used_outside() -> Int {
         only_inside() + 1
@@ -29,6 +31,46 @@ export mod public {
     }
 }
 
+// A nested module can only use the items of the module it's in if they're exported
+mod outer {
+    export fn used_by_nested() -> Int {
+        1
+    }
+
+    export mod nested {
+        export fn uses_outer() -> Int {
+            outer::used_by_nested()
+        }
+    }
+}
+
+// An item that's imported or re-exported elsewhere must be exported
+mod reexported {
+    export fn item() -> Int {
+        1
+    }
+
+    export fn uses_item() -> Int {
+        item()
+    }
+}
+
+// A type in the signature of another export is part of what the module exports
+mod signature {
+    export struct Coin {
+        amount: Int,
+    }
+
+    export fn make() -> Coin {
+        Coin { amount: 1 }
+    }
+}
+
 fn main() -> Int {
-    helpers::used_outside() + helpers::calls_private() + public::exported()
+    helpers::used_outside()
+        + helpers::calls_private()
+        + public::exported()
+        + outer::nested::uses_outer()
+        + reexported::uses_item()
+        + signature::make().amount
 }

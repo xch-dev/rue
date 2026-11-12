@@ -77,19 +77,12 @@ struct Search<'a> {
 
 impl Search<'_> {
     fn expr(&mut self, hir: HirId) -> Option<HirId> {
-        match self.db.hir(hir).clone() {
-            Hir::Unresolved
-            | Hir::Nil
-            | Hir::String(_)
-            | Hir::Int(_)
-            | Hir::Bytes(_)
-            | Hir::Bool(_)
-            | Hir::InfinityG1
-            | Hir::InfinityG2
+        let node = self.db.hir(hir).clone();
+
+        match node {
             // A lambda's body isn't evaluated until it's called, and a constant expression is
             // evaluated at compile time
-            | Hir::Lambda(_)
-            | Hir::Const(_) => None,
+            Hir::Lambda(_) | Hir::Const(_) => None,
             // A binding's value is evaluated if it's referenced
             Hir::Reference(symbol) => {
                 if let Some(&call) = self.bindings.get(&symbol) {
@@ -107,15 +100,13 @@ impl Search<'_> {
                 self.bindings.insert(symbol, call);
                 call
             }
-            Hir::FunctionCall(call) => {
+            Hir::FunctionCall(ref call)
                 if matches!(
                     self.db.hir(self.db.without_casts(call.function)),
                     Hir::Reference(symbol) if *symbol == self.function
-                ) {
-                    return Some(hir);
-                }
-
-                self.any([call.function].into_iter().chain(call.args))
+                ) =>
+            {
+                Some(hir)
             }
             Hir::If(condition, then, else_, inline) => self.expr(condition).or_else(|| {
                 if inline {
@@ -128,8 +119,7 @@ impl Search<'_> {
             }),
             // The right side of `&&` and `||` is only evaluated in some cases
             Hir::Binary(BinaryOp::And | BinaryOp::Or, left, _) => self.expr(left),
-            Hir::Binary(_, left, right) | Hir::Pair(left, right) => self.any([left, right]),
-            Hir::List(list) => self.any(list.items),
+            // Default values are generated, and evaluated wherever the struct is initialized
             Hir::Struct(initializer) => self.any(
                 initializer
                     .fields
@@ -137,18 +127,9 @@ impl Search<'_> {
                     .filter(|field| !field.is_default)
                     .map(|field| field.value),
             ),
-            Hir::FieldAccess(access) => self.expr(access.value),
-            Hir::Guard(guard) => self.expr(guard.value),
-            Hir::Cast(hir) | Hir::Unary(_, hir) | Hir::ClvmOp(_, hir) => self.expr(hir),
-            Hir::CoinId(a, b, c)
-            | Hir::Modpow(a, b, c)
-            | Hir::Secp256K1Verify(a, b, c)
-            | Hir::Secp256R1Verify(a, b, c) => self.any([a, b, c]),
-            Hir::Substr(a, b, c) => self.any([a, b].into_iter().chain(c)),
-            Hir::G1Map(a, b) | Hir::G2Map(a, b) => self.any(std::iter::once(a).chain(b)),
-            Hir::BlsPairingIdentity(args) => self.any(args),
-            Hir::BlsVerify(a, args) => self.any(std::iter::once(a).chain(args)),
             Hir::Block(block) => self.block(&block.statements, block.body),
+            // Everything else evaluates all of the nodes inside of it
+            _ => self.any(node.children()),
         }
     }
 
