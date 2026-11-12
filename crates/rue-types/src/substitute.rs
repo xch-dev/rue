@@ -365,6 +365,40 @@ pub fn contains_generic(arena: &mut Arena<Type>, id: TypeId, generic: TypeId) ->
     references_generic(arena, root, generic, |_| Vec::new())
 }
 
+/// Returns `true` if the type is unresolved, or contains an unresolved type anywhere inside of it
+/// (such as an element of a pair or a field of a struct), because an error has already been
+/// reported for it.
+pub fn contains_unresolved(arena: &Arena<Type>, id: TypeId) -> bool {
+    let mut visited = HashSet::new();
+    let mut stack = vec![id];
+
+    while let Some(id) = stack.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+
+        match &arena[id] {
+            Type::Unresolved => return true,
+            Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
+            Type::Ref(id) => stack.push(*id),
+            Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
+            Type::Alias(alias) => stack.push(alias.inner),
+            Type::Struct(ty) => stack.push(ty.inner),
+            Type::Apply(apply) => {
+                stack.push(apply.inner);
+                stack.extend(apply.generics.values().copied());
+            }
+            Type::Function(function) => {
+                stack.push(function.ret);
+                stack.extend(function.params.values().copied());
+            }
+            Type::Union(union) => stack.extend(union.types.iter().copied()),
+        }
+    }
+
+    false
+}
+
 /// Returns `true` if the generic is referenced in the type, other than where it's bound by a
 /// function type. An unresolved type (such as the placeholder for a type that is still being
 /// substituted) may reference the types given for it.

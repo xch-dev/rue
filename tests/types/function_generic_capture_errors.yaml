@@ -1,12 +1,4 @@
 diagnostics:
-- Unused function `identity` at function_generic_capture_errors.rue:4:4
-- Unused function `mkp` at function_generic_capture_errors.rue:8:4
-- Unused function `konst` at function_generic_capture_errors.rue:12:4
-- Unused function `twice` at function_generic_capture_errors.rue:16:4
-- Unused function `apply2` at function_generic_capture_errors.rue:21:4
-- Unused function `get` at function_generic_capture_errors.rue:25:4
-- Unused function `make_id` at function_generic_capture_errors.rue:29:4
-- Unused generic type `T` at function_generic_capture_errors.rue:29:12
 - Cannot infer generic `T` for `apply2`; specify it explicitly, e.g. `apply2::<...>()` at function_generic_capture_errors.rue:35:14
 - |-
   This call is evaluated again with the same arguments, which costs as much as the first time at function_generic_capture_errors.rue:36:14
@@ -14,8 +6,6 @@ diagnostics:
     note: Store the result in a `let` binding and use that instead
 - 'Cannot assign `fn<T>(value: T) -> T` to `PolyT<Int>`, since they are incompatible at function_generic_capture_errors.rue:36:28'
 - Cannot infer generic `T` for `get`; specify it explicitly, e.g. `get::<...>()` at function_generic_capture_errors.rue:37:14
-- Unused generic type `V` at function_generic_capture_errors.rue:40:16
-- Unused generic type `W` at function_generic_capture_errors.rue:40:37
 - 'Cannot assign `P<Int>` to `fn<V>(x: V) -> (Int, fn<W>(y: W) -> (W, Any))`, since they are incompatible at function_generic_capture_errors.rue:40:61'
 - |-
   This call is evaluated again with the same arguments, which costs as much as the first time at function_generic_capture_errors.rue:43:13

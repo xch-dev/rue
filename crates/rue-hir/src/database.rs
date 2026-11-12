@@ -5,7 +5,9 @@ use indexmap::{IndexMap, IndexSet};
 use rue_diagnostic::{SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
-use crate::{Hir, HirId, Import, ImportId, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, Value};
+use crate::{
+    Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, Value,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Declaration {
@@ -36,7 +38,8 @@ pub struct Database {
     declared_by: HashMap<Declaration, IndexSet<Declaration>>,
     referenced_by: HashMap<Declaration, IndexSet<Declaration>>,
     relevant_imports: IndexSet<ImportId>,
-    import_references: HashMap<ImportId, IndexSet<Declaration>>,
+    /// The declarations referenced through each import, along with where they were referenced.
+    import_references: HashMap<ImportId, IndexMap<Declaration, IndexSet<ImportUser>>>,
     tests: Vec<Test>,
 }
 
@@ -265,20 +268,38 @@ impl Database {
         self.relevant_imports.iter().copied()
     }
 
-    pub fn add_import_reference(&mut self, import: ImportId, declaration: Declaration) {
+    pub fn add_import_reference(
+        &mut self,
+        import: ImportId,
+        declaration: Declaration,
+        user: ImportUser,
+    ) {
         self.import_references
             .entry(import)
             .or_default()
-            .insert(declaration);
+            .entry(declaration)
+            .or_default()
+            .insert(user);
     }
 
+    /// The declarations referenced through the import.
     pub fn import_references(&self, import: ImportId) -> Vec<Declaration> {
         self.import_references
             .get(&import)
-            .cloned()
+            .map(|references| references.keys().copied().collect())
             .unwrap_or_default()
+    }
+
+    /// The declarations referenced through the import, along with where they were referenced.
+    pub fn import_uses(
+        &self,
+        import: ImportId,
+    ) -> impl Iterator<Item = (Declaration, ImportUser)> + '_ {
+        self.import_references
+            .get(&import)
             .into_iter()
-            .collect()
+            .flatten()
+            .flat_map(|(&declaration, users)| users.iter().map(move |&user| (declaration, user)))
     }
 
     pub fn add_test(&mut self, test: Test) {

@@ -1,5 +1,10 @@
 diagnostics:
+- Unused type alias `A0` at recursive_incompatible_errors.rue:1:6
+- Unused type alias `A1` at recursive_incompatible_errors.rue:2:6
+- Unused type alias `A2` at recursive_incompatible_errors.rue:3:6
 - Unused function `mutual` at recursive_incompatible_errors.rue:5:4
 - Cannot assign `A0` to `A2`, since they are incompatible at recursive_incompatible_errors.rue:5:24
+- Unused type alias `B0` at recursive_incompatible_errors.rue:9:6
+- Unused type alias `B2` at recursive_incompatible_errors.rue:10:6
 - Unused function `nested` at recursive_incompatible_errors.rue:12:4
 - Cannot assign `B0` to `B2`, since they are incompatible at recursive_incompatible_errors.rue:12:24

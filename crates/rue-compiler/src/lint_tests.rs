@@ -2185,3 +2185,340 @@ fn main(a: Int) -> Int {
 "
     );
 }
+
+#[test]
+fn imports_are_used_if_any_namespace_is_used() {
+    let source = |main: &str| {
+        format!(
+            "\
+import module::X;
+
+mod module {{
+    export const X: Int = 42;
+    export type X = 42;
+}}
+
+{main}
+"
+        )
+    };
+
+    // Only the type is used, so the import is still needed
+    let (type_reports, has_errors) = reports(&source("fn main() -> X {\n    42\n}"), |_| {});
+
+    assert_eq!(type_reports, vec!["Warning 4: Unused constant `X`"]);
+    assert!(!has_errors);
+
+    // Neither is used, so the import is only reported once
+    let (reports, has_errors) = reports(&source("fn main() -> Int {\n    42\n}"), |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused import `X`",
+            "Warning 4: Unused constant `X`",
+            "Warning 5: Unused type alias `X`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn types_used_by_unused_functions_are_unused() {
+    let source = "\
+struct Foo {
+    a: Int,
+}
+
+fn main() -> Int {
+    1
+}
+
+fn unused() -> Int {
+    let value: Foo = Foo { a: 1 };
+    value.a
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused struct `Foo`",
+            "Warning 9: Unused function `unused`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn casts_and_guards_of_unresolved_values_are_not_reported() {
+    for source in [
+        "fn main() -> Int {\n    nope as Int\n}\n",
+        "fn main() -> Int {\n    if nope is Int {\n        1\n    } else {\n        2\n    }\n}\n",
+        // The unresolved type can also be inside of another type
+        "fn main() -> Int {\n    let pair = (nope, 1) as (Int, Int);\n    pair.first\n}\n",
+        "fn main() -> Int {\n    if (nope, 1) is (Int, Int) {\n        1\n    } else {\n        2\n    }\n}\n",
+    ] {
+        let (diagnostics, has_errors) = compile_source(source, |_| {});
+
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.lint().is_none()),
+            "{source}"
+        );
+        assert!(has_errors);
+    }
+}
+
+#[test]
+fn imports_used_by_unused_functions_are_unused() {
+    let source = "\
+import module::Value;
+
+mod module {
+    export type Value = Int;
+}
+
+fn main() -> Int {
+    1
+}
+
+fn unused() -> Value {
+    1
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused import `Value`",
+            "Warning 4: Unused type alias `Value`",
+            "Warning 11: Unused function `unused`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn types_in_the_signature_of_a_live_function_are_used() {
+    let source = "\
+import module::Value;
+
+mod module {
+    export struct Value {
+        inner: Int,
+    }
+}
+
+fn main(_value: Value) -> Int {
+    1
+}
+";
+
+    // The parameter is unused, but the signature still needs its type
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+#[test]
+fn generics_are_used_if_anything_references_them() {
+    let source = "\
+struct Unused<T> {
+    value: T,
+}
+
+struct UnusedGeneric<T> {
+    value: Int,
+}
+
+fn main() -> Int {
+    let value = UnusedGeneric::<Int> { value: 1 };
+    value.value
+}
+";
+
+    // The generic of an unused struct is still used by it, so only the struct is reported
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused struct `Unused`",
+            "Warning 5: Unused generic type `T`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn imports_are_used_where_they_are_used_by_live_code() {
+    let source = "\
+mod module {
+    export fn helper() -> Int {
+        1
+    }
+}
+
+mod live {
+    import module::helper;
+
+    export fn run() -> Int {
+        helper()
+    }
+}
+
+mod dead {
+    import module::helper;
+
+    export fn unused() -> Int {
+        helper()
+    }
+}
+
+import live::run;
+
+struct Foo {
+    a: Int,
+}
+
+struct Bar {
+    a: Int,
+}
+
+fn main() -> Int {
+    let _probe: Foo = Foo { a: 1 };
+    run()
+}
+
+fn _helper() -> Bar {
+    Bar { a: 1 }
+}
+";
+
+    // The `helper` imported into `dead` is live through `live`, but `dead` only uses it from an
+    // unused function. `Foo` and `Bar` are only used by `_probe` and `_helper`, which aren't
+    // reported, so they're kept along with what they need.
+    let (reports, has_errors) = reports(source, |options| {
+        options.lints.set(Lint::UnusedStructField, LintLevel::Allow);
+    });
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 16: Unused import `helper`",
+            "Warning 18: Unused function `unused`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn unused_code_is_reported_all_at_once() {
+    let source = "\
+import m::inner;
+import inner::f;
+import m::helper;
+
+mod m {
+    export mod inner {
+        export fn f() -> Int {
+            1
+        }
+    }
+
+    export fn helper() -> Int {
+        1
+    }
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main() -> Int {
+    let (_q, _r) = (helper(), 1);
+    1
+}
+
+fn dead(p: Point) -> Int {
+    p.x
+}
+";
+
+    // Both imports in the chain are reported together, `helper` is kept by the bindings
+    // destructured from it, and the fields of an unused struct aren't reported along with it
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 1: Unused import `inner`",
+            "Warning 2: Unused import `f`",
+            "Warning 7: Unused function `f`",
+            "Warning 17: Unused struct `Point`",
+            "Warning 27: Unused function `dead`",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn shared_import_paths_and_bindings_inside_values() {
+    let source = "\
+import m::inner;
+import inner::f;
+import inner::g;
+
+mod m {
+    export mod inner {
+        export fn f() -> Int {
+            1
+        }
+
+        export fn g() -> Int {
+            2
+        }
+    }
+
+    export fn helper() -> Int {
+        1
+    }
+}
+
+import m::helper;
+
+fn main() -> Int {
+    let (a, b) = {
+        let _z = 1;
+        (helper(), 2)
+    };
+    let (_q, _r) = (g(), 1);
+    1
+}
+";
+
+    // The path to `inner` is resolved once, but both imports that use it count as using `inner`.
+    // A `_` binding inside of a value doesn't keep the value, so `helper` is still unused.
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 2: Unused import `f`",
+            "Warning 7: Unused function `f`",
+            "Warning 16: Unused function `helper`",
+            "Warning 21: Unused import `helper`",
+            "Warning 24: Unused binding `a`",
+            "Warning 24: Unused binding `b`",
+        ]
+    );
+    assert!(!has_errors);
+}

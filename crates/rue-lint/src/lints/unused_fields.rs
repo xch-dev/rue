@@ -18,7 +18,7 @@ use crate::{HirLintPass, LintContext, LintInput, NameKey, name_key, srcloc, toke
 /// (or passed to a function that takes the struct), rather than escaping somewhere else.
 #[derive(Debug)]
 pub(crate) struct UnusedStructField<'a> {
-    entrypoints: &'a HashSet<Declaration>,
+    input: &'a LintInput<'a>,
     /// The fields that are read in each struct.
     reads: HashMap<NameKey, HashSet<String>>,
     /// The location of each field's name in each struct, in the order they're declared.
@@ -36,7 +36,7 @@ pub(crate) struct UnusedStructField<'a> {
 }
 
 impl<'a> UnusedStructField<'a> {
-    pub(crate) fn new(input: &'a LintInput<'_>) -> Self {
+    pub(crate) fn new(input: &'a LintInput<'a>) -> Self {
         let mut reads: HashMap<NameKey, HashSet<String>> = HashMap::new();
 
         for read in &input.sites.field_reads {
@@ -70,7 +70,7 @@ impl<'a> UnusedStructField<'a> {
         }
 
         Self {
-            entrypoints: input.entrypoints,
+            input,
             reads,
             fields,
             candidates: None,
@@ -283,8 +283,8 @@ impl HirLintPass for UnusedStructField<'_> {
             // A struct that's never used is reported by `unused_struct` instead, and the fields
             // of exported structs can be read by anything that imports them
             if name.text().starts_with('_')
-                || self.entrypoints.contains(&declaration)
-                || db.reference_parents(declaration).is_empty()
+                || self.input.entrypoints.contains(&declaration)
+                || !self.input.live_declarations(db).contains(&declaration)
                 || self.escaped.contains(&index)
                 || !self.seen.contains(&index)
             {

@@ -31,7 +31,13 @@ impl HirLintPass for UnnecessaryCast {
             return;
         };
 
-        if cx.compare(from, to) != Comparison::Assign || !cx.is_assignable(to, from) {
+        // An unresolved type is compatible with everything, but an error has already been
+        // reported for it, so it's checked last since it walks the whole type
+        if cx.compare(from, to) != Comparison::Assign
+            || !cx.is_assignable(to, from)
+            || cx.contains_unresolved(from)
+            || cx.contains_unresolved(to)
+        {
             return;
         }
 
@@ -91,7 +97,7 @@ impl HirLintPass for BytesIntConfusion {
 
         let int = cx.builtin_types().int;
 
-        if cx.is_unresolved(ty) || !cx.is_assignable(ty, int) || !cx.is_assignable(int, ty) {
+        if !cx.is_assignable(ty, int) || !cx.is_assignable(int, ty) || cx.contains_unresolved(ty) {
             return;
         }
 

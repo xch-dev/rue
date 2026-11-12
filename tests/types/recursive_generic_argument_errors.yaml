@@ -1,21 +1,11 @@
 diagnostics:
 - Type `Nested` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:3:6
-- Unused type alias `Nested` at recursive_generic_argument_errors.rue:3:6
-- Unused generic type `T` at recursive_generic_argument_errors.rue:3:13
-- Unused type alias `Even` at recursive_generic_argument_errors.rue:5:6
-- Unused generic type `T` at recursive_generic_argument_errors.rue:5:11
 - Type `Odd` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:6:6
-- Unused type alias `Odd` at recursive_generic_argument_errors.rue:6:6
-- Unused generic type `T` at recursive_generic_argument_errors.rue:6:10
 - Type `Grow` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:8:6
-- Unused type alias `Grow` at recursive_generic_argument_errors.rue:8:6
-- Unused generic type `A` at recursive_generic_argument_errors.rue:8:11
-- Unused generic type `B` at recursive_generic_argument_errors.rue:8:14
 - Type `Tree` refers to itself with generic arguments built from its own generic parameters at recursive_generic_argument_errors.rue:10:8
 - Unused function `depth` at recursive_generic_argument_errors.rue:15:4
 - Unused binding `nested` at recursive_generic_argument_errors.rue:20:9
 - Cannot assign `(T, 1)` to `Bytes`, since they are incompatible at recursive_generic_argument_errors.rue:20:25
-- Unused function `tree` at recursive_generic_argument_errors.rue:24:4
 - |-
   Redundant field name, since `value: value` can be written as `value` at recursive_generic_argument_errors.rue:25:37
     help: Use the shorthand instead

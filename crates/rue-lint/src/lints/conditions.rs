@@ -35,11 +35,6 @@ fn check_condition(cx: &mut LintContext<'_>, condition: HirId) {
 
     let srcloc = srcloc.clone();
 
-    // An error has already been reported, and the type is compatible with everything
-    if cx.is_unresolved(ty) {
-        return;
-    }
-
     let value = if cx.is_castable(ty, cx.builtin_types().bool_true) {
         "true"
     } else if cx.is_castable(ty, cx.builtin_types().bool_false) {
@@ -47,6 +42,12 @@ fn check_condition(cx: &mut LintContext<'_>, condition: HirId) {
     } else {
         return;
     };
+
+    // An unresolved type is compatible with everything, but an error has already been reported
+    // for it, so it's checked last since it walks the whole type
+    if cx.contains_unresolved(ty) {
+        return;
+    }
 
     cx.report(
         Lint::ConstantCondition,

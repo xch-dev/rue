@@ -35,6 +35,11 @@ impl HirLintPass for UnnecessaryGuard {
 
         let to = guard.ty;
 
+        // An error has already been reported, and the type is compatible with everything
+        if cx.contains_unresolved(from) || cx.contains_unresolved(to) {
+            return;
+        }
+
         let lint = if cx.is_assignable(from, to) {
             Lint::UnnecessaryGuard
         } else {

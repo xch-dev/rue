@@ -25,5 +25,4 @@ diagnostics:
   This call is evaluated again with the same arguments, which costs as much as the first time at generic_inference_uninferred_errors.rue:55:34
     note: It's first evaluated here at generic_inference_uninferred_errors.rue:52:17
     note: Store the result in a `let` binding and use that instead
-- Unused generic type `U` at generic_inference_uninferred_errors.rue:63:18
 - Cannot infer generic `T` for `make_function`; specify it explicitly, e.g. `make_function::<...>()` at generic_inference_uninferred_errors.rue:68:19
