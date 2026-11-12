@@ -175,7 +175,10 @@ impl Shared {
     /// Waits until the test lets the compile continue, if it asked to hold it.
     #[cfg(test)]
     pub fn wait_at_gate(&self) {
-        if let Some(gate) = lock(&self.gate).take() {
+        // The lock is released before waiting, so that the test can hold the next compile
+        let gate = lock(&self.gate).take();
+
+        if let Some(gate) = gate {
             gate.started.send(()).ok();
             gate.release.recv().ok();
         }
@@ -211,7 +214,49 @@ impl Shared {
     }
 }
 
-type Run = Box<dyn FnOnce(&mut State) + Send>;
+/// A task to run with the compiler's state, for a request that may have been cancelled.
+trait Request: Send {
+    /// Whether nothing is waiting for the result anymore.
+    fn cancelled(&self) -> bool;
+
+    fn run(self: Box<Self>, state: &mut State);
+}
+
+struct Query<F, T> {
+    task: Option<Task>,
+    f: F,
+    done: oneshot::Sender<Result<T, String>>,
+}
+
+impl<F, T> Request for Query<F, T>
+where
+    F: FnOnce(&mut State) -> T + Send,
+    T: Send,
+{
+    fn cancelled(&self) -> bool {
+        self.done.is_closed()
+    }
+
+    fn run(self: Box<Self>, state: &mut State) {
+        let Self { task, f, done } = *self;
+
+        state.task = task;
+        state.queried = None;
+
+        let result = panic::catch_unwind(AssertUnwindSafe(|| f(state)));
+
+        // The task may have panicked partway through changing a compile's state, so the project
+        // is compiled again
+        if result.is_err()
+            && let Some(key) = state.queried.take()
+        {
+            state.rebuild(&key);
+        }
+
+        done.send(result.map_err(|payload| panic_message(&*payload)))
+            .ok();
+    }
+}
 
 enum Job {
     /// The editor changed a file, which is compiled once the edits stop.
@@ -222,7 +267,7 @@ enum Job {
         edited: Vec<PathBuf>,
         done: oneshot::Sender<Diagnostics>,
     },
-    Run(Run),
+    Run(Box<dyn Request>),
 }
 
 /// Sends jobs to the worker thread, which stops once this is dropped.
@@ -271,30 +316,16 @@ impl Worker {
     }
 
     /// Runs a task with the compiler's state, once the jobs before it are done. If it panics, the
-    /// panic's message is returned instead.
+    /// panic's message is returned instead. If the receiver is dropped before the task runs (for
+    /// example, because the editor cancelled the request), it doesn't run, and it doesn't compile
+    /// the pending edits.
     pub fn run<T: Send + 'static>(
         &self,
+        task: Option<Task>,
         f: impl FnOnce(&mut State) -> T + Send + 'static,
     ) -> oneshot::Receiver<Result<T, String>> {
         let (done, receiver) = oneshot::channel();
-
-        self.send(Job::Run(Box::new(move |state| {
-            state.queried = None;
-
-            let result = panic::catch_unwind(AssertUnwindSafe(|| f(state)));
-
-            // The task may have panicked partway through changing a compile's state, so the
-            // project is compiled again
-            if result.is_err()
-                && let Some(key) = state.queried.take()
-            {
-                state.rebuild(&key);
-            }
-
-            done.send(result.map_err(|payload| panic_message(&*payload)))
-                .ok();
-        })));
-
+        self.send(Job::Run(Box::new(Query { task, f, done })));
         receiver
     }
 }
@@ -313,6 +344,8 @@ pub struct State {
     edited: Vec<PathBuf>,
     /// When to compile the edits, if no other edit arrives first.
     deadline: Option<Instant>,
+    /// The task that's running, if it's a request.
+    task: Option<Task>,
     /// The project whose compile the current task is using.
     queried: Option<PathBuf>,
 }
@@ -326,6 +359,7 @@ impl State {
             files: HashMap::new(),
             edited: Vec::new(),
             deadline: None,
+            task: None,
             queried: None,
         }
     }
@@ -360,9 +394,13 @@ impl State {
 
                     done.send(self.compile_and_publish(&changed, &edited)).ok();
                 }
-                Job::Run(run) => {
+                Job::Run(request) => {
+                    if request.cancelled() {
+                        continue;
+                    }
+
                     self.flush();
-                    run(&mut self);
+                    request.run(&mut self);
                 }
             }
         }
@@ -397,14 +435,17 @@ impl State {
     }
 
     /// The last compile of a document's file, set up to answer a query about it.
-    pub fn cache(&mut self, uri: &Url, task: Task) -> Option<&mut Cache<Compiler>> {
+    pub fn cache(&mut self, uri: &Url) -> Option<&mut Cache<Compiler>> {
         let (_, kind) = document(uri)?;
         let (key, source) = self.files.get(&kind)?;
         let cache = self.projects.get_mut(key)?;
         cache.set_source(source.clone());
 
         self.queried = Some(key.clone());
-        self.shared.inject_panic(task);
+
+        if let Some(task) = self.task {
+            self.shared.inject_panic(task);
+        }
 
         Some(cache)
     }
@@ -446,5 +487,29 @@ impl State {
         if !self.files.values().any(|(other, _)| *other == key) {
             self.projects.remove(&key);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tower_lsp::LspService;
+
+    use super::*;
+    use crate::Backend;
+
+    #[test]
+    fn test_edits_restart_the_debounce() {
+        let (service, _) = LspService::new(Backend::new);
+        let mut state = State::new(service.inner().shared.clone());
+
+        state.compile_later(PathBuf::from("a.rue"));
+        let first = state.deadline.unwrap();
+
+        // Every edit pushes the compile back, and each file is only compiled once
+        thread::sleep(Duration::from_millis(1));
+        state.compile_later(PathBuf::from("a.rue"));
+
+        assert!(state.deadline.unwrap() > first);
+        assert_eq!(state.edited, [PathBuf::from("a.rue")]);
     }
 }

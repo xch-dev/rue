@@ -4,14 +4,11 @@
 use std::time::{Duration, Instant};
 
 use serde_json::json;
-use tower_lsp::lsp_types::{
-    HoverContents, HoverParams, MarkedString, TextDocumentIdentifier, TextDocumentPositionParams,
-};
 
 use super::protocol::{Client, MISMATCH, SOURCE, TempProject, assert_hover, position};
 use super::{MANIFEST, TestProject};
 use crate::lock;
-use crate::worker::{DEBOUNCE, Gate};
+use crate::worker::DEBOUNCE;
 
 /// Long enough for a compile that's being held to have started.
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -135,14 +132,17 @@ async fn test_out_of_date_result_is_discarded() {
 
 #[test]
 fn test_request_uses_newest_compile() {
-    let project = TestProject::new(&[("main.rue", SOURCE)]);
+    let project = TestProject::new(&[(
+        "main.rue",
+        "fn main() -> Int {\n    let value = +42;\n    va$0lue + 1\n}\n",
+    )]);
     let backend = project.backend();
-    let uri = project.uri("main.rue");
+    let (uri, position) = project.cursor();
     let path = project.path("main.rue");
 
-    let (started, started_receiver) = std::sync::mpsc::channel();
-    let (release_sender, release) = std::sync::mpsc::channel();
-    *lock(&backend.shared.gate) = Some(Gate { started, release });
+    // Only the request compiles the edits
+    *lock(&backend.shared.debounce) = TIMEOUT;
+    let (started, release) = backend.hold_compile();
 
     let edit = |text: &str| {
         backend.set_text(&uri, Some(text.to_string()));
@@ -152,39 +152,51 @@ fn test_request_uses_newest_compile() {
     let hover = std::thread::scope(|scope| {
         // The request compiles the edit first
         edit(LITERAL);
-
-        let request = scope.spawn(|| {
-            backend.on_hover(&HoverParams {
-                text_document_position_params: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.clone()),
-                    tower_lsp::lsp_types::Position::new(2, 6),
-                ),
-                work_done_progress_params: tower_lsp::lsp_types::WorkDoneProgressParams::default(),
-            })
-        });
+        let request = scope.spawn(|| super::hover(backend, uri.clone(), position));
 
         // Another edit arrives during that compile, so its diagnostics are out of date, but it's
         // still newer than the last compile, so it answers the request
-        started_receiver.recv_timeout(TIMEOUT).unwrap();
+        started.recv_timeout(TIMEOUT).unwrap();
         edit(MISMATCH);
-        release_sender.send(()).unwrap();
+        release.send(()).unwrap();
 
         request.join().unwrap()
     });
 
-    let HoverContents::Array(contents) = hover.unwrap().contents else {
-        panic!("unexpected hover contents");
-    };
+    assert_eq!(hover, "let value: 42\n");
+}
 
-    assert_eq!(
-        contents,
-        [MarkedString::LanguageString(
-            tower_lsp::lsp_types::LanguageString {
-                language: "rue".to_string(),
-                value: "let value: 42".to_string(),
-            }
-        )]
-    );
+#[tokio::test]
+async fn test_cancelled_request_does_not_compile() {
+    let project = TempProject::new(&[("main.rue", SOURCE)]);
+    let uri = project.uri("main.rue");
+
+    let mut client = Client::initialized().await;
+    client.set_debounce(TIMEOUT);
+    client.open(&uri, SOURCE).await;
+    client.sync().await;
+
+    // While a compile is running, the editor edits the file, and sends a request that it cancels
+    // before the server gets to it
+    let (started, release) = client.hold_compile();
+    client
+        .watched(&[(&uri, tower_lsp::lsp_types::FileChangeType::CHANGED)])
+        .await;
+    started.recv_timeout(TIMEOUT).unwrap();
+
+    client.change(&uri, 2, &[LITERAL]).await;
+
+    {
+        let mut request =
+            std::pin::pin!(client.request("textDocument/hover", Some(position(&uri, 2, 6))));
+        assert!(futures::poll!(&mut request).is_pending());
+    }
+
+    // The request doesn't compile the edit, which is still waiting for more edits
+    let (started, held) = client.hold_compile();
+    release.send(()).unwrap();
+    assert!(started.recv_timeout(Duration::from_secs(1)).is_err());
+    drop(held);
 }
 
 #[tokio::test]
@@ -255,4 +267,25 @@ async fn test_other_projects_are_not_out_of_date() {
         ]
     );
     assert_eq!(client.compiles(), compiles + 2);
+}
+
+#[tokio::test]
+async fn test_open_compiles_pending_edits() {
+    let project = TempProject::new(&[("main.rue", SOURCE), ("other.rue", "")]);
+    let main = project.uri("main.rue");
+    let other = project.uri("other.rue");
+
+    let mut client = Client::initialized().await;
+    client.set_debounce(TIMEOUT);
+    client.open(&main, SOURCE).await;
+    client.sync().await;
+
+    // Opening another file compiles the project once, with the edit that was waiting
+    let compiles = client.compiles();
+    client.change(&main, 2, &[MISMATCH]).await;
+    client.open(&other, "").await;
+
+    let diagnostics = client.diagnostics(&main).await;
+    assert_eq!(diagnostics["diagnostics"][0]["severity"], json!(1));
+    assert_eq!(client.compiles(), compiles + 1);
 }

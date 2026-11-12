@@ -252,10 +252,7 @@ impl LanguageServer for Backend {
 
         Ok(self
             .query(Task::Hover, move |state| {
-                hover(
-                    state.cache(&params.text_document.uri, Task::Hover)?,
-                    params.position,
-                )
+                hover(state.cache(&params.text_document.uri)?, params.position)
             })
             .await)
     }
@@ -272,7 +269,7 @@ impl LanguageServer for Backend {
         Ok(self
             .query(Task::Definition, move |state| {
                 let shared = state.shared.clone();
-                let cache = state.cache(&params.text_document.uri, Task::Definition)?;
+                let cache = state.cache(&params.text_document.uri)?;
                 definitions(cache, &shared.paths, params.position)
             })
             .await)
@@ -287,7 +284,7 @@ impl LanguageServer for Backend {
         Ok(self
             .query(Task::References, move |state| {
                 let shared = state.shared.clone();
-                let cache = state.cache(&params.text_document.uri, Task::References)?;
+                let cache = state.cache(&params.text_document.uri)?;
                 references(cache, &shared.paths, params.position)
             })
             .await)
@@ -301,10 +298,7 @@ impl LanguageServer for Backend {
 
         Ok(self
             .query(Task::Completion, move |state| {
-                completions(
-                    state.cache(&params.text_document.uri, Task::Completion)?,
-                    params.position,
-                )
+                completions(state.cache(&params.text_document.uri)?, params.position)
             })
             .await)
     }
@@ -360,7 +354,7 @@ impl Backend {
         task: Task,
         f: impl FnOnce(&mut State) -> Option<T> + Send + 'static,
     ) -> Option<T> {
-        let result = self.worker.run(f).await;
+        let result = self.worker.run(Some(task), f).await;
 
         match result {
             Ok(Ok(value)) => value,

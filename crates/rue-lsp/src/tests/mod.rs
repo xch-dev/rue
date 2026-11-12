@@ -99,6 +99,15 @@ impl Backend {
     fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
         block_on(self.completion(params.clone())).unwrap()
     }
+
+    /// Makes the next compile wait once it has started. The first channel says when it started,
+    /// and sending to the second lets it continue.
+    fn hold_compile(&self) -> (std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>) {
+        let (started, started_receiver) = std::sync::mpsc::channel();
+        let (release_sender, release) = std::sync::mpsc::channel();
+        *crate::lock(&self.shared.gate) = Some(crate::worker::Gate { started, release });
+        (started_receiver, release_sender)
+    }
 }
 
 /// A temporary project directory on disk, along with a language server instance that has
@@ -192,36 +201,7 @@ impl TestProject {
 
     pub fn hover(&self) -> String {
         let (uri, position) = self.cursor();
-
-        let Some(hover) = self.backend().on_hover(&HoverParams {
-            text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier::new(uri),
-                position,
-            ),
-            work_done_progress_params: WorkDoneProgressParams::default(),
-        }) else {
-            return "<none>\n".to_string();
-        };
-
-        let HoverContents::Array(contents) = hover.contents else {
-            panic!("unexpected hover contents: {:?}", hover.contents);
-        };
-
-        let mut output = String::new();
-
-        for (i, content) in contents.into_iter().enumerate() {
-            let MarkedString::LanguageString(content) = content else {
-                panic!("unexpected marked string: {content:?}");
-            };
-
-            if i > 0 {
-                output.push_str("---\n");
-            }
-
-            writeln!(output, "{}", content.value).unwrap();
-        }
-
-        output
+        hover(self.backend(), uri, position)
     }
 
     pub fn definitions(&self) -> String {
@@ -449,6 +429,39 @@ impl TestProject {
 
         output
     }
+}
+
+/// Renders the hover at a position, or `<none>`.
+fn hover(backend: &Backend, uri: Url, position: Position) -> String {
+    let Some(hover) = backend.on_hover(&HoverParams {
+        text_document_position_params: TextDocumentPositionParams::new(
+            TextDocumentIdentifier::new(uri),
+            position,
+        ),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    }) else {
+        return "<none>\n".to_string();
+    };
+
+    let HoverContents::Array(contents) = hover.contents else {
+        panic!("unexpected hover contents: {:?}", hover.contents);
+    };
+
+    let mut output = String::new();
+
+    for (i, content) in contents.into_iter().enumerate() {
+        let MarkedString::LanguageString(content) = content else {
+            panic!("unexpected marked string: {content:?}");
+        };
+
+        if i > 0 {
+            output.push_str("---\n");
+        }
+
+        writeln!(output, "{}", content.value).unwrap();
+    }
+
+    output
 }
 
 fn position_of(text: &str, index: usize) -> Position {

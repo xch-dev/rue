@@ -25,7 +25,7 @@ impl Backend {
     /// Waits for the worker to finish everything sent before, including edits that it's waiting
     /// to compile, and logs [`SYNCED`].
     async fn sync(&self) {
-        self.worker.run(|_| ()).await.ok();
+        self.worker.run(None, |_| ()).await.ok();
         self.shared
             .client
             .log_message(MessageType::INFO, SYNCED)
@@ -126,10 +126,7 @@ impl Client {
     pub(super) fn hold_compile(
         &self,
     ) -> (std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>) {
-        let (started, started_receiver) = std::sync::mpsc::channel();
-        let (release_sender, release) = std::sync::mpsc::channel();
-        *lock(&self.backend().shared.gate) = Some(crate::worker::Gate { started, release });
-        (started_receiver, release_sender)
+        self.backend().hold_compile()
     }
 
     /// Sets how long the server waits for more edits before compiling them.
