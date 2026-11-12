@@ -239,6 +239,7 @@ lints! {
     RedundantInline("redundant_inline", Warn, "`inline` constants and bindings that are only used once, which are already inlined"),
     LargeInline("large_inline", Warn, "`inline` functions whose body is duplicated in enough places that calling them instead would make the program cheaper"),
     RepeatedExpensiveCall("repeated_expensive_call", Warn, "Calls that are evaluated more than once with the same arguments, where reusing the result would make the program cheaper"),
+    UncheckedPuzzleCall("unchecked_puzzle_call", Warn, "Parameters of an entrypoint that are called as puzzles, but aren't marked `#[curried]` and whose tree hash is never checked"),
     DiscardedCondition("discarded_condition", Warn, "Conditions that are built and used, but never output, so they have no effect"),
     NonExhaustiveUnionGuard("non_exhaustive_union_guard", Warn, "Chains of type guards on the same value that end in a `raise`, when the value can still be another type of its union there"),
     BoolBitwiseOperator("bool_bitwise_operator", Warn, "`&` and `|` on `Bool` values whose right side can raise or is expensive, which `&&` and `||` would only evaluate when needed"),
@@ -362,6 +363,7 @@ lint_groups! {
         BoolBitwiseOperator,
         NonExhaustiveUnionGuard,
         DiscardedCondition,
+        UncheckedPuzzleCall,
     ]),
     Cost("cost", "Code that costs more to run or is larger than it needs to be", [
         RedundantInline,
@@ -633,6 +635,7 @@ mod tests {
                 Lint::BoolBitwiseOperator,
                 Lint::NonExhaustiveUnionGuard,
                 Lint::DiscardedCondition,
+                Lint::UncheckedPuzzleCall,
             ]
         );
         assert_eq!(

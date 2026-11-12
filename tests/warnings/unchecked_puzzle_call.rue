@@ -1,0 +1,58 @@
+type Puzzle = fn(...solution: Any) -> List<Condition>;
+
+fn main(
+    #[curried] curried: Puzzle,
+    #[curried] PUZZLE_HASH: Bytes32,
+    unchecked: Puzzle,
+    checked: Puzzle,
+    bound: Puzzle,
+    wrapped: Puzzle,
+    passed: Puzzle,
+    hashed_only: Puzzle,
+    SCREAMING: Puzzle,
+    solution: Any,
+) -> List<List<Condition>> {
+    // Parameters that are curried into the puzzle are trusted
+    let a = curried(...solution);
+    let b = SCREAMING(...solution);
+
+    // A parameter that comes from the solution can be anything
+    let c = unchecked(...solution);
+
+    // Comparing its tree hash with a trusted hash checks it
+    assert tree_hash(checked) == PUZZLE_HASH;
+    let d = checked(...solution);
+
+    // The hash can be stored in a binding first
+    let hash = tree_hash(bound);
+    assert hash == PUZZLE_HASH;
+    let e = bound(...solution);
+
+    // Or used to compute another hash that's checked
+    assert curry_tree_hash(PUZZLE_HASH, [tree_hash(wrapped)]) == PUZZLE_HASH;
+    let f = wrapped(...solution);
+
+    // A parameter passed to another function could be checked there
+    let g = check_and_run(passed, solution);
+
+    // Computing the hash without comparing it doesn't check anything
+    let _ = tree_hash(hashed_only);
+    let h = hashed_only(...solution);
+
+    [a, b, c, d, e, f, g, h]
+}
+
+// Exported functions are programs of their own
+export fn exported(inner_puzzle: Puzzle, solution: Any) -> List<Condition> {
+    inner_puzzle(...solution)
+}
+
+fn check_and_run(puzzle: Puzzle, solution: Any) -> List<Condition> {
+    assert tree_hash(puzzle) == 0x0000000000000000000000000000000000000000000000000000000000000000;
+    puzzle(...solution)
+}
+
+// Tests aren't run with a solution
+test fn runs(puzzle: Puzzle) {
+    let _ = puzzle(...nil);
+}

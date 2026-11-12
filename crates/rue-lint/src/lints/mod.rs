@@ -16,6 +16,7 @@ mod inline_ifs;
 mod inlining;
 mod naming;
 mod operators;
+mod puzzles;
 mod recursion;
 mod repeated;
 mod returns;
@@ -89,6 +90,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(bitwise::BoolBitwiseOperator::default()),
         Box::new(exhaustive::NonExhaustiveUnionGuard),
         Box::new(discarded::DiscardedCondition::default()),
+        Box::new(puzzles::UncheckedPuzzleCall::new(input)),
         Box::new(inlining::Inlining::new(input)),
         Box::new(unused_fields::UnusedStructField::new(input)),
     ]
