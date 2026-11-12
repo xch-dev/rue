@@ -20,8 +20,3 @@ tests:
   runtime_cost: 2036037
   byte_cost: 2172000
   total_cost: 4208037
-diagnostics:
-- |-
-  This call is evaluated again with the same arguments, which costs as much as the first time at pubkey_for_exp.rue:22:48
-    note: It's first evaluated here at pubkey_for_exp.rue:22:27
-    note: Store the result in a `let` binding and use that instead

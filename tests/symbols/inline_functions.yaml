@@ -34,12 +34,3 @@ tests:
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
-diagnostics:
-- |-
-  This call is evaluated again with the same arguments, which costs as much as the first time at inline_functions.rue:22:13
-    note: It's first evaluated here at inline_functions.rue:22:5
-    note: Store the result in a `let` binding and use that instead
-- |-
-  This call is evaluated again with the same arguments, which costs as much as the first time at inline_functions.rue:26:20
-    note: It's first evaluated here at inline_functions.rue:26:5
-    note: Store the result in a `let` binding and use that instead
