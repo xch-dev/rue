@@ -16,6 +16,8 @@ use tower_lsp::lsp_types::Url;
 
 use crate::{Backend, Task, lock};
 
+const INITIALIZED: &str = "Rue language server initialized.";
+
 /// How long to wait for a message from the server before failing the test, rather than hanging.
 const TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -100,7 +102,7 @@ impl Client {
 
         self.notify("initialized", json!({})).await;
         let message = self.notification("window/logMessage").await;
-        assert_eq!(message["type"], json!(3));
+        assert_eq!(message["message"], json!(INITIALIZED));
     }
 
     async fn open(&mut self, uri: &Url, text: &str) {
@@ -134,12 +136,16 @@ impl Client {
         .await;
     }
 
+    async fn recv(&mut self) -> Request {
+        tokio::time::timeout(TIMEOUT, self.notifications.recv())
+            .await
+            .expect("timed out waiting for a message from the server")
+            .expect("server closed")
+    }
+
     async fn notification(&mut self, method: &str) -> Value {
         loop {
-            let message = tokio::time::timeout(TIMEOUT, self.notifications.recv())
-                .await
-                .unwrap_or_else(|_| panic!("timed out waiting for {method}"))
-                .expect("server closed");
+            let message = self.recv().await;
 
             if message.method() == method {
                 return message.params().cloned().unwrap_or(Value::Null);
@@ -159,22 +165,25 @@ impl Client {
         }
     }
 
-    /// Returns the messages the server sent for the notifications sent so far, which have all
-    /// been handled once the server answers a request sent after them.
+    /// Returns the messages the server sent since the last one that was received.
     async fn sync(&mut self) -> Vec<Request> {
-        let uri = Url::parse("file:///nonexistent.rue").unwrap();
-        let response = self
-            .request("textDocument/hover", Some(position(&uri, 0, 0)))
-            .await;
-        assert_eq!(response.result(), Some(&Value::Null));
+        // The server logs a message for `initialized`, and messages arrive in the order they were
+        // sent, so the ones before it are all of those sent for earlier notifications
+        self.notify("initialized", json!({})).await;
 
         let mut messages = Vec::new();
 
-        while let Ok(message) = self.notifications.try_recv() {
+        loop {
+            let message = self.recv().await;
+
+            if message.method() == "window/logMessage"
+                && message.params().unwrap()["message"] == json!(INITIALIZED)
+            {
+                return messages;
+            }
+
             messages.push(message);
         }
-
-        messages
     }
 
     async fn assert_no_messages(&mut self) {
@@ -287,20 +296,10 @@ async fn test_protocol_session() {
     );
 
     client.change(&uri, 2, &[MISMATCH]).await;
-
-    let diagnostics = client.diagnostics(&json!(uri)).await;
-    let diagnostics = diagnostics["diagnostics"].as_array().unwrap();
-    assert_eq!(diagnostics.len(), 1);
-    assert_eq!(diagnostics[0]["severity"], json!(1));
+    assert_mismatch(&client.diagnostics(&json!(uri)).await);
 
     let response = client
-        .request(
-            "textDocument/formatting",
-            Some(json!({
-                "textDocument": { "uri": uri },
-                "options": { "tabSize": 4, "insertSpaces": true },
-            })),
-        )
+        .request("textDocument/formatting", Some(formatting(&uri)))
         .await;
     assert_eq!(response.result().unwrap(), &json!([]));
 
@@ -312,6 +311,13 @@ fn position(uri: &Url, line: u32, character: u32) -> Value {
     json!({
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character },
+    })
+}
+
+fn formatting(uri: &Url) -> Value {
+    json!({
+        "textDocument": { "uri": uri },
+        "options": { "tabSize": 4, "insertSpaces": true },
     })
 }
 
@@ -401,10 +407,7 @@ async fn test_query_panics_are_caught() {
         (
             Task::Formatting,
             "textDocument/formatting",
-            json!({
-                "textDocument": { "uri": uri },
-                "options": { "tabSize": 4, "insertSpaces": true },
-            }),
+            formatting(&uri),
         ),
         (
             Task::CodeAction,

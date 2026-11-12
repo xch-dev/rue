@@ -51,7 +51,7 @@ pub struct Backend {
 }
 
 /// The work the server does in response to the editor, used to say what failed when it panics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Task {
     Compile,
     Hover,
@@ -133,9 +133,9 @@ impl LanguageServer for Backend {
             .await;
     }
 
-    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
         // The server only asks for full syncs, so the last change has the whole text
-        let Some(change) = params.content_changes.into_iter().next_back() else {
+        let Some(change) = params.content_changes.pop() else {
             return;
         };
 
@@ -504,13 +504,13 @@ impl Backend {
     }
 
     fn on_goto_definition(&self, params: &GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
+        self.inject_panic(Task::Definition);
+
         let uri = params
             .text_document_position_params
             .text_document
             .uri
             .clone();
-
-        self.inject_panic(Task::Definition);
 
         let cache = lock(&self.cache).get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position_params.position);
