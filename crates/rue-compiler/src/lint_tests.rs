@@ -1973,23 +1973,32 @@ fn conditions_keep_parentheses_around_struct_initializers() {
     let source = "\
 struct Point {
     x: Int,
+    s: String,
 }
 
 fn main(a: Int, s: String) -> Int {
-    if (Point { x: a }.x == 1) == true {
+    if (Point { x: a, s }.x == 1) == true {
         return 1;
     }
 
-    // A brace in a string isn't a struct initializer
+    // A brace in a string or comment isn't a struct initializer, and strings don't have escapes
     if (s == \"{\") == true {
         return 8;
     }
 
-    if (Point { x: a }.x == 5 == true) {
+    if (a /* x /* { */ */ == 9) == true {
+        return 9;
+    }
+
+    if (\"\\\" != Point { x: a, s }.s) == false {
+        return 10;
+    }
+
+    if (Point { x: a, s }.x == 5 == true) {
         return 5;
     }
 
-    if (Point { x: a }.x != 6 == false) {
+    if (Point { x: a, s }.x != 6 == false) {
         return 6;
     }
 
@@ -1997,9 +2006,9 @@ fn main(a: Int, s: String) -> Int {
         return 7;
     }
 
-    let compared = if (Point { x: a }.x == 2) == true { 1 } else { 2 };
-    let needless = if if (Point { x: a }.x == 3) { true } else { false } { 1 } else { 2 };
-    let negated = if !(Point { x: a }.x == 4) == false { 1 } else { 2 };
+    let compared = if (Point { x: a, s }.x == 2) == true { 1 } else { 2 };
+    let needless = if if (Point { x: a, s }.x == 3) { true } else { false } { 1 } else { 2 };
+    let negated = if !(Point { x: a, s }.x == 4) == false { 1 } else { 2 };
     compared + needless + negated
 }
 ";
@@ -2012,23 +2021,32 @@ fn main(a: Int, s: String) -> Int {
         "\
 struct Point {
     x: Int,
+    s: String,
 }
 
 fn main(a: Int, s: String) -> Int {
-    if (Point { x: a }.x == 1) {
+    if (Point { x: a, s }.x == 1) {
         return 1;
     }
 
-    // A brace in a string isn't a struct initializer
+    // A brace in a string or comment isn't a struct initializer, and strings don't have escapes
     if s == \"{\" {
         return 8;
     }
 
-    if (Point { x: a }.x == 5) {
+    if a /* x /* { */ */ == 9 {
+        return 9;
+    }
+
+    if (\"\\\" == Point { x: a, s }.s) {
+        return 10;
+    }
+
+    if (Point { x: a, s }.x == 5) {
         return 5;
     }
 
-    if (Point { x: a }.x == 6) {
+    if (Point { x: a, s }.x == 6) {
         return 6;
     }
 
@@ -2036,9 +2054,9 @@ fn main(a: Int, s: String) -> Int {
         return 7;
     }
 
-    let compared = if (Point { x: a }.x == 2) { 1 } else { 2 };
-    let needless = if (Point { x: a }.x == 3) { 1 } else { 2 };
-    let negated = if (Point { x: a }.x == 4) { 1 } else { 2 };
+    let compared = if (Point { x: a, s }.x == 2) { 1 } else { 2 };
+    let needless = if (Point { x: a, s }.x == 3) { 1 } else { 2 };
+    let negated = if (Point { x: a, s }.x == 4) { 1 } else { 2 };
     compared + needless + negated
 }
 "

@@ -3,6 +3,7 @@
 
 use rue_diagnostic::{SrcLoc, Suggestion};
 use rue_hir::{BinaryOp, Database, Hir, HirId, Statement, UnaryOp};
+use rue_lexer::{Lexer, TokenKind};
 
 use crate::LintContext;
 
@@ -181,28 +182,17 @@ pub(crate) fn is_parenthesized(text: &str) -> bool {
     }
 
     let mut depth = 0;
-    let mut in_string = false;
-    let mut escaped = false;
 
-    for (index, char) in text.char_indices() {
-        if in_string {
-            match char {
-                _ if escaped => escaped = false,
-                '\\' => escaped = true,
-                '"' => in_string = false,
-                _ => {}
-            }
-            continue;
-        }
-
-        match char {
-            '"' => in_string = true,
-            '(' => depth += 1,
-            ')' => {
+    // The text is tokenized like the compiler would, so parentheses in strings and comments
+    // aren't counted
+    for token in Lexer::new(text) {
+        match token.kind {
+            TokenKind::OpenParen => depth += 1,
+            TokenKind::CloseParen => {
                 depth -= 1;
 
                 if depth == 0 {
-                    return index == text.len() - 1;
+                    return token.span.end == text.len();
                 }
             }
             _ => {}
@@ -215,40 +205,7 @@ pub(crate) fn is_parenthesized(text: &str) -> bool {
 /// Whether the code has a `{` outside of strings and comments, which could be a struct
 /// initializer.
 fn has_code_brace(text: &str) -> bool {
-    let mut chars = text.chars().peekable();
-
-    while let Some(char) = chars.next() {
-        match char {
-            '{' => return true,
-            '"' => {
-                while let Some(char) = chars.next() {
-                    match char {
-                        '\\' => {
-                            chars.next();
-                        }
-                        '"' => break,
-                        _ => {}
-                    }
-                }
-            }
-            '/' if chars.peek() == Some(&'/') => {
-                chars.by_ref().find(|&char| char == '\n');
-            }
-            '/' if chars.peek() == Some(&'*') => {
-                chars.next();
-                let mut previous = ' ';
-                for char in chars.by_ref() {
-                    if previous == '*' && char == '/' {
-                        break;
-                    }
-                    previous = char;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    false
+    Lexer::new(text).any(|token| token.kind == TokenKind::OpenBrace)
 }
 
 /// The text without any parentheses around the whole of it.
