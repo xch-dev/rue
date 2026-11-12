@@ -45,9 +45,9 @@ pub struct Backend {
     /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
     /// added to the message instead. This is assumed until the client says otherwise.
     related_information: AtomicBool,
-    /// Tasks that panic on purpose, to test that the server survives panics.
+    /// A task that panics on purpose, to test that the server survives panics.
     #[cfg(test)]
-    injected_panics: Mutex<std::collections::HashSet<Task>>,
+    injected_panic: Mutex<Option<Task>>,
 }
 
 /// The work the server does in response to the editor, used to say what failed when it panics.
@@ -207,7 +207,7 @@ impl Backend {
             file_cache: Mutex::new(HashMap::new()),
             related_information: AtomicBool::new(true),
             #[cfg(test)]
-            injected_panics: Mutex::default(),
+            injected_panic: Mutex::default(),
         }
     }
 
@@ -234,8 +234,8 @@ impl Backend {
 
     #[cfg(test)]
     fn inject_panic(&self, task: Task) {
-        let inject = lock(&self.injected_panics).contains(&task);
-        assert!(!inject, "injected panic");
+        let injected = *lock(&self.injected_panic);
+        assert!(injected != Some(task), "injected panic");
     }
 
     #[cfg(not(test))]
@@ -398,6 +398,8 @@ impl Backend {
     }
 
     fn on_formatting(&self, params: &DocumentFormattingParams) -> Result<Vec<TextEdit>> {
+        self.inject_panic(Task::Formatting);
+
         let uri = &params.text_document.uri;
         let path = uri
             .to_file_path()
@@ -407,8 +409,6 @@ impl Backend {
         let project =
             find_project(&path, false).map_err(|error| Error::invalid_params(error.to_string()))?;
         let options = project.map_or_else(FormatOptions::default, |project| project.format_options);
-        self.inject_panic(Task::Formatting);
-
         let source = lock(&self.file_cache).get(&source_kind).cloned();
         let source = match source {
             Some(source) => source,
