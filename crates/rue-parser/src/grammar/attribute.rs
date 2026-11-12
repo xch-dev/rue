@@ -89,6 +89,41 @@ mod tests {
     }
 
     #[test]
+    fn test_parameter_attributes() {
+        check(
+            item,
+            "fn f(#[curried] a: Int) {}",
+            expect![[r##"
+                FunctionItem@0..26
+                  Fn@0..2 "fn"
+                  Whitespace@2..3 " "
+                  Ident@3..4 "f"
+                  OpenParen@4..5 "("
+                  FunctionParameter@5..22
+                    Attribute@5..15
+                      Pound@5..6 "#"
+                      OpenBracket@6..7 "["
+                      Ident@7..14 "curried"
+                      CloseBracket@14..15 "]"
+                    Whitespace@15..16 " "
+                    NamedBinding@16..17
+                      Ident@16..17 "a"
+                    Colon@17..18 ":"
+                    Whitespace@18..19 " "
+                    PathType@19..22
+                      PathSegment@19..22
+                        Ident@19..22 "Int"
+                  CloseParen@22..23 ")"
+                  Whitespace@23..24 " "
+                  Block@24..26
+                    OpenBrace@24..25 "{"
+                    CloseBrace@25..26 "}"
+            "##]],
+            expect![""],
+        );
+    }
+
+    #[test]
     fn test_statement_attributes() {
         check(
             block,

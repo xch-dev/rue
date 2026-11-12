@@ -88,9 +88,9 @@ inline fn cat_puzzle_hash(cat_info: CatInfo, inner_puzzle_hash: Bytes32) -> Byte
 }
 
 fn main(
-    mod_hash: Bytes32,
-    asset_id: Bytes32,
-    inner_puzzle: fn(...solution: Any) -> List<CatCondition>,
+    #[curried] mod_hash: Bytes32,
+    #[curried] asset_id: Bytes32,
+    #[curried] inner_puzzle: fn(...solution: Any) -> List<CatCondition>,
     inner_solution: Any,
     lineage_proof: LineageProof | nil,
     prev_coin_id: Bytes32,

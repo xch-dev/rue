@@ -514,6 +514,11 @@ impl AstImportPathSegment {
 }
 
 impl AstFunctionParameter {
+    /// The attributes written before the parameter, such as `#[curried]`.
+    pub fn attributes(&self) -> impl Iterator<Item = AstAttribute> {
+        self.syntax().children().filter_map(AstAttribute::cast)
+    }
+
     pub fn spread(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()

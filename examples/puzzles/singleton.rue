@@ -20,8 +20,8 @@ struct EveProof {
 type Proof = LineageProof | EveProof;
 
 fn main(
-    singleton: Singleton,
-    inner_puzzle: fn(...inner_solution: Any) -> List<Condition>,
+    #[curried] singleton: Singleton,
+    #[curried] inner_puzzle: fn(...inner_solution: Any) -> List<Condition>,
     proof: Proof,
     my_amount: Int,
     inner_solution: Any,

@@ -171,6 +171,24 @@ fn checked() -> Int {
 }
 ```
 
+### Curried parameters
+
+The parameters of a puzzle that are curried into it are part of its puzzle hash, so they can be trusted, while the rest come from the solution and can be anything. Mark the curried ones with `#[curried]`, so that lints such as `unchecked_puzzle_call` know which is which. Parameters named in `SCREAMING_SNAKE_CASE`, the convention for curried parameters in Chialisp, are treated as curried too:
+
+```rs
+fn main(
+    #[curried] inner_puzzle_hash: Bytes32,
+    inner_puzzle: fn(...solution: Any) -> List<Condition>,
+    inner_solution: Any,
+) -> List<Condition> {
+    // Without this, `unchecked_puzzle_call` reports the call below, since the spender chooses `inner_puzzle`
+    assert tree_hash(inner_puzzle) == inner_puzzle_hash;
+    inner_puzzle(...inner_solution)
+}
+```
+
+The attribute doesn't change the compiled program.
+
 ## Testing
 
 Tests are just functions marked with `test`, and they live right alongside your code:

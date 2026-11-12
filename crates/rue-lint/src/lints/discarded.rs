@@ -61,7 +61,8 @@ impl HirLintPass for DiscardedCondition {
                     return;
                 };
 
-                if !cx.contains_unresolved(initializer.ty) && cx.is_assignable(initializer.ty, condition)
+                if !cx.contains_unresolved(initializer.ty)
+                    && cx.is_assignable(initializer.ty, condition)
                 {
                     let fate = fate(cx, hir);
                     self.conditions.push((srcloc, fate));

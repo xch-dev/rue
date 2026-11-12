@@ -108,6 +108,7 @@ fn function_parameter(p: &mut Parser) {
     }
 
     p.start(SyntaxKind::FunctionParameter);
+    attributes(p);
     p.try_eat(T![...]);
     binding(p);
     p.expect(T![:]);

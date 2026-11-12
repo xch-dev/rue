@@ -107,6 +107,33 @@ impl ScopedLintLevels {
                     continue;
                 };
 
+                // `curried` marks a parameter that's curried into the program, which lints use to
+                // know which values are trusted, rather than setting a lint level
+                if name.text() == "curried" {
+                    let on_parameter = target.as_ref().is_some_and(|target| {
+                        target.kind() == SyntaxKind::FunctionParameter
+                            && target
+                                .parent()
+                                .is_some_and(|parent| parent.kind() == SyntaxKind::FunctionItem)
+                    });
+
+                    if target.is_some() && (inner || !on_parameter) {
+                        error(
+                            DiagnosticKind::MisplacedCurriedAttribute,
+                            attribute.syntax().text_range(),
+                        );
+                    }
+
+                    if attribute.arguments().next().is_some() {
+                        error(
+                            DiagnosticKind::CurriedAttributeArguments,
+                            attribute.syntax().text_range(),
+                        );
+                    }
+
+                    continue;
+                }
+
                 let Ok(attribute_level) = name.text().parse::<AttributeLevel>() else {
                     error(
                         DiagnosticKind::UnknownAttribute(name.text().to_string()),
@@ -405,6 +432,7 @@ fn accepts_attributes(kind: SyntaxKind) -> bool {
         kind,
         SyntaxKind::ModuleItem
             | SyntaxKind::FunctionItem
+            | SyntaxKind::FunctionParameter
             | SyntaxKind::ConstantItem
             | SyntaxKind::TypeAliasItem
             | SyntaxKind::StructItem
