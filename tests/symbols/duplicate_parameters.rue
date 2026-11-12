@@ -2,7 +2,7 @@ test fn duplicate_function_parameter() -> Int {
     first(1, 2)
 }
 
-fn first(a: Int, a: Int) -> Int {
+fn first(a: Int, a: Bytes) -> Int {
     a
 }
 

@@ -1,0 +1,17 @@
+test fn discarded_function_parameters() -> Int {
+    ignore(1, 2)
+}
+
+fn ignore(_: Int, _: Int) -> Int {
+    3
+}
+
+test fn discarded_lambda_parameters() -> Int {
+    let lambda = fn(_: Int, _: Int) => 4;
+    lambda(1, 2)
+}
+
+test fn discarded_let_bindings() -> Int {
+    let (_, (_, x)) = (1, (2, 5));
+    x
+}

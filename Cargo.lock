@@ -1789,7 +1789,6 @@ dependencies = [
 name = "rue-lint"
 version = "0.11.0"
 dependencies = [
- "indexmap",
  "num-bigint",
  "rowan",
  "rue-ast",

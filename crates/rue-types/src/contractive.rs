@@ -55,7 +55,7 @@ pub(crate) fn reaches_non_contractive_cycle(arena: &Arena<Type>, id: TypeId) -> 
             match &arena[id] {
                 Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
                 Type::Function(function) => {
-                    stack.extend(function.params.iter().map(|param| param.ty));
+                    stack.extend(function.param_types());
                     stack.push(function.ret);
                 }
                 _ => {}

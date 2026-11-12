@@ -10,6 +10,12 @@ pub struct FunctionType {
     pub ret: TypeId,
 }
 
+impl FunctionType {
+    pub fn param_types(&self) -> impl Iterator<Item = TypeId> + '_ {
+        self.params.iter().map(|param| param.ty)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FunctionParameter {
     pub name: String,

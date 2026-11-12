@@ -209,7 +209,7 @@ pub fn compile_function_call_expr(
             // the function's type doesn't reference it at all.
             if is_type_in_scope(ctx, generic)
                 || !std::iter::once(function.ret)
-                    .chain(function.params.iter().map(|param| param.ty))
+                    .chain(function.param_types())
                     .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
             {
                 continue;

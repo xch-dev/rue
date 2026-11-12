@@ -15,8 +15,9 @@ pub fn create_named_binding(ctx: &mut Compiler, symbol: SymbolId, binding: &AstN
 
 pub fn create_binding_for_identifier(ctx: &mut Compiler, symbol: SymbolId, name: &SyntaxToken) {
     // Each pattern (a `let` binding, or a function's or lambda's parameter list) gets its own
-    // scope, so a name that's already in it was bound earlier in the same pattern
-    if ctx.last_scope().symbol(name.text()).is_some() {
+    // scope, so a name that's already in it was bound earlier in the same pattern. A bare `_`
+    // discards the value, so it can be repeated.
+    if name.text() != "_" && ctx.last_scope().symbol(name.text()).is_some() {
         ctx.diagnostic(
             name,
             DiagnosticKind::DuplicateSymbol(name.text().to_string()),

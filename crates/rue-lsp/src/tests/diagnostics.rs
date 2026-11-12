@@ -407,7 +407,8 @@ fn test_diagnostics_unnamed_parameters() {
         main.rue:4:9-4:10 Error: Expected `:`, found `,`
         main.rue:4:11-4:14 Error: Duplicate symbol `Int` found in scope
         main.rue:4:14-4:15 Error: Expected `:`, found `)`
-    "#]].assert_eq(&project.change(
+    "#]]
+    .assert_eq(&project.change(
         "main.rue",
         Some("fn main() -> Int {\n    42\n}\n\nfn f (Int, Int) {}\n"),
     ));

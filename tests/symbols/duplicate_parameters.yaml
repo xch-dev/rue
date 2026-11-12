@@ -1,4 +1,5 @@
 diagnostics:
+- Cannot assign `2` to `Bytes` without a cast, since they are semantically different at duplicate_parameters.rue:2:14
 - Duplicate symbol `a` found in scope at duplicate_parameters.rue:5:18
 - Duplicate symbol `a` found in scope at duplicate_parameters.rue:10:29
 - Duplicate symbol `a` found in scope at duplicate_parameters.rue:18:13
