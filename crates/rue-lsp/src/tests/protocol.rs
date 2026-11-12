@@ -308,14 +308,21 @@ impl TempProject {
         Url::from_file_path(self.root.join(name)).unwrap()
     }
 
-    pub(super) fn write(&self, name: &str, text: &str) {
+    pub(super) fn write(&self, name: &str, text: impl AsRef<[u8]>) {
         let path = self.root.join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
     }
 
+    /// Removes a file or a directory.
     pub(super) fn remove(&self, name: &str) {
-        fs::remove_file(self.root.join(name)).unwrap();
+        let path = self.root.join(name);
+
+        if path.is_dir() {
+            fs::remove_dir_all(path).unwrap();
+        } else {
+            fs::remove_file(path).unwrap();
+        }
     }
 
     /// Renders the diagnostics published in the given messages as `file: [severities]`, sorted by

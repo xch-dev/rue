@@ -53,6 +53,8 @@ pub struct Backend {
     /// entrypoint, if it doesn't have one), so that they can be cleared once a file isn't part of
     /// the project anymore.
     published: Mutex<HashMap<PathBuf, HashSet<SourceKind>>>,
+    /// The documents open in the editor, by the path the client uses for each of them.
+    open: Mutex<HashMap<SourceKind, PathBuf>>,
     /// Whether the client can register file watchers when asked to.
     watch_files: AtomicBool,
     /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
@@ -185,6 +187,10 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        if let Some((path, kind)) = document(&params.text_document.uri) {
+            lock(&self.open).insert(kind, path);
+        }
+
         self.on_change(params.text_document.uri, Some(params.text_document.text))
             .await;
     }
@@ -205,6 +211,10 @@ impl LanguageServer for Backend {
 
     /// The file's unsaved changes are discarded, so the project is compiled with what's on disk.
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        if let Some((_, kind)) = document(&params.text_document.uri) {
+            lock(&self.open).remove(&kind);
+        }
+
         self.on_change(params.text_document.uri, None).await;
     }
 
@@ -278,6 +288,7 @@ impl Backend {
             cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
             published: Mutex::new(HashMap::new()),
+            open: Mutex::new(HashMap::new()),
             watch_files: AtomicBool::new(false),
             related_information: AtomicBool::new(true),
             #[cfg(test)]
@@ -348,12 +359,8 @@ impl Backend {
         uri: &Url,
         text: Option<String>,
     ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let Ok(uri_path) = uri.to_file_path() else {
-            return IndexMap::new();
-        };
-
         // The file may have been deleted, for example before the editor closes it
-        let Some(source_kind) = source_kind(&uri_path) else {
+        let Some((uri_path, source_kind)) = document(uri) else {
             return IndexMap::new();
         };
 
@@ -396,6 +403,7 @@ impl Backend {
         edited: Option<&Path>,
     ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
         let published = lock(&self.published).clone();
+        let open = lock(&self.open).clone();
 
         let mut lookups = edited
             .map(Path::to_path_buf)
@@ -405,7 +413,7 @@ impl Backend {
 
         // A project may not exist anymore, or may have become part of another one (for example,
         // if a manifest was deleted, or created in a parent directory). Its files are cleared, and
-        // compiled with whichever project they're part of now.
+        // those open in the editor are compiled with whichever project they're part of now.
         for (key, files) in &published {
             if FoundProject::find(key).is_some_and(|project| &project.key == key) {
                 continue;
@@ -413,10 +421,7 @@ impl Backend {
 
             removed.push(key.clone());
 
-            lookups.extend(files.iter().filter_map(|kind| match kind {
-                SourceKind::File(path) => Some(PathBuf::from(path)),
-                SourceKind::Std(_) => None,
-            }));
+            lookups.extend(files.iter().filter_map(|kind| open.get(kind).cloned()));
         }
 
         // Each project is only compiled once, no matter how many of its files changed
@@ -444,13 +449,27 @@ impl Backend {
             .collect::<Vec<_>>();
 
         let mut diagnostics = IndexMap::new();
+        let mut shared = HashSet::new();
 
-        for key in removed {
-            diagnostics.extend(self.update_project(Compiled::empty(key)));
+        for compiled in removed.into_iter().map(Compiled::removed).chain(compiled) {
+            diagnostics.extend(self.update_project(compiled, &mut shared));
         }
 
-        for compiled in compiled {
-            diagnostics.extend(self.update_project(compiled));
+        // A file that another project also includes keeps the diagnostics and cache of the one
+        // that was compiled last, so those other projects are compiled again to replace them
+        let others = lock(&self.published)
+            .iter()
+            .filter(|(key, files)| {
+                !projects.contains_key(*key) && files.iter().any(|kind| shared.contains(kind))
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+
+        for key in others {
+            if let Some(project) = FoundProject::find(&key) {
+                let compiled = self.compile(&project);
+                diagnostics.extend(self.update_project(compiled, &mut HashSet::new()));
+            }
         }
 
         diagnostics
@@ -468,6 +487,7 @@ impl Backend {
                     key: found.key.clone(),
                     diagnostics: invalid_manifest_diagnostics(&found.key, error),
                     caches: Vec::new(),
+                    removed: false,
                 };
             }
         };
@@ -528,39 +548,50 @@ impl Backend {
             key: found.key.clone(),
             diagnostics,
             caches,
+            removed: false,
         }
     }
 
     /// Records the result of compiling a project, and returns the diagnostics to publish. The
     /// files it published diagnostics for last time but not this time get theirs cleared, and
-    /// their caches are removed, since they're not part of the project anymore (unless another
-    /// project published them).
-    fn update_project(&self, compiled: Compiled) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+    /// their caches are removed, since they're not part of the project anymore. Files that another
+    /// project published are left to it, and added to `shared`.
+    fn update_project(
+        &self,
+        compiled: Compiled,
+        shared: &mut HashSet<SourceKind>,
+    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
         let Compiled {
             key,
             mut diagnostics,
             caches,
+            removed,
         } = compiled;
-
-        let files = diagnostics.keys().cloned().collect::<HashSet<_>>();
 
         let removed = {
             let mut published = lock(&self.published);
 
-            let previous = if files.is_empty() {
+            let previous = if removed {
                 published.remove(&key)
             } else {
-                published.insert(key, files)
+                published.insert(key, diagnostics.keys().cloned().collect())
             };
 
-            previous
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|kind| {
-                    !diagnostics.contains_key(kind)
-                        && !published.values().any(|files| files.contains(kind))
-                })
-                .collect::<Vec<_>>()
+            let mut files = Vec::new();
+
+            for kind in previous.unwrap_or_default() {
+                if diagnostics.contains_key(&kind) {
+                    continue;
+                }
+
+                if published.values().any(|files| files.contains(&kind)) {
+                    shared.insert(kind);
+                } else {
+                    files.push(kind);
+                }
+            }
+
+            files
         };
 
         let mut cache = lock(&self.cache);
@@ -960,21 +991,26 @@ fn invalid_manifest_diagnostics(
     diagnostics
 }
 
-/// The source kind of a file, which the compiler identifies by its canonical path. If the file
-/// doesn't exist (anymore), its directory is canonicalized instead.
-fn source_kind(path: &Path) -> Option<SourceKind> {
-    if let Ok(kind) = normalize_path(path) {
-        return Some(kind);
+/// The path of a document, and the source kind that the compiler identifies it by, which is its
+/// canonical path. If the file (or the directories it's in) doesn't exist anymore, the nearest
+/// directory that does is canonicalized instead.
+fn document(uri: &Url) -> Option<(PathBuf, SourceKind)> {
+    let path = uri.to_file_path().ok()?;
+
+    if let Ok(kind) = normalize_path(&path) {
+        return Some((path, kind));
     }
 
-    let directory = path.parent()?.canonicalize().ok()?;
+    let (canonical, rest) = path.ancestors().skip(1).find_map(|ancestor| {
+        Some((
+            ancestor.canonicalize().ok()?,
+            path.strip_prefix(ancestor).ok()?,
+        ))
+    })?;
 
-    Some(SourceKind::File(
-        directory
-            .join(path.file_name()?)
-            .to_string_lossy()
-            .to_string(),
-    ))
+    let kind = SourceKind::File(canonical.join(rest).to_string_lossy().to_string());
+
+    Some((path, kind))
 }
 
 /// The project that a file belongs to.
@@ -1009,15 +1045,17 @@ struct Compiled {
     key: PathBuf,
     diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>,
     caches: Vec<(Url, SendWrapper<Cache<Arc<Compiler>>>)>,
+    /// Whether the project doesn't exist anymore, so it's no longer tracked.
+    removed: bool,
 }
 
 impl Compiled {
-    /// A project that doesn't exist anymore.
-    fn empty(key: PathBuf) -> Self {
+    fn removed(key: PathBuf) -> Self {
         Self {
             key,
             diagnostics: IndexMap::new(),
             caches: Vec::new(),
+            removed: true,
         }
     }
 }
