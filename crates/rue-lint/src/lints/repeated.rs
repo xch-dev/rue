@@ -58,8 +58,6 @@ struct Binding {
     symbol: SymbolId,
     /// The type of the binding, which may be different from the call's (such as with a cast).
     ty: TypeId,
-    /// The block that the binding is declared in.
-    block: HirId,
 }
 
 #[derive(Debug)]
@@ -129,6 +127,16 @@ impl HirLintPass for RepeatedExpensiveCall {
             return;
         };
 
+        let binding = binding_of(cx, hir);
+
+        // A binding that's never referenced isn't evaluated, so neither is its value
+        if binding
+            .as_ref()
+            .is_some_and(|binding| self.references(binding.symbol) == 0)
+        {
+            return;
+        }
+
         let Some(function) = self.functions.last_mut() else {
             return;
         };
@@ -139,11 +147,7 @@ impl HirLintPass for RepeatedExpensiveCall {
             .iter()
             .position(|call| path.starts_with(&call.path) && hir_eq(cx.db(), call.hir, hir));
 
-        calls.push(Call {
-            hir,
-            path,
-            binding: binding_of(cx, hir),
-        });
+        calls.push(Call { hir, path, binding });
 
         let Some(earlier) = earlier else {
             return;
@@ -170,19 +174,17 @@ impl HirLintPass for RepeatedExpensiveCall {
             }
         };
 
-        // The binding can only be used inside of the block it's declared in, where another binding
-        // with the same name doesn't shadow it, and its type must be usable where the call is
+        // The binding must be in scope where the call is (which also means another binding with the
+        // same name doesn't shadow it), and its type must be usable there
         let binding = repeated.binding.clone();
         let call_type = cx.db().hir_type(hir);
 
         let in_scope = binding.is_some_and(|binding| {
-            cx.parents().contains(&binding.block)
-                && cx.db().hir_scope(hir).is_some_and(|scope| {
-                    cx.db()
-                        .resolve_symbol_in(scope, &binding.name)
-                        .is_some_and(|(symbol, _)| symbol == binding.symbol)
-                })
-                && call_type.is_some_and(|call_type| cx.is_assignable(binding.ty, call_type))
+            cx.db().hir_scope(hir).is_some_and(|scope| {
+                cx.db()
+                    .resolve_symbol_in(scope, &binding.name)
+                    .is_some_and(|(symbol, _)| symbol == binding.symbol)
+            }) && call_type.is_some_and(|call_type| cx.is_assignable(binding.ty, call_type))
         });
 
         repeated.repeats.push((srcloc, in_scope));
@@ -209,14 +211,6 @@ impl RepeatedExpensiveCall {
                     .filter(|(_, other)| *other == bound)
                     .count() as u64
             };
-
-            // A binding that's never referenced isn't evaluated, so the calls after it aren't
-            // evaluated again
-            if let Some(binding) = &repeated.binding
-                && self.references(binding.symbol) == 0
-            {
-                continue;
-            }
 
             let new_binding = BINDING_SIZE * COST_PER_BYTE;
 
@@ -333,7 +327,6 @@ fn binding_of(cx: &LintContext<'_>, call: HirId) -> Option<Binding> {
             name,
             symbol: *symbol,
             ty: binding.value.ty,
-            block: *block,
         })
     })
 }

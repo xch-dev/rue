@@ -131,7 +131,7 @@ mod tests {
         fs::create_dir_all(dir.join("puzzles"))?;
         fs::write(
             dir.join("Rue.toml"),
-            "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\nunused_import = \"forbid\"\ntypo_lint = \"allow\"\n",
+            "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\nunused_import = \"forbid\"\ntypo_lint = \"allow\"\nlarge_inline = { min_savings = 5 }\n",
         )?;
 
         let project = find_project(&dir, false);
@@ -154,6 +154,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["typo_lint"]
         );
+        assert_eq!(project.options.lint_options.large_inline_min_savings, 5);
 
         Ok(())
     }

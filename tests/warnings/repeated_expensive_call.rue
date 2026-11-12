@@ -51,9 +51,11 @@ fn main(value: Bytes, flag: Bool) -> Bytes32 {
 
 // The binding is only suggested where it's in scope, and refers to the same value
 fn scopes(value: Bytes) -> Bytes32 {
-    // A binding that's never referenced isn't evaluated, so this isn't evaluated again
+    // A binding that's never referenced isn't evaluated, so this isn't evaluated again, but the call
+    // after it is
     let unused = tree_hash(value);
     let first = tree_hash(value);
+    let third = tree_hash(value);
 
     // A binding declared in an inner block isn't in scope after it
     let inner = {
@@ -93,7 +95,8 @@ fn scopes(value: Bytes) -> Bytes32 {
     let typed: Bytes32 = tree_hash(after + value);
 
     sha256(
-        inner
+        third
+            + inner
             + after
             + shadowed
             + repeated

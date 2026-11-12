@@ -66,8 +66,6 @@ impl<'a> LintInput<'a> {
         }
     }
 
-    /// The declarations whose code is evaluated, or is needed by code that's kept, starting from
-    /// the entrypoints.
     /// The functions that are compiled into programs of their own, which are the entrypoints
     /// other than tests (`main` and exported functions), in a stable order.
     pub(crate) fn programs(&self, db: &Database) -> &[SymbolId] {
@@ -95,6 +93,8 @@ impl<'a> LintInput<'a> {
         })
     }
 
+    /// The declarations whose code is evaluated, or is needed by code that's kept, starting from
+    /// the entrypoints.
     pub(crate) fn live_declarations(&self, db: &Database) -> &HashSet<Declaration> {
         self.live
             .get_or_init(|| lints::live_declarations(db, self.entrypoints))

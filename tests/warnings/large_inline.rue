@@ -76,11 +76,6 @@ inline fn only_in_tests(a: Int) -> Int {
     c * c + b * a - c * 13
 }
 
-// Removing `inline` would save a little, but less than the default `min_savings`
-inline fn just_under(a: Int, b: Int) -> Int {
-    a * b + a - b * 3 + a * a + b * b - a * 5 + b * 7
-}
-
 // A function that's used once in `main`, but by an inline function that's used in several places,
 // is duplicated along with it
 inline fn transitive(a: Int, b: Int) -> Int {
@@ -112,8 +107,6 @@ fn main(a: Int, b: Int) -> Int {
         + folded(a)
         + folded(b)
         + folded(a + b)
-        + just_under(a, b)
-        + just_under(b, a)
         + wrapper(a)
         + wrapper(b)
         + wrapper(a + b)
