@@ -14,9 +14,7 @@ use tower_lsp::LspService;
 use tower_lsp::jsonrpc::{Request, Response};
 use tower_lsp::lsp_types::Url;
 
-use crate::{Backend, Task, lock};
-
-const INITIALIZED: &str = "Rue language server initialized.";
+use crate::{Backend, INITIALIZED, Task, lock};
 
 /// How long to wait for a message from the server before failing the test, rather than hanging.
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -60,29 +58,24 @@ impl Client {
 
         let request = request.finish();
 
-        self.service
-            .ready()
-            .await
-            .unwrap()
-            .call(request)
-            .await
-            .unwrap()
-            .expect("expected a response")
+        self.call(request).await.expect("expected a response")
     }
 
     async fn notify(&mut self, method: &'static str, params: Value) {
         let request = Request::build(method).params(params).finish();
 
-        let response = self
-            .service
-            .ready()
-            .await
-            .unwrap()
-            .call(request)
-            .await
-            .unwrap();
-
+        let response = self.call(request).await;
         assert!(response.is_none(), "notifications don't have responses");
+    }
+
+    async fn call(&mut self, request: Request) -> Option<Response> {
+        let method = request.method().to_string();
+        let response = async { self.service.ready().await.unwrap().call(request).await };
+
+        tokio::time::timeout(TIMEOUT, response)
+            .await
+            .unwrap_or_else(|_| panic!("timed out waiting for the server to handle {method}"))
+            .unwrap()
     }
 
     fn backend(&self) -> &Backend {
@@ -93,16 +86,14 @@ impl Client {
         *lock(&self.backend().injected_panic) = task;
     }
 
-    /// Sends `initialize` and `initialized`, and skips the log message that follows.
+    /// Sends `initialize` and `initialized`.
     async fn initialize(&mut self) {
         let response = self
             .request("initialize", Some(json!({ "capabilities": {} })))
             .await;
         assert!(response.is_ok());
 
-        self.notify("initialized", json!({})).await;
-        let message = self.notification("window/logMessage").await;
-        assert_eq!(message["message"], json!(INITIALIZED));
+        self.assert_no_messages().await;
     }
 
     async fn open(&mut self, uri: &Url, text: &str) {
@@ -155,20 +146,23 @@ impl Client {
 
     /// Waits for the diagnostics published for the given file, skipping those for other files
     /// (such as `Rue.toml`).
-    async fn diagnostics(&mut self, uri: &Value) -> Value {
+    async fn diagnostics(&mut self, uri: &Url) -> Value {
         loop {
             let diagnostics = self.notification("textDocument/publishDiagnostics").await;
 
-            if &diagnostics["uri"] == uri {
+            if diagnostics["uri"] == json!(uri) {
                 return diagnostics;
             }
         }
     }
 
     /// Returns the messages the server sent since the last one that was received.
+    ///
+    /// The server logs a message for `initialized`, and messages arrive in the order they were
+    /// sent, so the ones before it are all of those sent for earlier notifications. This relies on
+    /// the server finishing its work for a notification before it returns, and on `initialized`
+    /// doing nothing but logging (a request to the client would wait for a response forever).
     async fn sync(&mut self) -> Vec<Request> {
-        // The server logs a message for `initialized`, and messages arrive in the order they were
-        // sent, so the ones before it are all of those sent for earlier notifications
         self.notify("initialized", json!({})).await;
 
         let mut messages = Vec::new();
@@ -191,15 +185,18 @@ impl Client {
         assert!(messages.is_empty(), "unexpected messages: {messages:?}");
     }
 
-    /// Waits for the error the server logs when it catches a panic.
+    /// Returns the error the server logs when it catches a panic, which must be the only message
+    /// it sent.
     async fn panic_message(&mut self) -> String {
-        loop {
-            let message = self.notification("window/logMessage").await;
+        let messages = self.sync().await;
+        assert_eq!(messages.len(), 1, "expected one message: {messages:?}");
 
-            if message["type"] == json!(1) {
-                return message["message"].as_str().unwrap().to_string();
-            }
-        }
+        let message = &messages[0];
+        let params = message.params().unwrap();
+        assert_eq!(message.method(), "window/logMessage");
+        assert_eq!(params["type"], json!(1));
+
+        params["message"].as_str().unwrap().to_string()
     }
 }
 
@@ -270,7 +267,7 @@ async fn test_protocol_session() {
 
     client.open(&uri, text).await;
 
-    let diagnostics = client.diagnostics(&json!(uri)).await;
+    let diagnostics = client.diagnostics(&uri).await;
     assert_eq!(diagnostics["diagnostics"], json!([]));
 
     let response = client
@@ -296,7 +293,7 @@ async fn test_protocol_session() {
     );
 
     client.change(&uri, 2, &[MISMATCH]).await;
-    assert_mismatch(&client.diagnostics(&json!(uri)).await);
+    assert_mismatch(&client.diagnostics(&uri).await);
 
     let response = client
         .request("textDocument/formatting", Some(formatting(&uri)))
@@ -367,13 +364,12 @@ async fn test_compile_panic_is_caught() {
     );
 
     // The results of the last compile are kept
-    client.assert_no_messages().await;
     assert_hover(&mut client, &main).await;
 
     // The editor's text is used by the next compile, even though compiling it panicked
     client.inject_panic(None);
     client.open(&other, "").await;
-    assert_mismatch(&client.diagnostics(&json!(main)).await);
+    assert_mismatch(&client.diagnostics(&main).await);
 }
 
 #[tokio::test]
@@ -385,8 +381,9 @@ async fn test_query_panics_are_caught() {
     client.initialize().await;
     client.open(&uri, SOURCE).await;
 
-    let diagnostics = client.diagnostics(&json!(uri)).await["diagnostics"].clone();
+    let diagnostics = client.diagnostics(&uri).await["diagnostics"].clone();
     assert_eq!(diagnostics.as_array().unwrap().len(), 1);
+    client.sync().await;
 
     let mut references = position(&uri, 2, 6);
     references["context"] = json!({ "includeDeclaration": true });
@@ -449,7 +446,7 @@ async fn test_poisoned_locks_are_recovered() {
     let mut client = Client::new();
     client.initialize().await;
     client.open(&uri, SOURCE).await;
-    client.diagnostics(&json!(uri)).await;
+    client.diagnostics(&uri).await;
 
     let backend = client.backend();
 
@@ -468,10 +465,10 @@ async fn test_poisoned_locks_are_recovered() {
     assert!(backend.file_cache.is_poisoned());
 
     client.change(&uri, 2, &[MISMATCH]).await;
-    assert_mismatch(&client.diagnostics(&json!(uri)).await);
+    assert_mismatch(&client.diagnostics(&uri).await);
 
     client.change(&uri, 3, &[SOURCE]).await;
-    client.diagnostics(&json!(uri)).await;
+    client.diagnostics(&uri).await;
     assert_hover(&mut client, &uri).await;
 }
 
@@ -493,6 +490,6 @@ async fn test_did_change_uses_last_change() {
     client
         .change(&uri, 3, &[MISMATCH, "fn main() -> Int {\n    42\n}\n"])
         .await;
-    let diagnostics = client.diagnostics(&json!(uri)).await;
+    let diagnostics = client.diagnostics(&uri).await;
     assert_eq!(diagnostics["diagnostics"], json!([]));
 }

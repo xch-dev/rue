@@ -37,6 +37,9 @@ use tower_lsp::{Client, LanguageServer};
 use crate::cache::{HoverInfo, SymbolHoverKind};
 use crate::position::offsets_to_range;
 
+/// Logged once the client says it's initialized.
+const INITIALIZED: &str = "Rue language server initialized.";
+
 #[derive(Debug)]
 pub struct Backend {
     client: Client,
@@ -124,7 +127,7 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "Rue language server initialized.")
+            .log_message(MessageType::INFO, INITIALIZED)
             .await;
     }
 
