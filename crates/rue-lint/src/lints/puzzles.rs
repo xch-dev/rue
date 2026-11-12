@@ -173,15 +173,21 @@ impl HirLintPass for UncheckedPuzzleCall<'_> {
                 continue;
             }
 
+            let Some(srcloc) = name.srcloc().cloned() else {
+                continue;
+            };
+
             let name = name.text();
 
+            // It's reported at the parameter, so that attributes on it apply
             if let Some(diagnostic) = cx.report(
                 Lint::UncheckedPuzzleCall,
-                call.clone(),
+                srcloc,
                 format!(
-                    "`{name}` is called, but its tree hash is never checked, so whoever spends the coin can choose what it does"
+                    "`{name}` comes from the solution and is called, but its tree hash is never checked, so whoever spends the coin can choose what it does"
                 ),
             ) {
+                diagnostic.notes.push(Note::at(call.clone(), "It's called here"));
                 diagnostic.notes.push(Note::new(format!(
                     "Compare `tree_hash({name})` with a hash that the puzzle trusts, such as one that's curried in"
                 )));

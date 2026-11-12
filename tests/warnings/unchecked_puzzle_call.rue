@@ -9,7 +9,10 @@ fn main(
     wrapped: Puzzle,
     passed: Puzzle,
     hashed_only: Puzzle,
+    not_equal: Puzzle,
+    output: Puzzle,
     SCREAMING: Puzzle,
+    #[allow(unchecked_puzzle_call)] allowed: Puzzle,
     solution: Any,
 ) -> List<List<Condition>> {
     // Parameters that are curried into the puzzle are trusted
@@ -39,7 +42,21 @@ fn main(
     let _ = tree_hash(hashed_only);
     let h = hashed_only(...solution);
 
-    [a, b, c, d, e, f, g, h]
+    // `!=` checks the hash just as well as `==`
+    let i = if tree_hash(not_equal) != PUZZLE_HASH {
+        nil
+    } else {
+        not_equal(...solution)
+    };
+
+    // A hash that's output (such as in a condition) is assumed to be checked by it
+    let j = output(...solution);
+    let k = [AssertMyPuzzleHash { puzzle_hash: tree_hash(output) }];
+
+    // The lint can be allowed on the parameter
+    let m = allowed(...solution);
+
+    [a, b, c, d, e, f, g, h, i, j, k, m]
 }
 
 // Exported functions are programs of their own

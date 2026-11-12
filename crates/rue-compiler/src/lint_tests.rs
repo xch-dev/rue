@@ -1672,12 +1672,17 @@ fn reports_with_level(source: &str, lint: Lint, level: LintLevel) -> (Vec<String
 
 /// Applies every suggestion that can be applied automatically.
 fn fix(source: &str) -> String {
+    fix_with(source, &[Applicability::MachineApplicable])
+}
+
+/// Applies every suggestion with one of the given applicabilities.
+fn fix_with(source: &str, applicabilities: &[Applicability]) -> String {
     let (diagnostics, _) = compile_source(source, |_| {});
 
     let edits = diagnostics
         .iter()
         .flat_map(|diagnostic| &diagnostic.suggestions)
-        .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
+        .filter(|suggestion| applicabilities.contains(&suggestion.applicability))
         .flat_map(|suggestion| &suggestion.edits)
         .collect::<Vec<_>>();
 
@@ -2655,4 +2660,44 @@ fn main(
         ]
     );
     assert!(has_errors);
+}
+
+#[test]
+fn bool_bitwise_operator_suggestions_keep_the_meaning() {
+    let source = "\
+fn main(a: Bool, b: Bool, x: Int) -> Bool {
+    let first = a | check(x) && b;
+    let second = a & check(x) == b;
+    let third = !(a & check(x));
+    let fourth = a & check(x);
+    let fifth = a && b | check(x);
+    let sixth = b == a & check(x);
+    first && second && third && fourth && fifth && sixth
+}
+
+fn check(x: Int) -> Bool {
+    assert x > 0;
+    true
+}
+";
+
+    assert_eq!(
+        fix_with(source, &[Applicability::MaybeIncorrect]),
+        "\
+fn main(a: Bool, b: Bool, x: Int) -> Bool {
+    let first = (a || check(x)) && b;
+    let second = (a && check(x)) == b;
+    let third = !(a && check(x));
+    let fourth = a && check(x);
+    let fifth = a && (b || check(x));
+    let sixth = b == (a && check(x));
+    first && second && third && fourth && fifth && sixth
+}
+
+fn check(x: Int) -> Bool {
+    assert x > 0;
+    true
+}
+"
+    );
 }

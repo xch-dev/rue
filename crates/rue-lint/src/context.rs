@@ -199,17 +199,6 @@ impl<'a> LintContext<'a> {
         rue_types::unwrap_semantic(self.db.types_mut(), ty, true)
     }
 
-    /// Whether the type is `Any`, which accepts any value.
-    pub fn is_any(&mut self, ty: TypeId) -> bool {
-        let semantic = self.without_aliases(ty);
-        matches!(self.db.ty(semantic), Type::Any)
-    }
-
-    /// The type that's left of a value of type `from`, after it's checked not to be `to`.
-    pub fn subtract(&mut self, from: TypeId, to: TypeId) -> TypeId {
-        rue_types::subtract(self.db.types_mut(), self.types, from, to)
-    }
-
     /// Whether the type is unresolved, or contains an unresolved type anywhere inside of it,
     /// because an error has already been reported for it. Such types are compatible with
     /// everything, so lints that compare them would report errors twice.

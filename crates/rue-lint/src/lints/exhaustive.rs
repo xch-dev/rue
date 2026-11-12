@@ -1,6 +1,8 @@
 use rue_diagnostic::{Lint, Note, SrcLoc};
 use rue_hir::{Block, Hir, HirId, Statement, SymbolId};
-use rue_types::TypeId;
+use std::collections::HashSet;
+
+use rue_types::{Check, Type, TypeId};
 
 use crate::{HirLintPass, LintContext};
 
@@ -90,6 +92,8 @@ struct Guarded {
     value: HirId,
     guard: HirId,
     ty: TypeId,
+    /// Whether the guard can never be true, which is an error.
+    impossible: bool,
 }
 
 fn check_chain(cx: &mut LintContext<'_>, guards: &[Guarded], raise: SrcLoc) {
@@ -109,20 +113,37 @@ fn check_chain(cx: &mut LintContext<'_>, guards: &[Guarded], raise: SrcLoc) {
 
     let db = cx.db();
 
-    let (Some(mut remaining), Some(scope)) = (db.hir_type(first.value), db.hir_scope(first.guard))
-    else {
+    let (Some(ty), Some(scope)) = (db.hir_type(first.value), db.hir_scope(first.guard)) else {
         return;
     };
 
-    if cx.contains_unresolved(remaining) {
+    // A guard that failed to compile has already been reported
+    if cx.contains_unresolved(ty)
+        || guards
+            .iter()
+            .any(|guard| guard.impossible || cx.contains_unresolved(guard.ty))
+    {
         return;
     }
 
-    for guard in &guards {
-        remaining = cx.subtract(remaining, guard.ty);
+    // Only a union is handled one type at a time, rather than checked for a few shapes (such as
+    // a value that can be anything)
+    let members = union_members(cx, ty);
+
+    if members.len() < 2 {
+        return;
     }
 
-    if cx.is_never(remaining) || cx.is_any(remaining) {
+    let remaining = members
+        .into_iter()
+        .filter(|&member| {
+            !guards
+                .iter()
+                .any(|guard| cx.is_assignable(member, guard.ty))
+        })
+        .collect::<Vec<_>>();
+
+    if remaining.is_empty() {
         return;
     }
 
@@ -130,9 +151,11 @@ fn check_chain(cx: &mut LintContext<'_>, guards: &[Guarded], raise: SrcLoc) {
         return;
     };
 
-    // Subtracting from an alias keeps its name, so it's resolved to name what's left
-    let remaining = cx.without_aliases(remaining);
-    let remaining = cx.type_name(scope, remaining);
+    let remaining = remaining
+        .into_iter()
+        .map(|member| cx.type_name(scope, member))
+        .collect::<Vec<_>>()
+        .join(" | ");
 
     if let Some(diagnostic) = cx.report(
         Lint::NonExhaustiveUnionGuard,
@@ -168,6 +191,7 @@ fn guarded(cx: &LintContext<'_>, condition: HirId) -> Option<Guarded> {
         value,
         guard,
         ty: node.ty,
+        impossible: node.check == Check::Impossible,
     })
 }
 
@@ -191,4 +215,27 @@ fn raise_srcloc(cx: &LintContext<'_>, hir: HirId) -> Option<SrcLoc> {
         [Statement::Raise(_, srcloc)] if block.body.is_none() => Some(srcloc.clone()),
         _ => None,
     }
+}
+
+/// The types in a union, including the ones in unions inside of it, or just the type itself if it
+/// isn't a union.
+fn union_members(cx: &mut LintContext<'_>, ty: TypeId) -> Vec<TypeId> {
+    let mut members = Vec::new();
+    let mut stack = vec![ty];
+    let mut visited = HashSet::new();
+
+    while let Some(ty) = stack.pop() {
+        if !visited.insert(ty) {
+            continue;
+        }
+
+        let semantic = cx.without_aliases(ty);
+
+        match cx.db().ty(semantic) {
+            Type::Union(union) => stack.extend(union.types.iter().rev()),
+            _ => members.push(ty),
+        }
+    }
+
+    members
 }

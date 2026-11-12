@@ -23,7 +23,17 @@ fn main(puzzle_hash: Bytes32, amount: Int, flag: Bool) -> List<Condition> {
     let child = AssertMyPuzzleHash { puzzle_hash };
     let checked = check(child);
 
-    [checked, ...rest]
+    // The body of a lambda is what it returns when it's called
+    let make = fn() => CreateCoinAnnouncement { message: puzzle_hash };
+    let made = make();
+
+    [checked, made, ...rest]
+}
+
+// Tests don't output anything, and often build conditions only to check them
+test fn checks_a_condition() {
+    let condition = ReserveFee { amount: 1 };
+    assert condition.amount == 1;
 }
 
 fn check(condition: AssertMyPuzzleHash) -> AssertMyPuzzleHash {

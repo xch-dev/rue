@@ -16,7 +16,16 @@ struct Transfer {
 type Action = Spend | Melt | Transfer;
 
 fn main(action: Action) -> Int {
-    expression(action) + statements(action) + different(action, action) + rejected(action)
+    expression(action)
+        + statements(action)
+        + different(action, action)
+        + rejected(action)
+        + handled(action)
+        + fallback(action)
+        + logged(action)
+        + shapes(action)
+        + atoms(nil)
+        + nested(action)
 }
 
 // `Transfer` isn't handled, so it falls into the `raise`
@@ -53,10 +62,84 @@ fn different(action: Action, other: Action) -> Int {
     }
 }
 
+// Every type is handled, so the `raise` is never reached
+#[allow(unnecessary_guard)]
+fn handled(action: Action) -> Int {
+    if action is Spend {
+        action.amount
+    } else if action is Melt {
+        -action.amount
+    } else if action is Transfer {
+        0
+    } else {
+        raise;
+    }
+}
+
+// The rest are handled by the last branch, rather than raising
+fn fallback(action: Action) -> Int {
+    if action is Spend {
+        action.amount
+    } else if action is Melt {
+        -action.amount
+    } else {
+        0
+    }
+}
+
+// The last branch does more than raise
+fn logged(action: Action) -> Int {
+    if action is Spend {
+        action.amount
+    } else if action is Melt {
+        -action.amount
+    } else {
+        debug action;
+        raise;
+    }
+}
+
 // A single guard is a check that rejects everything else
 fn rejected(action: Action) -> Int {
     if action is Spend {
         action.amount
+    } else {
+        raise;
+    }
+}
+
+// A value that isn't a union is checked for a few shapes, and anything else is rejected
+fn shapes(value: Any) -> Int {
+    if value is Bytes32 {
+        1
+    } else if value is (Int, Int) {
+        value.first
+    } else {
+        raise;
+    }
+}
+
+fn atoms(value: Bytes) -> Int {
+    if value is Bytes32 {
+        1
+    } else if value is PublicKey {
+        2
+    } else {
+        raise;
+    }
+}
+
+// The types of a union inside of another one are handled one at a time too, so `Transfer` is
+// still missing here
+type Wrapped = Action | nil;
+
+fn nested(action: Wrapped) -> Int {
+    if action is Spend {
+        action.amount
+    } else if action is Melt {
+        -action.amount
+    } else if action is nil {
+        0
     } else {
         raise;
     }

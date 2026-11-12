@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
-use rue_diagnostic::{Applicability, Lint, Note, SrcLoc, Suggestion};
+use rue_diagnostic::{Applicability, Edit, Lint, Note, SrcLoc, Suggestion};
 use rue_hir::{BinaryOp, Hir, HirId, SymbolId, may_raise};
 use rue_lexer::{Lexer, TokenKind};
 
 use crate::{
     HirLintPass, LintContext,
     cost::{COST_PER_BYTE, Cost, CostModel},
+    text::{Position, is_parenthesized, position},
 };
 
 /// The size of short-circuiting with `&&` or `||` rather than evaluating both sides with `&` or
@@ -27,7 +28,7 @@ impl HirLintPass for BoolBitwiseOperator {
         &[Lint::BoolBitwiseOperator]
     }
 
-    fn check_hir(&mut self, cx: &mut LintContext<'_>, _hir: HirId, node: &Hir) {
+    fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
         let Hir::Binary(op @ (BinaryOp::All | BinaryOp::Any), left, right) = *node else {
             return;
         };
@@ -61,6 +62,19 @@ impl HirLintPass for BoolBitwiseOperator {
             format!("it has an estimated cost of {runtime}")
         };
 
+        let mut edits = vec![Edit::new(operator.clone(), short_circuit)];
+
+        // `&&` and `||` bind more loosely than `&` and `|` (and than comparisons), so an operand of
+        // another operator needs parentheses to keep its meaning
+        if matches!(position(cx, hir), Position::Operand | Position::Postfix)
+            && let Some(whole) = cx.db().hir_srcloc(hir)
+            && !is_parenthesized(whole.text())
+        {
+            let at = |offset: usize| SrcLoc::new(whole.source.clone(), offset..offset);
+            edits.push(Edit::new(at(whole.span.start), "("));
+            edits.push(Edit::new(at(whole.span.end), ")"));
+        }
+
         if let Some(diagnostic) = cx.report(
             Lint::BoolBitwiseOperator,
             operator.clone(),
@@ -71,10 +85,9 @@ impl HirLintPass for BoolBitwiseOperator {
             diagnostic.notes.push(Note::new(format!(
                 "`{short_circuit}` only evaluates the right side when it's needed"
             )));
-            diagnostic.suggestions.push(Suggestion::replace(
+            diagnostic.suggestions.push(Suggestion::new(
                 format!("Use `{short_circuit}` instead"),
-                operator,
-                short_circuit,
+                edits,
                 // The right side no longer raises or runs when the left side decides the result
                 Applicability::MaybeIncorrect,
             ));
