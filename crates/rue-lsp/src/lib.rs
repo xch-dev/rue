@@ -441,35 +441,41 @@ impl Backend {
             }
         }
 
-        // Everything is compiled before any state is updated, so that a panic leaves the results
-        // of the last compile in place
-        let compiled = projects
-            .values()
-            .map(|project| self.compile(project))
+        let mut compiled = removed
+            .into_iter()
+            .map(Compiled::removed)
+            .chain(projects.values().map(|project| self.compile(project)))
             .collect::<Vec<_>>();
 
-        let mut diagnostics = IndexMap::new();
-        let mut shared = HashSet::new();
+        // A file that a project stops including keeps the diagnostics and cache of whichever
+        // project was compiled last, so the other projects that include it are compiled too, and
+        // recorded last, to replace them
+        let dropped = compiled
+            .iter()
+            .flat_map(|compiled| {
+                published
+                    .get(&compiled.key)
+                    .into_iter()
+                    .flatten()
+                    .filter(|kind| !compiled.diagnostics.contains_key(*kind))
+            })
+            .collect::<HashSet<_>>();
 
-        for compiled in removed.into_iter().map(Compiled::removed).chain(compiled) {
-            diagnostics.extend(self.update_project(compiled, &mut shared));
+        for (key, files) in &published {
+            if !compiled.iter().any(|compiled| &compiled.key == key)
+                && files.iter().any(|kind| dropped.contains(kind))
+                && let Some(project) = FoundProject::find(key)
+            {
+                compiled.push(self.compile(&project));
+            }
         }
 
-        // A file that another project also includes keeps the diagnostics and cache of the one
-        // that was compiled last, so those other projects are compiled again to replace them
-        let others = lock(&self.published)
-            .iter()
-            .filter(|(key, files)| {
-                !projects.contains_key(*key) && files.iter().any(|kind| shared.contains(kind))
-            })
-            .map(|(key, _)| key.clone())
-            .collect::<Vec<_>>();
+        // Everything is compiled before any state is updated, so that a panic leaves the results
+        // of the last compile in place
+        let mut diagnostics = IndexMap::new();
 
-        for key in others {
-            if let Some(project) = FoundProject::find(&key) {
-                let compiled = self.compile(&project);
-                diagnostics.extend(self.update_project(compiled, &mut HashSet::new()));
-            }
+        for compiled in compiled {
+            diagnostics.extend(self.update_project(compiled));
         }
 
         diagnostics
@@ -554,13 +560,9 @@ impl Backend {
 
     /// Records the result of compiling a project, and returns the diagnostics to publish. The
     /// files it published diagnostics for last time but not this time get theirs cleared, and
-    /// their caches are removed, since they're not part of the project anymore. Files that another
-    /// project published are left to it, and added to `shared`.
-    fn update_project(
-        &self,
-        compiled: Compiled,
-        shared: &mut HashSet<SourceKind>,
-    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+    /// their caches are removed, since they're not part of the project anymore (unless another
+    /// project includes them).
+    fn update_project(&self, compiled: Compiled) -> IndexMap<SourceKind, Vec<Diagnostic>> {
         let Compiled {
             key,
             mut diagnostics,
@@ -577,21 +579,14 @@ impl Backend {
                 published.insert(key, diagnostics.keys().cloned().collect())
             };
 
-            let mut files = Vec::new();
-
-            for kind in previous.unwrap_or_default() {
-                if diagnostics.contains_key(&kind) {
-                    continue;
-                }
-
-                if published.values().any(|files| files.contains(&kind)) {
-                    shared.insert(kind);
-                } else {
-                    files.push(kind);
-                }
-            }
-
-            files
+            previous
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|kind| {
+                    !diagnostics.contains_key(kind)
+                        && !published.values().any(|files| files.contains(kind))
+                })
+                .collect::<Vec<_>>()
         };
 
         let mut cache = lock(&self.cache);
