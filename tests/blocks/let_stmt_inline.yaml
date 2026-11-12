@@ -5,3 +5,10 @@ output: '25528'
 runtime_cost: 20
 byte_cost: 60000
 total_cost: 60020
+diagnostics:
+- |-
+  Unnecessary `inline`, since binding `c` is only used once, so it's inlined anyway at let_stmt_inline.rue:4:16
+    help: Remove `inline`
+- |-
+  Unnecessary `inline`, since binding `e` is only used once, so it's inlined anyway at let_stmt_inline.rue:6:16
+    help: Remove `inline`

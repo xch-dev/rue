@@ -2,3 +2,7 @@ diagnostics:
 - 'Cannot assign `fn(value: Bytes32) -> Bytes32` to `fn(value: Bytes) -> Bytes32`, since they are incompatible at function_param_variance.rue:6:49'
 - 'Cannot cast `fn(value: Bytes32) -> Bytes32` to `fn(value: Bytes) -> Bytes32`, since they have different runtime representations at function_param_variance.rue:7:16'
 - 'Cannot assign `fn(value: Bytes32) -> Bytes` to `fn(value: Bytes32) -> Bytes32`, since they are incompatible at function_param_variance.rue:8:55'
+- |-
+  This call is evaluated again with the same arguments, which costs as much as the first time at function_param_variance.rue:9:24
+    note: It's first evaluated here at function_param_variance.rue:9:6
+    note: Store the result in a `let` binding and use that instead

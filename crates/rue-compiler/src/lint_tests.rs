@@ -1911,7 +1911,7 @@ fn main(value: Int) -> Int {
     assert_eq!(
         fixed,
         "\
-inline const ONCE: Int = 1;
+const ONCE: Int = 1;
 
 mod helpers {
     fn inner() -> Int {
@@ -1924,7 +1924,7 @@ mod helpers {
 }
 
 fn main(value: Int) -> Int {
-    inline let doubled = value * 2;
+    let doubled = value * 2;
     doubled + ONCE + helpers::outer()
 }
 "
@@ -2104,11 +2104,11 @@ fn early(a: Int) -> Int {
     assert_eq!(
         fixed,
         "\
-inline // inline
+// inline
 const ONCE: Int = 1;
 
 fn main(a: Int, flag: Bool) -> Int {
-    inline // inline
+    // inline
     let doubled = a * 2;
 
     if (a == 1 // note

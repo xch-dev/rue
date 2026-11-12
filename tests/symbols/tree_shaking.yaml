@@ -15,3 +15,7 @@ tests:
 diagnostics:
 - Unused binding `a` at tree_shaking.rue:2:9
 - Unused binding `b` at tree_shaking.rue:3:9
+- |-
+  This call is evaluated again with the same arguments, which costs as much as the first time at tree_shaking.rue:12:24
+    note: It's first evaluated here at tree_shaking.rue:12:5
+    note: Store the result in a `let` binding and use that instead

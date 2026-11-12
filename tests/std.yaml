@@ -49,4 +49,16 @@ diagnostics:
 - |-
   Redundant field name, since `puzzle_hash: puzzle_hash` can be written as `puzzle_hash` at std.rue:39:33
     help: Use the shorthand instead
+- |-
+  This call is evaluated again with the same arguments, which costs as much as the first time at std.rue:57:12
+    note: It's first evaluated here at std.rue:56:12
+    note: Store the result in a `let` binding and use that instead
+- |-
+  This call is evaluated again with the same arguments, which costs as much as the first time at std.rue:58:12
+    note: It's first evaluated here at std.rue:57:34
+    note: Store the result in a `let` binding and use that instead
 - Both sides of `==` are the same, so it always evaluates to `true` at std.rue:85:12
+- |-
+  This call is evaluated again with the same arguments, which costs as much as the first time at std.rue:85:32
+    note: It's first evaluated here at std.rue:85:12
+    note: Store the result in a `let` binding and use that instead

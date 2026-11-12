@@ -85,6 +85,7 @@ Related lints are also in groups, which can be configured anywhere a lint can. R
 - `unused` contains every `unused_*` lint.
 - `style` contains lints for code that works, but could be written more simply, such as `unnecessary_parens` and `collapsible_if`.
 - `suspicious` contains lints for code that's likely to be a mistake, such as `self_comparison` and `unconditional_recursion`.
+- `cost` contains lints for code that costs more to run or is larger than it needs to be, such as `large_inline` and `repeated_expensive_call`.
 
 A group sets the level of every lint in it, including the ones that are allowed by default, so `style = "warn"` also enables `negated_condition` and `shadowed_binding`.
 

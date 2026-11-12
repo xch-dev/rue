@@ -9,9 +9,11 @@ mod conditions;
 mod exports;
 mod guards;
 mod inline_ifs;
+mod inlining;
 mod naming;
 mod operators;
 mod recursion;
+mod repeated;
 mod returns;
 mod shadowing;
 mod statements;
@@ -75,6 +77,8 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(statements::NeedlessLetReturn),
         Box::new(casts::BytesIntConfusion),
         Box::new(recursion::UnconditionalRecursion),
+        Box::new(repeated::RepeatedExpensiveCall::default()),
+        Box::new(inlining::Inlining::new(input)),
         Box::new(unused_fields::UnusedStructField::new(input)),
     ]
 }
