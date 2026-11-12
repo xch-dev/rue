@@ -16,8 +16,8 @@ pub(crate) type LintPass = fn(&mut LintContext<'_>, &LintInput<'_>);
 pub(crate) const PASSES: &[LintPass] = &[
     syntax::check,
     run_hir_pass::<operators::UnnecessaryPlus>,
-    casts::check,
-    guards::check,
+    run_hir_pass::<casts::UnnecessaryCast>,
+    run_hir_pass::<guards::UnnecessaryGuard>,
     run_hir_pass::<conditions::ConstantCondition>,
     run_hir_pass::<statements::UnusedValue>,
     run_hir_pass::<inline_ifs::InlineIfMayRaise>,

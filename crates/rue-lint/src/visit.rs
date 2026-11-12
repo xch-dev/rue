@@ -6,9 +6,8 @@ use rue_hir::{Block, Declaration, Hir, HirId, Statement, Symbol};
 use crate::{LintContext, LintInput};
 
 /// A lint pass that runs over the HIR of the documents being linted. The walk visits every
-/// function, constant and struct field default declared in them (including lambdas and the
-/// expressions inside of `const` expressions, which have already been evaluated), and calls the
-/// pass for each HIR node and statement once.
+/// function, constant and struct field default declared in them (including lambdas), and calls
+/// the pass for each HIR node and statement once.
 ///
 /// The type and location of the expression that a node was compiled from are available from
 /// [`Database::hir_type`](rue_hir::Database::hir_type) and
@@ -71,8 +70,8 @@ struct Walker<P> {
 
 impl<P: HirLintPass> Walker<P> {
     fn visit_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId) {
-        // A node can be reachable more than once, such as a struct field default which is used
-        // by every struct initializer that leaves out the field
+        // A few nodes that the compiler generates are shared, such as the `nil` of a `return`
+        // without a value, so each node is only visited once
         if !self.visited.insert(hir) {
             return;
         }
@@ -80,12 +79,6 @@ impl<P: HirLintPass> Walker<P> {
         let node = cx.db().hir(hir).clone();
 
         self.pass.check_hir(cx, hir, &node);
-
-        // Evaluating a const expression replaces it with the result, but the expression it was
-        // compiled from is still linted
-        if let Some(value) = cx.db().const_expr_value(hir) {
-            self.visit_hir(cx, value);
-        }
 
         match node {
             Hir::Unresolved
@@ -97,7 +90,21 @@ impl<P: HirLintPass> Walker<P> {
             | Hir::Reference(_)
             | Hir::InfinityG1
             | Hir::InfinityG2 => {}
+            // The result of a const expression is generated, so only the expression is visited
             Hir::Const(expr) => self.visit_hir(cx, expr.value),
+            Hir::List(list) => self.visit_all(cx, list.items),
+            // Default values are visited from the struct declaration instead
+            Hir::Struct(initializer) => self.visit_all(
+                cx,
+                initializer
+                    .fields
+                    .into_iter()
+                    .filter(|field| !field.is_default)
+                    .map(|field| field.value),
+            ),
+            Hir::FieldAccess(access) => self.visit_hir(cx, access.value),
+            Hir::Cast(hir) => self.visit_hir(cx, hir),
+            Hir::Guard(guard) => self.visit_hir(cx, guard.value),
             Hir::Block(block) => self.visit_block(cx, &block),
             Hir::Lambda(symbol) => {
                 if let Symbol::Function(function) = cx.db().symbol(symbol) {

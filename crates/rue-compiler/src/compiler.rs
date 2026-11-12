@@ -16,7 +16,7 @@ use rue_hir::{
     Builtins, Constraint, Database, Declaration, ImportId, Mappings, Scope, ScopeId, Symbol,
     SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
-use rue_lint::{CastSite, GuardSite, LintInput, LintSites};
+use rue_lint::{LintInput, LintSites};
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, CheckError, Comparison, Inference, Type, TypeId};
@@ -457,8 +457,8 @@ impl Compiler {
         self.return_count += 1;
     }
 
-    /// Records the type and location of a compiled expression in the database, so that they're
-    /// available after compilation (such as to lints). The builtin values (such as `nil`) share
+    /// Records the type, location and scope of a compiled expression in the database, so that
+    /// they're available after compilation (such as to lints). The builtin values (such as `nil`) share
     /// a HIR node, so the value is given a node of its own first, which is returned.
     pub fn record_value(&mut self, node: &impl GetTextRange, mut value: Value) -> Value {
         if self.builtins.is_shared_hir(value.hir) {
@@ -469,6 +469,7 @@ impl Compiler {
         let srcloc = self.srcloc(node);
         self.db.set_hir_type(value.hir, value.ty);
         self.db.set_hir_srcloc(value.hir, srcloc);
+        self.db.set_hir_scope(value.hir, self.last_scope_id());
 
         value
     }
@@ -556,15 +557,6 @@ impl Compiler {
             let from_name = self.type_name(from);
             let to_name = self.type_name(to);
             self.diagnostic(node, DiagnosticKind::IncompatibleGuard(from_name, to_name));
-        } else {
-            let site = GuardSite {
-                srcloc: self.srcloc(node),
-                scope: self.last_scope_id(),
-                from,
-                to,
-                has_runtime_check: check != Check::None,
-            };
-            self.lint_sites.guards.push(site);
         }
 
         let else_id = rue_types::subtract(self.db.types_mut(), &self.builtins.types, from, to);
@@ -618,17 +610,6 @@ impl Compiler {
 
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
         let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
-
-        if cast {
-            let site = CastSite {
-                srcloc: self.srcloc(node),
-                scope: self.last_scope_id(),
-                from,
-                to,
-                comparison,
-            };
-            self.lint_sites.casts.push(site);
-        }
 
         match comparison {
             Comparison::Assign => {}

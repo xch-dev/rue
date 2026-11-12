@@ -23,9 +23,10 @@ pub struct Test {
 #[derive(Debug, Default, Clone)]
 pub struct Database {
     hir: Arena<Hir>,
-    const_exprs: IndexMap<HirId, HirId>,
+    const_exprs: Vec<HirId>,
     hir_types: HashMap<HirId, TypeId>,
     hir_srclocs: HashMap<HirId, SrcLoc>,
+    hir_scopes: HashMap<HirId, ScopeId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
@@ -45,15 +46,11 @@ impl Database {
     }
 
     pub fn alloc_hir(&mut self, hir: Hir) -> HirId {
-        let const_value = match &hir {
-            Hir::Const(expr) => Some(expr.value),
-            _ => None,
-        };
-
+        let is_const = matches!(&hir, Hir::Const(_));
         let hir = self.hir.alloc(hir);
 
-        if let Some(value) = const_value {
-            self.const_exprs.insert(hir, value);
+        if is_const {
+            self.const_exprs.push(hir);
         }
 
         hir
@@ -68,25 +65,28 @@ impl Database {
     }
 
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
-        self.const_exprs.keys().copied()
+        self.const_exprs.iter().copied()
     }
 
-    /// The expression inside of a const expression. This is still available after the const
-    /// expression has been evaluated and replaced with its result.
-    pub fn const_expr_value(&self, hir: HirId) -> Option<HirId> {
-        self.const_exprs.get(&hir).copied()
+    /// The value inside of any casts, which is what's evaluated at runtime.
+    pub fn without_casts(&self, mut hir: HirId) -> HirId {
+        while let Hir::Cast(value) = self.hir(hir) {
+            hir = *value;
+        }
+        hir
     }
 
-    /// Records the static type of a HIR node. An expression that compiles to the same node as
-    /// the expression inside of it (such as a cast) records its type afterward, so the node ends
-    /// up with the type of the outermost expression, which is the type the rest of the code sees.
+    /// Records the static type of a HIR node. Each expression compiles to a node of its own,
+    /// except for a parenthesized expression, which compiles to the node of the expression inside
+    /// of it. It records its type afterward, so the node ends up with the type of the outermost
+    /// expression.
     pub fn set_hir_type(&mut self, hir: HirId, ty: TypeId) {
         self.hir_types.insert(hir, ty);
     }
 
     /// The static type of a HIR node, if it was produced by compiling an expression. Nodes that
-    /// the compiler generates in other ways, such as the checks for a type guard or the
-    /// destructuring of a binding, don't have one.
+    /// the compiler generates in other ways, such as the destructuring of a binding, don't have
+    /// one.
     pub fn hir_type(&self, hir: HirId) -> Option<TypeId> {
         self.hir_types.get(&hir).copied()
     }
@@ -102,6 +102,18 @@ impl Database {
     /// available for the same nodes as [`hir_type`](Self::hir_type).
     pub fn hir_srcloc(&self, hir: HirId) -> Option<&SrcLoc> {
         self.hir_srclocs.get(&hir)
+    }
+
+    /// Records the scope that the source expression of a HIR node is in, which is used to name
+    /// types as they're written there.
+    pub fn set_hir_scope(&mut self, hir: HirId, scope: ScopeId) {
+        self.hir_scopes.insert(hir, scope);
+    }
+
+    /// The scope that the source expression of a HIR node is in, which is only available for the
+    /// same nodes as [`hir_type`](Self::hir_type).
+    pub fn hir_scope(&self, hir: HirId) -> Option<ScopeId> {
+        self.hir_scopes.get(&hir).copied()
     }
 
     pub fn insert_default_field(&mut self, ty: TypeId, name: String, value: Value) {
@@ -304,6 +316,35 @@ impl Database {
             Hir::Pair(first, rest) => {
                 format!("({}, {})", self.debug_hir(*first), self.debug_hir(*rest))
             }
+            Hir::List(list) => format!(
+                "[{}]",
+                list.items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, item)| {
+                        let item = self.debug_hir(*item);
+
+                        if i == list.items.len() - 1 && !list.nil_terminated {
+                            format!("...{item}")
+                        } else {
+                            item
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Hir::Struct(initializer) => format!(
+                "{{ {} }}",
+                initializer
+                    .fields
+                    .iter()
+                    .map(|field| format!("{}: {}", field.name, self.debug_hir(field.value)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Hir::FieldAccess(access) => format!("{}.{}", self.debug_hir(access.value), access.name),
+            Hir::Cast(value) => format!("({} as _)", self.debug_hir(*value)),
+            Hir::Guard(guard) => format!("({} is _)", self.debug_hir(guard.value)),
             Hir::Const(expr) => format!("const {{ {} }}", self.debug_hir(expr.value)),
             Hir::Reference(symbol) => self.debug_symbol(*symbol),
             Hir::Block(block) => block

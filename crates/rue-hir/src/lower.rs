@@ -10,8 +10,8 @@ use rue_options::CompilerOptions;
 
 use crate::{
     BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, ExprStatement,
-    FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError, Statement,
-    Symbol, SymbolId, UnaryOp,
+    FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError,
+    Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
 };
 
 #[derive(Debug, Clone)]
@@ -211,7 +211,43 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let rest = self.lower_hir(env, rest);
                 self.arena.alloc(Lir::Cons(first, rest))
             }
-            Hir::Const(_) => unreachable!("unevaluated const expression reached lowering"),
+            Hir::List(list) => self.lower_list(env, list.items, list.nil_terminated),
+            Hir::Struct(initializer) => {
+                let fields = initializer
+                    .fields
+                    .into_iter()
+                    .map(|field| field.value)
+                    .collect();
+                self.lower_list(env, fields, initializer.nil_terminated)
+            }
+            Hir::FieldAccess(access) => {
+                let mut lir = self.lower_hir(env, access.value);
+
+                match access.kind {
+                    FieldKind::Path(path) => {
+                        for path in path {
+                            lir = match path {
+                                TypePath::First => self.arena.alloc(Lir::First(lir)),
+                                TypePath::Rest => self.arena.alloc(Lir::Rest(lir)),
+                            };
+                        }
+                    }
+                    FieldKind::Length => lir = self.arena.alloc(Lir::Strlen(lir)),
+                }
+
+                lir
+            }
+            Hir::Cast(value) => self.lower_hir(env, value),
+            Hir::Guard(guard) => {
+                let check = generate_check_hir(self.db, guard.runtime_check(), guard.value);
+                self.lower_hir(env, check)
+            }
+            Hir::Const(expr) => {
+                let result = expr
+                    .result
+                    .expect("unevaluated const expression reached lowering");
+                self.lower_hir(env, result)
+            }
             Hir::Reference(symbol) => self.lower_symbol(env, symbol, false),
             Hir::Block(block) => self.lower_block(env, block.statements, block.body),
             Hir::Lambda(lambda) => self.lower_symbol(env, lambda, true),
@@ -387,8 +423,31 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
     }
 
+    /// Lowers the items of a list (or the fields of a struct) to nested pairs. The items are
+    /// lowered in order, and if the list isn't nil-terminated, the last item is the end of it.
+    fn lower_list(&mut self, env: &Environment, items: Vec<HirId>, nil_terminated: bool) -> LirId {
+        let mut items = items
+            .into_iter()
+            .map(|item| self.lower_hir(env, item))
+            .collect::<Vec<_>>();
+
+        let mut lir = if nil_terminated {
+            self.arena.alloc(Lir::Atom(vec![]))
+        } else if let Some(last) = items.pop() {
+            last
+        } else {
+            unreachable!("a list that isn't nil-terminated ends in a spread item")
+        };
+
+        for item in items.into_iter().rev() {
+            lir = self.arena.alloc(Lir::Cons(item, lir));
+        }
+
+        lir
+    }
+
     fn lower_function_call(&mut self, env: &Environment, call: FunctionCall) -> LirId {
-        if let Hir::Reference(symbol) = self.db.hir(call.function).clone()
+        if let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(call.function)).clone()
             && let Symbol::Function(function) = self.db.symbol(symbol).clone()
         {
             let mut args = HashMap::new();
@@ -921,7 +980,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         match self.db.hir(hir) {
             Hir::Nil | Hir::String(_) | Hir::Int(_) | Hir::Bool(_) | Hir::Bytes(_) => true,
             Hir::Pair(first, rest) => self.is_static_hir(*first) && self.is_static_hir(*rest),
-            Hir::Unary(UnaryOp::Plus, hir) => self.is_static_hir(*hir),
+            Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_static_hir(*hir),
+            Hir::List(list) => list.items.iter().all(|&item| self.is_static_hir(item)),
+            Hir::Struct(initializer) => initializer
+                .fields
+                .iter()
+                .all(|field| self.is_static_hir(field.value)),
+            // Guards that don't use the value at runtime are lowered to a boolean
+            Hir::Guard(guard) => guard.value_uses() == 0,
+            Hir::Const(expr) => expr.result.is_some_and(|result| self.is_static_hir(result)),
             Hir::Reference(symbol) => {
                 if let Some(hir) = self.inline_argument(*symbol) {
                     return self.is_static_hir(hir);

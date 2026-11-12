@@ -22,6 +22,7 @@ pub fn compile_const_expr(
     let hir = ctx.alloc_hir(Hir::Const(ConstExpr {
         value: value.hir,
         loc,
+        result: None,
     }));
 
     value.with_hir(hir)

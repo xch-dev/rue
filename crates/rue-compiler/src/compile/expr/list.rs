@@ -1,7 +1,7 @@
 use log::debug;
 use rue_ast::AstListExpr;
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Hir, Value};
+use rue_hir::{Hir, List, Value};
 use rue_types::{Pair, Type, TypeId, Union};
 
 use crate::{Compiler, compile_expr};
@@ -68,18 +68,20 @@ pub fn compile_list_expr(
         values.push(value);
     }
 
-    let mut hir = ctx.builtins().nil.hir;
     let mut ty = ctx.builtins().nil.ty;
 
-    for (i, value) in values.into_iter().rev().enumerate() {
+    for (i, value) in values.iter().rev().enumerate() {
         if !nil_terminated && i == 0 {
-            hir = value.hir;
             ty = value.ty;
             continue;
         }
-        hir = ctx.alloc_hir(Hir::Pair(value.hir, hir));
         ty = ctx.alloc_type(Type::Pair(Pair::new(value.ty, ty)));
     }
+
+    let hir = ctx.alloc_hir(Hir::List(List {
+        items: values.into_iter().map(|value| value.hir).collect(),
+        nil_terminated,
+    }));
 
     Value::new(hir, ty)
 }

@@ -1569,3 +1569,24 @@ fn main() -> Int {
     );
     assert!(!has_errors);
 }
+
+#[test]
+fn nested_casts_are_linted_separately() {
+    let source = "\
+fn main(value: Int) -> Int {
+    (value as Int) as Int
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // Each cast has a HIR node of its own, so both are reported
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 2: Unnecessary cast from `Int` to `Int`, since they are compatible with each other",
+            "Warning 2: Unnecessary cast from `Int` to `Int`, since they are compatible with each other",
+        ]
+    );
+    assert!(!has_errors);
+}

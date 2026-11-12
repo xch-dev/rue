@@ -53,7 +53,15 @@ impl Visitor<'_> {
             | Hir::InfinityG1
             | Hir::InfinityG2 => false,
             Hir::Reference(symbol) | Hir::Lambda(symbol) => self.visit_symbol(symbol),
-            Hir::Const(expr) => self.visit_hir(expr.value),
+            Hir::Const(expr) => self.visit_hir(expr.result.unwrap_or(expr.value)),
+            Hir::List(list) => self.visit_all(list.items),
+            Hir::Struct(initializer) => {
+                self.visit_all(initializer.fields.into_iter().map(|field| field.value))
+            }
+            Hir::FieldAccess(access) => self.visit_hir(access.value),
+            Hir::Cast(hir) => self.visit_hir(hir),
+            // The value is only evaluated if the check it's lowered to uses it
+            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
             Hir::Block(block) => {
                 for stmt in block.statements {
                     match stmt {

@@ -43,8 +43,8 @@ enum ConstEvalError {
     DependencyFailed,
 }
 
-/// Evaluates a const expression after the const expressions it depends on, and replaces it with
-/// the result. Returns whether the evaluation succeeded.
+/// Evaluates a const expression after the const expressions it depends on, and stores the result
+/// in it. Returns whether the evaluation succeeded.
 fn evaluate_const(ctx: &mut Compiler, states: &mut HashMap<HirId, ConstState>, hir: HirId) -> bool {
     match states.get(&hir) {
         Some(ConstState::Done) => return true,
@@ -54,14 +54,18 @@ fn evaluate_const(ctx: &mut Compiler, states: &mut HashMap<HirId, ConstState>, h
     }
 
     let Hir::Const(expr) = ctx.hir(hir).clone() else {
-        return true;
+        unreachable!("const expressions are never replaced");
     };
+
+    if expr.result.is_some() {
+        return true;
+    }
 
     states.insert(hir, ConstState::Evaluating);
 
     let diagnostic = match evaluate_const_expr(ctx, states, expr.value) {
         Ok(value) => {
-            *ctx.hir_mut(hir) = value;
+            set_const_result(ctx, hir, value);
             states.insert(hir, ConstState::Done);
             return true;
         }
@@ -81,10 +85,18 @@ fn evaluate_const(ctx: &mut Compiler, states: &mut HashMap<HirId, ConstState>, h
         ctx.diagnostic_at(expr.loc, diagnostic);
     }
 
-    *ctx.hir_mut(hir) = Hir::Nil;
+    set_const_result(ctx, hir, Hir::Nil);
     states.insert(hir, ConstState::Failed);
 
     false
+}
+
+fn set_const_result(ctx: &mut Compiler, hir: HirId, value: Hir) {
+    let value = ctx.alloc_hir(value);
+
+    if let Hir::Const(expr) = ctx.hir_mut(hir) {
+        expr.result = Some(value);
+    }
 }
 
 fn evaluate_const_expr(

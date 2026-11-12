@@ -119,9 +119,37 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *first, false);
             visit_hir(db, graph, *rest, false);
         }
+        Hir::List(list) => {
+            for &item in &list.items {
+                visit_hir(db, graph, item, false);
+            }
+        }
+        Hir::Struct(initializer) => {
+            for field in &initializer.fields {
+                visit_hir(db, graph, field.value, false);
+            }
+        }
+        Hir::FieldAccess(access) => {
+            visit_hir(db, graph, access.value, false);
+        }
+        // A cast has no effect, so a function that's cast and then called is still called directly
+        Hir::Cast(value) => {
+            visit_hir(db, graph, *value, is_call);
+        }
+        // The value is referenced as many times as the check it's lowered to uses it
+        Hir::Guard(guard) => {
+            for _ in 0..guard.value_uses() {
+                visit_hir(db, graph, guard.value, false);
+            }
+        }
         Hir::Const(expr) => {
-            graph.const_exprs.insert(hir);
-            visit_hir(db, graph, expr.value, false);
+            // Once it has been evaluated, only the result is used
+            if let Some(result) = expr.result {
+                visit_hir(db, graph, result, false);
+            } else {
+                graph.const_exprs.insert(hir);
+                visit_hir(db, graph, expr.value, false);
+            }
         }
         Hir::Reference(symbol) => {
             if !is_call {
