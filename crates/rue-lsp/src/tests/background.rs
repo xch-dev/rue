@@ -1,6 +1,7 @@
 //! Tests for compiling in the background: edits in quick succession are compiled once, requests
 //! see every edit sent before them, and results that are out of date are discarded.
 
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
@@ -287,5 +288,52 @@ async fn test_open_compiles_pending_edits() {
 
     let diagnostics = client.diagnostics(&main).await;
     assert_eq!(diagnostics["diagnostics"][0]["severity"], json!(1));
+
+    // The edit isn't compiled again
+    client.sync().await;
     assert_eq!(client.compiles(), compiles + 1);
+}
+
+#[test]
+fn test_request_for_older_text_is_not_answered() {
+    let project = TestProject::new(&[(
+        "main.rue",
+        "fn main() -> Int {\n    let value = +42;\n    va$0lue + 1\n}\n",
+    )]);
+    let backend = project.backend();
+    let (uri, position) = project.cursor();
+    let path = project.path("main.rue");
+
+    *lock(&backend.shared.debounce) = TIMEOUT;
+
+    let edit = |text: &str| {
+        backend.set_text(&uri, Some(text.to_string()));
+        backend.worker.edit(path.clone());
+    };
+
+    // The worker is busy when the request is sent
+    let (started, release) = backend.hold_compile();
+    drop(backend.worker.compile(Vec::new(), vec![path.clone()]));
+    started.recv_timeout(TIMEOUT).unwrap();
+
+    let hover = std::thread::scope(|scope| {
+        edit(LITERAL);
+        let request = scope.spawn(|| super::hover(backend, uri.clone(), position));
+
+        // The request was sent for the text with `42`, but by the time the worker gets to it,
+        // the text has changed again, so the position may not match anymore
+        let deadline = Instant::now() + TIMEOUT;
+
+        while backend.shared.queries.load(Ordering::Relaxed) == 0 {
+            assert!(Instant::now() < deadline, "the request wasn't sent");
+            std::thread::yield_now();
+        }
+
+        edit("fn main() -> Int {\n    0\n}\n");
+        release.send(()).unwrap();
+
+        request.join().unwrap()
+    });
+
+    assert_eq!(hover, "<none>\n");
 }

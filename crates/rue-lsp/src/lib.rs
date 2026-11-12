@@ -250,9 +250,14 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
+        let revision = self.revision(&params.text_document.uri);
+
         Ok(self
             .query(Task::Hover, move |state| {
-                hover(state.cache(&params.text_document.uri)?, params.position)
+                hover(
+                    state.cache(&params.text_document.uri, revision)?,
+                    params.position,
+                )
             })
             .await)
     }
@@ -266,10 +271,12 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
+        let revision = self.revision(&params.text_document.uri);
+
         Ok(self
             .query(Task::Definition, move |state| {
                 let shared = state.shared.clone();
-                let cache = state.cache(&params.text_document.uri)?;
+                let cache = state.cache(&params.text_document.uri, revision)?;
                 definitions(cache, &shared.paths, params.position)
             })
             .await)
@@ -281,10 +288,12 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
+        let revision = self.revision(&params.text_document.uri);
+
         Ok(self
             .query(Task::References, move |state| {
                 let shared = state.shared.clone();
-                let cache = state.cache(&params.text_document.uri)?;
+                let cache = state.cache(&params.text_document.uri, revision)?;
                 references(cache, &shared.paths, params.position)
             })
             .await)
@@ -296,9 +305,14 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
+        let revision = self.revision(&params.text_document.uri);
+
         Ok(self
             .query(Task::Completion, move |state| {
-                completions(state.cache(&params.text_document.uri)?, params.position)
+                completions(
+                    state.cache(&params.text_document.uri, revision)?,
+                    params.position,
+                )
             })
             .await)
     }
@@ -354,7 +368,12 @@ impl Backend {
         task: Task,
         f: impl FnOnce(&mut State) -> Option<T> + Send + 'static,
     ) -> Option<T> {
-        let result = self.worker.run(Some(task), f).await;
+        let result = self.worker.run(Some(task), f);
+
+        #[cfg(test)]
+        self.shared.queries.fetch_add(1, Ordering::Relaxed);
+
+        let result = result.await;
 
         match result {
             Ok(Ok(value)) => value,
@@ -364,6 +383,12 @@ impl Backend {
             }
             Err(_) => None,
         }
+    }
+
+    /// The revision of the editor's text for a document, which a query is about.
+    fn revision(&self, uri: &Url) -> Option<u64> {
+        let (_, kind) = document(uri)?;
+        self.shared.revision(&kind)
     }
 
     /// Records the editor's text for a document (or that it should be read from disk), and

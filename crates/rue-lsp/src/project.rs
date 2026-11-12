@@ -197,14 +197,14 @@ impl State {
             // last compile that was published.
             if self.shared.is_stale(&snapshot, compiled.diagnostics.keys()) {
                 if let Some((cache, files)) = compiled.cache {
-                    self.insert_project(compiled.key, cache, files);
+                    self.insert_project(compiled.key, cache, files, &snapshot);
                 }
 
                 self.compile_later(compiled.path);
                 continue;
             }
 
-            diagnostics.extend(self.update_project(compiled));
+            diagnostics.extend(self.update_project(compiled, &snapshot));
         }
 
         diagnostics
@@ -293,7 +293,7 @@ impl State {
     /// files it published diagnostics for last time but not this time get theirs cleared, and
     /// their caches are removed, since they're not part of the project anymore (unless another
     /// project includes them).
-    fn update_project(&mut self, compiled: Compiled) -> Diagnostics {
+    fn update_project(&mut self, compiled: Compiled, snapshot: &Snapshot) -> Diagnostics {
         let Compiled {
             key,
             path,
@@ -329,7 +329,7 @@ impl State {
 
         // A project that couldn't be compiled can't answer queries
         match cache {
-            Some((cache, files)) => self.insert_project(key, cache, files),
+            Some((cache, files)) => self.insert_project(key, cache, files, snapshot),
             None => self.remove_project(&key),
         }
 
@@ -347,7 +347,7 @@ impl State {
         });
 
         match compiled.and_then(|compiled| Some((compiled.key, compiled.cache?))) {
-            Some((key, (cache, files))) => self.insert_project(key, cache, files),
+            Some((key, (cache, files))) => self.insert_project(key, cache, files, &snapshot),
             None => self.remove_project(key),
         }
     }

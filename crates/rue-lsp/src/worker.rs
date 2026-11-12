@@ -55,6 +55,9 @@ pub struct Shared {
     /// How many times a project was compiled.
     #[cfg(test)]
     pub compiles: AtomicUsize,
+    /// How many queries were sent to the worker.
+    #[cfg(test)]
+    pub queries: AtomicUsize,
     /// Makes compiles wait until the test lets them continue, to test what happens meanwhile.
     #[cfg(test)]
     pub gate: Mutex<Option<Gate>>,
@@ -97,6 +100,8 @@ impl Shared {
             #[cfg(test)]
             compiles: AtomicUsize::new(0),
             #[cfg(test)]
+            queries: AtomicUsize::new(0),
+            #[cfg(test)]
             gate: Mutex::default(),
             #[cfg(test)]
             debounce: Mutex::new(DEBOUNCE),
@@ -119,6 +124,13 @@ impl Shared {
         lock(&self.documents)
             .get(kind)
             .map(|document| document.text.clone())
+    }
+
+    /// The revision of the editor's text for a file, if it's open.
+    pub fn revision(&self, kind: &SourceKind) -> Option<u64> {
+        lock(&self.documents)
+            .get(kind)
+            .map(|document| document.revision)
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -339,7 +351,9 @@ pub struct State {
     /// The last compile of each project, which answers queries about its files.
     pub projects: HashMap<PathBuf, Cache<Compiler>>,
     /// The project whose compile answers queries about each file, and the file's source.
-    pub files: HashMap<SourceKind, (PathBuf, Source)>,
+    /// The project whose compile answers queries about each file, the file's source, and the
+    /// revision of the editor's text that was compiled, if it's open.
+    pub files: HashMap<SourceKind, (PathBuf, Source, Option<u64>)>,
     /// The files the editor changed that haven't been compiled yet.
     edited: Vec<PathBuf>,
     /// When to compile the edits, if no other edit arrives first.
@@ -434,10 +448,20 @@ impl State {
         }
     }
 
-    /// The last compile of a document's file, set up to answer a query about it.
-    pub fn cache(&mut self, uri: &Url) -> Option<&mut Cache<Compiler>> {
+    /// The last compile of a document's file, set up to answer a query about it. The query is
+    /// about the revision of the editor's text it was sent for, and if an edit made after it was
+    /// compiled first, there's no answer, since the query's position may not match the text
+    /// anymore. An older compile still answers (for example, if compiling the edit panicked).
+    pub fn cache(&mut self, uri: &Url, revision: Option<u64>) -> Option<&mut Cache<Compiler>> {
         let (_, kind) = document(uri)?;
-        let (key, source) = self.files.get(&kind)?;
+        let (key, source, compiled) = self.files.get(&kind)?;
+
+        if let (Some(compiled), Some(revision)) = (compiled, revision)
+            && compiled > &revision
+        {
+            return None;
+        }
+
         let cache = self.projects.get_mut(key)?;
         cache.set_source(source.clone());
 
@@ -461,12 +485,19 @@ impl State {
 
     /// Records a project's compile, so that it answers queries about its files (instead of
     /// whichever project compiled them last, if they're part of more than one).
-    pub fn insert_project(&mut self, key: PathBuf, cache: Cache<Compiler>, files: Vec<Source>) {
-        self.files.retain(|_, (other, _)| *other != key);
+    pub fn insert_project(
+        &mut self,
+        key: PathBuf,
+        cache: Cache<Compiler>,
+        files: Vec<Source>,
+        snapshot: &Snapshot,
+    ) {
+        self.files.retain(|_, (other, ..)| *other != key);
 
         for source in files {
+            let revision = snapshot.revisions.get(&source.kind).copied();
             self.files
-                .insert(source.kind.clone(), (key.clone(), source));
+                .insert(source.kind.clone(), (key.clone(), source, revision));
         }
 
         self.projects.insert(key, cache);
@@ -474,17 +505,17 @@ impl State {
 
     /// Forgets a project's compile.
     pub fn remove_project(&mut self, key: &PathBuf) {
-        self.files.retain(|_, (other, _)| other != key);
+        self.files.retain(|_, (other, ..)| other != key);
         self.projects.remove(key);
     }
 
     /// Forgets a file, and the compile of its project once no other file uses it.
     pub fn remove_file(&mut self, kind: &SourceKind) {
-        let Some((key, _)) = self.files.remove(kind) else {
+        let Some((key, ..)) = self.files.remove(kind) else {
             return;
         };
 
-        if !self.files.values().any(|(other, _)| *other == key) {
+        if !self.files.values().any(|(other, ..)| *other == key) {
             self.projects.remove(&key);
         }
     }
