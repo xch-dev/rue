@@ -45,6 +45,8 @@ pub struct LintInput<'a> {
     live: OnceCell<HashSet<Declaration>>,
     /// The programs, which are computed the first time a pass needs them.
     programs: OnceCell<Vec<SymbolId>>,
+    /// The tests, which are computed the first time a pass needs them.
+    tests: OnceCell<HashSet<SymbolId>>,
 }
 
 impl<'a> LintInput<'a> {
@@ -63,6 +65,7 @@ impl<'a> LintInput<'a> {
             has_errors,
             live: OnceCell::new(),
             programs: OnceCell::new(),
+            tests: OnceCell::new(),
         }
     }
 
@@ -70,7 +73,7 @@ impl<'a> LintInput<'a> {
     /// other than tests (`main` and exported functions), in a stable order.
     pub(crate) fn programs(&self, db: &Database) -> &[SymbolId] {
         self.programs.get_or_init(|| {
-            let tests = db.tests().map(|test| test.symbol).collect::<HashSet<_>>();
+            let tests = self.tests(db);
 
             let mut programs = self
                 .entrypoints
@@ -91,6 +94,12 @@ impl<'a> LintInput<'a> {
             programs.sort_by_key(id_arena::Id::index);
             programs
         })
+    }
+
+    /// The `test fn`s.
+    pub(crate) fn tests(&self, db: &Database) -> &HashSet<SymbolId> {
+        self.tests
+            .get_or_init(|| db.tests().map(|test| test.symbol).collect())
     }
 
     /// The declarations whose code is evaluated, or is needed by code that's kept, starting from

@@ -22,9 +22,11 @@ pub(crate) const BINDING_SIZE: u64 = 14;
 /// The cost of using a value that's stored in a parameter or binding.
 pub(crate) const REFERENCE: Cost = Cost::new(1, PATH);
 
-/// The runtime of calling a function that calls itself, which can't be estimated, so it's assumed
-/// to be about as much as a few hashes for each of several levels of recursion.
-const RECURSIVE_RUNTIME: u64 = 100_000;
+/// The runtime of calling a function that calls itself, which depends on its arguments, so it can't
+/// be estimated. It's assumed to be about what hashing a small value with `tree_hash` costs (a few
+/// levels of recursion), which was measured at around 7,000 to 10,000. A larger guess made
+/// `repeated_expensive_call` suggest bindings that cost more than they saved.
+const RECURSIVE_RUNTIME: u64 = 20_000;
 
 /// The runtime of the operators that every expression is made of.
 const QUOTE: u64 = 20;

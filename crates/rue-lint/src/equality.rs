@@ -11,6 +11,12 @@ pub(crate) fn hir_eq(db: &Database, a: HirId, b: HirId) -> bool {
     let a = db.without_casts(a);
     let b = db.without_casts(b);
 
+    // Code that failed to compile is replaced by the same unresolved node, which isn't known to be
+    // equal to anything
+    if matches!(db.hir(a), Hir::Unresolved) || matches!(db.hir(b), Hir::Unresolved) {
+        return false;
+    }
+
     if a == b {
         return true;
     }

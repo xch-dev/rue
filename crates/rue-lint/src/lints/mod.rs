@@ -77,9 +77,7 @@ pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPas
         Box::new(statements::NeedlessLetReturn),
         Box::new(casts::BytesIntConfusion),
         Box::new(recursion::UnconditionalRecursion),
-        Box::new(repeated::RepeatedExpensiveCall::new(
-            input.options.repeated_expensive_call_min_savings,
-        )),
+        Box::new(repeated::RepeatedExpensiveCall::new(input)),
         Box::new(inlining::Inlining::new(input)),
         Box::new(unused_fields::UnusedStructField::new(input)),
     ]

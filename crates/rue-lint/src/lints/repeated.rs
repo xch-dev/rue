@@ -3,13 +3,14 @@ use std::{collections::HashMap, mem::Discriminant};
 use indexmap::IndexMap;
 use rue_diagnostic::{Lint, Note, SrcLoc};
 use rue_hir::{
-    BinaryOp, Database, DependencyGraph, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
+    BinaryOp, Database, Declaration, DependencyGraph, Hir, HirId, Statement, Symbol, SymbolId,
+    UnaryOp,
 };
 use rue_lir::ClvmOp;
 use rue_types::TypeId;
 
 use crate::{
-    HirLintPass, LintContext,
+    HirLintPass, LintContext, LintInput,
     cost::{BINDING_SIZE, COST_PER_BYTE, Cost, CostModel, REFERENCE},
     equality::hir_eq,
     measure::program_graph,
@@ -22,7 +23,8 @@ use crate::{
 /// calls do to run, though, and a new binding adds more bytes than a short call, so a call is only
 /// reported if reusing its result would make the program cheaper.
 #[derive(Debug)]
-pub(crate) struct RepeatedExpensiveCall {
+pub(crate) struct RepeatedExpensiveCall<'a> {
+    input: &'a LintInput<'a>,
     min_savings: u64,
     /// The calls seen so far in each function being walked, from the outermost to the innermost.
     functions: Vec<Function>,
@@ -66,10 +68,20 @@ struct Repeated {
     /// The binding whose value is the first call.
     binding: Option<Binding>,
     /// The calls that repeat it, and whether each of them could use the binding instead.
-    repeats: Vec<(SrcLoc, bool)>,
+    repeats: Vec<Repeat>,
     /// What each repeat would save by using the result of the first call, rather than evaluating
     /// it again.
     savings: u64,
+}
+
+/// A call that repeats an earlier one.
+#[derive(Debug)]
+struct Repeat {
+    srcloc: SrcLoc,
+    /// Whether the binding of the earlier call can be used in its place.
+    in_scope: bool,
+    /// The name of the binding whose value is this call, if it's the whole value of one.
+    binding: Option<String>,
 }
 
 /// What a call is, which calls must share to be equal: the kind of node, the function it calls
@@ -80,10 +92,11 @@ type CallKey = (Discriminant<Hir>, Option<SymbolId>, usize);
 /// only evaluated whenever another one is if it's inside of all the same branches.
 type Branch = (HirId, usize);
 
-impl RepeatedExpensiveCall {
-    pub(crate) fn new(min_savings: u64) -> Self {
+impl<'a> RepeatedExpensiveCall<'a> {
+    pub(crate) fn new(input: &'a LintInput<'a>) -> Self {
         Self {
-            min_savings: min_savings.max(1),
+            input,
+            min_savings: input.options.repeated_expensive_call_min_savings.max(1),
             functions: Vec::new(),
             costs: HashMap::new(),
             graph: None,
@@ -91,7 +104,7 @@ impl RepeatedExpensiveCall {
     }
 }
 
-impl HirLintPass for RepeatedExpensiveCall {
+impl HirLintPass for RepeatedExpensiveCall<'_> {
     fn lints(&self) -> &'static [Lint] {
         &[Lint::RepeatedExpensiveCall]
     }
@@ -112,8 +125,9 @@ impl HirLintPass for RepeatedExpensiveCall {
     }
 
     fn check_hir(&mut self, cx: &mut LintContext<'_>, hir: HirId, node: &Hir) {
-        // `debug` statements and `raise` messages aren't part of a release build
-        if !is_expensive(node) || in_debug_only_code(cx, hir) {
+        // `debug` statements and `raise` messages aren't part of a release build, and tests aren't
+        // run on chain
+        if !is_expensive(node) || in_debug_only_code(cx, hir) || self.in_test(cx) {
             return;
         }
 
@@ -147,9 +161,14 @@ impl HirLintPass for RepeatedExpensiveCall {
             .iter()
             .position(|call| path.starts_with(&call.path) && hir_eq(cx.db(), call.hir, hir));
 
+        // A repeat that's the whole value of a binding is replaced by using the other binding
+        let own_binding = binding.as_ref().map(|binding| binding.name.clone());
+
         calls.push(Call { hir, path, binding });
 
-        let Some(earlier) = earlier else {
+        // A statement whose value isn't used only raises in the same cases as the call it repeats,
+        // so it can be removed rather than reusing a result
+        let Some(earlier) = earlier.filter(|_| !is_discarded(cx, hir)) else {
             return;
         };
 
@@ -187,11 +206,22 @@ impl HirLintPass for RepeatedExpensiveCall {
             }) && call_type.is_some_and(|call_type| cx.is_assignable(binding.ty, call_type))
         });
 
-        repeated.repeats.push((srcloc, in_scope));
+        repeated.repeats.push(Repeat {
+            srcloc,
+            in_scope,
+            binding: own_binding,
+        });
     }
 }
 
-impl RepeatedExpensiveCall {
+impl RepeatedExpensiveCall<'_> {
+    fn in_test(&self, cx: &LintContext<'_>) -> bool {
+        matches!(
+            cx.enclosing_declaration(),
+            Some(Declaration::Symbol(symbol)) if self.input.tests(cx.db()).contains(&symbol)
+        )
+    }
+
     /// The number of times a binding is referenced, which leaves out `debug` statements and code
     /// that isn't reached, as the compiler does.
     fn references(&self, symbol: SymbolId) -> usize {
@@ -208,7 +238,7 @@ impl RepeatedExpensiveCall {
                 repeated
                     .repeats
                     .iter()
-                    .filter(|(_, other)| *other == bound)
+                    .filter(|repeat| repeat.in_scope == bound)
                     .count() as u64
             };
 
@@ -226,19 +256,31 @@ impl RepeatedExpensiveCall {
                 _ => repeated.savings,
             };
 
-            for (srcloc, bound) in &repeated.repeats {
-                let (savings, help) = match (&repeated.binding, bound) {
-                    (Some(binding), true) => {
-                        (bound_savings, format!("Use `{}` instead", binding.name))
-                    }
+            for repeat in &repeated.repeats {
+                let srcloc = &repeat.srcloc;
+
+                let (savings, help) = match (&repeated.binding, repeat.in_scope) {
+                    (Some(binding), true) => (
+                        bound_savings,
+                        match &repeat.binding {
+                            Some(own) => format!(
+                                "Use `{}` in place of `{own}`, which makes the program cheaper",
+                                binding.name
+                            ),
+                            None => format!(
+                                "Use `{}` instead, which makes the program cheaper",
+                                binding.name
+                            ),
+                        },
+                    ),
                     _ => (
                         unbound_savings,
-                        "Store the result in a `let` binding and use that instead".to_string(),
+                        "Store the result in a `let` binding and use that instead, which makes the program cheaper".to_string(),
                     ),
                 };
 
                 if savings >= self.min_savings {
-                    reports.push((srcloc.clone(), repeated.first.clone(), help, savings));
+                    reports.push((srcloc.clone(), repeated.first.clone(), help));
                 }
             }
         }
@@ -249,7 +291,7 @@ impl RepeatedExpensiveCall {
 
         let mut reported: Vec<SrcLoc> = Vec::new();
 
-        for (srcloc, first, help, savings) in reports {
+        for (srcloc, first, help) in reports {
             if reported.iter().any(|outer| encloses(outer, &srcloc)) {
                 continue;
             }
@@ -262,12 +304,27 @@ impl RepeatedExpensiveCall {
                 "This call is evaluated again with the same arguments, which costs as much as the first time",
             ) {
                 diagnostic.notes.push(Note::at(first, "It's first evaluated here"));
-                diagnostic.notes.push(Note::new(format!(
-                    "{help}, which saves an estimated cost of {savings}"
-                )));
+                // The savings are only estimated, so they aren't shown
+                diagnostic.notes.push(Note::new(help));
             }
         }
     }
+}
+
+/// Whether the node is an expression statement, whose value isn't used.
+fn is_discarded(cx: &LintContext<'_>, hir: HirId) -> bool {
+    let Some(parent) = cx.parent() else {
+        return false;
+    };
+
+    let Hir::Block(block) = cx.db().hir(parent) else {
+        return false;
+    };
+
+    block
+        .statements
+        .iter()
+        .any(|statement| matches!(statement, Statement::Expr(statement) if statement.hir == hir))
 }
 
 /// Whether the node is inside of a `debug` statement or the message of a `raise`, which release

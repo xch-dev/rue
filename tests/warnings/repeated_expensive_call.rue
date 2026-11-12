@@ -31,8 +31,9 @@ fn main(value: Bytes, flag: Bool) -> Bytes32 {
     let once = sha256(first + value);
     let again = once + sha256(first + value);
 
-    // A function that calls itself is expensive to call again
-    let recursive = tree_hash(nested) + tree_hash(nested);
+    // A function that calls itself is assumed to be fairly cheap to call again, since it depends on
+    // the value, but calling it several times is worth a binding
+    let recursive = tree_hash(nested) + tree_hash(nested) + tree_hash(nested) + tree_hash(nested);
 
     sha256(
         first
