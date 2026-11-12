@@ -1,0 +1,35 @@
+program: (+ (strlen 19) (strlen 43) (f (q 1)) (q . 112))
+debug_program: (a (q 2 (q 16 (+ (+ (+ 2 (a 57 (a 41 ()))) (strlen (f 47))) (strlen (f (r 47)))) (a 17 (c (q . 1) ()))) (c (a 10 (c (c 22 30) (q . 1))) 1)) (c (c (c (q 5 1) (c (q 1 . 1) (q . 1))) (c (q 2 (q . 2) (c (+ (+ 3 6) 4) 1)) (c (q . 10) (q . 100)))) 1))
+byte_cost: 348000
+clvm_error: path into atom
+diagnostics:
+- |-
+  Function `camelCase` should be named in snake_case at naming_convention.rue:1:4
+    note: Consider renaming it to `camel_case`
+- |-
+  Parameter `firstValue` should be named in snake_case, SCREAMING_SNAKE_CASE or Title_Snake_Case at naming_convention.rue:1:14
+    note: Consider renaming it to `first_value`
+- |-
+  Binding `innerValue` is returned directly after it's declared at naming_convention.rue:2:5
+    help: Return the value directly
+- |-
+  Binding `innerValue` should be named in snake_case at naming_convention.rue:2:9
+    note: Consider renaming it to `inner_value`
+- |-
+  Constant `maxValue` should be named in SCREAMING_SNAKE_CASE at naming_convention.rue:7:7
+    note: Consider renaming it to `MAX_VALUE`
+- |-
+  Struct `coin_info` should be named in UpperCamelCase at naming_convention.rue:9:8
+    note: Consider renaming it to `CoinInfo`
+- |-
+  Field `parentCoinInfo` should be named in snake_case, SCREAMING_SNAKE_CASE or Title_Snake_Case at naming_convention.rue:10:5
+    note: Consider renaming it to `parent_coin_info`
+- |-
+  Type alias `my_alias` should be named in UpperCamelCase at naming_convention.rue:14:6
+    note: Consider renaming it to `MyAlias`
+- |-
+  Generic type `t` should be named in UpperCamelCase at naming_convention.rue:16:13
+    note: Consider renaming it to `T`
+- |-
+  Module `InnerModule` should be named in snake_case at naming_convention.rue:20:5
+    note: Consider renaming it to `inner_module`

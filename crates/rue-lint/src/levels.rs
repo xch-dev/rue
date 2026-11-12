@@ -273,6 +273,26 @@ impl ScopedLintLevels {
         innermost.level
     }
 
+    /// Whether reporting the lint at the location would have any effect, because it's reported
+    /// there or would fulfill an `expect` attribute, so that passes can skip expensive checks.
+    /// Unlike [`report`](Self::report), this doesn't fulfill any expectations.
+    pub fn is_enabled_at(&self, lint: Lint, srcloc: &SrcLoc) -> bool {
+        let innermost = self
+            .scopes
+            .get(&(srcloc.source.kind.clone(), lint))
+            .and_then(|scopes| {
+                scopes
+                    .iter()
+                    .rev()
+                    .find(|scope| encloses(&scope.range, &srcloc.span))
+            });
+
+        match innermost {
+            Some(scope) => scope.level != LintLevel::Allow || scope.expectation.is_some(),
+            None => self.project.get(lint) != LintLevel::Allow,
+        }
+    }
+
     /// Whether the lint is reported anywhere, so that passes can skip work for allowed lints.
     /// An `expect` attribute counts, since the lint has to run to know whether it's fulfilled.
     pub fn is_enabled_anywhere(&self, lint: Lint) -> bool {

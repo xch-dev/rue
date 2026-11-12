@@ -1,4 +1,13 @@
 diagnostics:
+- |-
+  Field `y` of struct `Point` is never read at struct_merging_errors.rue:3:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
+- |-
+  Field `x` of struct `Other` is never read at struct_merging_errors.rue:7:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
+- |-
+  Field `y` of struct `Other` is never read at struct_merging_errors.rue:8:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
 - Unused function `merge_one_narrowed` at struct_merging_errors.rue:16:4
 - Cannot compare `Int | (Int, Int)` to `Int` without a type guard, since the runtime value must be constrained at struct_merging_errors.rue:23:16
 - Unused function `merge_different` at struct_merging_errors.rue:29:4

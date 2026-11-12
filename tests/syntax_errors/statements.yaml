@@ -1,11 +1,17 @@
 diagnostics:
 - Expected `;`, found `let` at statements.rue:3:5
+- |-
+  Binding `b` is returned directly after it's declared at statements.rue:3:5
+    help: Return the value directly
 - Let bindings must have a value, since they cannot be reassigned at statements.rue:8:5
 - Expected expression, found `;` at statements.rue:8:13
 - Expected expression, found `;` at statements.rue:9:17
 - Let bindings must have a value, since they cannot be reassigned at statements.rue:14:5
 - Expected expression, found `=` at statements.rue:14:13
 - Expected `;`, found integer literal at statements.rue:15:15
+- |-
+  Binding `a` is returned directly after it's declared at statements.rue:20:5
+    help: Return the value directly
 - Expected one of `;`, `}`, found `)` at statements.rue:21:6
 - Block does not return a value at statements.rue:26:29
 - Cannot assign `nil` to `Int` without a cast, since they are semantically different at statements.rue:26:29
@@ -13,3 +19,6 @@ diagnostics:
 - Expected statement block to end in `return` or `raise`, not an expression at statements.rue:28:9
 - Expected one of `;`, `}`, found `else` at statements.rue:29:5
 - Expected one of `else`, `}`, found `test` at statements.rue:34:1
+- |-
+  Binding `value` is returned directly after it's declared at statements.rue:35:5
+    help: Return the value directly

@@ -1,0 +1,45 @@
+fn camelCase(firstValue: Int) -> Int {
+    let innerValue = firstValue + MAX_VALUE + maxValue;
+    innerValue
+}
+
+const MAX_VALUE: Int = 100;
+const maxValue: Int = 10;
+
+struct coin_info {
+    parentCoinInfo: Bytes32,
+    PUZZLE_HASH: Bytes32,
+}
+
+type my_alias = Int;
+
+fn identity<t>(value: t) -> t {
+    value
+}
+
+mod InnerModule {
+    export fn helper() -> Int {
+        1
+    }
+}
+
+// Curried parameters are conventionally in `SCREAMING_SNAKE_CASE`, and a leading underscore isn't
+// part of the name's case
+fn main(MOD_HASH: Bytes32, _unused: Int, info: coin_info) -> Int {
+    let alias: my_alias = camelCase(1);
+    let _ignored = MOD_HASH;
+    alias
+        + identity(InnerModule::helper())
+        + info.parentCoinInfo.length
+        + info.PUZZLE_HASH.length
+        + truths(Truths { Ephemeral_State: 1 })
+}
+
+// Truths and their fields are conventionally in `Title_Snake_Case`
+struct Truths {
+    Ephemeral_State: Int,
+}
+
+fn truths(Truth: Truths) -> Int {
+    Truth.Ephemeral_State
+}

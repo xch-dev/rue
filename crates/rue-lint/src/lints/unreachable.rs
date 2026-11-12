@@ -1,7 +1,7 @@
 use rue_diagnostic::{Applicability, Lint, Note, SrcLoc, Suggestion};
 use rue_hir::{Block, Hir, HirId, Statement};
 
-use crate::{HirLintPass, LintContext};
+use crate::{HirLintPass, LintContext, text::encloses};
 
 /// Code after a statement that never finishes, such as a `return` or `raise`, is never evaluated.
 #[derive(Debug, Default)]
@@ -118,10 +118,4 @@ fn unreachable_range(
     let last = srclocs.last().unwrap_or_else(|| first.clone());
 
     Some((first, last))
-}
-
-fn encloses(outer: &SrcLoc, inner: &SrcLoc) -> bool {
-    outer.source.kind == inner.source.kind
-        && outer.span.start <= inner.span.start
-        && inner.span.end <= outer.span.end
 }

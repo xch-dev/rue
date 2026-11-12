@@ -1,4 +1,10 @@
 diagnostics:
+- |-
+  Field `flag` of struct `Inferred` is never read at struct_inferred_default_errors.rue:5:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
+- |-
+  Field `name` of struct `Inferred` is never read at struct_inferred_default_errors.rue:6:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
 - Cannot assign `43` to field `value` of type `42`, since the field's type is inferred from its default value; add a type annotation to the field to allow other values at struct_inferred_default_errors.rue:16:28
 - Cannot assign `true` to field `flag` of type `false`, since the field's type is inferred from its default value; add a type annotation to the field to allow other values at struct_inferred_default_errors.rue:16:39
 - Cannot assign `"world"` to field `name` of type `"hello"`, since the field's type is inferred from its default value; add a type annotation to the field to allow other values at struct_inferred_default_errors.rue:16:51

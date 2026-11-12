@@ -32,3 +32,10 @@ tests:
   runtime_cost: 642
   byte_cost: 396000
   total_cost: 396642
+diagnostics:
+- |-
+  Unnecessary comparison with `true` at listp_truthy.rue:6:12
+    help: Use the value directly
+- |-
+  Unnecessary comparison with `true` at listp_truthy.rue:14:12
+    help: Use the value directly

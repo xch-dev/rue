@@ -1,0 +1,16 @@
+program: (a (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i (= 2 2) (q 2 (i (= 2 2) (q) (q 1 . 1)) 1) (q)) 1) (q 2 (i (> 2 2) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (>s 11 11) (q) (q 1 . 1)) 1) (q)) 1) (q 2 (i (= (- 2 2) (logxor 2 2)) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (logand 2 2) (q) (q 1 . 1)) 1) (q)) 1) (q 2 (i (> 2 2) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (= 2 2) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (= 2 5) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (> (+ 2 2) ()) (q 1 . 1) (q)) 1) (q)) 1)
+debug_program: (a (q 2 (q 2 (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i (a (i 33 (q 2 (i 49 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 41 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 89 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (= 121 37) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (= 85 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 45 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 2 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 93 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (> 125 ()) (q 1 . 1) (q)) 1) (q)) 1) (c (= 58 5) 1)) (c (c (c (c (= 2 2) (not (= 2 2))) (c (> 2 2) (c (not (>s 11 11)) (- 2 2)))) (c (c (logxor 2 2) (c (logand 2 2) 2)) (c (> 2 2) (c (= 2 5) (+ 2 2))))) 1))
+byte_cost: 5052000
+clvm_error: path into atom
+diagnostics:
+- Both sides of `==` are the same, so it always evaluates to `true` at self_comparison.rue:2:16
+- Both sides of `!=` are the same, so it always evaluates to `false` at self_comparison.rue:3:21
+- Both sides of `<` are the same, so it always evaluates to `false` at self_comparison.rue:4:19
+- Both sides of `>=` are the same, so it always evaluates to `true` at self_comparison.rue:5:25
+- Both sides of `-` are the same, so it always evaluates to `0` at self_comparison.rue:6:22
+- Both sides of `^` are the same, so it always evaluates to `0` at self_comparison.rue:7:15
+- Both sides of `&` are the same, so it is the same as the value itself at self_comparison.rue:8:15
+- |-
+  Unnecessary cast from `Int` to `Int`, since they are compatible with each other at self_comparison.rue:12:16
+    help: Remove the cast
+- Both sides of `>` are the same, so it always evaluates to `false` at self_comparison.rue:12:16

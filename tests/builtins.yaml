@@ -79,3 +79,28 @@ tests:
   debug_program: (a (q 2 (i (= (g2_map (c (q . 1) (q . 2)) (q . "dst")) 2) (q) (q 8 (q . "assertion failed at builtins.rue:193:5"))) 1) (c (g2_add) ()))
   byte_cost: 528000
   clvm_error: 'InvalidOperatorArg: g2_map used on list'
+diagnostics:
+- |-
+  Unnecessary comparison with `false` at builtins.rue:72:12
+    help: Negate the value instead
+- |-
+  Unnecessary comparison with `false` at builtins.rue:73:12
+    help: Negate the value instead
+- |-
+  Unnecessary comparison with `true` at builtins.rue:74:12
+    help: Use the value directly
+- |-
+  Unnecessary comparison with `true` at builtins.rue:75:12
+    help: Use the value directly
+- |-
+  Unnecessary comparison with `true` at builtins.rue:77:12
+    help: Use the value directly
+- |-
+  Unnecessary comparison with `false` at builtins.rue:78:12
+    help: Negate the value instead
+- |-
+  Unnecessary comparison with `true` at builtins.rue:79:12
+    help: Use the value directly
+- |-
+  Unnecessary comparison with `true` at builtins.rue:80:12
+    help: Use the value directly

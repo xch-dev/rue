@@ -151,6 +151,10 @@ where
             return PathResult::Unresolved;
         };
 
+        // A name that's resolved through a module (rather than from the scope it's written in)
+        // can only be used if it's exported
+        let qualified = value.is_some() || base_scope != ctx.last_scope_id();
+
         let (symbol, ty) = if let Some(value) = value {
             if let PathResult::Symbol(symbol, _, _) = value
                 && let Symbol::Module(module) = ctx.symbol(symbol)
@@ -243,6 +247,25 @@ where
                     previous_name.clone().unwrap(),
                 ),
             );
+        }
+
+        // The standard library can't reference the modules being linted
+        if qualified && ctx.source().kind.check_unused() {
+            let declaration = match initial {
+                PathResult::Symbol(symbol, _, _) => Some(Declaration::Symbol(symbol)),
+                PathResult::Type(ty, _) => Some(Declaration::Type(ty)),
+                PathResult::Unresolved => None,
+            };
+
+            if let Some(declaration) = declaration {
+                let srcloc = ctx.srcloc(&name);
+
+                ctx.lint_sites_mut()
+                    .qualified_references
+                    .entry(declaration)
+                    .or_default()
+                    .push(srcloc);
+            }
         }
 
         match initial {

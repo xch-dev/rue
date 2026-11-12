@@ -1,0 +1,189 @@
+export reexported::item;
+
+mod helpers {
+    export fn used_outside() -> Int {
+        only_inside() + 1
+    }
+
+    export fn only_inside() -> Int {
+        CONSTANT
+    }
+
+    export const CONSTANT: Int = 42;
+
+    fn private() -> Int {
+        2
+    }
+
+    export fn calls_private() -> Int {
+        private()
+    }
+}
+
+// Items of an exported module can be used by anything that imports the file
+export mod public {
+    export fn only_inside() -> Int {
+        1
+    }
+
+    export fn exported() -> Int {
+        only_inside()
+    }
+}
+
+// A nested module can only use the items of the module it's in if they're exported
+mod outer {
+    export fn used_by_nested() -> Int {
+        1
+    }
+
+    export mod nested {
+        export fn uses_outer() -> Int {
+            outer::used_by_nested()
+        }
+    }
+}
+
+// A nested module can use the items of the module it's in by name, which doesn't need them to be
+// exported, but referencing an item through its module (even from inside of it) does
+mod lexical {
+    export fn by_name() -> Int {
+        1
+    }
+
+    export fn by_path() -> Int {
+        lexical::by_name() + 1
+    }
+
+    export fn only_by_name() -> Int {
+        2
+    }
+
+    export mod nested {
+        export fn uses_parent() -> Int {
+            by_name() + only_by_name()
+        }
+    }
+}
+
+// An item that's imported or re-exported elsewhere must be exported
+mod reexported {
+    export fn item() -> Int {
+        1
+    }
+
+    export fn uses_item() -> Int {
+        item()
+    }
+}
+
+// A type in the signature of another export is part of what the module exports, but one that's
+// only used in the body of an export isn't
+mod signature {
+    export struct Coin {
+        amount: Int,
+    }
+
+    export fn make() -> Coin {
+        Coin { amount: 1 }
+    }
+
+    export struct Temporary {
+        value: Int,
+    }
+
+    export fn body() -> Int {
+        Temporary { value: 1 }.value
+    }
+}
+
+// A struct that refers to itself isn't kept exported by its own fields
+mod recursive {
+    export struct Node {
+        value: Int,
+        next: Node | nil,
+    }
+
+    export fn total() -> Int {
+        Node { value: 1, next: nil }.value
+    }
+}
+
+// A type in the signature of an export of an exported module is exported by both of them
+mod parent {
+    export struct Item {
+        value: Int,
+    }
+
+    export mod child {
+        export fn make() -> Item {
+            Item { value: 1 }
+        }
+    }
+}
+
+// Only the signatures of exports that are used outside of the module keep types exported, so
+// both of these are reported at once
+mod chain {
+    export struct Result {
+        value: Int,
+    }
+
+    export fn make() -> Result {
+        Result { value: 1 }
+    }
+
+    export fn used() -> Int {
+        make().value
+    }
+}
+
+// A type in the signature of a nested module's export is only kept exported if that export is
+// used outside of this module
+mod internal {
+    export struct Value {
+        value: Int,
+    }
+
+    export mod inner {
+        export fn make() -> Value {
+            Value { value: 1 }
+        }
+    }
+
+    export fn total() -> Int {
+        inner::make().value
+    }
+}
+
+// A type in the signature of an item that's re-exported is part of what the module exports
+mod reexporting {
+    export struct Item {
+        value: Int,
+    }
+
+    mod inner {
+        export fn make() -> Item {
+            Item { value: 1 }
+        }
+    }
+
+    export inner::make;
+}
+
+fn main() -> Int {
+    helpers::used_outside()
+        + helpers::calls_private()
+        + public::exported()
+        + outer::nested::uses_outer()
+        + reexported::uses_item()
+        + signature::make().amount
+        + signature::body()
+        + lexical::by_path()
+        + lexical::nested::uses_parent()
+        + recursive::total()
+        + parent::child::make().value
+        + chain::used()
+        + internal::total()
+        + reexporting::make().value
+}

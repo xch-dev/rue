@@ -1,0 +1,35 @@
+struct Solution {
+    amount: Int,
+    unused: Int,
+    _layout: Int,
+}
+
+struct Hashed {
+    value: Int,
+    other: Int,
+}
+
+struct Passed {
+    value: Int,
+    other: Int,
+}
+
+struct Destructured {
+    used: Int,
+    ignored: Int,
+}
+
+fn main(solution: Solution, hashed: Hashed, passed: Passed, destructured: Destructured) -> Int {
+    let { used, ...rest } = destructured;
+    let _rest = rest;
+
+    // A struct that's hashed can have its fields read by something else
+    let hash = tree_hash(hashed);
+
+    solution.amount + read_value(passed) + hash.length + used
+}
+
+// The struct is still only read by field inside of the function
+fn read_value(passed: Passed) -> Int {
+    passed.value
+}

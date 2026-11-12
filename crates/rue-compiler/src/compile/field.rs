@@ -1,5 +1,6 @@
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{FieldAccess, FieldKind, Hir, HirId, TypePath, Value};
+use rue_lint::FieldRead;
 use rue_types::{Struct, Type, Union};
 
 use crate::{Compiler, GetTextRange};
@@ -159,6 +160,13 @@ fn compile_struct_field(
     let Some(index) = ty.fields.get_index_of(name) else {
         return FieldResult::Unknown;
     };
+
+    if let Some(struct_name) = &ty.name {
+        ctx.lint_sites_mut().field_reads.push(FieldRead {
+            struct_name: struct_name.clone(),
+            field: name.to_string(),
+        });
+    }
 
     // The struct's underlying type couldn't be resolved (for example, because its declaration was
     // rejected), which has already been reported

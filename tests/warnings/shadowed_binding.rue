@@ -1,0 +1,26 @@
+#![warn(shadowed_binding)]
+
+fn main(value: Int) -> Int {
+    let value = value + 1;
+    let (first, rest) = (value, value);
+    let first = first * 2;
+
+    let closure = fn(rest: Int) => rest + 1;
+
+    let scoped = {
+        let inner = 1;
+        inner
+    };
+
+    // Bindings in separate blocks don't shadow each other
+    let separate = {
+        let inner = 2;
+        inner
+    };
+
+    // Names starting with `_` aren't reported
+    let _ignored = 1;
+    let _ignored = 2;
+
+    first + rest + closure(value) + scoped + separate
+}

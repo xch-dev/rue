@@ -209,9 +209,15 @@ impl FileTree {
 
             let mut children = Vec::new();
 
-            for entry in fs::read_dir(path)? {
-                let entry = entry?;
-                let path = entry.path();
+            // The order that a directory's entries are listed in depends on the file system, so
+            // they're sorted to compile them (and report their diagnostics) in the same order
+            let mut paths = fs::read_dir(path)?
+                .map(|entry| entry.map(|entry| entry.path()))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            paths.sort();
+
+            for path in paths {
                 let tree = Self::try_from_path(ctx, &path, cache)?;
                 children.extend(tree);
             }

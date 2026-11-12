@@ -1,0 +1,25 @@
+fn main(value: Int | nil, flag: Bool) -> Int {
+    if value is nil {
+        raise;
+    }
+
+    if !flag {
+        raise;
+    }
+
+    if value != 5 {
+        raise;
+    }
+
+    // A `raise` with a value can't be an `assert`
+    if value > 100 {
+        raise "Too large";
+    }
+
+    // Both branches of an `inline if` are evaluated
+    inline if value > 50 {
+        raise;
+    }
+
+    value
+}

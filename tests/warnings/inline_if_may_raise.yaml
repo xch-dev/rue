@@ -127,8 +127,29 @@ diagnostics:
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:33:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:45:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:58:5
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at inline_if_may_raise.rue:59:9
+    help: Replace it with an `assert`
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:73:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:81:5
+- |-
+  Unnecessary `inline`, since binding `value` is only used once, so it's inlined anyway at inline_if_may_raise.rue:103:16
+    help: Remove `inline`
+- |-
+  Unnecessary `inline`, since binding `incremented` is only used once, so it's inlined anyway at inline_if_may_raise.rue:104:16
+    help: Remove `inline`
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:105:5
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:113:5
+- |-
+  Unnecessary `inline`, since constant `CHECKED` is only used once, so it's inlined anyway at inline_if_may_raise.rue:116:14
+    help: Remove `inline`
+- |-
+  Unnecessary `inline`, since binding `add` is only used once, so it's inlined anyway at inline_if_may_raise.rue:123:16
+    help: Remove `inline`
 - A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at inline_if_may_raise.rue:124:5
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at inline_if_may_raise.rue:200:5
+    help: Replace it with an `assert`
+- |-
+  Unnecessary `inline`, since binding `value` is only used once, so it's inlined anyway at inline_if_may_raise.rue:212:16
+    help: Remove `inline`

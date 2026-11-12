@@ -23,3 +23,5 @@ tests:
   runtime_cost: 20
   byte_cost: 108000
   total_cost: 108020
+diagnostics:
+- Binding `union` is returned directly after it's declared at functions.rue:10:5

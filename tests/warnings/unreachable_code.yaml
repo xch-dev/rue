@@ -18,6 +18,9 @@ diagnostics:
   Unreachable code at unreachable_code.rue:4:5
     note: Any code after this is never evaluated at unreachable_code.rue:3:5
     help: Remove the unreachable code
+- |-
+  Binding `unused` is returned directly after it's declared at unreachable_code.rue:4:5
+    help: Return the value directly
 - Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:9:5
 - |-
   Unreachable code at unreachable_code.rue:10:5

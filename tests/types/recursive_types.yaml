@@ -41,3 +41,5 @@ tests:
   runtime_cost: 528
   byte_cost: 372000
   total_cost: 372528
+diagnostics:
+- Binding `nested` is returned directly after it's declared at recursive_types.rue:62:5

@@ -62,3 +62,7 @@ tests:
   runtime_cost: 1220
   byte_cost: 1044000
   total_cost: 1045220
+diagnostics:
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at generic_inference_optional.rue:10:5
+    help: Replace it with an `assert`

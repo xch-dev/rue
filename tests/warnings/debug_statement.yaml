@@ -1,0 +1,8 @@
+program: (+ 2 (q . 1))
+debug_program: (a (i ("debug_print" (q . "debug_statement.rue:4:5") 2) (q) (q 16 2 (q . 1))) 1)
+byte_cost: 108000
+clvm_error: path into atom
+diagnostics:
+- |-
+  `debug` statement at debug_statement.rue:4:5
+    help: Remove the `debug` statement

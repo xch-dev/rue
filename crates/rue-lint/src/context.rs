@@ -1,11 +1,14 @@
 use std::ops::Range;
 
 use rowan::TextRange;
-use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Source, SrcLoc};
+use rue_diagnostic::{
+    Applicability, Diagnostic, DiagnosticKind, Edit, Lint, LintLevel, LintName, Name, Source,
+    SourceKind, SrcLoc,
+};
 use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
 use rue_types::{BuiltinTypes, Comparison, Type, TypeId};
 
-use crate::{ScopedLintLevels, WalkState};
+use crate::{ScopedLintLevels, WalkState, text::comment_count};
 
 /// The state shared by lint passes, which collects the diagnostics they report.
 #[derive(Debug)]
@@ -61,6 +64,12 @@ impl<'a> LintContext<'a> {
     /// Whether the lint could be reported anywhere, so that passes can skip work for allowed lints.
     pub fn is_enabled(&self, lint: Lint) -> bool {
         self.levels.is_enabled_anywhere(lint)
+    }
+
+    /// Whether reporting the lint at the location would have any effect, so that passes can skip
+    /// expensive checks where it's allowed.
+    pub fn is_enabled_at(&self, lint: Lint, srcloc: &SrcLoc) -> bool {
+        self.levels.is_enabled_at(lint, srcloc)
     }
 
     /// Reports a lint at its configured level, and returns the diagnostic so that notes and
@@ -125,7 +134,30 @@ impl<'a> LintContext<'a> {
         self.diagnostics.last_mut()
     }
 
-    pub fn into_diagnostics(self) -> Vec<Diagnostic> {
+    /// The diagnostics that were reported. A suggestion that would remove a comment (because the
+    /// code it replaces has more comments than its replacement) isn't applied automatically, since
+    /// the comment might matter. Replacements that would join a word to the code around them (such
+    /// as `return+a` becoming `returna`) get a space.
+    pub fn into_diagnostics(mut self) -> Vec<Diagnostic> {
+        for suggestion in self
+            .diagnostics
+            .iter_mut()
+            .flat_map(|diagnostic| &mut diagnostic.suggestions)
+            .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
+        {
+            for edit in &mut suggestion.edits {
+                separate_words(edit);
+            }
+
+            if suggestion
+                .edits
+                .iter()
+                .any(|edit| comment_count(edit.srcloc.text()) > comment_count(&edit.replacement))
+            {
+                suggestion.applicability = Applicability::MaybeIncorrect;
+            }
+        }
+
         self.diagnostics
     }
 
@@ -166,4 +198,46 @@ impl<'a> LintContext<'a> {
 pub(crate) fn srcloc(source: &Source, range: TextRange) -> SrcLoc {
     let span: Range<usize> = range.start().into()..range.end().into();
     SrcLoc::new(source.clone(), span)
+}
+
+/// Identifies a declaration by the location of its name, which every copy of it (such as a struct
+/// for generic arguments or narrowing) shares.
+pub(crate) type NameKey = (SourceKind, usize);
+
+pub(crate) fn name_key(name: &Name) -> Option<NameKey> {
+    name.srcloc().map(srcloc_key)
+}
+
+pub(crate) fn srcloc_key(srcloc: &SrcLoc) -> NameKey {
+    (srcloc.source.kind.clone(), srcloc.span.start)
+}
+
+/// The key of a name, from the token it's written as in the syntax tree.
+pub(crate) fn token_key(source: &Source, token: &rue_parser::SyntaxToken) -> NameKey {
+    (source.kind.clone(), token.text_range().start().into())
+}
+
+/// Adds a space to either side of an edit's replacement that would otherwise join a word with the
+/// code next to it.
+fn separate_words(edit: &mut Edit) {
+    let is_word = |char: char| char.is_alphanumeric() || char == '_';
+    let text = &edit.srcloc.source.text;
+
+    if text[..edit.srcloc.span.start]
+        .chars()
+        .next_back()
+        .is_some_and(is_word)
+        && edit.replacement.chars().next().is_some_and(is_word)
+    {
+        edit.replacement.insert(0, ' ');
+    }
+
+    if text[edit.srcloc.span.end..]
+        .chars()
+        .next()
+        .is_some_and(is_word)
+        && edit.replacement.chars().next_back().is_some_and(is_word)
+    {
+        edit.replacement.push(' ');
+    }
 }

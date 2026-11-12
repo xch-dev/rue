@@ -1,0 +1,23 @@
+program: (a (i (a (i (a (i (a (i (a (i (= 2 (q . 1)) (q 2 (i 2 (q) (q 1 . 1)) 1) (q)) 1) (q 2 (i (= 2 (q . 1)) (q) (q 1 . 1)) 1) (q)) 1) (q 2 (i 2 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i (> 5 (q . 5)) (q) (q 1 . 1)) 1) (q)) 1) (q 2 (i (a (i 2 (q 2 (i (= (> 5 (q . 5)) (q . 1)) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1)
+debug_program: (a (q 2 (i (a (i (a (i (a (i (a (i 8 (q 2 (i 20 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 28 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 10 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 22 (q 1 . 1) (q)) 1) (q)) 1) (q 2 (i 30 (q 1 . 1) (q)) 1) (q)) 1) (c (c (c (= 2 (q . 1)) (c (= 2 ()) (not (= 2 (q . 1))))) (c (not (= () 2)) (c (= (> 5 (q . 5)) ()) (a (i 2 (q 2 (i (= (> 5 (q . 5)) (q . 1)) (q 1 . 1) (q)) 1) (q)) 1)))) 1))
+byte_cost: 3228000
+clvm_error: path into atom
+diagnostics:
+- |-
+  Unnecessary comparison with `true` at bool_comparison.rue:2:19
+    help: Use the value directly
+- |-
+  Unnecessary comparison with `false` at bool_comparison.rue:3:20
+    help: Negate the value instead
+- |-
+  Unnecessary comparison with `true` at bool_comparison.rue:4:20
+    help: Negate the value instead
+- |-
+  Unnecessary comparison with `false` at bool_comparison.rue:5:21
+    help: Use the value directly
+- |-
+  Unnecessary comparison with `false` at bool_comparison.rue:6:19
+    help: Negate the value instead
+- |-
+  Unnecessary comparison with `true` at bool_comparison.rue:7:28
+    help: Use the value directly

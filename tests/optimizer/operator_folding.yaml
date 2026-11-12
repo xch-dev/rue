@@ -139,3 +139,5 @@ tests:
   runtime_cost: 101575
   byte_cost: 36000
   total_cost: 137575
+diagnostics:
+- Both sides of `==` are the same, so it always evaluates to `true` at operator_folding.rue:6:5

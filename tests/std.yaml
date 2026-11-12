@@ -27,3 +27,38 @@ tests:
   runtime_cost: 2402920
   byte_cost: 7512000
   total_cost: 9914920
+diagnostics:
+- |-
+  Redundant field name, since `puzzle_hash: puzzle_hash` can be written as `puzzle_hash` at std.rue:25:25
+    help: Use the shorthand instead
+- |-
+  Redundant field name, since `id: id` can be written as `id` at std.rue:28:37
+    help: Use the shorthand instead
+- |-
+  Redundant field name, since `id: id` can be written as `id` at std.rue:30:39
+    help: Use the shorthand instead
+- |-
+  Redundant field name, since `coin_id: coin_id` can be written as `coin_id` at std.rue:31:36
+    help: Use the shorthand instead
+- |-
+  Redundant field name, since `puzzle_hash: puzzle_hash` can be written as `puzzle_hash` at std.rue:33:9
+    help: Use the shorthand instead
+- |-
+  Redundant field name, since `coin_id: coin_id` can be written as `coin_id` at std.rue:37:29
+    help: Use the shorthand instead
+- |-
+  Redundant field name, since `puzzle_hash: puzzle_hash` can be written as `puzzle_hash` at std.rue:39:33
+    help: Use the shorthand instead
+- |-
+  This call is evaluated again with the same arguments, which costs as much as the first time at std.rue:57:12
+    note: It's first evaluated here at std.rue:56:12
+    note: Store the result in a `let` binding and use that instead
+- |-
+  This call is evaluated again with the same arguments, which costs as much as the first time at std.rue:58:12
+    note: It's first evaluated here at std.rue:57:34
+    note: Store the result in a `let` binding and use that instead
+- Both sides of `==` are the same, so it always evaluates to `true` at std.rue:85:12
+- |-
+  This call is evaluated again with the same arguments, which costs as much as the first time at std.rue:85:32
+    note: It's first evaluated here at std.rue:85:12
+    note: Store the result in a `let` binding and use that instead

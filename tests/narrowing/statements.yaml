@@ -71,3 +71,7 @@ tests:
   runtime_cost: 325
   byte_cost: 276000
   total_cost: 276325
+diagnostics:
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at statements.rue:38:5
+    help: Replace it with an `assert`

@@ -1,0 +1,10 @@
+fn main(flag: Bool, value: Int) -> Bool {
+    let is_true = flag == true;
+    let is_false = flag == false;
+    let not_true = flag != true;
+    let not_false = false != flag;
+    let negated = (value > 5) == false;
+    let combined = flag && value > 5 == true;
+
+    is_true && is_false && not_true && not_false && negated && combined
+}

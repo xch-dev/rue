@@ -1,0 +1,33 @@
+fn main(value: Int) -> Int {
+    let collapsible = if value > 10 {
+        1
+    } else {
+        if value > 5 {
+            2
+        } else {
+            3
+        }
+    };
+
+    // The block has a statement before the `if`, so it can't be collapsed
+    let statements = if value > 10 {
+        1
+    } else {
+        assert value > 0;
+        if value > 5 {
+            2
+        } else {
+            3
+        }
+    };
+
+    let already = if value > 10 {
+        1
+    } else if value > 5 {
+        2
+    } else {
+        3
+    };
+
+    collapsible + statements + already
+}

@@ -1,0 +1,15 @@
+program: (a (i 2 (q 2 (i 5 (q 2 (i (= 2 (q . 5)) (q 2 (i (> 2 (q . 100)) (q 8) (q 3 (> 2 (q . 50)) (x) 2)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)
+debug_program: (a (i (= 2 ()) (q 8 (q . "raise called at manual_assert.rue:3:9")) (q 2 (i (not 5) (q 8 (q . "raise called at manual_assert.rue:7:9")) (q 2 (i (not (= 2 (q . 5))) (q 8 (q . "raise called at manual_assert.rue:11:9")) (q 2 (i (> 2 (q . 100)) (q 8 (q . "raise called at manual_assert.rue:16:9") (q . "Too large")) (q 3 (> 2 (q . 50)) (x (q . "raise called at manual_assert.rue:21:9")) 2)) 1)) 1)) 1)) 1)
+byte_cost: 1380000
+clvm_error: path into atom
+diagnostics:
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at manual_assert.rue:2:5
+    help: Replace it with an `assert`
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at manual_assert.rue:6:5
+    help: Replace it with an `assert`
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at manual_assert.rue:10:5
+    help: Replace it with an `assert`
+- A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead at manual_assert.rue:20:5

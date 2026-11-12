@@ -327,6 +327,7 @@ fn main() -> Int {
             "Error 6: Unknown attribute `warning`",
             "Warning 7: Unused function `other`",
             "Error 11: Attribute `allow` expects a list of lint names",
+            "Warning 13: Binding `a` is returned directly after it's declared",
             "Error 14: Attributes can only be used on items and statements",
         ]
     );
@@ -384,6 +385,7 @@ fn main() -> Int {
     assert_eq!(
         reports,
         vec![
+            "Warning 2: Binding `a` is returned directly after it's declared",
             "Error 3: Attributes can only be used on items and statements",
             "Error 4: Attributes can only be used on items and statements",
         ]
@@ -898,7 +900,10 @@ fn main() -> Int {
 
     assert_eq!(
         reports,
-        vec!["Warning 4: Expected lint `unused_binding` to be reported here, but it never was"]
+        vec![
+            "Warning 4: Expected lint `unused_binding` to be reported here, but it never was",
+            "Warning 7: Binding `d` is returned directly after it's declared",
+        ]
     );
     assert!(!has_errors);
 }
@@ -928,7 +933,10 @@ fn main() -> Int {
 
     assert_eq!(
         reports,
-        vec!["Error 9: Expected lint `unused_binding` to be reported here, but it never was"]
+        vec![
+            "Warning 3: Binding `a` is returned directly after it's declared",
+            "Error 9: Expected lint `unused_binding` to be reported here, but it never was",
+        ]
     );
     assert!(has_errors);
 }
@@ -995,6 +1003,7 @@ fn main() -> Int {
         reports,
         vec![
             "Warning 1: Lint `unfulfilled_lint_expectation` can't be expected, so this is always reported",
+            "Warning 3: Binding `a` is returned directly after it's declared",
             "Warning 3: Expected lint `unused_binding` to be reported here, but it never was",
         ]
     );
@@ -1045,6 +1054,7 @@ fn main() -> Int {
             "Error 1: Attribute `expect` expects a list of lint names",
             "Warning 2: Unused function `helper`",
             "Warning 6: Unknown lint `unused_bindings`",
+            "Warning 8: Binding `a` is returned directly after it's declared",
             "Error 10: Attributes can only be used on items and statements",
         ]
     );
@@ -1182,7 +1192,8 @@ fn main() -> Int {
     assert_eq!(
         reports,
         vec![
-            "Error 3: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1"
+            "Warning 3: Binding `a` is returned directly after it's declared",
+            "Error 3: Cannot set lint `unused_binding` to `allow`, since it's forbidden by the attribute on line 1",
         ]
     );
     assert!(has_errors);
@@ -1398,6 +1409,7 @@ fn main() -> Int {
     assert_eq!(
         reports,
         vec![
+            "Warning 2: Binding `a` is returned directly after it's declared",
             "Error 3: Attributes can only be used on items and statements",
             "Error 3: Unknown attribute `alow`",
             "Error 3: Attributes can only be used on items and statements",
@@ -1719,6 +1731,7 @@ fn early(value: Int) -> Int {
     assert_eq!(
         reports,
         vec![
+            "Warning 7: Binding `doubled` is returned directly after it's declared",
             "Warning 11: Unused function `early`",
             "Warning 12: Unnecessary `return` statement, since the function body can end in an expression instead",
             "Warning 13: Unreachable code",
@@ -1769,7 +1782,15 @@ fn unused() -> Int {
 
     // The block inside the unreachable code isn't reported separately, and an unused binding is
     // never evaluated, so the code after it is reachable
-    assert_eq!(reports, vec!["Warning 21: Unreachable code"]);
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 7: Binding `a` is returned directly after it's declared",
+            "Warning 14: Binding `a` is returned directly after it's declared",
+            "Warning 21: Unreachable code",
+            "Warning 21: Binding `a` is returned directly after it's declared",
+        ]
+    );
     assert!(!has_errors);
 }
 
@@ -1785,4 +1806,382 @@ fn main() -> Int {
 
     // The attribute can't be kept on an expression, and removing it would change what's reported
     assert_eq!(fix(source), source);
+}
+
+#[test]
+fn style_suggestions_fix_lints() {
+    let source = "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(flag: Bool, value: Int | nil) -> Int {
+    if value is nil {
+        raise;
+    }
+
+    if flag == false {
+        raise;
+    }
+
+    let x = (value + 1);
+    let point = Point { x: x, y: 2 };
+    let positive = if point.x > 0 { false } else { true };
+    let checked = flag && if positive || flag { true } else { false };
+
+    let result = if checked {
+        point.y
+    } else {
+        if positive { 1 } else { 2 }
+    };
+    result
+}
+";
+
+    // Suggestions that overlap are applied on the next pass, as they would be by an editor
+    let fixed = fix(&fix(source));
+
+    assert_eq!(
+        fixed,
+        "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(flag: Bool, value: Int | nil) -> Int {
+    assert !(value is nil);
+
+    assert flag;
+
+    let x = value + 1;
+    let point = Point { x, y: 2 };
+    let positive = !(point.x > 0);
+    let checked = flag && (positive || flag);
+
+    if checked {
+        point.y
+    } else if positive { 1 } else { 2 }
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+#[test]
+fn removal_suggestions_fix_lints() {
+    let source = "\
+inline const ONCE: Int = 1;
+
+mod helpers {
+    export fn inner() -> Int {
+        1
+    }
+
+    export fn outer() -> Int {
+        inner() + 1
+    }
+}
+
+fn main(value: Int) -> Int {
+    inline let doubled = value * 2;
+    debug value;
+    doubled + ONCE + helpers::outer()
+}
+";
+
+    let (diagnostics, _) = compile_source(source, |options| {
+        options.lints.set(Lint::DebugStatement, LintLevel::Warn);
+    });
+
+    let edits = diagnostics
+        .iter()
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    let fixed = apply_edits(source, &edits);
+
+    assert_eq!(
+        fixed,
+        "\
+const ONCE: Int = 1;
+
+mod helpers {
+    fn inner() -> Int {
+        1
+    }
+
+    export fn outer() -> Int {
+        inner() + 1
+    }
+}
+
+fn main(value: Int) -> Int {
+    let doubled = value * 2;
+    doubled + ONCE + helpers::outer()
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |options| {
+        options.lints.set(Lint::DebugStatement, LintLevel::Warn);
+    });
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+#[test]
+fn negations_are_parenthesized_as_operands() {
+    let source = "\
+fn main(flag: Bool, a: Bool, b: Bool) -> Bool {
+    let compared = flag && !(a || b) == false;
+    let flipped = flag && (a == b) == false;
+    let needless = flag && if !(!a || b) { false } else { true };
+    let cast = (flag == false) as Int;
+    let guarded = (if flag { false } else { true }) is Bool;
+    compared && flipped && needless && cast == 1 && guarded
+}
+";
+
+    // Removing the comparison or the `if` can't let the operators around it split up what's left
+    // of it, including a postfix operator such as `as`, which binds more tightly than `!`
+    assert_eq!(
+        fix(source),
+        "\
+fn main(flag: Bool, a: Bool, b: Bool) -> Bool {
+    let compared = flag && (a || b);
+    let flipped = flag && (a != b);
+    let needless = flag && (!a || b);
+    let cast = (!flag) as Int;
+    let guarded = (!flag) is Bool;
+    compared && flipped && needless && cast == 1 && guarded
+}
+"
+    );
+}
+
+#[test]
+fn conditions_keep_parentheses_around_struct_initializers() {
+    let source = "\
+struct Point {
+    x: Int,
+    s: String,
+}
+
+fn main(a: Int, s: String) -> Int {
+    if (Point { x: a, s }.x == 1) == true {
+        return 1;
+    }
+
+    // A brace in a string isn't a struct initializer, and strings don't have escapes
+    if (s == \"{\") == true {
+        return 8;
+    }
+
+    if (\"\\\" != Point { x: a, s }.s) == false {
+        return 10;
+    }
+
+    if (Point { x: a, s }.x == 5 == true) {
+        return 5;
+    }
+
+    if (Point { x: a, s }.x != 6 == false) {
+        return 6;
+    }
+
+    if (a != 7) == false {
+        return 7;
+    }
+
+    let compared = if (Point { x: a, s }.x == 2) == true { 1 } else { 2 };
+    let needless = if if (Point { x: a, s }.x == 3) { true } else { false } { 1 } else { 2 };
+    let negated = if !(Point { x: a, s }.x == 4) == false { 1 } else { 2 };
+    compared + needless + negated
+}
+";
+
+    // A struct initializer can't be written in a condition without parentheses
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+struct Point {
+    x: Int,
+    s: String,
+}
+
+fn main(a: Int, s: String) -> Int {
+    if (Point { x: a, s }.x == 1) {
+        return 1;
+    }
+
+    // A brace in a string isn't a struct initializer, and strings don't have escapes
+    if s == \"{\" {
+        return 8;
+    }
+
+    if (\"\\\" == Point { x: a, s }.s) {
+        return 10;
+    }
+
+    if (Point { x: a, s }.x == 5) {
+        return 5;
+    }
+
+    if (Point { x: a, s }.x == 6) {
+        return 6;
+    }
+
+    if a == 7 {
+        return 7;
+    }
+
+    let compared = if (Point { x: a, s }.x == 2) { 1 } else { 2 };
+    let needless = if (Point { x: a, s }.x == 3) { 1 } else { 2 };
+    let negated = if (Point { x: a, s }.x == 4) { 1 } else { 2 };
+    compared + needless + negated
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
+
+#[test]
+fn comments_are_kept_by_suggestions() {
+    let source = "\
+inline // inline
+const ONCE: Int = 1;
+
+fn main(a: Int, flag: Bool) -> Int {
+    inline // inline
+    let doubled = a * 2;
+
+    if (a == 1 // note
+    ) == true {
+        return 1;
+    }
+
+    if (a /* x /* { */ */ == 2) == true {
+        return 2;
+    }
+
+    if (a == 3 // note
+    ) == false {
+        return 3;
+    }
+
+    if (!flag // note
+    ) == false {
+        return 4;
+    }
+
+    let cast = a /* keep */ as Int;
+    let plus = + /* keep */ 1;
+    doubled + ONCE + cast + plus + early(a)
+}
+
+fn early(a: Int) -> Int {
+    return /* keep */ a;
+}
+";
+
+    // Fixes that keep every comment are applied, but the rest would remove one, so they aren't
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+// inline
+const ONCE: Int = 1;
+
+fn main(a: Int, flag: Bool) -> Int {
+    // inline
+    let doubled = a * 2;
+
+    if (a == 1 // note
+    ) {
+        return 1;
+    }
+
+    if a /* x /* { */ */ == 2 {
+        return 2;
+    }
+
+    if (a == 3 // note
+    ) == false {
+        return 3;
+    }
+
+    if (!flag // note
+    ) == false {
+        return 4;
+    }
+
+    let cast = a /* keep */ as Int;
+    let plus = + /* keep */ 1;
+    doubled + ONCE + cast + plus + early(a)
+}
+
+fn early(a: Int) -> Int {
+    return /* keep */ a;
+}
+"
+    );
+
+    assert_eq!(fix(&fixed), fixed);
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 8: Unnecessary parentheses",
+            "Warning 17: Unnecessary comparison with `false`",
+            "Warning 22: Unnecessary comparison with `false`",
+            "Warning 27: Unnecessary cast from `Int` to `Int`, since they are compatible with each other",
+            "Warning 28: Unnecessary `+` operator, since it has no effect",
+            "Warning 33: Unnecessary `return` statement, since the function body can end in an expression instead",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn suggestions_dont_join_words() {
+    let source = "\
+fn main(a: Int) -> Int {
+    if a > 1 {
+        return+a;
+    }
+
+    0
+}
+";
+
+    // Removing the `+` would otherwise join `return` and `a` into one name
+    assert_eq!(
+        fix(source),
+        "\
+fn main(a: Int) -> Int {
+    if a > 1 {
+        return a;
+    }
+
+    0
+}
+"
+    );
 }

@@ -50,3 +50,10 @@ tests:
   byte_cost: 588000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "raise called at generic_else.rue:11:9"
+diagnostics:
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at generic_else.rue:2:5
+    help: Replace it with an `assert`
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at generic_else.rue:10:5
+    help: Replace it with an `assert`

@@ -9,5 +9,9 @@ diagnostics:
 - Expected 2 arguments, but found 1 at function_arguments.rue:26:5
 - The last argument must be spread, since the function has a spread parameter at function_arguments.rue:27:5
 - Expected 2 arguments, but found 3 at function_arguments.rue:28:5
+- |-
+  This call is evaluated again with the same arguments, which costs as much as the first time at function_arguments.rue:28:5
+    note: It's first evaluated here at function_arguments.rue:27:5
+    note: Store the result in a `let` binding and use that instead
 - Expected 1 arguments, but found 0 at function_arguments.rue:38:5
 - The last argument must be spread, since the function has a spread parameter at function_arguments.rue:39:5

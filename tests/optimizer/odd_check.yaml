@@ -5,3 +5,10 @@ output: (1 1 () ())
 runtime_cost: 4106
 byte_cost: 924000
 total_cost: 928106
+diagnostics:
+- |-
+  `0x0001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at odd_check.rue:2:39
+    help: Write the number `1` instead
+- |-
+  `0x0001` has a leading zero byte, so it isn't equal to the `Int` `1`, since integers are compared by their bytes at odd_check.rue:2:54
+    help: Write the number `1` instead

@@ -1,0 +1,87 @@
+inline fn large(a: Int, b: Int) -> Int {
+    let c = a * b + a - b;
+    let d = c * c + a * 3 - b * 7;
+    let e = d * c + d - c + a * b;
+    let f = e * e - d * d + c * c - a;
+    let g = f * e + d - c * b + a * 11;
+    let h = g * g - f * e + d * c - b * a;
+    if h > 1000 {
+        h - g + f - e
+    } else {
+        h + g - f + e
+    }
+}
+
+// A constant expression is evaluated at compile time, so only its result is duplicated
+inline fn folded(a: Int) -> Int {
+    a
+        + const {
+            1
+                + 2
+                + 3
+                + 4
+                + 5
+                + 6
+                + 7
+                + 8
+                + 9
+                + 10
+                + 11
+                + 12
+                + 13
+                + 14
+                + 15
+                + 16
+                + 17
+                + 18
+                + 19
+                + 20
+                + 21
+                + 22
+                + 23
+                + 24
+                + 25
+                + 26
+                + 27
+                + 28
+                + 29
+                + 30
+                + 31
+                + 32
+                + 33
+                + 34
+                + 35
+                + 36
+                + 37
+                + 38
+                + 39
+                + 40
+                + 41
+                + 42
+                + 43
+                + 44
+                + 45
+                + 46
+                + 47
+                + 48
+                + 49
+                + 50
+        }
+}
+
+inline fn small(a: Int) -> Int {
+    a + 1
+}
+
+fn main(a: Int, b: Int) -> Int {
+    large(a, b)
+        + large(b, a)
+        + large(a, a)
+        + large(b, b)
+        + small(a)
+        + small(b)
+        + small(a + b)
+        + folded(a)
+        + folded(b)
+        + folded(a + b)
+}

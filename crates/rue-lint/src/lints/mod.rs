@@ -2,16 +2,25 @@ use rue_diagnostic::Lint;
 
 use crate::{HirLintPass, LintContext, LintInput};
 
+mod branches;
 mod casts;
+mod comparisons;
 mod conditions;
+mod exports;
 mod guards;
 mod inline_ifs;
+mod inlining;
+mod naming;
 mod operators;
+mod recursion;
+mod repeated;
 mod returns;
+mod shadowing;
 mod statements;
 mod syntax;
 mod unreachable;
 mod unused;
+mod unused_fields;
 
 /// A lint pass that runs once over the [`LintInput`], such as the syntax trees or the declaration
 /// graph, rather than over each node of the HIR.
@@ -30,10 +39,22 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
         lints: unused::LINTS,
         run: unused::check,
     },
+    InputPass {
+        lints: exports::LINTS,
+        run: exports::check,
+    },
+    InputPass {
+        lints: naming::LINTS,
+        run: naming::check,
+    },
+    InputPass {
+        lints: shadowing::LINTS,
+        run: shadowing::check,
+    },
 ];
 
 /// Every [`HirLintPass`], which all run during the same walk over the HIR.
-pub(crate) fn hir_passes() -> Vec<Box<dyn HirLintPass>> {
+pub(crate) fn hir_passes<'a>(input: &'a LintInput<'_>) -> Vec<Box<dyn HirLintPass + 'a>> {
     vec![
         Box::new(operators::UnnecessaryPlus),
         Box::new(casts::UnnecessaryCast),
@@ -43,6 +64,20 @@ pub(crate) fn hir_passes() -> Vec<Box<dyn HirLintPass>> {
         Box::new(inline_ifs::InlineIfMayRaise),
         Box::new(returns::UnnecessaryReturn),
         Box::new(unreachable::UnreachableCode::default()),
+        Box::new(comparisons::SelfComparison),
+        Box::new(comparisons::BoolComparison),
+        Box::new(branches::IdenticalBranches),
+        Box::new(branches::DuplicateCondition),
+        Box::new(branches::NeedlessBool),
+        Box::new(branches::NegatedCondition),
+        Box::new(branches::ManualAssert),
+        Box::new(statements::DebugStatement),
+        Box::new(statements::NeedlessLetReturn),
+        Box::new(casts::BytesIntConfusion),
+        Box::new(recursion::UnconditionalRecursion),
+        Box::new(repeated::RepeatedExpensiveCall::default()),
+        Box::new(inlining::Inlining::new(input)),
+        Box::new(unused_fields::UnusedStructField::new(input)),
     ]
 }
 
@@ -63,7 +98,14 @@ mod tests {
             lints.extend(pass.lints);
         }
 
-        for pass in hir_passes() {
+        let input = LintInput {
+            sites: crate::LintSites::default(),
+            documents: Vec::new(),
+            entrypoints: &std::collections::HashSet::new(),
+            has_errors: false,
+        };
+
+        for pass in hir_passes(&input) {
             lints.extend(pass.lints());
         }
 

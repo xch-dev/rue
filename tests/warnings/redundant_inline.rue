@@ -1,0 +1,20 @@
+inline const ONCE: Int = 42;
+inline const TWICE: Int = 7;
+
+fn main(value: Int) -> Int {
+    inline let doubled = value * 2;
+    inline let tripled = value * 3;
+    let captured = fn(x: Int) => x + doubled_later(value);
+    ONCE + TWICE + TWICE + doubled + tripled + tripled + captured(1) + in_lambda(value)
+}
+
+fn doubled_later(value: Int) -> Int {
+    value * 2
+}
+
+// A binding that's used in a lambda is captured, rather than inlined
+fn in_lambda(value: Int) -> Int {
+    inline let squared = value * value;
+    let f = fn(x: Int) => x + squared;
+    f(1)
+}

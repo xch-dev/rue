@@ -21,4 +21,13 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 diagnostics:
+- |-
+  Field `right` of struct `Node` is never read at generic_inference_struct_arguments.rue:9:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
 - Unused generic type `T` at generic_inference_struct_arguments.rue:12:15
+- |-
+  Field `value` of struct `Tagged` is never read at generic_inference_struct_arguments.rue:13:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at generic_inference_struct_arguments.rue:17:5
+    help: Replace it with an `assert`

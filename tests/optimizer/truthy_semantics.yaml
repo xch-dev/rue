@@ -79,5 +79,8 @@ tests:
   byte_cost: 276000
   total_cost: 276277
 diagnostics:
+- |-
+  Unnecessary comparison with `true` at truthy_semantics.rue:21:5
+    help: Use the value directly
 - Value returned by statement is unused at truthy_semantics.rue:61:5
 - Value returned by statement is unused at truthy_semantics.rue:62:5

@@ -3,8 +3,16 @@ diagnostics:
 - 'Cannot assign `Box { value: Int }` to `Box<(Int, Int)>`, since they are incompatible at struct_display_errors.rue:17:16'
 - Unused function `merged` at struct_display_errors.rue:23:4
 - 'Cannot assign `Box<Int | (Int, Int)> | Box { value: Int } | Box { value: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:23:57'
+- |-
+  Both branches of this `if` are the same, so the condition has no effect at struct_display_errors.rue:26:12
+    note: The `else` branch is the same at struct_display_errors.rue:28:12
+    help: Replace the `if` with one of its branches
 - Unused function `identical` at struct_display_errors.rue:34:4
 - Cannot assign `Box<Int | (Int, Int)>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:34:60
+- |-
+  Both branches of this `if` are the same, so the condition has no effect at struct_display_errors.rue:35:5
+    note: The `else` branch is the same at struct_display_errors.rue:37:12
+    help: Replace the `if` with one of its branches
 - Unused function `fields` at struct_display_errors.rue:43:4
 - 'Cannot assign `Pair { left: (Int, Int), right: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:43:31'
 - 'Cannot assign `Pair { left: nil, right: (Int, Int) | nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:45:16'
@@ -26,4 +34,8 @@ diagnostics:
 - 'Cannot assign `Node { value: Int, next: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:99:16'
 - Unused function `nested` at struct_display_errors.rue:105:4
 - 'Cannot assign `Box<Int> | Box { value: Never }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:105:44'
+- |-
+  Both branches of this `if` are the same, so the condition has no effect at struct_display_errors.rue:108:12
+    note: The `else` branch is the same at struct_display_errors.rue:110:12
+    help: Replace the `if` with one of its branches
 - Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_display_errors.rue:108:15

@@ -1,0 +1,37 @@
+fn main(value: Int, flag: Bool) -> Bool {
+    let positive = if value > 0 {
+        true
+    } else {
+        false
+    };
+    let negative = if value > 0 {
+        false
+    } else {
+        true
+    };
+    let combined = flag
+        && if value > 5 || flag {
+            true
+        } else {
+            false
+        };
+    let inverted = if value != 5 {
+        false
+    } else {
+        true
+    };
+
+    // Branches that aren't both booleans aren't reported
+    let same = if flag {
+        true
+    } else {
+        true
+    };
+    let other = if flag {
+        value > 1
+    } else {
+        false
+    };
+
+    positive && negative && combined && inverted && same && other
+}

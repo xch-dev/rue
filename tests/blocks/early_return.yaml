@@ -13,3 +13,10 @@ tests:
   runtime_cost: 2795
   byte_cost: 2604000
   total_cost: 2606795
+diagnostics:
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at early_return.rue:67:13
+    help: Replace it with an `assert`
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at early_return.rue:76:9
+    help: Replace it with an `assert`
