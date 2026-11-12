@@ -15,6 +15,8 @@ use std::fmt::{self, Write};
 use std::fs;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -61,7 +63,7 @@ pub struct Backend {
     injected_panic: Mutex<Option<Task>>,
     /// How many times a project was compiled.
     #[cfg(test)]
-    compiles: std::sync::atomic::AtomicUsize,
+    compiles: AtomicUsize,
 }
 
 /// The work the server does in response to the editor, used to say what failed when it panics.
@@ -281,7 +283,7 @@ impl Backend {
             #[cfg(test)]
             injected_panic: Mutex::default(),
             #[cfg(test)]
-            compiles: std::sync::atomic::AtomicUsize::new(0),
+            compiles: AtomicUsize::new(0),
         }
     }
 
@@ -367,13 +369,7 @@ impl Backend {
             }
         }
 
-        let Some(project) = FoundProject::find(&uri_path) else {
-            return IndexMap::new();
-        };
-
-        let compiled = self.compile(&project);
-
-        self.update_project(compiled)
+        self.recompile(&[], Some(&uri_path))
     }
 
     /// Recompiles the projects that files changed on disk belong to, outside of the editor (for
@@ -387,23 +383,30 @@ impl Backend {
             .filter_map(|change| change.uri.to_file_path().ok())
             .collect::<Vec<_>>();
 
-        let mut lookups = changed.clone();
+        self.recompile(&changed, None)
+    }
+
+    /// Recompiles the projects that the changed files belong to, if diagnostics were reported for
+    /// them, and the project of the file the editor changed, if any. Projects that aren't the
+    /// editor's are only compiled once the user opened one of their files, so that the server
+    /// doesn't report diagnostics for the whole workspace.
+    fn recompile(
+        &self,
+        changed: &[PathBuf],
+        edited: Option<&Path>,
+    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
+        let published = lock(&self.published).clone();
+
+        let mut lookups = edited
+            .map(Path::to_path_buf)
+            .into_iter()
+            .collect::<Vec<_>>();
         let mut removed = Vec::new();
 
-        // A project that a changed file was part of may not exist anymore, or may have become
-        // part of another one (for example, if its manifest was deleted or created). Its files
-        // are cleared, and compiled with whichever project they're part of now.
-        for (key, files) in lock(&self.published).iter() {
-            let scope = if is_manifest(key) {
-                key.parent().unwrap_or(key)
-            } else {
-                key
-            };
-
-            if !changed.iter().any(|path| path.starts_with(scope)) {
-                continue;
-            }
-
+        // A project may not exist anymore, or may have become part of another one (for example,
+        // if a manifest was deleted, or created in a parent directory). Its files are cleared, and
+        // compiled with whichever project they're part of now.
+        for (key, files) in &published {
             if FoundProject::find(key).is_some_and(|project| &project.key == key) {
                 continue;
             }
@@ -421,6 +424,14 @@ impl Backend {
 
         for path in lookups {
             if let Some(project) = FoundProject::find(&path) {
+                projects.entry(project.key.clone()).or_insert(project);
+            }
+        }
+
+        for path in changed {
+            if let Some(project) = FoundProject::find(path)
+                && published.contains_key(&project.key)
+            {
                 projects.entry(project.key.clone()).or_insert(project);
             }
         }
@@ -947,10 +958,6 @@ fn invalid_manifest_diagnostics(
     }
 
     diagnostics
-}
-
-fn is_manifest(path: &Path) -> bool {
-    path.file_name().is_some_and(|name| name == "Rue.toml")
 }
 
 /// The source kind of a file, which the compiler identifies by its canonical path. If the file

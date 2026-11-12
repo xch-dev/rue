@@ -24,6 +24,31 @@ use crate::{Backend, code_actions, position::position_to_offset};
 
 const CURSOR: &str = "$0";
 
+/// A manifest for a project that doesn't use the standard library, so that results only include
+/// what's declared in the test itself.
+const MANIFEST: &str = "[compiler]\nentrypoint = \".\"\nstd = false\n";
+
+/// Creates an empty temporary directory that's unique to the test.
+fn temp_root(prefix: &str) -> PathBuf {
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    let root = std::env::temp_dir().join(format!(
+        "{prefix}-{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::SeqCst)
+    ));
+
+    if root.exists() {
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    fs::create_dir_all(&root).unwrap();
+
+    // Canonicalize so that paths match the ones produced by the compiler (on macOS, the temp
+    // directory is behind a symlink).
+    root.canonicalize().unwrap()
+}
+
 /// A temporary project directory on disk, along with a language server instance that has
 /// opened its files. Any `$0` marker in a file's text is stripped and recorded as the cursor.
 pub struct TestProject {
@@ -36,27 +61,11 @@ impl TestProject {
     /// Creates a project that doesn't use the standard library, so that results only include
     /// what's declared in the test itself.
     pub fn new(files: &[(&str, &str)]) -> Self {
-        Self::with_manifest(Some("[compiler]\nentrypoint = \".\"\nstd = false\n"), files)
+        Self::with_manifest(Some(MANIFEST), files)
     }
 
     pub fn with_manifest(manifest: Option<&str>, files: &[(&str, &str)]) -> Self {
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-        let root = std::env::temp_dir().join(format!(
-            "rue-lsp-test-{}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::SeqCst)
-        ));
-
-        if root.exists() {
-            fs::remove_dir_all(&root).unwrap();
-        }
-
-        fs::create_dir_all(&root).unwrap();
-
-        // Canonicalize so that paths match the ones produced by the compiler (on macOS, the temp
-        // directory is behind a symlink).
-        let root = root.canonicalize().unwrap();
+        let root = temp_root("rue-lsp-test");
 
         if let Some(manifest) = manifest {
             fs::write(root.join("Rue.toml"), manifest).unwrap();

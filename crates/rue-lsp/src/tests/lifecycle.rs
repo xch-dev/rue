@@ -2,30 +2,24 @@
 //! are opened and closed, and as files change on disk.
 
 use serde_json::{Value, json};
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{FileChangeType, Url};
 
 use super::protocol::{Client, MISMATCH, SOURCE, TempProject};
 use crate::Task;
 
-const CREATED: u8 = 1;
-const CHANGED: u8 = 2;
-const DELETED: u8 = 3;
+const CREATED: FileChangeType = FileChangeType::CREATED;
+const CHANGED: FileChangeType = FileChangeType::CHANGED;
+const DELETED: FileChangeType = FileChangeType::DELETED;
 
 /// Declares `other`, which is unused (a warning) and has a type error.
 const OTHER: &str = "fn other() -> Int {\n    \"hello\"\n}\n";
-
-async fn client() -> Client {
-    let mut client = Client::new();
-    client.initialize().await;
-    client
-}
 
 #[tokio::test]
 async fn test_close_reverts_to_disk() {
     let project = TempProject::new(&[("main.rue", SOURCE)]);
     let main = project.uri("main.rue");
 
-    let mut client = client().await;
+    let mut client = Client::initialized().await;
 
     client.open(&main, MISMATCH).await;
     assert_eq!(
@@ -46,7 +40,7 @@ async fn test_close_after_delete_discards_text() {
     let project = TempProject::new(&[("main.rue", SOURCE), ("other.rue", OTHER)]);
     let other = project.uri("other.rue");
 
-    let mut client = client().await;
+    let mut client = Client::initialized().await;
 
     // The unsaved text fixes the type error
     client
@@ -83,7 +77,7 @@ async fn test_deleted_file_is_cleared() {
     let main = project.uri("main.rue");
     let other = project.uri("other.rue");
 
-    let mut client = client().await;
+    let mut client = Client::initialized().await;
 
     client.open(&main, SOURCE).await;
     assert_eq!(
@@ -112,7 +106,7 @@ async fn test_uncompilable_project_is_cleared() {
     );
     let main = project.uri("main.rue");
 
-    let mut client = client().await;
+    let mut client = Client::initialized().await;
 
     client.open(&main, MISMATCH).await;
     assert_eq!(
@@ -146,7 +140,7 @@ async fn test_invalid_manifest_clears_project() {
     let other = project.uri("other.rue");
     let manifest = project.uri("Rue.toml");
 
-    let mut client = client().await;
+    let mut client = Client::initialized().await;
 
     client.open(&main, SOURCE).await;
     client.sync().await;
@@ -175,7 +169,7 @@ async fn test_watched_files_recompile() {
     let other = project.uri("other.rue");
     let manifest = project.uri("Rue.toml");
 
-    let mut client = client().await;
+    let mut client = Client::initialized().await;
 
     client.open(&main, SOURCE).await;
     assert_eq!(
@@ -224,7 +218,7 @@ async fn test_deleted_manifest_leaves_project() {
     let lib = project.uri("lib.rue");
     let manifest = project.uri("Rue.toml");
 
-    let mut client = client().await;
+    let mut client = Client::initialized().await;
 
     client.open(&lib, OTHER).await;
     assert_eq!(
@@ -248,7 +242,7 @@ async fn test_deleted_manifest_in_any_order() {
         let main = project.uri("main.rue");
         let manifest = project.uri("Rue.toml");
 
-        let mut client = client().await;
+        let mut client = Client::initialized().await;
 
         client.open(&main, SOURCE).await;
         client.sync().await;
@@ -277,7 +271,7 @@ async fn test_deleted_entrypoint_without_manifest() {
     let main = project.uri("main.rue");
     let other = project.uri("other.rue");
 
-    let mut client = client().await;
+    let mut client = Client::initialized().await;
 
     client.open(&other, OTHER).await;
     assert_eq!(
@@ -302,7 +296,7 @@ async fn test_watched_files_panic_keeps_state() {
     let main = project.uri("main.rue");
     let other = project.uri("other.rue");
 
-    let mut client = client().await;
+    let mut client = Client::initialized().await;
 
     client.open(&main, SOURCE).await;
     client.sync().await;
@@ -323,6 +317,146 @@ async fn test_watched_files_panic_keeps_state() {
         project.published(&client.sync().await),
         ["Rue.toml: []", "main.rue: [2]", "other.rue: []"]
     );
+}
+
+#[tokio::test]
+async fn test_manifest_created_in_parent_takes_over() {
+    let project = TempProject::with_manifest(
+        None,
+        &[
+            ("b/main.rue", SOURCE),
+            ("b/other.rue", OTHER),
+            ("src/main.rue", MISMATCH),
+        ],
+    );
+    let other = project.uri("b/other.rue");
+    let manifest = project.uri("Rue.toml");
+
+    let mut client = Client::initialized().await;
+
+    client.open(&other, OTHER).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["b/main.rue: [2]", "b/other.rue: [2, 1]"]
+    );
+
+    // The new manifest's project only includes `src`, so `b` isn't part of any project anymore
+    project.write(
+        "Rue.toml",
+        "[compiler]\nentrypoint = \"src\"\nstd = false\n",
+    );
+    client.watched(&[(&manifest, CREATED)]).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        [
+            "Rue.toml: []",
+            "b/main.rue: []",
+            "b/other.rue: []",
+            "src/main.rue: [1]"
+        ]
+    );
+    assert_eq!(client.hover(&other, 0, 4).await, Value::Null);
+}
+
+#[tokio::test]
+async fn test_unopened_projects_are_ignored() {
+    let project = TempProject::new(&[("main.rue", SOURCE)]);
+    let standalone = TempProject::with_manifest(None, &[("lone.rue", OTHER)]);
+
+    let mut client = Client::initialized().await;
+
+    // Neither project has an open file, so neither is compiled
+    standalone.write("new.rue", OTHER);
+    client
+        .watched(&[
+            (&project.uri("main.rue"), CHANGED),
+            (&standalone.uri("lone.rue"), CHANGED),
+            (&standalone.uri("new.rue"), CREATED),
+        ])
+        .await;
+    client.assert_no_messages().await;
+    assert_eq!(client.compiles(), 0);
+}
+
+#[tokio::test]
+async fn test_close_deleted_standalone_file() {
+    // Without watchers, the server only finds out that the file was deleted when it's closed
+    let project = TempProject::with_manifest(None, &[("lone.rue", OTHER)]);
+    let lone = project.uri("lone.rue");
+
+    let mut client = Client::initialized().await;
+
+    client.open(&lone, OTHER).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["lone.rue: [2, 1]"]
+    );
+
+    project.remove("lone.rue");
+    client.close(&lone).await;
+    assert_eq!(project.published(&client.sync().await), ["lone.rue: []"]);
+}
+
+#[tokio::test]
+async fn test_panic_keeps_removed_project() {
+    let project = TempProject::new(&[("lib.rue", OTHER)]);
+    let lib = project.uri("lib.rue");
+    let manifest = project.uri("Rue.toml");
+
+    let mut client = Client::initialized().await;
+
+    client.open(&lib, OTHER).await;
+    client.sync().await;
+
+    project.remove("Rue.toml");
+
+    client.inject_panic(Some(Task::Compile));
+    client.watched(&[(&manifest, DELETED)]).await;
+    assert_eq!(
+        client.panic_message().await,
+        "Internal error while compiling: injected panic"
+    );
+
+    // The project wasn't removed, so it still answers queries, and it's removed once compiling
+    // works again
+    assert_ne!(client.hover(&lib, 0, 4).await, Value::Null);
+
+    client.inject_panic(None);
+    client.watched(&[(&manifest, DELETED)]).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["Rue.toml: []", "lib.rue: [2, 1]"]
+    );
+}
+
+#[tokio::test]
+async fn test_nested_project_keeps_shared_files() {
+    let project = TempProject::new(&[
+        ("main.rue", SOURCE),
+        (
+            "sub/Rue.toml",
+            "[compiler]\nentrypoint = \".\"\nstd = false\n",
+        ),
+        ("sub/x.rue", OTHER),
+    ]);
+    let main = project.uri("main.rue");
+    let x = project.uri("sub/x.rue");
+
+    let mut client = Client::initialized().await;
+
+    // Both projects include `sub/x.rue`, since the outer one compiles every directory
+    client.open(&x, OTHER).await;
+    client.open(&main, SOURCE).await;
+    client.sync().await;
+
+    // The outer project can't be compiled anymore, but the inner one still reports the file
+    project.write("Rue.toml", "[compiler\n");
+    client.close(&main).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["Rue.toml: [1]", "main.rue: []"]
+    );
+    assert_ne!(client.hover(&x, 0, 4).await, Value::Null);
 }
 
 #[tokio::test]

@@ -3,7 +3,7 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
@@ -12,10 +12,9 @@ use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
 use tower_lsp::LspService;
 use tower_lsp::jsonrpc::{Request, Response};
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{FileChangeType, MessageType, Url};
 
-use tower_lsp::lsp_types::MessageType;
-
+use super::{MANIFEST, temp_root};
 use crate::{Backend, INITIALIZED, Task, lock};
 
 /// Logged for the `rue/sync` notification, which only exists in tests, so that they know that the
@@ -138,9 +137,12 @@ impl Client {
         messages
     }
 
-    pub(super) async fn initialize(&mut self) {
-        let messages = self.initialize_with(json!({})).await;
+    /// A client that has initialized the server, with no capabilities.
+    pub(super) async fn initialized() -> Self {
+        let mut client = Self::new();
+        let messages = client.initialize_with(json!({})).await;
         assert!(messages.is_empty(), "unexpected messages: {messages:?}");
+        client
     }
 
     pub(super) async fn open(&mut self, uri: &Url, text: &str) {
@@ -166,9 +168,8 @@ impl Client {
         .await;
     }
 
-    /// Tells the server that files changed on disk, with the LSP's change types (1 is created, 2
-    /// is changed and 3 is deleted).
-    pub(super) async fn watched(&mut self, changes: &[(&Url, u8)]) {
+    /// Tells the server that files changed on disk.
+    pub(super) async fn watched(&mut self, changes: &[(&Url, FileChangeType)]) {
         let changes = changes
             .iter()
             .map(|(uri, kind)| json!({ "uri": uri, "type": kind }))
@@ -284,19 +285,11 @@ pub(super) struct TempProject {
 
 impl TempProject {
     pub(super) fn new(files: &[(&str, &str)]) -> Self {
-        Self::with_manifest(Some("[compiler]\nentrypoint = \".\"\nstd = false\n"), files)
+        Self::with_manifest(Some(MANIFEST), files)
     }
 
     pub(super) fn with_manifest(manifest: Option<&str>, files: &[(&str, &str)]) -> Self {
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-        let root = std::env::temp_dir().join(format!(
-            "rue-lsp-protocol-{}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::SeqCst)
-        ));
-        fs::create_dir_all(&root).unwrap();
-        let root = root.canonicalize().unwrap();
+        let root = temp_root("rue-lsp-protocol");
 
         let project = Self { root };
 
@@ -316,7 +309,9 @@ impl TempProject {
     }
 
     pub(super) fn write(&self, name: &str, text: &str) {
-        fs::write(self.root.join(name), text).unwrap();
+        let path = self.root.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
     }
 
     pub(super) fn remove(&self, name: &str) {
@@ -464,8 +459,7 @@ async fn test_compile_panic_is_caught() {
     let main = project.uri("main.rue");
     let other = project.uri("other.rue");
 
-    let mut client = Client::new();
-    client.initialize().await;
+    let mut client = Client::initialized().await;
     client.open(&main, SOURCE).await;
     client.sync().await;
 
@@ -490,8 +484,7 @@ async fn test_query_panics_are_caught() {
     let project = TempProject::new(&[("main.rue", SOURCE)]);
     let uri = project.uri("main.rue");
 
-    let mut client = Client::new();
-    client.initialize().await;
+    let mut client = Client::initialized().await;
     client.open(&uri, SOURCE).await;
 
     let diagnostics = client.diagnostics(&uri).await["diagnostics"].clone();
@@ -556,8 +549,7 @@ async fn test_poisoned_locks_are_recovered() {
     let project = TempProject::new(&[("main.rue", SOURCE)]);
     let uri = project.uri("main.rue");
 
-    let mut client = Client::new();
-    client.initialize().await;
+    let mut client = Client::initialized().await;
     client.open(&uri, SOURCE).await;
     client.diagnostics(&uri).await;
 
@@ -590,8 +582,7 @@ async fn test_did_change_uses_last_change() {
     let project = TempProject::new(&[("main.rue", SOURCE)]);
     let uri = project.uri("main.rue");
 
-    let mut client = Client::new();
-    client.initialize().await;
+    let mut client = Client::initialized().await;
     client.open(&uri, SOURCE).await;
     client.sync().await;
 
