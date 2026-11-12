@@ -11,11 +11,12 @@ use rue_formatter::{FormatError, FormatOptions, format_source};
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
-use std::fmt::Write;
+use std::fmt::{self, Write};
 use std::fs;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rue_options::{Project, find_project};
 use send_wrapper::SendWrapper;
@@ -44,6 +45,35 @@ pub struct Backend {
     /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
     /// added to the message instead. This is assumed until the client says otherwise.
     related_information: AtomicBool,
+    /// Tasks that panic on purpose, to test that the server survives panics.
+    #[cfg(test)]
+    injected_panics: Mutex<std::collections::HashSet<Task>>,
+}
+
+/// The work the server does in response to the editor, used to say what failed when it panics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Task {
+    Compile,
+    Hover,
+    Definition,
+    References,
+    Completion,
+    Formatting,
+    CodeAction,
+}
+
+impl fmt::Display for Task {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Compile => "compiling",
+            Self::Hover => "computing hover information",
+            Self::Definition => "finding the definition",
+            Self::References => "finding references",
+            Self::Completion => "computing completions",
+            Self::Formatting => "formatting",
+            Self::CodeAction => "computing code actions",
+        })
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -104,11 +134,13 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        self.on_change(
-            params.text_document.uri,
-            Some(params.content_changes[0].text.clone()),
-        )
-        .await;
+        // The server only asks for full syncs, so the last change has the whole text
+        let Some(change) = params.content_changes.into_iter().next_back() else {
+            return;
+        };
+
+        self.on_change(params.text_document.uri, Some(change.text))
+            .await;
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
@@ -116,30 +148,50 @@ impl LanguageServer for Backend {
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        Ok(self.on_hover(&params))
+        Ok(self
+            .catch_panic(Task::Hover, || self.on_hover(&params))
+            .await
+            .flatten())
     }
 
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        Ok(self.on_goto_definition(&params))
+        Ok(self
+            .catch_panic(Task::Definition, || self.on_goto_definition(&params))
+            .await
+            .flatten())
     }
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        Ok(self.on_references(&params))
+        Ok(self
+            .catch_panic(Task::References, || self.on_references(&params))
+            .await
+            .flatten())
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        Ok(self.on_completion(&params))
+        Ok(self
+            .catch_panic(Task::Completion, || self.on_completion(&params))
+            .await
+            .flatten())
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
-        self.on_formatting(&params).map(Some)
+        self.catch_panic(Task::Formatting, || self.on_formatting(&params))
+            .await
+            .transpose()
     }
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        Ok(code_actions(&params))
+        Ok(self
+            .catch_panic(Task::CodeAction, || {
+                self.inject_panic(Task::CodeAction);
+                code_actions(&params)
+            })
+            .await
+            .flatten())
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -154,18 +206,58 @@ impl Backend {
             cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
             related_information: AtomicBool::new(true),
+            #[cfg(test)]
+            injected_panics: Mutex::default(),
         }
     }
 
+    /// Runs a task, and if it panics, logs the panic to the client and returns `None` instead of
+    /// taking down the server.
+    async fn catch_panic<T>(&self, task: Task, f: impl FnOnce() -> T) -> Option<T> {
+        let payload = match panic::catch_unwind(AssertUnwindSafe(f)) {
+            Ok(value) => return Some(value),
+            Err(payload) => payload,
+        };
+
+        let message = payload
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("unknown panic");
+
+        let message = format!("Internal error while {task}: {message}");
+
+        self.client.log_message(MessageType::ERROR, message).await;
+
+        None
+    }
+
+    #[cfg(test)]
+    fn inject_panic(&self, task: Task) {
+        let inject = lock(&self.injected_panics).contains(&task);
+        assert!(!inject, "injected panic");
+    }
+
+    #[cfg(not(test))]
+    #[allow(clippy::unused_self)]
+    fn inject_panic(&self, _task: Task) {}
+
     async fn on_change(&self, uri: Url, text: Option<String>) {
-        let diagnostics = self.on_change_impl(&uri, text);
+        let Some(diagnostics) = self
+            .catch_panic(Task::Compile, || self.on_change_impl(&uri, text))
+            .await
+        else {
+            return;
+        };
 
         for (kind, diagnostics) in diagnostics {
             let SourceKind::File(path) = kind else {
                 continue;
             };
 
-            let uri = Url::from_file_path(path).unwrap();
+            let Ok(uri) = Url::from_file_path(path) else {
+                continue;
+            };
 
             self.client
                 .publish_diagnostics(uri, diagnostics, None)
@@ -189,7 +281,7 @@ impl Backend {
         // Keep track of the editor's text even if the project can't be compiled right now, so
         // that it's used once it can be
         {
-            let mut file_cache = self.file_cache.lock().unwrap();
+            let mut file_cache = lock(&self.file_cache);
 
             if let Some(text) = text {
                 file_cache.insert(source_kind.clone(), text);
@@ -215,11 +307,13 @@ impl Backend {
 
         let mut ctx = Compiler::new(project.options);
 
-        let mut file_cache = self.file_cache.lock().unwrap();
+        // The compiler gets its own copy of the editor's text, so that the lock isn't held while
+        // compiling, which could panic
+        let mut sources = lock(&self.file_cache).clone();
 
-        let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut file_cache);
+        self.inject_panic(Task::Compile);
 
-        drop(file_cache);
+        let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut sources);
 
         let Ok(tree) = tree else {
             return IndexMap::new();
@@ -237,25 +331,31 @@ impl Backend {
                 ));
         }
 
-        let mut cache = self.cache.lock().unwrap();
-
         let ctx = Arc::new(ctx);
         let tree = Arc::new(SendWrapper::new(tree));
+
+        let mut caches = Vec::new();
 
         for file in tree.all_files() {
             let SourceKind::File(path) = &file.source.kind else {
                 continue;
             };
 
-            let uri = Url::from_file_path(path).unwrap();
+            diagnostics.entry(file.source.kind.clone()).or_default();
 
-            cache.insert(
+            let Ok(uri) = Url::from_file_path(path) else {
+                continue;
+            };
+
+            caches.push((
                 uri,
                 SendWrapper::new(Cache::new(ctx.clone(), tree.clone(), file.source.clone())),
-            );
-
-            diagnostics.entry(file.source.kind.clone()).or_default();
+            ));
         }
+
+        // The caches are only updated once everything else succeeded, so that a panic leaves the
+        // results of the last compile in place
+        lock(&self.cache).extend(caches);
 
         // Always include the manifest, so that its diagnostics are cleared once they're fixed
         if let Some((kind, manifest_diagnostics)) = manifest_diagnostics {
@@ -282,7 +382,7 @@ impl Backend {
         diagnostics.insert(changed, Vec::new());
 
         if let Some(dir) = path.parent() {
-            for uri in self.cache.lock().unwrap().keys() {
+            for uri in lock(&self.cache).keys() {
                 if let Ok(file) = uri.to_file_path()
                     && file.starts_with(dir)
                     && let Ok(kind) = normalize_path(&file)
@@ -307,7 +407,9 @@ impl Backend {
         let project =
             find_project(&path, false).map_err(|error| Error::invalid_params(error.to_string()))?;
         let options = project.map_or_else(FormatOptions::default, |project| project.format_options);
-        let source = self.file_cache.lock().unwrap().get(&source_kind).cloned();
+        self.inject_panic(Task::Formatting);
+
+        let source = lock(&self.file_cache).get(&source_kind).cloned();
         let source = match source {
             Some(source) => source,
             None => fs::read_to_string(&path)
@@ -319,10 +421,9 @@ impl Backend {
     }
 
     fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
-        let mut cache = self
-            .cache
-            .lock()
-            .unwrap()
+        self.inject_panic(Task::Hover);
+
+        let mut cache = lock(&self.cache)
             .get(&params.text_document_position_params.text_document.uri)?
             .to_cloned();
         let position = cache.position(params.text_document_position_params.position);
@@ -409,7 +510,9 @@ impl Backend {
             .uri
             .clone();
 
-        let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
+        self.inject_panic(Task::Definition);
+
+        let cache = lock(&self.cache).get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position_params.position);
 
         let locations = cache.definitions(position);
@@ -424,9 +527,11 @@ impl Backend {
     }
 
     fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
+        self.inject_panic(Task::References);
+
         let uri = params.text_document_position.text_document.uri.clone();
 
-        let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
+        let cache = lock(&self.cache).get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
         let locations = cache.references(position);
@@ -439,9 +544,11 @@ impl Backend {
     }
 
     fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
+        self.inject_panic(Task::Completion);
+
         let uri = params.text_document_position.text_document.uri.clone();
 
-        let mut cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
+        let mut cache = lock(&self.cache).get(&uri)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
         let scopes = cache.scopes(position);
@@ -453,6 +560,12 @@ impl Backend {
 
         Some(CompletionResponse::Array(completions))
     }
+}
+
+/// Locks a mutex, even if a panic poisoned it. Panics are caught so that the server keeps running,
+/// and the state behind each lock is only changed once nothing else can fail, so it's still valid.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn formatting_edits(

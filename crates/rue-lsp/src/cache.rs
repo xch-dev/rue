@@ -556,35 +556,27 @@ impl Cache<Compiler> {
     }
 
     pub fn definitions(&self, index: usize) -> Vec<Location> {
-        self.definitions_impl(index)
-            .into_iter()
-            .filter(|(_, kind)| matches!(kind, SourceKind::File(_)))
-            .map(|(span, kind)| {
-                let SourceKind::File(path) = &kind else {
-                    unreachable!();
-                };
-
-                let text = &self.tree.find(&kind).unwrap().source.text;
-                let range = offsets_to_range(text, span.start().into(), span.end().into());
-
-                Location::new(Url::from_file_path(path).unwrap(), range)
-            })
-            .collect()
+        self.locations(self.definitions_impl(index))
     }
 
     pub fn references(&self, index: usize) -> Vec<Location> {
-        self.references_impl(index)
+        self.locations(self.references_impl(index))
+    }
+
+    /// Converts spans to locations in the editor, skipping those that aren't in a file on disk
+    /// (such as the standard library).
+    fn locations(&self, spans: Vec<(TextRange, SourceKind)>) -> Vec<Location> {
+        spans
             .into_iter()
-            .filter(|(_, kind)| matches!(kind, SourceKind::File(_)))
-            .map(|(span, kind)| {
+            .filter_map(|(span, kind)| {
                 let SourceKind::File(path) = &kind else {
-                    unreachable!();
+                    return None;
                 };
 
-                let text = &self.tree.find(&kind).unwrap().source.text;
+                let text = &self.tree.find(&kind)?.source.text;
                 let range = offsets_to_range(text, span.start().into(), span.end().into());
 
-                Location::new(Url::from_file_path(path).unwrap(), range)
+                Some(Location::new(Url::from_file_path(path).ok()?, range))
             })
             .collect()
     }
