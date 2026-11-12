@@ -771,9 +771,7 @@ impl Cache<Compiler> {
 
     fn type_name(&mut self, scopes: &Scopes, ty: TypeId) -> String {
         for &scope in &scopes.0 {
-            let scope = self.ctx.scope(scope).clone();
-
-            if let Some(name) = scope.type_name(ty) {
+            if let Some(name) = self.ctx.scope(scope).type_name(ty) {
                 return name.to_string();
             }
         }
@@ -911,9 +909,7 @@ impl Cache<Compiler> {
 
     fn symbol_name(&self, scopes: &Scopes, symbol: SymbolId) -> Option<String> {
         for &scope in &scopes.0 {
-            let scope = self.ctx.scope(scope).clone();
-
-            if let Some(name) = scope.symbol_name(symbol) {
+            if let Some(name) = self.ctx.scope(scope).symbol_name(symbol) {
                 return Some(name.to_string());
             }
         }
@@ -926,9 +922,7 @@ impl Cache<Compiler> {
 
     fn symbol_type(&self, scopes: &Scopes, symbol: SymbolId) -> TypeId {
         for &scope in &scopes.0 {
-            let scope = self.ctx.scope(scope).clone();
-
-            if let Some(ty) = scope.symbol_override_type(symbol) {
+            if let Some(ty) = self.ctx.scope(scope).symbol_override_type(symbol) {
                 return ty;
             }
         }
@@ -1005,8 +999,7 @@ fn best_span(spans: impl Iterator<Item = TextRange>, index: usize) -> Option<Tex
 }
 
 fn contains(range: TextRange, index: usize) -> bool {
-    TextRange::new(range.start(), range.end().checked_add(1.into()).unwrap())
-        .contains(TextSize::from(index as u32))
+    range.contains_inclusive(TextSize::from(index as u32))
 }
 
 fn fuzzy_match(query: &str, candidate: &str) -> Option<u32> {
@@ -1149,7 +1142,7 @@ mod tests {
 
         // The compile is only reachable from the worker thread, so the queries run there and the
         // results are checked here
-        let (before, duplicated) = project
+        let (before, duplicated, widened) = project
             .backend()
             .worker
             .run(None, move |state| {
@@ -1171,7 +1164,19 @@ mod tests {
                     cache.syntax_map.add_item(item);
                 }
 
-                (before, query(cache))
+                let duplicated = query(cache);
+
+                // An item with a wider span around the cursor is ignored in favour of the field
+                let mut wider = cache
+                    .syntax_map
+                    .items()
+                    .find(|item| matches!(item.kind, SyntaxItemKind::TypeDeclaration(_)))
+                    .unwrap()
+                    .clone();
+                wider.span = TextRange::new(0.into(), u32::try_from(index + 5).unwrap().into());
+                cache.syntax_map.add_item(wider);
+
+                (before, duplicated, query(cache))
             })
             .blocking_recv()
             .unwrap()
@@ -1181,6 +1186,7 @@ mod tests {
         assert_eq!(before.1.len(), 1);
         assert_eq!(before.2.len(), 3);
         assert_eq!(duplicated, before);
+        assert_eq!(widened, before);
     }
 
     #[test]

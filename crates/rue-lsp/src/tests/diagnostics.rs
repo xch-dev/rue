@@ -469,7 +469,7 @@ fn test_code_actions_multiple_edits_and_files() {
         Applicability::MachineApplicable,
     ));
 
-    // Two edits at the same position insert both texts
+    // Inserts at two positions wrap the call
     diagnostic.suggestions.push(Suggestion::new(
         "Wrap the call",
         vec![

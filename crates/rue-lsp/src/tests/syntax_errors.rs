@@ -454,6 +454,24 @@ fn test_cursor_at_end_of_line_comment() {
 }
 
 #[test]
+fn test_cursor_at_end_of_line_comment_at_end_of_file() {
+    // A line comment without a line break after it continues to the end of the file.
+    check(
+        "fn main() -> Int {\n    let value = 42;\n    // val$0",
+        expect![[r#"
+            hover:
+            <none>
+            definitions:
+            <none>
+            references:
+            <none>
+            completions:
+            <none>
+        "#]],
+    );
+}
+
+#[test]
 fn test_cursor_inside_line_comment() {
     check(
         "fn main() -> Int {\n    let value = 42;\n    // val$0\n    value\n}\n",
