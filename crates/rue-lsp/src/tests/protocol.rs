@@ -14,7 +14,7 @@ use tower_lsp::LspService;
 use tower_lsp::jsonrpc::{Request, Response};
 use tower_lsp::lsp_types::{FileChangeType, MessageType, Url};
 
-use super::{MANIFEST, temp_root};
+use super::{MANIFEST, TempDir};
 use crate::{Backend, INITIALIZED, Task, lock};
 
 /// Logged for the `rue/sync` notification, which only exists in tests, so that they know that the
@@ -281,6 +281,7 @@ impl Client {
 /// A temporary project directory with the given files, which is removed when dropped.
 pub(super) struct TempProject {
     root: PathBuf,
+    _dir: TempDir,
 }
 
 impl TempProject {
@@ -289,9 +290,12 @@ impl TempProject {
     }
 
     pub(super) fn with_manifest(manifest: Option<&str>, files: &[(&str, &str)]) -> Self {
-        let root = temp_root("rue-lsp-protocol");
+        let dir = TempDir::new("rue-lsp-protocol");
 
-        let project = Self { root };
+        let project = Self {
+            root: dir.path().to_path_buf(),
+            _dir: dir,
+        };
 
         if let Some(manifest) = manifest {
             project.write("Rue.toml", manifest);
@@ -353,12 +357,6 @@ impl TempProject {
 
         published.sort();
         published
-    }
-}
-
-impl Drop for TempProject {
-    fn drop(&mut self) {
-        fs::remove_dir_all(&self.root).ok();
     }
 }
 
@@ -603,4 +601,31 @@ async fn test_did_change_uses_last_change() {
         .await;
     let diagnostics = client.diagnostics(&uri).await;
     assert_eq!(diagnostics["diagnostics"], json!([]));
+}
+
+#[tokio::test]
+async fn test_uri_spelling_is_kept() {
+    let project = TempProject::new(&[("main.rue", SOURCE)]);
+
+    // The same file, with a letter percent-encoded, as some clients do with other characters
+    let uri = project.uri("main.rue");
+    let uri = Url::parse(&uri.as_str().replace("main.rue", "%6Dain.rue")).unwrap();
+
+    let mut client = Client::initialized().await;
+    client.open(&uri, SOURCE).await;
+
+    let messages = client.sync().await;
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.params().unwrap()["uri"] == json!(uri)),
+        "{messages:?}"
+    );
+
+    assert_hover(&mut client, &uri).await;
+
+    let response = client
+        .request("textDocument/definition", Some(position(&uri, 2, 6)))
+        .await;
+    assert_eq!(response.result().unwrap()["uri"], json!(uri));
 }

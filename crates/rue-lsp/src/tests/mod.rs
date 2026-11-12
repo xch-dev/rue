@@ -20,6 +20,8 @@ use tower_lsp::lsp_types::{
     TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
 };
 
+use rue_compiler::normalize_path;
+
 use crate::{Backend, code_actions, position::position_to_offset};
 
 const CURSOR: &str = "$0";
@@ -28,31 +30,61 @@ const CURSOR: &str = "$0";
 /// what's declared in the test itself.
 const MANIFEST: &str = "[compiler]\nentrypoint = \".\"\nstd = false\n";
 
-/// Creates an empty temporary directory that's unique to the test.
-fn temp_root(prefix: &str) -> PathBuf {
-    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+/// An empty temporary directory that's unique to the test, and removed when dropped. On Unix,
+/// it's reached through a symlink, like a project in `/tmp` on macOS, so that the paths that the
+/// tests use as a client aren't the canonical paths that the compiler uses.
+pub struct TempDir {
+    path: PathBuf,
+    real: PathBuf,
+}
 
-    let root = std::env::temp_dir().join(format!(
-        "{prefix}-{}-{}",
-        std::process::id(),
-        COUNTER.fetch_add(1, Ordering::SeqCst)
-    ));
+impl TempDir {
+    pub fn new(prefix: &str) -> Self {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-    if root.exists() {
-        fs::remove_dir_all(&root).unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "{prefix}-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let real = path.with_file_name(format!(
+            "{}-real",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+
+        fs::remove_file(&path).ok();
+        fs::remove_dir_all(&real).ok();
+        fs::create_dir_all(&real).unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &path).unwrap();
+
+        #[cfg(not(unix))]
+        let path = real.clone();
+
+        Self { path, real }
     }
 
-    fs::create_dir_all(&root).unwrap();
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
 
-    // Canonicalize so that paths match the ones produced by the compiler (on macOS, the temp
-    // directory is behind a symlink).
-    root.canonicalize().unwrap()
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        if self.path != self.real {
+            fs::remove_file(&self.path).ok();
+        }
+
+        fs::remove_dir_all(&self.real).ok();
+    }
 }
 
 /// A temporary project directory on disk, along with a language server instance that has
 /// opened its files. Any `$0` marker in a file's text is stripped and recorded as the cursor.
 pub struct TestProject {
     root: PathBuf,
+    _dir: TempDir,
     service: LspService<Backend>,
     cursor: Option<(Url, Position)>,
 }
@@ -65,7 +97,8 @@ impl TestProject {
     }
 
     pub fn with_manifest(manifest: Option<&str>, files: &[(&str, &str)]) -> Self {
-        let root = temp_root("rue-lsp-test");
+        let dir = TempDir::new("rue-lsp-test");
+        let root = dir.path().to_path_buf();
 
         if let Some(manifest) = manifest {
             fs::write(root.join("Rue.toml"), manifest).unwrap();
@@ -97,6 +130,7 @@ impl TestProject {
 
         let project = Self {
             root,
+            _dir: dir,
             service,
             cursor,
         };
@@ -281,10 +315,7 @@ impl TestProject {
             .backend()
             .on_change_impl(&uri, Some(text.to_string()))
             .into_iter()
-            .find(|(kind, _)| match kind {
-                rue_diagnostic::SourceKind::File(path) => self.path(name) == Path::new(path),
-                rue_diagnostic::SourceKind::Std(_) => false,
-            })
+            .find(|(kind, _)| Some(kind) == normalize_path(&self.path(name)).ok().as_ref())
             .map(|(_, diagnostics)| diagnostics)
             .unwrap_or_default();
 
@@ -341,7 +372,11 @@ impl TestProject {
         let mut diagnostics = diagnostics
             .into_iter()
             .filter_map(|(kind, diagnostics)| match kind {
-                rue_diagnostic::SourceKind::File(path) => Some((PathBuf::from(path), diagnostics)),
+                // Files are reported with the paths the client uses
+                rue_diagnostic::SourceKind::File(path) => Some((
+                    self.backend().paths.uri(&path)?.to_file_path().ok()?,
+                    diagnostics,
+                )),
                 rue_diagnostic::SourceKind::Std(_) => None,
             })
             .collect::<Vec<_>>();
@@ -387,12 +422,6 @@ impl TestProject {
         }
 
         output
-    }
-}
-
-impl Drop for TestProject {
-    fn drop(&mut self) {
-        fs::remove_dir_all(&self.root).ok();
     }
 }
 

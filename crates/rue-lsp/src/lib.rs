@@ -1,6 +1,7 @@
 #![allow(clippy::cast_possible_truncation)]
 
 mod cache;
+mod paths;
 mod position;
 
 use cache::Cache;
@@ -39,6 +40,7 @@ use tower_lsp::lsp_types::{
 use tower_lsp::{Client, LanguageServer};
 
 use crate::cache::{HoverInfo, SymbolHoverKind};
+use crate::paths::{Paths, document, uri_to_path};
 use crate::position::offsets_to_range;
 
 /// Logged once the client says it's initialized.
@@ -47,14 +49,14 @@ const INITIALIZED: &str = "Rue language server initialized.";
 #[derive(Debug)]
 pub struct Backend {
     client: Client,
-    cache: Mutex<HashMap<Url, SendWrapper<Cache<Arc<Compiler>>>>>,
+    cache: Mutex<HashMap<SourceKind, SendWrapper<Cache<Arc<Compiler>>>>>,
     file_cache: Mutex<HashMap<SourceKind, String>>,
     /// The files that each project last published diagnostics for, keyed by its manifest (or its
     /// entrypoint, if it doesn't have one), so that they can be cleared once a file isn't part of
     /// the project anymore.
     published: Mutex<HashMap<PathBuf, HashSet<SourceKind>>>,
-    /// The documents open in the editor, by the path the client uses for each of them.
-    open: Mutex<HashMap<SourceKind, PathBuf>>,
+    /// The paths the client uses, which can differ from the compiler's.
+    paths: Paths,
     /// Whether the client can register file watchers when asked to.
     watch_files: AtomicBool,
     /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
@@ -116,6 +118,22 @@ impl LanguageServer for Backend {
             .unwrap_or(false);
 
         self.watch_files.store(watch_files, Ordering::Relaxed);
+
+        // Files in the workspace are reported with the paths the client uses for them
+        #[allow(deprecated)]
+        let root_uri = params.root_uri.iter();
+
+        for uri in params
+            .workspace_folders
+            .iter()
+            .flatten()
+            .map(|folder| &folder.uri)
+            .chain(root_uri)
+        {
+            if let Some(path) = uri_to_path(uri) {
+                self.paths.add_root(&path);
+            }
+        }
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -187,9 +205,7 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        if let Some((path, kind)) = document(&params.text_document.uri) {
-            lock(&self.open).insert(kind, path);
-        }
+        self.paths.open(&params.text_document.uri);
 
         self.on_change(params.text_document.uri, Some(params.text_document.text))
             .await;
@@ -211,9 +227,7 @@ impl LanguageServer for Backend {
 
     /// The file's unsaved changes are discarded, so the project is compiled with what's on disk.
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        if let Some((_, kind)) = document(&params.text_document.uri) {
-            lock(&self.open).remove(&kind);
-        }
+        self.paths.close(&params.text_document.uri);
 
         self.on_change(params.text_document.uri, None).await;
     }
@@ -288,7 +302,7 @@ impl Backend {
             cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
             published: Mutex::new(HashMap::new()),
-            open: Mutex::new(HashMap::new()),
+            paths: Paths::default(),
             watch_files: AtomicBool::new(false),
             related_information: AtomicBool::new(true),
             #[cfg(test)]
@@ -344,7 +358,7 @@ impl Backend {
                 continue;
             };
 
-            let Ok(uri) = Url::from_file_path(path) else {
+            let Some(uri) = self.paths.uri(&path) else {
                 continue;
             };
 
@@ -387,7 +401,7 @@ impl Backend {
     ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
         let changed = changes
             .iter()
-            .filter_map(|change| change.uri.to_file_path().ok())
+            .filter_map(|change| uri_to_path(&change.uri))
             .collect::<Vec<_>>();
 
         self.recompile(&changed, None)
@@ -403,7 +417,7 @@ impl Backend {
         edited: Option<&Path>,
     ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
         let published = lock(&self.published).clone();
-        let open = lock(&self.open).clone();
+        let open = self.paths.documents();
 
         let mut lookups = edited
             .map(Path::to_path_buf)
@@ -421,7 +435,11 @@ impl Backend {
 
             removed.push(key.clone());
 
-            lookups.extend(files.iter().filter_map(|kind| open.get(kind).cloned()));
+            lookups.extend(
+                files
+                    .iter()
+                    .filter_map(|kind| open.get(kind).and_then(uri_to_path)),
+            );
         }
 
         // Each project is only compiled once, no matter how many of its files changed
@@ -486,6 +504,15 @@ impl Backend {
         #[cfg(test)]
         self.compiles.fetch_add(1, Ordering::Relaxed);
 
+        // The project's files are reported with the paths the client uses for them
+        let root = if found.key.is_dir() {
+            &found.key
+        } else {
+            found.key.parent().unwrap_or(&found.key)
+        };
+
+        self.paths.add_root(root);
+
         let project = match &found.project {
             Ok(project) => project,
             Err(error) => {
@@ -519,6 +546,7 @@ impl Backend {
                     .push(diagnostic(
                         &item,
                         self.related_information.load(Ordering::Relaxed),
+                        &self.paths,
                     ));
             }
 
@@ -526,18 +554,14 @@ impl Backend {
             let tree = Arc::new(SendWrapper::new(tree));
 
             for file in tree.all_files() {
-                let SourceKind::File(path) = &file.source.kind else {
+                if !matches!(file.source.kind, SourceKind::File(_)) {
                     continue;
-                };
+                }
 
                 diagnostics.entry(file.source.kind.clone()).or_default();
 
-                let Ok(uri) = Url::from_file_path(path) else {
-                    continue;
-                };
-
                 caches.push((
-                    uri,
+                    file.source.kind.clone(),
                     SendWrapper::new(Cache::new(ctx.clone(), tree.clone(), file.source.clone())),
                 ));
             }
@@ -592,12 +616,7 @@ impl Backend {
         let mut cache = lock(&self.cache);
 
         for kind in removed {
-            if let SourceKind::File(path) = &kind
-                && let Ok(uri) = Url::from_file_path(path)
-            {
-                cache.remove(&uri);
-            }
-
+            cache.remove(&kind);
             diagnostics.insert(kind, Vec::new());
         }
 
@@ -609,12 +628,8 @@ impl Backend {
     fn on_formatting(&self, params: &DocumentFormattingParams) -> Result<Vec<TextEdit>> {
         self.inject_panic(Task::Formatting);
 
-        let uri = &params.text_document.uri;
-        let path = uri
-            .to_file_path()
-            .map_err(|()| Error::invalid_params("document URI is not a file"))?;
-        let source_kind =
-            normalize_path(&path).map_err(|error| Error::invalid_params(error.to_string()))?;
+        let (path, source_kind) = document(&params.text_document.uri)
+            .ok_or_else(|| Error::invalid_params("document URI is not a file"))?;
         let project =
             find_project(&path, false).map_err(|error| Error::invalid_params(error.to_string()))?;
         let options = project.map_or_else(FormatOptions::default, |project| project.format_options);
@@ -632,9 +647,8 @@ impl Backend {
     fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
         self.inject_panic(Task::Hover);
 
-        let mut cache = lock(&self.cache)
-            .get(&params.text_document_position_params.text_document.uri)?
-            .to_cloned();
+        let (_, kind) = document(&params.text_document_position_params.text_document.uri)?;
+        let mut cache = lock(&self.cache).get(&kind)?.to_cloned();
         let position = cache.position(params.text_document_position_params.position);
 
         let scopes = cache.scopes(position);
@@ -715,16 +729,15 @@ impl Backend {
     fn on_goto_definition(&self, params: &GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
         self.inject_panic(Task::Definition);
 
-        let uri = params
-            .text_document_position_params
-            .text_document
-            .uri
-            .clone();
-
-        let cache = lock(&self.cache).get(&uri)?.to_cloned();
+        let (_, kind) = document(&params.text_document_position_params.text_document.uri)?;
+        let cache = lock(&self.cache).get(&kind)?.to_cloned();
         let position = cache.position(params.text_document_position_params.position);
 
-        let locations = cache.definitions(position);
+        let locations = cache
+            .definitions(position)
+            .into_iter()
+            .map(|location| self.paths.location(location))
+            .collect::<Vec<_>>();
 
         if locations.is_empty() {
             None
@@ -738,12 +751,15 @@ impl Backend {
     fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
         self.inject_panic(Task::References);
 
-        let uri = params.text_document_position.text_document.uri.clone();
-
-        let cache = lock(&self.cache).get(&uri)?.to_cloned();
+        let (_, kind) = document(&params.text_document_position.text_document.uri)?;
+        let cache = lock(&self.cache).get(&kind)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
-        let locations = cache.references(position);
+        let locations = cache
+            .references(position)
+            .into_iter()
+            .map(|location| self.paths.location(location))
+            .collect::<Vec<_>>();
 
         if locations.is_empty() {
             None
@@ -755,9 +771,8 @@ impl Backend {
     fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
         self.inject_panic(Task::Completion);
 
-        let uri = params.text_document_position.text_document.uri.clone();
-
-        let mut cache = lock(&self.cache).get(&uri)?.to_cloned();
+        let (_, kind) = document(&params.text_document_position.text_document.uri)?;
+        let mut cache = lock(&self.cache).get(&kind)?.to_cloned();
         let position = cache.position(params.text_document_position.position);
 
         let scopes = cache.scopes(position);
@@ -812,22 +827,25 @@ struct SuggestionData {
     edit: WorkspaceEdit,
 }
 
-fn location(srcloc: &SrcLoc) -> Option<Location> {
+fn location(srcloc: &SrcLoc, paths: &Paths) -> Option<Location> {
     let SourceKind::File(path) = &srcloc.source.kind else {
         return None;
     };
 
     Some(Location::new(
-        Url::from_file_path(path).ok()?,
+        paths.uri(path)?,
         offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
     ))
 }
 
-fn suggestion_data(suggestion: &rue_diagnostic::Suggestion) -> Option<SuggestionData> {
+fn suggestion_data(
+    suggestion: &rue_diagnostic::Suggestion,
+    paths: &Paths,
+) -> Option<SuggestionData> {
     let mut changes = HashMap::<Url, Vec<TextEdit>>::new();
 
     for edit in &suggestion.edits {
-        let location = location(&edit.srcloc)?;
+        let location = location(&edit.srcloc, paths)?;
 
         changes
             .entry(location.uri)
@@ -870,7 +888,11 @@ fn code_actions(params: &CodeActionParams) -> Option<CodeActionResponse> {
     (!actions.is_empty()).then_some(actions)
 }
 
-fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic, supports_related: bool) -> Diagnostic {
+fn diagnostic(
+    diagnostic: &rue_diagnostic::Diagnostic,
+    supports_related: bool,
+    paths: &Paths,
+) -> Diagnostic {
     let srcloc = &diagnostic.srcloc;
 
     let mut message = diagnostic.kind.to_string();
@@ -879,7 +901,12 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic, supports_related: bool) -
     // Notes that point to a file are shown at that location if the client supports it, and the
     // rest are part of the message
     for note in &diagnostic.notes {
-        if supports_related && let Some(location) = note.srcloc.as_ref().and_then(location) {
+        if supports_related
+            && let Some(location) = note
+                .srcloc
+                .as_ref()
+                .and_then(|srcloc| location(srcloc, paths))
+        {
             related_information.push(DiagnosticRelatedInformation {
                 location,
                 message: note.message.clone(),
@@ -910,7 +937,7 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic, supports_related: bool) -
     let suggestions = diagnostic
         .suggestions
         .iter()
-        .filter_map(suggestion_data)
+        .filter_map(|suggestion| suggestion_data(suggestion, paths))
         .collect::<Vec<_>>();
 
     Diagnostic {
@@ -986,28 +1013,6 @@ fn invalid_manifest_diagnostics(
     diagnostics
 }
 
-/// The path of a document, and the source kind that the compiler identifies it by, which is its
-/// canonical path. If the file (or the directories it's in) doesn't exist anymore, the nearest
-/// directory that does is canonicalized instead.
-fn document(uri: &Url) -> Option<(PathBuf, SourceKind)> {
-    let path = uri.to_file_path().ok()?;
-
-    if let Ok(kind) = normalize_path(&path) {
-        return Some((path, kind));
-    }
-
-    let (canonical, rest) = path.ancestors().skip(1).find_map(|ancestor| {
-        Some((
-            ancestor.canonicalize().ok()?,
-            path.strip_prefix(ancestor).ok()?,
-        ))
-    })?;
-
-    let kind = SourceKind::File(canonical.join(rest).to_string_lossy().to_string());
-
-    Some((path, kind))
-}
-
 /// The project that a file belongs to.
 struct FoundProject {
     /// The project's manifest, or its entrypoint if it doesn't have one, which identifies it.
@@ -1039,7 +1044,7 @@ impl FoundProject {
 struct Compiled {
     key: PathBuf,
     diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>,
-    caches: Vec<(Url, SendWrapper<Cache<Arc<Compiler>>>)>,
+    caches: Vec<(SourceKind, SendWrapper<Cache<Arc<Compiler>>>)>,
     /// Whether the project doesn't exist anymore, so it's no longer tracked.
     removed: bool,
 }
