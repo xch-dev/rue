@@ -18,7 +18,7 @@ Your focus this round: <Correctness | Tests and snapshots | Simplification and r
 
 Rules:
 - Don't edit files in the repo. You may write scratch files to <scratchpad>/review-loop/scratch/ and run the compiler or tests to check a claim (`cargo run --quiet -p rue-cli -- build <file>` prints diagnostics and suggestions, `-W <lint>` turns a lint on; `cargo test -p <crate> <name>`).
-- Judge the change against the goal above. Points listed under "Settled" have been decided; only raise one again if you have new evidence it's wrong.
+- Judge the change against the goal above. Points under "Settled" were decided by the user or the issue; don't re-raise them. Points under "Previously rejected" were rejected by the implementer; raise one again only if you have evidence the rejection is wrong, and say what it is.
 - Prefer a few findings you're confident in over many guesses. If you aren't sure, say so in the finding.
 - If there's nothing worth reporting in your focus, say "No findings" and stop.
 
@@ -29,10 +29,21 @@ Report each finding in this format:
 - Where: <path:line>
 - Scenario: <a concrete input (Rue source, config, flags) and the wrong result it gives, or for a non-bug, what's wrong and what it costs>
 - Fix: <what to change>
-- Needs a user decision: yes/no (yes for language design, Rue.toml or CLI format, a lint's name, default level or group)
+- Needs a user decision: yes/no (see "When a finding needs the user" below)
 ```
 
 Severities: **blocker** means wrong output, a crash, or a suggestion that breaks code that's applied automatically; **major** means a real bug in a less common case, a missing test for core behaviour, or a design that will clearly need redoing; **minor** means a small bug in a rare case, a missing edge-case test, or a clear simplification; **nit** means style or naming.
+
+## When a finding needs the user
+
+Mark "Needs a user decision: yes" only when the fix depends on a choice that isn't the implementer's to make, and that Settled doesn't already answer:
+
+- Rue language design or syntax, and what the compiler accepts or rejects.
+- Public formats: `Rue.toml`, CLI flags, and LSP behaviour users configure.
+- A lint's name, default level or group, or whether a suggestion should be applied automatically when the right answer is unclear.
+- Changing the scope of the issue, or behaviour outside it.
+
+Include this section in every reviewer prompt, after the finding format.
 
 ## Checklist: correctness
 
@@ -59,13 +70,13 @@ Lints and suggestions (the most common source of review findings in this repo):
 - Is there a `tests/warnings/<lint>.rue` (or the right directory under `tests/`) covering each behaviour the change adds, including cases where nothing should be reported?
 - Does each case actually exercise what it's named for? Check the `.yaml` snapshot: does it show the diagnostic, at the expected line, with the expected help text?
 - Machine-applicable suggestions: is there a test in `crates/rue-compiler/src/lint_tests.rs` that applies them (the `fix()` helper) and checks the result compiles to the expected source?
-- Snapshot diffs in the change (`git diff <base>...HEAD -- tests examples`): is every changed `.yaml` explained by the goal? A changed `program:`, cost, or `output:` line in an unrelated test, or a new or vanished diagnostic, needs a reason.
+- Snapshot diffs in the change (`git diff <base>...HEAD -- tests examples std_tests.yaml crates/rue-compiler/src/std`): is every changed snapshot explained by the goal? A changed `program:`, cost, or `output:` line in an unrelated test, or a new or vanished diagnostic, needs a reason.
 - Formatter, LSP or CLI behaviour changes: are they tested in that crate (`crates/rue-formatter/src/tests`, `crates/rue-lsp/src/tests`)?
 - Would each test fail if the behaviour it covers regressed? A test that passes either way is worth a finding.
 
 ## Checklist: simplification and reuse
 
-- Is there an existing helper for this? Check `crates/rue-lint/src/visit.rs` (HIR traversal, `Hir::children`, `Statement::hirs`), `context.rs` (`LintContext`), `text.rs` (`text_at`, `negated_text`, `strip_parens`, `is_parenthesized`, `comment_count`, `remove_line`, `keyword_locations`, `encloses`), and AST accessors in `crates/rue-ast`.
+- Is there an existing helper for this? Check `crates/rue-lint/src/visit.rs` (the HIR walk), `Hir::children` and `Statement::hirs` in `crates/rue-hir/src/hir.rs`, `context.rs` (`LintContext`), `text.rs` (`Position` for whether a replacement needs parentheses, `text_at`, `negated_text`, `strip_parens`, `is_parenthesized`, `comment_count`, `remove_line`, `keyword_locations`, `encloses`), and AST accessors in `crates/rue-ast`.
 - Is logic duplicated between this change and another pass, which should share it?
 - Is anything computed repeatedly that could be computed once (per module, per file), or cloned where a borrow would do?
 - Does a `match` on lints or kinds use `_ =>` where an exhaustive match would make a new variant a compile error?

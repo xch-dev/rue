@@ -1,19 +1,23 @@
 ---
 name: review-loop
-description: Take a piece of Rue work (an issue, a lint, a bug fix, a PR's follow-up) all the way to a clean, reviewed, CI-passing branch, running rounds of independent code review and fixing what they find, without the user having to ask for each review pass. Use this whenever the user asks to implement an issue "with reviews", to "drive this to completion", "review until clean", "keep reviewing and fixing", "take this through review", or hands over an issue or task in the Rue repo and expects a finished, reviewed PR rather than a first draft, even if they don't say "review loop".
+description: Take a piece of Rue work (an issue, a lint, a bug fix, a follow-up to an open PR) all the way to a reviewed draft PR that passes the same checks as CI, running rounds of independent code review and fixing what they find, without the user having to ask for each review pass. Use this whenever the user asks to implement an issue "with reviews", to "drive this to completion", "review until clean", "keep reviewing and fixing", "take this through review", or hands over a task in the Rue repo and expects a finished, reviewed PR rather than a first draft, even if they don't say "review loop". Not for a one-off review of an existing diff with no fix loop; use code-review for that.
 ---
 
 # Review loop
 
-The user's usual workflow on Rue was: an agent implements something, then the user asks for a review pass, the agent fixes the findings, and this repeats until the work is clean. This skill runs that loop for them. The history shows what those rounds catch (`git log --oneline origin/main | grep -i review`): lint suggestions that produce broken code, missing snapshot cases, duplicated logic that should share a helper, and behaviour that drifted from what the issue asked for.
+The user's usual workflow on Rue was: an agent implements something, then the user asks for a review pass, the agent fixes the findings, and this repeats until the work is clean. This skill runs that loop for them. Past rounds caught lint suggestions that produce broken code (see commits f74792dc, 949133b0, df02c590, 5d038af8 and e777d6f3), false positives, missing test cases, and logic duplicated next to an existing helper (`git log --oneline origin/main | grep -i review`).
 
-The loop is: **write the brief → implement → review → verify and fix → repeat until clean or out of rounds → final checks → commit, PR and report.**
+The loop is: **scope and write the brief → implement → review → verify and fix → repeat until a stop condition → final checks → commit, PR and report.**
 
-## 1. Write the state file before touching code
+## 1. Scope the work and write the state file
 
-The state file is the memory of the loop. Reviewers start with fresh context, and after a few rounds the implementer's own context is long, so without it later rounds re-raise settled points or undo earlier decisions. Write it to the session scratchpad (not the repo), at `<scratchpad>/review-loop/<branch-slug>.md`, and keep it current: every review round reads it, and every fix round updates it.
+Read the source first: `gh issue view <n> --comments` or `gh pr view <n> --comments`, plus the code it touches.
 
-Read the source first: `gh issue view <n> --comments` or `gh pr view <n> --comments`, plus the code it touches. Then write:
+**Tracking issues.** If the issue lists several independent items (like #235), don't put them all on one branch. Ask the user which items to do, unless they already said. Give each item its own branch, state file and loop, stack the branches with `gh stack`, and link the issue with "Part of #n" rather than "Closes #n". Items that change a public format (`Rue.toml`, CLI flags) need the user's decision on the format before you implement them, not after review.
+
+**Follow-ups to an open PR.** Either continue on the PR's branch (`gh pr checkout <n>`) or add a branch on top of it with `gh stack add`, whichever the user asked for. If they didn't say, continue on the user's own `rigidity/` branches and stack on anyone else's. Set Base to the commit the follow-up starts from, so reviewers see only the new work, and push to the existing PR in section 7 rather than opening a new one.
+
+The state file is the memory of the loop. Reviewers start with fresh context, and after a few rounds the implementer's own context is long, so without it later rounds re-raise settled points or undo earlier decisions. Write it to the session scratchpad (not the repo), at `<scratchpad>/review-loop/<branch-slug>.md`. Every review round reads it, and every fix round updates it.
 
 ```markdown
 # <short title>
@@ -21,35 +25,42 @@ Read the source first: `gh issue view <n> --comments` or `gh pr view <n> --comme
 ## Brief (shared with reviewers)
 - Goal: <what this change must achieve, in the user's terms>
 - Serves: <issue/PR link>
-- Base: <base ref, e.g. origin/main, or the parent branch in a gh stack>
+- Base: <origin/main, the parent branch in a gh stack, or the commit a PR follow-up starts from>
 - Branch: <rigidity/...>
-- Decisions: <each decision and why: "suggestion is MaybeIncorrect, because rewriting a comparison with comments in it can drop them">
+- Decisions: <each decision and why, noting who made it: the issue, the user, or the implementer>
 - Out of scope: <things deliberately left alone, and why>
-- Settled: <points already raised in review and resolved; reviewers shouldn't re-raise them without new evidence>
+- Settled: <points the user or the issue decided; not open for review>
+- Previously rejected: <findings the implementer rejected in earlier rounds: the claim and the evidence>
 
 ## Open questions for the user
-- <only things the user has to decide; see section 4>
 
 ## Review log (implementer only)
 ### Round 1
 - [confirmed, major] <finding> -> fixed in <commit>, regression test <where>
-- [rejected] <finding> -> <why it's wrong, with the evidence>
+- [rejected] <finding> -> <evidence>
 - [deferred] <finding> -> <why, and where it's recorded>
 ```
 
-Only the **Brief** goes to reviewers. The review log holds the implementer's verdicts, and giving those to reviewers would anchor them on the implementer's view of the code. When a rejected finding is truly settled, add a one-line summary to **Settled** so the next round doesn't spend effort on it, but phrase it as a fact about the design ("`export` on a nested module's items counts as a use"), not as an argument.
-
 ## 2. Implement
 
-Do the work on a `rigidity/` branch (lowercase; never `Rigidity/`). For a new lint, the usual places are:
+Work on a `rigidity/` branch (lowercase; never `Rigidity/`). For a bug fix, write the failing regression test first. For a new lint, the usual places are:
 
-- Register it in `crates/rue-diagnostic/src/lint.rs` (the `lints!` macro: name, default level, description; add it to a `lint_groups!` group if it belongs in one).
+- Register it in `crates/rue-diagnostic/src/lint.rs` (the `lints!` macro: name, default level, description; add it to a `lint_groups!` group if it belongs in one). Take the name and level from the issue if it gives them; otherwise follow the neighbouring lints and record the choice under Decisions.
 - Write the pass in `crates/rue-lint/src/lints/<area>.rs` and list it in `crates/rue-lint/src/lints/mod.rs` (`INPUT_PASSES` for whole-input passes, `hir_passes` for the HIR walk). The `every_lint_is_reported_by_one_pass` test fails if you forget.
-- Use what's already there before writing helpers: `crates/rue-lint/src/visit.rs` (HIR traversal), `context.rs` (`LintContext::report`, levels, type queries), `text.rs` (source text, parentheses, negation, comments, keyword locations). Several past review rounds were about logic duplicated next to an existing helper.
-- Add a snapshot test `tests/warnings/<lint>.rue` (starting with `#![warn(<lint>)]` if it isn't on by default) and generate its `.yaml` (see section 5). Cover the cases where the lint should *not* fire, not only where it should.
+- Use what's already there before writing helpers: `crates/rue-lint/src/visit.rs` (the HIR walk), `context.rs` (`LintContext::report`, levels, type queries), `text.rs` (source text, parentheses, negation, comments, keyword locations), and `Hir::children` / `Statement::hirs` in `crates/rue-hir/src/hir.rs`.
+- Add a snapshot test `tests/warnings/<lint>.rue` (starting with `#![warn(<lint>)]` if it isn't on by default). Cover the cases where the lint should *not* fire, not only where it should.
 - If the lint has machine-applicable suggestions, add a case to `crates/rue-compiler/src/lint_tests.rs` that applies them with `fix()` and checks the result is the expected source.
 
-Commit the implementation before the first review round, so each round's fixes are a separate, reviewable diff.
+Before each review round, including the first, regenerate every snapshot so reviewers see the real diff, including changes to unrelated tests:
+
+```bash
+cargo run -p rue-tests --release
+git status --short
+```
+
+This rewrites the `.yaml` snapshots under `tests/` and `examples/` and `std_tests.yaml`, and reformats `.rue` files in `tests/`, `examples/` and `crates/rue-compiler/src/std/`. It exits 1 ("Test failed, updated yaml file") whenever it changed anything, including the first run of a new test; run it again, and it should exit 0. Read each changed snapshot: a new diagnostic in an unrelated test, a changed `program:`, `output:` or cost line, or a vanished diagnostic usually means a regression. Commit snapshots with the change that caused them.
+
+Commit before the first review round, so each round's fixes are a separate diff.
 
 ## 3. Review rounds
 
@@ -61,9 +72,9 @@ Each round, launch three reviewers **in parallel** with the Agent tool (`general
 
 For a small diff (roughly under 100 changed lines), one reviewer covering all three focuses is enough; three reviewers on a ten-line change mostly produce nits.
 
-Build each reviewer's prompt from [references/reviewer-brief.md](references/reviewer-brief.md): it holds the prompt template, the Rue-specific checklist for each focus, and the format findings come back in. Give reviewers the Brief section, the base ref, and the focus. Don't give them your summary of the change, your reasoning about why it's correct, or the review log; they should read the diff (`git diff <base>...HEAD`) and form their own view. That independence is what makes a review round worth running.
+Build each prompt from [references/reviewer-brief.md](references/reviewer-brief.md), which holds the template, the Rue checklist for each focus, the severities, and when a finding needs the user. Give reviewers the Brief section, the base ref, and the focus, and nothing else: not your summary of the change, your reasoning about why it's correct, or the review log. They read the diff (`git diff <base>...HEAD`) and form their own view, and that independence is what makes a round worth running. From round 2 they still review the whole diff against the base, since fixes break things elsewhere; name the areas that changed since the last round so they look closely there.
 
-The built-in `code-review` skill is an alternative for the correctness focus on a large diff (`/code-review high`), but it doesn't see the Brief, so check its findings against the goal and the settled points yourself.
+The built-in `code-review` skill is an alternative for the correctness focus on a large diff (`/code-review high`), but it doesn't see the Brief, so check its findings against the goal and the Settled points yourself.
 
 ## 4. Verify, then fix
 
@@ -73,50 +84,41 @@ Reviewers are sometimes confidently wrong. Before acting on a finding, check it:
 - For a claimed missing test, check whether an existing case already covers it.
 - For a simplification, check that the suggested helper does what the reviewer thinks.
 
-Then mark each finding in the review log as **confirmed**, **rejected** (with the evidence), or **deferred** (real but out of scope, with where it's recorded). Fix every confirmed blocker and major finding, and minor ones when they're cheap. Each confirmed correctness finding gets a regression test, so the next round (and the future) can see it stay fixed. Nits are optional; never start another round just for them.
+Mark each finding in the review log as **confirmed**, **rejected** (with the evidence), or **deferred** (real but out of scope, with where it's recorded), and add rejected ones to the Brief's Previously rejected list. Fix every confirmed blocker and major finding, and minor ones when they're cheap. Each confirmed correctness finding gets a regression test. Nits are optional.
 
-**Stop and ask the user** (AskUserQuestion, or record it under *Open questions* and stop the loop if you can't ask) when a finding needs a decision only they can make, rather than picking one yourself:
+Then run the quick checks for what you touched (`cargo test -p <crate>`, and `cargo run -p rue-tests --release -- <filter>` while iterating), regenerate every snapshot as in section 2, update the Brief, and commit (section 7).
 
-- Rue language design or syntax, and what the compiler accepts or rejects.
-- Public formats: `Rue.toml`, CLI flags, LSP behaviour users configure.
-- A lint's name, default level, or group, and whether a suggestion is applied automatically when the right answer is unclear.
-- Changing the scope of the issue, or a fix that would change behaviour outside it.
+## 5. When to stop
 
-After fixing, run the quick checks for what you touched (`cargo test -p <crate>`, `cargo run -p rue-tests --release -- <filter>`), update the Brief's Decisions and Settled lists, and commit. Name the commit after what changed ("Keep comments in suggestions"), or "Address review findings in <area>" with a bulleted body when one round fixes several small things; see section 6.
+- **Clean**: a round with no confirmed findings at major or above. Stop there; never start a round just for minor findings or nits.
+- **Out of rounds**: stop after round 3 even if findings remain, and list them in the report. If round 3's fixes were more than trivial, first run one more round with only the correctness reviewer, to check the fixes; fix what it confirms and report it, without another round. A change that still has major findings after three rounds usually has a design problem that another round won't fix, and the user should look.
+- **Needs the user**: a confirmed finding of minor or above calls for a decision only the user can make (the list is in the reviewer brief: language design, public formats, a lint's name, level or group, scope), and Settled doesn't already answer it. Ask with AskUserQuestion, giving the options and your recommendation, then record the answer under Settled and carry on. If you can't ask (a non-interactive run), take the more conservative option, record it under Open questions, and finish the loop as normal; the draft PR and the report carry the question.
 
-### When to stop
+Whatever the stop, still run the final checks and open or update the draft PR, so the user has the work in hand.
 
-- **Clean**: a round with no confirmed findings at major or above. Stop there.
-- **Out of rounds**: stop after round 3 even if findings remain, and list them in the report. If round 3's fixes were more than trivial, first run one last round with only the correctness reviewer, to check the fixes themselves. A change that still has major findings after three rounds usually has a design problem that another round won't fix, and the user should look.
-- **Blocked**: a finding needs a user decision (above).
+## 6. Final checks
 
-Every round after the first reviews the whole diff against the base, not only the latest fix commit, because fixes break things elsewhere. Tell those reviewers which areas changed since the last round so they look closely there.
-
-## 5. Final checks
-
-Run these in this order, matching `.github/workflows/build.yml`, and fix anything they report:
+These are the checks in `.github/workflows/build.yml`, plus `-D warnings` on clippy (stricter than CI, as the user wants) and a final snapshot regeneration. Fix anything they report:
 
 ```bash
 cargo clippy --all-features --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo run --quiet --package rue-cli -- fmt 'examples/**/*.rue' 'tests/**/*.rue' 'crates/rue-compiler/src/std/**/*.rue' --check
 cargo machete
-cargo run -p rue-tests --release        # regenerates snapshots in tests/ and examples/
-git status --short tests examples       # read every changed .yaml
-cargo nextest run --all-features --workspace   # or: cargo test --all-features --workspace
+cargo run -p rue-tests --release && git status --short   # as in section 2
+cargo nextest run --all-features --workspace   # if `cargo nextest --version` works; otherwise cargo test --all-features --workspace
 ```
 
-- `rue fmt --check` with no paths fails with "No project found"; use the globbed form above.
-- `cargo run -p rue-tests` rewrites snapshots in place. Read each changed `.yaml` and make sure every change is intended: a new diagnostic in an unrelated test, a changed `program:` or cost line, or a vanished diagnostic usually means a regression. The `rue-tests` unit test compares without updating, so it fails if snapshots weren't regenerated.
-- Use nextest if `cargo nextest --version` works, otherwise `cargo test`.
-- Commit regenerated snapshots with the change that caused them (amend or fix up that commit if it's still unpushed), not as a separate "update snapshots" commit.
+- A bare `rue fmt --check` fails with "No project found"; use the globbed form.
+- The test suite includes `rue-tests`' own unit test, which compares snapshots without updating them, so it fails if they weren't regenerated.
 - If you touched `crates/rue-wasm`, also run `cargo clippy --package rue-wasm --target wasm32-unknown-unknown --all-targets`.
+- If these checks led to changes beyond formatting, say so in the report, since no reviewer saw them.
 
-## 6. Commits, PR and report
+## 7. Commits, PR and report
 
-**Commits.** One focused commit per logical change. Messages follow the git log: a plain sentence as the subject ("Keep suggestions from joining words to the code around them"), no prefix like `feat:`, and a body of plain sentences or `-` bullets when there's more to say. No AI attribution of any kind: no `Co-Authored-By`, no "Generated with" line.
+**Commits.** One focused commit per logical change. Messages follow the git log: a plain sentence as the subject that says what changed ("Keep comments in suggestions"), or "Address review findings in <area>" with a `-` bulleted body when one round fixes several small things. No prefix like `feat:`. No AI attribution of any kind: no `Co-Authored-By`, no "Generated with" line.
 
-**PR.** Push and open a draft PR (`gh pr create --draft --base <base>`) with a title in the same style and a body that says what changed and why, links the issue (`Closes #n` when it does), and lists any open questions. For stacked work, use `gh stack` (`gh stack init`, `gh stack add`, `gh stack submit`) rather than setting PR bases by hand.
+**PR.** Push and open a draft PR (`gh pr create --draft --base <base>`), or push to the existing PR for a follow-up. The title follows the same style; the body says what changed and why, links the issue ("Closes #n", or "Part of #n" for a tracking issue), and lists any open questions. For stacked work, use `gh stack` (`gh stack init`, `gh stack add`, `gh stack submit`) rather than setting PR bases by hand.
 
 **Report.** End with this, in the reply to the user:
 
