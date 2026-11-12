@@ -329,7 +329,7 @@ fn test_request_for_older_text_is_not_answered() {
             std::thread::yield_now();
         }
 
-        edit("fn main() -> Int {\n    0\n}\n");
+        edit(SOURCE);
         release.send(()).unwrap();
 
         request.join().unwrap()
