@@ -132,6 +132,11 @@ impl Client {
         (started_receiver, release_sender)
     }
 
+    /// Sets how long the server waits for more edits before compiling them.
+    pub(super) fn set_debounce(&self, debounce: Duration) {
+        *lock(&self.backend().shared.debounce) = debounce;
+    }
+
     /// How many times the server compiled a project.
     pub(super) fn compiles(&self) -> usize {
         self.backend().shared.compiles.load(Ordering::Relaxed)
@@ -560,12 +565,22 @@ async fn test_query_panics_are_caught() {
 
     for (task, method, params) in requests {
         client.inject_panic(Some(task));
+        let compiles = client.compiles();
 
         let response = client.request(method, Some(params.clone())).await;
         assert_eq!(response.result(), Some(&Value::Null), "{method}");
         assert_eq!(
             client.panic_message().await,
             format!("Internal error while {task}: injected panic")
+        );
+
+        // A query may have left the compile it was using half-changed, so its project is compiled
+        // again, without publishing anything
+        let queries_compile = !matches!(task, Task::Formatting | Task::CodeAction);
+        assert_eq!(
+            client.compiles(),
+            compiles + usize::from(queries_compile),
+            "{method}"
         );
 
         // The server keeps answering once the panic is gone

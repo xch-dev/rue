@@ -7,7 +7,6 @@ mod project;
 mod worker;
 
 use cache::Cache;
-use indexmap::IndexMap;
 use rue_compiler::{Compiler, normalize_path};
 use rue_diagnostic::{Applicability, Lint, SourceKind, SrcLoc};
 use rue_formatter::{FormatError, FormatOptions, format_source};
@@ -253,7 +252,10 @@ impl LanguageServer for Backend {
 
         Ok(self
             .query(Task::Hover, move |state| {
-                hover(state.cache(&params.text_document.uri)?, params.position)
+                hover(
+                    state.cache(&params.text_document.uri, Task::Hover)?,
+                    params.position,
+                )
             })
             .await)
     }
@@ -270,7 +272,7 @@ impl LanguageServer for Backend {
         Ok(self
             .query(Task::Definition, move |state| {
                 let shared = state.shared.clone();
-                let cache = state.cache(&params.text_document.uri)?;
+                let cache = state.cache(&params.text_document.uri, Task::Definition)?;
                 definitions(cache, &shared.paths, params.position)
             })
             .await)
@@ -285,7 +287,7 @@ impl LanguageServer for Backend {
         Ok(self
             .query(Task::References, move |state| {
                 let shared = state.shared.clone();
-                let cache = state.cache(&params.text_document.uri)?;
+                let cache = state.cache(&params.text_document.uri, Task::References)?;
                 references(cache, &shared.paths, params.position)
             })
             .await)
@@ -299,7 +301,10 @@ impl LanguageServer for Backend {
 
         Ok(self
             .query(Task::Completion, move |state| {
-                completions(state.cache(&params.text_document.uri)?, params.position)
+                completions(
+                    state.cache(&params.text_document.uri, Task::Completion)?,
+                    params.position,
+                )
             })
             .await)
     }
@@ -355,13 +360,7 @@ impl Backend {
         task: Task,
         f: impl FnOnce(&mut State) -> Option<T> + Send + 'static,
     ) -> Option<T> {
-        let result = self
-            .worker
-            .run(move |state| {
-                state.shared.inject_panic(task);
-                f(state)
-            })
-            .await;
+        let result = self.worker.run(f).await;
 
         match result {
             Ok(Ok(value)) => value,
@@ -753,11 +752,8 @@ fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
 }
 
 /// Nothing can be compiled without the manifest, so this only reports why it's invalid.
-fn invalid_manifest_diagnostics(
-    path: &Path,
-    error: &toml::de::Error,
-) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-    let mut diagnostics = IndexMap::new();
+fn invalid_manifest_diagnostics(path: &Path, error: &toml::de::Error) -> Diagnostics {
+    let mut diagnostics = Diagnostics::new();
 
     if let Ok(kind) = normalize_path(path) {
         diagnostics.insert(kind, vec![manifest_error(path, error)]);

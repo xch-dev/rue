@@ -10,7 +10,6 @@ use indexmap::IndexMap;
 use rue_compiler::{Compiler, FileTree, normalize_path};
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::{Project, find_project};
-use tower_lsp::lsp_types::Diagnostic;
 
 use crate::cache::Cache;
 use crate::paths;
@@ -81,7 +80,7 @@ impl FoundProject {
 struct Compiled {
     key: PathBuf,
     path: PathBuf,
-    diagnostics: IndexMap<SourceKind, Vec<Diagnostic>>,
+    diagnostics: Diagnostics,
     /// The compile, which answers queries about the project's files.
     cache: Option<(Cache<Compiler>, Vec<Source>)>,
     /// Whether the project doesn't exist anymore, so it's no longer tracked.
@@ -93,7 +92,7 @@ impl Compiled {
         Self {
             path: key.clone(),
             key,
-            diagnostics: IndexMap::new(),
+            diagnostics: Diagnostics::new(),
             cache: None,
             removed: true,
         }
@@ -187,15 +186,24 @@ impl State {
                 .map(|project| self.compile(project, &snapshot)),
         );
 
-        // The editor may have changed a project's files while it was compiling, in which case the
-        // result is already out of date, and the edit compiles the project again
-        compiled.retain(|compiled| !self.shared.is_stale(&snapshot, compiled.diagnostics.keys()));
-
         // Everything is compiled before any state is updated, so that a panic leaves the results
         // of the last compile in place
-        let mut diagnostics = IndexMap::new();
+        let mut diagnostics = Diagnostics::new();
 
         for compiled in compiled {
+            // The editor may have changed a project's files while it was compiling, in which case
+            // its diagnostics are already out of date, so they aren't published, and the project
+            // is compiled again with the edits. Queries still use it, since it's newer than the
+            // last compile that was published.
+            if self.shared.is_stale(&snapshot, compiled.diagnostics.keys()) {
+                if let Some((cache, files)) = compiled.cache {
+                    self.insert_project(compiled.key, cache, files);
+                }
+
+                self.compile_later(compiled.path);
+                continue;
+            }
+
             diagnostics.extend(self.update_project(compiled));
         }
 
@@ -228,7 +236,7 @@ impl State {
             }
         };
 
-        let mut diagnostics = IndexMap::<SourceKind, Vec<Diagnostic>>::new();
+        let mut diagnostics = Diagnostics::new();
         let mut cache = None;
 
         let mut ctx = Compiler::new(project.options);
@@ -328,31 +336,19 @@ impl State {
         diagnostics
     }
 
-    /// Compiles every project again, without reporting anything, after a query panicked partway
-    /// through changing a compile's state.
-    pub fn rebuild(&mut self) {
+    /// Compiles a project again, without reporting anything, after a query panicked partway
+    /// through changing its compile's state.
+    pub fn rebuild(&mut self, key: &PathBuf) {
         let snapshot = self.shared.snapshot();
 
-        let projects = self
-            .published
-            .values()
-            .filter_map(|tracked| FoundProject::find(&tracked.path))
-            .collect::<Vec<_>>();
+        let compiled = self.published.get(key).and_then(|tracked| {
+            let project = FoundProject::find(&tracked.path)?;
+            panic::catch_unwind(AssertUnwindSafe(|| self.compile(&project, &snapshot))).ok()
+        });
 
-        for project in projects {
-            let compiled =
-                panic::catch_unwind(AssertUnwindSafe(|| self.compile(&project, &snapshot)));
-
-            if let Ok(Compiled {
-                key,
-                cache: Some((cache, files)),
-                ..
-            }) = compiled
-            {
-                self.insert_project(key, cache, files);
-            } else {
-                self.remove_project(&project.key);
-            }
+        match compiled.and_then(|compiled| Some((compiled.key, compiled.cache?))) {
+            Some((key, (cache, files))) => self.insert_project(key, cache, files),
+            None => self.remove_project(key),
         }
     }
 }

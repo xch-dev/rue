@@ -58,6 +58,10 @@ pub struct Shared {
     /// Makes compiles wait until the test lets them continue, to test what happens meanwhile.
     #[cfg(test)]
     pub gate: Mutex<Option<Gate>>,
+    /// How long to wait for more edits, which tests can make longer so that only what they send
+    /// next compiles the edits.
+    #[cfg(test)]
+    pub debounce: Mutex<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -94,13 +98,15 @@ impl Shared {
             compiles: AtomicUsize::new(0),
             #[cfg(test)]
             gate: Mutex::default(),
+            #[cfg(test)]
+            debounce: Mutex::new(DEBOUNCE),
         }
     }
 
     /// Sets the editor's text for a file, or discards it so that what's on disk is used.
     pub fn set_text(&self, kind: SourceKind, text: Option<String>) {
-        let revision = self.revision.fetch_add(1, Ordering::Relaxed) + 1;
         let mut documents = lock(&self.documents);
+        let revision = self.revision.fetch_add(1, Ordering::Relaxed) + 1;
 
         if let Some(text) = text {
             documents.insert(kind, Document { text, revision });
@@ -155,6 +161,17 @@ impl Shared {
     #[allow(clippy::unused_self)]
     pub fn inject_panic(&self, _task: Task) {}
 
+    #[cfg(test)]
+    fn debounce(&self) -> Duration {
+        *lock(&self.debounce)
+    }
+
+    #[cfg(not(test))]
+    #[allow(clippy::unused_self)]
+    fn debounce(&self) -> Duration {
+        DEBOUNCE
+    }
+
     /// Waits until the test lets the compile continue, if it asked to hold it.
     #[cfg(test)]
     pub fn wait_at_gate(&self) {
@@ -168,9 +185,9 @@ impl Shared {
     #[allow(clippy::unused_self)]
     pub fn wait_at_gate(&self) {}
 
-    async fn publish(&self, diagnostics: Diagnostics) {
+    async fn publish(&self, diagnostics: &Diagnostics) {
         for (kind, diagnostics) in diagnostics {
-            let (uris, stale) = self.paths.publish(&kind);
+            let (uris, stale) = self.paths.publish(kind);
 
             for uri in stale {
                 self.client.publish_diagnostics(uri, Vec::new(), None).await;
@@ -203,7 +220,7 @@ enum Job {
     Compile {
         changed: Vec<PathBuf>,
         edited: Vec<PathBuf>,
-        done: Option<oneshot::Sender<Diagnostics>>,
+        done: oneshot::Sender<Diagnostics>,
     },
     Run(Run),
 }
@@ -247,7 +264,7 @@ impl Worker {
         self.send(Job::Compile {
             changed,
             edited,
-            done: Some(done),
+            done,
         });
 
         receiver
@@ -262,12 +279,16 @@ impl Worker {
         let (done, receiver) = oneshot::channel();
 
         self.send(Job::Run(Box::new(move |state| {
+            state.queried = None;
+
             let result = panic::catch_unwind(AssertUnwindSafe(|| f(state)));
 
-            // The task may have panicked partway through changing the compiler's state, so it's
-            // compiled again
-            if result.is_err() {
-                state.rebuild();
+            // The task may have panicked partway through changing a compile's state, so the
+            // project is compiled again
+            if result.is_err()
+                && let Some(key) = state.queried.take()
+            {
+                state.rebuild(&key);
             }
 
             done.send(result.map_err(|payload| panic_message(&*payload)))
@@ -292,6 +313,8 @@ pub struct State {
     edited: Vec<PathBuf>,
     /// When to compile the edits, if no other edit arrives first.
     deadline: Option<Instant>,
+    /// The project whose compile the current task is using.
+    queried: Option<PathBuf>,
 }
 
 impl State {
@@ -303,6 +326,7 @@ impl State {
             files: HashMap::new(),
             edited: Vec::new(),
             deadline: None,
+            queried: None,
         }
     }
 
@@ -326,13 +350,7 @@ impl State {
             };
 
             match job {
-                Job::Edit(path) => {
-                    if !self.edited.contains(&path) {
-                        self.edited.push(path);
-                    }
-
-                    self.deadline = Some(Instant::now() + DEBOUNCE);
-                }
+                Job::Edit(path) => self.compile_later(path),
                 Job::Compile {
                     changed,
                     mut edited,
@@ -340,11 +358,7 @@ impl State {
                 } => {
                     edited.extend(self.take_edits());
 
-                    let diagnostics = self.compile_and_publish(&changed, &edited);
-
-                    if let Some(done) = done {
-                        done.send(diagnostics).ok();
-                    }
+                    done.send(self.compile_and_publish(&changed, &edited)).ok();
                 }
                 Job::Run(run) => {
                     self.flush();
@@ -371,7 +385,7 @@ impl State {
     fn compile_and_publish(&mut self, changed: &[PathBuf], edited: &[PathBuf]) -> Diagnostics {
         match panic::catch_unwind(AssertUnwindSafe(|| self.recompile(changed, edited))) {
             Ok(diagnostics) => {
-                futures::executor::block_on(self.shared.publish(diagnostics.clone()));
+                futures::executor::block_on(self.shared.publish(&diagnostics));
                 diagnostics
             }
             Err(payload) => {
@@ -382,13 +396,26 @@ impl State {
         }
     }
 
-    /// The last compile of a document's file, set up to answer queries about it.
-    pub fn cache(&mut self, uri: &Url) -> Option<&mut Cache<Compiler>> {
+    /// The last compile of a document's file, set up to answer a query about it.
+    pub fn cache(&mut self, uri: &Url, task: Task) -> Option<&mut Cache<Compiler>> {
         let (_, kind) = document(uri)?;
         let (key, source) = self.files.get(&kind)?;
         let cache = self.projects.get_mut(key)?;
         cache.set_source(source.clone());
+
+        self.queried = Some(key.clone());
+        self.shared.inject_panic(task);
+
         Some(cache)
+    }
+
+    /// Compiles a project again once the edits stop, given a path it can be found from.
+    pub fn compile_later(&mut self, path: PathBuf) {
+        if !self.edited.contains(&path) {
+            self.edited.push(path);
+        }
+
+        self.deadline = Some(Instant::now() + self.shared.debounce());
     }
 
     /// Records a project's compile, so that it answers queries about its files (instead of
