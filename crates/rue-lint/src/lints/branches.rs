@@ -4,7 +4,7 @@ use rue_hir::{BinaryOp, Block, Hir, HirId, Statement, UnaryOp};
 use crate::{
     HirLintPass, LintContext,
     equality::hir_eq,
-    text::{expr_text, has_comment, is_operand, negated_operand_text, negated_text, operand_text},
+    text::{has_comment, negated_text, negated_text_at, position, text_at},
 };
 
 /// An `if` whose branches are the same evaluates to the same value whatever the condition is.
@@ -191,14 +191,12 @@ impl HirLintPass for NeedlessBool {
             return;
         };
 
-        let operand = is_operand(cx, hir);
-        let db = cx.db();
+        let position = position(cx, hir);
 
-        let replacement = match (then, operand) {
-            (true, true) => operand_text(db, condition),
-            (true, false) => expr_text(db, condition),
-            (false, true) => negated_operand_text(db, condition),
-            (false, false) => negated_text(db, condition),
+        let replacement = if then {
+            text_at(cx.db(), condition, position)
+        } else {
+            negated_text_at(cx.db(), condition, position)
         };
 
         let Some(replacement) = replacement else {

@@ -218,6 +218,12 @@ fn body_size(db: &Database, body: HirId) -> usize {
 
         let node = db.hir(hir);
 
+        // A const expression is replaced by its result, which is all that's duplicated
+        if let Hir::Const(expr) = node {
+            stack.push(expr.result.unwrap_or(expr.value));
+            continue;
+        }
+
         // The values of bindings are stored in their symbols, but they're part of the body
         if let Hir::Block(block) = node {
             for statement in &block.statements {

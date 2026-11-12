@@ -6,76 +6,34 @@ use rue_hir::{BinaryOp, Database, Hir, HirId, UnaryOp};
 
 use crate::LintContext;
 
-/// The code that an expression was compiled from, without any parentheses around it, so that it
-/// can be used where any expression is allowed (such as an `assert` or a `let` value).
-pub(crate) fn expr_text(db: &Database, hir: HirId) -> Option<String> {
-    let text = db.hir_srcloc(hir)?.text();
-    Some(strip_parens(text).to_string())
+/// Where an expression is, which decides whether the code that replaces it needs parentheses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Position {
+    /// A whole expression by itself, such as a condition, an argument or the value of a binding.
+    Whole,
+    /// An operand of a prefix or binary operator.
+    Operand,
+    /// The operand of a postfix operator (such as `as`, `is`, a field access or a call), which
+    /// binds more tightly than anything else, including a prefix operator such as `!`.
+    Postfix,
 }
 
-/// The code that an expression was compiled from, in parentheses if it could otherwise be split
-/// up by the operators around it, so that it can be used as an operand.
-pub(crate) fn operand_text(db: &Database, hir: HirId) -> Option<String> {
-    let text = db.hir_srcloc(hir)?.text();
-
-    if is_parenthesized(text) || is_atomic(db, hir) {
-        Some(text.to_string())
-    } else {
-        Some(format!("({text})"))
-    }
-}
-
-/// The code for the negation of a boolean expression, which removes a `!` or flips `==` and `!=`
-/// rather than adding another `!` if possible.
-pub(crate) fn negated_text(db: &Database, hir: HirId) -> Option<String> {
-    negated(db, hir, false)
-}
-
-/// Like [`negated_text`], but in parentheses if it could otherwise be split up by the operators
-/// around it, so that it can be used as an operand.
-pub(crate) fn negated_operand_text(db: &Database, hir: HirId) -> Option<String> {
-    negated(db, hir, true)
-}
-
-fn negated(db: &Database, hir: HirId, operand: bool) -> Option<String> {
-    let srcloc = db.hir_srcloc(hir)?;
-
-    if !is_parenthesized(srcloc.text()) {
-        match *db.hir(hir) {
-            Hir::Unary(UnaryOp::Not, inner) if srcloc.text().starts_with('!') => {
-                return if operand {
-                    operand_text(db, inner)
-                } else {
-                    expr_text(db, inner)
-                };
-            }
-            Hir::Binary(op @ (BinaryOp::Eq | BinaryOp::Ne), left, right) => {
-                let op = if op == BinaryOp::Eq { "!=" } else { "==" };
-                let left = operand_text(db, left)?;
-                let right = operand_text(db, right)?;
-                let text = format!("{left} {op} {right}");
-                return Some(if operand { format!("({text})") } else { text });
-            }
-            _ => {}
-        }
-    }
-
-    Some(format!("!{}", operand_text(db, hir)?))
-}
-
-/// Whether the current node is an operand of an operator, rather than a whole expression (such as
-/// an argument or the value of a binding), so replacing it might need parentheses.
-pub(crate) fn is_operand(cx: &LintContext<'_>, hir: HirId) -> bool {
+/// Where the current node is, from the node that directly encloses it.
+pub(crate) fn position(cx: &LintContext<'_>, hir: HirId) -> Position {
     let Some(parent) = cx.parent() else {
-        return false;
+        return Position::Whole;
     };
 
     match cx.db().hir(parent) {
+        Hir::Cast(_) | Hir::Guard(_) | Hir::FieldAccess(_) => Position::Postfix,
+        Hir::FunctionCall(call) if call.function == hir => Position::Postfix,
+        Hir::If(condition, ..) if *condition != hir => Position::Operand,
         Hir::Block(_)
         | Hir::List(_)
         | Hir::Struct(_)
         | Hir::Pair(..)
         | Hir::Lambda(_)
+        | Hir::If(..)
         | Hir::FunctionCall(_)
         | Hir::CoinId(..)
         | Hir::Substr(..)
@@ -86,10 +44,69 @@ pub(crate) fn is_operand(cx: &LintContext<'_>, hir: HirId) -> bool {
         | Hir::BlsVerify(..)
         | Hir::Secp256K1Verify(..)
         | Hir::Secp256R1Verify(..)
-        | Hir::ClvmOp(..) => false,
-        Hir::If(condition, ..) => *condition != hir,
-        _ => true,
+        | Hir::ClvmOp(..) => Position::Whole,
+        _ => Position::Operand,
     }
+}
+
+/// The code that an expression was compiled from, with parentheses if it needs them at the
+/// position, and without any that it doesn't need as a whole expression.
+pub(crate) fn text_at(db: &Database, hir: HirId, position: Position) -> Option<String> {
+    let text = db.hir_srcloc(hir)?.text();
+
+    let needs_parens = match position {
+        Position::Whole => return Some(strip_parens(text).to_string()),
+        Position::Operand => !is_atomic(db, hir),
+        Position::Postfix => !is_atomic(db, hir) || matches!(db.hir(hir), Hir::Unary(..)),
+    };
+
+    if needs_parens && !is_parenthesized(text) {
+        Some(format!("({text})"))
+    } else {
+        Some(text.to_string())
+    }
+}
+
+/// The code for the negation of a boolean expression as a whole expression. See
+/// [`negated_text_at`].
+pub(crate) fn negated_text(db: &Database, hir: HirId) -> Option<String> {
+    negated_text_at(db, hir, Position::Whole)
+}
+
+/// The code for the negation of a boolean expression, with parentheses if it needs them at the
+/// position. A `!` is removed or `==` and `!=` are flipped, rather than adding another `!` if
+/// possible.
+pub(crate) fn negated_text_at(db: &Database, hir: HirId, position: Position) -> Option<String> {
+    let srcloc = db.hir_srcloc(hir)?;
+
+    if !is_parenthesized(srcloc.text()) {
+        match *db.hir(hir) {
+            Hir::Unary(UnaryOp::Not, inner) if srcloc.text().starts_with('!') => {
+                return text_at(db, inner, position);
+            }
+            Hir::Binary(op @ (BinaryOp::Eq | BinaryOp::Ne), left, right) => {
+                let op = if op == BinaryOp::Eq { "!=" } else { "==" };
+                let left = text_at(db, left, Position::Operand)?;
+                let right = text_at(db, right, Position::Operand)?;
+                let text = format!("{left} {op} {right}");
+
+                return Some(if position == Position::Whole {
+                    text
+                } else {
+                    format!("({text})")
+                });
+            }
+            _ => {}
+        }
+    }
+
+    let text = format!("!{}", text_at(db, hir, Position::Postfix)?);
+
+    Some(if position == Position::Postfix {
+        format!("({text})")
+    } else {
+        text
+    })
 }
 
 /// Whether one location is inside of another (or the same as it).

@@ -1,12 +1,15 @@
 //! Lints that only depend on the syntax tree.
 
-use rowan::TextRange;
+use std::{ops::Range, sync::Arc};
+
+use rowan::{NodeOrToken, TextRange};
 use rue_ast::{
     AstBinding, AstExpr, AstGenericArguments, AstGenericParameters, AstGroupExpr, AstIfExpr,
     AstNode, AstPrefixExpr, AstStmtOrExpr, AstStructFieldBinding, AstStructInitializerField,
 };
 use rue_diagnostic::{Applicability, Lint, Source, Suggestion};
-use rue_parser::{SyntaxKind, SyntaxNode, T};
+use rue_lexer::Lexer;
+use rue_parser::{Parser, SyntaxKind, SyntaxNode, T};
 
 use crate::{LintContext, LintInput, srcloc, text::has_comment};
 
@@ -162,24 +165,6 @@ fn check_parens(cx: &mut LintContext<'_>, source: &Source, group: &AstGroupExpr)
         return;
     }
 
-    let is_condition = group.syntax().parent().is_some_and(|parent| {
-        matches!(parent.kind(), SyntaxKind::IfExpr | SyntaxKind::IfStmt)
-            && is_condition_of(&parent, group.syntax())
-    });
-
-    // A condition can't start with a block or `if` without parentheses, since it would be parsed
-    // as the body of the `if` instead. Struct initializers aren't allowed anywhere in a condition
-    // (outside of parentheses), so they can't be written without them as part of one either.
-    if (is_condition
-        && matches!(
-            inner,
-            AstExpr::Block(_) | AstExpr::IfExpr(_) | AstExpr::LambdaExpr(_)
-        ))
-        || (matches!(inner, AstExpr::StructInitializerExpr(_)) && is_in_condition(group.syntax()))
-    {
-        return;
-    }
-
     if !is_atomic(&inner) && !is_whole_expression(group.syntax()) {
         return;
     }
@@ -205,6 +190,13 @@ fn check_parens(cx: &mut LintContext<'_>, source: &Source, group: &AstGroupExpr)
         && inner_text.chars().next_back().is_some_and(is_word_char)
     {
         replacement.push(' ');
+    }
+
+    // The parser has rules that depend on where an expression is (for example, a struct
+    // initializer can't be written in an `if` condition without parentheses), so the code is
+    // parsed again without them, to make sure that only the parentheses were removed
+    if !parses_without_parens(source, group.syntax(), start..end, &replacement) {
+        return;
     }
 
     let srcloc = srcloc(source, group_range);
@@ -261,28 +253,47 @@ fn is_condition_of(if_node: &SyntaxNode, node: &SyntaxNode) -> bool {
         .is_some_and(|condition| condition.syntax() == node)
 }
 
-/// Whether the node is part of the condition of an `if`, where struct initializers aren't allowed
-/// unless they're inside of delimiters, such as parentheses, a block, a list or arguments.
-fn is_in_condition(node: &SyntaxNode) -> bool {
-    let mut child = node.clone();
+/// Whether the code parses to the same syntax tree once the parentheses are replaced, apart from
+/// the parenthesized expression itself.
+fn parses_without_parens(
+    source: &Source,
+    group: &SyntaxNode,
+    range: Range<usize>,
+    replacement: &str,
+) -> bool {
+    let Some(document) = group.ancestors().last() else {
+        return false;
+    };
 
-    while let Some(parent) = child.parent() {
-        match parent.kind() {
-            SyntaxKind::IfExpr | SyntaxKind::IfStmt if is_condition_of(&parent, &child) => {
-                return true;
+    let mut text = source.text.to_string();
+    text.replace_range(range, replacement);
+
+    let tokens = Lexer::new(&text).collect::<Vec<_>>();
+    let source = Source::new(Arc::from(text.as_str()), source.kind.clone());
+    let reparsed = Parser::new(source, tokens).parse();
+
+    shape(&document, Some(group)) == shape(&reparsed.node, None)
+}
+
+/// The kinds of the nodes and tokens of a syntax tree, without whitespace and comments, and
+/// without the given parenthesized expression (but with the expression inside of it).
+fn shape(root: &SyntaxNode, without: Option<&SyntaxNode>) -> Vec<SyntaxKind> {
+    root.descendants_with_tokens()
+        .filter_map(|element| match element {
+            NodeOrToken::Node(node) => (Some(&node) != without).then(|| node.kind()),
+            NodeOrToken::Token(token) => {
+                let is_paren = matches!(token.kind(), T!['('] | T![')'])
+                    && without.is_some_and(|group| token.parent().as_ref() == Some(group));
+
+                let is_comment = matches!(
+                    token.kind(),
+                    SyntaxKind::Whitespace | SyntaxKind::LineComment | SyntaxKind::BlockComment
+                );
+
+                (!is_paren && !is_comment).then(|| token.kind())
             }
-            SyntaxKind::GroupExpr
-            | SyntaxKind::PairExpr
-            | SyntaxKind::Block
-            | SyntaxKind::ListExpr
-            | SyntaxKind::FunctionCallExpr
-            | SyntaxKind::StructInitializerExpr
-            | SyntaxKind::Document => return false,
-            _ => child = parent,
-        }
-    }
-
-    false
+        })
+        .collect()
 }
 
 /// Whether the expression is already a whole expression by itself, rather than an operand of

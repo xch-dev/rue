@@ -1945,11 +1945,14 @@ fn main(flag: Bool, a: Bool, b: Bool) -> Bool {
     let compared = flag && !(a || b) == false;
     let flipped = flag && (a == b) == false;
     let needless = flag && if !(!a || b) { false } else { true };
-    compared && flipped && needless
+    let cast = (flag == false) as Int;
+    let guarded = (if flag { false } else { true }) is Bool;
+    compared && flipped && needless && cast == 1 && guarded
 }
 ";
 
-    // Removing the comparison or the `if` can't let the `&&` split up what's left of it
+    // Removing the comparison or the `if` can't let the operators around it split up what's left
+    // of it, including a postfix operator such as `as`, which binds more tightly than `!`
     assert_eq!(
         fix(source),
         "\
@@ -1957,7 +1960,9 @@ fn main(flag: Bool, a: Bool, b: Bool) -> Bool {
     let compared = flag && (a || b);
     let flipped = flag && !(a == b);
     let needless = flag && (!a || b);
-    compared && flipped && needless
+    let cast = (!flag) as Int;
+    let guarded = (!flag) is Bool;
+    compared && flipped && needless && cast == 1 && guarded
 }
 "
     );

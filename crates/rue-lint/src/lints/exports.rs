@@ -4,15 +4,18 @@ use rue_ast::{AstItem, AstNode, AstSymbolItem, AstTypeItem};
 use rue_diagnostic::{Applicability, Lint, Name, SourceKind, SrcLoc, Suggestion};
 use rue_hir::{Database, Declaration, Items, ScopeId, Symbol, SymbolId};
 use rue_parser::SyntaxKind;
-use rue_types::Type;
+use rue_types::{Type, TypeId};
 
-use crate::{LintContext, LintInput, srcloc, text::encloses};
+use crate::{LintContext, LintInput, srcloc};
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UnusedExport];
 
-/// Reports the exported items of `mod` items that are only used inside of the module, so they
-/// don't need to be exported. Modules that are exported themselves (from a file, or from another
-/// module that is) are left alone, since anything that imports the file can use their items.
+/// Reports the exported items of `mod` items that are never used in a way that needs them to be
+/// exported, so they don't need to be. Only a reference through the module (such as
+/// `module::name`) or an import needs an item to be exported, since code inside of the module (or
+/// a module nested inside of it) can reference it by name. Modules that are exported themselves
+/// (from a file, or from another module that is) are left alone, since anything that imports the
+/// file can use their items.
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     let db = cx.db();
 
@@ -20,47 +23,53 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 
     let scopes = modules
         .iter()
-        .map(|&(module, _)| (db.module(module).scope, module))
+        .map(|&module| (db.module(module).scope, module))
         .collect::<HashMap<ScopeId, SymbolId>>();
 
+    let qualified = input
+        .sites
+        .qualified_references
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+
     let export_keywords = export_keywords(input);
-    let imports = imports(db);
+    let imported = imported(db);
 
     let mut reports = Vec::new();
 
-    for (module, module_srcloc) in modules {
-        if is_public(db, &scopes, *module) {
+    for &module in modules {
+        if is_public(db, &scopes, module) {
             continue;
         }
 
-        let module_symbol = db.module(*module);
+        let module_symbol = db.module(module);
         let scope = db.scope(module_symbol.scope);
         let module_name = module_symbol.name.as_ref().map_or("", |name| name.text());
 
         let declarations = &module_symbol.declarations;
 
-        // Code in a module nested inside of this one can only use its items if they're exported
-        let nested = modules
-            .iter()
-            .filter(|(other, srcloc)| other != module && encloses(module_srcloc, srcloc))
-            .map(|(_, srcloc)| srcloc)
-            .collect::<Vec<_>>();
-
-        let inside = |srcloc: &SrcLoc| {
-            encloses(module_srcloc, srcloc) && !nested.iter().any(|nested| encloses(nested, srcloc))
-        };
-
-        let items = declarations
+        let exported_symbols = declarations
             .symbols
             .iter()
-            .filter(|&&symbol| scope.is_symbol_exported(symbol))
+            .copied()
+            .filter(|&symbol| scope.is_symbol_exported(symbol))
+            .collect::<Vec<_>>();
+
+        let exported_types = declarations
+            .types
+            .iter()
+            .map(|&(ty, _)| ty)
+            .filter(|&ty| scope.is_type_exported(ty))
+            .collect::<Vec<_>>();
+
+        let items = exported_symbols
+            .iter()
             .filter_map(|&symbol| Some((Declaration::Symbol(symbol), symbol_name(db, symbol)?)))
             .chain(
-                declarations
-                    .types
+                exported_types
                     .iter()
-                    .filter(|&&(ty, _)| scope.is_type_exported(ty))
-                    .filter_map(|&(ty, _)| Some((Declaration::Type(ty), type_name(db, ty)?))),
+                    .filter_map(|&ty| Some((Declaration::Type(ty), type_name(db, ty)?))),
             );
 
         for (declaration, name) in items {
@@ -68,39 +77,21 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                 continue;
             };
 
-            if name.text().starts_with('_') {
-                continue;
-            }
-
-            let users = db.reference_parents(declaration);
-
             // Anything that isn't used at all is reported by the `unused` lints instead
-            if users.is_empty() {
-                continue;
-            }
-
-            if users.iter().any(|&user| {
-                declaration_srcloc(db, user, &mut HashSet::new())
-                    .is_none_or(|srcloc| !inside(&srcloc))
-            }) {
-                continue;
-            }
-
-            // An import (or re-export) of the item can only resolve if it's exported
-            if imports
-                .get(&declaration)
-                .is_some_and(|imports| imports.iter().any(|srcloc| !inside(srcloc)))
+            if name.text().starts_with('_')
+                || db.reference_parents(declaration).is_empty()
+                || qualified.contains(&declaration)
+                || imported.contains(&declaration)
             {
                 continue;
             }
 
             // A type in the signature of another export is part of what the module exports, even
             // if nothing outside of it names the type
-            if matches!(declaration, Declaration::Type(_))
-                && users.iter().any(|&user| match user {
-                    Declaration::Symbol(symbol) => scope.is_symbol_exported(symbol),
-                    Declaration::Type(ty) => scope.is_type_exported(ty),
-                })
+            if let Declaration::Type(_) = declaration
+                && signature_types(db, &exported_symbols, &exported_types)
+                    .into_iter()
+                    .any(|ty| type_reaches(db, ty, name_srcloc, &mut HashSet::new()))
             {
                 continue;
             }
@@ -108,7 +99,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
             reports.push((
                 name_srcloc.clone(),
                 format!(
-                    "`{}` is exported, but is only used inside of module `{module_name}`",
+                    "`{}` is exported, but is never used outside of module `{module_name}`",
                     name.text()
                 ),
                 export_keywords
@@ -152,55 +143,119 @@ fn is_public(db: &Database, scopes: &HashMap<ScopeId, SymbolId>, module: SymbolI
     }
 }
 
-/// Where the declaration is declared, by its name (or for a declaration without a name, where
-/// the declaration it's inside of is declared).
-fn declaration_srcloc(
-    db: &Database,
-    declaration: Declaration,
-    visited: &mut HashSet<Declaration>,
-) -> Option<SrcLoc> {
-    if !visited.insert(declaration) {
-        return None;
-    }
+/// The declarations that an import (or re-export) resolves to, which it can only do if they're
+/// exported. A glob import that isn't exported only needs the items that are used through it.
+fn imported(db: &Database) -> HashSet<Declaration> {
+    let mut imported = HashSet::new();
 
-    let name = match declaration {
-        Declaration::Symbol(symbol) => symbol_name(db, symbol),
-        Declaration::Type(ty) => type_name(db, ty),
-    };
+    for id in db.relevant_imports() {
+        let import = db.import(id);
 
-    if let Some(srcloc) = name.as_ref().and_then(Name::srcloc) {
-        return Some(srcloc.clone());
-    }
-
-    db.declaration_parents(declaration)
-        .into_iter()
-        .find_map(|parent| declaration_srcloc(db, parent, visited))
-}
-
-/// Where each declaration is imported, by the location of the import's item. A glob import that
-/// isn't exported only needs the items that are used through it, which are references instead.
-fn imports(db: &Database) -> HashMap<Declaration, Vec<SrcLoc>> {
-    let mut imports: HashMap<Declaration, Vec<SrcLoc>> = HashMap::new();
-
-    for import in db.relevant_imports() {
-        let import = db.import(import);
-
-        let item = match &import.items {
-            Items::Named(item) => item,
-            Items::All(star) if import.exported => star,
-            Items::All(_) => continue,
-        };
-
-        let Some(srcloc) = item.srcloc() else {
-            continue;
-        };
-
-        for &(_, declaration) in &import.declarations {
-            imports.entry(declaration).or_default().push(srcloc.clone());
+        match &import.items {
+            Items::All(_) if !import.exported => imported.extend(db.import_references(id)),
+            Items::All(_) | Items::Named(_) => {
+                imported.extend(
+                    import
+                        .declarations
+                        .iter()
+                        .map(|&(_, declaration)| declaration),
+                );
+            }
         }
     }
 
-    imports
+    imported
+}
+
+/// The types in the signatures of the exported items of a module, such as the parameters and
+/// return type of a function, or the fields of a struct.
+fn signature_types(db: &Database, symbols: &[SymbolId], types: &[TypeId]) -> Vec<TypeId> {
+    let mut signature = Vec::new();
+
+    for &symbol in symbols {
+        match db.symbol(symbol) {
+            Symbol::Function(function) => {
+                signature.push(function.return_type);
+
+                for &parameter in function.parameters.values() {
+                    if let Symbol::Parameter(parameter) = db.symbol(parameter) {
+                        signature.push(parameter.ty);
+                    }
+                }
+            }
+            Symbol::Constant(constant) => signature.push(constant.value.ty),
+            _ => {}
+        }
+    }
+
+    for &ty in types {
+        match db.ty(ty) {
+            Type::Struct(ty) => signature.push(ty.inner),
+            Type::Alias(alias) => signature.push(alias.inner),
+            _ => {}
+        }
+    }
+
+    signature
+}
+
+/// Whether the type is (or contains) the struct or alias declared with the given name.
+fn type_reaches(db: &Database, ty: TypeId, name: &SrcLoc, visited: &mut HashSet<TypeId>) -> bool {
+    if !visited.insert(ty) {
+        return false;
+    }
+
+    let is_named = |declared: &Option<Name>| {
+        declared
+            .as_ref()
+            .and_then(Name::srcloc)
+            .is_some_and(|srcloc| {
+                srcloc.source.kind == name.source.kind && srcloc.span == name.span
+            })
+    };
+
+    match db.ty(ty) {
+        Type::Struct(ty) => {
+            is_named(&ty.name)
+                || type_reaches(db, ty.inner, name, visited)
+                || ty
+                    .generics
+                    .iter()
+                    .any(|&generic| type_reaches(db, generic, name, visited))
+        }
+        Type::Alias(alias) => {
+            is_named(&alias.name)
+                || type_reaches(db, alias.inner, name, visited)
+                || alias
+                    .generics
+                    .iter()
+                    .any(|&generic| type_reaches(db, generic, name, visited))
+        }
+        Type::Ref(inner) => type_reaches(db, *inner, name, visited),
+        Type::Pair(pair) => {
+            type_reaches(db, pair.first, name, visited)
+                || type_reaches(db, pair.rest, name, visited)
+        }
+        Type::Union(union) => union
+            .types
+            .iter()
+            .any(|&ty| type_reaches(db, ty, name, visited)),
+        Type::Apply(apply) => {
+            type_reaches(db, apply.inner, name, visited)
+                || apply
+                    .generics
+                    .values()
+                    .any(|&generic| type_reaches(db, generic, name, visited))
+        }
+        Type::Function(function) => {
+            type_reaches(db, function.ret, name, visited)
+                || function
+                    .params
+                    .values()
+                    .any(|&param| type_reaches(db, param, name, visited))
+        }
+        Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => false,
+    }
 }
 
 fn symbol_name(db: &Database, symbol: SymbolId) -> Option<Name> {
@@ -212,7 +267,7 @@ fn symbol_name(db: &Database, symbol: SymbolId) -> Option<Name> {
     }
 }
 
-fn type_name(db: &Database, ty: rue_types::TypeId) -> Option<Name> {
+fn type_name(db: &Database, ty: TypeId) -> Option<Name> {
     match db.ty(ty) {
         Type::Struct(ty) => ty.name.clone(),
         Type::Alias(ty) => ty.name.clone(),

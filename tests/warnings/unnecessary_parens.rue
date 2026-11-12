@@ -19,12 +19,24 @@ fn main(value: Int, flag: Bool) -> Int {
         return 0;
     }
 
+    if (Point { x: value, y: 1 }.x > 200) {
+        return 0;
+    }
+
+    if (Wrapper { f: fn(v: Int) => v + 1 }).f(value) > 300 {
+        return 0;
+    }
+
     atomic + nested + call + list.first + needed + negated
 }
 
 struct Point {
     x: Int,
     y: Int,
+}
+
+struct Wrapper {
+    f: fn(value: Int) -> Int,
 }
 
 fn add(a: Int, b: Int) -> Int {

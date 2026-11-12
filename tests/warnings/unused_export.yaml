@@ -1,13 +1,19 @@
-program: (+ (f (q 1)) (q . 48))
-debug_program: (a (q 16 (+ (+ (+ (+ (a 22 (c (c 46 62) ())) (a 42 (c 58 ()))) (a 60 (c 18 ()))) (a 20 (c 44 ()))) (a 40 (c 56 ()))) (f (a 16 ()))) (c (c (c (c (q 4 (q . 1) ()) (c (q 2 2 ()) (q 1 . 1))) (c (q 2 2 ()) (c (q 1 . 1) (q 2 2 ())))) (c (c (q 1 . 1) (c (q 2 2 ()) (q 1 . 2))) (c (q 16 (a 4 (c 6 ())) (q . 1)) (c (q . 2) (q . 42))))) ()))
-output: '49'
-runtime_cost: 827
-byte_cost: 204000
-total_cost: 204827
+program: (a (q 16 (f (q 1)) (f (q 1)) (a 2 ()) (a 2 ()) (q . 51)) (c (q 1 . 1) ()))
+debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (a 46 (c (c 94 126) ())) (a 38 (c 54 ()))) (a 42 (c 58 ()))) (a 34 (c 50 ()))) (a 92 (c 124 ()))) (f (a 44 ()))) (a 52 ())) (a 36 (c 16 ()))) (a 40 (c (c 16 56) ()))) (c (c (c (c (q 1 . 1) (c (q 16 (a 4 ()) (a 6 ())) (q 1 . 2))) (c (c (q 16 (a 2 ()) (q . 1)) (q 5 (c (q . 1) ()))) (c (q 4 (q . 1) ()) (c (q 2 2 ()) (q 1 . 1))))) (c (c (c (q 2 2 ()) (q 1 . 1)) (c (q 2 2 ()) (q 1 . 1))) (c (c (q 2 2 ()) (q 1 . 2)) (c (q 16 (a 4 (c 6 ())) (q . 1)) (c (q . 2) (q . 42)))))) ()))
+output: '55'
+runtime_cost: 2479
+byte_cost: 732000
+total_cost: 734479
 diagnostics:
 - |-
-  `only_inside` is exported, but is only used inside of module `helpers` at unused_export.rue:8:15
+  `only_inside` is exported, but is never used outside of module `helpers` at unused_export.rue:8:15
     help: Remove `export`
 - |-
-  `CONSTANT` is exported, but is only used inside of module `helpers` at unused_export.rue:12:18
+  `CONSTANT` is exported, but is never used outside of module `helpers` at unused_export.rue:12:18
+    help: Remove `export`
+- |-
+  `only_by_name` is exported, but is never used outside of module `lexical` at unused_export.rue:58:15
+    help: Remove `export`
+- |-
+  `Temporary` is exported, but is never used outside of module `signature` at unused_export.rue:91:19
     help: Remove `export`
