@@ -16,7 +16,7 @@ use rue_hir::{
     Builtins, Constraint, Database, Declaration, ImportId, Mappings, Scope, ScopeId, Symbol,
     SymbolId, TypePath, Value, merge_mappings, replace_type,
 };
-use rue_lint::{CastSite, ConditionSite, GuardSite, InlineIf, InlineIfSite, LintInput, LintSites};
+use rue_lint::{LintInput, LintSites};
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxNode, SyntaxToken};
 use rue_types::{Check, CheckError, Comparison, Inference, Type, TypeId};
@@ -33,7 +33,6 @@ pub struct Compiler {
     scope_stack: Vec<(TextSize, ScopeId)>,
     module_stack: Vec<SymbolId>,
     builtins: Builtins,
-    defaults: HashMap<TypeId, HashMap<String, Value>>,
     field_types: HashMap<TypeId, Vec<TypeId>>,
     inferred_fields: HashSet<(TypeId, String)>,
     declaration_stack: Vec<Declaration>,
@@ -83,7 +82,6 @@ impl Compiler {
             scope_stack: vec![(TextSize::from(0), builtins.scope)],
             module_stack: Vec::new(),
             builtins,
-            defaults: HashMap::new(),
             field_types: HashMap::new(),
             inferred_fields: HashSet::new(),
             declaration_stack: Vec::new(),
@@ -185,12 +183,15 @@ impl Compiler {
                 .or_insert(next);
         }
 
-        // The sort is stable, so diagnostics at the same position stay in the order they were
-        // reported
+        // Lints are ordered by where they're reported and then by lint, so that the order doesn't
+        // depend on which pass reports them. Other diagnostics come before lints at the same
+        // location, and the sort is stable, so they stay in the order they were reported.
         diagnostics.sort_by_cached_key(|diagnostic| {
             (
                 files[&diagnostic.srcloc.source.kind],
                 diagnostic.srcloc.span.start,
+                diagnostic.srcloc.span.end,
+                diagnostic.lint(),
             )
         });
 
@@ -233,6 +234,13 @@ impl Compiler {
         let range = node.text_range();
         let span: Range<usize> = range.start().into()..range.end().into();
         SrcLoc::new(self.source.clone(), span)
+    }
+
+    /// The location of a node without any whitespace or comments at its start or end, which the
+    /// parser can include in it. This is exactly the code that was written, so it can be replaced
+    /// by a suggestion.
+    pub fn trimmed_srcloc(&self, node: &SyntaxNode) -> SrcLoc {
+        self.srcloc(&trimmed_range(node))
     }
 
     pub fn local_name(&self, token: &SyntaxToken) -> Name {
@@ -459,10 +467,21 @@ impl Compiler {
         self.return_count += 1;
     }
 
-    pub fn add_inline_if(&mut self, srcloc: SrcLoc, inline_if: InlineIf) {
-        self.lint_sites
-            .inline_ifs
-            .push(InlineIfSite { srcloc, inline_if });
+    /// Records the type, location and scope of a compiled expression in the database, so that
+    /// they're available after compilation (such as to lints). The builtin values (such as `nil`) share
+    /// a HIR node, so the value is given a node of its own first, which is returned.
+    pub fn record_value(&mut self, node: &SyntaxNode, mut value: Value) -> Value {
+        if self.builtins.is_shared_hir(value.hir) {
+            let hir = self.db.hir(value.hir).clone();
+            value = value.with_hir(self.db.alloc_hir(hir));
+        }
+
+        let srcloc = self.trimmed_srcloc(node);
+        self.db.set_hir_type(value.hir, value.ty);
+        self.db.set_hir_srcloc(value.hir, srcloc);
+        self.db.set_hir_scope(value.hir, self.last_scope_id());
+
+        value
     }
 
     /// The sites recorded for lints while compiling, which are checked by [`rue_lint`] once
@@ -548,15 +567,6 @@ impl Compiler {
             let from_name = self.type_name(from);
             let to_name = self.type_name(to);
             self.diagnostic(node, DiagnosticKind::IncompatibleGuard(from_name, to_name));
-        } else {
-            let site = GuardSite {
-                srcloc: self.srcloc(node),
-                scope: self.last_scope_id(),
-                from,
-                to,
-                has_runtime_check: check != Check::None,
-            };
-            self.lint_sites.guards.push(site);
         }
 
         let else_id = rue_types::subtract(self.db.types_mut(), &self.builtins.types, from, to);
@@ -569,12 +579,6 @@ impl Compiler {
         if self.is_unresolved(ty) {
             return;
         }
-
-        let site = ConditionSite {
-            srcloc: self.srcloc(node),
-            ty,
-        };
-        self.lint_sites.conditions.push(site);
 
         // Conditions that are always `true` or `false` are reported by the `constant_condition`
         // lint, but they still need to be a `Bool` regardless of whether that lint is enabled
@@ -617,17 +621,6 @@ impl Compiler {
     fn compare_type(&mut self, node: &impl GetTextRange, from: TypeId, to: TypeId, cast: bool) {
         let comparison = rue_types::compare(self.db.types_mut(), &self.builtins.types, from, to);
 
-        if cast {
-            let site = CastSite {
-                srcloc: self.srcloc(node),
-                scope: self.last_scope_id(),
-                from,
-                to,
-                comparison,
-            };
-            self.lint_sites.casts.push(site);
-        }
-
         match comparison {
             Comparison::Assign => {}
             Comparison::Cast => {
@@ -660,16 +653,6 @@ impl Compiler {
                 }
             }
         }
-    }
-
-    pub fn insert_default_field(&mut self, ty: TypeId, name: String, value: Value) {
-        self.defaults.entry(ty).or_default().insert(name, value);
-    }
-
-    pub fn default_field(&self, ty: TypeId, name: &str) -> Option<Value> {
-        self.defaults
-            .get(&ty)
-            .and_then(|map| map.get(name).cloned())
     }
 
     /// Stores the types of a struct's fields in declaration order, so that their default values
@@ -740,6 +723,33 @@ impl Compiler {
     pub fn is_unresolved(&mut self, ty: TypeId) -> bool {
         let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
         matches!(self.ty(semantic), Type::Unresolved)
+    }
+}
+
+/// The range of a node without any whitespace or comments at its start or end.
+pub fn trimmed_range(node: &SyntaxNode) -> TextRange {
+    let range = node.text_range();
+
+    let mut first = node.first_token();
+    while let Some(token) = first.as_ref().filter(|token| token.kind().is_trivia()) {
+        first = token
+            .next_token()
+            .filter(|next| next.text_range().end() <= range.end());
+    }
+
+    let mut last = node.last_token();
+
+    while let Some(token) = last.as_ref().filter(|token| token.kind().is_trivia()) {
+        last = token
+            .prev_token()
+            .filter(|prev| prev.text_range().start() >= range.start());
+    }
+
+    match (first, last) {
+        (Some(first), Some(last)) if first.text_range().start() <= last.text_range().end() => {
+            TextRange::new(first.text_range().start(), last.text_range().end())
+        }
+        _ => range,
     }
 }
 

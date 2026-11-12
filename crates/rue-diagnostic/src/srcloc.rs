@@ -49,6 +49,11 @@ impl SrcLoc {
         Self { source, span }
     }
 
+    /// The source text at this location.
+    pub fn text(&self) -> &str {
+        &self.source.text[self.span.clone()]
+    }
+
     pub fn start(&self) -> LineCol {
         LineCol::new(&self.source.text, self.span.start)
     }

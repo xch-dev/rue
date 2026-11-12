@@ -119,9 +119,37 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *first, false);
             visit_hir(db, graph, *rest, false);
         }
+        Hir::List(list) => {
+            for &item in &list.items {
+                visit_hir(db, graph, item, false);
+            }
+        }
+        Hir::Struct(initializer) => {
+            for field in &initializer.fields {
+                visit_hir(db, graph, field.value, false);
+            }
+        }
+        Hir::FieldAccess(access) => {
+            visit_hir(db, graph, access.value, false);
+        }
+        // A cast has no effect, so a function that's cast and then called is still called directly
+        Hir::Cast(value) => {
+            visit_hir(db, graph, *value, is_call);
+        }
+        // The value is referenced as many times as the check it's lowered to uses it
+        Hir::Guard(guard) => {
+            for _ in 0..guard.value_uses() {
+                visit_hir(db, graph, guard.value, false);
+            }
+        }
         Hir::Const(expr) => {
-            graph.const_exprs.insert(hir);
-            visit_hir(db, graph, expr.value, false);
+            // Once it has been evaluated, only the result is used
+            if let Some(result) = expr.result {
+                visit_hir(db, graph, result, false);
+            } else {
+                graph.const_exprs.insert(hir);
+                visit_hir(db, graph, expr.value, false);
+            }
         }
         Hir::Reference(symbol) => {
             if !is_call {
@@ -130,9 +158,10 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_symbol_reference(db, graph, *symbol);
         }
         Hir::Block(block) => {
-            for stmt in &block.statements {
+            // Nothing after a `return` or `raise` is lowered, so it doesn't reference anything
+            for stmt in block.reachable_statements() {
                 match stmt {
-                    Statement::Let(stmt) => {
+                    Statement::Let(stmt, _) => {
                         if let Some(last) = graph.stack.last() {
                             graph.owners.insert(*stmt, *last);
                         }
@@ -151,7 +180,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                         visit_hir(db, graph, stmt.condition, false);
                         visit_hir(db, graph, stmt.then, false);
                     }
-                    Statement::Return(expr) => {
+                    Statement::Return(expr, _) => {
                         visit_hir(db, graph, *expr, false);
                     }
                     Statement::Expr(expr) => {
@@ -165,7 +194,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 }
             }
 
-            if let Some(body) = block.body {
+            if let Some(body) = block.reachable_body() {
                 visit_hir(db, graph, body, false);
             }
         }

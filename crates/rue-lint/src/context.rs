@@ -2,10 +2,10 @@ use std::ops::Range;
 
 use rowan::TextRange;
 use rue_diagnostic::{Diagnostic, DiagnosticKind, Lint, LintLevel, LintName, Source, SrcLoc};
-use rue_hir::{Database, ScopeId};
-use rue_types::{BuiltinTypes, Comparison, TypeId};
+use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
+use rue_types::{BuiltinTypes, Comparison, Type, TypeId};
 
-use crate::ScopedLintLevels;
+use crate::{ScopedLintLevels, WalkState};
 
 /// The state shared by lint passes, which collects the diagnostics they report.
 #[derive(Debug)]
@@ -14,6 +14,7 @@ pub struct LintContext<'a> {
     types: &'a BuiltinTypes,
     levels: ScopedLintLevels,
     diagnostics: Vec<Diagnostic>,
+    pub(crate) walk: WalkState,
 }
 
 impl<'a> LintContext<'a> {
@@ -23,7 +24,30 @@ impl<'a> LintContext<'a> {
             types,
             levels,
             diagnostics: Vec::new(),
+            walk: WalkState::default(),
         }
+    }
+
+    /// The function, constant or struct being walked by the [`HirLintPass`](crate::HirLintPass)es.
+    /// For a struct, this is one of its field defaults.
+    pub fn enclosing_declaration(&self) -> Option<Declaration> {
+        self.walk.declaration
+    }
+
+    /// The innermost function or lambda being walked, if any.
+    pub fn enclosing_function(&self) -> Option<SymbolId> {
+        self.walk.functions.last().copied()
+    }
+
+    /// The HIR nodes that enclose the current one, from the outermost to the innermost. During
+    /// [`check_statement`](crate::HirLintPass::check_statement), the innermost is the block.
+    pub fn parents(&self) -> &[HirId] {
+        &self.walk.parents
+    }
+
+    /// The HIR node that directly encloses the current one, if any.
+    pub fn parent(&self) -> Option<HirId> {
+        self.walk.parents.last().copied()
     }
 
     pub fn db(&self) -> &Database {
@@ -39,10 +63,24 @@ impl<'a> LintContext<'a> {
         self.levels.is_enabled_anywhere(lint)
     }
 
-    /// Reports a lint at its configured level. Nothing is reported if the lint is allowed.
-    pub fn report(&mut self, lint: Lint, srcloc: SrcLoc, message: impl Into<String>) {
+    /// Reports a lint at its configured level, and returns the diagnostic so that notes and
+    /// suggestions can be added to it. Nothing is reported if the lint is allowed.
+    pub fn report(
+        &mut self,
+        lint: Lint,
+        srcloc: SrcLoc,
+        message: impl Into<String>,
+    ) -> Option<&mut Diagnostic> {
         let level = self.levels.report(lint, &srcloc);
-        self.push(lint, srcloc, message, level);
+        self.push(lint, srcloc, message, level)
+    }
+
+    /// Reports the names in attributes that don't refer to a known lint or group. An attribute
+    /// can allow `unknown_lint` for the names in itself, as in Rust.
+    pub(crate) fn report_unknown_lints(&mut self) {
+        for (name, srcloc) in self.levels.take_unknown_lints() {
+            self.report(Lint::UnknownLint, srcloc, format!("Unknown lint `{name}`"));
+        }
     }
 
     /// Reports the `expect` attributes whose lint was never reported inside of them. This must be
@@ -66,10 +104,14 @@ impl<'a> LintContext<'a> {
         }
     }
 
-    fn push(&mut self, lint: Lint, srcloc: SrcLoc, message: impl Into<String>, level: LintLevel) {
-        let Some(severity) = level.severity() else {
-            return;
-        };
+    fn push(
+        &mut self,
+        lint: Lint,
+        srcloc: SrcLoc,
+        message: impl Into<String>,
+        level: LintLevel,
+    ) -> Option<&mut Diagnostic> {
+        let severity = level.severity()?;
 
         self.diagnostics.push(Diagnostic::new(
             srcloc,
@@ -79,6 +121,8 @@ impl<'a> LintContext<'a> {
             },
             severity,
         ));
+
+        self.diagnostics.last_mut()
     }
 
     pub fn into_diagnostics(self) -> Vec<Diagnostic> {
@@ -98,6 +142,19 @@ impl<'a> LintContext<'a> {
             self.compare(from, to),
             Comparison::Assign | Comparison::Cast
         )
+    }
+
+    /// Whether the type is `Never`, so a value of it is never produced, such as because the
+    /// expression always raises.
+    pub fn is_never(&mut self, ty: TypeId) -> bool {
+        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
+        matches!(self.db.ty(semantic), Type::Never)
+    }
+
+    /// Whether the type is unresolved, because an error has already been reported for it.
+    pub fn is_unresolved(&mut self, ty: TypeId) -> bool {
+        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
+        matches!(self.db.ty(semantic), Type::Unresolved)
     }
 
     /// The name of a type as it would be written in the given scope.

@@ -2,7 +2,9 @@ use std::collections::HashSet;
 
 use rue_lir::ClvmOp;
 
-use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
+use crate::{
+    Database, Hir, HirId, Statement, Symbol, SymbolId, reachable_body, reachable_statements,
+};
 
 /// Whether evaluating the given HIR could explicitly raise an error.
 ///
@@ -27,7 +29,7 @@ pub fn statements_may_raise(db: &Database, statements: &[Statement], body: Optio
         db,
         visited: HashSet::new(),
     };
-    visitor.visit_statements(statements) || visitor.visit_all(body)
+    visitor.visit_statements(statements) || visitor.visit_all(reachable_body(statements, body))
 }
 
 struct Visitor<'a> {
@@ -64,19 +66,20 @@ impl Visitor<'_> {
     }
 
     fn visit_statements(&mut self, statements: &[Statement]) -> bool {
-        for stmt in statements {
+        // Nothing after a `return` or `raise` is evaluated
+        for stmt in reachable_statements(statements) {
             let raises = match *stmt {
                 Statement::Raise(..) | Statement::Assert(..) => true,
                 // Inline bindings are evaluated where they are referenced instead
-                Statement::Let(symbol) => match self.db.symbol(symbol) {
+                Statement::Let(symbol, _) => match self.db.symbol(symbol) {
                     Symbol::Binding(binding) if !binding.inline => {
                         self.visit_hir(binding.value.hir)
                     }
                     _ => false,
                 },
-                Statement::Expr(stmt) => self.visit_hir(stmt.hir),
-                Statement::If(stmt) => self.visit_all([stmt.condition, stmt.then]),
-                Statement::Return(hir) | Statement::Debug(hir, _) => self.visit_hir(hir),
+                Statement::Expr(ref stmt) => self.visit_hir(stmt.hir),
+                Statement::If(ref stmt) => self.visit_all([stmt.condition, stmt.then]),
+                Statement::Return(hir, _) | Statement::Debug(hir, _) => self.visit_hir(hir),
             };
 
             if raises {
@@ -109,11 +112,19 @@ impl Visitor<'_> {
             | Hir::Secp256R1Verify(..)
             | Hir::ClvmOp(ClvmOp::Raise, _) => true,
             Hir::Block(block) => {
-                self.visit_statements(&block.statements) || self.visit_all(block.body)
+                self.visit_statements(&block.statements) || self.visit_all(block.reachable_body())
             }
             Hir::If(condition, then, else_, _) => self.visit_all([condition, then, else_]),
+            Hir::List(list) => self.visit_all(list.items),
+            Hir::Struct(initializer) => {
+                self.visit_all(initializer.fields.into_iter().map(|field| field.value))
+            }
+            Hir::FieldAccess(access) => self.visit_hir(access.value),
+            Hir::Cast(hir) => self.visit_hir(hir),
+            // The value is only evaluated if the check it's lowered to uses it
+            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
             Hir::FunctionCall(call) => {
-                (match *self.db.hir(call.function) {
+                (match *self.db.hir(self.db.without_casts(call.function)) {
                     Hir::Reference(symbol)
                         if matches!(self.db.symbol(symbol), Symbol::Function(_)) =>
                     {
@@ -139,7 +150,13 @@ mod tests {
 
     use crate::{BindingSymbol, Block, ConstantSymbol, Value};
 
+    use rue_diagnostic::{Source, SourceKind, SrcLoc};
+
     use super::*;
+
+    fn srcloc() -> SrcLoc {
+        SrcLoc::new(Source::new("".into(), SourceKind::Std(String::new())), 0..0)
+    }
 
     fn raise(db: &mut Database) -> HirId {
         let nil = db.alloc_hir(Hir::Nil);
@@ -186,7 +203,7 @@ mod tests {
             let value = raise(&mut db);
             let binding = binding(&mut db, value, inline);
             let block = db.alloc_hir(Hir::Block(Block {
-                statements: vec![Statement::Let(binding)],
+                statements: vec![Statement::Let(binding, srcloc())],
                 body: None,
             }));
 

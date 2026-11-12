@@ -20,9 +20,6 @@ pub enum DiagnosticKind {
     #[error("Unknown attribute `{0}`")]
     UnknownAttribute(String),
 
-    #[error("Unknown lint `{0}`")]
-    UnknownLint(String),
-
     #[error("Attribute `{0}` expects a list of lint names")]
     MissingLintNames(String),
 

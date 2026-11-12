@@ -18,6 +18,9 @@ pub struct ScopedLintLevels {
     scopes: HashMap<(SourceKind, Lint), Vec<LintScope>>,
     /// The expectations of `expect` attributes, in the order they appear in each document.
     expectations: Vec<Expectation>,
+    /// The names in attributes that don't refer to a known lint or group, which are reported by
+    /// the `unknown_lint` lint once the levels are known.
+    unknown_lints: Vec<(String, SrcLoc)>,
 }
 
 /// A lint level set by an attribute, which applies to the item or statement it's attached to, or
@@ -53,6 +56,7 @@ impl ScopedLintLevels {
     ) -> (Self, Vec<Diagnostic>) {
         let mut scopes = HashMap::<(SourceKind, Lint), Vec<LintScope>>::new();
         let mut expectations = Vec::new();
+        let mut unknown_lints = Vec::new();
         let mut diagnostics = Vec::new();
 
         for &(source, document) in documents {
@@ -132,10 +136,9 @@ impl ScopedLintLevels {
 
                 for argument in arguments {
                     let Some(name) = LintName::from_name(argument.text()) else {
-                        diagnostics.push(Diagnostic::new(
+                        unknown_lints.push((
+                            argument.text().to_string(),
                             srcloc(source, argument.text_range()),
-                            DiagnosticKind::UnknownLint(argument.text().to_string()),
-                            DiagnosticSeverity::Warning,
                         ));
                         continue;
                     };
@@ -226,9 +229,15 @@ impl ScopedLintLevels {
                 project,
                 scopes,
                 expectations,
+                unknown_lints,
             },
             diagnostics,
         )
+    }
+
+    /// Takes the names in attributes that don't refer to a known lint or group.
+    pub(crate) fn take_unknown_lints(&mut self) -> Vec<(String, SrcLoc)> {
+        std::mem::take(&mut self.unknown_lints)
     }
 
     /// The level of a lint that is being reported at the given location, which is set by the

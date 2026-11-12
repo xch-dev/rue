@@ -53,12 +53,20 @@ impl Visitor<'_> {
             | Hir::InfinityG1
             | Hir::InfinityG2 => false,
             Hir::Reference(symbol) | Hir::Lambda(symbol) => self.visit_symbol(symbol),
-            Hir::Const(expr) => self.visit_hir(expr.value),
+            Hir::Const(expr) => self.visit_hir(expr.result.unwrap_or(expr.value)),
+            Hir::List(list) => self.visit_all(list.items),
+            Hir::Struct(initializer) => {
+                self.visit_all(initializer.fields.into_iter().map(|field| field.value))
+            }
+            Hir::FieldAccess(access) => self.visit_hir(access.value),
+            Hir::Cast(hir) => self.visit_hir(hir),
+            // The value is only evaluated if the check it's lowered to uses it
+            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
             Hir::Block(block) => {
-                for stmt in block.statements {
+                for stmt in block.reachable_statements().to_vec() {
                     match stmt {
                         // Bindings are only lowered if they're referenced
-                        Statement::Let(_) => {}
+                        Statement::Let(..) => {}
                         Statement::Expr(stmt) => {
                             if self.visit_hir(stmt.hir) {
                                 return true;
@@ -74,13 +82,12 @@ impl Visitor<'_> {
                                 return true;
                             }
                         }
-                        // Nothing after these statements is lowered
-                        Statement::Return(hir) => return self.visit_hir(hir),
+                        Statement::Return(hir, _) => return self.visit_hir(hir),
                         Statement::Raise(hir, _) => return self.visit_all(hir),
                     }
                 }
 
-                self.visit_all(block.body)
+                self.visit_all(block.reachable_body())
             }
             Hir::If(condition, then, else_, _) => self.visit_all([condition, then, else_]),
             Hir::FunctionCall(call) => self.visit_hir(call.function) || self.visit_all(call.args),
@@ -179,11 +186,13 @@ mod tests {
                 Statement::Expr(ExprStatement {
                     hir: one,
                     always_nil: false,
+                    srcloc: srcloc(),
                 }),
                 Statement::Raise(None, srcloc()),
                 Statement::Expr(ExprStatement {
                     hir: unresolved,
                     always_nil: false,
+                    srcloc: srcloc(),
                 }),
             ],
             body: Some(unresolved),
@@ -207,7 +216,7 @@ mod tests {
         let unresolved = db.alloc_hir(Hir::Unresolved);
 
         let block = db.alloc_hir(Hir::Block(Block {
-            statements: vec![Statement::Return(one)],
+            statements: vec![Statement::Return(one, srcloc())],
             body: Some(unresolved),
         }));
         let symbol = binding(&mut db, block);

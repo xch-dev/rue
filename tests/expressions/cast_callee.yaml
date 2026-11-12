@@ -1,0 +1,10 @@
+program: (q . 42)
+debug_program: (a (q 2 2 (c (q . 40) (q . 2))) (c (q 16 2 3) ()))
+output: '42'
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020
+diagnostics:
+- |-
+  Unnecessary cast from `fn(left: Int, right: Int) -> Int` to `fn(left: Int, right: Int) -> Int`, since they are compatible with each other at cast_callee.rue:3:5
+    help: Remove the cast

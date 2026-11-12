@@ -1,16 +1,20 @@
 //! Lints run as passes after compilation. Each pass works from the HIR and the declaration graph
 //! in the [`Database`](rue_hir::Database), the parsed documents, and the [`LintSites`] that the
-//! compiler records while type checking. The compiler records those sites without judging them,
-//! so whether something is reported, and at what level, is decided entirely here.
+//! compiler records while type checking. Most passes are [`HirLintPass`]es, which are called for
+//! each node of the HIR, and can look up the type and location of the expression it was compiled
+//! from. The compiler records these facts without judging them, so whether something is
+//! reported, and at what level, is decided entirely here.
 
 mod context;
 mod levels;
 mod lints;
 mod sites;
+mod visit;
 
 pub use context::*;
 pub use levels::*;
 pub use sites::*;
+pub use visit::*;
 
 use std::collections::HashSet;
 
@@ -44,9 +48,15 @@ pub fn run_lints(
 
     let mut cx = LintContext::new(db, types, levels);
 
-    for pass in lints::PASSES {
-        pass(&mut cx, input);
+    cx.report_unknown_lints();
+
+    for pass in lints::INPUT_PASSES {
+        if pass.lints.iter().any(|&lint| cx.is_enabled(lint)) {
+            (pass.run)(&mut cx, input);
+        }
     }
+
+    run_hir_passes(&mut cx, lints::hir_passes());
 
     // Invalid lint attributes also stop expectations from being checked, as in Rust, but lints
     // reported as errors (such as denied lints) don't

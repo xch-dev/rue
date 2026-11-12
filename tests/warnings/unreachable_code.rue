@@ -1,0 +1,59 @@
+fn main() -> Int {
+    let value = first(1) + after_if(2) + after_lambda(3);
+    return value;
+    let unused = 0;
+    unused
+}
+
+fn first(value: Int) -> Int {
+    return value;
+    0
+}
+
+fn after_if(value: Int) -> Int {
+    if value > 100 {
+        raise "too large";
+        debug value;
+    }
+
+    value
+}
+
+fn after_lambda(value: Int) -> Int {
+    let add = fn(left: Int, right: Int): Int => {
+        return left + right;
+        0
+    };
+
+    add(value, 1)
+}
+
+// Bindings are only evaluated if they're referenced, so a binding that never finishes doesn't make
+// the code after it unreachable
+fn after_never_binding(value: Int) -> Int {
+    if value > 100 {
+        let never = {
+            raise "failed";
+        };
+        return never;
+    }
+
+    value
+}
+
+// The binding is only referenced after the `return`, so it's never evaluated
+fn dead_reference() -> Int {
+    let value = fails();
+    return 1;
+    value
+}
+
+fn fails() -> Int {
+    raise "failed";
+}
+
+test fn reachable() {
+    assert dead_reference() == 1;
+    assert main() == 7;
+    assert after_never_binding(1) == 1;
+}

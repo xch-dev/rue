@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use rue_diagnostic::{
-    Diagnostic, DiagnosticSeverity, Lint, LintGroup, LintLevel, LintName, Source, SourceKind,
+    Applicability, Diagnostic, DiagnosticSeverity, Lint, LintGroup, LintLevel, LintName, Source,
+    SourceKind, apply_edits,
 };
 use rue_options::CompilerOptions;
 
@@ -1534,4 +1535,254 @@ fn main() -> Int {
 
     assert!(reports.is_empty(), "{reports:?}");
     assert!(!has_errors);
+}
+
+#[test]
+fn hir_passes_visit_every_expression() {
+    let source = "\
+struct Point {
+    x: Int = if true { 1 } else { 2 },
+}
+
+const VALUE: Int = const { if false { 1 } else { 2 } };
+
+fn main() -> Int {
+    let a = Point {};
+    let b = Point {};
+    let f = fn() => if true { 1 } else { 2 };
+    let c = if true { 1 } else { 2 };
+    a.x + b.x + f() + VALUE + c + (+1)
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // The struct field default is used twice, but it's only reported once
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 2: Condition always evaluates to `true`",
+            "Warning 5: Condition always evaluates to `false`",
+            "Warning 10: Condition always evaluates to `true`",
+            "Warning 11: Condition always evaluates to `true`",
+            "Warning 12: Unnecessary `+` operator, since it has no effect",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn nested_casts_are_linted_separately() {
+    let source = "\
+fn main(value: Int) -> Int {
+    (value as Int) as Int
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // Each cast has a HIR node of its own, so both are reported
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 2: Unnecessary cast from `Int` to `Int`, since they are compatible with each other",
+            "Warning 2: Unnecessary cast from `Int` to `Int`, since they are compatible with each other",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn returns_in_function_bodies_are_lints() {
+    let source = "\
+fn main() -> Int {
+    #[allow(unnecessary_return)]
+    return 1;
+}
+
+fn early() -> Int {
+    return 1;
+    2
+}
+
+fn block() -> Int {
+    {
+        return 1;
+    }
+}
+
+test fn tests() {
+    assert main() == early();
+    assert block() == 1;
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // A `return` in an expression block would only exit the block, so it's still an error
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 7: Unnecessary `return` statement, since the function body can end in an expression instead",
+            "Warning 8: Unreachable code",
+            "Error 13: Cannot use a `return` statement here, end the block with an expression instead",
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
+fn unknown_lints_are_lints() {
+    let source = "\
+#[allow(typo)]
+fn main() -> Int {
+    #[allow(unknown_lint, other_typo)]
+    let _a = 1;
+    0
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // The attribute that allows `unknown_lint` also allows it for the other names in itself
+    assert_eq!(reports, vec!["Warning 1: Unknown lint `typo`"]);
+    assert!(!has_errors);
+
+    let (reports, has_errors) = reports_with_level(source, Lint::UnknownLint, LintLevel::Deny);
+
+    assert_eq!(reports, vec!["Error 1: Unknown lint `typo`"]);
+    assert!(has_errors);
+}
+
+fn reports_with_level(source: &str, lint: Lint, level: LintLevel) -> (Vec<String>, bool) {
+    reports(source, |options| options.lints.set(lint, level))
+}
+
+/// Applies every suggestion that can be applied automatically.
+fn fix(source: &str) -> String {
+    let (diagnostics, _) = compile_source(source, |_| {});
+
+    let edits = diagnostics
+        .iter()
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .filter(|suggestion| suggestion.applicability == Applicability::MachineApplicable)
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect::<Vec<_>>();
+
+    apply_edits(source, &edits)
+}
+
+#[test]
+fn suggestions_fix_lints() {
+    let source = "\
+fn main() -> Int {
+    let value = +42;
+    double(value) as Int
+}
+
+fn double(value: Int) -> Int {
+    let doubled = value * (+2);
+    return doubled;
+}
+
+fn early(value: Int) -> Int {
+    return value;
+    0
+}
+";
+
+    let fixed = fix(source);
+
+    // The `return` in `early` isn't the end of the body, so removing it would change the result
+    assert_eq!(
+        fixed,
+        "\
+fn main() -> Int {
+    let value = 42;
+    double(value)
+}
+
+fn double(value: Int) -> Int {
+    let doubled = value * 2;
+    doubled
+}
+
+fn early(value: Int) -> Int {
+    return value;
+    0
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 11: Unused function `early`",
+            "Warning 12: Unnecessary `return` statement, since the function body can end in an expression instead",
+            "Warning 13: Unreachable code",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
+fn unreachable_code_is_reported_once_at_its_start() {
+    let source = "\
+fn main() -> Int {
+    allowed() + expected() + nested() + unused()
+}
+
+fn allowed() -> Int {
+    raise \"x\";
+    #[allow(unreachable_code)]
+    let a = 1;
+    a
+}
+
+fn expected() -> Int {
+    raise \"x\";
+    #[expect(unreachable_code)]
+    let a = 1;
+    a
+}
+
+fn nested() -> Int {
+    raise \"x\";
+    let a = {
+        raise \"y\";
+        1
+    };
+    a
+}
+
+fn unused() -> Int {
+    let _a = {
+        raise \"x\";
+    };
+    1
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    // The block inside the unreachable code isn't reported separately, and an unused binding is
+    // never evaluated, so the code after it is reachable
+    assert_eq!(reports, vec!["Warning 21: Unreachable code"]);
+    assert!(!has_errors);
+}
+
+#[test]
+fn returns_with_attributes_are_not_fixed() {
+    let source = "\
+fn main() -> Int {
+    let value = 1;
+    #[allow(unused_value)]
+    return value;
+}
+";
+
+    // The attribute can't be kept on an expression, and removing it would change what's reported
+    assert_eq!(fix(source), source);
 }

@@ -42,7 +42,7 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         expr.syntax().text_range(),
     );
 
-    match expr {
+    let value = match expr {
         AstExpr::PathExpr(expr) => compile_path_expr(ctx, expr),
         AstExpr::StructInitializerExpr(expr) => compile_struct_initializer_expr(ctx, expr),
         AstExpr::LiteralExpr(expr) => compile_literal_expr(ctx, expr),
@@ -59,5 +59,7 @@ pub fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, expected_type: Option<Ty
         AstExpr::FieldAccessExpr(expr) => compile_field_access_expr(ctx, expr),
         AstExpr::LambdaExpr(expr) => compile_lambda_expr(ctx, expr, expected_type),
         AstExpr::Block(block) => compile_block(ctx, block, BlockKind::Expr, expected_type, true),
-    }
+    };
+
+    ctx.record_value(expr.syntax(), value)
 }

@@ -2,8 +2,9 @@ use id_arena::Id;
 use num_bigint::BigInt;
 use rue_diagnostic::SrcLoc;
 use rue_lir::ClvmOp;
+use rue_types::{Check, TypeId};
 
-use crate::{BinaryOp, SymbolId, UnaryOp};
+use crate::{BinaryOp, SymbolId, TypePath, UnaryOp, check_value_uses};
 
 pub type HirId = Id<Hir>;
 
@@ -16,6 +17,16 @@ pub enum Hir {
     Bytes(Vec<u8>),
     Bool(bool),
     Pair(HirId, HirId),
+    /// A list literal, which is lowered to nested pairs.
+    List(List),
+    /// A struct initializer, which is lowered to nested pairs.
+    Struct(StructInitializer),
+    /// A field access, which is lowered to the operations that extract the field.
+    FieldAccess(FieldAccess),
+    /// A cast (`value as T`), which is lowered to the value, since it has no effect at runtime.
+    Cast(HirId),
+    /// A type guard (`value is T`), which is lowered to the check it performs.
+    Guard(Guard),
     Const(ConstExpr),
     Reference(SymbolId),
     Block(Block),
@@ -39,9 +50,74 @@ pub enum Hir {
 }
 
 #[derive(Debug, Clone)]
+pub struct List {
+    pub items: Vec<HirId>,
+    /// Whether the list ends in nil, rather than the last item being spread into it.
+    pub nil_terminated: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructInitializer {
+    pub ty: TypeId,
+    /// Every field of the struct, in the order they're declared.
+    pub fields: Vec<StructField>,
+    pub nil_terminated: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructField {
+    pub name: String,
+    pub value: HirId,
+    /// Whether the field was left out, so the value is the field's default. The default value is
+    /// shared by every struct initializer that uses it.
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldAccess {
+    pub value: HirId,
+    pub name: String,
+    pub kind: FieldKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum FieldKind {
+    /// A field of a pair or struct, which is found by following the path from the value. An
+    /// empty path is the value itself, such as the only field of a struct that isn't
+    /// nil-terminated.
+    Path(Vec<TypePath>),
+    /// The length of an atom.
+    Length,
+}
+
+#[derive(Debug, Clone)]
+pub struct Guard {
+    pub value: HirId,
+    /// The type the value is being checked against.
+    pub ty: TypeId,
+    /// The check to perform at runtime, before it's simplified.
+    pub check: Check,
+}
+
+impl Guard {
+    /// The check that's performed at runtime, which is what the guard is lowered to.
+    pub fn runtime_check(&self) -> Check {
+        self.check.clone().simplify()
+    }
+
+    /// The number of times the value is used by the runtime check, which may be none if there's
+    /// nothing to check.
+    pub fn value_uses(&self) -> usize {
+        check_value_uses(&self.runtime_check())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ConstExpr {
     pub value: HirId,
     pub loc: SrcLoc,
+    /// The result of evaluating the expression, once it has been evaluated.
+    pub result: Option<HirId>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,28 +126,83 @@ pub struct Block {
     pub body: Option<HirId>,
 }
 
+impl Block {
+    /// The statements that are evaluated. See [`reachable_statements`].
+    pub fn reachable_statements(&self) -> &[Statement] {
+        reachable_statements(&self.statements)
+    }
+
+    /// The body, if it's evaluated. See [`reachable_body`].
+    pub fn reachable_body(&self) -> Option<HirId> {
+        reachable_body(&self.statements, self.body)
+    }
+}
+
+/// The statements that are evaluated, which end at the first `return` or `raise`. Nothing after it
+/// is lowered, so analyses that follow lowering (such as the dependency graph) should only look at
+/// these statements.
+pub fn reachable_statements(statements: &[Statement]) -> &[Statement] {
+    match first_exit(statements) {
+        Some(index) => &statements[..=index],
+        None => statements,
+    }
+}
+
+/// The body that follows the statements, if it's evaluated, which it isn't if one of the
+/// statements is a `return` or `raise`.
+pub fn reachable_body(statements: &[Statement], body: Option<HirId>) -> Option<HirId> {
+    if first_exit(statements).is_some() {
+        None
+    } else {
+        body
+    }
+}
+
+fn first_exit(statements: &[Statement]) -> Option<usize> {
+    statements
+        .iter()
+        .position(|statement| matches!(statement, Statement::Return(..) | Statement::Raise(..)))
+}
+
 #[derive(Debug, Clone)]
 pub enum Statement {
     Expr(ExprStatement),
-    Let(SymbolId),
+    Let(SymbolId, SrcLoc),
     If(IfStatement),
-    Return(HirId),
+    Return(HirId, SrcLoc),
     Assert(HirId, SrcLoc),
     Raise(Option<HirId>, SrcLoc),
     Debug(HirId, SrcLoc),
 }
 
-#[derive(Debug, Clone, Copy)]
+impl Statement {
+    /// The location of the statement in the source code.
+    pub fn srcloc(&self) -> &SrcLoc {
+        match self {
+            Self::Expr(statement) => &statement.srcloc,
+            Self::If(statement) => &statement.srcloc,
+            Self::Let(_, srcloc)
+            | Self::Return(_, srcloc)
+            | Self::Assert(_, srcloc)
+            | Self::Raise(_, srcloc)
+            | Self::Debug(_, srcloc) => srcloc,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ExprStatement {
     pub hir: HirId,
     pub always_nil: bool,
+    pub srcloc: SrcLoc,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct IfStatement {
     pub condition: HirId,
     pub then: HirId,
     pub inline: bool,
+    pub srcloc: SrcLoc,
 }
 
 #[derive(Debug, Clone)]

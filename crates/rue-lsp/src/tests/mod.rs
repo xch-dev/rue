@@ -7,19 +7,19 @@ mod protocol;
 
 use std::fmt::Write;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tower_lsp::LspService;
 use tower_lsp::lsp_types::{
-    CompletionParams, CompletionResponse, DocumentFormattingParams, FormattingOptions,
-    GotoDefinitionParams, GotoDefinitionResponse, HoverContents, HoverParams, Location,
-    MarkedString, NumberOrString, PartialResultParams, Position, Range, ReferenceContext,
-    ReferenceParams, TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Url,
-    WorkDoneProgressParams,
+    CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
+    DocumentFormattingParams, FormattingOptions, GotoDefinitionParams, GotoDefinitionResponse,
+    HoverContents, HoverParams, Location, MarkedString, NumberOrString, PartialResultParams,
+    Position, Range, ReferenceContext, ReferenceParams, TextDocumentIdentifier,
+    TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
 };
 
-use crate::Backend;
+use crate::{Backend, code_actions, position::position_to_offset};
 
 const CURSOR: &str = "$0";
 
@@ -263,6 +263,64 @@ impl TestProject {
             .map_err(|error| error.message.to_string())
     }
 
+    /// Recompiles the project after a file changes, and renders the code actions for its
+    /// diagnostics, along with the text of the file after applying each of them.
+    pub fn code_actions(&self, name: &str, text: &str) -> String {
+        let uri = self.uri(name);
+        let diagnostics = self
+            .backend()
+            .on_change_impl(&uri, Some(text.to_string()))
+            .into_iter()
+            .find(|(kind, _)| match kind {
+                rue_diagnostic::SourceKind::File(path) => self.path(name) == Path::new(path),
+                rue_diagnostic::SourceKind::Std(_) => false,
+            })
+            .map(|(_, diagnostics)| diagnostics)
+            .unwrap_or_default();
+
+        let actions = code_actions(&CodeActionParams {
+            text_document: TextDocumentIdentifier::new(uri.clone()),
+            range: Range::default(),
+            context: CodeActionContext {
+                diagnostics,
+                only: None,
+                trigger_kind: None,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .unwrap_or_default();
+
+        let mut output = String::new();
+
+        for action in actions {
+            let CodeActionOrCommand::CodeAction(action) = action else {
+                continue;
+            };
+
+            let mut edits = action.edit.unwrap().changes.unwrap().remove(&uri).unwrap();
+            edits.sort_by_key(|edit| (edit.range.start.line, edit.range.start.character));
+
+            let mut fixed = text.to_string();
+
+            for edit in edits.into_iter().rev() {
+                let start = position_to_offset(text, edit.range.start);
+                let end = position_to_offset(text, edit.range.end);
+                fixed.replace_range(start..end, &edit.new_text);
+            }
+
+            writeln!(
+                output,
+                "{} (preferred: {}):\n{fixed}",
+                action.title,
+                action.is_preferred.unwrap()
+            )
+            .unwrap();
+        }
+
+        output
+    }
+
     /// Recompiles the project after a file changes, and renders the resulting diagnostics.
     pub fn change(&self, name: &str, text: Option<&str>) -> String {
         let diagnostics = self
@@ -305,6 +363,16 @@ impl TestProject {
                     diagnostic.message
                 )
                 .unwrap();
+
+                for related in diagnostic.related_information.unwrap_or_default() {
+                    writeln!(
+                        output,
+                        "    {}: {}",
+                        self.location(&related.location.uri, related.location.range),
+                        related.message
+                    )
+                    .unwrap();
+                }
             }
         }
 

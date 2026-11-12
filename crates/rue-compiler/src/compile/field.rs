@@ -1,5 +1,5 @@
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Hir, TypePath, UnaryOp, Value};
+use rue_hir::{FieldAccess, FieldKind, Hir, HirId, TypePath, Value};
 use rue_types::{Struct, Type, Union};
 
 use crate::{Compiler, GetTextRange};
@@ -79,7 +79,7 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
             if let &Field::Named(name) = name
                 && name == "length"
             {
-                let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Strlen, expr.hir));
+                let hir = alloc_field_access(ctx, expr.hir, "length", FieldKind::Length);
                 FieldResult::Value(Value::new(hir, ctx.builtins().types.int))
             } else {
                 FieldResult::Unknown
@@ -90,7 +90,12 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
 
             match name {
                 Field::Named("first") | Field::First if !pairs.is_empty() => {
-                    let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, expr.hir));
+                    let hir = alloc_field_access(
+                        ctx,
+                        expr.hir,
+                        "first",
+                        FieldKind::Path(vec![TypePath::First]),
+                    );
 
                     let first = if pairs.len() == 1 {
                         pairs[0].first
@@ -110,7 +115,12 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
                     FieldResult::Value(value)
                 }
                 Field::Named("rest") | Field::Rest if !pairs.is_empty() => {
-                    let hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, expr.hir));
+                    let hir = alloc_field_access(
+                        ctx,
+                        expr.hir,
+                        "rest",
+                        FieldKind::Path(vec![TypePath::Rest]),
+                    );
 
                     let rest = if pairs.len() == 1 {
                         pairs[0].rest
@@ -156,14 +166,14 @@ fn compile_struct_field(
         return FieldResult::Value(ctx.builtins().unresolved.clone());
     }
 
-    let mut hir = expr.hir;
+    let mut path = Vec::new();
     let mut field_type = ty.inner;
     let mut reference = expr.reference;
 
     let needs_first = index + 1 < ty.fields.len() || ty.nil_terminated;
 
     for i in 0..index {
-        hir = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, hir));
+        path.push(TypePath::Rest);
 
         let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
 
@@ -185,7 +195,7 @@ fn compile_struct_field(
     }
 
     if needs_first {
-        hir = ctx.alloc_hir(Hir::Unary(UnaryOp::First, hir));
+        path.push(TypePath::First);
 
         let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
 
@@ -206,6 +216,7 @@ fn compile_struct_field(
         }
     }
 
+    let hir = alloc_field_access(ctx, expr.hir, name, FieldKind::Path(path));
     let mut value = Value::new(hir, field_type);
 
     if let Some(reference) = reference {
@@ -213,4 +224,12 @@ fn compile_struct_field(
     }
 
     FieldResult::Value(value)
+}
+
+fn alloc_field_access(ctx: &mut Compiler, value: HirId, name: &str, kind: FieldKind) -> HirId {
+    ctx.alloc_hir(Hir::FieldAccess(FieldAccess {
+        value,
+        name: name.to_string(),
+        kind,
+    }))
 }

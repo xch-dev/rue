@@ -1,6 +1,7 @@
 use expect_test::expect;
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::LanguageServer;
+use tower_lsp::lsp_types::{InitializeParams, Url};
 
 use super::TestProject;
 
@@ -77,8 +78,37 @@ fn test_diagnostics_manifest_unknown_lints() {
     );
 
     expect![[r#"
-        Rue.toml:6:0-6:6 Warning: Unknown lint `typo`
-        Rue.toml:5:0-5:15 Warning: Unknown lint `unused_bindings`
+        Rue.toml:6:0-6:6 Warning[unknown_lint]: Unknown lint `typo`
+        Rue.toml:5:0-5:15 Warning[unknown_lint]: Unknown lint `unused_bindings`
+        main.rue: <none>
+    "#]]
+    .assert_eq(&project.change("main.rue", None));
+}
+
+#[test]
+fn test_diagnostics_manifest_unknown_lint_levels() {
+    let project = TestProject::with_manifest(
+        Some(
+            "[compiler]\nentrypoint = \".\"\nstd = false\n\n[lints]\nunknown_lint = \"deny\"\ntypo = \"allow\"\n",
+        ),
+        &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
+    );
+
+    expect![[r#"
+        Rue.toml:6:0-6:4 Error[unknown_lint]: Unknown lint `typo`
+        main.rue: <none>
+    "#]]
+    .assert_eq(&project.change("main.rue", None));
+
+    let project = TestProject::with_manifest(
+        Some(
+            "[compiler]\nentrypoint = \".\"\nstd = false\n\n[lints]\nunknown_lint = \"allow\"\ntypo = \"allow\"\n",
+        ),
+        &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
+    );
+
+    expect![[r#"
+        Rue.toml: <none>
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", None));
@@ -113,7 +143,7 @@ fn test_diagnostics_manifest_unknown_lints_in_other_layouts() {
     );
 
     expect![[r#"
-        Rue.toml:0:6-0:17 Warning: Unknown lint `dotted_typo`
+        Rue.toml:0:6-0:17 Warning[unknown_lint]: Unknown lint `dotted_typo`
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", None));
@@ -126,7 +156,7 @@ fn test_diagnostics_manifest_unknown_lints_in_other_layouts() {
     );
 
     expect![[r#"
-        Rue.toml:0:10-0:21 Warning: Unknown lint `inline_typo`
+        Rue.toml:0:10-0:21 Warning[unknown_lint]: Unknown lint `inline_typo`
         main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", None));
@@ -154,7 +184,7 @@ fn test_diagnostics_inline_if_may_raise() {
 
     expect![[r#"
         Rue.toml: <none>
-        main.rue:1:4-4:4 Warning[inline_if_may_raise]: A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead
+        main.rue:1:4-3:5 Warning[inline_if_may_raise]: A branch of this `inline if` can raise, but both branches are always evaluated regardless of the condition; use a normal `if` instead
     "#]].assert_eq(&project.change(
         "main.rue",
         Some("fn main(x: Int) -> Int {\n    inline if x > 5 {\n        raise;\n    }\n    x + 100\n}\n"),
@@ -292,4 +322,73 @@ fn test_diagnostics_after_non_ascii() {
         "main.rue",
         Some("fn main() -> Int {\n    let s = \"\u{1F600}\"; x\n}\n"),
     ));
+}
+
+#[test]
+fn test_code_actions_apply_suggestions() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    expect![[r#"
+        Remove the `+` (preferred: true):
+        fn main() -> Int {
+            let value = 42;
+            return value;
+        }
+
+        Replace the `return` statement with its value (preferred: true):
+        fn main() -> Int {
+            let value = +42;
+            value
+        }
+
+    "#]]
+    .assert_eq(&project.code_actions(
+        "main.rue",
+        "fn main() -> Int {\n    let value = +42;\n    return value;\n}\n",
+    ));
+}
+
+#[test]
+fn test_diagnostics_unreachable_code() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    let text =
+        "fn main() -> Int {\n    if 1 > 2 {\n        raise;\n        debug 1;\n    }\n    42\n}\n";
+
+    expect![[r#"
+        Rue.toml: <none>
+        main.rue:3:8-3:16 Warning[unreachable_code]: Unreachable code
+            main.rue:2:8-2:14: Any code after this is never evaluated
+    "#]]
+    .assert_eq(&project.change("main.rue", Some(text)));
+
+    expect![[r#"
+        Remove the unreachable code (preferred: false):
+        fn main() -> Int {
+            if 1 > 2 {
+                raise;
+            }
+            42
+        }
+
+    "#]]
+    .assert_eq(&project.code_actions("main.rue", text));
+}
+
+#[test]
+fn test_diagnostics_notes_without_related_information() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    // Clients that don't say they support related information get the notes in the message
+    futures::executor::block_on(project.backend().initialize(InitializeParams::default())).unwrap();
+
+    let text =
+        "fn main() -> Int {\n    if 1 > 2 {\n        raise;\n        debug 1;\n    }\n    42\n}\n";
+
+    expect![[r#"
+        Rue.toml: <none>
+        main.rue:3:8-3:16 Warning[unreachable_code]: Unreachable code
+        Any code after this is never evaluated at main.rue:3:9
+    "#]]
+    .assert_eq(&project.change("main.rue", Some(text)));
 }

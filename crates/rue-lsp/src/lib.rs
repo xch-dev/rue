@@ -6,25 +6,30 @@ mod position;
 use cache::Cache;
 use indexmap::IndexMap;
 use rue_compiler::{Compiler, FileTree, normalize_path};
-use rue_diagnostic::SourceKind;
+use rue_diagnostic::{Applicability, Lint, SourceKind, SrcLoc};
 use rue_formatter::{FormatError, FormatOptions, format_source};
+use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rue_options::{Project, find_project};
 use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
-    CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
+    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+    CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
+    CompletionResponse, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentFormattingParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
     HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
     LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf, Position, Range,
     ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextEdit, Url,
+    TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -36,11 +41,24 @@ pub struct Backend {
     client: Client,
     cache: Mutex<HashMap<Url, SendWrapper<Cache<Arc<Compiler>>>>>,
     file_cache: Mutex<HashMap<SourceKind, String>>,
+    /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
+    /// added to the message instead. This is assumed until the client says otherwise.
+    related_information: AtomicBool,
 }
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let related_information = params
+            .capabilities
+            .text_document
+            .and_then(|capabilities| capabilities.publish_diagnostics)
+            .and_then(|capabilities| capabilities.related_information)
+            .unwrap_or(false);
+
+        self.related_information
+            .store(related_information, Ordering::Relaxed);
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -50,6 +68,7 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![
                         ".".to_string(),
@@ -119,6 +138,10 @@ impl LanguageServer for Backend {
         self.on_formatting(&params).map(Some)
     }
 
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        Ok(code_actions(&params))
+    }
+
     async fn shutdown(&self) -> Result<()> {
         Ok(())
     }
@@ -130,6 +153,7 @@ impl Backend {
             client,
             cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
+            related_information: AtomicBool::new(true),
         }
     }
 
@@ -207,7 +231,10 @@ impl Backend {
             diagnostics
                 .entry(item.srcloc.source.kind.clone())
                 .or_default()
-                .push(diagnostic(&item));
+                .push(diagnostic(
+                    &item,
+                    self.related_information.load(Ordering::Relaxed),
+                ));
         }
 
         let mut cache = self.cache.lock().unwrap();
@@ -454,12 +481,122 @@ fn document_end(source: &str) -> Position {
     Position::new(line.try_into().unwrap(), character.try_into().unwrap())
 }
 
-fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic) -> Diagnostic {
+/// A suggestion, which is stored in the `data` of a diagnostic so that a code action can be
+/// created for it when the editor asks, without the server having to keep the diagnostics.
+#[derive(Debug, Serialize, Deserialize)]
+struct SuggestionData {
+    title: String,
+    preferred: bool,
+    edit: WorkspaceEdit,
+}
+
+fn location(srcloc: &SrcLoc) -> Option<Location> {
+    let SourceKind::File(path) = &srcloc.source.kind else {
+        return None;
+    };
+
+    Some(Location::new(
+        Url::from_file_path(path).ok()?,
+        offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
+    ))
+}
+
+fn suggestion_data(suggestion: &rue_diagnostic::Suggestion) -> Option<SuggestionData> {
+    let mut changes = HashMap::<Url, Vec<TextEdit>>::new();
+
+    for edit in &suggestion.edits {
+        let location = location(&edit.srcloc)?;
+
+        changes
+            .entry(location.uri)
+            .or_default()
+            .push(TextEdit::new(location.range, edit.replacement.clone()));
+    }
+
+    Some(SuggestionData {
+        title: suggestion.message.clone(),
+        preferred: suggestion.applicability == Applicability::MachineApplicable,
+        edit: WorkspaceEdit::new(changes),
+    })
+}
+
+/// The quick fixes for the suggestions of the diagnostics the editor sent.
+fn code_actions(params: &CodeActionParams) -> Option<CodeActionResponse> {
+    let mut actions = Vec::new();
+
+    for diagnostic in &params.context.diagnostics {
+        let Some(data) = &diagnostic.data else {
+            continue;
+        };
+
+        let Ok(suggestions) = serde_json::from_value::<Vec<SuggestionData>>(data.clone()) else {
+            continue;
+        };
+
+        for suggestion in suggestions {
+            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                title: suggestion.title,
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(suggestion.edit),
+                is_preferred: Some(suggestion.preferred),
+                ..CodeAction::default()
+            }));
+        }
+    }
+
+    (!actions.is_empty()).then_some(actions)
+}
+
+fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic, supports_related: bool) -> Diagnostic {
     let srcloc = &diagnostic.srcloc;
+
+    let mut message = diagnostic.kind.to_string();
+    let mut related_information = Vec::new();
+
+    // Notes that point to a file are shown at that location if the client supports it, and the
+    // rest are part of the message
+    for note in &diagnostic.notes {
+        if supports_related && let Some(location) = note.srcloc.as_ref().and_then(location) {
+            related_information.push(DiagnosticRelatedInformation {
+                location,
+                message: note.message.clone(),
+            });
+        } else {
+            message.push('\n');
+            message.push_str(&note.message);
+
+            // The location is shown like it is on the command line, relative to the file that has
+            // the diagnostic
+            if let Some(srcloc) = &note.srcloc {
+                let relative_to = match &diagnostic.srcloc.source.kind {
+                    SourceKind::File(path) => Path::new(path).parent().unwrap_or(Path::new("")),
+                    SourceKind::Std(_) => Path::new(""),
+                };
+
+                write!(
+                    message,
+                    " at {}:{}",
+                    srcloc.source.kind.display(relative_to),
+                    srcloc.start()
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    let suggestions = diagnostic
+        .suggestions
+        .iter()
+        .filter_map(suggestion_data)
+        .collect::<Vec<_>>();
 
     Diagnostic {
         range: offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
-        message: diagnostic.kind.to_string(),
+        message,
+        related_information: (!related_information.is_empty()).then_some(related_information),
+        data: (!suggestions.is_empty())
+            .then(|| serde_json::to_value(suggestions).expect("suggestions are serializable")),
         severity: Some(match diagnostic.severity {
             rue_diagnostic::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
             rue_diagnostic::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
@@ -480,12 +617,28 @@ fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
 
     let text = fs::read_to_string(path).unwrap_or_default();
 
-    let unknown = project.unknown_lints.iter().map(|lint| Diagnostic {
-        range: offsets_to_range(&text, lint.span.start, lint.span.end),
-        message: format!("Unknown lint `{}`", lint.name),
-        severity: Some(DiagnosticSeverity::WARNING),
-        ..Diagnostic::default()
-    });
+    // Unknown names are reported by the `unknown_lint` lint, at the level set by `Rue.toml`
+    let severity = project
+        .options
+        .lints
+        .get(Lint::UnknownLint)
+        .severity()
+        .map(|severity| match severity {
+            rue_diagnostic::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
+            rue_diagnostic::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
+        });
+
+    let unknown = project
+        .unknown_lints
+        .iter()
+        .filter(|_| severity.is_some())
+        .map(|lint| Diagnostic {
+            range: offsets_to_range(&text, lint.span.start, lint.span.end),
+            message: format!("Unknown lint `{}`", lint.name),
+            severity,
+            code: Some(NumberOrString::String(Lint::UnknownLint.name().to_string())),
+            ..Diagnostic::default()
+        });
 
     let forbidden = project.forbidden_lints.iter().map(|lint| Diagnostic {
         range: offsets_to_range(&text, lint.span.start, lint.span.end),

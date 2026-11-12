@@ -1,0 +1,8 @@
+fn main() -> Int {
+    // A cast has no effect, so this is still a direct call to `add`
+    (add as fn(left: Int, right: Int) -> Int)(40, 2)
+}
+
+fn add(left: Int, right: Int) -> Int {
+    left + right
+}

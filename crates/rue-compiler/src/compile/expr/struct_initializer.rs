@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use log::debug;
 use rue_ast::{AstNode, AstStructInitializerExpr};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Hir, SymbolPath, Value};
-use rue_types::{Pair, Type, Union};
+use rue_hir::{Hir, StructField, StructInitializer, SymbolPath, Value};
+use rue_types::{Type, Union};
 
 use crate::{
     Compiler, CompletionContext, PathKind, PathResult, SyntaxField, SyntaxItemKind,
@@ -182,12 +182,12 @@ pub fn compile_struct_initializer_expr(
         return ctx.builtins().unresolved.clone();
     }
 
-    let mut hir = ctx.builtins().nil.hir;
-    let mut list_type = ctx.builtins().nil.ty;
-
+    let mut initializer_fields = Vec::new();
     let mut missing_fields = vec![];
 
-    for (i, name) in struct_type.fields.into_iter().rev().enumerate() {
+    for name in struct_type.fields.into_iter().rev() {
+        let mut is_default = false;
+
         let value = if let Some(value) = fields.remove(&name) {
             value
         } else if let Some(value) = ctx.default_field(struct_type.semantic, &name) {
@@ -196,21 +196,28 @@ pub fn compile_struct_initializer_expr(
             if let Some(expected_type) = expected_field_types.get(&name) {
                 ctx.assign_type(expr.syntax(), value.ty, *expected_type);
             }
+            is_default = true;
             value
         } else {
             debug!("Unresolved struct initializer field");
-            missing_fields.push(name);
+            missing_fields.push(name.clone());
             ctx.builtins().unresolved.clone()
         };
 
-        if !struct_type.nil_terminated && i == 0 {
-            hir = value.hir;
-            list_type = value.ty;
-        } else {
-            hir = ctx.alloc_hir(Hir::Pair(value.hir, hir));
-            list_type = ctx.alloc_type(Type::Pair(Pair::new(value.ty, list_type)));
-        }
+        initializer_fields.push(StructField {
+            name,
+            value: value.hir,
+            is_default,
+        });
     }
+
+    initializer_fields.reverse();
+
+    let hir = ctx.alloc_hir(Hir::Struct(StructInitializer {
+        ty,
+        fields: initializer_fields,
+        nil_terminated: struct_type.nil_terminated,
+    }));
 
     if !missing_fields.is_empty() {
         let type_name = ctx.type_name(ty);

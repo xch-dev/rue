@@ -1,12 +1,10 @@
 use log::debug;
 use rue_ast::{AstBlock, AstNode, AstStmt, AstStmtOrExpr};
-use rue_diagnostic::{DiagnosticKind, SrcLoc};
+use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, Hir, IfStatement, Statement, Symbol, Value,
 };
 use rue_types::{Type, TypeId, Union};
-
-use rue_lint::{ExprStatementSite, InlineIf};
 
 use crate::{
     Compiler, CompletionContext, SyntaxItemKind, compile_expr, compile_type, create_binding,
@@ -56,7 +54,7 @@ pub fn compile_block(
     let mut return_value = None;
     let mut return_types = Vec::new();
     let mut implicit_return = false;
-    let mut inline_ifs = Vec::new();
+    let mut trailing_expr = None;
 
     for stmt in block.items() {
         let stmt = match stmt {
@@ -77,6 +75,11 @@ pub fn compile_block(
 
                 return_types.push(value.ty);
 
+                // The trailing expression is kept even if a `return` or `raise` comes before it, so
+                // that the HIR matches the code. It's never evaluated in that case, since lowering
+                // stops at the `return` or `raise`.
+                trailing_expr.get_or_insert(value.hir);
+
                 if return_value.is_none() {
                     return_value = Some(value);
                     implicit_return = true;
@@ -95,17 +98,10 @@ pub fn compile_block(
                     ctx.builtins().unresolved.clone()
                 };
 
-                let always_nil = ctx.is_castable(value.ty, ctx.builtins().types.nil);
-
-                let site = ExprStatementSite {
-                    srcloc: ctx.srcloc(stmt.syntax()),
-                    always_nil,
-                };
-                ctx.lint_sites_mut().expr_statements.push(site);
-
                 Statement::Expr(ExprStatement {
                     hir: value.hir,
-                    always_nil,
+                    always_nil: ctx.is_castable(value.ty, ctx.builtins().types.nil),
+                    srcloc: ctx.trimmed_srcloc(stmt.syntax()),
                 })
             }
             AstStmt::LetStmt(stmt) => {
@@ -148,7 +144,7 @@ pub fn compile_block(
 
                 ctx.pop_declaration();
 
-                Statement::Let(symbol)
+                Statement::Let(symbol, ctx.trimmed_srcloc(stmt.syntax()))
             }
             AstStmt::IfStmt(stmt) => {
                 let condition = if let Some(condition) = stmt.condition() {
@@ -178,14 +174,13 @@ pub fn compile_block(
 
                 if stmt.inline().is_none() {
                     ctx.push_mappings(condition.else_map, stmt.syntax().text_range().end());
-                } else {
-                    inline_ifs.push((ctx.srcloc(stmt.syntax()), statements.len()));
                 }
 
                 Statement::If(IfStatement {
                     condition: condition.hir,
                     then: then_block.hir,
                     inline: stmt.inline().is_some(),
+                    srcloc: ctx.trimmed_srcloc(stmt.syntax()),
                 })
             }
             AstStmt::ReturnStmt(stmt) => {
@@ -202,7 +197,9 @@ pub fn compile_block(
                     ctx.builtins().nil.clone()
                 };
 
-                if is_expr {
+                // A `return` at the top level of a function body is allowed, but it's reported by
+                // the `unnecessary_return` lint, since the body can end in an expression instead
+                if kind == BlockKind::Expr {
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::UnexpectedExplicitReturn);
                 } else if !has_target {
                     ctx.diagnostic(stmt.syntax(), DiagnosticKind::ReturnInExpressionBlock);
@@ -226,7 +223,7 @@ pub fn compile_block(
                     return_value = Some(value.clone());
                 }
 
-                Statement::Return(value.hir)
+                Statement::Return(value.hir, ctx.trimmed_srcloc(stmt.syntax()))
             }
             AstStmt::AssertStmt(stmt) => {
                 let value = if let Some(expr) = stmt.expr() {
@@ -240,10 +237,7 @@ pub fn compile_block(
 
                 ctx.push_mappings(value.then_map, stmt.syntax().text_range().end());
 
-                Statement::Assert(
-                    value.hir,
-                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
-                )
+                Statement::Assert(value.hir, ctx.trimmed_srcloc(stmt.syntax()))
             }
             AstStmt::RaiseStmt(stmt) => {
                 let value = stmt.expr().map(|expr| compile_expr(ctx, &expr, None));
@@ -257,7 +251,7 @@ pub fn compile_block(
 
                 Statement::Raise(
                     value.map(|value| value.hir),
-                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
+                    ctx.trimmed_srcloc(stmt.syntax()),
                 )
             }
             AstStmt::DebugStmt(stmt) => {
@@ -268,10 +262,7 @@ pub fn compile_block(
                     ctx.builtins().unresolved.clone()
                 };
 
-                Statement::Debug(
-                    value.hir,
-                    SrcLoc::new(ctx.source().clone(), stmt.syntax().text_range().into()),
-                )
+                Statement::Debug(value.hir, ctx.trimmed_srcloc(stmt.syntax()))
             }
         };
 
@@ -301,14 +292,8 @@ pub fn compile_block(
 
     let hir = ctx.alloc_hir(Hir::Block(Block {
         statements,
-        body: return_value
-            .as_ref()
-            .and_then(|value| implicit_return.then_some(value.hir)),
+        body: trailing_expr,
     }));
-
-    for (srcloc, index) in inline_ifs {
-        ctx.add_inline_if(srcloc, InlineIf::Statement(hir, index));
-    }
 
     ctx.revert_mappings(index, range.end());
 
@@ -320,9 +305,13 @@ pub fn compile_block(
         ctx.pop_return_target();
     }
 
-    match return_value {
+    let value = match return_value {
         Some(return_value) if definitely_trailing => return_value.with_hir(hir),
         Some(return_value) => Value::new(hir, return_value.ty),
         None => Value::new(hir, return_type),
-    }
+    };
+
+    // Blocks aren't always compiled with `compile_expr` (such as function bodies), so their type is
+    // recorded here
+    ctx.record_value(block.syntax(), value)
 }
