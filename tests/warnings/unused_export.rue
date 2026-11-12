@@ -97,6 +97,47 @@ mod signature {
     }
 }
 
+// A struct that refers to itself isn't kept exported by its own fields
+mod recursive {
+    export struct Node {
+        value: Int,
+        next: Node | nil,
+    }
+
+    export fn total() -> Int {
+        Node { value: 1, next: nil }.value
+    }
+}
+
+// A type in the signature of an export of an exported module is exported by both of them
+mod parent {
+    export struct Item {
+        value: Int,
+    }
+
+    export mod child {
+        export fn make() -> Item {
+            Item { value: 1 }
+        }
+    }
+}
+
+// Only the signatures of exports that are used outside of the module keep types exported, so
+// both of these are reported at once
+mod chain {
+    export struct Result {
+        value: Int,
+    }
+
+    export fn make() -> Result {
+        Result { value: 1 }
+    }
+
+    export fn used() -> Int {
+        make().value
+    }
+}
+
 fn main() -> Int {
     helpers::used_outside()
         + helpers::calls_private()
@@ -107,4 +148,7 @@ fn main() -> Int {
         + signature::body()
         + lexical::by_path()
         + lexical::nested::uses_parent()
+        + recursive::total()
+        + parent::child::make().value
+        + chain::used()
 }

@@ -1967,3 +1967,49 @@ fn main(flag: Bool, a: Bool, b: Bool) -> Bool {
 "
     );
 }
+
+#[test]
+fn conditions_keep_parentheses_around_struct_initializers() {
+    let source = "\
+struct Point {
+    x: Int,
+}
+
+fn main(a: Int) -> Int {
+    if (Point { x: a }.x == 1) == true {
+        return 1;
+    }
+
+    let compared = if (Point { x: a }.x == 2) == true { 1 } else { 2 };
+    let needless = if if (Point { x: a }.x == 3) { true } else { false } { 1 } else { 2 };
+    let negated = if !(Point { x: a }.x == 4) == false { 1 } else { 2 };
+    compared + needless + negated
+}
+";
+
+    // A struct initializer can't be written in a condition without parentheses
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+struct Point {
+    x: Int,
+}
+
+fn main(a: Int) -> Int {
+    if (Point { x: a }.x == 1) {
+        return 1;
+    }
+
+    let compared = if (Point { x: a }.x == 2) { 1 } else { 2 };
+    let needless = if (Point { x: a }.x == 3) { 1 } else { 2 };
+    let negated = if (Point { x: a }.x == 4) { 1 } else { 2 };
+    compared + needless + negated
+}
+"
+    );
+
+    let (_, has_errors) = reports(&fixed, |_| {});
+    assert!(!has_errors);
+}

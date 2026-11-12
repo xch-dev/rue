@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rue_diagnostic::Name;
 use rue_hir::{Declaration, SymbolId};
 
@@ -18,7 +20,7 @@ pub struct LintSites {
     pub field_reads: Vec<FieldRead>,
     /// The declarations that are referenced through a module (such as `module::name`), rather
     /// than from the scope they're written in, which only resolves if they're exported.
-    pub qualified_references: Vec<Declaration>,
+    pub qualified_references: HashSet<Declaration>,
     /// The `mod` items declared in the documents being linted. Modules aren't declarations, so
     /// they can't be found from the HIR.
     pub modules: Vec<SymbolId>,

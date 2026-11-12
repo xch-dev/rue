@@ -26,13 +26,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         .map(|&module| (db.module(module).scope, module))
         .collect::<HashMap<ScopeId, SymbolId>>();
 
-    let qualified = input
-        .sites
-        .qualified_references
-        .iter()
-        .copied()
-        .collect::<HashSet<_>>();
-
+    let qualified = &input.sites.qualified_references;
     let export_keywords = export_keywords(input);
     let imported = imported(db);
 
@@ -44,54 +38,27 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         }
 
         let module_symbol = db.module(module);
-        let scope = db.scope(module_symbol.scope);
         let module_name = module_symbol.name.as_ref().map_or("", |name| name.text());
 
-        let declarations = &module_symbol.declarations;
+        // The exports of modules that are exported from this one are what it exports too
+        let mut exports = Vec::new();
+        collect_exports(db, module, true, &mut exports);
 
-        let exported_symbols = declarations
-            .symbols
-            .iter()
-            .copied()
-            .filter(|&symbol| scope.is_symbol_exported(symbol))
-            .collect::<Vec<_>>();
+        let used = used_exports(db, &exports, |declaration| {
+            qualified.contains(&declaration) || imported.contains(&declaration)
+        });
 
-        let exported_types = declarations
-            .types
-            .iter()
-            .map(|&(ty, _)| ty)
-            .filter(|&ty| scope.is_type_exported(ty))
-            .collect::<Vec<_>>();
-
-        let items = exported_symbols
-            .iter()
-            .filter_map(|&symbol| Some((Declaration::Symbol(symbol), symbol_name(db, symbol)?)))
-            .chain(
-                exported_types
-                    .iter()
-                    .filter_map(|&ty| Some((Declaration::Type(ty), type_name(db, ty)?))),
-            );
-
-        for (declaration, name) in items {
+        for &(declaration, ref name, direct) in &exports {
             let Some(name_srcloc) = name.srcloc() else {
                 continue;
             };
 
-            // Anything that isn't used at all is reported by the `unused` lints instead
-            if name.text().starts_with('_')
+            // The exports of nested modules are reported when checking those modules, and
+            // anything that isn't used at all is reported by the `unused` lints instead
+            if !direct
+                || used.contains(&declaration)
+                || name.text().starts_with('_')
                 || db.reference_parents(declaration).is_empty()
-                || qualified.contains(&declaration)
-                || imported.contains(&declaration)
-            {
-                continue;
-            }
-
-            // A type in the signature of another export is part of what the module exports, even
-            // if nothing outside of it names the type
-            if let Declaration::Type(_) = declaration
-                && signature_types(db, &exported_symbols, &exported_types)
-                    .into_iter()
-                    .any(|ty| type_reaches(db, ty, name_srcloc, &mut HashSet::new()))
             {
                 continue;
             }
@@ -123,6 +90,82 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
             ));
         }
     }
+}
+
+/// The exported items of the module, along with their names and whether they're declared in it
+/// directly (rather than in a module that it exports).
+fn collect_exports(
+    db: &Database,
+    module: SymbolId,
+    direct: bool,
+    exports: &mut Vec<(Declaration, Name, bool)>,
+) {
+    let module = db.module(module);
+    let scope = db.scope(module.scope);
+    let declarations = &module.declarations;
+
+    for &symbol in &declarations.symbols {
+        if scope.is_symbol_exported(symbol)
+            && let Some(name) = symbol_name(db, symbol)
+        {
+            exports.push((Declaration::Symbol(symbol), name, direct));
+        }
+    }
+
+    for &(ty, _) in &declarations.types {
+        if scope.is_type_exported(ty)
+            && let Some(name) = type_name(db, ty)
+        {
+            exports.push((Declaration::Type(ty), name, direct));
+        }
+    }
+
+    for &nested in &declarations.modules {
+        if scope.is_symbol_exported(nested) {
+            collect_exports(db, nested, false, exports);
+        }
+    }
+}
+
+/// The exports that need to be exported: the ones that are used from outside of the module, and
+/// the types in the signatures of those (and so on), which are part of what the module exports
+/// even if nothing outside of it names them.
+fn used_exports(
+    db: &Database,
+    exports: &[(Declaration, Name, bool)],
+    is_used: impl Fn(Declaration) -> bool,
+) -> HashSet<Declaration> {
+    let mut used = exports
+        .iter()
+        .map(|&(declaration, ..)| declaration)
+        .filter(|&declaration| is_used(declaration))
+        .collect::<HashSet<_>>();
+
+    let mut stack = used.iter().copied().collect::<Vec<_>>();
+
+    while let Some(declaration) = stack.pop() {
+        for ty in signature_types(db, declaration) {
+            for (export, name, _) in exports {
+                // A type that refers to itself (such as a recursive struct) isn't kept exported
+                // by its own signature
+                if *export == declaration
+                    || used.contains(export)
+                    || !matches!(export, Declaration::Type(_))
+                {
+                    continue;
+                }
+
+                if let Some(srcloc) = name.srcloc()
+                    && type_reaches(db, ty, srcloc, &mut HashSet::new())
+                {
+                    used.insert(*export);
+                    stack.push(*export);
+                }
+            }
+        }
+    }
+
+    used
 }
 
 /// Whether the module can be used by anything that imports the file it's in, because it's
@@ -167,36 +210,28 @@ fn imported(db: &Database) -> HashSet<Declaration> {
     imported
 }
 
-/// The types in the signatures of the exported items of a module, such as the parameters and
-/// return type of a function, or the fields of a struct.
-fn signature_types(db: &Database, symbols: &[SymbolId], types: &[TypeId]) -> Vec<TypeId> {
-    let mut signature = Vec::new();
-
-    for &symbol in symbols {
-        match db.symbol(symbol) {
-            Symbol::Function(function) => {
-                signature.push(function.return_type);
-
-                for &parameter in function.parameters.values() {
-                    if let Symbol::Parameter(parameter) = db.symbol(parameter) {
-                        signature.push(parameter.ty);
+/// The types in the signature of an item, such as the parameters and return type of a function,
+/// or the fields of a struct.
+fn signature_types(db: &Database, declaration: Declaration) -> Vec<TypeId> {
+    match declaration {
+        Declaration::Symbol(symbol) => match db.symbol(symbol) {
+            Symbol::Function(function) => std::iter::once(function.return_type)
+                .chain(function.parameters.values().filter_map(|&parameter| {
+                    match db.symbol(parameter) {
+                        Symbol::Parameter(parameter) => Some(parameter.ty),
+                        _ => None,
                     }
-                }
-            }
-            Symbol::Constant(constant) => signature.push(constant.value.ty),
-            _ => {}
-        }
+                }))
+                .collect(),
+            Symbol::Constant(constant) => vec![constant.value.ty],
+            _ => Vec::new(),
+        },
+        Declaration::Type(ty) => match db.ty(ty) {
+            Type::Struct(ty) => vec![ty.inner],
+            Type::Alias(alias) => vec![alias.inner],
+            _ => Vec::new(),
+        },
     }
-
-    for &ty in types {
-        match db.ty(ty) {
-            Type::Struct(ty) => signature.push(ty.inner),
-            Type::Alias(alias) => signature.push(alias.inner),
-            _ => {}
-        }
-    }
-
-    signature
 }
 
 /// Whether the type is (or contains) the struct or alias declared with the given name.

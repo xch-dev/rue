@@ -192,14 +192,19 @@ fn check_parens(cx: &mut LintContext<'_>, source: &Source, group: &AstGroupExpr)
         replacement.push(' ');
     }
 
+    let srcloc = srcloc(source, group_range);
+
+    // Parsing the code again is expensive, so it's skipped where nothing would be reported
+    if !cx.is_enabled_at(Lint::UnnecessaryParens, &srcloc) {
+        return;
+    }
+
     // The parser has rules that depend on where an expression is (for example, a struct
     // initializer can't be written in an `if` condition without parentheses), so the code is
     // parsed again without them, to make sure that only the parentheses were removed
     if !parses_without_parens(source, group.syntax(), start..end, &replacement) {
         return;
     }
-
-    let srcloc = srcloc(source, group_range);
 
     // Anything between the parentheses and the expression (such as a comment) would be removed
     let outside = format!(
@@ -255,24 +260,69 @@ fn is_condition_of(if_node: &SyntaxNode, node: &SyntaxNode) -> bool {
 
 /// Whether the code parses to the same syntax tree once the parentheses are replaced, apart from
 /// the parenthesized expression itself.
+///
+/// Only the statement or item that the parentheses are in is parsed again, since the rest of the
+/// document can't change how it's parsed. A statement is parsed in a block of its own, so that
+/// it's parsed by the same rules.
 fn parses_without_parens(
     source: &Source,
     group: &SyntaxNode,
     range: Range<usize>,
     replacement: &str,
 ) -> bool {
-    let Some(document) = group.ancestors().last() else {
+    let Some(unit) = group.ancestors().find(|node| {
+        node.parent().is_some_and(|parent| {
+            matches!(
+                parent.kind(),
+                SyntaxKind::Block | SyntaxKind::Document | SyntaxKind::ModuleItem
+            )
+        })
+    }) else {
         return false;
     };
 
-    let mut text = source.text.to_string();
-    text.replace_range(range, replacement);
+    let unit_range: Range<usize> = unit.text_range().into();
+    let mut text = source.text[unit_range.clone()].to_string();
+    text.replace_range(
+        range.start - unit_range.start..range.end - unit_range.start,
+        replacement,
+    );
+
+    let in_block = unit
+        .parent()
+        .is_some_and(|parent| parent.kind() == SyntaxKind::Block);
+
+    if in_block {
+        text = format!("fn lint() {{\n{text}\n}}");
+    }
 
     let tokens = Lexer::new(&text).collect::<Vec<_>>();
-    let source = Source::new(Arc::from(text.as_str()), source.kind.clone());
-    let reparsed = Parser::new(source, tokens).parse();
+    let reparsed = Parser::new(
+        Source::new(Arc::from(text.as_str()), source.kind.clone()),
+        tokens,
+    )
+    .parse()
+    .node;
 
-    shape(&document, Some(group)) == shape(&reparsed.node, None)
+    let container = if in_block {
+        reparsed
+            .descendants()
+            .find(|node| node.kind() == SyntaxKind::Block)
+    } else {
+        Some(reparsed)
+    };
+
+    let Some(container) = container else {
+        return false;
+    };
+
+    let mut children = container.children();
+
+    let (Some(reparsed), None) = (children.next(), children.next()) else {
+        return false;
+    };
+
+    shape(&unit, Some(group)) == shape(&reparsed, None)
 }
 
 /// The kinds of the nodes and tokens of a syntax tree, without whitespace and comments, and

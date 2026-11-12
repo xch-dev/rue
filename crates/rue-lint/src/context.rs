@@ -63,6 +63,12 @@ impl<'a> LintContext<'a> {
         self.levels.is_enabled_anywhere(lint)
     }
 
+    /// Whether reporting the lint at the location would have any effect, so that passes can skip
+    /// expensive checks where it's allowed.
+    pub fn is_enabled_at(&self, lint: Lint, srcloc: &SrcLoc) -> bool {
+        self.levels.is_enabled_at(lint, srcloc)
+    }
+
     /// Reports a lint at its configured level, and returns the diagnostic so that notes and
     /// suggestions can be added to it. Nothing is reported if the lint is allowed.
     pub fn report(

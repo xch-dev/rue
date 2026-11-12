@@ -2,15 +2,18 @@
 //! being replaced.
 
 use rue_diagnostic::{SrcLoc, Suggestion};
-use rue_hir::{BinaryOp, Database, Hir, HirId, UnaryOp};
+use rue_hir::{BinaryOp, Database, Hir, HirId, Statement, UnaryOp};
 
 use crate::LintContext;
 
 /// Where an expression is, which decides whether the code that replaces it needs parentheses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Position {
-    /// A whole expression by itself, such as a condition, an argument or the value of a binding.
+    /// A whole expression by itself, such as an argument or the value of a binding.
     Whole,
+    /// The condition of an `if`, which is a whole expression, except that a struct initializer in
+    /// it must be in parentheses.
+    Condition,
     /// An operand of a prefix or binary operator.
     Operand,
     /// The operand of a postfix operator (such as `as`, `is`, a field access or a call), which
@@ -24,16 +27,25 @@ pub(crate) fn position(cx: &LintContext<'_>, hir: HirId) -> Position {
         return Position::Whole;
     };
 
-    match cx.db().hir(parent) {
+    let db = cx.db();
+
+    match db.hir(parent) {
         Hir::Cast(_) | Hir::Guard(_) | Hir::FieldAccess(_) => Position::Postfix,
         Hir::FunctionCall(call) if call.function == hir => Position::Postfix,
-        Hir::If(condition, ..) if *condition != hir => Position::Operand,
+        Hir::If(condition, ..) if *condition == hir => Position::Condition,
+        Hir::If(..) => Position::Operand,
+        Hir::Block(block)
+            if block.statements.iter().any(
+                |statement| matches!(statement, Statement::If(statement) if statement.condition == hir),
+            ) =>
+        {
+            Position::Condition
+        }
         Hir::Block(_)
         | Hir::List(_)
         | Hir::Struct(_)
         | Hir::Pair(..)
         | Hir::Lambda(_)
-        | Hir::If(..)
         | Hir::FunctionCall(_)
         | Hir::CoinId(..)
         | Hir::Substr(..)
@@ -56,6 +68,19 @@ pub(crate) fn text_at(db: &Database, hir: HirId, position: Position) -> Option<S
 
     let needs_parens = match position {
         Position::Whole => return Some(strip_parens(text).to_string()),
+        // The parentheses could be what allows a struct initializer in the condition, so they're
+        // only removed if there can't be one inside of them
+        Position::Condition => {
+            let stripped = strip_parens(text);
+            return Some(
+                if stripped.contains('{') {
+                    text
+                } else {
+                    stripped
+                }
+                .to_string(),
+            );
+        }
         Position::Operand => !is_atomic(db, hir),
         Position::Postfix => !is_atomic(db, hir) || matches!(db.hir(hir), Hir::Unary(..)),
     };
@@ -90,10 +115,9 @@ pub(crate) fn negated_text_at(db: &Database, hir: HirId, position: Position) -> 
                 let right = text_at(db, right, Position::Operand)?;
                 let text = format!("{left} {op} {right}");
 
-                return Some(if position == Position::Whole {
-                    text
-                } else {
-                    format!("({text})")
+                return Some(match position {
+                    Position::Whole | Position::Condition => text,
+                    Position::Operand | Position::Postfix => format!("({text})"),
                 });
             }
             _ => {}
