@@ -7,6 +7,7 @@ mod branches;
 mod casts;
 mod comparisons;
 mod conditions;
+mod entrypoints;
 mod exports;
 mod guards;
 mod inline_ifs;
@@ -53,6 +54,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
     InputPass {
         lints: shadowing::LINTS,
         run: shadowing::check,
+    },
+    InputPass {
+        lints: entrypoints::LINTS,
+        run: entrypoints::check,
     },
 ];
 

@@ -1,0 +1,21 @@
+fn main(value: Any) -> Any {
+    helper(value)
+}
+
+// Exported functions are compiled into programs of their own
+export fn exported(value: Int) -> Any {
+    value + 1
+}
+
+export fn declared(value: Int) -> Int {
+    value + 1
+}
+
+// Functions that aren't entrypoints, and tests, can return anything
+fn helper(value: Any) -> Any {
+    value
+}
+
+test fn returns_any() -> Any {
+    helper(1)
+}

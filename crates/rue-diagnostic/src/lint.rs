@@ -241,6 +241,7 @@ lints! {
     RepeatedExpensiveCall("repeated_expensive_call", Warn, "Calls that are evaluated more than once with the same arguments, where reusing the result would make the program cheaper"),
     BoolBitwiseOperator("bool_bitwise_operator", Warn, "`&` and `|` on `Bool` values whose right side can raise or is expensive, which `&&` and `||` would only evaluate when needed"),
     BytesIntConfusion("bytes_int_confusion", Warn, "Casts of byte literals to `Int` whose value is negative or not in canonical form"),
+    MissingEntrypointReturnType("missing_entrypoint_return_type", Warn, "Entrypoints (`main` and exported functions) whose return type accepts any value, so what they output isn't checked"),
     UnknownLint("unknown_lint", Warn, "Lint names in attributes or `Rue.toml` that don't refer to a known lint or group"),
     UnfulfilledLintExpectation("unfulfilled_lint_expectation", Warn, "`expect` attributes whose lint is never reported inside of them"),
 }
@@ -343,6 +344,7 @@ lint_groups! {
         UnnecessaryParens,
         NamingConvention,
         ShadowedBinding,
+        MissingEntrypointReturnType,
     ]),
     Suspicious("suspicious", "Code that's likely to be a mistake", [
         IndistinguishableGuard,
@@ -608,6 +610,7 @@ mod tests {
                 Lint::UnnecessaryParens,
                 Lint::NamingConvention,
                 Lint::ShadowedBinding,
+                Lint::MissingEntrypointReturnType,
             ]
         );
         assert_eq!(

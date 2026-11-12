@@ -1,0 +1,19 @@
+program: '2'
+debug_program: (a (q 2 2 5) (c (q . 1) 1))
+byte_cost: 12000
+clvm_error: path into atom
+tests:
+- name: returns_any
+  program: (q . 1)
+  debug_program: (a (q 2 2 (q . 1)) (c (q . 1) ()))
+  output: '1'
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+diagnostics:
+- |-
+  Entrypoint `main` can return any value, so what it outputs isn't checked at missing_entrypoint_return_type.rue:1:4
+    note: Declare the type that it returns instead, such as `List<Condition>`
+- |-
+  Entrypoint `exported` can return any value, so what it outputs isn't checked at missing_entrypoint_return_type.rue:6:11
+    note: Declare the type that it returns instead, such as `List<Condition>`
