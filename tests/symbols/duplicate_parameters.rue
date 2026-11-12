@@ -33,3 +33,11 @@ test fn duplicate_struct_binding() -> Int {
     let { x, y: x }: Point = Point { x: 1, y: 2 };
     x
 }
+
+test fn duplicate_underscore_prefixed_parameter() -> Int {
+    prefixed(1, 2)
+}
+
+fn prefixed(_a: Int, _a: Int) -> Int {
+    1
+}

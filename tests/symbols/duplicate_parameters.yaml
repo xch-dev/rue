@@ -5,3 +5,4 @@ diagnostics:
 - Duplicate symbol `a` found in scope at duplicate_parameters.rue:18:13
 - Duplicate symbol `a` found in scope at duplicate_parameters.rue:23:13
 - Duplicate symbol `x` found in scope at duplicate_parameters.rue:33:17
+- Duplicate symbol `_a` found in scope at duplicate_parameters.rue:41:22

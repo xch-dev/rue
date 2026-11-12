@@ -245,9 +245,8 @@ pub fn compile_function_call_expr(
                     .get(&generic)
                     .is_some_and(|&ty| is_expected_generic(ctx, expected_type, ty))
                     && !function
-                        .params
-                        .iter()
-                        .any(|param| contains_generic(ctx.types_mut(), param.ty, generic))
+                        .param_types()
+                        .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
                 {
                     let copy = ctx.ty(generic).clone();
                     let copy = ctx.alloc_type(copy);

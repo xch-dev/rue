@@ -335,8 +335,8 @@ fn reached_names(
         Type::Function(function) => {
             walk(function.ret, reached);
 
-            for param in &function.params {
-                walk(param.ty, reached);
+            for ty in function.param_types() {
+                walk(ty, reached);
             }
         }
         Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
