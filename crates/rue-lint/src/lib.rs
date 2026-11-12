@@ -8,6 +8,7 @@
 mod context;
 mod cost;
 mod equality;
+mod flow;
 mod levels;
 mod lints;
 mod measure;
