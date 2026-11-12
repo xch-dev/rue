@@ -132,9 +132,19 @@ fn construct_imports(
 
 #[derive(Debug, Default)]
 pub struct ImportCache {
-    scopes: HashMap<(ScopeId, Vec<String>), (ScopeId, SymbolId)>,
+    scopes: HashMap<(ScopeId, Vec<String>), CachedPath>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
     glob_import_counts: IndexMap<ImportId, (Name, usize)>,
+}
+
+/// The module that a path resolves to.
+#[derive(Debug, Clone)]
+struct CachedPath {
+    scope: ScopeId,
+    symbol: SymbolId,
+    /// The declarations referenced through other imports while resolving the path, so that
+    /// they're recorded for every import that uses it.
+    references: Vec<(ImportId, Declaration)>,
 }
 
 fn flatten_imports(
@@ -263,6 +273,7 @@ fn resolve_import(
 
     let mut base = None;
     let mut path_so_far = Vec::new();
+    let mut path_references = Vec::new();
 
     for i in (1..=import.path.len()).rev() {
         let subpath = import
@@ -273,13 +284,18 @@ fn resolve_import(
             .collect::<Vec<_>>();
 
         if let Some(cached) = cache.scopes.get(&(import_scope, subpath.clone())) {
-            base = Some(cached.0);
+            base = Some(cached.scope);
             path_so_far = subpath;
+            path_references.clone_from(&cached.references);
+
+            for &(import, declaration) in &cached.references {
+                ctx.add_import_reference(import, declaration, ImportUser::Import(import_id));
+            }
 
             for name in import.path.iter().take(path_so_far.len()) {
                 if diagnostics && let Some(srcloc) = name.srcloc() {
                     ctx.add_syntax_for_source(
-                        SyntaxItemKind::SymbolReference(cached.1),
+                        SyntaxItemKind::SymbolReference(cached.symbol),
                         TextRange::new(
                             srcloc.span.start.try_into().unwrap(),
                             srcloc.span.end.try_into().unwrap(),
@@ -324,6 +340,7 @@ fn resolve_import(
                 Declaration::Symbol(symbol),
                 ImportUser::Import(import_id),
             );
+            path_references.push((import, Declaration::Symbol(symbol)));
         }
 
         if diagnostics && let Some(srcloc) = name.srcloc() {
@@ -351,9 +368,14 @@ fn resolve_import(
         path_so_far.push(name.text().to_string());
 
         if !has_super {
-            cache
-                .scopes
-                .insert((import_scope, path_so_far.clone()), (module.scope, symbol));
+            cache.scopes.insert(
+                (import_scope, path_so_far.clone()),
+                CachedPath {
+                    scope: module.scope,
+                    symbol,
+                    references: path_references.clone(),
+                },
+            );
         }
     }
 

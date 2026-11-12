@@ -62,7 +62,6 @@ type Report = (Lint, Name, String);
 /// a use from the path of another import that's unused.
 fn unused_imports(db: &Database, live: &HashSet<Declaration>) -> Vec<Report> {
     let imports = db.relevant_imports().collect::<Vec<_>>();
-    let relevant = imports.iter().copied().collect::<HashSet<_>>();
 
     // An import that's only used by other imports is used once they are, so this repeats until
     // no more imports are found to be used
@@ -72,7 +71,7 @@ fn unused_imports(db: &Database, live: &HashSet<Declaration>) -> Vec<Report> {
         let count = used.len();
 
         for &import in &imports {
-            if !used.contains(&import) && is_import_used(db, live, &relevant, &used, import) {
+            if !used.contains(&import) && is_import_used(db, live, &used, import) {
                 used.insert(import);
             }
         }
@@ -105,7 +104,6 @@ fn unused_imports(db: &Database, live: &HashSet<Declaration>) -> Vec<Report> {
 fn is_import_used(
     db: &Database,
     live: &HashSet<Declaration>,
-    relevant: &HashSet<ImportId>,
     used: &HashSet<ImportId>,
     id: ImportId,
 ) -> bool {
@@ -119,7 +117,7 @@ fn is_import_used(
         .import_uses(id)
         .filter(|&(_, user)| match user {
             ImportUser::Declaration(declaration) => live.contains(&declaration),
-            ImportUser::Import(import) => used.contains(&import) || !relevant.contains(&import),
+            ImportUser::Import(import) => used.contains(&import),
             ImportUser::Other => true,
         })
         .map(|(declaration, _)| declaration)
@@ -239,7 +237,8 @@ pub(crate) fn live_declarations(
 
 /// The bindings that are kept whenever the function they're in is live, which are the bindings
 /// whose names start with `_`, along with the unnamed bindings they're destructured from (such as
-/// the value of `let (_a, _b) = pair;`).
+/// the value of `let (_a, _b) = pair;`). A destructured binding references the binding it's
+/// destructured from, unlike a binding declared inside of its value.
 fn kept_bindings(db: &Database) -> HashSet<Declaration> {
     let mut kept = HashSet::new();
 
@@ -256,7 +255,11 @@ fn kept_bindings(db: &Database) -> HashSet<Declaration> {
         stack.extend(
             db.declaration_parents(declaration)
                 .into_iter()
-                .filter(|&parent| is_binding(db, parent) && describe(db, parent).is_none()),
+                .filter(|&parent| {
+                    is_binding(db, parent)
+                        && describe(db, parent).is_none()
+                        && db.reference_parents(parent).contains(&declaration)
+                }),
         );
     }
 
@@ -286,15 +289,20 @@ fn is_binding(db: &Database, declaration: Declaration) -> bool {
 
 /// Whether the declaration's name starts with `_`, so that it isn't reported as unused.
 fn is_exempt(db: &Database, declaration: Declaration) -> bool {
-    describe(db, declaration).is_some_and(|(_, _, name)| name.text().starts_with('_'))
+    describe(db, declaration).is_some_and(|(_, _, name)| is_exempt_name(name))
+}
+
+fn is_exempt_name(name: &Name) -> bool {
+    name.text().starts_with('_')
 }
 
 fn unused_declaration(db: &Database, declaration: Declaration) -> Option<Report> {
-    if is_exempt(db, declaration) {
+    let (lint, kind, name) = describe(db, declaration)?;
+
+    if is_exempt_name(name) {
         return None;
     }
 
-    let (lint, kind, name) = describe(db, declaration)?;
     let message = format!("Unused {kind} `{}`", name.text());
 
     Some((lint, name.clone(), message))

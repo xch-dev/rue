@@ -2469,3 +2469,56 @@ fn dead(p: Point) -> Int {
     );
     assert!(!has_errors);
 }
+
+#[test]
+fn shared_import_paths_and_bindings_inside_values() {
+    let source = "\
+import m::inner;
+import inner::f;
+import inner::g;
+
+mod m {
+    export mod inner {
+        export fn f() -> Int {
+            1
+        }
+
+        export fn g() -> Int {
+            2
+        }
+    }
+
+    export fn helper() -> Int {
+        1
+    }
+}
+
+import m::helper;
+
+fn main() -> Int {
+    let (a, b) = {
+        let _z = 1;
+        (helper(), 2)
+    };
+    let (_q, _r) = (g(), 1);
+    1
+}
+";
+
+    // The path to `inner` is resolved once, but both imports that use it count as using `inner`.
+    // A `_` binding inside of a value doesn't keep the value, so `helper` is still unused.
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 2: Unused import `f`",
+            "Warning 7: Unused function `f`",
+            "Warning 16: Unused function `helper`",
+            "Warning 21: Unused import `helper`",
+            "Warning 24: Unused binding `a`",
+            "Warning 24: Unused binding `b`",
+        ]
+    );
+    assert!(!has_errors);
+}
