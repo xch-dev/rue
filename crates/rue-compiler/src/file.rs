@@ -274,16 +274,18 @@ impl FileTree {
         }
     }
 
+    /// Compiles every file in the tree, and runs lints.
+    ///
+    /// If the compiler's [`Cancel`](crate::Cancel) (see [`Compiler::set_cancel`]) says to stop,
+    /// the compile stops between phases or before the next item's body, and
+    /// [`Compiler::is_cancelled`] is true afterwards. Nearly all of the time is spent compiling
+    /// bodies, so it doesn't have to wait long. A compile that stopped is incomplete.
     pub fn compile(&self, ctx: &mut Compiler) {
         self.compile_impl(ctx, true);
     }
 
     /// Compiles every file in the tree. If `lint` is false (such as for the standard library),
     /// recursion isn't checked and lints aren't run.
-    ///
-    /// If the compiler's [`Cancel`](crate::Cancel) says to stop, the compile stops between phases
-    /// or before the next declaration's body, and [`Compiler::is_cancelled`] is true. Nearly all
-    /// of the time is spent compiling bodies, so it doesn't have to wait long.
     pub(crate) fn compile_impl(&self, ctx: &mut Compiler, lint: bool) {
         let mut cache = ImportCache::default();
 

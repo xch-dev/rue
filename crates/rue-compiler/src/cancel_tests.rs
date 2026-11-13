@@ -6,8 +6,10 @@ use rue_options::CompilerOptions;
 
 use crate::{Cancel, Compiler, File, FileTree};
 
-/// Five functions with a type error each, and nested modules with another two.
+/// A struct whose field has an undeclared type, which is reported while compiling types (before
+/// any body), and five functions with a type error each, two of them in a module.
 const SOURCE: &str = "
+struct S { x: Missing }
 fn a() -> Int { \"a\" }
 fn b() -> Int { \"b\" }
 fn c() -> Int { \"c\" }
@@ -64,7 +66,7 @@ fn compile_that_is_not_cancelled_is_complete() {
     let (diagnostics, asked, cancelled) = compile(None);
 
     assert!(!cancelled);
-    assert_eq!(errors(&diagnostics), 5);
+    assert_eq!(errors(&diagnostics), 6);
 
     // The functions are never used, so lints ran
     assert!(
@@ -73,18 +75,30 @@ fn compile_that_is_not_cancelled_is_complete() {
             .any(|diagnostic| diagnostic.lint().is_some())
     );
 
-    // It's asked before the bodies, before each item (including the module and the items in
-    // it), and before and after evaluating constants
+    // The compiler asks before compiling types, before each symbol item (the three functions, the
+    // module, and the two functions in it), and before and after evaluating constants. The last
+    // one is this test's own `is_cancelled` after the compile. Each place it asks is covered by
+    // this count, since a compile that stops early still stops at the next place
     assert_eq!(asked, 1 + 6 + 2 + 1);
 }
 
 #[test]
+fn compile_stops_before_the_bodies() {
+    // Nothing after the imports is compiled, including types
+    let (diagnostics, asked, cancelled) = compile(Some(0));
+
+    assert!(cancelled);
+    assert_eq!(errors(&diagnostics), 0);
+    assert_eq!(asked, 1);
+}
+
+#[test]
 fn compile_stops_before_the_next_body() {
-    // Asked before the bodies, and then before `a` and `b`, so only `a` and `b` are compiled
+    // Types are compiled, and so are `a` and `b`, but `c` isn't
     let (diagnostics, asked, cancelled) = compile(Some(3));
 
     assert!(cancelled);
-    assert_eq!(errors(&diagnostics), 2);
+    assert_eq!(errors(&diagnostics), 1 + 2);
     assert!(
         diagnostics
             .iter()
@@ -97,18 +111,9 @@ fn compile_stops_before_the_next_body() {
 
 #[test]
 fn compile_stops_inside_a_module() {
-    // `a`, `b`, `c` and `d` are compiled
+    // Types, `a`, `b`, `c` and `d` are compiled, but `e` isn't
     let (diagnostics, _, cancelled) = compile(Some(1 + 5));
 
     assert!(cancelled);
-    assert_eq!(errors(&diagnostics), 4);
-}
-
-#[test]
-fn compile_stops_before_the_bodies() {
-    let (diagnostics, asked, cancelled) = compile(Some(0));
-
-    assert!(cancelled);
-    assert_eq!(errors(&diagnostics), 0);
-    assert_eq!(asked, 1);
+    assert_eq!(errors(&diagnostics), 1 + 4);
 }
