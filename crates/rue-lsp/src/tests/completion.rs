@@ -25,11 +25,11 @@ fn helper() -> Int {
 "#,
         expect![[r#"
             super [Module]
+            total [Variable] Int
+            amount [Variable] Int
             LIMIT [Constant] Int
             main [Function] fn(amount: Int) -> Int
             helper [Function] fn() -> Int
-            amount [Variable] Int
-            total [Variable] Int
             unchecked_cast [Function] fn<T>(value: Any) -> T
             sha256 [Function] fn(value: Bytes) -> Bytes32
             sha256_inline [Function] fn(value: Bytes) -> Bytes32
@@ -413,6 +413,29 @@ fn main(num: Int) -> Point {
 "#,
         expect![[r#"
             <none>
+        "#]],
+    );
+}
+
+#[test]
+fn test_complete_function_signature_names_types() {
+    // The detail of a function is its signature as hover shows it, with the names of its types.
+    check(
+        r#"
+type Amount = Int;
+
+fn main(flag: Bool) -> Amount {
+    con$0
+}
+
+fn convert<T>(flag: Bool, value: T, amount: Amount) -> T {
+    value
+}
+"#,
+        expect![[r#"
+            convert [Function] fn<T>(flag: Bool, value: T, amount: Amount) -> T
+            concat [Function] fn(values: List<Bytes>) -> Bytes
+            coinid [Function] fn(parent_coin_id: Bytes, puzzle_hash: Bytes, amount: Int) -> Bytes32
         "#]],
     );
 }

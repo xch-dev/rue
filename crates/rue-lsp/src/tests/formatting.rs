@@ -78,6 +78,9 @@ fn test_document_end() {
     assert_eq!(document_end("abc\ndef"), Position::new(1, 3));
     assert_eq!(document_end("abc\r\ndef\r\n"), Position::new(2, 0));
     assert_eq!(document_end("abc\r\nde"), Position::new(1, 2));
+    // A `\r` on its own ends a line too.
+    assert_eq!(document_end("abc\r"), Position::new(1, 0));
+    assert_eq!(document_end("abc\rde"), Position::new(1, 2));
     // Characters are counted in UTF-16 code units.
     assert_eq!(document_end("a\n\u{1F600}é"), Position::new(1, 3));
 }

@@ -137,7 +137,9 @@ pub fn compile_block(
                 if let Some(binding) = stmt.binding() {
                     let scope = ctx.alloc_child_scope();
 
-                    ctx.push_scope(scope, stmt.syntax().text_range().start());
+                    // The binding is only in scope after the statement, so that it isn't
+                    // offered as a completion in its own value
+                    ctx.push_scope(scope, stmt.syntax().text_range().end());
 
                     create_binding(ctx, symbol, &binding);
                 }

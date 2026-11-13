@@ -40,7 +40,7 @@ use tower_lsp::{Client, LanguageServer};
 
 use crate::cache::{HoverInfo, SymbolHoverKind};
 use crate::paths::{Paths, document, uri_to_path};
-use crate::position::offsets_to_range;
+use crate::position::{offset_to_position, offsets_to_range};
 use crate::worker::{Diagnostics, Shared, State, Worker};
 use tokio::sync::oneshot;
 
@@ -285,6 +285,7 @@ impl LanguageServer for Backend {
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let ReferenceParams {
             text_document_position: params,
+            context,
             ..
         } = params;
 
@@ -294,7 +295,12 @@ impl LanguageServer for Backend {
             .query(Task::References, move |state| {
                 let shared = state.shared.clone();
                 let cache = state.cache(&params.text_document.uri, revision)?;
-                references(cache, &shared.paths, params.position)
+                references(
+                    cache,
+                    &shared.paths,
+                    params.position,
+                    context.include_declaration,
+                )
             })
             .await)
     }
@@ -531,11 +537,16 @@ fn definitions(
     }
 }
 
-fn references(cache: &Cache<Compiler>, paths: &Paths, position: Position) -> Option<Vec<Location>> {
+fn references(
+    cache: &Cache<Compiler>,
+    paths: &Paths,
+    position: Position,
+    include_declaration: bool,
+) -> Option<Vec<Location>> {
     let position = cache.position(position);
 
     let locations = cache
-        .references(position)
+        .references(position, include_declaration)
         .into_iter()
         .map(|location| paths.location(location))
         .collect::<Vec<_>>();
@@ -583,14 +594,7 @@ fn formatting_edits(
 }
 
 fn document_end(source: &str) -> Position {
-    let line = source.bytes().filter(|byte| *byte == b'\n').count();
-    let last_line = source
-        .rsplit_once('\n')
-        .map_or(source, |(_, last_line)| last_line);
-    let last_line = last_line.strip_suffix('\r').unwrap_or(last_line);
-    let character = last_line.encode_utf16().count();
-
-    Position::new(line.try_into().unwrap(), character.try_into().unwrap())
+    offset_to_position(source, source.len())
 }
 
 /// A suggestion, which is stored in the `data` of a diagnostic so that a code action can be

@@ -1,12 +1,18 @@
+mod ambiguity;
 mod background;
 mod completion;
 mod diagnostics;
 mod formatting;
 mod hover;
 mod lifecycle;
+mod line_endings;
 mod navigation;
 mod protocol;
+mod shadowing;
+mod std_library;
 mod sweep;
+mod syntax_errors;
+mod workspace;
 
 use std::fmt::Write;
 use std::fs;
@@ -19,13 +25,14 @@ use tower_lsp::LanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
-    DocumentFormattingParams, FormattingOptions, GotoDefinitionParams, GotoDefinitionResponse,
-    HoverContents, HoverParams, Location, MarkedString, NumberOrString, PartialResultParams,
-    Position, Range, ReferenceContext, ReferenceParams, TextDocumentIdentifier,
-    TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
+    Diagnostic, DocumentFormattingParams, FormattingOptions, GotoDefinitionParams,
+    GotoDefinitionResponse, HoverContents, HoverParams, Location, MarkedString, NumberOrString,
+    PartialResultParams, Position, Range, ReferenceContext, ReferenceParams,
+    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
 };
 
-use crate::{Backend, code_actions, position::position_to_offset};
+use crate::position::{offset_to_position, position_to_offset};
+use crate::{Backend, code_actions};
 
 const CURSOR: &str = "$0";
 
@@ -146,7 +153,7 @@ impl TestProject {
                 assert!(cursor.is_none(), "only one cursor is allowed");
                 cursor = Some((
                     Url::from_file_path(&path).unwrap(),
-                    position_of(text, index),
+                    offset_to_position(text, index),
                 ));
                 text.replacen(CURSOR, "", 1)
             } else {
@@ -228,6 +235,10 @@ impl TestProject {
     }
 
     pub fn references(&self) -> String {
+        self.references_with(true)
+    }
+
+    pub fn references_with(&self, include_declaration: bool) -> String {
         let (uri, position) = self.cursor();
 
         let locations = self
@@ -240,12 +251,23 @@ impl TestProject {
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: ReferenceContext {
-                    include_declaration: true,
+                    include_declaration,
                 },
             })
             .unwrap_or_default();
 
         self.locations(&locations)
+    }
+
+    /// Renders the hover, definitions and references at the cursor together, for tests that
+    /// check that all of them agree on which item the cursor is on.
+    pub fn queries(&self) -> String {
+        format!(
+            "hover:\n{}definitions:\n{}references:\n{}",
+            self.hover(),
+            self.definitions(),
+            self.references()
+        )
     }
 
     fn locations(&self, locations: &[Location]) -> String {
@@ -312,17 +334,26 @@ impl TestProject {
     /// Recompiles the project after a file changes, and renders the code actions for its
     /// diagnostics, along with the text of the file after applying each of them.
     pub fn code_actions(&self, name: &str, text: &str) -> String {
-        let uri = self.uri(name);
         let diagnostics = self
             .backend()
-            .on_change_impl(&uri, Some(text.to_string()))
+            .on_change_impl(&self.uri(name), Some(text.to_string()))
             .into_iter()
             .find(|(kind, _)| Some(kind) == normalize_path(&self.path(name)).ok().as_ref())
             .map(|(_, diagnostics)| diagnostics)
             .unwrap_or_default();
 
+        self.render_code_actions(diagnostics, &[(name, text)])
+    }
+
+    /// Renders the code actions for diagnostics, along with the text of each of the files after
+    /// applying the edits of each action to it. Every edit must be to one of the files.
+    pub fn render_code_actions(
+        &self,
+        diagnostics: Vec<Diagnostic>,
+        files: &[(&str, &str)],
+    ) -> String {
         let actions = code_actions(&CodeActionParams {
-            text_document: TextDocumentIdentifier::new(uri.clone()),
+            text_document: TextDocumentIdentifier::new(self.uri(files[0].0)),
             range: Range::default(),
             context: CodeActionContext {
                 diagnostics,
@@ -338,27 +369,45 @@ impl TestProject {
 
         for action in actions {
             let CodeActionOrCommand::CodeAction(action) = action else {
-                continue;
+                panic!("unexpected command: {action:?}");
             };
-
-            let mut edits = action.edit.unwrap().changes.unwrap().remove(&uri).unwrap();
-            edits.sort_by_key(|edit| (edit.range.start.line, edit.range.start.character));
-
-            let mut fixed = text.to_string();
-
-            for edit in edits.into_iter().rev() {
-                let start = position_to_offset(text, edit.range.start);
-                let end = position_to_offset(text, edit.range.end);
-                fixed.replace_range(start..end, &edit.new_text);
-            }
 
             writeln!(
                 output,
-                "{} (preferred: {}):\n{fixed}",
+                "{} (preferred: {}):",
                 action.title,
                 action.is_preferred.unwrap()
             )
             .unwrap();
+
+            let mut changes = action.edit.unwrap().changes.unwrap();
+
+            for (name, text) in files {
+                let Some(mut edits) = changes.remove(&self.uri(name)) else {
+                    continue;
+                };
+
+                // The edits of a file don't overlap, so they're applied from the end of the file,
+                // which keeps the positions of the earlier ones valid.
+                edits.sort_by_key(|edit| edit.range.start);
+
+                let mut fixed = (*text).to_string();
+
+                for edit in edits.into_iter().rev() {
+                    let start = position_to_offset(text, edit.range.start);
+                    let end = position_to_offset(text, edit.range.end);
+                    fixed.replace_range(start..end, &edit.new_text);
+                }
+
+                if files.len() > 1 {
+                    writeln!(output, "{name}:").unwrap();
+                }
+
+                // Carriage returns are shown, since they'd be invisible in the snapshot
+                writeln!(output, "{}", fixed.replace('\r', "\\r")).unwrap();
+            }
+
+            assert!(changes.is_empty(), "edits to unexpected files: {changes:?}");
         }
 
         output
@@ -463,14 +512,6 @@ fn hover(backend: &Backend, uri: Url, position: Position) -> String {
     }
 
     output
-}
-
-fn position_of(text: &str, index: usize) -> Position {
-    let before = &text[..index];
-    let line = before.matches('\n').count();
-    let line_start = before.rfind('\n').map_or(0, |i| i + 1);
-    let character = before[line_start..].encode_utf16().count();
-    Position::new(line as u32, character as u32)
 }
 
 fn range_string(range: Range) -> String {

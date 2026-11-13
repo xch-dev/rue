@@ -1,5 +1,10 @@
+use std::sync::Arc;
+
 use expect_test::expect;
 
+use rue_diagnostic::{
+    Applicability, DiagnosticKind, Edit, Lint, Source, SourceKind, SrcLoc, Suggestion,
+};
 use tower_lsp::LanguageServer;
 use tower_lsp::lsp_types::{InitializeParams, Url};
 
@@ -411,5 +416,96 @@ fn test_diagnostics_unnamed_parameters() {
     .assert_eq(&project.change(
         "main.rue",
         Some("fn main() -> Int {\n    42\n}\n\nfn f (Int, Int) {}\n"),
+    ));
+}
+
+/// A source with the canonical path the compiler gives a file, which differs from the path the
+/// editor uses when the project is reached through a symlink, as in the tests on Unix.
+fn source(project: &TestProject, name: &str, text: &str) -> Source {
+    Source::new(
+        Arc::from(text),
+        rue_compiler::normalize_path(&project.path(name)).unwrap(),
+    )
+}
+
+#[test]
+fn test_code_actions_multiple_edits_and_files() {
+    let main = "fn main() -> Int {\r\n    first() + second()\r\n}\r\n";
+    let utils = "export fn first() -> Int { 1 }\n\nexport fn second() -> Int { 2 }\n";
+    let files = [("main.rue", main), ("utils.rue", utils)];
+    let project = TestProject::new(&files);
+
+    let main_source = source(&project, "main.rue", main);
+    let utils_source = source(&project, "utils.rue", utils);
+    let std_source = Source::new(Arc::from("fn x() {}"), SourceKind::Std("std".to_string()));
+
+    let mut diagnostic = rue_diagnostic::Diagnostic::new(
+        SrcLoc::new(main_source.clone(), 24..31),
+        DiagnosticKind::Lint {
+            lint: Lint::UnusedFunction,
+            message: "Rename the functions".to_string(),
+        },
+        rue_diagnostic::DiagnosticSeverity::Warning,
+    );
+
+    // The edits are out of order, and span both files
+    diagnostic.suggestions.push(Suggestion::new(
+        "Rename `first` and `second`",
+        vec![
+            Edit::new(SrcLoc::new(main_source.clone(), 34..40), "two"),
+            Edit::new(SrcLoc::new(utils_source.clone(), 10..15), "one"),
+            Edit::new(SrcLoc::new(main_source.clone(), 24..29), "one"),
+            Edit::new(SrcLoc::new(utils_source.clone(), 42..48), "two"),
+        ],
+        Applicability::MaybeIncorrect,
+    ));
+
+    // A suggestion with an edit that can't be made in the editor is left out entirely, rather
+    // than being applied partially
+    diagnostic.suggestions.push(Suggestion::new(
+        "Edit the standard library",
+        vec![
+            Edit::new(SrcLoc::new(main_source.clone(), 24..29), "one"),
+            Edit::new(SrcLoc::new(std_source, 3..4), "y"),
+        ],
+        Applicability::MachineApplicable,
+    ));
+
+    // Inserts at two positions wrap the call
+    diagnostic.suggestions.push(Suggestion::new(
+        "Wrap the call",
+        vec![
+            Edit::new(SrcLoc::new(main_source.clone(), 24..24), "("),
+            Edit::new(SrcLoc::new(main_source, 31..31), ")"),
+        ],
+        Applicability::MachineApplicable,
+    ));
+
+    expect![[r#"
+        Rename `first` and `second` (preferred: false):
+        main.rue:
+        fn main() -> Int {\r
+            one() + two()\r
+        }\r
+
+        utils.rue:
+        export fn one() -> Int { 1 }
+
+        export fn two() -> Int { 2 }
+
+        Wrap the call (preferred: true):
+        main.rue:
+        fn main() -> Int {\r
+            (first()) + second()\r
+        }\r
+
+    "#]]
+    .assert_eq(&project.render_code_actions(
+        vec![crate::diagnostic(
+            &diagnostic,
+            true,
+            &project.backend().shared.paths,
+        )],
+        &files,
     ));
 }
