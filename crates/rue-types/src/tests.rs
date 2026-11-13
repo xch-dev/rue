@@ -11,7 +11,8 @@ use crate::{
     FunctionType, Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
     add_expected_bounds, check, compare, compare_with_inference, extract_atoms, extract_functions,
     extract_pairs, extract_structs, infer_from_expected, is_non_contractive, resolve_inference,
-    stringify, substitute, substitute_with_mappings, subtract, unwrap_semantic,
+    resolve_inference_with_fallback, stringify, substitute, substitute_with_mappings, subtract,
+    unwrap_semantic,
 };
 
 struct Db {
@@ -1518,6 +1519,43 @@ mod inference {
         assert_eq!(results[0][&a], int);
         assert_eq!(results[0][&b], int);
         assert_eq!(results[0], results[1]);
+    }
+
+    #[test]
+    fn resolves_upper_candidates_through_other_generics() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `fn(x: B) -> nil` to `fn(x: A) -> nil` and `fn(x: Int) -> nil` to `fn(x: B) -> nil`
+        let takes_b = db.function(&[b], nil);
+        let takes_a = db.function(&[a], nil);
+        let takes_int = db.function(&[int], nil);
+        assert_eq!(db.infer(takes_b, takes_a, &mut infer), Comparison::Assign);
+        assert_eq!(db.infer(takes_int, takes_b, &mut infer), Comparison::Assign);
+        assert_eq!(candidates(&infer, a).upper, vec![b]);
+
+        let mappings = resolve_inference(&mut db.arena, &db.builtins, &infer);
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
+    }
+
+    #[test]
+    fn resolves_through_fallback_types() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let (a, b) = (db.generic("A"), db.generic("B"));
+        let mut infer = Inference::new([a, b]);
+
+        // `A` to `B`, where only the fallback gives `A` a type
+        assert_eq!(db.infer(a, b, &mut infer), Comparison::Assign);
+
+        let fallback = HashMap::from([(a, int)]);
+        let mappings =
+            resolve_inference_with_fallback(&mut db.arena, &db.builtins, &infer, &fallback);
+        assert_eq!(mappings[&a], int);
+        assert_eq!(mappings[&b], int);
     }
 
     #[test]

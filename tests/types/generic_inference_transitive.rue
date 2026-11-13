@@ -40,11 +40,21 @@ test fn cycle_between_generics() -> Int {
     result + 1
 }
 
+fn compose<A, B>(function: fn(a: A) -> B) -> fn(a: A) -> B {
+    function
+}
+
+test fn through_generic_from_expected_type() -> Int {
+    // Only the expected type gives `A` a type, and `B` is inferred through it
+    let function: fn(a: Int) -> Int = compose(identity);
+    function(42) + 1
+}
+
 fn swap<A, B>(depth: Int, first: A, second: B) -> (A, B) {
     if depth == 0 {
         (first, second)
     } else {
-        // The function's own generics are in scope, so `A` and `B` here are the caller's
+        // `A` and `B` are inferred as each other, which here are the caller's own generics
         let (b, a) = swap(depth - 1, second, first);
         (a, b)
     }
@@ -52,5 +62,21 @@ fn swap<A, B>(depth: Int, first: A, second: B) -> (A, B) {
 
 test fn recursive_call_with_swapped_generics() -> Int {
     let result = swap(3, 42, sha256("hello"));
+    result.first + 1
+}
+
+fn shift<A, B>(depth: Int, first: A, second: B) -> (A, B) {
+    if depth == 0 {
+        (first, second)
+    } else {
+        // The function's own generics are in scope, so `A` is inferred as the caller's `B`,
+        // rather than resolved through what `B` is inferred as here
+        let (b, _) = shift(depth - 1, second, 1);
+        (first, b)
+    }
+}
+
+test fn recursive_call_with_generics_in_scope() -> Int {
+    let result = shift(3, 42, sha256("hello"));
     result.first + 1
 }

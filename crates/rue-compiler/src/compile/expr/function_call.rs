@@ -190,15 +190,12 @@ pub fn compile_function_call_expr(
             ctx.add_expected_bounds(&mut infer, expected);
         }
 
-        let mut mappings = ctx.resolve_inference(&infer);
+        // A generic that the arguments don't constrain falls back to the type expected of the call,
+        // and the generics inferred from it are resolved through that
+        let mut mappings = ctx.resolve_inference_with_fallback(&infer, &fallback);
 
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
-                continue;
-            }
-
-            if let Some(&ty) = fallback.get(&generic) {
-                mappings.insert(generic, ty);
                 continue;
             }
 

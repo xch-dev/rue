@@ -629,6 +629,18 @@ pub fn resolve_inference(
     builtins: &BuiltinTypes,
     infer: &Inference,
 ) -> HashMap<TypeId, TypeId> {
+    resolve_inference_with_fallback(arena, builtins, infer, &HashMap::new())
+}
+
+/// Like `resolve_inference`, but a generic that nothing constrains is mapped to its type in
+/// `fallback` (such as one inferred from the type expected of a call), if it has one, and the
+/// generics that depend on it are resolved through that.
+pub fn resolve_inference_with_fallback(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    infer: &Inference,
+    fallback: &HashMap<TypeId, TypeId>,
+) -> HashMap<TypeId, TypeId> {
     let references: HashMap<TypeId, HashSet<TypeId>> = infer
         .generics
         .iter()
@@ -645,9 +657,29 @@ pub fn resolve_inference(
         })
         .collect();
 
+    let reachable = infer
+        .generics
+        .keys()
+        .map(|&generic| {
+            let mut reachable = HashSet::new();
+            let mut stack = vec![generic];
+
+            while let Some(generic) = stack.pop() {
+                for &other in &references[&generic] {
+                    if reachable.insert(other) {
+                        stack.push(other);
+                    }
+                }
+            }
+
+            (generic, reachable)
+        })
+        .collect();
+
     let mut resolver = InferenceResolver {
         infer,
-        references,
+        fallback,
+        reachable,
         resolved: HashSet::new(),
         mappings: HashMap::new(),
     };
@@ -661,8 +693,10 @@ pub fn resolve_inference(
 
 struct InferenceResolver<'a> {
     infer: &'a Inference,
-    /// The generics that each generic's candidates reference and are resolved through.
-    references: HashMap<TypeId, HashSet<TypeId>>,
+    fallback: &'a HashMap<TypeId, TypeId>,
+    /// The generics that each generic's candidates reference, directly or through other
+    /// generics, and are resolved through.
+    reachable: HashMap<TypeId, HashSet<TypeId>>,
     resolved: HashSet<TypeId>,
     mappings: HashMap<TypeId, TypeId>,
 }
@@ -674,7 +708,7 @@ impl InferenceResolver<'_> {
             return;
         }
 
-        let reachable = self.reachable(generic);
+        let reachable = self.reachable[&generic].clone();
         let component: IndexSet<TypeId> = self
             .infer
             .generics
@@ -682,7 +716,7 @@ impl InferenceResolver<'_> {
             .copied()
             .filter(|&other| {
                 other == generic
-                    || (reachable.contains(&other) && self.reachable(other).contains(&generic))
+                    || (reachable.contains(&other) && self.reachable[&other].contains(&generic))
             })
             .collect();
 
@@ -693,10 +727,6 @@ impl InferenceResolver<'_> {
                 self.resolve(arena, builtins, other);
             }
         }
-
-        // Each generic in the component is picked before any of them are mapped, so that the
-        // result doesn't depend on the order they're in
-        let mut mappings = Vec::new();
 
         for &generic in &component {
             let candidates = InferenceCandidates {
@@ -713,28 +743,13 @@ impl InferenceResolver<'_> {
                 &candidates
             };
 
-            if let Some(ty) = pick_inferred_type(arena, builtins, candidates) {
-                mappings.push((generic, ty));
+            let ty = pick_inferred_type(arena, builtins, candidates)
+                .or_else(|| self.fallback.get(&generic).copied());
+
+            if let Some(ty) = ty {
+                self.mappings.insert(generic, ty);
             }
         }
-
-        self.mappings.extend(mappings);
-    }
-
-    /// The generics that the generic's candidates reference, directly or through other generics.
-    fn reachable(&self, generic: TypeId) -> HashSet<TypeId> {
-        let mut reachable = HashSet::new();
-        let mut stack = vec![generic];
-
-        while let Some(generic) = stack.pop() {
-            for &other in &self.references[&generic] {
-                if reachable.insert(other) {
-                    stack.push(other);
-                }
-            }
-        }
-
-        reachable
     }
 
     /// Collects the generic's candidates of one kind, with those of the generics in its component
@@ -761,15 +776,20 @@ impl InferenceResolver<'_> {
                     continue;
                 }
 
-                let references = &self.references[&generic];
                 let free = free_generics(arena, ty);
+
+                if free.iter().any(|other| component.contains(other)) {
+                    result.insert(ty);
+                    continue;
+                }
+
                 let mappings: HashMap<TypeId, TypeId> = free
-                    .iter()
-                    .filter(|other| references.contains(*other) && !component.contains(*other))
-                    .filter_map(|other| Some((*other, *self.mappings.get(other)?)))
+                    .into_iter()
+                    .filter(|&other| self.infer.is_resolved_through(other))
+                    .filter_map(|other| Some((other, *self.mappings.get(&other)?)))
                     .collect();
 
-                if mappings.is_empty() || free.iter().any(|other| component.contains(other)) {
+                if mappings.is_empty() {
                     result.insert(ty);
                 } else {
                     result.insert(substitute_with_mappings(arena, ty, &mappings));

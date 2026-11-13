@@ -27,6 +27,13 @@ tests:
   runtime_cost: 1209
   byte_cost: 420000
   total_cost: 421209
+- name: through_generic_from_expected_type
+  program: (+ (a (q . 2) (q 42)) (q . 1))
+  debug_program: (a (q 2 (q 16 (a 2 (c (q . 42) ())) (q . 1)) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q . 2) (q . 1)) ()))
+  output: '43'
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
 - name: recursive_call_with_swapped_generics
   program: (a (q 16 (f (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello"))))))) (q . 1)) (c (q 2 (i 5 (q 2 (q 4 6 4) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 11)))) 1)) (q . 7)) 1) ()))
   debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello")))))) 1)) (c (q 2 (i (= 5 ()) (q 4 11 15) (q 2 (q 4 (r 2) (f 2)) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 11)))) 1))) 1) ()))
@@ -34,3 +41,10 @@ tests:
   runtime_cost: 7994
   byte_cost: 1656000
   total_cost: 1663994
+- name: recursive_call_with_generics_in_scope
+  program: (a (q 16 (f (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello"))))))) (q . 1)) (c (q 2 (i 5 (q 4 11 (f (a 2 (c 2 (c (- 5 (q . 1)) (c 15 (q . 1))))))) (q . 7)) 1) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello")))))) 1)) (c (q 2 (i (= 5 ()) (q 4 11 15) (q 2 (q 4 23 (f 2)) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 (q . 1))))) 1))) 1) ()))
+  output: '43'
+  runtime_cost: 7217
+  byte_cost: 1560000
+  total_cost: 1567217
