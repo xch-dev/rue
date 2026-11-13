@@ -1,6 +1,0 @@
-program: ()
-debug_program: ()
-output: ()
-runtime_cost: 44
-byte_cost: 12000
-total_cost: 12044
