@@ -1,0 +1,15 @@
+// A parameter whose union type is unfinished, found by the language server's crash sweep. The field
+// access used to panic, since narrowing left a union with only the alias in it.
+struct Obj {
+    members: Int,
+}
+
+type MaybeObj = Obj | nil;
+
+fn get(value: MaybeObj |
+    if value is Obj {
+        value.members
+    } else {
+        0
+    }
+}
