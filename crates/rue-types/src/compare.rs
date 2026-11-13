@@ -728,6 +728,9 @@ impl InferenceResolver<'_> {
             }
         }
 
+        // The generics that are only bounded by the others in the component are resolved after them
+        let mut bounded_by_component = Vec::new();
+
         for &generic in &component {
             let candidates = InferenceCandidates {
                 lower: self.expand(arena, &component, generic, |c| &c.lower),
@@ -735,16 +738,46 @@ impl InferenceResolver<'_> {
                 held: self.expand(arena, &component, generic, |c| &c.held),
             };
 
-            // If the generic is only bounded by the others in a cycle, there's nothing to resolve
-            // it to, so the candidates are used as they are
-            let candidates = if candidates == InferenceCandidates::default() {
-                &self.infer.generics[&generic]
-            } else {
-                &candidates
+            if candidates == InferenceCandidates::default()
+                && self.infer.generics[&generic] != InferenceCandidates::default()
+            {
+                bounded_by_component.push(generic);
+                continue;
+            }
+
+            let ty = pick_inferred_type(arena, builtins, &candidates)
+                .or_else(|| self.fallback.get(&generic).copied());
+
+            if let Some(ty) = ty {
+                self.mappings.insert(generic, ty);
+            }
+        }
+
+        // Such a generic is resolved through the ones it's bounded by that were resolved, or else
+        // falls back like a generic that nothing constrains. If neither is possible, there's
+        // nothing to resolve it to, so its candidates are used as they are.
+        let resolved: HashMap<TypeId, TypeId> = component
+            .iter()
+            .filter_map(|generic| Some((*generic, *self.mappings.get(generic)?)))
+            .collect();
+
+        for generic in bounded_by_component {
+            let raw = &self.infer.generics[&generic];
+            let through = |types: &Vec<TypeId>| -> Vec<TypeId> {
+                types
+                    .iter()
+                    .filter_map(|ty| resolved.get(ty).copied())
+                    .collect()
+            };
+            let candidates = InferenceCandidates {
+                lower: through(&raw.lower),
+                upper: through(&raw.upper),
+                held: through(&raw.held),
             };
 
-            let ty = pick_inferred_type(arena, builtins, candidates)
-                .or_else(|| self.fallback.get(&generic).copied());
+            let ty = pick_inferred_type(arena, builtins, &candidates)
+                .or_else(|| self.fallback.get(&generic).copied())
+                .or_else(|| pick_inferred_type(arena, builtins, raw));
 
             if let Some(ty) = ty {
                 self.mappings.insert(generic, ty);

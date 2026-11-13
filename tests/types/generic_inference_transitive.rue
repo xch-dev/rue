@@ -12,6 +12,10 @@ fn map_reversed<A, B>(value: A, function: fn(a: A) -> B) -> B {
     function(value)
 }
 
+fn map_flipped<B, A>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
 fn chain<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C, value: A) -> C {
     second(first(value))
 }
@@ -30,6 +34,11 @@ test fn map_identity_reversed() -> Int {
     result + 1
 }
 
+test fn generics_declared_out_of_order() -> Int {
+    let result = map_flipped(identity, 42);
+    result + 1
+}
+
 test fn chain_of_three() -> Int {
     let result = chain(identity, identity, 42);
     result + 1
@@ -38,6 +47,33 @@ test fn chain_of_three() -> Int {
 test fn cycle_between_generics() -> Int {
     let result = cycle(identity, identity, 42);
     result + 1
+}
+
+fn increment(value: Int) -> Int {
+    value + 1
+}
+
+fn cycle_bounded<A, B>(
+    forward: fn(a: A) -> B,
+    _backward: fn(b: B) -> A,
+    _bound: fn(b: B) -> Int,
+) -> fn(a: A) -> B {
+    forward
+}
+
+fn pure_cycle<A, B>(forward: fn(a: A) -> B, _backward: fn(b: B) -> A) -> fn(a: A) -> B {
+    forward
+}
+
+test fn cycle_resolved_through_other_generic() -> Int {
+    // Only `B` has a bound of its own, and `A` is resolved through it
+    let function = cycle_bounded(identity, identity, increment);
+    function(42) + 1
+}
+
+test fn cycle_resolved_from_expected_type() -> Int {
+    let function: fn(a: Int) -> Int = pure_cycle(identity, identity);
+    function(42) + 1
 }
 
 fn compose<A, B>(function: fn(a: A) -> B) -> fn(a: A) -> B {

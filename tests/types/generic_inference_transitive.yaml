@@ -13,6 +13,13 @@ tests:
   runtime_cost: 955
   byte_cost: 252000
   total_cost: 252955
+- name: generics_declared_out_of_order
+  program: (+ (a (q . 2) (q 42)) (q . 1))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42))) 1)) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  output: '43'
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
 - name: chain_of_three
   program: (a (q 16 (a 2 (c (a 2 (q 42)) ())) (q . 1)) (c (q . 2) ()))
   debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42)))) 1)) (c (c (q . 2) (q 2 5 (c (a 2 (c 7 ())) ()))) ()))
@@ -23,6 +30,20 @@ tests:
 - name: cycle_between_generics
   program: (a (q 16 (a 2 (q 42)) (q . 1)) (c (q . 2) ()))
   debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 42) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1)) (c (c (q . 2) (q 2 2 (c 5 ()))) ()))
+  output: '43'
+  runtime_cost: 1209
+  byte_cost: 420000
+  total_cost: 421209
+- name: cycle_resolved_through_other_generic
+  program: (a (q 16 (a 2 (q 42)) (q . 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 (q 16 (a 2 (c (q . 42) ())) (q . 1)) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ())))))) 1)) (c (c (q . 2) (c (q 16 2 (q . 1)) (q . 2))) ()))
+  output: '43'
+  runtime_cost: 1209
+  byte_cost: 420000
+  total_cost: 421209
+- name: cycle_resolved_from_expected_type
+  program: (a (q 16 (a 2 (q 42)) (q . 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 (q 16 (a 2 (c (q . 42) ())) (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (q . 2)) ()))
   output: '43'
   runtime_cost: 1209
   byte_cost: 420000
