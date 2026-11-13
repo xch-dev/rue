@@ -18,7 +18,7 @@
 //! ```
 
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 use std::fs;
 use std::mem;
@@ -27,7 +27,7 @@ use std::panic::{self, AssertUnwindSafe, PanicHookInfo};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, ThreadId};
 
 use tower_lsp::lsp_types::{
     CompletionParams, GotoDefinitionParams, HoverParams, PartialResultParams, Position,
@@ -36,6 +36,7 @@ use tower_lsp::lsp_types::{
 };
 
 use super::TestProject;
+use crate::{Task, lock};
 
 const MANIFEST: &str = "[compiler]\nentrypoint = \"main.rue\"\n";
 
@@ -254,6 +255,7 @@ struct Sweep {
 impl Sweep {
     fn new(progress: bool) -> Self {
         let project = TestProject::with_manifest(Some(MANIFEST), &[("main.rue", "")]);
+        register_worker(&project);
         let uri = project.uri("main.rue");
 
         Self {
@@ -324,7 +326,8 @@ impl Sweep {
     /// Recompiles the project with the given text, and returns whether it succeeded.
     fn compile(&mut self, name: &str, edit: &str, text: &str, position: Position) -> bool {
         let backend = self.project.backend();
-        let result = catch(|| backend.on_change_impl(&self.uri, Some(text.to_string())));
+        let result = catch(|| backend.on_change_impl(&self.uri, Some(text.to_string())))
+            .and_then(|diagnostics| self.project.worker_panic().map_or(Ok(diagnostics), Err));
 
         match result {
             Ok(diagnostics) => {
@@ -348,7 +351,10 @@ impl Sweep {
             );
             let project = &self.project;
 
-            if let Err(message) = catch(|| request.send(project, document)) {
+            let result = catch(|| request.send(project, document))
+                .and_then(|()| project.worker_panic().map_or(Ok(()), Err));
+
+            if let Err(message) = result {
                 self.fail(name, edit, request.name(), message, position);
 
                 // The server was started again, so the text needs to be compiled again
@@ -367,7 +373,9 @@ impl Sweep {
         message: String,
         position: Position,
     ) {
-        // A panic while a lock is held poisons it, so the server is started again
+        // The server survives panics, but it's started again so that later inputs don't depend
+        // on the state the panic left behind (and in case the panic stopped its worker)
+        unregister_worker(&self.project);
         *self = Self {
             failures: mem::take(&mut self.failures),
             ..Self::new(self.progress)
@@ -453,8 +461,34 @@ thread_local! {
 /// Only one sweep swaps the panic hook at a time, so that each restores the right one.
 static HOOK_LOCK: Mutex<()> = Mutex::new(());
 
-/// Records panics caught by [`catch`] instead of printing them, while other panics (such as those
-/// of other tests running in parallel) are printed as usual. The previous hook is restored when
+/// The panics (with their location) on the worker thread of each language server the sweep
+/// started. The worker catches most of its panics and only logs them, and a panic it doesn't catch
+/// stops it without a trace, so the sweep's own [`catch`] never sees either. The panic hook records
+/// them here instead, for the threads registered by [`register_worker`].
+static WORKER_PANICS: Mutex<Option<HashMap<ThreadId, Vec<String>>>> = Mutex::new(None);
+
+fn worker_panics() -> std::sync::MutexGuard<'static, Option<HashMap<ThreadId, Vec<String>>>> {
+    WORKER_PANICS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Records the panics on a language server's worker thread instead of printing them.
+fn register_worker(project: &TestProject) {
+    worker_panics()
+        .get_or_insert_default()
+        .insert(project.backend().worker.thread, Vec::new());
+}
+
+fn unregister_worker(project: &TestProject) {
+    if let Some(panics) = worker_panics().as_mut() {
+        panics.remove(&project.backend().worker.thread);
+    }
+}
+
+/// Records panics caught by [`catch`] and panics on the server's own threads instead of printing
+/// them, while other panics (such as those of other tests running in parallel) are printed as
+/// usual. The previous hook is restored when
 /// this is dropped.
 struct QuietPanics {
     previous: Arc<PanicHook>,
@@ -470,7 +504,12 @@ impl QuietPanics {
         let fallback = previous.clone();
 
         panic::set_hook(Box::new(move |info| {
-            if QUIET.get() {
+            let id = thread::current().id();
+            let on_worker = worker_panics()
+                .as_ref()
+                .is_some_and(|panics| panics.contains_key(&id));
+
+            if QUIET.get() || on_worker {
                 let message = info
                     .payload()
                     .downcast_ref::<&str>()
@@ -481,7 +520,15 @@ impl QuietPanics {
                     .location()
                     .map_or_else(String::new, |location| format!(" at {location}"));
 
-                LAST_PANIC.set(Some(format!("{message}{location}")));
+                let located = format!("{message}{location}");
+
+                if on_worker {
+                    if let Some(panics) = worker_panics().as_mut().and_then(|p| p.get_mut(&id)) {
+                        panics.push(located);
+                    }
+                } else {
+                    LAST_PANIC.set(Some(located));
+                }
             } else {
                 fallback(info);
             }
@@ -533,4 +580,70 @@ fn crash_sweep_records_panics() {
 
     assert!(message.starts_with("boom 1 at "), "{message}");
     assert!(message.contains("sweep.rs"), "{message}");
+}
+
+impl TestProject {
+    /// The first panic on the language server's worker thread since this was last called,
+    /// whether the worker caught it or not.
+    fn worker_panic(&self) -> Option<String> {
+        let panics = worker_panics()
+            .as_mut()?
+            .get_mut(&self.backend().worker.thread)
+            .map(mem::take)?;
+
+        panics.into_iter().next()
+    }
+}
+
+/// The server catches panics on its own thread and only logs them (or, in some places, ignores
+/// them), so the sweep has to find them there, or it would pass however much the server panics.
+#[test]
+fn crash_sweep_finds_worker_panics() {
+    let quiet = QuietPanics::install();
+
+    let mut sweep = Sweep::new(false);
+    let position = Position::new(0, 3);
+    let text = "fn main() -> Int {\n    42\n}\n";
+
+    for task in [Task::Compile, Task::Hover] {
+        *lock(&sweep.project.backend().shared.injected_panic) = Some(task);
+
+        if sweep.compile("main.rue", "original", text, position) {
+            sweep.requests("main.rue", "original", text, position);
+        }
+    }
+
+    // A panic the worker catches without logging it is found too
+    let project = &sweep.project;
+    let result = project
+        .backend()
+        .worker
+        .run(None, |_| -> () { panic!("swallowed panic") })
+        .blocking_recv()
+        .unwrap();
+    assert!(result.is_err());
+    let swallowed = project.worker_panic();
+    assert_eq!(project.worker_panic(), None);
+
+    drop(quiet);
+
+    let swallowed = swallowed.unwrap();
+    assert!(swallowed.starts_with("swallowed panic at "), "{swallowed}");
+    assert!(swallowed.contains("sweep.rs"), "{swallowed}");
+
+    let failures = sweep
+        .failures
+        .iter()
+        .map(|((_, request, message), _)| format!("{request}: {message}"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(failures.len(), 2, "{failures:?}");
+    assert!(
+        failures[0].starts_with("compile: injected panic at "),
+        "{failures:?}"
+    );
+    assert!(
+        failures[1].starts_with("hover: injected panic at "),
+        "{failures:?}"
+    );
 }

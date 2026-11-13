@@ -286,18 +286,30 @@ enum Job {
 #[derive(Debug)]
 pub struct Worker {
     jobs: mpsc::Sender<Job>,
+    /// The worker thread, so that tests can tell which panics happened on it.
+    #[cfg(test)]
+    pub thread: thread::ThreadId,
 }
 
 impl Worker {
     pub fn new(shared: Arc<Shared>) -> Self {
         let (sender, receiver) = mpsc::channel();
 
-        thread::Builder::new()
+        let handle = thread::Builder::new()
             .name("rue-compiler".to_string())
             .spawn(move || State::new(shared).run(&receiver))
             .expect("failed to start the compiler thread");
 
-        Self { jobs: sender }
+        #[cfg(test)]
+        let thread = handle.thread().id();
+
+        drop(handle);
+
+        Self {
+            jobs: sender,
+            #[cfg(test)]
+            thread,
+        }
     }
 
     fn send(&self, job: Job) {
