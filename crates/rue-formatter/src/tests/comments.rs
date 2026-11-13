@@ -408,3 +408,27 @@ fn comments_followed_by_a_blank_line_stay_after_the_previous_item() {
         "#]],
     );
 }
+
+#[test]
+fn comments_after_a_trailing_comment_keep_one_blank_line_before_them() {
+    // Found by the property tests: a second format added another blank line before `// doc`
+    check(
+        "fn f() {} // trailing\n// doc\nfn g() {}\nfn h() {} /* trailing */\n\n/* doc */\nfn i() {}\nconst A: Int = 1; // trailing\n\n// doc\nconst B: Int = 2;",
+        expect![[r#"
+            fn f() {} // trailing
+
+            // doc
+            fn g() {}
+
+            fn h() {} /* trailing */
+
+            /* doc */
+            fn i() {}
+
+            const A: Int = 1; // trailing
+
+            // doc
+            const B: Int = 2;
+        "#]],
+    );
+}

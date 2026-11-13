@@ -19,12 +19,15 @@ enum Separator {
 }
 
 impl Separator {
+    /// The separator that's still needed after the comments in `gap`, which end with a line break
+    /// or a blank line of their own.
     fn after(self, gap: &Gap) -> Self {
         if !gap.ends_line() {
             return self;
         }
         match self {
-            Self::Empty => Self::Hard,
+            // A gap whose comments are followed by a blank line already provides it
+            Self::Empty if gap.newlines <= 1 => Self::Hard,
             _ => Self::None,
         }
     }
