@@ -18,6 +18,10 @@ pub const CLVM_FLAGS: ClvmFlags = MEMPOOL_MODE
     .union(ClvmFlags::ENABLE_KECCAK_OPS_OUTSIDE_GUARD)
     .difference(ClvmFlags::DISABLE_OP);
 
+/// The cost charged for each byte of a serialized program. This is `cost_per_byte` in Chia's
+/// mainnet consensus constants, which aren't available from `clvmr` itself.
+pub const COST_PER_BYTE: u64 = 12_000;
+
 #[derive(Debug, Clone)]
 pub struct PrintMessage {
     pub srcloc: String,

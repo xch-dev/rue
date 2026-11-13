@@ -60,11 +60,12 @@ Work on a `rigidity/` branch (lowercase; never `Rigidity/`), unless you're conti
 Before each review round, including the first, regenerate every snapshot so reviewers see the real diff, including changes to unrelated tests:
 
 ```bash
-cargo run -p rue-tests --release
+cargo run -p rue-tests --release -- --bless
 git status --short
+cargo run -p rue-tests --release
 ```
 
-This rewrites the `.yaml` snapshots under `tests/` and `examples/` and `std_tests.yaml`, and reformats `.rue` files in `tests/`, `examples/` and `crates/rue-compiler/src/std/`. It exits 1 whenever it changed anything ("Test failed, updated yaml file" or "Formatting differed, updated <path>"), including the first run of a new test; run it again, and it should exit 0. Read each changed snapshot: a new diagnostic in an unrelated test, a changed `program:`, `output:` or cost line, or a vanished diagnostic usually means a regression. Fix unintended changes before the round starts; record intended changes to unrelated tests under Decisions, so reviewers don't flag them again. Commit snapshots with the change that caused them.
+With `--bless`, this rewrites the `.yaml` snapshots under `tests/` and `examples/` and `std_tests.yaml`, and reformats `.rue` files in `tests/`, `examples/` and `crates/rue-compiler/src/std/`. It exits 1 whenever it changed anything ("Updated <path>:" followed by the fields that changed, or "Formatting differed, updated <path>"), including the first run of a new test. The second command, without `--bless`, only checks: it prints each difference ("Snapshot differs for <path>:", "Formatting differs for <path>") and exits 1 if there are any, without changing files, so it should now exit 0. Read each changed snapshot: a new diagnostic in an unrelated test, a changed `program:`, `output:` or cost line, or a vanished diagnostic usually means a regression. Fix unintended changes before the round starts; record intended changes to unrelated tests under Decisions, so reviewers don't flag them again. Commit snapshots with the change that caused them.
 
 Commit before the first review round, so each round's fixes are a separate diff.
 
@@ -93,7 +94,7 @@ Reviewers are sometimes confidently wrong. Before acting on a finding, check it:
 
 Mark each finding in the review log as **confirmed**, **rejected** (with the evidence), or **deferred** (real but out of scope, with where it's recorded), and add rejected ones to the Brief's Previously rejected list and deferred ones to Out of scope (with where they're recorded), so later rounds don't raise them again. Fix every confirmed blocker and major finding, and minor ones when they're cheap. Each confirmed correctness finding gets a regression test. Nits are optional.
 
-Then run the quick checks for what you touched (`cargo test -p <crate>`, and `cargo run -p rue-tests --release -- <filter>` while iterating), regenerate every snapshot as in section 2, update the Brief, and commit (section 7).
+Then run the quick checks for what you touched (`cargo test -p <crate>`, and `cargo run -p rue-tests --release -- <filter>` while iterating, which checks the matching tests without changing them), regenerate every snapshot as in section 2, update the Brief, and commit (section 7).
 
 ## 5. When to stop
 
@@ -113,12 +114,13 @@ cargo clippy --all-features --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo run --quiet --package rue-cli -- fmt 'examples/**/*.rue' 'tests/**/*.rue' 'crates/rue-compiler/src/std/**/*.rue' --check
 cargo machete
-cargo run -p rue-tests --release; git status --short   # as in section 2; exits 1 if it rewrote anything
+cargo run -p rue-tests --release -- --bless; git status --short   # as in section 2; exits 1 if it rewrote anything
+cargo run -p rue-tests --release   # checks without writing; exits 1 if anything still differs
 cargo nextest run --all-features --workspace   # if `cargo nextest --version` works; otherwise cargo test --all-features --workspace
 ```
 
 - A bare `rue fmt --check` fails with "No project found"; use the globbed form.
-- The test suite includes `rue-tests`' own unit test, which compares snapshots without updating them, so it fails if they weren't regenerated.
+- The test suite includes `rue-tests`' own unit test, which compares snapshots without updating them (like running `rue-tests` without `--bless`), so it fails if they weren't regenerated.
 - `cargo clippy --package rue-wasm --target wasm32-unknown-unknown --all-targets` if you changed `wasm/` or an API it uses (`rue-compiler`, `rue-diagnostic`).
 - CI also runs `cargo ws publish --publish-as-is --allow-dirty --dry-run` (run it if you changed a `Cargo.toml`) and the `wasm/` and `playground/` pnpm builds (if you changed `wasm/`). Say in the report which of these you didn't run.
 - If these checks led to changes beyond formatting, say so in the report, since no reviewer saw them.
