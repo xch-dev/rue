@@ -506,14 +506,13 @@ impl<'a> Formatter<'a> {
             ));
         }
         docs.push(self.gap_doc_with_final_line(&plan.closing, Separator::None, false));
-        // The line after a comment that ends a line is left out above, so that it can be emitted
-        // here outside the indentation, but it's still needed when the group would otherwise fit
-        // on one line
-        let closing_line = if plan.closing.ends_line()
-            || plan
-                .items
-                .last()
-                .is_some_and(|item| item.trailing.ends_line())
+        // The line after a comment that ends the last item's line is left out above, so that it's
+        // emitted here outside the indentation, but it's still needed when the group would
+        // otherwise fit on one line
+        let closing_line = if plan
+            .items
+            .last()
+            .is_some_and(|item| item.trailing.ends_line())
         {
             Doc::hard_line()
         } else {

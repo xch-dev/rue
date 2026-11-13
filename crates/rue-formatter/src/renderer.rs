@@ -203,13 +203,11 @@ fn fits(
                 space_when_flat,
                 ..
             } => {
-                // `render` only keeps a fill flat if its separator fits, even at the end of a line
-                let width = pending_spaces + usize::from(*space_when_flat);
-                if width > remaining {
+                let separator_width = usize::from(*space_when_flat);
+                if separator_width > remaining {
                     return false;
                 }
-                remaining -= width;
-                pending_spaces = 0;
+                remaining -= separator_width;
                 commands.push(Command {
                     indent: command.indent,
                     mode: command.mode,
