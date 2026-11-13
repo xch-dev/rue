@@ -219,6 +219,9 @@ pub fn path_to_uri(path: &Path) -> Option<Uri> {
     let uri = {
         use std::os::unix::ffi::OsStrExt;
 
+        // Like `url`, `.` components and repeated separators are left out
+        let path = path.components().collect::<PathBuf>();
+
         format!(
             "file://{}",
             encode(path.as_os_str().as_bytes(), is_path_char, false)
@@ -426,6 +429,7 @@ mod tests {
             uri("/home/файл.rue"),
             Some("file:///home/%D1%84%D0%B0%D0%B9%D0%BB.rue".to_string())
         );
+        assert_eq!(uri("/a/./b//c.rue"), Some("file:///a/b/c.rue".to_string()));
         assert_eq!(uri("relative.rue"), None);
     }
 
@@ -494,6 +498,7 @@ mod tests {
                     { "uri": "file:///a/%5B.rue" },
                     { "uri": "file://[::1]/a.rue" },
                     { "uri": "file:///a/100%/%41%4.rue" },
+                    { "uri": "file:///a b/файл.rue?q#f" },
                 ],
             }))
             .finish();
@@ -508,6 +513,7 @@ mod tests {
                     { "uri": "file:///a/%5B.rue" },
                     { "uri": "file://[::1]/a.rue" },
                     { "uri": "file:///a/100%25/%41%254.rue" },
+                    { "uri": "file:///a%20b/%D1%84%D0%B0%D0%B9%D0%BB.rue?q#f" },
                 ],
             }))
         );
