@@ -43,7 +43,26 @@ fn not_other<T, U>(value: T) -> U {
     raise;
 }
 
+// Guards on a narrowed generic are checked against its structure
+fn redundant_guard<T>(value: T) -> Bool {
+    if value is Atom {
+        return value is Atom;
+    }
+
+    false
+}
+
+fn impossible_guard<T>(value: T) -> Bool {
+    if value is (Any, Any) {
+        return value is Int;
+    }
+
+    false
+}
+
 fn main() -> Int {
+    assert redundant_guard(1) && impossible_guard(1);
+
     atom_is_not_int(1)
         + pair_is_not_atom(1) as Int
         + else_is_not_atom(1) as Int

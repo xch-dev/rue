@@ -156,6 +156,24 @@ fn infer_through_alias<T>(value: T) -> T {
     raise;
 }
 
+// A narrowed value that another member of the union holds isn't used to infer the generic, if
+// something else constrains it
+fn or_default<U>(value: U | nil, default: U) -> U {
+    if value is nil {
+        return default;
+    }
+
+    value
+}
+
+fn infer_held<T>(value: T, default: Bytes32) -> Bytes32 {
+    if value is nil {
+        return or_default(value, default);
+    }
+
+    default
+}
+
 fn main() -> Int {
     atom_or_raise(5)
 }
@@ -238,6 +256,10 @@ test fn infer_from_structure_pair() -> Int {
 
 test fn infer_through_alias_atom() -> Int {
     infer_through_alias(4)
+}
+
+test fn infer_held_nil() -> Bytes32 {
+    infer_held(nil, 0x0000000000000000000000000000000000000000000000000000000000000001)
 }
 
 test fn pass_through_atom() -> Int {

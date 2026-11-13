@@ -30,7 +30,7 @@ impl Intersection {
     }
 
     /// The first member that is a generic, if there is one.
-    pub fn generic(&self, arena: &Arena<Type>) -> Option<TypeId> {
+    pub(crate) fn generic(&self, arena: &Arena<Type>) -> Option<TypeId> {
         self.types.iter().copied().find(|&id| is_generic(arena, id))
     }
 }

@@ -178,6 +178,18 @@ fn test_check_intersection() {
     let actual = check(&mut t.arena, &t.builtins, t_pair, int_pair);
     assert_eq!(actual, expected);
 
+    // It doesn't overlap a type that its structure doesn't, so the rest of a pair whose first
+    // element can't match isn't checked
+    let first_atom = t.pair(t_atom, b.int);
+    let first_pair = t.pair(int_pair, b.nil);
+    let from = t.union(vec![first_atom, first_pair]);
+    let target = t.pair(pair, b.nil);
+    let atom_first = t.pair(b.atom, b.int);
+    let structural = t.union(vec![atom_first, first_pair]);
+    let expected = check(&mut t.arena, &t.builtins, structural, target);
+    let actual = check(&mut t.arena, &t.builtins, from, target);
+    assert_eq!(actual, expected);
+
     // A pair is never an atom
     let impossible = check(&mut t.arena, &t.builtins, t_pair, b.atom);
     assert_eq!(impossible, Ok(rue_types::Check::Impossible));

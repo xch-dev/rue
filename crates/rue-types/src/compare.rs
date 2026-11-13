@@ -9,8 +9,9 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, free_generics,
-    is_generic, references_generic, step, stringify_impl, substitute,
+    AtomRestriction, AtomSemantic, BuiltinTypes, Intersection, Memo, Type, TypeId, Union,
+    free_generics, is_generic, references_generic, step, stringify_impl, substitute,
+    unwrap_semantic_without_substitution,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -984,52 +985,17 @@ pub(crate) fn compare_impl(
             ctx.candidates += 1;
             Comparison::Assign
         }
-        // A value is in an intersection if it's in every one of its members
-        (_, Type::Intersection(rhs)) => {
-            let mut result = Comparison::Assign;
-
-            for &id in &rhs.types {
-                result = max(
-                    result,
-                    compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
-                );
-            }
-
-            result
-        }
-        // Every value of an intersection is in each of its members, so it's assignable to
-        // anything one of them is. Like a generic, it's first compared to each member of a union
-        // as a whole, so that `T & Atom` is assignable to `T | nil`, and is inferred as is.
-        (Type::Intersection(lhs_intersection), _) => {
-            let mut result = Comparison::Invalid;
-
-            for id in union_members(arena, rhs) {
-                result = min(
-                    result,
-                    compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
-                );
-            }
-
-            // The structure is compared before the generics, and they're only compared until one
-            // is assignable. Otherwise a generic would fall back to `Any`, and add it as an
-            // inference candidate even though the structure was enough.
-            let (generics, structure): (Vec<TypeId>, Vec<TypeId>) = lhs_intersection
-                .types
-                .iter()
-                .partition(|&&id| is_generic(arena, id));
-
-            for id in structure.into_iter().chain(generics) {
-                if result == Comparison::Assign {
-                    break;
-                }
-
-                result = min(
-                    result,
-                    compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
-                );
-            }
-
-            result
+        (_, Type::Intersection(rhs_intersection)) => compare_to_intersection(
+            arena,
+            builtins,
+            ctx,
+            lhs,
+            &rhs_intersection,
+            lhs_semantic,
+            rhs_semantic,
+        ),
+        (Type::Intersection(_), _) => {
+            compare_intersection(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
         }
         (_, Type::Generic(_)) => match arena[lhs].clone() {
             Type::Union(lhs) => {
@@ -1270,20 +1236,94 @@ pub(crate) fn compare_impl(
     result
 }
 
-/// The members of the union that the type is, or is an alias of, if any.
-fn union_members(arena: &Arena<Type>, mut id: TypeId) -> Vec<TypeId> {
-    let mut visited = HashSet::new();
+/// A value is in an intersection if it's in every one of its members. This and
+/// `compare_intersection` aren't inlined into `compare_impl`, since their locals would make every
+/// one of its (deeply recursive) frames larger.
+#[inline(never)]
+fn compare_to_intersection(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut ComparisonContext<'_>,
+    lhs: TypeId,
+    rhs: &Intersection,
+    lhs_semantic: Option<TypeId>,
+    rhs_semantic: Option<TypeId>,
+) -> Comparison {
+    let mut result = Comparison::Assign;
 
-    while visited.insert(id) {
-        match &arena[id] {
-            Type::Ref(inner) => id = *inner,
-            Type::Alias(alias) => id = alias.inner,
-            Type::Union(union) => return union.types.clone(),
-            _ => break,
-        }
+    for &id in &rhs.types {
+        result = max(
+            result,
+            compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
+        );
     }
 
-    Vec::new()
+    result
+}
+
+/// Every value of an intersection is in each of its members, so it's assignable to anything one
+/// of them is. Like a generic, it's first compared to each member of a union as a whole, so that
+/// `T & Atom` is assignable to `T | nil`, and is inferred as is.
+#[inline(never)]
+fn compare_intersection(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut ComparisonContext<'_>,
+    lhs: TypeId,
+    rhs: TypeId,
+    lhs_semantic: Option<TypeId>,
+    rhs_semantic: Option<TypeId>,
+) -> Comparison {
+    let Type::Intersection(intersection) = &arena[lhs] else {
+        unreachable!();
+    };
+
+    let mut result = Comparison::Invalid;
+
+    if let Type::Union(rhs_union) = &arena[unwrap_semantic_without_substitution(arena, rhs, true)] {
+        // As in the comparison to a union, a value that another member already holds is only
+        // collected as a last resort for the generics being inferred
+        let holding = ctx.holding;
+
+        ctx.holding |= ctx.is_inferring()
+            && rhs_union.types.iter().any(|&id| {
+                holds_without_inference(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic)
+            });
+
+        for &id in &rhs_union.types {
+            result = min(
+                result,
+                compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
+            );
+        }
+
+        ctx.holding = holding;
+    }
+
+    // The structure is compared before the generics, and they're only compared until one is
+    // assignable. Otherwise a generic would fall back to `Any`, and add it as an inference
+    // candidate even though the structure was enough.
+    let structure = intersection
+        .types
+        .iter()
+        .filter(|&&id| !is_generic(arena, id));
+    let generics = intersection
+        .types
+        .iter()
+        .filter(|&&id| is_generic(arena, id));
+
+    for &id in structure.chain(generics) {
+        if result == Comparison::Assign {
+            break;
+        }
+
+        result = min(
+            result,
+            compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
+        );
+    }
+
+    result
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -141,6 +141,13 @@ tests:
   runtime_cost: 1850
   byte_cost: 1572000
   total_cost: 1573850
+- name: infer_held_nil
+  program: (a (q 2 4 (c 6 (q () . 0x0000000000000000000000000000000000000000000000000000000000000001))) (c (c (q 2 (i (a (i (l 5) (q) (q 2 (i 5 (q) (q 1 . 1)) 1)) 1) (q 2 2 3) (q . 7)) 1) (q 2 (i (a (i (l 2) (q) (q 2 (i 2 (q) (q 1 . 1)) 1)) 1) (q . 3) (q . 2)) 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (c () (q . 0x0000000000000000000000000000000000000000000000000000000000000001)))) (c (c (q 2 (i (a (i (not (l 5)) (q 2 (i (= 5 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 2 2 (c 5 7)) (q . 7)) 1) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1)) ()))
+  output: '0x0000000000000000000000000000000000000000000000000000000000000001'
+  runtime_cost: 2332
+  byte_cost: 2388000
+  total_cost: 2390332
 - name: pass_through_atom
   program: (a (q 2 2 (q . 3)) (c (q 2 (i (l 1) (q 8) (q . 1)) 1) ()))
   debug_program: (a (q 2 4 (c 6 (q . 3))) (c (c (q 2 (i (not (l 3)) (q 2 2 3) (q 8 (q . "raise called at generic_intersection.rue:127:5"))) 1) (q . 1)) ()))

@@ -172,7 +172,9 @@ fn intersect_structure(
         // structure of the result (such as `T & Bool` rather than `T & true | T & false`)
         (Type::Generic(_) | Type::Intersection(_), _)
         | (_, Type::Generic(_) | Type::Intersection(_)) => {
-            intersect_generics(arena, builtins, ctx, lhs, rhs)
+            let mut members = intersection_members(arena, lhs);
+            members.extend(intersection_members(arena, rhs));
+            intersect_members(arena, builtins, ctx, members)
         }
         (Type::Alias(alias), _) => intersect_impl(arena, builtins, ctx, alias.inner, rhs),
         (_, Type::Alias(alias)) => intersect_impl(arena, builtins, ctx, lhs, alias.inner),
@@ -245,23 +247,19 @@ fn intersect_structure(
     }
 }
 
-/// Intersects two types where at least one is a generic or an intersection with one. Nothing is
-/// known about the values of a generic, so it can't be narrowed itself. Instead, the result is an
+/// Intersects the members of an intersection, where at least one is a generic. Nothing is known
+/// about the values of a generic, so it can't be narrowed itself. Instead, the result is an
 /// intersection of the generics with the intersection of everything else (the structure).
-fn intersect_generics(
+fn intersect_members(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
     ctx: &mut IntersectContext,
-    lhs: TypeId,
-    rhs: TypeId,
+    members: Vec<TypeId>,
 ) -> TypeId {
     let mut generics = Vec::new();
     let mut structure = None;
 
-    for member in intersection_members(arena, lhs)
-        .into_iter()
-        .chain(intersection_members(arena, rhs))
-    {
+    for member in members {
         if is_generic(arena, member) {
             let generic = resolve_refs(arena, member);
 
@@ -331,7 +329,7 @@ fn normalize_intersection(
         return id;
     }
 
-    intersect_generics(arena, builtins, ctx, id, builtins.permissive_any)
+    intersect_members(arena, builtins, ctx, members)
 }
 
 /// Rebuilds a union from the intersection of each of its variants, dropping the ones which were
