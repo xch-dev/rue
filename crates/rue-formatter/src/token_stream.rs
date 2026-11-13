@@ -212,12 +212,6 @@ impl TokenStream {
             .map(|(index, token)| (TokenId(index), token))
     }
 
-    pub fn tokens_in(&self, span: TokenSpan) -> &[Token] {
-        self.tokens
-            .get(span.start().index()..span.end().index())
-            .expect("TokenSpan was validated by this token stream")
-    }
-
     pub fn gap_before(&self, id: TokenId) -> &Gap {
         self.gap(TokenBoundary(id.index()))
     }

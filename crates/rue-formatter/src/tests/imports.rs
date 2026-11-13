@@ -242,6 +242,20 @@ fn deeply_nested_import_groups_sort_recursively() {
 }
 
 #[test]
+fn imports_are_sorted_by_their_sorted_groups() {
+    // Found by the property tests: imports were sorted by their source text, so `o::{s, n}` went
+    // after `o::{p}`, and then before it once its group was sorted
+    check(
+        "import o::{s, n};\nimport o::{p};\nimport x::{y::{z, a}, y::{m}};",
+        expect![[r#"
+            import o::{n, s};
+            import o::{p};
+            import x::{y::{a, z}, y::{m}};
+        "#]],
+    );
+}
+
+#[test]
 fn duplicate_import_paths_keep_distinct_comment_owners() {
     check(
         "// first\nimport same::item;\n// second\nimport same::item;",
