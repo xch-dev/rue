@@ -801,7 +801,7 @@ fn comment_separator(comment: &Comment, requested: Separator, ignore_trailing: b
         return Doc::empty_line();
     }
     if comment.newlines_before > 0
-        || (comment.multiline && comment.placement != CommentPlacement::Leading)
+        || (comment.multiline && comment.placement == CommentPlacement::Trailing)
     {
         return Doc::hard_line();
     }
