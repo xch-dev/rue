@@ -357,13 +357,16 @@ fn long_chains_of_calls_are_followed() {
     });
 }
 
-/// The search for unconditional recursion follows the whole chain of bindings.
+/// The search for unconditional recursion follows the whole chain of bindings. It used little stack
+/// for each binding when it recursed, so the chain is longer than the others.
 #[test]
 fn long_chains_of_bindings_are_followed() {
+    const LINKS: usize = LONG_CHAIN * 10;
+
     on_stack(2, || {
         let source = format!(
-            "fn main() -> Int {{ f(1) }}\n\nfn f(a: Int) -> Int {{\nlet x0 = f(a);\n{}x{LONG_CHAIN}\n}}",
-            links(LONG_CHAIN, |i| format!("let x{} = x{i};\n", i + 1))
+            "fn main() -> Int {{ f(1) }}\n\nfn f(a: Int) -> Int {{\nlet x0 = f(a);\n{}x{LINKS}\n}}",
+            links(LINKS, |i| format!("let x{} = x{i};\n", i + 1))
         );
 
         let (mut ctx, ..) = compile_tree(&source);
