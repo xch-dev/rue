@@ -137,6 +137,10 @@ pub struct ImportCache {
     scopes: HashMap<(ScopeId, Vec<String>), CachedPath>,
     unused_imports: IndexMap<ImportId, IndexMap<String, Name>>,
     glob_import_counts: IndexMap<ImportId, (Name, usize)>,
+    /// The private items that imports refer to, keyed by the import and the index of the name in
+    /// its path (the length of the path for the imported item, plus one for its type), so that
+    /// each is reported once however many times the import is resolved.
+    private_references: IndexMap<(ImportId, usize), (Name, DiagnosticKind)>,
 }
 
 /// The module that a path resolves to.
@@ -147,6 +151,8 @@ struct CachedPath {
     /// The declarations referenced through other imports while resolving the path, so that
     /// they're recorded for every import that uses it.
     references: Vec<(ImportId, Declaration)>,
+    /// The indices of the segments of the path that name a private module.
+    private_segments: Vec<usize>,
 }
 
 fn flatten_imports(
@@ -220,6 +226,10 @@ pub fn resolve_imports(
             }
         }
 
+        for (name, kind) in cache.private_references.values() {
+            ctx.diagnostic_name(name, kind.clone());
+        }
+
         for unused_imports in cache.unused_imports.values() {
             for name in unused_imports.values() {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
@@ -276,6 +286,7 @@ fn resolve_import(
     let mut base = None;
     let mut path_so_far = Vec::new();
     let mut path_references = Vec::new();
+    let mut private_segments = Vec::new();
 
     for i in (1..=import.path.len()).rev() {
         let subpath = import
@@ -289,6 +300,7 @@ fn resolve_import(
             base = Some(cached.scope);
             path_so_far = subpath;
             path_references.clone_from(&cached.references);
+            private_segments.clone_from(&cached.private_segments);
 
             for &(import, declaration) in &cached.references {
                 ctx.add_import_reference(import, declaration, ImportUser::Import(import_id));
@@ -311,22 +323,23 @@ fn resolve_import(
         }
     }
 
-    for name in import.path.iter().skip(path_so_far.len()) {
+    for (index, name) in import.path.iter().enumerate().skip(path_so_far.len()) {
+        // A private module is reported, but still resolved, like it is in other paths
         let symbol = if let Some(base) = base {
             let base = ctx.scope(base);
             base.symbol(name.text())
-                .filter(|s| base.is_symbol_exported(*s))
-                .map(|s| (s, base.symbol_import(s)))
+                .map(|s| (s, base.symbol_import(s), base.is_symbol_exported(s)))
         } else if import.base_scope == import_scope {
             ctx.resolve_symbol_in(import.base_scope, name.text())
+                .map(|(s, import)| (s, import, true))
         } else {
             let base = ctx.scope(import.base_scope);
             base.symbol(name.text())
                 .filter(|s| base.is_symbol_exported(*s))
-                .map(|s| (s, base.symbol_import(s)))
+                .map(|s| (s, base.symbol_import(s), true))
         };
 
-        let Some((symbol, import)) = symbol else {
+        let Some((symbol, import, exported)) = symbol else {
             if diagnostics {
                 ctx.diagnostic_name(
                     name,
@@ -369,6 +382,10 @@ fn resolve_import(
         base = Some(module.scope);
         path_so_far.push(name.text().to_string());
 
+        if !exported {
+            private_segments.push(index);
+        }
+
         if !has_super {
             cache.scopes.insert(
                 (import_scope, path_so_far.clone()),
@@ -376,9 +393,25 @@ fn resolve_import(
                     scope: module.scope,
                     symbol,
                     references: path_references.clone(),
+                    private_segments: private_segments.clone(),
                 },
             );
         }
+    }
+
+    for &index in &private_segments {
+        let name = &import.path[index];
+
+        cache.private_references.insert(
+            (import_id, index),
+            (
+                name.clone(),
+                DiagnosticKind::PrivateSymbol(
+                    name.text().to_string(),
+                    import.path[index - 1].text().to_string(),
+                ),
+            ),
+        );
     }
 
     let mut updated = false;
@@ -490,9 +523,45 @@ fn resolve_import(
 
             let (symbol, ty) = if let Some(base) = base {
                 let base = ctx.scope(base);
-                let symbol = base.symbol(name).filter(|s| base.is_symbol_exported(*s));
-                let ty = base.ty(name).filter(|t| base.is_type_exported(*t));
-                (symbol, ty)
+                let symbol = base.symbol(name);
+                let ty = base.ty(name);
+                let public_symbol = symbol.filter(|s| base.is_symbol_exported(*s));
+                let public_ty = ty.filter(|t| base.is_type_exported(*t));
+                let module = import.path.last().unwrap().text();
+                let symbol_key = (import_id, import.path.len());
+                let type_key = (import_id, import.path.len() + 1);
+
+                // Private items are reported, but still imported, like they are in other paths.
+                // If the other namespace has a public item with the name, only it's imported and
+                // nothing is reported. Symbols are declared after the first pass, so a private
+                // type imported then stays imported once a public symbol with its name appears.
+                if public_symbol.is_some() || public_ty.is_some() {
+                    cache.private_references.shift_remove(&symbol_key);
+                    cache.private_references.shift_remove(&type_key);
+                    (public_symbol, public_ty)
+                } else {
+                    if symbol.is_some() {
+                        cache.private_references.insert(
+                            symbol_key,
+                            (
+                                item.clone(),
+                                DiagnosticKind::PrivateSymbol(name.to_string(), module.to_string()),
+                            ),
+                        );
+                    }
+
+                    if ty.is_some() {
+                        cache.private_references.insert(
+                            type_key,
+                            (
+                                item.clone(),
+                                DiagnosticKind::PrivateType(name.to_string(), module.to_string()),
+                            ),
+                        );
+                    }
+
+                    (symbol, ty)
+                }
             } else {
                 let symbol = ctx
                     .resolve_symbol_in(import.base_scope, name)

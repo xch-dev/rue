@@ -52,27 +52,57 @@ fn private_items_cannot_be_imported() {
     let compiled = compile(
         "
         import inner::secret;
+        import inner::Secret;
+        export inner::{hidden};
 
         mod inner {
             fn secret() -> Int {
                 42
             }
+
+            type Secret = Int;
+            fn hidden() {}
         }
 
-        fn main() -> Int {
+        fn main() -> Secret {
             secret()
         }
         ",
     );
 
-    // The import is unresolved rather than private, and the use is then undeclared
+    // The errors are the same as for a path to the items, and the imports still resolve, so
+    // the uses aren't also reported
     assert_eq!(
         compiled.errors(),
         [
-            "2:23 UnresolvedImport(\"secret\")",
-            "11:13 UndeclaredSymbol(\"secret\")",
+            "2:23 PrivateSymbol(\"secret\", \"inner\")",
+            "3:23 PrivateType(\"Secret\", \"inner\")",
+            "4:24 PrivateSymbol(\"hidden\", \"inner\")",
         ]
     );
+    assert_eq!(compiled.symbol_origin("secret"), "inner");
+    assert_eq!(compiled.type_origin("Secret"), "inner");
+}
+
+#[test]
+fn private_items_are_not_reported_when_a_public_item_has_the_same_name() {
+    let compiled = compile(
+        "
+        import inner::Value;
+
+        mod inner {
+            type Value = Int;
+            export const Value: Int = 1;
+        }
+
+        fn main() -> Int {
+            Value
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("Value"), "inner");
 }
 
 #[test]
@@ -102,28 +132,38 @@ fn items_cannot_be_imported_through_a_private_module() {
     let compiled = compile(
         "
         import outer::hidden::VALUE;
+        import outer::hidden::OTHER;
+        import outer::hidden::deeper::*;
 
         mod outer {
             mod hidden {
                 export const VALUE: Int = 1;
+                export const OTHER: Int = 2;
+
+                export mod deeper {
+                    export const DEEP: Int = 3;
+                }
             }
         }
 
         fn main() -> Int {
-            VALUE
+            VALUE + OTHER + DEEP
         }
         ",
     );
 
-    // A private module in the path is reported as undeclared, like a missing module, rather
-    // than as private (compare `PrivateSymbol` for the same path outside of an import)
+    // Each import through the private module is reported, including those that share the
+    // resolved path, and the imports still resolve
     assert_eq!(
         compiled.errors(),
         [
-            "2:23 UndeclaredSymbol(\"hidden\")",
-            "11:13 UndeclaredSymbol(\"VALUE\")",
+            "2:23 PrivateSymbol(\"hidden\", \"outer\")",
+            "3:23 PrivateSymbol(\"hidden\", \"outer\")",
+            "4:23 PrivateSymbol(\"hidden\", \"outer\")",
         ]
     );
+    assert_eq!(compiled.symbol_origin("VALUE"), "outer::hidden");
+    assert_eq!(compiled.symbol_origin("DEEP"), "outer::hidden::deeper");
 }
 
 #[test]
