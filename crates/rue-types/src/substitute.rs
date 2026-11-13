@@ -5,7 +5,8 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, FunctionParameter, FunctionType, Pair, Struct, Type, TypeId, Union, step, stringify_impl,
+    Alias, FunctionParameter, FunctionType, Pair, Struct, Type, TypeId, Union, grow_stack, step,
+    stringify_impl,
 };
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
@@ -112,6 +113,16 @@ impl SubstitutionContext {
 }
 
 fn substitute_impl(
+    arena: &mut Arena<Type>,
+    old_id: TypeId,
+    map: &HashMap<TypeId, TypeId>,
+    scope: usize,
+    ctx: &mut SubstitutionContext,
+) -> TypeId {
+    grow_stack(|| substitute_impl_inner(arena, old_id, map, scope, ctx))
+}
+
+fn substitute_impl_inner(
     arena: &mut Arena<Type>,
     old_id: TypeId,
     map: &HashMap<TypeId, TypeId>,
@@ -279,6 +290,16 @@ fn substitute_impl(
 /// through keeps its binding, and any other argument is substituted with only the mappings of the
 /// generics it refers to.
 fn substitute_argument(
+    arena: &mut Arena<Type>,
+    arg: TypeId,
+    map: &HashMap<TypeId, TypeId>,
+    scope: usize,
+    ctx: &mut SubstitutionContext,
+) -> (Binding, TypeId) {
+    grow_stack(|| substitute_argument_inner(arena, arg, map, scope, ctx))
+}
+
+fn substitute_argument_inner(
     arena: &mut Arena<Type>,
     arg: TypeId,
     map: &HashMap<TypeId, TypeId>,

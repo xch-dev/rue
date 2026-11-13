@@ -283,63 +283,46 @@ fn signature_types(db: &Database, declaration: Declaration) -> Vec<TypeId> {
     }
 }
 
-/// Adds the names of the structs and aliases that the type is or contains.
+/// Adds the names of the structs and aliases that the type is or contains. The type is walked
+/// from a worklist rather than recursively, since it can be nested as deeply as a list literal is
+/// long.
 fn reached_names(
     db: &Database,
     ty: TypeId,
     reached: &mut HashSet<NameKey>,
     visited: &mut HashSet<TypeId>,
 ) {
-    if !visited.insert(ty) {
-        return;
-    }
+    let mut pending = vec![ty];
 
-    let mut walk = |ty: TypeId, reached: &mut HashSet<NameKey>| {
-        reached_names(db, ty, reached, visited);
-    };
+    while let Some(ty) = pending.pop() {
+        if !visited.insert(ty) {
+            continue;
+        }
 
-    match db.ty(ty) {
-        Type::Struct(ty) => {
-            reached.extend(ty.name.as_ref().and_then(name_key));
-            walk(ty.inner, reached);
-
-            for &generic in &ty.generics {
-                walk(generic, reached);
+        match db.ty(ty) {
+            Type::Struct(ty) => {
+                reached.extend(ty.name.as_ref().and_then(name_key));
+                pending.push(ty.inner);
+                pending.extend(&ty.generics);
             }
-        }
-        Type::Alias(alias) => {
-            reached.extend(alias.name.as_ref().and_then(name_key));
-            walk(alias.inner, reached);
-
-            for &generic in &alias.generics {
-                walk(generic, reached);
+            Type::Alias(alias) => {
+                reached.extend(alias.name.as_ref().and_then(name_key));
+                pending.push(alias.inner);
+                pending.extend(&alias.generics);
             }
-        }
-        Type::Ref(inner) => walk(*inner, reached),
-        Type::Pair(pair) => {
-            walk(pair.first, reached);
-            walk(pair.rest, reached);
-        }
-        Type::Union(union) => {
-            for &ty in &union.types {
-                walk(ty, reached);
+            Type::Ref(inner) => pending.push(*inner),
+            Type::Pair(pair) => pending.extend([pair.first, pair.rest]),
+            Type::Union(union) => pending.extend(&union.types),
+            Type::Apply(apply) => {
+                pending.push(apply.inner);
+                pending.extend(apply.generics.values());
             }
-        }
-        Type::Apply(apply) => {
-            walk(apply.inner, reached);
-
-            for &generic in apply.generics.values() {
-                walk(generic, reached);
+            Type::Function(function) => {
+                pending.push(function.ret);
+                pending.extend(function.param_types());
             }
+            Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
         }
-        Type::Function(function) => {
-            walk(function.ret, reached);
-
-            for ty in function.param_types() {
-                walk(ty, reached);
-            }
-        }
-        Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
     }
 }
 

@@ -3,8 +3,8 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, BuiltinTypes, Comparison, Type, TypeId, Union, compare, reaches_non_contractive_cycle,
-    step, stringify_impl, substitute,
+    Alias, BuiltinTypes, Comparison, Type, TypeId, Union, compare, grow_stack,
+    reaches_non_contractive_cycle, step, stringify_impl, substitute,
 };
 
 pub fn subtract(
@@ -59,6 +59,14 @@ fn subtract_impl(
 }
 
 fn repackage(arena: &mut Arena<Type>, builtins: &BuiltinTypes, variants: Vec<Variant>) -> TypeId {
+    grow_stack(|| repackage_inner(arena, builtins, variants))
+}
+
+fn repackage_inner(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    variants: Vec<Variant>,
+) -> TypeId {
     let mut collected = vec![];
     let mut semantic_type_id = None;
     let mut leftover = vec![];

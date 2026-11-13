@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use id_arena::Arena;
 
-use crate::{Alias, Struct, Type, TypeId, free_generics, resolve_refs};
+use crate::{Alias, Struct, Type, TypeId, free_generics, grow_stack, resolve_refs};
 
 /// Returns `true` if the type is part of a cycle of type declarations that, once expanded, has
 /// infinitely many distinct generic arguments.
@@ -69,6 +69,16 @@ struct Edge {
 /// Collects the type declarations referenced by a declaration's inner type, along with how their
 /// generic arguments pass on the generic parameters they refer to.
 fn collect_references(
+    arena: &Arena<Type>,
+    id: TypeId,
+    declarations: &mut Vec<TypeId>,
+    edges: &mut Vec<Edge>,
+    visited: &mut HashSet<TypeId>,
+) {
+    grow_stack(|| collect_references_inner(arena, id, declarations, edges, visited));
+}
+
+fn collect_references_inner(
     arena: &Arena<Type>,
     id: TypeId,
     declarations: &mut Vec<TypeId>,

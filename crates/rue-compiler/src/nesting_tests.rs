@@ -380,3 +380,92 @@ fn long_chains_of_bindings_are_followed() {
         );
     });
 }
+
+/// Programs whose types nest once per item or link, even though the source doesn't nest, along with
+/// how many items or links to test them with. Each one type checks without errors. The sizes are
+/// enough to overflow a 2 MiB stack in a debug build without growing it, but some are smaller than
+/// others, since inferring a long chain of types is slow.
+const DEEP_TYPES: &[(&str, usize, Shape)] = &[
+    // A list literal's type is a chain of pairs, with one pair for each item
+    ("list literal", 2_000, |n| {
+        format!(
+            "fn main() -> Any {{\nlet x = [{}];\nx\n}}",
+            links(n, |i| format!("{i}, "))
+        )
+    }),
+    ("list literal assigned to a list type", 2_000, |n| {
+        format!(
+            "fn main() -> Any {{\nlet x: List<Int> = [{}];\nx\n}}",
+            links(n, |i| format!("{i}, "))
+        )
+    }),
+    ("list literal returned as a list type", 2_000, |n| {
+        format!(
+            "fn main() -> List<Int> {{ [{}] }}",
+            links(n, |i| format!("{i}, "))
+        )
+    }),
+    // Each call's inferred return type wraps the previous one
+    ("inferred types", 400, |n| {
+        format!(
+            "fn main() -> Any {{\nlet x0 = 1;\n{}x{n}\n}}\n\nfn wrap<T>(value: T) -> (T, nil) {{ (value, nil) }}",
+            links(n, |i| format!("let x{} = wrap(x{i});\n", i + 1))
+        )
+    }),
+    ("type aliases", 1_000, |n| {
+        format!(
+            "fn main(value: T0) -> Any {{ value }}\n{}type T{n} = Int;",
+            links(n, |i| format!("type T{i} = (T{}, nil);\n", i + 1))
+        )
+    }),
+    // Each application of the alias nests its whole body, so this compares two types that are 100
+    // levels deep for each level of nesting in the source
+    ("nested generic aliases", 3_000, |n| {
+        let depth = n / 100;
+        format!(
+            "fn main(value: {}Int{}) -> {}Any{} {{ value }}\n\ntype W<T> = {}T{};",
+            "W<".repeat(depth),
+            ">".repeat(depth),
+            "W<".repeat(depth),
+            ">".repeat(depth),
+            "(".repeat(100),
+            ", nil)".repeat(100)
+        )
+    }),
+];
+
+/// The operations on types recurse once per level of a type, and grow the stack as they go, so
+/// these run on a 2 MiB stack in every build. Code isn't generated, since lowering a long list
+/// uses more stack than this in a debug build (#114).
+#[test]
+fn deep_types_are_checked() {
+    on_stack(2, || {
+        for &(name, size, shape) in DEEP_TYPES {
+            let (mut ctx, ..) = compile_tree(&shape(size));
+            let diagnostics = ctx.take_diagnostics();
+            assert!(errors(&diagnostics).is_empty(), "{name}: {diagnostics:?}");
+        }
+    });
+}
+
+/// Checking a value against a deep type at runtime is still limited, but it's reported rather than
+/// overflowing the stack while the type is substituted.
+#[test]
+fn deep_type_checks_are_an_error() {
+    on_stack(2, || {
+        let source = format!(
+            "fn main(value: Any) -> Bool {{ value is T0 }}\n{}type T{LONG_CHAIN} = nil;",
+            links(LONG_CHAIN, |i| format!("type T{i} = (Int, T{});\n", i + 1))
+        );
+
+        let (mut ctx, ..) = compile_tree(&source);
+        let diagnostics = ctx.take_diagnostics();
+        let errors = errors(&diagnostics);
+
+        assert_eq!(errors.len(), 1, "{diagnostics:?}");
+        assert!(matches!(
+            errors[0].kind,
+            DiagnosticKind::TypeCheckDepthExceeded
+        ));
+    });
+}

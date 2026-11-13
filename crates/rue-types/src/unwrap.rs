@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use id_arena::Arena;
 
-use crate::{Type, TypeId, substitute};
+use crate::{Type, TypeId, grow_stack, substitute};
 
 pub fn unwrap_semantic(arena: &mut Arena<Type>, id: TypeId, resolve_aliases: bool) -> TypeId {
     let id = substitute(arena, id);
@@ -19,6 +19,15 @@ pub(crate) fn unwrap_semantic_without_substitution(
 }
 
 fn unwrap_semantic_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    resolve_aliases: bool,
+    visited: &mut HashSet<TypeId>,
+) -> TypeId {
+    grow_stack(|| unwrap_semantic_impl_inner(arena, id, resolve_aliases, visited))
+}
+
+fn unwrap_semantic_impl_inner(
     arena: &Arena<Type>,
     id: TypeId,
     resolve_aliases: bool,

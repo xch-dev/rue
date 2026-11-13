@@ -4,8 +4,8 @@ use log::{Level, log_enabled, trace};
 
 use crate::{
     BuiltinTypes, Comparison, ComparisonContext, Memo, OverlapMemo, Pair, Struct, Type, TypeId,
-    Union, compare, compare_impl, reaches_non_contractive_cycle, step, stringify_impl, substitute,
-    types_may_overlap, unwrap_semantic_without_substitution,
+    Union, compare, compare_impl, grow_stack, reaches_non_contractive_cycle, step, stringify_impl,
+    substitute, types_may_overlap, unwrap_semantic_without_substitution,
 };
 
 /// The maximum number of nested intersections before giving up on being more precise.
@@ -75,6 +75,16 @@ fn intersect_impl(
     lhs: TypeId,
     rhs: TypeId,
 ) -> TypeId {
+    grow_stack(|| intersect_impl_inner(arena, builtins, ctx, lhs, rhs))
+}
+
+fn intersect_impl_inner(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut IntersectContext,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> TypeId {
     step();
 
     if lhs == rhs {
@@ -105,6 +115,16 @@ fn intersect_impl(
 }
 
 fn intersect_uncached(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut IntersectContext,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> TypeId {
+    grow_stack(|| intersect_uncached_inner(arena, builtins, ctx, lhs, rhs))
+}
+
+fn intersect_uncached_inner(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
     ctx: &mut IntersectContext,
@@ -152,6 +172,16 @@ fn intersect_uncached(
 }
 
 fn intersect_structure(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut IntersectContext,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> TypeId {
+    grow_stack(|| intersect_structure_inner(arena, builtins, ctx, lhs, rhs))
+}
+
+fn intersect_structure_inner(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
     ctx: &mut IntersectContext,

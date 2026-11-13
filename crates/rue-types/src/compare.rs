@@ -10,7 +10,7 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, free_generics,
-    references_generic, step, stringify_impl, substitute,
+    grow_stack, references_generic, step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -469,6 +469,20 @@ fn holds_without_inference(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> bool {
+    grow_stack(|| {
+        holds_without_inference_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
+    })
+}
+
+fn holds_without_inference_inner(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut ComparisonContext<'_>,
+    lhs: TypeId,
+    rhs: TypeId,
+    lhs_semantic: Option<TypeId>,
+    rhs_semantic: Option<TypeId>,
+) -> bool {
     let mut uninferred = ctx.uninferred.take().unwrap_or_default();
 
     // The binders are shared, but none of them are instantiated
@@ -704,6 +718,18 @@ fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -
 }
 
 pub(crate) fn compare_impl(
+    arena: &Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut ComparisonContext<'_>,
+    lhs: TypeId,
+    rhs: TypeId,
+    lhs_semantic: Option<TypeId>,
+    rhs_semantic: Option<TypeId>,
+) -> Comparison {
+    grow_stack(|| compare_impl_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic))
+}
+
+fn compare_impl_inner(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
     ctx: &mut ComparisonContext<'_>,
@@ -1234,6 +1260,14 @@ fn semantics_of(arena: &Arena<Type>, id: TypeId) -> HashSet<Option<Semantic>> {
 }
 
 fn semantics_of_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    visited: &mut HashSet<TypeId>,
+) -> HashSet<Option<Semantic>> {
+    grow_stack(|| semantics_of_impl_inner(arena, id, visited))
+}
+
+fn semantics_of_impl_inner(
     arena: &Arena<Type>,
     id: TypeId,
     visited: &mut HashSet<TypeId>,

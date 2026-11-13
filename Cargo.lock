@@ -1780,6 +1780,7 @@ dependencies = [
  "rstest",
  "rue-diagnostic",
  "rue-types",
+ "stacker",
  "thiserror 2.0.14",
 ]
 

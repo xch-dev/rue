@@ -1,7 +1,7 @@
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{Alias, Struct, Type, TypeId, step, substitute};
+use crate::{Alias, Struct, Type, TypeId, grow_stack, step, substitute};
 
 pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
     let id = substitute(arena, id);
@@ -13,6 +13,14 @@ pub fn stringify_without_substitution(arena: &Arena<Type>, id: TypeId) -> String
 }
 
 pub(crate) fn stringify_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    stack: &mut IndexMap<TypeId, bool>,
+) -> String {
+    grow_stack(|| stringify_impl_inner(arena, id, stack))
+}
+
+fn stringify_impl_inner(
     arena: &Arena<Type>,
     id: TypeId,
     stack: &mut IndexMap<TypeId, bool>,
@@ -147,6 +155,15 @@ fn with_generics(
     generics: &[TypeId],
     stack: &mut IndexMap<TypeId, bool>,
 ) -> String {
+    grow_stack(|| with_generics_inner(arena, name, generics, stack))
+}
+
+fn with_generics_inner(
+    arena: &Arena<Type>,
+    name: &str,
+    generics: &[TypeId],
+    stack: &mut IndexMap<TypeId, bool>,
+) -> String {
     if generics.is_empty() {
         return name.to_string();
     }
@@ -163,6 +180,15 @@ fn with_generics(
 /// Renders a struct whose fields have been narrowed, e.g. `Box { value: Int }`, since its generic
 /// arguments no longer describe them.
 fn narrowed_struct(
+    arena: &Arena<Type>,
+    name: &str,
+    ty: &Struct,
+    stack: &mut IndexMap<TypeId, bool>,
+) -> String {
+    grow_stack(|| narrowed_struct_inner(arena, name, ty, stack))
+}
+
+fn narrowed_struct_inner(
     arena: &Arena<Type>,
     name: &str,
     ty: &Struct,
@@ -191,6 +217,16 @@ fn narrowed_struct(
 /// the struct. If the fields are correlated, each variant is rendered separately. Returns `None` if
 /// the type doesn't have the structure of the fields.
 fn narrowed_fields(
+    arena: &Arena<Type>,
+    ty: &Struct,
+    index: usize,
+    current: TypeId,
+    stack: &mut IndexMap<TypeId, bool>,
+) -> Option<Vec<Vec<String>>> {
+    grow_stack(|| narrowed_fields_inner(arena, ty, index, current, stack))
+}
+
+fn narrowed_fields_inner(
     arena: &Arena<Type>,
     ty: &Struct,
     index: usize,
@@ -236,6 +272,10 @@ fn narrowed_fields(
 
 /// The variants of a union, including those of directly nested unions.
 fn union_variants(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
+    grow_stack(|| union_variants_inner(arena, id))
+}
+
+fn union_variants_inner(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
     match &arena[id] {
         Type::Union(union) => union
             .types

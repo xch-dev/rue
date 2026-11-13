@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 
-use crate::{AtomRestriction, FunctionType, Pair, Struct, Type, TypeId, substitute};
+use crate::{AtomRestriction, FunctionType, Pair, Struct, Type, TypeId, grow_stack, substitute};
 
 #[derive(Debug, Clone)]
 pub enum Atoms {
@@ -17,6 +17,15 @@ pub fn extract_atoms(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Optio
 }
 
 fn extract_atoms_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    strict: bool,
+    stack: &mut HashSet<TypeId>,
+) -> Option<Atoms> {
+    grow_stack(|| extract_atoms_impl_inner(arena, id, strict, stack))
+}
+
+fn extract_atoms_impl_inner(
     arena: &Arena<Type>,
     id: TypeId,
     strict: bool,
@@ -84,6 +93,15 @@ fn extract_pairs_impl(
     strict: bool,
     stack: &mut HashSet<TypeId>,
 ) -> Option<Vec<Pair>> {
+    grow_stack(|| extract_pairs_impl_inner(arena, id, strict, stack))
+}
+
+fn extract_pairs_impl_inner(
+    arena: &Arena<Type>,
+    id: TypeId,
+    strict: bool,
+    stack: &mut HashSet<TypeId>,
+) -> Option<Vec<Pair>> {
     // A non-contractive cycle doesn't contribute anything
     if !stack.insert(id) {
         return Some(vec![]);
@@ -126,6 +144,15 @@ pub fn extract_functions(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> V
 }
 
 fn extract_functions_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    strict: bool,
+    stack: &mut HashSet<TypeId>,
+) -> Option<Vec<FunctionType>> {
+    grow_stack(|| extract_functions_impl_inner(arena, id, strict, stack))
+}
+
+fn extract_functions_impl_inner(
     arena: &Arena<Type>,
     id: TypeId,
     strict: bool,
@@ -190,6 +217,15 @@ pub fn extract_structs(arena: &mut Arena<Type>, id: TypeId) -> Option<Vec<Struct
 }
 
 fn extract_structs_impl(
+    arena: &Arena<Type>,
+    id: TypeId,
+    structs: &mut Vec<Struct>,
+    stack: &mut HashSet<TypeId>,
+) -> bool {
+    grow_stack(|| extract_structs_impl_inner(arena, id, structs, stack))
+}
+
+fn extract_structs_impl_inner(
     arena: &Arena<Type>,
     id: TypeId,
     structs: &mut Vec<Struct>,

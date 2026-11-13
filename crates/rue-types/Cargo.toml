@@ -28,6 +28,7 @@ thiserror = { workspace = true }
 rstest = { workspace = true }
 derive_more = { workspace = true, features = ["display"] }
 log = { workspace = true }
+stacker = { workspace = true }
 
 [dev-dependencies]
 # Enables the step counter for this crate's tests. Path-only dev-dependencies are removed when

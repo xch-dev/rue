@@ -6,6 +6,7 @@ mod extractors;
 mod intersect;
 mod memo;
 mod regular;
+mod stack;
 mod steps;
 mod stringify;
 mod substitute;
@@ -21,6 +22,7 @@ pub use extractors::*;
 pub use intersect::*;
 pub(crate) use memo::*;
 pub use regular::*;
+pub(crate) use stack::grow_stack;
 #[cfg(feature = "step-counter")]
 pub use steps::count_steps;
 pub(crate) use steps::step;
