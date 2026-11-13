@@ -134,6 +134,11 @@ pub fn compile_symbol_items(
         match item {
             AstItem::TypeItem(_) => {}
             AstItem::SymbolItem(item) => {
+                // Compiling bodies is what takes the time, so this is where a compile can stop
+                if ctx.is_cancelled() {
+                    return;
+                }
+
                 if let AstSymbolItem::ModuleItem(item) = item {
                     compile_module_symbols(ctx, &item, declarations.modules[module]);
                     module += 1;

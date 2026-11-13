@@ -156,12 +156,22 @@ impl FileTree {
         path: &Path,
         cache: &mut HashMap<SourceKind, String>,
     ) -> Result<Self, Error> {
-        let tree = Self::try_from_path(ctx, path, cache)?
-            .ok_or(io::Error::other("Invalid file extension"))?;
+        let tree = Self::load_path(ctx, path, cache)?;
 
         tree.compile(ctx);
 
         Ok(tree)
+    }
+
+    /// Reads and parses the files of a project, without compiling them. The text of a file in the
+    /// cache is used instead of what's on disk.
+    pub fn load_path(
+        ctx: &mut Compiler,
+        path: &Path,
+        cache: &mut HashMap<SourceKind, String>,
+    ) -> Result<Self, Error> {
+        Ok(Self::try_from_path(ctx, path, cache)?
+            .ok_or(io::Error::other("Invalid file extension"))?)
     }
 
     fn try_from_path(
@@ -270,6 +280,10 @@ impl FileTree {
 
     /// Compiles every file in the tree. If `lint` is false (such as for the standard library),
     /// recursion isn't checked and lints aren't run.
+    ///
+    /// If the compiler's [`Cancel`](crate::Cancel) says to stop, the compile stops between phases
+    /// or before the next declaration's body, and [`Compiler::is_cancelled`] is true. Nearly all
+    /// of the time is spent compiling bodies, so it doesn't have to wait long.
     pub(crate) fn compile_impl(&self, ctx: &mut Compiler, lint: bool) {
         let mut cache = ImportCache::default();
 
@@ -285,10 +299,23 @@ impl FileTree {
         resolve_imports(ctx, modules.clone(), &mut cache, false);
         resolve_imports(ctx, modules.clone(), &mut cache, true);
 
+        if ctx.is_cancelled() {
+            return;
+        }
+
         self.compile_types(ctx);
         self.compile_defaults(ctx);
         self.compile_symbols(ctx);
+
+        if ctx.is_cancelled() {
+            return;
+        }
+
         evaluate_const_exprs(ctx);
+
+        if ctx.is_cancelled() {
+            return;
+        }
 
         if lint {
             check_recursion(ctx);
