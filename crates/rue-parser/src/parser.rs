@@ -228,9 +228,10 @@ impl Parser {
 
     /// Parses a construct that can contain itself (such as an expression), which is one level
     /// deeper than the construct it's in. Each level is roughly one node in the syntax tree, so
-    /// for example a function call is two levels deeper than its callee, since its arguments are
-    /// in list items. If that's deeper than [`MAX_NESTING_DEPTH`], it isn't parsed and [`None`]
-    /// is returned instead (see [`Self::deepen`]).
+    /// for example an argument of a function call is two levels deeper than the call's callee:
+    /// one for the call wrapping the callee, and one for the argument expression. If that's
+    /// deeper than [`MAX_NESTING_DEPTH`], it isn't parsed and [`None`] is returned instead (see
+    /// [`Self::deepen`]).
     pub(crate) fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> Option<T> {
         let depth = self.depth;
         let result = self.deepen().then(|| f(self));

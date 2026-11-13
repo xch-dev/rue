@@ -184,7 +184,8 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
                 ty(p);
                 true
             }
-            _ => p.expect(SyntaxKind::Ident),
+            SyntaxKind::FieldAccessExpr => p.expect(SyntaxKind::Ident),
+            _ => unreachable!(),
         };
 
         p.finish();

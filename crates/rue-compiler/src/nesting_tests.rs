@@ -37,7 +37,7 @@ const SHAPES: &[(&str, Shape)] = &[
     ("binary operators", |n| {
         format!("fn main() -> Int {{ 1{} }}", " + 1".repeat(n))
     }),
-    // Each call is two levels deep, since its arguments are in list items
+    // Each call is two levels deep: one for the call wrapping the callee, and one for its argument
     ("calls", |n| {
         format!(
             "fn main() -> Int {{ {}1{} }}\n\nfn f(value: Int) -> Int {{ value }}",
