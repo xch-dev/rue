@@ -73,9 +73,7 @@ pub struct TooDeep {
 /// it's referenced, so a chain of them that each reference the next nests once per link. Each
 /// statement in a block also nests the rest of the block inside of it.
 ///
-/// The LIR is nested about as deeply, which keeps the optimizer and code generation within the
-/// stack too, except for constructs that are lowered without recursing, such as a long list
-/// literal, which is a chain of pairs as long as the list.
+/// The optimizer and code generation don't need this, since they grow the stack as they go.
 ///
 /// Real programs stay far below this, and it leaves room for a 2 MiB thread in a release build.
 pub const MAX_LOWERING_DEPTH: usize = 512;
