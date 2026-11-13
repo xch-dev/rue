@@ -41,6 +41,18 @@ fn after_never_binding(value: Int) -> Int {
     value
 }
 
+// An inline binding is only evaluated where it's referenced, so the code after it is reachable
+fn after_never_inline_binding(value: Int) -> Int {
+    if value > 100 {
+        inline let never = {
+            raise "failed";
+        };
+        return never;
+    }
+
+    value
+}
+
 // The binding is evaluated at its let statement, even though it's only referenced after the
 // `return`, so this raises
 fn dead_reference() -> Int {
@@ -56,6 +68,7 @@ fn fails() -> Int {
 test fn reachable() {
     assert main() == 7;
     assert after_never_binding(1) == 1;
+    assert after_never_inline_binding(1) == 1;
 }
 
 test fn dead_reference_raises() -> Int {

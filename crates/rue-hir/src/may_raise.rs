@@ -149,7 +149,9 @@ impl Visitor<'_> {
 mod tests {
     use rue_types::BuiltinTypes;
 
-    use crate::{BindingSymbol, Block, ConstantSymbol, Value};
+    use rue_types::Check;
+
+    use crate::{BindingSymbol, Block, ConstantSymbol, Guard, Value};
 
     use rue_diagnostic::{Source, SourceKind, SrcLoc};
 
@@ -220,5 +222,20 @@ mod tests {
         *db.hir_mut(value) = Hir::Reference(symbol);
 
         assert!(!may_raise(&db, value));
+    }
+
+    #[test]
+    fn guard_values_are_evaluated() {
+        let mut db = Database::new();
+        let ty = BuiltinTypes::new(db.types_mut()).int;
+        let value = raise(&mut db);
+
+        // The value is evaluated for its effect, even if the check doesn't use it
+        let guard = db.alloc_hir(Hir::Guard(Guard {
+            value,
+            ty,
+            check: Check::None,
+        }));
+        assert!(may_raise(&db, guard));
     }
 }

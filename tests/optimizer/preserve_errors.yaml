@@ -80,6 +80,12 @@ tests:
   solution: (1 0 ())
   byte_cost: 636000
   clvm_error: Division by zero
+- name: argument_through_inlined_function
+  program: (i () (/ 2 5) (a (i 11 (q 19 2 5) (q)) 1))
+  debug_program: (a (q 2 4 (c 6 (c (/ 5 11) 23))) (c (c (q 2 2 (c 5 7)) (q 2 (i 3 (q . 2) (q)) 1)) 1))
+  solution: (1 0 ())
+  byte_cost: 468000
+  clvm_error: Division by zero
 - name: nested_arguments_in_branches
   program: (a (q 2 14 (c (a 10 (c (a 4 (c (/ 5 11) 23)) 23)) 23)) (c (c (q 2 (i 3 (q 16 2) (q)) 1) (c (q 2 (i 3 (q 16 2 (q . 1)) (q 1 . 1)) 1) (q 2 (i 3 (q 16 2 (q . 2)) (q 1 . 2)) 1))) 1))
   debug_program: (a (q 2 14 (c (a 10 (c (a 4 (c (/ 5 11) 23)) 23)) 23)) (c (c (q 2 (i 3 (q 16 2 ()) (q)) 1) (c (q 2 (i 3 (q 16 2 (q . 1)) (q 1 . 1)) 1) (q 2 (i 3 (q 16 2 (q . 2)) (q 1 . 2)) 1))) 1))
@@ -151,7 +157,7 @@ tests:
   total_cost: 397895
 - name: single_use_after_assert
   program: (a (i (> 2 (q . 1)) (q 19 2 5) (q 8)) 1)
-  debug_program: (a (q 2 (i (> 5 (q . 1)) (q . 2) (q 8 (q . "assertion failed at preserve_errors.rue:202:5"))) 1) (c (/ 2 5) 1))
+  debug_program: (a (q 2 (i (> 5 (q . 1)) (q . 2) (q 8 (q . "assertion failed at preserve_errors.rue:219:5"))) 1) (c (/ 2 5) 1))
   solution: (10 2)
   output: '5'
   runtime_cost: 1887
@@ -162,13 +168,13 @@ diagnostics:
 - Unused parameter `a` at preserve_errors.rue:29:10
 - Unused parameter `rest` at preserve_errors.rue:29:21
 - Unused binding `x` at preserve_errors.rue:34:9
-- Unused binding `x` at preserve_errors.rue:66:9
-- Unused binding `x` at preserve_errors.rue:71:9
-- Unused binding `x` at preserve_errors.rue:76:9
-- Unused binding `y` at preserve_errors.rue:82:9
-- Unused binding `x` at preserve_errors.rue:115:10
-- Unused binding `f` at preserve_errors.rue:121:9
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at preserve_errors.rue:150:5
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at preserve_errors.rue:155:25
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at preserve_errors.rue:160:32
-- Unused binding `x` at preserve_errors.rue:182:9
+- Unused binding `x` at preserve_errors.rue:78:9
+- Unused binding `x` at preserve_errors.rue:83:9
+- Unused binding `x` at preserve_errors.rue:88:9
+- Unused binding `y` at preserve_errors.rue:94:9
+- Unused binding `x` at preserve_errors.rue:127:10
+- Unused binding `f` at preserve_errors.rue:133:9
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at preserve_errors.rue:167:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at preserve_errors.rue:172:25
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at preserve_errors.rue:177:32
+- Unused binding `x` at preserve_errors.rue:199:9

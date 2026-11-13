@@ -264,9 +264,9 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 visit_hir(db, graph, body, false);
             }
 
-            visit_unused_bindings(db, graph, block.reachable_statements());
-
             let statements = block.reachable_statements();
+
+            visit_unused_bindings(db, graph, statements);
 
             for (index, stmt) in statements.iter().enumerate() {
                 // This is only needed for bindings that may fail, since the rest can be inlined

@@ -120,7 +120,9 @@ mod tests {
     use rue_diagnostic::{Source, SourceKind, SrcLoc};
     use rue_types::BuiltinTypes;
 
-    use crate::{BindingSymbol, Block, Builtin, ExprStatement, Value};
+    use rue_types::Check;
+
+    use crate::{BindingSymbol, Block, Builtin, ExprStatement, Guard, Value};
 
     use super::*;
 
@@ -229,5 +231,44 @@ mod tests {
         }));
         let symbol = binding(&mut db, block);
         assert!(!has_reachable_unresolved(&db, symbol));
+    }
+
+    #[test]
+    fn test_unused_bindings_are_lowered() {
+        let mut db = Database::new();
+        let unresolved = db.alloc_hir(Hir::Unresolved);
+        let one = db.alloc_hir(Hir::Int(1.into()));
+
+        // A binding that isn't inline is evaluated at its let statement, even if it's unused
+        for inline in [false, true] {
+            let ty = BuiltinTypes::new(db.types_mut()).int;
+            let unused = db.alloc_symbol(Symbol::Binding(BindingSymbol {
+                name: None,
+                value: Value::new(unresolved, ty),
+                inline,
+            }));
+            let block = db.alloc_hir(Hir::Block(Block {
+                statements: vec![Statement::Let(unused, srcloc())],
+                body: Some(one),
+            }));
+            let symbol = binding(&mut db, block);
+            assert_eq!(has_reachable_unresolved(&db, symbol), !inline);
+        }
+    }
+
+    #[test]
+    fn test_guard_values_are_lowered() {
+        let mut db = Database::new();
+        let ty = BuiltinTypes::new(db.types_mut()).int;
+        let unresolved = db.alloc_hir(Hir::Unresolved);
+
+        // The value is evaluated for its effect, even if the check doesn't use it
+        let guard = db.alloc_hir(Hir::Guard(Guard {
+            value: unresolved,
+            ty,
+            check: Check::None,
+        }));
+        let symbol = binding(&mut db, guard);
+        assert!(has_reachable_unresolved(&db, symbol));
     }
 }

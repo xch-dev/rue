@@ -360,10 +360,8 @@ const FUZZ_ATOMS: &[&[u8]] = &[
     &[0x01, 0x00],
 ];
 
-// These paths never share a parent, since opt_cons intentionally collapses a pair of sibling
-// paths into their parent path, assuming that the parent is a pair (see its documentation)
-// For the same reason, first and rest are never applied directly to a path
-const FUZZ_PATHS: &[u32] = &[1, 2, 5, 11];
+// Paths 4 and 6 are siblings, so rebuilding their parent with a cons is covered too
+const FUZZ_PATHS: &[u32] = &[1, 2, 4, 5, 6, 11];
 
 fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
     if depth == 0 || rng.below(5) == 0 {
@@ -411,10 +409,7 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
         8 => Lir::Any(gen_args(arena, rng, 0)),
         9 => Lir::Raise(vec![]),
         10 | 11 => {
-            let mut value = next();
-            while matches!(arena[value], Lir::Path(_)) {
-                value = generate(arena, rng, depth - 1);
-            }
+            let value = next();
             if rng.below(2) == 0 {
                 Lir::First(value)
             } else {

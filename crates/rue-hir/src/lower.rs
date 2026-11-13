@@ -506,9 +506,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                         .iter()
                         .filter_map(|parameter| {
                             let arg = *args.get(parameter)?;
-                            let always_evaluated = self.graph.references(*parameter) == 1
-                                && always_evaluates(self.db, function.body, *parameter);
-                            (!always_evaluated && self.may_fail(arg)).then_some(arg)
+                            (!self.is_parameter_always_evaluated(&function, *parameter)
+                                && self.may_fail(arg))
+                            .then_some(arg)
                         })
                         .collect()
                 };
@@ -871,7 +871,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             call.args.iter().enumerate().any(|(index, &arg)| {
                 argument_parameter(function, index).is_some_and(|parameter| {
                     self.graph.references(parameter) == 1
-                        && !always_evaluates(self.db, function.body, parameter)
+                        && !self.is_parameter_always_evaluated(function, parameter)
                         && self.may_fail_with(arg, false)
                 })
             })
@@ -879,6 +879,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
         self.deferred_arguments.borrow_mut().insert(symbol, result);
         result
+    }
+
+    /// Whether the parameter is used once, and that use is always evaluated by the function's
+    /// body, so an inlined argument for it is evaluated exactly when it would be if the function
+    /// were called. This must agree between [`Self::defers_fallible_argument`] and the effects
+    /// that are emitted for the arguments of an inlined call.
+    fn is_parameter_always_evaluated(
+        &self,
+        function: &FunctionSymbol,
+        parameter: SymbolId,
+    ) -> bool {
+        self.graph.references(parameter) == 1 && always_evaluates(self.db, function.body, parameter)
     }
 
     fn may_fail_with(&self, hir: HirId, substitute_arguments: bool) -> bool {
@@ -1203,7 +1215,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     && (references == 0 || !self.graph.is_fallible(symbol))
             }
             // Bindings are evaluated at their let statement, so one that may fail is only inlined
-            // where it's always evaluated
+            // where it's always evaluated. This uses the conservative check (where reading any
+            // parameter may fail), which must give the same answer wherever it's asked. It also
+            // keeps a binding of an inlined function's parameter from moving its argument into a
+            // branch, since the call doesn't evaluate the argument for its effect when the
+            // binding always evaluates the parameter.
             Symbol::Binding(binding) => {
                 if binding.inline {
                     return true;

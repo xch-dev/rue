@@ -59,6 +59,18 @@ fn add_two(x: Int, c: Bool) -> Int {
     }
 }
 
+fn inner_branch(x: Int, c: Bool) -> Int {
+    if c {
+        x
+    } else {
+        0
+    }
+}
+
+fn pass_to_branch(y: Int, c: Bool) -> Int {
+    inner_branch(y, c)
+}
+
 const CHECKED: Int = check(1);
 
 // An unused binding is still evaluated
@@ -137,6 +149,11 @@ test fn unused_argument(a: Int, b: Int) -> Int {
 
 test fn argument_in_branch(a: Int, b: Int, c: Bool) -> Int {
     branch(a / b, c)
+}
+
+// The argument is passed through a parameter that's always evaluated, to one that isn't
+test fn argument_through_inlined_function(a: Int, b: Int, c: Bool) -> Int {
+    pass_to_branch(a / b, c)
 }
 
 // A function whose argument may fail and is only used in a branch is called rather than inlined,

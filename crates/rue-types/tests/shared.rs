@@ -221,9 +221,7 @@ fn test_shared_checks() {
 
     assert_eq!(
         check(&mut t.arena, &t.builtins, ints_or_nil, ints),
-        Ok(Check::IsPair {
-            can_be_truthy: false
-        })
+        Ok(Check::IsPair)
     );
 
     // The check itself is too deep to generate, but it shouldn't take long to find that out
