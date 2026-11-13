@@ -161,10 +161,11 @@ fn absolute_generic_paths_and_shift_expressions_do_not_conflict() {
 }
 
 /// Each layout choice holds a flat and a broken variant of its contents, so without sharing
-/// them the document doubled in size with each level of nesting and this took minutes.
+/// them the document doubled in size with each level of nesting. The depth is low enough that
+/// a regression fails the time check rather than hanging the test.
 #[test]
 fn deeply_nested_expressions_format_quickly() {
-    let depth = 64;
+    let depth = 24;
     for (open, close) in [("f(", ")"), ("[", "]"), ("(", ")"), ("f(1 == ", ")")] {
         let source = format!(
             "fn f(x: Any) -> Any {{ x }}\nfn main() -> Any {{ {}1{} }}",

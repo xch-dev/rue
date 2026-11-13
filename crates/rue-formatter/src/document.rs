@@ -37,8 +37,8 @@ pub enum LineKind {
 }
 
 impl Doc {
-    pub fn text(text: impl Into<String>) -> Self {
-        Self::Text(Rc::from(text.into()))
+    pub fn text(text: impl Into<Rc<str>>) -> Self {
+        Self::Text(text.into())
     }
 
     pub fn concat(docs: impl IntoIterator<Item = Self>) -> Self {
