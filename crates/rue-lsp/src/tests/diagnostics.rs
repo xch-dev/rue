@@ -419,10 +419,12 @@ fn test_diagnostics_unnamed_parameters() {
     ));
 }
 
+/// A source with the canonical path the compiler gives a file, which differs from the path the
+/// editor uses when the project is reached through a symlink, as in the tests on Unix.
 fn source(project: &TestProject, name: &str, text: &str) -> Source {
     Source::new(
         Arc::from(text),
-        SourceKind::File(project.path(name).to_string_lossy().into_owned()),
+        rue_compiler::normalize_path(&project.path(name)).unwrap(),
     )
 }
 
