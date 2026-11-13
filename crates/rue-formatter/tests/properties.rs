@@ -35,7 +35,6 @@ use proptest::{
     sample::Index,
     test_runner::{Config, RngSeed},
 };
-use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::{Source, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_lexer::Lexer;
@@ -154,10 +153,6 @@ fn check_formatter(text: &str, options: &FormatOptions) {
             );
             return;
         }
-        Err(FormatError::Internal(message)) if is_compact_group_bug(&input.node, &message) => {
-            // A known bug, see `constants_that_wrap_format_idempotently` in the unit tests
-            return;
-        }
         Err(FormatError::Internal(_)) if has_comment_in_import_or_attribute(&input.node) => {
             // Known bugs: the formatter can attach a comment inside an import or attribute to a
             // different token, or format it differently the second time, and then refuses to
@@ -209,43 +204,6 @@ fn has_comment_before_trailing_comma(root: &SyntaxNode) -> bool {
         window[0].kind() == SyntaxKind::BlockComment
             && window[1].kind() == T![,]
             && matches!(window[2].kind(), T![')'] | T![']'] | T!['}'] | T![>])
-    })
-}
-
-/// Whether `message` is the formatter's error for output that changed when it was formatted again,
-/// and the change is explained by a known bug: whether an item joins a compact group (constants,
-/// type aliases or extern functions without blank lines between them) depends on whether it's on
-/// one line in the source rather than in the output. So when the formatter wraps such an item, it
-/// joins the group on the first format but not on the second, which only adds blank lines.
-fn is_compact_group_bug(input: &SyntaxNode, message: &str) -> bool {
-    let Some((first, second)) = message
-        .strip_prefix("formatting was not idempotent\nfirst:\n")
-        .and_then(|rest| rest.split_once("\nsecond:\n"))
-    else {
-        return false;
-    };
-    first
-        .lines()
-        .filter(|line| !line.is_empty())
-        .eq(second.lines().filter(|line| !line.is_empty()))
-        && compact_items(input).count() > 1
-        && compact_items(&parse(first).node).any(|item| {
-            // The same check as the formatter's, skipping attributes and comments before the item
-            item.children_with_tokens()
-                .skip_while(|element| {
-                    element.kind().is_trivia() || element.kind() == SyntaxKind::Attribute
-                })
-                .any(|element| element.to_string().contains('\n'))
-        })
-}
-
-/// The top-level items that the formatter can put in a compact group.
-fn compact_items(root: &SyntaxNode) -> impl Iterator<Item = SyntaxNode> {
-    root.children().filter(|node| match node.kind() {
-        SyntaxKind::ConstantItem | SyntaxKind::TypeAliasItem => true,
-        SyntaxKind::FunctionItem => AstFunctionItem::cast(node.clone())
-            .is_some_and(|function| function.extern_kw().is_some() && function.body().is_none()),
-        _ => false,
     })
 }
 

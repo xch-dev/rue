@@ -82,7 +82,7 @@ pub fn format_source(source: &str, options: &FormatOptions) -> Result<String, Fo
 
 fn format_once(parsed: &Parsed, options: &FormatOptions) -> Result<String, FormatError> {
     let stream = TokenStream::from_syntax(parsed.document.syntax())?;
-    let doc = format_document(&parsed.document, &stream)?;
+    let doc = format_document(&parsed.document, &stream, options)?;
     Ok(render(&doc, options))
 }
 

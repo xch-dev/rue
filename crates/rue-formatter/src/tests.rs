@@ -686,10 +686,6 @@ fn bodyless_extern_functions_can_form_compact_groups() {
 }
 
 #[test]
-#[ignore = "known bug found by the property tests: whether an item joins a compact group depends on \
-            whether it's on one line in the source, so a constant that the formatter wraps is put \
-            next to its neighbour on the first format and separated from it on the second, and \
-            format_source rejects the result as not idempotent"]
 fn constants_that_wrap_format_idempotently() {
     check(
         "const A: Int = 1;\nconst B: Int = first_long_operand + second_long_operand + third_long_operand + fourth_long_operand + fifth;",
@@ -701,6 +697,46 @@ fn constants_that_wrap_format_idempotently() {
                 + third_long_operand
                 + fourth_long_operand
                 + fifth;
+        "#]],
+    );
+}
+
+#[test]
+fn compact_groups_depend_on_the_formatted_items() {
+    // A type alias that wraps is separated from its neighbours, and its attributes don't count
+    check(
+        "type A = Int;\n#[allow(unused_type_alias)]\ntype B = first_long_type_name | second_long_type_name | third_long_type_name | fourth_type_name | fifth;\ntype C = Int;",
+        expect![[r#"
+            type A = Int;
+
+            #[allow(unused_type_alias)]
+            type B = first_long_type_name
+                | second_long_type_name
+                | third_long_type_name
+                | fourth_type_name
+                | fifth;
+
+            type C = Int;
+        "#]],
+    );
+    // A constant that's on several lines in the source but fits on one joins the group
+    check(
+        "const A: Int = 1;\nconst B: Int =\n    2;\nconst C: Int = 3;",
+        expect![[r#"
+            const A: Int = 1;
+            const B: Int = 2;
+            const C: Int = 3;
+        "#]],
+    );
+    // A trailing comment that makes a constant wrap separates it too
+    check(
+        "const A: Int = 1;\nconst B: Int = first_long_operand + second_long_operand + third_operand; // a much longer trailing comment",
+        expect![[r#"
+            const A: Int = 1;
+
+            const B: Int = first_long_operand
+                + second_long_operand
+                + third_operand; // a much longer trailing comment
         "#]],
     );
 }

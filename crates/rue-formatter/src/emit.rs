@@ -1,10 +1,11 @@
 use rue_parser::{SyntaxKind, T};
 
 use crate::{
-    FormatError,
+    FormatError, FormatOptions,
     analysis::{DelimiterStyle, ItemBoundary, Layout},
     document::Doc,
-    ordering::{DocumentItem, ImportGroupPlan},
+    ordering::{CompactGroup, DocumentItem, ImportGroupPlan},
+    renderer::render,
     token_stream::{Comment, CommentPlacement, Gap, TokenId, TokenSpan, TokenStream},
     trivia::split_between,
 };
@@ -36,15 +37,17 @@ impl Separator {
 pub struct Formatter<'a> {
     stream: &'a TokenStream,
     layout: Layout,
+    options: &'a FormatOptions,
     consumed_tokens: usize,
     consumed_comments: usize,
 }
 
 impl<'a> Formatter<'a> {
-    pub fn new(stream: &'a TokenStream, layout: Layout) -> Self {
+    pub fn new(stream: &'a TokenStream, layout: Layout, options: &'a FormatOptions) -> Self {
         Self {
             stream,
             layout,
+            options,
             consumed_tokens: 0,
             consumed_comments: 0,
         }
@@ -76,16 +79,22 @@ impl<'a> Formatter<'a> {
             })
             .collect::<Vec<_>>();
 
+        let mut formatted_items = Vec::with_capacity(items.len());
+        for (item, trailing) in items.iter().zip(&trailing_gaps) {
+            formatted_items.push(self.document_item(item, trailing)?);
+        }
+
         for (position, item) in items.iter().enumerate() {
             let separator = if position == 0 {
                 Separator::None
             } else {
                 let previous = &items[position - 1];
+                let previous_group = formatted_items[position - 1].compact_group;
                 let requested = match (previous.import_group, item.import_group) {
                     (Some(left), Some(right)) if left == right => Separator::Hard,
                     (None, None)
-                        if previous.compact_group.is_some()
-                            && previous.compact_group == item.compact_group
+                        if previous_group.is_some()
+                            && previous_group == formatted_items[position].compact_group
                             && (item.span.start().index() == 0
                                 || self.stream.gap_before(item.span.start()).newlines <= 1) =>
                     {
@@ -111,8 +120,8 @@ impl<'a> Formatter<'a> {
                 }
             }
             docs.push(self.movable_leading_doc(&leading, separator));
-            docs.push(self.span(item.span)?);
-            docs.push(self.gap_doc(&trailing_gaps[position], Separator::None));
+            docs.push(formatted_items[position].item.clone());
+            docs.push(formatted_items[position].trailing.clone());
         }
         docs.push(self.gap_doc(&footer, Separator::None));
 
@@ -130,6 +139,55 @@ impl<'a> Formatter<'a> {
             )));
         }
         Ok(Doc::concat(docs))
+    }
+
+    /// Formats a top-level item and the comments after it on the same line, and works out which
+    /// compact group it's in. A constant or type alias is only in one if it's formatted on one
+    /// line, not counting its attributes, which are always on lines of their own. This is decided
+    /// from the formatted item rather than the source, so that formatting it again gives the same
+    /// result.
+    fn document_item(
+        &mut self,
+        item: &DocumentItem,
+        trailing: &Gap,
+    ) -> Result<FormattedItem, FormatError> {
+        if !matches!(
+            item.compact_group,
+            Some(CompactGroup::Constant | CompactGroup::TypeAlias)
+        ) {
+            return Ok(FormattedItem {
+                item: self.span(item.span)?,
+                trailing: self.gap_doc(trailing, Separator::None),
+                compact_group: item.compact_group,
+            });
+        }
+
+        let attributes = if item.body_start == item.span.start() {
+            Doc::Nil
+        } else {
+            let last_attribute_token =
+                self.stream.previous_token(item.body_start).ok_or_else(|| {
+                    FormatError::Internal("item body has no preceding attribute token".to_string())
+                })?;
+            Doc::concat([
+                self.span(self.stream.span(
+                    item.span.start(),
+                    self.stream.boundary_before(item.body_start),
+                )?)?,
+                self.gap_between(last_attribute_token, item.body_start),
+            ])
+        };
+        let body = self.span(self.stream.span(item.body_start, item.span.end())?)?;
+        let trailing = self.gap_doc(trailing, Separator::None);
+        // Trailing comments can make the item break, so they're rendered with it
+        let single_line = !render(&Doc::concat([body.clone(), trailing.clone()]), self.options)
+            .trim_end()
+            .contains('\n');
+        Ok(FormattedItem {
+            item: Doc::concat([attributes, body]),
+            trailing,
+            compact_group: item.compact_group.filter(|_| single_line),
+        })
     }
 
     fn span(&mut self, span: TokenSpan) -> Result<Doc, FormatError> {
@@ -220,13 +278,7 @@ impl<'a> Formatter<'a> {
                     )
                 })?;
                 if !emitted_separator {
-                    let separator = self.separator(atom_end, index);
-                    let gap = self.stream.gap_before(index);
-                    if separator == Separator::Empty {
-                        docs.push(self.item_gap_doc(gap));
-                    } else {
-                        docs.push(self.gap_doc(gap, separator));
-                    }
+                    docs.push(self.gap_between(atom_end, index));
                 }
             } else {
                 break;
@@ -582,6 +634,17 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// The separator and comments between two adjacent tokens.
+    fn gap_between(&mut self, previous: TokenId, next: TokenId) -> Doc {
+        let separator = self.separator(previous, next);
+        let gap = self.stream.gap_before(next);
+        if separator == Separator::Empty {
+            self.item_gap_doc(gap)
+        } else {
+            self.gap_doc(gap, separator)
+        }
+    }
+
     /// Separates two items with a blank line, keeping comments on the same line as the first item
     /// attached to it, the same way as items in a document.
     fn item_gap_doc(&mut self, gap: &Gap) -> Doc {
@@ -695,6 +758,12 @@ impl<'a> Formatter<'a> {
         }
         Doc::concat(docs)
     }
+}
+
+struct FormattedItem {
+    item: Doc,
+    trailing: Doc,
+    compact_group: Option<CompactGroup>,
 }
 
 trait GroupIf {
