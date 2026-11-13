@@ -142,6 +142,11 @@ impl Client {
         self.backend().shared.compiles.load(Ordering::Relaxed)
     }
 
+    /// How many compiles stopped partway, because their files were edited.
+    pub(super) fn cancelled(&self) -> usize {
+        self.backend().shared.cancelled.load(Ordering::Relaxed)
+    }
+
     /// How many compilers the server built from scratch.
     pub(super) fn compilers(&self) -> usize {
         self.backend().shared.compilers.load(Ordering::Relaxed)

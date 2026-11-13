@@ -61,6 +61,30 @@ async fn test_edits_are_compiled_after_a_pause() {
 }
 
 #[tokio::test]
+async fn test_edit_stops_the_compile_of_an_earlier_edit() {
+    let project = TempProject::new(&[("main.rue", SOURCE)]);
+    let uri = project.uri("main.rue");
+
+    let mut client = Client::initialized().await;
+    client.open(&uri, SOURCE).await;
+    client.sync().await;
+
+    // The first edit's compile starts once the edits pause, and the second edit stops it
+    let (started, release) = client.hold_compile();
+    client.change(&uri, 2, &[MISMATCH]).await;
+    started.recv_timeout(TIMEOUT).unwrap();
+
+    client.change(&uri, 3, &[SOURCE]).await;
+    release.send(()).unwrap();
+
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["Rue.toml: []", "main.rue: [2]"]
+    );
+    assert_eq!(client.cancelled(), 1);
+}
+
+#[tokio::test]
 async fn test_request_sees_pending_edit() {
     let project = TempProject::new(&[("main.rue", SOURCE)]);
     let uri = project.uri("main.rue");
@@ -115,7 +139,7 @@ async fn test_out_of_date_result_is_discarded() {
     let mut client = Client::initialized().await;
 
     // The document is edited while the project is being compiled with the text it was opened
-    // with, so that compile's diagnostics are never published
+    // with, so that compile stops, and its diagnostics are never published
     let (started, release) = client.hold_compile();
     let compiles = client.compiles();
     client.open(&uri, MISMATCH).await;
@@ -129,6 +153,7 @@ async fn test_out_of_date_result_is_discarded() {
         ["Rue.toml: []", "main.rue: [2]"]
     );
     assert_eq!(client.compiles(), compiles + 2);
+    assert_eq!(client.cancelled(), 1);
 }
 
 #[test]
@@ -164,7 +189,9 @@ fn test_request_uses_newest_compile() {
         request.join().unwrap()
     });
 
+    // The request needed that compile, so the edit didn't stop it
     assert_eq!(hover, "let value: 42\n");
+    assert_eq!(backend.shared.cancelled.load(Ordering::Relaxed), 0);
 }
 
 #[tokio::test]
@@ -229,6 +256,9 @@ async fn test_out_of_date_project_is_compiled_again() {
         published.contains(&"main.rue: [2]".to_string()),
         "{published:?}"
     );
+
+    // The outer project's compile stopped, since it includes the edited file
+    assert_eq!(client.cancelled(), 1);
 }
 
 #[tokio::test]
@@ -268,6 +298,7 @@ async fn test_other_projects_are_not_out_of_date() {
         ]
     );
     assert_eq!(client.compiles(), compiles + 2);
+    assert_eq!(client.cancelled(), 0);
 }
 
 #[tokio::test]
