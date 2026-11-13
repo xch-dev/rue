@@ -525,6 +525,10 @@ fn test_subtract_generics() {
         t.name(not_atom_or_nil),
         format!("{generic_name} & (Any, Any)")
     );
+    let int_or_nil = t.union(vec![int, nil]);
+    let narrowed = rue_types::intersect(&mut t.arena, &t.builtins, generic, int_or_nil);
+    let not_nil = t.subtract(narrowed, nil);
+    assert_eq!(t.name(not_nil), format!("{generic_name} & Int"));
 
     // It's only removed if the target covers every possible value
     assert_eq!(t.subtract(generic_or_nil, generic), nil);

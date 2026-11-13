@@ -87,22 +87,63 @@ tests:
   byte_cost: 1644000
   total_cost: 1645635
 - name: union_atom_atom
-  program: (a (q 2 2 (q 5)) (c (q 2 (i (l 2) (q . 3) (q . 2)) 1) ()))
-  debug_program: (a (q 2 2 (c (q . 5) ())) (c (q 2 (i (l 2) (q . 3) (q . 2)) 1) ()))
-  output: '5'
-  runtime_cost: 710
-  byte_cost: 588000
-  total_cost: 588710
+  program: (a (q 2 2 (q . 5)) (c (q 2 (i (l 1) (q 8) (q 4 1 1)) 1) ()))
+  debug_program: (a (q 2 2 (q . 5)) (c (q 2 (i (not (l 1)) (q 4 1 1) (q 8 (q . "raise called at generic_intersection.rue:74:5"))) 1) ()))
+  output: (5 . 5)
+  runtime_cost: 797
+  byte_cost: 660000
+  total_cost: 660797
 - name: union_atom_pair
-  program: (a (q 2 2 (q (q . 2))) (c (q 2 (i (l 2) (q . 3) (q . 2)) 1) ()))
-  debug_program: (a (q 2 2 (c (c (q . 1) (q . 2)) ())) (c (q 2 (i (l 2) (q . 3) (q . 2)) 1) ()))
-  output: ()
-  runtime_cost: 710
-  byte_cost: 612000
-  total_cost: 612710
+  program: (a (q 2 2 (q 1 . 2)) (c (q 2 (i (l 1) (q 8) (q 4 1 1)) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q 2 (i (not (l 1)) (q 4 1 1) (q 8 (q . "raise called at generic_intersection.rue:74:5"))) 1) ()))
+  byte_cost: 684000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "raise called at generic_intersection.rue:74:5"
+- name: point_x_point
+  program: (a (q 2 2 (q 1 2)) (c (q 2 (i (a (i (l 1) (q 2 (i (a (i (l 2) (q) (q 2 (i (a (i (l 3) (q 2 (i (a (i (l 5) (q) (q 2 (i (a (i (l 7) (q) (q 2 (i 7 (q) (q 1 . 1)) 1)) 1) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 4 1 2) (q 8)) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) ()))) (c (q 2 (i (a (i (l 1) (q 2 (i (a (i (not (l (f 1))) (q 2 (i (a (i (l (r 1)) (q 2 (i (a (i (not (l (f (r 1)))) (q 2 (i (a (i (not (l (r (r 1)))) (q 2 (i (= (r (r 1)) ()) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 4 1 (f 1)) (q 8 (q . "raise called at generic_intersection.rue:88:5"))) 1) ()))
+  output: ((1 2) . 1)
+  runtime_cost: 3323
+  byte_cost: 3180000
+  total_cost: 3183323
+- name: first_int_pair
+  program: (a (q 2 2 (q 1 . 2)) (c (q 2 (i (l 1) (q 2 (i (l 2) (q 8) (q 4 1 2)) 1) (q 8)) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (q . 2))) (c (q 2 (i (l 1) (q 2 (i (not (l (f 1))) (q 4 1 (f 1)) (q 8 (q . "raise called at generic_intersection.rue:98:9"))) 1) (q 8 (q . "raise called at generic_intersection.rue:101:5"))) 1) ()))
+  output: ((1 . 2) . 1)
+  runtime_cost: 1078
+  byte_cost: 972000
+  total_cost: 973078
+- name: not_nil_int
+  program: (a (q 2 2 (q . 3)) (c (q 2 (i (l 1) (q 8) (q 2 (i 1 (q 4 1 1) (q 4 1 ())) 1)) 1) ()))
+  debug_program: (a (q 2 2 (q . 3)) (c (q 2 (i (not (l 1)) (q 2 (i (= 1 ()) (q 4 1 ()) (q 4 1 1)) 1) (q 8 (q . "raise called at generic_intersection.rue:114:5"))) 1) ()))
+  output: (3 . 3)
+  runtime_cost: 1050
+  byte_cost: 948000
+  total_cost: 949050
+- name: not_nil_nil
+  program: (a (q 2 2 ()) (c (q 2 (i (l 1) (q 8) (q 2 (i 1 (q 4 1 1) (q 4 1 ())) 1)) 1) ()))
+  debug_program: (a (q 2 2 ()) (c (q 2 (i (not (l 1)) (q 2 (i (= 1 ()) (q 4 1 ()) (q 4 1 1)) 1) (q 8 (q . "raise called at generic_intersection.rue:114:5"))) 1) ()))
+  output: (())
+  runtime_cost: 1074
+  byte_cost: 924000
+  total_cost: 925074
+- name: infer_from_structure_pair
+  program: (a (q 2 2 (q 1 . 2)) (c (q 2 (i (a (i (l 1) (q 2 (i (a (i (l 2) (q) (q 2 (i (l 3) (q) (q 1 . 1)) 1)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q . 2) (q 8)) 1) ()))
+  debug_program: (a (q 2 4 (c 6 (c (q . 1) (q . 2)))) (c (c (q 2 (i (a (i (l 3) (q 2 (i (a (i (not (l (f 3))) (q 2 (i (not (l (r 3))) (q 1 . 1) (q)) 1) (q)) 1) (q 1 . 1) (q)) 1) (q)) 1) (q 2 2 3) (q 8 (q . "raise called at generic_intersection.rue:140:5"))) 1) (q 5 1)) ()))
+  output: '1'
+  runtime_cost: 1718
+  byte_cost: 1620000
+  total_cost: 1621718
+- name: infer_through_alias_atom
+  program: (a (q 2 4 (c 6 (q . 4))) (c (c (q 2 (i (l 3) (q 8) (q 2 2 3)) 1) (q 2 (i (a (i (l 1) (q) (q 2 (i 1 (q) (q 1 . 1)) 1)) 1) (q 8) (q . 1)) 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (q . 4))) (c (c (q 2 (i (not (l 3)) (q 2 2 3) (q 8 (q . "raise called at generic_intersection.rue:156:5"))) 1) (q 2 (i (not (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1)) (q . 1) (q 8 (q . "assertion failed at generic_intersection.rue:147:5"))) 1)) ()))
+  output: '4'
+  runtime_cost: 1850
+  byte_cost: 1572000
+  total_cost: 1573850
 - name: pass_through_atom
   program: (a (q 2 2 (q . 3)) (c (q 2 (i (l 1) (q 8) (q . 1)) 1) ()))
-  debug_program: (a (q 2 4 (c 6 (q . 3))) (c (c (q 2 (i (not (l 3)) (q 2 2 3) (q 8 (q . "raise called at generic_intersection.rue:87:5"))) 1) (q . 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (q . 3))) (c (c (q 2 (i (not (l 3)) (q 2 2 3) (q 8 (q . "raise called at generic_intersection.rue:127:5"))) 1) (q . 1)) ()))
   output: '3'
   runtime_cost: 702
   byte_cost: 588000

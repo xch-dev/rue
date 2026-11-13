@@ -65,13 +65,53 @@ fn both<T>(value: T) -> (T, Bytes32) {
     raise;
 }
 
-// A union with a generic keeps the generic in each branch
-fn union_atom<T>(value: T | (Int, Int), fallback: T) -> T {
-    if value is (Any, Any) {
-        return fallback;
+// A union with a generic keeps the generic in the narrowed variant
+fn union_atom<T>(value: T | (Int, Int)) -> (T, Atom) {
+    if value is Atom {
+        return (value, value);
     }
 
-    value
+    raise;
+}
+
+// Narrowing a generic to a struct gives access to its fields
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn point_x<T>(value: T) -> (T, Int) {
+    if value is Point {
+        return (value, value.x);
+    }
+
+    raise;
+}
+
+// A field of a narrowed generic can be narrowed further
+fn first_int<T>(value: T) -> (T, Int) {
+    if value is (Any, Any) {
+        if value.first is Int {
+            return (value, value.first);
+        }
+
+        raise;
+    }
+
+    raise;
+}
+
+// The structure is narrowed in the else branch of a guard on a narrowed generic
+fn not_nil<T>(value: T) -> (T, Int) {
+    if value is Int | nil {
+        if value is nil {
+            return (value, 0);
+        }
+
+        return (value, value);
+    }
+
+    raise;
 }
 
 // The narrowed value can be passed to another generic function
@@ -82,6 +122,35 @@ fn identity<U>(value: U) -> U {
 fn pass_through<T>(value: T) -> T {
     if value is Atom {
         return identity(value);
+    }
+
+    raise;
+}
+
+// The generic function's type is inferred from the structure
+fn first<U>(value: (U, U)) -> U {
+    value.first
+}
+
+fn infer_from_structure<T>(value: T) -> Int {
+    if value is (Int, Int) {
+        return first(value);
+    }
+
+    raise;
+}
+
+// Or from the whole narrowed value, including through an alias
+type Optional<U> = U | nil;
+
+fn unwrap<U>(value: Optional<U>) -> U {
+    assert !(value is nil);
+    value
+}
+
+fn infer_through_alias<T>(value: T) -> T {
+    if value is Atom {
+        return unwrap(value);
     }
 
     raise;
@@ -139,12 +208,36 @@ test fn both_bytes32() -> (Bytes32, Bytes32) {
     both(0x0000000000000000000000000000000000000000000000000000000000000001)
 }
 
-test fn union_atom_atom() -> Int {
-    union_atom(5, 0)
+test fn union_atom_atom() -> (Int, Atom) {
+    union_atom(5)
 }
 
-test fn union_atom_pair() -> Int {
-    union_atom::<Int>((1, 2), 0)
+test fn union_atom_pair() -> (Int, Atom) {
+    union_atom::<Int>((1, 2))
+}
+
+test fn point_x_point() -> (Point, Int) {
+    point_x(Point { x: 1, y: 2 })
+}
+
+test fn first_int_pair() -> ((Int, Int), Int) {
+    first_int((1, 2))
+}
+
+test fn not_nil_int() -> (Int, Int) {
+    not_nil(3)
+}
+
+test fn not_nil_nil() -> (nil, Int) {
+    not_nil(nil)
+}
+
+test fn infer_from_structure_pair() -> Int {
+    infer_from_structure((1, 2))
+}
+
+test fn infer_through_alias_atom() -> Int {
+    infer_through_alias(4)
 }
 
 test fn pass_through_atom() -> Int {

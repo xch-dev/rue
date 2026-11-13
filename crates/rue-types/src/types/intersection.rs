@@ -1,6 +1,6 @@
 use id_arena::Arena;
 
-use crate::{Type, TypeId};
+use crate::{Type, TypeId, resolve_refs};
 
 /// The values that are in every one of the types at once.
 ///
@@ -35,10 +35,19 @@ impl Intersection {
     }
 }
 
-fn is_generic(arena: &Arena<Type>, mut id: TypeId) -> bool {
-    while let Type::Ref(inner) = arena[id] {
-        id = inner;
-    }
+/// Whether the type is a generic, after following references.
+pub(crate) fn is_generic(arena: &Arena<Type>, id: TypeId) -> bool {
+    matches!(arena[resolve_refs(arena, id)], Type::Generic(_))
+}
 
-    matches!(arena[id], Type::Generic(_))
+/// The members of an intersection, including those of nested intersections, or the type itself.
+pub(crate) fn intersection_members(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
+    match &arena[resolve_refs(arena, id)] {
+        Type::Intersection(intersection) => intersection
+            .types
+            .iter()
+            .flat_map(|&id| intersection_members(arena, id))
+            .collect(),
+        _ => vec![id],
+    }
 }

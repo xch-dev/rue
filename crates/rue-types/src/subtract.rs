@@ -58,6 +58,8 @@ fn subtract_impl(
     // A generic can't be split into narrower variants, so what's left of it is narrowed to the
     // values that its structure (or `Atom | (Any, Any)`, if it has none) has left, such as
     // `T & Atom` for `T` without `(Any, Any)`
+    let mut any = None;
+
     for variant in &mut lhs_variants {
         let structure = match &arena[variant.type_id] {
             Type::Generic(_) => None,
@@ -67,9 +69,11 @@ fn subtract_impl(
 
         // This is the same as `Any`, but it's displayed as `(Any, Any)` if it's narrowed to a pair
         let structure = structure.unwrap_or_else(|| {
-            let any = builtins.permissive_any;
-            let pair = arena.alloc(Type::Pair(Pair::new(any, any)));
-            arena.alloc(Type::Union(Union::new(vec![builtins.atom, pair])))
+            *any.get_or_insert_with(|| {
+                let any = builtins.permissive_any;
+                let pair = arena.alloc(Type::Pair(Pair::new(any, any)));
+                arena.alloc(Type::Union(Union::new(vec![builtins.atom, pair])))
+            })
         });
 
         let remainder = subtract_impl(arena, builtins, structure, rhs_id);

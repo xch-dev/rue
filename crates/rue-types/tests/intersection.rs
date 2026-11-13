@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use id_arena::Arena;
 use rue_diagnostic::Name;
 use rue_types::{
-    BuiltinTypes, CheckError, Comparison, FunctionType, Generic, Inference, Intersection, Pair,
-    Type, TypeId, Union, check, compare, compare_with_inference, intersect, stringify,
+    Alias, BuiltinTypes, CheckError, Comparison, FunctionType, Generic, Inference, Intersection,
+    Pair, Type, TypeId, Union, check, compare, compare_with_inference, intersect, stringify,
     substitute_with_mappings, subtract,
 };
 
@@ -117,8 +117,16 @@ fn test_infer_intersection() {
     let inferred = t.generic("U");
     let t_atom = t.intersect(generic, b.atom);
 
-    // A narrowed generic is inferred as a whole, rather than as its members
-    for target in [inferred, t.union(vec![inferred, b.nil])] {
+    // A narrowed generic is inferred as a whole, rather than as its members, including through an
+    // alias of a union
+    let optional = t.union(vec![inferred, b.nil]);
+    let alias = t.alloc(Type::Alias(Alias {
+        name: None,
+        inner: optional,
+        generics: vec![],
+    }));
+
+    for target in [inferred, optional, alias] {
         let mut infer = Inference::new([inferred]);
         let result =
             compare_with_inference(&mut t.arena, &t.builtins, t_atom, target, Some(&mut infer));
@@ -128,6 +136,25 @@ fn test_infer_intersection() {
         assert_eq!(lower.len(), 1);
         assert_eq!(t.name(lower[0]), "T & Atom");
     }
+
+    // But it's inferred from its structure if that's what matches, without the generic adding
+    // `Any` as a candidate
+    let int_pair = t.pair(b.int, b.int);
+    let t_int_pair = t.intersect(generic, int_pair);
+    let target = t.pair(inferred, inferred);
+    let mut infer = Inference::new([inferred]);
+    let result = compare_with_inference(
+        &mut t.arena,
+        &t.builtins,
+        t_int_pair,
+        target,
+        Some(&mut infer),
+    );
+    assert_eq!(result, Comparison::Assign);
+
+    let lower = infer.candidates(inferred).unwrap().lower.clone();
+    let names: Vec<String> = lower.into_iter().map(|id| t.name(id)).collect();
+    assert_eq!(names, ["Int", "Int"]);
 }
 
 #[test]

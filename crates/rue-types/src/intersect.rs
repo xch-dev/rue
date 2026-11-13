@@ -4,8 +4,9 @@ use log::{Level, log_enabled, trace};
 
 use crate::{
     BuiltinTypes, Comparison, ComparisonContext, Intersection, Memo, OverlapMemo, Pair, Struct,
-    Type, TypeId, Union, compare, compare_impl, reaches_non_contractive_cycle, resolve_refs, step,
-    stringify_impl, substitute, types_may_overlap, unwrap_semantic_without_substitution,
+    Type, TypeId, Union, compare, compare_impl, intersection_members, is_generic,
+    reaches_non_contractive_cycle, resolve_refs, step, stringify_impl, substitute,
+    types_may_overlap, unwrap_semantic_without_substitution,
 };
 
 /// The maximum number of nested intersections before giving up on being more precise.
@@ -261,11 +262,11 @@ fn intersect_generics(
         .into_iter()
         .chain(intersection_members(arena, rhs))
     {
-        let resolved = resolve_refs(arena, member);
+        if is_generic(arena, member) {
+            let generic = resolve_refs(arena, member);
 
-        if matches!(arena[resolved], Type::Generic(_)) {
-            if !generics.contains(&resolved) {
-                generics.push(resolved);
+            if !generics.contains(&generic) {
+                generics.push(generic);
             }
         } else {
             structure = Some(match structure {
@@ -323,7 +324,7 @@ fn normalize_intersection(
     let members = intersection_members(arena, id);
     let generics = members
         .iter()
-        .filter(|&&member| matches!(arena[resolve_refs(arena, member)], Type::Generic(_)))
+        .filter(|&&member| is_generic(arena, member))
         .count();
 
     if generics > 0 && members.len() - generics <= 1 && members.len() == intersection.types.len() {
@@ -331,18 +332,6 @@ fn normalize_intersection(
     }
 
     intersect_generics(arena, builtins, ctx, id, builtins.permissive_any)
-}
-
-/// The members of an intersection, including those of nested intersections, or the type itself.
-fn intersection_members(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
-    match &arena[resolve_refs(arena, id)] {
-        Type::Intersection(intersection) => intersection
-            .types
-            .iter()
-            .flat_map(|&id| intersection_members(arena, id))
-            .collect(),
-        _ => vec![id],
-    }
 }
 
 /// Rebuilds a union from the intersection of each of its variants, dropping the ones which were

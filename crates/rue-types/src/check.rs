@@ -553,7 +553,6 @@ fn atoms_of(arena: &Arena<Type>, id: TypeId, target: bool) -> Result<Option<Atom
     })
 }
 
-/// Returns the pairs that a type can contain. See [`atoms_of`] for the meaning of `target`.
 /// The member of an intersection that it's checked as. A value can't be checked against a generic
 /// at runtime, so if it's the target, a generic member is returned to be rejected.
 fn intersection_member(arena: &Arena<Type>, ty: &Intersection, target: bool) -> Option<TypeId> {
@@ -566,6 +565,7 @@ fn intersection_member(arena: &Arena<Type>, ty: &Intersection, target: bool) -> 
     ty.structure(arena).or(generic)
 }
 
+/// Returns the pairs that a type can contain. See [`atoms_of`] for the meaning of `target`.
 fn pairs_of(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,

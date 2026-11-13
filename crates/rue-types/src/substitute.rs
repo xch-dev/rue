@@ -5,8 +5,8 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, FunctionParameter, FunctionType, Intersection, Pair, Struct, Type, TypeId, Union, step,
-    stringify_impl,
+    Alias, FunctionParameter, FunctionType, Intersection, Pair, Struct, Type, TypeId, Union,
+    intersection_members, step, stringify_impl,
 };
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
@@ -271,7 +271,7 @@ fn substitute_impl(
                 .iter()
                 .map(|id| substitute_impl(arena, *id, map, scope, ctx))
                 .collect();
-            normalize_intersection(arena, types)
+            simplify_intersection(arena, types)
         }
     };
 
@@ -289,15 +289,17 @@ fn substitute_impl(
 /// that was replaced with a type that overlaps another member (such as `T & Atom` with `T` mapped
 /// to `Int`) is kept as an intersection of the two. That's still the same set of values, and it's
 /// simplified further the next time it's intersected with another type.
-fn normalize_intersection(arena: &mut Arena<Type>, types: Vec<TypeId>) -> TypeId {
+fn simplify_intersection(arena: &mut Arena<Type>, types: Vec<TypeId>) -> TypeId {
     let mut members = Vec::new();
-    let mut stack: Vec<TypeId> = types.into_iter().rev().collect();
+    let flattened: Vec<TypeId> = types
+        .into_iter()
+        .flat_map(|id| intersection_members(arena, id))
+        .collect();
 
-    while let Some(id) = stack.pop() {
+    for id in flattened {
         match &arena[resolve_refs(arena, id)] {
             Type::Never => return arena.alloc(Type::Never),
             Type::Any => {}
-            Type::Intersection(inner) => stack.extend(inner.types.iter().rev().copied()),
             _ => {
                 if !members.contains(&id) {
                     members.push(id);

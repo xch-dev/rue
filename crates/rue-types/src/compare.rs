@@ -10,7 +10,7 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, free_generics,
-    references_generic, step, stringify_impl, substitute,
+    is_generic, references_generic, step, stringify_impl, substitute,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1003,22 +1003,30 @@ pub(crate) fn compare_impl(
         (Type::Intersection(lhs_intersection), _) => {
             let mut result = Comparison::Invalid;
 
-            if let Type::Union(rhs_union) = arena[rhs].clone() {
-                for &id in &rhs_union.types {
-                    result = min(
-                        result,
-                        compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
-                    );
-                }
+            for id in union_members(arena, rhs) {
+                result = min(
+                    result,
+                    compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
+                );
             }
 
-            if result != Comparison::Assign {
-                for &id in &lhs_intersection.types {
-                    result = min(
-                        result,
-                        compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
-                    );
+            // The structure is compared before the generics, and they're only compared until one
+            // is assignable. Otherwise a generic would fall back to `Any`, and add it as an
+            // inference candidate even though the structure was enough.
+            let (generics, structure): (Vec<TypeId>, Vec<TypeId>) = lhs_intersection
+                .types
+                .iter()
+                .partition(|&&id| is_generic(arena, id));
+
+            for id in structure.into_iter().chain(generics) {
+                if result == Comparison::Assign {
+                    break;
                 }
+
+                result = min(
+                    result,
+                    compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
+                );
             }
 
             result
@@ -1260,6 +1268,22 @@ pub(crate) fn compare_impl(
     ctx.memo.exit(frame, key, memo_key, result);
 
     result
+}
+
+/// The members of the union that the type is, or is an alias of, if any.
+fn union_members(arena: &Arena<Type>, mut id: TypeId) -> Vec<TypeId> {
+    let mut visited = HashSet::new();
+
+    while visited.insert(id) {
+        match &arena[id] {
+            Type::Ref(inner) => id = *inner,
+            Type::Alias(alias) => id = alias.inner,
+            Type::Union(union) => return union.types.clone(),
+            _ => break,
+        }
+    }
+
+    Vec::new()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
