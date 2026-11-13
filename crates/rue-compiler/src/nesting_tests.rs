@@ -457,8 +457,8 @@ const DEEP_TYPES: &[(&str, usize, Shape)] = &[
 ];
 
 /// The operations on types recurse once per level of a type, and grow the stack as they go, so
-/// these run on a 2 MiB stack in every build. Code isn't generated, since lowering a long list
-/// uses more stack than this in a debug build (#114).
+/// these run on a 2 MiB stack in every build. Code isn't generated, since some of these are deeper
+/// than the lowering limit allows.
 #[test]
 fn deep_types_are_checked() {
     on_stack(2, || {
