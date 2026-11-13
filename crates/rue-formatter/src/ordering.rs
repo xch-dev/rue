@@ -117,24 +117,24 @@ pub fn plan_document(
             _ => None,
         };
         // Attributes don't affect the order of items, so they're left out of the sort key
-        let key_tokens = item
+        let keyword_key = item
             .syntax()
             .descendants_with_tokens()
             .filter_map(rowan::NodeOrToken::into_token)
-            .filter(|token| {
+            .find(|token| {
                 !token.kind().is_trivia()
                     && !token
                         .parent_ancestors()
                         .any(|node| node.kind() == SyntaxKind::Attribute)
             })
-            .collect::<Vec<_>>();
+            .map(|token| token.text().to_string())
+            .unwrap_or_default();
         let path_key = item
             .syntax()
             .children()
             .filter(|child| child.kind() == SyntaxKind::ImportPath)
             .map(|path| sorted_path_text(&path))
             .collect::<String>();
-        let keyword_key = key_tokens.first().map_or("", rue_parser::SyntaxToken::text);
 
         items.push(DocumentItem {
             span,

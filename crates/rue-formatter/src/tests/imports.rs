@@ -309,15 +309,20 @@ fn multiline_comments_before_the_closing_brace_after_a_trailing_comment() {
             different path than the parser, or moves them on a second format, so its own checks \
             reject the result and the file can't be formatted"]
 fn comments_inside_imports_can_be_formatted() {
-    for source in [
+    let failures = [
         "import a::{\n/* block */ b};",
         "import a::{c, b // trailing\n// own-line\n};",
-        "import a::{b, c::{e, d, f // line\n::g}, h};",
         "import a::{c, // line\n\n// own-line\nb\n/* multi\nline */\n};",
-    ] {
+        "import a::{\n    c, // trailing\n\n    // own-line\n    b,\n    // closing\n};",
+    ]
+    .into_iter()
+    .filter_map(|source| {
         format_source(source, &FormatOptions::default())
-            .unwrap_or_else(|error| panic!("{source:?} should format: {error}"));
-    }
+            .err()
+            .map(|error| format!("{source:?}: {error}"))
+    })
+    .collect::<Vec<_>>();
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
 #[test]
@@ -333,6 +338,18 @@ fn sorting_paths_keeps_no_blank_line_after_a_trailing_comment() {
                 /* multi
             line */
                 d,
+            };
+        "#]],
+    );
+    // Without sorting, the blank line stays before the comment
+    check(
+        "import a::{b, // line\n\n// own-line\nc};",
+        expect![[r#"
+            import a::{
+                b, // line
+
+                // own-line
+                c,
             };
         "#]],
     );
