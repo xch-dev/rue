@@ -94,6 +94,12 @@ pub fn compile_function_call_expr(
 
         let mut infer = Inference::new(function.generics.iter().copied());
 
+        for &generic in &function.generics {
+            if is_type_in_scope(ctx, generic) {
+                infer.set_in_scope(generic);
+            }
+        }
+
         // The type expected of the call is used for the generics that the arguments don't
         // constrain, such as `T` in `let value: Int = unchecked_cast(nil);`, and to keep the
         // ones they do from being widened past it

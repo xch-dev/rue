@@ -1,0 +1,36 @@
+tests:
+- name: map_identity
+  program: (+ (a (q . 2) (q 42)) (q . 1))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42))) 1)) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  output: '43'
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: map_identity_reversed
+  program: (+ (a (q . 2) (q 42)) (q . 1))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (q . 42) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (q 2 3 (c 2 ()))) ()))
+  output: '43'
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: chain_of_three
+  program: (a (q 16 (a 2 (c (a 2 (q 42)) ())) (q . 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42)))) 1)) (c (c (q . 2) (q 2 5 (c (a 2 (c 7 ())) ()))) ()))
+  output: '43'
+  runtime_cost: 1491
+  byte_cost: 564000
+  total_cost: 565491
+- name: cycle_between_generics
+  program: (a (q 16 (a 2 (q 42)) (q . 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 42) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1)) (c (c (q . 2) (q 2 2 (c 5 ()))) ()))
+  output: '43'
+  runtime_cost: 1209
+  byte_cost: 420000
+  total_cost: 421209
+- name: recursive_call_with_swapped_generics
+  program: (a (q 16 (f (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello"))))))) (q . 1)) (c (q 2 (i 5 (q 2 (q 4 6 4) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 11)))) 1)) (q . 7)) 1) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello")))))) 1)) (c (q 2 (i (= 5 ()) (q 4 11 15) (q 2 (q 4 (r 2) (f 2)) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 11)))) 1))) 1) ()))
+  output: '43'
+  runtime_cost: 7994
+  byte_cost: 1656000
+  total_cost: 1663994

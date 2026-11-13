@@ -1,0 +1,56 @@
+// Generics that are inferred from other generics are resolved through them (#146)
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn map<A, B>(function: fn(a: A) -> B, value: A) -> B {
+    function(value)
+}
+
+fn map_reversed<A, B>(value: A, function: fn(a: A) -> B) -> B {
+    function(value)
+}
+
+fn chain<A, B, C>(first: fn(a: A) -> B, second: fn(b: B) -> C, value: A) -> C {
+    second(first(value))
+}
+
+fn cycle<A, B>(forward: fn(a: A) -> B, _backward: fn(b: B) -> A, value: A) -> B {
+    forward(value)
+}
+
+test fn map_identity() -> Int {
+    let result = map(identity, 42);
+    result + 1
+}
+
+test fn map_identity_reversed() -> Int {
+    let result = map_reversed(42, identity);
+    result + 1
+}
+
+test fn chain_of_three() -> Int {
+    let result = chain(identity, identity, 42);
+    result + 1
+}
+
+test fn cycle_between_generics() -> Int {
+    let result = cycle(identity, identity, 42);
+    result + 1
+}
+
+fn swap<A, B>(depth: Int, first: A, second: B) -> (A, B) {
+    if depth == 0 {
+        (first, second)
+    } else {
+        // The function's own generics are in scope, so `A` and `B` here are the caller's
+        let (b, a) = swap(depth - 1, second, first);
+        (a, b)
+    }
+}
+
+test fn recursive_call_with_swapped_generics() -> Int {
+    let result = swap(3, 42, sha256("hello"));
+    result.first + 1
+}
