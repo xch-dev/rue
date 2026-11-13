@@ -20,7 +20,7 @@ use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_lir::{CLVM_FLAGS, COST_PER_BYTE, DebugDialect};
 use rue_options::CompilerOptions;
 use serde::{Deserialize, Serialize};
-use serde_yml::Value;
+use serde_yml::{Mapping, Value};
 
 const USAGE: &str = "\
 Usage: rue-tests [--bless] [FILTER]
@@ -145,8 +145,9 @@ fn main() -> Result<()> {
     if failed {
         if args.bless {
             eprintln!(
-                "\nUpdated the files that differed; run again without --bless to check that \
-                 everything now passes"
+                "\nUpdated the files that differed. Run again without --bless to check them; \
+                 anything that still fails, such as a syntax error no snapshot expects, \
+                 needs fixing by hand"
             );
         } else {
             eprintln!(
@@ -166,7 +167,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
     let unparsed = check_formatting_corpus(base_path, filter_arg, update, &mut failed)?;
     walk_dir(&base_path.join("tests"), filter_arg, update, &mut failed)?;
     walk_dir(&base_path.join("examples"), filter_arg, update, &mut failed)?;
-    check_expected_parse_errors(&unparsed, &mut failed)?;
+    check_expected_parse_errors(&unparsed, filter_arg, &mut failed)?;
 
     println!("Running std tests");
 
@@ -177,8 +178,6 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
     } else {
         TestFile::default()
     };
-
-    let original = file.clone();
 
     let mut allocator = Allocator::new();
 
@@ -230,7 +229,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
         )?;
     }
 
-    compare_snapshot(&yaml_file, &original, &file, update, &mut failed)?;
+    compare_snapshot(&yaml_file, &file, update, &mut failed)?;
 
     Ok(failed)
 }
@@ -296,20 +295,26 @@ fn check_formatting_corpus(
 /// Errors are matched by message and file, not position: the formatter adds a final newline
 /// before parsing, so an error at the end of a file without one is reported a line later than
 /// the compiler reports it.
+///
+/// The formatting pass filters by path but tests are filtered by name, so a file whose test
+/// didn't run under the filter isn't checked, since its snapshot may not have been written yet.
 fn check_expected_parse_errors(
     unparsed: &[(PathBuf, Vec<Diagnostic>)],
+    filter_arg: Option<&str>,
     failed: &mut bool,
 ) -> Result<()> {
     for (path, diagnostics) in unparsed {
         let display = short_path(path).display();
         let yaml_file = path.with_extension("yaml");
+        let name = path.file_stem().unwrap_or_default().to_string_lossy();
 
-        let expected: Vec<String> = if yaml_file.try_exists()? {
-            read_snapshot(&yaml_file)?
-                .diagnostics
-                .iter()
-                .filter_map(|message| message.lines().next().map(str::to_string))
-                .collect()
+        if !matches_filter(filter_arg, &name) {
+            println!("Skipped formatting {display}, since its test doesn't match the filter");
+            continue;
+        }
+
+        let expected = if yaml_file.try_exists()? {
+            read_snapshot(&yaml_file)?.diagnostics
         } else {
             Vec::new()
         };
@@ -317,11 +322,11 @@ fn check_expected_parse_errors(
         let file_name = path.file_name().unwrap_or_default().to_string_lossy();
         let unexpected: Vec<String> = diagnostics
             .iter()
-            .filter(|diagnostic| {
+            .filter_map(|diagnostic| {
                 let prefix = format!("{} at {file_name}:", diagnostic.kind);
-                !expected.iter().any(|message| message.starts_with(&prefix))
+                (!expected.iter().any(|message| message.starts_with(&prefix)))
+                    .then(|| format!("{prefix}{}", diagnostic.start()))
             })
-            .map(|diagnostic| format!("{} at {file_name}:{}", diagnostic.kind, diagnostic.start()))
             .collect();
 
         if unexpected.is_empty() {
@@ -372,15 +377,8 @@ fn walk_dir(path: &Path, filter_arg: Option<&str>, update: bool, failed: &mut bo
         let file_name = file_name.to_str().unwrap();
 
         if let Some(name) = file_name.strip_suffix(".rue") {
-            if matches_filter(filter_arg, name)
-                && !entry
-                    .path()
-                    .parent()
-                    .unwrap()
-                    .join(format!("{name}.yaml"))
-                    .try_exists()?
-            {
-                handle_test_file(name, &entry.path(), failed, update, false)?;
+            if matches_filter(filter_arg, name) && !path.with_extension("yaml").try_exists()? {
+                handle_test_file(name, &path, failed, update, false)?;
             }
             continue;
         }
@@ -436,8 +434,6 @@ fn handle_test_file(
     } else {
         TestFile::default()
     };
-
-    let original = file.clone();
 
     let mut allocator = Allocator::new();
 
@@ -561,7 +557,7 @@ fn handle_test_file(
         )?;
     }
 
-    compare_snapshot(&yaml_file, &original, &file, update, failed)?;
+    compare_snapshot(&yaml_file, &file, update, failed)?;
 
     Ok(())
 }
@@ -571,44 +567,55 @@ fn read_snapshot(yaml_file: &Path) -> Result<TestFile> {
         .with_context(|| format!("couldn't parse {}", yaml_file.display()))
 }
 
-/// Reports how `actual` differs from the snapshot `expected` read from `yaml_file`, and with
-/// `update`, writes `actual` to it. A snapshot that's missing, or isn't written exactly as
-/// `--bless` would write it (such as one with a key the harness doesn't know), also fails, so a
-/// passing check means `--bless` would change nothing.
+/// Reports how `actual` differs from the snapshot in `yaml_file`, and with `update`, writes
+/// `actual` to it. Anything but the exact text `--bless` would write fails, including a missing
+/// snapshot or a key the harness doesn't know, so a passing check means `--bless` changes
+/// nothing.
 fn compare_snapshot(
     yaml_file: &Path,
-    expected: &TestFile,
     actual: &TestFile,
     update: bool,
     failed: &mut bool,
 ) -> Result<()> {
     let display = short_path(yaml_file).display();
     let text = serde_yml::to_string(actual)?;
+    let existing = yaml_file
+        .try_exists()?
+        .then(|| fs::read_to_string(yaml_file))
+        .transpose()?;
 
-    if actual != expected {
-        let expected = serde_yml::to_value(expected)?;
-        let actual = serde_yml::to_value(actual)?;
-        let mut differences = Vec::new();
-        diff_values("", &expected, &actual, &mut differences);
-
-        if update {
-            eprintln!("Updated {display}:");
-        } else {
-            eprintln!("Snapshot differs for {display}:");
-        }
-
-        for difference in differences {
-            eprintln!("{difference}");
-        }
-    } else if fs::read_to_string(yaml_file).ok().as_deref() == Some(text.as_str()) {
+    if existing.as_deref() == Some(text.as_str()) {
         return Ok(());
-    } else if update {
-        eprintln!("Rewrote {display} in the form --bless writes");
-    } else {
-        eprintln!("Snapshot {display} is missing, or isn't in the form --bless writes");
     }
 
     *failed = true;
+
+    let expected = match &existing {
+        Some(existing) => serde_yml::from_str(existing)?,
+        None => Value::Mapping(Mapping::new()),
+    };
+    let mut differences = Vec::new();
+    diff_values(
+        "",
+        &expected,
+        &serde_yml::to_value(actual)?,
+        &mut differences,
+    );
+
+    match (existing.is_some(), update) {
+        (true, true) => eprintln!("Updated {display}:"),
+        (true, false) => eprintln!("Snapshot differs for {display}:"),
+        (false, true) => eprintln!("Created {display}:"),
+        (false, false) => eprintln!("Snapshot {display} is missing:"),
+    }
+
+    if differences.is_empty() {
+        eprintln!("  (only the YAML formatting differs)");
+    }
+
+    for difference in differences {
+        eprintln!("{difference}");
+    }
 
     if update {
         fs::write(yaml_file, text)?;
@@ -965,6 +972,12 @@ mod tests {
         // With an out of date snapshot
         fs::write(tests.join("another.rue"), MAIN)?;
         fs::write(tests.join("another.yaml"), "program: (q . 2)\n")?;
+        // A new syntax error test whose path matches the filter but whose name doesn't
+        fs::create_dir(tests.join("wanted_group"))?;
+        fs::write(
+            tests.join("wanted_group/broken.rue"),
+            "fn main() -> Int {\n",
+        )?;
 
         assert!(run_tests(Some("wanted"), &dir.0, true)?);
 
@@ -976,6 +989,10 @@ mod tests {
             fs::read_to_string(tests.join("another.yaml"))?,
             "program: (q . 2)\n"
         );
+        assert!(!tests.join("wanted_group/broken.yaml").exists());
+
+        // The filtered run converges, without checking the syntax error test it didn't run
+        assert!(!run_tests(Some("wanted"), &dir.0, false)?);
 
         Ok(())
     }
@@ -995,7 +1012,7 @@ mod tests {
 
         // No snapshot at all
         let mut failed = false;
-        check_expected_parse_errors(&unparsed, &mut failed)?;
+        check_expected_parse_errors(&unparsed, None, &mut failed)?;
         assert!(failed);
 
         // A snapshot without the syntax error
@@ -1004,14 +1021,25 @@ mod tests {
             "diagnostics:\n- Something else\n",
         )?;
         let mut failed = false;
-        check_expected_parse_errors(&unparsed, &mut failed)?;
+        check_expected_parse_errors(&unparsed, None, &mut failed)?;
+        assert!(failed);
+
+        // A snapshot with the same syntax errors in another file
+        let mut snapshot = TestFile::default();
+        for diagnostic in &unparsed[0].1 {
+            let message = format!("{} at other.rue:{}", diagnostic.kind, diagnostic.start());
+            snapshot.diagnostics.push(message);
+        }
+        fs::write(dir.0.join("broken.yaml"), serde_yml::to_string(&snapshot)?)?;
+        let mut failed = false;
+        check_expected_parse_errors(&unparsed, None, &mut failed)?;
         assert!(failed);
 
         // The snapshot the harness writes, which records the syntax error
         let mut failed = false;
         walk_dir(&dir.0, None, true, &mut failed)?;
         let mut failed = false;
-        check_expected_parse_errors(&unparsed, &mut failed)?;
+        check_expected_parse_errors(&unparsed, None, &mut failed)?;
         assert!(!failed);
 
         Ok(())
