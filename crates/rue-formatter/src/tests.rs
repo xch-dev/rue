@@ -686,6 +686,25 @@ fn bodyless_extern_functions_can_form_compact_groups() {
 }
 
 #[test]
+#[ignore = "known bug found by the property tests: whether an item joins a compact group depends on \
+            whether it's on one line in the source, so a constant that the formatter wraps is put \
+            next to its neighbour on the first format and separated from it on the second, and \
+            format_source rejects the result as not idempotent"]
+fn constants_that_wrap_format_idempotently() {
+    check(
+        "const A: Int = 1;\nconst B: Int = first_long_operand + second_long_operand + third_long_operand + fourth;",
+        expect![[r#"
+            const A: Int = 1;
+
+            const B: Int = first_long_operand
+                + second_long_operand
+                + third_long_operand
+                + fourth;
+        "#]],
+    );
+}
+
+#[test]
 fn struct_field_forms() {
     check(
         "struct Example<T>{opcode=42,value:T,optional:T=nil,...rest:Any=nil}",
