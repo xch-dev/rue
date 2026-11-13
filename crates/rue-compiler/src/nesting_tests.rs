@@ -5,8 +5,8 @@
 use std::{path::PathBuf, sync::Arc, thread};
 
 use clvmr::Allocator;
-use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Source, SourceKind};
-use rue_hir::MAX_LOWERING_DEPTH;
+use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Lint, Source, SourceKind};
+use rue_hir::{DependencyGraph, MAX_LOWERING_DEPTH, has_reachable_unresolved};
 use rue_options::CompilerOptions;
 use rue_parser::MAX_NESTING_DEPTH;
 
@@ -144,8 +144,8 @@ fn links(n: usize, link: impl Fn(usize) -> String) -> String {
     (0..n).map(link).collect()
 }
 
-/// Compiles the source, then generates code for `main`, which fails if there were any errors.
-fn compile(source: &str) -> (Vec<Diagnostic>, Result<(), Error>) {
+/// Compiles the source, without generating code.
+fn compile_tree(source: &str) -> (Compiler, FileTree, SourceKind) {
     let mut ctx = Compiler::new(CompilerOptions {
         std: false,
         ..CompilerOptions::default()
@@ -160,6 +160,13 @@ fn compile(source: &str) -> (Vec<Diagnostic>, Result<(), Error>) {
     ));
 
     tree.compile(&mut ctx);
+
+    (ctx, tree, kind)
+}
+
+/// Compiles the source, then generates code for `main`, which fails if there were any errors.
+fn compile(source: &str) -> (Vec<Diagnostic>, Result<(), Error>) {
+    let (mut ctx, tree, kind) = compile_tree(source);
 
     let result = tree
         .main(&mut ctx, &mut Allocator::new(), &kind, PathBuf::from("."))
@@ -177,13 +184,15 @@ fn errors(diagnostics: &[Diagnostic]) -> Vec<&Diagnostic> {
         .collect()
 }
 
-/// The limit leaves room for a 2 MiB thread, such as the language server's, in a release build.
+/// The limits leave room for a 2 MiB thread, such as the language server's, in a release build.
 /// Frames are much larger in debug builds, which need a bigger stack for the same depth.
 fn on_small_stack(f: impl FnOnce() + Send + 'static) {
-    let stack_size = if cfg!(debug_assertions) { 32 } else { 2 } * 1024 * 1024;
+    on_stack(if cfg!(debug_assertions) { 32 } else { 2 }, f);
+}
 
+fn on_stack(mebibytes: usize, f: impl FnOnce() + Send + 'static) {
     thread::Builder::new()
-        .stack_size(stack_size)
+        .stack_size(mebibytes * 1024 * 1024)
         .spawn(f)
         .unwrap()
         .join()
@@ -276,17 +285,95 @@ fn chains_beyond_the_lowering_limit_in_const_expressions_are_an_error() {
     });
 }
 
+/// How many links the chains of references have. The passes that follow them use the same amount
+/// of stack however long they are, so they run on a 2 MiB stack even in a debug build, and
+/// recursing once per link would overflow it.
+const LONG_CHAIN: usize = 1_000;
+
 #[test]
 fn long_chains_of_const_expressions_are_evaluated() {
-    on_small_stack(|| {
+    on_stack(2, || {
         let source = format!(
-            "fn main() -> Int {{ C0 }}\n{}const C1000: Int = 1;",
-            links(1_000, |i| {
+            "fn main() -> Int {{ C0 }}\n{}const C{LONG_CHAIN}: Int = 1;",
+            links(LONG_CHAIN, |i| {
                 format!("const C{i}: Int = const {{ C{} + 1 }};\n", i + 1)
             })
         );
 
         let (diagnostics, result) = compile(&source);
         assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
+
+/// The dependency graph and the check for unresolved code follow the whole chain of constants.
+/// Lowering it would go deeper than this stack has room for in a debug build, so they're run
+/// without generating code.
+#[test]
+fn long_chains_of_constants_are_followed() {
+    on_stack(2, || {
+        let source = format!(
+            "fn main(a: Int) -> Int {{ C0 + a }}\n{}const C{LONG_CHAIN}: Int = 1;",
+            links(LONG_CHAIN, |i| format!(
+                "const C{i}: Int = C{} + 1;\n",
+                i + 1
+            ))
+        );
+
+        let (mut ctx, tree, kind) = compile_tree(&source);
+        let diagnostics = ctx.take_diagnostics();
+        assert!(errors(&diagnostics).is_empty(), "{diagnostics:?}");
+
+        let scope = ctx.module(tree.find(&kind).unwrap().module).scope;
+        let main = ctx.scope(scope).symbol("main").unwrap();
+
+        let graph = DependencyGraph::build(&ctx, main, *ctx.options());
+        assert_eq!(graph.dependencies(main, false).len(), LONG_CHAIN + 2);
+
+        assert!(!has_reachable_unresolved(&ctx, main));
+    });
+}
+
+/// Whether a function can raise is checked through the whole chain of calls.
+#[test]
+fn long_chains_of_calls_are_followed() {
+    on_stack(2, || {
+        let source = format!(
+            "fn main(a: Int) -> Int {{ inline if a == 0 {{ f0() }} else {{ 1 }} }}\n{}fn f{LONG_CHAIN}() -> Int {{ raise; }}",
+            links(LONG_CHAIN, |i| format!(
+                "fn f{i}() -> Int {{ f{}() + 1 }}\n",
+                i + 1
+            ))
+        );
+
+        let (mut ctx, ..) = compile_tree(&source);
+        let diagnostics = ctx.take_diagnostics();
+
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.lint() == Some(Lint::InlineIfMayRaise)),
+            "{diagnostics:?}"
+        );
+    });
+}
+
+/// The search for unconditional recursion follows the whole chain of bindings.
+#[test]
+fn long_chains_of_bindings_are_followed() {
+    on_stack(2, || {
+        let source = format!(
+            "fn main() -> Int {{ f(1) }}\n\nfn f(a: Int) -> Int {{\nlet x0 = f(a);\n{}x{LONG_CHAIN}\n}}",
+            links(LONG_CHAIN, |i| format!("let x{} = x{i};\n", i + 1))
+        );
+
+        let (mut ctx, ..) = compile_tree(&source);
+        let diagnostics = ctx.take_diagnostics();
+
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.lint() == Some(Lint::UnconditionalRecursion)),
+            "{diagnostics:?}"
+        );
     });
 }

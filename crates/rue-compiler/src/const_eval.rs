@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use clvmr::error::EvalErr;
@@ -43,80 +43,86 @@ enum ConstEvalError {
     LoweringTooDeep,
 }
 
+/// A const expression that's being evaluated, once the const expressions it depends on are.
+struct ConstFrame {
+    hir: HirId,
+    /// The function that the const expression is evaluated as.
+    root: SymbolId,
+    /// The dependency graph of the function, if none of the const expressions it depends on had
+    /// to be evaluated after it was built, so that it can be reused.
+    graph: Option<DependencyGraph>,
+    /// The const expressions it depends on that haven't been evaluated yet, in reverse order.
+    dependencies: Vec<HirId>,
+}
+
 /// Evaluates a const expression after the const expressions it depends on, and stores the result
-/// in it. Returns whether the evaluation succeeded.
+/// in it.
 ///
 /// The const expressions are evaluated from a stack rather than recursively, so that a long chain
 /// of them that each depend on the next doesn't overflow the stack. The stack holds the path from
 /// this const expression to the one being evaluated, so the ones being evaluated are exactly the
 /// ones on the stack.
-fn evaluate_const(ctx: &mut Compiler, states: &mut HashMap<HirId, ConstState>, hir: HirId) -> bool {
-    let mut stack = vec![hir];
+fn evaluate_const(ctx: &mut Compiler, states: &mut HashMap<HirId, ConstState>, hir: HirId) {
+    let mut stack: Vec<ConstFrame> = Vec::new();
+    let mut next = Some(hir);
 
-    // The function each const expression on the stack is evaluated as, along with the const
-    // expressions it depends on that haven't been evaluated yet
-    let mut evaluating: HashMap<HirId, (SymbolId, VecDeque<HirId>)> = HashMap::new();
+    loop {
+        if let Some(hir) = next.take()
+            && !states.contains_key(&hir)
+        {
+            let Hir::Const(expr) = ctx.hir(hir).clone() else {
+                unreachable!("const expressions are never replaced");
+            };
 
-    while let Some(&current) = stack.last() {
-        match states.get(&current) {
-            Some(ConstState::Done | ConstState::Failed) => {
-                stack.pop();
-                continue;
-            }
-            Some(ConstState::Evaluating) => {}
-            None => {
-                let Hir::Const(expr) = ctx.hir(current).clone() else {
-                    unreachable!("const expressions are never replaced");
-                };
-
-                if expr.result.is_some() {
-                    states.insert(current, ConstState::Done);
-                    stack.pop();
-                    continue;
-                }
-
-                states.insert(current, ConstState::Evaluating);
+            if expr.result.is_some() {
+                states.insert(hir, ConstState::Done);
+            } else {
+                states.insert(hir, ConstState::Evaluating);
 
                 // Const expressions reachable through referenced symbols must be evaluated first,
                 // so that their cached values are used rather than evaluating them again as part
                 // of this one
                 let root = const_root(ctx, expr.value);
                 let graph = DependencyGraph::build(ctx, root, const_options(ctx));
-                evaluating.insert(current, (root, graph.const_exprs().collect()));
+                let dependencies: Vec<HirId> = graph.const_exprs().collect();
+
+                stack.push(ConstFrame {
+                    hir,
+                    root,
+                    graph: dependencies.is_empty().then_some(graph),
+                    dependencies: dependencies.into_iter().rev().collect(),
+                });
             }
         }
 
-        let (root, dependencies) = evaluating
-            .get_mut(&current)
-            .expect("const expression is being evaluated");
+        let Some(top) = stack.last_mut() else {
+            break;
+        };
 
-        let result = match next_dependency(states, dependencies) {
+        let result = match next_dependency(states, &mut top.dependencies) {
             Ok(Some(dependency)) => {
-                stack.push(dependency);
+                next = Some(dependency);
                 continue;
             }
-            Ok(None) => evaluate_const_expr(ctx, *root),
+            Ok(None) => evaluate_const_expr(ctx, top.root, top.graph.take()),
             Err(error) => Err(error),
         };
 
-        stack.pop();
-        evaluating.remove(&current);
-        finish_const(ctx, states, current, result);
+        let top = stack.pop().expect("the stack isn't empty");
+        finish_const(ctx, states, top.hir, result);
     }
-
-    states.get(&hir) == Some(&ConstState::Done)
 }
 
-/// The first of the dependencies that hasn't been evaluated yet, if any. The dependencies are
+/// The next of the dependencies that hasn't been evaluated yet, if any. The dependencies are
 /// evaluated in order, one at a time, and are removed once they've been evaluated.
 fn next_dependency(
     states: &HashMap<HirId, ConstState>,
-    dependencies: &mut VecDeque<HirId>,
+    dependencies: &mut Vec<HirId>,
 ) -> Result<Option<HirId>, ConstEvalError> {
-    while let Some(&dependency) = dependencies.front() {
+    while let Some(&dependency) = dependencies.last() {
         match states.get(&dependency) {
             Some(ConstState::Done) => {
-                dependencies.pop_front();
+                dependencies.pop();
             }
             Some(ConstState::Failed) => return Err(ConstEvalError::DependencyFailed),
             // Only the const expressions on the stack are being evaluated, so this is a cycle
@@ -210,10 +216,15 @@ fn set_const_result(ctx: &mut Compiler, hir: HirId, value: Hir) {
 }
 
 /// Evaluates a const expression, once the const expressions it depends on have been evaluated.
-fn evaluate_const_expr(ctx: &mut Compiler, root: SymbolId) -> Result<Hir, ConstEvalError> {
+/// The dependency graph is built if it isn't given.
+fn evaluate_const_expr(
+    ctx: &mut Compiler,
+    root: SymbolId,
+    graph: Option<DependencyGraph>,
+) -> Result<Hir, ConstEvalError> {
     let options = const_options(ctx);
     let max_cost = options.const_eval_max_cost;
-    let graph = DependencyGraph::build(ctx, root, options);
+    let graph = graph.unwrap_or_else(|| DependencyGraph::build(ctx, root, options));
 
     let has_unresolved = has_reachable_unresolved(ctx, root);
 

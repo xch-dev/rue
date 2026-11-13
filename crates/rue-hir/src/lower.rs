@@ -65,14 +65,17 @@ pub struct TooDeep {
     pub srcloc: Option<SrcLoc>,
 }
 
-/// How deeply HIR can be nested while it's lowered, which bounds the stack used by lowering, and
-/// by the optimizer and code generation of the LIR it produces.
+/// How deeply HIR can be nested while it's lowered, which bounds the stack used by lowering.
 ///
 /// This is separate from the parser's nesting limit, since lowering can go much deeper than the
 /// source code. The body of an inline function is lowered again at each call, inside of its
 /// arguments, and a function, constant or binding that's only referenced once is lowered where
 /// it's referenced, so a chain of them that each reference the next nests once per link. Each
 /// statement in a block also nests the rest of the block inside of it.
+///
+/// The LIR is nested about as deeply, which keeps the optimizer and code generation within the
+/// stack too, except for constructs that are lowered without recursing, such as a long list
+/// literal, which is a chain of pairs as long as the list.
 ///
 /// Real programs stay far below this, and it leaves room for a 2 MiB thread in a release build.
 pub const MAX_LOWERING_DEPTH: usize = 512;

@@ -56,28 +56,24 @@ impl<'a> Visitor<'a> {
         false
     }
 
-    fn visit_function(&mut self, symbol: SymbolId) -> bool {
+    fn queue_function(&mut self, symbol: SymbolId) {
         if let Symbol::Function(function) = self.db.symbol(symbol)
             && self.visited.insert(symbol)
         {
             self.pending.push(function.body);
         }
-
-        false
     }
 
-    fn visit_inline_value(&mut self, symbol: SymbolId) -> bool {
+    fn queue_inline_value(&mut self, symbol: SymbolId) {
         let value = match self.db.symbol(symbol) {
             Symbol::Binding(binding) if binding.inline => binding.value.hir,
             Symbol::Constant(constant) if constant.inline => constant.value.hir,
-            _ => return false,
+            _ => return,
         };
 
         if self.visited.insert(symbol) {
             self.pending.push(value);
         }
-
-        false
     }
 
     fn visit_all(&mut self, hirs: impl IntoIterator<Item = HirId>) -> bool {
@@ -124,7 +120,10 @@ impl<'a> Visitor<'a> {
             // Lambda bodies are only evaluated when called
             | Hir::Lambda(_) => false,
             // Referenced values are evaluated where they are defined, unless they are inline
-            Hir::Reference(symbol) => self.visit_inline_value(symbol),
+            Hir::Reference(symbol) => {
+                self.queue_inline_value(symbol);
+                false
+            }
             Hir::BlsPairingIdentity(_)
             | Hir::BlsVerify(..)
             | Hir::Secp256K1Verify(..)
@@ -147,7 +146,8 @@ impl<'a> Visitor<'a> {
                     Hir::Reference(symbol)
                         if matches!(self.db.symbol(symbol), Symbol::Function(_)) =>
                     {
-                        self.visit_function(symbol)
+                        self.queue_function(symbol);
+                        false
                     }
                     _ => self.visit_hir(call.function),
                 }) || self.visit_all(call.args)

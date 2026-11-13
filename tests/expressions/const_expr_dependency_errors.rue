@@ -27,3 +27,16 @@ fn failing_inner() -> Int {
 test fn nested_runtime_dependency(value: Int) -> Int {
     const { const { value } + 1 }
 }
+
+// The cycle is reported where it's closed, after following the references in order
+test fn cycle_through_references() -> Int {
+    const { cycle_c() + cycle_d() }
+}
+
+fn cycle_c() -> Int {
+    const { cycle_d() }
+}
+
+fn cycle_d() -> Int {
+    const { cycle_c() }
+}

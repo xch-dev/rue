@@ -35,6 +35,9 @@ pub struct DependencyGraph {
     // next doesn't overflow the stack
     pending: Vec<SymbolId>,
 
+    // Keeps track of the symbols referenced by the body being visited, in order
+    referenced: Vec<SymbolId>,
+
     // Keeps track of the symbols that have been visited to avoid infinite loops
     visited: HashSet<SymbolId>,
 }
@@ -49,19 +52,29 @@ impl DependencyGraph {
             closures: HashSet::new(),
             const_exprs: IndexSet::new(),
             current: None,
-            pending: Vec::new(),
+            pending: vec![main],
+            referenced: Vec::new(),
             visited: HashSet::new(),
         };
 
-        visit_symbol_reference(&mut graph, main);
-
+        // The symbols are visited depth first, in the order they're referenced, like a recursive
+        // traversal would, except that each symbol's whole body is visited before the symbols it
+        // references
         while let Some(symbol) = graph.pending.pop() {
+            // We've already visited this symbol, so we don't need to track its dependencies again
+            if !graph.visited.insert(symbol) {
+                continue;
+            }
+
             visit_symbol(db, &mut graph, symbol);
+
+            let referenced = std::mem::take(&mut graph.referenced);
+            graph.pending.extend(referenced.into_iter().rev());
         }
 
         // This happens once everything has been visited, since the symbol a binding destructures
         // might not have been visited before the binding itself
-        for symbol in graph.visited.clone() {
+        for symbol in std::mem::take(&mut graph.visited) {
             assign_destructured_owner(db, &mut graph, symbol);
         }
 
@@ -363,8 +376,7 @@ fn visit_symbol_reference(graph: &mut DependencyGraph, symbol: SymbolId) {
         *graph.references.entry(symbol).or_insert(0) += 1;
     }
 
-    // We only need to track the dependencies of each symbol once
-    if graph.visited.insert(symbol) {
-        graph.pending.push(symbol);
+    if !graph.visited.contains(&symbol) {
+        graph.referenced.push(symbol);
     }
 }
