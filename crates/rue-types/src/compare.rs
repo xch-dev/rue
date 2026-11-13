@@ -9,9 +9,10 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, FixpointMemo, Memo, Type, TypeId, Union,
-    compare_memo_enabled, free_generics, grow_stack, reaches_non_contractive_cycle,
-    references_generic, step, stringify_impl, substitute, substitute_with_mappings,
+    AtomRestriction, AtomSemantic, BuiltinTypes, FixpointFrame, FixpointMemo, Frame as MemoFrame,
+    Memo, Type, TypeId, Union, compare_memo_enabled, free_generics, grow_stack,
+    has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
+    substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -106,6 +107,12 @@ impl Inference {
 /// This is everything that the result depends on other than the stack, so that a comparison is
 /// only assumed to hold when it's revisited exactly, and its result can be reused (see `Memo`).
 type ComparisonKey = (TypeId, TypeId, bool, usize, Option<TypeId>, Option<TypeId>);
+
+/// The memo that a comparison in progress will be cached in (see `ComparisonContext::fixpoint`).
+enum Frame {
+    Exact(MemoFrame),
+    Fixpoint(FixpointFrame),
+}
 
 /// A bound of a generic being instantiated, along with the environment it's resolved in.
 type Bound = (TypeId, Option<usize>);
@@ -398,8 +405,9 @@ impl ComparisonContext<'_> {
 
     /// Whether comparing the type (and the types it contains) is the least fixed point of monotone
     /// equations over the comparisons it reaches, which is what `FixpointMemo` needs. Comparing is
-    /// built from `max`, `min` and constants, and returning early at a comparison in progress gives
-    /// `Assign` (the least value), as long as:
+    /// built from `max`, `min` and constants (the fallbacks that are only compared when a union
+    /// doesn't hold are a `min` whose result doesn't depend on them otherwise), and returning
+    /// early at a comparison in progress gives `Assign` (the least value), as long as:
     ///
     /// - The type is contractive, since a cycle that doesn't pass through a pair or function gives
     ///   `Invalid` instead.
@@ -415,8 +423,9 @@ impl ComparisonContext<'_> {
             return monotone;
         }
 
-        let monotone =
-            !reaches_non_contractive_cycle(arena, id) && instantiates_directly(arena, id);
+        let reachable = reachable(arena, id);
+        let monotone = !has_non_contractive_cycle(arena, &reachable)
+            && reachable.iter().all(|&id| instantiates_directly(arena, id));
         self.monotone.insert(id, monotone);
         monotone
     }
@@ -486,46 +495,20 @@ fn root(binders: &[Binder], mut index: usize) -> usize {
     index
 }
 
-/// Returns `true` if the parameters and return type of each generic function type in the type
-/// either are one of its generics or don't reference them.
+/// Returns `false` if the type is a generic function type with a parameter or return type that
+/// references its generics without being one of them.
 fn instantiates_directly(arena: &Arena<Type>, id: TypeId) -> bool {
-    let mut visited = HashSet::new();
-    let mut stack = vec![id];
+    let Type::Function(function) = &arena[id] else {
+        return true;
+    };
 
-    while let Some(id) = stack.pop() {
-        if !visited.insert(id) {
-            continue;
-        }
-
-        match &arena[id] {
-            Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}
-            Type::Ref(id) => stack.push(*id),
-            Type::Pair(pair) => stack.extend([pair.first, pair.rest]),
-            Type::Alias(alias) => stack.push(alias.inner),
-            Type::Struct(ty) => stack.push(ty.inner),
-            Type::Apply(apply) => {
-                stack.push(apply.inner);
-                stack.extend(apply.generics.values().copied());
-            }
-            Type::Union(union) => stack.extend(union.types.iter().copied()),
-            Type::Function(function) => {
-                for ty in function.param_types().chain([function.ret]) {
-                    if !function.generics.contains(&ty)
-                        && function
-                            .generics
-                            .iter()
-                            .any(|&generic| references_generic(arena, ty, generic, |_| Vec::new()))
-                    {
-                        return false;
-                    }
-
-                    stack.push(ty);
-                }
-            }
-        }
-    }
-
-    true
+    function.param_types().chain([function.ret]).all(|ty| {
+        function.generics.contains(&ty)
+            || !function
+                .generics
+                .iter()
+                .any(|&generic| references_generic(arena, ty, generic, |_| Vec::new()))
+    })
 }
 
 /// Returns the generics that the type references, other than where they're bound by a function
@@ -1068,15 +1051,15 @@ fn compare_impl_inner(
     let key = (lhs, rhs, ctx.flipped, bindings, lhs_semantic, rhs_semantic);
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
-        // Revisiting a comparison is only sound to treat as assignable if we've passed through
-        // a pair or function since, otherwise a non-contractive type like `type A = B; type B = A;`
-        // would be assignable to anything. Those should be rejected before reaching this point.
         if ctx.fixpoint {
             ctx.fixpoint_memo.reached(index);
         } else {
             ctx.memo.reached(index);
         }
 
+        // Revisiting a comparison is only sound to treat as assignable if we've passed through
+        // a pair or function since, otherwise a non-contractive type like `type A = B; type B = A;`
+        // would be assignable to anything. Those should be rejected before reaching this point.
         if ctx.guards.last().is_none_or(|&guard| guard < index) {
             return Comparison::Invalid;
         }
@@ -1148,10 +1131,12 @@ fn compare_impl_inner(
         }
     }
 
-    let frame = (!ctx.fixpoint).then(|| ctx.memo.enter(ctx.stack.len()));
-    let fixpoint_frame = ctx.fixpoint_memo.enter(ctx.stack.len());
+    let frame = if ctx.fixpoint {
+        Frame::Fixpoint(ctx.fixpoint_memo.enter(ctx.stack.len()))
+    } else {
+        Frame::Exact(ctx.memo.enter(ctx.stack.len()))
+    };
     let candidates = ctx.candidates;
-    let rigid = ctx.rigid.len();
 
     ctx.stack.insert(key);
     ctx.stack_binders.push((ctx.binders.len(), binders));
@@ -1586,17 +1571,12 @@ fn compare_impl_inner(
     ctx.stack_binders.pop().unwrap();
 
     // Inference candidates are collected as a side effect of comparing, so a comparison that
-    // collected any can't be skipped. Neither can one that made generics rigid for the rest of the
-    // inference, since that decides which candidates are collected later.
-    let memoize = memoize
-        && ctx.candidates == candidates
-        && (ctx.infer.is_none() || ctx.rigid.len() == rigid);
+    // collected any can't be skipped
+    let memo_key = (memoize && ctx.candidates == candidates).then_some(key);
 
-    if let Some(frame) = frame {
-        ctx.memo.exit(frame, key, memoize.then_some(key), result);
-    } else {
-        ctx.fixpoint_memo
-            .exit(fixpoint_frame, memoize.then_some(key), result, &ctx.stack);
+    match frame {
+        Frame::Exact(frame) => ctx.memo.exit(frame, key, memo_key, result),
+        Frame::Fixpoint(frame) => ctx.fixpoint_memo.exit(frame, memo_key, result, &ctx.stack),
     }
 
     result
@@ -1659,9 +1639,39 @@ mod tests {
     use id_arena::Arena;
     use rstest::rstest;
 
-    use crate::{Atom, Type, compare};
+    use crate::{Atom, FunctionParameter, FunctionType, Generic, Pair, Type, compare};
 
     use super::*;
+
+    #[test]
+    fn test_instantiates_directly() {
+        let mut arena = Arena::new();
+        let builtins = BuiltinTypes::new(&mut arena);
+        let generic = arena.alloc(Type::Generic(Generic { name: None }));
+
+        let function = |arena: &mut Arena<Type>, param: TypeId, ret: TypeId| {
+            arena.alloc(Type::Function(FunctionType {
+                generics: vec![generic],
+                params: vec![FunctionParameter::new("x", param)],
+                nil_terminated: true,
+                ret,
+            }))
+        };
+
+        // `fn<T>(x: T) -> Int`
+        let direct = function(&mut arena, generic, builtins.int);
+
+        // `fn<T>(x: fn<T>(x: T) -> Int) -> T`, where the inner function binds its own `T`
+        let shadowed = function(&mut arena, direct, generic);
+
+        // `fn<T>(x: (T, Int)) -> Int`, where `T` is only part of the parameter's type
+        let pair = arena.alloc(Type::Pair(Pair::new(generic, builtins.int)));
+        let nested = function(&mut arena, pair, builtins.int);
+
+        assert!(instantiates_directly(&arena, direct));
+        assert!(instantiates_directly(&arena, shadowed));
+        assert!(!instantiates_directly(&arena, nested));
+    }
 
     #[rstest]
     #[case(Atom::NIL, Atom::NIL, Comparison::Assign)]

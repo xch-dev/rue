@@ -125,6 +125,10 @@ fn rotating_function(db: &mut Types) -> TypeId {
     apply(db, [int, bytes, nil, bool])
 }
 
+/// A regression test gives up after this many steps, so that it fails quickly rather than hanging
+/// if the work becomes exponential again.
+const STEP_BOUND: usize = 1_000_000;
+
 /// Runs the function on a thread with a larger stack, since comparing recursive types recurses
 /// deeply (especially in debug builds).
 fn with_large_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
@@ -144,10 +148,15 @@ fn test_rotating_generic_function() {
         let rhs = rotating_function(&mut db);
 
         // This never finished, since nearly every comparison relied on one in progress, and
-        // memoizing was turned off while the function's generic was being instantiated
-        let (result, steps) = count_steps(|| compare(&mut db.arena, &db.builtins, lhs, rhs));
+        // memoizing was turned off while the function's generic was being instantiated. It takes
+        // about 97,000 steps now.
+        let (result, steps) = count_steps(|| {
+            with_step_limit(STEP_BOUND, || {
+                compare(&mut db.arena, &db.builtins, lhs, rhs)
+            })
+        });
         assert_eq!(result, Comparison::Assign);
-        assert!(steps < 100_000, "took {steps} steps");
+        assert!(steps < 300_000, "took {steps} steps");
     });
 }
 
@@ -183,16 +192,20 @@ fn test_mutually_recursive_intersection() {
     let int = db.builtins.int;
 
     // `x is (((N1, Int), N0), N1)` with `x: N0` intersects the types, which compares each part of
-    // them again
+    // them again. These took about 1,080,000 and 89,000 steps, and take about 3,600 and 1,700 now.
     let n1_int = db.pair(n1, int);
     let inner = db.pair(n1_int, n0);
     let target = db.pair(inner, n1);
 
-    let (_, steps) = count_steps(|| intersect(&mut db.arena, &db.builtins, n0, target));
-    assert!(steps < 100_000, "took {steps} steps");
+    let (_, steps) = count_steps(|| {
+        with_step_limit(STEP_BOUND, || {
+            intersect(&mut db.arena, &db.builtins, n0, target)
+        })
+    });
+    assert!(steps < 20_000, "took {steps} steps");
 
     let (_, steps) = count_steps(|| compare(&mut db.arena, &db.builtins, n0, target));
-    assert!(steps < 100_000, "took {steps} steps");
+    assert!(steps < 20_000, "took {steps} steps");
 }
 
 /// A small deterministic PRNG (`SplitMix64`), to avoid a dependency.
@@ -281,7 +294,7 @@ impl Generator<'_> {
             14 => {
                 // Reuse structs sometimes, so that the same semantic appears in both types
                 if !self.structs.is_empty() && self.rng.chance(50) {
-                    self.rng.pick(&self.structs.clone())
+                    self.structs[self.rng.below(self.structs.len())]
                 } else {
                     let inner = self.random_type(depth + 1, generics);
                     let id = self.db.structure(inner);
@@ -416,8 +429,10 @@ fn results(db: &mut Types, lhs: TypeId, rhs: TypeId, target: TypeId, generic: Ty
 struct Summary {
     cases: usize,
     skipped_modules: usize,
+    /// Cases that only finished without the memo, which should be rare.
     gave_up_with_memo: usize,
     gave_up_without_memo: usize,
+    gave_up_both: usize,
     steps_with_memo: usize,
     steps_without_memo: usize,
 }
@@ -427,7 +442,7 @@ struct Summary {
 const STEP_LIMIT: usize = 20_000;
 
 /// Compares random types with the memo on and off, and panics if any result differs.
-fn differential(seeds: std::ops::Range<u64>, queries: usize) -> Summary {
+fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary {
     // Giving up panics, which shouldn't be printed
     static QUIET: Once = Once::new();
     QUIET.call_once(|| {
@@ -485,11 +500,6 @@ fn differential(seeds: std::ops::Range<u64>, queries: usize) -> Summary {
                 })
             }));
 
-            let Ok((with_memo, steps)) = with_memo else {
-                summary.gave_up_with_memo += 1;
-                continue;
-            };
-
             let without_memo = catch_unwind(AssertUnwindSafe(|| {
                 count_steps(|| {
                     without_compare_memo(|| {
@@ -498,9 +508,22 @@ fn differential(seeds: std::ops::Range<u64>, queries: usize) -> Summary {
                 })
             }));
 
-            let Ok((without_memo, steps_without)) = without_memo else {
-                summary.gave_up_without_memo += 1;
-                continue;
+            let (with_memo, steps, without_memo, steps_without) = match (with_memo, without_memo) {
+                (Ok((with_memo, steps)), Ok((without_memo, steps_without))) => {
+                    (with_memo, steps, without_memo, steps_without)
+                }
+                (Err(_), Ok(_)) => {
+                    summary.gave_up_with_memo += 1;
+                    continue;
+                }
+                (Ok(_), Err(_)) => {
+                    summary.gave_up_without_memo += 1;
+                    continue;
+                }
+                (Err(_), Err(_)) => {
+                    summary.gave_up_both += 1;
+                    continue;
+                }
             };
 
             let name = |db: &mut Types, id| stringify(&mut db.arena, id);
@@ -527,8 +550,14 @@ fn test_memo_differential() {
     let summary = with_large_stack(|| differential(0..400, 4));
     println!("{summary:?}");
 
-    // Most modules should be usable, and most cases should finish without the memo
+    // Most modules should be usable, and most cases should finish
     assert!(summary.cases > 800, "{summary:?}");
+    assert!(summary.gave_up_with_memo <= 2, "{summary:?}");
+
+    // These gave different results with the memo when it wasn't limited to contractive types
+    // (4706), or when it cached comparisons that refer to a generic being instantiated (1978)
+    let summary = with_large_stack(|| differential([1978, 4706], 8));
+    assert_eq!(summary.cases, 13, "{summary:?}");
 }
 
 /// A larger run of `test_memo_differential`, which takes a few minutes in release builds:

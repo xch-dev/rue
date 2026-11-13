@@ -45,6 +45,12 @@ pub fn is_non_contractive(arena: &mut Arena<Type>, id: TypeId) -> bool {
 /// pairs and functions), even if the type itself isn't part of the cycle. The type must already
 /// be substituted.
 pub(crate) fn reaches_non_contractive_cycle(arena: &Arena<Type>, id: TypeId) -> bool {
+    has_non_contractive_cycle(arena, &reachable(arena, id))
+}
+
+/// Returns the types reachable from the type (including through pairs and functions), which must
+/// already be substituted.
+pub(crate) fn reachable(arena: &Arena<Type>, id: TypeId) -> HashSet<TypeId> {
     let mut reachable = HashSet::new();
     let mut stack = vec![id];
 
@@ -63,11 +69,16 @@ pub(crate) fn reaches_non_contractive_cycle(arena: &Arena<Type>, id: TypeId) -> 
         }
     }
 
+    reachable
+}
+
+/// Returns `true` if any of the types is part of (or can reach) a non-contractive cycle.
+pub(crate) fn has_non_contractive_cycle(arena: &Arena<Type>, types: &HashSet<TypeId>) -> bool {
     let mut done = HashSet::new();
 
-    reachable
-        .into_iter()
-        .any(|id| has_unguarded_cycle(arena, id, &mut HashSet::new(), &mut done))
+    types
+        .iter()
+        .any(|&id| has_unguarded_cycle(arena, id, &mut HashSet::new(), &mut done))
 }
 
 fn has_unguarded_cycle(
