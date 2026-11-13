@@ -255,6 +255,23 @@ fn duplicate_import_paths_keep_distinct_comment_owners() {
 }
 
 #[test]
+fn comments_moved_after_a_trailing_comment_by_sorting_add_no_blank_line() {
+    // Found by the property tests: `// doc` started a line of its own after the line ended by
+    // `// trailing`, which left a blank line between them that the next format kept
+    check(
+        "import b;\n// doc\nimport k;\nimport h; // trailing\n\nfn main() {}",
+        expect![[r#"
+            import b;
+            import h; // trailing
+            // doc
+            import k;
+
+            fn main() {}
+        "#]],
+    );
+}
+
+#[test]
 fn comments_that_end_a_line_before_the_closing_brace_break_the_group() {
     // Found by the property tests: the closing brace was put inside the line comment
     check(

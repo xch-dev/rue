@@ -76,11 +76,16 @@ impl<'a> Formatter<'a> {
                 requested.after(&previous.trailing)
             };
             let mut leading = item.leading.clone();
-            if position == 0
-                && let Some(first) = leading.comments.first_mut()
-            {
-                first.newlines_before = 0;
-                first.placement = CommentPlacement::Leading;
+            if let Some(first) = leading.comments.first_mut() {
+                if position == 0 {
+                    first.newlines_before = 0;
+                    first.placement = CommentPlacement::Leading;
+                } else if items[position - 1].trailing.ends_line() {
+                    // The previous item's trailing comments already end its line. They're only
+                    // followed by these comments in the source if the items weren't sorted, and
+                    // then the line break between them was already given to the trailing comments.
+                    first.newlines_before = first.newlines_before.saturating_sub(1);
+                }
             }
             docs.push(self.movable_leading_doc(&leading, separator));
             docs.push(self.span(item.span)?);
