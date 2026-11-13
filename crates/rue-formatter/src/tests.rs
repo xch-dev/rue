@@ -98,6 +98,27 @@ fn width_breaks_delimited_groups() {
 }
 
 #[test]
+fn spaces_at_the_end_of_a_line_do_not_count_toward_the_width() {
+    // Found by the property tests: the space after `/* block */`, which is removed since `)` goes
+    // on the next line, made the call too wide to fit on the first format but not on the second
+    let options = FormatOptions {
+        max_width: 30,
+        indent_width: 3,
+    };
+    let output =
+        format_source("fn f() {\n    a & (b == c(d) /* block */ );\n}\n", &options).unwrap();
+    expect![[r#"
+        fn f() {
+           a
+              & (
+                 b == c(d) /* block */
+              );
+        }
+    "#]]
+    .assert_eq(&output);
+}
+
+#[test]
 fn malformed_input_is_rejected() {
     let error = format_source("fn main( {", &FormatOptions::default()).unwrap_err();
     assert!(matches!(error, FormatError::Parse { .. }));

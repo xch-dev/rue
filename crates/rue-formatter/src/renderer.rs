@@ -168,16 +168,23 @@ fn fits(
         mode: initial_mode,
         doc,
     });
+    // Spaces only take up width if text follows them on the same line, since `render` removes
+    // them at the end of a line
+    let mut pending_spaces = 0;
 
     while let Some(command) = commands.pop() {
         match command.doc {
             Doc::Nil => {}
+            Doc::Text(text) if text.chars().all(|char| char == ' ') => {
+                pending_spaces += text.len();
+            }
             Doc::Text(text) => {
-                let width = text.chars().count();
+                let width = pending_spaces + text.chars().count();
                 if width > remaining {
                     return false;
                 }
                 remaining -= width;
+                pending_spaces = 0;
             }
             Doc::Concat(docs) => {
                 for doc in docs.iter().rev() {
@@ -189,21 +196,14 @@ fn fits(
                 }
             }
             Doc::Line(LineKind::Soft) if command.mode == Mode::Flat => {
-                if remaining == 0 {
-                    return false;
-                }
-                remaining -= 1;
+                pending_spaces += 1;
             }
             Doc::Fill {
                 flat,
                 space_when_flat,
                 ..
             } => {
-                let separator_width = usize::from(*space_when_flat);
-                if separator_width > remaining {
-                    return false;
-                }
-                remaining -= separator_width;
+                pending_spaces += usize::from(*space_when_flat);
                 commands.push(Command {
                     indent: command.indent,
                     mode: command.mode,
