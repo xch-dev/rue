@@ -1,26 +1,31 @@
 //! A deliberately small, private pretty-printing document model.
 
+use std::rc::Rc;
+
+/// Children are reference counted so that cloning a document is cheap. Layout choices such as
+/// [`Doc::Fill`] hold a flat and a broken variant of the same contents, and without sharing,
+/// every level of nesting would double the size of the document.
 #[derive(Debug, Clone)]
 pub enum Doc {
     Nil,
-    Text(String),
-    Concat(Vec<Self>),
+    Text(Rc<str>),
+    Concat(Rc<[Self]>),
     Line(LineKind),
-    Indent(Box<Self>),
-    Outdent(Box<Self>),
-    Group(Box<Self>),
+    Indent(Rc<Self>),
+    Outdent(Rc<Self>),
+    Group(Rc<Self>),
     /// A local fill boundary with continuation indentation applied only when
     /// that boundary breaks. Ordinary groups cannot express that conditional
     /// indentation when their surrounding binary chain is already broken.
     Fill {
-        flat: Box<Self>,
-        broken: Box<Self>,
+        flat: Rc<Self>,
+        broken: Rc<Self>,
         space_when_flat: bool,
         indent_levels_on_break: usize,
     },
     IfBreak {
-        broken: Box<Self>,
-        flat: Box<Self>,
+        broken: Rc<Self>,
+        flat: Rc<Self>,
     },
 }
 
@@ -33,7 +38,7 @@ pub enum LineKind {
 
 impl Doc {
     pub fn text(text: impl Into<String>) -> Self {
-        Self::Text(text.into())
+        Self::Text(Rc::from(text.into()))
     }
 
     pub fn concat(docs: impl IntoIterator<Item = Self>) -> Self {
@@ -41,11 +46,11 @@ impl Doc {
         for doc in docs {
             match doc {
                 Self::Nil => {}
-                Self::Concat(children) => flattened.extend(children),
+                Self::Concat(children) => flattened.extend(children.iter().cloned()),
                 doc => flattened.push(doc),
             }
         }
-        Self::Concat(flattened)
+        Self::Concat(flattened.into())
     }
 
     pub fn space() -> Self {
@@ -59,8 +64,8 @@ impl Doc {
     #[cfg(test)]
     pub fn fill(doc: Self, indent_levels_on_break: usize) -> Self {
         Self::Fill {
-            flat: Box::new(doc.clone()),
-            broken: Box::new(doc),
+            flat: Rc::new(doc.clone()),
+            broken: Rc::new(doc),
             space_when_flat: true,
             indent_levels_on_break,
         }
@@ -73,8 +78,8 @@ impl Doc {
         indent_levels_on_break: usize,
     ) -> Self {
         Self::Fill {
-            flat: Box::new(flat),
-            broken: Box::new(broken),
+            flat: Rc::new(flat),
+            broken: Rc::new(broken),
             space_when_flat,
             indent_levels_on_break,
         }
@@ -89,21 +94,21 @@ impl Doc {
     }
 
     pub fn indent(self) -> Self {
-        Self::Indent(Box::new(self))
+        Self::Indent(Rc::new(self))
     }
 
     pub fn outdent(self) -> Self {
-        Self::Outdent(Box::new(self))
+        Self::Outdent(Rc::new(self))
     }
 
     pub fn group(self) -> Self {
-        Self::Group(Box::new(self))
+        Self::Group(Rc::new(self))
     }
 
     pub fn if_break(broken: Self, flat: Self) -> Self {
         Self::IfBreak {
-            broken: Box::new(broken),
-            flat: Box::new(flat),
+            broken: Rc::new(broken),
+            flat: Rc::new(flat),
         }
     }
 }
