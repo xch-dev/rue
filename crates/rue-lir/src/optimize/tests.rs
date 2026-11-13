@@ -67,7 +67,7 @@ fn check(arena: &mut Arena<Lir>, lir: LirId, envs: &[&str], expect: Expect) {
 }
 
 const ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "((1 . 2))", "(5 7)"];
-const LIST_ENVS: &[&str] = &["()", "(())", "((1 . 2))", "((1 2) 3)", "(5)", "(0x00)"];
+const PAIR_ENVS: &[&str] = &["()", "(())", "((1 . 2))", "((1 2) 3)", "(5)", "(0x00)"];
 
 #[test]
 fn test_not_ne_nil_is_not_value() {
@@ -164,7 +164,7 @@ fn test_listp_condition() {
     check(
         &mut arena,
         lir,
-        LIST_ENVS,
+        PAIR_ENVS,
         expect!["(a (i (l 2) (q 1 . 1) (q 1 . 2)) 1)"],
     );
 }
@@ -386,18 +386,18 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
 
     let lir = match rng.below(19) {
         0 => Lir::Not(next()),
-        1 => eq(arena, next(), next()),
+        1 => eq(arena, rng, next(), next()),
         2 => {
             let nil = atom(arena, &[]);
             if rng.below(2) == 0 {
-                eq(arena, next(), nil)
+                eq(arena, rng, next(), nil)
             } else {
-                eq(arena, nil, next())
+                eq(arena, rng, nil, next())
             }
         }
         3 => Lir::Cons(next(), next()),
         4 => Lir::Listp(next()),
-        // A value which is always either nil or a pair, as the type of a list says it is
+        // A value which is either nil or a pair
         5 => {
             let pair = arena.alloc(Lir::Cons(next(), next()));
             let nil = atom(arena, &[]);
@@ -448,9 +448,13 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
     arena.alloc(lir)
 }
 
-// Rewrites in conditions assume that `=` is only used on atoms, as Rue's types ensure
-// Either operand may become nil after it's optimized, so both are made atoms (+ fails on pairs)
-fn eq(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> Lir {
+// Sometimes the operands are made atoms (+ fails on pairs), so that rewrites which only apply
+// to atoms are covered as well as operands which may be pairs
+fn eq(arena: &mut Arena<Lir>, rng: &mut Rng, left: LirId, right: LirId) -> Lir {
+    if rng.below(2) == 0 {
+        return Lir::Eq(left, right);
+    }
+
     let left = arena.alloc(Lir::Add(vec![left]));
     let right = arena.alloc(Lir::Add(vec![right]));
     Lir::Eq(left, right)

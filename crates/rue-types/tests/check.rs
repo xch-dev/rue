@@ -489,8 +489,7 @@ fn test_recursive_types() {
     let list = t.list(int);
     let list_pair = t.pair(int, list);
 
-    let not_truthy = Check::IsAtom;
-    assert_eq!(t.check(list, nil), Ok(not_truthy));
+    assert_eq!(t.check(list, nil), Ok(IS_ATOM));
     assert_eq!(t.check(list, list_pair), Ok(Check::IsPair));
     assert_eq!(t.check(list, list), Ok(Check::None));
 

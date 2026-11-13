@@ -1,12 +1,8 @@
 //! Differential tests for optimizations that involve the environment (paths, `Run`, `Cons`
 //! and closures). Random LIR trees are compiled with and without optimizations, then run
 //! against random environments (including atoms where pairs would normally be), and the
-//! results must be identical (including whether they fail).
-//!
-//! The one exception is when the unoptimized program fails because a value it expected to be a
-//! pair was an atom (taking its first or rest, or a path into it). The optimizer assumes values
-//! have the pair shape their types say they do (for example, `(c (f p) (r p))` becomes `p`),
-//! so the optimized program may behave differently in that case.
+//! results must be identical (including whether they fail), even when the environment has
+//! atoms where pairs are expected.
 
 use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
 use id_arena::Arena;
@@ -140,14 +136,6 @@ fn run(allocator: &mut Allocator, program: NodePtr, env: NodePtr) -> Result<Vec<
     Ok(node_to_bytes(allocator, output.1).unwrap())
 }
 
-fn is_shape_error(result: &Result<Vec<u8>, String>) -> bool {
-    result.as_ref().is_err_and(|error| {
-        error.contains("first of non-cons")
-            || error.contains("rest of non-cons")
-            || error.contains("path into atom")
-    })
-}
-
 #[test]
 fn test_optimizer_env_differential() {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
@@ -183,10 +171,6 @@ fn test_optimizer_env_differential() {
             let env = gen_value(&mut allocator, &mut rng, 4);
             let expected = run(&mut allocator, unoptimized_program, env);
             let actual = run(&mut allocator, optimized_program, env);
-
-            if is_shape_error(&expected) {
-                continue;
-            }
 
             assert_eq!(
                 expected.is_ok(),

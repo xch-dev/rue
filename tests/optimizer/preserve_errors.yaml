@@ -131,7 +131,7 @@ tests:
   byte_cost: 84000
   clvm_error: path into atom
   debug_clvm_error: 'InvalidOperatorArg: rest of non-cons'
-- name: unused_constant
+- name: unused_infallible_binding
   program: '2'
   debug_program: '2'
   solution: (1)

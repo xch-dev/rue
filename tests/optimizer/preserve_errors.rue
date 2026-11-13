@@ -195,7 +195,7 @@ test fn rebuild_pair(...value: (Any, Any)) -> (Any, Any) {
 }
 
 // These are still optimized, since they can't fail or are always evaluated
-test fn unused_constant(a: Int) -> Int {
+test fn unused_infallible_binding(a: Int) -> Int {
     let x = 5;
     a
 }
