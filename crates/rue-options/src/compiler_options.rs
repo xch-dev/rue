@@ -1,6 +1,6 @@
 use rue_diagnostic::LintLevels;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct CompilerOptions {
     /// Whether to compile the standard library.

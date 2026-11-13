@@ -438,7 +438,7 @@ impl LintName {
 }
 
 /// The configured level of every lint.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LintLevels([LintLevel; Lint::COUNT]);
 
 impl Default for LintLevels {
