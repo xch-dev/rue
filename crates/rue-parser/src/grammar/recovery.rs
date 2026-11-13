@@ -2,20 +2,13 @@
 //! a single diagnostic at the right place, with the rest of the file still parsed normally, rather
 //! than a cascade of errors for everything that comes after it.
 
-use std::{fmt::Write, fs, path::Path, sync::Arc};
+use std::{fmt::Write, fs, path::Path};
 
 use expect_test::{Expect, expect};
 use rowan::NodeOrToken;
-use rue_diagnostic::{Source, SourceKind};
 use rue_lexer::Lexer;
 
-use crate::{ParseResult, Parser, SyntaxKind, SyntaxNode};
-
-fn parse(source: &str) -> ParseResult {
-    let source = Source::new(Arc::from(source), SourceKind::File("main.rue".to_string()));
-    let tokens = Lexer::new(&source.text).collect::<Vec<_>>();
-    Parser::new(source, tokens).parse()
-}
+use crate::{SyntaxKind, SyntaxNode, grammar::tests::parse};
 
 /// Checks the structure of the syntax tree and the errors for a document. The tree only includes
 /// nodes and error tokens, since that's what matters for recovery.

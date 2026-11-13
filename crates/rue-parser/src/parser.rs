@@ -7,9 +7,11 @@ use rue_lexer::{Token, TokenKind};
 
 use crate::{RueLang, SyntaxKind, SyntaxNode, T, document};
 
-/// The maximum number of levels that constructs (such as expressions) can be nested. The syntax
-/// tree, and the later stages of compilation, are processed recursively, so deeper nesting could
-/// overflow the stack. This leaves room for a 2 MiB thread, such as the language server's.
+/// The maximum number of levels that constructs (such as expressions) can be nested in the source.
+/// The syntax tree is processed recursively by the later stages of compilation, so deeper nesting
+/// could overflow the stack. This leaves room for a 2 MiB thread, such as the language server's,
+/// in a release build. It only limits the syntax tree, so the depth can still grow later on, such
+/// as when the body of an inline function is expanded at each call.
 pub const MAX_NESTING_DEPTH: usize = 256;
 
 #[derive(Debug)]

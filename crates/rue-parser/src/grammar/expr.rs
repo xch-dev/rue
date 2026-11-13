@@ -156,14 +156,14 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
 
     // Each of these wraps the expression before it, so they nest as deeply as if they recursed
     loop {
-        let kind = if p.at(T!['(']) {
-            SyntaxKind::FunctionCallExpr
+        let (kind, token) = if p.at(T!['(']) {
+            (SyntaxKind::FunctionCallExpr, T!['('])
         } else if p.at(T![is]) {
-            SyntaxKind::GuardExpr
+            (SyntaxKind::GuardExpr, T![is])
         } else if p.at(T![as]) {
-            SyntaxKind::CastExpr
+            (SyntaxKind::CastExpr, T![as])
         } else if p.at(T![.]) {
-            SyntaxKind::FieldAccessExpr
+            (SyntaxKind::FieldAccessExpr, T![.])
         } else {
             break;
         };
@@ -173,28 +173,25 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
         }
 
         p.start_at(checkpoint, kind);
+        p.expect(token);
 
-        if kind == SyntaxKind::FunctionCallExpr {
-            p.expect(T!['(']);
-            delimited_list(p, T![')'], list_item);
-            p.finish();
-        } else if kind == SyntaxKind::GuardExpr {
-            p.expect(T![is]);
-            ty(p);
-            p.finish();
-        } else if kind == SyntaxKind::CastExpr {
-            p.expect(T![as]);
-            ty(p);
-            p.finish();
-        } else {
-            p.expect(T![.]);
-            let found = p.expect(SyntaxKind::Ident);
-            p.finish();
-
-            // Without a field name, the rest is unlikely to be a continuation of this expression
-            if !found {
-                break;
+        let found = match kind {
+            SyntaxKind::FunctionCallExpr => {
+                delimited_list(p, T![')'], list_item);
+                true
             }
+            SyntaxKind::GuardExpr | SyntaxKind::CastExpr => {
+                ty(p);
+                true
+            }
+            _ => p.expect(SyntaxKind::Ident),
+        };
+
+        p.finish();
+
+        // Without a field name, the rest is unlikely to be a continuation of this expression
+        if !found {
+            break;
         }
     }
 

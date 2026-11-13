@@ -185,7 +185,14 @@ mod tests {
     use rue_diagnostic::{Source, SourceKind};
     use rue_lexer::Lexer;
 
-    use crate::Parser;
+    use crate::{ParseResult, Parser};
+
+    /// Parses a whole document.
+    pub fn parse(source: &str) -> ParseResult {
+        let source = Source::new(Arc::from(source), SourceKind::File("main.rue".to_string()));
+        let tokens = Lexer::new(&source.text).collect::<Vec<_>>();
+        Parser::new(source, tokens).parse()
+    }
 
     #[allow(clippy::needless_pass_by_value)]
     pub fn check(f: impl FnOnce(&mut Parser), source: &str, expect: Expect, errors: Expect) {

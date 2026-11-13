@@ -1,13 +1,12 @@
 //! Tests for the nesting limit, which prevents deeply nested input from overflowing the stack,
 //! both in the parser and in the later stages of compilation that process the syntax tree.
 
-use std::{path::Path, sync::Arc, thread};
+use std::{path::Path, thread};
 
 use rowan::WalkEvent;
-use rue_diagnostic::{DiagnosticKind, Source, SourceKind};
-use rue_lexer::Lexer;
+use rue_diagnostic::{Diagnostic, DiagnosticKind};
 
-use crate::{MAX_NESTING_DEPTH, ParseResult, Parser, SyntaxNode};
+use crate::{MAX_NESTING_DEPTH, ParseResult, SyntaxKind, SyntaxNode, grammar::tests::parse};
 
 /// Far deeper than the limit, and enough to overflow the stack without it.
 const DEEP: usize = 10_000;
@@ -96,10 +95,8 @@ const SHAPES: &[(&str, Shape)] = &[
     }),
 ];
 
-fn parse(source: &str) -> ParseResult {
-    let source = Source::new(Arc::from(source), SourceKind::File("main.rue".to_string()));
-    let tokens = Lexer::new(&source.text).collect::<Vec<_>>();
-    Parser::new(source, tokens).parse()
+fn is_too_deep(diagnostic: &Diagnostic) -> bool {
+    matches!(diagnostic.kind, DiagnosticKind::NestingTooDeep(_))
 }
 
 /// The number of nodes on the longest path from the root to a leaf, measured without recursion.
@@ -144,12 +141,8 @@ fn nesting_within_the_limit_is_parsed() {
     on_small_stack(|| {
         for (name, shape) in SHAPES {
             let result = parse(&shape(MAX_NESTING_DEPTH - 8));
-
             assert!(
-                !result
-                    .diagnostics
-                    .iter()
-                    .any(|diagnostic| matches!(diagnostic.kind, DiagnosticKind::NestingTooDeep(_))),
+                result.diagnostics.is_empty(),
                 "{name}: {:?}",
                 messages(&result)
             );
@@ -170,11 +163,7 @@ fn nesting_beyond_the_limit_is_reported_once() {
                 "{name}: tree isn't lossless"
             );
 
-            let too_deep = result
-                .diagnostics
-                .iter()
-                .filter(|diagnostic| matches!(diagnostic.kind, DiagnosticKind::NestingTooDeep(_)))
-                .count();
+            let too_deep = result.diagnostics.iter().filter(|d| is_too_deep(d)).count();
 
             assert_eq!(too_deep, 1, "{name}: {:?}", messages(&result));
 
@@ -226,4 +215,11 @@ fn rest_of_the_file_is_skipped() {
         messages(&result),
         ["Nested too deeply, since the limit is 256 levels at main.rue:1:275"]
     );
+
+    // The skipped tokens are in the root rather than the deepest node, so that the text of the
+    // nodes around them isn't as long as the rest of the file
+    let last = result.node.last_token().unwrap();
+    assert_eq!(last.kind(), SyntaxKind::Error);
+    assert_eq!(last.text(), "}");
+    assert_eq!(last.parent().unwrap(), result.node);
 }

@@ -24,10 +24,10 @@ pub fn item(p: &mut Parser) {
 /// item, since it's likely left over from a mistake earlier in the file. Inside of a module, it
 /// ends the module instead.
 fn item_with(p: &mut Parser, top_level: bool) {
-    p.nested(|p| item_inner(p, top_level));
+    p.nested(|p| item_with_inner(p, top_level));
 }
 
-fn item_inner(p: &mut Parser, top_level: bool) {
+fn item_with_inner(p: &mut Parser, top_level: bool) {
     let start = p.pos();
     let cp = p.checkpoint();
 
