@@ -1,6 +1,6 @@
 ---
 name: review-loop
-description: Take a piece of Rue work (an issue, a lint, a bug fix, a follow-up to an open PR) all the way to a reviewed draft PR that passes the same checks as CI, running rounds of independent code review and fixing what they find, without the user having to ask for each review pass. Use this whenever the user asks to implement an issue "with reviews", to "drive this to completion", "review until clean", "keep reviewing and fixing", "take this through review", or hands over a task in the Rue repo and expects a finished, reviewed PR rather than a first draft, even if they don't say "review loop". Not for a one-off review of an existing diff with no fix loop; use code-review for that.
+description: Take a piece of Rue work (an issue, a lint, a bug fix, a follow-up to an open PR) all the way to a reviewed PR that passes the same checks as CI, running rounds of independent code review and fixing what they find, without the user having to ask for each review pass. Use this whenever the user asks to implement an issue "with reviews", to "drive this to completion", "review until clean", "keep reviewing and fixing", "take this through review", or hands over a task in the Rue repo and expects a finished, reviewed PR rather than a first draft, even if they don't say "review loop". Not for a one-off review of an existing diff with no fix loop; use code-review for that.
 ---
 
 # Review loop
@@ -20,7 +20,7 @@ Read the source first: `gh issue view <n> --comments` or `gh pr view <n> --comme
 **Follow-ups to an open PR.** Do what the user asked; if they didn't say, continue on their own `rigidity/` branches and stack on anyone else's. Base is set so that reviewers see only the new work.
 
 - *Continuing on the PR's branch* (`gh pr checkout <n>`): keep its branch name, set Base to the commit the follow-up starts from, and push to that PR in section 7.
-- *Stacking on top*: if the PR is already in a stack, `gh stack checkout <n>`; otherwise `gh pr checkout <n>` first, so its branch exists locally at the PR's head, then adopt it with `gh stack init <pr-branch>`. Then `gh stack add rigidity/<slug>`. Base is the parent branch, which stays right after a restack. The new branch gets its own draft PR in section 7, linking the original. A PR from a fork can't be stacked this way; continue on a new branch from its head, open a draft PR against the original PR's base that links it, and say so in the report.
+- *Stacking on top*: if the PR is already in a stack, `gh stack checkout <n>`; otherwise `gh pr checkout <n>` first, so its branch exists locally at the PR's head, then adopt it with `gh stack init <pr-branch>`. Then `gh stack add rigidity/<slug>`. Base is the parent branch, which stays right after a restack. The new branch gets its own PR in section 7, linking the original. A PR from a fork can't be stacked this way; continue on a new branch from its head, open a PR against the original PR's base that links it, and say so in the report.
 
 The state file is the memory of the loop. Reviewers start with fresh context, and after a few rounds the implementer's own context is long, so without it later rounds re-raise settled points or undo earlier decisions. Write it to the session scratchpad (not the repo), at `<scratchpad>/review-loop/<branch-slug>.md`. Every review round reads it, and every fix round updates it.
 
@@ -100,9 +100,9 @@ Then run the quick checks for what you touched (`cargo test -p <crate>`, and `ca
 - **Clean**: a round with no confirmed findings at major or above. Stop there; never start a round just for minor findings or nits.
 - **Out of rounds**: stop after round 3 even if findings remain, and list them in the report. If round 3's fixes were more than trivial, first run one more round with only the correctness reviewer, to check the fixes; fix what it confirms and report it, without another round. A change that still has major findings after three rounds usually has a design problem that another round won't fix, and the user should look.
 
-Whatever the stop, still run the final checks and open or update the draft PR, so the user has the work in hand.
+Whatever the stop, still run the final checks and open or update the PR, so the user has the work in hand.
 
-**Decisions during the loop.** These don't end the loop or interrupt the user. When a confirmed finding raises a choice that's the user's to confirm (the list is in the reviewer brief), make it as in section 1: keep the current choice or switch, whichever the evidence favours, record it under Decisions as provisional so later reviewers don't raise it again, and add it to Decisions for the user. A reviewer's new argument against a provisional decision goes into that entry, so the user sees both sides. The draft PR and the report carry every provisional decision, and the user picks at the end.
+**Decisions during the loop.** These don't end the loop or interrupt the user. When a confirmed finding raises a choice that's the user's to confirm (the list is in the reviewer brief), make it as in section 1: keep the current choice or switch, whichever the evidence favours, record it under Decisions as provisional so later reviewers don't raise it again, and add it to Decisions for the user. A reviewer's new argument against a provisional decision goes into that entry, so the user sees both sides. The PR and the report carry every provisional decision, and the user picks at the end.
 
 ## 6. Final checks
 
@@ -127,7 +127,7 @@ cargo nextest run --all-features --workspace   # if `cargo nextest --version` wo
 
 **Commits.** One focused commit per logical change. Messages follow the git log: a plain sentence as the subject that says what changed ("Keep comments in suggestions"), or "Address review findings in <area>" with a `-` bulleted body when one round fixes several small things. No prefix like `feat:`. No AI attribution of any kind: no `Co-Authored-By`, no "Generated with" line.
 
-**PR.** Push and open a draft PR with `gh pr create --draft --base <branch>`, where the branch is Base without the `origin/` prefix (`main`, not `origin/main`), or push to the existing PR when continuing on its branch. The title follows the same style; the body says what changed and why, links the issue ("Closes #n", or "Part of #n" for a tracking issue) or the PR it follows up, and lists the provisional decisions for the user. For stacked work, use `gh stack` rather than setting PR bases by hand: `gh stack submit --auto` creates draft PRs with generated titles, so set each title and body afterwards with `gh pr edit <n> --title ... --body ...`, and don't pass `--open`, which marks them ready for review.
+**PR.** Push and open a PR with `gh pr create --base <branch>`, where the branch is Base without the `origin/` prefix (`main`, not `origin/main`), or push to the existing PR when continuing on its branch. The title follows the same style; the body says what changed and why, links the issue ("Closes #n", or "Part of #n" for a tracking issue) or the PR it follows up, and lists the provisional decisions for the user. For stacked work, use `gh stack` rather than setting PR bases by hand: `gh stack submit --auto --open` creates the PRs with generated titles (without `--open` they're drafts), so set each title and body afterwards with `gh pr edit <n> --title ... --body ...`.
 
 **Report.** End with this, in the reply to the user:
 
