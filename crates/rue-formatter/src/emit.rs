@@ -476,7 +476,7 @@ impl<'a> Formatter<'a> {
 
     fn token(&mut self, id: TokenId) -> Doc {
         self.consumed_tokens += 1;
-        Doc::text(self.stream.token(id).text.clone())
+        Doc::text(&*self.stream.token(id).text)
     }
 
     fn separator(&self, previous: TokenId, next: TokenId) -> Separator {
@@ -620,7 +620,7 @@ impl<'a> Formatter<'a> {
                 comment_separator(comment, Separator::Hard, false)
             };
             docs.push(before);
-            docs.push(Doc::text(comment.text.clone()));
+            docs.push(Doc::text(&*comment.text));
             let followed_inline = match gap.comments.get(index + 1) {
                 Some(next) => next.newlines_before == 0,
                 None => gap.newlines == 0 && !suppress_final_line,
