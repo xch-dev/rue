@@ -34,7 +34,7 @@ Arguments:
             files whose path contains it
 
 Options:
-  --bless   Rewrite the snapshots and reformat the .rue files to match the current output
+  --bless     Rewrite the snapshots and reformat the .rue files to match the current output
   -h, --help  Print this message";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
