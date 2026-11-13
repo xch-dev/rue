@@ -115,7 +115,8 @@ fn items_cannot_be_imported_through_a_private_module() {
         ",
     );
 
-    // Like a private item, a private module in the path is undeclared rather than private
+    // A private module in the path is reported as undeclared, like a missing module, rather
+    // than as private (compare `PrivateSymbol` for the same path outside of an import)
     assert_eq!(
         compiled.errors(),
         [
@@ -159,6 +160,35 @@ fn imports_are_private_unless_exported() {
         ]
     );
     assert_eq!(compiled.symbol_origin("outer::EXPORTED"), "outer::inner");
+}
+
+#[test]
+fn exporting_an_item_that_is_also_imported_privately_makes_it_public() {
+    let compiled = compile(
+        "
+        mod outer {
+            import inner::VALUE;
+            export inner::VALUE;
+            import inner::*;
+            export inner::*;
+
+            mod inner {
+                export const VALUE: Int = 1;
+                export const OTHER: Int = 2;
+                export type Number = Int;
+            }
+        }
+
+        fn main() -> outer::Number {
+            outer::VALUE + outer::OTHER
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("outer::VALUE"), "outer::inner");
+    assert_eq!(compiled.symbol_origin("outer::OTHER"), "outer::inner");
+    assert_eq!(compiled.type_origin("outer::Number"), "outer::inner");
 }
 
 #[test]

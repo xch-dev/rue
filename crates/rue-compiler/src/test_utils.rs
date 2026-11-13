@@ -66,9 +66,9 @@ impl Compiled {
         self.diagnostics
             .iter()
             .filter(|diagnostic| diagnostic.severity == DiagnosticSeverity::Warning)
-            .map(|diagnostic| match diagnostic.lint() {
-                Some(lint) => format!("{} {lint:?}", diagnostic.start()),
-                None => format!("{} {:?}", diagnostic.start(), diagnostic.kind),
+            .map(|diagnostic| {
+                let lint = diagnostic.lint().expect("only lints are warnings");
+                format!("{} {lint:?}", diagnostic.start())
             })
             .collect()
     }

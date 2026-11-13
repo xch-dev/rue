@@ -65,29 +65,26 @@ fn assert_narrows_the_rest_of_the_block() {
     );
 }
 
+/// Compiles a function `main` with parameters `x` and `y` of type `Int | (Int, Int)` and the
+/// given body, and returns the type of each reference to `x` and to `y` in it.
+fn xy_types(body: &str) -> (Vec<String>, Vec<String>) {
+    let mut compiled = compile(&format!(
+        "fn main(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {{\n{body}\n}}\n"
+    ));
+    compiled.assert_no_errors();
+    (
+        compiled.reference_types("main", "x"),
+        compiled.reference_types("main", "y"),
+    )
+}
+
 #[test]
 fn and_narrows_both_operands_in_the_then_branch() {
-    let mut compiled = compile(
-        "
-        fn main(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
-            if x is Int && y is Int {
-                x + y
-            } else {
-                0
-            }
-        }
-        ",
-    );
-
-    compiled.assert_no_errors();
-    assert_eq!(
-        compiled.reference_types("main", "x"),
-        ["`x`: Int | (Int, Int)", "`x`: Int"]
-    );
-    assert_eq!(
-        compiled.reference_types("main", "y"),
-        ["`y`: Int | (Int, Int)", "`y`: Int"]
-    );
+    for condition in ["x is Int && y is Int", "(x is Int) & (y is Int)"] {
+        let (x, y) = xy_types(&format!("if {condition} {{ x + y }} else {{ 0 }}"));
+        assert_eq!(x, ["`x`: Int | (Int, Int)", "`x`: Int"], "{condition}");
+        assert_eq!(y, ["`y`: Int | (Int, Int)", "`y`: Int"], "{condition}");
+    }
 }
 
 #[test]
@@ -125,26 +122,14 @@ fn and_does_not_narrow_the_else_branch() {
 
 #[test]
 fn or_narrows_both_operands_in_the_else_branch() {
-    let mut compiled = compile(
-        "
-        fn main(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
-            if x is (Int, Int) || y is (Int, Int) {
-                return 0;
-            }
-            x + y
-        }
-        ",
-    );
-
-    compiled.assert_no_errors();
-    assert_eq!(
-        compiled.reference_types("main", "x"),
-        ["`x`: Int | (Int, Int)", "`x`: Int"]
-    );
-    assert_eq!(
-        compiled.reference_types("main", "y"),
-        ["`y`: Int | (Int, Int)", "`y`: Int"]
-    );
+    for condition in [
+        "x is (Int, Int) || y is (Int, Int)",
+        "(x is (Int, Int)) | (y is (Int, Int))",
+    ] {
+        let (x, y) = xy_types(&format!("if {condition} {{ return 0; }} x + y"));
+        assert_eq!(x, ["`x`: Int | (Int, Int)", "`x`: Int"], "{condition}");
+        assert_eq!(y, ["`y`: Int | (Int, Int)", "`y`: Int"], "{condition}");
+    }
 }
 
 #[test]
@@ -152,55 +137,6 @@ fn or_narrows_its_right_operand_by_the_negation_of_its_left() {
     assert_eq!(
         x_types("x: Int | (Int, Int)", "Bool", "x is (Int, Int) || x > 0"),
         ["`x`: Int | (Int, Int)", "`x`: Int"]
-    );
-}
-
-#[test]
-fn bitwise_and_narrows_both_operands_in_the_then_branch() {
-    let mut compiled = compile(
-        "
-        fn main(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
-            if (x is Int) & (y is Int) {
-                x + y
-            } else {
-                0
-            }
-        }
-        ",
-    );
-
-    compiled.assert_no_errors();
-    assert_eq!(
-        compiled.reference_types("main", "x"),
-        ["`x`: Int | (Int, Int)", "`x`: Int"]
-    );
-    assert_eq!(
-        compiled.reference_types("main", "y"),
-        ["`y`: Int | (Int, Int)", "`y`: Int"]
-    );
-}
-
-#[test]
-fn bitwise_or_narrows_both_operands_in_the_else_branch() {
-    let mut compiled = compile(
-        "
-        fn main(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
-            if (x is (Int, Int)) | (y is (Int, Int)) {
-                return 0;
-            }
-            x + y
-        }
-        ",
-    );
-
-    compiled.assert_no_errors();
-    assert_eq!(
-        compiled.reference_types("main", "x"),
-        ["`x`: Int | (Int, Int)", "`x`: Int"]
-    );
-    assert_eq!(
-        compiled.reference_types("main", "y"),
-        ["`y`: Int | (Int, Int)", "`y`: Int"]
     );
 }
 
@@ -214,6 +150,25 @@ fn not_swaps_the_branches() {
         ),
         ["`x`: Int | (Int, Int)", "`x`: (Int, Int)", "`x`: Int"]
     );
+}
+
+#[test]
+fn guards_on_a_cast_or_parenthesized_value_narrow_the_value() {
+    // A parenthesized reference is recorded with its parentheses
+    for (guarded, reference) in [("(x as Any)", "x"), ("((x))", "((x))")] {
+        assert_eq!(
+            x_types(
+                "x: Int | (Int, Int)",
+                "Int",
+                &format!("if {guarded} is Int {{ x }} else {{ 0 }}"),
+            ),
+            [
+                format!("`{reference}`: Int | (Int, Int)"),
+                "`x`: Int".to_string()
+            ],
+            "{guarded}"
+        );
+    }
 }
 
 #[test]
