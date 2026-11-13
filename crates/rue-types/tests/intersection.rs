@@ -190,6 +190,21 @@ fn test_check_intersection() {
     let actual = check(&mut t.arena, &t.builtins, from, target);
     assert_eq!(actual, expected);
 
+    // The same holds for the atoms and pairs that it's known to contain, when it's nested
+    for (narrowed, structure) in [(t_pair, pair), (t_atom, b.atom)] {
+        for target in [b.atom, pair, int_pair, b.nil] {
+            let lhs = t.pair(narrowed, b.int);
+            let other = t.pair(b.nil, b.nil);
+            let from = t.union(vec![lhs, other]);
+            let lhs = t.pair(structure, b.int);
+            let structural = t.union(vec![lhs, other]);
+            let target = t.pair(target, b.int);
+            let expected = check(&mut t.arena, &t.builtins, structural, target);
+            let actual = check(&mut t.arena, &t.builtins, from, target);
+            assert_eq!(actual, expected);
+        }
+    }
+
     // A pair is never an atom
     let impossible = check(&mut t.arena, &t.builtins, t_pair, b.atom);
     assert_eq!(impossible, Ok(rue_types::Check::Impossible));
@@ -252,6 +267,35 @@ fn test_substitute_intersection() {
     let any = b.permissive_any;
     let ty = substitute_with_mappings(&mut t.arena, t_atom, &HashMap::from([(generic, any)]));
     assert_eq!(t.name(ty), "Atom");
+
+    // Substituting several generics can leave several structures, which are intersected the
+    // next time the intersection is
+    let u = t.generic("U");
+    let v = t.generic("V");
+    let pair = t.any_pair();
+    let three = t.alloc(Type::Intersection(Intersection::new(vec![generic, u, v])));
+    let ty = substitute_with_mappings(
+        &mut t.arena,
+        three,
+        &HashMap::from([(u, b.atom), (v, pair)]),
+    );
+    assert_eq!(t.name(ty), "T & Atom & (Any, Any)");
+    let ty = t.intersect(ty, any);
+    assert_eq!(t.name(ty), "Never");
+
+    // And a structure that the generics are already assignable to is dropped
+    let atom_or_pair = t.union(vec![b.atom, pair]);
+    let ty = substitute_with_mappings(
+        &mut t.arena,
+        three,
+        &HashMap::from([(u, atom_or_pair), (v, b.recursive_any)]),
+    );
+    assert_eq!(
+        t.name(ty),
+        "T & (Atom | (Any, Any)) & (1 @ (Atom | (<1>, <1>)))"
+    );
+    let ty = t.intersect(ty, any);
+    assert_eq!(t.name(ty), "T");
 
     // Nested intersections are flattened
     let other = t.generic("U");

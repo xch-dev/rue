@@ -184,7 +184,7 @@ fn intersect_structure(
                 .iter()
                 .map(|&variant| intersect_impl(arena, builtins, ctx, variant, rhs))
                 .collect();
-            repackage_union(arena, builtins, ctx, lhs, &union, variants)
+            repackage_union(arena, builtins, lhs, &union, variants)
         }
         (_, Type::Union(union)) => {
             let variants = union
@@ -192,7 +192,7 @@ fn intersect_structure(
                 .iter()
                 .map(|&variant| intersect_impl(arena, builtins, ctx, lhs, variant))
                 .collect();
-            repackage_union(arena, builtins, ctx, rhs, &union, variants)
+            repackage_union(arena, builtins, rhs, &union, variants)
         }
         (Type::Function(_), _) | (_, Type::Function(_)) => rhs,
         (Type::Struct(lhs_struct), Type::Struct(rhs_struct)) => {
@@ -278,7 +278,7 @@ fn intersect_members(
     // doesn't narrow them any further
     let structure = structure.filter(|&structure| {
         generics.is_empty()
-            || !generics.iter().all(|&generic| {
+            || generics.iter().any(|&generic| {
                 compare_impl(
                     arena,
                     builtins,
@@ -287,7 +287,7 @@ fn intersect_members(
                     structure,
                     None,
                     None,
-                ) == Comparison::Assign
+                ) != Comparison::Assign
             })
     });
 
@@ -333,13 +333,10 @@ fn normalize_intersection(
 }
 
 /// Rebuilds a union from the intersection of each of its variants, dropping the ones which were
-/// found to be impossible. A generic narrowed by a variant's intersection is also dropped if it's
-/// assignable to another variant, so that `T | nil` narrowed to `nil` is `nil` rather than
-/// `T & nil | nil`.
+/// found to be impossible.
 fn repackage_union(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
-    ctx: &mut IntersectContext,
     original: TypeId,
     union: &Union,
     variants: Vec<TypeId>,
@@ -353,32 +350,6 @@ fn repackage_union(
     for variant in variants {
         if !is_never(arena, variant) && !kept.contains(&variant) {
             kept.push(variant);
-        }
-    }
-
-    let mut index = 0;
-
-    while index < kept.len() {
-        let variant = kept[index];
-
-        let redundant = matches!(arena[resolve_refs(arena, variant)], Type::Intersection(_))
-            && kept.iter().any(|&other| {
-                other != variant
-                    && compare_impl(
-                        arena,
-                        builtins,
-                        &mut ctx.comparison,
-                        variant,
-                        other,
-                        None,
-                        None,
-                    ) == Comparison::Assign
-            });
-
-        if redundant {
-            kept.remove(index);
-        } else {
-            index += 1;
         }
     }
 

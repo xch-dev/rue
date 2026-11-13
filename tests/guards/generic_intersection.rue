@@ -166,6 +166,38 @@ fn or_default<U>(value: U | nil, default: U) -> U {
     value
 }
 
+// A generic that's only inferred from other arguments isn't widened by the narrowed generic
+fn pick<U, V>(_value: U | (V, nil), other: V) -> V {
+    other
+}
+
+fn pick_list<U, V>(_value: U | List<V>, other: V) -> V {
+    other
+}
+
+fn infer_other<T>(value: T) -> Int {
+    if value is Atom {
+        return pick(value, 5) + pick_list(value, 6);
+    }
+
+    0
+}
+
+// The whole narrowed value is inferred through an alias of a generic
+type Same<U> = U;
+
+fn same<U>(value: Same<U>) -> U {
+    value
+}
+
+fn infer_through_generic_alias<T>(value: T) -> T {
+    if value is Atom {
+        return same(value);
+    }
+
+    value
+}
+
 fn infer_held<T>(value: T, default: Bytes32) -> Bytes32 {
     if value is nil {
         return or_default(value, default);
@@ -256,6 +288,14 @@ test fn infer_from_structure_pair() -> Int {
 
 test fn infer_through_alias_atom() -> Int {
     infer_through_alias(4)
+}
+
+test fn infer_other_atom() -> Int {
+    infer_other(1)
+}
+
+test fn infer_through_generic_alias_atom() -> Int {
+    infer_through_generic_alias(7)
 }
 
 test fn infer_held_nil() -> Bytes32 {

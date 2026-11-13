@@ -141,6 +141,20 @@ tests:
   runtime_cost: 1850
   byte_cost: 1572000
   total_cost: 1573850
+- name: infer_other_atom
+  program: (a (q 2 2 (q . 1)) (c (q 2 (i (l 1) (q) (q 1 . 11)) 1) ()))
+  debug_program: (a (q 2 4 (c (c 10 14) (q . 1))) (c (c (q 2 (i (not (l 3)) (q 16 (a 6 (c (q . 5) 3)) (a 4 (c (q . 6) 3))) (q)) 1) (c (q . 2) (q . 2))) ()))
+  output: '11'
+  runtime_cost: 678
+  byte_cost: 588000
+  total_cost: 588678
+- name: infer_through_generic_alias_atom
+  program: (a (q 2 2 (q . 7)) (c (q 2 (i (l 1) (q . 1) (q . 1)) 1) ()))
+  debug_program: (a (q 2 4 (c 6 (q . 7))) (c (c (q 2 (i (not (l 3)) (q 2 2 3) (q . 3)) 1) (q . 1)) ()))
+  output: '7'
+  runtime_cost: 702
+  byte_cost: 564000
+  total_cost: 564702
 - name: infer_held_nil
   program: (a (q 2 4 (c 6 (q () . 0x0000000000000000000000000000000000000000000000000000000000000001))) (c (c (q 2 (i (a (i (l 5) (q) (q 2 (i 5 (q) (q 1 . 1)) 1)) 1) (q 2 2 3) (q . 7)) 1) (q 2 (i (a (i (l 2) (q) (q 2 (i 2 (q) (q 1 . 1)) 1)) 1) (q . 3) (q . 2)) 1)) ()))
   debug_program: (a (q 2 4 (c 6 (c () (q . 0x0000000000000000000000000000000000000000000000000000000000000001)))) (c (c (q 2 (i (a (i (not (l 5)) (q 2 (i (= 5 ()) (q 1 . 1) (q)) 1) (q)) 1) (q 2 2 (c 5 7)) (q . 7)) 1) (q 2 (i (a (i (not (l 2)) (q 2 (i (= 2 ()) (q 1 . 1) (q)) 1) (q)) 1) (q . 3) (q . 2)) 1)) ()))

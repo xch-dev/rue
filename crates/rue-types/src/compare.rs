@@ -1278,9 +1278,25 @@ fn compare_intersection(
         unreachable!();
     };
 
+    // An alias is compared as what it stands for, so that the whole intersection is compared to a
+    // generic or union inside of it rather than only its members
+    let unwrapped = unwrap_semantic_without_substitution(arena, rhs, true);
+
+    if unwrapped != rhs {
+        return compare_impl(
+            arena,
+            builtins,
+            ctx,
+            lhs,
+            unwrapped,
+            lhs_semantic,
+            rhs_semantic,
+        );
+    }
+
     let mut result = Comparison::Invalid;
 
-    if let Type::Union(rhs_union) = &arena[unwrap_semantic_without_substitution(arena, rhs, true)] {
+    if let Type::Union(rhs_union) = &arena[rhs] {
         // As in the comparison to a union, a value that another member already holds is only
         // collected as a last resort for the generics being inferred
         let holding = ctx.holding;
@@ -1301,26 +1317,45 @@ fn compare_intersection(
     }
 
     // The structure is compared before the generics, and they're only compared until one is
-    // assignable. Otherwise a generic would fall back to `Any`, and add it as an inference
-    // candidate even though the structure was enough.
-    let structure = intersection
-        .types
-        .iter()
-        .filter(|&&id| !is_generic(arena, id));
-    let generics = intersection
-        .types
-        .iter()
-        .filter(|&&id| is_generic(arena, id));
+    // assignable
+    let structure = intersection.structure(arena);
 
-    for &id in structure.chain(generics) {
+    for &id in intersection
+        .types
+        .iter()
+        .filter(|&&id| !is_generic(arena, id))
+    {
         if result == Comparison::Assign {
-            break;
+            return result;
         }
 
         result = min(
             result,
             compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
         );
+    }
+
+    for &id in intersection
+        .types
+        .iter()
+        .filter(|&&id| is_generic(arena, id))
+    {
+        if result == Comparison::Assign {
+            return result;
+        }
+
+        // A generic that can't be assigned as it is falls back to `Any`, which would add `Any`
+        // as an inference candidate. The structure is always at least as precise as that, so if
+        // there is one, the generic is only compared without inferring anything.
+        if structure.is_none() {
+            result = min(
+                result,
+                compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
+            );
+        } else if holds_without_inference(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic)
+        {
+            result = Comparison::Assign;
+        }
     }
 
     result
