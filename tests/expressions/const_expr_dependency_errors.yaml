@@ -4,3 +4,4 @@ diagnostics:
 - 'Const expression failed to evaluate: clvm raise at const_expr_dependency_errors.rue:22:5'
 - Const expression depends on runtime value `value` at const_expr_dependency_errors.rue:28:13
 - Const expression depends on itself at const_expr_dependency_errors.rue:41:5
+- Const expression depends on itself at const_expr_dependency_errors.rue:54:5

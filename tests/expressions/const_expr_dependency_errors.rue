@@ -40,3 +40,20 @@ fn cycle_c() -> Int {
 fn cycle_d() -> Int {
     const { cycle_c() }
 }
+
+// Each function's body is searched for const expressions before the functions it references
+test fn cycle_after_reference() -> Int {
+    const { cycle_h() }
+}
+
+fn cycle_h() -> Int {
+    cycle_e() + const { cycle_f() }
+}
+
+fn cycle_e() -> Int {
+    const { cycle_f() + 1 }
+}
+
+fn cycle_f() -> Int {
+    const { cycle_e() }
+}
