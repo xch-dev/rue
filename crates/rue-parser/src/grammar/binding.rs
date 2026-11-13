@@ -4,6 +4,10 @@ use crate::{
 };
 
 pub fn binding(p: &mut Parser) {
+    p.nested(binding_inner);
+}
+
+fn binding_inner(p: &mut Parser) {
     if p.at_quiet(SyntaxKind::Ident) {
         p.start(SyntaxKind::NamedBinding);
         p.expect(SyntaxKind::Ident);

@@ -61,6 +61,9 @@ pub enum DiagnosticKind {
     #[error("Unterminated octal literal")]
     UnterminatedOctal,
 
+    #[error("Nested too deeply, since the limit is {0} levels")]
+    NestingTooDeep(usize),
+
     #[error("Missing function body")]
     MissingFunctionBody,
 

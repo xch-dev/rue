@@ -17,3 +17,5 @@ mod cancel_tests;
 mod hir_type_tests;
 #[cfg(test)]
 mod lint_tests;
+#[cfg(test)]
+mod nesting_tests;

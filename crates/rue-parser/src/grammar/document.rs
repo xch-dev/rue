@@ -10,6 +10,7 @@ pub fn document(p: &mut Parser) {
         item(p);
     }
     p.eat_trivia();
+    p.skip_rest();
     p.finish();
 }
 

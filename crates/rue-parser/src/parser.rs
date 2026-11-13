@@ -7,6 +7,11 @@ use rue_lexer::{Token, TokenKind};
 
 use crate::{RueLang, SyntaxKind, SyntaxNode, T, document};
 
+/// The maximum number of levels that constructs (such as expressions) can be nested. The syntax
+/// tree, and the later stages of compilation, are processed recursively, so deeper nesting could
+/// overflow the stack. This leaves room for a 2 MiB thread, such as the language server's.
+pub const MAX_NESTING_DEPTH: usize = 256;
+
 #[derive(Debug)]
 struct ParseToken {
     span: Range<usize>,
@@ -27,6 +32,8 @@ pub struct Parser {
     expected: IndexSet<String>,
     last_error_pos: Option<usize>,
     recovering: bool,
+    depth: usize,
+    too_deep: bool,
     diagnostics: Vec<Diagnostic>,
     builder: GreenNodeBuilder<'static>,
 }
@@ -171,6 +178,8 @@ impl Parser {
             expected: IndexSet::new(),
             last_error_pos,
             recovering: false,
+            depth: 0,
+            too_deep: false,
             diagnostics,
             builder: GreenNodeBuilder::new(),
         }
@@ -213,6 +222,69 @@ impl Parser {
 
     pub(crate) fn finish(&mut self) {
         self.builder.finish_node();
+    }
+
+    /// Parses a construct that can contain itself (such as an expression), which is one level
+    /// deeper than the construct it's in. Each level is roughly one node in the syntax tree, so
+    /// for example a function call is two levels deeper than its callee, since its arguments are
+    /// in list items. If that's deeper than [`MAX_NESTING_DEPTH`], it isn't parsed and [`None`]
+    /// is returned instead (see [`Self::deepen`]).
+    pub(crate) fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> Option<T> {
+        let depth = self.depth;
+        let result = self.deepen().then(|| f(self));
+        self.depth = depth;
+        result
+    }
+
+    /// Adds a level of nesting until the end of the enclosing [`Self::nested`] call. This is for
+    /// constructs that are parsed in a loop rather than recursively, but which still nest in the
+    /// syntax tree, such as a chain of binary operators.
+    ///
+    /// Returns false if this is deeper than [`MAX_NESTING_DEPTH`]. In that case, an error is
+    /// reported and parsing stops, since the rest of the file could nest even deeper. From then
+    /// on the parser is at the end of the file, so every construct that's still open finishes
+    /// without reporting any more errors, and [`Self::skip_rest`] adds the remaining tokens.
+    pub(crate) fn deepen(&mut self) -> bool {
+        if self.depth < MAX_NESTING_DEPTH {
+            self.depth += 1;
+            return true;
+        }
+
+        if !self.too_deep {
+            self.eat_trivia();
+
+            // This is reported even while recovering from an earlier error, since the rest of
+            // the file is skipped and the error would otherwise never be reported
+            self.recovering = false;
+            self.last_error_pos = None;
+            self.expected.clear();
+            self.push_error(DiagnosticKind::NestingTooDeep(MAX_NESTING_DEPTH));
+
+            self.too_deep = true;
+        }
+
+        false
+    }
+
+    /// Adds the tokens that were skipped after exceeding the nesting limit to the current node,
+    /// so that the syntax tree still contains all of the source. This is done at the end of the
+    /// file, so that they're in the root node rather than deep inside of the tree, where they
+    /// would make the text of every node around them as long as the rest of the file.
+    pub(crate) fn skip_rest(&mut self) {
+        while let Some(token) = self.parse_tokens.get(self.pos) {
+            let kind = if token.kind.is_trivia() {
+                token.kind
+            } else {
+                SyntaxKind::Error
+            };
+
+            self.builder.token(
+                RueLang::kind_to_raw(kind),
+                &self.source.text[token.span.clone()],
+            );
+
+            self.pos += 1;
+        }
     }
 
     /// The index of the current token, which can be compared to detect whether progress was made.
@@ -363,6 +435,10 @@ impl Parser {
     }
 
     fn nth(&self, n: usize) -> SyntaxKind {
+        if self.too_deep {
+            return SyntaxKind::Eof;
+        }
+
         self.parse_tokens
             .get(self.pos + n)
             .map_or(SyntaxKind::Eof, |token| token.kind)
@@ -417,9 +493,13 @@ impl Parser {
     }
 
     /// Consumes the current token as an error token, so that it remains in the syntax tree. Does
-    /// nothing at the end of the file.
+    /// nothing at the end of the file, including after exceeding the nesting limit.
     pub(crate) fn bump_as_error(&mut self) {
         self.eat_trivia();
+
+        if self.too_deep {
+            return;
+        }
 
         let Some(token) = self.parse_tokens.get(self.pos) else {
             return;

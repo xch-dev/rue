@@ -36,7 +36,13 @@ pub fn expr(p: &mut Parser) {
     expr_with(p, checkpoint, ExprOptions::default());
 }
 
+/// Returns whether the expression was parsed as a statement (an if statement without an `else`).
 pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -> bool {
+    p.nested(|p| expr_with_inner(p, checkpoint, options))
+        .unwrap_or(false)
+}
+
+fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -> bool {
     if !options.inline
         && let Some(kind) = p.at_any_quiet(SyntaxKind::PREFIX_OPS)
     {
@@ -148,24 +154,39 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
         return false;
     }
 
+    // Each of these wraps the expression before it, so they nest as deeply as if they recursed
     loop {
-        if p.at(T!['(']) {
-            p.start_at(checkpoint, SyntaxKind::FunctionCallExpr);
+        let kind = if p.at(T!['(']) {
+            SyntaxKind::FunctionCallExpr
+        } else if p.at(T![is]) {
+            SyntaxKind::GuardExpr
+        } else if p.at(T![as]) {
+            SyntaxKind::CastExpr
+        } else if p.at(T![.]) {
+            SyntaxKind::FieldAccessExpr
+        } else {
+            break;
+        };
+
+        if !p.deepen() {
+            return false;
+        }
+
+        p.start_at(checkpoint, kind);
+
+        if kind == SyntaxKind::FunctionCallExpr {
             p.expect(T!['(']);
             delimited_list(p, T![')'], list_item);
             p.finish();
-        } else if p.at(T![is]) {
-            p.start_at(checkpoint, SyntaxKind::GuardExpr);
+        } else if kind == SyntaxKind::GuardExpr {
             p.expect(T![is]);
             ty(p);
             p.finish();
-        } else if p.at(T![as]) {
-            p.start_at(checkpoint, SyntaxKind::CastExpr);
+        } else if kind == SyntaxKind::CastExpr {
             p.expect(T![as]);
             ty(p);
             p.finish();
-        } else if p.at(T![.]) {
-            p.start_at(checkpoint, SyntaxKind::FieldAccessExpr);
+        } else {
             p.expect(T![.]);
             let found = p.expect(SyntaxKind::Ident);
             p.finish();
@@ -174,8 +195,6 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
             if !found {
                 break;
             }
-        } else {
-            break;
         }
     }
 
@@ -193,6 +212,11 @@ pub fn expr_with(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions) -
 
         if left_binding_power < options.minimum_binding_power {
             p.clear_expected();
+            return false;
+        }
+
+        // Each operator in a chain wraps the expression before it
+        if !p.deepen() {
             return false;
         }
 
@@ -252,7 +276,7 @@ fn if_expr(
         p.expect(T![else]);
         if p.at(T![if]) {
             let child = p.checkpoint();
-            if_expr(p, child, false, false);
+            p.nested(|p| if_expr(p, child, false, false));
         } else {
             block(p);
         }

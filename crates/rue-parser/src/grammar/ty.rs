@@ -16,6 +16,10 @@ pub fn ty(p: &mut Parser) {
 }
 
 fn ty_inner(p: &mut Parser, allow_union: bool) {
+    p.nested(|p| ty_nested(p, allow_union));
+}
+
+fn ty_nested(p: &mut Parser, allow_union: bool) {
     let cp = p.checkpoint();
 
     if p.at_quiet(SyntaxKind::Ident) || p.at_quiet(T![super]) || p.at_quiet(T![::]) {

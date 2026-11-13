@@ -6,6 +6,8 @@ mod expr;
 mod generics;
 mod item;
 #[cfg(test)]
+mod nesting;
+#[cfg(test)]
 mod recovery;
 mod stmt;
 mod ty;
