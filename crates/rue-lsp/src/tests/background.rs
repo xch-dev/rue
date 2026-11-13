@@ -181,7 +181,7 @@ async fn test_cancelled_request_does_not_compile() {
     // before the server gets to it
     let (started, release) = client.hold_compile();
     client
-        .watched(&[(&uri, tower_lsp::lsp_types::FileChangeType::CHANGED)])
+        .watched(&[(&uri, tower_lsp_server::ls_types::FileChangeType::CHANGED)])
         .await;
     started.recv_timeout(TIMEOUT).unwrap();
 

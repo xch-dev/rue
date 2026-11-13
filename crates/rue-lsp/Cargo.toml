@@ -25,7 +25,7 @@ rue-parser = { workspace = true }
 rue-hir = { workspace = true }
 rue-types = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tower-lsp = { workspace = true }
+tower-lsp-server = { workspace = true }
 futures = { workspace = true }
 rowan = { workspace = true }
 indexmap = { workspace = true }

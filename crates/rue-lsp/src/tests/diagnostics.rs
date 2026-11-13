@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
 use expect_test::expect;
@@ -5,8 +6,8 @@ use expect_test::expect;
 use rue_diagnostic::{
     Applicability, DiagnosticKind, Edit, Lint, Source, SourceKind, SrcLoc, Suggestion,
 };
-use tower_lsp::LanguageServer;
-use tower_lsp::lsp_types::{InitializeParams, Url};
+use tower_lsp_server::LanguageServer;
+use tower_lsp_server::ls_types::{InitializeParams, Uri};
 
 use super::TestProject;
 
@@ -309,7 +310,7 @@ fn test_diagnostics_non_file_uri() {
     let project = TestProject::new(&[]);
 
     let diagnostics = project.backend().on_change_impl(
-        &Url::parse("untitled:Untitled-1").unwrap(),
+        &Uri::from_str("untitled:Untitled-1").unwrap(),
         Some("fn main() -> Int {\n    x\n}\n".to_string()),
     );
 

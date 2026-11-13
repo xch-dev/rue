@@ -22,8 +22,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rue_options::{Project, find_project};
-use tower_lsp::jsonrpc::{Error, Result};
-use tower_lsp::lsp_types::{
+use tower_lsp_server::jsonrpc::{Error, Result};
+use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
     CompletionResponse, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
@@ -34,9 +34,9 @@ use tower_lsp::lsp_types::{
     HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
     InitializedParams, LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf,
     Position, Range, ReferenceParams, Registration, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
+    TextDocumentSyncKind, TextEdit, Uri, WorkspaceEdit,
 };
-use tower_lsp::{Client, LanguageServer};
+use tower_lsp_server::{Client, LanguageServer};
 
 use crate::cache::{HoverInfo, SymbolHoverKind};
 use crate::paths::{Paths, document, uri_to_path};
@@ -82,7 +82,6 @@ impl fmt::Display for Task {
     }
 }
 
-#[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let related_information = params
@@ -392,7 +391,7 @@ impl Backend {
     }
 
     /// The revision of the editor's text for a document, which a query is about.
-    fn revision(&self, uri: &Url) -> Option<u64> {
+    fn revision(&self, uri: &Uri) -> Option<u64> {
         let (_, kind) = document(uri)?;
         self.shared.revision(&kind)
     }
@@ -400,7 +399,7 @@ impl Backend {
     /// Records the editor's text for a document (or that it should be read from disk), and
     /// returns its path. The text is kept even if the project can't be compiled right now, so
     /// that it's used once it can be.
-    fn set_text(&self, uri: &Url, text: Option<String>) -> Option<PathBuf> {
+    fn set_text(&self, uri: &Uri, text: Option<String>) -> Option<PathBuf> {
         // The file may have been deleted, for example before the editor closes it
         let (path, kind) = document(uri)?;
         self.shared.set_text(kind, text);
@@ -409,13 +408,13 @@ impl Backend {
 
     /// Records the editor's text for a document, and compiles its project right away. The
     /// diagnostics are published once they're ready, and the receiver gets them too.
-    fn change(&self, uri: &Url, text: Option<String>) -> Option<oneshot::Receiver<Diagnostics>> {
+    fn change(&self, uri: &Uri, text: Option<String>) -> Option<oneshot::Receiver<Diagnostics>> {
         let path = self.set_text(uri, text)?;
         Some(self.worker.compile(Vec::new(), vec![path]))
     }
 
     #[cfg(test)]
-    fn on_change_impl(&self, uri: &Url, text: Option<String>) -> Diagnostics {
+    fn on_change_impl(&self, uri: &Uri, text: Option<String>) -> Diagnostics {
         self.change(uri, text)
             .and_then(|receiver| receiver.blocking_recv().ok())
             .unwrap_or_default()
@@ -617,7 +616,7 @@ fn suggestion_data(
     suggestion: &rue_diagnostic::Suggestion,
     paths: &Paths,
 ) -> Option<SuggestionData> {
-    let mut changes = HashMap::<Url, Vec<TextEdit>>::new();
+    let mut changes = HashMap::<Uri, Vec<TextEdit>>::new();
 
     for edit in &suggestion.edits {
         let location = location(&edit.srcloc, paths)?;

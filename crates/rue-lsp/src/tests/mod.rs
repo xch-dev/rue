@@ -21,16 +21,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::executor::block_on;
 use rue_compiler::normalize_path;
-use tower_lsp::LanguageServer;
-use tower_lsp::LspService;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::LanguageServer;
+use tower_lsp_server::LspService;
+use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
     Diagnostic, DocumentFormattingParams, FormattingOptions, GotoDefinitionParams,
     GotoDefinitionResponse, HoverContents, HoverParams, Location, MarkedString, NumberOrString,
     PartialResultParams, Position, Range, ReferenceContext, ReferenceParams,
-    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
+    TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Uri, WorkDoneProgressParams,
 };
 
+use crate::paths::{path_to_uri, uri_to_path};
 use crate::position::{offset_to_position, position_to_offset};
 use crate::{Backend, code_actions};
 
@@ -92,7 +93,7 @@ impl Drop for TempDir {
 
 /// Blocking versions of the request handlers, for tests that call the server directly.
 impl Backend {
-    fn on_hover(&self, params: &HoverParams) -> Option<tower_lsp::lsp_types::Hover> {
+    fn on_hover(&self, params: &HoverParams) -> Option<tower_lsp_server::ls_types::Hover> {
         block_on(self.hover(params.clone())).unwrap()
     }
 
@@ -124,7 +125,7 @@ pub struct TestProject {
     root: PathBuf,
     _dir: TempDir,
     service: LspService<Backend>,
-    cursor: Option<(Url, Position)>,
+    cursor: Option<(Uri, Position)>,
 }
 
 impl TestProject {
@@ -151,10 +152,7 @@ impl TestProject {
 
             let text = if let Some(index) = text.find(CURSOR) {
                 assert!(cursor.is_none(), "only one cursor is allowed");
-                cursor = Some((
-                    Url::from_file_path(&path).unwrap(),
-                    offset_to_position(text, index),
-                ));
+                cursor = Some((path_to_uri(&path).unwrap(), offset_to_position(text, index)));
                 text.replacen(CURSOR, "", 1)
             } else {
                 (*text).to_string()
@@ -178,7 +176,7 @@ impl TestProject {
         for (path, text) in texts {
             project
                 .backend()
-                .on_change_impl(&Url::from_file_path(path).unwrap(), Some(text));
+                .on_change_impl(&path_to_uri(&path).unwrap(), Some(text));
         }
 
         project
@@ -192,16 +190,16 @@ impl TestProject {
         self.root.join(name)
     }
 
-    pub fn uri(&self, name: &str) -> Url {
-        Url::from_file_path(self.path(name)).unwrap()
+    pub fn uri(&self, name: &str) -> Uri {
+        path_to_uri(&self.path(name)).unwrap()
     }
 
-    pub fn cursor(&self) -> (Url, Position) {
+    pub fn cursor(&self) -> (Uri, Position) {
         self.cursor.clone().expect("missing $0 cursor marker")
     }
 
     /// Renders a URI and range relative to the project root, e.g. `main.rue:1:4-1:7`.
-    pub fn location(&self, uri: &Url, range: Range) -> String {
+    pub fn location(&self, uri: &Uri, range: Range) -> String {
         let path = uri.to_file_path().unwrap();
         let path = path.strip_prefix(&self.root).unwrap_or(&path);
         format!("{}:{}", path.display(), range_string(range))
@@ -428,9 +426,8 @@ impl TestProject {
                     self.backend()
                         .shared
                         .paths
-                        .uri(&kind)?
-                        .to_file_path()
-                        .ok()?,
+                        .uri(&kind)
+                        .and_then(|uri| uri_to_path(&uri))?,
                     diagnostics,
                 )),
                 rue_diagnostic::SourceKind::Std(_) => None,
@@ -482,7 +479,7 @@ impl TestProject {
 }
 
 /// Renders the hover at a position, or `<none>`.
-fn hover(backend: &Backend, uri: Url, position: Position) -> String {
+fn hover(backend: &Backend, uri: Uri, position: Position) -> String {
     let Some(hover) = backend.on_hover(&HoverParams {
         text_document_position_params: TextDocumentPositionParams::new(
             TextDocumentIdentifier::new(uri),

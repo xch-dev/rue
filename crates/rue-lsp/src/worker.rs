@@ -25,8 +25,8 @@ use rue_compiler::Compiler;
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
 use tokio::sync::oneshot;
-use tower_lsp::Client;
-use tower_lsp::lsp_types::{Diagnostic, MessageType, Url};
+use tower_lsp_server::Client;
+use tower_lsp_server::ls_types::{Diagnostic, MessageType, Uri};
 
 use crate::cache::Cache;
 use crate::paths::{Paths, document};
@@ -475,7 +475,7 @@ impl State {
     /// about the revision of the editor's text it was sent for, and if an edit made after it was
     /// compiled first, there's no answer, since the query's position may not match the text
     /// anymore. An older compile still answers (for example, if compiling the edit panicked).
-    pub fn cache(&mut self, uri: &Url, revision: Option<u64>) -> Option<&mut Cache<Compiler>> {
+    pub fn cache(&mut self, uri: &Uri, revision: Option<u64>) -> Option<&mut Cache<Compiler>> {
         let (_, kind) = document(uri)?;
         let (key, source, compiled) = self.files.get(&kind)?;
 
@@ -560,7 +560,7 @@ impl State {
 
 #[cfg(test)]
 mod tests {
-    use tower_lsp::LspService;
+    use tower_lsp_server::LspService;
 
     use super::*;
     use crate::Backend;
