@@ -255,6 +255,27 @@ fn duplicate_import_paths_keep_distinct_comment_owners() {
 }
 
 #[test]
+fn comments_followed_by_a_blank_line_at_the_start_of_an_import_group() {
+    // Found by the property tests: this panicked with an index out of bounds
+    check(
+        "import a::{\n// line\n\nb};\nimport c::{\n/* multi\nline */\n\nd};",
+        expect![[r#"
+            import a::{
+                // line
+
+                b,
+            };
+            import c::{
+                /* multi
+            line */
+
+                d,
+            };
+        "#]],
+    );
+}
+
+#[test]
 fn comments_moved_after_a_trailing_comment_by_sorting_add_no_blank_line() {
     // Found by the property tests: `// doc` started a line of its own after the line ended by
     // `// trailing`, which left a blank line between them that the next format kept
