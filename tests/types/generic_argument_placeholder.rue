@@ -1,0 +1,59 @@
+fn wrap<A, B>(value: A) -> (A, B | nil) {
+    (value, nil)
+}
+
+fn both<A, B>(first: A, second: B) -> (A, B) {
+    (first, second)
+}
+
+mod nested {
+    export fn wrap<A, B>(value: A) -> (A, B | nil) {
+        (value, nil)
+    }
+}
+
+test fn infer_first() -> Int {
+    let pair = wrap::<_, Bytes>(1);
+    let rest: Bytes | nil = pair.rest;
+    pair.first
+        + if rest is nil {
+            1
+        } else {
+            0
+        }
+}
+
+test fn infer_second() -> Bytes {
+    let pair = both::<Int, _>(1, "hello");
+    pair.rest + "!"
+}
+
+test fn infer_all() -> Int {
+    both::<_, _>(1, 2).first + both::<_, _>(3, 4).rest
+}
+
+test fn explicit_widens_argument() -> Int | nil {
+    let pair = both::<Int | nil, _>(nil, 2);
+    pair.first
+}
+
+test fn through_module() -> Int {
+    nested::wrap::<_, Bytes>(5).first + 1
+}
+
+test fn infer_from_expected_type() -> (Int, Bytes | nil) {
+    wrap::<_, _>(1)
+}
+
+test fn function_value() -> Int {
+    let function = wrap::<_, Bytes>;
+    let typed: fn(value: Int) -> (Int, Bytes | nil) = wrap::<_, Bytes>;
+    let rest: Bytes | nil = function(1).rest;
+    function(1).first
+        + typed(2).first
+        + if rest is nil {
+            0
+        } else {
+            1
+        }
+}
