@@ -201,15 +201,27 @@ fn only_modules_have_paths() {
     let compiled = compile(
         "
         const VALUE: Int = 1;
+        type Number = Int;
 
-        fn main() -> Int {
-            VALUE::inner
+        mod outer {
+            export const VALUE: Int = 2;
+        }
+
+        fn main() -> Number::Inner {
+            VALUE::inner + outer::VALUE::inner
         }
         ",
     );
 
-    // The error names the symbol that has no paths, but is reported at the segment after it
-    assert_eq!(compiled.errors(), ["5:20 SubpathNotSupported(\"VALUE\")"]);
+    // Each error is reported at the name that isn't a module
+    assert_eq!(
+        compiled.errors(),
+        [
+            "9:22 SubpathNotSupported(\"Number\")",
+            "10:13 SubpathNotSupported(\"VALUE\")",
+            "10:35 SubpathNotSupported(\"VALUE\")",
+        ]
+    );
 }
 
 #[test]

@@ -123,7 +123,7 @@ where
     }
 
     let mut value = None;
-    let mut previous_name = None;
+    let mut previous: Option<SyntaxToken> = None;
 
     for (index, segment) in segments.iter().enumerate() {
         if let Some(module) = path_completion_module
@@ -175,9 +175,10 @@ where
                     .map(|ty| (ty, scope.is_type_exported(ty), scope.type_import(ty)));
                 (symbol, ty)
             } else {
+                let previous = previous.unwrap();
                 ctx.diagnostic(
-                    &name,
-                    DiagnosticKind::SubpathNotSupported(previous_name.unwrap()),
+                    &previous,
+                    DiagnosticKind::SubpathNotSupported(previous.text().to_string()),
                 );
                 return PathResult::Unresolved;
             }
@@ -237,7 +238,7 @@ where
                 &name,
                 DiagnosticKind::PrivateSymbol(
                     name.text().to_string(),
-                    previous_name.clone().unwrap(),
+                    previous.as_ref().unwrap().text().to_string(),
                 ),
             );
         }
@@ -250,7 +251,7 @@ where
                 &name,
                 DiagnosticKind::PrivateType(
                     name.text().to_string(),
-                    previous_name.clone().unwrap(),
+                    previous.as_ref().unwrap().text().to_string(),
                 ),
             );
         }
@@ -396,20 +397,23 @@ where
             }
         }
 
-        previous_name = Some(name.text().to_string());
+        previous = Some(name);
     }
 
     let value = value.unwrap_or(PathResult::Unresolved);
 
     match (value, kind) {
         (PathResult::Symbol(_, _, _), PathKind::Type) => {
-            ctx.diagnostic(range, DiagnosticKind::ExpectedType(previous_name.unwrap()));
+            ctx.diagnostic(
+                range,
+                DiagnosticKind::ExpectedType(previous.unwrap().text().to_string()),
+            );
             PathResult::Unresolved
         }
         (PathResult::Type(_, _), PathKind::Symbol) => {
             ctx.diagnostic(
                 range,
-                DiagnosticKind::ExpectedSymbol(previous_name.unwrap()),
+                DiagnosticKind::ExpectedSymbol(previous.unwrap().text().to_string()),
             );
             PathResult::Unresolved
         }
@@ -417,7 +421,7 @@ where
             if let Symbol::Module(_) = ctx.symbol(symbol) {
                 ctx.diagnostic(
                     range,
-                    DiagnosticKind::CannotReferenceModule(previous_name.unwrap()),
+                    DiagnosticKind::CannotReferenceModule(previous.unwrap().text().to_string()),
                 );
             }
             value
