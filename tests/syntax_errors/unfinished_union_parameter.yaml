@@ -2,6 +2,5 @@ diagnostics:
 - Unused struct `Obj` at unfinished_union_parameter.rue:3:8
 - Unused type alias `MaybeObj` at unfinished_union_parameter.rue:7:6
 - Unused function `get` at unfinished_union_parameter.rue:9:4
-- Expected type, found `if` at unfinished_union_parameter.rue:10:5
-- Unknown field `members` on type `MaybeObj` at unfinished_union_parameter.rue:11:15
-- Expected item, found `else` at unfinished_union_parameter.rue:12:7
+- Expected type, found `)` at unfinished_union_parameter.rue:9:25
+- Unknown field `members` on type `MaybeObj` at unfinished_union_parameter.rue:10:11

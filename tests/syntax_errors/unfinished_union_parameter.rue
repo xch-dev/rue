@@ -1,15 +1,11 @@
-// A parameter whose union type is unfinished, found by the language server's crash sweep. The field
-// access used to panic, since narrowing left a union with only the alias in it.
+// The unfinished `MaybeObj |` compiles to a union whose only member is the alias, and accessing a
+// field on it used to panic. Found by the language server's crash sweep.
 struct Obj {
     members: Int,
 }
 
 type MaybeObj = Obj | nil;
 
-fn get(value: MaybeObj |
-    if value is Obj {
-        value.members
-    } else {
-        0
-    }
+fn get(value: MaybeObj |) -> Int {
+    value.members
 }

@@ -956,6 +956,29 @@ mod recursive {
     }
 
     #[test]
+    fn unwrap_semantic_unwraps_the_only_member_of_a_union() {
+        let mut db = Db::new();
+        let BuiltinTypes { int, nil, .. } = db.builtins;
+
+        // The types are substituted first, so they're compared by kind rather than by id
+        let inner = db.union(&[int, nil]);
+        let alias = db.alias("MaybeInt", &[], inner);
+        let union = db.union(&[alias]);
+
+        let unwrapped = unwrap_semantic(&mut db.arena, union, true);
+        assert!(matches!(&db.arena[unwrapped], Type::Union(union) if union.types.len() == 2));
+
+        let unwrapped = unwrap_semantic(&mut db.arena, union, false);
+        assert!(matches!(db.arena[unwrapped], Type::Alias(_)));
+
+        let reference = db.alloc(Type::Ref(int));
+        let union = db.union(&[reference]);
+
+        let unwrapped = unwrap_semantic(&mut db.arena, union, false);
+        assert!(matches!(db.arena[unwrapped], Type::Atom(_)));
+    }
+
+    #[test]
     fn non_contractive_types_do_not_overflow() {
         let mut db = Db::new();
         let BuiltinTypes {
