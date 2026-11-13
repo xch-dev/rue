@@ -337,3 +337,82 @@ fn test_request_for_older_text_is_not_answered() {
 
     assert_eq!(hover, "<none>\n");
 }
+
+/// Binds a value that's never used, which the `unused_binding` lint reports.
+const UNUSED: &str = "fn main() -> Int {\n    let unused = 1;\n    2\n}\n";
+
+#[tokio::test]
+async fn test_compilers_are_reused_for_the_same_options() {
+    let warn = TempProject::new(&[("main.rue", UNUSED)]);
+    let deny = TempProject::with_manifest(
+        Some(&format!("{MANIFEST}\n[lints]\nunused_binding = \"deny\"\n")),
+        &[("main.rue", UNUSED)],
+    );
+    let warn_uri = warn.uri("main.rue");
+    let deny_uri = deny.uri("main.rue");
+
+    let mut client = Client::initialized().await;
+    client.open(&warn_uri, UNUSED).await;
+    assert_eq!(
+        warn.published(&client.sync().await),
+        ["Rue.toml: []", "main.rue: [2]"]
+    );
+    assert_eq!(client.compilers(), 1);
+
+    // Compiling the project again starts from a copy of the compiler built the first time
+    client.change(&warn_uri, 2, &[MISMATCH]).await;
+    assert_eq!(
+        warn.published(&client.sync().await),
+        ["Rue.toml: []", "main.rue: [1]"]
+    );
+    assert_eq!(client.compilers(), 1);
+
+    // A project whose options differ only in its lint levels gets a compiler of its own, so the
+    // levels of the other project don't leak into it
+    client.open(&deny_uri, UNUSED).await;
+    assert_eq!(
+        deny.published(&client.sync().await),
+        ["Rue.toml: []", "main.rue: [1]"]
+    );
+    assert_eq!(client.compilers(), 2);
+
+    client.change(&warn_uri, 3, &[UNUSED]).await;
+    assert_eq!(
+        warn.published(&client.sync().await),
+        ["Rue.toml: []", "main.rue: [2]"]
+    );
+    assert_eq!(client.compilers(), 2);
+}
+
+#[tokio::test]
+async fn test_standard_library_survives_copying_the_compiler() {
+    let source = "fn main() -> List<Int> {\n    merge_list([1, 2], [3])\n}\n";
+    let edited = "fn main() -> List<Int> {\n    merge_list([1], [2, 3])\n}\n";
+    let project = TempProject::with_manifest(
+        Some("[compiler]\nentrypoint = \".\"\n"),
+        &[("main.rue", source)],
+    );
+    let uri = project.uri("main.rue");
+    let hover = json!([{
+        "language": "rue",
+        "value": "fn merge_list<T>(a: List<T>, b: List<T>) -> List<T>"
+    }]);
+
+    let mut client = Client::initialized().await;
+    client.open(&uri, source).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["Rue.toml: []", "main.rue: []"]
+    );
+    assert_eq!(client.hover(&uri, 1, 8).await["contents"], hover);
+
+    // The second compile starts from a copy of the first compiler, which still has the standard
+    // library in it
+    client.change(&uri, 2, &[edited]).await;
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["Rue.toml: []", "main.rue: []"]
+    );
+    assert_eq!(client.hover(&uri, 1, 8).await["contents"], hover);
+    assert_eq!(client.compilers(), 1);
+}

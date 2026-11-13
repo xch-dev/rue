@@ -8,6 +8,7 @@
 //! disk) compiles the pending edits first, so it always sees every edit sent before it. A query
 //! that arrives while a compile is running waits for it.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
@@ -22,6 +23,7 @@ use std::time::{Duration, Instant};
 use indexmap::IndexMap;
 use rue_compiler::Compiler;
 use rue_diagnostic::{Source, SourceKind};
+use rue_options::CompilerOptions;
 use tokio::sync::oneshot;
 use tower_lsp::Client;
 use tower_lsp::lsp_types::{Diagnostic, MessageType, Url};
@@ -55,6 +57,9 @@ pub struct Shared {
     /// How many times a project was compiled.
     #[cfg(test)]
     pub compiles: AtomicUsize,
+    /// How many compilers were built from scratch, rather than copied from one built before.
+    #[cfg(test)]
+    pub compilers: AtomicUsize,
     /// How many queries were sent to the worker.
     #[cfg(test)]
     pub queries: AtomicUsize,
@@ -99,6 +104,8 @@ impl Shared {
             injected_panic: Mutex::default(),
             #[cfg(test)]
             compiles: AtomicUsize::new(0),
+            #[cfg(test)]
+            compilers: AtomicUsize::new(0),
             #[cfg(test)]
             queries: AtomicUsize::new(0),
             #[cfg(test)]
@@ -365,6 +372,10 @@ pub struct State {
     /// The project whose compile answers queries about each file, the file's source, and the
     /// revision of the editor's text that was compiled, if it's open.
     pub files: HashMap<SourceKind, (PathBuf, Source, Option<u64>)>,
+    /// A compiler for each set of options that projects were compiled with, which has nothing but
+    /// the standard library compiled into it. Compiling it takes much longer than copying it, so
+    /// each compile starts from a copy.
+    compilers: RefCell<HashMap<CompilerOptions, Compiler>>,
     /// The files the editor changed that haven't been compiled yet.
     edited: Vec<PathBuf>,
     /// When to compile the edits, if no other edit arrives first.
@@ -382,6 +393,7 @@ impl State {
             published: HashMap::new(),
             projects: HashMap::new(),
             files: HashMap::new(),
+            compilers: RefCell::default(),
             edited: Vec::new(),
             deadline: None,
             task: None,
@@ -483,6 +495,22 @@ impl State {
         }
 
         Some(cache)
+    }
+
+    /// A compiler to compile a project with, which is the same as `Compiler::new(options)`.
+    pub fn compiler(&self, options: CompilerOptions) -> Compiler {
+        if let Some(compiler) = self.compilers.borrow().get(&options) {
+            return compiler.clone();
+        }
+
+        #[cfg(test)]
+        self.shared.compilers.fetch_add(1, Ordering::Relaxed);
+
+        let compiler = Compiler::new(options);
+        self.compilers
+            .borrow_mut()
+            .insert(options, compiler.clone());
+        compiler
     }
 
     /// Compiles a project again once the edits stop, given a path it can be found from.

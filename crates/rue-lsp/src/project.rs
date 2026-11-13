@@ -239,7 +239,7 @@ impl State {
         let mut diagnostics = Diagnostics::new();
         let mut cache = None;
 
-        let mut ctx = Compiler::new(project.options);
+        let mut ctx = self.compiler(project.options);
         let mut sources = snapshot.sources.clone();
 
         self.shared.inject_panic(Task::Compile);

@@ -139,6 +139,11 @@ impl Client {
         self.backend().shared.compiles.load(Ordering::Relaxed)
     }
 
+    /// How many compilers the server built from scratch.
+    pub(super) fn compilers(&self) -> usize {
+        self.backend().shared.compilers.load(Ordering::Relaxed)
+    }
+
     pub(super) fn inject_panic(&self, task: Option<Task>) {
         *lock(&self.backend().shared.injected_panic) = task;
     }
