@@ -1,0 +1,8 @@
+// Each parameter refers to the alias with its generics rotated, which used to make comparing it to
+// itself take exponential time
+type G<A, B, C, D> = fn<U>(p0: G<B, C, D, A>, p1: G<A, A, B, C>, p2: G<D, B, B, A>) -> U;
+
+fn main(g: G<Int, Bytes, nil, Bool>) -> Int {
+    let _h: G<Int, Bytes, nil, Bool> = g;
+    0
+}

@@ -15,7 +15,8 @@ categories = { workspace = true }
 workspace = true
 
 [features]
-# Counts the steps taken by the operations on types, for tests (see `count_steps`)
+# Counts the steps taken by the operations on types, and lets the comparison memo be turned off,
+# for tests (see `count_steps` and `without_compare_memo`)
 step-counter = []
 
 [dependencies]
