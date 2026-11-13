@@ -8,7 +8,8 @@
 //! - The parser's syntax tree is lossless: its text is exactly the input, even for invalid input.
 //! - Formatting source that parses without errors gives source that also parses without errors,
 //!   has the same tokens apart from trivia, trailing commas and import order, keeps every comment,
-//!   and is unchanged by formatting it again.
+//!   and is unchanged by formatting it again (which `format_source` checks itself, returning an
+//!   error otherwise).
 //!
 //! The inputs come from several generators: arbitrary strings, sequences of Rue tokens, generated
 //! expressions, and the real Rue files in the repository with tokens deleted, duplicated, swapped
@@ -127,7 +128,8 @@ fn check_parser(text: &str) {
     }
 }
 
-/// Source that parses without errors formats to equivalent source, which formats to itself.
+/// Source that parses without errors formats to equivalent source, which formats to itself. The
+/// formatter rejects anything else.
 fn check_formatter(text: &str, options: &FormatOptions) {
     let input = parse(text);
     let parses_cleanly = input.diagnostics.is_empty();
@@ -148,8 +150,7 @@ fn check_formatter(text: &str, options: &FormatOptions) {
             return;
         }
         Err(FormatError::Internal(message))
-            if message.starts_with("formatting was not idempotent")
-                && has_compact_group(&input.node) =>
+            if has_compact_group(&input.node) && differs_only_in_blank_lines(&message) =>
         {
             // A known bug, see `constants_that_wrap_format_idempotently` in the unit tests
             return;
@@ -176,9 +177,6 @@ fn check_formatter(text: &str, options: &FormatOptions) {
         Signature::new(&reparsed.node),
         "formatting changed the program\n{formatted}"
     );
-
-    let again = format_source(&formatted, options).expect("formatted source should format");
-    assert_eq!(again, formatted, "formatting isn't idempotent");
 }
 
 /// Whether the document has two top-level items of the same kind that the formatter can put in a
@@ -209,12 +207,26 @@ fn has_compact_group(root: &SyntaxNode) -> bool {
     .any(|kind| kinds.iter().filter(|candidate| *candidate == kind).count() > 1)
 }
 
+/// Whether `message` is the formatter's error for output that changed when it was formatted again,
+/// and the change was only to blank lines.
+fn differs_only_in_blank_lines(message: &str) -> bool {
+    let Some((first, second)) = message
+        .strip_prefix("formatting was not idempotent\nfirst:\n")
+        .and_then(|rest| rest.split_once("\nsecond:\n"))
+    else {
+        return false;
+    };
+    let first = first.lines().filter(|line| !line.is_empty());
+    let second = second.lines().filter(|line| !line.is_empty());
+    first.eq(second)
+}
+
 /// What formatting must preserve, computed independently of the formatter's own check.
 #[derive(Debug, PartialEq, Eq)]
 struct Signature {
-    /// The tokens of each top-level import, sorted, since the formatter sorts imports and the
-    /// paths inside them.
-    imports: Vec<Vec<String>>,
+    /// The full path of every item imported at the top level, sorted, since the formatter sorts
+    /// imports and the paths inside them.
+    imports: Vec<String>,
     /// The tokens of everything else, in order.
     rest: Vec<String>,
     /// The text of every comment, sorted, since the formatter can move a comment past a token.
@@ -228,11 +240,11 @@ impl Signature {
         for child in root.children_with_tokens() {
             match child {
                 rowan::NodeOrToken::Node(node) if node.kind() == SyntaxKind::ImportItem => {
-                    let mut tokens = significant_tokens(&node);
-                    tokens.sort();
-                    imports.push(tokens);
+                    expand_import(&significant_tokens(&node), &mut 0, "", &mut imports);
                 }
-                rowan::NodeOrToken::Node(node) => rest.extend(significant_tokens(&node)),
+                rowan::NodeOrToken::Node(node) => {
+                    rest.extend(significant_tokens(&node).iter().map(token_key));
+                }
                 rowan::NodeOrToken::Token(token) => {
                     if !token.kind().is_trivia() {
                         rest.push(token_key(&token));
@@ -265,7 +277,7 @@ impl Signature {
 
 /// The non-trivia tokens of a node, leaving out commas just before a closing delimiter, which the
 /// formatter adds or removes depending on whether the list is broken across lines.
-fn significant_tokens(node: &SyntaxNode) -> Vec<String> {
+fn significant_tokens(node: &SyntaxNode) -> Vec<SyntaxToken> {
     let tokens = node
         .descendants_with_tokens()
         .filter_map(rowan::NodeOrToken::into_token)
@@ -280,8 +292,44 @@ fn significant_tokens(node: &SyntaxNode) -> Vec<String> {
                     .get(index + 1)
                     .is_some_and(|next| matches!(next.kind(), T![')'] | T![']'] | T!['}'] | T![>]))
         })
-        .map(|(_, token)| token_key(token))
+        .map(|(_, token)| token.clone())
         .collect()
+}
+
+/// Adds the full path of each item that an import (or a path inside an import group) imports, so
+/// that `import a::{b, c::{d, e}};` gives `import a::b`, `import a::c::d` and `import a::c::e`.
+/// Returns the `,` or `}` that ends the path, if any.
+fn expand_import(
+    tokens: &[SyntaxToken],
+    index: &mut usize,
+    prefix: &str,
+    paths: &mut Vec<String>,
+) -> Option<SyntaxKind> {
+    let mut path = prefix.to_string();
+    let mut grouped = false;
+    while let Some(token) = tokens.get(*index) {
+        *index += 1;
+        match token.kind() {
+            T![,] | T!['}'] => {
+                if !grouped {
+                    paths.push(path);
+                }
+                return Some(token.kind());
+            }
+            T!['{'] => {
+                grouped = true;
+                while expand_import(tokens, index, &path, paths) == Some(T![,]) {}
+            }
+            _ => {
+                path.push(' ');
+                path.push_str(&token_key(token));
+            }
+        }
+    }
+    if !grouped {
+        paths.push(path);
+    }
+    None
 }
 
 fn token_key(token: &SyntaxToken) -> String {
@@ -520,23 +568,15 @@ proptest! {
     #![proptest_config(config())]
 
     #[test]
-    fn lexer_covers_the_input(text in any_input()) {
+    fn any_input_satisfies_every_property(text in any_input()) {
         check_lexer(&text);
-    }
-
-    #[test]
-    fn parser_tree_is_lossless(text in any_input()) {
         check_parser(&text);
+        check_formatter(&text, &FormatOptions::default());
     }
 
     #[test]
     fn formatter_preserves_the_program(text in formatter_input(), options in format_options()) {
         check_formatter(&text, &options);
-    }
-
-    #[test]
-    fn formatter_handles_any_input(text in any_input()) {
-        check_formatter(&text, &FormatOptions::default());
     }
 }
 
@@ -548,4 +588,19 @@ fn corpus_files_satisfy_every_property() {
         check_parser(text);
         check_formatter(text, &FormatOptions::default());
     }
+}
+
+/// The signature ignores the order of imports and of the paths in an import group, but not which
+/// path each imported item is under.
+#[test]
+fn signature_compares_full_import_paths() {
+    let signature = |text: &str| Signature::new(&parse(text).node);
+    assert_eq!(
+        signature("import z;\nimport a::{d, b::{c, e}};"),
+        signature("import a::{b::{e, c,}, d};\nimport z;"),
+    );
+    assert_ne!(
+        signature("import a::{b::c, d::e};"),
+        signature("import a::{b::e, d::c};"),
+    );
 }

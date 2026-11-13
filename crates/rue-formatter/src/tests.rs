@@ -692,14 +692,15 @@ fn bodyless_extern_functions_can_form_compact_groups() {
             format_source rejects the result as not idempotent"]
 fn constants_that_wrap_format_idempotently() {
     check(
-        "const A: Int = 1;\nconst B: Int = first_long_operand + second_long_operand + third_long_operand + fourth;",
+        "const A: Int = 1;\nconst B: Int = first_long_operand + second_long_operand + third_long_operand + fourth_long_operand + fifth;",
         expect![[r#"
             const A: Int = 1;
 
             const B: Int = first_long_operand
                 + second_long_operand
                 + third_long_operand
-                + fourth;
+                + fourth_long_operand
+                + fifth;
         "#]],
     );
 }
