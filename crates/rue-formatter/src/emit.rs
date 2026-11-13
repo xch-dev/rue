@@ -472,7 +472,10 @@ impl<'a> Formatter<'a> {
         // here outside the indentation, but it's still needed when the group would otherwise fit
         // on one line
         let closing_line = if plan.closing.ends_line()
-            || plan.items.last().is_some_and(|item| item.trailing.ends_line())
+            || plan
+                .items
+                .last()
+                .is_some_and(|item| item.trailing.ends_line())
         {
             Doc::hard_line()
         } else {
@@ -792,7 +795,9 @@ fn comment_separator(comment: &Comment, requested: Separator, ignore_trailing: b
     if comment.newlines_before > 1 {
         return Doc::empty_line();
     }
-    if comment.newlines_before > 0 || comment.multiline {
+    if comment.newlines_before > 0
+        || (comment.multiline && comment.placement != CommentPlacement::Leading)
+    {
         return Doc::hard_line();
     }
     separator_doc(requested)

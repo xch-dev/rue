@@ -432,3 +432,28 @@ fn comments_after_a_trailing_comment_keep_one_blank_line_before_them() {
         "#]],
     );
 }
+
+#[test]
+fn multiline_comments_after_a_trailing_comment_keep_one_blank_line_before_them() {
+    // Found by the property tests: the multiline comment added a line break of its own after the
+    // one ending the trailing comment, so each format added another blank line before it
+    check(
+        "fn f() {} /* trailing */\n/* multi\nline */\nfn g() {}\nfn h() {} /* trailing */\n/* multi\nline */\n\nfn i() {} /* trailing */\n/* multi\nline */",
+        expect![[r#"
+            fn f() {} /* trailing */
+
+            /* multi
+            line */
+            fn g() {}
+
+            fn h() {} /* trailing */
+
+            /* multi
+            line */
+
+            fn i() {} /* trailing */
+            /* multi
+            line */
+        "#]],
+    );
+}
