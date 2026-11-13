@@ -15,9 +15,13 @@ use truthy::*;
 
 use id_arena::Arena;
 
-use crate::{Lir, LirId};
+use crate::{Lir, LirId, stack::grow_stack};
 
 pub fn optimize(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
+    grow_stack(|| optimize_step(arena, lir))
+}
+
+fn optimize_step(arena: &mut Arena<Lir>, lir: LirId) -> LirId {
     match arena[lir].clone() {
         Lir::Atom(atom) => opt_atom(arena, atom),
         Lir::Path(path) => opt_path(arena, path),

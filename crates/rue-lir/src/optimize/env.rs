@@ -1,6 +1,6 @@
 use id_arena::Arena;
 
-use crate::{Lir, LirId};
+use crate::{Lir, LirId, stack::grow_stack};
 
 /// Returns `true` if evaluating the generated code for this LIR node may read
 /// the environment it's run in. This is conservative, so it can return `true`
@@ -19,6 +19,10 @@ use crate::{Lir, LirId};
 /// - `Op` builds a program and runs it in a nil environment, so only the arguments
 ///   matter.
 pub fn reads_env(arena: &Arena<Lir>, lir: LirId) -> bool {
+    grow_stack(|| reads_env_step(arena, lir))
+}
+
+fn reads_env_step(arena: &Arena<Lir>, lir: LirId) -> bool {
     match &arena[lir] {
         Lir::Atom(_) | Lir::Quote(_) => false,
         Lir::Path(_) => true,

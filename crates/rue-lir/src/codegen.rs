@@ -3,7 +3,7 @@ use clvmr::{Allocator, NodePtr};
 use id_arena::Arena;
 use num_bigint::BigUint;
 
-use crate::{ClvmOp, Lir, LirId, Result, path_to_atom};
+use crate::{ClvmOp, Lir, LirId, Result, path_to_atom, stack::grow_stack};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CodegenOptions {
@@ -26,7 +26,7 @@ fn codegen_impl(
     options: CodegenOptions,
 ) -> Result<NodePtr> {
     let codegen = |arena: &Arena<Lir>, allocator: &mut Allocator, lir: LirId| {
-        codegen_impl(arena, allocator, lir, options)
+        grow_stack(|| codegen_impl(arena, allocator, lir, options))
     };
 
     match &arena[lir] {
@@ -421,7 +421,9 @@ fn codegen_impl(
 fn is_static_value(arena: &Arena<Lir>, lir: LirId) -> bool {
     match &arena[lir] {
         Lir::Atom(_) => true,
-        Lir::Cons(first, rest) => is_static_value(arena, *first) && is_static_value(arena, *rest),
+        Lir::Cons(first, rest) => {
+            grow_stack(|| is_static_value(arena, *first) && is_static_value(arena, *rest))
+        }
         _ => false,
     }
 }
@@ -439,11 +441,11 @@ fn codegen_static_value(
                 Ok(allocator.new_atom(atom)?)
             }
         }
-        Lir::Cons(first, rest) => {
+        Lir::Cons(first, rest) => grow_stack(|| {
             let first = codegen_static_value(arena, allocator, *first)?;
             let rest = codegen_static_value(arena, allocator, *rest)?;
             Ok(allocator.new_pair(first, rest)?)
-        }
+        }),
         _ => unreachable!("static LIR value contained a dynamic expression"),
     }
 }

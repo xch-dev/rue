@@ -1,6 +1,6 @@
 use id_arena::Arena;
 
-use crate::{Lir, LirId};
+use crate::{Lir, LirId, stack::grow_stack};
 
 /// What is statically known about the truthiness of an already optimized value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +29,10 @@ pub enum Truthiness {
 // so this doesn't give the spender anything that a wrongly shaped value couldn't, and it keeps
 // conditions cheaper. These rewrites are only applied where just the truthiness is observed.
 pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
+    grow_stack(|| opt_truthy_step(arena, value))
+}
+
+fn opt_truthy_step(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
     match arena[value].clone() {
         Lir::Atom(atom) => Truthiness::Known(!atom.is_empty()),
         // A pair is always truthy, but it can only be discarded if it can't fail
@@ -80,7 +84,7 @@ fn opt_negated_truthy(arena: &mut Arena<Lir>, value: LirId, negated: Option<LirI
 pub fn is_pure(arena: &Arena<Lir>, value: LirId) -> bool {
     match &arena[value] {
         Lir::Atom(_) | Lir::Quote(_) => true,
-        Lir::Cons(first, rest) => is_pure(arena, *first) && is_pure(arena, *rest),
+        Lir::Cons(first, rest) => grow_stack(|| is_pure(arena, *first) && is_pure(arena, *rest)),
         _ => false,
     }
 }
@@ -96,7 +100,9 @@ pub fn is_boolean(arena: &Arena<Lir>, value: LirId) -> bool {
         | Lir::Listp(..)
         | Lir::All(_)
         | Lir::Any(_) => true,
-        Lir::If(_, then, otherwise, _) => is_boolean(arena, *then) && is_boolean(arena, *otherwise),
+        Lir::If(_, then, otherwise, _) => {
+            grow_stack(|| is_boolean(arena, *then) && is_boolean(arena, *otherwise))
+        }
         _ => false,
     }
 }
