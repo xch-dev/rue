@@ -18,6 +18,47 @@ fn branch(x: Int, c: Bool) -> Int {
     }
 }
 
+fn apply_guard(x: Bool) -> fn() -> Bool {
+    fn() => x
+}
+
+inline fn apply_guard_inline(x: Bool) -> fn() -> Bool {
+    fn() => x
+}
+
+fn count(a: Int, ...rest: Int) -> Int {
+    1
+}
+
+fn ignore_value(value: Int) -> Int {
+    let x = value;
+    1
+}
+
+fn add_zero(x: Int, c: Bool) -> Int {
+    if c {
+        x + 0
+    } else {
+        0
+    }
+}
+
+fn add_one(x: Int, c: Bool) -> Int {
+    if c {
+        x + 1
+    } else {
+        1
+    }
+}
+
+fn add_two(x: Int, c: Bool) -> Int {
+    if c {
+        x + 2
+    } else {
+        2
+    }
+}
+
 const CHECKED: Int = check(1);
 
 // An unused binding is still evaluated
@@ -65,6 +106,16 @@ test fn single_use_in_and(a: Int, b: Int, c: Bool) -> Bool {
     c && x
 }
 
+test fn single_use_in_or(a: Int, b: Int, c: Bool) -> Bool {
+    let x = a / b == 1;
+    c || x
+}
+
+test fn destructure_failing_value(a: Int, b: Int) -> Int {
+    let (x, y) = (a / b, 1);
+    y
+}
+
 test fn single_use_in_lambda(a: Int, b: Int) -> Int {
     let x = a / b;
     let f = fn() => x;
@@ -88,9 +139,37 @@ test fn argument_in_branch(a: Int, b: Int, c: Bool) -> Int {
     branch(a / b, c)
 }
 
+// A function whose argument may fail and is only used in a branch is called rather than inlined,
+// so that the argument is only evaluated once, even when such calls are nested
+test fn nested_arguments_in_branches(a: Int, b: Int, c: Bool) -> Int {
+    add_two(add_one(add_zero(a / b, c), c), c)
+}
+
 // A guard evaluates its value, even if there's nothing to check
 test fn guard_value(a: Int, b: Int) -> Bool {
     (a / b) is Int
+}
+
+// A guard whose value is evaluated for its effect isn't a static value, so it's captured
+test fn guard_in_closure(a: Int, b: Int) -> Bool {
+    let f = apply_guard((a / b) is Int);
+    f()
+}
+
+test fn guard_in_inline_closure(a: Int, b: Int) -> Bool {
+    let f = apply_guard_inline((a / b) is Int);
+    f()
+}
+
+// The parameters of main come from the solution, so a pair of them is rebuilt rather than reused
+test fn rebuild_main_parameters(a: Int, ...rest: Int) -> Int {
+    count(a, ...rest) + count(a, ...rest)
+}
+
+// The parameters of a closure are provided by its caller, so reading one may fail, and the unused
+// binding in the returned closure is still evaluated
+test fn closure_parameter_read() -> fn(value: Int) -> Int {
+    ignore_value
 }
 
 // Rebuilding a pair from its fields fails if the value isn't a pair

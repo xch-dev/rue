@@ -90,7 +90,7 @@ fn test_double_not() {
     check(&mut arena, lir, ENVS, expect!["(not (not 2))"]);
 
     let x = path(&mut arena, 2);
-    let listp = arena.alloc(Lir::Listp(x, true));
+    let listp = arena.alloc(Lir::Listp(x));
     let inner = not(&mut arena, listp);
     let lir = not(&mut arena, inner);
     check(&mut arena, lir, ENVS, expect!["(l 2)"]);
@@ -108,7 +108,7 @@ fn test_not_eq_boolean_nil() {
     // (= (l x) ()) is (not (l x)), since (l x) is always an atom
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
-    let listp = arena.alloc(Lir::Listp(x, true));
+    let listp = arena.alloc(Lir::Listp(x));
     let nil = atom(&mut arena, &[]);
     let eq = arena.alloc(Lir::Eq(listp, nil));
     let lir = not(&mut arena, eq);
@@ -157,7 +157,7 @@ fn test_listp_condition() {
     // (l x) isn't replaced with x, since a truthy atom would take the other branch
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
-    let listp = arena.alloc(Lir::Listp(x, false));
+    let listp = arena.alloc(Lir::Listp(x));
     let one = atom(&mut arena, &[1]);
     let two = atom(&mut arena, &[2]);
     let lir = arena.alloc(Lir::If(listp, one, two, false));
@@ -398,13 +398,13 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
             }
         }
         3 => Lir::Cons(next(), next()),
-        4 => Lir::Listp(next(), true),
+        4 => Lir::Listp(next()),
         // A value which is always either nil or a pair, as the type of a list says it is
         5 => {
             let pair = arena.alloc(Lir::Cons(next(), next()));
             let nil = atom(arena, &[]);
             let list = arena.alloc(Lir::If(next(), pair, nil, false));
-            Lir::Listp(list, false)
+            Lir::Listp(list)
         }
         6 => Lir::If(next(), next(), next(), rng.below(2) == 0),
         7 => Lir::All(gen_args(arena, rng, 0)),

@@ -41,6 +41,9 @@ pub struct DependencyGraph {
     // Keeps track of the bindings and constants whose values may fail
     fallible: HashSet<SymbolId>,
 
+    // Keeps track of the calls that reference each function directly
+    calls: HashMap<SymbolId, Vec<HirId>>,
+
     // Keeps track of the bindings that are referenced once, where the reference is always
     // evaluated after the binding's let statement
     always_evaluated: HashSet<SymbolId>,
@@ -64,6 +67,7 @@ impl DependencyGraph {
             effects: HashSet::new(),
             guard_effects: HashSet::new(),
             fallible: HashSet::new(),
+            calls: HashMap::new(),
             always_evaluated: HashSet::new(),
             stack: IndexSet::new(),
             visited: IndexSet::new(),
@@ -97,6 +101,11 @@ impl DependencyGraph {
     /// Whether the value of the binding or constant may fail (see [`may_fail_conservative`]).
     pub fn is_fallible(&self, symbol: SymbolId) -> bool {
         self.fallible.contains(&symbol)
+    }
+
+    /// The calls that reference the function directly, rather than through a closure.
+    pub fn calls(&self, function: SymbolId) -> &[HirId] {
+        self.calls.get(&function).map_or(&[], Vec::as_slice)
     }
 
     /// Whether the binding is referenced once, and that reference is always evaluated after its
@@ -260,8 +269,11 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             let statements = block.reachable_statements();
 
             for (index, stmt) in statements.iter().enumerate() {
+                // This is only needed for bindings that may fail, since the rest can be inlined
+                // anywhere
                 if let Statement::Let(symbol, _) = stmt
                     && graph.references(*symbol) == 1
+                    && graph.fallible.contains(symbol)
                     && statements_always_evaluate(
                         db,
                         &statements[index + 1..],
@@ -288,6 +300,12 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *else_, false);
         }
         Hir::FunctionCall(call) => {
+            if let Hir::Reference(function) = db.hir(db.without_casts(call.function))
+                && matches!(db.symbol(*function), Symbol::Function(_))
+            {
+                graph.calls.entry(*function).or_default().push(hir);
+            }
+
             visit_hir(db, graph, call.function, true);
             for &arg in &call.args {
                 visit_hir(db, graph, arg, false);

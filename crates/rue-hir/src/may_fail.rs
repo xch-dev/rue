@@ -136,7 +136,7 @@ impl FailureVisitor<'_> {
             Hir::Block(block) => self.visit_statements(&block.statements, block.body),
             Hir::If(condition, then, else_, _) => self.visit_all([condition, then, else_]),
             Hir::Unary(op, value) => match op {
-                UnaryOp::Listp { .. } | UnaryOp::Not | UnaryOp::Plus => self.visit(value),
+                UnaryOp::Listp | UnaryOp::Not | UnaryOp::Plus => self.visit(value),
                 // These accept any atom
                 UnaryOp::Strlen
                 | UnaryOp::Neg
@@ -214,15 +214,28 @@ impl FailureVisitor<'_> {
     }
 }
 
+/// The parameter that the argument at the given index of a call is passed to. When the function
+/// isn't nil-terminated, the last parameter is a list of the remaining arguments.
+pub fn argument_parameter(function: &FunctionSymbol, index: usize) -> Option<SymbolId> {
+    let index = if function.nil_terminated {
+        index
+    } else {
+        index.min(function.parameters.len().checked_sub(1)?)
+    };
+
+    function.parameters.get(index).copied()
+}
+
 /// Whether evaluating the given HIR always evaluates a reference to the symbol, unless it fails
 /// before reaching it. This is conservative, so it can return `false` for a reference that's
 /// always evaluated.
 ///
 /// A reference isn't always evaluated if it's in a branch of an `if` that isn't `inline`, on the
 /// right side of `&&` or `||`, in the body of a lambda, after an `if` statement that may return
-/// early, or in an argument of an `inline` function (which is only evaluated if the function
-/// uses it). Arguments of other functions are evaluated when the function is called, even if it's
-/// inlined. The value of a binding that isn't `inline` is evaluated at its `let` statement.
+/// early, or in an argument of an `inline` function whose body doesn't always evaluate the
+/// parameter (since the argument is substituted for it). Arguments of other functions are
+/// evaluated when the function is called, even if it's inlined. The value of a binding that isn't
+/// `inline` is evaluated at its `let` statement.
 pub fn always_evaluates(db: &Database, hir: HirId, symbol: SymbolId) -> bool {
     EvaluationVisitor {
         db,
@@ -304,7 +317,7 @@ impl EvaluationVisitor<'_> {
         &mut self,
         call: &FunctionCall,
         symbol: SymbolId,
-        function: FunctionSymbol,
+        function: &FunctionSymbol,
     ) -> bool {
         // An inline function that calls itself can't be inlined, but stop the recursion anyway
         if self.calls.contains(&symbol) {
@@ -314,16 +327,8 @@ impl EvaluationVisitor<'_> {
         let mut calls = self.calls.clone();
         calls.insert(symbol);
 
-        // When the function isn't nil-terminated, the last parameter is a list of the remaining
-        // arguments, which are all evaluated if it is
-        let fixed = if function.nil_terminated {
-            function.parameters.len()
-        } else {
-            function.parameters.len().saturating_sub(1)
-        };
-
         call.args.iter().enumerate().any(|(index, &arg)| {
-            let Some(&parameter) = function.parameters.get(index.min(fixed)) else {
+            let Some(parameter) = argument_parameter(function, index) else {
                 return false;
             };
 
@@ -376,13 +381,40 @@ impl EvaluationVisitor<'_> {
                     && let Symbol::Function(function) = self.db.symbol(symbol)
                     && function.kind == FunctionKind::Inline
                 {
-                    return self.visit_inline_call(&call, symbol, function.clone());
+                    return self.visit_inline_call(&call, symbol, &function.clone());
                 }
 
                 self.visit(call.function) || call.args.iter().any(|&arg| self.visit(arg))
             }
+            // A lambda's body is evaluated when it's called, and a const expression at compile time
             Hir::Lambda(_) | Hir::Const(_) => false,
-            node => node.children().any(|child| self.visit(child)),
+            Hir::Unresolved
+            | Hir::Nil
+            | Hir::String(_)
+            | Hir::Int(_)
+            | Hir::Bytes(_)
+            | Hir::Bool(_)
+            | Hir::InfinityG1
+            | Hir::InfinityG2 => false,
+            // These evaluate everything inside of them
+            node @ (Hir::Pair(..)
+            | Hir::List(_)
+            | Hir::Struct(_)
+            | Hir::FieldAccess(_)
+            | Hir::Cast(_)
+            | Hir::Guard(_)
+            | Hir::Unary(..)
+            | Hir::Binary(..)
+            | Hir::CoinId(..)
+            | Hir::Substr(..)
+            | Hir::G1Map(..)
+            | Hir::G2Map(..)
+            | Hir::Modpow(..)
+            | Hir::BlsPairingIdentity(_)
+            | Hir::BlsVerify(..)
+            | Hir::Secp256K1Verify(..)
+            | Hir::Secp256R1Verify(..)
+            | Hir::ClvmOp(..)) => node.children().any(|child| self.visit(child)),
         }
     }
 }

@@ -172,7 +172,8 @@ fn unused_declarations(
 /// The declarations whose code is evaluated, or is needed by code that's kept. A declaration is
 /// live if it's an entrypoint, or something live references it. The parameters and generic types
 /// of a live function or type are live, since its signature needs their types, but a binding is
-/// only evaluated if something live references it. Declarations whose names start with `_` aren't
+/// only live if something live references it (even though its value is still evaluated if it may
+/// fail). Declarations whose names start with `_` aren't
 /// reported, so they're kept (along with what they need) as if they were used.
 pub(crate) fn live_declarations(
     db: &Database,

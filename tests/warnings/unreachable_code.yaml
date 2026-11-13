@@ -6,11 +6,18 @@ byte_cost: 996000
 total_cost: 999291
 tests:
 - name: reachable
-  program: (a (q 2 (i (= (i () (x) (q . 1)) (q . 1)) (q 2 (i (= (+ (a 6 (q . 2)) (a (q 16 2 5) (q 3 1)) (q . 1)) (q . 7)) (q 2 (i (= (a 4 (q . 1)) (q . 1)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (c (q 2 (i (> 1 (q . 100)) (q 8) (q . 1)) 1) (q 2 (i (> 1 (q . 100)) (q 8) (q . 1)) 1)) ()))
-  debug_program: (a (q 2 (i (= (a 22 (c 30 ())) (q . 1)) (q 2 (i (= (a 20 (c (c 28 (c 18 26)) ())) (q . 7)) (q 2 (i (= (a 8 (q . 1)) (q . 1)) (q) (q 8 (q . "assertion failed at unreachable_code.rue:58:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:57:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:56:5"))) 1) (c (c (c (q 2 (i (> 1 (q . 100)) (q 2 (q . 2) (c (x (q . "raise called at unreachable_code.rue:36:13") (q . "failed")) 1)) (q . 1)) 1) (c (q 2 (q . 2) (c (+ (+ (a 14 (q . 1)) (a 10 (q . 2))) (a 4 (q . 3))) 1)) (q 2 (q 2 2 (c 3 (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) 1)))) (c (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at unreachable_code.rue:15:9") (q . "too large")) (q . 1)) 1) (q . 1)) (c (q 3 () (a 2 ()) (q . 1)) (q 8 (q . "raise called at unreachable_code.rue:52:5") (q . "failed"))))) ()))
-  byte_cost: 2676000
+  program: (a (q 2 (i (= (+ (a 6 (q . 2)) (a (q 16 2 5) (q 3 1)) (q . 1)) (q . 7)) (q 2 (i (= (a 4 (q . 1)) (q . 1)) (q) (q 8)) 1) (q 8)) 1) (c (c (q 2 (i (> 1 (q . 100)) (q 8) (q . 1)) 1) (q 2 (i (> 1 (q . 100)) (q 8) (q . 1)) 1)) ()))
+  debug_program: (a (q 2 (i (= (a 12 (c (c 10 (c 22 30)) ())) (q . 7)) (q 2 (i (= (a 8 (q . 1)) (q . 1)) (q) (q 8 (q . "assertion failed at unreachable_code.rue:58:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:57:5"))) 1) (c (c (c (q 2 (i (> 1 (q . 100)) (q 2 (q . 2) (c (x (q . "raise called at unreachable_code.rue:36:13") (q . "failed")) 1)) (q . 1)) 1) (q 2 (q . 2) (c (+ (+ (a 14 (q . 1)) (a 10 (q . 2))) (a 4 (q . 3))) 1))) (c (q 2 (q 2 2 (c 3 (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at unreachable_code.rue:15:9") (q . "too large")) (q . 1)) 1) (q . 1)))) ()))
+  output: ()
+  runtime_cost: 5091
+  byte_cost: 2196000
+  total_cost: 2201091
+- name: dead_reference_raises
+  program: (i () (x) (q . 1))
+  debug_program: (a (q 2 4 (c 6 ())) (c (c (q 3 () (a 2 ()) (q . 1)) (q 8 (q . "raise called at unreachable_code.rue:53:5") (q . "failed"))) ()))
+  byte_cost: 156000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at unreachable_code.rue:52:5" "failed")
+  debug_clvm_error: clvm raise ("raise called at unreachable_code.rue:53:5" "failed")
 diagnostics:
 - Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:3:5
 - |-
@@ -34,8 +41,11 @@ diagnostics:
   Unreachable code at unreachable_code.rue:25:9
     note: Any code after this is never evaluated at unreachable_code.rue:24:9
     help: Remove the unreachable code
-- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:47:5
 - |-
-  Unreachable code at unreachable_code.rue:48:5
-    note: Any code after this is never evaluated at unreachable_code.rue:47:5
+  Unreachable code at unreachable_code.rue:38:9
+    note: Any code after this is never evaluated at unreachable_code.rue:35:9
+- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:48:5
+- |-
+  Unreachable code at unreachable_code.rue:49:5
+    note: Any code after this is never evaluated at unreachable_code.rue:48:5
     help: Remove the unreachable code

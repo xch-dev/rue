@@ -53,7 +53,7 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:90:5"
 - name: inline_closure
-  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a (i () (a 2 3) (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) (a 2 3)) (c (q . 1) ()))) ())))) (q 1)) ()) (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1)) ()))
+  program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a (a 6 (a 4 3)) (q 1)) ()) (c (q 2 (i (> 1 (q . 10)) (q . 1) (q 8)) 1) (q 4 (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
   debug_program: (a (q 2 4 (c (c 10 14) (q . 1))) (c (c (q 3 (> 3 (q . 5)) (a (a 6 (a 4 3)) (c (q . 1) ())) ()) (c (q 2 (i (> 1 (q . 10)) (q . 1) (q 8 (q . "assertion failed at inline_if_may_raise.rue:90:5"))) 1) (q 4 (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
   byte_cost: 2148000
   clvm_error: clvm raise ()

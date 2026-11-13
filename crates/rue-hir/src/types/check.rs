@@ -24,13 +24,11 @@ pub fn generate_check_hir(db: &mut Database, check: Check, hir: HirId) -> HirId 
                 (None, None) => db.alloc_hir(Hir::Bool(true)),
             }
         }
-        Check::IsAtom { can_be_truthy } => {
-            let listp = db.alloc_hir(Hir::Unary(UnaryOp::Listp { can_be_truthy }, hir));
+        Check::IsAtom { .. } => {
+            let listp = db.alloc_hir(Hir::Unary(UnaryOp::Listp, hir));
             db.alloc_hir(Hir::Unary(UnaryOp::Not, listp))
         }
-        Check::IsPair { can_be_truthy } => {
-            db.alloc_hir(Hir::Unary(UnaryOp::Listp { can_be_truthy }, hir))
-        }
+        Check::IsPair { .. } => db.alloc_hir(Hir::Unary(UnaryOp::Listp, hir)),
         Check::Atom(AtomRestriction::Length(length)) => {
             let strlen = db.alloc_hir(Hir::Unary(UnaryOp::Strlen, hir));
             let length = db.alloc_hir(Hir::Int(length.into()));

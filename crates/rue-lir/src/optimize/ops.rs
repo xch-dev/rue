@@ -99,10 +99,10 @@ pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
 }
 
 // If the value is an atom, we know the result
-pub fn opt_listp(arena: &mut Arena<Lir>, value: LirId, can_be_truthy: bool) -> LirId {
+pub fn opt_listp(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     match arena[value].clone() {
         Lir::Atom(_) => arena.alloc(Lir::Atom(vec![])),
-        _ => arena.alloc(Lir::Listp(value, can_be_truthy)),
+        _ => arena.alloc(Lir::Listp(value)),
     }
 }
 

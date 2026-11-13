@@ -83,23 +83,9 @@ impl Search<'_> {
             // A lambda's body isn't evaluated until it's called, and a constant expression is
             // evaluated at compile time
             Hir::Lambda(_) | Hir::Const(_) => None,
-            // A binding's value is evaluated if it's referenced
-            Hir::Reference(symbol) => {
-                if let Some(&call) = self.bindings.get(&symbol) {
-                    return call;
-                }
-
-                // Bindings can't reference themselves, but this stops the search from repeating
-                self.bindings.insert(symbol, None);
-
-                let call = match self.db.symbol(symbol) {
-                    Symbol::Binding(binding) => self.expr(binding.value.hir),
-                    _ => None,
-                };
-
-                self.bindings.insert(symbol, call);
-                call
-            }
+            // An inline binding's value is evaluated where it's referenced. Other bindings are
+            // evaluated at their let statement, which is searched first, so this finds the same call
+            Hir::Reference(symbol) => self.binding(symbol),
             Hir::FunctionCall(ref call)
                 if matches!(
                     self.db.hir(self.db.without_casts(call.function)),
@@ -127,6 +113,23 @@ impl Search<'_> {
         }
     }
 
+    fn binding(&mut self, symbol: SymbolId) -> Option<HirId> {
+        if let Some(&call) = self.bindings.get(&symbol) {
+            return call;
+        }
+
+        // Bindings can't reference themselves, but this stops the search from repeating
+        self.bindings.insert(symbol, None);
+
+        let call = match self.db.symbol(symbol) {
+            Symbol::Binding(binding) => self.expr(binding.value.hir),
+            _ => None,
+        };
+
+        self.bindings.insert(symbol, call);
+        call
+    }
+
     fn any(&mut self, hirs: impl IntoIterator<Item = HirId>) -> Option<HirId> {
         hirs.into_iter().find_map(|hir| self.expr(hir))
     }
@@ -134,8 +137,14 @@ impl Search<'_> {
     fn block(&mut self, statements: &[Statement], body: Option<HirId>) -> Option<HirId> {
         for (index, statement) in statements.iter().enumerate() {
             match statement {
-                // A binding is only evaluated if it's referenced, which is searched from there
-                Statement::Let(..) => {}
+                // A binding that isn't inline is evaluated at its let statement
+                Statement::Let(symbol, _) => {
+                    if matches!(self.db.symbol(*symbol), Symbol::Binding(binding) if !binding.inline)
+                        && let Some(call) = self.binding(*symbol)
+                    {
+                        return Some(call);
+                    }
+                }
                 Statement::Expr(statement) => {
                     if let Some(call) = self.expr(statement.hir) {
                         return Some(call);

@@ -121,8 +121,9 @@ impl Visitor<'_> {
             }
             Hir::FieldAccess(access) => self.visit_hir(access.value),
             Hir::Cast(hir) => self.visit_hir(hir),
-            // The value is only evaluated if the check it's lowered to uses it
-            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
+            // The value is evaluated if the check uses it, or for its effect if it may fail (which
+            // it does if it may raise)
+            Hir::Guard(guard) => self.visit_hir(guard.value),
             Hir::FunctionCall(call) => {
                 (match *self.db.hir(self.db.without_casts(call.function)) {
                     Hir::Reference(symbol)

@@ -60,13 +60,21 @@ impl Visitor<'_> {
             }
             Hir::FieldAccess(access) => self.visit_hir(access.value),
             Hir::Cast(hir) => self.visit_hir(hir),
-            // The value is only evaluated if the check it's lowered to uses it
-            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
+            // The value is evaluated if the check uses it, or for its effect if it may fail
+            Hir::Guard(guard) => self.visit_hir(guard.value),
             Hir::Block(block) => {
                 for stmt in block.reachable_statements().to_vec() {
                     match stmt {
-                        // Bindings are only lowered if they're referenced
-                        Statement::Let(..) => {}
+                        // Bindings that aren't inline are lowered if they're referenced, or for
+                        // their effect if they may fail
+                        Statement::Let(symbol, _) => {
+                            if let Symbol::Binding(binding) = self.db.symbol(symbol)
+                                && !binding.inline
+                                && self.visit_symbol(symbol)
+                            {
+                                return true;
+                            }
+                        }
                         Statement::Expr(stmt) => {
                             if self.visit_hir(stmt.hir) {
                                 return true;

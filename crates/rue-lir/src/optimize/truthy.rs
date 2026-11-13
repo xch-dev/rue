@@ -85,7 +85,7 @@ pub fn is_boolean(arena: &Arena<Lir>, value: LirId) -> bool {
         | Lir::Eq(..)
         | Lir::Gt(..)
         | Lir::GtBytes(..)
-        | Lir::Listp(..)
+        | Lir::Listp(_)
         | Lir::All(_)
         | Lir::Any(_) => true,
         Lir::If(_, then, otherwise, _) => is_boolean(arena, *then) && is_boolean(arena, *otherwise),
@@ -107,7 +107,7 @@ pub fn returns_atom(arena: &Arena<Lir>, value: LirId) -> bool {
         | Lir::Gt(..)
         | Lir::GtBytes(..)
         | Lir::Not(_)
-        | Lir::Listp(..)
+        | Lir::Listp(_)
         | Lir::All(_)
         | Lir::Any(_)
         | Lir::Concat(_)
