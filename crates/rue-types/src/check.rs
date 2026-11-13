@@ -231,33 +231,11 @@ fn check_impl(
     lhs: TypeId,
     rhs: TypeId,
 ) -> Result<Check, CheckError> {
-    grow_stack(|| check_impl_inner(arena, builtins, ctx, depth, lhs, rhs))
-}
-
-fn check_impl_inner(
-    arena: &Arena<Type>,
-    builtins: &BuiltinTypes,
-    ctx: &mut CheckContext,
-    depth: usize,
-    lhs: TypeId,
-    rhs: TypeId,
-) -> Result<Check, CheckError> {
     let variants = variants_of(arena, builtins, lhs);
     check_each(arena, builtins, ctx, depth, &variants, rhs)
 }
 
 fn check_each(
-    arena: &Arena<Type>,
-    builtins: &BuiltinTypes,
-    ctx: &mut CheckContext,
-    depth: usize,
-    lhs: &[TypeId],
-    rhs: TypeId,
-) -> Result<Check, CheckError> {
-    grow_stack(|| check_each_inner(arena, builtins, ctx, depth, lhs, rhs))
-}
-
-fn check_each_inner(
     arena: &Arena<Type>,
     builtins: &BuiltinTypes,
     ctx: &mut CheckContext,

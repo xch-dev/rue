@@ -383,11 +383,12 @@ fn long_chains_of_bindings_are_followed() {
 
 /// Programs whose types nest once per item or link, even though the source doesn't nest, along with
 /// how many items or links to test them with. Each one type checks without errors. The sizes are
-/// enough to overflow a 2 MiB stack in a debug build without growing it, but some are smaller than
-/// others, since inferring a long chain of types is slow.
+/// enough to overflow a 2 MiB stack in a debug build if the operations on types didn't grow the
+/// stack, or if the lints that walk types recursed, but no bigger, since some of them are slow.
 const DEEP_TYPES: &[(&str, usize, Shape)] = &[
-    // A list literal's type is a chain of pairs, with one pair for each item
-    ("list literal", 2_000, |n| {
+    // A list literal's type is a chain of pairs, with one pair for each item. This one is long
+    // enough for the lints that walk types to overflow too, if they recursed
+    ("list literal", 5_000, |n| {
         format!(
             "fn main() -> Any {{\nlet x = [{}];\nx\n}}",
             links(n, |i| format!("{i}, "))
@@ -416,6 +417,20 @@ const DEEP_TYPES: &[(&str, usize, Shape)] = &[
         format!(
             "fn main(value: T0) -> Any {{ value }}\n{}type T{n} = Int;",
             links(n, |i| format!("type T{i} = (T{}, nil);\n", i + 1))
+        )
+    }),
+    // The lint for unused exports walks the types that are used outside of the module
+    ("exported type aliases", 1_000, |n| {
+        format!(
+            "fn main(value: m::T0) -> Any {{ value }}\n\nmod m {{\n{}export type T{n} = Int;\n}}",
+            links(n, |i| format!("export type T{i} = (T{}, nil);\n", i + 1))
+        )
+    }),
+    // Narrowing the type in the else branch subtracts `nil` from each of the union's variants
+    ("union aliases narrowed by a guard", 1_000, |n| {
+        format!(
+            "fn main(value: T0 | nil) -> Any {{ if value is nil {{ 1 }} else {{ value }} }}\n{}type T{n} = Bytes;",
+            links(n, |i| format!("type T{i} = Int | T{};\n", i + 1))
         )
     }),
     // Each application of the alias nests its whole body, so this compares two types that are 100

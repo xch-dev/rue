@@ -296,16 +296,6 @@ fn substitute_argument(
     scope: usize,
     ctx: &mut SubstitutionContext,
 ) -> (Binding, TypeId) {
-    grow_stack(|| substitute_argument_inner(arena, arg, map, scope, ctx))
-}
-
-fn substitute_argument_inner(
-    arena: &mut Arena<Type>,
-    arg: TypeId,
-    map: &HashMap<TypeId, TypeId>,
-    scope: usize,
-    ctx: &mut SubstitutionContext,
-) -> (Binding, TypeId) {
     let generic = resolve_refs(arena, arg);
     let bindings = ctx.bindings(scope);
 

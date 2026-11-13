@@ -133,6 +133,10 @@ struct Variant {
 }
 
 fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<Variant> {
+    grow_stack(|| variants_of_inner(arena, builtins, id))
+}
+
+fn variants_of_inner(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<Variant> {
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => variants_of(arena, builtins, id),

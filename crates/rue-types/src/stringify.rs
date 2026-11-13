@@ -155,15 +155,6 @@ fn with_generics(
     generics: &[TypeId],
     stack: &mut IndexMap<TypeId, bool>,
 ) -> String {
-    grow_stack(|| with_generics_inner(arena, name, generics, stack))
-}
-
-fn with_generics_inner(
-    arena: &Arena<Type>,
-    name: &str,
-    generics: &[TypeId],
-    stack: &mut IndexMap<TypeId, bool>,
-) -> String {
     if generics.is_empty() {
         return name.to_string();
     }
@@ -180,15 +171,6 @@ fn with_generics_inner(
 /// Renders a struct whose fields have been narrowed, e.g. `Box { value: Int }`, since its generic
 /// arguments no longer describe them.
 fn narrowed_struct(
-    arena: &Arena<Type>,
-    name: &str,
-    ty: &Struct,
-    stack: &mut IndexMap<TypeId, bool>,
-) -> String {
-    grow_stack(|| narrowed_struct_inner(arena, name, ty, stack))
-}
-
-fn narrowed_struct_inner(
     arena: &Arena<Type>,
     name: &str,
     ty: &Struct,

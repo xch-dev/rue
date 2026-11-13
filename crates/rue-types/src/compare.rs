@@ -469,20 +469,6 @@ fn holds_without_inference(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> bool {
-    grow_stack(|| {
-        holds_without_inference_inner(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
-    })
-}
-
-fn holds_without_inference_inner(
-    arena: &Arena<Type>,
-    builtins: &BuiltinTypes,
-    ctx: &mut ComparisonContext<'_>,
-    lhs: TypeId,
-    rhs: TypeId,
-    lhs_semantic: Option<TypeId>,
-    rhs_semantic: Option<TypeId>,
-) -> bool {
     let mut uninferred = ctx.uninferred.take().unwrap_or_default();
 
     // The binders are shared, but none of them are instantiated

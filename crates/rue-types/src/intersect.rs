@@ -121,16 +121,6 @@ fn intersect_uncached(
     lhs: TypeId,
     rhs: TypeId,
 ) -> TypeId {
-    grow_stack(|| intersect_uncached_inner(arena, builtins, ctx, lhs, rhs))
-}
-
-fn intersect_uncached_inner(
-    arena: &mut Arena<Type>,
-    builtins: &BuiltinTypes,
-    ctx: &mut IntersectContext,
-    lhs: TypeId,
-    rhs: TypeId,
-) -> TypeId {
     // `Any` is permissive, so it's assignable to everything and can't be used for comparisons
     if is_any(arena, lhs) {
         return rhs;
@@ -172,16 +162,6 @@ fn intersect_uncached_inner(
 }
 
 fn intersect_structure(
-    arena: &mut Arena<Type>,
-    builtins: &BuiltinTypes,
-    ctx: &mut IntersectContext,
-    lhs: TypeId,
-    rhs: TypeId,
-) -> TypeId {
-    grow_stack(|| intersect_structure_inner(arena, builtins, ctx, lhs, rhs))
-}
-
-fn intersect_structure_inner(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
     ctx: &mut IntersectContext,
