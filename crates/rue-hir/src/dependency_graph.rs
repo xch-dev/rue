@@ -27,11 +27,16 @@ pub struct DependencyGraph {
     // Keeps track of the const expressions that are reachable
     const_exprs: IndexSet<HirId>,
 
-    // Keeps track of the current stack of symbols being visited
-    stack: IndexSet<SymbolId>,
+    // Keeps track of the symbol whose body is being visited
+    current: Option<SymbolId>,
+
+    // Keeps track of the symbols that have been referenced but not visited yet. They're visited
+    // from here rather than recursively, so that a long chain of symbols that each reference the
+    // next doesn't overflow the stack
+    pending: Vec<SymbolId>,
 
     // Keeps track of the symbols that have been visited to avoid infinite loops
-    visited: IndexSet<SymbolId>,
+    visited: HashSet<SymbolId>,
 }
 
 impl DependencyGraph {
@@ -43,11 +48,22 @@ impl DependencyGraph {
             references: HashMap::new(),
             closures: HashSet::new(),
             const_exprs: IndexSet::new(),
-            stack: IndexSet::new(),
-            visited: IndexSet::new(),
+            current: None,
+            pending: Vec::new(),
+            visited: HashSet::new(),
         };
 
-        visit_symbol_reference(db, &mut graph, main);
+        visit_symbol_reference(&mut graph, main);
+
+        while let Some(symbol) = graph.pending.pop() {
+            visit_symbol(db, &mut graph, symbol);
+        }
+
+        // This happens once everything has been visited, since the symbol a binding destructures
+        // might not have been visited before the binding itself
+        for symbol in graph.visited.clone() {
+            assign_destructured_owner(db, &mut graph, symbol);
+        }
 
         graph
     }
@@ -155,15 +171,15 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             if !is_call {
                 graph.closures.insert(*symbol);
             }
-            visit_symbol_reference(db, graph, *symbol);
+            visit_symbol_reference(graph, *symbol);
         }
         Hir::Block(block) => {
             // Nothing after a `return` or `raise` is lowered, so it doesn't reference anything
             for stmt in block.reachable_statements() {
                 match stmt {
                     Statement::Let(stmt, _) => {
-                        if let Some(last) = graph.stack.last() {
-                            graph.owners.insert(*stmt, *last);
+                        if let Some(current) = graph.current {
+                            graph.owners.insert(*stmt, current);
                         }
                     }
                     Statement::Assert(stmt, _) => {
@@ -199,13 +215,13 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             }
         }
         Hir::Lambda(lambda) => {
-            if let Some(last) = graph.stack.last() {
-                graph.owners.insert(*lambda, *last);
+            if let Some(current) = graph.current {
+                graph.owners.insert(*lambda, current);
             }
 
             graph.closures.insert(*lambda);
 
-            visit_symbol_reference(db, graph, *lambda);
+            visit_symbol_reference(graph, *lambda);
         }
         Hir::If(condition, then, else_, _inline) => {
             visit_hir(db, graph, *condition, false);
@@ -284,12 +300,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
 }
 
 fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
-    // We've already visited this symbol, so we don't need to track its dependencies again
-    if !graph.visited.insert(symbol) {
-        return;
-    }
-
-    graph.stack.insert(symbol);
+    graph.current = Some(symbol);
 
     match db.symbol(symbol) {
         Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {}
@@ -305,28 +316,55 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
         }
         Symbol::Binding(binding) => {
             visit_hir(db, graph, binding.value.hir, false);
-
-            // Destructured bindings don't have a let statement of their own, so they're defined
-            // in the same scope as the symbol they destructure. Bindings from let statements
-            // already have an owner, which must be kept rather than replaced by the owner of the
-            // symbol they reference
-            if let Some(reference) = &binding.value.reference
-                && let Some(&owner) = graph.owners.get(&reference.symbol)
-            {
-                graph.owners.entry(symbol).or_insert(owner);
-            }
         }
     }
 
-    graph.stack.pop().unwrap();
+    graph.current = None;
 }
 
-fn visit_symbol_reference(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
+/// Destructured bindings don't have a let statement of their own, so they're defined in the same
+/// scope as the symbol they destructure, which might be destructured from another symbol in turn.
+/// Bindings from let statements already have an owner, which must be kept rather than replaced by
+/// the owner of the symbol they reference.
+fn assign_destructured_owner(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
+    let mut chain = Vec::new();
+    let mut current = symbol;
+
+    let owner = loop {
+        if let Some(&owner) = graph.owners.get(&current) {
+            break owner;
+        }
+
+        let Symbol::Binding(binding) = db.symbol(current) else {
+            return;
+        };
+
+        let Some(reference) = &binding.value.reference else {
+            return;
+        };
+
+        chain.push(current);
+        current = reference.symbol;
+    };
+
+    for symbol in chain {
+        graph.owners.insert(symbol, owner);
+    }
+}
+
+fn visit_symbol_reference(graph: &mut DependencyGraph, symbol: SymbolId) {
     // We should add the symbol to the dependencies of the symbol we're currently visiting
-    if let Some(last) = graph.stack.last() {
-        graph.dependencies.entry(*last).or_default().insert(symbol);
+    if let Some(current) = graph.current {
+        graph
+            .dependencies
+            .entry(current)
+            .or_default()
+            .insert(symbol);
         *graph.references.entry(symbol).or_insert(0) += 1;
     }
 
-    visit_symbol(db, graph, symbol);
+    // We only need to track the dependencies of each symbol once
+    if graph.visited.insert(symbol) {
+        graph.pending.push(symbol);
+    }
 }

@@ -16,49 +16,68 @@ use crate::{
 /// Operations that only fail on malformed values (such as arithmetic, field access, or division
 /// by zero) aren't considered, and neither are calls to lambdas or other dynamic functions.
 pub fn may_raise(db: &Database, hir: HirId) -> bool {
-    let mut visitor = Visitor {
-        db,
-        visited: HashSet::new(),
-    };
-    visitor.visit_hir(hir)
+    let mut visitor = Visitor::new(db);
+    visitor.visit_hir(hir) || visitor.visit_pending()
 }
 
 /// The same as [`may_raise`], but for a sequence of statements followed by an optional body.
 pub fn statements_may_raise(db: &Database, statements: &[Statement], body: Option<HirId>) -> bool {
-    let mut visitor = Visitor {
-        db,
-        visited: HashSet::new(),
-    };
-    visitor.visit_statements(statements) || visitor.visit_all(reachable_body(statements, body))
+    let mut visitor = Visitor::new(db);
+    visitor.visit_statements(statements)
+        || visitor.visit_all(reachable_body(statements, body))
+        || visitor.visit_pending()
 }
 
 struct Visitor<'a> {
     db: &'a Database,
     visited: HashSet<SymbolId>,
+    /// The functions, and inline bindings and constants, that are evaluated but haven't been
+    /// visited yet. They're visited from here rather than recursively, so that a long chain of
+    /// them that each reference the next doesn't overflow the stack.
+    pending: Vec<HirId>,
 }
 
-impl Visitor<'_> {
-    fn visit_function(&mut self, symbol: SymbolId) -> bool {
-        if !self.visited.insert(symbol) {
-            return false;
-        }
-
-        match self.db.symbol(symbol) {
-            Symbol::Function(function) => self.visit_hir(function.body),
-            _ => false,
+impl<'a> Visitor<'a> {
+    fn new(db: &'a Database) -> Self {
+        Self {
+            db,
+            visited: HashSet::new(),
+            pending: Vec::new(),
         }
     }
 
-    fn visit_inline_value(&mut self, symbol: SymbolId) -> bool {
-        if !self.visited.insert(symbol) {
-            return false;
+    fn visit_pending(&mut self) -> bool {
+        while let Some(hir) = self.pending.pop() {
+            if self.visit_hir(hir) {
+                return true;
+            }
         }
 
-        match self.db.symbol(symbol) {
-            Symbol::Binding(binding) if binding.inline => self.visit_hir(binding.value.hir),
-            Symbol::Constant(constant) if constant.inline => self.visit_hir(constant.value.hir),
-            _ => false,
+        false
+    }
+
+    fn visit_function(&mut self, symbol: SymbolId) -> bool {
+        if let Symbol::Function(function) = self.db.symbol(symbol)
+            && self.visited.insert(symbol)
+        {
+            self.pending.push(function.body);
         }
+
+        false
+    }
+
+    fn visit_inline_value(&mut self, symbol: SymbolId) -> bool {
+        let value = match self.db.symbol(symbol) {
+            Symbol::Binding(binding) if binding.inline => binding.value.hir,
+            Symbol::Constant(constant) if constant.inline => constant.value.hir,
+            _ => return false,
+        };
+
+        if self.visited.insert(symbol) {
+            self.pending.push(value);
+        }
+
+        false
     }
 
     fn visit_all(&mut self, hirs: impl IntoIterator<Item = HirId>) -> bool {

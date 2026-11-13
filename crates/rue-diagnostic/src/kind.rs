@@ -267,6 +267,9 @@ pub enum DiagnosticKind {
     #[error("Const expression depends on itself")]
     RecursiveConstExpr,
 
+    #[error("Generated code is nested too deeply, since the limit is {0} levels")]
+    LoweringTooDeep(usize),
+
     #[error("Unresolved import `{0}`")]
     UnresolvedImport(String),
 

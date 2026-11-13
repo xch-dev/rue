@@ -11,7 +11,8 @@ use crate::{RueLang, SyntaxKind, SyntaxNode, T, document};
 /// The syntax tree is processed recursively by the later stages of compilation, so deeper nesting
 /// could overflow the stack. This leaves room for a 2 MiB thread, such as the language server's,
 /// in a release build. It only limits the syntax tree, so the depth can still grow later on, such
-/// as when the body of an inline function is expanded at each call.
+/// as when the body of an inline function is expanded at each call, which lowering limits
+/// separately, or when generic types are substituted, which isn't limited yet.
 pub const MAX_NESTING_DEPTH: usize = 256;
 
 #[derive(Debug)]

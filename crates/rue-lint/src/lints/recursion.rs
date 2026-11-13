@@ -84,22 +84,7 @@ impl Search<'_> {
             // evaluated at compile time
             Hir::Lambda(_) | Hir::Const(_) => None,
             // A binding's value is evaluated if it's referenced
-            Hir::Reference(symbol) => {
-                if let Some(&call) = self.bindings.get(&symbol) {
-                    return call;
-                }
-
-                // Bindings can't reference themselves, but this stops the search from repeating
-                self.bindings.insert(symbol, None);
-
-                let call = match self.db.symbol(symbol) {
-                    Symbol::Binding(binding) => self.expr(binding.value.hir),
-                    _ => None,
-                };
-
-                self.bindings.insert(symbol, call);
-                call
-            }
+            Hir::Reference(symbol) => self.binding(symbol),
             Hir::FunctionCall(ref call)
                 if matches!(
                     self.db.hir(self.db.without_casts(call.function)),
@@ -121,10 +106,39 @@ impl Search<'_> {
             Hir::Binary(BinaryOp::And | BinaryOp::Or, left, _) => self.expr(left),
             // Default values are generated, and evaluated wherever the struct is initialized
             Hir::Struct(initializer) => self.any(initializer.written_values()),
-            Hir::Block(block) => self.block(&block.statements, block.body),
+            Hir::Block(block) => {
+                // A binding can only reference the ones declared before it, so searching them in
+                // order means that each one is searched before anything that references it. This
+                // keeps the search from recursing through a long chain of bindings that each
+                // reference the previous one.
+                for statement in &block.statements {
+                    if let Statement::Let(symbol, _) = statement {
+                        self.binding(*symbol);
+                    }
+                }
+
+                self.block(&block.statements, block.body)
+            }
             // Everything else evaluates all of the nodes inside of it
             _ => self.any(node.children()),
         }
+    }
+
+    fn binding(&mut self, symbol: SymbolId) -> Option<HirId> {
+        if let Some(&call) = self.bindings.get(&symbol) {
+            return call;
+        }
+
+        // Bindings can't reference themselves, but this stops the search from repeating
+        self.bindings.insert(symbol, None);
+
+        let call = match self.db.symbol(symbol) {
+            Symbol::Binding(binding) => self.expr(binding.value.hir),
+            _ => None,
+        };
+
+        self.bindings.insert(symbol, call);
+        call
     }
 
     fn any(&mut self, hirs: impl IntoIterator<Item = HirId>) -> Option<HirId> {

@@ -12,10 +12,10 @@ use include_dir::{Dir, DirEntry, include_dir};
 use indexmap::{IndexMap, IndexSet, indexset};
 use rowan::{TextRange, TextSize};
 use rue_ast::{AstDocument, AstNode};
-use rue_diagnostic::{Name, Source, SourceKind};
+use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Source, SourceKind};
 use rue_hir::{
-    Declaration, DependencyGraph, Environment, Lowerer, ModuleDeclarations, ModuleSymbol, Scope,
-    ScopeId, Symbol, SymbolId, has_reachable_unresolved,
+    Declaration, DependencyGraph, Environment, Lowerer, MAX_LOWERING_DEPTH, ModuleDeclarations,
+    ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, has_reachable_unresolved,
 };
 use rue_lexer::Lexer;
 use rue_lir::CodegenOptions;
@@ -47,6 +47,11 @@ pub enum Error {
 
     #[error("Internal compiler error: unresolved code was reached without a compilation error")]
     UnresolvedCodegen,
+
+    /// Code generation can't report diagnostics, since they've already been reported by then, so
+    /// this is an error that's already formatted as one.
+    #[error("{0}")]
+    LoweringTooDeep(String),
 }
 
 #[derive(Debug, Clone)]
@@ -813,6 +818,23 @@ fn codegen(
     let mut arena = Arena::new();
     let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, symbol, base_path);
     let mut lir = lowerer.lower_symbol_value(&Environment::default(), symbol);
+
+    if let Some(too_deep) = lowerer.too_deep() {
+        let srcloc = too_deep.srcloc.clone();
+        let base_path = lowerer.base_path().to_path_buf();
+        let kind = DiagnosticKind::LoweringTooDeep(MAX_LOWERING_DEPTH);
+
+        // The location is only missing if none of the HIR being lowered has one, in which case
+        // the symbol's name is the best place to point to
+        let srcloc = srcloc.or_else(|| ctx.symbol(symbol).name()?.srcloc().cloned());
+
+        return Err(Error::LoweringTooDeep(match srcloc {
+            Some(srcloc) => {
+                Diagnostic::new(srcloc, kind, DiagnosticSeverity::Error).message(&base_path)
+            }
+            None => kind.to_string(),
+        }));
+    }
 
     if options.optimize_lir {
         lir = rue_lir::optimize(&mut arena, lir);

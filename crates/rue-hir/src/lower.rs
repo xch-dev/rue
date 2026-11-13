@@ -1,6 +1,10 @@
 #![allow(clippy::needless_pass_by_value)]
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    iter,
+    path::{Path, PathBuf},
+};
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
@@ -30,6 +34,14 @@ impl SymbolGroup {
     }
 }
 
+/// Something that's being lowered, which is one level of nesting.
+#[derive(Debug, Clone)]
+enum Frame {
+    Hir(HirId),
+    /// A statement, which nests the rest of the block inside of it.
+    Statement(SrcLoc),
+}
+
 #[derive(Debug)]
 pub struct Lowerer<'d, 'a, 'g> {
     db: &'d mut Database,
@@ -39,7 +51,31 @@ pub struct Lowerer<'d, 'a, 'g> {
     options: CompilerOptions,
     main: SymbolId,
     base_path: PathBuf,
+    /// What's currently being lowered, from the outermost to the innermost.
+    path: Vec<Frame>,
+    /// Whether lowering went deeper than [`MAX_LOWERING_DEPTH`].
+    too_deep: Option<TooDeep>,
 }
+
+/// Lowering went deeper than [`MAX_LOWERING_DEPTH`], so the LIR it produced is incomplete.
+#[derive(Debug, Clone)]
+pub struct TooDeep {
+    /// The innermost location that lowering was at when it went too deep, if anything it was
+    /// lowering has one.
+    pub srcloc: Option<SrcLoc>,
+}
+
+/// How deeply HIR can be nested while it's lowered, which bounds the stack used by lowering, and
+/// by the optimizer and code generation of the LIR it produces.
+///
+/// This is separate from the parser's nesting limit, since lowering can go much deeper than the
+/// source code. The body of an inline function is lowered again at each call, inside of its
+/// arguments, and a function, constant or binding that's only referenced once is lowered where
+/// it's referenced, so a chain of them that each reference the next nests once per link. Each
+/// statement in a block also nests the rest of the block inside of it.
+///
+/// Real programs stay far below this, and it leaves room for a 2 MiB thread in a release build.
+pub const MAX_LOWERING_DEPTH: usize = 512;
 
 impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     pub fn new(
@@ -58,7 +94,19 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             options,
             main,
             base_path,
+            path: Vec::new(),
+            too_deep: None,
         }
+    }
+
+    pub fn base_path(&self) -> &Path {
+        &self.base_path
+    }
+
+    /// Whether lowering went deeper than [`MAX_LOWERING_DEPTH`], in which case the LIR it
+    /// produced is incomplete and must not be used.
+    pub fn too_deep(&self) -> Option<&TooDeep> {
+        self.too_deep.as_ref()
     }
 
     pub fn lower_symbol_value(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
@@ -197,6 +245,36 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_hir(&mut self, env: &Environment, hir: HirId) -> LirId {
+        self.nested(Frame::Hir(hir), |this| this.lower_hir_inner(env, hir))
+    }
+
+    /// Lowers something one level deeper, unless that's deeper than [`MAX_LOWERING_DEPTH`], in
+    /// which case it records where and returns a placeholder instead.
+    fn nested(&mut self, frame: Frame, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
+        if self.too_deep.is_some() {
+            return self.arena.alloc(Lir::Atom(vec![]));
+        }
+
+        if self.path.len() >= MAX_LOWERING_DEPTH {
+            let srcloc = iter::once(&frame)
+                .chain(self.path.iter().rev())
+                .find_map(|frame| match frame {
+                    Frame::Hir(hir) => self.db.hir_srcloc(*hir),
+                    Frame::Statement(srcloc) => Some(srcloc),
+                })
+                .cloned();
+
+            self.too_deep = Some(TooDeep { srcloc });
+            return self.arena.alloc(Lir::Atom(vec![]));
+        }
+
+        self.path.push(frame);
+        let lir = f(self);
+        self.path.pop();
+        lir
+    }
+
+    fn lower_hir_inner(&mut self, env: &Environment, hir: HirId) -> LirId {
         match self.db.hir(hir).clone() {
             Hir::Unresolved => unreachable!(),
             Hir::Nil => self.arena.alloc(Lir::Atom(vec![])),
@@ -624,6 +702,19 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             };
         };
 
+        // Each statement nests the rest of the block inside of it
+        self.nested(Frame::Statement(stmt.srcloc().clone()), |this| {
+            this.lower_statement(env, stmt, stmts, body)
+        })
+    }
+
+    fn lower_statement(
+        &mut self,
+        env: &Environment,
+        stmt: Statement,
+        stmts: Vec<Statement>,
+        body: Option<HirId>,
+    ) -> LirId {
         match stmt {
             Statement::Let(..) => self.lower_let_stmts(env, stmts, body),
             Statement::Return(hir, _) => self.lower_block(env, vec![], Some(hir)),
