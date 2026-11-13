@@ -1,0 +1,545 @@
+//! Compiling and answering queries happen on a dedicated thread, which owns the compiler's state
+//! (it can't be sent between threads). The language server's handlers send it jobs and await
+//! their results, so a long compile doesn't stop the server from reading the editor's messages,
+//! and edits made in quick succession are only compiled once.
+//!
+//! Jobs run in the order they're sent. Edits are compiled once no other edit has arrived for
+//! [`DEBOUNCE`], but anything else (opening or closing a document, a query, a file changing on
+//! disk) compiles the pending edits first, so it always sees every edit sent before it. A query
+//! that arrives while a compile is running waits for it.
+
+use std::collections::HashMap;
+use std::panic::{self, AssertUnwindSafe};
+use std::path::PathBuf;
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use indexmap::IndexMap;
+use rue_compiler::Compiler;
+use rue_diagnostic::{Source, SourceKind};
+use tokio::sync::oneshot;
+use tower_lsp::Client;
+use tower_lsp::lsp_types::{Diagnostic, MessageType, Url};
+
+use crate::cache::Cache;
+use crate::paths::{Paths, document};
+use crate::project::Tracked;
+use crate::{Task, lock, panic_message};
+
+/// How long to wait after an edit for more edits before compiling.
+pub const DEBOUNCE: Duration = Duration::from_millis(150);
+
+pub type Diagnostics = IndexMap<SourceKind, Vec<Diagnostic>>;
+
+/// The state that the language server's handlers and the worker share.
+#[derive(Debug)]
+pub struct Shared {
+    pub client: Client,
+    /// The text of the documents open in the editor, which takes precedence over what's on disk.
+    pub documents: Mutex<HashMap<SourceKind, Document>>,
+    /// Incremented every time a document's text changes.
+    revision: AtomicU64,
+    /// The paths the client uses, which can differ from the compiler's.
+    pub paths: Paths,
+    /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
+    /// added to the message instead. This is assumed until the client says otherwise.
+    pub related_information: AtomicBool,
+    /// A task that panics on purpose, to test that the server survives panics.
+    #[cfg(test)]
+    pub injected_panic: Mutex<Option<Task>>,
+    /// How many times a project was compiled.
+    #[cfg(test)]
+    pub compiles: AtomicUsize,
+    /// How many queries were sent to the worker.
+    #[cfg(test)]
+    pub queries: AtomicUsize,
+    /// Makes compiles wait until the test lets them continue, to test what happens meanwhile.
+    #[cfg(test)]
+    pub gate: Mutex<Option<Gate>>,
+    /// How long to wait for more edits, which tests can make longer so that only what they send
+    /// next compiles the edits.
+    #[cfg(test)]
+    pub debounce: Mutex<Duration>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Document {
+    text: String,
+    revision: u64,
+}
+
+/// The text of every open document, and their revisions, when a compile started.
+pub struct Snapshot {
+    pub sources: HashMap<SourceKind, String>,
+    revisions: HashMap<SourceKind, u64>,
+}
+
+/// Lets a test hold a compile once it has started.
+#[cfg(test)]
+#[derive(Debug)]
+pub struct Gate {
+    pub started: mpsc::Sender<()>,
+    pub release: mpsc::Receiver<()>,
+}
+
+impl Shared {
+    pub fn new(client: Client) -> Self {
+        Self {
+            client,
+            documents: Mutex::default(),
+            revision: AtomicU64::new(0),
+            paths: Paths::default(),
+            related_information: AtomicBool::new(true),
+            #[cfg(test)]
+            injected_panic: Mutex::default(),
+            #[cfg(test)]
+            compiles: AtomicUsize::new(0),
+            #[cfg(test)]
+            queries: AtomicUsize::new(0),
+            #[cfg(test)]
+            gate: Mutex::default(),
+            #[cfg(test)]
+            debounce: Mutex::new(DEBOUNCE),
+        }
+    }
+
+    /// Sets the editor's text for a file, or discards it so that what's on disk is used.
+    pub fn set_text(&self, kind: SourceKind, text: Option<String>) {
+        let mut documents = lock(&self.documents);
+        let revision = self.revision.fetch_add(1, Ordering::Relaxed) + 1;
+
+        if let Some(text) = text {
+            documents.insert(kind, Document { text, revision });
+        } else {
+            documents.remove(&kind);
+        }
+    }
+
+    pub fn text(&self, kind: &SourceKind) -> Option<String> {
+        lock(&self.documents)
+            .get(kind)
+            .map(|document| document.text.clone())
+    }
+
+    /// The revision of the editor's text for a file, if it's open.
+    pub fn revision(&self, kind: &SourceKind) -> Option<u64> {
+        lock(&self.documents)
+            .get(kind)
+            .map(|document| document.revision)
+    }
+
+    pub fn snapshot(&self) -> Snapshot {
+        let documents = lock(&self.documents);
+
+        Snapshot {
+            sources: documents
+                .iter()
+                .map(|(kind, document)| (kind.clone(), document.text.clone()))
+                .collect(),
+            revisions: documents
+                .iter()
+                .map(|(kind, document)| (kind.clone(), document.revision))
+                .collect(),
+        }
+    }
+
+    /// Whether the editor changed any of these files since the snapshot was taken, which means
+    /// that what was compiled from it is already out of date.
+    pub fn is_stale<'a>(
+        &self,
+        snapshot: &Snapshot,
+        files: impl IntoIterator<Item = &'a SourceKind>,
+    ) -> bool {
+        let documents = lock(&self.documents);
+
+        files.into_iter().any(|kind| {
+            documents.get(kind).map(|document| document.revision)
+                != snapshot.revisions.get(kind).copied()
+        })
+    }
+
+    #[cfg(test)]
+    pub fn inject_panic(&self, task: Task) {
+        let injected = *lock(&self.injected_panic);
+        assert!(injected != Some(task), "injected panic");
+    }
+
+    #[cfg(not(test))]
+    #[allow(clippy::unused_self)]
+    pub fn inject_panic(&self, _task: Task) {}
+
+    #[cfg(test)]
+    fn debounce(&self) -> Duration {
+        *lock(&self.debounce)
+    }
+
+    #[cfg(not(test))]
+    #[allow(clippy::unused_self)]
+    fn debounce(&self) -> Duration {
+        DEBOUNCE
+    }
+
+    /// Waits until the test lets the compile continue, if it asked to hold it.
+    #[cfg(test)]
+    pub fn wait_at_gate(&self) {
+        // The lock is released before waiting, so that the test can hold the next compile
+        let gate = lock(&self.gate).take();
+
+        if let Some(gate) = gate {
+            gate.started.send(()).ok();
+            gate.release.recv().ok();
+        }
+    }
+
+    #[cfg(not(test))]
+    #[allow(clippy::unused_self)]
+    pub fn wait_at_gate(&self) {}
+
+    async fn publish(&self, diagnostics: &Diagnostics) {
+        for (kind, diagnostics) in diagnostics {
+            let (uris, stale) = self.paths.publish(kind);
+
+            for uri in stale {
+                self.client.publish_diagnostics(uri, Vec::new(), None).await;
+            }
+
+            for uri in uris {
+                self.client
+                    .publish_diagnostics(uri, diagnostics.clone(), None)
+                    .await;
+            }
+        }
+    }
+
+    pub async fn log_panic(&self, task: Task, message: &str) {
+        self.client
+            .log_message(
+                MessageType::ERROR,
+                format!("Internal error while {task}: {message}"),
+            )
+            .await;
+    }
+}
+
+/// A task to run with the compiler's state, for a request that may have been cancelled.
+trait Request: Send {
+    /// Whether nothing is waiting for the result anymore.
+    fn cancelled(&self) -> bool;
+
+    fn run(self: Box<Self>, state: &mut State);
+}
+
+struct Query<F, T> {
+    task: Option<Task>,
+    f: F,
+    done: oneshot::Sender<Result<T, String>>,
+}
+
+impl<F, T> Request for Query<F, T>
+where
+    F: FnOnce(&mut State) -> T + Send,
+    T: Send,
+{
+    fn cancelled(&self) -> bool {
+        self.done.is_closed()
+    }
+
+    fn run(self: Box<Self>, state: &mut State) {
+        let Self { task, f, done } = *self;
+
+        state.task = task;
+        state.queried = None;
+
+        let result = panic::catch_unwind(AssertUnwindSafe(|| f(state)));
+
+        // The task may have panicked partway through changing a compile's state, so the project
+        // is compiled again
+        if result.is_err()
+            && let Some(key) = state.queried.take()
+        {
+            state.rebuild(&key);
+        }
+
+        done.send(result.map_err(|payload| panic_message(&*payload)))
+            .ok();
+    }
+}
+
+enum Job {
+    /// The editor changed a file, which is compiled once the edits stop.
+    Edit(PathBuf),
+    /// Compiles the projects of files that changed, and of the ones the editor changed.
+    Compile {
+        changed: Vec<PathBuf>,
+        edited: Vec<PathBuf>,
+        done: oneshot::Sender<Diagnostics>,
+    },
+    Run(Box<dyn Request>),
+}
+
+/// Sends jobs to the worker thread, which stops once this is dropped.
+#[derive(Debug)]
+pub struct Worker {
+    jobs: mpsc::Sender<Job>,
+}
+
+impl Worker {
+    pub fn new(shared: Arc<Shared>) -> Self {
+        let (sender, receiver) = mpsc::channel();
+
+        thread::Builder::new()
+            .name("rue-compiler".to_string())
+            .spawn(move || State::new(shared).run(&receiver))
+            .expect("failed to start the compiler thread");
+
+        Self { jobs: sender }
+    }
+
+    fn send(&self, job: Job) {
+        self.jobs.send(job).ok();
+    }
+
+    /// Compiles the project of a file the editor changed, once the edits stop.
+    pub fn edit(&self, path: PathBuf) {
+        self.send(Job::Edit(path));
+    }
+
+    /// Compiles the projects of files that changed, and publishes their diagnostics. The
+    /// diagnostics are also returned, once they're published.
+    pub fn compile(
+        &self,
+        changed: Vec<PathBuf>,
+        edited: Vec<PathBuf>,
+    ) -> oneshot::Receiver<Diagnostics> {
+        let (done, receiver) = oneshot::channel();
+
+        self.send(Job::Compile {
+            changed,
+            edited,
+            done,
+        });
+
+        receiver
+    }
+
+    /// Runs a task with the compiler's state, once the jobs before it are done. If it panics, the
+    /// panic's message is returned instead. If the receiver is dropped before the task runs (for
+    /// example, because the editor cancelled the request), it doesn't run, and it doesn't compile
+    /// the pending edits.
+    pub fn run<T: Send + 'static>(
+        &self,
+        task: Option<Task>,
+        f: impl FnOnce(&mut State) -> T + Send + 'static,
+    ) -> oneshot::Receiver<Result<T, String>> {
+        let (done, receiver) = oneshot::channel();
+        self.send(Job::Run(Box::new(Query { task, f, done })));
+        receiver
+    }
+}
+
+/// The state that only the worker thread has.
+pub struct State {
+    pub shared: Arc<Shared>,
+    /// The files that each project last published diagnostics for, keyed by the project's
+    /// canonical manifest (or entrypoint, if it doesn't have one).
+    pub published: HashMap<PathBuf, Tracked>,
+    /// The last compile of each project, which answers queries about its files.
+    pub projects: HashMap<PathBuf, Cache<Compiler>>,
+    /// The project whose compile answers queries about each file, the file's source, and the
+    /// revision of the editor's text that was compiled, if it's open.
+    pub files: HashMap<SourceKind, (PathBuf, Source, Option<u64>)>,
+    /// The files the editor changed that haven't been compiled yet.
+    edited: Vec<PathBuf>,
+    /// When to compile the edits, if no other edit arrives first.
+    deadline: Option<Instant>,
+    /// The task that's running, if it's a request.
+    task: Option<Task>,
+    /// The project whose compile the current task is using.
+    queried: Option<PathBuf>,
+}
+
+impl State {
+    fn new(shared: Arc<Shared>) -> Self {
+        Self {
+            shared,
+            published: HashMap::new(),
+            projects: HashMap::new(),
+            files: HashMap::new(),
+            edited: Vec::new(),
+            deadline: None,
+            task: None,
+            queried: None,
+        }
+    }
+
+    fn run(mut self, jobs: &mpsc::Receiver<Job>) {
+        loop {
+            let job = match self.deadline {
+                Some(deadline) => {
+                    match jobs.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                        Ok(job) => job,
+                        Err(RecvTimeoutError::Timeout) => {
+                            self.flush();
+                            continue;
+                        }
+                        Err(RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+                None => match jobs.recv() {
+                    Ok(job) => job,
+                    Err(_) => return,
+                },
+            };
+
+            match job {
+                Job::Edit(path) => self.compile_later(path),
+                Job::Compile {
+                    changed,
+                    mut edited,
+                    done,
+                } => {
+                    edited.extend(self.take_edits());
+
+                    done.send(self.compile_and_publish(&changed, &edited)).ok();
+                }
+                Job::Run(request) => {
+                    if request.cancelled() {
+                        continue;
+                    }
+
+                    self.flush();
+                    request.run(&mut self);
+                }
+            }
+        }
+    }
+
+    fn take_edits(&mut self) -> Vec<PathBuf> {
+        self.deadline = None;
+        std::mem::take(&mut self.edited)
+    }
+
+    /// Compiles the edits that are waiting, if there are any.
+    fn flush(&mut self) {
+        let edited = self.take_edits();
+
+        if !edited.is_empty() {
+            self.compile_and_publish(&[], &edited);
+        }
+    }
+
+    fn compile_and_publish(&mut self, changed: &[PathBuf], edited: &[PathBuf]) -> Diagnostics {
+        match panic::catch_unwind(AssertUnwindSafe(|| self.recompile(changed, edited))) {
+            Ok(diagnostics) => {
+                futures::executor::block_on(self.shared.publish(&diagnostics));
+                diagnostics
+            }
+            Err(payload) => {
+                let message = panic_message(&*payload);
+                futures::executor::block_on(self.shared.log_panic(Task::Compile, &message));
+                Diagnostics::new()
+            }
+        }
+    }
+
+    /// The last compile of a document's file, set up to answer a query about it. The query is
+    /// about the revision of the editor's text it was sent for, and if an edit made after it was
+    /// compiled first, there's no answer, since the query's position may not match the text
+    /// anymore. An older compile still answers (for example, if compiling the edit panicked).
+    pub fn cache(&mut self, uri: &Url, revision: Option<u64>) -> Option<&mut Cache<Compiler>> {
+        let (_, kind) = document(uri)?;
+        let (key, source, compiled) = self.files.get(&kind)?;
+
+        if let (Some(compiled), Some(revision)) = (compiled, revision)
+            && compiled > &revision
+        {
+            return None;
+        }
+
+        let cache = self.projects.get_mut(key)?;
+        cache.set_source(source.clone());
+
+        self.queried = Some(key.clone());
+
+        if let Some(task) = self.task {
+            self.shared.inject_panic(task);
+        }
+
+        Some(cache)
+    }
+
+    /// Compiles a project again once the edits stop, given a path it can be found from.
+    pub fn compile_later(&mut self, path: PathBuf) {
+        if !self.edited.contains(&path) {
+            self.edited.push(path);
+        }
+
+        self.deadline = Some(Instant::now() + self.shared.debounce());
+    }
+
+    /// Records a project's compile, so that it answers queries about its files (instead of
+    /// whichever project compiled them last, if they're part of more than one).
+    pub fn insert_project(
+        &mut self,
+        key: PathBuf,
+        cache: Cache<Compiler>,
+        files: Vec<Source>,
+        snapshot: &Snapshot,
+    ) {
+        self.files.retain(|_, (other, ..)| *other != key);
+
+        for source in files {
+            let revision = snapshot.revisions.get(&source.kind).copied();
+            self.files
+                .insert(source.kind.clone(), (key.clone(), source, revision));
+        }
+
+        self.projects.insert(key, cache);
+    }
+
+    /// Forgets a project's compile.
+    pub fn remove_project(&mut self, key: &PathBuf) {
+        self.files.retain(|_, (other, ..)| other != key);
+        self.projects.remove(key);
+    }
+
+    /// Forgets a file, and the compile of its project once no other file uses it.
+    pub fn remove_file(&mut self, kind: &SourceKind) {
+        let Some((key, ..)) = self.files.remove(kind) else {
+            return;
+        };
+
+        if !self.files.values().any(|(other, ..)| *other == key) {
+            self.projects.remove(&key);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tower_lsp::LspService;
+
+    use super::*;
+    use crate::Backend;
+
+    #[test]
+    fn test_edits_restart_the_debounce() {
+        let (service, _) = LspService::new(Backend::new);
+        let mut state = State::new(service.inner().shared.clone());
+
+        state.compile_later(PathBuf::from("a.rue"));
+        let first = state.deadline.unwrap();
+
+        // Every edit pushes the compile back, and each file is only compiled once
+        thread::sleep(Duration::from_millis(1));
+        state.compile_later(PathBuf::from("a.rue"));
+
+        assert!(state.deadline.unwrap() > first);
+        assert_eq!(state.edited, [PathBuf::from("a.rue")]);
+    }
+}

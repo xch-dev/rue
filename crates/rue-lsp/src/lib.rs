@@ -1,49 +1,85 @@
 #![allow(clippy::cast_possible_truncation)]
 
 mod cache;
+mod paths;
 mod position;
+mod project;
+mod worker;
 
 use cache::Cache;
-use indexmap::IndexMap;
-use rue_compiler::{Compiler, FileTree, normalize_path};
+use rue_compiler::{Compiler, normalize_path};
 use rue_diagnostic::{Applicability, Lint, SourceKind, SrcLoc};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use serde::{Deserialize, Serialize};
 
+use std::any::Any;
 use std::collections::HashMap;
-use std::fmt::Write;
+use std::fmt::{self, Write};
 use std::fs;
-use std::path::Path;
+use std::panic::{self, AssertUnwindSafe};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rue_options::{Project, find_project};
-use send_wrapper::SendWrapper;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
     CompletionResponse, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    DocumentFormattingParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-    LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf, Position, Range,
-    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextEdit, Url, WorkspaceEdit,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
+    FileSystemWatcher, GlobPattern, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, LanguageString, Location, MarkedString, MessageType, NumberOrString, OneOf,
+    Position, Range, ReferenceParams, Registration, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{Client, LanguageServer};
 
 use crate::cache::{HoverInfo, SymbolHoverKind};
+use crate::paths::{Paths, document, uri_to_path};
 use crate::position::offsets_to_range;
+use crate::worker::{Diagnostics, Shared, State, Worker};
+use tokio::sync::oneshot;
+
+/// Logged once the client says it's initialized.
+const INITIALIZED: &str = "Rue language server initialized.";
 
 #[derive(Debug)]
 pub struct Backend {
-    client: Client,
-    cache: Mutex<HashMap<Url, SendWrapper<Cache<Arc<Compiler>>>>>,
-    file_cache: Mutex<HashMap<SourceKind, String>>,
-    /// Whether the client shows the related information of diagnostics. If it doesn't, notes are
-    /// added to the message instead. This is assumed until the client says otherwise.
-    related_information: AtomicBool,
+    shared: Arc<Shared>,
+    /// Compiles projects and answers queries about them, on a thread of its own.
+    worker: Worker,
+    /// Whether the client can register file watchers when asked to.
+    watch_files: AtomicBool,
+}
+
+/// The work the server does in response to the editor, used to say what failed when it panics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Task {
+    Compile,
+    Hover,
+    Definition,
+    References,
+    Completion,
+    Formatting,
+    CodeAction,
+}
+
+impl fmt::Display for Task {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Compile => "compiling",
+            Self::Hover => "computing hover information",
+            Self::Definition => "finding the definition",
+            Self::References => "finding references",
+            Self::Completion => "computing completions",
+            Self::Formatting => "formatting",
+            Self::CodeAction => "computing code actions",
+        })
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -52,12 +88,39 @@ impl LanguageServer for Backend {
         let related_information = params
             .capabilities
             .text_document
-            .and_then(|capabilities| capabilities.publish_diagnostics)
+            .as_ref()
+            .and_then(|capabilities| capabilities.publish_diagnostics.as_ref())
             .and_then(|capabilities| capabilities.related_information)
             .unwrap_or(false);
 
-        self.related_information
+        self.shared
+            .related_information
             .store(related_information, Ordering::Relaxed);
+
+        let watch_files = params
+            .capabilities
+            .workspace
+            .and_then(|capabilities| capabilities.did_change_watched_files)
+            .and_then(|capabilities| capabilities.dynamic_registration)
+            .unwrap_or(false);
+
+        self.watch_files.store(watch_files, Ordering::Relaxed);
+
+        // Files in the workspace are reported with the paths the client uses for them
+        #[allow(deprecated)]
+        let root_uri = params.root_uri.iter();
+
+        for uri in params
+            .workspace_folders
+            .iter()
+            .flatten()
+            .map(|folder| &folder.uri)
+            .chain(root_uri)
+        {
+            if let Some(path) = uri_to_path(uri) {
+                self.shared.paths.add_root(&path);
+            }
+        }
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -93,53 +156,181 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        self.client
-            .log_message(MessageType::INFO, "Rue language server initialized.")
-            .await;
+        let client = &self.shared.client;
+
+        client.log_message(MessageType::INFO, INITIALIZED).await;
+
+        // Changes made outside of the editor (such as switching branches) are only seen if the
+        // client watches the files
+        if self.watch_files.load(Ordering::Relaxed) {
+            let watchers = ["**/*.rue", "**/Rue.toml"]
+                .into_iter()
+                .map(|pattern| FileSystemWatcher {
+                    glob_pattern: GlobPattern::String(pattern.to_string()),
+                    kind: None,
+                })
+                .collect();
+
+            let registration = Registration {
+                id: "rue-watched-files".to_string(),
+                method: "workspace/didChangeWatchedFiles".to_string(),
+                register_options: Some(
+                    serde_json::to_value(DidChangeWatchedFilesRegistrationOptions { watchers })
+                        .expect("registration options are serializable"),
+                ),
+            };
+
+            if let Err(error) = client.register_capability(vec![registration]).await {
+                client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!("Couldn't watch files for changes: {error}"),
+                    )
+                    .await;
+            }
+        }
     }
+
+    // Compiles happen in the background, and publish their diagnostics once they're done, so
+    // these don't wait for them
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.on_change(params.text_document.uri, Some(params.text_document.text))
-            .await;
+        self.shared.paths.open(&params.text_document.uri);
+        drop(self.change(&params.text_document.uri, Some(params.text_document.text)));
     }
 
-    async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        self.on_change(
-            params.text_document.uri,
-            Some(params.content_changes[0].text.clone()),
-        )
-        .await;
+    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
+        // The server only asks for full syncs, so the last change has the whole text
+        let Some(change) = params.content_changes.pop() else {
+            return;
+        };
+
+        // Edits are compiled once they stop
+        if let Some(path) = self.set_text(&params.text_document.uri, Some(change.text)) {
+            self.worker.edit(path);
+        }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        self.on_change(params.text_document.uri, None).await;
+        drop(self.change(&params.text_document.uri, None));
+    }
+
+    /// The file's unsaved changes are discarded, so the project is compiled with what's on disk,
+    /// unless the file is still open through another URI (for example, through a symlink and
+    /// through its target).
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        let uri = &params.text_document.uri;
+        self.shared.paths.close(uri);
+
+        if let Some((path, kind)) = document(uri)
+            && self.shared.paths.is_open(&kind)
+        {
+            drop(self.worker.compile(Vec::new(), vec![path]));
+            return;
+        }
+
+        drop(self.change(uri, None));
+    }
+
+    /// Recompiles the projects that files changed on disk belong to, outside of the editor (for
+    /// example, by switching branches).
+    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        let changed = params
+            .changes
+            .iter()
+            .filter_map(|change| uri_to_path(&change.uri))
+            .collect();
+
+        drop(self.worker.compile(changed, Vec::new()));
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        Ok(self.on_hover(&params))
+        let HoverParams {
+            text_document_position_params: params,
+            ..
+        } = params;
+
+        let revision = self.revision(&params.text_document.uri);
+
+        Ok(self
+            .query(Task::Hover, move |state| {
+                hover(
+                    state.cache(&params.text_document.uri, revision)?,
+                    params.position,
+                )
+            })
+            .await)
     }
 
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        Ok(self.on_goto_definition(&params))
+        let GotoDefinitionParams {
+            text_document_position_params: params,
+            ..
+        } = params;
+
+        let revision = self.revision(&params.text_document.uri);
+
+        Ok(self
+            .query(Task::Definition, move |state| {
+                let shared = state.shared.clone();
+                let cache = state.cache(&params.text_document.uri, revision)?;
+                definitions(cache, &shared.paths, params.position)
+            })
+            .await)
     }
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        Ok(self.on_references(&params))
+        let ReferenceParams {
+            text_document_position: params,
+            ..
+        } = params;
+
+        let revision = self.revision(&params.text_document.uri);
+
+        Ok(self
+            .query(Task::References, move |state| {
+                let shared = state.shared.clone();
+                let cache = state.cache(&params.text_document.uri, revision)?;
+                references(cache, &shared.paths, params.position)
+            })
+            .await)
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        Ok(self.on_completion(&params))
+        let CompletionParams {
+            text_document_position: params,
+            ..
+        } = params;
+
+        let revision = self.revision(&params.text_document.uri);
+
+        Ok(self
+            .query(Task::Completion, move |state| {
+                completions(
+                    state.cache(&params.text_document.uri, revision)?,
+                    params.position,
+                )
+            })
+            .await)
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
-        self.on_formatting(&params).map(Some)
+        self.catch_panic(Task::Formatting, || self.on_formatting(&params))
+            .await
+            .transpose()
     }
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        Ok(code_actions(&params))
+        Ok(self
+            .catch_panic(Task::CodeAction, || {
+                self.shared.inject_panic(Task::CodeAction);
+                code_actions(&params)
+            })
+            .await
+            .flatten())
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -149,166 +340,90 @@ impl LanguageServer for Backend {
 
 impl Backend {
     pub fn new(client: Client) -> Self {
+        let shared = Arc::new(Shared::new(client));
+
         Self {
-            client,
-            cache: Mutex::new(HashMap::new()),
-            file_cache: Mutex::new(HashMap::new()),
-            related_information: AtomicBool::new(true),
+            worker: Worker::new(shared.clone()),
+            shared,
+            watch_files: AtomicBool::new(false),
         }
     }
 
-    async fn on_change(&self, uri: Url, text: Option<String>) {
-        let diagnostics = self.on_change_impl(&uri, text);
-
-        for (kind, diagnostics) in diagnostics {
-            let SourceKind::File(path) = kind else {
-                continue;
-            };
-
-            let uri = Url::from_file_path(path).unwrap();
-
-            self.client
-                .publish_diagnostics(uri, diagnostics, None)
-                .await;
+    /// Runs a task, and if it panics, logs the panic to the client and returns `None` instead of
+    /// taking down the server.
+    async fn catch_panic<T>(&self, task: Task, f: impl FnOnce() -> T) -> Option<T> {
+        match panic::catch_unwind(AssertUnwindSafe(f)) {
+            Ok(value) => Some(value),
+            Err(payload) => {
+                self.shared.log_panic(task, &panic_message(&*payload)).await;
+                None
+            }
         }
     }
 
-    fn on_change_impl(
+    /// Answers a query with the compiler's state, once the compiles before it are done. If it
+    /// panics, the panic is logged and there's no answer.
+    async fn query<T: Send + 'static>(
         &self,
-        uri: &Url,
-        text: Option<String>,
-    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let Ok(uri_path) = uri.to_file_path() else {
-            return IndexMap::new();
-        };
+        task: Task,
+        f: impl FnOnce(&mut State) -> Option<T> + Send + 'static,
+    ) -> Option<T> {
+        let result = self.worker.run(Some(task), f);
 
-        let Ok(source_kind) = normalize_path(&uri_path) else {
-            return IndexMap::new();
-        };
+        #[cfg(test)]
+        self.shared.queries.fetch_add(1, Ordering::Relaxed);
 
-        // Keep track of the editor's text even if the project can't be compiled right now, so
-        // that it's used once it can be
-        {
-            let mut file_cache = self.file_cache.lock().unwrap();
+        let result = result.await;
 
-            if let Some(text) = text {
-                file_cache.insert(source_kind.clone(), text);
-            } else {
-                file_cache.remove(&source_kind);
+        match result {
+            Ok(Ok(value)) => value,
+            Ok(Err(message)) => {
+                self.shared.log_panic(task, &message).await;
+                None
             }
+            Err(_) => None,
         }
-
-        let project = match find_project(&uri_path, false) {
-            Ok(Some(project)) => project,
-            Err(rue_options::Error::Toml { path, error }) => {
-                return self.invalid_manifest_diagnostics(&path, &error, source_kind);
-            }
-            Ok(None) | Err(_) => return IndexMap::new(),
-        };
-
-        let manifest_diagnostics = project.manifest_path.as_deref().and_then(|path| {
-            Some((
-                normalize_path(path).ok()?,
-                manifest_diagnostics(path, &project),
-            ))
-        });
-
-        let mut ctx = Compiler::new(project.options);
-
-        let mut file_cache = self.file_cache.lock().unwrap();
-
-        let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut file_cache);
-
-        drop(file_cache);
-
-        let Ok(tree) = tree else {
-            return IndexMap::new();
-        };
-
-        let mut diagnostics = IndexMap::<SourceKind, Vec<Diagnostic>>::new();
-
-        for item in ctx.take_diagnostics() {
-            diagnostics
-                .entry(item.srcloc.source.kind.clone())
-                .or_default()
-                .push(diagnostic(
-                    &item,
-                    self.related_information.load(Ordering::Relaxed),
-                ));
-        }
-
-        let mut cache = self.cache.lock().unwrap();
-
-        let ctx = Arc::new(ctx);
-        let tree = Arc::new(SendWrapper::new(tree));
-
-        for file in tree.all_files() {
-            let SourceKind::File(path) = &file.source.kind else {
-                continue;
-            };
-
-            let uri = Url::from_file_path(path).unwrap();
-
-            cache.insert(
-                uri,
-                SendWrapper::new(Cache::new(ctx.clone(), tree.clone(), file.source.clone())),
-            );
-
-            diagnostics.entry(file.source.kind.clone()).or_default();
-        }
-
-        // Always include the manifest, so that its diagnostics are cleared once they're fixed
-        if let Some((kind, manifest_diagnostics)) = manifest_diagnostics {
-            diagnostics.insert(kind, manifest_diagnostics);
-        }
-
-        diagnostics
     }
 
-    /// Nothing can be compiled without the manifest, so this only reports why it's invalid. The
-    /// diagnostics of the project's files are cleared, since they're out of date.
-    fn invalid_manifest_diagnostics(
-        &self,
-        path: &Path,
-        error: &toml::de::Error,
-        changed: SourceKind,
-    ) -> IndexMap<SourceKind, Vec<Diagnostic>> {
-        let mut diagnostics = IndexMap::new();
+    /// The revision of the editor's text for a document, which a query is about.
+    fn revision(&self, uri: &Url) -> Option<u64> {
+        let (_, kind) = document(uri)?;
+        self.shared.revision(&kind)
+    }
 
-        let Ok(manifest_kind) = normalize_path(path) else {
-            return diagnostics;
-        };
+    /// Records the editor's text for a document (or that it should be read from disk), and
+    /// returns its path. The text is kept even if the project can't be compiled right now, so
+    /// that it's used once it can be.
+    fn set_text(&self, uri: &Url, text: Option<String>) -> Option<PathBuf> {
+        // The file may have been deleted, for example before the editor closes it
+        let (path, kind) = document(uri)?;
+        self.shared.set_text(kind, text);
+        Some(path)
+    }
 
-        diagnostics.insert(changed, Vec::new());
+    /// Records the editor's text for a document, and compiles its project right away. The
+    /// diagnostics are published once they're ready, and the receiver gets them too.
+    fn change(&self, uri: &Url, text: Option<String>) -> Option<oneshot::Receiver<Diagnostics>> {
+        let path = self.set_text(uri, text)?;
+        Some(self.worker.compile(Vec::new(), vec![path]))
+    }
 
-        if let Some(dir) = path.parent() {
-            for uri in self.cache.lock().unwrap().keys() {
-                if let Ok(file) = uri.to_file_path()
-                    && file.starts_with(dir)
-                    && let Ok(kind) = normalize_path(&file)
-                {
-                    diagnostics.insert(kind, Vec::new());
-                }
-            }
-        }
-
-        diagnostics.insert(manifest_kind, vec![manifest_error(path, error)]);
-
-        diagnostics
+    #[cfg(test)]
+    fn on_change_impl(&self, uri: &Url, text: Option<String>) -> Diagnostics {
+        self.change(uri, text)
+            .and_then(|receiver| receiver.blocking_recv().ok())
+            .unwrap_or_default()
     }
 
     fn on_formatting(&self, params: &DocumentFormattingParams) -> Result<Vec<TextEdit>> {
-        let uri = &params.text_document.uri;
-        let path = uri
-            .to_file_path()
-            .map_err(|()| Error::invalid_params("document URI is not a file"))?;
-        let source_kind =
-            normalize_path(&path).map_err(|error| Error::invalid_params(error.to_string()))?;
+        self.shared.inject_panic(Task::Formatting);
+
+        let (path, source_kind) = document(&params.text_document.uri)
+            .ok_or_else(|| Error::invalid_params("document URI is not a file"))?;
         let project =
             find_project(&path, false).map_err(|error| Error::invalid_params(error.to_string()))?;
         let options = project.map_or_else(FormatOptions::default, |project| project.format_options);
-        let source = self.file_cache.lock().unwrap().get(&source_kind).cloned();
-        let source = match source {
+        let source = match self.shared.text(&source_kind) {
             Some(source) => source,
             None => fs::read_to_string(&path)
                 .map_err(|error| Error::invalid_params(error.to_string()))?,
@@ -317,142 +432,139 @@ impl Backend {
         formatting_edits(&source, &options)
             .map_err(|error| Error::invalid_params(error.to_string()))
     }
+}
 
-    fn on_hover(&self, params: &HoverParams) -> Option<Hover> {
-        let mut cache = self
-            .cache
-            .lock()
-            .unwrap()
-            .get(&params.text_document_position_params.text_document.uri)?
-            .to_cloned();
-        let position = cache.position(params.text_document_position_params.position);
+fn hover(cache: &mut Cache<Compiler>, position: Position) -> Option<Hover> {
+    let position = cache.position(position);
 
-        let scopes = cache.scopes(position);
-        let infos = cache.hover(&scopes, position);
+    let scopes = cache.scopes(position);
+    let infos = cache.hover(&scopes, position);
 
-        if infos.is_empty() {
-            return None;
-        }
+    if infos.is_empty() {
+        return None;
+    }
 
-        let content = infos
-            .into_iter()
-            .map(|info| {
-                MarkedString::LanguageString(LanguageString {
-                    language: "rue".to_string(),
-                    value: match &info {
-                        HoverInfo::Symbol(info) => match &info.kind {
-                            SymbolHoverKind::Binding { type_name } => {
-                                format!("let {}: {type_name}", info.name)
-                            }
-                            SymbolHoverKind::Parameter { type_name } => {
-                                format!("{}: {type_name}", info.name)
-                            }
-                            SymbolHoverKind::Constant { type_name, inline } => format!(
-                                "{}const {}: {type_name}",
-                                if *inline { "inline " } else { "" },
-                                info.name
-                            ),
-                            SymbolHoverKind::Function { signatures, inline } => signatures
-                                .iter()
-                                .map(|signature| {
-                                    format!(
-                                        "{}fn {}{signature}",
-                                        if *inline { "inline " } else { "" },
-                                        info.name
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                                .join("\n"),
-                        },
-                        HoverInfo::Module(info) => format!("mod {}", info.name),
-                        HoverInfo::Type(info) => {
-                            if let Some(inner) = &info.inner_name {
-                                format!("type {} = {}", info.name, inner)
-                            } else {
-                                format!("type {}", info.name)
-                            }
+    let content = infos
+        .into_iter()
+        .map(|info| {
+            MarkedString::LanguageString(LanguageString {
+                language: "rue".to_string(),
+                value: match &info {
+                    HoverInfo::Symbol(info) => match &info.kind {
+                        SymbolHoverKind::Binding { type_name } => {
+                            format!("let {}: {type_name}", info.name)
                         }
-                        HoverInfo::Struct(info) => format!(
-                            "struct {} {{\n{}\n}}",
-                            info.name,
-                            info.fields
-                                .iter()
-                                .enumerate()
-                                .map(|(i, field)| {
-                                    let spread =
-                                        if !info.nil_terminated && i == info.fields.len() - 1 {
-                                            "..."
-                                        } else {
-                                            ""
-                                        };
-                                    format!("    {spread}{}: {},", field.name, field.type_name)
-                                })
-                                .collect::<Vec<String>>()
-                                .join("\n")
+                        SymbolHoverKind::Parameter { type_name } => {
+                            format!("{}: {type_name}", info.name)
+                        }
+                        SymbolHoverKind::Constant { type_name, inline } => format!(
+                            "{}const {}: {type_name}",
+                            if *inline { "inline " } else { "" },
+                            info.name
                         ),
-                        HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
+                        SymbolHoverKind::Function { signatures, inline } => signatures
+                            .iter()
+                            .map(|signature| {
+                                format!(
+                                    "{}fn {}{signature}",
+                                    if *inline { "inline " } else { "" },
+                                    info.name
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
                     },
-                })
+                    HoverInfo::Module(info) => format!("mod {}", info.name),
+                    HoverInfo::Type(info) => {
+                        if let Some(inner) = &info.inner_name {
+                            format!("type {} = {}", info.name, inner)
+                        } else {
+                            format!("type {}", info.name)
+                        }
+                    }
+                    HoverInfo::Struct(info) => format!(
+                        "struct {} {{\n{}\n}}",
+                        info.name,
+                        info.fields
+                            .iter()
+                            .enumerate()
+                            .map(|(i, field)| {
+                                let spread = if !info.nil_terminated && i == info.fields.len() - 1 {
+                                    "..."
+                                } else {
+                                    ""
+                                };
+                                format!("    {spread}{}: {},", field.name, field.type_name)
+                            })
+                            .collect::<Vec<String>>()
+                            .join("\n")
+                    ),
+                    HoverInfo::Field(info) => format!("{}: {}", info.name, info.type_name),
+                },
             })
-            .collect();
-
-        Some(Hover {
-            contents: HoverContents::Array(content),
-            range: None,
         })
+        .collect();
+
+    Some(Hover {
+        contents: HoverContents::Array(content),
+        range: None,
+    })
+}
+
+fn definitions(
+    cache: &Cache<Compiler>,
+    paths: &Paths,
+    position: Position,
+) -> Option<GotoDefinitionResponse> {
+    let position = cache.position(position);
+
+    let mut locations = cache
+        .definitions(position)
+        .into_iter()
+        .map(|location| paths.location(location))
+        .collect::<Vec<_>>();
+
+    if locations.len() > 1 {
+        Some(GotoDefinitionResponse::Array(locations))
+    } else {
+        locations.pop().map(GotoDefinitionResponse::Scalar)
     }
+}
 
-    fn on_goto_definition(&self, params: &GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
-        let uri = params
-            .text_document_position_params
-            .text_document
-            .uri
-            .clone();
+fn references(cache: &Cache<Compiler>, paths: &Paths, position: Position) -> Option<Vec<Location>> {
+    let position = cache.position(position);
 
-        let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
-        let position = cache.position(params.text_document_position_params.position);
+    let locations = cache
+        .references(position)
+        .into_iter()
+        .map(|location| paths.location(location))
+        .collect::<Vec<_>>();
 
-        let locations = cache.definitions(position);
+    (!locations.is_empty()).then_some(locations)
+}
 
-        if locations.is_empty() {
-            None
-        } else if locations.len() == 1 {
-            Some(GotoDefinitionResponse::Scalar(locations[0].clone()))
-        } else {
-            Some(GotoDefinitionResponse::Array(locations))
-        }
-    }
+fn completions(cache: &mut Cache<Compiler>, position: Position) -> Option<CompletionResponse> {
+    let position = cache.position(position);
 
-    fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
-        let uri = params.text_document_position.text_document.uri.clone();
+    let scopes = cache.scopes(position);
+    let completions = cache.completions(&scopes, position);
 
-        let cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
-        let position = cache.position(params.text_document_position.position);
+    (!completions.is_empty()).then_some(CompletionResponse::Array(completions))
+}
 
-        let locations = cache.references(position);
+/// The message of a panic's payload.
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(ToString::to_string)
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".to_string())
+}
 
-        if locations.is_empty() {
-            None
-        } else {
-            Some(locations)
-        }
-    }
-
-    fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
-        let uri = params.text_document_position.text_document.uri.clone();
-
-        let mut cache = self.cache.lock().unwrap().get(&uri)?.to_cloned();
-        let position = cache.position(params.text_document_position.position);
-
-        let scopes = cache.scopes(position);
-        let completions = cache.completions(&scopes, position);
-
-        if completions.is_empty() {
-            return None;
-        }
-
-        Some(CompletionResponse::Array(completions))
-    }
+/// Locks a mutex, even if a panic poisoned it. Panics are caught so that the server keeps running,
+/// and the state behind each lock is only changed once nothing else can fail, so it's still valid.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn formatting_edits(
@@ -490,22 +602,21 @@ struct SuggestionData {
     edit: WorkspaceEdit,
 }
 
-fn location(srcloc: &SrcLoc) -> Option<Location> {
-    let SourceKind::File(path) = &srcloc.source.kind else {
-        return None;
-    };
-
+fn location(srcloc: &SrcLoc, paths: &Paths) -> Option<Location> {
     Some(Location::new(
-        Url::from_file_path(path).ok()?,
+        paths.uri(&srcloc.source.kind)?,
         offsets_to_range(&srcloc.source.text, srcloc.span.start, srcloc.span.end),
     ))
 }
 
-fn suggestion_data(suggestion: &rue_diagnostic::Suggestion) -> Option<SuggestionData> {
+fn suggestion_data(
+    suggestion: &rue_diagnostic::Suggestion,
+    paths: &Paths,
+) -> Option<SuggestionData> {
     let mut changes = HashMap::<Url, Vec<TextEdit>>::new();
 
     for edit in &suggestion.edits {
-        let location = location(&edit.srcloc)?;
+        let location = location(&edit.srcloc, paths)?;
 
         changes
             .entry(location.uri)
@@ -548,7 +659,11 @@ fn code_actions(params: &CodeActionParams) -> Option<CodeActionResponse> {
     (!actions.is_empty()).then_some(actions)
 }
 
-fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic, supports_related: bool) -> Diagnostic {
+fn diagnostic(
+    diagnostic: &rue_diagnostic::Diagnostic,
+    supports_related: bool,
+    paths: &Paths,
+) -> Diagnostic {
     let srcloc = &diagnostic.srcloc;
 
     let mut message = diagnostic.kind.to_string();
@@ -557,7 +672,12 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic, supports_related: bool) -
     // Notes that point to a file are shown at that location if the client supports it, and the
     // rest are part of the message
     for note in &diagnostic.notes {
-        if supports_related && let Some(location) = note.srcloc.as_ref().and_then(location) {
+        if supports_related
+            && let Some(location) = note
+                .srcloc
+                .as_ref()
+                .and_then(|srcloc| location(srcloc, paths))
+        {
             related_information.push(DiagnosticRelatedInformation {
                 location,
                 message: note.message.clone(),
@@ -588,7 +708,7 @@ fn diagnostic(diagnostic: &rue_diagnostic::Diagnostic, supports_related: bool) -
     let suggestions = diagnostic
         .suggestions
         .iter()
-        .filter_map(suggestion_data)
+        .filter_map(|suggestion| suggestion_data(suggestion, paths))
         .collect::<Vec<_>>();
 
     Diagnostic {
@@ -648,6 +768,17 @@ fn manifest_diagnostics(path: &Path, project: &Project) -> Vec<Diagnostic> {
     });
 
     unknown.chain(forbidden).collect()
+}
+
+/// Nothing can be compiled without the manifest, so this only reports why it's invalid.
+fn invalid_manifest_diagnostics(path: &Path, error: &toml::de::Error) -> Diagnostics {
+    let mut diagnostics = Diagnostics::new();
+
+    if let Ok(kind) = normalize_path(path) {
+        diagnostics.insert(kind, vec![manifest_error(path, error)]);
+    }
+
+    diagnostics
 }
 
 /// Reports why `Rue.toml` couldn't be parsed, such as an invalid lint level.

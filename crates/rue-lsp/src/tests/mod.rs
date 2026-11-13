@@ -1,7 +1,9 @@
+mod background;
 mod completion;
 mod diagnostics;
 mod formatting;
 mod hover;
+mod lifecycle;
 mod navigation;
 mod protocol;
 
@@ -10,6 +12,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use futures::executor::block_on;
+use rue_compiler::normalize_path;
+use tower_lsp::LanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CompletionParams, CompletionResponse,
@@ -23,10 +28,93 @@ use crate::{Backend, code_actions, position::position_to_offset};
 
 const CURSOR: &str = "$0";
 
+/// A manifest for a project that doesn't use the standard library, so that results only include
+/// what's declared in the test itself.
+const MANIFEST: &str = "[compiler]\nentrypoint = \".\"\nstd = false\n";
+
+/// An empty temporary directory that's unique to the test, and removed when dropped. On Unix,
+/// it's reached through a symlink, like a project in `/tmp` on macOS, so that the paths that the
+/// tests use as a client aren't the canonical paths that the compiler uses.
+pub struct TempDir {
+    path: PathBuf,
+    real: PathBuf,
+}
+
+impl TempDir {
+    pub fn new(prefix: &str) -> Self {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        let path = std::env::temp_dir().join(format!(
+            "{prefix}-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let real = path.with_file_name(format!(
+            "{}-real",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+
+        fs::remove_file(&path).ok();
+        fs::remove_dir_all(&real).ok();
+        fs::create_dir_all(&real).unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &path).unwrap();
+
+        #[cfg(not(unix))]
+        let path = real.clone();
+
+        Self { path, real }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        if self.path != self.real {
+            fs::remove_file(&self.path).ok();
+        }
+
+        fs::remove_dir_all(&self.real).ok();
+    }
+}
+
+/// Blocking versions of the request handlers, for tests that call the server directly.
+impl Backend {
+    fn on_hover(&self, params: &HoverParams) -> Option<tower_lsp::lsp_types::Hover> {
+        block_on(self.hover(params.clone())).unwrap()
+    }
+
+    fn on_goto_definition(&self, params: &GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
+        block_on(self.goto_definition(params.clone())).unwrap()
+    }
+
+    fn on_references(&self, params: &ReferenceParams) -> Option<Vec<Location>> {
+        block_on(self.references(params.clone())).unwrap()
+    }
+
+    fn on_completion(&self, params: &CompletionParams) -> Option<CompletionResponse> {
+        block_on(self.completion(params.clone())).unwrap()
+    }
+
+    /// Makes the next compile wait once it has started. The first channel says when it started,
+    /// and sending to the second lets it continue.
+    fn hold_compile(&self) -> (std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>) {
+        let (started, started_receiver) = std::sync::mpsc::channel();
+        let (release_sender, release) = std::sync::mpsc::channel();
+        *crate::lock(&self.shared.gate) = Some(crate::worker::Gate { started, release });
+        (started_receiver, release_sender)
+    }
+}
+
 /// A temporary project directory on disk, along with a language server instance that has
 /// opened its files. Any `$0` marker in a file's text is stripped and recorded as the cursor.
 pub struct TestProject {
     root: PathBuf,
+    _dir: TempDir,
     service: LspService<Backend>,
     cursor: Option<(Url, Position)>,
 }
@@ -35,27 +123,12 @@ impl TestProject {
     /// Creates a project that doesn't use the standard library, so that results only include
     /// what's declared in the test itself.
     pub fn new(files: &[(&str, &str)]) -> Self {
-        Self::with_manifest(Some("[compiler]\nentrypoint = \".\"\nstd = false\n"), files)
+        Self::with_manifest(Some(MANIFEST), files)
     }
 
     pub fn with_manifest(manifest: Option<&str>, files: &[(&str, &str)]) -> Self {
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-        let root = std::env::temp_dir().join(format!(
-            "rue-lsp-test-{}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::SeqCst)
-        ));
-
-        if root.exists() {
-            fs::remove_dir_all(&root).unwrap();
-        }
-
-        fs::create_dir_all(&root).unwrap();
-
-        // Canonicalize so that paths match the ones produced by the compiler (on macOS, the temp
-        // directory is behind a symlink).
-        let root = root.canonicalize().unwrap();
+        let dir = TempDir::new("rue-lsp-test");
+        let root = dir.path().to_path_buf();
 
         if let Some(manifest) = manifest {
             fs::write(root.join("Rue.toml"), manifest).unwrap();
@@ -87,6 +160,7 @@ impl TestProject {
 
         let project = Self {
             root,
+            _dir: dir,
             service,
             cursor,
         };
@@ -127,36 +201,7 @@ impl TestProject {
 
     pub fn hover(&self) -> String {
         let (uri, position) = self.cursor();
-
-        let Some(hover) = self.backend().on_hover(&HoverParams {
-            text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier::new(uri),
-                position,
-            ),
-            work_done_progress_params: WorkDoneProgressParams::default(),
-        }) else {
-            return "<none>\n".to_string();
-        };
-
-        let HoverContents::Array(contents) = hover.contents else {
-            panic!("unexpected hover contents: {:?}", hover.contents);
-        };
-
-        let mut output = String::new();
-
-        for (i, content) in contents.into_iter().enumerate() {
-            let MarkedString::LanguageString(content) = content else {
-                panic!("unexpected marked string: {content:?}");
-            };
-
-            if i > 0 {
-                output.push_str("---\n");
-            }
-
-            writeln!(output, "{}", content.value).unwrap();
-        }
-
-        output
+        hover(self.backend(), uri, position)
     }
 
     pub fn definitions(&self) -> String {
@@ -271,10 +316,7 @@ impl TestProject {
             .backend()
             .on_change_impl(&uri, Some(text.to_string()))
             .into_iter()
-            .find(|(kind, _)| match kind {
-                rue_diagnostic::SourceKind::File(path) => self.path(name) == Path::new(path),
-                rue_diagnostic::SourceKind::Std(_) => false,
-            })
+            .find(|(kind, _)| Some(kind) == normalize_path(&self.path(name)).ok().as_ref())
             .map(|(_, diagnostics)| diagnostics)
             .unwrap_or_default();
 
@@ -331,7 +373,16 @@ impl TestProject {
         let mut diagnostics = diagnostics
             .into_iter()
             .filter_map(|(kind, diagnostics)| match kind {
-                rue_diagnostic::SourceKind::File(path) => Some((PathBuf::from(path), diagnostics)),
+                // Files are reported with the paths the client uses
+                rue_diagnostic::SourceKind::File(_) => Some((
+                    self.backend()
+                        .shared
+                        .paths
+                        .uri(&kind)?
+                        .to_file_path()
+                        .ok()?,
+                    diagnostics,
+                )),
                 rue_diagnostic::SourceKind::Std(_) => None,
             })
             .collect::<Vec<_>>();
@@ -380,10 +431,37 @@ impl TestProject {
     }
 }
 
-impl Drop for TestProject {
-    fn drop(&mut self) {
-        fs::remove_dir_all(&self.root).ok();
+/// Renders the hover at a position, or `<none>`.
+fn hover(backend: &Backend, uri: Url, position: Position) -> String {
+    let Some(hover) = backend.on_hover(&HoverParams {
+        text_document_position_params: TextDocumentPositionParams::new(
+            TextDocumentIdentifier::new(uri),
+            position,
+        ),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    }) else {
+        return "<none>\n".to_string();
+    };
+
+    let HoverContents::Array(contents) = hover.contents else {
+        panic!("unexpected hover contents: {:?}", hover.contents);
+    };
+
+    let mut output = String::new();
+
+    for (i, content) in contents.into_iter().enumerate() {
+        let MarkedString::LanguageString(content) = content else {
+            panic!("unexpected marked string: {content:?}");
+        };
+
+        if i > 0 {
+            output.push_str("---\n");
+        }
+
+        writeln!(output, "{}", content.value).unwrap();
     }
+
+    output
 }
 
 fn position_of(text: &str, index: usize) -> Position {

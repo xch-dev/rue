@@ -173,7 +173,6 @@ fn test_diagnostics_manifest_invalid_lint_level() {
 
     expect![[r#"
         Rue.toml:5:17-5:25 Error: Unknown lint level `expect`, expected `allow`, `warn`, `deny` or `forbid`
-        main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", None));
 }
@@ -249,7 +248,6 @@ fn test_diagnostics_invalid_manifest() {
 
     expect![[r#"
         Rue.toml:0:9-0:9 Error: unclosed table, expected `]`
-        main.rue: <none>
     "#]]
     .assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    x\n}\n")));
 }
@@ -294,7 +292,11 @@ fn test_diagnostics_missing_entrypoint() {
         &[("main.rue", "fn main() -> Int {\n    42\n}\n")],
     );
 
-    expect![[""]].assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    x\n}\n")));
+    // The project can't be compiled, so only the manifest's diagnostics are reported
+    expect![[r#"
+        Rue.toml: <none>
+    "#]]
+    .assert_eq(&project.change("main.rue", Some("fn main() -> Int {\n    x\n}\n")));
 }
 
 #[test]
