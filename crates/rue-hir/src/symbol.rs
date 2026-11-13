@@ -1,7 +1,6 @@
 use std::fmt;
 
 use id_arena::Id;
-use indexmap::IndexMap;
 use rue_diagnostic::Name;
 use rue_types::TypeId;
 
@@ -54,7 +53,7 @@ pub struct FunctionSymbol {
     pub ty: TypeId,
     pub scope: ScopeId,
     pub vars: Vec<TypeId>,
-    pub parameters: IndexMap<String, SymbolId>,
+    pub parameters: Vec<SymbolId>,
     pub nil_terminated: bool,
     pub return_type: TypeId,
     pub body: HirId,

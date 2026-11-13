@@ -2,10 +2,11 @@
 //! types which differ are never displayed the same way.
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 use rue_diagnostic::Name;
 use rue_types::{
-    BuiltinTypes, FunctionType, Generic, Pair, Struct, Type, TypeId, Union, stringify,
+    BuiltinTypes, FunctionParameter, FunctionType, Generic, Pair, Struct, Type, TypeId, Union,
+    stringify,
 };
 
 struct Types {
@@ -37,8 +38,8 @@ impl Types {
             generics: generics.to_vec(),
             params: params
                 .iter()
-                .map(|&(name, ty)| (name.to_string(), ty))
-                .collect::<IndexMap<_, _>>(),
+                .map(|&(name, ty)| FunctionParameter::new(name, ty))
+                .collect(),
             nil_terminated,
             ret,
         }))

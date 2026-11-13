@@ -42,8 +42,9 @@ fn unwrap_semantic_impl(
         | Type::Struct(_)
         | Type::Any => id,
         Type::Union(ty) => {
+            // The only member may itself be an alias or a reference, which needs unwrapping too
             if ty.types.len() == 1 {
-                ty.types[0]
+                unwrap_semantic_impl(arena, ty.types[0], resolve_aliases, visited)
             } else {
                 id
             }

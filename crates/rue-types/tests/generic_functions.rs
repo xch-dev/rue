@@ -7,10 +7,9 @@
 use std::collections::HashMap;
 
 use id_arena::Arena;
-use indexmap::IndexMap;
 use rue_types::{
-    BuiltinTypes, Comparison, FunctionType, Generic, Inference, Pair, Type, TypeId, Union, compare,
-    compare_with_inference, resolve_inference, substitute_with_mappings,
+    BuiltinTypes, Comparison, FunctionParameter, FunctionType, Generic, Inference, Pair, Type,
+    TypeId, Union, compare, compare_with_inference, resolve_inference, substitute_with_mappings,
 };
 
 struct Types {
@@ -43,8 +42,8 @@ impl Types {
             params: params
                 .iter()
                 .enumerate()
-                .map(|(i, &ty)| (format!("p{i}"), ty))
-                .collect::<IndexMap<_, _>>(),
+                .map(|(i, &ty)| FunctionParameter::new(format!("p{i}"), ty))
+                .collect(),
             nil_terminated: true,
             ret,
         }))

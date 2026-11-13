@@ -21,6 +21,5 @@ rue-hir = { workspace = true }
 rue-lexer = { workspace = true }
 rue-parser = { workspace = true }
 rue-types = { workspace = true }
-indexmap = { workspace = true }
 num-bigint = { workspace = true }
 rowan = { workspace = true }

@@ -1,7 +1,6 @@
 use std::{fs, path::Path};
 
 use clvmr::{Allocator, serde::node_from_bytes};
-use indexmap::IndexMap;
 use log::debug;
 use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::{DiagnosticKind, SourceKind};
@@ -9,7 +8,7 @@ use rue_hir::{
     Declaration, FunctionKind, FunctionSymbol, HirId, ParameterSymbol, Symbol, SymbolId, Test,
 };
 use rue_parser::SyntaxToken;
-use rue_types::{FunctionType, Type};
+use rue_types::{FunctionParameter, FunctionType, Type};
 
 use crate::{
     BlockKind, Compiler, CompletionContext, ReturnTarget, SyntaxItemKind, compile_block,
@@ -53,8 +52,8 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
         ctx.builtins().nil.ty
     };
 
-    let mut parameters = IndexMap::new();
-    let mut param_types = IndexMap::new();
+    let mut parameters = Vec::new();
+    let mut param_types = Vec::new();
     let mut nil_terminated = true;
 
     let len = function.parameters().count();
@@ -92,8 +91,8 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
             .binding()
             .map_or(String::new(), |binding| binding.syntax().text().to_string());
 
-        param_types.insert(name.clone(), ty);
-        parameters.insert(name, symbol);
+        param_types.push(FunctionParameter::new(name, ty));
+        parameters.push(symbol);
 
         ctx.pop_declaration();
     }
@@ -110,7 +109,7 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem) -> Symbo
     }));
 
     if function.source_path().is_some() {
-        for &parameter in parameters.values() {
+        for &parameter in &parameters {
             ctx.reference(Declaration::Symbol(parameter), None);
         }
     }
@@ -175,9 +174,7 @@ pub fn compile_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
     let range = function.syntax().text_range();
     ctx.push_scope(scope, range.start());
 
-    for (i, parameter) in function.parameters().enumerate() {
-        let symbol = parameters[i];
-
+    for (parameter, symbol) in function.parameters().zip(parameters) {
         ctx.push_declaration(Declaration::Symbol(symbol));
 
         if let Some(binding) = parameter.binding() {

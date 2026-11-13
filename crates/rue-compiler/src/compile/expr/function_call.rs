@@ -146,7 +146,7 @@ pub fn compile_function_call_expr(
                 let index = lambdas
                     .iter()
                     .position(|&i| {
-                        !has_uninferred_parameters(ctx, function.params[i], function, &inferred)
+                        !has_uninferred_parameters(ctx, function.params[i].ty, function, &inferred)
                     })
                     .unwrap_or(0);
 
@@ -154,7 +154,7 @@ pub fn compile_function_call_expr(
             };
 
             let expr = &args[i];
-            let param = function.params[i];
+            let param = function.params[i].ty;
 
             // Use what has been inferred from the previous arguments as the expected type
             let mut mappings = inferred;
@@ -209,7 +209,7 @@ pub fn compile_function_call_expr(
             // the function's type doesn't reference it at all.
             if is_type_in_scope(ctx, generic)
                 || !std::iter::once(function.ret)
-                    .chain(function.params.values().copied())
+                    .chain(function.param_types())
                     .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
             {
                 continue;
@@ -245,9 +245,8 @@ pub fn compile_function_call_expr(
                     .get(&generic)
                     .is_some_and(|&ty| is_expected_generic(ctx, expected_type, ty))
                     && !function
-                        .params
-                        .values()
-                        .any(|&param| contains_generic(ctx.types_mut(), param, generic))
+                        .param_types()
+                        .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
                 {
                     let copy = ctx.ty(generic).clone();
                     let copy = ctx.alloc_type(copy);
@@ -330,10 +329,11 @@ fn has_uninferred_parameters(
 
     rue_types::extract_functions(ctx.types_mut(), expected, true)
         .into_iter()
-        .flat_map(|function| function.params.into_values())
-        .any(|ty| {
+        .flat_map(|function| function.params)
+        .any(|param| {
             callee.generics.iter().any(|&generic| {
-                !mappings.contains_key(&generic) && contains_generic(ctx.types_mut(), ty, generic)
+                !mappings.contains_key(&generic)
+                    && contains_generic(ctx.types_mut(), param.ty, generic)
             })
         })
 }

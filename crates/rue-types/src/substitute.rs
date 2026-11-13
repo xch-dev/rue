@@ -4,7 +4,9 @@ use id_arena::Arena;
 use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
-use crate::{Alias, FunctionType, Pair, Struct, Type, TypeId, Union, step, stringify_impl};
+use crate::{
+    Alias, FunctionParameter, FunctionType, Pair, Struct, Type, TypeId, Union, step, stringify_impl,
+};
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
     substitute_with_mappings(arena, id, &HashMap::new())
@@ -241,9 +243,9 @@ fn substitute_impl(
             let params = function
                 .params
                 .iter()
-                .map(|(name, id)| {
-                    let id = substitute_impl(arena, *id, &inner_map, inner_scope, ctx);
-                    (name.clone(), id)
+                .map(|param| {
+                    let ty = substitute_impl(arena, param.ty, &inner_map, inner_scope, ctx);
+                    FunctionParameter::new(param.name.clone(), ty)
                 })
                 .collect();
             let ret = substitute_impl(arena, function.ret, &inner_map, inner_scope, ctx);
@@ -341,7 +343,7 @@ pub(crate) fn free_generics(arena: &Arena<Type>, id: TypeId) -> HashSet<TypeId> 
             Type::Apply(apply) => stack.extend(apply.generics.values().copied()),
             Type::Function(function) => {
                 stack.push(function.ret);
-                stack.extend(function.params.values().copied());
+                stack.extend(function.param_types());
             }
             Type::Union(union) => stack.extend(union.types.iter().copied()),
         }
@@ -390,7 +392,7 @@ pub fn contains_unresolved(arena: &Arena<Type>, id: TypeId) -> bool {
             }
             Type::Function(function) => {
                 stack.push(function.ret);
-                stack.extend(function.params.values().copied());
+                stack.extend(function.param_types());
             }
             Type::Union(union) => stack.extend(union.types.iter().copied()),
         }
@@ -434,7 +436,7 @@ pub(crate) fn references_generic(
             Type::Function(function) => {
                 if !function.generics.contains(&generic) {
                     stack.push(function.ret);
-                    stack.extend(function.params.values().copied());
+                    stack.extend(function.param_types());
                 }
             }
             Type::Union(union) => stack.extend(union.types.iter().copied()),

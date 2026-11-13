@@ -883,10 +883,10 @@ pub(crate) fn compare_impl(
                 ctx.flipped = !ctx.flipped;
                 mem::swap(&mut ctx.lhs_env, &mut ctx.rhs_env);
 
-                for (i, param) in lhs.params.values().enumerate() {
+                for (lhs_param, rhs_param) in lhs.params.iter().zip(&rhs.params) {
                     result = max(
                         result,
-                        compare_impl(arena, builtins, ctx, rhs.params[i], *param, None, None),
+                        compare_impl(arena, builtins, ctx, rhs_param.ty, lhs_param.ty, None, None),
                     );
                 }
 

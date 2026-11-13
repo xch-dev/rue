@@ -1,0 +1,43 @@
+test fn duplicate_function_parameter() -> Int {
+    first(1, 2)
+}
+
+fn first(a: Int, a: Bytes) -> Int {
+    a
+}
+
+test fn duplicate_lambda_parameter() -> Int {
+    let lambda = fn(a: Int, a: Int) => a;
+    lambda(1, 2)
+}
+
+test fn duplicate_destructured_parameter() -> Int {
+    pair((1, 2))
+}
+
+fn pair((a, a): (Int, Int)) -> Int {
+    a
+}
+
+test fn duplicate_let_binding() -> Int {
+    let (a, a) = (1, 2);
+    a
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+test fn duplicate_struct_binding() -> Int {
+    let { x, y: x }: Point = Point { x: 1, y: 2 };
+    x
+}
+
+test fn duplicate_underscore_prefixed_parameter() -> Int {
+    prefixed(1, 2)
+}
+
+fn prefixed(_a: Int, _a: Int) -> Int {
+    1
+}

@@ -3,12 +3,12 @@
 use std::collections::HashMap;
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 use rue_diagnostic::Name;
 
 use crate::{
-    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionType,
-    Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
+    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, Comparison, FunctionParameter,
+    FunctionType, Generic, Inference, InferenceCandidates, Pair, Struct, Type, TypeId, Union,
     add_expected_bounds, check, compare, compare_with_inference, extract_atoms, extract_functions,
     extract_pairs, extract_structs, infer_from_expected, is_non_contractive, resolve_inference,
     stringify, substitute, substitute_with_mappings, subtract, unwrap_semantic,
@@ -68,8 +68,8 @@ impl Db {
             params: params
                 .iter()
                 .enumerate()
-                .map(|(i, &ty)| (format!("p{i}"), ty))
-                .collect::<IndexMap<_, _>>(),
+                .map(|(i, &ty)| FunctionParameter::new(format!("p{i}"), ty))
+                .collect(),
             nil_terminated,
             ret,
         }))
@@ -956,6 +956,29 @@ mod recursive {
     }
 
     #[test]
+    fn unwrap_semantic_unwraps_the_only_member_of_a_union() {
+        let mut db = Db::new();
+        let BuiltinTypes { int, nil, .. } = db.builtins;
+
+        // The types are substituted first, so they're compared by kind rather than by id
+        let inner = db.union(&[int, nil]);
+        let alias = db.alias("MaybeInt", &[], inner);
+        let union = db.union(&[alias]);
+
+        let unwrapped = unwrap_semantic(&mut db.arena, union, true);
+        assert!(matches!(&db.arena[unwrapped], Type::Union(union) if union.types.len() == 2));
+
+        let unwrapped = unwrap_semantic(&mut db.arena, union, false);
+        assert!(matches!(db.arena[unwrapped], Type::Alias(_)));
+
+        let reference = db.alloc(Type::Ref(int));
+        let union = db.union(&[reference]);
+
+        let unwrapped = unwrap_semantic(&mut db.arena, union, false);
+        assert!(matches!(db.arena[unwrapped], Type::Atom(_)));
+    }
+
+    #[test]
     fn non_contractive_types_do_not_overflow() {
         let mut db = Db::new();
         let BuiltinTypes {
@@ -1497,7 +1520,7 @@ mod substitution {
 
         // The function's own generic is bound by it, so it isn't substituted
         assert_eq!(function.generics, vec![u]);
-        assert_eq!(db.cmp(function.params[0], int), Comparison::Assign);
+        assert_eq!(db.cmp(function.params[0].ty, int), Comparison::Assign);
         assert_eq!(function.ret, u);
     }
 
@@ -1516,7 +1539,7 @@ mod substitution {
         };
 
         assert_ne!(function.generics, vec![u]);
-        assert_eq!(function.params[0], function.generics[0]);
+        assert_eq!(function.params[0].ty, function.generics[0]);
         assert_eq!(function.ret, u);
 
         // So it isn't the type of the identity function

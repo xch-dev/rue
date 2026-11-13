@@ -96,13 +96,17 @@ pub(crate) fn stringify_impl(
                 .params
                 .iter()
                 .enumerate()
-                .map(|(i, (name, id))| {
+                .map(|(i, param)| {
                     let spread = if !function.nil_terminated && i == len - 1 {
                         "..."
                     } else {
                         ""
                     };
-                    format!("{spread}{name}: {}", stringify_impl(arena, *id, stack))
+                    format!(
+                        "{spread}{}: {}",
+                        param.name,
+                        stringify_impl(arena, param.ty, stack)
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join(", ");

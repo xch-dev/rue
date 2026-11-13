@@ -1,0 +1,7 @@
+test fn repeated_function_type_parameter() -> Int {
+    apply(fn(a: Int, b: Int) => a - b)
+}
+
+fn apply(f: fn(x: Int, x: Int) -> Int) -> Int {
+    f(5, 2)
+}

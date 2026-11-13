@@ -265,12 +265,12 @@ fn signature_types(db: &Database, declaration: Declaration) -> Vec<TypeId> {
     match declaration {
         Declaration::Symbol(symbol) => match db.symbol(symbol) {
             Symbol::Function(function) => std::iter::once(function.return_type)
-                .chain(function.parameters.values().filter_map(|&parameter| {
-                    match db.symbol(parameter) {
+                .chain(function.parameters.iter().filter_map(
+                    |&parameter| match db.symbol(parameter) {
                         Symbol::Parameter(parameter) => Some(parameter.ty),
                         _ => None,
-                    }
-                }))
+                    },
+                ))
                 .collect(),
             Symbol::Constant(constant) => vec![constant.value.ty],
             _ => Vec::new(),
@@ -335,8 +335,8 @@ fn reached_names(
         Type::Function(function) => {
             walk(function.ret, reached);
 
-            for &param in function.params.values() {
-                walk(param, reached);
+            for ty in function.param_types() {
+                walk(ty, reached);
             }
         }
         Type::Unresolved | Type::Generic(_) | Type::Any | Type::Never | Type::Atom(_) => {}

@@ -209,11 +209,7 @@ impl<'a> UnusedStructField<'a> {
             return false;
         };
 
-        let Some(&parameter) = function
-            .parameters
-            .get_index(index)
-            .map(|(_, symbol)| symbol)
-        else {
+        let Some(&parameter) = function.parameters.get(index) else {
             return false;
         };
 

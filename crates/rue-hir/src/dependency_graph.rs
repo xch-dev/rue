@@ -294,7 +294,7 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     match db.symbol(symbol) {
         Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {}
         Symbol::Function(function) => {
-            for &parameter in function.parameters.values() {
+            for &parameter in &function.parameters {
                 graph.owners.insert(parameter, symbol);
             }
 

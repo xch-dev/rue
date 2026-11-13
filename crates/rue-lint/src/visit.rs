@@ -209,7 +209,6 @@ impl Walker<'_> {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use indexmap::IndexMap;
     use rue_diagnostic::LintLevels;
     use rue_hir::{Database, FunctionKind, FunctionSymbol, Scope};
     use rue_types::BuiltinTypes;
@@ -273,7 +272,7 @@ mod tests {
             ty: types.unresolved,
             scope,
             vars: Vec::new(),
-            parameters: IndexMap::new(),
+            parameters: Vec::new(),
             nil_terminated: true,
             return_type: types.unresolved,
             body,

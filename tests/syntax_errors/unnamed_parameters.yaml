@@ -1,0 +1,12 @@
+diagnostics:
+- Unused parameter `Int` at unnamed_parameters.rue:1:12
+- Expected `:`, found `,` at unnamed_parameters.rue:1:15
+- Duplicate symbol `Int` found in scope at unnamed_parameters.rue:1:17
+- Expected `:`, found `)` at unnamed_parameters.rue:1:20
+- Type of parameter cannot be inferred, it must be specified explicitly at unnamed_parameters.rue:10:21
+- Type of parameter cannot be inferred, it must be specified explicitly at unnamed_parameters.rue:10:26
+- Duplicate symbol `Int` found in scope at unnamed_parameters.rue:10:26
+- Expected `:`, found `,` at unnamed_parameters.rue:18:27
+- Expected `:`, found `)` at unnamed_parameters.rue:18:32
+- Expected one of `)`, `...`, binding, found `:` at unnamed_parameters.rue:22:12
+- Expected one of `)`, `...`, binding, found `:` at unnamed_parameters.rue:22:19
