@@ -38,11 +38,27 @@ pub struct Project {
     pub forbidden_lints: Vec<ForbiddenLint>,
 }
 
+/// Finds the project that a path belongs to.
+///
+/// The nearest `Rue.toml` in the path or its ancestors is used if there is one, so a project with
+/// a manifest is found from anywhere inside it, even from a directory with its own `main.rue`.
+/// Otherwise the nearest directory with a `main.rue` is the project, and otherwise a `.rue` file
+/// is a project by itself.
 pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> {
-    if path.is_file() && path.file_name().is_some_and(|name| name == "Rue.toml") {
+    let manifest_path = path.ancestors().find_map(|ancestor| {
+        if ancestor.is_file() && ancestor.file_name().is_some_and(|name| name == "Rue.toml") {
+            Some(ancestor.to_path_buf())
+        } else if ancestor.is_dir() && ancestor.join("Rue.toml").exists() {
+            Some(ancestor.join("Rue.toml"))
+        } else {
+            None
+        }
+    });
+
+    if let Some(path) = manifest_path {
         let manifest: Manifest =
-            toml::from_str(&fs::read_to_string(path)?).map_err(|error| Error::Toml {
-                path: path.to_path_buf(),
+            toml::from_str(&fs::read_to_string(&path)?).map_err(|error| Error::Toml {
+                path: path.clone(),
                 error,
             })?;
         let entrypoint = path
@@ -65,7 +81,7 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
         return Ok(Some(Project {
             format_options: manifest.formatter,
             manifest: Some(manifest),
-            manifest_path: Some(path.to_path_buf()),
+            manifest_path: Some(path),
             options,
             entrypoint,
             unknown_lints: problems.unknown,
@@ -73,49 +89,26 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
         }));
     }
 
-    if path.is_dir() && path.join("Rue.toml").exists() {
-        return find_project(&path.join("Rue.toml"), debug);
-    }
+    let entrypoint = path
+        .ancestors()
+        .find(|ancestor| ancestor.is_dir() && ancestor.join("main.rue").exists())
+        .or_else(|| {
+            (path.is_file() && path.extension().is_some_and(|ext| ext == "rue")).then_some(path)
+        });
 
-    if let Some(parent) = path.parent()
-        && let Some(project) = find_project(parent, debug)?
-    {
-        return Ok(Some(project));
-    }
-
-    if path.is_dir() && path.join("main.rue").exists() {
-        return Ok(Some(Project {
-            manifest: None,
-            manifest_path: None,
-            options: if debug {
-                CompilerOptions::debug()
-            } else {
-                CompilerOptions::default()
-            },
-            format_options: FormatOptions::default(),
-            entrypoint: path.to_path_buf(),
-            unknown_lints: Vec::new(),
-            forbidden_lints: Vec::new(),
-        }));
-    }
-
-    if path.is_file() && path.extension().is_some_and(|ext| ext == "rue") {
-        return Ok(Some(Project {
-            manifest: None,
-            manifest_path: None,
-            options: if debug {
-                CompilerOptions::debug()
-            } else {
-                CompilerOptions::default()
-            },
-            format_options: FormatOptions::default(),
-            entrypoint: path.to_path_buf(),
-            unknown_lints: Vec::new(),
-            forbidden_lints: Vec::new(),
-        }));
-    }
-
-    Ok(None)
+    Ok(entrypoint.map(|entrypoint| Project {
+        manifest: None,
+        manifest_path: None,
+        options: if debug {
+            CompilerOptions::debug()
+        } else {
+            CompilerOptions::default()
+        },
+        format_options: FormatOptions::default(),
+        entrypoint: entrypoint.to_path_buf(),
+        unknown_lints: Vec::new(),
+        forbidden_lints: Vec::new(),
+    }))
 }
 
 #[cfg(test)]
@@ -360,14 +353,31 @@ mod tests {
     }
 
     #[test]
-    fn outermost_main_file_is_used() {
-        // Parent directories are searched before the directory's own `main.rue`, so a `main.rue`
-        // further up wins over a nearer one
+    fn nearest_main_file_is_used() {
         let dir = TempDir::new();
         dir.write("main.rue", "");
         dir.write("inner/main.rue", "");
+        let file = dir.write("inner/deeper/other.rue", "");
 
-        assert_eq!(find(&dir.0.join("inner"), false).entrypoint, dir.0);
+        assert_eq!(
+            find(&dir.0.join("inner"), false).entrypoint,
+            dir.0.join("inner")
+        );
+        assert_eq!(find(&file, false).entrypoint, dir.0.join("inner"));
+        assert_eq!(find(&dir.0, false).entrypoint, dir.0);
+    }
+
+    #[test]
+    fn manifest_further_up_is_used_over_a_main_file() {
+        let dir = TempDir::new();
+        let manifest = dir.write("Rue.toml", "[compiler]\nentrypoint = \"src\"\n");
+        dir.write("src/main.rue", "");
+        dir.write("src/inner/main.rue", "");
+
+        let project = find(&dir.0.join("src/inner"), false);
+
+        assert_eq!(project.manifest_path.as_deref(), Some(manifest.as_path()));
+        assert_eq!(project.entrypoint, dir.0.join("src"));
     }
 
     #[test]
