@@ -433,6 +433,13 @@ const DEEP_TYPES: &[(&str, usize, Shape)] = &[
             links(n, |i| format!("type T{i} = Int | T{};\n", i + 1))
         )
     }),
+    // Narrowing a field walks through each alias in the union to get to the field
+    ("union aliases narrowed by a guard on a field", 1_000, |n| {
+        format!(
+            "fn main(value: T0) -> Any {{ if value.first is 1 {{ value }} else {{ 2 }} }}\n{}type T{n} = (Int, nil);",
+            links(n, |i| format!("type T{i} = (Int, nil) | T{};\n", i + 1))
+        )
+    }),
     // Each application of the alias nests its whole body, so this compares two types that are 100
     // levels deep for each level of nesting in the source
     ("nested generic aliases", 3_000, |n| {

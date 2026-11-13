@@ -13,8 +13,9 @@ const RED_ZONE: usize = 256 * 1024;
 const STACK_SIZE: usize = 4 * 1024 * 1024;
 
 /// Runs `f`, on a new stack allocated on the heap if the current one is running out, so that a
-/// deeply nested type doesn't overflow it.
+/// deeply nested type doesn't overflow it. Other crates use this for their own recursion over
+/// types.
 #[inline]
-pub(crate) fn grow_stack<R>(f: impl FnOnce() -> R) -> R {
+pub fn grow_stack<R>(f: impl FnOnce() -> R) -> R {
     stacker::maybe_grow(RED_ZONE, STACK_SIZE, f)
 }

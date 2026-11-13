@@ -12,6 +12,18 @@ pub fn replace_type(
     to: TypeId,
     path: &[TypePath],
 ) -> TypeId {
+    // Aliases and unions are walked through without consuming the path, so this goes as deep as
+    // a chain of them
+    rue_types::grow_stack(|| replace_type_inner(db, builtins, from, to, path))
+}
+
+fn replace_type_inner(
+    db: &mut Database,
+    builtins: &BuiltinTypes,
+    from: TypeId,
+    to: TypeId,
+    path: &[TypePath],
+) -> TypeId {
     let Some(next) = path.first().copied() else {
         return rue_types::intersect(db.types_mut(), builtins, from, to);
     };

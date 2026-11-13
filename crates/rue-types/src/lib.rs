@@ -22,7 +22,7 @@ pub use extractors::*;
 pub use intersect::*;
 pub(crate) use memo::*;
 pub use regular::*;
-pub(crate) use stack::grow_stack;
+pub use stack::grow_stack;
 #[cfg(feature = "step-counter")]
 pub use steps::count_steps;
 pub(crate) use steps::step;
