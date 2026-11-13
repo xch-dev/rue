@@ -67,11 +67,7 @@ fn check(arena: &mut Arena<Lir>, lir: LirId, envs: &[&str], expect: Expect) {
 }
 
 const ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "((1 . 2))", "(5 7)"];
-
-// Some rewrites assume that values match their static types, so these only contain
-// environments where the first argument is an atom or a list respectively
-const ATOM_ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "(5 7)"];
-const LIST_ENVS: &[&str] = &["()", "(())", "((1 . 2))", "((1 2) 3)"];
+const PAIR_ENVS: &[&str] = &["()", "(())", "((1 . 2))", "((1 2) 3)", "(5)", "(0x00)"];
 
 #[test]
 fn test_not_ne_nil_is_not_value() {
@@ -94,7 +90,7 @@ fn test_double_not() {
     check(&mut arena, lir, ENVS, expect!["(not (not 2))"]);
 
     let x = path(&mut arena, 2);
-    let listp = arena.alloc(Lir::Listp(x, true));
+    let listp = arena.alloc(Lir::Listp(x));
     let inner = not(&mut arena, listp);
     let lir = not(&mut arena, inner);
     check(&mut arena, lir, ENVS, expect!["(l 2)"]);
@@ -112,7 +108,7 @@ fn test_not_eq_boolean_nil() {
     // (= (l x) ()) is (not (l x)), since (l x) is always an atom
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
-    let listp = arena.alloc(Lir::Listp(x, true));
+    let listp = arena.alloc(Lir::Listp(x));
     let nil = atom(&mut arena, &[]);
     let eq = arena.alloc(Lir::Eq(listp, nil));
     let lir = not(&mut arena, eq);
@@ -121,7 +117,7 @@ fn test_not_eq_boolean_nil() {
 
 #[test]
 fn test_eq_nil_condition() {
-    // In a condition, (= x ()) is (not x), assuming that x is an atom
+    // (= x ()) fails if x is a pair, so it isn't replaced with (not x)
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
     let nil = atom(&mut arena, &[]);
@@ -132,26 +128,60 @@ fn test_eq_nil_condition() {
     check(
         &mut arena,
         lir,
-        ATOM_ENVS,
-        expect!["(a (i 2 (q 1 . 2) (q 1 . 1)) 1)"],
+        ENVS,
+        expect!["(a (i (= () 2) (q 1 . 1) (q 1 . 2)) 1)"],
+    );
+}
+
+#[test]
+fn test_eq_nil_atom_condition() {
+    // In a condition, (= x ()) is (not x) if x is always an atom
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let length = arena.alloc(Lir::Strlen(x));
+    let nil = atom(&mut arena, &[]);
+    let eq = arena.alloc(Lir::Eq(length, nil));
+    let one = atom(&mut arena, &[1]);
+    let two = atom(&mut arena, &[2]);
+    let lir = arena.alloc(Lir::If(eq, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i (strlen 2) (q 1 . 2) (q 1 . 1)) 1)"],
     );
 }
 
 #[test]
 fn test_listp_condition() {
-    // In a condition, (l x) is x, assuming that x is a list
+    // (l x) isn't replaced with x, since a truthy atom would take the other branch
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
-    let listp = arena.alloc(Lir::Listp(x, false));
+    let listp = arena.alloc(Lir::Listp(x));
     let one = atom(&mut arena, &[1]);
     let two = atom(&mut arena, &[2]);
     let lir = arena.alloc(Lir::If(listp, one, two, false));
     check(
         &mut arena,
         lir,
-        LIST_ENVS,
-        expect!["(a (i 2 (q 1 . 1) (q 1 . 2)) 1)"],
+        PAIR_ENVS,
+        expect!["(a (i (l 2) (q 1 . 1) (q 1 . 2)) 1)"],
     );
+}
+
+#[test]
+fn test_inline_if_drops_pure_branch() {
+    // Both branches of an inline if are evaluated, so the other one is only dropped if it can't fail
+    let mut arena = Arena::new();
+    let nil = atom(&mut arena, &[]);
+    let x = path(&mut arena, 2);
+    let one = atom(&mut arena, &[1]);
+    let lir = arena.alloc(Lir::If(nil, one, x, true));
+    check(&mut arena, lir, ENVS, expect!["2"]);
+
+    let fails = raise(&mut arena);
+    let lir = arena.alloc(Lir::If(nil, fails, x, true));
+    check(&mut arena, lir, ENVS, expect!["(i () (x) 2)"]);
 }
 
 #[test]
@@ -330,10 +360,8 @@ const FUZZ_ATOMS: &[&[u8]] = &[
     &[0x01, 0x00],
 ];
 
-// These paths never share a parent, since opt_cons intentionally collapses a pair of sibling
-// paths into their parent path, assuming that the parent is a pair (see its documentation)
-// For the same reason, first and rest are never applied directly to a path
-const FUZZ_PATHS: &[u32] = &[1, 2, 5, 11];
+// Paths 4 and 6 are siblings, so rebuilding their parent with a cons is covered too
+const FUZZ_PATHS: &[u32] = &[1, 2, 4, 5, 6, 11];
 
 fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
     if depth == 0 || rng.below(5) == 0 {
@@ -358,33 +386,30 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
 
     let lir = match rng.below(19) {
         0 => Lir::Not(next()),
-        1 => eq(arena, next(), next()),
+        1 => eq(arena, rng, next(), next()),
         2 => {
             let nil = atom(arena, &[]);
             if rng.below(2) == 0 {
-                eq(arena, next(), nil)
+                eq(arena, rng, next(), nil)
             } else {
-                eq(arena, nil, next())
+                eq(arena, rng, nil, next())
             }
         }
         3 => Lir::Cons(next(), next()),
-        4 => Lir::Listp(next(), true),
-        // A value which is always either nil or a pair, as the type of a list says it is
+        4 => Lir::Listp(next()),
+        // A value which is either nil or a pair
         5 => {
             let pair = arena.alloc(Lir::Cons(next(), next()));
             let nil = atom(arena, &[]);
             let list = arena.alloc(Lir::If(next(), pair, nil, false));
-            Lir::Listp(list, false)
+            Lir::Listp(list)
         }
         6 => Lir::If(next(), next(), next(), rng.below(2) == 0),
         7 => Lir::All(gen_args(arena, rng, 0)),
         8 => Lir::Any(gen_args(arena, rng, 0)),
         9 => Lir::Raise(vec![]),
         10 | 11 => {
-            let mut value = next();
-            while matches!(arena[value], Lir::Path(_)) {
-                value = generate(arena, rng, depth - 1);
-            }
+            let value = next();
             if rng.below(2) == 0 {
                 Lir::First(value)
             } else {
@@ -423,9 +448,13 @@ fn generate(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
     arena.alloc(lir)
 }
 
-// Rewrites in conditions assume that `=` is only used on atoms, as Rue's types ensure
-// Either operand may become nil after it's optimized, so both are made atoms (+ fails on pairs)
-fn eq(arena: &mut Arena<Lir>, left: LirId, right: LirId) -> Lir {
+// Sometimes the operands are made atoms (+ fails on pairs), so that rewrites which only apply
+// to atoms are covered as well as operands which may be pairs
+fn eq(arena: &mut Arena<Lir>, rng: &mut Rng, left: LirId, right: LirId) -> Lir {
+    if rng.below(2) == 0 {
+        return Lir::Eq(left, right);
+    }
+
     let left = arena.alloc(Lir::Add(vec![left]));
     let right = arena.alloc(Lir::Add(vec![right]));
     Lir::Eq(left, right)

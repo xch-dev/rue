@@ -1,0 +1,180 @@
+tests:
+- name: unused_division
+  program: (i () (/ 2 5) 2)
+  debug_program: (i () (/ 2 5) 2)
+  solution: (1 0)
+  byte_cost: 180000
+  clvm_error: Division by zero
+- name: unused_assert
+  program: (a (q 3 () (a 2 5) 5) (c (q 2 (i (> 1 (q . 5)) (q . 1) (q 8)) 1) 1))
+  debug_program: (a (q 3 () (a 2 5) 5) (c (q 2 (i (> 1 (q . 5)) (q . 1) (q 8 (q . "assertion failed at preserve_errors.rue:5:5"))) 1) 1))
+  solution: (1)
+  byte_cost: 708000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at preserve_errors.rue:5:5"
+- name: unused_field
+  program: (i () 4 (q . 1))
+  debug_program: (i () (f 2) (q . 1))
+  solution: (1)
+  byte_cost: 132000
+  clvm_error: path into atom
+  debug_clvm_error: 'InvalidOperatorArg: first of non-cons'
+- name: unused_chain
+  program: (i () (+ (/ 2 5) (q . 1)) 2)
+  debug_program: (a (q 3 () (+ 2 (q . 1)) 5) (c (/ 2 5) 1))
+  solution: (1 0)
+  byte_cost: 276000
+  clvm_error: Division by zero
+- name: single_use_in_branch
+  program: (a (q 2 (i 23 (q . 2) (q)) 1) (c (/ 2 5) 1))
+  debug_program: (a (q 2 (i 23 (q . 2) (q)) 1) (c (/ 2 5) 1))
+  solution: (1 0 ())
+  byte_cost: 468000
+  clvm_error: Division by zero
+- name: single_use_after_early_return
+  program: (a (q 2 (i 23 (q) (q . 2)) 1) (c (/ 2 5) 1))
+  debug_program: (a (q 2 (i 23 (q) (q . 2)) 1) (c (/ 2 5) 1))
+  solution: (1 0 1)
+  byte_cost: 468000
+  clvm_error: Division by zero
+- name: single_use_in_and
+  program: (a (q 2 (i 23 (q 2 (i 2 (q 1 . 1) (q)) 1) (q)) 1) (c (= (/ 2 5) (q . 1)) 1))
+  debug_program: (a (q 2 (i 23 (q 2 (i 2 (q 1 . 1) (q)) 1) (q)) 1) (c (= (/ 2 5) (q . 1)) 1))
+  solution: (1 0 ())
+  byte_cost: 804000
+  clvm_error: Division by zero
+- name: single_use_in_or
+  program: (a (q 2 (i 23 (q 1 . 1) (q 2 (i 2 (q 1 . 1) (q)) 1)) 1) (c (= (/ 2 5) (q . 1)) 1))
+  debug_program: (a (q 2 (i 23 (q 1 . 1) (q 2 (i 2 (q 1 . 1) (q)) 1)) 1) (c (= (/ 2 5) (q . 1)) 1))
+  solution: (1 0 1)
+  byte_cost: 828000
+  clvm_error: Division by zero
+- name: destructure_failing_value
+  program: (r (c (/ 2 5) (q . 1)))
+  debug_program: (a (q 6 2) (c (c (/ 2 5) (q . 1)) 1))
+  solution: (1 0)
+  byte_cost: 228000
+  clvm_error: Division by zero
+- name: single_use_in_lambda
+  program: (i () (/ 2 5) 2)
+  debug_program: (i () (/ 2 5) 2)
+  solution: (1 0)
+  byte_cost: 180000
+  clvm_error: Division by zero
+- name: constant_in_branch
+  program: (a (q 2 (q 2 (i 11 (q . 2) (q)) 1) (c (a 2 (q . 1)) 1)) (c (q 2 (i (> 1 (q . 5)) (q . 1) (q 8)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i 11 (q . 2) (q)) 1) (c (a 2 (q . 1)) 1)) (c (q 2 (i (> 1 (q . 5)) (q . 1) (q 8 (q . "assertion failed at preserve_errors.rue:5:5"))) 1) 1))
+  solution: (())
+  byte_cost: 1020000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at preserve_errors.rue:5:5"
+- name: unused_argument
+  program: (i () (/ 2 5) 2)
+  debug_program: (a (q 2 2 (c 5 (/ 5 11))) (c (q . 2) 1))
+  solution: (1 0)
+  byte_cost: 180000
+  clvm_error: Division by zero
+- name: argument_in_branch
+  program: (a (q 2 2 (c (/ 5 11) 23)) (c (q 2 (i 3 (q . 2) (q)) 1) 1))
+  debug_program: (a (q 2 2 (c (/ 5 11) 23)) (c (q 2 (i 3 (q . 2) (q)) 1) 1))
+  solution: (1 0 ())
+  byte_cost: 636000
+  clvm_error: Division by zero
+- name: argument_through_inlined_function
+  program: (i () (/ 2 5) (a (i 11 (q 19 2 5) (q)) 1))
+  debug_program: (a (q 2 4 (c 6 (c (/ 5 11) 23))) (c (c (q 2 2 (c 5 7)) (q 2 (i 3 (q . 2) (q)) 1)) 1))
+  solution: (1 0 ())
+  byte_cost: 468000
+  clvm_error: Division by zero
+- name: nested_arguments_in_branches
+  program: (a (q 2 14 (c (a 10 (c (a 4 (c (/ 5 11) 23)) 23)) 23)) (c (c (q 2 (i 3 (q 16 2) (q)) 1) (c (q 2 (i 3 (q 16 2 (q . 1)) (q 1 . 1)) 1) (q 2 (i 3 (q 16 2 (q . 2)) (q 1 . 2)) 1))) 1))
+  debug_program: (a (q 2 14 (c (a 10 (c (a 4 (c (/ 5 11) 23)) 23)) 23)) (c (c (q 2 (i 3 (q 16 2 ()) (q)) 1) (c (q 2 (i 3 (q 16 2 (q . 1)) (q 1 . 1)) 1) (q 2 (i 3 (q 16 2 (q . 2)) (q 1 . 2)) 1))) 1))
+  solution: (1 0 ())
+  byte_cost: 1836000
+  clvm_error: Division by zero
+- name: guard_value
+  program: (i () (/ 2 5) (q . 1))
+  debug_program: (i () (/ 2 5) (q . 1))
+  solution: (1 0)
+  byte_cost: 204000
+  clvm_error: Division by zero
+- name: guard_in_closure
+  program: (a (q 2 (a 2 (i () (/ 5 11) (q . 1))) ()) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c () ()))) ()))) 1))
+  debug_program: (a (q 2 (q 2 2 ()) (c (a 2 (i () (/ 5 11) (q . 1))) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c () ()))) ()))) 1))
+  solution: (1 0)
+  byte_cost: 1236000
+  clvm_error: Division by zero
+- name: guard_in_inline_closure
+  program: (a (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (i () (/ 2 5) (q . 1))) (c () ()))) ()))) ())
+  debug_program: (a (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (i () (/ 2 5) (q . 1))) (c () ()))) ()))) 1))
+  solution: (1 0)
+  byte_cost: 972000
+  clvm_error: Division by zero
+- name: rebuild_main_parameters
+  program: (a (q 16 (a 2 (c 5 7)) (a 2 (c 5 7))) (c (q 1 . 1) 1))
+  debug_program: (a (q 16 (a 2 (c 5 7)) (a 2 (c 5 7))) (c (q 1 . 1) 1))
+  solution: '5'
+  byte_cost: 588000
+  clvm_error: path into atom
+- name: closure_parameter_read
+  program: (q 3 () 2 (q . 1))
+  debug_program: (a (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (c (q 3 () 2 (q . 1)) ()))
+  output: (3 () 2 (1 . 1))
+  debug_output: (2 (1 3 () 2 (1 . 1)) 1)
+  runtime_cost: 20
+  byte_cost: 156000
+  total_cost: 156020
+- name: rebuild_pair
+  program: (c 2 3)
+  debug_program: (c (f 1) (r 1))
+  solution: '1'
+  byte_cost: 84000
+  clvm_error: path into atom
+  debug_clvm_error: 'InvalidOperatorArg: rest of non-cons'
+- name: unused_infallible_binding
+  program: '2'
+  debug_program: '2'
+  solution: (1)
+  output: '1'
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: single_use_always_evaluated
+  program: (+ (/ 2 5) (q . 1))
+  debug_program: (a (q 16 2 (q . 1)) (c (/ 2 5) 1))
+  solution: (10 2)
+  output: '6'
+  runtime_cost: 1883
+  byte_cost: 180000
+  total_cost: 181883
+- name: single_use_in_condition
+  program: (a (i (> (/ 2 5) (q . 1)) (q . 11) (q)) 1)
+  debug_program: (a (q 2 (i (> 2 (q . 1)) (q . 23) (q)) 1) (c (/ 2 5) 1))
+  solution: (10 2 1)
+  output: '1'
+  runtime_cost: 1895
+  byte_cost: 396000
+  total_cost: 397895
+- name: single_use_after_assert
+  program: (a (i (> 2 (q . 1)) (q 19 2 5) (q 8)) 1)
+  debug_program: (a (q 2 (i (> 5 (q . 1)) (q . 2) (q 8 (q . "assertion failed at preserve_errors.rue:219:5"))) 1) (c (/ 2 5) 1))
+  solution: (10 2)
+  output: '5'
+  runtime_cost: 1887
+  byte_cost: 420000
+  total_cost: 421887
+diagnostics:
+- Unused parameter `x` at preserve_errors.rue:9:11
+- Unused parameter `a` at preserve_errors.rue:29:10
+- Unused parameter `rest` at preserve_errors.rue:29:21
+- Unused binding `x` at preserve_errors.rue:34:9
+- Unused binding `x` at preserve_errors.rue:78:9
+- Unused binding `x` at preserve_errors.rue:83:9
+- Unused binding `x` at preserve_errors.rue:88:9
+- Unused binding `y` at preserve_errors.rue:94:9
+- Unused binding `x` at preserve_errors.rue:127:10
+- Unused binding `f` at preserve_errors.rue:133:9
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at preserve_errors.rue:167:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at preserve_errors.rue:172:25
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at preserve_errors.rue:177:32
+- Unused binding `x` at preserve_errors.rue:199:9

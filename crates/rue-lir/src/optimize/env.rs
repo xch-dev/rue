@@ -30,7 +30,7 @@ fn reads_env_step(arena: &Arena<Lir>, lir: LirId) -> bool {
         Lir::Closure(callee, args, _) => reads_env(arena, *callee) || any_reads_env(arena, args),
         Lir::First(value)
         | Lir::Rest(value)
-        | Lir::Listp(value, _)
+        | Lir::Listp(value)
         | Lir::Not(value)
         | Lir::Strlen(value)
         | Lir::Lognot(value)

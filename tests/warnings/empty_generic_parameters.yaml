@@ -1,9 +1,9 @@
-program: (i () () ())
+program: ()
 debug_program: (a (q 3 (q . 1) () (a 2 ())) (c (q) ()))
 output: ()
-runtime_cost: 166
-byte_cost: 108000
-total_cost: 108166
+runtime_cost: 44
+byte_cost: 12000
+total_cost: 12044
 diagnostics:
 - Unnecessary empty generic argument list specified at empty_generic_parameters.rue:1:19
 - Unnecessary empty generic parameter list specified at empty_generic_parameters.rue:6:14

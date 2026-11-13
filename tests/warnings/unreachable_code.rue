@@ -28,8 +28,8 @@ fn after_lambda(value: Int) -> Int {
     add(value, 1)
 }
 
-// Bindings are only evaluated if they're referenced, so a binding that never finishes doesn't make
-// the code after it unreachable
+// A binding is evaluated at its let statement, so one that never finishes makes the code after it
+// unreachable
 fn after_never_binding(value: Int) -> Int {
     if value > 100 {
         let never = {
@@ -41,7 +41,20 @@ fn after_never_binding(value: Int) -> Int {
     value
 }
 
-// The binding is only referenced after the `return`, so it's never evaluated
+// An inline binding is only evaluated where it's referenced, so the code after it is reachable
+fn after_never_inline_binding(value: Int) -> Int {
+    if value > 100 {
+        inline let never = {
+            raise "failed";
+        };
+        return never;
+    }
+
+    value
+}
+
+// The binding is evaluated at its let statement, even though it's only referenced after the
+// `return`, so this raises
 fn dead_reference() -> Int {
     let value = fails();
     return 1;
@@ -53,7 +66,11 @@ fn fails() -> Int {
 }
 
 test fn reachable() {
-    assert dead_reference() == 1;
     assert main() == 7;
     assert after_never_binding(1) == 1;
+    assert after_never_inline_binding(1) == 1;
+}
+
+test fn dead_reference_raises() -> Int {
+    dead_reference()
 }

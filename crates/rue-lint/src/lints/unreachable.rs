@@ -1,5 +1,5 @@
 use rue_diagnostic::{Applicability, Lint, Note, SrcLoc, Suggestion};
-use rue_hir::{Block, Hir, HirId, Statement};
+use rue_hir::{Block, Hir, HirId, Statement, Symbol};
 
 use crate::{HirLintPass, LintContext, text::encloses};
 
@@ -83,9 +83,8 @@ impl HirLintPass for UnreachableCode {
 
 /// Whether evaluating the statement never finishes, so nothing after it is evaluated.
 ///
-/// A `let` whose value never finishes isn't included. Bindings are only evaluated if they're
-/// referenced by code that's lowered, which depends on how the code after it is lowered, so the
-/// code after it can still be evaluated.
+/// A `let` whose value never finishes is included, unless the binding is `inline`, since only
+/// inline bindings are evaluated where they're referenced rather than at their statement.
 fn diverges(cx: &mut LintContext<'_>, statement: &Statement) -> bool {
     match statement {
         Statement::Return(..) | Statement::Raise(..) => true,
@@ -93,9 +92,15 @@ fn diverges(cx: &mut LintContext<'_>, statement: &Statement) -> bool {
             .db()
             .hir_type(statement.hir)
             .is_some_and(|ty| cx.is_never(ty)),
-        Statement::Let(..) | Statement::If(_) | Statement::Assert(..) | Statement::Debug(..) => {
-            false
-        }
+        // A binding that isn't inline is evaluated at its let statement
+        Statement::Let(symbol, _) => match cx.db().symbol(*symbol) {
+            Symbol::Binding(binding) if !binding.inline => {
+                let ty = binding.value.ty;
+                cx.is_never(ty)
+            }
+            _ => false,
+        },
+        Statement::If(_) | Statement::Assert(..) | Statement::Debug(..) => false,
     }
 }
 

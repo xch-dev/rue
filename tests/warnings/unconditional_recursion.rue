@@ -1,5 +1,10 @@
 fn main(value: Int) -> Int {
-    forever(value) + through_branches(value) + terminates(value) + guarded(value)
+    forever(value)
+        + through_branches(value)
+        + terminates(value)
+        + guarded(value)
+        + unused_binding(value)
+        + unused_inline_binding(value)
 }
 
 fn forever(value: Int) -> Int {
@@ -27,4 +32,16 @@ fn terminates(value: Int) -> Int {
 fn guarded(value: Int) -> Int {
     assert value > 0;
     guarded(value - 1)
+}
+
+// A binding that isn't inline is evaluated at its let statement, even if it's unused
+fn unused_binding(value: Int) -> Int {
+    let result = unused_binding(value);
+    1
+}
+
+// An inline binding is only evaluated where it's referenced
+fn unused_inline_binding(value: Int) -> Int {
+    inline let result = unused_inline_binding(value);
+    1
 }

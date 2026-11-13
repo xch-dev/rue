@@ -60,13 +60,21 @@ impl Visitor<'_> {
             }
             Hir::FieldAccess(access) => self.visit_hir(access.value),
             Hir::Cast(hir) => self.visit_hir(hir),
-            // The value is only evaluated if the check it's lowered to uses it
-            Hir::Guard(guard) => guard.value_uses() > 0 && self.visit_hir(guard.value),
+            // The value is evaluated if the check uses it, or for its effect if it may fail
+            Hir::Guard(guard) => self.visit_hir(guard.value),
             Hir::Block(block) => {
                 for stmt in block.reachable_statements().to_vec() {
                     match stmt {
-                        // Bindings are only lowered if they're referenced
-                        Statement::Let(..) => {}
+                        // Bindings that aren't inline are lowered if they're referenced, or for
+                        // their effect if they may fail
+                        Statement::Let(symbol, _) => {
+                            if let Symbol::Binding(binding) = self.db.symbol(symbol)
+                                && !binding.inline
+                                && self.visit_symbol(symbol)
+                            {
+                                return true;
+                            }
+                        }
                         Statement::Expr(stmt) => {
                             if self.visit_hir(stmt.hir) {
                                 return true;
@@ -112,7 +120,9 @@ mod tests {
     use rue_diagnostic::{Source, SourceKind, SrcLoc};
     use rue_types::BuiltinTypes;
 
-    use crate::{BindingSymbol, Block, Builtin, ExprStatement, Value};
+    use rue_types::Check;
+
+    use crate::{BindingSymbol, Block, Builtin, ExprStatement, Guard, Value};
 
     use super::*;
 
@@ -221,5 +231,44 @@ mod tests {
         }));
         let symbol = binding(&mut db, block);
         assert!(!has_reachable_unresolved(&db, symbol));
+    }
+
+    #[test]
+    fn test_unused_bindings_are_lowered() {
+        let mut db = Database::new();
+        let unresolved = db.alloc_hir(Hir::Unresolved);
+        let one = db.alloc_hir(Hir::Int(1.into()));
+
+        // A binding that isn't inline is evaluated at its let statement, even if it's unused
+        for inline in [false, true] {
+            let ty = BuiltinTypes::new(db.types_mut()).int;
+            let unused = db.alloc_symbol(Symbol::Binding(BindingSymbol {
+                name: None,
+                value: Value::new(unresolved, ty),
+                inline,
+            }));
+            let block = db.alloc_hir(Hir::Block(Block {
+                statements: vec![Statement::Let(unused, srcloc())],
+                body: Some(one),
+            }));
+            let symbol = binding(&mut db, block);
+            assert_eq!(has_reachable_unresolved(&db, symbol), !inline);
+        }
+    }
+
+    #[test]
+    fn test_guard_values_are_lowered() {
+        let mut db = Database::new();
+        let ty = BuiltinTypes::new(db.types_mut()).int;
+        let unresolved = db.alloc_hir(Hir::Unresolved);
+
+        // The value is evaluated for its effect, even if the check doesn't use it
+        let guard = db.alloc_hir(Hir::Guard(Guard {
+            value: unresolved,
+            ty,
+            check: Check::None,
+        }));
+        let symbol = binding(&mut db, guard);
+        assert!(has_reachable_unresolved(&db, symbol));
     }
 }

@@ -1,6 +1,6 @@
-program: (+ (strlen 19) (strlen 43) (f (q 1)) (q . 112))
-debug_program: (a (q 2 (q 16 (+ (+ (+ 2 (a 57 (a 41 ()))) (strlen (f 47))) (strlen (f (r 47)))) (a 17 (c (q . 1) ()))) (c (a 10 (c (c 22 30) (q . 1))) 1)) (c (c (c (q 5 1) (c (q 1 . 1) (q . 1))) (c (q 2 (q . 2) (c (+ (+ 3 6) 4) 1)) (c (q . 10) (q . 100)))) 1))
-byte_cost: 348000
+program: (i () 2 (+ (strlen 19) (strlen 43) (f (q 1)) (q . 112)))
+debug_program: (a (q 2 (q 3 () 11 (+ (+ (+ (+ 2 (a 57 (a 41 ()))) (strlen (f 47))) (strlen (f (r 47)))) (a 17 (c (q . 1) ())))) (c (a 10 (c (c 22 30) (q . 1))) 1)) (c (c (c (q 5 1) (c (q 1 . 1) (q . 1))) (c (q 2 (q . 2) (c (+ (+ 3 6) 4) 1)) (c (q . 10) (q . 100)))) 1))
+byte_cost: 444000
 clvm_error: path into atom
 diagnostics:
 - |-

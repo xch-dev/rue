@@ -24,13 +24,11 @@ pub fn generate_check_hir(db: &mut Database, check: Check, hir: HirId) -> HirId 
                 (None, None) => db.alloc_hir(Hir::Bool(true)),
             }
         }
-        Check::IsAtom { can_be_truthy } => {
-            let listp = db.alloc_hir(Hir::Unary(UnaryOp::Listp { can_be_truthy }, hir));
+        Check::IsAtom => {
+            let listp = db.alloc_hir(Hir::Unary(UnaryOp::Listp, hir));
             db.alloc_hir(Hir::Unary(UnaryOp::Not, listp))
         }
-        Check::IsPair { can_be_truthy } => {
-            db.alloc_hir(Hir::Unary(UnaryOp::Listp { can_be_truthy }, hir))
-        }
+        Check::IsPair => db.alloc_hir(Hir::Unary(UnaryOp::Listp, hir)),
         Check::Atom(AtomRestriction::Length(length)) => {
             let strlen = db.alloc_hir(Hir::Unary(UnaryOp::Strlen, hir));
             let length = db.alloc_hir(Hir::Int(length.into()));
@@ -86,7 +84,7 @@ pub fn check_value_uses(check: &Check) -> usize {
     match check {
         Check::None | Check::Impossible => 0,
         Check::Pair(first, rest) => check_value_uses(first) + check_value_uses(rest),
-        Check::IsAtom { .. } | Check::IsPair { .. } | Check::Atom(_) => 1,
+        Check::IsAtom | Check::IsPair | Check::Atom(_) => 1,
         Check::And(checks) | Check::Or(checks) => checks.iter().map(check_value_uses).sum(),
     }
 }
@@ -114,12 +112,8 @@ mod tests {
 
     #[test]
     fn test_check_value_uses() {
-        let atom = || Check::IsAtom {
-            can_be_truthy: true,
-        };
-        let pair = || Check::IsPair {
-            can_be_truthy: false,
-        };
+        let atom = || Check::IsAtom;
+        let pair = || Check::IsPair;
 
         let checks = [
             Check::None,

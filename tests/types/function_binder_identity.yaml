@@ -42,12 +42,12 @@ tests:
   byte_cost: 588000
   total_cost: 589427
 - name: instantiate_alias_with_optional_expected_generic
-  program: (a (q 2 2 (q . 2)) (c (q 2 (i (a (i (l 1) (q) (q 2 (i 1 (q) (q 1 . 1)) 1)) 1) (q) (q 1 . 1)) 1) ()))
+  program: (a (q 2 2 (q . 2)) (c (q 2 (i (a (i (l 1) (q) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1)) 1) (q) (q 1 . 1)) 1) ()))
   debug_program: (a (q 2 6 (a 4 ())) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q 2 (i (a (i (not (l 1)) (q 2 (i (= 1 ()) (q 1 . 1) (q)) 1) (q)) 1) (q) (q 1 . 1)) 1)) ()))
   output: '1'
-  runtime_cost: 1184
-  byte_cost: 1044000
-  total_cost: 1045184
+  runtime_cost: 1347
+  byte_cost: 1116000
+  total_cost: 1117347
 - name: instance_reached_with_renamed_generics
   program: (a (q 5 (a (r (a (r (a (r (a (c (q . 2) (c (c (q . 1) (q 4 () (a 2 (c (c 2 5) 11)))) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) (q (q . 2)))) (q ()))) (q 5))) (q ()))) (c (c (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 1) (a 5 (c (c 11 5) 2)))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ()))) (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 2) (a 5 (c (c 5 11) 2)))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) ())))) ()))
   debug_program: (a (q 2 (q 2 (q 5 (a (r (a (r (a (r (a 2 (c (c (q . 1) (q . 2)) ()))) (c () ()))) (c (q . 5) ()))) (c () ()))) (c 2 1)) (c (c (q . 2) (c (c (q . 1) (q 4 () (a 2 (c (c 2 5) 11)))) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 1) (a 5 (c (c 11 5) 2)))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ()))) ()))) (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 2) (a 5 (c (c 5 11) 2)))) (c (c (q . 4) (c (c (q . 1) 3) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) ()))) ())))) ()))

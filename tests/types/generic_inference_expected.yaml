@@ -42,12 +42,12 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: recursive_generic_call
-  program: (a (q 2 2 (c 2 (q 7 . 3))) (c (q 2 (i 7 (q 2 2 (c 2 (c 5 (- 7 (q . 1))))) (q . 5)) 1) ()))
+  program: (a (q 2 2 (c 2 (q 7 . 3))) (c (q 2 (i (= 7 ()) (q . 5) (q 2 2 (c 2 (c 5 (- 7 (q . 1)))))) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (q . 7) (q . 3)))) (c (q 2 (i (= 7 ()) (q . 5) (q 2 2 (c 2 (c 5 (- 7 (q . 1)))))) 1) ()))
   output: '7'
-  runtime_cost: 5077
-  byte_cost: 924000
-  total_cost: 929077
+  runtime_cost: 5728
+  byte_cost: 996000
+  total_cost: 1001728
 - name: unreferenced_generic
   program: (q . 42)
   debug_program: (a (q 2 2 ()) (c (q 1 . 42) ()))

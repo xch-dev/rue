@@ -1,12 +1,8 @@
 //! Differential tests for optimizations that involve the environment (paths, `Run`, `Cons`
 //! and closures). Random LIR trees are compiled with and without optimizations, then run
 //! against random environments (including atoms where pairs would normally be), and the
-//! results must be identical (including whether they fail).
-//!
-//! The one exception is when the unoptimized program fails because a value it expected to be a
-//! pair was an atom (taking its first or rest, or a path into it). The optimizer assumes values
-//! have the pair shape their types say they do (for example, `(c (f p) (r p))` becomes `p`),
-//! so the optimized program may behave differently in that case.
+//! results must be identical (including whether they fail), even when the environment has
+//! atoms where pairs are expected.
 
 use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
 use id_arena::Arena;
@@ -105,7 +101,7 @@ fn gen_lir(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
         }
         10 => {
             let value = gen_lir(arena, rng, d);
-            arena.alloc(Lir::Listp(value, true))
+            arena.alloc(Lir::Listp(value))
         }
         11 => {
             let args = (0..=rng.below(3)).map(|_| gen_lir(arena, rng, d)).collect();
@@ -138,14 +134,6 @@ fn run(allocator: &mut Allocator, program: NodePtr, env: NodePtr) -> Result<Vec<
     let output = run_program(allocator, &dialect, program, env, 11_000_000_000)
         .map_err(|error| error.to_string())?;
     Ok(node_to_bytes(allocator, output.1).unwrap())
-}
-
-fn is_shape_error(result: &Result<Vec<u8>, String>) -> bool {
-    result.as_ref().is_err_and(|error| {
-        error.contains("first of non-cons")
-            || error.contains("rest of non-cons")
-            || error.contains("path into atom")
-    })
 }
 
 #[test]
@@ -183,10 +171,6 @@ fn test_optimizer_env_differential() {
             let env = gen_value(&mut allocator, &mut rng, 4);
             let expected = run(&mut allocator, unoptimized_program, env);
             let actual = run(&mut allocator, optimized_program, env);
-
-            if is_shape_error(&expected) {
-                continue;
-            }
 
             assert_eq!(
                 expected.is_ok(),

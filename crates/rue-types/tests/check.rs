@@ -137,13 +137,9 @@ fn pair(first: Check, rest: Check) -> Check {
     Check::Pair(Box::new(first), Box::new(rest))
 }
 
-const IS_PAIR: Check = Check::IsPair {
-    can_be_truthy: true,
-};
+const IS_PAIR: Check = Check::IsPair;
 
-const IS_ATOM: Check = Check::IsAtom {
-    can_be_truthy: true,
-};
+const IS_ATOM: Check = Check::IsAtom;
 
 #[test]
 fn test_atom_checks() {
@@ -210,7 +206,7 @@ fn test_atom_length_value_overlap() {
 }
 
 #[test]
-fn test_nil_truthiness() {
+fn test_list_checks() {
     let mut t = Types::new();
     let nil = t.builtins.nil;
     let int = t.builtins.int;
@@ -220,23 +216,14 @@ fn test_nil_truthiness() {
     let from_zero_length = t.union(vec![zero_length, pair]);
     let from_int = t.union(vec![int, pair]);
 
-    // The only atom is nil, so truthiness can be used instead of `l`
-    let not_truthy = Check::IsAtom {
-        can_be_truthy: false,
-    };
-    assert_eq!(t.check(from, nil), Ok(not_truthy.clone()));
+    // Whether or not the atom can be truthy, `l` is used to tell it apart from a pair, since
+    // the value isn't checked against its type at runtime
+    assert_eq!(t.check(from, nil), Ok(IS_ATOM));
     assert_eq!(
         t.check(from_zero_length, nil),
-        Ok(Check::And(vec![not_truthy, value(&[])]))
+        Ok(Check::And(vec![IS_ATOM, value(&[])]))
     );
-    assert_eq!(
-        t.check(from, pair),
-        Ok(Check::IsPair {
-            can_be_truthy: false
-        })
-    );
-
-    // Here the atom can be truthy, so it can't
+    assert_eq!(t.check(from, pair), Ok(IS_PAIR));
     assert_eq!(t.check(from_int, pair), Ok(IS_PAIR));
 }
 
@@ -329,15 +316,7 @@ fn test_pair_rest_condition() {
     let condition = t.pair(fifty_one, puzzle_hash);
     let from = t.union(vec![condition, amount]);
 
-    assert_eq!(
-        t.check(from, amount),
-        Ok(pair(
-            Check::None,
-            Check::IsAtom {
-                can_be_truthy: false
-            }
-        ))
-    );
+    assert_eq!(t.check(from, amount), Ok(pair(Check::None, Check::IsAtom)));
 }
 
 #[test]
@@ -354,12 +333,7 @@ fn test_target_union_member_without_check() {
     let from = t.union(vec![nil, a, b]);
     let to = t.union(vec![b, c]);
 
-    assert_eq!(
-        t.check(from, to),
-        Ok(Check::IsPair {
-            can_be_truthy: false
-        })
-    );
+    assert_eq!(t.check(from, to), Ok(Check::IsPair));
     let else_type = t.subtract(from, to);
     assert_eq!(t.name(else_type), "nil");
 
@@ -372,12 +346,7 @@ fn test_target_union_member_without_check() {
     let from = t.union(vec![nil, a, b]);
     let to = t.union(vec![a, c]);
 
-    assert_eq!(
-        t.check(from, to),
-        Ok(Check::IsPair {
-            can_be_truthy: false
-        })
-    );
+    assert_eq!(t.check(from, to), Ok(Check::IsPair));
     let else_type = t.subtract(from, to);
     assert_eq!(t.name(else_type), "nil");
 
@@ -386,12 +355,7 @@ fn test_target_union_member_without_check() {
     let impossible = t.pair(v42, v42);
     let from = t.union(vec![nil, c]);
     let to = t.union(vec![impossible, c]);
-    assert_eq!(
-        t.check(from, to),
-        Ok(Check::IsPair {
-            can_be_truthy: false
-        })
-    );
+    assert_eq!(t.check(from, to), Ok(Check::IsPair));
 }
 
 #[test]
@@ -461,12 +425,7 @@ fn test_any_and_generics() {
     assert_eq!(t.check(generic, generic), Ok(Check::None));
     let generic_pair = t.pair(generic, nil);
     let from = t.union(vec![generic_pair, nil]);
-    assert_eq!(
-        t.check(from, generic_pair),
-        Ok(Check::IsPair {
-            can_be_truthy: false
-        })
-    );
+    assert_eq!(t.check(from, generic_pair), Ok(Check::IsPair));
 
     // But a generic type can't be checked at runtime
     let int_or_nil = t.union(vec![int, nil]);
@@ -530,16 +489,8 @@ fn test_recursive_types() {
     let list = t.list(int);
     let list_pair = t.pair(int, list);
 
-    let not_truthy = Check::IsAtom {
-        can_be_truthy: false,
-    };
-    assert_eq!(t.check(list, nil), Ok(not_truthy));
-    assert_eq!(
-        t.check(list, list_pair),
-        Ok(Check::IsPair {
-            can_be_truthy: false
-        })
-    );
+    assert_eq!(t.check(list, nil), Ok(IS_ATOM));
+    assert_eq!(t.check(list, list_pair), Ok(Check::IsPair));
     assert_eq!(t.check(list, list), Ok(Check::None));
 
     let from = t.union(vec![list, bytes32]);
@@ -741,31 +692,13 @@ fn test_simplify() {
 /// Evaluates a check against a value, the same way the generated code would. Returns an error if
 /// the generated code would raise (for example, by calling `strlen` on a pair).
 fn eval(a: &Allocator, check: &Check, node: NodePtr) -> Result<bool, String> {
-    let truthy = |node| match a.sexp(node) {
-        SExp::Atom => !a.atom(node).as_ref().is_empty(),
-        SExp::Pair(..) => true,
-    };
-
     let is_pair = matches!(a.sexp(node), SExp::Pair(..));
 
     Ok(match check {
         Check::None => true,
         Check::Impossible => false,
-        // When an atom can't be truthy, `l` is optimized to a truthiness check
-        Check::IsAtom { can_be_truthy } => {
-            if *can_be_truthy {
-                !is_pair
-            } else {
-                !truthy(node)
-            }
-        }
-        Check::IsPair { can_be_truthy } => {
-            if *can_be_truthy {
-                is_pair
-            } else {
-                truthy(node)
-            }
-        }
+        Check::IsAtom => !is_pair,
+        Check::IsPair => is_pair,
         Check::Atom(restriction) => {
             if is_pair {
                 return Err(format!("atom check {restriction:?} on a pair"));

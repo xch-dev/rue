@@ -1,17 +1,18 @@
 #![allow(clippy::needless_pass_by_value)]
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{cell::RefCell, collections::HashMap, path::PathBuf};
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
 use rue_diagnostic::SrcLoc;
-use rue_lir::{Lir, LirId, bigint_atom};
+use rue_lir::{Lir, LirId, bigint_atom, first_path, parent_path, rest_path};
 use rue_options::CompilerOptions;
 
 use crate::{
     BinaryOp, BindingSymbol, ConstantSymbol, Database, DependencyGraph, Environment, ExprStatement,
-    FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, PathError,
-    Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
+    FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, IfStatement, ParameterRead,
+    PathError, Statement, Symbol, SymbolId, TypePath, UnaryOp, always_evaluates,
+    argument_parameter, generate_check_hir, may_fail,
 };
 
 #[derive(Debug, Clone)]
@@ -39,6 +40,8 @@ pub struct Lowerer<'d, 'a, 'g> {
     options: CompilerOptions,
     main: SymbolId,
     base_path: PathBuf,
+    /// The result of [`Self::defers_fallible_argument`] for each function, once it's known.
+    deferred_arguments: RefCell<HashMap<SymbolId, bool>>,
 }
 
 impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
@@ -58,6 +61,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             options,
             main,
             base_path,
+            deferred_arguments: RefCell::new(HashMap::new()),
         }
     }
 
@@ -119,6 +123,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             &param_group,
             function.nil_terminated && matches!(param_group, SymbolGroup::Sequential(_)),
         );
+
+        // The parameters of `main` and closures are provided at runtime, so their shape isn't
+        // guaranteed, but the compiler builds the arguments of every other call itself
+        if self.is_called_at_runtime(symbol) {
+            function_env = Environment::unchecked(function_env);
+        }
 
         for group in &capture_groups {
             function_env = Self::apply_group(function_env, group, true);
@@ -239,8 +249,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
             Hir::Cast(value) => self.lower_hir(env, value),
             Hir::Guard(guard) => {
+                // If the check doesn't use the value, it's still evaluated in case it fails
+                let effects = if self.graph.is_guard_effect(hir) && self.may_fail(guard.value) {
+                    vec![self.lower_hir(env, guard.value)]
+                } else {
+                    vec![]
+                };
+
                 let check = generate_check_hir(self.db, guard.runtime_check(), guard.value);
-                self.lower_hir(env, check)
+                let check = self.lower_hir(env, check);
+                self.with_effects(effects, check)
             }
             Hir::Const(expr) => {
                 let result = expr
@@ -261,9 +279,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Hir::Unary(op, hir) => {
                 let lir = self.lower_hir(env, hir);
                 match op {
-                    UnaryOp::Listp { can_be_truthy } => {
-                        self.arena.alloc(Lir::Listp(lir, can_be_truthy))
-                    }
+                    UnaryOp::Listp => self.arena.alloc(Lir::Listp(lir)),
                     UnaryOp::First => self.arena.alloc(Lir::First(lir)),
                     UnaryOp::Rest => self.arena.alloc(Lir::Rest(lir)),
                     UnaryOp::Strlen => self.arena.alloc(Lir::Strlen(lir)),
@@ -479,10 +495,33 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
 
             if self.should_inline(symbol) {
+                // Inlining substitutes the arguments where the parameters are used, so an argument
+                // that may fail is also evaluated here, unless its parameter is always evaluated.
+                // Inline functions are called by name, so their arguments are left alone.
+                let effects = if function.kind == FunctionKind::Inline {
+                    vec![]
+                } else {
+                    function
+                        .parameters
+                        .iter()
+                        .filter_map(|parameter| {
+                            let arg = *args.get(parameter)?;
+                            (!self.is_parameter_always_evaluated(&function, *parameter)
+                                && self.may_fail(arg))
+                            .then_some(arg)
+                        })
+                        .collect()
+                };
+
+                let effects = effects
+                    .into_iter()
+                    .map(|arg| self.lower_hir(env, arg))
+                    .collect();
+
                 self.inline_symbols.push(args);
                 let result = self.lower_hir(env, function.body);
                 self.inline_symbols.pop().unwrap();
-                return result;
+                return self.with_effects(effects, result);
             }
 
             let (capture_groups, param_group) = self.function_groups(symbol, &function);
@@ -652,7 +691,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             stmts.remove(0);
         }
 
-        let binding_groups = self.group_symbols(symbols, false, true);
+        let binding_groups = self.group_symbols(symbols.clone(), false, true);
 
         let mut body_env = env.clone();
 
@@ -661,6 +700,26 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         let mut expr = self.lower_block(&body_env, stmts, body);
+
+        // Bindings that are never referenced are still evaluated if they may fail
+        let effects = symbols
+            .iter()
+            .filter(|&&symbol| {
+                self.graph.is_effect(symbol)
+                    && matches!(
+                        self.db.symbol(symbol),
+                        Symbol::Binding(binding) if self.may_fail(binding.value.hir)
+                    )
+            })
+            .copied()
+            .collect::<Vec<_>>();
+
+        let effects = effects
+            .into_iter()
+            .map(|symbol| self.lower_symbol_value(&body_env, symbol))
+            .collect();
+
+        expr = self.with_effects(effects, expr);
 
         for (i, group) in binding_groups.iter().enumerate().rev() {
             expr = self.arena.alloc(Lir::Quote(expr));
@@ -704,7 +763,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     if !include_rest && i == 0 {
                         result = value;
                     } else {
-                        result = self.arena.alloc(Lir::Cons(value, result));
+                        result = self.lower_cons(env, value, result);
                     }
                 }
 
@@ -713,7 +772,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             SymbolGroup::Tree(tree) => {
                 let tree = self.lower_tree(env, tree, by_reference, map);
                 if include_rest {
-                    self.arena.alloc(Lir::Cons(tree, rest))
+                    self.lower_cons(env, tree, rest)
                 } else {
                     tree
                 }
@@ -742,9 +801,112 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Environment::Pair(first, rest) => {
                 let first = self.lower_tree(env, first, by_reference, map);
                 let rest = self.lower_tree(env, rest, by_reference, map);
-                self.arena.alloc(Lir::Cons(first, rest))
+                self.lower_cons(env, first, rest)
             }
+            Environment::Unchecked(_) => unreachable!("groups are constructed by the compiler"),
         }
+    }
+
+    /// Reuses the parent path instead of reconstructing `(c (f p) (r p))`, when the value at
+    /// `p` is a pair that the compiler constructed. This can't be done in general (such as by
+    /// the LIR optimizer), since if `p` were an atom the original would fail but `p` wouldn't.
+    fn lower_cons(&mut self, env: &Environment, first: LirId, rest: LirId) -> LirId {
+        if self.options.optimize_lir
+            && let Lir::Path(first_value) = &self.arena[first]
+            && let Lir::Path(rest_value) = &self.arena[rest]
+            && let Some(parent) = parent_path(first_value)
+            && first_path(&parent) == *first_value
+            && rest_path(&parent) == *rest_value
+            && env.is_pair(&parent)
+        {
+            return self.arena.alloc(Lir::Path(parent));
+        }
+
+        self.arena.alloc(Lir::Cons(first, rest))
+    }
+
+    /// Evaluates the effects (for whether they fail), and then returns the value. Both branches
+    /// of an inline `if` are evaluated, so this is `(i () effects value)`.
+    fn with_effects(&mut self, effects: Vec<LirId>, value: LirId) -> LirId {
+        let effects = match effects.len() {
+            0 => return value,
+            1 => effects[0],
+            _ => self.arena.alloc(Lir::All(effects)),
+        };
+
+        let nil = self.arena.alloc(Lir::Atom(vec![]));
+        self.arena.alloc(Lir::If(nil, effects, value, true))
+    }
+
+    /// Whether the function can be called with arguments that the compiler didn't build, which
+    /// is the case for `main` (whose arguments are the solution) and closures.
+    fn is_called_at_runtime(&self, symbol: SymbolId) -> bool {
+        symbol == self.main || self.graph.is_closure(symbol)
+    }
+
+    /// Whether evaluating the value may fail at runtime (see [`may_fail`]). Parameters of
+    /// inlined functions stand for their arguments, and parameters of functions that can be
+    /// called at runtime can fail to be read.
+    fn may_fail(&self, hir: HirId) -> bool {
+        self.may_fail_with(hir, true)
+    }
+
+    /// Whether inlining the function would move an argument that may fail to where its parameter
+    /// is used, which isn't always evaluated. The argument would have to be evaluated twice (once
+    /// for its effect), which compounds when such calls are nested, so the function is called
+    /// instead. An auto-inlined function only has one call.
+    ///
+    /// This must give the same answer wherever it's asked, so parameters of inlined functions
+    /// aren't substituted with their arguments. Those are evaluated for their effect instead.
+    fn defers_fallible_argument(&self, symbol: SymbolId, function: &FunctionSymbol) -> bool {
+        if let Some(&result) = self.deferred_arguments.borrow().get(&symbol) {
+            return result;
+        }
+
+        let result = self.graph.calls(symbol).iter().any(|&call| {
+            let Hir::FunctionCall(call) = self.db.hir(call) else {
+                return false;
+            };
+
+            call.args.iter().enumerate().any(|(index, &arg)| {
+                argument_parameter(function, index).is_some_and(|parameter| {
+                    self.graph.references(parameter) == 1
+                        && !self.is_parameter_always_evaluated(function, parameter)
+                        && self.may_fail_with(arg, false)
+                })
+            })
+        });
+
+        self.deferred_arguments.borrow_mut().insert(symbol, result);
+        result
+    }
+
+    /// Whether the parameter is used once, and that use is always evaluated by the function's
+    /// body, so an inlined argument for it is evaluated exactly when it would be if the function
+    /// were called. This must agree between [`Self::defers_fallible_argument`] and the effects
+    /// that are emitted for the arguments of an inlined call.
+    fn is_parameter_always_evaluated(
+        &self,
+        function: &FunctionSymbol,
+        parameter: SymbolId,
+    ) -> bool {
+        self.graph.references(parameter) == 1 && always_evaluates(self.db, function.body, parameter)
+    }
+
+    fn may_fail_with(&self, hir: HirId, substitute_arguments: bool) -> bool {
+        may_fail(self.db, hir, &|symbol| {
+            if substitute_arguments && let Some(argument) = self.inline_argument(symbol) {
+                ParameterRead::Argument(argument)
+            } else if self
+                .graph
+                .owner(symbol)
+                .is_some_and(|owner| self.is_called_at_runtime(owner))
+            {
+                ParameterRead::Fallible
+            } else {
+                ParameterRead::Infallible
+            }
+        })
     }
 
     fn lower_assert(
@@ -858,36 +1020,25 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             return expr;
         }
 
-        let (condition, verifications) = if ids.len() == 1 {
-            let condition = self.arena.alloc(Lir::Atom(vec![]));
-
-            (condition, ids[0].0)
-        } else if let Some(index) = ids.iter().position(|(_, always_nil)| *always_nil) {
+        // A statement whose value is always nil can be the condition, instead of a nil atom
+        if ids.len() > 1
+            && let Some(index) = ids.iter().position(|(_, always_nil)| *always_nil)
+        {
             let (condition, _) = ids.remove(index);
 
-            let id = if ids.len() == 1 {
+            let verifications = if ids.len() == 1 {
                 ids[0].0
             } else {
                 self.arena
                     .alloc(Lir::All(ids.iter().map(|(id, _)| *id).collect()))
             };
 
-            (condition, id)
-        } else {
-            let condition = self.arena.alloc(Lir::Atom(vec![]));
+            return self
+                .arena
+                .alloc(Lir::If(condition, verifications, expr, true));
+        }
 
-            let id = if ids.len() == 1 {
-                ids[0].0
-            } else {
-                self.arena
-                    .alloc(Lir::All(ids.iter().map(|(id, _)| *id).collect()))
-            };
-
-            (condition, id)
-        };
-
-        self.arena
-            .alloc(Lir::If(condition, verifications, expr, true))
+        self.with_effects(ids.into_iter().map(|(id, _)| id).collect(), expr)
     }
 
     fn group_symbols(
@@ -986,8 +1137,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 .fields
                 .iter()
                 .all(|field| self.is_static_hir(field.value)),
-            // Guards that don't use the value at runtime are lowered to a boolean
-            Hir::Guard(guard) => guard.value_uses() == 0,
+            // Guards that don't use the value at runtime are lowered to a boolean, unless the
+            // value is evaluated for its effect
+            Hir::Guard(guard) => guard.value_uses() == 0 && !self.graph.is_guard_effect(hir),
             Hir::Const(expr) => expr.result.is_some_and(|result| self.is_static_hir(result)),
             Hir::Reference(symbol) => {
                 if let Some(hir) = self.inline_argument(*symbol) {
@@ -1047,21 +1199,37 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     }
                 }
 
-                references <= 1 && self.options.auto_inline
+                references <= 1
+                    && self.options.auto_inline
+                    && !self.defers_fallible_argument(symbol, function)
             }
+            // Constants are evaluated when the program starts, so one that may fail is only
+            // inlined if it's never referenced
             Symbol::Constant(constant) => {
                 if constant.inline {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline
+                references <= 1
+                    && self.options.auto_inline
+                    && (references == 0 || !self.graph.is_fallible(symbol))
             }
+            // Bindings are evaluated at their let statement, so one that may fail is only inlined
+            // where it's always evaluated. This uses the conservative check (where reading any
+            // parameter may fail), which must give the same answer wherever it's asked. It also
+            // keeps a binding of an inlined function's parameter from moving its argument into a
+            // branch, since the call doesn't evaluate the argument for its effect when the
+            // binding always evaluates the parameter.
             Symbol::Binding(binding) => {
                 if binding.inline {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline
+                references <= 1
+                    && self.options.auto_inline
+                    && (references == 0
+                        || !self.graph.is_fallible(symbol)
+                        || self.graph.is_always_evaluated(symbol))
             }
         }
     }

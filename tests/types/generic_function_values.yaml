@@ -50,7 +50,7 @@ tests:
   total_cost: 240179
 - name: return_generic_lambda
   program: (q . 42)
-  debug_program: (q . 42)
+  debug_program: (a (q 3 () (a 2 (q . 42)) (q . 42)) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
   output: '42'
   runtime_cost: 20
   byte_cost: 36000
