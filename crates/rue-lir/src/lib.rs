@@ -5,6 +5,7 @@ mod error;
 mod lir;
 mod optimize;
 mod path;
+mod stack;
 
 pub use atom::*;
 pub use codegen::*;
