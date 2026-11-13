@@ -280,6 +280,28 @@ fn private_items_cannot_be_referenced_through_a_path() {
 }
 
 #[test]
+fn private_modules_cannot_be_referenced_through_a_path() {
+    let compiled = compile(
+        "
+        mod outer {
+            mod hidden {
+                export const VALUE: Int = 1;
+            }
+        }
+
+        fn main() -> Int {
+            outer::hidden::VALUE
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        ["9:20 PrivateSymbol(\"hidden\", \"outer\")"]
+    );
+}
+
+#[test]
 fn modules_can_use_the_items_of_their_parents() {
     let compiled = compile(
         "

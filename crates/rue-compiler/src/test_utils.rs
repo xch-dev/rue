@@ -61,6 +61,24 @@ impl Compiled {
             .collect()
     }
 
+    /// Each warning as `line:column Lint`, such as `2:23 UnusedImport`.
+    pub fn warnings(&self) -> Vec<String> {
+        self.diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity == DiagnosticSeverity::Warning)
+            .map(|diagnostic| match diagnostic.lint() {
+                Some(lint) => format!("{} {lint:?}", diagnostic.start()),
+                None => format!("{} {:?}", diagnostic.start(), diagnostic.kind),
+            })
+            .collect()
+    }
+
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error)
+    }
+
     /// Panics with the diagnostics if there are any errors.
     pub fn assert_no_errors(&self) {
         assert_eq!(self.errors(), Vec::<String>::new());
@@ -208,26 +226,20 @@ impl Compiled {
         let mut references = Vec::new();
         self.collect_references(self.function_body(function), name, &mut references);
 
-        let mut references = references
-            .into_iter()
-            .map(|hir| {
-                let srcloc = self
-                    .ctx
-                    .hir_srcloc(hir)
-                    .expect("references have a source location");
-                (
-                    srcloc.span.start,
-                    hir,
-                    srcloc.source.text[srcloc.span.clone()].to_string(),
-                )
-            })
-            .collect::<Vec<_>>();
+        let srcloc = |hir| {
+            self.ctx
+                .hir_srcloc(hir)
+                .expect("references have a source location")
+        };
 
-        references.sort_by_key(|(start, ..)| *start);
+        references.sort_by_key(|&hir| srcloc(hir).span.start);
 
         references
             .into_iter()
-            .map(|(_, hir, text)| (hir, text))
+            .map(|hir| {
+                let srcloc = srcloc(hir);
+                (hir, srcloc.source.text[srcloc.span.clone()].to_string())
+            })
             .collect()
     }
 

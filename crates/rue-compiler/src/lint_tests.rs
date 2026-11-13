@@ -17,7 +17,7 @@ fn compile_source(
     configure: impl FnOnce(&mut CompilerOptions),
 ) -> (Vec<Diagnostic>, bool) {
     let compiled = compile_with(source, configure);
-    let has_errors = !compiled.errors().is_empty();
+    let has_errors = compiled.has_errors();
     (compiled.diagnostics, has_errors)
 }
 

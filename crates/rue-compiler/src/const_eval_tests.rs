@@ -1,6 +1,8 @@
 //! Const evaluation: the values `const { ... }` expressions evaluate to at compile time, and the
 //! errors for ones that can't be evaluated.
 
+use rue_options::CompilerOptions;
+
 use crate::test_utils::{compile, compile_with};
 
 /// Compiles a function `main` whose body is the given const expression, and returns its value.
@@ -118,37 +120,57 @@ fn const_expressions_in_called_functions_and_nested_const_expressions_are_evalua
 
 #[test]
 fn const_expressions_reached_through_calls_are_evaluated_once() {
-    // Counting down from 100 costs about 133,000, so the limit allows it once but not twice;
-    // `inner()` must use the cached value of its const expression rather than run it again
-    let compiled = compile_with(
-        "
+    // Counting down from 100 costs about 133,000 and doing it twice about 266,000, so the limit
+    // allows it once but not twice; `inner()` must use the cached value of its const expression
+    // rather than run it again
+    let count = "
         fn count(value: Int) -> Int {
             if value == 0 {
-                0
+                7
             } else {
                 count(value - 1)
             }
         }
+    ";
+    let limit = |options: &mut CompilerOptions| options.const_eval_max_cost = 200_000;
 
-        fn inner() -> Int {
-            const { count(100) }
-        }
+    let compiled = compile_with(
+        &format!(
+            "{count}
+            fn inner() -> Int {{
+                const {{ count(100) }}
+            }}
 
-        fn main() -> Int {
-            const { inner() + inner() }
-        }
-        ",
-        |options| options.const_eval_max_cost = 200_000,
+            fn main() -> Int {{
+                const {{ inner() + inner() }}
+            }}
+            "
+        ),
+        limit,
     );
 
     compiled.assert_no_errors();
     assert_eq!(
         compiled.const_values(),
         [
-            "`const { count(100) }` = ()",
-            "`const { inner() + inner() }` = ()",
+            "`const { count(100) }` = 7",
+            "`const { inner() + inner() }` = 14",
         ]
     );
+
+    // Without the cache, the same work exceeds the limit, so the test above still means something
+    let compiled = compile_with(
+        &format!(
+            "{count}
+            fn main() -> Int {{
+                const {{ count(100) + count(100) }}
+            }}
+            "
+        ),
+        limit,
+    );
+
+    assert_eq!(compiled.errors(), ["11:17 ConstEvalCostExceeded(200000)"]);
 }
 
 #[test]

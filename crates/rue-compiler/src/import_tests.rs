@@ -1,8 +1,6 @@
 //! Imports: which declaration an imported name refers to, how targeted and glob imports interact,
 //! and the errors for imports that can't be resolved.
 
-use rue_diagnostic::Lint;
-
 use crate::test_utils::compile;
 
 #[test]
@@ -97,6 +95,70 @@ fn missing_items_and_modules_are_reported() {
             "4:24 UnresolvedImport(\"missing\")",
         ]
     );
+}
+
+#[test]
+fn items_cannot_be_imported_through_a_private_module() {
+    let compiled = compile(
+        "
+        import outer::hidden::VALUE;
+
+        mod outer {
+            mod hidden {
+                export const VALUE: Int = 1;
+            }
+        }
+
+        fn main() -> Int {
+            VALUE
+        }
+        ",
+    );
+
+    // Like a private item, a private module in the path is undeclared rather than private
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:23 UndeclaredSymbol(\"hidden\")",
+            "11:13 UndeclaredSymbol(\"VALUE\")",
+        ]
+    );
+}
+
+#[test]
+fn imports_are_private_unless_exported() {
+    let compiled = compile(
+        "
+        mod outer {
+            import inner::*;
+            import inner::NAMED;
+            export inner::EXPORTED;
+
+            mod inner {
+                export const GLOBBED: Int = 1;
+                export const NAMED: Int = 2;
+                export const EXPORTED: Int = 3;
+            }
+
+            export fn sum() -> Int {
+                GLOBBED + NAMED + EXPORTED
+            }
+        }
+
+        fn main() -> Int {
+            outer::sum() + outer::GLOBBED + outer::NAMED + outer::EXPORTED
+        }
+        ",
+    );
+
+    assert_eq!(
+        compiled.errors(),
+        [
+            "19:35 PrivateSymbol(\"GLOBBED\", \"outer\")",
+            "19:52 PrivateSymbol(\"NAMED\", \"outer\")",
+        ]
+    );
+    assert_eq!(compiled.symbol_origin("outer::EXPORTED"), "outer::inner");
 }
 
 #[test]
@@ -319,15 +381,8 @@ fn local_declarations_take_precedence_over_named_imports() {
         ["`VALUE`: (root)"]
     );
     assert_eq!(
-        compiled
-            .diagnostics
-            .iter()
-            .map(|diagnostic| (diagnostic.lint(), diagnostic.start().to_string()))
-            .collect::<Vec<_>>(),
-        [
-            (Some(Lint::UnusedImport), "2:23".to_string()),
-            (Some(Lint::UnusedConstant), "5:26".to_string()),
-        ]
+        compiled.warnings(),
+        ["2:23 UnusedImport", "5:26 UnusedConstant"]
     );
 }
 
@@ -480,12 +535,5 @@ fn glob_imports_that_bring_in_nothing_are_unused() {
     );
 
     compiled.assert_no_errors();
-    assert_eq!(
-        compiled
-            .diagnostics
-            .iter()
-            .map(|diagnostic| (diagnostic.lint(), diagnostic.start().to_string()))
-            .collect::<Vec<_>>(),
-        [(Some(Lint::UnusedImport), "2:23".to_string())]
-    );
+    assert_eq!(compiled.warnings(), ["2:23 UnusedImport"]);
 }

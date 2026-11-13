@@ -33,7 +33,7 @@ fn narrowing_ends_with_the_if_expression() {
             "Int | (Int, Int)",
             "let y = if x is Int { x } else { 0 }; x",
         ),
-        ["`x`: Int | (Int, Int)", "`x`: Int", "`x`: Int | (Int, Int)",]
+        ["`x`: Int | (Int, Int)", "`x`: Int", "`x`: Int | (Int, Int)"]
     );
 }
 
@@ -45,7 +45,7 @@ fn early_return_narrows_the_rest_of_the_block() {
             "Int",
             "if x is (Int, Int) { return x.first; } x",
         ),
-        ["`x`: Int | (Int, Int)", "`x`: (Int, Int)", "`x`: Int",]
+        ["`x`: Int | (Int, Int)", "`x`: (Int, Int)", "`x`: Int"]
     );
 }
 
@@ -93,7 +93,7 @@ fn and_narrows_both_operands_in_the_then_branch() {
 #[test]
 fn and_narrows_its_right_operand_by_its_left() {
     assert_eq!(
-        x_types("x: Int | (Int, Int)", "Bool", "x is Int && x > 0",),
+        x_types("x: Int | (Int, Int)", "Bool", "x is Int && x > 0"),
         ["`x`: Int | (Int, Int)", "`x`: Int"]
     );
 }
@@ -150,8 +150,57 @@ fn or_narrows_both_operands_in_the_else_branch() {
 #[test]
 fn or_narrows_its_right_operand_by_the_negation_of_its_left() {
     assert_eq!(
-        x_types("x: Int | (Int, Int)", "Bool", "x is (Int, Int) || x > 0",),
+        x_types("x: Int | (Int, Int)", "Bool", "x is (Int, Int) || x > 0"),
         ["`x`: Int | (Int, Int)", "`x`: Int"]
+    );
+}
+
+#[test]
+fn bitwise_and_narrows_both_operands_in_the_then_branch() {
+    let mut compiled = compile(
+        "
+        fn main(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+            if (x is Int) & (y is Int) {
+                x + y
+            } else {
+                0
+            }
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.reference_types("main", "x"),
+        ["`x`: Int | (Int, Int)", "`x`: Int"]
+    );
+    assert_eq!(
+        compiled.reference_types("main", "y"),
+        ["`y`: Int | (Int, Int)", "`y`: Int"]
+    );
+}
+
+#[test]
+fn bitwise_or_narrows_both_operands_in_the_else_branch() {
+    let mut compiled = compile(
+        "
+        fn main(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+            if (x is (Int, Int)) | (y is (Int, Int)) {
+                return 0;
+            }
+            x + y
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.reference_types("main", "x"),
+        ["`x`: Int | (Int, Int)", "`x`: Int"]
+    );
+    assert_eq!(
+        compiled.reference_types("main", "y"),
+        ["`y`: Int | (Int, Int)", "`y`: Int"]
     );
 }
 
