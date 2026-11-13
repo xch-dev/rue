@@ -306,9 +306,7 @@ fn check_expected_parse_errors(
     for (path, diagnostics) in unparsed {
         let display = short_path(path).display();
         let yaml_file = path.with_extension("yaml");
-        let name = path.file_stem().unwrap_or_default().to_string_lossy();
-
-        if !matches_filter(filter_arg, &name) {
+        if !matches_filter(filter_arg, &test_name(path)?) {
             println!("Skipped formatting {display}, since its test doesn't match the filter");
             continue;
         }
@@ -345,6 +343,25 @@ fn check_expected_parse_errors(
     }
 
     Ok(())
+}
+
+/// The name `walk_dir` filters the test that compiles a `.rue` file by: the name of the nearest
+/// directory test (a `<name>/` directory next to `<name>.yaml` and no `<name>.rue`) that contains
+/// the file, or else the file's own name.
+fn test_name(path: &Path) -> Result<String> {
+    for directory in path.ancestors().skip(1) {
+        if directory.with_extension("yaml").try_exists()?
+            && !directory.with_extension("rue").try_exists()?
+            && let Some(name) = directory.file_name()
+        {
+            return Ok(name.to_string_lossy().to_string());
+        }
+    }
+    Ok(path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string())
 }
 
 fn collect_rue_files(path: &Path, files: &mut Vec<std::path::PathBuf>) -> Result<()> {
@@ -597,8 +614,8 @@ fn compare_snapshot(
     let mut differences = Vec::new();
     diff_values(
         "",
-        &expected,
-        &serde_yml::to_value(actual)?,
+        Some(&expected),
+        Some(&serde_yml::to_value(actual)?),
         &mut differences,
     );
 
@@ -631,13 +648,19 @@ fn short_path(path: &Path) -> &Path {
 
 /// Describes each field that differs between two snapshots, by its path in the YAML file
 /// (such as `tests[2].output`), with the expected value marked `-` and the actual one `+`.
-fn diff_values(path: &str, expected: &Value, actual: &Value, differences: &mut Vec<String>) {
+/// A value that's `None` is absent: a key only on one side, or an index past the end of a list.
+fn diff_values(
+    path: &str,
+    expected: Option<&Value>,
+    actual: Option<&Value>,
+    differences: &mut Vec<String>,
+) {
     if expected == actual {
         return;
     }
 
     match (expected, actual) {
-        (Value::Mapping(expected), Value::Mapping(actual)) => {
+        (Some(Value::Mapping(expected)), Some(Value::Mapping(actual))) => {
             let keys = expected
                 .keys()
                 .chain(actual.keys().filter(|key| !expected.contains_key(*key)));
@@ -649,21 +672,16 @@ fn diff_values(path: &str, expected: &Value, actual: &Value, differences: &mut V
                 } else {
                     format!("{path}.{key_name}")
                 };
-                diff_values(
-                    &path,
-                    expected.get(key).unwrap_or(&Value::Null),
-                    actual.get(key).unwrap_or(&Value::Null),
-                    differences,
-                );
+                diff_values(&path, expected.get(key), actual.get(key), differences);
             }
         }
-        (Value::Sequence(expected), Value::Sequence(actual)) => {
+        (Some(Value::Sequence(expected)), Some(Value::Sequence(actual))) => {
             for i in 0..expected.len().max(actual.len()) {
-                let expected = expected.get(i).unwrap_or(&Value::Null);
-                let actual = actual.get(i).unwrap_or(&Value::Null);
+                let expected = expected.get(i);
+                let actual = actual.get(i);
                 let name = actual
-                    .get("name")
-                    .or_else(|| expected.get("name"))
+                    .or(expected)
+                    .and_then(|value| value.get("name"))
                     .and_then(Value::as_str)
                     .map_or_else(String::new, |name| format!(" ({name})"));
                 diff_values(&format!("{path}[{i}]{name}"), expected, actual, differences);
@@ -673,7 +691,7 @@ fn diff_values(path: &str, expected: &Value, actual: &Value, differences: &mut V
             let path = if path.is_empty() { "(root)" } else { path };
             let mut difference = format!("  {path}:");
             for (marker, value) in [('-', expected), ('+', actual)] {
-                if !value.is_null() {
+                if let Some(value) = value {
                     for line in format_value(value).lines() {
                         write!(difference, "\n    {marker} {line}").unwrap();
                     }
@@ -684,9 +702,11 @@ fn diff_values(path: &str, expected: &Value, actual: &Value, differences: &mut V
     }
 }
 
+/// A single-line string as it is, and anything else (including an empty or multi-line string,
+/// so its quoting and final newline show) as YAML.
 fn format_value(value: &Value) -> String {
     match value {
-        Value::String(string) => string.clone(),
+        Value::String(string) if !string.is_empty() && !string.contains('\n') => string.clone(),
         _ => serde_yml::to_string(value)
             .map_or_else(|_| format!("{value:?}"), |yaml| yaml.trim_end().to_string()),
     }
@@ -878,8 +898,8 @@ mod tests {
         let mut differences = Vec::new();
         diff_values(
             "",
-            &serde_yml::to_value(&expected)?,
-            &serde_yml::to_value(&actual)?,
+            Some(&serde_yml::to_value(&expected)?),
+            Some(&serde_yml::to_value(&actual)?),
             &mut differences,
         );
 
@@ -891,6 +911,22 @@ mod tests {
                 "  diagnostics:\n    - - Unused function `f` at main.rue:1:4",
                 "  program:\n    + (q . 1)",
             ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn diffs_null_and_empty_values() -> Result<()> {
+        let expected: Value = serde_yml::from_str("output: ''\nstale: null\n")?;
+        let actual: Value = serde_yml::from_str("output: '1'\n")?;
+
+        let mut differences = Vec::new();
+        diff_values("", Some(&expected), Some(&actual), &mut differences);
+
+        assert_eq!(
+            differences,
+            ["  output:\n    - ''\n    + 1", "  stale:\n    - null"]
         );
 
         Ok(())
@@ -993,6 +1029,21 @@ mod tests {
 
         // The filtered run converges, without checking the syntax error test it didn't run
         assert!(!run_tests(Some("wanted"), &dir.0, false)?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn names_the_test_that_compiles_a_file() -> Result<()> {
+        let dir = TempDir::new("test-name")?;
+        let project = dir.0.join("group/project");
+        fs::create_dir_all(project.join("nested"))?;
+        fs::write(dir.0.join("group/project.yaml"), "")?;
+        fs::write(dir.0.join("group/single.rue"), MAIN)?;
+
+        assert_eq!(test_name(&dir.0.join("group/single.rue"))?, "single");
+        assert_eq!(test_name(&project.join("main.rue"))?, "project");
+        assert_eq!(test_name(&project.join("nested/helper.rue"))?, "project");
 
         Ok(())
     }
