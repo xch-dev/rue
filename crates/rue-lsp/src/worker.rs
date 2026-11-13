@@ -499,18 +499,16 @@ impl State {
 
     /// A compiler to compile a project with, which is the same as `Compiler::new(options)`.
     pub fn compiler(&self, options: CompilerOptions) -> Compiler {
-        if let Some(compiler) = self.compilers.borrow().get(&options) {
-            return compiler.clone();
-        }
-
-        #[cfg(test)]
-        self.shared.compilers.fetch_add(1, Ordering::Relaxed);
-
-        let compiler = Compiler::new(options);
         self.compilers
             .borrow_mut()
-            .insert(options, compiler.clone());
-        compiler
+            .entry(options)
+            .or_insert_with(|| {
+                #[cfg(test)]
+                self.shared.compilers.fetch_add(1, Ordering::Relaxed);
+
+                Compiler::new(options)
+            })
+            .clone()
     }
 
     /// Compiles a project again once the edits stop, given a path it can be found from.

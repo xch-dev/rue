@@ -537,19 +537,17 @@ impl Cache<Compiler> {
                     continue;
                 }
 
-                if let Some(score) = fuzzy_match(&partial, &name) {
-                    if matches!(context, CompletionContext::Expression)
+                if let Some(score) = fuzzy_match(&partial, &name)
+                    && (matches!(context, CompletionContext::Expression)
                         || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
-                            && matches!(context, CompletionContext::Type))
-                    {
-                        // The type is looked up from the cursor's scopes, like on hover, so
-                        // that it's narrowed by the conditions the cursor is inside of
-                        let ty = self.symbol_type(scopes, symbol);
-                        let detail = self.symbol_detail(scopes, symbol, ty);
-                        let kind = symbol_kind(self.ctx.symbol(symbol));
-                        scored_items
-                            .push((score, create_completion_item(name, kind, Some(detail))));
-                    }
+                            && matches!(context, CompletionContext::Type)))
+                {
+                    // The type is looked up from the cursor's scopes, like on hover, so that it's
+                    // narrowed by the conditions the cursor is inside of
+                    let ty = self.symbol_type(scopes, symbol);
+                    let detail = self.symbol_detail(scopes, symbol, ty);
+                    let kind = symbol_kind(self.ctx.symbol(symbol));
+                    scored_items.push((score, create_completion_item(name, kind, Some(detail))));
                 }
             }
 
