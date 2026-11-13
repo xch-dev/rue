@@ -12,13 +12,17 @@
 //!   error otherwise).
 //!
 //! The inputs come from several generators: arbitrary strings, sequences of Rue tokens, generated
-//! expressions, and the real Rue files in the repository with tokens deleted, duplicated, swapped
-//! or inserted, or with whitespace and comments added between them.
+//! expressions and imports, and the real Rue files in the repository with tokens deleted,
+//! duplicated, swapped or inserted, or with whitespace and comments added between them.
 //!
 //! Each property runs proptest's default of 256 cases with a fixed seed, so that the suite stays
 //! fast and gives the same result on every run. Set `PROPTEST_CASES` to run more cases, and
-//! `PROPTEST_RNG_SEED` to try different ones. Failing cases aren't saved to files; when a property
-//! finds a bug, the shrunk input belongs in an ordinary regression test.
+//! `PROPTEST_RNG_SEED` to try different ones. Most of the formatter bugs these properties found
+//! took a few thousand cases to reach, so the 256 cases don't catch every regression of them; the
+//! regression tests in the formatter's unit tests do. Failing cases aren't saved to files; when a
+//! property finds a bug, the shrunk input belongs in an ordinary regression test.
+//!
+//! A few known formatter bugs are skipped in `check_formatter`, each with an ignored unit test.
 
 use std::{
     fs,
@@ -513,6 +517,7 @@ fn with_extra_trivia(text: String) -> impl Strategy<Value = String> {
         " /* block */ \n",
         "\n/* multi\n   line */\n",
         " //\n",
+        "\n// own-line comment\n\n",
         " // trailing\n// own-line\n",
         " /* trailing */\n/* multi\n   line */\n",
     ];
@@ -603,6 +608,20 @@ fn import_path() -> impl Strategy<Value = String> {
     })
 }
 
+/// A few imports with whitespace and comments between their tokens. These are small, so the
+/// comments are dense, which reaches the sorting of imports and the comments around them.
+fn imports_with_comments() -> impl Strategy<Value = String> {
+    prop::collection::vec(import_path(), 1..5)
+        .prop_map(|paths| {
+            paths
+                .iter()
+                .flat_map(|path| ["import ", path, ";\n"])
+                .chain(["fn main() {}\n"])
+                .collect::<String>()
+        })
+        .prop_flat_map(with_extra_trivia)
+}
+
 /// Source for the formatter properties: mostly source that parses without errors, since the
 /// formatter rejects anything else.
 fn formatter_input() -> impl Strategy<Value = String> {
@@ -646,6 +665,11 @@ proptest! {
     #[test]
     fn formatter_preserves_the_program(text in formatter_input(), options in format_options()) {
         check_formatter(&text, &options);
+    }
+
+    #[test]
+    fn formatter_preserves_imports_and_their_comments(text in imports_with_comments()) {
+        check_formatter(&text, &FormatOptions::default());
     }
 }
 
