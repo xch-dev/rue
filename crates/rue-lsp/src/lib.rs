@@ -6,6 +6,8 @@ mod position;
 mod project;
 mod worker;
 
+pub use paths::encode_uris;
+
 use cache::Cache;
 use rue_compiler::{Compiler, normalize_path};
 use rue_diagnostic::{Applicability, Lint, SourceKind, SrcLoc};

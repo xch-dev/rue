@@ -1,8 +1,6 @@
 //! Tests for how the server keeps its state and the editor's diagnostics up to date as documents
 //! are opened and closed, and as files change on disk.
 
-use std::str::FromStr;
-
 use serde_json::{Value, json};
 use tower_lsp_server::ls_types::{FileChangeType, Uri};
 
@@ -206,7 +204,7 @@ async fn test_watched_files_recompile() {
     // Files that aren't part of a project are ignored
     let compiles = client.compiles();
     let outside = path_to_uri(&std::env::temp_dir().join("rue-lsp-nonexistent/main.rue")).unwrap();
-    let untitled = Uri::from_str("untitled:Untitled-1").unwrap();
+    let untitled = "untitled:Untitled-1".parse::<Uri>().unwrap();
     client
         .watched(&[(&outside, CHANGED), (&untitled, CHANGED)])
         .await;

@@ -6,10 +6,13 @@
 //! client uses the paths it knows.
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use rue_diagnostic::SourceKind;
+use serde_json::Value;
+use tower_lsp_server::jsonrpc::Request;
 use tower_lsp_server::ls_types::{Location, Uri};
 
 use crate::lock;
@@ -187,72 +190,158 @@ pub fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
     let host = uri
         .authority()
         .map(|authority| authority.host())
-        .unwrap_or_default();
-    let local = host.is_empty() || host.eq_ignore_ascii_case("localhost");
+        .filter(|host| !host.is_empty() && !host.eq_ignore_ascii_case("localhost"));
+    let path = uri.path().decode().to_bytes();
 
-    file_path((!local).then_some(host), &uri.path().decode().to_bytes())
-}
+    #[cfg(not(windows))]
+    {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
 
-#[cfg(not(windows))]
-fn file_path(host: Option<&str>, path: &[u8]) -> Option<PathBuf> {
-    use std::ffi::OsStr;
-    use std::os::unix::ffi::OsStrExt;
-
-    // Files on other machines can't be opened
-    if host.is_some() || !path.starts_with(b"/") {
-        return None;
+        // Files on other machines can't be opened
+        (host.is_none() && path.starts_with(b"/")).then(|| PathBuf::from(OsStr::from_bytes(&path)))
     }
 
-    Some(PathBuf::from(OsStr::from_bytes(path)))
+    #[cfg(windows)]
+    windows::path(host, std::str::from_utf8(&path).ok()?).map(PathBuf::from)
 }
 
-#[cfg(windows)]
-fn file_path(host: Option<&str>, path: &[u8]) -> Option<PathBuf> {
-    let path = std::str::from_utf8(path).ok()?.replace('/', "\\");
-
-    match host {
-        // `file://server/share/...` is `\\server\share\...`
-        Some(host) => Some(PathBuf::from(format!("\\\\{host}{path}"))),
-        // `file:///c:/...` is `c:\...`
-        None => path.strip_prefix('\\').map(PathBuf::from),
-    }
-}
-
-/// The URI of a file. On Windows, canonical paths are verbatim paths (`\\?\C:\...`), which a URI
-/// can't represent, so they're turned back into ordinary ones first.
+/// The URI of an absolute path, which `uri_to_path` turns back into the same path.
+///
+/// `Uri::from_file_path` isn't used, since on Windows it keeps the verbatim prefix of canonical
+/// paths (`\\?\C:\...`), which a URI can't represent, and turns UNC paths into `file://///...`.
 pub fn path_to_uri(path: &Path) -> Option<Uri> {
     if !path.is_absolute() {
         return None;
     }
 
-    #[cfg(windows)]
-    let path = &without_verbatim_prefix(path);
+    #[cfg(not(windows))]
+    let uri = {
+        use std::os::unix::ffi::OsStrExt;
 
-    Uri::from_file_path(path)
-}
-
-#[cfg(windows)]
-fn without_verbatim_prefix(path: &Path) -> PathBuf {
-    use std::path::{Component, Prefix};
-
-    let mut components = path.components();
-
-    let prefix = match components.next() {
-        Some(Component::Prefix(prefix)) => match prefix.kind() {
-            Prefix::VerbatimDisk(disk) => format!("{}:", disk as char),
-            Prefix::VerbatimUNC(server, share) => format!(
-                "\\\\{}\\{}",
-                server.to_string_lossy(),
-                share.to_string_lossy()
-            ),
-            _ => return path.to_path_buf(),
-        },
-        _ => return path.to_path_buf(),
+        format!(
+            "file://{}",
+            encode(path.as_os_str().as_bytes(), is_path_char)
+        )
     };
 
-    let mut result = PathBuf::from(prefix);
-    result.extend(components);
-    result
+    #[cfg(windows)]
+    let uri = {
+        let (host, path) = windows::uri_parts(path.to_str()?);
+        format!("file://{host}{}", encode(path.as_bytes(), is_path_char))
+    };
+
+    uri.parse().ok()
+}
+
+/// Whether a byte is left as it is in the path of a URI built for a file: it's one of RFC 3986's
+/// `pchar`s (unreserved characters, sub-delimiters, `:` and `@`) or a `/`.
+fn is_path_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"-._~!$&'()*+,;=:@/".contains(&byte)
+}
+
+/// Whether a byte can appear in a URI that's already percent-encoded, other than `[` and `]`
+/// (which only an IP address in the host can use).
+fn is_uri_char(byte: u8) -> bool {
+    is_path_char(byte) || b"%?#".contains(&byte)
+}
+
+/// Percent-encodes the bytes that aren't kept.
+fn encode(bytes: &[u8], keep: impl Fn(u8) -> bool) -> String {
+    let mut encoded = String::with_capacity(bytes.len());
+
+    for &byte in bytes {
+        if keep(byte) {
+            encoded.push(byte as char);
+        } else {
+            write!(encoded, "%{byte:02X}").unwrap();
+        }
+    }
+
+    encoded
+}
+
+/// Percent-encodes the characters that URIs can't contain in the URIs a client sent, which the
+/// protocol types would otherwise reject, failing the whole message. Clients built on the `url`
+/// crate (such as Helix and Zed) leave `[`, `]`, `^` and `|` in paths as they are, and `tower-lsp`
+/// 0.20 accepted them. URIs that are valid are left exactly as they were sent.
+pub fn encode_uris(request: Request) -> Request {
+    let (method, id, params) = request.into_parts();
+
+    let mut builder = Request::build(method);
+
+    if let Some(mut params) = params {
+        encode_uri_fields(&mut params);
+        builder = builder.params(params);
+    }
+
+    if let Some(id) = id {
+        builder = builder.id(id);
+    }
+
+    builder.finish()
+}
+
+fn encode_uri_fields(value: &mut Value) {
+    match value {
+        Value::Object(fields) => {
+            for (key, value) in fields {
+                if let Value::String(uri) = value
+                    && (key == "uri" || key.ends_with("Uri"))
+                {
+                    if uri.parse::<Uri>().is_err() {
+                        *uri = encode(uri.as_bytes(), is_uri_char);
+                    }
+                } else {
+                    encode_uri_fields(value);
+                }
+            }
+        }
+        Value::Array(values) => values.iter_mut().for_each(encode_uri_fields),
+        _ => {}
+    }
+}
+
+/// How Windows paths and file URIs correspond, which `url::Url` handled before. These only work
+/// with strings, so that they're tested on every platform.
+#[cfg(any(windows, test))]
+mod windows {
+    /// The path of a file URI's decoded path: `/c:/a` is `c:\a`, and with a host, `/share/a` is
+    /// `\\host\share\a`. Without a host, the path has to start with a drive letter.
+    pub fn path(host: Option<&str>, path: &str) -> Option<String> {
+        let path = path.replace('/', "\\");
+
+        if let Some(host) = host {
+            return Some(format!(r"\\{host}{path}"));
+        }
+
+        let path = path.strip_prefix('\\')?;
+
+        match path.as_bytes() {
+            [drive, b':'] if drive.is_ascii_alphabetic() => Some(format!(r"{path}\")),
+            [drive, b':', b'\\', ..] if drive.is_ascii_alphabetic() => Some(path.to_string()),
+            _ => None,
+        }
+    }
+
+    /// The host and path of the URI of an absolute path, whose path isn't percent-encoded yet.
+    /// Verbatim paths (`\\?\C:\a` and `\\?\UNC\server\share\a`), which canonical paths are, have
+    /// the same URIs as the ordinary paths they're the same as.
+    pub fn uri_parts(path: &str) -> (String, String) {
+        let (host, path) = if let Some(rest) = path
+            .strip_prefix(r"\\?\UNC\")
+            .or_else(|| path.strip_prefix(r"\\"))
+            .filter(|rest| !rest.starts_with(r"?\"))
+        {
+            let (host, rest) = rest.split_once('\\').unwrap_or((rest, ""));
+            (host, format!(r"\{rest}"))
+        } else {
+            let path = path.strip_prefix(r"\\?\").unwrap_or(path);
+            ("", format!(r"\{path}"))
+        };
+
+        (host.to_string(), path.replace('\\', "/"))
+    }
 }
 
 /// The path of a document, and the source kind that the compiler identifies it by, which is its
@@ -282,7 +371,8 @@ pub fn canonical(path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::str::FromStr;
+
+    use serde_json::json;
 
     use super::*;
     use crate::tests::TempDir;
@@ -304,44 +394,105 @@ mod tests {
             Some(PathBuf::from("/home/a b:c.rue"))
         );
 
-        // Only local files have paths
+        // Only local files with absolute paths have paths
         assert_eq!(path("untitled:Untitled-1"), None);
         assert_eq!(path("https://example.com/main.rue"), None);
         assert_eq!(path("file://server/main.rue"), None);
+        assert_eq!(path("file:main.rue"), None);
     }
 
-    #[cfg(windows)]
     #[test]
-    fn test_uri_to_path_windows() {
-        let path = |uri: &str| uri_to_path(&uri.parse().unwrap());
+    fn test_path_to_uri() {
+        let uri = |path: &str| path_to_uri(Path::new(path)).map(|uri| uri.as_str().to_string());
 
-        for uri in [
-            "file:///c%3A/Users/rue/main.rue",
-            "file:///c:/Users/rue/main.rue",
-        ] {
-            assert_eq!(path(uri), Some(PathBuf::from(r"c:\Users\rue\main.rue")));
-        }
-
+        // Characters that URIs can't contain are encoded, and `pchar`s aren't
         assert_eq!(
-            path("file://server/share/main.rue"),
-            Some(PathBuf::from(r"\\server\share\main.rue"))
+            uri("/a b/[id]/%41^|/x:y@z+(1).rue"),
+            Some("file:///a%20b/%5Bid%5D/%2541%5E%7C/x:y@z+(1).rue".to_string())
         );
         assert_eq!(
-            path_to_uri(Path::new(r"\\?\C:\Users\main.rue")),
-            path_to_uri(Path::new(r"C:\Users\main.rue"))
+            uri("/home/файл.rue"),
+            Some("file:///home/%D1%84%D0%B0%D0%B9%D0%BB.rue".to_string())
         );
+        assert_eq!(uri("relative.rue"), None);
     }
 
     #[test]
     fn test_path_to_uri_round_trips() {
         let dir = TempDir::new("rue-lsp-paths");
 
-        for name in ["main.rue", "a b.rue", "%41.rue", "файл.rue"] {
+        for name in ["main.rue", "a b.rue", "%41.rue", "[id]^|.rue", "файл.rue"] {
             let path = dir.path().join(name);
             assert_eq!(uri_to_path(&path_to_uri(&path).unwrap()), Some(path));
         }
+    }
 
-        assert_eq!(path_to_uri(Path::new("relative.rue")), None);
+    #[test]
+    fn test_windows_paths() {
+        // URIs to paths, from the decoded path of the URI
+        for uri in ["/c:/Users/rue/main.rue", r"/c:\Users\rue\main.rue"] {
+            assert_eq!(
+                windows::path(None, uri).as_deref(),
+                Some(r"c:\Users\rue\main.rue")
+            );
+        }
+
+        assert_eq!(windows::path(None, "/C:").as_deref(), Some(r"C:\"));
+        assert_eq!(
+            windows::path(Some("server"), "/share/main.rue").as_deref(),
+            Some(r"\\server\share\main.rue")
+        );
+
+        // Without a host, the path has to start with a drive letter
+        for uri in ["/Users/main.rue", "/", "", "/1:/main.rue", "/c:main.rue"] {
+            assert_eq!(windows::path(None, uri), None, "{uri}");
+        }
+
+        // Paths to URIs, which verbatim paths have the same as ordinary paths
+        let parts = |host: &str, path: &str| (host.to_string(), path.to_string());
+
+        for path in [r"C:\Users\main.rue", r"\\?\C:\Users\main.rue"] {
+            assert_eq!(windows::uri_parts(path), parts("", "/C:/Users/main.rue"));
+        }
+
+        for path in [r"\\server\share\main.rue", r"\\?\UNC\server\share\main.rue"] {
+            assert_eq!(windows::uri_parts(path), parts("server", "/share/main.rue"));
+        }
+
+        // Both directions agree
+        let (host, path) = windows::uri_parts(r"\\?\UNC\server\share\main.rue");
+        assert_eq!(
+            windows::path(Some(&host), &path).as_deref(),
+            Some(r"\\server\share\main.rue")
+        );
+    }
+
+    #[test]
+    fn test_encode_uris() {
+        let request = Request::build("textDocument/didOpen")
+            .params(json!({
+                "textDocument": { "uri": "file:///a/[id]/x^y|z.rue", "text": "[x]" },
+                "rootUri": "file:///a/[id]",
+                "workspaceFolders": [{ "uri": "file:///a/[id]", "name": "[id]" }],
+                "changes": [{ "uri": "file:///a/%5B.rue" }],
+            }))
+            .finish();
+
+        assert_eq!(
+            encode_uris(request).params(),
+            Some(&json!({
+                "textDocument": { "uri": "file:///a/%5Bid%5D/x%5Ey%7Cz.rue", "text": "[x]" },
+                "rootUri": "file:///a/%5Bid%5D",
+                "workspaceFolders": [{ "uri": "file:///a/%5Bid%5D", "name": "[id]" }],
+                "changes": [{ "uri": "file:///a/%5B.rue" }],
+            }))
+        );
+
+        // The method and id are kept
+        let request = encode_uris(Request::build("shutdown").id(7).finish());
+        assert_eq!(request.method(), "shutdown");
+        assert_eq!(request.id(), Some(&7.into()));
+        assert_eq!(request.params(), None);
     }
 
     #[test]
@@ -387,7 +538,11 @@ mod tests {
         // An open document is reported with the exact URIs the editor used for it
         fs::create_dir_all(dir.path().join("sub")).unwrap();
         fs::write(dir.path().join("sub/main.rue"), "").unwrap();
-        let first = Uri::from_str(&client_uri.as_str().replace("main.rue", "%6Dain.rue")).unwrap();
+        let first = client_uri
+            .as_str()
+            .replace("main.rue", "%6Dain.rue")
+            .parse::<Uri>()
+            .unwrap();
         let second = path_to_uri(&canonical.join("sub/main.rue")).unwrap();
         paths.open(&first);
         paths.open(&second);

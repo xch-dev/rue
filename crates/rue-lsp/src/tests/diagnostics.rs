@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use std::sync::Arc;
 
 use expect_test::expect;
@@ -310,7 +309,7 @@ fn test_diagnostics_non_file_uri() {
     let project = TestProject::new(&[]);
 
     let diagnostics = project.backend().on_change_impl(
-        &Uri::from_str("untitled:Untitled-1").unwrap(),
+        &"untitled:Untitled-1".parse::<Uri>().unwrap(),
         Some("fn main() -> Int {\n    x\n}\n".to_string()),
     );
 

@@ -3,7 +3,6 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -17,7 +16,7 @@ use tower_lsp_server::ls_types::{FileChangeType, MessageType, Uri};
 
 use super::{MANIFEST, TempDir};
 use crate::paths::{path_to_uri, uri_to_path};
-use crate::{Backend, INITIALIZED, Task, lock};
+use crate::{Backend, INITIALIZED, Task, encode_uris, lock};
 
 /// Logged for the `rue/sync` notification, which only exists in tests, so that they know that the
 /// server has handled everything sent before it.
@@ -109,7 +108,9 @@ impl Client {
         assert!(response.is_none(), "notifications don't have responses");
     }
 
+    /// Sends a message to the server, with its URIs encoded first, like `main` does.
     async fn call(&mut self, request: Request) -> Option<Response> {
+        let request = encode_uris(request);
         let method = request.method().to_string();
         let response = async { self.service.ready().await.unwrap().call(request).await };
 
@@ -655,7 +656,11 @@ async fn test_uri_spelling_is_kept() {
 
     // The same file, with a letter percent-encoded, as some clients do with other characters
     let uri = project.uri("main.rue");
-    let uri = Uri::from_str(&uri.as_str().replace("main.rue", "%6Dain.rue")).unwrap();
+    let uri: Uri = uri
+        .as_str()
+        .replace("main.rue", "%6Dain.rue")
+        .parse()
+        .unwrap();
 
     let mut client = Client::initialized().await;
     client.open(&uri, SOURCE).await;
@@ -672,6 +677,51 @@ async fn test_uri_spelling_is_kept() {
         .request("textDocument/definition", Some(position(&uri, 2, 6)))
         .await;
     assert_eq!(response.result().unwrap()["uri"], json!(uri));
+}
+
+#[tokio::test]
+async fn test_uris_with_characters_that_need_encoding() {
+    let project = TempProject::with_manifest(
+        None,
+        &[("[id]/Rue.toml", MANIFEST), ("[id]/main.rue", SOURCE)],
+    );
+
+    // Clients built on the `url` crate leave brackets unencoded, which isn't a valid URI
+    let uri = project.uri("[id]/main.rue");
+    let unencoded = uri.as_str().replace("%5Bid%5D", "[id]");
+    assert_ne!(unencoded, uri.as_str());
+
+    let mut client = Client::initialized().await;
+    client
+        .notify(
+            "textDocument/didOpen",
+            json!({
+                "textDocument": {
+                    "uri": unencoded,
+                    "languageId": "rue",
+                    "version": 1,
+                    "text": SOURCE,
+                }
+            }),
+        )
+        .await;
+
+    // The document is compiled, and its diagnostics are published to the encoded URI
+    assert_eq!(
+        published_uris(&client.sync().await),
+        uri_entries(&[(&uri, &[2]), (&project.uri("[id]/Rue.toml"), &[])])
+    );
+
+    let response = client
+        .request(
+            "textDocument/hover",
+            Some(json!({
+                "textDocument": { "uri": unencoded },
+                "position": { "line": 0, "character": 3 },
+            })),
+        )
+        .await;
+    assert!(response.result().is_some_and(|result| !result.is_null()));
 }
 
 #[tokio::test]

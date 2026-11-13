@@ -200,7 +200,7 @@ impl TestProject {
 
     /// Renders a URI and range relative to the project root, e.g. `main.rue:1:4-1:7`.
     pub fn location(&self, uri: &Uri, range: Range) -> String {
-        let path = uri.to_file_path().unwrap();
+        let path = uri_to_path(uri).unwrap();
         let path = path.strip_prefix(&self.root).unwrap_or(&path);
         format!("{}:{}", path.display(), range_string(range))
     }
