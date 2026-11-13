@@ -1,39 +1,19 @@
-use std::sync::Arc;
-
 use expect_test::{Expect, expect};
-use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{Hir, HirId, Statement, Symbol};
-use rue_options::CompilerOptions;
 
-use crate::{Compiler, File, FileTree};
+use crate::Compiler;
+use crate::test_utils::compile;
 
 /// Compiles the source, and lists every HIR node in the body of `main` along with its type and
 /// the source text it was compiled from.
 fn check(source: &str, expect: &Expect) {
-    let mut ctx = Compiler::new(CompilerOptions {
-        std: false,
-        ..CompilerOptions::default()
-    });
+    let mut compiled = compile(source);
+    compiled.assert_no_errors();
 
-    let file = File::new(
-        &mut ctx,
-        "main".to_string(),
-        Source::new(Arc::from(source), SourceKind::File("main.rue".to_string())),
-    );
-    let module = file.module;
-
-    FileTree::File(file).compile(&mut ctx);
-
-    assert!(!ctx.has_errors(), "{:?}", ctx.take_diagnostics());
-
-    let main = ctx.scope(ctx.module(module).scope).symbol("main").unwrap();
-
-    let Symbol::Function(function) = ctx.symbol(main).clone() else {
-        panic!("main isn't a function");
-    };
+    let body = compiled.function_body("main");
 
     let mut lines = Vec::new();
-    list_types(&mut ctx, function.body, 0, &mut lines);
+    list_types(&mut compiled.ctx, body, 0, &mut lines);
 
     expect.assert_eq(&lines.join("\n"));
 }

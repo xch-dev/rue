@@ -1,12 +1,10 @@
-use std::sync::Arc;
-
 use rue_diagnostic::{
-    Applicability, Diagnostic, DiagnosticSeverity, Lint, LintGroup, LintLevel, LintName, Source,
-    SourceKind, apply_edits,
+    Applicability, Diagnostic, DiagnosticSeverity, Lint, LintGroup, LintLevel, LintName,
+    apply_edits,
 };
 use rue_options::CompilerOptions;
 
-use crate::{Compiler, File, FileTree};
+use crate::test_utils::compile_with;
 
 const SOURCE: &str = "fn main() -> Int {\n    let unused = 1;\n    --42\n}\n";
 
@@ -18,24 +16,11 @@ fn compile_source(
     source: &str,
     configure: impl FnOnce(&mut CompilerOptions),
 ) -> (Vec<Diagnostic>, bool) {
-    let mut options = CompilerOptions {
-        std: false,
-        ..CompilerOptions::default()
-    };
-    configure(&mut options);
-
-    let mut ctx = Compiler::new(options);
-
-    let tree = FileTree::File(File::new(
-        &mut ctx,
-        "main".to_string(),
-        Source::new(Arc::from(source), SourceKind::File("main.rue".to_string())),
-    ));
-
-    tree.compile(&mut ctx);
-
-    let has_errors = ctx.has_errors();
-    (ctx.take_diagnostics(), has_errors)
+    let diagnostics = compile_with(source, configure).diagnostics;
+    let has_errors = diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error);
+    (diagnostics, has_errors)
 }
 
 fn severities(diagnostics: &[Diagnostic]) -> Vec<(Option<Lint>, DiagnosticSeverity)> {
