@@ -141,6 +141,8 @@ pub fn render(doc: &Doc, options: &FormatOptions) -> String {
         }
     }
 
+    // Spaces at the end of the document are removed like those at the end of any other line
+    output.truncate(content_end);
     normalize_output(&output)
 }
 

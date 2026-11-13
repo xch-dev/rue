@@ -459,6 +459,19 @@ fn multiline_comments_after_a_trailing_comment_keep_one_blank_line_before_them()
 }
 
 #[test]
+fn block_comments_at_the_end_of_the_file_have_no_trailing_space() {
+    // Found in review: sorting moved `/* x */` to the end of the file, and the space after it was
+    // only removed at the end of a line, not at the end of the file
+    check(
+        "import c; /* x */ import b;",
+        expect![[r#"
+            import b;
+            import c; /* x */
+        "#]],
+    );
+}
+
+#[test]
 fn multiline_comments_at_the_start_of_a_line_add_no_blank_lines() {
     // The same fix stops a multiline comment from adding a blank line at the start of the file,
     // after a file header, and after an import group's opening comment
