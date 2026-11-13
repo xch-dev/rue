@@ -706,6 +706,21 @@ fn constants_that_wrap_format_idempotently() {
 }
 
 #[test]
+#[ignore = "known bug found by the property tests: the space after a comment before a trailing \
+            comma is kept when the comma is removed, so a flat braced list gets two spaces before \
+            its closing brace, which the next format reduces to one"]
+fn comments_before_a_removed_trailing_comma_format_idempotently() {
+    check(
+        "fn f() {\n    S {\n        a: 1,\n        b: 2 /* c */ ,\n    }\n}",
+        expect![[r#"
+            fn f() {
+                S { a: 1, b: 2 /* c */ }
+            }
+        "#]],
+    );
+}
+
+#[test]
 fn struct_field_forms() {
     check(
         "struct Example<T>{opcode=42,value:T,optional:T=nil,...rest:Any=nil}",

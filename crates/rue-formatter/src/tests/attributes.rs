@@ -234,3 +234,16 @@ fn attributes_dont_split_compact_groups() {
         "#]],
     );
 }
+
+#[test]
+#[ignore = "known bug found by the property tests: when a narrow width breaks an attribute with \
+            comments inside it, formatting the result again moves the comments, so format_source \
+            rejects it as not idempotent"]
+fn comments_inside_attributes_can_be_formatted() {
+    let options = FormatOptions {
+        max_width: 10,
+        indent_width: 6,
+    };
+    let source = "#![ // trailing\n// own-line\nwarn(debug_statement) // line comment\n]\n\nfn main(value: Int) -> Int {\n    value\n}";
+    format_source(source, &options).unwrap();
+}

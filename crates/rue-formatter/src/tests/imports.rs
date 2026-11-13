@@ -291,6 +291,22 @@ fn multiline_comments_before_the_closing_brace_after_a_trailing_comment() {
 }
 
 #[test]
+#[ignore = "known bug found by the property tests: the formatter attaches these comments to a \
+            different path than the parser, or moves them on a second format, so its own checks \
+            reject the result and the file can't be formatted"]
+fn comments_inside_imports_can_be_formatted() {
+    for source in [
+        "import a::{\n/* block */ b};",
+        "import a::{c, b // trailing\n// own-line\n};",
+        "import a::{b, c::{e, d, f // line\n::g}, h};",
+        "import a::{c, // line\n\n// own-line\nb\n/* multi\nline */\n};",
+    ] {
+        format_source(source, &FormatOptions::default())
+            .unwrap_or_else(|error| panic!("{source:?} should format: {error}"));
+    }
+}
+
+#[test]
 fn sorting_paths_keeps_no_blank_line_after_a_trailing_comment() {
     // Found by the property tests: the blank line before `/* multi` stayed after `// line` once
     // sorting moved `c` between them, and the next format removed it

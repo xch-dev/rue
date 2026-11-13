@@ -31,6 +31,7 @@ use proptest::{
     sample::Index,
     test_runner::{Config, RngSeed},
 };
+use rue_ast::{AstFunctionItem, AstNode};
 use rue_diagnostic::{Source, SourceKind};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_lexer::Lexer;
@@ -149,10 +150,23 @@ fn check_formatter(text: &str, options: &FormatOptions) {
             );
             return;
         }
-        Err(FormatError::Internal(message))
-            if has_compact_group(&input.node) && differs_only_in_blank_lines(&message) =>
-        {
+        Err(FormatError::Internal(message)) if is_compact_group_bug(&input.node, &message) => {
             // A known bug, see `constants_that_wrap_format_idempotently` in the unit tests
+            return;
+        }
+        Err(FormatError::Internal(_)) if has_comment_in_import_or_attribute(&input.node) => {
+            // Known bugs: the formatter can attach a comment inside an import or attribute to a
+            // different token, or format it differently the second time, and then refuses to
+            // format the file. See `comments_inside_imports_can_be_formatted` and
+            // `comments_inside_attributes_can_be_formatted` in the unit tests.
+            return;
+        }
+        Err(FormatError::Internal(message))
+            if message.starts_with("formatting was not idempotent")
+                && has_comment_before_trailing_comma(&input.node) =>
+        {
+            // A known bug: see `comments_before_a_removed_trailing_comma_format_idempotently` in
+            // the unit tests
             return;
         }
         Err(error) => panic!("the formatter failed on source that parses: {error}"),
@@ -179,46 +193,70 @@ fn check_formatter(text: &str, options: &FormatOptions) {
     );
 }
 
-/// Whether the document has two top-level items of the same kind that the formatter can put in a
-/// compact group: constants, type aliases or extern functions. Whether an item joins a group
-/// depends on whether it's on one line in the source rather than in the output, so an item that
-/// the formatter wraps joins the group on the first format but not on the second.
-fn has_compact_group(root: &SyntaxNode) -> bool {
-    let kinds = root
-        .children()
-        .filter_map(|node| match node.kind() {
-            SyntaxKind::ConstantItem | SyntaxKind::TypeAliasItem => Some(node.kind()),
-            SyntaxKind::FunctionItem
-                if node
-                    .children_with_tokens()
-                    .any(|child| child.kind() == T![extern]) =>
-            {
-                Some(node.kind())
-            }
-            _ => None,
-        })
+/// Whether a block comment comes just before a trailing comma, which is followed by a closing
+/// delimiter.
+fn has_comment_before_trailing_comma(root: &SyntaxNode) -> bool {
+    let tokens = root
+        .descendants_with_tokens()
+        .filter_map(rowan::NodeOrToken::into_token)
+        .filter(|token| token.kind() != SyntaxKind::Whitespace)
         .collect::<Vec<_>>();
-    [
-        SyntaxKind::ConstantItem,
-        SyntaxKind::TypeAliasItem,
-        SyntaxKind::FunctionItem,
-    ]
-    .iter()
-    .any(|kind| kinds.iter().filter(|candidate| *candidate == kind).count() > 1)
+    tokens.windows(3).any(|window| {
+        window[0].kind() == SyntaxKind::BlockComment
+            && window[1].kind() == T![,]
+            && matches!(window[2].kind(), T![')'] | T![']'] | T!['}'] | T![>])
+    })
 }
 
 /// Whether `message` is the formatter's error for output that changed when it was formatted again,
-/// and the change was only to blank lines.
-fn differs_only_in_blank_lines(message: &str) -> bool {
+/// and the change is explained by a known bug: whether an item joins a compact group (constants,
+/// type aliases or extern functions without blank lines between them) depends on whether it's on
+/// one line in the source rather than in the output. So when the formatter wraps such an item, it
+/// joins the group on the first format but not on the second, which only adds blank lines.
+fn is_compact_group_bug(input: &SyntaxNode, message: &str) -> bool {
     let Some((first, second)) = message
         .strip_prefix("formatting was not idempotent\nfirst:\n")
         .and_then(|rest| rest.split_once("\nsecond:\n"))
     else {
         return false;
     };
-    let first = first.lines().filter(|line| !line.is_empty());
-    let second = second.lines().filter(|line| !line.is_empty());
-    first.eq(second)
+    first
+        .lines()
+        .filter(|line| !line.is_empty())
+        .eq(second.lines().filter(|line| !line.is_empty()))
+        && compact_items(input).count() > 1
+        && compact_items(&parse(first).node).any(|item| {
+            // The same check as the formatter's, skipping attributes and comments before the item
+            item.children_with_tokens()
+                .skip_while(|element| {
+                    element.kind().is_trivia() || element.kind() == SyntaxKind::Attribute
+                })
+                .any(|element| element.to_string().contains('\n'))
+        })
+}
+
+/// The top-level items that the formatter can put in a compact group.
+fn compact_items(root: &SyntaxNode) -> impl Iterator<Item = SyntaxNode> {
+    root.children().filter(|node| match node.kind() {
+        SyntaxKind::ConstantItem | SyntaxKind::TypeAliasItem => true,
+        SyntaxKind::FunctionItem => AstFunctionItem::cast(node.clone())
+            .is_some_and(|function| function.extern_kw().is_some() && function.body().is_none()),
+        _ => false,
+    })
+}
+
+/// Whether there's a comment between the tokens of an import or an attribute.
+fn has_comment_in_import_or_attribute(root: &SyntaxNode) -> bool {
+    root.descendants_with_tokens()
+        .filter_map(rowan::NodeOrToken::into_token)
+        .any(|token| {
+            matches!(
+                token.kind(),
+                SyntaxKind::LineComment | SyntaxKind::BlockComment
+            ) && token
+                .parent_ancestors()
+                .any(|node| matches!(node.kind(), SyntaxKind::ImportItem | SyntaxKind::Attribute))
+        })
 }
 
 /// What formatting must preserve, computed independently of the formatter's own check.
@@ -240,7 +278,15 @@ impl Signature {
         for child in root.children_with_tokens() {
             match child {
                 rowan::NodeOrToken::Node(node) if node.kind() == SyntaxKind::ImportItem => {
-                    expand_import(&significant_tokens(&node), &mut 0, "", &mut imports);
+                    // An import's attributes apply to every path in it
+                    let (attributes, path): (Vec<_>, Vec<_>) =
+                        significant_tokens(&node).into_iter().partition(|token| {
+                            token
+                                .parent_ancestors()
+                                .any(|node| node.kind() == SyntaxKind::Attribute)
+                        });
+                    let prefix = attributes.iter().map(token_key).collect::<String>();
+                    expand_import(&path, &mut 0, &prefix, &mut imports);
                 }
                 rowan::NodeOrToken::Node(node) => {
                     rest.extend(significant_tokens(&node).iter().map(token_key));
@@ -464,8 +510,11 @@ fn with_extra_trivia(text: String) -> impl Strategy<Value = String> {
         " // line comment\n",
         "\n// own-line comment\n",
         " /* block */ ",
+        " /* block */ \n",
         "\n/* multi\n   line */\n",
         " //\n",
+        " // trailing\n// own-line\n",
+        " /* trailing */\n/* multi\n   line */\n",
     ];
     let insertion = (any::<Index>(), proptest::sample::select(TRIVIA));
     prop::collection::vec(insertion, 0..12).prop_map(move |insertions| {
@@ -529,8 +578,28 @@ fn expression() -> impl Strategy<Value = String> {
 
 /// A small program around generated expressions.
 fn generated_program() -> impl Strategy<Value = String> {
-    (expression(), expression()).prop_map(|(value, result)| {
-        format!("fn main() -> Int {{\n    let value = {value};\n    {result}\n}}\n")
+    (
+        prop::collection::vec(import_path(), 0..4),
+        expression(),
+        expression(),
+    )
+        .prop_map(|(imports, value, result)| {
+            let imports = imports
+                .iter()
+                .flat_map(|path| ["import ", path, ";\n"])
+                .collect::<String>();
+            format!("{imports}fn main() -> Int {{\n    let value = {value};\n    {result}\n}}\n")
+        })
+}
+
+/// A random import path, with nested import groups.
+fn import_path() -> impl Strategy<Value = String> {
+    "[a-z]{1,6}".prop_recursive(3, 16, 4, |inner| {
+        prop_oneof![
+            ("[a-z]{1,6}", inner.clone()).prop_map(|(name, rest)| format!("{name}::{rest}")),
+            ("[a-z]{1,6}", prop::collection::vec(inner, 1..4))
+                .prop_map(|(name, items)| format!("{name}::{{{}}}", items.join(", "))),
+        ]
     })
 }
 
