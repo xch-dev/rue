@@ -120,22 +120,60 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use rue_diagnostic::{Lint, LintLevel};
 
     use super::*;
 
-    #[test]
-    fn applies_manifest_lints() -> Result<(), Error> {
-        let dir = std::env::temp_dir().join(format!("rue-options-lints-{}", std::process::id()));
-        fs::create_dir_all(dir.join("puzzles"))?;
-        fs::write(
-            dir.join("Rue.toml"),
-            "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\nunused_import = \"forbid\"\ntypo_lint = \"allow\"\n",
-        )?;
+    /// A directory under the system's temporary directory, which is removed when it's dropped.
+    struct TempDir(PathBuf);
 
-        let project = find_project(&dir, false);
-        fs::remove_dir_all(&dir)?;
-        let project = project?.expect("project should be found");
+    impl TempDir {
+        fn new() -> Self {
+            static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+            let path = std::env::temp_dir().join(format!(
+                "rue-options-{}-{}",
+                std::process::id(),
+                COUNTER.fetch_add(1, Ordering::SeqCst)
+            ));
+            fs::remove_dir_all(&path).ok();
+            fs::create_dir_all(&path).unwrap();
+
+            Self(path)
+        }
+
+        /// Writes a file at a path relative to the directory, creating its parents.
+        fn write(&self, path: &str, contents: &str) -> PathBuf {
+            let path = self.0.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, contents).unwrap();
+            path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    fn find(path: &Path, debug: bool) -> Project {
+        find_project(path, debug)
+            .unwrap()
+            .expect("project should be found")
+    }
+
+    #[test]
+    fn applies_manifest_lints() {
+        let dir = TempDir::new();
+        dir.write(
+            "Rue.toml",
+            "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\nunused_import = \"forbid\"\ntypo_lint = \"allow\"\n",
+        );
+
+        let project = find(&dir.0, false);
 
         assert_eq!(
             project.options.lints.get(Lint::UnusedBinding),
@@ -153,7 +191,160 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["typo_lint"]
         );
+    }
 
-        Ok(())
+    #[test]
+    fn manifest_entrypoint_is_relative_to_the_manifest() {
+        let dir = TempDir::new();
+        let manifest = dir.write(
+            "Rue.toml",
+            "[compiler]\nentrypoint = \"src\"\n\n[formatter]\nmax_width = 80\n",
+        );
+
+        for path in [dir.0.clone(), manifest.clone()] {
+            let project = find(&path, false);
+
+            assert_eq!(project.entrypoint, dir.0.join("src"));
+            assert_eq!(project.manifest_path.as_deref(), Some(manifest.as_path()));
+            assert_eq!(project.options, CompilerOptions::default());
+            assert_eq!(
+                project.format_options,
+                FormatOptions {
+                    max_width: 80,
+                    indent_width: 4,
+                }
+            );
+            assert!(project.manifest.is_some());
+            assert!(project.unknown_lints.is_empty());
+            assert!(project.forbidden_lints.is_empty());
+        }
+    }
+
+    #[test]
+    fn manifest_is_found_from_a_file_inside_of_the_project() {
+        let dir = TempDir::new();
+        let manifest = dir.write("Rue.toml", "[compiler]\n");
+        let file = dir.write("puzzles/nested/main.rue", "");
+
+        let project = find(&file, false);
+
+        assert_eq!(project.manifest_path.as_deref(), Some(manifest.as_path()));
+        assert_eq!(project.entrypoint, dir.0.join("puzzles"));
+    }
+
+    #[test]
+    fn manifest_takes_precedence_over_a_main_file() {
+        let dir = TempDir::new();
+        dir.write("Rue.toml", "[compiler]\n");
+        dir.write("puzzles/main.rue", "");
+
+        let project = find(&dir.0.join("puzzles"), false);
+
+        assert!(project.manifest.is_some());
+        assert_eq!(project.entrypoint, dir.0.join("puzzles"));
+    }
+
+    #[test]
+    fn manifest_can_disable_the_standard_library() {
+        let dir = TempDir::new();
+        dir.write("Rue.toml", "[compiler]\nstd = false\n");
+
+        assert_eq!(
+            find(&dir.0, false).options,
+            CompilerOptions {
+                std: false,
+                ..CompilerOptions::default()
+            }
+        );
+        assert_eq!(
+            find(&dir.0, true).options,
+            CompilerOptions {
+                std: false,
+                ..CompilerOptions::debug()
+            }
+        );
+
+        // Enabling it explicitly is the same as leaving it out
+        dir.write("Rue.toml", "[compiler]\nstd = true\n");
+        assert!(find(&dir.0, false).options.std);
+    }
+
+    #[test]
+    fn manifest_lints_apply_to_debug_options() {
+        let dir = TempDir::new();
+        dir.write(
+            "Rue.toml",
+            "[compiler]\n\n[lints]\nunused_binding = \"deny\"\n",
+        );
+
+        let project = find(&dir.0, true);
+
+        assert!(project.options.debug_symbols);
+        assert_eq!(
+            project.options.lints.get(Lint::UnusedBinding),
+            LintLevel::Deny
+        );
+    }
+
+    #[test]
+    fn invalid_manifest_is_an_error_with_its_path() {
+        let dir = TempDir::new();
+        let manifest = dir.write("Rue.toml", "[compiler\n");
+
+        let Err(Error::Toml { path, .. }) = find_project(&dir.0, false) else {
+            panic!("expected a TOML error");
+        };
+
+        assert_eq!(path, manifest);
+    }
+
+    #[test]
+    fn directory_with_a_main_file_is_a_project_without_a_manifest() {
+        let dir = TempDir::new();
+        dir.write("main.rue", "");
+
+        for (debug, options) in [
+            (false, CompilerOptions::default()),
+            (true, CompilerOptions::debug()),
+        ] {
+            let project = find(&dir.0, debug);
+
+            assert!(project.manifest.is_none());
+            assert!(project.manifest_path.is_none());
+            assert_eq!(project.entrypoint, dir.0);
+            assert_eq!(project.options, options);
+            assert_eq!(project.format_options, FormatOptions::default());
+        }
+    }
+
+    #[test]
+    fn rue_file_is_a_project_without_a_manifest() {
+        let dir = TempDir::new();
+        let file = dir.write("puzzle.rue", "");
+
+        for (debug, options) in [
+            (false, CompilerOptions::default()),
+            (true, CompilerOptions::debug()),
+        ] {
+            let project = find(&file, debug);
+
+            assert!(project.manifest.is_none());
+            assert_eq!(project.entrypoint, file);
+            assert_eq!(project.options, options);
+        }
+    }
+
+    #[test]
+    fn other_paths_are_not_projects() {
+        let dir = TempDir::new();
+        let file = dir.write("notes.txt", "");
+
+        assert!(find_project(&dir.0, false).unwrap().is_none());
+        assert!(find_project(&file, false).unwrap().is_none());
+        assert!(
+            find_project(&dir.0.join("missing.rue"), false)
+                .unwrap()
+                .is_none()
+        );
     }
 }

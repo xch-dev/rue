@@ -272,6 +272,59 @@ mod tests {
     }
 
     #[test]
+    fn missing_settings_use_their_defaults() {
+        let manifest: Manifest = toml::from_str("[compiler]\n").unwrap();
+
+        assert_eq!(manifest.compiler.entrypoint, "puzzles");
+        assert_eq!(
+            manifest.compiler.version.as_deref(),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+        assert_eq!(manifest.compiler.std, None);
+        assert_eq!(manifest.compiler.dist_dir, None);
+        assert_eq!(manifest.formatter, FormatOptions::default());
+        assert!(manifest.lints.is_empty());
+
+        // Each formatter setting can be given on its own
+        let manifest: Manifest =
+            toml::from_str("[compiler]\n\n[formatter]\nindent_width = 2\n").unwrap();
+
+        assert_eq!(
+            manifest.formatter,
+            FormatOptions {
+                max_width: 100,
+                indent_width: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn compiler_section_is_required() {
+        let error = toml::from_str::<Manifest>("[formatter]\nmax_width = 80\n").unwrap_err();
+
+        assert!(
+            error.message().contains("missing field `compiler`"),
+            "{}",
+            error.message()
+        );
+    }
+
+    #[test]
+    fn default_manifest_round_trips() {
+        let text = toml::to_string(&Manifest::default()).unwrap();
+        let manifest: Manifest = toml::from_str(&text).unwrap();
+
+        assert_eq!(
+            text,
+            format!(
+                "[compiler]\nversion = \"{}\"\nentrypoint = \"puzzles\"\n\n[formatter]\nmax_width = 100\nindent_width = 4\n",
+                env!("CARGO_PKG_VERSION")
+            )
+        );
+        assert_eq!(toml::to_string(&manifest).unwrap(), text);
+    }
+
+    #[test]
     fn omits_empty_lints_section() {
         let manifest = Manifest::default();
         let text = toml::to_string(&manifest).unwrap();
