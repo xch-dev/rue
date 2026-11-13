@@ -291,6 +291,28 @@ fn multiline_comments_before_the_closing_brace_after_a_trailing_comment() {
 }
 
 #[test]
+fn sorting_moves_no_blank_lines_into_an_import_group() {
+    // Found by the property tests: the blank line after `line */` started a new group of imports
+    // on the second format, which added another blank line before the comment
+    check(
+        "import b;\n/* multi\nline */\n\nimport k;\nimport h; /* trailing */\nimport z;\nimport a; // trailing\n\n// doc\nimport q;",
+        expect![[r#"
+            import b;
+
+            import a; // trailing
+            import h; /* trailing */
+            /* multi
+            line */
+            import k;
+            import z;
+
+            // doc
+            import q;
+        "#]],
+    );
+}
+
+#[test]
 fn comments_moved_after_a_trailing_comment_by_sorting_add_no_blank_line() {
     // Found by the property tests: `// doc` started a line of its own after the line ended by
     // `// trailing`, which left a blank line between them that the next format kept

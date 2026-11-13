@@ -4,7 +4,7 @@ use crate::{
     FormatError,
     analysis::{DelimiterStyle, ItemBoundary, Layout},
     document::Doc,
-    ordering::ImportGroupPlan,
+    ordering::{DocumentItem, ImportGroupPlan},
     token_stream::{Comment, CommentPlacement, Gap, TokenId, TokenSpan, TokenStream},
     trivia::split_between,
 };
@@ -56,6 +56,26 @@ impl<'a> Formatter<'a> {
         let footer = self.layout.document.footer.clone();
         let mut docs = vec![self.gap_doc(&header, Separator::None)];
 
+        // Sorting can move the comments around a blank line that ended an import group into the
+        // middle of one, where the blank line would split the group on the next format
+        let same_import_group = |left: &DocumentItem, right: &DocumentItem| {
+            left.import_group.is_some() && left.import_group == right.import_group
+        };
+        let trailing_gaps = items
+            .iter()
+            .enumerate()
+            .map(|(position, item)| {
+                let mut trailing = item.trailing.clone();
+                if items
+                    .get(position + 1)
+                    .is_some_and(|next| same_import_group(item, next))
+                {
+                    remove_blank_lines(&mut trailing);
+                }
+                trailing
+            })
+            .collect::<Vec<_>>();
+
         for (position, item) in items.iter().enumerate() {
             let separator = if position == 0 {
                 Separator::None
@@ -73,14 +93,17 @@ impl<'a> Formatter<'a> {
                     }
                     _ => Separator::Empty,
                 };
-                requested.after(&previous.trailing)
+                requested.after(&trailing_gaps[position - 1])
             };
             let mut leading = item.leading.clone();
+            if position > 0 && same_import_group(&items[position - 1], item) {
+                remove_blank_lines(&mut leading);
+            }
             if let Some(first) = leading.comments.first_mut() {
                 if position == 0 {
                     first.newlines_before = 0;
                     first.placement = CommentPlacement::Leading;
-                } else if items[position - 1].trailing.ends_line() {
+                } else if trailing_gaps[position - 1].ends_line() {
                     // The previous item's trailing comments already end its line. They're only
                     // followed by these comments in the source if the items weren't sorted, and
                     // then the line break between them was already given to the trailing comments.
@@ -89,7 +112,7 @@ impl<'a> Formatter<'a> {
             }
             docs.push(self.movable_leading_doc(&leading, separator));
             docs.push(self.span(item.span)?);
-            docs.push(self.gap_doc(&item.trailing, Separator::None));
+            docs.push(self.gap_doc(&trailing_gaps[position], Separator::None));
         }
         docs.push(self.gap_doc(&footer, Separator::None));
 
@@ -781,6 +804,14 @@ fn indent_levels(mut doc: Doc, levels: usize) -> Doc {
         doc = doc.indent();
     }
     doc
+}
+
+/// Limits the line breaks in a gap to one, so it has no blank lines.
+fn remove_blank_lines(gap: &mut Gap) {
+    gap.newlines = gap.newlines.min(1);
+    for comment in &mut gap.comments {
+        comment.newlines_before = comment.newlines_before.min(1);
+    }
 }
 
 fn separator_doc(separator: Separator) -> Doc {
