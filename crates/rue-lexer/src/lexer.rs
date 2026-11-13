@@ -328,6 +328,14 @@ mod tests {
                 LineComment
             "#]],
         );
+
+        // A literal NUL character doesn't end a line comment
+        check(
+            "// a \0 b\n",
+            expect![[r#"
+                LineComment
+            "#]],
+        );
     }
 
     #[test]
@@ -811,6 +819,18 @@ mod tests {
             "\\",
             expect![[r#"
                 Unknown
+            "#]],
+        );
+
+        // A literal NUL character outside a string or comment is unknown
+        check(
+            "1 \0 2",
+            expect![[r#"
+                Integer
+                Whitespace
+                Unknown
+                Whitespace
+                Integer
             "#]],
         );
     }
