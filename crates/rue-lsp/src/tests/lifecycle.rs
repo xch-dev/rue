@@ -2,11 +2,12 @@
 //! are opened and closed, and as files change on disk.
 
 use serde_json::{Value, json};
-use tower_lsp::lsp_types::{FileChangeType, Url};
+use tower_lsp_server::ls_types::{FileChangeType, Uri};
 
 use super::MANIFEST;
 use super::protocol::{Client, MISMATCH, SOURCE, TempProject};
 use crate::Task;
+use crate::paths::path_to_uri;
 
 const CREATED: FileChangeType = FileChangeType::CREATED;
 const CHANGED: FileChangeType = FileChangeType::CHANGED;
@@ -202,9 +203,8 @@ async fn test_watched_files_recompile() {
 
     // Files that aren't part of a project are ignored
     let compiles = client.compiles();
-    let outside =
-        Url::from_file_path(std::env::temp_dir().join("rue-lsp-nonexistent/main.rue")).unwrap();
-    let untitled = Url::parse("untitled:Untitled-1").unwrap();
+    let outside = path_to_uri(&std::env::temp_dir().join("rue-lsp-nonexistent/main.rue")).unwrap();
+    let untitled = "untitled:Untitled-1".parse::<Uri>().unwrap();
     client
         .watched(&[(&outside, CHANGED), (&untitled, CHANGED)])
         .await;

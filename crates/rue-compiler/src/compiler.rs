@@ -1,7 +1,7 @@
 use std::{
     cmp::Reverse,
     collections::{HashMap, HashSet},
-    mem,
+    fmt, mem,
     ops::{Deref, DerefMut, Range},
     path::{Path, PathBuf},
     sync::Arc,
@@ -42,6 +42,26 @@ pub struct Compiler {
     return_count: usize,
     inferred_generics_stack: Vec<Vec<TypeId>>,
     lint_sites: LintSites,
+    cancel: Option<Cancel>,
+    cancelled: bool,
+}
+
+/// Says whether a compile should stop partway, because nothing needs its result anymore (for
+/// example, because the language server's files were edited while it ran). It's asked between
+/// phases and before each declaration's body is compiled, so it should be cheap.
+#[derive(Clone)]
+pub struct Cancel(Arc<dyn Fn() -> bool + Send + Sync>);
+
+impl Cancel {
+    pub fn new(cancelled: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        Self(Arc::new(cancelled))
+    }
+}
+
+impl fmt::Debug for Cancel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Cancel")
+    }
 }
 
 /// The function or lambda body that a `return` statement exits from.
@@ -91,6 +111,8 @@ impl Compiler {
             return_count: 0,
             inferred_generics_stack: Vec::new(),
             lint_sites: LintSites::default(),
+            cancel: None,
+            cancelled: false,
         };
 
         if options.std {
@@ -141,6 +163,24 @@ impl Compiler {
 
     pub(crate) fn cache_external_program(&mut self, path: PathBuf, program: Vec<u8>) {
         self.external_programs.insert(path, program);
+    }
+
+    /// Sets what's asked whether to stop compiling partway. A compile that stopped is incomplete,
+    /// and only good for being thrown away.
+    pub fn set_cancel(&mut self, cancel: Option<Cancel>) {
+        self.cancel = cancel;
+    }
+
+    /// Whether the compile should stop. Once it should, it stays that way, so that every phase
+    /// after it stops too.
+    pub fn is_cancelled(&mut self) -> bool {
+        if !self.cancelled
+            && let Some(cancel) = &self.cancel
+        {
+            self.cancelled = (cancel.0)();
+        }
+
+        self.cancelled
     }
 
     pub fn set_source(&mut self, source: Source) {

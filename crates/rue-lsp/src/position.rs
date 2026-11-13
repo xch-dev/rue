@@ -1,7 +1,7 @@
 //! Conversions between byte offsets into source text and LSP positions, whose characters are
 //! counted in UTF-16 code units.
 
-use tower_lsp::lsp_types::{Position, Range};
+use tower_lsp_server::ls_types::{Position, Range};
 
 pub fn offset_to_position(text: &str, offset: usize) -> Position {
     let offset = floor_char_boundary(text, offset);

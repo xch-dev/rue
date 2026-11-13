@@ -85,6 +85,9 @@ struct Compiled {
     cache: Option<(Cache<Compiler>, Vec<Source>)>,
     /// Whether the project doesn't exist anymore, so it's no longer tracked.
     removed: bool,
+    /// Whether the compile stopped partway, because the editor changed its files, so it has no
+    /// results.
+    cancelled: bool,
 }
 
 impl Compiled {
@@ -95,6 +98,7 @@ impl Compiled {
             diagnostics: Diagnostics::new(),
             cache: None,
             removed: true,
+            cancelled: false,
         }
     }
 }
@@ -104,7 +108,15 @@ impl State {
     /// them, and the projects of the files the editor changed. Projects that aren't the editor's
     /// are only compiled once the user opened one of their files, so that the server doesn't
     /// report diagnostics for the whole workspace.
-    pub fn recompile(&mut self, changed: &[PathBuf], edited: &[PathBuf]) -> Diagnostics {
+    ///
+    /// If it's `cancellable`, a project's compile stops partway once the editor changes its files,
+    /// and it's compiled again once the edits stop.
+    pub fn recompile(
+        &mut self,
+        changed: &[PathBuf],
+        edited: &[PathBuf],
+        cancellable: bool,
+    ) -> Diagnostics {
         let snapshot = self.shared.snapshot();
 
         let mut lookups = edited.to_vec();
@@ -151,7 +163,7 @@ impl State {
             .chain(
                 projects
                     .values()
-                    .map(|project| self.compile(project, &snapshot)),
+                    .map(|project| self.compile(project, &snapshot, cancellable)),
             )
             .collect::<Vec<_>>();
 
@@ -160,6 +172,7 @@ impl State {
         // recorded last, to replace them
         let dropped = compiled
             .iter()
+            .filter(|compiled| !compiled.cancelled)
             .flat_map(|compiled| {
                 self.published
                     .get(&compiled.key)
@@ -183,7 +196,7 @@ impl State {
         compiled.extend(
             others
                 .iter()
-                .map(|project| self.compile(project, &snapshot)),
+                .map(|project| self.compile(project, &snapshot, cancellable)),
         );
 
         // Everything is compiled before any state is updated, so that a panic leaves the results
@@ -194,8 +207,8 @@ impl State {
             // The editor may have changed a project's files while it was compiling, in which case
             // its diagnostics are already out of date, so they aren't published, and the project
             // is compiled again with the edits. Queries still use it, since it's newer than the
-            // last compile that was published.
-            if self.shared.is_stale(&snapshot, compiled.diagnostics.keys()) {
+            // last compile that was published. A compile that stopped partway has no results.
+            if compiled.cancelled || self.shared.is_stale(&snapshot, compiled.diagnostics.keys()) {
                 if let Some((cache, files)) = compiled.cache {
                     self.insert_project(compiled.key, cache, files, &snapshot);
                 }
@@ -210,8 +223,9 @@ impl State {
         diagnostics
     }
 
-    /// Compiles a project, without updating any state.
-    fn compile(&self, found: &FoundProject, snapshot: &Snapshot) -> Compiled {
+    /// Compiles a project, without updating any state. If it's `cancellable`, it stops partway
+    /// once the editor changes the project's files.
+    fn compile(&self, found: &FoundProject, snapshot: &Snapshot, cancellable: bool) -> Compiled {
         #[cfg(test)]
         self.shared.compiles.fetch_add(1, Ordering::Relaxed);
 
@@ -232,6 +246,7 @@ impl State {
                     diagnostics: invalid_manifest_diagnostics(&found.path, error),
                     cache: None,
                     removed: false,
+                    cancelled: false,
                 };
             }
         };
@@ -247,7 +262,36 @@ impl State {
 
         // If the project can't be compiled (for example, because its entrypoint was deleted), only
         // the manifest's diagnostics are reported, and those of its files are cleared
-        if let Ok(tree) = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut sources) {
+        if let Ok(tree) = FileTree::load_path(&mut ctx, &project.entrypoint, &mut sources) {
+            if cancellable {
+                let files = tree
+                    .all_files()
+                    .into_iter()
+                    .map(|file| file.source.kind.clone())
+                    .collect();
+
+                ctx.set_cancel(Some(self.shared.cancel(snapshot, files)));
+            }
+
+            tree.compile(&mut ctx);
+
+            // The compiler is kept to answer queries, which don't stop
+            ctx.set_cancel(None);
+
+            if ctx.is_cancelled() {
+                #[cfg(test)]
+                self.shared.cancelled.fetch_add(1, Ordering::Relaxed);
+
+                return Compiled {
+                    key: found.key.clone(),
+                    path: found.path.clone(),
+                    diagnostics: Diagnostics::new(),
+                    cache: None,
+                    removed: false,
+                    cancelled: true,
+                };
+            }
+
             let related_information = self.shared.related_information.load(Ordering::Relaxed);
 
             for item in ctx.take_diagnostics() {
@@ -286,6 +330,7 @@ impl State {
             diagnostics,
             cache,
             removed: false,
+            cancelled: false,
         }
     }
 
@@ -300,6 +345,7 @@ impl State {
             mut diagnostics,
             cache,
             removed,
+            cancelled: _,
         } = compiled;
 
         let previous = if removed {
@@ -343,7 +389,10 @@ impl State {
 
         let compiled = self.published.get(key).and_then(|tracked| {
             let project = FoundProject::find(&tracked.path)?;
-            panic::catch_unwind(AssertUnwindSafe(|| self.compile(&project, &snapshot))).ok()
+            panic::catch_unwind(AssertUnwindSafe(|| {
+                self.compile(&project, &snapshot, false)
+            }))
+            .ok()
         });
 
         match compiled.and_then(|compiled| Some((compiled.key, compiled.cache?))) {

@@ -21,12 +21,12 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
-use rue_compiler::Compiler;
+use rue_compiler::{Cancel, Compiler};
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::CompilerOptions;
 use tokio::sync::oneshot;
-use tower_lsp::Client;
-use tower_lsp::lsp_types::{Diagnostic, MessageType, Url};
+use tower_lsp_server::Client;
+use tower_lsp_server::ls_types::{Diagnostic, MessageType, Uri};
 
 use crate::cache::Cache;
 use crate::paths::{Paths, document};
@@ -57,6 +57,9 @@ pub struct Shared {
     /// How many times a project was compiled.
     #[cfg(test)]
     pub compiles: AtomicUsize,
+    /// How many compiles stopped partway, because their files were edited.
+    #[cfg(test)]
+    pub cancelled: AtomicUsize,
     /// How many compilers were built from scratch, rather than copied from one built before.
     #[cfg(test)]
     pub compilers: AtomicUsize,
@@ -82,6 +85,8 @@ pub struct Document {
 pub struct Snapshot {
     pub sources: HashMap<SourceKind, String>,
     revisions: HashMap<SourceKind, u64>,
+    /// The last revision of any document.
+    revision: u64,
 }
 
 /// Lets a test hold a compile once it has started.
@@ -104,6 +109,8 @@ impl Shared {
             injected_panic: Mutex::default(),
             #[cfg(test)]
             compiles: AtomicUsize::new(0),
+            #[cfg(test)]
+            cancelled: AtomicUsize::new(0),
             #[cfg(test)]
             compilers: AtomicUsize::new(0),
             #[cfg(test)]
@@ -144,6 +151,7 @@ impl Shared {
         let documents = lock(&self.documents);
 
         Snapshot {
+            revision: self.revision.load(Ordering::Relaxed),
             sources: documents
                 .iter()
                 .map(|(kind, document)| (kind.clone(), document.text.clone()))
@@ -162,11 +170,39 @@ impl Shared {
         snapshot: &Snapshot,
         files: impl IntoIterator<Item = &'a SourceKind>,
     ) -> bool {
+        self.changed_since(&snapshot.revisions, files)
+    }
+
+    fn changed_since<'a>(
+        &self,
+        revisions: &HashMap<SourceKind, u64>,
+        files: impl IntoIterator<Item = &'a SourceKind>,
+    ) -> bool {
         let documents = lock(&self.documents);
 
         files.into_iter().any(|kind| {
-            documents.get(kind).map(|document| document.revision)
-                != snapshot.revisions.get(kind).copied()
+            documents.get(kind).map(|document| document.revision) != revisions.get(kind).copied()
+        })
+    }
+
+    /// Stops a compile of these files from the snapshot once the editor changes one of them, since
+    /// its result would be out of date and thrown away. Edits to other files don't stop it.
+    pub fn cancel(self: &Arc<Self>, snapshot: &Snapshot, files: Vec<SourceKind>) -> Cancel {
+        let shared = self.clone();
+        let revisions = snapshot.revisions.clone();
+
+        // The documents are only looked at once something changed since they last were, since
+        // this is asked often
+        let checked = AtomicU64::new(snapshot.revision);
+
+        Cancel::new(move || {
+            let revision = shared.revision.load(Ordering::Relaxed);
+
+            if checked.swap(revision, Ordering::Relaxed) == revision {
+                return false;
+            }
+
+            shared.changed_since(&revisions, &files)
         })
     }
 
@@ -408,7 +444,7 @@ impl State {
                     match jobs.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
                         Ok(job) => job,
                         Err(RecvTimeoutError::Timeout) => {
-                            self.flush();
+                            self.flush(true);
                             continue;
                         }
                         Err(RecvTimeoutError::Disconnected) => return,
@@ -429,14 +465,16 @@ impl State {
                 } => {
                     edited.extend(self.take_edits());
 
-                    done.send(self.compile_and_publish(&changed, &edited)).ok();
+                    done.send(self.compile_and_publish(&changed, &edited, true))
+                        .ok();
                 }
                 Job::Run(request) => {
                     if request.cancelled() {
                         continue;
                     }
 
-                    self.flush();
+                    // The request needs this compile, so edits don't stop it
+                    self.flush(false);
                     request.run(&mut self);
                 }
             }
@@ -448,17 +486,25 @@ impl State {
         std::mem::take(&mut self.edited)
     }
 
-    /// Compiles the edits that are waiting, if there are any.
-    fn flush(&mut self) {
+    /// Compiles the edits that are waiting, if there are any. If it's `cancellable`, a compile
+    /// stops partway once its files are edited again.
+    fn flush(&mut self, cancellable: bool) {
         let edited = self.take_edits();
 
         if !edited.is_empty() {
-            self.compile_and_publish(&[], &edited);
+            self.compile_and_publish(&[], &edited, cancellable);
         }
     }
 
-    fn compile_and_publish(&mut self, changed: &[PathBuf], edited: &[PathBuf]) -> Diagnostics {
-        match panic::catch_unwind(AssertUnwindSafe(|| self.recompile(changed, edited))) {
+    fn compile_and_publish(
+        &mut self,
+        changed: &[PathBuf],
+        edited: &[PathBuf],
+        cancellable: bool,
+    ) -> Diagnostics {
+        match panic::catch_unwind(AssertUnwindSafe(|| {
+            self.recompile(changed, edited, cancellable)
+        })) {
             Ok(diagnostics) => {
                 futures::executor::block_on(self.shared.publish(&diagnostics));
                 diagnostics
@@ -475,7 +521,7 @@ impl State {
     /// about the revision of the editor's text it was sent for, and if an edit made after it was
     /// compiled first, there's no answer, since the query's position may not match the text
     /// anymore. An older compile still answers (for example, if compiling the edit panicked).
-    pub fn cache(&mut self, uri: &Url, revision: Option<u64>) -> Option<&mut Cache<Compiler>> {
+    pub fn cache(&mut self, uri: &Uri, revision: Option<u64>) -> Option<&mut Cache<Compiler>> {
         let (_, kind) = document(uri)?;
         let (key, source, compiled) = self.files.get(&kind)?;
 
@@ -560,7 +606,7 @@ impl State {
 
 #[cfg(test)]
 mod tests {
-    use tower_lsp::LspService;
+    use tower_lsp_server::LspService;
 
     use super::*;
     use crate::Backend;

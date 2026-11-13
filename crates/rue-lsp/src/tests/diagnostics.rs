@@ -5,8 +5,8 @@ use expect_test::expect;
 use rue_diagnostic::{
     Applicability, DiagnosticKind, Edit, Lint, Source, SourceKind, SrcLoc, Suggestion,
 };
-use tower_lsp::LanguageServer;
-use tower_lsp::lsp_types::{InitializeParams, Url};
+use tower_lsp_server::LanguageServer;
+use tower_lsp_server::ls_types::{InitializeParams, Uri};
 
 use super::TestProject;
 
@@ -309,7 +309,7 @@ fn test_diagnostics_non_file_uri() {
     let project = TestProject::new(&[]);
 
     let diagnostics = project.backend().on_change_impl(
-        &Url::parse("untitled:Untitled-1").unwrap(),
+        &"untitled:Untitled-1".parse::<Uri>().unwrap(),
         Some("fn main() -> Int {\n    x\n}\n".to_string()),
     );
 

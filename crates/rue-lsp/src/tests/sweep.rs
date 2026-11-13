@@ -29,9 +29,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, ThreadId};
 
-use tower_lsp::lsp_types::{
+use tower_lsp_server::ls_types::{
     CompletionParams, GotoDefinitionParams, HoverParams, PartialResultParams, Position,
-    ReferenceContext, ReferenceParams, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+    ReferenceContext, ReferenceParams, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
     WorkDoneProgressParams,
 };
 
@@ -246,7 +246,7 @@ impl Request {
 
 struct Sweep {
     project: TestProject,
-    uri: Url,
+    uri: Uri,
     /// Keyed by file, request and panic message, so that one bug doesn't flood the report.
     failures: BTreeMap<(String, &'static str, String), Failure>,
     progress: bool,

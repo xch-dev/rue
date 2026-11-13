@@ -8,8 +8,8 @@ use serde_json::json;
 
 use super::protocol::{Client, MISMATCH, SOURCE, TempProject, assert_hover, position};
 use super::{MANIFEST, TestProject};
-use crate::lock;
 use crate::worker::DEBOUNCE;
+use crate::{Task, lock};
 
 /// Long enough for a compile that's being held to have started.
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -58,6 +58,99 @@ async fn test_edits_are_compiled_after_a_pause() {
     let diagnostics = client.diagnostics(&uri).await;
     assert_eq!(diagnostics["diagnostics"].as_array().unwrap().len(), 1);
     assert!(start.elapsed() >= DEBOUNCE);
+}
+
+#[tokio::test]
+async fn test_edit_stops_the_compile_of_an_earlier_edit() {
+    let project = TempProject::new(&[("main.rue", SOURCE)]);
+    let uri = project.uri("main.rue");
+
+    let mut client = Client::initialized().await;
+    client.open(&uri, SOURCE).await;
+    client.sync().await;
+
+    // The first edit's compile starts once the edits pause, and the second edit stops it
+    let (started, release) = client.hold_compile();
+    client.change(&uri, 2, &[MISMATCH]).await;
+    started.recv_timeout(TIMEOUT).unwrap();
+
+    client.change(&uri, 3, &[SOURCE]).await;
+    release.send(()).unwrap();
+
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["Rue.toml: []", "main.rue: [2]"]
+    );
+    assert_eq!(client.cancelled(), 1);
+}
+
+#[tokio::test]
+async fn test_stopped_compile_does_not_drop_files() {
+    // The outer project includes `sub/x.rue`, which is also part of the inner one
+    let project = TempProject::new(&[
+        ("main.rue", SOURCE),
+        ("sub/Rue.toml", MANIFEST),
+        ("sub/x.rue", "fn x() -> Int {\n    1\n}\n"),
+    ]);
+    let main = project.uri("main.rue");
+    let x = project.uri("sub/x.rue");
+
+    let mut client = Client::initialized().await;
+    client.open(&x, "fn x() -> Int {\n    1\n}\n").await;
+    client.open(&main, SOURCE).await;
+    client.sync().await;
+
+    // The outer project's compile stops, but it hasn't stopped including `sub/x.rue`, so the
+    // inner project isn't compiled and its diagnostics for it aren't published
+    let compiles = client.compiles();
+    let (started, release) = client.hold_compile();
+    client.change(&main, 2, &[MISMATCH]).await;
+    started.recv_timeout(TIMEOUT).unwrap();
+
+    client.change(&main, 3, &[SOURCE]).await;
+    release.send(()).unwrap();
+
+    assert_eq!(
+        project.published(&client.sync().await),
+        ["Rue.toml: []", "main.rue: [2]", "sub/x.rue: [2]"]
+    );
+    assert_eq!(client.compiles(), compiles + 2);
+    assert_eq!(client.cancelled(), 1);
+}
+
+#[test]
+fn test_rebuild_after_a_panic_is_not_stopped() {
+    let project = TestProject::new(&[(
+        "main.rue",
+        "fn main() -> Int {\n    let value = +42;\n    va$0lue + 1\n}\n",
+    )]);
+    let backend = project.backend();
+    let (uri, position) = project.cursor();
+    let path = project.path("main.rue");
+
+    *lock(&backend.shared.debounce) = TIMEOUT;
+
+    // The request panics, so the project is compiled again, and an edit arrives meanwhile
+    *lock(&backend.shared.injected_panic) = Some(Task::Hover);
+    let (started, release) = backend.hold_compile();
+
+    let hover = std::thread::scope(|scope| {
+        let request = scope.spawn(|| super::hover(backend, uri.clone(), position));
+
+        started.recv_timeout(TIMEOUT).unwrap();
+        backend.set_text(&uri, Some(LITERAL.to_string()));
+        backend.worker.edit(path.clone());
+        release.send(()).unwrap();
+
+        request.join().unwrap()
+    });
+
+    assert_eq!(hover, "<none>\n");
+    assert_eq!(backend.shared.cancelled.load(Ordering::Relaxed), 0);
+
+    // The edit is compiled before the next request
+    *lock(&backend.shared.injected_panic) = None;
+    assert_eq!(super::hover(backend, uri, position), "let value: 42\n");
 }
 
 #[tokio::test]
@@ -115,7 +208,7 @@ async fn test_out_of_date_result_is_discarded() {
     let mut client = Client::initialized().await;
 
     // The document is edited while the project is being compiled with the text it was opened
-    // with, so that compile's diagnostics are never published
+    // with, so that compile stops, and its diagnostics are never published
     let (started, release) = client.hold_compile();
     let compiles = client.compiles();
     client.open(&uri, MISMATCH).await;
@@ -129,6 +222,7 @@ async fn test_out_of_date_result_is_discarded() {
         ["Rue.toml: []", "main.rue: [2]"]
     );
     assert_eq!(client.compiles(), compiles + 2);
+    assert_eq!(client.cancelled(), 1);
 }
 
 #[test]
@@ -164,7 +258,9 @@ fn test_request_uses_newest_compile() {
         request.join().unwrap()
     });
 
+    // The request needed that compile, so the edit didn't stop it
     assert_eq!(hover, "let value: 42\n");
+    assert_eq!(backend.shared.cancelled.load(Ordering::Relaxed), 0);
 }
 
 #[tokio::test]
@@ -181,7 +277,7 @@ async fn test_cancelled_request_does_not_compile() {
     // before the server gets to it
     let (started, release) = client.hold_compile();
     client
-        .watched(&[(&uri, tower_lsp::lsp_types::FileChangeType::CHANGED)])
+        .watched(&[(&uri, tower_lsp_server::ls_types::FileChangeType::CHANGED)])
         .await;
     started.recv_timeout(TIMEOUT).unwrap();
 
@@ -229,6 +325,9 @@ async fn test_out_of_date_project_is_compiled_again() {
         published.contains(&"main.rue: [2]".to_string()),
         "{published:?}"
     );
+
+    // The outer project's compile stopped, since it includes the edited file
+    assert_eq!(client.cancelled(), 1);
 }
 
 #[tokio::test]
@@ -268,6 +367,7 @@ async fn test_other_projects_are_not_out_of_date() {
         ]
     );
     assert_eq!(client.compiles(), compiles + 2);
+    assert_eq!(client.cancelled(), 0);
 }
 
 #[tokio::test]

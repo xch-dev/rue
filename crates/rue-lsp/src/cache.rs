@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::path::Path;
 
 use indexmap::IndexMap;
 use rowan::{TextRange, TextSize, TokenAtOffset};
@@ -9,10 +10,11 @@ use rue_hir::{FunctionKind, ScopeId, Symbol, SymbolId};
 use rue_lexer::{Lexer, TokenKind};
 use rue_parser::{SyntaxKind, SyntaxToken, T};
 use rue_types::{Type, TypeId, Union};
-use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position, Url,
+use tower_lsp_server::ls_types::{
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position,
 };
 
+use crate::paths::path_to_uri;
 use crate::position::{offsets_to_range, position_to_offset};
 
 #[derive(Debug, Clone)]
@@ -748,7 +750,7 @@ impl Cache<Compiler> {
                 let range =
                     offsets_to_range(text, item.span.start().into(), item.span.end().into());
 
-                Some(Location::new(Url::from_file_path(path).ok()?, range))
+                Some(Location::new(path_to_uri(Path::new(path))?, range))
             })
             .collect::<Vec<_>>();
 

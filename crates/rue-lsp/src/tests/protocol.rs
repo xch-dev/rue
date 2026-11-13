@@ -10,12 +10,13 @@ use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
-use tower_lsp::LspService;
-use tower_lsp::jsonrpc::{Request, Response};
-use tower_lsp::lsp_types::{FileChangeType, MessageType, Url};
+use tower_lsp_server::LspService;
+use tower_lsp_server::jsonrpc::{Request, Response};
+use tower_lsp_server::ls_types::{FileChangeType, MessageType, Uri};
 
 use super::{MANIFEST, TempDir};
-use crate::{Backend, INITIALIZED, Task, lock};
+use crate::paths::{path_to_uri, uri_to_path};
+use crate::{Backend, INITIALIZED, Task, encode_uris, lock};
 
 /// Logged for the `rue/sync` notification, which only exists in tests, so that they know that the
 /// server has handled everything sent before it.
@@ -107,7 +108,9 @@ impl Client {
         assert!(response.is_none(), "notifications don't have responses");
     }
 
+    /// Sends a message to the server, with its URIs encoded first, like `main` does.
     async fn call(&mut self, request: Request) -> Option<Response> {
+        let request = encode_uris(request);
         let method = request.method().to_string();
         let response = async { self.service.ready().await.unwrap().call(request).await };
 
@@ -137,6 +140,11 @@ impl Client {
     /// How many times the server compiled a project.
     pub(super) fn compiles(&self) -> usize {
         self.backend().shared.compiles.load(Ordering::Relaxed)
+    }
+
+    /// How many compiles stopped partway, because their files were edited.
+    pub(super) fn cancelled(&self) -> usize {
+        self.backend().shared.cancelled.load(Ordering::Relaxed)
     }
 
     /// How many compilers the server built from scratch.
@@ -171,7 +179,7 @@ impl Client {
         client
     }
 
-    pub(super) async fn open(&mut self, uri: &Url, text: &str) {
+    pub(super) async fn open(&mut self, uri: &Uri, text: &str) {
         self.notify(
             "textDocument/didOpen",
             json!({
@@ -186,7 +194,7 @@ impl Client {
         .await;
     }
 
-    pub(super) async fn close(&mut self, uri: &Url) {
+    pub(super) async fn close(&mut self, uri: &Uri) {
         self.notify(
             "textDocument/didClose",
             json!({ "textDocument": { "uri": uri } }),
@@ -195,7 +203,7 @@ impl Client {
     }
 
     /// Tells the server that files changed on disk.
-    pub(super) async fn watched(&mut self, changes: &[(&Url, FileChangeType)]) {
+    pub(super) async fn watched(&mut self, changes: &[(&Uri, FileChangeType)]) {
         let changes = changes
             .iter()
             .map(|(uri, kind)| json!({ "uri": uri, "type": kind }))
@@ -208,14 +216,14 @@ impl Client {
         .await;
     }
 
-    pub(super) async fn hover(&mut self, uri: &Url, line: u32, character: u32) -> Value {
+    pub(super) async fn hover(&mut self, uri: &Uri, line: u32, character: u32) -> Value {
         let response = self
             .request("textDocument/hover", Some(position(uri, line, character)))
             .await;
         response.result().unwrap().clone()
     }
 
-    pub(super) async fn change(&mut self, uri: &Url, version: i32, changes: &[&str]) {
+    pub(super) async fn change(&mut self, uri: &Uri, version: i32, changes: &[&str]) {
         let changes = changes
             .iter()
             .map(|text| json!({ "text": text }))
@@ -250,7 +258,7 @@ impl Client {
 
     /// Waits for the diagnostics published for the given file, skipping those for other files
     /// (such as `Rue.toml`).
-    pub(super) async fn diagnostics(&mut self, uri: &Url) -> Value {
+    pub(super) async fn diagnostics(&mut self, uri: &Uri) -> Value {
         loop {
             let diagnostics = self.notification("textDocument/publishDiagnostics").await;
 
@@ -334,8 +342,8 @@ impl TempProject {
         project
     }
 
-    pub(super) fn uri(&self, name: &str) -> Url {
-        Url::from_file_path(self.root.join(name)).unwrap()
+    pub(super) fn uri(&self, name: &str) -> Uri {
+        path_to_uri(&self.root.join(name)).unwrap()
     }
 
     pub(super) fn write(&self, name: &str, text: impl AsRef<[u8]>) {
@@ -372,10 +380,7 @@ impl TempProject {
                 assert_eq!(message.method(), "textDocument/publishDiagnostics");
 
                 let params = message.params().unwrap();
-                let path = Url::parse(params["uri"].as_str().unwrap())
-                    .unwrap()
-                    .to_file_path()
-                    .unwrap();
+                let path = uri_to_path(&params["uri"].as_str().unwrap().parse().unwrap()).unwrap();
                 let name = path.strip_prefix(&self.root).unwrap().display();
 
                 let severities = params["diagnostics"]
@@ -454,14 +459,14 @@ async fn test_protocol_session() {
     assert!(response.is_ok());
 }
 
-pub(super) fn position(uri: &Url, line: u32, character: u32) -> Value {
+pub(super) fn position(uri: &Uri, line: u32, character: u32) -> Value {
     json!({
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character },
     })
 }
 
-fn formatting(uri: &Url) -> Value {
+fn formatting(uri: &Uri) -> Value {
     json!({
         "textDocument": { "uri": uri },
         "options": { "tabSize": 4, "insertSpaces": true },
@@ -488,7 +493,7 @@ fn assert_mismatch(diagnostics: &Value) {
     );
 }
 
-pub(super) async fn assert_hover(client: &mut Client, uri: &Url) {
+pub(super) async fn assert_hover(client: &mut Client, uri: &Uri) {
     assert_eq!(
         client.hover(uri, 2, 6).await["contents"],
         json!([{ "language": "rue", "value": "let value: Int" }])
@@ -656,7 +661,11 @@ async fn test_uri_spelling_is_kept() {
 
     // The same file, with a letter percent-encoded, as some clients do with other characters
     let uri = project.uri("main.rue");
-    let uri = Url::parse(&uri.as_str().replace("main.rue", "%6Dain.rue")).unwrap();
+    let uri: Uri = uri
+        .as_str()
+        .replace("main.rue", "%6Dain.rue")
+        .parse()
+        .unwrap();
 
     let mut client = Client::initialized().await;
     client.open(&uri, SOURCE).await;
@@ -673,6 +682,51 @@ async fn test_uri_spelling_is_kept() {
         .request("textDocument/definition", Some(position(&uri, 2, 6)))
         .await;
     assert_eq!(response.result().unwrap()["uri"], json!(uri));
+}
+
+#[tokio::test]
+async fn test_uris_with_characters_that_need_encoding() {
+    let project = TempProject::with_manifest(
+        None,
+        &[("[id]/Rue.toml", MANIFEST), ("[id]/main.rue", SOURCE)],
+    );
+
+    // Clients built on the `url` crate leave brackets unencoded, which isn't a valid URI
+    let uri = project.uri("[id]/main.rue");
+    let unencoded = uri.as_str().replace("%5Bid%5D", "[id]");
+    assert_ne!(unencoded, uri.as_str());
+
+    let mut client = Client::initialized().await;
+    client
+        .notify(
+            "textDocument/didOpen",
+            json!({
+                "textDocument": {
+                    "uri": unencoded,
+                    "languageId": "rue",
+                    "version": 1,
+                    "text": SOURCE,
+                }
+            }),
+        )
+        .await;
+
+    // The document is compiled, and its diagnostics are published to the encoded URI
+    assert_eq!(
+        published_uris(&client.sync().await),
+        uri_entries(&[(&uri, &[2]), (&project.uri("[id]/Rue.toml"), &[])])
+    );
+
+    let response = client
+        .request(
+            "textDocument/hover",
+            Some(json!({
+                "textDocument": { "uri": unencoded },
+                "position": { "line": 0, "character": 3 },
+            })),
+        )
+        .await;
+    assert!(response.result().is_some_and(|result| !result.is_null()));
 }
 
 #[tokio::test]
@@ -738,10 +792,10 @@ fn published_uris(messages: &[Request]) -> Vec<String> {
 }
 
 /// Renders URIs and severities like `published_uris`.
-fn uri_entries(entries: &[(&Url, &[u64])]) -> Vec<String> {
+fn uri_entries(entries: &[(&Uri, &[u64])]) -> Vec<String> {
     let mut entries = entries
         .iter()
-        .map(|(uri, severities)| format!("{uri} {severities:?}"))
+        .map(|(uri, severities)| format!("{} {severities:?}", uri.as_str()))
         .collect::<Vec<_>>();
 
     entries.sort();
@@ -753,7 +807,7 @@ fn uri_entries(entries: &[(&Url, &[u64])]) -> Vec<String> {
 async fn test_file_open_through_two_uris() {
     let project = TempProject::new(&[("main.rue", SOURCE)]);
     let link = project.uri("main.rue");
-    let real = Url::from_file_path(project.root.canonicalize().unwrap().join("main.rue")).unwrap();
+    let real = path_to_uri(&project.root.canonicalize().unwrap().join("main.rue")).unwrap();
     let manifest = project.uri("Rue.toml");
 
     let mut client = Client::initialized().await;
@@ -883,7 +937,7 @@ async fn test_watched_files_through_canonical_path() {
 
     // The watcher reports the file's real path, but it's the same project
     project.write("other.rue", MISMATCH.replace("main", "other"));
-    let other = Url::from_file_path(real.join("other.rue")).unwrap();
+    let other = path_to_uri(&real.join("other.rue")).unwrap();
     client.watched(&[(&other, FileChangeType::CREATED)]).await;
     assert_eq!(
         project.published(&client.sync().await),

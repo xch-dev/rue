@@ -6,11 +6,14 @@
 //! client uses the paths it knows.
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use rue_diagnostic::SourceKind;
-use tower_lsp::lsp_types::{Location, Url};
+use serde_json::Value;
+use tower_lsp_server::jsonrpc::Request;
+use tower_lsp_server::ls_types::{Location, Uri};
 
 use crate::lock;
 
@@ -20,12 +23,12 @@ pub struct Paths {
     roots: Mutex<Vec<(PathBuf, PathBuf)>>,
     /// The URIs of the documents open in the editor. The same file can be open through more than
     /// one URI (for example, through a symlink and through its target).
-    documents: Mutex<HashMap<SourceKind, Vec<Url>>>,
+    documents: Mutex<HashMap<SourceKind, Vec<Uri>>>,
     /// The paths the client uses for files that are symlinks, which the directories they're in
     /// don't give (for example, a manifest shared between projects).
     aliases: Mutex<HashMap<SourceKind, Vec<PathBuf>>>,
     /// The URIs that diagnostics were last published to for each file.
-    published: Mutex<HashMap<SourceKind, Vec<Url>>>,
+    published: Mutex<HashMap<SourceKind, Vec<Uri>>>,
 }
 
 impl Paths {
@@ -59,7 +62,7 @@ impl Paths {
     }
 
     /// Remembers the URI of a document the editor opened.
-    pub fn open(&self, uri: &Url) {
+    pub fn open(&self, uri: &Uri) {
         let Some((_, kind)) = document(uri) else {
             return;
         };
@@ -74,7 +77,7 @@ impl Paths {
 
     /// Forgets the URI of a document the editor closed. The URI is matched as it was opened,
     /// since the file it refers to may have changed (or been deleted) since then.
-    pub fn close(&self, uri: &Url) {
+    pub fn close(&self, uri: &Uri) {
         lock(&self.documents).retain(|_, uris| {
             uris.retain(|open| open != uri);
             !uris.is_empty()
@@ -92,14 +95,14 @@ impl Paths {
     }
 
     /// The URI that the client uses for a file.
-    pub fn uri(&self, kind: &SourceKind) -> Option<Url> {
+    pub fn uri(&self, kind: &SourceKind) -> Option<Uri> {
         self.uris(kind).into_iter().next()
     }
 
     /// The URIs that the client uses for a file: those of the documents open for it, or if there
     /// are none, the paths the client used for it, or its path in the innermost directory the
     /// client used.
-    pub fn uris(&self, kind: &SourceKind) -> Vec<Url> {
+    pub fn uris(&self, kind: &SourceKind) -> Vec<Uri> {
         let SourceKind::File(path) = kind else {
             return Vec::new();
         };
@@ -138,16 +141,13 @@ impl Paths {
             paths.push(path.to_path_buf());
         }
 
-        paths
-            .iter()
-            .filter_map(|path| Url::from_file_path(path).ok())
-            .collect()
+        paths.iter().filter_map(|path| path_to_uri(path)).collect()
     }
 
     /// The URIs to publish a file's diagnostics to, and those that it was published to last time
     /// but won't be anymore, whose diagnostics need to be cleared (for example, after the editor
     /// closed a document that it had opened through a symlink).
-    pub fn publish(&self, kind: &SourceKind) -> (Vec<Url>, Vec<Url>) {
+    pub fn publish(&self, kind: &SourceKind) -> (Vec<Uri>, Vec<Uri>) {
         let uris = self.uris(kind);
 
         let previous = lock(&self.published)
@@ -175,35 +175,193 @@ impl Paths {
     }
 }
 
-/// The path of a file URI. Windows drive letters are accepted whether or not their colon is
-/// percent-encoded (VS Code sends `file:///c%3A/...`).
-pub fn uri_to_path(uri: &Url) -> Option<PathBuf> {
-    decode_drive_letter(uri).to_file_path().ok()
-}
-
-fn decode_drive_letter(uri: &Url) -> Url {
-    let path = uri.path();
-    let bytes = path.as_bytes();
-
-    let encoded = bytes.len() >= 5
-        && bytes[0] == b'/'
-        && bytes[1].is_ascii_alphabetic()
-        && path[2..5].eq_ignore_ascii_case("%3a");
-
-    if !encoded {
-        return uri.clone();
+/// The path of a file URI, or `None` if it isn't one (such as `untitled:Untitled-1`). Windows
+/// drive letters are accepted whether or not their colon is percent-encoded (VS Code sends
+/// `file:///c%3A/...`), since the whole path is decoded.
+///
+/// `Uri::to_file_path` doesn't check the scheme, ignores the host on Unix, and doesn't turn a host
+/// into a UNC path on Windows, so the conversion is done here, the way `url::Url::to_file_path`
+/// did it before.
+pub fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
+    if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
+        return None;
     }
 
-    let mut uri = uri.clone();
-    let decoded = format!("/{}:{}", &path[1..2], &path[5..]);
-    uri.set_path(&decoded);
-    uri
+    let host = uri
+        .authority()
+        .map(|authority| authority.host())
+        .filter(|host| !host.is_empty() && !host.eq_ignore_ascii_case("localhost"));
+    let path = uri.path().decode().to_bytes();
+
+    #[cfg(not(windows))]
+    {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        // Files on other machines can't be opened
+        (host.is_none() && path.starts_with(b"/")).then(|| PathBuf::from(OsStr::from_bytes(&path)))
+    }
+
+    #[cfg(windows)]
+    windows::path(host, std::str::from_utf8(&path).ok()?).map(PathBuf::from)
+}
+
+/// The URI of an absolute path, which `uri_to_path` turns back into the same path.
+///
+/// `Uri::from_file_path` isn't used, since on Windows it keeps the verbatim prefix of canonical
+/// paths (`\\?\C:\...`), which a URI can't represent, and turns UNC paths into `file://///...`.
+pub fn path_to_uri(path: &Path) -> Option<Uri> {
+    if !path.is_absolute() {
+        return None;
+    }
+
+    #[cfg(not(windows))]
+    let uri = {
+        use std::os::unix::ffi::OsStrExt;
+
+        // Like `url`, `.` components and repeated separators are left out
+        let path = path.components().collect::<PathBuf>();
+
+        format!(
+            "file://{}",
+            encode(path.as_os_str().as_bytes(), is_path_char, false)
+        )
+    };
+
+    #[cfg(windows)]
+    let uri = {
+        let (host, path) = windows::uri_parts(path.to_str()?);
+        format!(
+            "file://{host}{}",
+            encode(path.as_bytes(), is_path_char, false)
+        )
+    };
+
+    uri.parse().ok()
+}
+
+/// Whether a byte is left as it is in the path of a URI built for a file: it's one of RFC 3986's
+/// `pchar`s (unreserved characters, sub-delimiters, `:` and `@`) or a `/`.
+fn is_path_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"-._~!$&'()*+,;=:@/".contains(&byte)
+}
+
+/// Whether a byte can appear in a URI as it is, other than `%` (which only starts an escape) and
+/// `[` and `]` (which only an IP address in the host can use).
+fn is_uri_char(byte: u8) -> bool {
+    is_path_char(byte) || b"?#".contains(&byte)
+}
+
+/// Percent-encodes the bytes that aren't kept. With `escapes`, the text is already partly
+/// encoded, and a `%` followed by two hex digits is kept as the escape it is, while any other `%`
+/// is literal (as `url` treated it), so it's encoded.
+fn encode(bytes: &[u8], keep: impl Fn(u8) -> bool, escapes: bool) -> String {
+    let mut encoded = String::with_capacity(bytes.len());
+
+    for (i, &byte) in bytes.iter().enumerate() {
+        let escape = escapes
+            && byte == b'%'
+            && bytes
+                .get(i + 1..i + 3)
+                .is_some_and(|hex| hex.iter().all(u8::is_ascii_hexdigit));
+
+        if escape || keep(byte) {
+            encoded.push(byte as char);
+        } else {
+            write!(encoded, "%{byte:02X}").unwrap();
+        }
+    }
+
+    encoded
+}
+
+/// Percent-encodes the characters that URIs can't contain in the URIs a client sent, which the
+/// protocol types would otherwise reject, failing the whole message. Clients built on the `url`
+/// crate (such as Helix and Zed) leave `[`, `]`, `^` and `|` in paths as they are, and `tower-lsp`
+/// 0.20 accepted them. URIs that are valid are left exactly as they were sent.
+pub fn encode_uris(request: Request) -> Request {
+    let (method, id, params) = request.into_parts();
+
+    let mut builder = Request::build(method);
+
+    if let Some(mut params) = params {
+        encode_uri_fields(&mut params);
+        builder = builder.params(params);
+    }
+
+    if let Some(id) = id {
+        builder = builder.id(id);
+    }
+
+    builder.finish()
+}
+
+fn encode_uri_fields(value: &mut Value) {
+    match value {
+        Value::Object(fields) => {
+            for (key, value) in fields {
+                if let Value::String(uri) = value
+                    && (key == "uri" || key.ends_with("Uri"))
+                {
+                    if uri.parse::<Uri>().is_err() {
+                        *uri = encode(uri.as_bytes(), is_uri_char, true);
+                    }
+                } else {
+                    encode_uri_fields(value);
+                }
+            }
+        }
+        Value::Array(values) => values.iter_mut().for_each(encode_uri_fields),
+        _ => {}
+    }
+}
+
+/// How Windows paths and file URIs correspond, which `url::Url` handled before. These only work
+/// with strings, so that they're tested on every platform.
+#[cfg(any(windows, test))]
+mod windows {
+    /// The path of a file URI's decoded path: `/c:/a` is `c:\a`, and with a host, `/share/a` is
+    /// `\\host\share\a`. Without a host, the path has to start with a drive letter.
+    pub fn path(host: Option<&str>, path: &str) -> Option<String> {
+        let path = path.replace('/', "\\");
+
+        if let Some(host) = host {
+            return Some(format!(r"\\{host}{path}"));
+        }
+
+        let path = path.strip_prefix('\\')?;
+
+        match path.as_bytes() {
+            [drive, b':'] if drive.is_ascii_alphabetic() => Some(format!(r"{path}\")),
+            [drive, b':', b'\\', ..] if drive.is_ascii_alphabetic() => Some(path.to_string()),
+            _ => None,
+        }
+    }
+
+    /// The host and path of the URI of an absolute path, whose path isn't percent-encoded yet.
+    /// Verbatim paths (`\\?\C:\a` and `\\?\UNC\server\share\a`), which canonical paths are, have
+    /// the same URIs as the ordinary paths they're the same as.
+    pub fn uri_parts(path: &str) -> (&str, String) {
+        let (host, path) = if let Some(rest) = path
+            .strip_prefix(r"\\?\UNC\")
+            .or_else(|| path.strip_prefix(r"\\"))
+            .filter(|rest| !rest.starts_with(r"?\"))
+        {
+            let (host, rest) = rest.split_once('\\').unwrap_or((rest, ""));
+            (host, format!(r"\{rest}"))
+        } else {
+            let path = path.strip_prefix(r"\\?\").unwrap_or(path);
+            ("", format!(r"\{path}"))
+        };
+
+        (host, path.replace('\\', "/"))
+    }
 }
 
 /// The path of a document, and the source kind that the compiler identifies it by, which is its
 /// canonical path. If the file (or the directories it's in) doesn't exist yet or anymore, the
 /// nearest directory that does is canonicalized instead.
-pub fn document(uri: &Url) -> Option<(PathBuf, SourceKind)> {
+pub fn document(uri: &Uri) -> Option<(PathBuf, SourceKind)> {
     let path = uri_to_path(uri)?;
     let kind = SourceKind::File(canonical(&path)?.to_string_lossy().to_string());
     Some((path, kind))
@@ -228,25 +386,143 @@ pub fn canonical(path: &Path) -> Option<PathBuf> {
 mod tests {
     use std::fs;
 
+    use serde_json::json;
+
     use super::*;
     use crate::tests::TempDir;
 
     #[test]
-    fn test_decode_drive_letter() {
-        for (uri, expected) in [
-            (
-                "file:///c%3A/Users/rue/main.rue",
-                "file:///c:/Users/rue/main.rue",
-            ),
-            ("file:///C%3a/main.rue", "file:///C:/main.rue"),
-            ("file:///c:/main.rue", "file:///c:/main.rue"),
-            ("file:///home/rue/main.rue", "file:///home/rue/main.rue"),
-            ("file:///home/a%3Ab.rue", "file:///home/a%3Ab.rue"),
-            ("file:///c%3A", "file:///c:"),
-        ] {
-            let uri = Url::parse(uri).unwrap();
-            assert_eq!(decode_drive_letter(&uri).as_str(), expected);
+    fn test_uri_to_path() {
+        let path = |uri: &str| uri_to_path(&uri.parse().unwrap());
+
+        assert_eq!(
+            path("file:///home/rue/main.rue"),
+            Some(PathBuf::from("/home/rue/main.rue"))
+        );
+        assert_eq!(
+            path("file://localhost/home/rue/main.rue"),
+            Some(PathBuf::from("/home/rue/main.rue"))
+        );
+        assert_eq!(
+            path("FILE:///home/a%20b%3Ac.rue"),
+            Some(PathBuf::from("/home/a b:c.rue"))
+        );
+
+        // Only local files with absolute paths have paths
+        assert_eq!(path("untitled:Untitled-1"), None);
+        assert_eq!(path("https://example.com/main.rue"), None);
+        assert_eq!(path("file://server/main.rue"), None);
+        assert_eq!(path("file:main.rue"), None);
+        assert_eq!(path("git:/home/rue/main.rue"), None);
+    }
+
+    #[test]
+    fn test_path_to_uri() {
+        let uri = |path: &str| path_to_uri(Path::new(path)).map(|uri| uri.as_str().to_string());
+
+        // Characters that URIs can't contain are encoded, and `pchar`s aren't
+        assert_eq!(
+            uri("/a b/[id]/%41^|/x:y@z+(1).rue"),
+            Some("file:///a%20b/%5Bid%5D/%2541%5E%7C/x:y@z+(1).rue".to_string())
+        );
+        assert_eq!(
+            uri("/home/файл.rue"),
+            Some("file:///home/%D1%84%D0%B0%D0%B9%D0%BB.rue".to_string())
+        );
+        assert_eq!(uri("/a/./b//c.rue"), Some("file:///a/b/c.rue".to_string()));
+        assert_eq!(uri("relative.rue"), None);
+    }
+
+    #[test]
+    fn test_path_to_uri_round_trips() {
+        let dir = TempDir::new("rue-lsp-paths");
+
+        for name in ["main.rue", "a b.rue", "%41.rue", "[id]^|.rue", "файл.rue"] {
+            let path = dir.path().join(name);
+            assert_eq!(uri_to_path(&path_to_uri(&path).unwrap()), Some(path));
         }
+    }
+
+    #[test]
+    fn test_windows_paths() {
+        // URIs to paths, from the decoded path of the URI
+        for uri in ["/c:/Users/rue/main.rue", r"/c:\Users\rue\main.rue"] {
+            assert_eq!(
+                windows::path(None, uri).as_deref(),
+                Some(r"c:\Users\rue\main.rue")
+            );
+        }
+
+        assert_eq!(windows::path(None, "/C:").as_deref(), Some(r"C:\"));
+        assert_eq!(
+            windows::path(Some("server"), "/share/main.rue").as_deref(),
+            Some(r"\\server\share\main.rue")
+        );
+
+        // Without a host, the path has to start with a drive letter
+        for uri in ["/Users/main.rue", "/", "", "/1:/main.rue", "/c:main.rue"] {
+            assert_eq!(windows::path(None, uri), None, "{uri}");
+        }
+
+        // Paths to URIs, which verbatim paths have the same as ordinary paths
+        for path in [r"C:\Users\main.rue", r"\\?\C:\Users\main.rue"] {
+            assert_eq!(
+                windows::uri_parts(path),
+                ("", "/C:/Users/main.rue".to_string())
+            );
+        }
+
+        for path in [r"\\server\share\main.rue", r"\\?\UNC\server\share\main.rue"] {
+            assert_eq!(
+                windows::uri_parts(path),
+                ("server", "/share/main.rue".to_string())
+            );
+        }
+
+        // Both directions agree
+        let (host, path) = windows::uri_parts(r"\\?\UNC\server\share\main.rue");
+        assert_eq!(
+            windows::path(Some(host), &path).as_deref(),
+            Some(r"\\server\share\main.rue")
+        );
+    }
+
+    #[test]
+    fn test_encode_uris() {
+        let request = Request::build("textDocument/didOpen")
+            .params(json!({
+                "textDocument": { "uri": "file:///a/[id]/x^y|z.rue", "text": "[x]" },
+                "rootUri": "file:///a/[id]",
+                "workspaceFolders": [{ "uri": "file:///a/[id]", "name": "[id]" }],
+                "changes": [
+                    { "uri": "file:///a/%5B.rue" },
+                    { "uri": "file://[::1]/a.rue" },
+                    { "uri": "file:///a/100%/%41%4.rue" },
+                    { "uri": "file:///a b/файл.rue?q#f" },
+                ],
+            }))
+            .finish();
+
+        assert_eq!(
+            encode_uris(request).params(),
+            Some(&json!({
+                "textDocument": { "uri": "file:///a/%5Bid%5D/x%5Ey%7Cz.rue", "text": "[x]" },
+                "rootUri": "file:///a/%5Bid%5D",
+                "workspaceFolders": [{ "uri": "file:///a/%5Bid%5D", "name": "[id]" }],
+                "changes": [
+                    { "uri": "file:///a/%5B.rue" },
+                    { "uri": "file://[::1]/a.rue" },
+                    { "uri": "file:///a/100%25/%41%254.rue" },
+                    { "uri": "file:///a%20b/%D1%84%D0%B0%D0%B9%D0%BB.rue?q#f" },
+                ],
+            }))
+        );
+
+        // The method and id are kept
+        let request = encode_uris(Request::build("shutdown").id(7).finish());
+        assert_eq!(request.method(), "shutdown");
+        assert_eq!(request.id(), Some(&7.into()));
+        assert_eq!(request.params(), None);
     }
 
     #[test]
@@ -255,7 +531,7 @@ mod tests {
         let canonical = dir.path().canonicalize().unwrap();
 
         // Neither the file nor its directory exists, so the temporary directory is canonicalized
-        let uri = Url::from_file_path(dir.path().join("sub/new.rue")).unwrap();
+        let uri = path_to_uri(&dir.path().join("sub/new.rue")).unwrap();
         let (path, kind) = document(&uri).unwrap();
 
         assert_eq!(path, dir.path().join("sub/new.rue"));
@@ -275,14 +551,14 @@ mod tests {
         let dir = TempDir::new("rue-lsp-paths");
         let canonical = dir.path().canonicalize().unwrap();
         let file = SourceKind::File(canonical.join("sub/main.rue").to_string_lossy().to_string());
-        let client_uri = Url::from_file_path(dir.path().join("sub/main.rue")).unwrap();
+        let client_uri = path_to_uri(&dir.path().join("sub/main.rue")).unwrap();
 
         let paths = Paths::default();
 
         // Without knowing the client's path, the canonical one is used
         assert_eq!(
             paths.uri(&file),
-            Some(Url::from_file_path(canonical.join("sub/main.rue")).unwrap())
+            Some(path_to_uri(&canonical.join("sub/main.rue")).unwrap())
         );
 
         // Files in a directory the client used are reported with its path
@@ -292,8 +568,12 @@ mod tests {
         // An open document is reported with the exact URIs the editor used for it
         fs::create_dir_all(dir.path().join("sub")).unwrap();
         fs::write(dir.path().join("sub/main.rue"), "").unwrap();
-        let first = Url::parse(&client_uri.as_str().replace("main.rue", "%6Dain.rue")).unwrap();
-        let second = Url::from_file_path(canonical.join("sub/main.rue")).unwrap();
+        let first = client_uri
+            .as_str()
+            .replace("main.rue", "%6Dain.rue")
+            .parse::<Uri>()
+            .unwrap();
+        let second = path_to_uri(&canonical.join("sub/main.rue")).unwrap();
         paths.open(&first);
         paths.open(&second);
         assert_eq!(paths.uris(&file), [first.clone(), second.clone()]);
@@ -334,17 +614,17 @@ mod tests {
         paths.add_root(outer.path());
         assert_eq!(
             paths.uri(&kind(&nested)),
-            Some(Url::from_file_path(nested.join("a.rue")).unwrap())
+            Some(path_to_uri(&nested.join("a.rue")).unwrap())
         );
 
         paths.add_root(&link);
         assert_eq!(
             paths.uri(&kind(&nested)),
-            Some(Url::from_file_path(link.join("a.rue")).unwrap())
+            Some(path_to_uri(&link.join("a.rue")).unwrap())
         );
         assert_eq!(
             paths.uri(&kind(outer.path())),
-            Some(Url::from_file_path(outer.path().join("a.rue")).unwrap())
+            Some(path_to_uri(&outer.path().join("a.rue")).unwrap())
         );
     }
 
@@ -366,7 +646,7 @@ mod tests {
         paths.add_alias(&dir.path().join("a.toml"));
         assert_eq!(
             paths.uris(&shared),
-            [Url::from_file_path(dir.path().join("a.toml")).unwrap()]
+            [path_to_uri(&dir.path().join("a.toml")).unwrap()]
         );
 
         // Once it's a file of its own, it isn't an alias anymore
@@ -374,7 +654,7 @@ mod tests {
         fs::write(dir.path().join("a.toml"), "").unwrap();
         assert_eq!(
             paths.uris(&shared),
-            [Url::from_file_path(canonical(&dir.path().join("shared.toml")).unwrap()).unwrap()]
+            [path_to_uri(&canonical(&dir.path().join("shared.toml")).unwrap()).unwrap()]
         );
     }
 

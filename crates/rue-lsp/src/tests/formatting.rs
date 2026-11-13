@@ -1,5 +1,5 @@
 use expect_test::expect;
-use tower_lsp::lsp_types::{Position, Range};
+use tower_lsp_server::ls_types::{Position, Range};
 
 use super::TestProject;
 use crate::document_end;
