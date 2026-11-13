@@ -6,7 +6,10 @@ use std::{
 use indexmap::IndexSet;
 use rue_options::CompilerOptions;
 
-use crate::{Database, Hir, HirId, Statement, Symbol, SymbolId};
+use crate::{
+    Database, Hir, HirId, Statement, Symbol, SymbolId, may_fail_conservative,
+    statements_always_evaluate,
+};
 
 #[derive(Debug, Clone)]
 pub struct DependencyGraph {
@@ -27,6 +30,21 @@ pub struct DependencyGraph {
     // Keeps track of the const expressions that are reachable
     const_exprs: IndexSet<HirId>,
 
+    // Keeps track of the bindings that are never referenced, but whose values may fail,
+    // so they're still evaluated for their effect
+    effects: HashSet<SymbolId>,
+
+    // Keeps track of the guards whose values aren't used by their check, but may fail,
+    // so they're still evaluated for their effect
+    guard_effects: HashSet<HirId>,
+
+    // Keeps track of the bindings and constants whose values may fail
+    fallible: HashSet<SymbolId>,
+
+    // Keeps track of the bindings that are referenced once, where the reference is always
+    // evaluated after the binding's let statement
+    always_evaluated: HashSet<SymbolId>,
+
     // Keeps track of the current stack of symbols being visited
     stack: IndexSet<SymbolId>,
 
@@ -43,6 +61,10 @@ impl DependencyGraph {
             references: HashMap::new(),
             closures: HashSet::new(),
             const_exprs: IndexSet::new(),
+            effects: HashSet::new(),
+            guard_effects: HashSet::new(),
+            fallible: HashSet::new(),
+            always_evaluated: HashSet::new(),
             stack: IndexSet::new(),
             visited: IndexSet::new(),
         };
@@ -58,6 +80,34 @@ impl DependencyGraph {
 
     pub fn is_closure(&self, symbol: SymbolId) -> bool {
         self.closures.contains(&symbol)
+    }
+
+    /// Whether the binding is never referenced, but its value may fail, so it's evaluated for its
+    /// effect at its let statement.
+    pub fn is_effect(&self, symbol: SymbolId) -> bool {
+        self.effects.contains(&symbol)
+    }
+
+    /// Whether the guard's value isn't used by its check, but may fail, so it's evaluated for its
+    /// effect.
+    pub fn is_guard_effect(&self, hir: HirId) -> bool {
+        self.guard_effects.contains(&hir)
+    }
+
+    /// Whether the value of the binding or constant may fail (see [`may_fail_conservative`]).
+    pub fn is_fallible(&self, symbol: SymbolId) -> bool {
+        self.fallible.contains(&symbol)
+    }
+
+    /// Whether the binding is referenced once, and that reference is always evaluated after its
+    /// let statement (unless something fails first), so its value can be moved there.
+    pub fn is_always_evaluated(&self, symbol: SymbolId) -> bool {
+        self.always_evaluated.contains(&symbol)
+    }
+
+    /// The symbol that a local (such as a parameter or binding) is defined in.
+    pub fn owner(&self, symbol: SymbolId) -> Option<SymbolId> {
+        self.owners.get(&symbol).copied()
     }
 
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
@@ -138,7 +188,14 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
         }
         // The value is referenced as many times as the check it's lowered to uses it
         Hir::Guard(guard) => {
-            for _ in 0..guard.value_uses() {
+            let uses = guard.value_uses();
+
+            if uses == 0 && may_fail_conservative(db, guard.value) {
+                graph.guard_effects.insert(hir);
+                visit_hir(db, graph, guard.value, false);
+            }
+
+            for _ in 0..uses {
                 visit_hir(db, graph, guard.value, false);
             }
         }
@@ -196,6 +253,24 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
 
             if let Some(body) = block.reachable_body() {
                 visit_hir(db, graph, body, false);
+            }
+
+            visit_unused_bindings(db, graph, block.reachable_statements());
+
+            let statements = block.reachable_statements();
+
+            for (index, stmt) in statements.iter().enumerate() {
+                if let Statement::Let(symbol, _) = stmt
+                    && graph.references(*symbol) == 1
+                    && statements_always_evaluate(
+                        db,
+                        &statements[index + 1..],
+                        block.reachable_body(),
+                        *symbol,
+                    )
+                {
+                    graph.always_evaluated.insert(*symbol);
+                }
             }
         }
         Hir::Lambda(lambda) => {
@@ -283,6 +358,23 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
     }
 }
 
+/// Bindings that are never referenced aren't lowered, but if their value may fail, it's still
+/// evaluated for its effect, so the references in it are visited. They're visited in reverse,
+/// so that a binding that's only referenced by an unused one is counted as referenced.
+fn visit_unused_bindings(db: &Database, graph: &mut DependencyGraph, statements: &[Statement]) {
+    for stmt in statements.iter().rev() {
+        if let Statement::Let(symbol, _) = stmt
+            && let Symbol::Binding(binding) = db.symbol(*symbol)
+            && !binding.inline
+            && graph.references(*symbol) == 0
+            && may_fail_conservative(db, binding.value.hir)
+        {
+            graph.effects.insert(*symbol);
+            visit_hir(db, graph, binding.value.hir, false);
+        }
+    }
+}
+
 fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     // We've already visited this symbol, so we don't need to track its dependencies again
     if !graph.visited.insert(symbol) {
@@ -301,9 +393,17 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
             visit_hir(db, graph, function.body, false);
         }
         Symbol::Constant(constant) => {
+            if may_fail_conservative(db, constant.value.hir) {
+                graph.fallible.insert(symbol);
+            }
+
             visit_hir(db, graph, constant.value.hir, false);
         }
         Symbol::Binding(binding) => {
+            if may_fail_conservative(db, binding.value.hir) {
+                graph.fallible.insert(symbol);
+            }
+
             visit_hir(db, graph, binding.value.hir, false);
 
             // Destructured bindings don't have a let statement of their own, so they're defined

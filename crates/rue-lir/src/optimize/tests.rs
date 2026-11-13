@@ -67,11 +67,7 @@ fn check(arena: &mut Arena<Lir>, lir: LirId, envs: &[&str], expect: Expect) {
 }
 
 const ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "((1 . 2))", "(5 7)"];
-
-// Some rewrites assume that values match their static types, so these only contain
-// environments where the first argument is an atom or a list respectively
-const ATOM_ENVS: &[&str] = &["()", "(())", "(5)", "(1)", "(0x00)", "(5 7)"];
-const LIST_ENVS: &[&str] = &["()", "(())", "((1 . 2))", "((1 2) 3)"];
+const LIST_ENVS: &[&str] = &["()", "(())", "((1 . 2))", "((1 2) 3)", "(5)", "(0x00)"];
 
 #[test]
 fn test_not_ne_nil_is_not_value() {
@@ -121,7 +117,7 @@ fn test_not_eq_boolean_nil() {
 
 #[test]
 fn test_eq_nil_condition() {
-    // In a condition, (= x ()) is (not x), assuming that x is an atom
+    // (= x ()) fails if x is a pair, so it isn't replaced with (not x)
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
     let nil = atom(&mut arena, &[]);
@@ -132,14 +128,33 @@ fn test_eq_nil_condition() {
     check(
         &mut arena,
         lir,
-        ATOM_ENVS,
-        expect!["(a (i 2 (q 1 . 2) (q 1 . 1)) 1)"],
+        ENVS,
+        expect!["(a (i (= () 2) (q 1 . 1) (q 1 . 2)) 1)"],
+    );
+}
+
+#[test]
+fn test_eq_nil_atom_condition() {
+    // In a condition, (= x ()) is (not x) if x is always an atom
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let length = arena.alloc(Lir::Strlen(x));
+    let nil = atom(&mut arena, &[]);
+    let eq = arena.alloc(Lir::Eq(length, nil));
+    let one = atom(&mut arena, &[1]);
+    let two = atom(&mut arena, &[2]);
+    let lir = arena.alloc(Lir::If(eq, one, two, false));
+    check(
+        &mut arena,
+        lir,
+        ENVS,
+        expect!["(a (i (strlen 2) (q 1 . 2) (q 1 . 1)) 1)"],
     );
 }
 
 #[test]
 fn test_listp_condition() {
-    // In a condition, (l x) is x, assuming that x is a list
+    // (l x) isn't replaced with x, since a truthy atom would take the other branch
     let mut arena = Arena::new();
     let x = path(&mut arena, 2);
     let listp = arena.alloc(Lir::Listp(x, false));
@@ -150,8 +165,23 @@ fn test_listp_condition() {
         &mut arena,
         lir,
         LIST_ENVS,
-        expect!["(a (i 2 (q 1 . 1) (q 1 . 2)) 1)"],
+        expect!["(a (i (l 2) (q 1 . 1) (q 1 . 2)) 1)"],
     );
+}
+
+#[test]
+fn test_inline_if_drops_pure_branch() {
+    // Both branches of an inline if are evaluated, so the other one is only dropped if it can't fail
+    let mut arena = Arena::new();
+    let nil = atom(&mut arena, &[]);
+    let x = path(&mut arena, 2);
+    let one = atom(&mut arena, &[1]);
+    let lir = arena.alloc(Lir::If(nil, one, x, true));
+    check(&mut arena, lir, ENVS, expect!["2"]);
+
+    let fails = raise(&mut arena);
+    let lir = arena.alloc(Lir::If(nil, fails, x, true));
+    check(&mut arena, lir, ENVS, expect!["(i () (x) 2)"]);
 }
 
 #[test]

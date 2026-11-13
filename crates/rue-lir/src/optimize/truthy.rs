@@ -21,13 +21,9 @@ pub enum Truthiness {
 // They accept pairs (which are truthy) and any atom (only the empty atom is falsy,
 // so non-canonical atoms like `0x00` are truthy) without failing.
 //
-// Two of these rewrites assume that a value matches its static type, the same way opt_cons
-// does: `(l x)` on a `List` is truthy exactly when `x` is, and `(= x ())` is `(not x)` when `x`
-// is an atom type. If the solution doesn't match the declared types (an atom where a list is
-// expected, or a pair where an atom is expected), the optimized program can take a different
-// branch or skip the `=` failure. Rue doesn't check values against their types at runtime anyway,
-// so this doesn't give the spender anything that a wrongly shaped value couldn't, and it keeps
-// conditions cheaper. These rewrites are only applied where just the truthiness is observed.
+// None of these rewrites assume that a value matches its static type, since the solution isn't
+// checked against the declared types at runtime. For example, `(l x)` isn't replaced with `x`
+// even if `x` is a list, since a truthy atom would take the other branch.
 pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
     match arena[value].clone() {
         Lir::Atom(atom) => Truthiness::Known(!atom.is_empty()),
@@ -35,17 +31,13 @@ pub fn opt_truthy(arena: &mut Arena<Lir>, value: LirId) -> Truthiness {
         Lir::Cons(..) if is_pure(arena, value) => Truthiness::Known(true),
         // Since `not` accepts any value, `(not x)` has the opposite truthiness of `x`
         Lir::Not(inner) => opt_negated_truthy(arena, inner, Some(value)),
-        // A list is either nil or a pair, so it's truthy exactly when it's a pair
-        // This assumes that the value matches its type (see above)
-        Lir::Listp(inner, false) => opt_truthy(arena, inner),
-        // `(= x ())` is `(not x)` if `x` is an atom
-        // This assumes that the value matches its type (see above)
+        // `(= x ())` is `(not x)` if `x` is always an atom, since `=` fails on a pair
         Lir::Eq(left, right) => {
-            if is_nil(arena, left) {
+            if is_nil(arena, left) && returns_atom(arena, right) {
                 return opt_negated_truthy(arena, right, None);
             }
 
-            if is_nil(arena, right) {
+            if is_nil(arena, right) && returns_atom(arena, left) {
                 return opt_negated_truthy(arena, left, None);
             }
 
@@ -98,6 +90,69 @@ pub fn is_boolean(arena: &Arena<Lir>, value: LirId) -> bool {
         | Lir::Any(_) => true,
         Lir::If(_, then, otherwise, _) => is_boolean(arena, *then) && is_boolean(arena, *otherwise),
         _ => false,
+    }
+}
+
+/// Whether the value is always an atom (if it doesn't fail), regardless of the environment.
+pub fn returns_atom(arena: &Arena<Lir>, value: LirId) -> bool {
+    match &arena[value] {
+        Lir::Atom(_)
+        | Lir::Add(_)
+        | Lir::Sub(_)
+        | Lir::Mul(_)
+        | Lir::Div(..)
+        | Lir::Mod(..)
+        | Lir::Modpow(..)
+        | Lir::Eq(..)
+        | Lir::Gt(..)
+        | Lir::GtBytes(..)
+        | Lir::Not(_)
+        | Lir::Listp(..)
+        | Lir::All(_)
+        | Lir::Any(_)
+        | Lir::Concat(_)
+        | Lir::Strlen(_)
+        | Lir::Substr(..)
+        | Lir::Logand(_)
+        | Lir::Logior(_)
+        | Lir::Logxor(_)
+        | Lir::Lognot(_)
+        | Lir::Ash(..)
+        | Lir::Lsh(..)
+        | Lir::PubkeyForExp(_)
+        | Lir::G1Add(_)
+        | Lir::G1Subtract(_)
+        | Lir::G1Multiply(..)
+        | Lir::G1Negate(_)
+        | Lir::G1Map(..)
+        | Lir::G2Add(_)
+        | Lir::G2Subtract(_)
+        | Lir::G2Multiply(..)
+        | Lir::G2Negate(_)
+        | Lir::G2Map(..)
+        | Lir::BlsPairingIdentity(_)
+        | Lir::BlsVerify(..)
+        | Lir::Sha256(_)
+        | Lir::Sha256Inline(_)
+        | Lir::Keccak256(_)
+        | Lir::Keccak256Inline(_)
+        | Lir::CoinId(..)
+        | Lir::K1Verify(..)
+        | Lir::R1Verify(..) => true,
+        Lir::If(_, then, otherwise, _) => {
+            returns_atom(arena, *then) && returns_atom(arena, *otherwise)
+        }
+        Lir::Path(_)
+        | Lir::Quote(_)
+        | Lir::Run(..)
+        | Lir::Closure(..)
+        | Lir::First(_)
+        | Lir::Rest(_)
+        | Lir::Cons(..)
+        | Lir::Divmod(..)
+        | Lir::Raise(_)
+        | Lir::Op(..)
+        | Lir::DebugPrint(..) => false,
     }
 }
 

@@ -1,6 +1,6 @@
-program: (+ (* 2 (q . 2)) 2 (* 2 (q . 3)) (q . 2))
-debug_program: (a (q 2 (i (q . 1) (q 2 (q 16 (+ 2 (a 13 11)) (a 9 11)) (c (* 5 (q . 2)) 1)) (q 8 (q . "assertion failed at needless_let_return.rue:2:5"))) 1) (c (c (q 2 (q 16 2 (q . 1)) (c (a (q . 2) (c (* 1 (q . 3)) 1)) 1)) (q 2 (q . 2) (c (+ 1 (q . 1)) 1))) 1))
-byte_cost: 348000
+program: (a (i (i () 2 (q . 1)) (q 16 (* 2 (q . 2)) 2 (* 2 (q . 3)) (q . 2)) (q 8)) 1)
+debug_program: (a (q 2 (i (i () (a 14 5) (q . 1)) (q 2 (q 16 (+ 2 (a 21 11)) (a 9 11)) (c (* 5 (q . 2)) 1)) (q 8 (q . "assertion failed at needless_let_return.rue:2:5"))) 1) (c (c (q 2 (q 16 2 (q . 1)) (c (a (q . 2) (c (* 1 (q . 3)) 1)) 1)) (c (q 2 (q . 2) (c (+ 1 (q . 1)) 1)) (q 2 (q . 2) (c 1 1)))) 1))
+byte_cost: 708000
 clvm_error: path into atom
 diagnostics:
 - Type guard from `Int | nil` to `Int` is always true, since every `Int | nil` value is also a valid `Int` at runtime; use a cast, or guard against a narrower type at needless_let_return.rue:2:12

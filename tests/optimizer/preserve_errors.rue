@@ -1,0 +1,125 @@
+// The optimized program must fail for the same solutions as the unoptimized one. Each test
+// below is given a solution for which the unoptimized program fails.
+
+fn check(x: Int) -> Int {
+    assert x > 5;
+    x
+}
+
+fn ignore(x: Int, y: Int) -> Int {
+    y
+}
+
+fn branch(x: Int, c: Bool) -> Int {
+    if c {
+        x
+    } else {
+        0
+    }
+}
+
+const CHECKED: Int = check(1);
+
+// An unused binding is still evaluated
+test fn unused_division(a: Int, b: Int) -> Int {
+    let x = a / b;
+    a
+}
+
+test fn unused_assert(a: Int) -> Int {
+    let x = check(a);
+    a
+}
+
+test fn unused_field(pair: (Int, Int)) -> Int {
+    let x = pair.first;
+    1
+}
+
+test fn unused_chain(a: Int, b: Int) -> Int {
+    let x = a / b;
+    let y = x + 1;
+    a
+}
+
+// A binding used once is only inlined where it's always evaluated
+test fn single_use_in_branch(a: Int, b: Int, c: Bool) -> Int {
+    let x = a / b;
+    if c {
+        x
+    } else {
+        0
+    }
+}
+
+test fn single_use_after_early_return(a: Int, b: Int, c: Bool) -> Int {
+    let x = a / b;
+    if c {
+        return 0;
+    }
+    x
+}
+
+test fn single_use_in_and(a: Int, b: Int, c: Bool) -> Bool {
+    let x = a / b == 1;
+    c && x
+}
+
+test fn single_use_in_lambda(a: Int, b: Int) -> Int {
+    let x = a / b;
+    let f = fn() => x;
+    a
+}
+
+test fn constant_in_branch(c: Bool) -> Int {
+    if c {
+        CHECKED
+    } else {
+        0
+    }
+}
+
+// Arguments of a function that's inlined are evaluated even if the parameter isn't
+test fn unused_argument(a: Int, b: Int) -> Int {
+    ignore(a / b, a)
+}
+
+test fn argument_in_branch(a: Int, b: Int, c: Bool) -> Int {
+    branch(a / b, c)
+}
+
+// A guard evaluates its value, even if there's nothing to check
+test fn guard_value(a: Int, b: Int) -> Bool {
+    (a / b) is Int
+}
+
+// Rebuilding a pair from its fields fails if the value isn't a pair
+test fn rebuild_pair(...value: (Any, Any)) -> (Any, Any) {
+    (value.first, value.rest)
+}
+
+// These are still optimized, since they can't fail or are always evaluated
+test fn unused_constant(a: Int) -> Int {
+    let x = 5;
+    a
+}
+
+test fn single_use_always_evaluated(a: Int, b: Int) -> Int {
+    let x = a / b;
+    x + 1
+}
+
+test fn single_use_in_condition(a: Int, b: Int, c: Bool) -> Int {
+    let x = a / b;
+    if x > 1 {
+        c as Int
+    } else {
+        0
+    }
+}
+
+test fn single_use_after_assert(a: Int, b: Int) -> Int {
+    let x = a / b;
+    assert a > 1;
+    x
+}

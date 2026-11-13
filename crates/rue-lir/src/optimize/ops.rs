@@ -6,8 +6,8 @@ use sha3::Keccak256;
 
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
-    optimize::{ArgList, Truthiness, fold_atoms, is_boolean, opt_truthy, reads_env},
-    parent_path, rest_path,
+    optimize::{ArgList, Truthiness, fold_atoms, is_boolean, is_pure, opt_truthy, reads_env},
+    rest_path,
 };
 
 // There's no way to optimize an atom
@@ -92,22 +92,9 @@ pub fn opt_rest(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 }
 
 // TODO: Optimize pair of div and mod into divmod
-// If the first and rest are paths to the first and rest of the same parent, we can use the parent path
-// This assumes that the value at the parent path is a pair, as its type says it is. If it's actually
-// an atom (e.g. from a solution which doesn't match the declared types), the original would fail,
-// but the parent path wouldn't. Rue doesn't check values against their types at runtime anyway,
-// so this doesn't give the spender anything that a wrongly shaped pair couldn't.
+// Rebuilding a pair from its first and rest paths isn't replaced with the parent path here,
+// since the original fails if the parent is an atom. Lowering does it for pairs it constructs.
 pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
-    if let Lir::Path(f_path) = arena[first].clone()
-        && let Lir::Path(r_path) = arena[rest].clone()
-        && let Some(parent) = parent_path(&f_path)
-        && parent_path(&r_path).as_ref() == Some(&parent)
-        && first_path(&parent) == f_path
-        && rest_path(&parent) == r_path
-    {
-        return arena.alloc(Lir::Path(parent));
-    }
-
     arena.alloc(Lir::Cons(first, rest))
 }
 
@@ -444,7 +431,8 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 }
 
 // If the condition is known to be true or false and can't fail, we can return that branch
-// Inline ifs evaluate both branches eagerly, so we keep them but with a nil condition
+// Inline ifs evaluate both branches eagerly, so we keep them but with a nil condition,
+// unless the other branch can't fail either
 // Since the condition only matters for its truthiness, we can simplify it
 // If the condition is a not, we can flip the then and else branches
 pub fn opt_if(
@@ -455,8 +443,8 @@ pub fn opt_if(
     inline: bool,
 ) -> LirId {
     match opt_truthy(arena, condition) {
-        Truthiness::Known(true) if !inline => then,
-        Truthiness::Known(false) if !inline => otherwise,
+        Truthiness::Known(true) if !inline || is_pure(arena, otherwise) => then,
+        Truthiness::Known(false) if !inline || is_pure(arena, then) => otherwise,
         Truthiness::Known(condition) => {
             let nil = arena.alloc(Lir::Atom(vec![]));
 
@@ -1276,12 +1264,14 @@ mod tests {
     }
 
     #[test]
-    fn test_cons_of_first_and_rest_uses_parent() {
+    fn test_cons_of_first_and_rest_keeps_pair_check() {
+        // `(c 4 6)` fails if path 2 is an atom, but path 2 itself wouldn't
         let mut arena = Arena::new();
         let first = path(&mut arena, 4);
         let rest = path(&mut arena, 6);
-        let result = opt_cons(&mut arena, first, rest);
-        assert!(matches!(&arena[result], Lir::Path(p) if *p == BigUint::from(2u8)));
+        let lir = arena.alloc(Lir::Cons(first, rest));
+        let optimized = assert_equivalent(&mut arena, lir, &[int_env(&[5])]);
+        assert_eq!(disassemble(&arena, optimized), "(c 4 6)");
     }
 
     #[test]

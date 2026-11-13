@@ -14,12 +14,10 @@ tests:
   byte_cost: 2196000
   total_cost: 2202191
 - name: recursive_function_type_without_mappings
-  program: (q . 42)
-  debug_program: (q . 42)
-  output: '42'
-  runtime_cost: 20
-  byte_cost: 36000
-  total_cost: 36020
+  program: (i () (a (a 2 (q (q . 2))) (q 3)) (q . 42))
+  debug_program: (a (q 3 () (a 2 (c (q . 3) ())) (q . 42)) (c (a 2 (c (c (q . 1) (q . 2)) ())) 1))
+  byte_cost: 396000
+  clvm_error: path into atom
 - name: generic_function_result_is_inferred
   program: (a (q 1 . 5) (q (q . 2)))
   debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (q 2 1 (c (c (q . 1) (q . 2)) ())) ()))
@@ -49,19 +47,17 @@ tests:
   byte_cost: 156000
   total_cost: 156179
 - name: nested_lambdas_have_their_own_generics
-  program: (a (q 1 . 5) (q (q . 2)))
-  debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (q 2 1 (c (c (q . 1) (q . 2)) ())) ()))
+  program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 3 () (a 2 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ())))) (q . 5))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))) (c (q 2 1 (q (q . 2))) ()))
+  debug_program: (a (q 2 2 (c (q . 2) (c (c (q . 1) (q 3 () (a 2 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ())))) (q . 5))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))) (c (q 2 1 (c (c (q . 1) (q . 2)) ())) ()))
   output: '5'
-  runtime_cost: 151
-  byte_cost: 204000
-  total_cost: 204151
+  runtime_cost: 2744
+  byte_cost: 2052000
+  total_cost: 2054744
 - name: polymorphic_recursion_through_generic_functions
-  program: (q . 42)
-  debug_program: (q . 42)
-  output: '42'
-  runtime_cost: 20
-  byte_cost: 36000
-  total_cost: 36020
+  program: (i () 5 (q . 42))
+  debug_program: (i () 5 (q . 42))
+  byte_cost: 132000
+  clvm_error: path into atom
 diagnostics:
 - Unused generic type `T` at function_generic_capture.rue:2:8
 - Unused generic type `C` at function_generic_capture.rue:4:14
