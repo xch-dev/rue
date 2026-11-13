@@ -361,7 +361,11 @@ impl Cache<Compiler> {
 
             match self.ctx.ty(semantic) {
                 Type::Struct(_) => {
-                    for field in self.struct_fields(scopes, semantic).unwrap().0 {
+                    for field in self
+                        .struct_fields(scopes, semantic)
+                        .into_iter()
+                        .flat_map(|(fields, _)| fields)
+                    {
                         fields.insert(field.name, field.type_name);
                     }
                 }
@@ -516,28 +520,24 @@ impl Cache<Compiler> {
         }
 
         for scope in &scopes.0 {
-            let symbols = self
-                .ctx
-                .scope(*scope)
+            let scope = self.ctx.scope(*scope);
+
+            let symbols = scope
                 .symbol_names()
-                .map(ToString::to_string)
+                .filter_map(|name| Some((name.to_string(), scope.symbol(name)?)))
                 .collect::<Vec<_>>();
 
-            let types = self
-                .ctx
-                .scope(*scope)
+            let types = scope
                 .type_names()
-                .map(ToString::to_string)
+                .filter_map(|name| Some((name.to_string(), scope.ty(name)?)))
                 .collect::<Vec<_>>();
 
-            for name in symbols {
+            for (name, symbol) in symbols {
                 if !symbol_names.insert(name.clone()) {
                     continue;
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name) {
-                    let symbol = self.ctx.scope(*scope).symbol(&name).unwrap();
-
                     if matches!(context, CompletionContext::Expression)
                         || (matches!(self.ctx.symbol(symbol), Symbol::Module(_))
                             && matches!(context, CompletionContext::Type))
@@ -553,7 +553,7 @@ impl Cache<Compiler> {
                 }
             }
 
-            for name in types {
+            for (name, ty) in types {
                 if !type_names.insert(name.clone()) {
                     continue;
                 }
@@ -568,8 +568,6 @@ impl Cache<Compiler> {
                     }
                     CompletionContext::Type => {}
                     CompletionContext::Expression => {
-                        let ty = self.ctx.scope(*scope).ty(&name).unwrap();
-
                         let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
 
                         match self.ctx.ty(semantic) {
@@ -580,7 +578,6 @@ impl Cache<Compiler> {
                 }
 
                 if let Some(score) = fuzzy_match(&partial, &name) {
-                    let ty = self.ctx.scope(*scope).ty(&name).unwrap();
                     let type_name = self.inner_type(ty).map(|ty| self.type_name(scopes, ty));
 
                     scored_items.push((
