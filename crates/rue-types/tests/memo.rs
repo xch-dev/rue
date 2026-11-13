@@ -7,8 +7,11 @@
 //! number of steps (`with_step_limit`).
 
 use std::{
+    any::Any,
+    cell::Cell,
     collections::HashMap,
-    panic::{AssertUnwindSafe, catch_unwind},
+    fmt::Write,
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::Once,
 };
 
@@ -137,7 +140,7 @@ fn with_large_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -
         .spawn(f)
         .unwrap()
         .join()
-        .unwrap()
+        .unwrap_or_else(|payload| resume_unwind(payload))
 }
 
 #[test]
@@ -422,7 +425,32 @@ fn results(db: &mut Types, lhs: TypeId, rhs: TypeId, target: TypeId, generic: Ty
     let intersection = intersect(&mut db.arena, &db.builtins, lhs, rhs);
     let intersection = stringify(&mut db.arena, intersection);
 
-    format!("{forward:?} {backward:?} {inferred:?} {candidates:?} {checked:?} {intersection}")
+    renumber_generics(&format!(
+        "{forward:?} {backward:?} {inferred:?} {candidates:?} {checked:?} {intersection}"
+    ))
+}
+
+/// Numbers the unnamed generics in the text in the order they appear, since substituting a generic
+/// function allocates new ones (whose ids differ between the runs).
+fn renumber_generics(text: &str) -> String {
+    const PREFIX: &str = "{generic ";
+
+    let mut numbers = HashMap::new();
+    let mut result = String::new();
+    let mut rest = text;
+
+    while let Some(start) = rest.find(PREFIX) {
+        let after = &rest[start + PREFIX.len()..];
+        let end = after.find('}').unwrap();
+        let next = numbers.len();
+        let number = *numbers.entry(&after[..end]).or_insert(next);
+        result.push_str(&rest[..start]);
+        write!(result, "{PREFIX}{number}}}").unwrap();
+        rest = &after[end + 1..];
+    }
+
+    result.push_str(rest);
+    result
 }
 
 #[derive(Debug, Default)]
@@ -437,23 +465,48 @@ struct Summary {
     steps_without_memo: usize,
 }
 
+std::thread_local! {
+    static GIVING_UP: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Runs the function, or returns `None` if it takes more than `STEP_LIMIT` steps. Giving up panics,
+/// which isn't printed.
+fn give_up_after<T>(f: impl FnOnce() -> T) -> Option<T> {
+    static HOOK: Once = Once::new();
+    HOOK.call_once(|| {
+        let default = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if !GIVING_UP.with(Cell::get) || !is_step_limit(info.payload()) {
+                default(info);
+            }
+        }));
+    });
+
+    GIVING_UP.with(|giving_up| giving_up.set(true));
+    let result = catch_unwind(AssertUnwindSafe(|| with_step_limit(STEP_LIMIT, f)));
+    GIVING_UP.with(|giving_up| giving_up.set(false));
+
+    match result {
+        Ok(value) => Some(value),
+        Err(payload) if is_step_limit(payload.as_ref()) => None,
+        Err(payload) => resume_unwind(payload),
+    }
+}
+
+fn is_step_limit(payload: &(dyn Any + Send)) -> bool {
+    let message = payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+    message == Some("step limit exceeded")
+}
+
 /// Each case gives up after this many steps, since it can be exponential without the memo (and
 /// with it, for generic functions that reference their generics inside recursive types).
 const STEP_LIMIT: usize = 20_000;
 
 /// Compares random types with the memo on and off, and panics if any result differs.
 fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary {
-    // Giving up panics, which shouldn't be printed
-    static QUIET: Once = Once::new();
-    QUIET.call_once(|| {
-        let default = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            if !info.to_string().contains("step limit") {
-                default(info);
-            }
-        }));
-    });
-
     let mut summary = Summary::default();
 
     for seed in seeds {
@@ -467,11 +520,7 @@ fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary
 
         // Substituting some generic aliases takes exponential work (since each application copies
         // its arguments), so the checks give up as well
-        let module = catch_unwind(AssertUnwindSafe(|| {
-            with_step_limit(STEP_LIMIT, || generator.module())
-        }));
-
-        if !matches!(module, Ok(Some(()))) {
+        if give_up_after(|| generator.module()).flatten().is_none() {
             summary.skipped_modules += 1;
             continue;
         }
@@ -494,33 +543,26 @@ fn differential(seeds: impl IntoIterator<Item = u64>, queries: usize) -> Summary
             .collect();
 
         for [lhs, rhs, target, generic] in cases {
-            let with_memo = catch_unwind(AssertUnwindSafe(|| {
-                count_steps(|| {
-                    with_step_limit(STEP_LIMIT, || results(&mut db, lhs, rhs, target, generic))
-                })
-            }));
+            let with_memo =
+                give_up_after(|| count_steps(|| results(&mut db, lhs, rhs, target, generic)));
 
-            let without_memo = catch_unwind(AssertUnwindSafe(|| {
-                count_steps(|| {
-                    without_compare_memo(|| {
-                        with_step_limit(STEP_LIMIT, || results(&mut db, lhs, rhs, target, generic))
-                    })
-                })
-            }));
+            let without_memo = give_up_after(|| {
+                count_steps(|| without_compare_memo(|| results(&mut db, lhs, rhs, target, generic)))
+            });
 
             let (with_memo, steps, without_memo, steps_without) = match (with_memo, without_memo) {
-                (Ok((with_memo, steps)), Ok((without_memo, steps_without))) => {
+                (Some((with_memo, steps)), Some((without_memo, steps_without))) => {
                     (with_memo, steps, without_memo, steps_without)
                 }
-                (Err(_), Ok(_)) => {
+                (None, Some(_)) => {
                     summary.gave_up_with_memo += 1;
                     continue;
                 }
-                (Ok(_), Err(_)) => {
+                (Some(_), None) => {
                     summary.gave_up_without_memo += 1;
                     continue;
                 }
-                (Err(_), Err(_)) => {
+                (None, None) => {
                     summary.gave_up_both += 1;
                     continue;
                 }
