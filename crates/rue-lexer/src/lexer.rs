@@ -93,6 +93,12 @@ impl<'a> Lexer<'a> {
         self.bump();
 
         let is_terminated = loop {
+            // Check for the end explicitly, since `bump` returns `'\0'` there and the
+            // source can contain a literal NUL character
+            if self.at_end() {
+                break false;
+            }
+
             match self.bump() {
                 '*' if self.peek() == '/' => {
                     depth -= 1;
@@ -106,7 +112,6 @@ impl<'a> Lexer<'a> {
                     depth += 1;
                     self.bump();
                 }
-                '\0' => break false,
                 _ => {}
             }
         };
@@ -116,13 +121,15 @@ impl<'a> Lexer<'a> {
 
     fn eat_string(&mut self) -> TokenKind {
         let is_terminated = loop {
+            // See `eat_block_comment` for why this isn't a `'\0'` check
+            if self.at_end() {
+                break false;
+            }
+
             match self.peek() {
                 '"' => {
                     self.bump();
                     break true;
-                }
-                '\0' => {
-                    break false;
                 }
                 _ => {
                     self.bump();
@@ -321,6 +328,14 @@ mod tests {
                 LineComment
             "#]],
         );
+
+        // A literal NUL character doesn't end a line comment
+        check(
+            "// a \0 b\n",
+            expect![[r#"
+                LineComment
+            "#]],
+        );
     }
 
     #[test]
@@ -359,6 +374,14 @@ mod tests {
             "#]],
         );
 
+        // A literal NUL character isn't the end of the source
+        check(
+            "/* a \0 b */",
+            expect![[r#"
+                BlockComment { is_terminated: true }
+            "#]],
+        );
+
         // Unterminated nested block comment
         check(
             "/* outer /* inner */ unterminated",
@@ -381,6 +404,14 @@ mod tests {
             "\"hello world",
             expect![[r#"
                 String { is_terminated: false }
+            "#]],
+        );
+
+        // A literal NUL character isn't the end of the source
+        check(
+            "\"a\0b\"",
+            expect![[r#"
+                String { is_terminated: true }
             "#]],
         );
     }
@@ -788,6 +819,18 @@ mod tests {
             "\\",
             expect![[r#"
                 Unknown
+            "#]],
+        );
+
+        // A literal NUL character outside a string or comment is unknown
+        check(
+            "1 \0 2",
+            expect![[r#"
+                Integer
+                Whitespace
+                Unknown
+                Whitespace
+                Integer
             "#]],
         );
     }
