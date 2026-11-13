@@ -1,0 +1,16 @@
+type _ = Bytes;
+
+fn wrap<A, B>(value: A) -> (A, B | nil) {
+    (value, nil)
+}
+
+test fn declared_placeholder_type() -> Bytes {
+    let annotated: _ = "hello";
+    let pair = wrap::<_, Bytes>(1);
+    let first: Int = pair.first;
+    if first == 1 {
+        annotated
+    } else {
+        ""
+    }
+}

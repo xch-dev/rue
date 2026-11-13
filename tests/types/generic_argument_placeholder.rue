@@ -57,3 +57,20 @@ test fn function_value() -> Int {
             1
         }
 }
+
+test fn builtin() -> Int {
+    let value: Int = unchecked_cast::<_>(5);
+    value + 1
+}
+
+fn count<T>(value: T, depth: Int) -> Int {
+    if depth == 0 {
+        return 0;
+    }
+
+    1 + count::<_>(value, depth - 1)
+}
+
+test fn recursive() -> Int {
+    count::<_>("hello", 3)
+}
