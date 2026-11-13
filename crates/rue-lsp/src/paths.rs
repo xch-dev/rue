@@ -221,14 +221,17 @@ pub fn path_to_uri(path: &Path) -> Option<Uri> {
 
         format!(
             "file://{}",
-            encode(path.as_os_str().as_bytes(), is_path_char)
+            encode(path.as_os_str().as_bytes(), is_path_char, false)
         )
     };
 
     #[cfg(windows)]
     let uri = {
         let (host, path) = windows::uri_parts(path.to_str()?);
-        format!("file://{host}{}", encode(path.as_bytes(), is_path_char))
+        format!(
+            "file://{host}{}",
+            encode(path.as_bytes(), is_path_char, false)
+        )
     };
 
     uri.parse().ok()
@@ -240,18 +243,26 @@ fn is_path_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || b"-._~!$&'()*+,;=:@/".contains(&byte)
 }
 
-/// Whether a byte can appear in a URI that's already percent-encoded, other than `[` and `]`
-/// (which only an IP address in the host can use).
+/// Whether a byte can appear in a URI as it is, other than `%` (which only starts an escape) and
+/// `[` and `]` (which only an IP address in the host can use).
 fn is_uri_char(byte: u8) -> bool {
-    is_path_char(byte) || b"%?#".contains(&byte)
+    is_path_char(byte) || b"?#".contains(&byte)
 }
 
-/// Percent-encodes the bytes that aren't kept.
-fn encode(bytes: &[u8], keep: impl Fn(u8) -> bool) -> String {
+/// Percent-encodes the bytes that aren't kept. With `escapes`, the text is already partly
+/// encoded, and a `%` followed by two hex digits is kept as the escape it is, while any other `%`
+/// is literal (as `url` treated it), so it's encoded.
+fn encode(bytes: &[u8], keep: impl Fn(u8) -> bool, escapes: bool) -> String {
     let mut encoded = String::with_capacity(bytes.len());
 
-    for &byte in bytes {
-        if keep(byte) {
+    for (i, &byte) in bytes.iter().enumerate() {
+        let escape = escapes
+            && byte == b'%'
+            && bytes
+                .get(i + 1..i + 3)
+                .is_some_and(|hex| hex.iter().all(u8::is_ascii_hexdigit));
+
+        if escape || keep(byte) {
             encoded.push(byte as char);
         } else {
             write!(encoded, "%{byte:02X}").unwrap();
@@ -290,7 +301,7 @@ fn encode_uri_fields(value: &mut Value) {
                     && (key == "uri" || key.ends_with("Uri"))
                 {
                     if uri.parse::<Uri>().is_err() {
-                        *uri = encode(uri.as_bytes(), is_uri_char);
+                        *uri = encode(uri.as_bytes(), is_uri_char, true);
                     }
                 } else {
                     encode_uri_fields(value);
@@ -327,7 +338,7 @@ mod windows {
     /// The host and path of the URI of an absolute path, whose path isn't percent-encoded yet.
     /// Verbatim paths (`\\?\C:\a` and `\\?\UNC\server\share\a`), which canonical paths are, have
     /// the same URIs as the ordinary paths they're the same as.
-    pub fn uri_parts(path: &str) -> (String, String) {
+    pub fn uri_parts(path: &str) -> (&str, String) {
         let (host, path) = if let Some(rest) = path
             .strip_prefix(r"\\?\UNC\")
             .or_else(|| path.strip_prefix(r"\\"))
@@ -340,7 +351,7 @@ mod windows {
             ("", format!(r"\{path}"))
         };
 
-        (host.to_string(), path.replace('\\', "/"))
+        (host, path.replace('\\', "/"))
     }
 }
 
@@ -399,6 +410,7 @@ mod tests {
         assert_eq!(path("https://example.com/main.rue"), None);
         assert_eq!(path("file://server/main.rue"), None);
         assert_eq!(path("file:main.rue"), None);
+        assert_eq!(path("git:/home/rue/main.rue"), None);
     }
 
     #[test]
@@ -449,20 +461,24 @@ mod tests {
         }
 
         // Paths to URIs, which verbatim paths have the same as ordinary paths
-        let parts = |host: &str, path: &str| (host.to_string(), path.to_string());
-
         for path in [r"C:\Users\main.rue", r"\\?\C:\Users\main.rue"] {
-            assert_eq!(windows::uri_parts(path), parts("", "/C:/Users/main.rue"));
+            assert_eq!(
+                windows::uri_parts(path),
+                ("", "/C:/Users/main.rue".to_string())
+            );
         }
 
         for path in [r"\\server\share\main.rue", r"\\?\UNC\server\share\main.rue"] {
-            assert_eq!(windows::uri_parts(path), parts("server", "/share/main.rue"));
+            assert_eq!(
+                windows::uri_parts(path),
+                ("server", "/share/main.rue".to_string())
+            );
         }
 
         // Both directions agree
         let (host, path) = windows::uri_parts(r"\\?\UNC\server\share\main.rue");
         assert_eq!(
-            windows::path(Some(&host), &path).as_deref(),
+            windows::path(Some(host), &path).as_deref(),
             Some(r"\\server\share\main.rue")
         );
     }
@@ -474,7 +490,11 @@ mod tests {
                 "textDocument": { "uri": "file:///a/[id]/x^y|z.rue", "text": "[x]" },
                 "rootUri": "file:///a/[id]",
                 "workspaceFolders": [{ "uri": "file:///a/[id]", "name": "[id]" }],
-                "changes": [{ "uri": "file:///a/%5B.rue" }],
+                "changes": [
+                    { "uri": "file:///a/%5B.rue" },
+                    { "uri": "file://[::1]/a.rue" },
+                    { "uri": "file:///a/100%/%41%4.rue" },
+                ],
             }))
             .finish();
 
@@ -484,7 +504,11 @@ mod tests {
                 "textDocument": { "uri": "file:///a/%5Bid%5D/x%5Ey%7Cz.rue", "text": "[x]" },
                 "rootUri": "file:///a/%5Bid%5D",
                 "workspaceFolders": [{ "uri": "file:///a/%5Bid%5D", "name": "[id]" }],
-                "changes": [{ "uri": "file:///a/%5B.rue" }],
+                "changes": [
+                    { "uri": "file:///a/%5B.rue" },
+                    { "uri": "file://[::1]/a.rue" },
+                    { "uri": "file:///a/100%25/%41%254.rue" },
+                ],
             }))
         );
 
