@@ -1,0 +1,52 @@
+// Narrowing by a guard keeps `T`, but the narrowed type isn't wider than it
+fn atom_is_not_int<T>(value: T) -> Int {
+    if value is Atom {
+        return value;
+    }
+
+    raise;
+}
+
+// A pair is never an atom, so the narrowed value can't be assigned to one
+fn pair_is_not_atom<T>(value: T) -> Atom {
+    if value is (Any, Any) {
+        return value;
+    }
+
+    raise;
+}
+
+// The else branch of an atom check isn't an atom
+fn else_is_not_atom<T>(value: T) -> Atom {
+    if value is Atom {
+        raise;
+    }
+
+    value
+}
+
+// A value narrowed to `nil` is not a `T`
+fn nil_is_not_t<T>(value: T | nil) -> T {
+    if value is nil {
+        return value;
+    }
+
+    raise;
+}
+
+// A narrowed generic isn't assignable to another generic
+fn not_other<T, U>(value: T) -> U {
+    if value is Atom {
+        return value;
+    }
+
+    raise;
+}
+
+fn main() -> Int {
+    atom_is_not_int(1)
+        + pair_is_not_atom(1) as Int
+        + else_is_not_atom(1) as Int
+        + nil_is_not_t(1)
+        + not_other::<Int, Int>(1)
+}

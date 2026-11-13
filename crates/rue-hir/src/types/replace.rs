@@ -1,4 +1,4 @@
-use rue_types::{Alias, BuiltinTypes, Pair, Type, TypeId, Union};
+use rue_types::{Alias, BuiltinTypes, Intersection, Pair, Type, TypeId, Union};
 
 use crate::{Database, TypePath};
 
@@ -46,6 +46,16 @@ pub fn replace_type(
             }
             db.alloc_type(Type::Union(Union::new(new_variants)))
         }
+        // Only the structure of an intersection has fields to narrow, since its generics are left
+        // as they are
+        Type::Intersection(ty) => {
+            let types = ty
+                .types
+                .iter()
+                .map(|&member| replace_type(db, builtins, member, to, path))
+                .collect();
+            db.alloc_type(Type::Intersection(Intersection::new(types)))
+        }
         Type::Pair(pair) => match next {
             TypePath::First => {
                 let first = replace_type(db, builtins, pair.first, to, &path[1..]);
@@ -64,6 +74,7 @@ mod tests {
     use std::collections::HashMap;
 
     use indexmap::IndexSet;
+    use rue_diagnostic::Name;
     use rue_types::{Alias, Apply, BuiltinTypes, Generic, Pair, Struct, Type, TypeId, Union};
 
     use super::*;
@@ -215,15 +226,17 @@ mod tests {
         let mut ctx = Ctx::new();
         let b = ctx.builtins;
 
-        let generic = ctx.db.alloc_type(Type::Generic(Generic { name: None }));
+        let generic = ctx.db.alloc_type(Type::Generic(Generic {
+            name: Some(Name::new("T", None)),
+        }));
 
         // There's no structure to narrow within a generic type
         let ty = ctx.replace(generic, b.int, &[TypePath::First]);
         assert_eq!(ty, generic);
 
-        // But the generic type itself can be narrowed
+        // But the generic type itself can be narrowed, keeping the generic
         let ty = ctx.replace(generic, b.int, &[]);
-        assert_eq!(ctx.name(ty), "Int");
+        assert_eq!(ctx.name(ty), "T & Int");
     }
 
     #[test]

@@ -196,6 +196,24 @@ fn main(pair: (Int, Bytes)) -> Int {
 }
 
 #[test]
+fn test_complete_narrowed_generic_fields() {
+    check(
+        r#"
+fn main<T>(value: T) -> T {
+    if value is (Int, Bytes) {
+        value.$0
+    }
+    value
+}
+"#,
+        expect![[r#"
+            first [Field] Int
+            rest [Field] Bytes
+        "#]],
+    );
+}
+
+#[test]
 fn test_complete_atom_fields() {
     check(
         r#"

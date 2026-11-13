@@ -144,6 +144,11 @@ pub fn compile_field(ctx: &mut Compiler, expr: Value, name: &Field<'_>) -> Field
             }
         }
         Type::Struct(ty) => compile_struct_field(ctx, expr, &ty, name),
+        // The fields of a generic narrowed to a pair or struct are those of its structure
+        Type::Intersection(ty) => match ty.structure(ctx.types_mut()) {
+            Some(structure) => compile_field(ctx, expr.with_type(structure), name),
+            None => FieldResult::Unknown,
+        },
     }
 }
 

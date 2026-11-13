@@ -1,0 +1,152 @@
+// The then branch narrows `T` to `T & Atom`, which is still a `T`
+fn atom_or_raise<T>(value: T) -> T {
+    if value is Atom {
+        return value;
+    }
+
+    raise;
+}
+
+// It's also usable as the narrowed type
+fn plus_one<T>(value: T) -> (T, Int) {
+    if value is Int {
+        return (value, value + 1);
+    }
+
+    raise;
+}
+
+// Fields can be read from a generic narrowed to a pair
+fn first_of<T>(value: T) -> (T, Any) {
+    if value is (Any, Any) {
+        return (value, value.first);
+    }
+
+    raise;
+}
+
+// The else branch of a pair check keeps both `T` and `Atom`
+fn atom_else<T>(value: T, fallback: (T, Atom)) -> (T, Atom) {
+    if value is (Any, Any) {
+        return fallback;
+    }
+
+    (value, value)
+}
+
+// And the else branch of an atom check keeps both `T` and the pair
+fn pair_else<T>(value: T, fallback: (T, Any)) -> (T, Any) {
+    if value is Atom {
+        return fallback;
+    }
+
+    (value, value.rest)
+}
+
+// Nested guards narrow the structure further
+fn nested<T>(value: T) -> (T, Bytes32) {
+    if value is Atom {
+        if value is Bytes32 {
+            return (value, value);
+        }
+
+        raise;
+    }
+
+    raise;
+}
+
+// Both sides of `&&` narrow the same value
+fn both<T>(value: T) -> (T, Bytes32) {
+    if value is Atom && value is Bytes32 {
+        return (value, value);
+    }
+
+    raise;
+}
+
+// A union with a generic keeps the generic in each branch
+fn union_atom<T>(value: T | (Int, Int), fallback: T) -> T {
+    if value is (Any, Any) {
+        return fallback;
+    }
+
+    value
+}
+
+// The narrowed value can be passed to another generic function
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn pass_through<T>(value: T) -> T {
+    if value is Atom {
+        return identity(value);
+    }
+
+    raise;
+}
+
+fn main() -> Int {
+    atom_or_raise(5)
+}
+
+test fn atom_or_raise_atom() -> Int {
+    atom_or_raise(5)
+}
+
+test fn atom_or_raise_pair() -> (Int, Int) {
+    atom_or_raise((1, 2))
+}
+
+test fn plus_one_int() -> (Int, Int) {
+    plus_one(41)
+}
+
+test fn first_of_pair() -> ((Int, Int), Any) {
+    first_of((1, 2))
+}
+
+test fn first_of_atom() -> (Int, Any) {
+    first_of(1)
+}
+
+test fn atom_else_atom() -> (Int, Atom) {
+    atom_else(1, (0, 0))
+}
+
+test fn atom_else_pair() -> ((Int, Int), Atom) {
+    atom_else((1, 2), ((0, 0), 0))
+}
+
+test fn pair_else_pair() -> ((Int, Int), Any) {
+    pair_else((1, 2), ((0, 0), 0))
+}
+
+test fn pair_else_atom() -> (Int, Any) {
+    pair_else(1, (0, 0))
+}
+
+test fn nested_bytes32() -> (Bytes32, Bytes32) {
+    nested(0x0000000000000000000000000000000000000000000000000000000000000001)
+}
+
+test fn nested_int() -> (Int, Bytes32) {
+    nested(1)
+}
+
+test fn both_bytes32() -> (Bytes32, Bytes32) {
+    both(0x0000000000000000000000000000000000000000000000000000000000000001)
+}
+
+test fn union_atom_atom() -> Int {
+    union_atom(5, 0)
+}
+
+test fn union_atom_pair() -> Int {
+    union_atom::<Int>((1, 2), 0)
+}
+
+test fn pass_through_atom() -> Int {
+    pass_through(3)
+}

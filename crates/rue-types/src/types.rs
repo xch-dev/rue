@@ -3,6 +3,7 @@ mod apply;
 mod atom;
 mod function;
 mod generic;
+mod intersection;
 mod pair;
 mod structs;
 mod unions;
@@ -12,6 +13,7 @@ pub use apply::*;
 pub use atom::*;
 pub use function::*;
 pub use generic::*;
+pub use intersection::*;
 pub use pair::*;
 pub use structs::*;
 pub use unions::*;
@@ -34,4 +36,5 @@ pub enum Type {
     Function(FunctionType),
     Apply(Apply),
     Union(Union),
+    Intersection(Intersection),
 }

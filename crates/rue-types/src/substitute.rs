@@ -5,7 +5,8 @@ use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, FunctionParameter, FunctionType, Pair, Struct, Type, TypeId, Union, step, stringify_impl,
+    Alias, FunctionParameter, FunctionType, Intersection, Pair, Struct, Type, TypeId, Union, step,
+    stringify_impl,
 };
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
@@ -264,6 +265,14 @@ fn substitute_impl(
                 .collect();
             arena.alloc(Type::Union(Union::new(types)))
         }
+        Type::Intersection(intersection) => {
+            let types = intersection
+                .types
+                .iter()
+                .map(|id| substitute_impl(arena, *id, map, scope, ctx))
+                .collect();
+            normalize_intersection(arena, types)
+        }
     };
 
     ctx.stack.pop().unwrap();
@@ -273,6 +282,35 @@ fn substitute_impl(
     ctx.memo.insert((old_id, scope), result);
 
     result
+}
+
+/// Rebuilds an intersection whose members have been substituted. This only simplifies it as far as
+/// can be done without comparing the members (which would need the builtin types), so a generic
+/// that was replaced with a type that overlaps another member (such as `T & Atom` with `T` mapped
+/// to `Int`) is kept as an intersection of the two. That's still the same set of values, and it's
+/// simplified further the next time it's intersected with another type.
+fn normalize_intersection(arena: &mut Arena<Type>, types: Vec<TypeId>) -> TypeId {
+    let mut members = Vec::new();
+    let mut stack: Vec<TypeId> = types.into_iter().rev().collect();
+
+    while let Some(id) = stack.pop() {
+        match &arena[resolve_refs(arena, id)] {
+            Type::Never => return arena.alloc(Type::Never),
+            Type::Any => {}
+            Type::Intersection(inner) => stack.extend(inner.types.iter().rev().copied()),
+            _ => {
+                if !members.contains(&id) {
+                    members.push(id);
+                }
+            }
+        }
+    }
+
+    match members.len() {
+        0 => arena.alloc(Type::Any),
+        1 => members[0],
+        _ => arena.alloc(Type::Intersection(Intersection::new(members))),
+    }
 }
 
 /// Substitutes a generic argument, and returns it along with its binding. A generic that is passed
@@ -346,6 +384,7 @@ pub(crate) fn free_generics(arena: &Arena<Type>, id: TypeId) -> HashSet<TypeId> 
                 stack.extend(function.param_types());
             }
             Type::Union(union) => stack.extend(union.types.iter().copied()),
+            Type::Intersection(intersection) => stack.extend(intersection.types.iter().copied()),
         }
     }
 
@@ -395,6 +434,7 @@ pub fn contains_unresolved(arena: &Arena<Type>, id: TypeId) -> bool {
                 stack.extend(function.param_types());
             }
             Type::Union(union) => stack.extend(union.types.iter().copied()),
+            Type::Intersection(intersection) => stack.extend(intersection.types.iter().copied()),
         }
     }
 
@@ -440,6 +480,7 @@ pub(crate) fn references_generic(
                 }
             }
             Type::Union(union) => stack.extend(union.types.iter().copied()),
+            Type::Intersection(intersection) => stack.extend(intersection.types.iter().copied()),
         }
     }
 

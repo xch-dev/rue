@@ -114,6 +114,11 @@ fn collect_references(
                 collect_references(arena, id, declarations, edges, visited);
             }
         }
+        Type::Intersection(intersection) => {
+            for &id in &intersection.types {
+                collect_references(arena, id, declarations, edges, visited);
+            }
+        }
         Type::Function(function) => {
             for id in function.param_types() {
                 collect_references(arena, id, declarations, edges, visited);

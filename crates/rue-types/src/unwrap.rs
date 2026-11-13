@@ -40,6 +40,7 @@ fn unwrap_semantic_impl(
         | Type::Pair(_)
         | Type::Function(_)
         | Type::Struct(_)
+        | Type::Intersection(_)
         | Type::Any => id,
         Type::Union(ty) => {
             // The only member may itself be an alias or a reference, which needs unwrapping too

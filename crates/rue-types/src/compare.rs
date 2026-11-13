@@ -984,6 +984,45 @@ pub(crate) fn compare_impl(
             ctx.candidates += 1;
             Comparison::Assign
         }
+        // A value is in an intersection if it's in every one of its members
+        (_, Type::Intersection(rhs)) => {
+            let mut result = Comparison::Assign;
+
+            for &id in &rhs.types {
+                result = max(
+                    result,
+                    compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
+                );
+            }
+
+            result
+        }
+        // Every value of an intersection is in each of its members, so it's assignable to
+        // anything one of them is. Like a generic, it's first compared to each member of a union
+        // as a whole, so that `T & Atom` is assignable to `T | nil`, and is inferred as is.
+        (Type::Intersection(lhs_intersection), _) => {
+            let mut result = Comparison::Invalid;
+
+            if let Type::Union(rhs_union) = arena[rhs].clone() {
+                for &id in &rhs_union.types {
+                    result = min(
+                        result,
+                        compare_impl(arena, builtins, ctx, lhs, id, lhs_semantic, rhs_semantic),
+                    );
+                }
+            }
+
+            if result != Comparison::Assign {
+                for &id in &lhs_intersection.types {
+                    result = min(
+                        result,
+                        compare_impl(arena, builtins, ctx, id, rhs, lhs_semantic, rhs_semantic),
+                    );
+                }
+            }
+
+            result
+        }
         (_, Type::Generic(_)) => match arena[lhs].clone() {
             Type::Union(lhs) => {
                 let mut result = Comparison::Assign;
@@ -1254,6 +1293,15 @@ fn semantics_of_impl(
         }
         Type::Struct(ty) => HashSet::from_iter([Some(Semantic::Id(ty.semantic))]),
         Type::Union(ty) => {
+            let mut semantics = HashSet::new();
+
+            for &id in &ty.types {
+                semantics.extend(semantics_of_impl(arena, id, visited));
+            }
+
+            semantics
+        }
+        Type::Intersection(ty) => {
             let mut semantics = HashSet::new();
 
             for &id in &ty.types {

@@ -499,10 +499,32 @@ fn test_subtract_generics() {
     // Nothing is known about a generic type, so it's kept as is rather than being widened
     let generic_or_nil = t.union(vec![generic, nil]);
     assert_eq!(t.subtract(generic_or_nil, nil), generic);
-    let generic_or_int = t.union(vec![generic, int]);
-    assert_eq!(t.subtract(generic_or_int, int), generic);
-    assert_eq!(t.subtract(generic_or_nil, atom), generic);
     assert_eq!(t.subtract(generic, nil), generic);
+
+    // But what's left of it is narrowed to the values that weren't removed. Every atom passes a
+    // check for `Int`, so only pairs are left.
+    let generic_name = t.name(generic);
+    let generic_or_int = t.union(vec![generic, int]);
+    let not_int = t.subtract(generic_or_int, int);
+    assert_eq!(t.name(not_int), format!("{generic_name} & (Any, Any)"));
+    let not_atom = t.subtract(generic_or_nil, atom);
+    assert_eq!(t.name(not_atom), format!("{generic_name} & (Any, Any)"));
+    let any_pair = t.pair(any, any);
+    let not_pair = t.subtract(generic, any_pair);
+    assert_eq!(t.name(not_pair), format!("{generic_name} & Atom"));
+
+    // Which is kept when subtracting from it again, and narrowed further if possible
+    let ty = t.subtract(not_pair, nil);
+    assert_eq!(t.name(ty), format!("{generic_name} & Atom"));
+    let never = t.subtract(not_pair, atom);
+    assert_eq!(t.name(never), "Never");
+    let int_pair = t.pair(int, int);
+    let pair_or_nil = t.union(vec![int_pair, nil]);
+    let not_atom_or_nil = t.subtract(not_atom, pair_or_nil);
+    assert_eq!(
+        t.name(not_atom_or_nil),
+        format!("{generic_name} & (Any, Any)")
+    );
 
     // It's only removed if the target covers every possible value
     assert_eq!(t.subtract(generic_or_nil, generic), nil);
@@ -514,7 +536,6 @@ fn test_subtract_generics() {
     let alias = t.alias(generic_or_nil);
     let from = t.union(vec![generic_pair, alias]);
     let result = t.subtract(from, nil);
-    let generic_name = t.name(generic);
     assert_eq!(
         t.name(result),
         format!("{generic_name} | ({generic_name}, nil)")
@@ -822,6 +843,10 @@ fn contains(
             .types
             .iter()
             .any(|&id| contains(arena, generics, id, a, node)),
+        Type::Intersection(ty) => ty
+            .types
+            .iter()
+            .all(|&id| contains(arena, generics, id, a, node)),
         Type::Never => false,
         Type::Any => true,
         Type::Atom(atom) => {

@@ -3,9 +3,9 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    BuiltinTypes, Comparison, ComparisonContext, Memo, OverlapMemo, Pair, Struct, Type, TypeId,
-    Union, compare, compare_impl, reaches_non_contractive_cycle, step, stringify_impl, substitute,
-    types_may_overlap, unwrap_semantic_without_substitution,
+    BuiltinTypes, Comparison, ComparisonContext, Intersection, Memo, OverlapMemo, Pair, Struct,
+    Type, TypeId, Union, compare, compare_impl, reaches_non_contractive_cycle, resolve_refs, step,
+    stringify_impl, substitute, types_may_overlap, unwrap_semantic_without_substitution,
 };
 
 /// The maximum number of nested intersections before giving up on being more precise.
@@ -111,6 +111,9 @@ fn intersect_uncached(
     lhs: TypeId,
     rhs: TypeId,
 ) -> TypeId {
+    let lhs = normalize_intersection(arena, builtins, ctx, lhs);
+    let rhs = normalize_intersection(arena, builtins, ctx, rhs);
+
     // `Any` is permissive, so it's assignable to everything and can't be used for comparisons
     if is_any(arena, lhs) {
         return rhs;
@@ -162,6 +165,14 @@ fn intersect_structure(
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
         (Type::Ref(lhs), _) => intersect_impl(arena, builtins, ctx, lhs, rhs),
         (_, Type::Ref(rhs)) => intersect_impl(arena, builtins, ctx, lhs, rhs),
+        // There's no structure to intersect with, so the newer type is used as is
+        (Type::Unresolved | Type::Any, _) | (_, Type::Unresolved | Type::Any) => rhs,
+        // This is done before aliases and unions are unwrapped, so that they're kept intact in the
+        // structure of the result (such as `T & Bool` rather than `T & true | T & false`)
+        (Type::Generic(_) | Type::Intersection(_), _)
+        | (_, Type::Generic(_) | Type::Intersection(_)) => {
+            intersect_generics(arena, builtins, ctx, lhs, rhs)
+        }
         (Type::Alias(alias), _) => intersect_impl(arena, builtins, ctx, alias.inner, rhs),
         (_, Type::Alias(alias)) => intersect_impl(arena, builtins, ctx, lhs, alias.inner),
         (Type::Union(union), _) => {
@@ -170,7 +181,7 @@ fn intersect_structure(
                 .iter()
                 .map(|&variant| intersect_impl(arena, builtins, ctx, variant, rhs))
                 .collect();
-            repackage_union(arena, builtins, lhs, &union, variants)
+            repackage_union(arena, builtins, ctx, lhs, &union, variants)
         }
         (_, Type::Union(union)) => {
             let variants = union
@@ -178,11 +189,9 @@ fn intersect_structure(
                 .iter()
                 .map(|&variant| intersect_impl(arena, builtins, ctx, lhs, variant))
                 .collect();
-            repackage_union(arena, builtins, rhs, &union, variants)
+            repackage_union(arena, builtins, ctx, rhs, &union, variants)
         }
-        // There's no structure to intersect with, so the newer type is used as is
-        (Type::Unresolved | Type::Generic(_) | Type::Any | Type::Function(_), _)
-        | (_, Type::Unresolved | Type::Generic(_) | Type::Any | Type::Function(_)) => rhs,
+        (Type::Function(_), _) | (_, Type::Function(_)) => rhs,
         (Type::Struct(lhs_struct), Type::Struct(rhs_struct)) => {
             let inner = intersect_impl(arena, builtins, ctx, lhs_struct.inner, rhs_struct.inner);
 
@@ -235,11 +244,115 @@ fn intersect_structure(
     }
 }
 
+/// Intersects two types where at least one is a generic or an intersection with one. Nothing is
+/// known about the values of a generic, so it can't be narrowed itself. Instead, the result is an
+/// intersection of the generics with the intersection of everything else (the structure).
+fn intersect_generics(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut IntersectContext,
+    lhs: TypeId,
+    rhs: TypeId,
+) -> TypeId {
+    let mut generics = Vec::new();
+    let mut structure = None;
+
+    for member in intersection_members(arena, lhs)
+        .into_iter()
+        .chain(intersection_members(arena, rhs))
+    {
+        let resolved = resolve_refs(arena, member);
+
+        if matches!(arena[resolved], Type::Generic(_)) {
+            if !generics.contains(&resolved) {
+                generics.push(resolved);
+            }
+        } else {
+            structure = Some(match structure {
+                Some(structure) => intersect_impl(arena, builtins, ctx, structure, member),
+                None => member,
+            });
+        }
+    }
+
+    // A structure that every generic is already assignable to (such as `Atom | (Any, Any)`)
+    // doesn't narrow them any further
+    let structure = structure.filter(|&structure| {
+        generics.is_empty()
+            || !generics.iter().all(|&generic| {
+                compare_impl(
+                    arena,
+                    builtins,
+                    &mut ctx.comparison,
+                    generic,
+                    structure,
+                    None,
+                    None,
+                ) == Comparison::Assign
+            })
+    });
+
+    if let Some(structure) = structure {
+        if is_never(arena, structure) {
+            return builtins.never;
+        }
+
+        generics.push(structure);
+    }
+
+    if generics.len() == 1 {
+        generics[0]
+    } else {
+        arena.alloc(Type::Intersection(Intersection::new(generics)))
+    }
+}
+
+/// Substituting the generics of an intersection can leave it with more than one member that isn't
+/// a generic (such as `Int & Atom` for `T & Atom` with `T` mapped to `Int`), since substitution
+/// can't intersect them. They're intersected here, before it's compared to anything.
+fn normalize_intersection(
+    arena: &mut Arena<Type>,
+    builtins: &BuiltinTypes,
+    ctx: &mut IntersectContext,
+    id: TypeId,
+) -> TypeId {
+    let Type::Intersection(intersection) = &arena[resolve_refs(arena, id)] else {
+        return id;
+    };
+
+    let members = intersection_members(arena, id);
+    let generics = members
+        .iter()
+        .filter(|&&member| matches!(arena[resolve_refs(arena, member)], Type::Generic(_)))
+        .count();
+
+    if generics > 0 && members.len() - generics <= 1 && members.len() == intersection.types.len() {
+        return id;
+    }
+
+    intersect_generics(arena, builtins, ctx, id, builtins.permissive_any)
+}
+
+/// The members of an intersection, including those of nested intersections, or the type itself.
+fn intersection_members(arena: &Arena<Type>, id: TypeId) -> Vec<TypeId> {
+    match &arena[resolve_refs(arena, id)] {
+        Type::Intersection(intersection) => intersection
+            .types
+            .iter()
+            .flat_map(|&id| intersection_members(arena, id))
+            .collect(),
+        _ => vec![id],
+    }
+}
+
 /// Rebuilds a union from the intersection of each of its variants, dropping the ones which were
-/// found to be impossible.
+/// found to be impossible. A generic narrowed by a variant's intersection is also dropped if it's
+/// assignable to another variant, so that `T | nil` narrowed to `nil` is `nil` rather than
+/// `T & nil | nil`.
 fn repackage_union(
     arena: &mut Arena<Type>,
     builtins: &BuiltinTypes,
+    ctx: &mut IntersectContext,
     original: TypeId,
     union: &Union,
     variants: Vec<TypeId>,
@@ -253,6 +366,32 @@ fn repackage_union(
     for variant in variants {
         if !is_never(arena, variant) && !kept.contains(&variant) {
             kept.push(variant);
+        }
+    }
+
+    let mut index = 0;
+
+    while index < kept.len() {
+        let variant = kept[index];
+
+        let redundant = matches!(arena[resolve_refs(arena, variant)], Type::Intersection(_))
+            && kept.iter().any(|&other| {
+                other != variant
+                    && compare_impl(
+                        arena,
+                        builtins,
+                        &mut ctx.comparison,
+                        variant,
+                        other,
+                        None,
+                        None,
+                    ) == Comparison::Assign
+            });
+
+        if redundant {
+            kept.remove(index);
+        } else {
+            index += 1;
         }
     }
 
@@ -334,6 +473,12 @@ mod tests {
             self.arena.alloc(Type::Atom(atom))
         }
 
+        fn generic(&mut self, name: &str) -> TypeId {
+            self.arena.alloc(Type::Generic(Generic {
+                name: Some(Name::new(name, None)),
+            }))
+        }
+
         fn strukt(&mut self, name: &str, inner: TypeId) -> TypeId {
             let id = self.arena.alloc(Type::Unresolved);
             *self.arena.get_mut(id).unwrap() = Type::Struct(Struct {
@@ -382,25 +527,101 @@ mod tests {
     }
 
     #[test]
+    fn test_intersect_generics() {
+        let mut db = Db::new();
+        let b = db.builtins;
+
+        // Nothing is known about the values of a generic type, so it's kept along with the other
+        // type, in either order
+        let t = db.generic("T");
+        let t_int = db.intersect(t, b.int);
+        assert_eq!(db.name(t_int), "T & Int");
+        let ty = db.intersect(b.int, t);
+        assert_eq!(db.name(ty), "T & Int");
+
+        // Unless the other type doesn't narrow it
+        assert_eq!(db.intersect(t, b.permissive_any), t);
+        assert_eq!(db.intersect(t, b.recursive_any), t);
+        assert_eq!(db.intersect(t, t), t);
+
+        // Aliases and unions are kept intact
+        let bool = db.arena.alloc(Type::Alias(Alias {
+            name: Some(Name::new("Bool", None)),
+            inner: b.bool,
+            generics: vec![],
+        }));
+        let ty = db.intersect(t, bool);
+        assert_eq!(db.name(ty), "T & Bool");
+        let int_or_nil = db.union(&[b.int, b.nil]);
+        let ty = db.intersect(t, int_or_nil);
+        assert_eq!(db.name(ty), "T & (Int | nil)");
+
+        // But a union with a generic is distributed over
+        let t_or_int = db.union(&[t, b.int]);
+        let ty = db.intersect(t_or_int, b.atom);
+        assert_eq!(db.name(ty), "T & Atom | Int");
+
+        // Unless a narrowed generic is assignable to another variant
+        let t_or_nil = db.union(&[t, b.nil]);
+        assert_eq!(db.intersect(t_or_nil, b.nil), b.nil);
+
+        // An intersection's structure is narrowed further
+        let t_atom = db.intersect(t, b.atom);
+        let ty = db.intersect(t_atom, b.int);
+        assert_eq!(db.name(ty), "T & Int");
+        let ty = db.intersect(t_atom, b.bytes32);
+        assert_eq!(db.name(ty), "T & Bytes32");
+        for ty in [
+            db.intersect(t_atom, t),
+            db.intersect(t, t_atom),
+            db.intersect(t_atom, b.atom),
+        ] {
+            assert_eq!(db.name(ty), "T & Atom");
+        }
+
+        // And it's impossible if its structure is
+        let pair = db.pair(b.permissive_any, b.permissive_any);
+        let ty = db.intersect(t_atom, pair);
+        assert_eq!(db.name(ty), "Never");
+        let t_pair = db.intersect(t, pair);
+        assert_eq!(db.name(t_pair), "T & (Any, Any)");
+        let ty = db.intersect(t_pair, t_atom);
+        assert_eq!(db.name(ty), "Never");
+
+        // Different generics are all kept
+        let u = db.generic("U");
+        let ty = db.intersect(t_atom, u);
+        assert_eq!(db.name(ty), "T & U & Atom");
+        let ty = db.intersect(t, u);
+        assert_eq!(db.name(ty), "T & U");
+
+        // Within a pair, only the generic's position is an intersection
+        let lhs = db.pair(t, b.permissive_any);
+        let rhs = db.pair(b.int, b.bytes32);
+        let ty = db.intersect(lhs, rhs);
+        assert_eq!(db.name(ty), "(T & Int, Bytes32)");
+
+        // A struct is kept as the structure
+        let inner = db.pair(b.int, b.nil);
+        let point = db.strukt("Point", inner);
+        let ty = db.intersect(point, t);
+        assert_eq!(db.name(ty), "T & Point");
+    }
+
+    #[test]
     fn test_intersect_fallback() {
         let mut db = Db::new();
         let b = db.builtins;
 
-        // Nothing is known about how a generic type relates to the other type, so the second
+        // Nothing is known about how a function type relates to the other type, so the second
         // type is used as is
-        let generic = db.arena.alloc(Type::Generic(Generic { name: None }));
-        assert_eq!(db.intersect(generic, b.int), b.int);
-
-        // The same applies to a generic type within a pair
-        let lhs = db.pair(generic, b.permissive_any);
-        let rhs = db.pair(b.int, b.bytes32);
-        let ty = db.intersect(lhs, rhs);
-        assert_eq!(db.name(ty), "(Int, Bytes32)");
-
-        // A struct isn't wrapped around a generic type
-        let inner = db.pair(b.int, b.nil);
-        let point = db.strukt("Point", inner);
-        assert_eq!(db.intersect(point, generic), generic);
+        let function = db.arena.alloc(Type::Function(crate::FunctionType {
+            generics: vec![],
+            params: vec![],
+            nil_terminated: true,
+            ret: b.int,
+        }));
+        assert_eq!(db.intersect(function, b.atom), b.atom);
     }
 
     #[test]
