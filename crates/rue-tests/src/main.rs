@@ -144,7 +144,10 @@ fn main() -> Result<()> {
 
     if failed {
         if args.bless {
-            eprintln!("\nUpdated the files above; run again to check that they now pass");
+            eprintln!(
+                "\nUpdated the files that differed; run again without --bless to check that \
+                 everything now passes"
+            );
         } else {
             eprintln!(
                 "\nSome checks failed. If the changes are intended, update the files with \
@@ -161,21 +164,9 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
     let mut failed = false;
 
     let unparsed = check_formatting_corpus(base_path, filter_arg, update, &mut failed)?;
-    walk_dir(
-        base_path,
-        &base_path.join("tests"),
-        filter_arg,
-        update,
-        &mut failed,
-    )?;
-    walk_dir(
-        base_path,
-        &base_path.join("examples"),
-        filter_arg,
-        update,
-        &mut failed,
-    )?;
-    check_expected_parse_errors(base_path, &unparsed, &mut failed)?;
+    walk_dir(&base_path.join("tests"), filter_arg, update, &mut failed)?;
+    walk_dir(&base_path.join("examples"), filter_arg, update, &mut failed)?;
+    check_expected_parse_errors(&unparsed, &mut failed)?;
 
     println!("Running std tests");
 
@@ -239,7 +230,7 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
         )?;
     }
 
-    compare_snapshot(base_path, &yaml_file, &original, &file, update, &mut failed)?;
+    compare_snapshot(&yaml_file, &original, &file, update, &mut failed)?;
 
     Ok(failed)
 }
@@ -301,13 +292,16 @@ fn check_formatting_corpus(
 /// The formatter can't format a file with syntax errors, which some tests contain on purpose.
 /// A file is only skipped if it has a snapshot next to it (`<name>.yaml`) that records each of
 /// the syntax errors, so a file that stops parsing by mistake is still reported.
+///
+/// Errors are matched by message and file, not position: the formatter adds a final newline
+/// before parsing, so an error at the end of a file without one is reported a line later than
+/// the compiler reports it.
 fn check_expected_parse_errors(
-    base_path: &Path,
     unparsed: &[(PathBuf, Vec<Diagnostic>)],
     failed: &mut bool,
 ) -> Result<()> {
     for (path, diagnostics) in unparsed {
-        let display = path.strip_prefix(base_path).unwrap_or(path);
+        let display = short_path(path).display();
         let yaml_file = path.with_extension("yaml");
 
         let expected: Vec<String> = if yaml_file.try_exists()? {
@@ -323,26 +317,22 @@ fn check_expected_parse_errors(
         let file_name = path.file_name().unwrap_or_default().to_string_lossy();
         let unexpected: Vec<String> = diagnostics
             .iter()
+            .filter(|diagnostic| {
+                let prefix = format!("{} at {file_name}:", diagnostic.kind);
+                !expected.iter().any(|message| message.starts_with(&prefix))
+            })
             .map(|diagnostic| format!("{} at {file_name}:{}", diagnostic.kind, diagnostic.start()))
-            .filter(|message| !expected.contains(message))
             .collect();
 
         if unexpected.is_empty() {
-            println!(
-                "Skipped formatting {}, since its snapshot expects its syntax errors",
-                display.display()
-            );
+            println!("Skipped formatting {display}, since its snapshot expects its syntax errors");
             continue;
         }
 
         *failed = true;
         eprintln!(
-            "Formatter could not parse {}, and these syntax errors aren't in {}:",
-            display.display(),
-            yaml_file
-                .strip_prefix(base_path)
-                .unwrap_or(&yaml_file)
-                .display()
+            "Formatter could not parse {display}, and these syntax errors aren't in {}:",
+            short_path(&yaml_file).display()
         );
         for message in unexpected {
             eprintln!("  {message}");
@@ -365,13 +355,7 @@ fn collect_rue_files(path: &Path, files: &mut Vec<std::path::PathBuf>) -> Result
     Ok(())
 }
 
-fn walk_dir(
-    root: &Path,
-    path: &Path,
-    filter_arg: Option<&str>,
-    update: bool,
-    failed: &mut bool,
-) -> Result<()> {
+fn walk_dir(path: &Path, filter_arg: Option<&str>, update: bool, failed: &mut bool) -> Result<()> {
     let mut directories = IndexMap::new();
     let mut directories_to_exclude = HashSet::new();
 
@@ -396,7 +380,7 @@ fn walk_dir(
                     .join(format!("{name}.yaml"))
                     .try_exists()?
             {
-                handle_test_file(root, name, &entry.path(), failed, update, false)?;
+                handle_test_file(name, &entry.path(), failed, update, false)?;
             }
             continue;
         }
@@ -422,21 +406,20 @@ fn walk_dir(
             continue;
         }
 
-        handle_test_file(root, name, &entry.path(), failed, update, is_dir)?;
+        handle_test_file(name, &entry.path(), failed, update, is_dir)?;
     }
 
     for (name, path) in directories {
         if directories_to_exclude.contains(&name) {
             continue;
         }
-        walk_dir(root, &path, filter_arg, update, failed)?;
+        walk_dir(&path, filter_arg, update, failed)?;
     }
 
     Ok(())
 }
 
 fn handle_test_file(
-    root: &Path,
     name: &str,
     entry: &Path,
     failed: &mut bool,
@@ -578,7 +561,7 @@ fn handle_test_file(
         )?;
     }
 
-    compare_snapshot(root, &yaml_file, &original, &file, update, failed)?;
+    compare_snapshot(&yaml_file, &original, &file, update, failed)?;
 
     Ok(())
 }
@@ -589,41 +572,54 @@ fn read_snapshot(yaml_file: &Path) -> Result<TestFile> {
 }
 
 /// Reports how `actual` differs from the snapshot `expected` read from `yaml_file`, and with
-/// `update`, writes `actual` to it.
+/// `update`, writes `actual` to it. A snapshot that's missing, or isn't written exactly as
+/// `--bless` would write it (such as one with a key the harness doesn't know), also fails, so a
+/// passing check means `--bless` would change nothing.
 fn compare_snapshot(
-    base_path: &Path,
     yaml_file: &Path,
     expected: &TestFile,
     actual: &TestFile,
     update: bool,
     failed: &mut bool,
 ) -> Result<()> {
-    let display = yaml_file.strip_prefix(base_path).unwrap_or(yaml_file);
+    let display = short_path(yaml_file).display();
+    let text = serde_yml::to_string(actual)?;
 
     if actual != expected {
-        *failed = true;
-
         let expected = serde_yml::to_value(expected)?;
         let actual = serde_yml::to_value(actual)?;
         let mut differences = Vec::new();
         diff_values("", &expected, &actual, &mut differences);
 
         if update {
-            eprintln!("Updated {}:", display.display());
+            eprintln!("Updated {display}:");
         } else {
-            eprintln!("Snapshot differs for {}:", display.display());
+            eprintln!("Snapshot differs for {display}:");
         }
 
         for difference in differences {
             eprintln!("{difference}");
         }
+    } else if fs::read_to_string(yaml_file).ok().as_deref() == Some(text.as_str()) {
+        return Ok(());
+    } else if update {
+        eprintln!("Rewrote {display} in the form --bless writes");
+    } else {
+        eprintln!("Snapshot {display} is missing, or isn't in the form --bless writes");
     }
 
+    *failed = true;
+
     if update {
-        fs::write(yaml_file, serde_yml::to_string(actual)?)?;
+        fs::write(yaml_file, text)?;
     }
 
     Ok(())
+}
+
+/// The path without a leading `./`, for messages.
+fn short_path(path: &Path) -> &Path {
+    path.strip_prefix(".").unwrap_or(path)
 }
 
 /// Describes each field that differs between two snapshots, by its path in the YAML file
@@ -640,9 +636,7 @@ fn diff_values(path: &str, expected: &Value, actual: &Value, differences: &mut V
                 .chain(actual.keys().filter(|key| !expected.contains_key(*key)));
 
             for key in keys {
-                let key_name = key
-                    .as_str()
-                    .map_or_else(|| format_value(key), str::to_string);
+                let key_name = format_value(key);
                 let path = if path.is_empty() {
                     key_name
                 } else {
@@ -895,37 +889,93 @@ mod tests {
         Ok(())
     }
 
+    /// A base directory laid out like the repo, with the directories `run_tests` reads.
+    fn corpus(name: &str) -> Result<TempDir> {
+        let dir = TempDir::new(name)?;
+        for path in ["tests", "examples", "crates/rue-compiler/src/std"] {
+            fs::create_dir_all(dir.0.join(path))?;
+        }
+        Ok(dir)
+    }
+
+    /// Every file under `path`, with its contents.
+    fn read_tree(path: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>> {
+        let mut files = BTreeMap::new();
+        for entry in fs::read_dir(path)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                files.extend(read_tree(&path)?);
+            } else {
+                files.insert(path.clone(), fs::read(&path)?);
+            }
+        }
+        Ok(files)
+    }
+
     #[test]
-    fn read_only_run_writes_nothing() -> Result<()> {
-        let dir = TempDir::new("read-only")?;
-        fs::write(dir.0.join("one.rue"), MAIN)?;
-        fs::write(dir.0.join("one.yaml"), "program: (q . 2)\n")?;
-        fs::write(dir.0.join("two.rue"), MAIN)?;
+    fn default_run_writes_nothing_and_bless_converges() -> Result<()> {
+        let dir = corpus("bless")?;
+        let tests = dir.0.join("tests");
+        fs::write(tests.join("unformatted.rue"), "fn main()->Int{1}\n")?;
+        // An unfinished function at the end of a file without a final newline, where the
+        // formatter and the compiler report the syntax error at different positions
+        fs::write(tests.join("broken.rue"), "fn main() -> Int {\n    1 +")?;
 
+        let before = read_tree(&dir.0)?;
+        assert!(run_tests(None, &dir.0, false)?);
+        assert_eq!(read_tree(&dir.0)?, before);
+
+        // The formatting pass hands files it can't parse on to be checked, not skipped
         let mut failed = false;
-        walk_dir(&dir.0, &dir.0, None, false, &mut failed)?;
-
+        let unparsed = check_formatting_corpus(&dir.0, None, false, &mut failed)?;
         assert!(failed);
-        assert_eq!(
-            fs::read_to_string(dir.0.join("one.yaml"))?,
-            "program: (q . 2)\n"
-        );
-        assert!(!dir.0.join("two.yaml").exists());
+        let unparsed: Vec<_> = unparsed.into_iter().map(|(path, _)| path).collect();
+        assert_eq!(unparsed, [tests.join("broken.rue")]);
+
+        assert!(run_tests(None, &dir.0, true)?);
+        assert_eq!(fs::read_to_string(tests.join("unformatted.rue"))?, MAIN);
+        assert!(tests.join("unformatted.yaml").exists());
+        assert!(tests.join("broken.yaml").exists());
+        assert!(dir.0.join("std_tests.yaml").exists());
+
+        assert!(!run_tests(None, &dir.0, false)?);
+
+        // A key the harness doesn't write fails the check, and `--bless` removes it
+        let snapshot = tests.join("unformatted.yaml");
+        let blessed = fs::read_to_string(&snapshot)?;
+        fs::write(&snapshot, format!("{blessed}stale_field: 5\n"))?;
+        let before = read_tree(&dir.0)?;
+        assert!(run_tests(None, &dir.0, false)?);
+        assert_eq!(read_tree(&dir.0)?, before);
+        assert!(run_tests(None, &dir.0, true)?);
+        assert_eq!(fs::read_to_string(&snapshot)?, blessed);
+        assert!(!run_tests(None, &dir.0, false)?);
 
         Ok(())
     }
 
     #[test]
-    fn filter_applies_to_files_without_snapshots() -> Result<()> {
-        let dir = TempDir::new("filter")?;
-        fs::write(dir.0.join("wanted.rue"), MAIN)?;
-        fs::write(dir.0.join("other.rue"), MAIN)?;
+    fn filter_limits_what_bless_writes() -> Result<()> {
+        let dir = corpus("filter")?;
+        let tests = dir.0.join("tests");
+        let unformatted = "fn main()->Int{1}\n";
+        fs::write(tests.join("wanted.rue"), unformatted)?;
+        // Without a snapshot
+        fs::write(tests.join("other.rue"), unformatted)?;
+        // With an out of date snapshot
+        fs::write(tests.join("another.rue"), MAIN)?;
+        fs::write(tests.join("another.yaml"), "program: (q . 2)\n")?;
 
-        let mut failed = false;
-        walk_dir(&dir.0, &dir.0, Some("want"), true, &mut failed)?;
+        assert!(run_tests(Some("wanted"), &dir.0, true)?);
 
-        assert!(dir.0.join("wanted.yaml").exists());
-        assert!(!dir.0.join("other.yaml").exists());
+        assert_eq!(fs::read_to_string(tests.join("wanted.rue"))?, MAIN);
+        assert!(tests.join("wanted.yaml").exists());
+        assert_eq!(fs::read_to_string(tests.join("other.rue"))?, unformatted);
+        assert!(!tests.join("other.yaml").exists());
+        assert_eq!(
+            fs::read_to_string(tests.join("another.yaml"))?,
+            "program: (q . 2)\n"
+        );
 
         Ok(())
     }
@@ -945,7 +995,7 @@ mod tests {
 
         // No snapshot at all
         let mut failed = false;
-        check_expected_parse_errors(&dir.0, &unparsed, &mut failed)?;
+        check_expected_parse_errors(&unparsed, &mut failed)?;
         assert!(failed);
 
         // A snapshot without the syntax error
@@ -954,14 +1004,14 @@ mod tests {
             "diagnostics:\n- Something else\n",
         )?;
         let mut failed = false;
-        check_expected_parse_errors(&dir.0, &unparsed, &mut failed)?;
+        check_expected_parse_errors(&unparsed, &mut failed)?;
         assert!(failed);
 
         // The snapshot the harness writes, which records the syntax error
         let mut failed = false;
-        walk_dir(&dir.0, &dir.0, None, true, &mut failed)?;
+        walk_dir(&dir.0, None, true, &mut failed)?;
         let mut failed = false;
-        check_expected_parse_errors(&dir.0, &unparsed, &mut failed)?;
+        check_expected_parse_errors(&unparsed, &mut failed)?;
         assert!(!failed);
 
         Ok(())
