@@ -81,12 +81,19 @@ fn and_narrows_both_operands_in_the_then_branch() {
 
     compiled.assert_no_errors();
     assert_eq!(
+        compiled.reference_types("main", "x"),
+        ["`x`: Int | (Int, Int)", "`x`: Int"]
+    );
+    assert_eq!(
         compiled.reference_types("main", "y"),
         ["`y`: Int | (Int, Int)", "`y`: Int"]
     );
-    // The right operand is only evaluated once the left is true, so it's narrowed by it
+}
+
+#[test]
+fn and_narrows_its_right_operand_by_its_left() {
     assert_eq!(
-        compiled.reference_types("main", "x"),
+        x_types("x: Int | (Int, Int)", "Bool", "x is Int && x > 0",),
         ["`x`: Int | (Int, Int)", "`x`: Int"]
     );
 }
@@ -118,12 +125,32 @@ fn and_does_not_narrow_the_else_branch() {
 
 #[test]
 fn or_narrows_both_operands_in_the_else_branch() {
+    let mut compiled = compile(
+        "
+        fn main(x: Int | (Int, Int), y: Int | (Int, Int)) -> Int {
+            if x is (Int, Int) || y is (Int, Int) {
+                return 0;
+            }
+            x + y
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
     assert_eq!(
-        x_types(
-            "x: Int | (Int, Int), y: Int | (Int, Int)",
-            "Int",
-            "if x is (Int, Int) || y is (Int, Int) { return 0; } x",
-        ),
+        compiled.reference_types("main", "x"),
+        ["`x`: Int | (Int, Int)", "`x`: Int"]
+    );
+    assert_eq!(
+        compiled.reference_types("main", "y"),
+        ["`y`: Int | (Int, Int)", "`y`: Int"]
+    );
+}
+
+#[test]
+fn or_narrows_its_right_operand_by_the_negation_of_its_left() {
+    assert_eq!(
+        x_types("x: Int | (Int, Int)", "Bool", "x is (Int, Int) || x > 0",),
         ["`x`: Int | (Int, Int)", "`x`: Int"]
     );
 }
@@ -172,6 +199,54 @@ fn narrowing_applies_inside_of_nested_blocks() {
             "if x is Int { let y = { x + 1 }; y } else { 0 }",
         ),
         ["`x`: Int | (Int, Int)", "`x`: Int"]
+    );
+}
+
+#[test]
+fn guarding_a_pair_field_narrows_the_whole_value() {
+    assert_eq!(
+        x_types(
+            "x: (Int | (Int, Int), Int)",
+            "Int",
+            "if x.first is Int { x.first + x.rest } else { x.rest }",
+        ),
+        [
+            "`x`: (Int | (Int, Int), Int)",
+            "`x`: (Int, Int)",
+            "`x`: (Int, Int)",
+            "`x`: ((Int, Int), Int)",
+        ]
+    );
+}
+
+#[test]
+fn guarding_a_struct_field_narrows_the_whole_value() {
+    let mut compiled = compile(
+        "
+        struct Point {
+            x: Int | (Int, Int),
+            y: Int,
+        }
+
+        fn main(point: Point) -> Int {
+            if point.x is Int {
+                point.x + point.y
+            } else {
+                point.x.first
+            }
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.reference_types("main", "point"),
+        [
+            "`point`: Point",
+            "`point`: Point { x: Int, y: Int }",
+            "`point`: Point { x: Int, y: Int }",
+            "`point`: Point { x: (Int, Int), y: Int }",
+        ]
     );
 }
 

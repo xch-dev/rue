@@ -141,6 +141,18 @@ mod tests {
             fs::remove_dir_all(&path).ok();
             fs::create_dir_all(&path).unwrap();
 
+            // `find_project` searches the parent directories, so a project above the temporary
+            // directory would be found instead of the one a test sets up
+            for ancestor in path.ancestors().skip(1) {
+                for name in ["Rue.toml", "main.rue"] {
+                    assert!(
+                        !ancestor.join(name).exists(),
+                        "{} would be found by these tests; remove it or set TMPDIR elsewhere",
+                        ancestor.join(name).display()
+                    );
+                }
+            }
+
             Self(path)
         }
 
@@ -332,6 +344,39 @@ mod tests {
             assert_eq!(project.entrypoint, file);
             assert_eq!(project.options, options);
         }
+    }
+
+    #[test]
+    fn nearest_manifest_is_used() {
+        let dir = TempDir::new();
+        dir.write("Rue.toml", "[compiler]\n");
+        let inner = dir.write("inner/Rue.toml", "[compiler]\nentrypoint = \"src\"\n");
+        let file = dir.write("inner/src/main.rue", "");
+
+        let project = find(&file, false);
+
+        assert_eq!(project.manifest_path.as_deref(), Some(inner.as_path()));
+        assert_eq!(project.entrypoint, dir.0.join("inner/src"));
+    }
+
+    #[test]
+    fn outermost_main_file_is_used() {
+        // Parent directories are searched before the directory's own `main.rue`, so a `main.rue`
+        // further up wins over a nearer one
+        let dir = TempDir::new();
+        dir.write("main.rue", "");
+        dir.write("inner/main.rue", "");
+
+        assert_eq!(find(&dir.0.join("inner"), false).entrypoint, dir.0);
+    }
+
+    #[test]
+    fn rue_file_next_to_a_main_file_uses_its_directory() {
+        let dir = TempDir::new();
+        dir.write("main.rue", "");
+        let file = dir.write("other.rue", "");
+
+        assert_eq!(find(&file, false).entrypoint, dir.0);
     }
 
     #[test]

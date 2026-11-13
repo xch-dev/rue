@@ -216,7 +216,11 @@ fn only_modules_have_paths() {
 fn paths_resolve_exported_items_of_modules() {
     let mut compiled = compile(
         "
+        const VALUE: Int = 0;
+
         mod outer {
+            export const VALUE: Int = 1;
+
             export mod inner {
                 export const VALUE: Int = 42;
                 export type Number = Int;
@@ -224,21 +228,28 @@ fn paths_resolve_exported_items_of_modules() {
         }
 
         fn main() -> outer::inner::Number {
-            outer::inner::VALUE
+            outer::inner::VALUE + outer::VALUE + VALUE
         }
         ",
     );
 
     compiled.assert_no_errors();
     assert_eq!(
-        compiled.reference_types("main", "VALUE"),
-        ["`outer::inner::VALUE`: Int"]
+        compiled.reference_origins("main", "VALUE"),
+        [
+            "`outer::inner::VALUE`: outer::inner",
+            "`outer::VALUE`: outer",
+            "`VALUE`: (root)",
+        ]
     );
     assert_eq!(
-        compiled.symbol_origin("outer::inner::VALUE"),
-        "outer::inner"
+        compiled.reference_types("main", "VALUE"),
+        [
+            "`outer::inner::VALUE`: Int",
+            "`outer::VALUE`: Int",
+            "`VALUE`: Int",
+        ]
     );
-    assert_eq!(compiled.type_origin("outer::inner::Number"), "outer::inner");
 }
 
 #[test]
@@ -270,7 +281,7 @@ fn private_items_cannot_be_referenced_through_a_path() {
 
 #[test]
 fn modules_can_use_the_items_of_their_parents() {
-    let mut compiled = compile(
+    let compiled = compile(
         "
         const TOP: Int = 1;
 
@@ -288,8 +299,60 @@ fn modules_can_use_the_items_of_their_parents() {
 
     compiled.assert_no_errors();
     assert_eq!(
-        compiled.reference_types("inner::value", "TOP"),
-        ["`TOP`: Int"]
+        compiled.reference_origins("inner::value", "TOP"),
+        ["`TOP`: (root)"]
+    );
+}
+
+#[test]
+fn module_items_shadow_the_items_of_their_parents() {
+    let compiled = compile(
+        "
+        const VALUE: Int = 1;
+
+        mod inner {
+            const VALUE: Int = 2;
+
+            export fn value() -> Int {
+                VALUE
+            }
+        }
+
+        fn main() -> Int {
+            inner::value() + VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.reference_origins("inner::value", "VALUE"),
+        ["`VALUE`: inner"]
+    );
+    assert_eq!(
+        compiled.reference_origins("main", "VALUE"),
+        ["`VALUE`: (root)"]
+    );
+}
+
+#[test]
+fn bindings_shadow_items() {
+    let compiled = compile(
+        "
+        const VALUE: Int = 1;
+
+        fn main() -> Int {
+            let before = VALUE;
+            let VALUE = 2;
+            before + VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.reference_origins("main", "VALUE"),
+        ["`VALUE`: (root)", "`VALUE`: local"]
     );
 }
 

@@ -15,7 +15,7 @@ use crate::{Compiler, File, FileTree};
 /// A source file that has been compiled, without the standard library.
 pub(crate) struct Compiled {
     pub ctx: Compiler,
-    pub module: SymbolId,
+    module: SymbolId,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -69,7 +69,7 @@ impl Compiled {
     /// The symbol that a path like `inner::value` names, looked up in the scope of each module
     /// along the way, starting from the file's module. This includes symbols that were imported
     /// into a module, whether or not they're exported from it.
-    pub fn symbol(&self, path: &str) -> SymbolId {
+    fn symbol(&self, path: &str) -> SymbolId {
         let mut module = self.module;
         let mut segments = path.split("::").peekable();
 
@@ -94,11 +94,16 @@ impl Compiled {
     /// The path of the module that declares the symbol a path names, which differs from the
     /// path's own module when the symbol was imported. The file's module is `(root)`.
     pub fn symbol_origin(&self, path: &str) -> String {
-        let symbol = self.symbol(path);
+        self.declaring_module(self.symbol(path))
+            .unwrap_or_else(|| panic!("no module declares `{path}`"))
+    }
+
+    /// The path of the module that declares a symbol, if it's an item rather than a local such
+    /// as a parameter or binding.
+    fn declaring_module(&self, symbol: SymbolId) -> Option<String> {
         self.find_module(self.module, "(root)", &|declarations| {
             declarations.symbols.contains(&symbol)
         })
-        .unwrap_or_else(|| panic!("no module declares `{path}`"))
     }
 
     /// The path of the module that declares the type a path names, like
@@ -137,7 +142,7 @@ impl Compiled {
     }
 
     /// The type that a path like `inner::Point` names, looked up like [`symbol`](Self::symbol).
-    pub fn ty(&self, path: &str) -> TypeId {
+    fn ty(&self, path: &str) -> TypeId {
         let (module, name) = match path.rsplit_once("::") {
             Some((module, name)) => (self.symbol(module), name),
             None => (self.module, path),
@@ -165,14 +170,43 @@ impl Compiled {
     }
 
     /// The type of each reference to a symbol named `name` in the body of the function that
-    /// `function` names, in source order, as `` `text`: Type `` pairs. This includes references
-    /// in the values of `let` bindings. Narrowing changes the type of a reference, so this shows
-    /// what a value was narrowed to at each place it's used.
+    /// `function` names, in source order, as `` `text`: Type `` pairs. Narrowing changes the type
+    /// of a reference, so this shows what a value was narrowed to at each place it's used.
     pub fn reference_types(&mut self, function: &str, name: &str) -> Vec<String> {
-        let body = self.function_body(function);
+        self.references(function, name)
+            .into_iter()
+            .map(|(hir, text)| {
+                let ty = self.ctx.hir_type(hir).expect("references have a type");
+                format!("`{text}`: {}", self.ctx.type_name(ty))
+            })
+            .collect()
+    }
 
+    /// The declaration that each reference to a symbol named `name` in the body of the function
+    /// that `function` names resolved to, in source order, as `` `text`: origin `` pairs. The
+    /// origin is the path of the module that declares the item (see
+    /// [`symbol_origin`](Self::symbol_origin)), or `local` for a parameter or binding.
+    pub fn reference_origins(&self, function: &str, name: &str) -> Vec<String> {
+        self.references(function, name)
+            .into_iter()
+            .map(|(hir, text)| {
+                let Hir::Reference(symbol) = self.ctx.hir(hir) else {
+                    unreachable!("only references are collected");
+                };
+                let origin = self
+                    .declaring_module(*symbol)
+                    .unwrap_or_else(|| "local".to_string());
+                format!("`{text}`: {origin}")
+            })
+            .collect()
+    }
+
+    /// Each reference to a symbol named `name` in the body of the function that `function`
+    /// names, in source order, along with its source text. This includes references in the
+    /// values of `let` bindings, but not in the bodies of lambdas, which are separate functions.
+    fn references(&self, function: &str, name: &str) -> Vec<(HirId, String)> {
         let mut references = Vec::new();
-        self.collect_references(body, name, &mut references);
+        self.collect_references(self.function_body(function), name, &mut references);
 
         let mut references = references
             .into_iter()
@@ -180,21 +214,20 @@ impl Compiled {
                 let srcloc = self
                     .ctx
                     .hir_srcloc(hir)
-                    .expect("references have a source location")
-                    .clone();
-                let ty = self.ctx.hir_type(hir).expect("references have a type");
-                (srcloc, ty)
+                    .expect("references have a source location");
+                (
+                    srcloc.span.start,
+                    hir,
+                    srcloc.source.text[srcloc.span.clone()].to_string(),
+                )
             })
             .collect::<Vec<_>>();
 
-        references.sort_by_key(|(srcloc, _)| srcloc.span.start);
+        references.sort_by_key(|(start, ..)| *start);
 
         references
             .into_iter()
-            .map(|(srcloc, ty)| {
-                let text = &srcloc.source.text[srcloc.span.clone()];
-                format!("`{text}`: {}", self.ctx.type_name(ty))
-            })
+            .map(|(_, hir, text)| (hir, text))
             .collect()
     }
 
@@ -222,18 +255,27 @@ impl Compiled {
             _ => {}
         }
 
-        for child in self.ctx.hir(hir).children().collect::<Vec<_>>() {
+        for child in self.ctx.hir(hir).children() {
             self.collect_references(child, name, references);
         }
     }
 
-    /// The value of each const expression, in source order, as `` `text` = value `` pairs. Atoms
-    /// are shown as signed integers (the empty atom as `()`), and pairs as `(first . rest)`. A
-    /// const expression that wasn't evaluated, because the source has errors, is shown as
+    /// The value of each const expression, in source order, as `` `text` = value `` pairs (see
+    /// [`const_results`](Self::const_results)).
+    pub fn const_values(&self) -> Vec<String> {
+        self.const_results()
+            .into_iter()
+            .map(|(text, value)| format!("`{text}` = {value}"))
+            .collect()
+    }
+
+    /// The source text and value of each const expression, in source order. Atoms are shown as
+    /// signed integers (the empty atom as `()`), and pairs as `(first . rest)`. A const
+    /// expression that wasn't evaluated, because the source has errors, is shown as
     /// `unevaluated`, and one that failed to evaluate as `()`, since that's what it's replaced
     /// with.
-    pub fn const_values(&self) -> Vec<String> {
-        let mut values = self
+    pub fn const_results(&self) -> Vec<(String, String)> {
+        let mut results = self
             .ctx
             .const_exprs()
             .map(|hir| {
@@ -247,16 +289,16 @@ impl Compiled {
             })
             .collect::<Vec<_>>();
 
-        values.sort_by_key(|(srcloc, _)| srcloc.span.start);
+        results.sort_by_key(|(srcloc, _)| srcloc.span.start);
 
-        values
+        results
             .into_iter()
             .map(|(srcloc, value)| {
                 let text = srcloc.source.text[srcloc.span.clone()]
                     .split_whitespace()
                     .collect::<Vec<_>>()
                     .join(" ");
-                format!("`{text}` = {value}")
+                (text, value)
             })
             .collect()
     }

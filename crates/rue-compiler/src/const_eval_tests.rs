@@ -8,11 +8,10 @@ fn evaluate(return_type: &str, expr: &str) -> String {
     let compiled = compile(&format!("fn main() -> {return_type} {{\n    {expr}\n}}\n"));
     compiled.assert_no_errors();
 
-    let values = compiled.const_values();
-    assert_eq!(values.len(), 1, "{values:?}");
+    let mut results = compiled.const_results();
+    assert_eq!(results.len(), 1, "{results:?}");
 
-    let (_, value) = values[0].rsplit_once(" = ").unwrap();
-    value.to_string()
+    results.remove(0).1
 }
 
 #[test]
@@ -92,7 +91,7 @@ fn constants_and_functions_can_be_used() {
 }
 
 #[test]
-fn const_expressions_in_other_functions_are_evaluated_once() {
+fn const_expressions_in_called_functions_and_nested_const_expressions_are_evaluated() {
     let compiled = compile(
         "
         fn inner() -> Int {
@@ -113,6 +112,41 @@ fn const_expressions_in_other_functions_are_evaluated_once() {
             "`const { inner() + 1 }` = 42",
             "`const { const { 2 } * 3 }` = 6",
             "`const { 2 }` = 2",
+        ]
+    );
+}
+
+#[test]
+fn const_expressions_reached_through_calls_are_evaluated_once() {
+    // Counting down from 100 costs about 133,000, so the limit allows it once but not twice;
+    // `inner()` must use the cached value of its const expression rather than run it again
+    let compiled = compile_with(
+        "
+        fn count(value: Int) -> Int {
+            if value == 0 {
+                0
+            } else {
+                count(value - 1)
+            }
+        }
+
+        fn inner() -> Int {
+            const { count(100) }
+        }
+
+        fn main() -> Int {
+            const { inner() + inner() }
+        }
+        ",
+        |options| options.const_eval_max_cost = 200_000,
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.const_values(),
+        [
+            "`const { count(100) }` = ()",
+            "`const { inner() + inner() }` = ()",
         ]
     );
 }

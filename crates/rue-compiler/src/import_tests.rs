@@ -294,6 +294,44 @@ fn local_declarations_take_precedence_over_glob_imports() {
 }
 
 #[test]
+fn local_declarations_take_precedence_over_named_imports() {
+    let compiled = compile(
+        "
+        import inner::VALUE;
+
+        mod inner {
+            export const VALUE: Int = 1;
+        }
+
+        const VALUE: Int = 2;
+
+        fn main() -> Int {
+            VALUE
+        }
+        ",
+    );
+
+    // The import is silently shadowed rather than reported as a duplicate, so it's unused, and
+    // so is the constant it would have imported
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.reference_origins("main", "VALUE"),
+        ["`VALUE`: (root)"]
+    );
+    assert_eq!(
+        compiled
+            .diagnostics
+            .iter()
+            .map(|diagnostic| (diagnostic.lint(), diagnostic.start().to_string()))
+            .collect::<Vec<_>>(),
+        [
+            (Some(Lint::UnusedImport), "2:23".to_string()),
+            (Some(Lint::UnusedConstant), "5:26".to_string()),
+        ]
+    );
+}
+
+#[test]
 fn glob_exports_re_export_items_through_modules() {
     let compiled = compile(
         "

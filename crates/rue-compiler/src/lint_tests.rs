@@ -16,11 +16,9 @@ fn compile_source(
     source: &str,
     configure: impl FnOnce(&mut CompilerOptions),
 ) -> (Vec<Diagnostic>, bool) {
-    let diagnostics = compile_with(source, configure).diagnostics;
-    let has_errors = diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error);
-    (diagnostics, has_errors)
+    let compiled = compile_with(source, configure);
+    let has_errors = !compiled.errors().is_empty();
+    (compiled.diagnostics, has_errors)
 }
 
 fn severities(diagnostics: &[Diagnostic]) -> Vec<(Option<Lint>, DiagnosticSeverity)> {
