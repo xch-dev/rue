@@ -457,3 +457,37 @@ fn multiline_comments_after_a_trailing_comment_keep_one_blank_line_before_them()
         "#]],
     );
 }
+
+#[test]
+fn multiline_comments_at_the_start_of_a_line_add_no_blank_lines() {
+    // The same fix stops a multiline comment from adding a blank line at the start of the file,
+    // after a file header, and after an import group's opening comment
+    check(
+        "/* multi\nline */\nfn f() {}",
+        expect![[r#"
+            /* multi
+            line */
+            fn f() {}
+        "#]],
+    );
+    check(
+        "// header\n\n/* multi\nline */\nfn f() {}",
+        expect![[r#"
+            // header
+
+            /* multi
+            line */
+            fn f() {}
+        "#]],
+    );
+    check(
+        "import a::{ /* trailing */\n/* multi\nline */\nb};",
+        expect![[r#"
+            import a::{ /* trailing */
+                /* multi
+            line */
+                b,
+            };
+        "#]],
+    );
+}

@@ -203,7 +203,13 @@ fn fits(
                 space_when_flat,
                 ..
             } => {
-                pending_spaces += usize::from(*space_when_flat);
+                // `render` only keeps a fill flat if its separator fits, even at the end of a line
+                let width = pending_spaces + usize::from(*space_when_flat);
+                if width > remaining {
+                    return false;
+                }
+                remaining -= width;
+                pending_spaces = 0;
                 commands.push(Command {
                     indent: command.indent,
                     mode: command.mode,
@@ -289,6 +295,28 @@ mod tests {
                 },
             ),
             "long_lhs\n    == rhs\ntail\n"
+        );
+    }
+
+    #[test]
+    fn spaces_before_a_line_break_do_not_count_toward_the_width() {
+        // The group's soft line and the space after it are removed at the end of the line, so the
+        // group fits exactly
+        let doc = Doc::concat([
+            Doc::text("abc"),
+            Doc::concat([Doc::text("de"), Doc::soft_line(), Doc::space()]).group(),
+            Doc::hard_line(),
+            Doc::text("tail"),
+        ]);
+        assert_eq!(
+            render(
+                &doc,
+                &FormatOptions {
+                    max_width: 5,
+                    indent_width: 4,
+                },
+            ),
+            "abcde\ntail\n"
         );
     }
 }

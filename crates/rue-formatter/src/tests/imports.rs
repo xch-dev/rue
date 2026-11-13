@@ -258,7 +258,7 @@ fn duplicate_import_paths_keep_distinct_comment_owners() {
 fn comments_that_end_a_line_before_the_closing_brace_break_the_group() {
     // Found by the property tests: the closing brace was put inside the line comment
     check(
-        "import a::{b, c // line\n};\nimport d::{e // line\n};\nimport f::{g /* multi\nline */};",
+        "import a::{b, c // line\n};\nimport d::{e // line\n};\nimport f::{g /* multi\nline */};\nimport h::{i, j::{k // line\n}};\nimport l::{m, n /* block */\n};",
         expect![[r#"
             import a::{
                 b,
@@ -270,6 +270,16 @@ fn comments_that_end_a_line_before_the_closing_brace_break_the_group() {
             import f::{
                 g, /* multi
             line */
+            };
+            import h::{
+                i,
+                j::{
+                    k, // line
+                },
+            };
+            import l::{
+                m,
+                n, /* block */
             };
         "#]],
     );
