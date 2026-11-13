@@ -79,7 +79,9 @@ fn construct_imports(
     if let Some(name) = last.name()
         && name.text() == "super"
     {
+        // There's nothing to import, so the import isn't also reported as unresolved
         ctx.diagnostic(&name, DiagnosticKind::SuperAtEnd);
+        return vec![];
     }
 
     let source = ctx.source().clone();

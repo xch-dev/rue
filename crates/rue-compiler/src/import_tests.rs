@@ -523,6 +523,7 @@ fn super_errors_are_reported() {
         import super;
         import super::super;
         import super::x;
+        import a::{super};
 
         mod a {
             mod b {}
@@ -532,20 +533,19 @@ fn super_errors_are_reported() {
         ",
     );
 
-    // An unresolved import is also reported for each import whose path ends in `super`, and
+    // An import whose path ends in `super` imports nothing, so it's only reported once, and
     // `super` after a name is skipped, so the last import looks for `b::c`
     assert_eq!(
         compiled.errors(),
         [
             "2:16 SuperAtEnd",
-            "2:16 UnresolvedImport(\"super\")",
             "3:16 UnresolvedSuper",
             "3:23 SuperAtEnd",
-            "3:23 UnresolvedImport(\"super\")",
             "4:16 UnresolvedSuper",
             "4:23 UnresolvedImport(\"x\")",
-            "9:23 SuperAfterNamedImport",
-            "9:30 UnresolvedImport(\"c\")",
+            "5:20 SuperAtEnd",
+            "10:23 SuperAfterNamedImport",
+            "10:30 UnresolvedImport(\"c\")",
         ]
     );
 }
