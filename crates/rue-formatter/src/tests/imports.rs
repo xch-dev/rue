@@ -291,6 +291,24 @@ fn multiline_comments_before_the_closing_brace_after_a_trailing_comment() {
 }
 
 #[test]
+fn sorting_paths_keeps_no_blank_line_after_a_trailing_comment() {
+    // Found by the property tests: the blank line before `/* multi` stayed after `// line` once
+    // sorting moved `c` between them, and the next format removed it
+    check(
+        "import d::{c, a, // line\n\n/* multi\nline */\nd};",
+        expect![[r#"
+            import d::{
+                a, // line
+                c,
+                /* multi
+            line */
+                d,
+            };
+        "#]],
+    );
+}
+
+#[test]
 fn sorting_moves_no_blank_lines_into_an_import_group() {
     // Found by the property tests: the blank line after `line */` started a new group of imports
     // on the second format, which added another blank line before the comment

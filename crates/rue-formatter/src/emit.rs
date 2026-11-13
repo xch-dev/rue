@@ -489,8 +489,18 @@ impl<'a> Formatter<'a> {
             let suppress_final_line = position + 1 == plan.items.len()
                 && plan.closing.comments.is_empty()
                 && item.trailing.ends_line();
+            // A blank line after trailing comments is only kept before leading comments, as in
+            // `split_between`, which sorting can move away
+            let mut trailing = item.trailing.clone();
+            if plan
+                .items
+                .get(position + 1)
+                .is_some_and(|next| next.leading.comments.is_empty())
+            {
+                trailing.newlines = trailing.newlines.min(1);
+            }
             docs.push(self.gap_doc_with_final_line(
-                &item.trailing,
+                &trailing,
                 Separator::None,
                 !suppress_final_line,
             ));
