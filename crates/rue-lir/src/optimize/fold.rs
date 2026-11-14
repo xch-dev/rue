@@ -1,13 +1,10 @@
 use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program, serde::node_to_bytes};
 use id_arena::Arena;
 
-use crate::{CLVM_FLAGS, ClvmOp, Lir, LirId};
+use crate::{CLVM_FLAGS, COST_PER_BYTE, ClvmOp, Lir, LirId};
 
 // The maximum cost spent evaluating a single operator at compile time
 const MAX_FOLD_COST: u64 = 100_000_000;
-
-// The cost of each byte in the serialized program
-const COST_PER_BYTE: u64 = 12_000;
 
 // If every argument is an atom, we can run the operator at compile time to get the result
 // This uses the same dialect as the runtime, so the result is always exactly the same

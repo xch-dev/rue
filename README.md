@@ -208,8 +208,12 @@ Contributions are welcome! The project builds with a stable Rust toolchain (pinn
 # Run the full test suite
 cargo test --workspace
 
-# Regenerate the .yaml snapshots for tests/ and examples/ (optionally filtered by name)
-cargo run -p rue-tests [filter]
+# Check the .yaml snapshots for tests/ and examples/ (optionally filtered by name),
+# printing what differs without changing any files
+cargo run -p rue-tests --release -- [filter]
+
+# Rewrite the snapshots, and reformat the .rue files, to match the current output
+cargo run -p rue-tests --release -- --bless [filter]
 
 # Lint and format
 cargo clippy --workspace --all-targets
