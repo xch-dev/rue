@@ -140,6 +140,10 @@ pub struct ImportCache {
     /// The errors in imports, keyed by where they are, so that each is reported once however
     /// many times the import is resolved.
     errors: IndexMap<(ImportId, ImportError), (Name, DiagnosticKind)>,
+    /// The names in imports that refer to a declaration through another import, which are
+    /// ambiguous if that import is an ambiguous glob import. They're checked once every glob
+    /// import is resolved.
+    imported_names: IndexMap<(ImportId, Declaration), (Name, ImportId)>,
 }
 
 /// An error in an import, which is reported once all imports are resolved.
@@ -160,9 +164,10 @@ enum ImportError {
 struct CachedPath {
     scope: ScopeId,
     symbol: SymbolId,
-    /// The declarations referenced through other imports while resolving the path, so that
-    /// they're recorded for every import that uses it.
-    references: Vec<(ImportId, Declaration)>,
+    /// The declarations referenced through other imports while resolving the path, with the
+    /// index of the segment that names each, so that they're recorded for every import that uses
+    /// it.
+    references: Vec<(usize, ImportId, Declaration)>,
     /// The indices of the segments of the path that name a private module.
     private_segments: Vec<usize>,
 }
@@ -242,6 +247,15 @@ pub fn resolve_imports(
             ctx.diagnostic_name(name, kind.clone());
         }
 
+        for (&(_, declaration), (name, via)) in &cache.imported_names {
+            if ctx.is_ambiguous_import(Some(*via), declaration) {
+                ctx.diagnostic_name(
+                    name,
+                    DiagnosticKind::AmbiguousImport(name.text().to_string()),
+                );
+            }
+        }
+
         for unused_imports in cache.unused_imports.values() {
             for name in unused_imports.values() {
                 ctx.lint_sites_mut().empty_imports.push(name.clone());
@@ -314,7 +328,7 @@ fn resolve_import(
             path_references.clone_from(&cached.references);
             private_segments.clone_from(&cached.private_segments);
 
-            for &(import, declaration) in &cached.references {
+            for &(_, import, declaration) in &cached.references {
                 ctx.add_import_reference(import, declaration, ImportUser::Import(import_id));
             }
 
@@ -367,7 +381,7 @@ fn resolve_import(
                 Declaration::Symbol(symbol),
                 ImportUser::Import(import_id),
             );
-            path_references.push((import, Declaration::Symbol(symbol)));
+            path_references.push((index, import, Declaration::Symbol(symbol)));
         }
 
         if diagnostics && let Some(srcloc) = name.srcloc() {
@@ -409,6 +423,12 @@ fn resolve_import(
                 },
             );
         }
+    }
+
+    for &(index, via, declaration) in &path_references {
+        cache
+            .imported_names
+            .insert((import_id, declaration), (import.path[index].clone(), via));
     }
 
     for &index in &private_segments {
@@ -486,6 +506,12 @@ fn resolve_import(
                         .push((name, Declaration::Symbol(symbol)));
                     updated = true;
                     *count += 1;
+                } else if let Some(existing) = target.symbol(&name)
+                    && existing != symbol
+                    && let Some(existing_import) = target.symbol_import(existing)
+                    && matches!(ctx.import(existing_import).items, Items::All(_))
+                {
+                    ctx.add_ambiguous_import(existing_import, Declaration::Symbol(existing));
                 }
             }
 
@@ -513,6 +539,12 @@ fn resolve_import(
                         .push((name, Declaration::Type(ty)));
                     updated = true;
                     *count += 1;
+                } else if let Some(existing) = target.ty(&name)
+                    && existing != ty
+                    && let Some(existing_import) = target.type_import(existing)
+                    && matches!(ctx.import(existing_import).items, Items::All(_))
+                {
+                    ctx.add_ambiguous_import(existing_import, Declaration::Type(existing));
                 }
             }
         }
@@ -547,7 +579,7 @@ fn resolve_import(
                 // If the other namespace has a public item with the name, only it's imported and
                 // nothing is reported. Symbols are declared after the first pass, so a private
                 // type imported then stays imported once a public symbol with its name appears.
-                if public_symbol.is_some() || public_ty.is_some() {
+                let (symbol, ty) = if public_symbol.is_some() || public_ty.is_some() {
                     cache.errors.shift_remove(&symbol_key);
                     cache.errors.shift_remove(&type_key);
                     (public_symbol, public_ty)
@@ -573,7 +605,20 @@ fn resolve_import(
                     }
 
                     (symbol, ty)
+                };
+
+                let imported = [
+                    symbol.and_then(|s| Some((Declaration::Symbol(s), base.symbol_import(s)?))),
+                    ty.and_then(|t| Some((Declaration::Type(t), base.type_import(t)?))),
+                ];
+
+                for (declaration, via) in imported.into_iter().flatten() {
+                    cache
+                        .imported_names
+                        .insert((import_id, declaration), (item.clone(), via));
                 }
+
+                (symbol, ty)
             } else {
                 let symbol = ctx
                     .resolve_symbol_in(import.base_scope, name)

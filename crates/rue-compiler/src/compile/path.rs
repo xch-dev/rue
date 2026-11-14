@@ -256,6 +256,21 @@ where
             );
         }
 
+        let ambiguous = match initial {
+            PathResult::Symbol(symbol, _, import) => {
+                ctx.is_ambiguous_import(import, Declaration::Symbol(symbol))
+            }
+            PathResult::Type(ty, import) => ctx.is_ambiguous_import(import, Declaration::Type(ty)),
+            PathResult::Unresolved => false,
+        };
+
+        if ambiguous {
+            ctx.diagnostic(
+                &name,
+                DiagnosticKind::AmbiguousImport(name.text().to_string()),
+            );
+        }
+
         // The standard library can't reference the modules being linted
         if qualified && ctx.source().kind.check_unused() {
             let declaration = match initial {

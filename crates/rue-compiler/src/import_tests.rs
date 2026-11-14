@@ -365,42 +365,117 @@ fn targeted_imports_take_precedence_over_glob_imports_that_resolve_first() {
 }
 
 #[test]
-fn colliding_glob_imports_resolve_the_same_way_in_any_order() {
+fn colliding_glob_imports_are_ambiguous_when_used() {
     for (first, second) in [("alpha", "beta"), ("beta", "alpha")] {
         let compiled = compile(&format!(
             "
             mod alpha {{
                 export const VALUE: Int = 1;
+                export const UNUSED: Int = 1;
+                export type Number = Int;
             }}
 
             mod beta {{
                 export const VALUE: Int = 2;
+                export const UNUSED: Int = 2;
+                export type Number = Bytes;
             }}
 
             mod user {{
                 import {first}::*;
                 import {second}::*;
 
-                export fn result() -> Int {{
-                    VALUE
+                export fn result(value: Number) -> Int {{
+                    VALUE + value
                 }}
             }}
 
             fn main() -> Int {{
-                user::result()
+                user::result(1)
             }}
             "
         ));
 
-        compiled.assert_no_errors();
-
-        // The glob whose path sorts first wins, whichever is written first
+        // Each use is reported, whichever glob is written first, but not the unused name
         assert_eq!(
-            compiled.symbol_origin("user::VALUE"),
-            "alpha",
+            compiled.errors(),
+            [
+                "18:41 AmbiguousImport(\"Number\")",
+                "19:21 AmbiguousImport(\"VALUE\")",
+            ],
             "{first} first"
         );
     }
+}
+
+#[test]
+fn ambiguous_glob_imports_are_reported_through_paths_and_imports() {
+    let compiled = compile(
+        "
+        import outer::both::VALUE;
+        import outer::both::inner::NESTED;
+
+        mod alpha {
+            export const VALUE: Int = 1;
+            export mod inner {
+                export const NESTED: Int = 3;
+            }
+        }
+
+        mod beta {
+            export const VALUE: Int = 2;
+            export mod inner {
+                export const NESTED: Int = 4;
+            }
+        }
+
+        mod outer {
+            export mod both {
+                export alpha::*;
+                export beta::*;
+            }
+        }
+
+        fn main() -> Int {
+            outer::both::VALUE + VALUE + NESTED
+        }
+        ",
+    );
+
+    // The named imports are reported rather than their uses
+    assert_eq!(
+        compiled.errors(),
+        [
+            "2:29 AmbiguousImport(\"VALUE\")",
+            "3:29 AmbiguousImport(\"inner\")",
+            "27:26 AmbiguousImport(\"VALUE\")",
+        ]
+    );
+}
+
+#[test]
+fn glob_imports_of_the_same_item_are_not_ambiguous() {
+    let compiled = compile(
+        "
+        mod alpha {
+            export const VALUE: Int = 1;
+        }
+
+        mod beta {
+            export alpha::VALUE;
+        }
+
+        import alpha::*;
+        import beta::*;
+
+        fn main() -> Int {
+            VALUE
+        }
+        ",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(compiled.symbol_origin("VALUE"), "alpha");
 }
 
 #[test]
@@ -460,7 +535,10 @@ fn named_imports_of_a_declared_name_are_duplicates() {
     );
     assert_eq!(compiled.type_origin("Number"), "(root)");
     assert!(
-        !compiled.warnings().iter().any(|w| w.ends_with("UnusedImport")),
+        !compiled
+            .warnings()
+            .iter()
+            .any(|w| w.ends_with("UnusedImport")),
         "{:?}",
         compiled.warnings()
     );

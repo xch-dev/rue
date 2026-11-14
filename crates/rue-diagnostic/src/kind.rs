@@ -284,6 +284,9 @@ pub enum DiagnosticKind {
 
     #[error("Cannot end path in `super`")]
     SuperAtEnd,
+
+    #[error("`{0}` is ambiguous, since glob imports bring in different items with this name")]
+    AmbiguousImport(String),
 }
 
 impl DiagnosticKind {

@@ -1,0 +1,11 @@
+diagnostics:
+- '`VALUE` is ambiguous, since glob imports bring in different items with this name at ambiguous_glob_imports.rue:1:14'
+- Unused constant `VALUE` at ambiguous_glob_imports.rue:10:18
+- Unused type alias `Number` at ambiguous_glob_imports.rue:12:17
+- Unused import `*` at ambiguous_glob_imports.rue:17:18
+- Unused import `*` at ambiguous_glob_imports.rue:22:18
+- '`Number` is ambiguous, since glob imports bring in different items with this name at ambiguous_glob_imports.rue:24:32'
+- '`VALUE` is ambiguous, since glob imports bring in different items with this name at ambiguous_glob_imports.rue:25:9'
+- Unused import `*` at ambiguous_glob_imports.rue:34:19
+- Unused import `*` at ambiguous_glob_imports.rue:35:18
+- '`VALUE` is ambiguous, since glob imports bring in different items with this name at ambiguous_glob_imports.rue:45:72'

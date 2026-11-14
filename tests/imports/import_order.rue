@@ -48,7 +48,7 @@ mod glob_order_one {
     import globbed::*;
 
     export fn result() -> Int {
-        GLOB_ONLY + UNIQUE_TARGETED + VALUE
+        GLOB_ONLY + UNIQUE_TARGETED + globbed::VALUE
     }
 }
 
@@ -58,7 +58,7 @@ mod glob_order_two {
     import targeted::*;
 
     export fn result() -> Int {
-        GLOB_ONLY + UNIQUE_TARGETED + VALUE
+        GLOB_ONLY + UNIQUE_TARGETED + globbed::VALUE
     }
 }
 
@@ -98,11 +98,11 @@ test fn targeted_import_wins_before_glob() -> Int {
     targeted_first::result(1)
 }
 
-test fn glob_collisions_are_canonical_in_first_order() -> Int {
+test fn unused_glob_collisions_are_allowed_in_first_order() -> Int {
     glob_order_one::result()
 }
 
-test fn glob_collisions_are_canonical_in_second_order() -> Int {
+test fn unused_glob_collisions_are_allowed_in_second_order() -> Int {
     glob_order_two::result()
 }
 

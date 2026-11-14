@@ -42,6 +42,7 @@ pub struct Compiler {
     return_count: usize,
     inferred_generics_stack: Vec<Vec<TypeId>>,
     lint_sites: LintSites,
+    ambiguous_imports: HashSet<(ImportId, Declaration)>,
     cancel: Option<Cancel>,
     cancelled: bool,
 }
@@ -111,6 +112,7 @@ impl Compiler {
             return_count: 0,
             inferred_generics_stack: Vec::new(),
             lint_sites: LintSites::default(),
+            ambiguous_imports: HashSet::new(),
             cancel: None,
             cancelled: false,
         };
@@ -743,6 +745,17 @@ impl Compiler {
 
             self.db.add_import_reference(import, reference, user);
         }
+    }
+
+    /// Records that a glob import brought a declaration into a scope that another glob import
+    /// brings a different declaration with the same name into, so using it is ambiguous.
+    pub fn add_ambiguous_import(&mut self, import: ImportId, declaration: Declaration) {
+        self.ambiguous_imports.insert((import, declaration));
+    }
+
+    /// Whether a name that refers to a declaration through this import is ambiguous.
+    pub fn is_ambiguous_import(&self, import: Option<ImportId>, declaration: Declaration) -> bool {
+        import.is_some_and(|import| self.ambiguous_imports.contains(&(import, declaration)))
     }
 
     /// Records an import that's checked for being unused, unless it's in the standard library,
