@@ -21,33 +21,33 @@ tests:
   byte_cost: 192000
   total_cost: 192020
 - name: unnecessary_struct
-  program: (f (q 42))
+  program: (q . 42)
   debug_program: (f (c (q . 42) ()))
   output: '42'
-  runtime_cost: 51
-  byte_cost: 108000
-  total_cost: 108051
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: allow_struct_semantics
-  program: (f (q 42))
+  program: (q . 42)
   debug_program: (f (c (q . 42) ()))
   output: '42'
-  runtime_cost: 51
-  byte_cost: 108000
-  total_cost: 108051
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: struct_to_alias
-  program: (f (q 42))
+  program: (q . 42)
   debug_program: (f (c (q . 42) ()))
   output: '42'
-  runtime_cost: 51
-  byte_cost: 108000
-  total_cost: 108051
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: alias_to_struct
-  program: (f (q 42))
+  program: (q . 42)
   debug_program: (f (c (q . 42) ()))
   output: '42'
-  runtime_cost: 51
-  byte_cost: 108000
-  total_cost: 108051
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - |-
   Unnecessary cast from `42` to `42`, since they are compatible with each other at unnecessary_cast.rue:2:5

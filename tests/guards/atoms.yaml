@@ -16,21 +16,21 @@ tests:
   byte_cost: 108000
   total_cost: 108188
 - name: atom_value_union
-  program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 2 (i (= 2 (q . 34)) (q 1 . 1) (q)) 1)) 1)
+  program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 9 2 (q . 34))) 1)
   debug_program: (a (i (= 2 (q . 42)) (q 1 . 1) (q 2 (i (= 2 (q . 34)) (q 1 . 1) (q)) 1)) 1)
   solution: (34)
   output: '1'
-  runtime_cost: 814
-  byte_cost: 684000
-  total_cost: 684814
+  runtime_cost: 585
+  byte_cost: 444000
+  total_cost: 444585
 - name: atom_shape_value
-  program: (a (i (l 2) (q) (q 2 (i (= 2 (q . 42)) (q 1 . 1) (q)) 1)) 1)
+  program: (a (i (l 2) (q) (q 9 2 (q . 42))) 1)
   debug_program: (a (i (not (l 2)) (q 2 (i (= 2 (q . 42)) (q 1 . 1) (q)) 1) (q)) 1)
   solution: (42)
   output: '1'
-  runtime_cost: 694
-  byte_cost: 612000
-  total_cost: 612694
+  runtime_cost: 465
+  byte_cost: 372000
+  total_cost: 372465
 - name: atom_length
   program: (= (strlen 2) (q . 32))
   debug_program: (= (strlen 2) (q . 32))

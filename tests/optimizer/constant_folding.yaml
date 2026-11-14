@@ -89,12 +89,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: divmod_num
-  program: (+ (f (q 2 . 4)) (r (q 2 . 4)))
+  program: (q . 6)
   debug_program: (+ (f (divmod (q . 30) (q . 13))) (r (divmod (q . 30) (q . 13))))
   output: '6'
-  runtime_cost: 858
-  byte_cost: 276000
-  total_cost: 276858
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: concat_bytes
   program: (q . "hello")
   debug_program: (concat (q . "hel") (q . 27759))

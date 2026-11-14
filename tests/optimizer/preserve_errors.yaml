@@ -38,16 +38,16 @@ tests:
   byte_cost: 468000
   clvm_error: Division by zero
 - name: single_use_in_and
-  program: (a (q 2 (i 23 (q 2 (i 2 (q 1 . 1) (q)) 1) (q)) 1) (c (= (/ 2 5) (q . 1)) 1))
+  program: (a (q 2 (i 23 (q 3 2 (q . 1) ()) (q)) 1) (c (= (/ 2 5) (q . 1)) 1))
   debug_program: (a (q 2 (i 23 (q 2 (i 2 (q 1 . 1) (q)) 1) (q)) 1) (c (= (/ 2 5) (q . 1)) 1))
   solution: (1 0 ())
-  byte_cost: 804000
+  byte_cost: 684000
   clvm_error: Division by zero
 - name: single_use_in_or
-  program: (a (q 2 (i 23 (q 1 . 1) (q 2 (i 2 (q 1 . 1) (q)) 1)) 1) (c (= (/ 2 5) (q . 1)) 1))
+  program: (a (q 2 (i 23 (q 1 . 1) (q 3 2 (q . 1) ())) 1) (c (= (/ 2 5) (q . 1)) 1))
   debug_program: (a (q 2 (i 23 (q 1 . 1) (q 2 (i 2 (q 1 . 1) (q)) 1)) 1) (c (= (/ 2 5) (q . 1)) 1))
   solution: (1 0 1)
-  byte_cost: 828000
+  byte_cost: 708000
   clvm_error: Division by zero
 - name: destructure_failing_value
   program: (r (c (/ 2 5) (q . 1)))

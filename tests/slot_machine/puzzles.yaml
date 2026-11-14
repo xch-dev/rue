@@ -45,15 +45,15 @@ diagnostics:
     note: Consider renaming it to `registration_price`
 puzzle_hashes:
   actions/catalog/refund.rue: '893fe9f0717e5aaf77e0ba1d391bfa89b208d80246cf96754da4ef7e28b27d92'
-  actions/catalog/register.rue: '4420c740fa17acfdd8c9f95e09cd4d1dc28f6fcf65551b444667d1d3ea51aa5d'
+  actions/catalog/register.rue: '206cc192f9f42f11b6ee94b5629d3ce3506a8a027392a7ffd4ee5aff0f2f3ad8'
   actions/shared/delegated_state.rue: '1fcc6ae4f09fae3efa513ba140c6dc8f0d63eccd6b60d9d99124ed618c127fc8'
   actions/xchandles/execute_update.rue: '673eec8c668543db8bc870706c17b83a56bb78f43e5e13c96275eed933ed8e67'
   actions/xchandles/expire.rue: '0ae3d294e3cc46b46c079067a37fd72a3ee6b63e171359211cf6a1f5b4e5d60e'
   actions/xchandles/extend.rue: '16f826e286d0c8af4536d261b52361736e623de9cbb618fa2c10f2b1e7de3844'
   actions/xchandles/initiate_update.rue: '1aa57c296fcef2d4e498e8fc8b3935dc5dff701e67c1c2a3d1f3b83faf55c4e5'
   actions/xchandles/oracle.rue: eadbc75a482384745a91faad3936f8e781f42b2cefa0fb45f4ccb625ad21bca4
-  actions/xchandles/refund.rue: '32616e367bc11049d4bdd61e52a82949dc7284082e28e8ef1f321fc28b094d47'
-  actions/xchandles/register.rue: '2ce2e6e6810afbc019234e102b7b1b34b8a92090605c0ef5dfb75108544efe96'
+  actions/xchandles/refund.rue: b9a56506d70ae9d00981414c0b249cdf11d095c198452b02f1d38bdc8f2ff5f6
+  actions/xchandles/register.rue: '8b5e86653728038ad6ccb13ec03e4744c4f5a940e5f5b4ec0013e7ad7d057be1'
   default_puzzles/default_cat_maker.rue: '8fa4f29f9f3fecea56ca19141790da8fad7539acbc8eec39cd25007e85e5db6f'
   default_puzzles/exponential_premium.rue: '6db6e00f7acbf7111e7be906b90993f623f43ac5ed288dc1e8b8efe108d0d86d'
   default_puzzles/factor_pricing.rue: '2d84d00c017b3fea58918518fbcf3d2607b9f8124674a01a2df466e6469fb133'

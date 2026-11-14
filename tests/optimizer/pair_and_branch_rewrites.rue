@@ -1,0 +1,47 @@
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+// The quotient and remainder of the same operands are computed with one divmod
+test fn quotient_and_remainder(a: Int, b: Int) -> (Int, Int) {
+    (a / b, a % b)
+}
+
+// A field of a pair that's built in place is used directly, if the other field can't fail
+test fn field_of_built_pair(a: Int) -> Int {
+    let point = Point { x: a, y: 5 };
+    point.x
+}
+
+// The other field is still evaluated if it may fail
+test fn field_of_built_pair_that_fails(a: Int, b: Int) -> Int {
+    let point = Point { x: a, y: a / b };
+    point.x
+}
+
+// A boolean chosen by a condition that's already a boolean is the condition itself
+test fn boolean_branches(a: Int, b: Int) -> Bool {
+    if a > b {
+        true
+    } else {
+        false
+    }
+}
+
+test fn negated_boolean_branches(a: Int) -> Bool {
+    if a == 0 {
+        false
+    } else {
+        true
+    }
+}
+
+// Branches that are atoms are evaluated eagerly
+test fn atom_branches(a: Int) -> Int {
+    if a > 10 {
+        100
+    } else {
+        200
+    }
+}

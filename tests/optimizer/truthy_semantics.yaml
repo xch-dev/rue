@@ -47,10 +47,10 @@ tests:
   byte_cost: 204000
   total_cost: 204590
 - name: pair_condition_raises
-  program: (a (q 2 (i (l (c (a 2 5) ())) (q 1 . 2) (q 1 . 1)) 1) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (a (q 3 (c (a 2 5) ()) (q . 2) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
   debug_program: (a (q 2 (q 2 (i (not (l 2)) (q 1 . 1) (q 1 . 2)) 1) (c (c (a 2 5) ()) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at truthy_semantics.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 996000
+  byte_cost: 828000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at truthy_semantics.rue:7:9" "too big")
 - name: pair_statement_raises
@@ -67,13 +67,13 @@ tests:
   byte_cost: 348000
   clvm_error: 'InvalidOperatorArg: = used on list'
 - name: list_is_nil_atom
-  program: (a (i (l 2) (q 1 . 2) (q 1 . 1)) 1)
+  program: (i (l 2) (q . 2) (q . 1))
   debug_program: (a (i (not (l 2)) (q 1 . 1) (q 1 . 2)) 1)
   solution: (5)
   output: '1'
-  runtime_cost: 297
-  byte_cost: 324000
-  total_cost: 324297
+  runtime_cost: 142
+  byte_cost: 204000
+  total_cost: 204142
 diagnostics:
 - |-
   Unnecessary comparison with `true` at truthy_semantics.rue:21:5

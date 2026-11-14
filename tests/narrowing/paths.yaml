@@ -32,13 +32,13 @@ tests:
   byte_cost: 348000
   total_cost: 349153
 - name: whole_then_field
-  program: (a (i (a (i (l 2) (q 2 (i (l 4) (q) (q 1 . 1)) 1) (q)) 1) (q 16 4 6) (q)) 1)
+  program: (a (i (a (i (l 2) (q 32 (l 4)) (q)) 1) (q 16 4 6) (q)) 1)
   debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 1 . 1) (q)) 1) (q)) 1) (q 16 (f 2) (r 2)) (q)) 1)
   solution: ((3 . 4))
   output: '7'
-  runtime_cost: 1647
-  byte_cost: 852000
-  total_cost: 853647
+  runtime_cost: 1619
+  byte_cost: 660000
+  total_cost: 661619
 - name: group_guard
   program: (a (i (l 2) (q) (q . 2)) 1)
   debug_program: (a (i (not (l 2)) (q . 2) (q)) 1)

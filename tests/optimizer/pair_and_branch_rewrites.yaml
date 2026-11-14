@@ -1,0 +1,57 @@
+tests:
+- name: quotient_and_remainder
+  program: (divmod 2 5)
+  debug_program: (c (/ 2 5) (% 2 5))
+  solution: (-7 2)
+  output: (-4 . 1)
+  runtime_cost: 1249
+  byte_cost: 84000
+  total_cost: 85249
+- name: field_of_built_pair
+  program: '2'
+  debug_program: (a (q 5 2) (c (c 2 (c (q . 5) ())) 1))
+  solution: (3)
+  output: '3'
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: field_of_built_pair_that_fails
+  program: (f (c 2 (c (/ 2 5) ())))
+  debug_program: (a (q 5 2) (c (c 2 (c (/ 2 5) ())) 1))
+  solution: (3 0)
+  byte_cost: 276000
+  clvm_error: Division by zero
+- name: boolean_branches
+  program: (> 2 5)
+  debug_program: (a (i (> 2 5) (q 1 . 1) (q)) 1)
+  solution: (5 3)
+  output: '1'
+  runtime_cost: 603
+  byte_cost: 84000
+  total_cost: 84603
+- name: negated_boolean_branches
+  program: (not (= 2 ()))
+  debug_program: (a (i (= 2 ()) (q) (q 1 . 1)) 1)
+  solution: (0)
+  output: ()
+  runtime_cost: 411
+  byte_cost: 132000
+  total_cost: 132411
+- name: atom_branches
+  program: (i (> 2 (q . 10)) (q . 100) (q . 200))
+  debug_program: (a (i (> 2 (q . 10)) (q 1 . 100) (q 1 . 200)) 1)
+  solution: (11)
+  output: '100'
+  runtime_cost: 645
+  byte_cost: 276000
+  total_cost: 276645
+diagnostics:
+- |-
+  Field `y` of struct `Point` is never read at pair_and_branch_rewrites.rue:3:5
+    note: If it's only needed for the layout of the struct, prefix its name with `_`
+- |-
+  This `if` evaluates to a boolean that's the same as its condition at pair_and_branch_rewrites.rue:25:5
+    help: Use the condition directly
+- |-
+  This `if` evaluates to a boolean that's the same as its condition at pair_and_branch_rewrites.rue:33:5
+    help: Use the negation of the condition
