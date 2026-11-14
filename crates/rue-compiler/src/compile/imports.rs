@@ -430,22 +430,25 @@ fn resolve_import(
         for &(index, via, declaration) in &path_references {
             cache
                 .imported_names
-                .insert((import_id, declaration), (import.path[index].clone(), via));
+                .entry((import_id, declaration))
+                .or_insert_with(|| (import.path[index].clone(), via));
         }
 
         for &index in &private_segments {
-            let name = &import.path[index];
+            cache
+                .errors
+                .entry((import_id, ImportError::PrivateModule(index)))
+                .or_insert_with(|| {
+                    let name = &import.path[index];
 
-            cache.errors.insert(
-                (import_id, ImportError::PrivateModule(index)),
-                (
-                    name.clone(),
-                    DiagnosticKind::PrivateSymbol(
-                        name.text().to_string(),
-                        import.path[index - 1].text().to_string(),
-                    ),
-                ),
-            );
+                    (
+                        name.clone(),
+                        DiagnosticKind::PrivateSymbol(
+                            name.text().to_string(),
+                            import.path[index - 1].text().to_string(),
+                        ),
+                    )
+                });
         }
     }
 
@@ -616,40 +619,42 @@ fn resolve_import(
                 let (symbol, ty) = if public_symbol.is_some() || public_ty.is_some() {
                     (public_symbol, public_ty)
                 } else {
-                    (symbol, ty)
-                };
+                    if diagnostics {
+                        let module = import.path.last().unwrap().text();
 
-                if diagnostics {
-                    let module = import.path.last().unwrap().text();
-
-                    if public_symbol.is_none() && public_ty.is_none() {
                         if symbol.is_some() {
-                            cache.errors.insert(
-                                (import_id, ImportError::PrivateSymbol),
-                                (
-                                    item.clone(),
-                                    DiagnosticKind::PrivateSymbol(
-                                        name.to_string(),
-                                        module.to_string(),
-                                    ),
-                                ),
-                            );
+                            cache
+                                .errors
+                                .entry((import_id, ImportError::PrivateSymbol))
+                                .or_insert_with(|| {
+                                    (
+                                        item.clone(),
+                                        DiagnosticKind::PrivateSymbol(
+                                            name.to_string(),
+                                            module.to_string(),
+                                        ),
+                                    )
+                                });
                         }
 
                         if ty.is_some() {
-                            cache.errors.insert(
-                                (import_id, ImportError::PrivateType),
-                                (
-                                    item.clone(),
-                                    DiagnosticKind::PrivateType(
-                                        name.to_string(),
-                                        module.to_string(),
-                                    ),
-                                ),
-                            );
+                            cache
+                                .errors
+                                .entry((import_id, ImportError::PrivateType))
+                                .or_insert_with(|| {
+                                    (
+                                        item.clone(),
+                                        DiagnosticKind::PrivateType(
+                                            name.to_string(),
+                                            module.to_string(),
+                                        ),
+                                    )
+                                });
                         }
                     }
-                }
+
+                    (symbol, ty)
+                };
 
                 (
                     symbol.map(|s| (s, base.symbol_import(s))),
@@ -719,13 +724,15 @@ fn resolve_import(
                     updated = true;
                     unused_imports.shift_remove(name);
                 } else if diagnostics && target.symbol(name) != Some(symbol) {
-                    cache.errors.insert(
-                        (import_id, ImportError::DuplicateSymbol),
-                        (
-                            item.clone(),
-                            DiagnosticKind::DuplicateSymbol(name.to_string()),
-                        ),
-                    );
+                    cache
+                        .errors
+                        .entry((import_id, ImportError::DuplicateSymbol))
+                        .or_insert_with(|| {
+                            (
+                                item.clone(),
+                                DiagnosticKind::DuplicateSymbol(name.to_string()),
+                            )
+                        });
                     unused_imports.shift_remove(name);
                 }
             }
@@ -763,13 +770,15 @@ fn resolve_import(
                     updated = true;
                     unused_imports.shift_remove(name);
                 } else if diagnostics && target.ty(name) != Some(ty) {
-                    cache.errors.insert(
-                        (import_id, ImportError::DuplicateType),
-                        (
-                            item.clone(),
-                            DiagnosticKind::DuplicateType(name.to_string()),
-                        ),
-                    );
+                    cache
+                        .errors
+                        .entry((import_id, ImportError::DuplicateType))
+                        .or_insert_with(|| {
+                            (
+                                item.clone(),
+                                DiagnosticKind::DuplicateType(name.to_string()),
+                            )
+                        });
                     unused_imports.shift_remove(name);
                 }
             }
