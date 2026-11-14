@@ -236,6 +236,28 @@ fn increment<T>(value: T) -> Int {
     0
 }
 
+// The same applies to a narrowed generic within the inferred type
+fn sum_and_last<T>(value: T, list: List<Int>) -> (Int, Int) {
+    if value is Int {
+        return fold(list, (value, value), fn(acc, item) => (acc.first + item, item));
+    }
+
+    (0, 0)
+}
+
+fn call_after<U>(value: U, f: fn(value: U) -> U) -> U {
+    f(value)
+}
+
+fn bump<T>(value: T) -> Int {
+    if value is Int {
+        let result = call_after((value, nil), fn(pair) => (pair.first + 1, nil));
+        return result.first;
+    }
+
+    0
+}
+
 // A structure that's a union is split over the members of a union it's passed to, so that `nil`
 // is held by the `nil` member
 fn unwrap_or_raise<U>(value: U | nil) -> U {
@@ -387,6 +409,14 @@ test fn sum_from_int() -> Int {
 
 test fn increment_int() -> Int {
     increment(2)
+}
+
+test fn sum_and_last_int() -> (Int, Int) {
+    sum_and_last(1, [2, 3])
+}
+
+test fn bump_int() -> Int {
+    bump(1)
 }
 
 test fn int_or_raise_int() -> Int {

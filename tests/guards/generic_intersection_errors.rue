@@ -60,8 +60,23 @@ fn impossible_guard<T>(value: T) -> Bool {
     false
 }
 
+// A lambda's parameter is inferred before the type expected of the call is known, so it's widened
+// to the structure and can't be returned as `T` (the same happens to literals)
+fn call_after<U>(value: U, f: fn(value: U) -> U) -> U {
+    f(value)
+}
+
+fn identity_lambda<T>(value: T) -> T {
+    if value is Atom {
+        return call_after(value, fn(item) => item);
+    }
+
+    value
+}
+
 fn main() -> Int {
     assert redundant_guard(1) && impossible_guard(1);
+    assert identity_lambda(1) == 1;
 
     atom_is_not_int(1)
         + pair_is_not_atom(1) as Int

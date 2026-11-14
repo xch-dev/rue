@@ -190,6 +190,24 @@ fn test_resolve_intersection() {
     let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
     assert_eq!(t.name(mappings[&inferred]), "Int");
 
+    // Including within the type
+    let t_int_pair = t.pair(t_int, b.nil);
+    let mut infer = Inference::new([inferred]);
+    compare_with_inference(
+        &mut t.arena,
+        &t.builtins,
+        t_int_pair,
+        inferred,
+        Some(&mut infer),
+    );
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    assert_eq!(t.name(mappings[&inferred]), "(Int, nil)");
+
+    let expected = t.pair(generic, b.nil);
+    infer_from_expected(&mut t.arena, &t.builtins, inferred, expected, &mut infer);
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    assert_eq!(t.name(mappings[&inferred]), "(T & Int, nil)");
+
     // Unless an upper bound needs the generic
     let mut infer = Inference::new([inferred]);
     compare_with_inference(&mut t.arena, &t.builtins, t_int, inferred, Some(&mut infer));

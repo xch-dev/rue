@@ -9,8 +9,8 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, Intersection, Memo, Type, TypeId, Union,
-    free_generics, is_generic, references_generic, resolve_refs, step, stringify_impl, substitute,
+    AtomRestriction, AtomSemantic, BuiltinTypes, Intersection, Memo, Pair, Type, TypeId, Union,
+    free_generics, is_generic, references_generic, step, stringify_impl, substitute,
     unwrap_semantic_without_substitution,
 };
 
@@ -674,15 +674,12 @@ fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = TypeId>) ->
 }
 
 /// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`. A generic
-/// narrowed by a guard is likewise replaced with its structure, such as `T & Int` with `Int`, so
-/// that it doesn't make a lambda's parameter or another argument of the same generic require a
-/// `T`. As with literals, it's only kept if an upper bound requires it (such as `T`).
+/// narrowed by a guard is likewise replaced with its structure wherever it is in the type, such
+/// as `(T & Int, nil)` with `(Int, nil)`, so that it doesn't make a lambda's parameter or another
+/// argument of the same generic require a `T`. As with literals, it's only kept if an upper bound
+/// requires it (such as `T`).
 fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -> TypeId {
-    if let Type::Intersection(intersection) = &arena[resolve_refs(arena, ty)]
-        && let Some(structure) = intersection.structure(arena)
-    {
-        return widen_literal(arena, builtins, structure);
-    }
+    let ty = without_intersections(arena, ty, &mut Vec::new());
 
     let Type::Atom(atom) = &arena[ty] else {
         return ty;
@@ -1388,6 +1385,55 @@ fn compare_intersection(
             result = Comparison::Assign;
         }
     }
+
+    result
+}
+
+/// Replaces each intersection in the pairs and unions of a type with its structure. The type is
+/// returned as is if it doesn't contain any (or is recursive, which is left alone where it recurs).
+fn without_intersections(arena: &mut Arena<Type>, id: TypeId, stack: &mut Vec<TypeId>) -> TypeId {
+    if stack.contains(&id) {
+        return id;
+    }
+
+    stack.push(id);
+
+    let result = match arena[id].clone() {
+        Type::Ref(inner) => {
+            let new = without_intersections(arena, inner, stack);
+            if new == inner { id } else { new }
+        }
+        Type::Intersection(intersection) => match intersection.structure(arena) {
+            Some(structure) => without_intersections(arena, structure, stack),
+            None => id,
+        },
+        Type::Pair(pair) => {
+            let first = without_intersections(arena, pair.first, stack);
+            let rest = without_intersections(arena, pair.rest, stack);
+
+            if first == pair.first && rest == pair.rest {
+                id
+            } else {
+                arena.alloc(Type::Pair(Pair::new(first, rest)))
+            }
+        }
+        Type::Union(union) => {
+            let types: Vec<TypeId> = union
+                .types
+                .iter()
+                .map(|&member| without_intersections(arena, member, stack))
+                .collect();
+
+            if types == union.types {
+                id
+            } else {
+                arena.alloc(Type::Union(Union::new(types)))
+            }
+        }
+        _ => id,
+    };
+
+    stack.pop();
 
     result
 }
