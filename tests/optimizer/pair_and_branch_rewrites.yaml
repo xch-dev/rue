@@ -7,6 +7,14 @@ tests:
   runtime_cost: 1249
   byte_cost: 84000
   total_cost: 85249
+- name: quotient_and_remainder_of_expression
+  program: (divmod (+ 2 (q . 1)) 5)
+  debug_program: (c (/ (+ 2 (q . 1)) 5) (% (+ 2 (q . 1)) 5))
+  solution: (-8 2)
+  output: (-4 . 1)
+  runtime_cost: 2025
+  byte_cost: 180000
+  total_cost: 182025
 - name: field_of_built_pair
   program: '2'
   debug_program: (a (q 5 2) (c (c 2 (c (q . 5) ())) 1))
@@ -50,8 +58,8 @@ diagnostics:
   Field `y` of struct `Point` is never read at pair_and_branch_rewrites.rue:3:5
     note: If it's only needed for the layout of the struct, prefix its name with `_`
 - |-
-  This `if` evaluates to a boolean that's the same as its condition at pair_and_branch_rewrites.rue:25:5
+  This `if` evaluates to a boolean that's the same as its condition at pair_and_branch_rewrites.rue:29:5
     help: Use the condition directly
 - |-
-  This `if` evaluates to a boolean that's the same as its condition at pair_and_branch_rewrites.rue:33:5
+  This `if` evaluates to a boolean that's the same as its condition at pair_and_branch_rewrites.rue:37:5
     help: Use the negation of the condition

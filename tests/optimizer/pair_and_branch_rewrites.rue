@@ -8,6 +8,10 @@ test fn quotient_and_remainder(a: Int, b: Int) -> (Int, Int) {
     (a / b, a % b)
 }
 
+test fn quotient_and_remainder_of_expression(a: Int, b: Int) -> (Int, Int) {
+    ((a + 1) / b, (a + 1) % b)
+}
+
 // A field of a pair that's built in place is used directly, if the other field can't fail
 test fn field_of_built_pair(a: Int) -> Int {
     let point = Point { x: a, y: 5 };

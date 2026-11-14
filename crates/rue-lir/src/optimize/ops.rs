@@ -6,7 +6,9 @@ use sha3::Keccak256;
 
 use crate::{
     ClvmOp, Lir, LirId, atom_bigint, bigint_atom, first_path,
-    optimize::{ArgList, Truthiness, fold_atoms, is_boolean, is_pure, opt_truthy, reads_env},
+    optimize::{
+        ArgList, Truthiness, fold_atoms, is_boolean, is_nil, is_pure, opt_truthy, reads_env,
+    },
     rest_path,
 };
 
@@ -395,10 +397,11 @@ pub fn opt_not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
 // Since all only looks at the truthiness of its arguments, we can simplify them
 // A nested all evaluates all of its arguments too, so they can be added to this one
 pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    let mut args = ArgList::new(args);
     let mut result = Vec::new();
     let mut has_false = false;
 
-    for arg in args {
+    while let Some(arg) = args.next() {
         match opt_truthy(arena, arg) {
             Truthiness::Known(true) => {}
             Truthiness::Known(false) => {
@@ -408,8 +411,8 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
                 }
             }
             Truthiness::Unknown(arg) => {
-                if let Lir::All(items) = &arena[arg] {
-                    result.extend(items.iter().copied());
+                if let Lir::All(items) = arena[arg].clone() {
+                    args.prepend(items);
                 } else {
                     result.push(arg);
                 }
@@ -426,10 +429,11 @@ pub fn opt_all(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 // Since any only looks at the truthiness of its arguments, we can simplify them
 // A nested any evaluates all of its arguments too, so they can be added to this one
 pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+    let mut args = ArgList::new(args);
     let mut result = Vec::new();
     let mut has_true = false;
 
-    for arg in args {
+    while let Some(arg) = args.next() {
         match opt_truthy(arena, arg) {
             Truthiness::Known(false) => {}
             Truthiness::Known(true) => {
@@ -439,8 +443,8 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
                 }
             }
             Truthiness::Unknown(arg) => {
-                if let Lir::Any(items) = &arena[arg] {
-                    result.extend(items.iter().copied());
+                if let Lir::Any(items) = arena[arg].clone() {
+                    args.prepend(items);
                 } else {
                     result.push(arg);
                 }
@@ -465,15 +469,6 @@ pub fn opt_if(
     otherwise: LirId,
     inline: bool,
 ) -> LirId {
-    if is_atom(arena, then, &[1]) && is_atom(arena, otherwise, &[]) && is_boolean(arena, condition)
-    {
-        return condition;
-    }
-
-    if is_atom(arena, then, &[]) && is_atom(arena, otherwise, &[1]) {
-        return opt_not(arena, condition);
-    }
-
     match opt_truthy(arena, condition) {
         Truthiness::Known(true) if !inline || is_pure(arena, otherwise) => then,
         Truthiness::Known(false) if !inline || is_pure(arena, then) => otherwise,
@@ -486,13 +481,25 @@ pub fn opt_if(
                 arena.alloc(Lir::If(nil, then, otherwise, inline))
             }
         }
-        Truthiness::Unknown(condition) => {
-            let (condition, then, otherwise) = if let Lir::Not(opposite) = arena[condition].clone()
+        Truthiness::Unknown(replacement) => {
+            // The replacement only has the same truthiness, so the original is used as a value
+            if is_atom(arena, then, &[1])
+                && is_nil(arena, otherwise)
+                && is_boolean(arena, condition)
             {
-                (opposite, otherwise, then)
-            } else {
-                (condition, then, otherwise)
-            };
+                return condition;
+            }
+
+            if is_nil(arena, then) && is_atom(arena, otherwise, &[1]) {
+                return opt_not(arena, condition);
+            }
+
+            let (condition, then, otherwise) =
+                if let Lir::Not(opposite) = arena[replacement].clone() {
+                    (opposite, otherwise, then)
+                } else {
+                    (replacement, then, otherwise)
+                };
 
             let inline = inline
                 || (matches!(arena[then], Lir::Atom(_))

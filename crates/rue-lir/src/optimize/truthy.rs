@@ -162,6 +162,6 @@ pub fn returns_atom(arena: &Arena<Lir>, value: LirId) -> bool {
     }
 }
 
-fn is_nil(arena: &Arena<Lir>, value: LirId) -> bool {
+pub fn is_nil(arena: &Arena<Lir>, value: LirId) -> bool {
     matches!(&arena[value], Lir::Atom(atom) if atom.is_empty())
 }
