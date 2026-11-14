@@ -79,7 +79,7 @@ struct SubstitutionContext {
     /// Copies of function generics, which they're renamed to when they would capture a mapped
     /// type. The first copy that isn't referenced is reused, so that there are finitely many
     /// distinct mappings and recursive types still reach the substitutions that are in progress.
-    renames: HashMap<TypeId, Vec<TypeId>>,
+    renames: FxHashMap<TypeId, Vec<TypeId>>,
 }
 
 impl SubstitutionContext {
