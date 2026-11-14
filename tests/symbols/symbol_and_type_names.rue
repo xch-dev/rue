@@ -1,0 +1,15 @@
+fn main() -> Int {
+    // A name that's only a type where a symbol is expected, and the other way around
+    let a: B = Int;
+    let b: main = 1;
+
+    // A name that's both resolves to the kind that's expected
+    let c: A = A;
+    a + b + c
+}
+
+type A = Int;
+
+const A: Int = 1;
+
+type B = Int;

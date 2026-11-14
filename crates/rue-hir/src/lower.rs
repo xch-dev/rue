@@ -2,7 +2,7 @@
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     iter,
     path::{Path, PathBuf},
     rc::Rc,
@@ -1012,8 +1012,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// in the first round, since they don't need the values of the others yet.
     ///
     /// A symbol's round is one after the latest round of its dependencies in the set, which is
-    /// found in a single pass over the symbols in dependency order, rather than by checking every
-    /// remaining symbol again after each round.
+    /// found by visiting each symbol once all of its dependencies have been visited.
     fn group_symbols(
         &mut self,
         symbols: IndexSet<SymbolId>,
@@ -1023,7 +1022,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut rounds = vec![0; symbols.len()];
         let mut waiting = vec![0; symbols.len()];
         let mut dependents = vec![Vec::new(); symbols.len()];
-        let mut ready = VecDeque::new();
+        let mut ready = Vec::new();
 
         for (index, &symbol) in symbols.iter().enumerate() {
             if !by_reference && !matches!(self.db.symbol(symbol), Symbol::Function(_)) {
@@ -1036,36 +1035,36 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
 
             if waiting[index] == 0 {
-                ready.push_back(index);
+                ready.push(index);
             }
         }
 
-        let mut placed = vec![false; symbols.len()];
-
-        while let Some(index) = ready.pop_front() {
-            placed[index] = true;
-
+        while let Some(index) = ready.pop() {
             for &dependent in &dependents[index] {
                 rounds[dependent] = rounds[dependent].max(rounds[index] + 1);
                 waiting[dependent] -= 1;
 
                 if waiting[dependent] == 0 {
-                    ready.push_back(dependent);
+                    ready.push(dependent);
                 }
             }
         }
 
-        // Symbols that depend on each other can never be bound after one another, so they're bound
-        // in a round after all of the others
-        let last_round = rounds.iter().max().map_or(0, |round| round + 1);
+        // Symbols that depend on each other are never visited, since they can't be bound after
+        // one another, so they're bound in a round after all of the others
+        let mut round_count = rounds.iter().max().map_or(0, |round| round + 1);
 
-        for (index, placed) in placed.into_iter().enumerate() {
-            if !placed {
-                rounds[index] = last_round;
+        if waiting.iter().any(|&waiting| waiting > 0) {
+            for (round, &waiting) in rounds.iter_mut().zip(&waiting) {
+                if waiting > 0 {
+                    *round = round_count;
+                }
             }
+
+            round_count += 1;
         }
 
-        let mut groups = vec![Vec::new(); rounds.iter().max().map_or(0, |round| round + 1)];
+        let mut groups = vec![Vec::new(); round_count];
 
         for (index, &symbol) in symbols.iter().enumerate() {
             if self.is_capture(symbol) && self.graph.references(symbol) > 0 {

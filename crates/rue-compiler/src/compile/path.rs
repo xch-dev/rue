@@ -192,22 +192,18 @@ where
                     .map(|(ty, import)| (ty, true, import))
             };
 
-            // Only the kind that's expected is used if the name is both, so the other is only
-            // looked up if it isn't found, since a name that isn't found walks every enclosing
-            // scope (and each `let` statement opens one)
+            // When a name is both a symbol and a type, the expected kind wins, so the other is only
+            // looked up as a fallback. A lookup that fails walks every enclosing scope, and each
+            // `let` statement opens one.
             match kind {
                 PathKind::Symbol => {
                     let symbol = resolve_symbol();
-                    let ty = if symbol.is_none() {
-                        resolve_type()
-                    } else {
-                        None
-                    };
+                    let ty = symbol.is_none().then(resolve_type).flatten();
                     (symbol, ty)
                 }
                 PathKind::Type => {
                     let ty = resolve_type();
-                    let symbol = if ty.is_none() { resolve_symbol() } else { None };
+                    let symbol = ty.is_none().then(resolve_symbol).flatten();
                     (symbol, ty)
                 }
             }

@@ -383,8 +383,8 @@ fn long_chains_of_bindings_are_followed() {
 
 /// The bindings of consecutive `let` statements are grouped so that each one is bound after the ones
 /// it depends on. Each binding here is used twice, so it isn't inlined, and depends on the one
-/// before it, so there's a group for each of them. Grouping used to check every remaining binding
-/// against its dependencies after each group, which took minutes for a few hundred bindings.
+/// before it, so there's a group for each of them, which is slow unless grouping avoids redoing
+/// work for each group.
 #[test]
 fn long_runs_of_bindings_are_grouped() {
     on_small_stack(|| {

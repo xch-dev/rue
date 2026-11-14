@@ -55,6 +55,7 @@ pub fn check_recursion(ctx: &mut Compiler) {
 /// of them have been visited so far.
 struct Visit {
     declaration: Declaration,
+    index: usize,
     parents: Vec<Declaration>,
     next: usize,
 }
@@ -80,6 +81,7 @@ impl Components<'_> {
 
         Visit {
             declaration,
+            index,
             parents: self.ctx.reference_parents(declaration),
             next: 0,
         }
@@ -90,9 +92,8 @@ impl Components<'_> {
 /// the declarations that reference them, which are the ones in a strongly connected component with
 /// more than one declaration, or that reference themselves directly.
 ///
-/// This uses Tarjan's algorithm, which visits each declaration once, rather than searching from
-/// each declaration separately (which is quadratic in a long chain of references). It's iterative,
-/// so that a long chain doesn't overflow the stack.
+/// This uses Tarjan's algorithm, which visits each declaration once. It's iterative, so that a long
+/// chain of references doesn't overflow the stack.
 fn cyclic_declarations(ctx: &Compiler, roots: &[Declaration]) -> HashSet<Declaration> {
     let mut components = Components {
         ctx,
@@ -112,7 +113,7 @@ fn cyclic_declarations(ctx: &Compiler, roots: &[Declaration]) -> HashSet<Declara
         let mut visits = vec![components.enter(root)];
 
         while let Some(visit) = visits.last_mut() {
-            let index = components.indices[&visit.declaration];
+            let index = visit.index;
 
             if let Some(&parent) = visit.parents.get(visit.next) {
                 visit.next += 1;
@@ -131,7 +132,7 @@ fn cyclic_declarations(ctx: &Compiler, roots: &[Declaration]) -> HashSet<Declara
             let visit = visits.pop().unwrap();
 
             if let Some(outer) = visits.last() {
-                let outer = components.indices[&outer.declaration];
+                let outer = outer.index;
                 components.low[outer] = components.low[outer].min(components.low[index]);
             }
 
