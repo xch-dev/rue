@@ -74,9 +74,25 @@ fn identity_lambda<T>(value: T) -> T {
     value
 }
 
+// Without an expected type, a narrowed generic is widened when it's inferred, so binding the
+// result first loses `T` (returning `identity(value)` directly works)
+fn identity<U>(value: U) -> U {
+    value
+}
+
+fn bound_first<T>(value: T) -> T {
+    if value is Atom {
+        let result = identity(value);
+        return result;
+    }
+
+    value
+}
+
 fn main() -> Int {
     assert redundant_guard(1) && impossible_guard(1);
     assert identity_lambda(1) == 1;
+    assert bound_first(1) == 1;
 
     atom_is_not_int(1)
         + pair_is_not_atom(1) as Int

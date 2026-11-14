@@ -258,6 +258,29 @@ fn bump<T>(value: T) -> Int {
     0
 }
 
+// And to one in a function's return type
+fn zero() -> Int {
+    0
+}
+
+fn return_lambda<T>(value: T) -> Int {
+    if value is Int {
+        let f: fn() -> Int = call_after(fn() => value, fn(_f) => zero);
+        return f();
+    }
+
+    0
+}
+
+fn fold_lambdas<T>(value: T, list: List<Int>) -> Int {
+    if value is Int {
+        let _f = fold(list, fn() => value, fn(_acc, item) => fn() => item);
+        return 1;
+    }
+
+    0
+}
+
 // A structure that's a union is split over the members of a union it's passed to, so that `nil`
 // is held by the `nil` member
 fn unwrap_or_raise<U>(value: U | nil) -> U {
@@ -417,6 +440,14 @@ test fn sum_and_last_int() -> (Int, Int) {
 
 test fn bump_int() -> Int {
     bump(1)
+}
+
+test fn return_lambda_int() -> Int {
+    return_lambda(5)
+}
+
+test fn fold_lambdas_int() -> Int {
+    fold_lambdas(5, [1, 2])
 }
 
 test fn int_or_raise_int() -> Int {

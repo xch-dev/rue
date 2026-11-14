@@ -10,3 +10,4 @@ diagnostics:
 - Unnecessary type guard from `T & Atom` to `Atom`, since they are already compatible types at generic_intersection_errors.rue:49:16
 - Cannot type guard from `T & (Any, Any)` to `Int`, since they do not overlap at generic_intersection_errors.rue:57:16
 - Cannot assign `Atom` to `T`, since they are incompatible at generic_intersection_errors.rue:71:16
+- Cannot assign `Atom` to `T`, since they are incompatible at generic_intersection_errors.rue:86:16

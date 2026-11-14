@@ -4,11 +4,13 @@
 use std::collections::HashMap;
 
 use id_arena::Arena;
+use indexmap::IndexSet;
 use rue_diagnostic::Name;
 use rue_types::{
-    Alias, BuiltinTypes, CheckError, Comparison, FunctionType, Generic, Inference, Intersection,
-    Pair, Type, TypeId, Union, check, compare, compare_with_inference, infer_from_expected,
-    intersect, resolve_inference, stringify, substitute_with_mappings, subtract,
+    Alias, BuiltinTypes, CheckError, Comparison, FunctionParameter, FunctionType, Generic,
+    Inference, Intersection, Pair, Struct, Type, TypeId, Union, check, compare,
+    compare_with_inference, infer_from_expected, intersect, resolve_inference, stringify,
+    substitute_with_mappings, subtract,
 };
 
 struct Types {
@@ -214,6 +216,113 @@ fn test_resolve_intersection() {
     infer_from_expected(&mut t.arena, &t.builtins, inferred, generic, &mut infer);
     let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
     assert_eq!(t.name(mappings[&inferred]), "T & Int");
+}
+
+/// Resolves the generic from a single lower candidate, and returns the name of what it resolves to.
+fn resolve_from(t: &mut Types, candidate: TypeId) -> String {
+    let inferred = t.generic("U");
+    let mut infer = Inference::new([inferred]);
+    compare_with_inference(
+        &mut t.arena,
+        &t.builtins,
+        candidate,
+        inferred,
+        Some(&mut infer),
+    );
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    t.name(mappings[&inferred])
+}
+
+#[test]
+fn test_resolve_widens_covariant_positions() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let t_int = t.intersect(generic, b.int);
+
+    // A function's return type is widened
+    let returns = t.alloc(Type::Function(FunctionType {
+        generics: vec![],
+        params: vec![],
+        nil_terminated: true,
+        ret: t_int,
+    }));
+    assert_eq!(resolve_from(&mut t, returns), "fn() -> Int");
+
+    // But its parameters aren't, since widening them would give a subtype
+    let takes = t.alloc(Type::Function(FunctionType {
+        generics: vec![],
+        params: vec![FunctionParameter::new("x", t_int)],
+        nil_terminated: true,
+        ret: b.nil,
+    }));
+    assert_eq!(resolve_from(&mut t, takes), "fn(x: T & Int) -> nil");
+
+    // The inner types of aliases and structs are widened, along with the generic arguments that
+    // they're displayed with
+    let optional = t.union(vec![t_int, b.nil]);
+    let alias = t.alloc(Type::Alias(Alias {
+        name: Some(Name::new("Option", None)),
+        inner: optional,
+        generics: vec![t_int],
+    }));
+    assert_eq!(resolve_from(&mut t, alias), "Option<Int>");
+    let ty = t.alloc(Type::Alias(Alias {
+        name: None,
+        inner: optional,
+        generics: vec![],
+    }));
+    assert_eq!(resolve_from(&mut t, ty), "Int | nil");
+
+    let inner = t.pair(t_int, b.nil);
+    let semantic = t.alloc(Type::Unresolved);
+    t.arena[semantic] = Type::Struct(Struct {
+        name: None,
+        semantic,
+        inner,
+        generics: vec![t_int],
+        fields: IndexSet::from(["value".to_string()]),
+        nil_terminated: true,
+        narrowed: false,
+    });
+    assert_eq!(resolve_from(&mut t, semantic), "(Int, nil)");
+}
+
+#[test]
+fn test_resolve_shared_subtrees() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+
+    // Each level refers to the level below it twice, so widening every reference separately
+    // would take exponentially many types
+    let mut ty = t.intersect(generic, b.int);
+    for _ in 0..20 {
+        ty = t.pair(ty, ty);
+    }
+
+    let inferred = t.generic("U");
+    let mut infer = Inference::new([inferred]);
+    compare_with_inference(&mut t.arena, &t.builtins, ty, inferred, Some(&mut infer));
+
+    let before = t.arena.len();
+    let mut resolved = resolve_inference(&mut t.arena, &t.builtins, &infer)[&inferred];
+
+    // Displaying the type would also take exponential time, so its first leaf is checked instead
+    loop {
+        match &t.arena[resolved] {
+            Type::Ref(inner) => resolved = *inner,
+            Type::Pair(pair) => resolved = pair.first,
+            _ => break,
+        }
+    }
+
+    assert_eq!(resolved, b.int);
+    assert!(
+        t.arena.len() - before < 1_000,
+        "allocated {} types",
+        t.arena.len() - before
+    );
 }
 
 #[test]

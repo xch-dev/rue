@@ -9,9 +9,9 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, Intersection, Memo, Pair, Type, TypeId, Union,
-    free_generics, is_generic, references_generic, step, stringify_impl, substitute,
-    unwrap_semantic_without_substitution,
+    Alias, AtomRestriction, AtomSemantic, BuiltinTypes, FunctionType, Intersection, Memo, Pair,
+    Struct, Type, TypeId, Union, free_generics, is_generic, references_generic, step,
+    stringify_impl, substitute, unwrap_semantic_without_substitution,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -674,12 +674,12 @@ fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = TypeId>) ->
 }
 
 /// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`. A generic
-/// narrowed by a guard is likewise replaced with its structure wherever it is in the type, such
-/// as `(T & Int, nil)` with `(Int, nil)`, so that it doesn't make a lambda's parameter or another
+/// narrowed by a guard is likewise replaced with its structure wherever it's covariant in the type
+/// (see `widen_intersections`), so that it doesn't make a lambda's parameter or another
 /// argument of the same generic require a `T`. As with literals, it's only kept if an upper bound
 /// requires it (such as `T`).
 fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -> TypeId {
-    let ty = without_intersections(arena, ty, &mut Vec::new());
+    let ty = widen_intersections(arena, ty, &mut HashMap::new(), &mut Vec::new());
 
     let Type::Atom(atom) = &arena[ty] else {
         return ty;
@@ -1389,27 +1389,52 @@ fn compare_intersection(
     result
 }
 
-/// Replaces each intersection in the pairs and unions of a type with its structure. The type is
-/// returned as is if it doesn't contain any (or is recursive, which is left alone where it recurs).
-fn without_intersections(arena: &mut Arena<Type>, id: TypeId, stack: &mut Vec<TypeId>) -> TypeId {
+/// Returns a supertype of the type with each narrowed generic in a covariant position replaced
+/// with its structure, such as `(T & Int, fn() -> T & Int)` with `(Int, fn() -> Int)`.
+///
+/// Function parameters are contravariant, so they're left alone (widening them would give a
+/// subtype). Each type is widened once, and returned as is if nothing within it changed, so that
+/// types which share subtrees stay shared. A type that's reached again while it's being widened (a
+/// recursive type) is left alone where it recurs. Leaving any part alone is sound, since the
+/// candidate is checked again once the generics are resolved.
+fn widen_intersections(
+    arena: &mut Arena<Type>,
+    id: TypeId,
+    memo: &mut HashMap<TypeId, TypeId>,
+    stack: &mut Vec<TypeId>,
+) -> TypeId {
+    if let Some(&widened) = memo.get(&id) {
+        return widened;
+    }
+
     if stack.contains(&id) {
         return id;
     }
 
     stack.push(id);
 
+    let mut widen = |arena: &mut Arena<Type>, id| widen_intersections(arena, id, memo, stack);
+
     let result = match arena[id].clone() {
+        Type::Unresolved
+        | Type::Generic(_)
+        | Type::Any
+        | Type::Never
+        | Type::Atom(_)
+        // Inference candidates are substituted before they're collected, so there aren't any
+        // generic applications to widen. If there were, leaving one alone would be sound.
+        | Type::Apply(_) => id,
         Type::Ref(inner) => {
-            let new = without_intersections(arena, inner, stack);
-            if new == inner { id } else { new }
+            let widened = widen(arena, inner);
+            if widened == inner { id } else { widened }
         }
         Type::Intersection(intersection) => match intersection.structure(arena) {
-            Some(structure) => without_intersections(arena, structure, stack),
+            Some(structure) => widen(arena, structure),
             None => id,
         },
         Type::Pair(pair) => {
-            let first = without_intersections(arena, pair.first, stack);
-            let rest = without_intersections(arena, pair.rest, stack);
+            let first = widen(arena, pair.first);
+            let rest = widen(arena, pair.rest);
 
             if first == pair.first && rest == pair.rest {
                 id
@@ -1418,11 +1443,7 @@ fn without_intersections(arena: &mut Arena<Type>, id: TypeId, stack: &mut Vec<Ty
             }
         }
         Type::Union(union) => {
-            let types: Vec<TypeId> = union
-                .types
-                .iter()
-                .map(|&member| without_intersections(arena, member, stack))
-                .collect();
+            let types: Vec<TypeId> = union.types.iter().map(|&ty| widen(arena, ty)).collect();
 
             if types == union.types {
                 id
@@ -1430,10 +1451,49 @@ fn without_intersections(arena: &mut Arena<Type>, id: TypeId, stack: &mut Vec<Ty
                 arena.alloc(Type::Union(Union::new(types)))
             }
         }
-        _ => id,
+        Type::Function(function) => {
+            let ret = widen(arena, function.ret);
+
+            if ret == function.ret {
+                id
+            } else {
+                arena.alloc(Type::Function(FunctionType { ret, ..function }))
+            }
+        }
+        // The generic arguments of an alias or struct are only used to display it once it has
+        // been substituted, so they're widened along with its inner type to match
+        Type::Alias(alias) => {
+            let inner = widen(arena, alias.inner);
+            let generics: Vec<TypeId> = alias.generics.iter().map(|&ty| widen(arena, ty)).collect();
+
+            if inner == alias.inner && generics == alias.generics {
+                id
+            } else {
+                arena.alloc(Type::Alias(Alias {
+                    inner,
+                    generics,
+                    ..alias
+                }))
+            }
+        }
+        Type::Struct(ty) => {
+            let inner = widen(arena, ty.inner);
+            let generics: Vec<TypeId> = ty.generics.iter().map(|&ty| widen(arena, ty)).collect();
+
+            if inner == ty.inner && generics == ty.generics {
+                id
+            } else {
+                arena.alloc(Type::Struct(Struct {
+                    inner,
+                    generics,
+                    ..ty
+                }))
+            }
+        }
     };
 
     stack.pop();
+    memo.insert(id, result);
 
     result
 }
