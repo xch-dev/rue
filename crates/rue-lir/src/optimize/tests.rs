@@ -342,6 +342,15 @@ fn test_nested_all_and_any() {
     let two = atom(&mut arena, &[2]);
     let lir = arena.alloc(Lir::If(single, one, two, false));
     check(&mut arena, lir, ENVS, expect!["(i 2 (q . 1) (q . 2))"]);
+
+    let single = arena.alloc(Lir::Any(vec![a]));
+    let lir = arena.alloc(Lir::If(single, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(i 2 (q . 1) (q . 2))"]);
+
+    // An empty any is false
+    let empty = arena.alloc(Lir::Any(vec![]));
+    let lir = arena.alloc(Lir::If(empty, one, two, false));
+    check(&mut arena, lir, ENVS, expect!["(q . 2)"]);
 }
 
 #[test]
