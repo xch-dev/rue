@@ -10,7 +10,7 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     AtomRestriction, AtomSemantic, BuiltinTypes, Intersection, Memo, Type, TypeId, Union,
-    free_generics, is_generic, references_generic, step, stringify_impl, substitute,
+    free_generics, is_generic, references_generic, resolve_refs, step, stringify_impl, substitute,
     unwrap_semantic_without_substitution,
 };
 
@@ -673,8 +673,17 @@ fn union_of(arena: &mut Arena<Type>, types: impl IntoIterator<Item = TypeId>) ->
     }
 }
 
-/// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`.
+/// Replaces a literal atom type with the type it's a value of, such as `1` with `Int`. A generic
+/// narrowed by a guard is likewise replaced with its structure, such as `T & Int` with `Int`, so
+/// that it doesn't make a lambda's parameter or another argument of the same generic require a
+/// `T`. As with literals, it's only kept if an upper bound requires it (such as `T`).
 fn widen_literal(arena: &mut Arena<Type>, builtins: &BuiltinTypes, ty: TypeId) -> TypeId {
+    if let Type::Intersection(intersection) = &arena[resolve_refs(arena, ty)]
+        && let Some(structure) = intersection.structure(arena)
+    {
+        return widen_literal(arena, builtins, structure);
+    }
+
     let Type::Atom(atom) = &arena[ty] else {
         return ty;
     };
@@ -1297,6 +1306,28 @@ fn compare_intersection(
     let mut result = Comparison::Invalid;
 
     if let Type::Union(rhs_union) = &arena[rhs] {
+        // A structure that's a union (such as `Int | nil` in `T & (Int | nil)`) is split over the
+        // union's members first, so that a member that holds part of it (such as `nil` in
+        // `U | nil`) does, rather than inferring the whole intersection
+        if let Some(structure) = intersection.structure(arena)
+            && let Type::Union(_) =
+                &arena[unwrap_semantic_without_substitution(arena, structure, true)]
+        {
+            result = compare_impl(
+                arena,
+                builtins,
+                ctx,
+                structure,
+                rhs,
+                lhs_semantic,
+                rhs_semantic,
+            );
+
+            if result == Comparison::Assign {
+                return result;
+            }
+        }
+
         // As in the comparison to a union, a value that another member already holds is only
         // collected as a last resort for the generics being inferred
         let holding = ctx.holding;

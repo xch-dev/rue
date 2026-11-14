@@ -206,6 +206,85 @@ fn infer_held<T>(value: T, default: Bytes32) -> Bytes32 {
     default
 }
 
+// A narrowed generic is widened to its structure when it's inferred, so that it doesn't make a
+// lambda's parameter require a `T`
+fn fold<U, A>(list: List<U>, acc: A, f: fn(acc: A, item: U) -> A) -> A {
+    if list is nil {
+        return acc;
+    }
+
+    fold(list.rest, f(acc, list.first), f)
+}
+
+fn sum_from<T>(value: T) -> Int {
+    if value is Int {
+        return fold([1, 2], value, fn(acc, item) => acc + item);
+    }
+
+    0
+}
+
+fn call<U>(f: fn(value: U) -> U, value: U) -> U {
+    f(value)
+}
+
+fn increment<T>(value: T) -> Int {
+    if value is Int {
+        return call(fn(value) => value + 1, value);
+    }
+
+    0
+}
+
+// A structure that's a union is split over the members of a union it's passed to, so that `nil`
+// is held by the `nil` member
+fn unwrap_or_raise<U>(value: U | nil) -> U {
+    assert !(value is nil);
+    value
+}
+
+fn int_or_raise<T>(value: T) -> Int {
+    if value is Int | nil {
+        let int: Int = unwrap_or_raise(value);
+        return int;
+    }
+
+    0
+}
+
+fn int_or_default<T>(value: T | nil) -> Int {
+    if value is Int | nil {
+        return or_default(value, 5);
+    }
+
+    0
+}
+
+// The fields of a narrowed generic are found within a union too
+fn mixed<T>(value: T | (Int, Int)) -> Any {
+    if value is (Any, Any) {
+        return value.first;
+    }
+
+    nil
+}
+
+fn firsts<T, U>(value: T | U) -> Any {
+    if value is (Any, Any) {
+        return value.first;
+    }
+
+    nil
+}
+
+fn xs<T, U>(value: T | U) -> Int {
+    if value is Point {
+        return value.x;
+    }
+
+    0
+}
+
 fn main() -> Int {
     atom_or_raise(5)
 }
@@ -300,6 +379,42 @@ test fn infer_through_generic_alias_atom() -> Int {
 
 test fn infer_held_nil() -> Bytes32 {
     infer_held(nil, 0x0000000000000000000000000000000000000000000000000000000000000001)
+}
+
+test fn sum_from_int() -> Int {
+    sum_from(4)
+}
+
+test fn increment_int() -> Int {
+    increment(2)
+}
+
+test fn int_or_raise_int() -> Int {
+    int_or_raise(3)
+}
+
+test fn int_or_raise_nil() -> Int {
+    int_or_raise(nil)
+}
+
+test fn int_or_default_nil() -> Int {
+    int_or_default::<Int>(nil)
+}
+
+test fn int_or_default_int() -> Int {
+    int_or_default(8)
+}
+
+test fn mixed_pair() -> Any {
+    mixed::<Int>((1, 2))
+}
+
+test fn firsts_pair() -> Any {
+    firsts::<(Int, Int), Int>((3, 4))
+}
+
+test fn xs_point() -> Int {
+    xs::<Point, Int>(Point { x: 5, y: 6 })
 }
 
 test fn pass_through_atom() -> Int {

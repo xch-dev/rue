@@ -7,8 +7,8 @@ use id_arena::Arena;
 use rue_diagnostic::Name;
 use rue_types::{
     Alias, BuiltinTypes, CheckError, Comparison, FunctionType, Generic, Inference, Intersection,
-    Pair, Type, TypeId, Union, check, compare, compare_with_inference, intersect, stringify,
-    substitute_with_mappings, subtract,
+    Pair, Type, TypeId, Union, check, compare, compare_with_inference, infer_from_expected,
+    intersect, resolve_inference, stringify, substitute_with_mappings, subtract,
 };
 
 struct Types {
@@ -155,6 +155,47 @@ fn test_infer_intersection() {
     let lower = infer.candidates(inferred).unwrap().lower.clone();
     let names: Vec<String> = lower.into_iter().map(|id| t.name(id)).collect();
     assert_eq!(names, ["Int", "Int"]);
+
+    // A structure that's a union is split over the union's members, so `nil` is held by `nil`
+    let int_or_nil = t.union(vec![b.int, b.nil]);
+    let t_int_or_nil = t.intersect(generic, int_or_nil);
+    let mut infer = Inference::new([inferred]);
+    let result = compare_with_inference(
+        &mut t.arena,
+        &t.builtins,
+        t_int_or_nil,
+        optional,
+        Some(&mut infer),
+    );
+    assert_eq!(result, Comparison::Assign);
+
+    let lower = infer.candidates(inferred).unwrap().lower.clone();
+    let names: Vec<String> = lower.into_iter().map(|id| t.name(id)).collect();
+    assert_eq!(names, ["Int"]);
+}
+
+#[test]
+fn test_resolve_intersection() {
+    let mut t = Types::new();
+    let b = t.builtins;
+    let generic = t.generic("T");
+    let inferred = t.generic("U");
+    let t_int = t.intersect(generic, b.int);
+
+    // A narrowed generic is widened to its structure, like a literal
+    let mut infer = Inference::new([inferred]);
+    for lower in [t_int, b.int] {
+        compare_with_inference(&mut t.arena, &t.builtins, lower, inferred, Some(&mut infer));
+    }
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    assert_eq!(t.name(mappings[&inferred]), "Int");
+
+    // Unless an upper bound needs the generic
+    let mut infer = Inference::new([inferred]);
+    compare_with_inference(&mut t.arena, &t.builtins, t_int, inferred, Some(&mut infer));
+    infer_from_expected(&mut t.arena, &t.builtins, inferred, generic, &mut infer);
+    let mappings = resolve_inference(&mut t.arena, &t.builtins, &infer);
+    assert_eq!(t.name(mappings[&inferred]), "T & Int");
 }
 
 #[test]
