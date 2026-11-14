@@ -4,6 +4,8 @@ use std::{
     mem,
 };
 
+use indexmap::IndexSet;
+
 /// Caches the results of a recursive computation over types, which keeps the items in progress on
 /// a stack and returns early when it reaches one of them again (to handle recursive types).
 ///
@@ -95,5 +97,108 @@ where
         }
 
         self.low = self.low.min(frame.low);
+    }
+}
+
+/// Caches the results of a comparison whose result is the least fixed point of monotone equations
+/// over a finite set of items, built from `max`, `min` and constants over a chain of values, where
+/// returning early at an item in progress gives the least value. Unlike [`Memo`], a result is
+/// cached even if it relied on items in progress, and it's reused while they're still in progress.
+///
+/// The results inside a cycle depend on where it was entered, so a reused result can differ from
+/// what computing it again would give. But the result of the computation as a whole (which starts
+/// from an empty stack) doesn't. Write `μ` for the least fixed point, and `μ[D]` for the least fixed
+/// point with the items in `D` fixed to the least value instead of their equation:
+///
+/// - Every value computed is at most `μ`, since returning early gives the least value, reused
+///   results are at most `μ` (by induction), and the equations are monotone with `μ` as a fixed
+///   point.
+/// - Every value computed for an item, given the items on the stack below it that it returned early
+///   at or reused a result that relied on (`D`), is at least `μ[D]`. Its equation's inputs are at
+///   least `μ[D ∪ {item}]` (by induction), and fixing only the item gives a unary function `h` of
+///   the value it's fixed to, so the value is at least `h(least)`. That's `μ[D]` (which is the least
+///   fixed point of `h`), since `h` is built from `max`, `min` and constants, so `h(h(least))` is
+///   `h(least)` (it's `h(least) ∨ (y ∧ h(greatest))` at `y`).
+/// - A cached result is reused while `D` is on the stack, where computing it again would give
+///   `μ[S]` for the stack `S`. That's at most `μ[D]`, since fixing more items to the least value
+///   can only make the fixed point smaller. So it's at least what computing it again would give.
+///
+/// So the result of a computation that starts from an empty stack (where `D` is empty) is exactly
+/// `μ`, with or without reusing results, and since every value is at least what computing it would
+/// give and the equations are monotone, so is the result.
+#[derive(Debug)]
+pub(crate) struct FixpointMemo<K, V> {
+    /// The indices on the stack of the items that were reached again (or that a reused result
+    /// relied on) since the current item started, which haven't been filtered out by an item that
+    /// finished.
+    reached: Vec<usize>,
+    /// Each result, along with the items in progress that it relied on.
+    done: HashMap<K, (V, Vec<K>)>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FixpointFrame {
+    index: usize,
+    reached: usize,
+}
+
+impl<K, V> Default for FixpointMemo<K, V> {
+    fn default() -> Self {
+        Self {
+            reached: Vec::new(),
+            done: HashMap::new(),
+        }
+    }
+}
+
+impl<K, V> FixpointMemo<K, V>
+where
+    K: Copy + Eq + Hash,
+    V: Copy,
+{
+    /// Records that the item at the given index on the stack was reached again.
+    pub fn reached(&mut self, index: usize) {
+        self.reached.push(index);
+    }
+
+    /// Returns the previous result for the key, if the items it relied on are still in progress.
+    pub fn get(&mut self, key: &K, stack: &IndexSet<K>) -> Option<V> {
+        let (value, dependencies) = self.done.get(key)?;
+
+        let indices = dependencies
+            .iter()
+            .map(|item| stack.get_index_of(item))
+            .collect::<Option<Vec<usize>>>()?;
+
+        self.reached.extend(indices);
+
+        Some(*value)
+    }
+
+    /// Starts computing the item that will be at the given index on the stack.
+    pub fn enter(&self, index: usize) -> FixpointFrame {
+        FixpointFrame {
+            index,
+            reached: self.reached.len(),
+        }
+    }
+
+    /// Finishes computing the item (which has been removed from the stack), and caches the result
+    /// under the key, along with the items below it that it relied on.
+    pub fn exit(&mut self, frame: FixpointFrame, key: Option<K>, value: V, stack: &IndexSet<K>) {
+        let mut dependencies: Vec<usize> = self
+            .reached
+            .drain(frame.reached..)
+            .filter(|&index| index < frame.index)
+            .collect();
+        dependencies.sort_unstable();
+        dependencies.dedup();
+
+        if let Some(key) = key {
+            let items = dependencies.iter().map(|&index| stack[index]).collect();
+            self.done.insert(key, (value, items));
+        }
+
+        self.reached.extend(dependencies);
     }
 }

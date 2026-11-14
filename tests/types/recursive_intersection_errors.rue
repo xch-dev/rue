@@ -1,0 +1,11 @@
+// Checking the type intersects it with the target, which compares each part of them again
+type N0 = nil | (nil | (Int | (N1, N0)) | ((nil, N1), N1));
+type N1 = (N0 | (Bytes | N0), N0);
+
+fn main(x: N0) -> Int {
+    if x is (((N1, Int), N0), N1) {
+        1
+    } else {
+        0
+    }
+}

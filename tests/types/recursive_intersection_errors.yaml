@@ -1,0 +1,2 @@
+diagnostics:
+- Recursion depth exceeded while checking type at recursive_intersection_errors.rue:6:8

@@ -9,8 +9,10 @@ use indexmap::{IndexMap, IndexSet};
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
-    AtomRestriction, AtomSemantic, BuiltinTypes, Memo, Type, TypeId, Union, free_generics,
-    grow_stack, references_generic, step, stringify_impl, substitute, substitute_with_mappings,
+    AtomRestriction, AtomSemantic, BuiltinTypes, FixpointFrame, FixpointMemo, Frame as MemoFrame,
+    Memo, Type, TypeId, Union, compare_memo_enabled, free_generics, grow_stack,
+    has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
+    substitute_with_mappings,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -100,9 +102,17 @@ impl Inference {
     }
 }
 
-/// The types being compared, whether the comparison is flipped, and what the generics they
-/// reference are bound to (interned in `ComparisonContext::bindings`).
-type ComparisonKey = (TypeId, TypeId, bool, usize);
+/// The types being compared, whether the comparison is flipped, what the generics they reference
+/// are bound to (interned in `ComparisonContext::bindings`), and the semantics passed down to it.
+/// This is everything that the result depends on other than the stack, so that a comparison is
+/// only assumed to hold when it's revisited exactly, and its result can be reused (see `Memo`).
+type ComparisonKey = (TypeId, TypeId, bool, usize, Option<TypeId>, Option<TypeId>);
+
+/// The memo that a comparison in progress will be cached in (see `ComparisonContext::fixpoint`).
+enum Frame {
+    Exact(MemoFrame),
+    Fixpoint(FixpointFrame),
+}
 
 /// A bound of a generic being instantiated, along with the environment it's resolved in.
 type Bound = (TypeId, Option<usize>);
@@ -177,8 +187,6 @@ pub(crate) struct ComparisonContext<'a> {
     instances: Vec<Instance>,
     /// The instances before this index are rigid, since they belong to enclosing comparisons.
     instantiable_from: usize,
-    /// The number of instances that are being instantiated.
-    instantiating: usize,
     /// What the generics referenced by the types in each `ComparisonKey` are bound to, for each
     /// side and generic.
     bindings: IndexSet<Vec<(bool, TypeId, Binding)>>,
@@ -199,8 +207,15 @@ pub(crate) struct ComparisonContext<'a> {
     /// The context for comparisons that leave the generics being inferred rigid, which is kept
     /// so that its results are memoized for the whole comparison.
     uninferred: Option<Box<ComparisonContext<'static>>>,
-    /// Completed comparisons, keyed by the comparison and the semantics passed down to it.
-    memo: Memo<ComparisonKey, (ComparisonKey, Option<TypeId>, Option<TypeId>), Comparison>,
+    /// Completed comparisons, reused only where computing them again would do the same thing.
+    memo: Memo<ComparisonKey, ComparisonKey, Comparison>,
+    /// Whether the comparison that started from an empty stack is the least fixed point of
+    /// monotone equations (see `is_monotone`), so `fixpoint_memo` is used instead of `memo`.
+    fixpoint: bool,
+    /// Completed comparisons, reused while the comparisons they relied on are in progress.
+    fixpoint_memo: FixpointMemo<ComparisonKey, Comparison>,
+    /// Whether each type that a comparison started from is monotone (see `is_monotone`).
+    monotone: HashMap<TypeId, bool>,
 }
 
 impl ComparisonContext<'_> {
@@ -388,6 +403,33 @@ impl ComparisonContext<'_> {
         refreshed
     }
 
+    /// Whether comparing the type (and the types it contains) is the least fixed point of monotone
+    /// equations over the comparisons it reaches, which is what `FixpointMemo` needs. Comparing is
+    /// built from `max`, `min` and constants (the fallbacks that are only compared when a union
+    /// doesn't hold are a `min` whose result doesn't depend on them otherwise), and returning
+    /// early at a comparison in progress gives `Assign` (the least value), as long as:
+    ///
+    /// - The type is contractive, since a cycle that doesn't pass through a pair or function gives
+    ///   `Invalid` instead.
+    /// - Each generic function's parameters and return type either are one of its generics or
+    ///   don't reference them. The generics being instantiated then only collect bounds directly,
+    ///   from the same comparisons whenever the function is compared, so the bounds that are
+    ///   checked against each other are always the same. Otherwise, which bounds they collect
+    ///   would depend on what's in progress (and they would be merged when revisited).
+    ///
+    /// Inference also collects candidates as a side effect, so it isn't used then.
+    fn is_monotone(&mut self, arena: &Arena<Type>, id: TypeId) -> bool {
+        if let Some(&monotone) = self.monotone.get(&id) {
+            return monotone;
+        }
+
+        let reachable = reachable(arena, id);
+        let monotone = !has_non_contractive_cycle(arena, &reachable)
+            && reachable.iter().all(|&id| instantiates_directly(arena, id));
+        self.monotone.insert(id, monotone);
+        monotone
+    }
+
     /// Interns what the generics referenced by the types are bound to, and returns the binders in
     /// the order they're numbered.
     fn bindings(&mut self, arena: &Arena<Type>, lhs: TypeId, rhs: TypeId) -> (usize, Vec<usize>) {
@@ -451,6 +493,22 @@ fn root(binders: &[Binder], mut index: usize) -> usize {
     }
 
     index
+}
+
+/// Returns `false` if the type is a generic function type with a parameter or return type that
+/// references its generics without being one of them.
+fn instantiates_directly(arena: &Arena<Type>, id: TypeId) -> bool {
+    let Type::Function(function) = &arena[id] else {
+        return true;
+    };
+
+    function.param_types().chain([function.ret]).all(|ty| {
+        function.generics.contains(&ty)
+            || !function
+                .generics
+                .iter()
+                .any(|&generic| references_generic(arena, ty, generic, |_| Vec::new()))
+    })
 }
 
 /// Returns the generics that the type references, other than where they're bound by a function
@@ -990,10 +1048,14 @@ fn compare_impl_inner(
     step();
 
     let (bindings, binders) = ctx.bindings(arena, lhs, rhs);
-    let key = (lhs, rhs, ctx.flipped, bindings);
+    let key = (lhs, rhs, ctx.flipped, bindings, lhs_semantic, rhs_semantic);
 
     if let Some(index) = ctx.stack.get_index_of(&key) {
-        ctx.memo.reached(index);
+        if ctx.fixpoint {
+            ctx.fixpoint_memo.reached(index);
+        } else {
+            ctx.memo.reached(index);
+        }
 
         // Revisiting a comparison is only sound to treat as assignable if we've passed through
         // a pair or function since, otherwise a non-contractive type like `type A = B; type B = A;`
@@ -1041,17 +1103,39 @@ fn compare_impl_inner(
         return Comparison::Assign;
     }
 
-    // Generics that are being instantiated are compared differently and collect bounds as a side
-    // effect, so results are only memoized while there aren't any
-    let memo_key = (ctx.instantiating == 0).then_some((key, lhs_semantic, rhs_semantic));
-
-    if let Some(memo_key) = &memo_key
-        && let Some(result) = ctx.memo.get(memo_key, ctx.stack.iter().copied())
-    {
-        return result;
+    if ctx.stack.is_empty() {
+        ctx.fixpoint = ctx.infer.is_none()
+            && ctx.lhs_env.is_none()
+            && ctx.rhs_env.is_none()
+            && ctx.is_monotone(arena, lhs)
+            && ctx.is_monotone(arena, rhs);
     }
 
-    let frame = ctx.memo.enter(ctx.stack.len());
+    // Generics that are being instantiated outside of the comparison collect bounds from it as a
+    // side effect, so it's only memoized if it doesn't refer to any. The ones bound inside of it
+    // are checked before it finishes.
+    let memoize = compare_memo_enabled()
+        && !ctx.bindings[bindings]
+            .iter()
+            .any(|&(_, _, binding)| matches!(binding, Binding::Instance(_)));
+
+    if memoize {
+        let result = if ctx.fixpoint {
+            ctx.fixpoint_memo.get(&key, &ctx.stack)
+        } else {
+            ctx.memo.get(&key, ctx.stack.iter().copied())
+        };
+
+        if let Some(result) = result {
+            return result;
+        }
+    }
+
+    let frame = if ctx.fixpoint {
+        Frame::Fixpoint(ctx.fixpoint_memo.enter(ctx.stack.len()))
+    } else {
+        Frame::Exact(ctx.memo.enter(ctx.stack.len()))
+    };
     let candidates = ctx.candidates;
 
     ctx.stack.insert(key);
@@ -1145,7 +1229,6 @@ fn compare_impl_inner(
                 let first = ctx.binders.len();
                 ctx.lhs_env = ctx.bind(lhs_env, &lhs.generics, true);
                 ctx.rhs_env = ctx.bind(rhs_env, &rhs.generics, false);
-                ctx.instantiating += lhs.generics.len();
 
                 // The return type is covariant, since the value returned by the function flows
                 // out to whoever expects the right hand side's return type.
@@ -1166,7 +1249,6 @@ fn compare_impl_inner(
                 }
 
                 ctx.flipped = !ctx.flipped;
-                ctx.instantiating -= lhs.generics.len();
 
                 // The instances that were merged into another are checked along with it
                 let mut bounds = Vec::new();
@@ -1181,7 +1263,6 @@ fn compare_impl_inner(
                 // assignable to every type it flows into (such as their union, or `Never`).
                 // The bounds come from the other side, where the generics of any enclosing
                 // functions being instantiated are rigid, so they're hidden while checking.
-                let instantiating = mem::take(&mut ctx.instantiating);
                 let instantiable_from =
                     mem::replace(&mut ctx.instantiable_from, ctx.instances.len());
 
@@ -1208,7 +1289,6 @@ fn compare_impl_inner(
                     }
                 }
 
-                ctx.instantiating = instantiating;
                 ctx.instantiable_from = instantiable_from;
                 ctx.lhs_env = lhs_env;
                 ctx.rhs_env = rhs_env;
@@ -1492,8 +1572,12 @@ fn compare_impl_inner(
 
     // Inference candidates are collected as a side effect of comparing, so a comparison that
     // collected any can't be skipped
-    let memo_key = memo_key.filter(|_| ctx.candidates == candidates);
-    ctx.memo.exit(frame, key, memo_key, result);
+    let memo_key = (memoize && ctx.candidates == candidates).then_some(key);
+
+    match frame {
+        Frame::Exact(frame) => ctx.memo.exit(frame, key, memo_key, result),
+        Frame::Fixpoint(frame) => ctx.fixpoint_memo.exit(frame, memo_key, result, &ctx.stack),
+    }
 
     result
 }
@@ -1555,9 +1639,39 @@ mod tests {
     use id_arena::Arena;
     use rstest::rstest;
 
-    use crate::{Atom, Type, compare};
+    use crate::{Atom, FunctionParameter, FunctionType, Generic, Pair, Type, compare};
 
     use super::*;
+
+    #[test]
+    fn test_instantiates_directly() {
+        let mut arena = Arena::new();
+        let builtins = BuiltinTypes::new(&mut arena);
+        let generic = arena.alloc(Type::Generic(Generic { name: None }));
+
+        let function = |arena: &mut Arena<Type>, param: TypeId, ret: TypeId| {
+            arena.alloc(Type::Function(FunctionType {
+                generics: vec![generic],
+                params: vec![FunctionParameter::new("x", param)],
+                nil_terminated: true,
+                ret,
+            }))
+        };
+
+        // `fn<T>(x: T) -> Int`
+        let direct = function(&mut arena, generic, builtins.int);
+
+        // `fn<T>(x: fn<T>(x: T) -> Int) -> T`, where the inner function binds its own `T`
+        let shadowed = function(&mut arena, direct, generic);
+
+        // `fn<T>(x: (T, Int)) -> Int`, where `T` is only part of the parameter's type
+        let pair = arena.alloc(Type::Pair(Pair::new(generic, builtins.int)));
+        let nested = function(&mut arena, pair, builtins.int);
+
+        assert!(instantiates_directly(&arena, direct));
+        assert!(instantiates_directly(&arena, shadowed));
+        assert!(!instantiates_directly(&arena, nested));
+    }
 
     #[rstest]
     #[case(Atom::NIL, Atom::NIL, Comparison::Assign)]
